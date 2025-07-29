@@ -2,21 +2,24 @@
 
 #include "public.h"
 
-#include <cloud/storage/core/libs/common/public.h>
+#include <cloud/blockstore/libs/nvme/public.h>
+#include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service_local/public.h>
+
+#include <cloud/storage/core/libs/common/public.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServiceFactoryPtr CreateAIOServiceFactory(
-    const TDiskAgentConfig& config);
+struct TCreateDiskAgentBackendComponentsResult
+{
+    NNvme::INvmeManagerPtr NvmeManager;
+    NServer::IFileIOServiceProviderPtr FileIOServiceProvider;
+    IStorageProviderPtr StorageProvider;
+};
 
-IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
+TCreateDiskAgentBackendComponentsResult CreateDiskAgentBackendComponents(
     const TDiskAgentConfig& config);
-
-NServer::IFileIOServiceProviderPtr CreateFileIOServiceProvider(
-    const TDiskAgentConfig& config,
-    IFileIOServiceFactoryPtr factory);
 
 }   // namespace NCloud::NBlockStore::NStorage
