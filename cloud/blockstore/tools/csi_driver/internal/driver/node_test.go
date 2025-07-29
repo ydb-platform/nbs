@@ -1357,6 +1357,8 @@ func TestExternaFs(t *testing.T) {
 		StorageMediaKind: storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
 	}).Return(&nfs.TCreateFileStoreResponse{}, nil)
 
+	nfsLocalClient.On("ListEndpoints", ctx, &nfs.TListEndpointsRequest{}).Return(&nfs.TListEndpointsResponse{}, nil)
+
 	nfsLocalClient.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
 		Endpoint: &nfs.TEndpointConfig{
 			SocketPath:       nfsSocketPath,

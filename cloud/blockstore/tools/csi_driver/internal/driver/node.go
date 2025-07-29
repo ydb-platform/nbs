@@ -1240,7 +1240,8 @@ func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
 
 	log.Printf("local StartEndpoint: %+v", startReq)
 
-	_, err = s.nfsLocalClient.StartEndpoint(ctx, startReq)
+	_, err = s.nfsLocalClient.StartEndpoint(ctx,
+		s.localFilestoreResolveEndpoint(ctx, fsConfig.Id, startReq))
 	if err != nil {
 		if s.IsGrpcTimeoutError(err) {
 			s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
@@ -1252,6 +1253,34 @@ func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
 	}
 
 	return nil
+}
+
+func (s *nodeService) localFilestoreResolveEndpoint(
+	ctx context.Context,
+	legacyFsId string,
+	startEndpointRequest *nfsapi.TStartEndpointRequest) *nfsapi.TStartEndpointRequest {
+	listEndpointsResp, err := s.nfsLocalClient.ListEndpoints(ctx,
+		&nfsapi.TListEndpointsRequest{})
+	if err != nil {
+		return startEndpointRequest
+	}
+
+	for _, epCfg := range listEndpointsResp.Endpoints {
+		requestedEpCfg := startEndpointRequest.Endpoint
+		if epCfg.SocketPath == requestedEpCfg.SocketPath &&
+			epCfg.ClientId == requestedEpCfg.ClientId &&
+			(epCfg.FileSystemId == requestedEpCfg.FileSystemId ||
+				epCfg.FileSystemId == legacyFsId) {
+			logVolume(epCfg.FileSystemId,
+				"Existing local filestore endpoint was found: %q",
+				epCfg)
+			return &nfsapi.TStartEndpointRequest{
+				Endpoint: epCfg,
+			}
+		}
+	}
+
+	return startEndpointRequest
 }
 
 func (s *nodeService) nodeStageFileStoreAsVhostSocket(
