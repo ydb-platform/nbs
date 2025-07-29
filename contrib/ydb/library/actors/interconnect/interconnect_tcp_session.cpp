@@ -1363,28 +1363,6 @@ namespace NActors {
                             MON_VAR(GetTotalInflightAmountOfData())
                             MON_VAR(GetCloseOnIdleTimeout())
                             MON_VAR(Subscribers.size())
-                            TABLER() {
-                                TABLED() { str << "ZeroCopy state"; }
-                                TABLED() { str << ZcProcessor.GetCurrentStateName(); }
-                            }
-                            TABLER() {
-                                TABLED() { str << "ZeroCopy confirmed send with copy / confirmed send total"; }
-                                TABLED() {
-                                    str << Sprintf("%lu / %lu", ZcProcessor.GetConfirmedWithCopy(), ZcProcessor.GetConfirmed());
-                                }
-                            }
-                            TABLER() {
-                                TABLED() { str << "ZeroCopy lag (in transfers)"; }
-                                TABLED() {
-                                    str << ZcProcessor.GetZcLag();
-                                }
-                            }
-                            TABLER() {
-                                TABLED() { str << "ZeroCopy send bytes (total)"; }
-                                TABLED() {
-                                    str << ZcProcessor.GetSendAsZcBytes();
-                                }
-                            }
                         }
                     }
                 }

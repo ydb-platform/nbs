@@ -130,8 +130,7 @@ namespace NInterconnect {
                                     }
                                     TABLED() { str << kv.second.TotalOutputQueueSize; }
                                     TABLED() { str << (kv.second.Connected ? "yes" : "<strong>no</strong>"); }
-                                    TABLED() { str << (kv.second.ExternalDataChannel ? "yes" : "no")
-                                        << " (" << (kv.second.XDCFlags & TInterconnectProxyTCP::TProxyStats::XDCFlags::MSG_ZERO_COPY_SEND ? "MSG_ZC_SEND" : "_")  << ")"; }
+                                    TABLED() { str << (kv.second.ExternalDataChannel ? "yes" : "no") }
                                     TABLED() { str << kv.second.Host; }
                                     TABLED() { str << kv.second.Port; }
                                     TABLED() {

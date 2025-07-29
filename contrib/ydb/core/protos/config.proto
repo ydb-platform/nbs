@@ -456,7 +456,7 @@ message TInterconnectConfig {
     optional bool EnableExternalDataChannel = 42;
     optional bool ValidateIncomingPeerViaDirectLookup = 44;
     optional uint32 SocketBacklogSize = 45; // SOMAXCONN if not set or zero
-    optional ESocketSendOptimization SocketSendOptimization = 51 [default = IC_SO_DISABLED];
+    optional ESocketSendOptimization SocketSendOptimization = 51 [default = IC_SO_MSG_ZEROCOPY];
 
     // ballast is added to IC handshake frames to ensure correctness of jumbo frames transmission over network
     optional uint32 HandshakeBallastSize = 14;
