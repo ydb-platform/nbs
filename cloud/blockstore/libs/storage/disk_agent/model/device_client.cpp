@@ -16,10 +16,10 @@ TDeviceClient::TDeviceClient(
         TDuration releaseInactiveSessionsTimeout,
         TVector<TString> uuids,
         TLog log,
-        bool allowToKickOldClients)
+        bool allowToKickOutOldClients)
     : ReleaseInactiveSessionsTimeout(releaseInactiveSessionsTimeout)
     , Devices(MakeDevices(std::move(uuids)))
-    , AllowToKickOldClients(allowToKickOldClients)
+    , AllowToKickOutOldClients(allowToKickOutOldClients)
     , Log(std::move(log))
 {}
 
@@ -111,10 +111,10 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 << ", LastGeneration: " << deviceState->VolumeGeneration);
         }
 
-        const bool canKickClient =
+        const bool canKickOutClient =
             deviceState->DiskId == diskId &&
             deviceState->VolumeGeneration < volumeGeneration &&
-            AllowToKickOldClients;
+            AllowToKickOutOldClients;
 
         if (IsReadWriteMode(accessMode)
                 && deviceState->WriterSession.Id
@@ -123,7 +123,7 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 && deviceState->WriterSession.LastActivityTs
                     + ReleaseInactiveSessionsTimeout
                     > now
-                && !canKickClient)
+                && !canKickOutClient)
         {
             return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
                 << "Error acquiring device " << uuid.Quote()
