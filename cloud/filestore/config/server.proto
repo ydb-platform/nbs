@@ -159,6 +159,9 @@ message TLocalServiceConfig
         TIoUringConfig IoUringConfig = 24;
         TNullFileIOConfig NullFileIOConfig = 25;
     }
+
+    // Limits max requests allowed at a time.
+    optional uint32 MaxBackground = 26;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

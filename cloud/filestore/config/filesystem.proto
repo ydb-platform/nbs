@@ -76,4 +76,8 @@ message TFileSystemConfig
     // number from the nodeId in case of an invalid handle, rather than from the
     // handle itself.
     optional bool AllowHandlelessIO = 22;
+
+    // Limits max requests allowed at a time.
+    optional uint32 MaxBackground = 23;
+
 }

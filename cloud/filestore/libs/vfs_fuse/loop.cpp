@@ -1033,6 +1033,7 @@ private:
             features.GetExtendedAttributesDisabled());
 
         config.SetGuestKeepCacheAllowed(features.GetGuestKeepCacheAllowed());
+        config.SetMaxBackground(features.GetMaxBackground());
 
         return std::make_shared<TFileSystemConfig>(config);
     }
@@ -1059,7 +1060,9 @@ private:
 
         // Max async tasks allowed by fuse. Default FUSE limit is 12.
         // Hard limit on the kernel side is around 64k.
-        conn->max_background = Config->GetMaxBackground();
+        conn->max_background = FileSystemConfig->GetMaxBackground()
+                                   ? FileSystemConfig->GetMaxBackground()
+                                   : Config->GetMaxBackground();
 
         // in case of newly mount we should drop any prev state
         // e.g. left from a crash or smth, paranoid mode

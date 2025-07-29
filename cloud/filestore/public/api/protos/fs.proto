@@ -36,6 +36,7 @@ message TFileStoreFeatures
     bool ParentlessFilesOnly = 21;
     bool AllowHandlelessIO = 22;
     bool HasXAttrs = 23;
+    uint32 MaxBackground = 24;
 }
 
 message TFileStore
