@@ -1687,13 +1687,13 @@ func createTaskWithEndTime(
 	t *testing.T,
 	ctx context.Context,
 	storage tasks_storage.Storage,
-	key string,
+	idempotencyKey string,
 	at time.Time,
 	status tasks_storage.TaskStatus,
 ) string {
 
 	taskId, err := storage.CreateTask(ctx, tasks_storage.TaskState{
-		IdempotencyKey: key,
+		IdempotencyKey: idempotencyKey,
 		TaskType:       "task1",
 		Description:    "Some task",
 		CreatedAt:      at,
