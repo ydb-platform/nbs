@@ -14,12 +14,13 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
-#include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/migration_timeout_calculator.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/changed_ranges_map.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/disjoint_range_set.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
+
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>

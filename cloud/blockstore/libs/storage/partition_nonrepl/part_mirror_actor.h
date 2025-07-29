@@ -19,7 +19,7 @@
 #include <cloud/blockstore/libs/storage/model/request_bounds_tracker.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
-#include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
 
 #include <cloud/storage/core/libs/throttling/leaky_bucket.h>
 
