@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -25,6 +26,7 @@ func RegisterForExecution(
 	taskScheduler tasks.Scheduler,
 	poolService pools.Service,
 	nbsFactory nbs.Factory,
+	cellSelector cells.CellSelector,
 ) error {
 
 	deletedDiskExpirationTimeout, err := time.ParseDuration(
@@ -43,9 +45,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateEmptyDisk", func() tasks.Task {
 		return &createEmptyDiskTask{
-			storage:    resourceStorage,
-			scheduler:  taskScheduler,
-			nbsFactory: nbsFactory,
+			storage:      resourceStorage,
+			scheduler:    taskScheduler,
+			nbsFactory:   nbsFactory,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {
