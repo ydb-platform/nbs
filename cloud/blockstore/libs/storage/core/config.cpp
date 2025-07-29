@@ -777,7 +777,32 @@ void DumpImpl(
     }
 }
 
-}   // namespace
+////////////////////////////////////////////////////////////////////////////////
+
+#define CONFIG_ITEM_IS_SET_CHECKER(name, ...)                                  \
+    template <typename TProto>                                                 \
+    concept Is##name##RepeatedField = requires(const TProto& proto) {          \
+        {                                                                      \
+            proto.name##Size()                                                 \
+        } -> std::convertible_to<i64>;                                         \
+    };                                                                         \
+                                                                               \
+    template <typename TProto>                                                 \
+    [[nodiscard]] bool Is##name##Set(const TProto& proto)                      \
+    {                                                                          \
+        if constexpr (Is##name##RepeatedField<TProto>) {                       \
+            return proto.name##Size() > 0;                                     \
+        } else {                                                               \
+            return proto.Has##name();                                          \
+        }                                                                      \
+    }
+
+BLOCKSTORE_STORAGE_CONFIG(CONFIG_ITEM_IS_SET_CHECKER);
+
+#undef CONFIG_ITEM_IS_SET_CHECKER
+
+#define BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value) \
+    (Is##name##Set(config) ? ConvertValue<type>(config.Get##name()) : value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -794,57 +819,7 @@ constexpr TAtomicBase ConvertToAtomicBase(const TDuration& value)
     return value.MilliSeconds();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename T>
-struct TIsRepeated: std::false_type
-{
-};
-
-template <typename T>
-struct TIsRepeated<const google::protobuf::RepeatedPtrField<T>&>: std::true_type
-{
-};
-
-template <typename T>
-constexpr bool IsRepeatedField = TIsRepeated<T>::value;
-
-template <typename Tag>
-struct TTrait;
-
-// Define a trait for each config item that helps to check if the item is set in
-// the proto. For repeated fields, we check the size and for other fields, we
-// just check the presence with HasXxx method.
-#define CONFIG_ITEMS_TRAITS(name, ...)                                         \
-    struct TConfig##name##Tag;                                                 \
-                                                                               \
-    template <>                                                                \
-    struct TTrait<TConfig##name##Tag>                                          \
-    {                                                                          \
-        template <typename T>                                                  \
-            requires(                                                          \
-                !IsRepeatedField<decltype(std::declval<T>().Get##name())>)     \
-        static bool IsSet(const T& proto)                                      \
-        {                                                                      \
-            return proto.Has##name();                                          \
-        }                                                                      \
-                                                                               \
-        template <typename T>                                                  \
-            requires(IsRepeatedField<decltype(std::declval<T>().Get##name())>) \
-        static bool IsSet(const T& proto)                                      \
-        {                                                                      \
-            return proto.name##Size() > 0;                                     \
-        }                                                                      \
-    };
-
-BLOCKSTORE_STORAGE_CONFIG(CONFIG_ITEMS_TRAITS);
-
-#undef CONFIG_ITEMS_TRAITS
-
-#define BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value)          \
-    (TTrait<TConfig##name##Tag>::IsSet(config)                                 \
-         ? ConvertValue<type>(config.Get##name())                              \
-         : value)
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
