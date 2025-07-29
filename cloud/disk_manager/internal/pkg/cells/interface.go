@@ -9,10 +9,15 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type CellSelector interface {
-	SelectCell(
+	GetZoneIDForExistingDisk(
+		ctx context.Context,
+		diskID *disk_manager.DiskId,
+	) (string, error)
+
+	PrepareZoneID(
 		ctx context.Context,
 		req *disk_manager.CreateDiskRequest,
-	) string
+	) (string, error)
 
-	IsCellOfZone(cellID string, zoneID string) bool
+	isCellOfZone(cellID string, zoneID string) bool
 }

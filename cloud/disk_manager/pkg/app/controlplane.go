@@ -445,7 +445,7 @@ func initControlplane(
 		cellsConfig = &cells_config.CellsConfig{}
 	}
 
-	cellSelector := cells.NewCellSelector(cellsConfig)
+	cellSelector := cells.NewCellSelector(cellsConfig, nbsFactory, resourceStorage)
 
 	facade.RegisterDiskService(
 		server,
