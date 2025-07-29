@@ -254,6 +254,7 @@ struct TTxVolume
         bool WriterChanged = false;
         NProto::TError Error;
         bool ForceTabletRestart = false;
+        TVector<TString> RemovedClientIds;
 
         TAddClient(
                 TRequestInfoPtr requestInfo,

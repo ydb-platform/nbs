@@ -705,6 +705,11 @@ public:
 
     [[nodiscard]] TDuration GetInitialRetryDelayForServiceRequests() const;
     [[nodiscard]] TDuration GetMaxRetryDelayForServiceRequests() const;
+
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskInitialDelay() const;
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskMaxDelay() const;
+
+    [[nodiscard]] bool GetDoAcquireReleaseDevicesAfterTransaction() const;
 };
 
 ui64 GetAllocationUnit(

@@ -1293,4 +1293,14 @@ message TStorageServiceConfig
     // Max retry delay for scheduling next resync and migration
     // ranges (in milliseconds).
     optional uint32 MaxRetryDelayForServiceRequests = 446;
+
+    // Initial delay to retry acquire request (in milliseconds).
+    optional uint32 RetryAcquireReleaseDiskInitialDelay = 447;
+
+    // Max delay to retry acquire request (in milliseconds).
+    optional uint32 RetryAcquireReleaseDiskMaxDelay = 448;
+
+    // Do AddClient/RemoveClient transaction
+    // and then do right Acquire/Release devices requests.
+    optional bool DoAcquireReleaseDevicesAfterTransaction = 449;
 }
