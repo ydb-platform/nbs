@@ -23,6 +23,13 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func isLocalDiskKind(kind types.DiskKind) bool {
+	return (kind == types.DiskKind_DISK_KIND_HDD_LOCAL ||
+		kind == types.DiskKind_DISK_KIND_SSD_LOCAL)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 	switch kind {
 	case disk_manager.DiskKind_DISK_KIND_UNSPECIFIED:
@@ -153,11 +160,6 @@ func (s *service) prepareCreateDiskParams(
 		)
 	}
 
-	zoneID, err := s.cellSelector.PrepareZoneID(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
 	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
 	if len(diskIDPrefix) != 0 && !strings.HasPrefix(req.DiskId.DiskId, diskIDPrefix) {
 		return nil, common.NewInvalidArgumentError(
@@ -232,7 +234,7 @@ func (s *service) prepareCreateDiskParams(
 	return &protos.CreateDiskParams{
 		BlocksCount: blocksCount,
 		Disk: &types.Disk{
-			ZoneId: zoneID,
+			ZoneId: req.DiskId.ZoneId,
 			DiskId: req.DiskId.DiskId,
 		},
 		BlockSize:               blockSize,

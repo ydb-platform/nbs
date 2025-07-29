@@ -9,14 +9,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
-
-////////////////////////////////////////////////////////////////////////////////
-
-func isLocalDiskKind(kind disk_manager.DiskKind) bool {
-	return (kind == disk_manager.DiskKind_DISK_KIND_HDD_LOCAL ||
-		kind == disk_manager.DiskKind_DISK_KIND_SSD_LOCAL)
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -72,17 +66,11 @@ func (s *cellSelector) GetZoneIDForExistingDisk(
 
 func (s *cellSelector) PrepareZoneID(
 	ctx context.Context,
-	req *disk_manager.CreateDiskRequest,
+	diskID *types.Disk,
+	folderID string,
 ) (string, error) {
 
-	if isLocalDiskKind(req.Kind) {
-		// When creating a local disk, we need to find a cell
-		// for its agents (storage nodes).
-		// TODO: implement this selection.
-		return req.DiskId.ZoneId, nil
-	}
-
-	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, req.DiskId.DiskId)
+	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, diskID.DiskId)
 	if err != nil {
 		return "", err
 	}
@@ -91,26 +79,26 @@ func (s *cellSelector) PrepareZoneID(
 		return diskMeta.ZoneID, nil
 	}
 
-	return s.selectCell(ctx, req), nil
+	return s.selectCell(diskID, folderID), nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *cellSelector) selectCell(
-	ctx context.Context,
-	req *disk_manager.CreateDiskRequest,
+	diskID *types.Disk,
+	folderID string,
 ) string {
 
-	if !s.isFolderAllowed(req.FolderId) {
-		return req.DiskId.ZoneId
+	if !s.isFolderAllowed(folderID) {
+		return diskID.ZoneId
 	}
 
-	cells := s.getCells(req.DiskId.ZoneId)
+	cells := s.getCells(diskID.ZoneId)
 
 	if len(cells) == 0 {
 		// We end up here if a zone not divided into cells or a cell
 		// of a zone is provided as ZoneId.
-		return req.DiskId.ZoneId
+		return diskID.ZoneId
 	}
 
 	return cells[0]
