@@ -19,16 +19,20 @@ func NewCellSelectorMock() *CellSelectorMock {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *CellSelectorMock) SelectCell(
+func (s *CellSelectorMock) PrepareZoneID(
 	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
-) string {
+) (string, error) {
 
 	args := s.Called(ctx, req)
-	return args.String(0)
+	return args.String(0), args.Error(1)
 }
 
-func (s *CellSelectorMock) IsCellOfZone(cellID string, zoneID string) bool {
-	args := s.Called(cellID, zoneID)
-	return args.Bool(0)
+func (s *CellSelectorMock) GetZoneIDForExistingDisk(
+	ctx context.Context,
+	diskID *disk_manager.DiskId,
+) (string, error) {
+
+	args := s.Called(ctx, diskID)
+	return args.String(0), args.Error(1)
 }
