@@ -9,12 +9,13 @@
 
 namespace NCloud::NBlockStore {
 
+template <typename T>
 static TString FormatKeyValueList(
-    const TVector<std::pair<TString, TString>>& items)
+    const TVector<std::pair<TStringBuf, T>>& keyValues)
 {
     TStringBuilder sb;
     bool first = true;
-    for (const auto& [key, value]: items) {
+    for (const auto& [key, value]: keyValues) {
         if (!first) {
             sb << "; ";
         }
@@ -53,7 +54,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     }                                                                          \
     TString Report##name(                                                      \
         const TString& message,                                                \
-        const TVector<std::pair<TString, TString>>& keyValues)                 \
+        const TVector<std::pair<TStringBuf, TString>>& keyValues)              \
     {                                                                          \
         TString msg = message;                                                 \
         const TString suffix = FormatKeyValueList(keyValues);                  \
@@ -61,12 +62,21 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
             msg += "; ";                                                       \
         }                                                                      \
         msg += suffix;                                                         \
-        return ReportCriticalEvent(                                            \
-            GetCriticalEventFor##name(),                                       \
-            msg,                                                               \
-            false);                                                            \
+        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
     }                                                                          \
                                                                                \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TStringBuf, ui64>>& keyValues)                 \
+    {                                                                          \
+        TString msg = message;                                                 \
+        const TString suffix = FormatKeyValueList(keyValues);                  \
+        if (!msg.empty() && !suffix.empty()) {                                 \
+            msg += "; ";                                                       \
+        }                                                                      \
+        msg += suffix;                                                         \
+        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
+    }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \
         return "AppCriticalEvents/"#name;                                      \
