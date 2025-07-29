@@ -1593,8 +1593,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         env.CreateSubDomain("nfs");
 
         const ui32 nodeIdx = env.CreateNode("nfs");
-        const char* fsId = "test";
-        const char* clientId = "client";
+        const TString fsId = "test";
+        const TString clientId = "client";
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, 1'000);
