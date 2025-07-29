@@ -28,7 +28,7 @@ public:
     struct TRecordDescriptor;
 
 private:
-    enum class EDataRetrievalMode : ui8
+    enum class EDataRetrievalMode
     {
         NoValidation = 0,
         WithValidation,
@@ -37,11 +37,13 @@ private:
     TString FileName;
     ui64 MaxRecords = 0;
     ui64 NextFreeRecordIndex = 0;
-    size_t GapSpaceSize = 0;
-    size_t InitialDataAreaSize = 0;
-    size_t DataAreaOffset = 0;
-    size_t DataAreaSize = 0;
-    size_t NextDataOffset = 0;
+    ui64 GapSpaceSize = 0;
+    ui64 InitialDataAreaSize = 0;
+    ui64 DataAreaOffset = 0;
+    ui64 DataAreaSize = 0;
+    ui64 NextDataOffset = 0;
+    ui64 HeadDataIndex = InvalidIndex;
+    ui64 TailDataIndex = InvalidIndex;
 
     std::unique_ptr<TFileMap> FileMap;
     TDeque<ui64> FreeRecordIndexes;
@@ -49,7 +51,7 @@ private:
     THeader* HeaderPtr = nullptr;
     TRecordDescriptor* DescriptorsPtr = nullptr;
     char* DataPtr = nullptr;
-    ui8 CompactionRatio = 4;
+    ui8 GapSpacePercentageCompactionThreshold = 30;
 
 public:
     static constexpr ui64 InvalidIndex = -1;
@@ -58,11 +60,11 @@ public:
     struct THeader
     {
         ui32 Version = 0;
-        size_t HeaderSize = 0;
-        size_t RecordDescriptorSize = 0;
-        size_t DataAreaOffset = 0;
-        size_t DataAreaSize = 0;
-        size_t NextDataOffset = 0;
+        ui64 HeaderSize = 0;
+        ui64 RecordDescriptorSize = 0;
+        ui64 DataAreaOffset = 0;
+        ui64 DataAreaSize = 0;
+        ui64 NextDataOffset = 0;
         ui64 NextFreeRecordIndex = 0;
         ui64 MaxRecords = 0;
 
@@ -73,7 +75,7 @@ public:
         H Data;
     };
 
-    enum class ERecordState : ui8
+    enum class ERecordState
     {
         Free = 0,
         Allocated,
@@ -82,9 +84,11 @@ public:
 
     struct TRecordDescriptor
     {
-        size_t DataOffset = 0;
-        size_t DataSize = 0;
+        ui64 DataOffset = 0;
+        ui64 DataSize = 0;
         ui32 CRC32 = 0;
+        ui64 PrevDataIndex = InvalidIndex;
+        ui64 NextDataIndex = InvalidIndex;
         ERecordState State = ERecordState::Free;
     };
 
@@ -143,7 +147,7 @@ public:
             return Index;
         }
 
-        size_t GetDataSize() const
+        ui64 GetDataSize() const
         {
             if (Index >= Table.MaxRecords) {
                 return 0;
@@ -180,11 +184,14 @@ public:
     TPersistentDynamicTable(
         const TString& fileName,
         ui64 maxRecords,
-        ui64 initialDataAreaSize = 1024 * 1024)
+        ui64 initialDataAreaSize = 1024 * 1024,
+        ui8 gapSpacePercentageCompactionThreshold = 30)
         : FileName(fileName)
         , MaxRecords(maxRecords)
         , InitialDataAreaSize(initialDataAreaSize)
         , DataAreaSize(initialDataAreaSize)
+        , GapSpacePercentageCompactionThreshold(
+              gapSpacePercentageCompactionThreshold)
     {
         Init();
     }
@@ -204,7 +211,7 @@ public:
         return GetRecord(index, EDataRetrievalMode::WithValidation);
     }
 
-    ui64 AllocRecord(size_t dataSize)
+    ui64 AllocRecord(ui64 dataSize)
     {
         ui64 index = InvalidIndex;
         if (dataSize == 0) {
@@ -224,20 +231,15 @@ public:
         if (NextDataOffset + dataSize > DataAreaSize) {
             TryCompactDataArea(dataSize);
             if (NextDataOffset + dataSize > DataAreaSize) {
-                if (!ExpandDataArea(dataSize)) {
-                    if (index + 1 == NextFreeRecordIndex) {
-                        NextFreeRecordIndex--;
-                    } else {
-                        FreeRecordIndexes.push_front(index);
-                    }
-                    return InvalidIndex;
-                }
+                ExpandDataArea(dataSize);
             }
         }
 
         DescriptorsPtr[index].DataOffset = NextDataOffset;
         DescriptorsPtr[index].DataSize = dataSize;
         DescriptorsPtr[index].State = ERecordState::Allocated;
+        AddToDataList(index);
+
         NextDataOffset += dataSize;
 
         HeaderPtr->NextFreeRecordIndex = NextFreeRecordIndex;
@@ -255,6 +257,7 @@ public:
         }
 
         DescriptorsPtr[index].State = ERecordState::Stored;
+
         return true;
     }
 
@@ -265,6 +268,8 @@ public:
         {
             return false;
         }
+
+        RemoveFromDataList(index);
 
         DescriptorsPtr[index].State = ERecordState::Free;
         GapSpaceSize += DescriptorsPtr[index].DataSize;
@@ -278,7 +283,7 @@ public:
         return true;
     }
 
-    size_t CountRecords()
+    ui64 CountRecords()
     {
         return NextFreeRecordIndex - FreeRecordIndexes.size();
     }
@@ -288,6 +293,8 @@ public:
         NextFreeRecordIndex = 0;
         NextDataOffset = 0;
         GapSpaceSize = 0;
+        HeadDataIndex = InvalidIndex;
+        TailDataIndex = InvalidIndex;
         FreeRecordIndexes.clear();
 
         FileMap->ResizeAndRemap(0, 0);
@@ -308,10 +315,11 @@ public:
             DescriptorsPtr[index].DataSize);
     }
 
-    bool WriteRecordData(ui64 index, const void* data, size_t size)
+    bool WriteRecordData(ui64 index, const void* data, ui64 size)
     {
         if (index >= MaxRecords || size > DescriptorsPtr[index].DataSize ||
-            size == 0 || data == nullptr)
+            size == 0 || data == nullptr ||
+            DescriptorsPtr[index].State == ERecordState::Free)
         {
             return false;
         }
@@ -337,6 +345,42 @@ public:
     }
 
 private:
+    void AddToDataList(ui64 index)
+    {
+        DescriptorsPtr[index].PrevDataIndex = InvalidIndex;
+        DescriptorsPtr[index].NextDataIndex = InvalidIndex;
+
+        if (HeadDataIndex == InvalidIndex) {
+            HeadDataIndex = index;
+            TailDataIndex = index;
+        } else {
+            DescriptorsPtr[TailDataIndex].NextDataIndex = index;
+            DescriptorsPtr[index].PrevDataIndex = TailDataIndex;
+            TailDataIndex = index;
+        }
+    }
+
+    void RemoveFromDataList(ui64 index)
+    {
+        ui64 prevIndex = DescriptorsPtr[index].PrevDataIndex;
+        ui64 nextIndex = DescriptorsPtr[index].NextDataIndex;
+
+        if (prevIndex != InvalidIndex) {
+            DescriptorsPtr[prevIndex].NextDataIndex = nextIndex;
+        } else {
+            HeadDataIndex = nextIndex;
+        }
+
+        if (nextIndex != InvalidIndex) {
+            DescriptorsPtr[nextIndex].PrevDataIndex = prevIndex;
+        } else {
+            TailDataIndex = prevIndex;
+        }
+
+        DescriptorsPtr[index].PrevDataIndex = InvalidIndex;
+        DescriptorsPtr[index].NextDataIndex = InvalidIndex;
+    }
+
     void Init()
     {
         TFile file(FileName, OpenAlways | WrOnly);
@@ -390,7 +434,7 @@ private:
         CompactDataArea(EDataRetrievalMode::WithValidation);
     }
 
-    size_t CalcFileSize(size_t dataAreaSize)
+    ui64 CalcFileSize(ui64 dataAreaSize)
     {
         return sizeof(THeader) + MaxRecords * sizeof(TRecordDescriptor) +
                dataAreaSize;
@@ -405,6 +449,11 @@ private:
 
         while (readRecordIndex < NextFreeRecordIndex) {
             if (DescriptorsPtr[readRecordIndex].State != ERecordState::Stored) {
+                if (DescriptorsPtr[readRecordIndex].State ==
+                    ERecordState::Allocated)
+                {
+                    RemoveFromDataList(readRecordIndex);
+                }
                 DescriptorsPtr[readRecordIndex++].State = ERecordState::Free;
                 continue;
             }
@@ -413,6 +462,15 @@ private:
                 PrepareCompactRecord(readRecordIndex, writeRecordIndex);
                 FinishCompactRecord();
             }
+            if (DescriptorsPtr[writeRecordIndex].PrevDataIndex == InvalidIndex)
+            {
+                HeadDataIndex = writeRecordIndex;
+            }
+            if (DescriptorsPtr[writeRecordIndex].NextDataIndex == InvalidIndex)
+            {
+                TailDataIndex = writeRecordIndex;
+            }
+
             ++writeRecordIndex;
             ++readRecordIndex;
         }
@@ -460,46 +518,74 @@ private:
         DescriptorsPtr[HeaderPtr->CompactedRecordDstIndex].State =
             ERecordState::Stored;
 
+        ui64 prev =
+            DescriptorsPtr[HeaderPtr->CompactedRecordDstIndex].PrevDataIndex;
+        ui64 next =
+            DescriptorsPtr[HeaderPtr->CompactedRecordDstIndex].NextDataIndex;
+
+        if (prev != InvalidIndex) {
+            DescriptorsPtr[prev].NextDataIndex =
+                HeaderPtr->CompactedRecordDstIndex;
+        }
+        if (next != InvalidIndex) {
+            DescriptorsPtr[next].PrevDataIndex =
+                HeaderPtr->CompactedRecordDstIndex;
+        }
+
         HeaderPtr->CompactedRecordSrcIndex = InvalidIndex;
         HeaderPtr->CompactedRecordDstIndex = InvalidIndex;
     }
 
-    void TryCompactDataArea(size_t requiredSize)
+    void TryCompactDataArea(ui64 requiredSize)
     {
-        if (GapSpaceSize > InitialDataAreaSize / CompactionRatio &&
-            GapSpaceSize >= requiredSize)
-        {
+        uint64_t threshold = (InitialDataAreaSize / 100) *
+                                 GapSpacePercentageCompactionThreshold +
+                             ((InitialDataAreaSize % 100) *
+                              GapSpacePercentageCompactionThreshold) /
+                                 100;
+        if (GapSpaceSize > threshold && GapSpaceSize >= requiredSize) {
             CompactDataArea(EDataRetrievalMode::NoValidation);
         }
     }
 
     void CompactDataArea(EDataRetrievalMode mode)
     {
-        size_t newOffset = 0;
+        ui64 newOffset = 0;
+        ui64 currentIndex = HeadDataIndex;
+        while (currentIndex != InvalidIndex) {
+            Y_ABORT_UNLESS(
+                currentIndex < NextFreeRecordIndex,
+                "Invalid data index %lu in linked list",
+                currentIndex);
+            Y_ABORT_UNLESS(
+                DescriptorsPtr[currentIndex].State != ERecordState::Free,
+                "Non-stored record %lu found in data linked list",
+                currentIndex);
 
-        for (size_t i = 0; i < NextFreeRecordIndex; ++i) {
-            if (DescriptorsPtr[i].State == ERecordState::Stored) {
-                size_t oldOffset = DescriptorsPtr[i].DataOffset;
-                size_t dataSize = DescriptorsPtr[i].DataSize;
+            ui64 oldOffset = DescriptorsPtr[currentIndex].DataOffset;
+            ui64 dataSize = DescriptorsPtr[currentIndex].DataSize;
+            ui64 nextIndex = DescriptorsPtr[currentIndex].NextDataIndex;
 
-                if (mode == EDataRetrievalMode::WithValidation) {
-                    ui32 calculatedCRC = Crc32c(DataPtr + oldOffset, dataSize);
-                    if (calculatedCRC != DescriptorsPtr[i].CRC32) {
-                        DescriptorsPtr[i].State = ERecordState::Free;
-                        FreeRecordIndexes.push_back(i);
-                        continue;
-                    }
+            if (mode == EDataRetrievalMode::WithValidation) {
+                ui64 calculatedCRC = Crc32c(DataPtr + oldOffset, dataSize);
+                if (calculatedCRC != DescriptorsPtr[currentIndex].CRC32) {
+                    RemoveFromDataList(currentIndex);
+                    DescriptorsPtr[currentIndex].State = ERecordState::Free;
+                    FreeRecordIndexes.push_back(currentIndex);
+                    currentIndex = nextIndex;
+                    continue;
                 }
-
-                if (oldOffset != newOffset) {
-                    std::memmove(
-                        DataPtr + newOffset,
-                        DataPtr + oldOffset,
-                        dataSize);
-                    DescriptorsPtr[i].DataOffset = newOffset;
-                }
-                newOffset += dataSize;
             }
+
+            if (oldOffset != newOffset) {
+                std::memmove(
+                    DataPtr + newOffset,
+                    DataPtr + oldOffset,
+                    dataSize);
+                DescriptorsPtr[currentIndex].DataOffset = newOffset;
+            }
+            newOffset += dataSize;
+            currentIndex = nextIndex;
         }
 
         NextDataOffset = newOffset;
@@ -507,9 +593,9 @@ private:
         HeaderPtr->NextDataOffset = NextDataOffset;
     }
 
-    bool ExpandDataArea(size_t requiredSize)
+    void ExpandDataArea(ui64 requiredSize)
     {
-        size_t newDataAreaSize = DataAreaSize;
+        ui64 newDataAreaSize = DataAreaSize;
         while (NextDataOffset + requiredSize > newDataAreaSize) {
             newDataAreaSize *= 2;
         }
@@ -518,8 +604,6 @@ private:
         HeaderPtr->DataAreaSize = DataAreaSize;
 
         ResizeAndRemap();
-
-        return true;
     }
 
     void ResizeAndRemap()

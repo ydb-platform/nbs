@@ -3,11 +3,14 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/tempdir.h>
+#include <util/generic/map.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/random/random.h>
+#include <util/string/builder.h>
 
 #include <cstring>
+#include <memory>
 
 namespace NCloud {
 
@@ -97,6 +100,98 @@ struct TTestData
     bool operator==(const TTestData& other) const
     {
         return Id == other.Id && Name == other.Name && Values == other.Values;
+    }
+};
+
+struct TDynamicReferenceImplementation
+{
+    ui32 MaxTableSize;
+    ui32 NextFreeRecord;
+    TDeque<ui64> FreeRecords;
+    TVector<TString> Records;
+
+    TDynamicReferenceImplementation(ui32 tableSize)
+        : MaxTableSize(tableSize)
+        , NextFreeRecord(0)
+        , Records(tableSize)
+    {}
+
+    size_t CountRecords()
+    {
+        return NextFreeRecord - FreeRecords.size();
+    }
+
+    ui64 AllocRecord(ui64 dataSize)
+    {
+        if (dataSize == 0) {
+            return TPersistentDynamicTable<TTestHeader>::InvalidIndex;
+        }
+
+        if (!FreeRecords.empty()) {
+            ui64 index = FreeRecords.front();
+            FreeRecords.pop_front();
+            return index;
+        }
+
+        if (NextFreeRecord < MaxTableSize) {
+            return NextFreeRecord++;
+        }
+
+        return TPersistentDynamicTable<TTestHeader>::InvalidIndex;
+    }
+
+    void CommitRecord(ui64 index, const TString& data)
+    {
+        Records[index] = data;
+    }
+
+    void DeleteRecord(ui64 index)
+    {
+        UNIT_ASSERT(!Records[index].empty());
+        Records[index].clear();
+
+        if (index + 1 == NextFreeRecord) {
+            NextFreeRecord--;
+        } else {
+            FreeRecords.push_back(index);
+        }
+    }
+
+    TString GetRecord(ui64 index)
+    {
+        if (index < Records.size()) {
+            return Records[index];
+        }
+        return TString();
+    }
+
+    ui64 SomeRecord()
+    {
+        TVector<ui64> validIndices;
+        for (ui32 i = 0; i < NextFreeRecord; ++i) {
+            if (!Records[i].empty()) {
+                validIndices.push_back(i);
+            }
+        }
+
+        if (validIndices.empty()) {
+            return TPersistentDynamicTable<TTestHeader>::InvalidIndex;
+        }
+
+        return validIndices[RandomNumber(validIndices.size())];
+    }
+
+    void Compact()
+    {
+        int writeIndex = 0;
+        for (ui32 i = 0; i < NextFreeRecord; ++i) {
+            if (!Records[i].empty()) {
+                Records[writeIndex++] = Records[i];
+            }
+        }
+
+        NextFreeRecord = writeIndex;
+        FreeRecords.clear();
     }
 };
 
@@ -359,15 +454,15 @@ Y_UNIT_TEST_SUITE(TPersistentDynamicTableTest)
             {200, "persistent_second", {40, 50, 60, 70}},
             {300, "persistent_third", {80, 90, 100, 110, 120}}};
 
-        ui64 index1 = 0;
-        ui64 index2 = 0;
+        ui64 index1 = TPersistentDynamicTable<TTestHeader>::InvalidIndex;
+        ui64 index2 = TPersistentDynamicTable<TTestHeader>::InvalidIndex;
 
         {
             TPersistentDynamicTable<TTestHeader> table(tablePath, 32);
             table.HeaderData()->Val = 123;
 
             TString serialized = testData[0].Serialize();
-            ui64 index1 = table.AllocRecord(serialized.size());
+            index1 = table.AllocRecord(serialized.size());
             UNIT_ASSERT(table.WriteRecordData(
                 index1,
                 serialized.data(),
@@ -375,7 +470,7 @@ Y_UNIT_TEST_SUITE(TPersistentDynamicTableTest)
             table.CommitRecord(index1);
 
             serialized = testData[1].Serialize();
-            ui64 index2 = table.AllocRecord(serialized.size());
+            index2 = table.AllocRecord(serialized.size());
             UNIT_ASSERT(table.WriteRecordData(
                 index2,
                 serialized.data(),
@@ -723,6 +818,94 @@ Y_UNIT_TEST_SUITE(TPersistentDynamicTableTest)
         UNIT_ASSERT_VALUES_EQUAL(normalSerialized.size(), normalRecord.size());
 
         UNIT_ASSERT_VALUES_EQUAL(2, table.CountRecords());
+    }
+
+    Y_UNIT_TEST(RandomizedAllocDeleteRestore)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        const ui32 tableSize = 50;
+        const ui32 testRecords = 2000;
+        const double restoreProbability = 0.05;
+
+        std::unique_ptr<TPersistentDynamicTable<TTestHeader>> table;
+        TDynamicReferenceImplementation ri(tableSize);
+
+        auto restore = [&]()
+        {
+            table = std::make_unique<TPersistentDynamicTable<TTestHeader>>(
+                tablePath,
+                tableSize,
+                1024);
+        };
+
+        restore();
+
+        ui32 remainingRecords = testRecords;
+        while (remainingRecords || ri.CountRecords()) {
+            const bool shouldAlloc = remainingRecords && RandomNumber<bool>();
+
+            if (shouldAlloc) {
+                TTestData testData{
+                    RandomNumber<ui64>(),
+                    TStringBuilder() << "record_" << RandomNumber<ui32>(1000),
+                    TVector<ui32>()};
+
+                ui32 valueCount = RandomNumber<ui32>(15);
+                for (ui32 i = 0; i < valueCount; ++i) {
+                    testData.Values.push_back(RandomNumber<ui32>());
+                }
+
+                TString serialized = testData.Serialize();
+                ui64 tableIndex = table->AllocRecord(serialized.size());
+                ui64 riIndex = ri.AllocRecord(serialized.size());
+
+                UNIT_ASSERT_VALUES_EQUAL(tableIndex, riIndex);
+
+                if (tableIndex !=
+                    TPersistentDynamicTable<TTestHeader>::InvalidIndex)
+                {
+                    remainingRecords--;
+
+                    UNIT_ASSERT(table->WriteRecordData(
+                        tableIndex,
+                        serialized.data(),
+                        serialized.size()));
+                    table->CommitRecord(tableIndex);
+                    ri.CommitRecord(riIndex, serialized);
+                }
+            } else {
+                if (ri.CountRecords()) {
+                    ui64 index = ri.SomeRecord();
+                    if (index !=
+                        TPersistentDynamicTable<TTestHeader>::InvalidIndex)
+                    {
+                        TStringBuf tableRecord = table->GetRecord(index);
+                        TString riRecord = ri.GetRecord(index);
+
+                        if (!tableRecord.empty() && !riRecord.empty()) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                tableRecord.size(),
+                                riRecord.size());
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                TString(tableRecord),
+                                riRecord);
+                        }
+
+                        ri.DeleteRecord(index);
+                        table->DeleteRecord(index);
+                    }
+                }
+            }
+
+            if (RandomNumber<double>() < restoreProbability) {
+                restore();
+                ri.Compact();
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(ri.CountRecords(), table->CountRecords());
+        }
     }
 }
 

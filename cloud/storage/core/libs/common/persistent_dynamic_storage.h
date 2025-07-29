@@ -23,8 +23,13 @@ public:
     TPersistentDynamicStorage(
         const TString& fileName,
         ui64 maxRecords,
-        ui64 initialDataAreaSize = 1024 * 1024)
-        : Table(fileName, maxRecords, initialDataAreaSize)
+        ui64 initialDataAreaSize = 1024 * 1024,
+        ui8 gapSpacePercentageCompactionThreshold = 30)
+        : Table(
+              fileName,
+              maxRecords,
+              initialDataAreaSize,
+              gapSpacePercentageCompactionThreshold)
     {}
 
     H* HeaderData()

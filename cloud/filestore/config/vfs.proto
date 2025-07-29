@@ -61,7 +61,7 @@ message TVFSConfig
     // (and a subdirectory with session id as name) if not present.
     optional string DirectoryHandlesStoragePath = 18;
 
-    // Initial capacity for DirectoryHandles persistent table.
+    // Capacity for DirectoryHandles persistent table.
     optional uint64 DirectoryHandlesTableSize = 19;
 
     // Initial data area size for DirectoryHandles persistent table.
