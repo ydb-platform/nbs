@@ -489,6 +489,8 @@ static TInterconnectSettings GetInterconnectSettings(const NKikimrConfig::TInter
         result.BatchPeriod = TDuration();
     }
 
+    result.SocketSendOptimization = ESocketSendOptimization::IC_MSG_ZEROCOPY;
+
     result.BindOnAllAddresses = config.GetBindOnAllAddresses();
 
     auto readFile = [](std::optional<TString> value, std::optional<TString> path, const char *name) {

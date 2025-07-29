@@ -22,7 +22,14 @@ namespace NActors {
         REQUIRED, // encryption is mandatory
     };
 
-    struct TInterconnectSettings {
+    enum class ESocketSendOptimization
+    {
+        DISABLED,
+        IC_MSG_ZEROCOPY,
+    };
+
+    struct TInterconnectSettings
+    {
         TDuration Handshake;
         TDuration DeadPeer;
         TDuration CloseOnIdle;
@@ -54,6 +61,7 @@ namespace NActors {
         TDuration FirstErrorSleep = TDuration::MilliSeconds(10);
         TDuration MaxErrorSleep = TDuration::Seconds(1);
         double ErrorSleepRetryMultiplier = 4.0;
+        ESocketSendOptimization SocketSendOptimization = ESocketSendOptimization::DISABLED;
 
         ui32 GetSendBufferSize() const {
             ui32 res = 512 * 1024; // 512 kb is the default value for send buffer
