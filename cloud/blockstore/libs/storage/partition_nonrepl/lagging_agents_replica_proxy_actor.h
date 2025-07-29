@@ -126,20 +126,20 @@ private:
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
-    TVector<TSplitRequest> SplitRequest(
+    TResultOrError<TVector<TSplitRequest>> SplitRequest(
         const TMethod::TRequest::TPtr& ev,
         const TVector<TDeviceRequest>& deviceRequests);
 
     [[nodiscard]] bool ShouldSplitWriteRequest(
         const TVector<TDeviceRequest>& deviceRequests) const;
 
-    [[nodiscard]] TVector<TSplitRequest> DoSplitRequest(
+    [[nodiscard]] TResultOrError<TVector<TSplitRequest>> DoSplitRequest(
         const TEvService::TEvWriteBlocksRequest::TPtr& ev,
         const TVector<TDeviceRequest>& deviceRequests);
-    [[nodiscard]] TVector<TSplitRequest> DoSplitRequest(
+    [[nodiscard]] TResultOrError<TVector<TSplitRequest>> DoSplitRequest(
         const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev,
         const TVector<TDeviceRequest>& deviceRequests);
-    [[nodiscard]] TVector<TSplitRequest> DoSplitRequest(
+    [[nodiscard]] TResultOrError<TVector<TSplitRequest>> DoSplitRequest(
         const TEvService::TEvZeroBlocksRequest::TPtr& ev,
         const TVector<TDeviceRequest>& deviceRequests);
 

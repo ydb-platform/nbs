@@ -527,6 +527,19 @@ struct TTestEnv
         return TTestActorRuntime::DefaultObserverFunc(event);
     }
 
+    std::unique_ptr<TEvService::TEvWriteBlocksLocalResponse>
+    WriteBlocksLocalWithInvalidSglist(TActorId actorId, TBlockRange64 range)
+    {
+        TPartitionClient client(Runtime, MirrorPartActorId);
+        const TString data(DefaultBlockSize, '0');
+        auto request = client.CreateWriteBlocksLocalRequest(range, data);
+        request->Record.Sglist.Close();
+        client.SendRequest(actorId, std::move(request));
+        auto response =
+            client.RecvResponse<TEvService::TEvWriteBlocksLocalResponse>();
+        return response;
+    }
+
 private:
     std::unique_ptr<TEvService::TEvWriteBlocksResponse>
     WriteBlocks(TActorId actorId, TBlockRange64 range, char content)
@@ -781,6 +794,28 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
     {
         ShouldNotWriteToLaggingDevices(false);
         ShouldNotWriteToLaggingDevices(true);
+    }
+
+    Y_UNIT_TEST(ShouldCancelLocalRequestsWithInvalidSglist)
+    {
+        TTestBasicRuntime runtime(AgentCount);
+        TTestEnv env(runtime, /*localRequests=*/true);
+        TPartitionClient client(runtime, env.MirrorPartActorId);
+
+        const auto fullDiskRange = TBlockRange64::WithLength(
+            0,
+            DeviceBlockCount * DeviceCountPerReplica);
+        env.WriteBlocksToPartition(fullDiskRange, 'A');
+
+        // Second row in the third column is lagging.
+        env.AddLaggingAgent(runtime.GetNodeId(7), 2);
+
+        const auto firstAndSecondDevices =
+            TBlockRange64::WithLength(DeviceBlockCount - 1, 2);
+        auto response = env.WriteBlocksLocalWithInvalidSglist(
+            env.GetControllerActorId(2),
+            firstAndSecondDevices);
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, response->GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldHandleChecksumBlocks)
