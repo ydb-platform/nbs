@@ -859,13 +859,15 @@ struct TStorageConfig::TImpl
     {
         NProto::TStorageServiceConfig proto = StorageServiceConfig;
 
-        // Overriding fields with values from ICB
+    // Overriding fields with values from ICB
 #define BLOCKSTORE_CONFIG_COPY(name, type, ...)                                \
-        if (const ui64 value = Control##name) {                                \
-            using T = decltype(StorageServiceConfig.Get##name());              \
-            proto.Set##name(static_cast<T>(value));                            \
-        }                                                                      \
-// BLOCKSTORE_CONFIG_COPY
+    if (const ui64 value = Control##name;                                      \
+        ConvertValue<type>(value) != ConvertValue<type>(proto.Get##name()))    \
+    {                                                                          \
+        using T = decltype(StorageServiceConfig.Get##name());                  \
+        proto.Set##name(static_cast<T>(value));                                \
+    }                                                                          \
+    // BLOCKSTORE_CONFIG_COPY
 
         BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_COPY)
 
