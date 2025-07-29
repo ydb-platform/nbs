@@ -109,7 +109,7 @@ private:
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
         const TSessionInfo*);
-    
+
     template <typename TMethod>
     void ReplyToXAttrRequest(
         const NActors::TActorContext& ctx,
