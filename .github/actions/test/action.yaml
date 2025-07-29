@@ -320,18 +320,18 @@ runs:
             fi
           fi
           if [ "$NEED_COPYING" -ne "0" ];
-          then 
+          then
             chown -R github:github "$TESTS_DATA_DIR"
             echo "::group::remove-binaries-from-tests-data-dir"
             find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
             find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
             echo "::endgroup::"
             echo "::group::remove-images-from-tests-data-dir"
-            find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name NVMENBS01 -o -name generated_other_big_raw_image
-            find "$TESTS_DATA_DIR" \( -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name NVMENBS01 -o -name generated_other_big_raw_image \) -delete
+            find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name 'NVMENBS0*' -o -name generated_other_big_raw_image
+            find "$TESTS_DATA_DIR" \( -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name 'NVMENBS0*' -o -name generated_other_big_raw_image \) -delete
             echo "::endgroup::"
             echo "::group::truncate-err-files"
-            find "$TESTS_DATA_DIR" -type f -name "*.err" -size +1G -print0 | while IFS= read -r -d '' file; do
+            find "$TESTS_DATA_DIR" -type f -name '*.err' -o -name '*.log' -o -name '*.out' -size +1G -print0 | while IFS= read -r -d '' file; do
                 orig_size=$(du -h "$file" | cut -f1)
                 echo "$file - $orig_size"
                 # shellcheck disable=SC2193
@@ -374,6 +374,13 @@ runs:
 
           cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
           echo "::endgroup::"
+
+          if [ -d "$ARTIFACTS_DIR/logs/" ]; then
+            echo "::group::cleaning-artifacts-log-dir"
+            find "$ARTIFACTS_DIR/logs/" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
+            find "$ARTIFACTS_DIR/logs/" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
+            echo "::endgroup::"
+          fi
 
           echo "::group::s3-sync"
           sudo -E -H -u github s3cmd sync --follow-symlinks --acl-public --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
