@@ -45,7 +45,7 @@ private:
 
     const TDuration ReleaseInactiveSessionsTimeout;
     const TDevicesState Devices;
-    const bool AllowToKickOldClients;
+    const bool AllowToKickOutOldClients;
     TLog Log;
 
 public:
@@ -53,7 +53,7 @@ public:
         TDuration releaseInactiveSessionsTimeout,
         TVector<TString> uuids,
         TLog log,
-        bool allowToKickOldClients);
+        bool allowToKickOutOldClients);
 
     TDeviceClient(const TDeviceClient&) = delete;
     TDeviceClient& operator=(const TDeviceClient&) = delete;

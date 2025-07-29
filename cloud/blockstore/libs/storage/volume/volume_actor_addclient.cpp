@@ -151,7 +151,10 @@ void TVolumeActor::HandleAcquireDiskIfNeeded(
 {
     Y_UNUSED(ev);
 
-    AcquireDiskIfNeeded(ctx, false);
+    AcquireDiskIfNeeded(
+        ctx,
+        false   // retryIfUndelivery
+    );
 
     AcquireDiskScheduled = false;
 }
@@ -176,7 +179,10 @@ void TVolumeActor::HandleReacquireDisk(
         }
     }
 
-    AcquireDiskIfNeeded(ctx, false);
+    AcquireDiskIfNeeded(
+        ctx,
+        false   // retryIfUndelivery
+    );
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -243,12 +249,13 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             FormatError(error).c_str());
 
         if (request.RetryIfTimeoutOrUndelivery &&
-            (error.GetCode() == E_REJECTED || error.GetCode() == E_TIMEOUT) &&
+            GetErrorKind(error) == EErrorKind::ErrorRetriable &&
             Config->GetRetryAcquireReleaseDiskTimeout())
         {
             ctx.Schedule(
                 Config->GetRetryAcquireReleaseDiskTimeout(),
                 std::make_unique<TEvVolume::TEvRetryAcquireDisk>().release());
+            return;
         }
 
         if (cr) {
@@ -364,7 +371,7 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
                     request->AddedClientInfo.GetVolumeAccessMode(),
                     request->AddedClientInfo.GetMountSeqNumber(),
                     request,
-                    false
+                    false   // retryIfTimeoutOrUndelivery
                 );
             }
 

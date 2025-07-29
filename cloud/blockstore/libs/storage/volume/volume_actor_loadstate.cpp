@@ -205,7 +205,10 @@ void TVolumeActor::CompleteLoadState(
     if (State && State->IsDiskRegistryMediaKind() &&
         Config->GetAcquireNonReplicatedDevices())
     {
-        AcquireDiskIfNeeded(ctx, true);
+        AcquireDiskIfNeeded(
+            ctx,
+            true   // retryIfUndelivery
+        );
     }
 
     if (State) {

@@ -130,7 +130,7 @@ auto ReleaseDevices(TDeviceClient& client, const TReleaseParamsBuilder& builder)
 struct TDeviceClientParams
 {
     TVector<TString> Devices;
-    bool AllowToKickOldClients = false;
+    bool AllowToKickOutOldClients = false;
 };
 
 struct TFixture
@@ -146,7 +146,7 @@ struct TFixture
             ReleaseInactiveSessionsTimeout,
             std::move(params.Devices),
             Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
-            params.AllowToKickOldClients);
+            params.AllowToKickOutOldClients);
     }
 };
 
@@ -857,7 +857,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
     Y_UNIT_TEST_F(TestNewGenerationReleaseDevicesFromOldGenerations, TFixture)
     {
         auto client = CreateClient(
-            {.Devices = {"uuid1", "uuid2"}, .AllowToKickOldClients = true});
+            {.Devices = {"uuid1", "uuid2"}, .AllowToKickOutOldClients = true});
 
         auto error = AcquireDevices(
             client,
