@@ -781,16 +781,9 @@ void DumpImpl(
 
 #define CONFIG_ITEM_IS_SET_CHECKER(name, ...)                                  \
     template <typename TProto>                                                 \
-    concept Is##name##RepeatedField = requires(const TProto& proto) {          \
-        {                                                                      \
-            proto.name##Size()                                                 \
-        } -> std::convertible_to<i64>;                                         \
-    };                                                                         \
-                                                                               \
-    template <typename TProto>                                                 \
     [[nodiscard]] bool Is##name##Set(const TProto& proto)                      \
     {                                                                          \
-        if constexpr (Is##name##RepeatedField<TProto>) {                       \
+        if constexpr (requires() { proto.name##Size(); }) {                    \
             return proto.name##Size() > 0;                                     \
         } else {                                                               \
             return proto.Has##name();                                          \
