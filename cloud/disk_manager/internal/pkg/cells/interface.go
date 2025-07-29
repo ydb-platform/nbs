@@ -4,6 +4,7 @@ import (
 	"context"
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,8 +17,7 @@ type CellSelector interface {
 
 	PrepareZoneID(
 		ctx context.Context,
-		req *disk_manager.CreateDiskRequest,
+		diskID *types.Disk,
+		folderID string,
 	) (string, error)
-
-	isCellOfZone(cellID string, zoneID string) bool
 }
