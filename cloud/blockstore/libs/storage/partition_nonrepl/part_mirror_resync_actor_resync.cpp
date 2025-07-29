@@ -209,10 +209,9 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
             ScheduleResyncNextRange(ctx);
         } else {
             ReportResyncFailed(
-                TStringBuilder()
-                << "Disk: " << PartConfig->GetName() << ", Range "
-                << DescribeRange(range)
-                << " resync failed: " << FormatError(msg->GetError()));
+                FormatError(msg->GetError()),
+                {{"range", DescribeRange(range)},
+                 {"disk", PartConfig->GetName()}});
         }
 
         TDeque<TPostponedRead> postponedReads;

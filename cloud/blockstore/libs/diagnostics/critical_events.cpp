@@ -9,6 +9,8 @@
 
 namespace NCloud::NBlockStore {
 
+namespace {
+
 template <typename T>
 static TString FormatKeyValueList(
     const TVector<std::pair<TStringBuf, T>>& keyValues)
@@ -24,6 +26,18 @@ static TString FormatKeyValueList(
     }
     return sb;
 }
+
+TString ComposeMessageWithSuffix(const TString& message, const TString& suffix)
+{
+    if (message.empty()) {
+        return suffix;
+    }
+    if (suffix.empty()) {
+        return message;
+    }
+    return message + "; " + suffix;
+}
+}   // namespace
 
 using namespace NMonitoring;
 
@@ -56,12 +70,8 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         const TString& message,                                                \
         const TVector<std::pair<TStringBuf, TString>>& keyValues)              \
     {                                                                          \
-        TString msg = message;                                                 \
-        const TString suffix = FormatKeyValueList(keyValues);                  \
-        if (!msg.empty() && !suffix.empty()) {                                 \
-            msg += "; ";                                                       \
-        }                                                                      \
-        msg += suffix;                                                         \
+        TString msg =                                                          \
+            ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \
         return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
     }                                                                          \
                                                                                \
@@ -69,12 +79,8 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         const TString& message,                                                \
         const TVector<std::pair<TStringBuf, ui64>>& keyValues)                 \
     {                                                                          \
-        TString msg = message;                                                 \
-        const TString suffix = FormatKeyValueList(keyValues);                  \
-        if (!msg.empty() && !suffix.empty()) {                                 \
-            msg += "; ";                                                       \
-        }                                                                      \
-        msg += suffix;                                                         \
+        TString msg =                                                          \
+            ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \
         return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \

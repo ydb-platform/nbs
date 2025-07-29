@@ -194,10 +194,9 @@ void TDiskRegistryActor::HandleFinishMigration(
                 // break anything
 
                 ReportUnexpectedBatchMigration(
-                    TStringBuilder()
-                    << "FinishMigration request contains migrations spanning "
-                       "multiple replicas for disk: "
-                    << record.GetDiskId());
+                    "FinishMigration request contains migrations spanning "
+                    "multiple replicas",
+                    {{"disk", record.GetDiskId()}});
 
                 break;
             }

@@ -204,8 +204,9 @@ private:
 
         if constexpr (IsWriteRequest(T::Request)) {
             ReportServiceProxyWakeupTimerHit(
-                TStringBuilder() << "Request timeout for DiskId=" << DiskId
-                                 << ", RequestId=" << CallContext->RequestId);
+                "",
+                {{"disk", DiskId},
+                 {"RequestId", TStringBuilder() << CallContext->RequestId}});
             return;
         }
 

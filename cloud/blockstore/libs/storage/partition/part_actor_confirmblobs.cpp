@@ -231,8 +231,8 @@ void TPartitionActor::HandleConfirmBlobsCompleted(
             msg->GetStatus(),
             FormatError(msg->GetError()).c_str());
         ReportConfirmBlobsError(
-            TStringBuilder() << "DiskId: " << PartitionConfig.GetDiskId()
-                             << " error: " << FormatError(msg->GetError()));
+            FormatError(msg->GetError()),
+            {{"disk", PartitionConfig.GetDiskId()}});
         Suicide(ctx);
         return;
     }

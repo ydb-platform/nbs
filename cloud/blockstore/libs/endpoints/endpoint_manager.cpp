@@ -1866,8 +1866,9 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
             const auto& response = f.GetValue();
             if (HasError(response)) {
                 ReportEndpointRestoringError(
-                    "Endpoint restoring error occurred",
-                    {{"endpoint_id", endpointId}, {"socket_path", socketPath}});
+                    TStringBuilder()
+                    << "Endpoint restoring error occurred for endpoint ID: "
+                    << endpointId << ", socket path: " << socketPath);
             }
 
             if (auto ptr = weakPtr.lock()) {
