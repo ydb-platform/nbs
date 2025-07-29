@@ -35,7 +35,7 @@ TString TGroupOperationTimeTracker::TKey::GetHtmlPrefix() const
 {
     TStringBuilder builder;
 
-    builder << ToString(TransactionName);
+    builder << ToString(OperationName);
 
     switch (Status) {
         case EStatus::Finished: {
@@ -52,62 +52,62 @@ TString TGroupOperationTimeTracker::TKey::GetHtmlPrefix() const
 
 ui64 TGroupOperationTimeTracker::THash::operator()(const TKey& key) const
 {
-    return MultiHash(static_cast<size_t>(key.Status), key.TransactionName);
+    return MultiHash(static_cast<size_t>(key.Status), key.OperationName);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TGroupOperationTimeTracker::OnStarted(
-    ui64 transactionId,
+    ui64 OperationId,
     ui32 groupId,
     EGroupOperationType operationType,
     ui64 startTime)
 {
-    TStringBuilder transactionName;
+    TStringBuilder OperationName;
 
     switch (operationType) {
         case EGroupOperationType::Read: {
-            transactionName << "Read_";
+            OperationName << "Read_";
             break;
         }
         case EGroupOperationType::Write: {
-            transactionName << "Write_";
+            OperationName << "Write_";
             break;
         }
     }
-    transactionName << groupId;
+    OperationName << groupId;
     auto key =
-        TKey{.TransactionName = transactionName, .Status = EStatus::Inflight};
+        TKey{.OperationName = OperationName, .Status = EStatus::Inflight};
     if (!Histograms.contains(key)) {
         Histograms[key];
     }
     Inflight.emplace(
-        transactionId,
-        TTransactionInflight{
+        OperationId,
+        TOperationInflight{
             .StartTime = startTime,
-            .TransactionName = std::move(transactionName)});
+            .OperationName = std::move(OperationName)});
 }
 
-void TGroupOperationTimeTracker::OnFinished(ui64 transactionId, ui64 finishTime)
+void TGroupOperationTimeTracker::OnFinished(ui64 OperationId, ui64 finishTime)
 {
-    auto it = Inflight.find(transactionId);
+    auto it = Inflight.find(OperationId);
     if (it == Inflight.end()) {
         return;
     }
 
-    auto& transaction = it->second;
+    auto& Operation = it->second;
 
-    auto duration = CyclesToDurationSafe(finishTime - transaction.StartTime);
+    auto duration = CyclesToDurationSafe(finishTime - Operation.StartTime);
 
     TKey key{
-        .TransactionName = std::move(transaction.TransactionName),
+        .OperationName = std::move(Operation.OperationName),
         .Status = EStatus::Finished};
     Histograms[key].Increment(duration.MicroSeconds());
 
-    key.TransactionName = "Total";
+    key.OperationName = "Total";
     Histograms[key].Increment(duration.MicroSeconds());
 
-    Inflight.erase(transactionId);
+    Inflight.erase(OperationId);
 }
 
 TString TGroupOperationTimeTracker::GetStatJson(ui64 nowCycles) const
@@ -116,7 +116,7 @@ TString TGroupOperationTimeTracker::GetStatJson(ui64 nowCycles) const
 
     const auto times = TRequestUsTimeBuckets::MakeNames();
 
-    // Build finished transaction counters.
+    // Build finished Operation counters.
     for (const auto& [key, histogram]: Histograms) {
         size_t total = 0;
         const auto htmlPrefix = key.GetHtmlPrefix();
@@ -128,24 +128,23 @@ TString TGroupOperationTimeTracker::GetStatJson(ui64 nowCycles) const
         allStat[htmlPrefix + "Total"] = ToString(total);
     }
 
-    // Build inflight transaction counters
+    // Build inflight Operation counters
     auto getHtmlKey =
-        [](const TString& transactionName, TStringBuf timeBucketName)
+        [](const TString& OperationName, TStringBuf timeBucketName)
     {
-        auto key = TKey{
-            .TransactionName = transactionName,
-            .Status = EStatus::Inflight};
+        auto key =
+            TKey{.OperationName = OperationName, .Status = EStatus::Inflight};
         return key.GetHtmlPrefix() + timeBucketName;
     };
 
     TMap<TString, size_t> inflight;
 
-    for (const auto& [transactionId, transaction]: Inflight) {
+    for (const auto& [OperationId, Operation]: Inflight) {
         const auto& timeBucketName = GetTimeBucketName(
-            CyclesToDurationSafe(nowCycles - transaction.StartTime));
+            CyclesToDurationSafe(nowCycles - Operation.StartTime));
 
-        ++inflight[getHtmlKey(transaction.TransactionName, timeBucketName)];
-        ++inflight[getHtmlKey(transaction.TransactionName, "Total")];
+        ++inflight[getHtmlKey(Operation.OperationName, timeBucketName)];
+        ++inflight[getHtmlKey(Operation.OperationName, "Total")];
         ++inflight[getHtmlKey("Total", timeBucketName)];
         ++inflight[getHtmlKey("Total", "Total")];
     }

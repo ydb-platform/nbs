@@ -15,7 +15,7 @@ namespace {
 void DumpValues(const NJson::TJsonValue::TMapType& map)
 {
     for (const auto& [key, val]: map) {
-        if (val != "" && val != "0" && val != "0 B") {
+        if (val != "" && val != "0") {
             Cout << key << "=" << val << Endl;
         }
     }
@@ -27,6 +27,42 @@ void DumpValues(const NJson::TJsonValue::TMapType& map)
 
 Y_UNIT_TEST_SUITE(TGroupRequestTrackerTest)
 {
+    Y_UNIT_TEST(ShouldCountInflight)
+    {
+        TGroupOperationTimeTracker timeTracker;
+
+        timeTracker.OnStarted(
+            1,
+            1,
+            TGroupOperationTimeTracker::EGroupOperationType::Write,
+            0);
+
+        timeTracker.OnStarted(
+            2,
+            2,
+            TGroupOperationTimeTracker::EGroupOperationType::Read,
+            1000 * GetCyclesPerMillisecond());
+
+        timeTracker.OnStarted(
+            3,
+            2,
+            TGroupOperationTimeTracker::EGroupOperationType::Read,
+            2000 * GetCyclesPerMillisecond());
+
+        auto json = timeTracker.GetStatJson(2000 * GetCyclesPerMillisecond());
+        NJson::TJsonValue value;
+        NJson::ReadJsonTree(json, &value, true);
+        DumpValues(value["stat"].GetMap());
+
+        auto get = [&](const TString& key)
+        {
+            return value["stat"][key];
+        };
+        UNIT_ASSERT_VALUES_EQUAL("+ 1", get("Write_1_inflight_2000000"));
+        UNIT_ASSERT_VALUES_EQUAL("+ 1", get("Read_2_inflight_1000000"));
+        UNIT_ASSERT_VALUES_EQUAL("+ 2", get("Read_2_inflight_Total"));
+    }
+
     Y_UNIT_TEST(ShouldCountFinished)
     {
         TGroupOperationTimeTracker timeTracker;

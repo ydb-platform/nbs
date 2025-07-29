@@ -29,7 +29,7 @@ public:
 
     struct TBucketInfo
     {
-        TString TransactionName;
+        TString OperationName;
         TString Key;
         TString Description;
         TString Tooltip;
@@ -46,7 +46,7 @@ private:
 
     struct TKey
     {
-        TString TransactionName;
+        TString OperationName;
         EStatus Status = EStatus::Inflight;
 
         [[nodiscard]] TString GetHtmlPrefix() const;
@@ -59,27 +59,27 @@ private:
         ui64 operator()(const TKey& key) const;
     };
 
-    struct TTransactionInflight
+    struct TOperationInflight
     {
         ui64 StartTime = 0;
-        TString TransactionName;
+        TString OperationName;
     };
 
-    TVector<TString> TransactionTypes;
+    TVector<TString> OperationTypes;
 
-    THashMap<ui64, TTransactionInflight> Inflight;
+    THashMap<ui64, TOperationInflight> Inflight;
     THashMap<TKey, TTimeHistogram, THash> Histograms;
 
 public:
     explicit TGroupOperationTimeTracker() = default;
 
     void OnStarted(
-        ui64 transactionId,
+        ui64 OperationId,
         ui32 groupId,
         EGroupOperationType operationType,
         ui64 startTime);
 
-    void OnFinished(ui64 transactionId, ui64 finishTime);
+    void OnFinished(ui64 OperationId, ui64 finishTime);
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
 };
