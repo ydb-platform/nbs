@@ -98,15 +98,41 @@ struct TWriteBackCache::TWriteDataEntryPart
 class TWriteBackCache::TUtil
 {
 public:
+    /**
+     * Finds cached data from the sequence of write operations for the specified
+     *   interval.
+     *
+     * @param entries The sequence of write operations. Write operations may
+     *   overlap and are applied on top of each other.
+     * @param startingFromOffset The starting offset of the interval to read.
+     * @param length The length of the interval to read.
+     * @return A sorted vector of non-overlapping intervals representing cached
+     *   data.
+     */
     static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
         const TVector<TWriteDataEntry*>& entries,
         ui64 startingFromOffset,
         ui64 length);
 
+    /**
+    * Inverts the set of intervals for the specified range.
+    *
+    * @param sortedParts A sorted vector of non-overlapping intervals.
+    * @param startingFromOffset The starting offset of the interval to invert
+    *   within.
+    * @param length The length of the interval to invert within.
+    * @return A vector of intervals representing the inverted (missing) parts
+    *   within the specified range.
+    *
+    * Note: The interval [startingFromOffset, startingFromOffset + length) may
+    *   be narrower than the minimal bounding interval for sortedParts.
+    */
     static TVector<TWriteDataEntryPart> InvertDataParts(
         const TVector<TWriteDataEntryPart>& sortedParts,
         ui64 startingFromOffset,
         ui64 length);
+
+    static bool IsSorted(const TVector<TWriteDataEntryPart>& parts);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

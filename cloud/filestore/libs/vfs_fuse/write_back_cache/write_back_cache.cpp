@@ -285,6 +285,10 @@ public:
                         return response;
                     }
 
+                    Y_ABORT_UNLESS(
+                        response.GetBufferOffset() <=
+                        response.GetBuffer().length());
+
                     char* responseBufferData =
                         response.MutableBuffer()->begin() +
                         response.GetBufferOffset();

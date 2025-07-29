@@ -172,6 +172,11 @@ struct TCalculateDataPartsToReadTestBootstrap
             length);
     }
 
+    bool IsSorted(const TVector<TWriteDataEntryPart>& parts)
+    {
+        return TWriteBackCache::TUtil::IsSorted(parts);
+    }
+
     TVector<TWriteDataEntryPart> CalculateDataPartsToReadReferenceImpl(
         const TVector<TWriteDataEntry*>& entries,
         ui64 startingFromOffset,
@@ -358,8 +363,8 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
     void TestShouldCorrectlyInvertDataParts(
         const TVector<TTestCaseWriteDataRange>& testCaseEntries,
         const TVector<TTestCaseWriteDataRange>& expectedResult,
-        int rangeOffset,
-        int rangeLength)
+        ui64 startingFromOffset,
+        ui64 length)
     {
         TVector<TWriteDataEntryPart> parts;
         for (const auto& e: testCaseEntries) {
@@ -372,8 +377,8 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         TCalculateDataPartsToReadTestBootstrap b;
         const auto actualParts = b.InvertDataParts(
             parts,
-            rangeOffset,
-            rangeLength);
+            startingFromOffset,
+            length);
 
         TVector<TWriteDataEntryPart> expectedParts;
         for (const auto& e: expectedResult) {
@@ -387,32 +392,29 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             expectedParts,
             actualParts,
             "failed for test case with entries: " << testCaseEntries <<
-            " for offset = " << rangeOffset << ", length = " << rangeLength);
+            " for offset = " << startingFromOffset << ", length = " << length);
     }
 
     void ValidateDataParts(
         const TVector<TWriteDataEntryPart>& parts,
-        ui64 rangeOffset,
-        ui64 rangeLength)
+        ui64 startingFromOffset,
+        ui64 length)
     {
         if (parts.empty()) {
             return;
         }
 
-        UNIT_ASSERT_GE(parts.front().Offset, rangeOffset);
+        UNIT_ASSERT_GE(parts.front().Offset, startingFromOffset);
         UNIT_ASSERT_LE(
             parts.back().Offset + parts.back().Length,
-            rangeOffset + rangeLength);
+            startingFromOffset + length);
 
         for (const auto& part: parts) {
             UNIT_ASSERT_GT(part.Length, 0);
         }
 
-        for (size_t i = 1; i < parts.size(); i++) {
-            UNIT_ASSERT_LT(
-                parts[i - 1].Offset + parts[i - 1].Length,
-                parts[i].Offset);
-        }
+        TCalculateDataPartsToReadTestBootstrap b;
+        UNIT_ASSERT(b.IsSorted(parts));
     }
 
     bool IsInAnyOfDataParts(
@@ -534,7 +536,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
     Y_UNIT_TEST(ShouldCorrectlyInvertDataParts)
     {
         TestShouldCorrectlyInvertDataParts(
-            { },
+            {},
             {
                 {2, 10}
             },
@@ -545,7 +547,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             {
                 {2, 10}
             },
-            { },
+            {},
             2,
             10
         );
@@ -553,7 +555,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             {
                 {0, 14}
             },
-            { },
+            {},
             2,
             10
         );
@@ -592,7 +594,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             {
                 {2, 4}, {6, 6}
             },
-            { },
+            {},
             2,
             10
         );
@@ -616,6 +618,36 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             2,
             10
         );
+        TestShouldCorrectlyInvertDataParts(
+            {
+                {0, 1}, {2, 1}, {5, 1}, {7, 1}, {10, 1}, {12, 1}
+            },
+            {
+                {4, 1}, {6, 1}, {8, 1}
+            },
+            4,
+            5
+        );
+        TestShouldCorrectlyInvertDataParts(
+            {
+                {0, 1}
+            },
+            {
+                {2, 10}
+            },
+            2,
+            10
+        );
+        TestShouldCorrectlyInvertDataParts(
+            {
+                {13, 1}
+            },
+            {
+                {2, 10}
+            },
+            2,
+            10
+        );
     }
 
     Y_UNIT_TEST(ShouldCorrectlyInvertDataPartsRandomized)
@@ -629,11 +661,11 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             entries.emplace_back(1, offset, length);
         }
 
-        const auto regionOffset = RandomNumber<ui64>(MaxLength);
-        const auto regionLength =
-            RandomNumber<ui64>(MaxLength - regionOffset) + 1;
+        const auto rangeOffset = RandomNumber<ui64>(MaxLength);
+        const auto rangeLength =
+            RandomNumber<ui64>(MaxLength - rangeOffset) + 1;
 
-        TestShouldCorrectlyInvertDataParts(entries, regionOffset, regionLength);
+        TestShouldCorrectlyInvertDataParts(entries, rangeOffset, rangeLength);
     }
 }
 
