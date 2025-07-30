@@ -777,7 +777,25 @@ void DumpImpl(
     }
 }
 
-}   // namespace
+////////////////////////////////////////////////////////////////////////////////
+
+#define CONFIG_ITEM_IS_SET_CHECKER(name, ...)                                  \
+    template <typename TProto>                                                 \
+    [[nodiscard]] bool Is##name##Set(const TProto& proto)                      \
+    {                                                                          \
+        if constexpr (requires() { proto.name##Size(); }) {                    \
+            return proto.name##Size() > 0;                                     \
+        } else {                                                               \
+            return proto.Has##name();                                          \
+        }                                                                      \
+    }
+
+BLOCKSTORE_STORAGE_CONFIG(CONFIG_ITEM_IS_SET_CHECKER);
+
+#undef CONFIG_ITEM_IS_SET_CHECKER
+
+#define BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value) \
+    (Is##name##Set(config) ? ConvertValue<type>(config.Get##name()) : value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -794,11 +812,7 @@ constexpr TAtomicBase ConvertToAtomicBase(const TDuration& value)
     return value.MilliSeconds();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-#define BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value)          \
-    (NCloud::HasField(config, #name) ? ConvertValue<type>(config.Get##name())  \
-                                     : value)
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -838,13 +852,15 @@ struct TStorageConfig::TImpl
     {
         NProto::TStorageServiceConfig proto = StorageServiceConfig;
 
-        // Overriding fields with values from ICB
+    // Overriding fields with values from ICB
 #define BLOCKSTORE_CONFIG_COPY(name, type, ...)                                \
-        if (const ui64 value = Control##name) {                                \
-            using T = decltype(StorageServiceConfig.Get##name());              \
-            proto.Set##name(static_cast<T>(value));                            \
-        }                                                                      \
-// BLOCKSTORE_CONFIG_COPY
+    if (const ui64 value = Control##name;                                      \
+        ConvertValue<type>(value) != ConvertValue<type>(proto.Get##name()))    \
+    {                                                                          \
+        using T = decltype(StorageServiceConfig.Get##name());                  \
+        proto.Set##name(static_cast<T>(value));                                \
+    }                                                                          \
+    // BLOCKSTORE_CONFIG_COPY
 
         BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_COPY)
 
@@ -1111,29 +1127,29 @@ void AdaptNodeRegistrationParams(
     const NProto::TServerConfig& serverConfig,
     NProto::TStorageServiceConfig& storageConfig)
 {
-    if (!NCloud::HasField(storageConfig, "NodeRegistrationMaxAttempts") &&
-        NCloud::HasField(serverConfig, "NodeRegistrationMaxAttempts"))
+    if (!storageConfig.HasNodeRegistrationMaxAttempts() &&
+        serverConfig.HasNodeRegistrationMaxAttempts())
     {
         storageConfig.SetNodeRegistrationMaxAttempts(
             serverConfig.GetNodeRegistrationMaxAttempts());
     }
 
-    if (!NCloud::HasField(storageConfig, "NodeRegistrationTimeout") &&
-        NCloud::HasField(serverConfig, "NodeRegistrationTimeout"))
+    if (!storageConfig.HasNodeRegistrationTimeout() &&
+        serverConfig.HasNodeRegistrationTimeout())
     {
         storageConfig.SetNodeRegistrationTimeout(
             serverConfig.GetNodeRegistrationTimeout());
     }
 
-    if (!NCloud::HasField(storageConfig, "NodeRegistrationErrorTimeout") &&
-        NCloud::HasField(serverConfig, "NodeRegistrationErrorTimeout"))
+    if (!storageConfig.HasNodeRegistrationErrorTimeout() &&
+        serverConfig.HasNodeRegistrationErrorTimeout())
     {
         storageConfig.SetNodeRegistrationErrorTimeout(
             serverConfig.GetNodeRegistrationErrorTimeout());
     }
 
-    if (!NCloud::HasField(storageConfig, "NodeRegistrationToken") &&
-        NCloud::HasField(serverConfig, "NodeRegistrationToken"))
+    if (!storageConfig.HasNodeRegistrationToken() &&
+        serverConfig.HasNodeRegistrationToken())
     {
         storageConfig.SetNodeRegistrationToken(
             serverConfig.GetNodeRegistrationToken());
@@ -1143,9 +1159,7 @@ void AdaptNodeRegistrationParams(
         storageConfig.SetNodeType(overriddenNodeType);
     }
 
-    if (!NCloud::HasField(storageConfig, "NodeType") &&
-        NCloud::HasField(serverConfig, "NodeType"))
-    {
+    if (!storageConfig.HasNodeType() && serverConfig.HasNodeType()) {
         storageConfig.SetNodeType(serverConfig.GetNodeType());
     }
 }
