@@ -1234,7 +1234,7 @@ func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
 			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
 			FileSystemId:     localFsId,
 			ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
-			VhostQueuesCount: 8,
+			VhostQueuesCount: vhostSettings.queuesCount,
 			Persistent:       true,
 		},
 	}
