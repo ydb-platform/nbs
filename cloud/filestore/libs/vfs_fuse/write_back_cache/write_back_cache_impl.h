@@ -27,13 +27,13 @@ class TWriteBackCache::TWriteDataEntry
 private:
     // Store request metadata and request buffer separately
     // The idea is to deduplicate memory and to reference request buffer
-    // directly in the cache if the request is cached.
+    // directly in the persistent buffer if the request is stored there.
     std::shared_ptr<NProto::TWriteDataRequest> Request;
     TString RequestBuffer;
 
     // Reference to either RequestBuffer or a memory region
     // in WriteDataRequestsQueue
-    TStringBuf Buffer;
+    TStringBuf BufferRef;
 
 public:
     explicit TWriteDataEntry(
@@ -53,7 +53,7 @@ public:
 
     TStringBuf GetBuffer() const
     {
-        return Buffer;
+        return BufferRef;
     }
 
     ui64 Offset() const
@@ -63,11 +63,11 @@ public:
 
     ui64 End() const
     {
-        return Request->GetOffset() + Buffer.size();
+        return Request->GetOffset() + BufferRef.size();
     }
 
     size_t GetSerializedSize() const;
-    void SerializeToCache(char* cachePtr);
+    void SerializeAndMoveRequestBuffer(char* allocationPtr);
 
     EFlushStatus FlushStatus = EFlushStatus::NotStarted;
 };

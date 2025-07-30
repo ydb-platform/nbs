@@ -23,9 +23,9 @@ namespace NCloud::NFileStore::NFuse {
 using namespace NCloud::NFileStore::NVFS;
 using namespace NThreading;
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
 
 // TODO(nasonov): remove this wrapper when TFileRingBuffer supports
 // in-place allocation
@@ -33,10 +33,19 @@ class TFileRingBuffer: public NCloud::TFileRingBuffer
 {
     using NCloud::TFileRingBuffer::TFileRingBuffer;
 
+private:
+    ui64 Capacity = 0;
+
 public:
+    TFileRingBuffer(const TString& filePath, ui64 capacity)
+        : NCloud::TFileRingBuffer(filePath, capacity)
+        , Capacity(capacity)
+    {}
+
     ui64 MaxAllocationSize() const
     {
-        return 1024 * 1024;
+        // Capacity - sizeof(TEntryHeader)
+        return Capacity - 8;
     }
 
     bool AllocateBack(size_t size, char** ptr)
@@ -123,25 +132,28 @@ public:
         , AutomaticFlushPeriod(automaticFlushPeriod)
         , WriteDataRequestsQueue(filePath, capacityBytes)
     {
-        // should fit 1 MiB of data plus some headers (assume 1 KiB is enough)
-        Y_ABORT_UNLESS(capacityBytes >= 1024*1024 + 1024);
+        // File ring buffer should be able to store any valid TWriteDataRequest.
+        // Inability to store it will cause this and future requests to remain
+        // in the pending queue forever (including requests with smaller size).
+        // Should fit 1 MiB of data plus some headers (assume 1 KiB is enough).
+        Y_ABORT_UNLESS(
+            WriteDataRequestsQueue.MaxAllocationSize() >= 1024 * 1024 + 1016);
 
-        WriteDataRequestsQueue.Visit(
-            [&](auto checksum, auto serializedRequest)
-            {
-                auto entry = std::make_unique<TWriteDataEntry>(
-                    checksum,
-                    serializedRequest);
+        WriteDataRequestsQueue.Visit([&] (auto checksum, auto serializedRequest)
+        {
+            auto entry = std::make_unique<TWriteDataEntry>(
+                checksum,
+                serializedRequest);
 
-                if (entry->GetBuffer().Empty()) {
-                    // This may happen when a buffer was corrupted
-                    // Skip this entry from processing
-                    // TODO(nasonov): report it
-                    entry->FlushStatus = EFlushStatus::Finished;
-                }
+            if (entry->GetBuffer().Empty()) {
+                // This may happen when a buffer was corrupted
+                // Skip this entry from processing
+                // TODO(nasonov): report it
+                entry->FlushStatus = EFlushStatus::Finished;
+            }
 
-                AddWriteDataEntry(std::move(entry));
-            });
+            AddWriteDataEntry(std::move(entry));
+        });
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -323,14 +335,15 @@ public:
 
 
         with_lock (Lock) {
-            char* cachePtr = nullptr;
-            bool allocatedInCache =
-                WriteDataRequestsQueue.AllocateBack(serializedSize, &cachePtr);
+            char* allocationPtr = nullptr;
+            bool allocated = WriteDataRequestsQueue.AllocateBack(
+                serializedSize,
+                &allocationPtr);
 
-            if (allocatedInCache) {
-                Y_ABORT_UNLESS(cachePtr != nullptr);
-                entry->SerializeToCache(cachePtr);
-                WriteDataRequestsQueue.CommitAllocation(cachePtr);
+            if (allocated) {
+                Y_ABORT_UNLESS(allocationPtr != nullptr);
+                entry->SerializeAndMoveRequestBuffer(allocationPtr);
+                WriteDataRequestsQueue.CommitAllocation(allocationPtr);
                 AddWriteDataEntry(std::move(entry));
                 promise.SetValue({});
             } else {
@@ -360,11 +373,11 @@ public:
 
                 WriteDataRequestsQueue.PopFront();
 
-            auto& entries = WriteDataEntriesByHandle[entry->GetHandle()];
-            Erase(entries, entry);
-            if (entries.empty()) {
-                WriteDataEntriesByHandle.erase(entry->GetHandle());
-            }
+                auto& entries = WriteDataEntriesByHandle[entry->GetHandle()];
+                Erase(entries, entry);
+                if (entries.empty()) {
+                    WriteDataEntriesByHandle.erase(entry->GetHandle());
+                }
 
                 std::unique_ptr<TWriteDataEntry> holder(entry);
                 entry->Unlink();
@@ -634,20 +647,19 @@ public:
                 while (!self->PendingWriteDataRequests.Empty()) {
                     auto* pending = self->PendingWriteDataRequests.Front();
                     auto serializedSize = pending->Entry->GetSerializedSize();
-                    char* cachePtr = nullptr;
-                    bool allocatedInCache =
-                        self->WriteDataRequestsQueue.AllocateBack(
-                            serializedSize,
-                            &cachePtr);
+                    char* allocationPtr = nullptr;
+                    bool allocated = self->WriteDataRequestsQueue.AllocateBack(
+                        serializedSize,
+                        &allocationPtr);
 
-                    if (!allocatedInCache) {
+                    if (!allocated) {
                         self->FlushAllData(); // flushes asynchronously
                         return;
                     }
 
-                    Y_ABORT_UNLESS(cachePtr != nullptr);
-                    pending->Entry->SerializeToCache(cachePtr);
-                    self->WriteDataRequestsQueue.CommitAllocation(cachePtr);
+                    Y_ABORT_UNLESS(allocationPtr != nullptr);
+                    pending->Entry->SerializeAndMoveRequestBuffer(allocationPtr);
+                    self->WriteDataRequestsQueue.CommitAllocation(allocationPtr);
                     self->AddWriteDataEntry(std::move(pending->Entry));
 
                     pending->Promise.SetValue({});
@@ -718,7 +730,7 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     : Request(std::move(request))
 {
     RequestBuffer.swap(*Request->MutableBuffer());
-    Buffer = TStringBuf(RequestBuffer).Skip(Request->GetBufferOffset());
+    BufferRef = TStringBuf(RequestBuffer).Skip(Request->GetBufferOffset());
     Request->ClearBufferOffset();
 }
 
@@ -734,8 +746,11 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     ui32 bufferSize = 0;
     mi.Read(&bufferSize, sizeof(ui32));
     if (bufferSize == 0) {
-        // Buffer corruption
-        // TODO(nasonov): report and handle
+        // TODO(nasonov): replace this with Y_DEBUG_ABORT_UNLESS when
+        // TFileRingBuffer fully supports in-place allocation.
+        // Currently this may happen when execution stopped between allocation
+        // and Serialization. In future, this can happen only as a result of
+        // corruption
         return;
     }
 
@@ -755,30 +770,31 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     }
 
     Request.swap(parsedRequest);
-    Buffer = TStringBuf(bufferPtr, bufferSize);
+    BufferRef = TStringBuf(bufferPtr, bufferSize);
 }
 
 size_t TWriteBackCache::TWriteDataEntry::GetSerializedSize() const
 {
-    return Request->ByteSizeLong() + sizeof(ui32) + Buffer.size();
+    return Request->ByteSizeLong() + sizeof(ui32) + BufferRef.size();
 }
 
-void TWriteBackCache::TWriteDataEntry::SerializeToCache(char* cachePtr)
+void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
+    char* allocationPtr)
 {
-    Y_ABORT_UNLESS(cachePtr != nullptr);
-    Y_ABORT_UNLESS(Buffer.size() <= Max<ui32>());
+    Y_ABORT_UNLESS(allocationPtr != nullptr);
+    Y_ABORT_UNLESS(BufferRef.size() <= Max<ui32>());
 
-    ui32 bufferSize = static_cast<ui32>(Buffer.size());
+    ui32 bufferSize = static_cast<ui32>(BufferRef.size());
     auto serializedSize = GetSerializedSize();
 
-    TMemoryOutput mo(cachePtr, serializedSize);
+    TMemoryOutput mo(allocationPtr, serializedSize);
     mo.Write(&bufferSize, sizeof(bufferSize));
-    mo.Write(Buffer);
+    mo.Write(BufferRef);
 
     Y_ABORT_UNLESS(
         Request->SerializeToArray(mo.Buf(), static_cast<int>(mo.Avail())));
 
-    Buffer = TStringBuf(cachePtr + sizeof(ui32), bufferSize);
+    BufferRef = TStringBuf(allocationPtr + sizeof(ui32), bufferSize);
     RequestBuffer.clear();
 }
 
