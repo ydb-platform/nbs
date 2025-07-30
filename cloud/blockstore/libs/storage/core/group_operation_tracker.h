@@ -74,12 +74,12 @@ public:
     explicit TGroupOperationTimeTracker() = default;
 
     void OnStarted(
-        ui64 OperationId,
+        ui64 operationId,
         ui32 groupId,
         EGroupOperationType operationType,
         ui64 startTime);
 
-    void OnFinished(ui64 OperationId, ui64 finishTime);
+    void OnFinished(ui64 operationId, ui64 finishTime);
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
 };

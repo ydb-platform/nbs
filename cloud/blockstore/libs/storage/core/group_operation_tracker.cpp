@@ -58,56 +58,56 @@ ui64 TGroupOperationTimeTracker::THash::operator()(const TKey& key) const
 ////////////////////////////////////////////////////////////////////////////////
 
 void TGroupOperationTimeTracker::OnStarted(
-    ui64 OperationId,
+    ui64 operationId,
     ui32 groupId,
     EGroupOperationType operationType,
     ui64 startTime)
 {
-    TStringBuilder OperationName;
+    TStringBuilder operationName;
 
     switch (operationType) {
         case EGroupOperationType::Read: {
-            OperationName << "Read_";
+            operationName << "Read_";
             break;
         }
         case EGroupOperationType::Write: {
-            OperationName << "Write_";
+            operationName << "Write_";
             break;
         }
     }
-    OperationName << groupId;
+    operationName << groupId;
     auto key =
-        TKey{.OperationName = OperationName, .Status = EStatus::Inflight};
+        TKey{.OperationName = operationName, .Status = EStatus::Inflight};
     if (!Histograms.contains(key)) {
         Histograms[key];
     }
     Inflight.emplace(
-        OperationId,
+        operationId,
         TOperationInflight{
             .StartTime = startTime,
-            .OperationName = std::move(OperationName)});
+            .OperationName = std::move(operationName)});
 }
 
-void TGroupOperationTimeTracker::OnFinished(ui64 OperationId, ui64 finishTime)
+void TGroupOperationTimeTracker::OnFinished(ui64 operationId, ui64 finishTime)
 {
-    auto it = Inflight.find(OperationId);
+    auto it = Inflight.find(operationId);
     if (it == Inflight.end()) {
         return;
     }
 
-    auto& Operation = it->second;
+    auto& operation = it->second;
 
-    auto duration = CyclesToDurationSafe(finishTime - Operation.StartTime);
+    auto duration = CyclesToDurationSafe(finishTime - operation.StartTime);
 
     TKey key{
-        .OperationName = std::move(Operation.OperationName),
+        .OperationName = std::move(operation.OperationName),
         .Status = EStatus::Finished};
     Histograms[key].Increment(duration.MicroSeconds());
 
     key.OperationName = "Total";
     Histograms[key].Increment(duration.MicroSeconds());
 
-    Inflight.erase(OperationId);
+    Inflight.erase(operationId);
 }
 
 TString TGroupOperationTimeTracker::GetStatJson(ui64 nowCycles) const
@@ -130,10 +130,10 @@ TString TGroupOperationTimeTracker::GetStatJson(ui64 nowCycles) const
 
     // Build inflight Operation counters
     auto getHtmlKey =
-        [](const TString& OperationName, TStringBuf timeBucketName)
+        [](const TString& operationName, TStringBuf timeBucketName)
     {
         auto key =
-            TKey{.OperationName = OperationName, .Status = EStatus::Inflight};
+            TKey{.OperationName = operationName, .Status = EStatus::Inflight};
         return key.GetHtmlPrefix() + timeBucketName;
     };
 
