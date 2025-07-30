@@ -115,17 +115,24 @@ public:
         ui64 length);
 
     /**
-    * Inverts the set of intervals for the specified range.
+    * Calculate a set of intervals that is complimentary to the input set of
+    * intervals for the specified range.
     *
     * @param sortedParts A sorted vector of non-overlapping intervals.
     * @param startingFromOffset The starting offset of the interval to invert
     *   within.
     * @param length The length of the interval to invert within.
     * @return A vector of intervals representing the inverted (missing) parts
-    *   within the specified range.
+    *   within the specified range. Only fields Offset and Length are set.
     *
     * Note: The interval [startingFromOffset, startingFromOffset + length) may
     *   be narrower than the minimal bounding interval for sortedParts.
+    *
+    * Example:
+    *   sortedParts: {{.Offset = 1, .Length = 3}, {.Offset = 5, .Length = 2}}
+    *   startingFromOffset: 0
+    *   length: 6
+    *   result: {{.Offset = 0, .Length = 1}, {.Offset = 3, .Length = 2}}
     */
     static TVector<TWriteDataEntryPart> InvertDataParts(
         const TVector<TWriteDataEntryPart>& sortedParts,
