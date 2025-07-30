@@ -829,7 +829,7 @@ Y_UNIT_TEST_SUITE(TVolumeAsPartitionActorTests)
         UNIT_ASSERT_VALUES_EQUAL(2000, cookie);
     }
 
-    Y_UNIT_TEST_F(ShouldForwardZeroBlocksSameBlockSize, TSetupEnvironment8_8)
+    Y_UNIT_TEST_F(ShouldExecuteZeroBlocksSameBlockSize, TSetupEnvironment8_8)
     {
         // Describe follower OK
         DescribeFollower();

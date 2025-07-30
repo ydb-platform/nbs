@@ -99,7 +99,7 @@ void TVolumeAsPartitionActor::ForwardResponse(
         } else {
             ctx.Send(
                 requestCtx->Value.OriginalSender,
-                ev.Release()->Release(),
+                ev->ReleaseBase().Release(),
                 0,   // flags
                 requestCtx->Value.OriginalCookie);
         }
@@ -324,8 +324,9 @@ void TVolumeAsPartitionActor::HandleDescribeVolumeResponse(
             ctx,
             TBlockStoreComponents::SERVICE,
             "%s Volume %s: describe failed: %s",
-            DiskId.Quote().data(),
-            FormatError(error).data());
+            LogTitle.GetWithTime().c_str(),
+            DiskId.Quote().c_str(),
+            FormatError(error).c_str());
         State = EState::Error;
         return;
     }
@@ -481,7 +482,7 @@ void TVolumeAsPartitionActor::HandleZeroBlocks(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s HandleZeroBlocks %s %s -> %s %s %s",
+        "%s HandleZeroBlocks %s -> %s %s",
         LogTitle.GetWithTime().c_str(),
         originalRange.Print().c_str(),
         destRange.Print().c_str(),
