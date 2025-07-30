@@ -451,8 +451,9 @@ private:
                 std::weak_ptr<TEndpointManager> manager,
                 std::shared_ptr<TEndpoint> endpoint)
             : Manager(std::move(manager))
-            , Endpoint(std::move(endpoint))
-        {}
+        {
+            SetEndpoint(std::move(endpoint));
+        }
 
         void SetEndpoint(std::shared_ptr<TEndpoint> endpoint)
         {
