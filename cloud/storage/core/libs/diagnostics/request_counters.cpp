@@ -100,7 +100,7 @@ struct THistBase
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTimeHist
-    : public THistBase<TRequestMsTimeBuckets>
+    : public THistBase<TRequestUsTimeBuckets>
 {
     explicit TTimeHist(EHistogramCounterOptions counterOptions)
         : THistBase(counterOptions)
@@ -109,7 +109,7 @@ struct TTimeHist
 
     void Increment(TDuration requestTime, ui64 count = 1)
     {
-        THistBase::Increment(requestTime.MicroSeconds() / 1000., count);
+        THistBase::Increment(requestTime.MicroSeconds(), count);
     }
 };
 
