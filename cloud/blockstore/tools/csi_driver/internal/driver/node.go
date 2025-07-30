@@ -851,7 +851,8 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	// NodeStageVolume request if nbd device is not available yet.
 	hasBlockDevice, err := s.mounter.HasBlockDevice(resp.NbdDeviceFile)
 	if !hasBlockDevice {
-		return fmt.Errorf("Nbd device is not available: %w", err)
+		return s.statusErrorf(codes.Unavailable,
+			"Nbd device is not available: %w", err)
 	}
 
 	mnt := req.VolumeCapability.GetMount()
