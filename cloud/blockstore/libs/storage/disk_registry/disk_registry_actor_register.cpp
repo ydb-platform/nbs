@@ -44,7 +44,6 @@ void TDiskRegistryActor::HandleRegisterAgent(
         }
 
         ReportRegisterAgentWithEmptyRackName(
-            "",
             {{"AgentId", agentConfig.GetAgentId()},
              {"NodeId", agentConfig.GetNodeId()}});
 

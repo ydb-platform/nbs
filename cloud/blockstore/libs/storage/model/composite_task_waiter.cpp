@@ -52,7 +52,7 @@ TDependentTaskId TCompositeTaskList::StartDependentTaskAwait(
     auto* compositeTask = PrincipalTasks.FindPtr(principalTaskId);
     Y_DEBUG_ABORT_UNLESS(compositeTask);
     if (!compositeTask) {
-        ReportReceivedUnknownTaskId("", {{"principalTaskId", principalTaskId}});
+        ReportReceivedUnknownTaskId({{"principalTaskId", principalTaskId}});
         return INVALID_TASK_ID;
     }
     compositeTask->IncCounter();
@@ -75,9 +75,7 @@ void TCompositeTaskList::FinishDependentTaskAwait(
     auto nestedTaskIt = DependentTasks.find(dependentTaskId);
     Y_DEBUG_ABORT_UNLESS(nestedTaskIt != DependentTasks.end());
     if (nestedTaskIt == DependentTasks.end()) {
-        ReportReceivedUnknownTaskId(
-            "Received unknown dependent",
-            {{"dependentTaskId", dependentTaskId}});
+        ReportReceivedUnknownTaskId({{"dependentTaskId", dependentTaskId}});
         return;
     }
     auto compositeTaskId = nestedTaskIt->second;

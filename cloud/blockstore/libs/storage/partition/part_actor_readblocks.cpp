@@ -289,6 +289,8 @@ private:
 
     TVector<TString> FailedBlobs;
 
+    const TString DiskId;
+
 public:
     TReadBlocksActor(
         TRequestInfoPtr requestInfo,
@@ -304,7 +306,8 @@ public:
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
-        bool waitBaseDiskRequests);
+        bool waitBaseDiskRequests,
+        TString  diskId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -367,7 +370,8 @@ TReadBlocksActor::TReadBlocksActor(
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
-        bool waitBaseDiskRequests)
+        bool waitBaseDiskRequests,
+        TString  diskId)
     : RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
     , BlockSize(blockSize)
@@ -382,6 +386,7 @@ TReadBlocksActor::TReadBlocksActor(
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
     , WaitBaseDiskRequests(waitBaseDiskRequests)
+    , DiskId(std::move(diskId))
 {}
 
 void TReadBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -567,7 +572,8 @@ bool TReadBlocksActor::VerifyChecksums(
             batch.BlobId,
             batch.Requests[i],
             batch.BlobOffsets[i],
-            batch.Checksums[i]);
+            batch.Checksums[i],
+            DiskId);
 
         if (HasError(error)) {
             HandleError(ctx, error);
@@ -1207,7 +1213,8 @@ void TPartitionActor::CompleteReadBlocks(
             args.CommitId,
             std::move(requests),
             std::move(args.BlockInfos),
-            describeBlocksRange.Defined());
+            describeBlocksRange.Defined(),
+            State->GetBaseDiskId());
         Actors.Insert(readBlocksActorId);
 
         if (describeBlocksRange.Defined()) {

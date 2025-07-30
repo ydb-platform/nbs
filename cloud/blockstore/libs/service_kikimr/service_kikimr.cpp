@@ -204,7 +204,6 @@ private:
 
         if constexpr (IsWriteRequest(T::Request)) {
             ReportServiceProxyWakeupTimerHit(
-                "",
                 {{"disk", DiskId}, {"RequestId", CallContext->RequestId}});
             return;
         }

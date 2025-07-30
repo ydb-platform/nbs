@@ -878,7 +878,8 @@ void TCompactionActor::HandleReadBlobResponse(
             MakeBlobId(TabletId, r->BlobId),
             r->BlockIndex,
             r->BlobOffset,
-            expectedChecksum);
+            expectedChecksum,
+            DiskId);
 
         if (HasError(error)) {
             HandleError(ctx, error);

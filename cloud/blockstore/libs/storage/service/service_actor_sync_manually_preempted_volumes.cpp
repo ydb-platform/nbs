@@ -57,8 +57,13 @@ void TSyncManuallyPreemptedVolumesActor::Bootstrap(const TActorContext& ctx)
     try {
         WriteFile(std::move(FilePath), std::move(Data));
     } catch (...) {
-        ReportManuallyPreemptedVolumesFileError(
-            TStringBuilder() << CurrentExceptionMessage());
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            TStringBuilder()
+                << "Failed to write manually preempted volumes: "
+                << CurrentExceptionMessage());
+        ReportManuallyPreemptedVolumesFileError(CurrentExceptionMessage());
     }
 
     using TResponse = TEvServicePrivate::TEvSyncManuallyPreemptedVolumesComplete;

@@ -210,8 +210,8 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         } else {
             ReportResyncFailed(
                 FormatError(msg->GetError()),
-                {{"range", DescribeRange(range)},
-                 {"disk", PartConfig->GetName()}});
+                {{"disk", PartConfig->GetName()},
+                 {"range", DescribeRange(range)}});
         }
 
         TDeque<TPostponedRead> postponedReads;

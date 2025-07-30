@@ -716,6 +716,7 @@ NProto::TError VerifyBlockChecksum(
     const NKikimr::TLogoBlobID& blobID,
     const ui64 blockIndex,
     const ui16 blobOffset,
-    const ui32 expectedChecksum);
+    const ui32 expectedChecksum,
+    const TString diskId);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

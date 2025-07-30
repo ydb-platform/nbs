@@ -5556,7 +5556,7 @@ NProto::TError TDiskRegistryState::PurgeHost(
 
     if (HasError(removeHostError)) {
         ReportDiskRegistryPurgeHostError(
-            "",
+            FormatError(removeHostError),
             {{"AgentId", agent->GetAgentId()}});
     }
 

@@ -1,7 +1,7 @@
 #include "critical_events.h"
 
 #include "public.h"
-#include "util/string/builder.h"
+#include <util/string/builder.h>
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -19,7 +19,7 @@ TStringBuilder& operator<<(TStringBuilder& sb, const std::variant<Ts...>& v)
 }
 
 template <typename T>
-static TString FormatKeyValueList(
+TString FormatKeyValueList(
     const TVector<std::pair<TStringBuf, T>>& keyValues)
 {
     TStringBuilder sb;
@@ -79,6 +79,13 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     {                                                                          \
         TString msg =                                                          \
             ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \
+        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
+    }                                                                          \
+    TString Report##name(                                                      \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+    {                                                                          \
+        TString msg =                                                          \
+            ComposeMessageWithSuffix("", FormatKeyValueList(keyValues));       \
         return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \

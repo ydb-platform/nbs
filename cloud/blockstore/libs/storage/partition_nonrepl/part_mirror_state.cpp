@@ -141,7 +141,6 @@ bool TMirrorPartitionState::PrepareMigrationConfigForWarningDevices()
     }
 
     ReportMigrationSourceNotFound(
-        "No migration source device found among replicas",
         {{"disk", PartConfig->GetName()}, {"RWClientId", RWClientId}});
 
     // TODO: log details
