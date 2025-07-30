@@ -10,6 +10,7 @@
 namespace NCloud::NBlockStore {
 
 namespace {
+////////////////////////////////////////////////////////////////////////////////
 
 template <typename... Ts>
 TStringBuilder& operator<<(TStringBuilder& sb, const std::variant<Ts...>& v)
