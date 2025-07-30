@@ -96,12 +96,7 @@ void TDescribeSchemeActor::DescribeScheme(const TActorContext& ctx)
         request->DatabaseName = Config->GetSchemeShardDir();
         TSchemeCacheNavigate::TEntry& entry = request->ResultSet.emplace_back();
         entry.Operation = TSchemeCacheNavigate::OpPath;
-        entry.Access = NACLib::DescribeSchema;
-        entry.RequestType =
-            NSchemeCache::TSchemeCacheNavigate::TEntry::ERequestType::ByPath;
-        entry.RedirectRequired = true;
         entry.SyncVersion = true;
-        entry.ShowPrivatePath = false;
         entry.Path = SplitPath(Path);
 
         NCloud::Send(
