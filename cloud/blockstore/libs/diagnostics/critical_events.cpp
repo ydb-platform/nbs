@@ -11,6 +11,13 @@ namespace NCloud::NBlockStore {
 
 namespace {
 
+template <typename... Ts>
+TStringBuilder& operator<<(TStringBuilder& sb, const std::variant<Ts...>& v)
+{
+    std::visit([&sb](const auto& arg) { sb << arg; }, v);
+    return sb;
+}
+
 template <typename T>
 static TString FormatKeyValueList(
     const TVector<std::pair<TStringBuf, T>>& keyValues)
@@ -68,16 +75,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     }                                                                          \
     TString Report##name(                                                      \
         const TString& message,                                                \
-        const TVector<std::pair<TStringBuf, TString>>& keyValues)              \
-    {                                                                          \
-        TString msg =                                                          \
-            ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \
-        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
-    }                                                                          \
-                                                                               \
-    TString Report##name(                                                      \
-        const TString& message,                                                \
-        const TVector<std::pair<TStringBuf, ui64>>& keyValues)                 \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
     {                                                                          \
         TString msg =                                                          \
             ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \

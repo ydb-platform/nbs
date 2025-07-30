@@ -1140,9 +1140,9 @@ NProto::TError VerifyBlockChecksum(
     if (actualChecksum != expectedChecksum) {
         ReportBlockDigestMismatchInBlob(
             "",
-            {{"BlockIndex", TStringBuilder() << blockIndex},
-             {"blobOffset", TStringBuilder() << blobOffset},
-             {"blob", TStringBuilder() << blobID}});
+            {{"BlockIndex", blockIndex},
+             {"blobOffset", blobOffset},
+             {"blob", blobID.ToString()}});
         // we might read proper data upon retry - let's give it a chance
         return MakeError(
             E_REJECTED,

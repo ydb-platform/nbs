@@ -77,7 +77,7 @@ void TCompositeTaskList::FinishDependentTaskAwait(
     if (nestedTaskIt == DependentTasks.end()) {
         ReportReceivedUnknownTaskId(
             "Received unknown dependent",
-            {{"dependentTaskId", dependentTaskId}});)
+            {{"dependentTaskId", dependentTaskId}});
         return;
     }
     auto compositeTaskId = nestedTaskIt->second;
