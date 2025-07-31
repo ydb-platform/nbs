@@ -306,9 +306,40 @@ private:
             , DevicesToRelease(std::move(devicesToRelease))
             , RetryIfTimeoutOrUndelivery(retryIfTimeoutOrUndelivery)
         {}
+
+        static TAcquireReleaseDiskRequest MakeAcquire(
+            TString clientId,
+            NProto::EVolumeAccessMode accessMode,
+            ui64 mountSeqNumber,
+            TClientRequestPtr clientRequest,
+            bool forceTabletRestart)
+        {
+            return TAcquireReleaseDiskRequest(
+                std::move(clientId),
+                accessMode,
+                mountSeqNumber,
+                std::move(clientRequest),
+                forceTabletRestart);
+        }
+
+        static TAcquireReleaseDiskRequest MakeRelease(
+            TString clientId,
+            TClientRequestPtr clientRequest,
+            TVector<NProto::TDeviceConfig> devicesToRelease,
+            bool retryIfTimeoutOrUndelivery)
+        {
+            return TAcquireReleaseDiskRequest(
+                std::move(clientId),
+                std::move(clientRequest),
+                std::move(devicesToRelease),
+                retryIfTimeoutOrUndelivery);
+        }
     };
     TList<TAcquireReleaseDiskRequest> AcquireReleaseDiskRequests;
     bool AcquireDiskScheduled = false;
+    TBackoffDelayProvider BackoffDelayProviderForAcquireReleaseDiskRequests{
+        Config->GetRetryAcquireReleaseDiskInitialDelay(),
+        Config->GetRetryAcquireReleaseDiskMaxDelay()};
 
     NProto::TError StorageAllocationResult;
     bool DiskAllocationScheduled = false;

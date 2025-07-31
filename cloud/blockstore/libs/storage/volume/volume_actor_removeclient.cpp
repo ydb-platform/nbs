@@ -118,19 +118,31 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
             GetErrorKind(error) == EErrorKind::ErrorRetriable &&
             Config->GetRetryAcquireReleaseDiskInitialDelay())
         {
+            auto delay = BackoffDelayProviderForAcquireReleaseDiskRequests
+                             .GetDelayAndIncrease();
             ctx.Schedule(
-                Config->GetRetryAcquireReleaseDiskInitialDelay(),
+                delay,
                 std::make_unique<TEvVolume::TEvRetryAcquireDisk>().release());
             return;
         }
+    } else {
+        BackoffDelayProviderForAcquireReleaseDiskRequests.Reset();
     }
 
     // This shouldn't be release of replaced devices.
     Y_DEBUG_ABORT_UNLESS(!clientRequest || request.DevicesToRelease.empty());
 
-    if (clientRequest &&
-        (Config->GetDoAcquireReleaseDevicesAfterTransaction() || hasError))
+    Y_DEFER
     {
+        AcquireReleaseDiskRequests.pop_front();
+        ProcessNextAcquireReleaseDiskRequest(ctx);
+    };
+
+    if (!clientRequest) {
+        return;
+    }
+
+    if (Config->GetDoAcquireReleaseDevicesAfterTransaction() || hasError) {
         NCloud::Reply(
             ctx,
             *clientRequest->RequestInfo,
@@ -142,18 +154,16 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
 
         PendingClientRequests.pop_front();
         ProcessNextPendingClientRequest(ctx);
-    } else if (clientRequest) {
-        ExecuteTx<TRemoveClient>(
-            ctx,
-            std::move(clientRequest->RequestInfo),
-            std::move(clientRequest->DiskId),
-            clientRequest->PipeServerActorId,
-            std::move(clientRequest->RemovedClientId),
-            clientRequest->IsMonRequest);
+        return;
     }
 
-    AcquireReleaseDiskRequests.pop_front();
-    ProcessNextAcquireReleaseDiskRequest(ctx);
+    ExecuteTx<TRemoveClient>(
+        ctx,
+        std::move(clientRequest->RequestInfo),
+        std::move(clientRequest->DiskId),
+        clientRequest->PipeServerActorId,
+        std::move(clientRequest->RemovedClientId),
+        clientRequest->IsMonRequest);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -260,7 +270,7 @@ void TVolumeActor::CompleteRemoveClient(
         State->IsDiskRegistryMediaKind() &&
         Config->GetAcquireNonReplicatedDevices() &&
         Config->GetDoAcquireReleaseDevicesAfterTransaction() &&
-        !HasError(args.Error) && args.Error.GetCode() != S_ALREADY;
+        args.Error.GetCode() == S_OK;
 
     Y_DEFER
     {
@@ -292,7 +302,7 @@ void TVolumeActor::CompleteRemoveClient(
         // Release all devices for client.
         AddAcquireReleaseDiskRequest(
             ctx,
-            {
+            TAcquireReleaseDiskRequest::MakeRelease(
                 args.ClientId,
                 std::make_shared<TClientRequest>(
                     args.RequestInfo,
@@ -302,7 +312,7 @@ void TVolumeActor::CompleteRemoveClient(
                     args.IsMonRequest),
                 TVector<NProto::TDeviceConfig>{},
                 false   // retryIfTimeoutOrUndelivery
-            });
+                ));
     } else {
         NCloud::Reply(
             ctx,
