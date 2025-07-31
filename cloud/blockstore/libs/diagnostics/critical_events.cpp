@@ -10,6 +10,7 @@
 namespace NCloud::NBlockStore {
 
 namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename... Ts>
@@ -85,9 +86,10 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
     TString Report##name(                                                      \
         const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
     {                                                                          \
-        TString msg =                                                          \
-            ComposeMessageWithSuffix("", FormatKeyValueList(keyValues));       \
-        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
+        return ReportCriticalEvent(                                            \
+            GetCriticalEventFor##name(),                                       \
+            FormatKeyValueList(keyValues),                                     \
+            false);                                                            \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \

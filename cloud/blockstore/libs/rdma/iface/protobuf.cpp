@@ -200,7 +200,7 @@ NProto::TError ParseError(TStringBuf buffer)
         error.SetMessage("rdma error");
         ReportFailedToParseRdmaError(
             FormatError(error),
-            {{"buffer", buffer.size()}});
+            {{"bufferSize", buffer.size()}});
     }
 
     return error;

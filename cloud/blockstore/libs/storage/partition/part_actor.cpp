@@ -1126,7 +1126,7 @@ NProto::TError VerifyBlockChecksum(
     const ui64 blockIndex,
     const ui16 blobOffset,
     const ui32 expectedChecksum,
-    const TString diskId)
+    const TString& diskId)
 {
     if (expectedChecksum == 0) {
         // 0 is a special case - block digest calculation can be

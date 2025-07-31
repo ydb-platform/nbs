@@ -260,6 +260,8 @@ public:
     };
 
 private:
+    const TString DiskId;
+
     const TRequestInfoPtr RequestInfo;
 
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -289,10 +291,9 @@ private:
 
     TVector<TString> FailedBlobs;
 
-    const TString DiskId;
-
 public:
     TReadBlocksActor(
+        TString diskId,
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
@@ -306,8 +307,7 @@ public:
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
-        bool waitBaseDiskRequests,
-        TString  diskId);
+        bool waitBaseDiskRequests);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -357,6 +357,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadBlocksActor::TReadBlocksActor(
+        TString diskId,
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
@@ -370,9 +371,9 @@ TReadBlocksActor::TReadBlocksActor(
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
-        bool waitBaseDiskRequests,
-        TString  diskId)
-    : RequestInfo(std::move(requestInfo))
+        bool waitBaseDiskRequests)
+    : DiskId(std::move(diskId))
+    , RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
     , BlockSize(blockSize)
     , CompactionRangeSize(compactionRangeSize)
@@ -386,7 +387,6 @@ TReadBlocksActor::TReadBlocksActor(
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
     , WaitBaseDiskRequests(waitBaseDiskRequests)
-    , DiskId(std::move(diskId))
 {}
 
 void TReadBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -1200,6 +1200,7 @@ void TPartitionActor::CompleteReadBlocks(
     if (describeBlocksRange.Defined() || requests) {
         const auto readBlocksActorId = NCloud::Register<TReadBlocksActor>(
             ctx,
+            State->GetBaseDiskId(),
             args.RequestInfo,
             BlockDigestGenerator,
             State->GetBlockSize(),
@@ -1213,8 +1214,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.CommitId,
             std::move(requests),
             std::move(args.BlockInfos),
-            describeBlocksRange.Defined(),
-            State->GetBaseDiskId());
+            describeBlocksRange.Defined());
         Actors.Insert(readBlocksActorId);
 
         if (describeBlocksRange.Defined()) {

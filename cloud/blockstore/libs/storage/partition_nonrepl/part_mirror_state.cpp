@@ -198,8 +198,8 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
     ReportMigrationSourceNotFound(
         "PrepareMigrationConfigForFreshDevices failed: no suitable source "
         "device found for fresh device",
-        {{"index", deviceIdx},
-         {"disk", PartConfig->GetName()},
+        {{"disk", PartConfig->GetName()},
+         {"index", deviceIdx},
          {"total_replicas", ReplicaInfos.size()}});
     return false;
 }
