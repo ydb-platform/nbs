@@ -3,7 +3,7 @@
 
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/blockstore/libs/notify/notify.h>
+#include <cloud/blockstore/libs/notify/iface/notify.h>
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_client.h>
 

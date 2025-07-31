@@ -70,7 +70,7 @@ PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/logbroker/iface
-    cloud/blockstore/libs/notify
+    cloud/blockstore/libs/notify/iface
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/disk_common

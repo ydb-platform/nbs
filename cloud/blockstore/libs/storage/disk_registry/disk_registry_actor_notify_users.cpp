@@ -1,7 +1,7 @@
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/blockstore/libs/notify/notify.h>
+#include <cloud/blockstore/libs/notify/iface/notify.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/user_notification.h>
 #include <cloud/storage/core/libs/common/format.h>
 

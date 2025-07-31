@@ -1,6 +1,6 @@
 #include "test_env.h"
 
-#include <cloud/blockstore/libs/notify/notify.h>
+#include <cloud/blockstore/libs/notify/iface/notify.h>
 
 namespace NCloud::NBlockStore::NStorage::NDiskRegistryTest {
 
