@@ -1719,6 +1719,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 
 	s := createServices(t, ctx, db, 2)
 
+	// Set chunk size to 1 so clearEndedTasksChunk will be called several times
 	clearEndedTasksLimit := uint64(1)
 	s.config.ClearEndedTasksLimit = &clearEndedTasksLimit
 
@@ -1781,7 +1782,7 @@ func TestClearEndedTasksBulk(t *testing.T) {
 	}
 
 	// Wait for ClearEndedTasks to run
-	<-time.After(2 * clearScheduleInterval)
+	time.Sleep(2 * clearScheduleInterval)
 
 	for _, taskId := range remainingTaskIds {
 		_, err := s.storage.GetTask(ctx, taskId)
