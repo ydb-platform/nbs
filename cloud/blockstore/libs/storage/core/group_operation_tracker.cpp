@@ -160,4 +160,31 @@ TString TGroupOperationTimeTracker::GetStatJson(ui64 nowCycles) const
     return out.Str();
 }
 
+TVector<TGroupOperationTimeTracker::TBucketInfo>
+TGroupOperationTimeTracker::GetTimeBuckets() const
+{
+    TVector<TBucketInfo> result;
+    TDuration last;
+    for (const auto& time: TRequestUsTimeBuckets::MakeNames()) {
+        const auto us = TryFromString<ui64>(time);
+
+        TBucketInfo bucket{
+            .OperationName = {},
+            .Key = time,
+            .Description =
+                us ? FormatDuration(TDuration::MicroSeconds(*us)) : time,
+            .Tooltip =
+                "[" + FormatDuration(last) + ".." + bucket.Description + "]"};
+
+        last = TDuration::MicroSeconds(us.GetOrElse(0));
+        result.push_back(std::move(bucket));
+    }
+    result.push_back(TBucketInfo{
+        .OperationName = {},
+        .Key = "Total",
+        .Description = "Total",
+        .Tooltip = ""});
+    return result;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

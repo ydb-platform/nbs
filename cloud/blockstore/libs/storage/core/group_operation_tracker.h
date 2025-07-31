@@ -82,6 +82,7 @@ public:
     void OnFinished(ui64 operationId, ui64 finishTime);
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
+    [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
