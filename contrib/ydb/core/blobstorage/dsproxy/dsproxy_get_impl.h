@@ -154,7 +154,7 @@ public:
             TDeque<std::unique_ptr<TEvBlobStorage::TEvVGet>> &outVGets,
             TDeque<std::unique_ptr<TEvBlobStorage::TEvVPut>> &outVPuts,
             TAutoPtr<TEvBlobStorage::TEvGetResult> &outGetResult) {
-        const NKikimrBlobStorage::TEvVGetResult &record = ev.Record;
+        NKikimrBlobStorage::TEvVGetResult &record = ev.Record;
         Y_ABORT_UNLESS(record.HasStatus());
         const NKikimrProto::EReplyStatus status = record.GetStatus();
         Y_ABORT_UNLESS(status != NKikimrProto::RACE && status != NKikimrProto::BLOCKED && status != NKikimrProto::DEADLINE);
@@ -187,7 +187,14 @@ public:
                 Blackboard.ReportPartMapStatus(blobId, result.GetCookie(), ResponseIndex, replyStatus);
             }
 
-            TRope resultBuffer = ev.GetBlobData(result);
+            TRope buffer;
+            if (result.HasBufferData()) {
+                buffer = TRope(result.GetBufferData());
+            }
+
+            TRope& resultBuffer = result.HasPayloadId()
+                                      ? ev.GetPayload(result.GetPayloadId())
+                                      : buffer;
             ui32 resultShift = result.HasShift() ? result.GetShift() : 0;
 
             // Currently CRC can be checked only if blob part is fully read
