@@ -307,6 +307,11 @@ namespace NActors {
             return Payload[id];
         }
 
+        TRope& GetPayload(ui32 id) {
+            Y_ABORT_UNLESS(id < Payload.size());
+            return Payload[id];
+        }
+
         ui32 GetPayloadCount() const {
             return Payload.size();
         }
