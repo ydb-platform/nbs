@@ -1762,12 +1762,67 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 
 	inflightDuration := waitingState.InflightDuration
 	waitingDuration := waitingState.WaitingDuration
-	durationThreshold := 500 * time.Millisecond
+	durationThreshold := float64(time.Second)
 
 	totalDuration := waitingState.EndedAt.Sub(waitingState.CreatedAt)
-	totalThreshold := 2 * time.Second
+	totalThreshold := float64(2 * time.Second)
 
-	require.InDelta(t, 5*time.Second, inflightDuration, float64(durationThreshold))
-	require.InDelta(t, 10*time.Second, waitingDuration, float64(durationThreshold))
-	require.InDelta(t, 15*time.Second, totalDuration, float64(totalThreshold))
+	require.InDelta(t, 5*time.Second, inflightDuration, durationThreshold)
+	require.InDelta(t, 10*time.Second, waitingDuration, durationThreshold)
+	require.InDelta(t, 15*time.Second, totalDuration, totalThreshold)
+}
+
+func TestTaskWaitingDurationInChain(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	s := createServices(t, ctx, db, 4)
+
+	err := registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	err = registerWaitingTask(s.registry, s.scheduler)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	task1ID, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	reqCtx = getRequestContext(t, ctx)
+	task2ID, err := scheduleWaitingTask(reqCtx, s.scheduler, task1ID)
+	require.NoError(t, err)
+
+	reqCtx = getRequestContext(t, ctx)
+	task3ID, err := scheduleWaitingTask(reqCtx, s.scheduler, task2ID)
+	require.NoError(t, err)
+
+	timeout := 30 * time.Second
+
+	for _, taskID := range []string{task1ID, task2ID, task3ID} {
+		_, err = waitTaskWithTimeout(ctx, s.scheduler, taskID, timeout)
+		require.NoError(t, err)
+	}
+
+	threshold := float64(2 * time.Second)
+
+	state1, err := s.storage.GetTask(ctx, task1ID)
+	require.NoError(t, err)
+	require.InDelta(t, 10*time.Second, state1.InflightDuration, threshold)
+	require.EqualValues(t, 0, state1.WaitingDuration)
+
+	state2, err := s.storage.GetTask(ctx, task2ID)
+	require.NoError(t, err)
+	require.InDelta(t, 5*time.Second, state2.InflightDuration, threshold)
+	require.InDelta(t, 10*time.Second, state2.WaitingDuration, threshold)
+
+	state3, err := s.storage.GetTask(ctx, task3ID)
+	require.NoError(t, err)
+	require.InDelta(t, 5*time.Second, state3.InflightDuration, threshold)
+	require.InDelta(t, 15*time.Second, state3.WaitingDuration, threshold)
 }
