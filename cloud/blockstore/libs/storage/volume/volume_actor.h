@@ -305,6 +305,9 @@ private:
     };
     TList<TAcquireReleaseDiskRequest> AcquireReleaseDiskRequests;
     bool AcquireDiskScheduled = false;
+    TBackoffDelayProvider BackoffDelayProviderForAcquireReleaseDiskRequests{
+        Config->GetRetryAcquireReleaseDiskTimeout(),
+        TDuration::Seconds(5)};
 
     NProto::TError StorageAllocationResult;
     bool DiskAllocationScheduled = false;
