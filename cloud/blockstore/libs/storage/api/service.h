@@ -265,8 +265,8 @@ struct TEvService
         EvDiscoverInstancesRequest = EvBegin + 37,
         EvDiscoverInstancesResponse = EvBegin + 38,
 
-        // EvBegin + 39, unused (see NBS-2410)
-        // EvBegin + 40, unused (see NBS-2410)
+        EvUpdateThrottlingConfigRequest = EvBegin + 39,
+        EvUpdateThrottlingConfigResponse = EvBegin + 40,
 
         // EvBegin + 41, unused (see NBS-2410)
         // EvBegin + 42, unused (see NBS-2410)
