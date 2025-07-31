@@ -63,11 +63,12 @@ public:
         DataSizeAndFlags = 0;
     }
 
-    void InitIncompleteEntry(ui64 size)
+    void InitEntry(ui64 size, bool incomplete)
     {
         auto maskedSize = static_cast<ui32>(size) & SizeMask;
         Y_ABORT_UNLESS(maskedSize == size);
-        DataSizeAndFlags = maskedSize | IncompleteFlag;
+        DataSizeAndFlags =
+            incomplete ? maskedSize | IncompleteFlag : maskedSize;
     }
 
     bool HasIncompleteFlag() const
@@ -426,14 +427,7 @@ public:
 public:
     bool PushBack(TStringBuf data)
     {
-        char* ptr = nullptr;
-        if (!AllocateBack(data.size(), &ptr)) {
-            return false;
-        }
-
-        data.copy(ptr, data.size());
-        CommitAllocation(ptr);
-        return true;
+        return AllocateBack(data.data(), data.size(), nullptr);
     }
 
     ui64 MaxAllocationSize() const
@@ -443,10 +437,12 @@ public:
             TEntryHeader::GetMaxDataSize());
     }
 
-    bool AllocateBack(size_t size, char** ptr)
+    bool AllocateBack(
+        const char* data,
+        size_t size,
+        TAllocationHandle* allocation)
     {
-        Y_ABORT_UNLESS(ptr != nullptr);
-        *ptr = nullptr;
+        Y_ABORT_UNLESS((data == nullptr) != (allocation == nullptr));
 
         if (IsCorrupted()) {
             // TODO: should return error code
@@ -490,10 +486,18 @@ public:
         }
 
         auto* eh = Data.GetEntryHeader(writePos);
-        eh->InitIncompleteEntry(size);
+        Y_ABORT_UNLESS(eh != nullptr);
 
-        *ptr = Data.GetEntryData(eh);
-        Y_ABORT_UNLESS(*ptr != nullptr);
+        if (data != nullptr) {
+            eh->InitEntry(size, false);
+            auto *entryData = Data.GetEntryData(eh);
+            Y_ABORT_UNLESS(entryData != nullptr);
+            memcpy(entryData, data, size);
+            eh->SetChecksum(Crc32c(data, size));
+        } else {
+            eh->InitEntry(size, true);
+            allocation->Handle = writePos;
+        }
 
         Header()->WritePos = writePos + sz;
         Header()->LastEntrySize = sz;
@@ -502,14 +506,27 @@ public:
         return true;
     }
 
-    void CommitAllocation(char* ptr)
+    TEntryHeader* GetIncompleteEntry(TAllocationHandle allocation)
     {
-        auto* eh = Data.GetEntryHeaderFromDataPtr(ptr);
-
+        Y_ABORT_UNLESS(allocation);
+        auto* eh = Data.GetEntryHeader(allocation.Handle);
         Y_ABORT_UNLESS(eh != nullptr);
         Y_ABORT_UNLESS(eh->HasIncompleteFlag());
+        return eh;
+    }
 
-        eh->SetChecksum(Crc32c(ptr, eh->GetDataSize()));
+    void Write(TAllocationHandle allocation, const TAllocationWriter& writer)
+    {
+        auto* eh = GetIncompleteEntry(allocation);
+        char* data = Data.GetEntryData(eh);
+        auto size = eh->GetDataSize();
+        writer(data, size);
+        eh->SetChecksum(Crc32c(data, size));
+    }
+
+    void CommitAllocation(TAllocationHandle allocation)
+    {
+        auto* eh = GetIncompleteEntry(allocation);
         eh->ClearIncompleteFlag();
     }
 
@@ -642,14 +659,21 @@ ui64 TFileRingBuffer::MaxAllocationSize() const
     return Impl->MaxAllocationSize();
 }
 
-bool TFileRingBuffer::AllocateBack(size_t size, char** ptr)
+bool TFileRingBuffer::AllocateBack(size_t size, TAllocationHandle* allocation)
 {
-    return Impl->AllocateBack(size, ptr);
+    return Impl->AllocateBack(nullptr, size, allocation);
 }
 
-void TFileRingBuffer::CommitAllocation(char* ptr)
+void TFileRingBuffer::Write(
+    TAllocationHandle allocation,
+    const TAllocationWriter& writer)
 {
-    Impl->CommitAllocation(ptr);
+    Impl->Write(allocation, writer);
+}
+
+void TFileRingBuffer::CommitAllocation(TAllocationHandle allocation)
+{
+    Impl->CommitAllocation(allocation);
 }
 
 TStringBuf TFileRingBuffer::Front() const

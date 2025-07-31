@@ -552,9 +552,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui64 len = 64;
         TFileRingBuffer rb(f.GetName(), len);
 
-        char* ptr = nullptr;
-        UNIT_ASSERT(!rb.AllocateBack(rb.MaxAllocationSize() + 1, &ptr));
-        UNIT_ASSERT(rb.AllocateBack(rb.MaxAllocationSize(), &ptr));
+        TFileRingBuffer::TAllocationHandle handle;
+        UNIT_ASSERT(!rb.AllocateBack(rb.MaxAllocationSize() + 1, &handle));
+        UNIT_ASSERT(rb.AllocateBack(rb.MaxAllocationSize(), &handle));
     }
 
     Y_UNIT_TEST(ShouldSupportSeparateAllocationAndWritingEntries)
@@ -567,23 +567,29 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TString data2 = "konstantin";
         TString data3 = "petya";
 
-        char* ptr1 = nullptr;
-        char* ptr2 = nullptr;
-        char* ptr3 = nullptr;
+        TFileRingBuffer::TAllocationHandle handle1;
+        TFileRingBuffer::TAllocationHandle handle2;
+        TFileRingBuffer::TAllocationHandle handle3;
 
-        UNIT_ASSERT(rb.AllocateBack(data1.size(), &ptr1));
-        UNIT_ASSERT(rb.AllocateBack(data2.size(), &ptr2));
-        UNIT_ASSERT(!rb.AllocateBack(data3.size(), &ptr3));
+        UNIT_ASSERT(rb.AllocateBack(data1.size(), &handle1));
+        UNIT_ASSERT(rb.AllocateBack(data2.size(), &handle2));
+        UNIT_ASSERT(!rb.AllocateBack(data3.size(), &handle3));
 
-        UNIT_ASSERT(ptr1 != nullptr);
-        UNIT_ASSERT(ptr2 != nullptr);
-        UNIT_ASSERT(ptr3 == nullptr);
+        UNIT_ASSERT(handle1);
+        UNIT_ASSERT(handle2);
+        UNIT_ASSERT(!handle3);
 
-        data2.copy(ptr2, data2.size());
-        rb.CommitAllocation(ptr2);
+        rb.Write(handle2, [&](char* ptr, size_t size) {
+            UNIT_ASSERT_EQUAL(data2.size(), size);
+            data2.copy(ptr, data2.size());
+        });
+        rb.CommitAllocation(handle2);
 
-        data1.copy(ptr1, data1.size());
-        rb.CommitAllocation(ptr1);
+        rb.Write(handle1, [&](char* ptr, size_t size) {
+            UNIT_ASSERT_EQUAL(data1.size(), size);
+            data1.copy(ptr, data1.size());
+        });
+        rb.CommitAllocation(handle1);
 
         UNIT_ASSERT_VALUES_EQUAL("vasya", rb.Front());
         rb.PopFront();
@@ -604,23 +610,29 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TString data4 = "ivan";
         TString data5 = "dima";
 
-        char* ptr1 = nullptr;
-        char* ptr2 = nullptr;
-        char* ptr3 = nullptr;
-        char* ptr4 = nullptr;
-        char* ptr5 = nullptr;
+        TFileRingBuffer::TAllocationHandle handle1;
+        TFileRingBuffer::TAllocationHandle handle2;
+        TFileRingBuffer::TAllocationHandle handle3;
+        TFileRingBuffer::TAllocationHandle handle4;
+        TFileRingBuffer::TAllocationHandle handle5;
 
-        UNIT_ASSERT(rb->AllocateBack(data1.size(), &ptr1));
-        UNIT_ASSERT(rb->AllocateBack(data2.size(), &ptr2));
-        UNIT_ASSERT(rb->AllocateBack(data3.size(), &ptr3));
-        UNIT_ASSERT(rb->AllocateBack(data4.size(), &ptr4));
-        UNIT_ASSERT(rb->AllocateBack(data5.size(), &ptr5));
+        UNIT_ASSERT(rb->AllocateBack(data1.size(), &handle1));
+        UNIT_ASSERT(rb->AllocateBack(data2.size(), &handle2));
+        UNIT_ASSERT(rb->AllocateBack(data3.size(), &handle3));
+        UNIT_ASSERT(rb->AllocateBack(data4.size(), &handle4));
+        UNIT_ASSERT(rb->AllocateBack(data5.size(), &handle5));
 
-        data2.copy(ptr2, data2.size());
-        rb->CommitAllocation(ptr2);
+        rb->Write(handle2, [&](char* ptr, size_t size) {
+            UNIT_ASSERT_EQUAL(data2.size(), size);
+            data2.copy(ptr, data2.size());
+        });
+        rb->CommitAllocation(handle2);
 
-        data4.copy(ptr4, data4.size());
-        rb->CommitAllocation(ptr4);
+        rb->Write(handle4, [&](char* ptr, size_t size) {
+            UNIT_ASSERT_EQUAL(data4.size(), size);
+            data4.copy(ptr, data4.size());
+        });
+        rb->CommitAllocation(handle4);
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
         UNIT_ASSERT_EQUAL("tanya", rb->Front());
@@ -644,11 +656,11 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 len = 64;
         auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
 
-        char* ptr1 = nullptr;
-        char* ptr2 = nullptr;
+        TFileRingBuffer::TAllocationHandle handle1;
+        TFileRingBuffer::TAllocationHandle handle2;
 
-        UNIT_ASSERT(rb->AllocateBack(10, &ptr1));
-        UNIT_ASSERT(rb->AllocateBack(20, &ptr2));
+        UNIT_ASSERT(rb->AllocateBack(10, &handle1));
+        UNIT_ASSERT(rb->AllocateBack(20, &handle2));
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
         UNIT_ASSERT(rb->Empty());

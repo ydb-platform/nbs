@@ -12,6 +12,8 @@ namespace NCloud {
 class TFileRingBuffer
 {
 public:
+    struct TAllocationHandle;
+
     struct TBrokenFileEntry
     {
         TString Data;
@@ -20,6 +22,7 @@ public:
     };
 
     using TVisitor = std::function<void(ui32 checksum, TStringBuf entry)>;
+    using TAllocationWriter = std::function<void(char* data, size_t size)>;
 
 private:
     class TImpl;
@@ -32,8 +35,9 @@ public:
 public:
     bool PushBack(TStringBuf data);
     ui64 MaxAllocationSize() const;
-    bool AllocateBack(size_t size, char** ptr);
-    void CommitAllocation(char* ptr);
+    bool AllocateBack(size_t size, TAllocationHandle* allocation);
+    void Write(TAllocationHandle allocation, const TAllocationWriter& writer);
+    void CommitAllocation(TAllocationHandle allocation);
     TStringBuf Front() const;
     TStringBuf Back() const;
     void PopFront();
@@ -42,6 +46,22 @@ public:
     TVector<TBrokenFileEntry> Validate();
     void Visit(const TVisitor& visitor);
     bool IsCorrupted() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFileRingBuffer::TAllocationHandle
+{
+private:
+    friend class TImpl;
+    static constexpr ui64 InvalidHandle = Max<ui64>();
+    ui64 Handle = InvalidHandle;
+
+public:
+    explicit operator bool() const
+    {
+        return Handle != InvalidHandle;
+    }
 };
 
 }   // namespace NCloud
