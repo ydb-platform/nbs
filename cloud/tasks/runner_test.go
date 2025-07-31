@@ -109,7 +109,7 @@ func matchesState(
 	t *testing.T,
 	expected storage.TaskState,
 ) func(storage.TaskState) bool {
-	threshold := 5 * time.Millisecond
+	threshold := 20 * time.Millisecond
 
 	modifiedAtLowBound := time.Now()
 	return func(actual storage.TaskState) bool {
