@@ -252,8 +252,10 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             GetErrorKind(error) == EErrorKind::ErrorRetriable &&
             Config->GetRetryAcquireReleaseDiskTimeout())
         {
+            auto delay = BackoffDelayProviderForAcquireReleaseDiskRequests
+                             .GetDelayAndIncrease();
             ctx.Schedule(
-                Config->GetRetryAcquireReleaseDiskTimeout(),
+                delay,
                 std::make_unique<TEvVolume::TEvRetryAcquireDisk>().release());
             return;
         }
@@ -270,14 +272,17 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             PendingClientRequests.pop_front();
             ProcessNextPendingClientRequest(ctx);
         }
-    } else if (cr) {
-        ExecuteTx<TAddClient>(
-            ctx,
-            cr->RequestInfo,
-            cr->DiskId,
-            cr->PipeServerActorId,
-            cr->AddedClientInfo
-        );
+    } else {
+        BackoffDelayProviderForAcquireReleaseDiskRequests.Reset();
+
+        if (cr) {
+            ExecuteTx<TAddClient>(
+                ctx,
+                cr->RequestInfo,
+                cr->DiskId,
+                cr->PipeServerActorId,
+                cr->AddedClientInfo);
+        }
     }
 
     AcquireReleaseDiskRequests.pop_front();
