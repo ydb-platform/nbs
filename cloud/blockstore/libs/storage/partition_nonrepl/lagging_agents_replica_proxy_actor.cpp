@@ -378,17 +378,15 @@ void TLaggingAgentsReplicaProxyActor::WriteBlocks(
         }
     }
 
-    TResultOrError<TVector<TSplitRequest>> result =
-        SplitRequest<TMethod>(ev, deviceRequests);
-    if (HasError(result.GetError())) {
+    auto&& [requests, error] = SplitRequest<TMethod>(ev, deviceRequests);
+    if (HasError(error)) {
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<typename TMethod::TResponse>(result.GetError()));
+            std::make_unique<typename TMethod::TResponse>(std::move(error)));
         return;
     }
 
-    auto requests = result.ExtractResult();
     Y_DEBUG_ABORT_UNLESS(!requests.empty());
     Y_DEBUG_ABORT_UNLESS(requests.size() <= deviceRequests.size());
 
