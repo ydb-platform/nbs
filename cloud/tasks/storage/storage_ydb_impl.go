@@ -1784,6 +1784,59 @@ func (s *storageYDB) sendEvent(
 	return tx.Commit(ctx)
 }
 
+func (s *storageYDB) clearEndedTasksChunk(
+	ctx context.Context,
+	session *persistence.Session,
+	endedBefore time.Time,
+	limit int,
+) (bool, error) {
+
+	res, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $ended_before as Timestamp;
+			declare $limit as Uint64;
+			
+			$ended_tasks = (
+				select * from ended
+				where ended_at < $ended_before
+				limit $limit
+			);
+
+			delete from ended
+			on select ended_at, id from $ended_tasks;
+
+			delete from task_ids
+			on select idempotency_key, account_id from $ended_tasks;
+
+			delete from tasks
+			on select id from $ended_tasks;
+
+			select count(*) as deleted_count from $ended_tasks;
+		`, s.tablesPath),
+		persistence.ValueParam("$ended_before", persistence.TimestampValue(endedBefore)),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+	)
+	if err != nil {
+		return false, err
+	}
+	defer res.Close()
+
+	var deletedCount uint64
+	if res.NextResultSet(ctx) && res.NextRow() {
+		err = res.ScanNamed(
+			persistence.OptionalWithDefault("deleted_count", &deletedCount),
+		)
+		if err != nil {
+			return false, err
+		}
+	}
+
+	logging.Info(ctx, "Cleared %v ended tasks", deletedCount)
+
+	return deletedCount > 0, nil
+}
+
 func (s *storageYDB) clearEndedTasks(
 	ctx context.Context,
 	session *persistence.Session,
@@ -1791,94 +1844,16 @@ func (s *storageYDB) clearEndedTasks(
 	limit int,
 ) error {
 
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $ended_before as Timestamp;
-		declare $limit as Uint64;
+	for {
+		more, err := s.clearEndedTasksChunk(ctx, session, endedBefore, limit)
+		if err != nil {
+			return err
+		}
 
-		select *
-		from ended
-		where ended_at < $ended_before
-		limit $limit
-	`, s.tablesPath),
-		persistence.ValueParam("$ended_before", persistence.TimestampValue(endedBefore)),
-		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
-	)
-	if err != nil {
-		return err
-	}
-	defer res.Close()
-
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			var (
-				endedAt        time.Time
-				taskID         string
-				idempotencyKey string
-				accountID      string
-			)
-			err = res.ScanNamed(
-				persistence.OptionalWithDefault("ended_at", &endedAt),
-				persistence.OptionalWithDefault("id", &taskID),
-				persistence.OptionalWithDefault("idempotency_key", &idempotencyKey),
-				persistence.OptionalWithDefault("account_id", &accountID),
-			)
-			if err != nil {
-				return err
-			}
-
-			execute := func(deleteFromTaskIds string) error {
-				_, err = session.ExecuteRW(ctx, fmt.Sprintf(`
-					--!syntax_v1
-					pragma TablePathPrefix = "%v";
-					declare $ended_at as Timestamp;
-					declare $task_id as Utf8;
-					declare $idempotency_key as Utf8;
-					declare $account_id as Utf8;
-					declare $finished as Int64;
-					declare $cancelled as Int64;
-
-					delete from tasks
-					where id = $task_id and (status = $finished or status = $cancelled);
-
-					%v
-
-					delete from ended
-					where ended_at = $ended_at and id = $task_id
-				`, s.tablesPath, deleteFromTaskIds),
-					persistence.ValueParam("$ended_at", persistence.TimestampValue(endedAt)),
-					persistence.ValueParam("$task_id", persistence.UTF8Value(taskID)),
-					persistence.ValueParam("$idempotency_key", persistence.UTF8Value(idempotencyKey)),
-					persistence.ValueParam("$account_id", persistence.UTF8Value(accountID)),
-					persistence.ValueParam("$finished", persistence.Int64Value(int64(TaskStatusFinished))),
-					persistence.ValueParam("$cancelled", persistence.Int64Value(int64(TaskStatusCancelled))),
-				)
-				return err
-			}
-
-			if len(idempotencyKey) == 0 {
-				err = execute("")
-			} else {
-				err = execute(`
-					delete from task_ids
-					where idempotency_key = $idempotency_key and account_id = $account_id;
-				`)
-			}
-			if err != nil {
-				return err
-			}
-
-			logging.Info(
-				ctx,
-				"Cleared task with id %v, ended at %v",
-				taskID,
-				endedAt,
-			)
+		if !more {
+			return nil
 		}
 	}
-
-	return nil
 }
 
 func (s *storageYDB) forceFinishTask(
