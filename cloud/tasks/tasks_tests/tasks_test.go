@@ -1719,6 +1719,9 @@ func TestClearEndedTasksBulk(t *testing.T) {
 
 	s := createServices(t, ctx, db, 2)
 
+	clearEndedTasksLimit := uint64(1)
+	s.config.ClearEndedTasksLimit = &clearEndedTasksLimit
+
 	err := s.startRunners(ctx)
 	require.NoError(t, err)
 
@@ -1730,74 +1733,64 @@ func TestClearEndedTasksBulk(t *testing.T) {
 		*s.config.ClearEndedTasksTaskScheduleInterval)
 	require.NoError(t, err)
 
-	iterationsCount := 50
+	expiredTime := time.Now().Add(-2 * expirationTimeout)
+	remainingTaskIds := []string{
+		createTaskWithEndTime(
+			t,
+			ctx,
+			s.storage,
+			fmt.Sprintf("%v_remaining_finished", t.Name()),
+			time.Now(),
+			tasks_storage.TaskStatusFinished,
+		),
+		createTaskWithEndTime(
+			t,
+			ctx,
+			s.storage,
+			fmt.Sprintf("%v_remaining_cancelled", t.Name()),
+			time.Now(),
+			tasks_storage.TaskStatusCancelled,
+		),
+		createTaskWithEndTime(
+			t,
+			ctx,
+			s.storage,
+			fmt.Sprintf("%v_remaining_running", t.Name()),
+			expiredTime,
+			tasks_storage.TaskStatusRunning,
+		),
+	}
 
-	actualTaskIds := make([]string, 0)
-	expiredTaskIds := make([]string, 0)
-
-	for i := 0; i < iterationsCount; i++ {
-		expiredTime := time.Now().Add(-2 * expirationTimeout)
-
-		actualTaskIds = append(
-			actualTaskIds,
-			createTaskWithEndTime(
-				t,
-				ctx,
-				s.storage,
-				fmt.Sprintf("%v_actual_finished_%v", t.Name(), i),
-				time.Now(),
-				tasks_storage.TaskStatusFinished,
-			),
-			createTaskWithEndTime(
-				t,
-				ctx,
-				s.storage,
-				fmt.Sprintf("%v_actual_cancelled_%v", t.Name(), i),
-				time.Now(),
-				tasks_storage.TaskStatusCancelled,
-			),
-			createTaskWithEndTime(
-				t,
-				ctx,
-				s.storage,
-				fmt.Sprintf("%v_running_%v", t.Name(), i),
-				expiredTime,
-				tasks_storage.TaskStatusRunning,
-			),
-		)
-
-		expiredTaskIds = append(
-			expiredTaskIds,
-			createTaskWithEndTime(
-				t,
-				ctx,
-				s.storage,
-				fmt.Sprintf("%v_expired_finished_%v", t.Name(), i),
-				expiredTime,
-				tasks_storage.TaskStatusFinished,
-			),
-			createTaskWithEndTime(
-				t,
-				ctx,
-				s.storage,
-				fmt.Sprintf("%v_expired_cancelled_%v", t.Name(), i),
-				expiredTime,
-				tasks_storage.TaskStatusCancelled,
-			),
-		)
+	expiredTaskIds := []string{
+		createTaskWithEndTime(
+			t,
+			ctx,
+			s.storage,
+			fmt.Sprintf("%v_expired_finished", t.Name()),
+			expiredTime,
+			tasks_storage.TaskStatusFinished,
+		),
+		createTaskWithEndTime(
+			t,
+			ctx,
+			s.storage,
+			fmt.Sprintf("%v_expired_cancelled", t.Name()),
+			expiredTime,
+			tasks_storage.TaskStatusCancelled,
+		),
 	}
 
 	// Wait for ClearEndedTasks to run
 	<-time.After(2 * clearScheduleInterval)
 
+	for _, taskId := range remainingTaskIds {
+		_, err := s.storage.GetTask(ctx, taskId)
+		require.NoError(t, err)
+	}
+
 	for _, taskId := range expiredTaskIds {
 		_, err := s.storage.GetTask(ctx, taskId)
 		require.ErrorIs(t, err, errors.NewNotFoundErrorWithTaskID(taskId))
-	}
-
-	for _, taskId := range actualTaskIds {
-		_, err := s.storage.GetTask(ctx, taskId)
-		require.NoError(t, err)
 	}
 }
 
