@@ -688,7 +688,10 @@ void TPartitionActor::HandleHttpInfo_Default(
                 }
 
                 DIV_CLASS_ID("tab-pane", "GroupLatency"){
-                    DumpGroupLatencyTab(out, Info()->TabletID);
+                    DumpGroupLatencyTab(
+                        out,
+                        Info()->TabletID,
+                        GroupOperationTimeTracker);
                 }
             }
         }

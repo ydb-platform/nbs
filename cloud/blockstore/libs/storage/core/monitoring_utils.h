@@ -204,6 +204,15 @@ void RenderAutoRefreshScript(
     int intervalMs,
     const TString& jsUpdateFunctionName);
 
-void DumpGroupLatencyTab(IOutputStream& out, ui64 tabletId);
+void AddGroupLatencyCSS(IOutputStream& out);
+
+void DumpLatencyForOperations(
+    IOutputStream& out,
+    const TGroupOperationTimeTracker& tracker);
+
+void DumpGroupLatencyTab(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TGroupOperationTimeTracker& tracker);
 
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils

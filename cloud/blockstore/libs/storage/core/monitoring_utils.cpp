@@ -1433,228 +1433,196 @@ void RenderAutoRefreshScript(
 </script>)";
 }
 
-void DumpGroupLatencyTab(IOutputStream& out, ui64 tabletId)
+void AddGroupLatencyCSS(IOutputStream& out)
+{
+    out << "<style>"
+        << R"(
+        #latency-table-Read th, #latency-table-Write th {
+            position: relative;
+            width: 30px;
+            height: 70px;
+            padding: 0 5px;
+            vertical-align: bottom;
+            border: 1px solid #ccc;
+            white-space: nowrap;
+            overflow: visible;
+            text-align: center;
+        }
+        #latency-table-Read th > div,
+        #latency-table-Write th > div {
+            position: absolute;
+            bottom: 35px;
+            left: 60%;
+            transform: translateX(-50%) rotate(-90deg);
+            transform-origin: bottom center;
+            white-space: nowrap;
+            padding: 0 5px;
+            font-size: 12px;
+            max-width: 160px;
+            word-wrap: break-word;
+        }
+        #latency-table-Read, #latency-table-Write {
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            width: max-content;
+        }
+        #latency-table-Read td, #latency-table-Write td {
+            border: 1px solid #ccc;
+            padding: 5px;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+        #latency-table-Read td:first-child,
+        #latency-table-Write td:first-child {
+            text-align: left;
+            font-weight: bold;
+        })"
+        << "</style>";
+}
+
+void DumpLatencyForOperations(
+    IOutputStream& out,
+    const TGroupOperationTimeTracker& tracker)
+{
+    const auto timeBuckets = tracker.GetTimeBuckets();
+
+    for (const TString& op: {"Read", "Write"}) {
+        out << "<h3>" << op << " Latency by Group</h3>";
+        out << "<table id='latency-table-" << op << "'>";
+        out << "<thead><tr><th>Group ID</th>";
+
+        for (const auto& bucket: timeBuckets) {
+            out << "<th title='" << bucket.Tooltip << "' data-bucket-key='"
+                << bucket.Key << "'><div>" << bucket.Description
+                << "</div></th>";
+        }
+        out << "</tr></thead><tbody></tbody></table>";
+    }
+}
+
+void DumpGroupLatencyTab(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TGroupOperationTimeTracker& tracker)
 {
     const TString containerId = "group-latency-container";
     const TString toggleId = "group-latency-auto-refresh-toggle";
 
     HTML (out) {
+        AddGroupLatencyCSS(out);
+
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
 
-        out << "<div id='" << containerId
-            << "' style='overflow-x: auto; border: 1px solid "
-               "#ddd;'>"
-            << "<p style='text-align:center; color: #666; "
-               "margin: 10px;'>No records yet...</p>"
-            << "</div>";
-    }
-    out << R"(<script>
-    const timeBucketsValues = [
-        1, 100, 200, 300, 400, 500, 600, 700, 800, 900,
-        1000, 2000, 5000, 10000, 20000, 50000,
-        100000, 200000, 500000,
-        1000000, 2000000, 5000000,
-        10000000, 35000000, Number.POSITIVE_INFINITY
-    ];
+        out << "<div id='" << containerId << "'></div>";
 
-    function parseKey(key) {
-        const parts = key.split('_');
-        if (parts.length < 4) {
-            return null;
-        }
-        return {
-            op: parts[0],
-            groupId: parts[1],
-            status: parts[2],
-            latencyBucket: parts.slice(3).join('_')
-        };
-    }
+        DumpLatencyForOperations(out, tracker);
 
-    function formatLatencyLabel(label) {
-        if (label === "Total") {
-            return "Total";
-        }
-        if (label === "Inf") {
-            return "Inf";
-        }
-        const us = parseFloat(label);
-        if (isNaN(us)) return label;
-
-        if (us < 1000) {
-            return us.toLocaleString() + " us";
-        } else if (us < 1000000) {
-            return (us / 1000).toLocaleString() + " ms";
-        } else {
-            return (us / 1000000).toLocaleString() + " s";
-        }
-    }
-
-    function formatRangeTooltip(index) {
-        if (index < 0 || index >= timeBucketsValues.length) {
-            return "";
-        }
-        if (timeBucketsValues[index] === Number.POSITIVE_INFINITY) {
-            return "[" + formatLatencyLabel(timeBucketsValues[index - 1]) + "..Inf]";
-        }
-        let low = index === 0 ? 0 : timeBucketsValues[index - 1];
-        let high = timeBucketsValues[index];
-        return "[" + formatLatencyLabel(low) + ".." + formatLatencyLabel(high) + "]";
-    }
-
-    function buildLatencyTables(stat, container) {
-        const finished = { Read: {}, Write: {} };
-        const inflight = { Read: {}, Write: {} };
-
-        for (const key in stat) {
-            const info = parseKey(key);
-            if (!info) {
-                continue;
-            }
-            if (!(info.op in finished)) {
-                continue;
+        out << R"(
+            <script>
+            function parseKey(key) {
+                const parts = key.split('_');
+                if (parts.length < 4) {
+                    return null;
+                }
+                return {
+                    op: parts[0],
+                    groupId: parts[1],
+                    status: parts[2],
+                    latencyBucket: parts.slice(3).join('_')
+                };
             }
 
-            const target = (info.status === "finished") ? finished :
-                        (info.status === "inflight") ? inflight : null;
-            if (!target) {
-                continue;
-            }
-
-            if (!target[info.op][info.groupId]) {
-                target[info.op][info.groupId] = {};
-            }
-            target[info.op][info.groupId][info.latencyBucket] = stat[key];
-        }
-
-        const hasData = Object.values(finished).some(op =>
-            Object.values(op).some(statusObj =>
-                Object.keys(statusObj).length > 0
-            )
-        );
-        if (!hasData) {
-            container.innerHTML = "<p style='text-align:center; color:#666; margin:10px;'>No records yet...</p>";
-            return;
-        }
-
-        container.innerHTML = "";
-
-        ["Read", "Write"].forEach(op => {
-            const groups = Object.keys(finished[op]);
-            if (groups.length === 0) {
-                return;
-            }
-
-            const latencyBucketsSet = new Set();
-            groups.forEach(g => {
-                if (finished[op][g]) Object.keys(finished[op][g]).forEach(bucket => latencyBucketsSet.add(bucket));
-                if (inflight[op][g]) Object.keys(inflight[op][g]).forEach(bucket => latencyBucketsSet.add(bucket));
-            });
-
-            const latencyBuckets = Array.from(latencyBucketsSet).sort((a,b) => {
-                if (a === "Total") return 1;
-                if (b === "Total") return -1;
-                if (a === "Inf") return 1;
-                if (b === "Inf") return -1;
-                return parseFloat(a) - parseFloat(b);
-            });
-
-            const title = document.createElement("h3");
-            title.textContent = op + " Latency by Group";
-            container.appendChild(title);
-
-            const table = document.createElement("table");
-            table.style.borderCollapse = "collapse";
-            table.style.marginBottom = "20px";
-
-            const thead = table.createTHead();
-            const trHead = thead.insertRow();
-
-            const thGroup = document.createElement("th");
-            thGroup.textContent = "Group ID";
-            thGroup.style.border = "1px solid #ccc";
-            thGroup.style.padding = "5px";
-            trHead.appendChild(thGroup);
-
-            latencyBuckets.forEach(bucket => {
-                const th = document.createElement("th");
-                th.textContent = formatLatencyLabel(bucket);
-                th.title = "";
-
-                let idx = timeBucketsValues.indexOf(Number(bucket));
-
-                if (idx === -1 && bucket === "Total") {
-                    th.title = "Total";
-                } else if (idx === -1 && bucket === "Inf") {
-                    idx = timeBucketsValues.length - 1;
-                    th.title = formatRangeTooltip(idx);
-                } else if (idx !== -1) {
-                    th.title = formatRangeTooltip(idx);
+            function updateGroupLatencyTable(result, container) {
+                if (!result || !result.stat) {
+                    return;
                 }
 
-                th.style.border = "1px solid #ccc";
-                th.style.padding = "5px";
-                trHead.appendChild(th);
-            });
+                const finished = { Read: {}, Write: {} };
+                const inflight = { Read: {}, Write: {} };
 
-            const tbody = table.createTBody();
-            groups.forEach(groupId => {
-                const tr = tbody.insertRow();
-
-                let td = tr.insertCell();
-                td.textContent = groupId;
-                td.style.border = "1px solid #ccc";
-                td.style.padding = "5px";
-                td.style.fontWeight = "bold";
-
-                latencyBuckets.forEach(bucket => {
-                    const td = tr.insertCell();
-
-                    const finVal = finished[op][groupId] && finished[op][groupId][bucket] ? finished[op][groupId][bucket] : "0";
-                    const inflightVal = inflight[op][groupId] && inflight[op][groupId][bucket] ? inflight[op][groupId][bucket] : "0";
-
-                    td.style.border = "1px solid #ccc";
-                    td.style.padding = "5px";
-                    td.style.textAlign = "right";
-                    td.style.whiteSpace = "nowrap";
-
-                    td.textContent = "";
-
-                    const spanFinished = document.createElement("span");
-                    spanFinished.textContent = finVal;
-                    td.appendChild(spanFinished);
-
-                    if (inflightVal && inflightVal !== "0") {
-                        const spanPlus = document.createElement("span");
-                        spanPlus.textContent = " ";
-                        td.appendChild(spanPlus);
-
-                        const spanInflight = document.createElement("span");
-                        spanInflight.textContent = inflightVal;
-                        td.appendChild(spanInflight);
+                for (const key in result.stat) {
+                    const info = parseKey(key);
+                    if (!info) {
+                        continue;
                     }
+                    if (!(info.op in finished)) {
+                        continue;
+                    }
+
+                    const target = info.status === "finished" ? finished : (info.status === "inflight" ? inflight : null);
+                    if (!target) {
+                        continue;
+                    }
+
+                    if (!target[info.op][info.groupId]) {
+                        target[info.op][info.groupId] = {};
+                    }
+                    target[info.op][info.groupId][info.latencyBucket] = result.stat[key];
+                }
+
+                ['Read', 'Write'].forEach(op => {
+                    const tbody = document.querySelector('#latency-table-' + op + ' tbody');
+                    if (!tbody) {
+                        return;
+                    }
+
+                    const groups = new Set([...Object.keys(finished[op] || {}), ...Object.keys(inflight[op] || {})]);
+
+                    groups.forEach(groupId => {
+                        let tr = tbody.querySelector('tr[data-group="' + groupId + '"]');
+                        if (!tr) {
+                            tr = document.createElement('tr');
+                            tr.setAttribute('data-group', groupId);
+
+                            const tdGroup = document.createElement('td');
+                            tdGroup.textContent = groupId;
+                            tr.appendChild(tdGroup);
+
+                            const colsCount = document.querySelectorAll('#latency-table-' + op + ' thead th').length - 1;
+                            for (let i = 0; i < colsCount; ++i) {
+                                const td = document.createElement('td');
+                                tr.appendChild(td);
+                            }
+                            tbody.appendChild(tr);
+                        }
+
+                        const headers = document.querySelectorAll('#latency-table-' + op + ' thead th');
+                        for (let i = 1; i < headers.length; i++) {
+                            const bucketKey = headers[i].getAttribute('data-bucket-key');
+                            const td = tr.children[i];
+
+                            const finVal = (finished[op][groupId] && finished[op][groupId][bucketKey]) ? finished[op][groupId][bucketKey] : "0";
+                            const inflightVal = (inflight[op][groupId] && inflight[op][groupId][bucketKey]) ? inflight[op][groupId][bucketKey] : "0";
+
+                            td.textContent = "";
+
+                            const spanFinished = document.createElement("span");
+                            spanFinished.textContent = finVal;
+                            td.appendChild(spanFinished);
+
+                            if (inflightVal && inflightVal !== "0") {
+                                td.appendChild(document.createTextNode(" "));
+                                const spanInflight = document.createElement("span");
+                                spanInflight.textContent = inflightVal;
+                                td.appendChild(spanInflight);
+                            }
+                        }
+                    });
                 });
-            });
+            }
+            </script>
+        )";
 
-            container.appendChild(table);
-        });
+        RenderAutoRefreshScript(
+            out,
+            containerId,
+            toggleId,
+            "getGroupLatencies",
+            tabletId,
+            1000,
+            "updateGroupLatencyTable");
     }
-
-    function updateGroupLatencyTable(result, container) {
-        if (!result || !result.stat) {
-            return;
-        }
-        buildLatencyTables(result.stat, container);
-    }
-    </script>)";
-
-    RenderAutoRefreshScript(
-        out,
-        containerId,
-        toggleId,
-        "getGroupLatencies",
-        tabletId,
-        1000,
-        "updateGroupLatencyTable");
 }
 
 }   // namespace NMonitoringUtils
