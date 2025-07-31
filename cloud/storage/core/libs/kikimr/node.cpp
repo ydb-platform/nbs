@@ -300,6 +300,20 @@ struct TDiscoveryNodeRegistrant
         location.Rack = Options.Rack;
         location.Unit = ToString(Options.Body);
 
+        // Fill legacy fields for compatibility with nodes that
+        // were previously registered with TLegacyNodeRegistrant
+        NActorsInterconnect::TNodeLocation proto;
+        proto.SetDataCenter(Options.DataCenter);
+        proto.SetRack(Options.Rack);
+        proto.SetUnit(ToString(Options.Body));
+
+        auto legacyValue = TNodeLocation(proto).GetLegacyValue();
+
+        location.DataCenterNum = legacyValue.DataCenter;
+        location.RoomNum = legacyValue.Room;
+        location.RackNum = legacyValue.Rack;
+        location.BodyNum = legacyValue.Body;
+
         Settings.Location(location);
         Settings.Address(HostAddress);
         Settings.ResolveHost(HostName);
