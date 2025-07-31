@@ -1,133 +1,133 @@
 TEST SUITE[rmdir, 00.t] 1..10
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-not ok 8
-not ok 9
-ok 10
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 19)
+ok 6 (line: 20)
+ok 7 (line: 23)
+not ok 8 (line: 25)
+not ok 9 (line: 27)
+ok 10 (line: 28)
 TEST SUITE[rmdir, 01.t] 1..14
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-ok 11
-ok 12
-ok 13
-ok 14
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 18)
+ok 6 (line: 20)
+ok 7 (line: 21)
+ok 8 (line: 22)
+ok 9 (line: 24)
+ok 10 (line: 25)
+ok 11 (line: 26)
+ok 12 (line: 28)
+ok 13 (line: 29)
+ok 14 (line: 30)
 TEST SUITE[rmdir, 02.t] 1..4
-ok 1
-ok 2
-ok 3
-ok 4
+ok 1 (line: 11)
+ok 2 (line: 12)
+ok 3 (line: 13)
+ok 4 (line: 14)
 TEST SUITE[rmdir, 03.t] 1..12
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-ok 11
-ok 12
+ok 1 (line: 11)
+ok 2 (line: 12)
+ok 3 (line: 13)
+ok 4 (line: 14)
+ok 5 (line: 15)
+ok 6 (line: 16)
+ok 7 (line: 17)
+ok 8 (line: 19)
+ok 9 (line: 21)
+ok 10 (line: 22)
+ok 11 (line: 23)
+ok 12 (line: 24)
 TEST SUITE[rmdir, 04.t] 1..4
-ok 1
-ok 2
-ok 3
-ok 4
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
 TEST SUITE[rmdir, 05.t] 1..6
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 18)
+ok 6 (line: 19)
 TEST SUITE[rmdir, 06.t] 1..20
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-ok 11
-ok 12
-ok 13
-ok 14
-ok 15
-ok 16
-ok 17
-ok 18
-ok 19
-ok 20
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 18)
+ok 6 (line: 20)
+ok 7 (line: 21)
+ok 8 (line: 22)
+ok 9 (line: 23)
+ok 10 (line: 24)
+ok 11 (line: 26)
+ok 12 (line: 27)
+ok 13 (line: 28)
+ok 14 (line: 29)
+ok 15 (line: 30)
+ok 16 (line: 32)
+ok 17 (line: 33)
+ok 18 (line: 34)
+ok 19 (line: 35)
+ok 20 (line: 36)
 TEST SUITE[rmdir, 07.t] 1..10
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
+ok 1 (line: 15)
+ok 2 (line: 18)
+ok 3 (line: 19)
+ok 4 (line: 20)
+ok 5 (line: 21)
+ok 6 (line: 22)
+ok 7 (line: 23)
+ok 8 (line: 24)
+ok 9 (line: 25)
+ok 10 (line: 27)
 TEST SUITE[rmdir, 08.t] 1..10
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
+ok 1 (line: 15)
+ok 2 (line: 18)
+ok 3 (line: 19)
+ok 4 (line: 20)
+ok 5 (line: 21)
+ok 6 (line: 22)
+ok 7 (line: 23)
+ok 8 (line: 24)
+ok 9 (line: 25)
+ok 10 (line: 27)
 TEST SUITE[rmdir, 09.t] 1..1
 ok 1
 TEST SUITE[rmdir, 10.t] 1..1
 ok 1
 TEST SUITE[rmdir, 11.t] 1..15
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-ok 11
-ok 12
-ok 13
-ok 14
-ok 15
+ok 1 (line: 15)
+ok 2 (line: 19)
+ok 3 (line: 20)
+ok 4 (line: 21)
+ok 5 (line: 24)
+ok 6 (line: 25)
+ok 7 (line: 27)
+ok 8 (line: 28)
+ok 9 (line: 30)
+ok 10 (line: 31)
+ok 11 (line: 33)
+ok 12 (line: 34)
+ok 13 (line: 35)
+ok 14 (line: 37)
+ok 15 (line: 40)
 TEST SUITE[rmdir, 12.t] 1..6
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 22)
+ok 5 (line: 28)
+ok 6 (line: 29)
 TEST SUITE[rmdir, 13.t] 1..1
 ok 1
 TEST SUITE[rmdir, 14.t] 1..1
 ok 1
 TEST SUITE[rmdir, 15.t] 1..2
-ok 1
-ok 2
+ok 1 (line: 11)
+ok 2 (line: 12)

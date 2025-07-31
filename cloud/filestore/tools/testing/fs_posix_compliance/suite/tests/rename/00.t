@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # $FreeBSD: src/tools/regression/fstest/tests/rename/00.t,v 1.1 2007/01/17 01:42:10 pjd Exp $
 
 desc="rename changes file name"

@@ -83,9 +83,9 @@ expect()
 	r=`${fstest} $* 2>/dev/null | tail -1`
 	echo "${r}" | egrep '^'${e}'$' >/dev/null 2>&1
 	if [ $? -eq 0 ]; then
-		echo "ok ${ntest}"
+		echo "ok ${ntest} (line: ${BASH_LINENO[0]})"
 	else
-		echo "not ok ${ntest}"
+		echo "not ok ${ntest} (line: ${BASH_LINENO[0]})"
         echo "$(log_tag) not ok -- $@: $r expected $e" 1>&2
 	fi
 
@@ -98,12 +98,12 @@ jexpect()
 	d="${2}"
 	e="${3}"
 	shift 3
-	r=`jail -s ${s} / fstest 127.0.0.1 /bin/sh -c "cd ${d} && ${fstest} $* 2>/dev/null" | tail -1`
+	r=`jail -s ${s} / fstest 127.0.0.1 /bin/bash -c "cd ${d} && ${fstest} $* 2>/dev/null" | tail -1`
 	echo "${r}" | egrep '^'${e}'$' >/dev/null 2>&1
 	if [ $? -eq 0 ]; then
-		echo "ok ${ntest}"
+		echo "ok ${ntest} (line: ${BASH_LINENO[0]})"
     else
-        echo "not ok ${ntest}"
+        echo "not ok ${ntest} (line: ${BASH_LINENO[0]})"
 	fi
 	ntest=`expr $ntest + 1`
 }
@@ -111,9 +111,9 @@ jexpect()
 test_check()
 {
 	if [ $* ]; then
-		echo "ok ${ntest}"
+		echo "ok ${ntest} (line: ${BASH_LINENO[0]})"
 	else
-		echo "not ok ${ntest}"
+		echo "not ok ${ntest} (line: ${BASH_LINENO[0]})"
         echo "$(log_tag) check failed -- $@" 1>&2
 	fi
 	ntest=`expr $ntest + 1`

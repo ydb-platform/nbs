@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # $FreeBSD: src/tools/regression/fstest/tests/mkdir/00.t,v 1.2 2007/01/25 20:50:02 pjd Exp $
 
 desc="mkdir creates directories"
