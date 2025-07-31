@@ -22,8 +22,8 @@
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
-#include <cloud/blockstore/libs/notify/config.h>
-#include <cloud/blockstore/libs/notify/notify.h>
+#include <cloud/blockstore/libs/notify/iface/config.h>
+#include <cloud/blockstore/libs/notify/impl/notify.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/fake/client.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>

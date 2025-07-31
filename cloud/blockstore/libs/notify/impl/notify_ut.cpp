@@ -1,7 +1,8 @@
 #include "notify.h"
 
-#include "config.h"
 #include "json_generator.h"
+
+#include <cloud/blockstore/libs/notify/iface/config.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
@@ -153,40 +154,6 @@ void ShouldNotifyAboutLotsOfDiskErrorsImpl(int version)
 
 Y_UNIT_TEST_SUITE(TNotifyTest)
 {
-    Y_UNIT_TEST(ShouldNull)
-    {
-        auto logging = CreateLoggingService("console");
-
-        auto service = CreateNullService(logging);
-        service->Start();
-
-        auto r = service->Notify({
-            .CloudId = "yc-nbs",
-            .FolderId = "yc-nbs.folder",
-            .Event = TDiskError{ .DiskId = "nrd0" },
-        }).GetValue(WaitTimeout);
-
-        UNIT_ASSERT_C(!HasError(r), r);
-
-        service->Stop();
-    }
-
-    Y_UNIT_TEST(ShouldStub)
-    {
-        auto service = CreateServiceStub();
-        service->Start();
-
-        auto r = service->Notify({
-            .CloudId = "yc-nbs",
-            .FolderId = "yc-nbs.folder",
-            .Event = TDiskError{ .DiskId = "nrd0" },
-        }).GetValue(WaitTimeout);
-
-        UNIT_ASSERT_C(!HasError(r), r);
-
-        service->Stop();
-    }
-
     Y_UNIT_TEST(ShouldNotifyDiskError)
     {
         ShouldNotifyDiskErrorImpl(V1);

@@ -5,7 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
-#include <cloud/blockstore/libs/notify/public.h>
+#include <cloud/blockstore/libs/notify/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>

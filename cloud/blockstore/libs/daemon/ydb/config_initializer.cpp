@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/discovery/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
-#include <cloud/blockstore/libs/notify/config.h>
+#include <cloud/blockstore/libs/notify/iface/config.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
