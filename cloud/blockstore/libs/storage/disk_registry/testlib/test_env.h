@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
-#include <cloud/blockstore/libs/notify/public.h>
+#include <cloud/blockstore/libs/notify/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>

@@ -6,11 +6,8 @@ namespace NCloud::NBlockStore::NNotify {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TJsonGenerator final: public IJsonGenerator
+struct TJsonGenerator final: public IJsonGenerator
 {
-public:
-    TJsonGenerator() = default;
-
     NJson::TJsonMap Generate(const TNotification& data) override;
 };
 

@@ -67,10 +67,3 @@ NJson::TJsonMap TJsonGenerator::Generate(const TNotification& data)
 }
 
 }   // namespace NCloud::NBlockStore::NNotify
-
-Y_DECLARE_OUT_SPEC(, NCloud::NBlockStore::NNotify::TEvent, out, event)
-{
-    using namespace NCloud::NBlockStore::NNotify;
-
-    std::visit([&](const auto& e) { OutputEvent(out, e); }, event);
-}

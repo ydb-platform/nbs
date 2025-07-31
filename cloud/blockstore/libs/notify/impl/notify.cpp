@@ -1,7 +1,10 @@
 #include "notify.h"
 
-#include "config.h"
 #include "https.h"
+#include "json_generator.h"
+
+#include <cloud/blockstore/libs/notify/iface/config.h>
+#include <cloud/blockstore/libs/notify/iface/notify.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
@@ -16,59 +19,6 @@ namespace NCloud::NBlockStore::NNotify {
 using namespace NThreading;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TServiceStub final
-    : public IService
-{
-public:
-    void Start() override
-    {}
-
-    void Stop() override
-    {}
-
-    TFuture<NProto::TError> Notify(const TNotification& data) override
-    {
-        Y_UNUSED(data);
-
-        return MakeFuture(NProto::TError());
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TServiceNull final
-    : public IService
-{
-private:
-    const ILoggingServicePtr Logging;
-    TLog Log;
-
-public:
-    explicit TServiceNull(ILoggingServicePtr logging)
-        : Logging(std::move(logging))
-    {}
-
-    void Start() override
-    {
-        Log = Logging->CreateLog("BLOCKSTORE_NOTIFY");
-    }
-
-    void Stop() override
-    {}
-
-    TFuture<NProto::TError> Notify(const TNotification& data) override
-    {
-        STORAGE_WARN("Discard notification "
-            << data.Event
-            << " " << data.UserId.Quote()
-            << " " << data.CloudId.Quote() << "/" << data.FolderId.Quote());
-
-        return MakeFuture(NProto::TError());
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -206,14 +156,14 @@ IServicePtr CreateService(
         std::move(jsonGenerator));
 }
 
-IServicePtr CreateServiceStub()
+IServicePtr CreateService(
+    TNotifyConfigPtr config,
+    NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr)
 {
-    return std::make_shared<TServiceStub>();
-}
-
-IServicePtr CreateNullService(ILoggingServicePtr logging)
-{
-    return std::make_shared<TServiceNull>(std::move(logging));
+    return CreateService(
+        std::move(config),
+        std::move(iamTokenClientPtr),
+        std::make_unique<TJsonGenerator>());
 }
 
 }   // namespace NCloud::NBlockStore::NNotify

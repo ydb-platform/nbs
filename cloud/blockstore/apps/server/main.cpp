@@ -5,8 +5,8 @@
 #include <cloud/blockstore/libs/kms/impl/compute_client.h>
 #include <cloud/blockstore/libs/kms/impl/kms_client.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
-#include <cloud/blockstore/libs/notify/config.h>
-#include <cloud/blockstore/libs/notify/json_generator.h>
+#include <cloud/blockstore/libs/notify/iface/config.h>
+#include <cloud/blockstore/libs/notify/impl/notify.h>
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/server.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
@@ -156,8 +156,7 @@ int main(int argc, char** argv)
         return config->GetEndpoint()
                    ? NNotify::CreateService(
                          std::move(config),
-                         std::move(iamTokenClient),
-                         std::make_unique<NNotify::TJsonGenerator>())
+                         std::move(iamTokenClient))
                    : NNotify::CreateNullService(std::move(logging));
     };
 
