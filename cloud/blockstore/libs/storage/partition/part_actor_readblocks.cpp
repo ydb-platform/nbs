@@ -1200,7 +1200,7 @@ void TPartitionActor::CompleteReadBlocks(
     if (describeBlocksRange.Defined() || requests) {
         const auto readBlocksActorId = NCloud::Register<TReadBlocksActor>(
             ctx,
-            State->GetBaseDiskId(),
+            PartitionConfig.diskid(),
             args.RequestInfo,
             BlockDigestGenerator,
             State->GetBlockSize(),
