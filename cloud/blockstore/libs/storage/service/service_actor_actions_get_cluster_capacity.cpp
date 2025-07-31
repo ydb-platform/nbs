@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
 
+#include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/sys_view/common/events.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -77,7 +78,7 @@ private:
         const TActorContext& ctx);
 
     void HandleGetYDBCapacityResponse(
-        const NSysView::TEvSysView::TEvGetStorageStatsResponse::TPtr& ev,
+        const TEvBlobStorage::TEvControllerConfigResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -194,46 +195,84 @@ void TGetClusterCapacityActor::HandleGetDiskRegistryCapacityResponse(
     CreateBSControllerPipeClient(ctx);
 
     auto request =
-        std::make_unique<NSysView::TEvSysView::TEvGetStorageStatsRequest>();
+        std::make_unique<TEvBlobStorage::TEvControllerConfigRequest>();
+
+    request->Record.MutableRequest()->AddCommand()->MutableQueryBaseConfig();
+    auto& read = *request->Record.MutableRequest()
+                      ->AddCommand()
+                      ->MutableReadStoragePool();
+    read.SetBoxId(UINT64_MAX);
+
     NTabletPipe::SendData(ctx, BSControllerPipeClient, request.release());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TGetClusterCapacityActor::HandleGetYDBCapacityResponse(
-    const NSysView::TEvSysView::TEvGetStorageStatsResponse::TPtr& ev,
+    const TEvBlobStorage::TEvControllerConfigResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    const auto& record = ev->Get()->Record.GetResponse();
 
-    if (msg->Record.GetEntries().empty()) {
+    LOG_DEBUG_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Got BSController capacity response " + record.ShortDebugString());
+
+    if (!record.GetSuccess() || !record.StatusSize() ||
+        !record.GetStatus(0).GetSuccess() || !record.GetStatus(1).GetSuccess())
+    {
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Getting BSController capacity failed");
         HandleEmptyClusterCapacity(ctx, "BSController");
-        return;
     }
+
+    std::map<std::pair<ui64, ui64>, NKikimrBlobStorage::TDefineStoragePool>
+        pools;
+    for (const auto& pool: record.GetStatus(1).GetStoragePool()) {
+        pools[{pool.GetBoxId(), pool.GetStoragePoolId()}] = pool;
+    }
+
+    std::map<ui64, TString> poolNameByGroupID;
+    for (const auto& group: record.GetStatus(0).GetBaseConfig().GetGroup()) {
+        LOG_DEBUG_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Got group " << group.ShortDebugString());
+
+        poolNameByGroupID[group.GetGroupId()] =
+            pools[{group.GetBoxId(), group.GetStoragePoolId()}].GetName();
+    }
+
+    const TString hddPoolName = "NBS:rot";
+    const TString ssdPoolName = "NBS:ssd";
 
     ui64 totalBytesSSD = 0;
     ui64 freeBytesSSD = 0;
     ui64 totalBytesHDD = 0;
     ui64 freeBytesHDD = 0;
 
-    for (auto& entry: msg->Record.GetEntries()) {
-        if (!entry.HasPDiskFilter()) {
-            continue;
-        }
+    for (const auto& vslot: record.GetStatus(0).GetBaseConfig().GetVSlot()) {
+        LOG_DEBUG_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Got vslot " << vslot.ShortDebugString());
 
-        if (entry.GetPDiskFilter().find("SSD") != TString::npos) {
-            freeBytesSSD += entry.GetCurrentAvailableSize();
-            totalBytesSSD += entry.GetCurrentAllocatedSize() +
-                             entry.GetCurrentAvailableSize();
-        } else if (entry.GetPDiskFilter().find("ROT") != TString::npos) {
-            freeBytesHDD += entry.GetCurrentAvailableSize();
-            totalBytesHDD += entry.GetCurrentAllocatedSize() +
-                             entry.GetCurrentAvailableSize();
-        } else {
-            LOG_WARN_S(
-                ctx,
-                TBlockStoreComponents::SERVICE,
-                "Unknown PDiskFilter for YDB group entry");
+        if (poolNameByGroupID[vslot.GetGroupId()].find(ssdPoolName) !=
+            TString::npos)
+        {
+            totalBytesSSD += vslot.GetVDiskMetrics().GetAllocatedSize() +
+                             vslot.GetVDiskMetrics().GetAvailableSize();
+            freeBytesSSD += vslot.GetVDiskMetrics().GetAvailableSize();
+        } else if (
+            poolNameByGroupID[vslot.GetGroupId()].find(hddPoolName) !=
+            TString::npos)
+        {
+            totalBytesHDD += vslot.GetVDiskMetrics().GetAllocatedSize() +
+                             vslot.GetVDiskMetrics().GetAvailableSize();
+            freeBytesHDD += vslot.GetVDiskMetrics().GetAvailableSize();
         }
     }
 
@@ -283,7 +322,7 @@ STFUNC(TGetClusterCapacityActor::StateGetYDBBasedCapacity)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            NSysView::TEvSysView::TEvGetStorageStatsResponse,
+            TEvBlobStorage::TEvControllerConfigResponse,
             HandleGetYDBCapacityResponse);
 
         IgnoreFunc(NKikimr::TEvTabletPipe::TEvClientConnected);
