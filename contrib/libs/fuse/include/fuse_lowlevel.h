@@ -1710,7 +1710,7 @@ void *fuse_session_data(struct fuse_session *se);
  * @param se the session
  * @return 0 on success, -1 on error
  */
-int fuse_session_loop(struct fuse_session *se);
+int fuse_session_loop(struct fuse_session *se, int queue_index);
 
 /**
  * Enter a multi-threaded event loop

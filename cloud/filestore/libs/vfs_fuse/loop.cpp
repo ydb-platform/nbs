@@ -250,7 +250,7 @@ private:
     fuse_args Args = FUSE_ARGS_INIT(0, nullptr);
 
 public:
-    TArgs(const TVFSConfig& config)
+    TArgs(const TVFSConfig& config, ui32 threadsCount)
     {
         AddArg(""); // fuse_opt_parse starts with 1
 
@@ -263,10 +263,13 @@ public:
             AddArg("--socket-path=" + path);
         }
 
+
         // HIPRIO + number of requests queues
-        ui32 queues = Max(2u, config.GetVhostQueuesCount());
-        AddArg("--thread-pool-size=" + ToString(queues));
+        ui32 backendQueues = Max(2u, config.GetVhostQueuesCount());
+        AddArg("--num-backend-queues=" + ToString(backendQueues));
+        AddArg("--num-frontend-queues=" + ToString(threadsCount));
 #else
+        Y_UNUSED(threadsCount);
         if (config.GetReadOnly()) {
             AddArg("-oro");
         }
@@ -304,10 +307,11 @@ private:
 public:
     TSession(
             const TVFSConfig& config,
+            ui32 threadsCount,
             const fuse_lowlevel_ops& ops,
             const TString& state,
             void* context)
-        : Args(config)
+        : Args(config, threadsCount)
     {
         Session = fuse_session_new(Args, &ops, sizeof(ops), context);
         Y_ENSURE(Session, "fuse_session_new() failed");
@@ -404,10 +408,11 @@ private:
 public:
     TSession(
             const TVFSConfig& config,
+            ui32 threadsCount,
             const fuse_lowlevel_ops& ops,
             const TString& state,
             void* context)
-        : Args(config)
+        : Args(config, threadsCount)
         , MountPath(config.GetMountPath())
     {
         Y_UNUSED(state);
@@ -455,24 +460,27 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSessionThread final
+class TFuseLoopThread final
     : public ISimpleThread
 {
 private:
+    TSession& Session;
+    ui32 FuseLoopIndex = 0;
+    ui32 QueueIndex = 0;
     TLog Log;
-    TSession Session;
 
     pthread_t ThreadId = 0;
 
 public:
-    TSessionThread(
-            TLog log,
-            const TVFSConfig& config,
-            const fuse_lowlevel_ops& ops,
-            const TString& state,
-            void* context)
-        : Log(std::move(log))
-        , Session(config, ops, state, context)
+    TFuseLoopThread(
+        TSession& session,
+        ui32 fuseLoopIndex,
+        ui32 queueIndex,
+        TLog log)
+        : Session(session)
+        , FuseLoopIndex(fuseLoopIndex)
+        , QueueIndex(queueIndex)
+        , Log(std::move(log))
     {}
 
     void Start()
@@ -482,9 +490,8 @@ public:
 
     void StopThread()
     {
-        STORAGE_INFO("stopping FUSE loop");
+        STORAGE_INFO("stopping FUSE loop " << FuseLoopIndex << "." << QueueIndex);
 
-        Session.Exit();
         if (auto threadId = AtomicGet(ThreadId)) {
             // session loop may get stuck on sem_wait/read.
             // Interrupt it by sending the thread a signal.
@@ -492,6 +499,72 @@ public:
         }
 
         Join();
+
+        STORAGE_INFO("stopped FUSE loop "  << FuseLoopIndex << "." << QueueIndex);
+    }
+
+private:
+    void* ThreadProc() override
+    {
+        ::NCloud::SetCurrentThreadName(
+            "FUSE" + ToString(FuseLoopIndex) + "." + ToString(QueueIndex),
+            4);
+
+        AtomicSet(ThreadId, pthread_self());
+        fuse_session_loop(Session, QueueIndex);
+
+        return nullptr;
+    }
+};
+
+class TFuseLoop final
+    : public ISimpleThread
+{
+private:
+    TLog Log;
+    TSession Session;
+
+    TVector<std::unique_ptr<TFuseLoopThread>> QueueThreads;
+
+public:
+    TFuseLoop(
+            TLog log,
+            const TVFSConfig& config,
+            ui32 threadsCount,
+            const fuse_lowlevel_ops& ops,
+            const TString& state,
+            void* context)
+        : Log(std::move(log))
+        , Session(config, threadsCount, ops, state, context)
+        , QueueThreads(threadsCount)
+    {
+        static std::atomic<ui64> NexFuseLoopIndex = 0;
+        ui64 fuseLoopIndex = NexFuseLoopIndex++;
+
+        for (ui32 queueIndex = 0; queueIndex < QueueThreads.size(); queueIndex++) {
+            QueueThreads[queueIndex] = std::make_unique<TFuseLoopThread>(
+                Session,
+                fuseLoopIndex,
+                queueIndex,
+                Log);
+        }
+    }
+
+    void Start()
+    {
+        for (auto& thread: QueueThreads) {
+            thread->Start();
+        }
+    }
+
+    void StopThread()
+    {
+        STORAGE_INFO("stopping FUSE loop");
+
+        Session.Exit();
+        for (auto& thread: QueueThreads) {
+            thread->StopThread();
+        }
 
         STORAGE_INFO("stopped FUSE loop");
     }
@@ -517,14 +590,6 @@ public:
 private:
     void* ThreadProc() override
     {
-        STORAGE_INFO("starting FUSE loop");
-
-        static std::atomic<ui64> index = 0;
-        ::NCloud::SetCurrentThreadName("FUSE" + ToString(index++));
-
-        AtomicSet(ThreadId, pthread_self());
-        fuse_session_loop(Session);
-
         return nullptr;
     }
 };
@@ -548,7 +613,7 @@ private:
 
     TString SessionState;
     TString SessionId;
-    std::unique_ptr<TSessionThread> SessionThread;
+    std::unique_ptr<TFuseLoop> FuseLoop;
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
 
     std::shared_ptr<TCompletionQueue> CompletionQueue;
@@ -622,7 +687,7 @@ public:
 
     TFuture<void> StopAsync() override
     {
-        if (!SessionThread) {
+        if (!FuseLoop) {
             return MakeFuture();
         }
 
@@ -637,8 +702,8 @@ public:
                 return;
             }
 
-            p->SessionThread->Unmount();
-            p->SessionThread = nullptr;
+            p->FuseLoop->Unmount();
+            p->FuseLoop = nullptr;
 
             auto callContext = MakeIntrusive<TCallContext>(
                 p->Config->GetFileSystemId(),
@@ -713,7 +778,7 @@ public:
 
     TFuture<void> SuspendAsync() override
     {
-        if (!SessionThread) {
+        if (!FuseLoop) {
             return MakeFuture();
         }
 
@@ -729,9 +794,9 @@ public:
             }
 
             // just stop loop, leave connection
-            p->SessionThread->StopThread();
-            p->SessionThread->Suspend();
-            p->SessionThread = nullptr;
+            p->FuseLoop->StopThread();
+            p->FuseLoop->Suspend();
+            p->FuseLoop = nullptr;
 
             p->StatsRegistry->Unregister(
                 p->Config->GetFileSystemId(),
@@ -961,14 +1026,20 @@ private:
                 Config->GetClientId().Quote().c_str(),
                 filestoreConfigDump.Str().Quote().c_str());
 
-            SessionThread = std::make_unique<TSessionThread>(
+            ui32 fuseLoopThreadCount = FileSystemConfig->GetMaxFuseLoopThreads();
+            if (Config->GetVhostQueuesCount()) {
+                fuseLoopThreadCount = Min(fuseLoopThreadCount, Config->GetVhostQueuesCount());
+            }
+
+            FuseLoop = std::make_unique<TFuseLoop>(
                 Log,
                 *Config,
+                fuseLoopThreadCount,
                 ops,
                 SessionState,
                 this);
 
-            SessionThread->Start();
+            FuseLoop->Start();
         } catch (const TServiceError& e) {
             error = MakeError(e.GetCode(), TString(e.GetMessage()));
 
@@ -1034,6 +1105,7 @@ private:
 
         config.SetGuestKeepCacheAllowed(features.GetGuestKeepCacheAllowed());
         config.SetMaxBackground(features.GetMaxBackground());
+        config.SetMaxFuseLoopThreads(features.GetMaxFuseLoopThreads());
 
         return std::make_shared<TFileSystemConfig>(config);
     }
@@ -1066,7 +1138,7 @@ private:
 
         // in case of newly mount we should drop any prev state
         // e.g. left from a crash or smth, paranoid mode
-        ResetSessionState(SessionThread->GetSession().Dump());
+        ResetSessionState(FuseLoop->GetSession().Dump());
 
         if (FileSystemConfig->GetGuestWriteBackCacheEnabled()) {
             conn->want |= FUSE_CAP_WRITEBACK_CACHE;
