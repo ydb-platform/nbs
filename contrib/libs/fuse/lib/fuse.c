@@ -4383,7 +4383,7 @@ int fuse_loop(struct fuse *f)
 	if (lru_enabled(f))
 		return fuse_session_loop_remember(f);
 
-	return fuse_session_loop(f->se);
+	return fuse_session_loop(f->se, 0);
 }
 
 int fuse_invalidate(struct fuse *f, const char *path)

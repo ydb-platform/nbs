@@ -26,7 +26,8 @@
 #include <sys/file.h>
 #include <unistd.h>
 
-#define THREAD_POOL_SIZE 64
+#define NUM_BACKEND_QUEUES 64
+#define NUM_FRONTEND_QUEUES 1
 
 #define OFFSET_MAX 0x7fffffffffffffffLL
 
@@ -2528,7 +2529,8 @@ static const struct fuse_opt fuse_ll_opts[] = {
     LL_OPTION("--socket-path=%s", vu_socket_path, 0),
     LL_OPTION("--socket-group=%s", vu_socket_group, 0),
     LL_OPTION("--fd=%d", vu_listen_fd, 0),
-    LL_OPTION("--thread-pool-size=%d", thread_pool_size, 0),
+    LL_OPTION("--num-backend-queues=%d", num_backend_queues, 0),
+    LL_OPTION("--num-frontend-queues=%d", num_frontend_queues, 0),
     FUSE_OPT_END
 };
 
@@ -2548,8 +2550,10 @@ void fuse_lowlevel_help(void)
         "    -o allow_root              allow access by root\n"
         "    --socket-path=PATH         path for the vhost-user socket\n"
         "    --fd=FDNUM                 fd number of vhost-user socket\n"
-        "    --thread-pool-size=NUM     thread pool size limit (default %d)\n",
-        THREAD_POOL_SIZE);
+        "    --num-backend-queues=NUM   backend queues limit (default %d)\n"
+        "    --num-frontend-queues=NUM  frontend queues limit (default %d)\n",
+        NUM_BACKEND_QUEUES,
+        NUM_FRONTEND_QUEUES);
 }
 
 void fuse_session_destroy(struct fuse_session *se)
@@ -2621,7 +2625,8 @@ struct fuse_session *fuse_session_new(struct fuse_args *args,
     }
     se->fd = -1;
     se->vu_listen_fd = -1;
-    se->thread_pool_size = THREAD_POOL_SIZE;
+    se->num_backend_queues = NUM_BACKEND_QUEUES;
+    se->num_frontend_queues = NUM_FRONTEND_QUEUES;
     se->conn.max_write = UINT_MAX;
     se->conn.max_readahead = UINT_MAX;
 
@@ -2684,9 +2689,9 @@ int fuse_session_mount(struct fuse_session *se)
     return virtio_session_mount(se);
 }
 
-int fuse_session_loop(struct fuse_session *se)
+int fuse_session_loop(struct fuse_session *se, int queue_index)
 {
-    return virtio_session_loop(se);
+    return virtio_session_loop(se, queue_index);
 }
 
 int fuse_session_fd(struct fuse_session *se)

@@ -39,6 +39,7 @@ namespace {
     xxx(GuestOnlyPermissionsCheckEnabled,      bool, false                    )\
     xxx(MaxResponseEntries,          ui32,          10000                     )\
     xxx(MaxBackground,               ui32,          0                         )\
+    xxx(MaxFuseLoopThreads,          ui32,          1                         )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(xxx)                             \
