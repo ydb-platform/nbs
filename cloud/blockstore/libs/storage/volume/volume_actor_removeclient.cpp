@@ -69,11 +69,11 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
     const NActors::TActorContext& ctx)
 {
     if (AcquireReleaseDiskRequests.empty()) {
-        LOG_WARN_S(
+        LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Unexpected TEvReleaseDiskResponse for disk " << State->GetDiskId()
-        );
+            "%s Unexpected TEvReleaseDiskResponse",
+            LogTitle.GetWithTime().c_str());
 
         return;
     }
@@ -82,11 +82,12 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
     auto& cr = request.ClientRequest;
 
     if (HasError(error) && (error.GetCode() != E_NOT_FOUND)) {
-        LOG_ERROR_S(
+        LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Can't release disk " << State->GetDiskId()
-                                  << " due to error: " << FormatError(error));
+            "%s Can't release disk due to error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
 
         if (cr) {
             auto response = std::make_unique<TEvVolume::TEvRemoveClientResponse>(
