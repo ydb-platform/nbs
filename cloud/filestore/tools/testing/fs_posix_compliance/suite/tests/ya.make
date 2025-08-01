@@ -7,6 +7,7 @@ RECURSE(
     mkdir
     mkfifo
     open
+    opendir
     rename
     symlink
     truncate
