@@ -400,7 +400,7 @@ void TBootstrapYdb::InitDiskAgentBackend()
     Y_ABORT_IF(FileIOServiceProvider);
     Y_ABORT_IF(LocalStorageProvider);
 
-    auto r = CreateDiskAgentBackendComponents(config);
+    auto r = CreateDiskAgentBackendComponents(Logging, config);
     NvmeManager = std::move(r.NvmeManager);
     FileIOServiceProvider = std::move(r.FileIOServiceProvider);
     LocalStorageProvider = std::move(r.StorageProvider);
