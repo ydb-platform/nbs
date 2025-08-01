@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test ls file metadata display - -i, -s options, -k skipped
 
 desc="ls -i shows inodes, -s shows size in blocks, -k sets block size to 1024"

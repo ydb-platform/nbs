@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 desc="ELOOP: A loop exists in symbolic links encountered during resolution of the dirname argument"
 

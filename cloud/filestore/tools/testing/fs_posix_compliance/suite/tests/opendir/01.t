@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 desc="EACCESS: Search permission is denied for the component of the path prefix of dirname or read permission is denied for dirname."
 

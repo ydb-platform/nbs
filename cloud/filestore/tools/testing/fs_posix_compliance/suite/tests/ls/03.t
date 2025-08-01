@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test ls -l option - long format listing
 
 desc="ls -l displays long format listing with file details"

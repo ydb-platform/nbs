@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test ls -f option - unsorted listing with special behaviors
 
 desc="ls -f lists entries unsorted and enables -a"

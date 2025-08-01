@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test ls permission and access checks
 
 desc="ls respects file and directory permissions"

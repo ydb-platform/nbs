@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test ls recursion and symlink handling - -R, -H, -L options
 
 desc="ls -R recursively lists directories, -H and -L handle symbolic links"

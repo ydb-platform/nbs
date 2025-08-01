@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test ls file type indicators - -F and -p options
 
 desc="ls -F and -p options append indicators to filenames based on file type"

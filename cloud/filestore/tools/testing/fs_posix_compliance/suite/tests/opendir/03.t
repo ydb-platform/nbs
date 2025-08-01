@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 desc="ENAMETOOLONG: The length of a component of a pathname is longer than NAME_MAX"
 

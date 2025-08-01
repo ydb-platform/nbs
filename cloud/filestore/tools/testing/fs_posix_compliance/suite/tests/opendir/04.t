@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 desc="ENOENT: A component of dirname does not name an existing directory or dirname is an empty string"
 

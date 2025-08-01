@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 desc="ENOTDIR: A component of dirname names an existing file that is neither a directory nor a symbolic link to a directory"
 

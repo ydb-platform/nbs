@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test ls -d option - list directories themselves, not their contents
 
 desc="ls -d lists directories themselves, not their contents"

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test ls -q option - show non-printable characters as ?
 
 desc="ls -q replaces non-printable characters with ?"

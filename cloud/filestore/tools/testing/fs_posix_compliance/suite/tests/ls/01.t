@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test ls -a and -A options - show hidden files
 
 desc="ls -a and -A options handle hidden files correctly"

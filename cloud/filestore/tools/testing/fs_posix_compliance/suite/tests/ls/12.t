@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test ls special permission bits display - setuid, setgid, sticky bit
 
 desc="ls -l correctly displays special permission bits (S/s for setuid/setgid, T/t for sticky)"

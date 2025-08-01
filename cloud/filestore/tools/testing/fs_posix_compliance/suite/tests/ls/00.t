@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test basic ls functionality - listing files and directories
 
 desc="ls lists directory contents"

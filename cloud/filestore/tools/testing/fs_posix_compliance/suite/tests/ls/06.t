@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Test ls sorting options - -t, -S, -r, -c, -u
 
 desc="ls sorting options work correctly"
