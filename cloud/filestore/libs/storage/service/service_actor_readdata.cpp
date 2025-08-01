@@ -648,6 +648,7 @@ void TStorageServiceActor::HandleReadData(
     const TEvService::TEvReadDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    TInstant startTime = ctx.Now();
     auto* msg = ev->Get();
 
     const auto& clientId = GetClientId(msg->Record);
@@ -707,7 +708,7 @@ void TStorageServiceActor::HandleReadData(
         TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         session->MediaKind,
         session->RequestStats,
-        ctx.Now());
+        startTime);
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
 
