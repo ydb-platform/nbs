@@ -1592,7 +1592,7 @@ void DumpGroupLatencyTab(
                             const bucketKey = headers[i].getAttribute('data-bucket-key');
                             const td = tr.children[i];
 
-                            const finVal = (finished[op][groupId] && finished[op][groupId][bucketKey]) ? finished[op][groupId][bucketKey] : "0";
+                            const finVal = (finished[op][groupId] && finished[op][groupId][bucketKey]) ? finished[op][groupId][bucketKey] : "";
                             const inflightVal = (inflight[op][groupId] && inflight[op][groupId][bucketKey]) ? inflight[op][groupId][bucketKey] : "0";
 
                             td.textContent = "";

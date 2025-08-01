@@ -47,6 +47,7 @@ private:
     struct TKey
     {
         TString OperationName;
+        ui32 GroupId = 0;
         EStatus Status = EStatus::Inflight;
 
         [[nodiscard]] TString GetHtmlPrefix() const;
@@ -63,6 +64,7 @@ private:
     {
         ui64 StartTime = 0;
         TString OperationName;
+        ui32 GroupId = 0;
     };
 
     TVector<TString> OperationTypes;
