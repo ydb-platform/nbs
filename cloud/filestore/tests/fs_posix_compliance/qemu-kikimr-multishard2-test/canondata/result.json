@@ -14,11 +14,17 @@
     "test.test_posix_compliance[link]": {
         "uri": "file://test.test_posix_compliance_link_/results-link.txt"
     },
+    "test.test_posix_compliance[ls]": {
+        "uri": "file://test.test_posix_compliance_ls_/results-ls.txt"
+    },
     "test.test_posix_compliance[mkdir]": {
         "uri": "file://test.test_posix_compliance_mkdir_/results-mkdir.txt"
     },
     "test.test_posix_compliance[open]": {
         "uri": "file://test.test_posix_compliance_open_/results-open.txt"
+    },
+    "test.test_posix_compliance[opendir]": {
+        "uri": "file://test.test_posix_compliance_opendir_/results-opendir.txt"
     },
     "test.test_posix_compliance[rename]": {
         "uri": "file://test.test_posix_compliance_rename_/results-rename.txt"
