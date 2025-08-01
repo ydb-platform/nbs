@@ -179,7 +179,7 @@ expect 0 unlink target
 # ls -R depth handling
 create_nested_dirs ${n0} a b c d e
 output=`ls -R ${n0} 2>&1 | grep ":" | wc -l`
-test_check "$output" -eq 5
+test_check "$output" -eq 6
 rm_nested_dirs ${n0} a b c d e
 
 # ls -R with special files
@@ -236,7 +236,7 @@ expect 0 rmdir ${n0}
 # ls -R handles deep directory structures without false positives
 create_nested_dirs ${n0} a b c d e f g h i j
 output=`ls -R ${n0} 2>&1 | grep -c ":"`
-test_check "$output" -eq 10
+test_check "$output" -eq 11
 rm_nested_dirs ${n0} a b c d e f g h i j
 
 # ls -R handles too long directory names

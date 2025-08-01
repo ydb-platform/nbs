@@ -122,9 +122,9 @@ test_check()
 test_check_quoted()
 {
 	if [ "$@" ]; then
-		echo "ok ${ntest}"
+		echo "ok ${ntest} (line: ${BASH_LINENO[0]})"
 	else
-		echo "not ok ${ntest}"
+		echo "not ok ${ntest} (line: ${BASH_LINENO[0]})"
         echo "$(log_tag) check failed -- $@" 1>&2
 	fi
 	ntest=`expr $ntest + 1`
