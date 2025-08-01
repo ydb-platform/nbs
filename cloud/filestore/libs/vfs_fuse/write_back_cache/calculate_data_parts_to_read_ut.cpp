@@ -435,13 +435,12 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         for (const auto& e: testCaseEntries) {
             Y_ABORT_UNLESS(e.Offset + e.Length <= MaxLength);
 
-            auto entry = std::make_unique<TWriteDataEntry>(
-                e.Handle,
-                e.Offset,
-                e.Length,
-                TStringBuf(),
-                TString(),
-                NProto::THeaders());
+            auto request = std::make_shared<NProto::TWriteDataRequest>();
+            request->SetHandle(e.Handle);
+            request->SetOffset(e.Offset);
+            request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
+
+            auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
             entries.PushBack(entry.release());
         }
 
