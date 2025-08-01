@@ -145,7 +145,7 @@ struct TCalculateDataPartsToReadTestBootstrap
         for (ui64 offset = startingFromOffset; offset != endOffset; offset++) {
             TWriteDataEntry* lastEntry = nullptr;
             for (auto* entry: entries) {
-                if (entry->Offset <= offset && offset < entry->End()) {
+                if (entry->Offset() <= offset && offset < entry->End()) {
                     lastEntry = entry;
                 }
             }
@@ -153,7 +153,7 @@ struct TCalculateDataPartsToReadTestBootstrap
             if (lastEntry != nullptr) {
                 parts.emplace_back(
                     lastEntry,
-                    offset - lastEntry->Offset,
+                    offset - lastEntry->Offset(),
                     offset,
                     1);
             }
@@ -198,9 +198,9 @@ IOutputStream& operator<<(
     const TWriteDataEntry& e)
 {
     out << "{"
-        << "Handle: " << e.Handle << ", "
-        << "Offset: " << e.Offset << ", "
-        << "Length: " << e.Length
+        << "Handle: " << e.GetHandle() << ", "
+        << "Offset: " << e.Offset() << ", "
+        << "Length: " << e.GetBuffer().Size()
         << "}";
     return out;
 }
@@ -233,13 +233,12 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         for (const auto& e: testCaseEntries) {
             Y_ABORT_UNLESS(e.Offset + e.Length < MaxLength);
 
-            auto entry = std::make_unique<TWriteDataEntry>(
-                e.Handle,
-                e.Offset,
-                e.Length,
-                TStringBuf(),
-                TString(),
-                NProto::THeaders());
+            auto request = std::make_shared<NProto::TWriteDataRequest>();
+            request->SetHandle(e.Handle);
+            request->SetOffset(e.Offset);
+            request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
+
+            auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
             entries.PushBack(entry.release());
         }
 
@@ -287,13 +286,12 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         for (const auto& e: testCaseEntries) {
             Y_ABORT_UNLESS(e.Offset + e.Length <= MaxLength);
 
-            auto entry = std::make_unique<TWriteDataEntry>(
-                e.Handle,
-                e.Offset,
-                e.Length,
-                TStringBuf(),
-                TString(),
-                NProto::THeaders());
+            auto request = std::make_shared<NProto::TWriteDataRequest>();
+            request->SetHandle(e.Handle);
+            request->SetOffset(e.Offset);
+            request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
+
+            auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
             entries.PushBack(entry.release());
         }
 

@@ -14,6 +14,7 @@
 #include <util/generic/strbuf.h>
 #include <util/generic/vector.h>
 #include <util/system/mutex.h>
+#include <util/stream/mem.h>
 
 #include <atomic>
 
@@ -21,6 +22,51 @@ namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
 using namespace NThreading;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// TODO(nasonov): remove this wrapper when TFileRingBuffer supports
+// in-place allocation
+class TFileRingBuffer: public NCloud::TFileRingBuffer
+{
+    using NCloud::TFileRingBuffer::TFileRingBuffer;
+
+private:
+    ui64 Capacity = 0;
+
+public:
+    TFileRingBuffer(const TString& filePath, ui64 capacity)
+        : NCloud::TFileRingBuffer(filePath, capacity)
+        , Capacity(capacity)
+    {}
+
+    ui64 MaxAllocationSize() const
+    {
+        // Capacity - sizeof(TEntryHeader)
+        return Capacity - 8;
+    }
+
+    bool AllocateBack(size_t size, char** ptr)
+    {
+        TString tmp(size, 0);
+        if (PushBack(tmp)) {
+            *ptr = const_cast<char*>(Back().data());
+            return true;
+        } else {
+            *ptr = nullptr;
+            return false;
+        }
+    }
+
+    void CommitAllocation(char* ptr)
+    {
+        Y_UNUSED(ptr);
+    }
+};
+
+} // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -39,13 +85,13 @@ private:
     struct TPendingWriteDataRequest
         : public TIntrusiveListItem<TPendingWriteDataRequest>
     {
-        std::shared_ptr<NProto::TWriteDataRequest> Request;
+        std::unique_ptr<TWriteDataEntry> Entry;
         TPromise<NProto::TWriteDataResponse> Promise;
 
         TPendingWriteDataRequest(
-                std::shared_ptr<NProto::TWriteDataRequest> request,
+                std::unique_ptr<TWriteDataEntry> entry,
                 TPromise<NProto::TWriteDataResponse> promise)
-            : Request(std::move(request))
+            : Entry(std::move(entry))
             , Promise(std::move(promise))
         {}
     };
@@ -86,18 +132,27 @@ public:
         , AutomaticFlushPeriod(automaticFlushPeriod)
         , WriteDataRequestsQueue(filePath, capacityBytes)
     {
-        // should fit 1 MiB of data plus some headers (assume 1 KiB is enough)
-        Y_ABORT_UNLESS(capacityBytes >= 1024*1024 + 1024);
+        // File ring buffer should be able to store any valid TWriteDataRequest.
+        // Inability to store it will cause this and future requests to remain
+        // in the pending queue forever (including requests with smaller size).
+        // Should fit 1 MiB of data plus some headers (assume 1 KiB is enough).
+        Y_ABORT_UNLESS(
+            WriteDataRequestsQueue.MaxAllocationSize() >= 1024 * 1024 + 1016);
 
-        WriteDataRequestsQueue.Visit([&] (auto, auto serializedRequest) {
-            NProto::TWriteDataRequest parsedRequest;
-            // TODO(svartmetal): avoid parsing with copy
-            Y_ABORT_UNLESS(
-                parsedRequest.ParseFromArray(
-                    serializedRequest.data(),
-                    serializedRequest.size()));
+        WriteDataRequestsQueue.Visit([&] (auto checksum, auto serializedRequest)
+        {
+            auto entry = std::make_unique<TWriteDataEntry>(
+                checksum,
+                serializedRequest);
 
-            AddWriteDataEntry(parsedRequest, serializedRequest);
+            if (entry->GetBuffer().Empty()) {
+                // This may happen when a buffer was corrupted
+                // Skip this entry from processing
+                // TODO(nasonov): report it
+                entry->FlushStatus = EFlushStatus::Finished;
+            }
+
+            AddWriteDataEntry(std::move(entry));
         });
     }
 
@@ -121,18 +176,9 @@ public:
             });
     }
 
-    void AddWriteDataEntry(
-        const NProto::TWriteDataRequest& request,
-        TStringBuf serializedRequest)
+    void AddWriteDataEntry(std::unique_ptr<TWriteDataEntry> entry)
     {
-        auto entry = std::make_unique<TWriteDataEntry>(
-            request.GetHandle(),
-            request.GetOffset(),
-            request.GetBuffer().length(),
-            serializedRequest,
-            request.GetFileSystemId(),
-            request.GetHeaders());
-        WriteDataEntriesByHandle[request.GetHandle()].emplace_back(
+        WriteDataEntriesByHandle[entry->GetHandle()].emplace_back(
             entry.get());
         WriteDataEntries.PushBack(entry.release());
     }
@@ -166,14 +212,7 @@ public:
         ui64 startingFromOffset,
         TString* out)
     {
-        // TODO(svartmetal): avoid parsing with copy
-        NProto::TWriteDataRequest parsedRequest;
-        Y_ABORT_UNLESS(
-            parsedRequest.ParseFromArray(
-                part.Source->SerializedRequest.data(),
-                part.Source->SerializedRequest.size()));
-
-        const char* from = parsedRequest.GetBuffer().data();
+        const char* from = part.Source->GetBuffer().data();
         from += part.OffsetInSource;
 
         char* to = out->begin();
@@ -282,23 +321,34 @@ public:
             request->SetFileSystemId(callContext->FileSystemId);
         }
 
+        auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
+        auto serializedSize = entry->GetSerializedSize();
+
+        Y_ABORT_UNLESS(
+            serializedSize <= WriteDataRequestsQueue.MaxAllocationSize(),
+            "Serialized request size %lu is expected to be <= %lu",
+            serializedSize,
+            WriteDataRequestsQueue.MaxAllocationSize());
+
         auto promise = NewPromise<NProto::TWriteDataResponse>();
         auto future = promise.GetFuture();
 
-        // TODO(svartmetal): support buffer offsetting
-        Y_ABORT_UNLESS(0 == request->GetBufferOffset());
-
-        // TODO(svartmetal): get rid of double-copy
-        TString result;
-        Y_ABORT_UNLESS(request->SerializeToString(&result));
 
         with_lock (Lock) {
-            if (WriteDataRequestsQueue.PushBack(result)) {
-                AddWriteDataEntry(*request, WriteDataRequestsQueue.Back());
+            char* allocationPtr = nullptr;
+            bool allocated = WriteDataRequestsQueue.AllocateBack(
+                serializedSize,
+                &allocationPtr);
+
+            if (allocated) {
+                Y_ABORT_UNLESS(allocationPtr != nullptr);
+                entry->SerializeAndMoveRequestBuffer(allocationPtr);
+                WriteDataRequestsQueue.CommitAllocation(allocationPtr);
+                AddWriteDataEntry(std::move(entry));
                 promise.SetValue({});
             } else {
                 auto pending = std::make_unique<TPendingWriteDataRequest>(
-                    std::move(request),
+                    std::move(entry),
                     std::move(promise));
                 PendingWriteDataRequests.PushBack(pending.release());
                 FlushAllData(); // flushes asynchronously
@@ -323,10 +373,10 @@ public:
 
                 WriteDataRequestsQueue.PopFront();
 
-                auto& entries = WriteDataEntriesByHandle[entry->Handle];
+                auto& entries = WriteDataEntriesByHandle[entry->GetHandle()];
                 Erase(entries, entry);
                 if (entries.empty()) {
-                    WriteDataEntriesByHandle.erase(entry->Handle);
+                    WriteDataEntriesByHandle.erase(entry->GetHandle());
                 }
 
                 std::unique_ptr<TWriteDataEntry> holder(entry);
@@ -376,9 +426,10 @@ public:
             }
 
             auto request = std::make_shared<NProto::TWriteDataRequest>();
-            request->SetFileSystemId(parts[partIndex].Source->FileSystemId);
+            request->SetFileSystemId(
+                parts[partIndex].Source->GetRequest()->GetFileSystemId());
             *request->MutableHeaders() =
-                parts[partIndex].Source->RequestHeaders;
+                parts[partIndex].Source->GetRequest()->GetHeaders();
             request->SetHandle(handle);
             request->SetOffset(parts[partIndex].Offset);
             request->SetBuffer(std::move(buffer));
@@ -595,20 +646,21 @@ public:
             with_lock (self->Lock) {
                 while (!self->PendingWriteDataRequests.Empty()) {
                     auto* pending = self->PendingWriteDataRequests.Front();
-                    auto request = std::move(pending->Request);
+                    auto serializedSize = pending->Entry->GetSerializedSize();
+                    char* allocationPtr = nullptr;
+                    bool allocated = self->WriteDataRequestsQueue.AllocateBack(
+                        serializedSize,
+                        &allocationPtr);
 
-                    // TODO(svartmetal): get rid of double-copy
-                    TString result;
-                    Y_ABORT_UNLESS(request->SerializeToString(&result));
-
-                    if (!self->WriteDataRequestsQueue.PushBack(result)) {
+                    if (!allocated) {
                         self->FlushAllData(); // flushes asynchronously
                         return;
                     }
 
-                    self->AddWriteDataEntry(
-                        *request,
-                        self->WriteDataRequestsQueue.Back());
+                    Y_ABORT_UNLESS(allocationPtr != nullptr);
+                    pending->Entry->SerializeAndMoveRequestBuffer(allocationPtr);
+                    self->WriteDataRequestsQueue.CommitAllocation(allocationPtr);
+                    self->AddWriteDataEntry(std::move(pending->Entry));
 
                     pending->Promise.SetValue({});
 
@@ -669,6 +721,81 @@ TFuture<void> TWriteBackCache::FlushData(ui64 handle)
 TFuture<void> TWriteBackCache::FlushAllData()
 {
     return Impl->FlushAllData();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
+        std::shared_ptr<NProto::TWriteDataRequest> request)
+    : Request(std::move(request))
+{
+    RequestBuffer.swap(*Request->MutableBuffer());
+    BufferRef = TStringBuf(RequestBuffer).Skip(Request->GetBufferOffset());
+    Request->ClearBufferOffset();
+}
+
+TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
+    ui32 checksum,
+    TStringBuf serializedRequest)
+{
+    // TODO(nasonov): validate checksum
+    Y_UNUSED(checksum);
+
+    TMemoryInput mi(serializedRequest);
+
+    ui32 bufferSize = 0;
+    mi.Read(&bufferSize, sizeof(ui32));
+    if (bufferSize == 0) {
+        // TODO(nasonov): replace this with Y_DEBUG_ABORT_UNLESS when
+        // TFileRingBuffer fully supports in-place allocation.
+        // Currently this may happen when execution stopped between allocation
+        // and Serialization. In future, this can happen only as a result of
+        // corruption
+        return;
+    }
+
+    const char* bufferPtr = mi.Buf();
+
+    if (mi.Skip(bufferSize) != bufferSize) {
+        // Buffer corruption
+        // TODO(nasonov): report and handle
+        return;
+    }
+
+    auto parsedRequest = std::make_shared<NProto::TWriteDataRequest>();
+    if (!parsedRequest->ParseFromArray(mi.Buf(), static_cast<int>(mi.Avail()))) {
+        // Buffer corruption
+        // TODO(nasonov): report and handle
+        return;
+    }
+
+    Request.swap(parsedRequest);
+    BufferRef = TStringBuf(bufferPtr, bufferSize);
+}
+
+size_t TWriteBackCache::TWriteDataEntry::GetSerializedSize() const
+{
+    return Request->ByteSizeLong() + sizeof(ui32) + BufferRef.size();
+}
+
+void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
+    char* allocationPtr)
+{
+    Y_ABORT_UNLESS(allocationPtr != nullptr);
+    Y_ABORT_UNLESS(BufferRef.size() <= Max<ui32>());
+
+    ui32 bufferSize = static_cast<ui32>(BufferRef.size());
+    auto serializedSize = GetSerializedSize();
+
+    TMemoryOutput mo(allocationPtr, serializedSize);
+    mo.Write(&bufferSize, sizeof(bufferSize));
+    mo.Write(BufferRef);
+
+    Y_ABORT_UNLESS(
+        Request->SerializeToArray(mo.Buf(), static_cast<int>(mo.Avail())));
+
+    BufferRef = TStringBuf(allocationPtr + sizeof(ui32), bufferSize);
+    RequestBuffer.clear();
 }
 
 }   // namespace NCloud::NFileStore::NFuse
