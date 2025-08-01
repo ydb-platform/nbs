@@ -6,7 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
@@ -60,7 +60,7 @@ func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, e
 	}
 
 	if creds.RootCertsFile != "" {
-		pem, err := ioutil.ReadFile(creds.RootCertsFile)
+		pem, err := os.ReadFile(creds.RootCertsFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read root cert file: %s", err.Error())
 		}
