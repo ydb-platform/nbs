@@ -28,6 +28,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+inline bool IsDynamicGroup(ui32 groupId)
+{
+    return groupId & 0x80000000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 NPrivateProto::TClusterCapacityInfo ToResponse(
     const NProto::TClusterCapacityInfo& capacityInfo)
 {
@@ -237,13 +244,24 @@ void TGetClusterCapacityActor::HandleGetYDBCapacityResponse(
 
     std::map<ui64, TString> poolNameByGroupID;
     for (const auto& group: record.GetStatus(0).GetBaseConfig().GetGroup()) {
-        LOG_DEBUG_S(
-            ctx,
-            TBlockStoreComponents::SERVICE,
-            "Got group " << group.ShortDebugString());
+        if (pools.find({group.GetBoxId(), group.GetStoragePoolId()}) ==
+            pools.end())
+        {
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "Got group with unknown pool " << group.DebugString());
+            continue;
+        }
 
         poolNameByGroupID[group.GetGroupId()] =
             pools[{group.GetBoxId(), group.GetStoragePoolId()}].GetName();
+
+        LOG_DEBUG_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Got group " << group.ShortDebugString() << " with pool name "
+                         << poolNameByGroupID[group.GetGroupId()]);
     }
 
     const TString hddPoolName = "NBS:rot";
@@ -259,6 +277,27 @@ void TGetClusterCapacityActor::HandleGetYDBCapacityResponse(
             ctx,
             TBlockStoreComponents::SERVICE,
             "Got vslot " << vslot.ShortDebugString());
+
+        if (IsDynamicGroup(vslot.GetGroupId())) {
+            LOG_DEBUG_S(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "Skipping non dynamic group " << vslot.GetGroupId()
+                                              << " of vslot "
+                                              << vslot.GetVSlotId());
+            continue;
+        }
+
+        if (poolNameByGroupID.find(vslot.GetGroupId()) ==
+            poolNameByGroupID.end())
+        {
+            LOG_DEBUG_S(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "Got vslot " << vslot.GetVSlotId() << " with unknown group id "
+                             << vslot.GetGroupId());
+            continue;
+        }
 
         if (poolNameByGroupID[vslot.GetGroupId()].find(ssdPoolName) !=
             TString::npos)
