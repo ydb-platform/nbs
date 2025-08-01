@@ -2589,7 +2589,12 @@ void TVolumeActor::RejectHttpRequest(
     TRequestInfo& requestInfo,
     TString message)
 {
-    LOG_ERROR_S(ctx, TBlockStoreComponents::VOLUME, message);
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s %s",
+        LogTitle.GetWithTime().c_str(),
+        message.c_str());
 
     SendHttpResponse(ctx, requestInfo, std::move(message), EAlertLevel::DANGER);
 }
