@@ -304,8 +304,8 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
             UpdateStats(stats, volumeStats);
 
             UNIT_ASSERT_VALUES_EQUAL(10, sizes->GetCounter("4KB")->Val());
-            UNIT_ASSERT_VALUES_EQUAL(9, times->GetCounter("0.1ms")->Val());
-            UNIT_ASSERT_VALUES_EQUAL(1, times->GetCounter("0.2ms")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(9, times->GetCounter("100")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(1, times->GetCounter("200")->Val());
         }
     }
 }
