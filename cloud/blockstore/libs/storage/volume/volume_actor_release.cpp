@@ -80,8 +80,9 @@ void TVolumeActor::ReleaseReplacedDevices(
             LogTitle.GetWithTime().c_str(),
             clientId.Quote().c_str());
 
-        TAcquireReleaseDiskRequest request{clientId, nullptr, replacedDevices};
-        AcquireReleaseDiskRequests.push_back(std::move(request));
+        AcquireReleaseDiskRequests.emplace_back(
+            clientId,
+            TReleaseDiskRequest{.DevicesToRelease = replacedDevices});
     }
 }
 

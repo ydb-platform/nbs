@@ -29,8 +29,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 void TVolumeActor::AcquireDisk(
     const TActorContext& ctx,
     TString clientId,
-    NProto::EVolumeAccessMode accessMode,
-    ui64 mountSeqNumber)
+    const TAcquireDiskRequest& request)
 {
     Y_ABORT_UNLESS(State);
 
@@ -43,42 +42,44 @@ void TVolumeActor::AcquireDisk(
     if (Config->GetNonReplicatedVolumeDirectAcquireEnabled()) {
         SendAcquireDevicesToAgents(
             std::move(clientId),
-            accessMode,
-            mountSeqNumber,
+            request.AccessMode,
+            request.MountSeqNumber,
             ctx);
         return;
     }
 
-    auto request = std::make_unique<TEvDiskRegistry::TEvAcquireDiskRequest>();
+    NProto::TAcquireDiskRequest record;
 
-    request->Record.SetDiskId(State->GetDiskId());
-    request->Record.MutableHeaders()->SetClientId(clientId);
-    request->Record.SetAccessMode(accessMode);
-    request->Record.SetMountSeqNumber(mountSeqNumber);
-    request->Record.SetVolumeGeneration(Executor()->Generation());
+    record.SetDiskId(State->GetDiskId());
+    record.MutableHeaders()->SetClientId(clientId);
+    record.SetAccessMode(request.AccessMode);
+    record.SetMountSeqNumber(request.MountSeqNumber);
+    record.SetVolumeGeneration(Executor()->Generation());
 
-    NCloud::Send(
+    NCloud::Send<TEvDiskRegistry::TEvAcquireDiskRequest>(
         ctx,
         MakeDiskRegistryProxyServiceId(),
-        std::move(request));
+        0,   // cookie
+        MakeIntrusive<TCallContext>(),
+        std::move(record));
 }
 
 void TVolumeActor::ProcessNextAcquireReleaseDiskRequest(const TActorContext& ctx)
 {
-    if (AcquireReleaseDiskRequests) {
-        auto& request = AcquireReleaseDiskRequests.front();
-
-        if (request.IsAcquire) {
-            AcquireDisk(
-                ctx,
-                request.ClientId,
-                request.AccessMode,
-                request.MountSeqNumber
-            );
-        } else {
-            ReleaseDisk(ctx, request.ClientId, request.DevicesToRelease);
-        }
+    if (!AcquireReleaseDiskRequests) {
+        return;
     }
+    auto& [clientId, _, request] = AcquireReleaseDiskRequests.front();
+
+    std::visit(
+        TOverloaded{
+            [&](const TAcquireDiskRequest& acquire)
+            { AcquireDisk(ctx, clientId, acquire); },
+            [&](const TReleaseDiskRequest& acquire)
+            {
+                ReleaseDisk(ctx, clientId, acquire);
+            }},
+        request);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,12 +90,12 @@ void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    bool queueEmpty = AcquireReleaseDiskRequests.empty();
+    const bool queueEmpty = AcquireReleaseDiskRequests.empty();
 
-    for (const auto& x: State->GetClients()) {
+    for (const auto& [clientId, clientState]: State->GetClients()) {
         bool skip = false;
         for (const auto& clientRequest: PendingClientRequests) {
-            if (x.first == clientRequest->GetClientId()) {
+            if (clientId == clientRequest->GetClientId()) {
                 // inflight client request will cause the right acquire/release
                 // op anyway, so we should not interfere
                 skip = true;
@@ -106,22 +107,22 @@ void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
             continue;
         }
 
-        TAcquireReleaseDiskRequest request(
-            x.first,
-            x.second.GetVolumeClientInfo().GetVolumeAccessMode(),
-            x.second.GetVolumeClientInfo().GetMountSeqNumber(),
-            nullptr
-        );
+        TAcquireDiskRequest request{
+            .AccessMode =
+                clientState.GetVolumeClientInfo().GetVolumeAccessMode(),
+            .MountSeqNumber =
+                clientState.GetVolumeClientInfo().GetMountSeqNumber(),
+        };
 
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::VOLUME,
             "%s Reacquiring disk for client %s with access mode %d",
             LogTitle.GetWithTime().c_str(),
-            request.ClientId.c_str(),
+            clientId.c_str(),
             static_cast<int>(request.AccessMode));
 
-        AcquireReleaseDiskRequests.push_back(std::move(request));
+        AcquireReleaseDiskRequests.emplace_back(clientId, std::move(request));
     }
 
     if (queueEmpty) {
@@ -167,8 +168,7 @@ void TVolumeActor::HandleReacquireDisk(
     {
         AcquireReleaseDiskRequests.emplace_back(
             TString(AnyWriterClientId),
-            nullptr,
-            TVector<NProto::TDeviceConfig>{});
+            TReleaseDiskRequest{});
         if (AcquireReleaseDiskRequests.size() == 1) {
             ProcessNextAcquireReleaseDiskRequest(ctx);
         }
@@ -197,7 +197,10 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
 {
     ScheduleAcquireDiskIfNeeded(ctx);
 
-    if (AcquireReleaseDiskRequests.empty()) {
+    if (AcquireReleaseDiskRequests.empty() ||
+        !std::holds_alternative<TAcquireDiskRequest>(
+            AcquireReleaseDiskRequests.front().Request))
+    {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -324,14 +327,17 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
                 AcquireReleaseDiskRequests.emplace_back(
                     request->RemovedClientId,
                     request,
-                    TVector<NProto::TDeviceConfig>{});
+                    TReleaseDiskRequest{});
             } else {
                 AcquireReleaseDiskRequests.emplace_back(
                     request->AddedClientInfo.GetClientId(),
-                    request->AddedClientInfo.GetVolumeAccessMode(),
-                    request->AddedClientInfo.GetMountSeqNumber(),
-                    request
-                );
+                    request,
+                    TAcquireDiskRequest{
+                        .AccessMode =
+                            request->AddedClientInfo.GetVolumeAccessMode(),
+                        .MountSeqNumber =
+                            request->AddedClientInfo.GetMountSeqNumber(),
+                    });
             }
 
             if (AcquireReleaseDiskRequests.size() == 1) {

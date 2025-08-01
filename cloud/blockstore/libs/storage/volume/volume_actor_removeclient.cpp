@@ -24,15 +24,15 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 void TVolumeActor::ReleaseDisk(
     const TActorContext& ctx,
     const TString& clientId,
-    const TVector<NProto::TDeviceConfig>& devicesToRelease)
+    const TReleaseDiskRequest& request)
 {
     if (Config->GetNonReplicatedVolumeDirectAcquireEnabled()) {
-        SendReleaseDevicesToAgents(clientId, ctx, devicesToRelease);
+        SendReleaseDevicesToAgents(clientId, ctx, request.DevicesToRelease);
         return;
     }
 
     // Only direct acquire protocol allows to release specific devices.
-    if (!devicesToRelease.empty()) {
+    if (!request.DevicesToRelease.empty()) {
         Y_DEBUG_ABORT_UNLESS(
             !AcquireReleaseDiskRequests.empty() &&
             !AcquireReleaseDiskRequests.front().ClientRequest);
@@ -44,14 +44,17 @@ void TVolumeActor::ReleaseDisk(
         return;
     }
 
-    auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
-    request->Record.SetDiskId(State->GetDiskId());
-    request->Record.MutableHeaders()->SetClientId(clientId);
-    request->Record.SetVolumeGeneration(Executor()->Generation());
-    NCloud::Send(
+    NProto::TReleaseDiskRequest record;
+    record.SetDiskId(State->GetDiskId());
+    record.MutableHeaders()->SetClientId(clientId);
+    record.SetVolumeGeneration(Executor()->Generation());
+
+    NCloud::Send<TEvDiskRegistry::TEvReleaseDiskRequest>(
         ctx,
         MakeDiskRegistryProxyServiceId(),
-        std::move(request));
+        0,   // cookie
+        MakeIntrusive<TCallContext>(),
+        std::move(record));
 }
 
 void TVolumeActor::HandleReleaseDiskResponse(
@@ -68,7 +71,10 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
     const NProto::TError& error,
     const NActors::TActorContext& ctx)
 {
-    if (AcquireReleaseDiskRequests.empty()) {
+    if (AcquireReleaseDiskRequests.empty() ||
+        !std::holds_alternative<TReleaseDiskRequest>(
+            AcquireReleaseDiskRequests.front().Request))
+    {
         LOG_WARN_S(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -78,8 +84,9 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
         return;
     }
 
-    auto& request = AcquireReleaseDiskRequests.front();
-    auto& cr = request.ClientRequest;
+    auto& request = std::get<TReleaseDiskRequest>(
+        AcquireReleaseDiskRequests.front().Request);
+    auto& cr = AcquireReleaseDiskRequests.front().ClientRequest;
 
     if (HasError(error) && (error.GetCode() != E_NOT_FOUND)) {
         LOG_ERROR_S(

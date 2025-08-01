@@ -265,41 +265,42 @@ private:
 
     TVolumeSelfCountersPtr VolumeSelfCounters;
 
+    struct TAcquireDiskRequest
+    {
+        NProto::EVolumeAccessMode AccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
+        ui64 MountSeqNumber = 0;
+    };
+
+    struct TReleaseDiskRequest
+    {
+        TVector<NProto::TDeviceConfig> DevicesToRelease;
+    };
+
     struct TAcquireReleaseDiskRequest
     {
-        bool IsAcquire;
         TString ClientId;
-        NProto::EVolumeAccessMode AccessMode;
-        ui64 MountSeqNumber;
         TClientRequestPtr ClientRequest;
-        TVector<NProto::TDeviceConfig> DevicesToRelease;
+        std::variant<TAcquireDiskRequest, TReleaseDiskRequest> Request;
 
-        TAcquireReleaseDiskRequest(
-                TString clientId,
-                NProto::EVolumeAccessMode accessMode,
-                ui64 mountSeqNumber,
-                TClientRequestPtr clientRequest)
-            : IsAcquire(true)
-            , ClientId(std::move(clientId))
-            , AccessMode(accessMode)
-            , MountSeqNumber(mountSeqNumber)
-            , ClientRequest(std::move(clientRequest))
-        {
-        }
-
+        template <typename T>
         TAcquireReleaseDiskRequest(
                 TString clientId,
                 TClientRequestPtr clientRequest,
-                TVector<NProto::TDeviceConfig> devicesToRelease)
-            : IsAcquire(false)
-            , ClientId(std::move(clientId))
-            , AccessMode(NProto::EVolumeAccessMode::
-                             VOLUME_ACCESS_READ_WRITE)   // doesn't matter
-            , MountSeqNumber(0)                          // doesn't matter
+                T request)
+            : ClientId(std::move(clientId))
             , ClientRequest(std::move(clientRequest))
-            , DevicesToRelease(std::move(devicesToRelease))
+            , Request(std::move(request))
+        {}
+
+        template <typename T>
+        TAcquireReleaseDiskRequest(TString clientId, T request)
+            : TAcquireReleaseDiskRequest(
+                  std::move(clientId),
+                  nullptr,
+                  std::move(request))
         {}
     };
+
     TList<TAcquireReleaseDiskRequest> AcquireReleaseDiskRequests;
     bool AcquireDiskScheduled = false;
 
@@ -786,8 +787,7 @@ private:
     void AcquireDisk(
         const NActors::TActorContext& ctx,
         TString clientId,
-        NProto::EVolumeAccessMode accessMode,
-        ui64 mountSeqNumber);
+        const TAcquireDiskRequest& request);
 
     void SendAcquireDevicesToAgents(
         TString clientId,
@@ -829,7 +829,7 @@ private:
     void ReleaseDisk(
         const NActors::TActorContext& ctx,
         const TString& clientId,
-        const TVector<NProto::TDeviceConfig>& devicesToRelease);
+        const TReleaseDiskRequest& request);
 
     void SendReleaseDevicesToAgents(
         const TString& clientId,
