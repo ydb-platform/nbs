@@ -5,6 +5,7 @@ package NCloud.NBlockStore.NPrivateProto;
 // XXX this import is prohibited by ya.make
 // that's why instead of EDeviceState and EAgentState we use integers here
 // import "cloud/blockstore/libs/storage/protos/disk.proto";
+import "cloud/storage/core/protos/media.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos";
 
@@ -80,4 +81,23 @@ message TDiskRegistrySetWritableStateRequest
 
 message TDiskRegistrySetWritableStateResponse
 {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GetClusterCapacity request/response.
+
+message TClusterCapacityInfo
+{
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 1;
+    uint64 FreeBytes = 2;
+    uint64 TotalBytes = 3;
+}
+
+message TGetClusterCapacityRequest
+{
+}
+
+message TGetClusterCapacityResponse
+{
+    repeated TClusterCapacityInfo Capacity = 1;
 }
