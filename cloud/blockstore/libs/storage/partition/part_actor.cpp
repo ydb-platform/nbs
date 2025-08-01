@@ -1125,7 +1125,8 @@ NProto::TError VerifyBlockChecksum(
     const NKikimr::TLogoBlobID& blobID,
     const ui64 blockIndex,
     const ui16 blobOffset,
-    const ui32 expectedChecksum)
+    const ui32 expectedChecksum,
+    const TString& diskId)
 {
     if (expectedChecksum == 0) {
         // 0 is a special case - block digest calculation can be
@@ -1138,7 +1139,11 @@ NProto::TError VerifyBlockChecksum(
     }
 
     if (actualChecksum != expectedChecksum) {
-        ReportBlockDigestMismatchInBlob();
+        ReportBlockDigestMismatchInBlob(
+            {{"disk", diskId},
+             {"BlockIndex", blockIndex},
+             {"blobOffset", blobOffset},
+             {"blob", blobID.ToString()}});
         // we might read proper data upon retry - let's give it a chance
         return MakeError(
             E_REJECTED,

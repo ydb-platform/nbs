@@ -193,7 +193,7 @@ void TDiskRegistryActor::HandleFinishMigration(
                 // to migrate again, which is inefficient but which won't
                 // break anything
 
-                ReportUnexpectedBatchMigration();
+                ReportUnexpectedBatchMigration({{"disk", record.GetDiskId()}});
 
                 break;
             }

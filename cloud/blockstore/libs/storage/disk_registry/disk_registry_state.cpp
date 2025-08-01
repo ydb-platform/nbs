@@ -5555,7 +5555,9 @@ NProto::TError TDiskRegistryState::PurgeHost(
         timeout);
 
     if (HasError(removeHostError)) {
-        ReportDiskRegistryPurgeHostError();
+        ReportDiskRegistryPurgeHostError(
+            FormatError(removeHostError),
+            {{"AgentId", agent->GetAgentId()}});
     }
 
     STORAGE_LOG(

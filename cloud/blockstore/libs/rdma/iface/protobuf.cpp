@@ -178,7 +178,7 @@ size_t SerializeError(ui32 code, TStringBuf message, TStringBuf buffer)
 
     if (error.ByteSizeLong() > buffer.size()) {
         error.SetMessage("rdma error");
-        ReportFailedToSerializeRdmaError();
+        ReportFailedToSerializeRdmaError(FormatError(error));
     }
 
     if (error.SerializeToArray(
@@ -198,7 +198,9 @@ NProto::TError ParseError(TStringBuf buffer)
     if (!error.ParseFromArray(buffer.data(), buffer.size())) {
         error.SetCode(E_FAIL);
         error.SetMessage("rdma error");
-        ReportFailedToParseRdmaError();
+        ReportFailedToParseRdmaError(
+            FormatError(error),
+            {{"bufferSize", buffer.size()}});
     }
 
     return error;

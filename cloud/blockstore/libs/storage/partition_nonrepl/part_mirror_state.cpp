@@ -140,7 +140,9 @@ bool TMirrorPartitionState::PrepareMigrationConfigForWarningDevices()
         }
     }
 
-    ReportMigrationSourceNotFound();
+    ReportMigrationSourceNotFound(
+        {{"disk", PartConfig->GetName()}, {"RWClientId", RWClientId}});
+
     // TODO: log details
     return false;
 }
@@ -193,7 +195,12 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
         }
     }
 
-    ReportMigrationSourceNotFound();
+    ReportMigrationSourceNotFound(
+        "PrepareMigrationConfigForFreshDevices failed: no suitable source "
+        "device found for fresh device",
+        {{"disk", PartConfig->GetName()},
+         {"index", deviceIdx},
+         {"total_replicas", ReplicaInfos.size()}});
     return false;
 }
 
