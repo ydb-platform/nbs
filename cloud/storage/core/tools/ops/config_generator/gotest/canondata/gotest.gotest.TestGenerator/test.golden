@@ -16,6 +16,10 @@ config:
     }
 
 
+  nbs-storage.txt: |+
+    SchemeShardDir: "/pre-prod_k8s/NBS"
+
+
   file.cfg: |+
     cfg file override for test
     localhost
@@ -48,6 +52,9 @@ HandshakeTimeoutDuration {
   Seconds: 1
 }
 
+/generated-configs/cluster1/zone1/target1/cfg/nbs-storage.txt:
+SchemeShardDir: "/pre-prod_k8s/NBS"
+
 /generated-configs/cluster1/zone1/target1/values.yaml:
 config:
 
@@ -64,6 +71,10 @@ config:
     HandshakeTimeoutDuration {
       Seconds: 1
     }
+
+
+  nbs-storage.txt: |+
+    SchemeShardDir: "/pre-prod_k8s/NBS"
 
 
   file.cfg: |+
@@ -89,6 +100,9 @@ HandshakeTimeoutDuration {
   Seconds: 1
 }
 
+/generated-configs/cluster1/zone1/target2/cfg/nbs-storage.txt:
+SchemeShardDir: "/pre-prod_k8s/NBS"
+
 /generated-configs/cluster1/zone1/target2/values.yaml:
 config:
 
@@ -105,6 +119,10 @@ config:
     HandshakeTimeoutDuration {
       Seconds: 1
     }
+
+
+  nbs-storage.txt: |+
+    SchemeShardDir: "/pre-prod_k8s/NBS"
 
 
 
@@ -124,6 +142,10 @@ config:
     HandshakeTimeoutDuration {
       Seconds: 1
     }
+
+
+  nbs-storage.txt: |+
+    SchemeShardDir: "/pre-prod_k8s/NBS"
 
 
   file.cfg: |+
@@ -158,6 +180,9 @@ HandshakeTimeoutDuration {
   Seconds: 1
 }
 
+/generated-configs/cluster1/zone2/target1/cfg/nbs-storage.txt:
+SchemeShardDir: "/pre-prod_k8s/NBS"
+
 /generated-configs/cluster1/zone2/target1/values.yaml:
 config:
 
@@ -174,6 +199,10 @@ config:
     HandshakeTimeoutDuration {
       Seconds: 1
     }
+
+
+  nbs-storage.txt: |+
+    SchemeShardDir: "/pre-prod_k8s/NBS"
 
 
   file.cfg: |+
@@ -199,6 +228,9 @@ HandshakeTimeoutDuration {
   Seconds: 1
 }
 
+/generated-configs/cluster1/zone2/target2/cfg/nbs-storage.txt:
+SchemeShardDir: "/pre-prod_k8s/NBS"
+
 /generated-configs/cluster1/zone2/target2/values.yaml:
 config:
 
@@ -215,6 +247,10 @@ config:
     HandshakeTimeoutDuration {
       Seconds: 1
     }
+
+
+  nbs-storage.txt: |+
+    SchemeShardDir: "/pre-prod_k8s/NBS"
 
 
 

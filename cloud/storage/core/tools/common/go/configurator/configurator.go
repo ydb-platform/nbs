@@ -211,6 +211,18 @@ func (g *ConfigGenerator) loadAllOverrides(
 		return err
 	}
 
+	if g.spec.ServiceSpec.Clusters[cluster].Values.Generate {
+		err = g.loadOverrides(
+			ctx,
+			target,
+			path.Join(g.spec.OverridesPath, "k8s"),
+			configMap,
+			cfgOverride)
+		if err != nil {
+			return err
+		}
+	}
+
 	if seed {
 		return g.loadOverrides(
 			ctx,

@@ -1,0 +1,1 @@
+SchemeShardDir: "/pre-prod_k8s/NBS"
