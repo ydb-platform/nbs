@@ -8,6 +8,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/random/random.h>
+
 namespace NCloud::NBlockStore::NServer {
 
 using namespace NThreading;
@@ -29,6 +31,10 @@ struct TTestNvmeManager final: NNvme::INvmeManager
     ITaskQueuePtr TaskQueue;
     TVector<TDeallocateRequest> DeallocateRequests;
 
+    std::function<NProto::TError ()> DeallocateImpl = [] {
+        return NProto::TError{};
+    };
+
     explicit TTestNvmeManager(ITaskQueuePtr taskQueue)
         : TaskQueue(std::move(taskQueue))
     {}
@@ -49,7 +55,7 @@ struct TTestNvmeManager final: NNvme::INvmeManager
     {
         DeallocateRequests.emplace_back(path, offsetBytes, sizeBytes);
 
-        return TaskQueue->Execute([] { return MakeError(S_OK); });
+        return TaskQueue->Execute([error = DeallocateImpl()] { return error; });
     }
 
     TResultOrError<bool> IsSsd(const TString& path) final
@@ -78,6 +84,16 @@ struct TTestFileIO final: public IFileIOService
     ITaskQueuePtr TaskQueue;
     TVector<TReadRequest> ReadRequests;
 
+    std::function<TResultOrError<ui32>(i64, TArrayRef<char>)> ReadImpl =
+        [](i64 offset, TArrayRef<char> buffer)
+    {
+        Y_UNUSED(offset);
+
+        std::memset(buffer.data(), 0, buffer.size());
+
+        return buffer.size();
+    };
+
     explicit TTestFileIO(ITaskQueuePtr taskQueue)
         : TaskQueue(std::move(taskQueue))
     {}
@@ -98,8 +114,11 @@ struct TTestFileIO final: public IFileIOService
 
         ReadRequests.emplace_back(offset, buffer.size());
 
-        TaskQueue->ExecuteSimple([completion, len = buffer.size()]
-                                 { completion->Func(completion, {}, len); });
+        auto [len, error] = ReadImpl(offset, buffer);
+
+        TaskQueue->ExecuteSimple([=] {
+            completion->Func(completion, error, len);
+        });
     }
 
     void AsyncReadV(
@@ -144,6 +163,8 @@ struct TFixture: public NUnitTest::TBaseFixture
     static constexpr ui64 StorageSize = 93_GB;
     static constexpr ui64 StartIndex = 0;
     static constexpr ui64 BlocksCount = StorageSize / BlockSize;
+    const ui32 ExpectedDeallocations = 93;
+    const ui32 ExpectedReads = BlocksCount / 1000;
 
     const TString Filename = "filename";
 
@@ -164,15 +185,8 @@ struct TFixture: public NUnitTest::TBaseFixture
     {
         TaskQueue->Stop();
     }
-};
 
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
-{
-    Y_UNIT_TEST_F(ShouldDeallocateDevice, TFixture)
+    void ShouldDeallocateDeviceImpl()
     {
         auto future = SafeDeallocateDevice(
             Filename,
@@ -184,15 +198,209 @@ Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
             NvmeManager);
 
         const auto& error = future.GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-
-        const ui32 expectedDeallocations = 93;
-        const ui32 expectedReads = BlocksCount / 1000;
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            expectedDeallocations,
+            ExpectedDeallocations,
             NvmeManager->DeallocateRequests.size());
-        UNIT_ASSERT_VALUES_EQUAL(expectedReads, FileIO->ReadRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL(ExpectedReads, FileIO->ReadRequests.size());
+    }
+};
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
+{
+    Y_UNIT_TEST_F(ShouldDeallocateDevice, TFixture)
+    {
+        ShouldDeallocateDeviceImpl();
+    }
+
+    Y_UNIT_TEST_F(ShouldDeallocateDeviceFF, TFixture)
+    {
+        FileIO->ReadImpl = [&](i64, auto buffer) -> TResultOrError<ui32>
+        {
+            std::memset(buffer.data(), 0xFF, buffer.size());
+
+            return buffer.size();
+        };
+
+        ShouldDeallocateDeviceImpl();
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleReadError, TFixture)
+    {
+        const NProto::TError expectedError =
+            MakeError(MAKE_SYSTEM_ERROR(42), "Read error");
+
+        const ui64 brokenReadIndex = RandomNumber<ui64>(ExpectedReads);
+        ui64 readIndex = 0;
+
+        FileIO->ReadImpl = [&](i64, auto buffer) -> TResultOrError<ui32>
+        {
+            if (readIndex++ == brokenReadIndex) {
+                return expectedError;
+            }
+
+            std::memset(buffer.data(), 0, buffer.size());
+
+            return buffer.size();
+        };
+
+        auto future = SafeDeallocateDevice(
+            Filename,
+            TFileHandle{},
+            FileIO,
+            StartIndex,
+            BlocksCount,
+            BlockSize,
+            NvmeManager);
+
+        const auto& error = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expectedError.GetCode(),
+            error.GetCode(),
+            FormatError(error));
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expectedError.GetMessage(),
+            error.GetMessage(),
+            FormatError(error));
+
+        UNIT_ASSERT_VALUES_EQUAL(readIndex, FileIO->ReadRequests.size());
+    }
+
+    Y_UNIT_TEST_F(ShouldDetectDummyRead, TFixture)
+    {
+        const ui64 brokenReadIndex = RandomNumber<ui64>(ExpectedReads);
+        ui64 readIndex = 0;
+
+        FileIO->ReadImpl = [&](i64, auto buffer) -> TResultOrError<ui32>
+        {
+            if (readIndex++ != brokenReadIndex) {
+                std::memset(buffer.data(), 0, buffer.size());
+            }
+
+            return buffer.size();
+        };
+
+        auto future = SafeDeallocateDevice(
+            Filename,
+            TFileHandle{},
+            FileIO,
+            StartIndex,
+            BlocksCount,
+            BlockSize,
+            NvmeManager);
+
+        const auto& error = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(readIndex, FileIO->ReadRequests.size());
+    }
+
+    Y_UNIT_TEST_F(ShouldDetectDirtyBuffer, TFixture)
+    {
+        const ui64 brokenReadIndex = RandomNumber<ui64>(ExpectedReads);
+        ui64 readIndex = 0;
+
+        FileIO->ReadImpl = [&](i64, auto buffer) -> TResultOrError<ui32>
+        {
+            std::memset(buffer.data(), 0, buffer.size());
+
+            if (readIndex++ == brokenReadIndex) {
+                buffer[buffer.size() / 2] = 0x42;
+            }
+
+            return buffer.size();
+        };
+
+        auto future = SafeDeallocateDevice(
+            Filename,
+            TFileHandle{},
+            FileIO,
+            StartIndex,
+            BlocksCount,
+            BlockSize,
+            NvmeManager);
+
+        const auto& error = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(readIndex, FileIO->ReadRequests.size());
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleShortRead, TFixture)
+    {
+        const ui64 brokenReadIndex = RandomNumber<ui64>(ExpectedReads);
+        ui64 readIndex = 0;
+
+        FileIO->ReadImpl = [&](i64, auto buffer) -> TResultOrError<ui32>
+        {
+            std::memset(buffer.data(), 0, buffer.size());
+
+            if (readIndex++ == brokenReadIndex) {
+                return buffer.size() / 2;
+            }
+
+            return buffer.size();
+        };
+
+        auto future = SafeDeallocateDevice(
+            Filename,
+            TFileHandle{},
+            FileIO,
+            StartIndex,
+            BlocksCount,
+            BlockSize,
+            NvmeManager);
+
+        const auto& error = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(readIndex, FileIO->ReadRequests.size());
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleDeallocateError, TFixture)
+    {
+        const NProto::TError expectedError =
+            MakeError(MAKE_SYSTEM_ERROR(42), "Deallocate error");
+
+        const ui64 brokenDeallocateIndex =
+            RandomNumber<ui64>(ExpectedDeallocations);
+        ui64 deallocateIndex = 0;
+
+        NvmeManager->DeallocateImpl = [&]
+        {
+            if (deallocateIndex++ == brokenDeallocateIndex) {
+                return expectedError;
+            }
+
+            return NProto::TError{};
+        };
+
+        auto future = SafeDeallocateDevice(
+            Filename,
+            TFileHandle{},
+            FileIO,
+            StartIndex,
+            BlocksCount,
+            BlockSize,
+            NvmeManager);
+
+        const auto& error = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expectedError.GetCode(),
+            error.GetCode(),
+            FormatError(error));
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expectedError.GetMessage(),
+            error.GetMessage(),
+            FormatError(error));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            deallocateIndex,
+            NvmeManager->DeallocateRequests.size());
     }
 }
 
