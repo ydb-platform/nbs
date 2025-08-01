@@ -141,6 +141,10 @@ private:
 
         ValidatedBlockIndex = StartIndex + Rand.Uniform(BlocksCount);
 
+        const int uninitializedMem = 0xAB;
+
+        std::memset(Buffer.get(), uninitializedMem, BlockSize);
+
         FileIO->AsyncRead(
             Fd,
             static_cast<i64>(ValidatedBlockIndex * BlockSize),
