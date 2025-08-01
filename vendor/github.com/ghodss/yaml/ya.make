@@ -14,4 +14,6 @@ GO_TEST_SRCS(yaml_test.go)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

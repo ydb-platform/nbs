@@ -1,29 +1,32 @@
-YQL_UDF_CONTRIB(string_udf)
+IF (YQL_PACKAGED)
+    PACKAGE()
 
-YQL_ABI_VERSION(
-    2
-    35
-    0
-)
+    FROM_SANDBOX(FILE 6529668674 OUT_NOAUTO libstring_udf.so)
 
-SRCS(
-    string_udf.cpp
-)
-
-PEERDIR(
-    contrib/ydb/library/yql/public/udf/arrow
-    library/cpp/charset
-    library/cpp/deprecated/split
-    library/cpp/html/pcdata
-    library/cpp/string_utils/base32
-    library/cpp/string_utils/base64
-    library/cpp/string_utils/levenshtein_diff
-    library/cpp/string_utils/quote
-)
-
-END()
+    END()
+ELSE()
+    YQL_UDF_CONTRIB(string_udf)
+    YQL_ABI_VERSION(
+        2
+        37
+        0
+    )
+    SRCS(
+        string_udf.cpp
+    )
+    PEERDIR(
+        contrib/ydb/library/yql/public/udf/arrow
+        library/cpp/charset
+        library/cpp/deprecated/split
+        library/cpp/html/pcdata
+        library/cpp/string_utils/base32
+        library/cpp/string_utils/base64
+        library/cpp/string_utils/levenshtein_diff
+        library/cpp/string_utils/quote
+    )
+    END()
+ENDIF()
 
 RECURSE_FOR_TESTS(
     test
 )
-

@@ -3,6 +3,7 @@
 #include "schemeshard_impl.h"
 
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/datashard_config.pb.h>
 
 #include <contrib/ydb/core/base/subdomain.h>
 
@@ -441,14 +442,15 @@ public:
                 .IsAtLocalSchemeShard()
                 .IsResolved()
                 .NotDeleted()
-                .NotUnderDeleting();
+                .NotUnderDeleting()
+                .FailOnRestrictedCreateInTempZone(Transaction.GetAllowCreateInTempDir());
 
             if (checks) {
                 if (parentPath.Base()->IsTableIndex()) {
                     checks.IsInsideTableIndexPath()
                           .IsUnderCreating(NKikimrScheme::StatusNameConflict)
                           .IsUnderTheSameOperation(OperationId.GetTxId()); //allow only as part of creating base table
-                } else {
+                } else if (!Transaction.GetAllowAccessToPrivatePaths()) {
                     checks.IsCommonSensePath()
                           .IsLikeDirectory();
                 }
@@ -537,12 +539,6 @@ public:
 
         TString errStr;
 
-        if ((schema.HasTemporary() && schema.GetTemporary()) && !context.SS->EnableTempTables) {
-            result->SetError(NKikimrScheme::StatusPreconditionFailed,
-                TStringBuilder() << "It is not allowed to create temp table: " << schema.GetName());
-            return result;
-        }
-
         if (!CheckColumnTypesConstraints(schema, errStr)) {
             result->SetError(NKikimrScheme::StatusPreconditionFailed, errStr);
             return result;
@@ -563,7 +559,21 @@ public:
 
         const NScheme::TTypeRegistry* typeRegistry = AppData()->TypeRegistry;
         const TSchemeLimits& limits = domainInfo->GetSchemeLimits();
-        TTableInfo::TAlterDataPtr alterData = TTableInfo::CreateAlterData(nullptr, schema, *typeRegistry, limits, *domainInfo, context.SS->EnableTablePgTypes, errStr, LocalSequences);
+        const TTableInfo::TCreateAlterDataFeatureFlags featureFlags = {
+            .EnableTablePgTypes = context.SS->EnableTablePgTypes,
+            .EnableTableDatetime64 = context.SS->EnableTableDatetime64,
+            .EnableParameterizedDecimal = context.SS->EnableParameterizedDecimal,
+        };
+        TTableInfo::TAlterDataPtr alterData = TTableInfo::CreateAlterData(
+            nullptr,
+            schema,
+            *typeRegistry,
+            limits,
+            *domainInfo,
+            featureFlags,
+            errStr,
+            LocalSequences);
+
         if (!alterData.Get()) {
             result->SetError(NKikimrScheme::StatusSchemeError, errStr);
             return result;
@@ -644,9 +654,8 @@ public:
 
         Y_ABORT_UNLESS(tableInfo->GetPartitions().back().EndOfRange.empty(), "End of last range must be +INF");
 
-        if (schema.HasTemporary() && schema.GetTemporary()) {
-            tableInfo->IsTemporary = true;
-            tableInfo->OwnerActorId = ActorIdFromProto(Transaction.GetTempTableOwnerActorId());
+        if (tableInfo->IsAsyncReplica()) {
+            newTable->SetAsyncReplica(true);
         }
 
         context.SS->Tables[newTable->PathId] = tableInfo;
@@ -661,13 +670,12 @@ public:
         context.SS->ChangeTxState(db, OperationId, TTxState::CreateParts);
         context.OnComplete.ActivateTx(OperationId);
 
-        context.SS->PersistPath(db, newTable->PathId);
         context.SS->ApplyAndPersistUserAttrs(db, newTable->PathId);
 
         if (!acl.empty()) {
             newTable->ApplyACL(acl);
-            context.SS->PersistACL(db, newTable);
         }
+        context.SS->PersistPath(db, newTable->PathId);
         context.SS->PersistTable(db, newTable->PathId);
         context.SS->PersistTxState(db, OperationId);
 
@@ -696,17 +704,6 @@ public:
 
         context.SS->ClearDescribePathCaches(dstPath.Base());
         context.OnComplete.PublishToSchemeBoard(OperationId, dstPath.Base()->PathId);
-
-        if (schema.HasTemporary() && schema.GetTemporary()) {
-            const auto& ownerActorId = tableInfo->OwnerActorId;
-            LOG_DEBUG_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
-                    "Processing create temp table with Name: " << name
-                    << ", WorkingDir: " << parentPathStr
-                    << ", OwnerActorId: " << ownerActorId
-                    << ", PathId: " << newTable->PathId);
-            context.OnComplete.UpdateTempTablesToCreateState(
-                ownerActorId, newTable->PathId);
-        }
 
         Y_ABORT_UNLESS(shardsToCreate == txState.Shards.size());
         dstPath.DomainInfo()->IncPathsInside();

@@ -3,6 +3,10 @@
 #include <contrib/ydb/core/protos/kqp.pb.h>
 #include <contrib/ydb/core/protos/msgbus.pb.h>
 #include <contrib/ydb/core/protos/ydb_result_set_old.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_table.pb.h>
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/protos/tx_proxy.pb.h>
 #include <contrib/ydb/public/lib/deprecated/client/grpc_client.h>
 #include <contrib/ydb/public/lib/deprecated/client/msgbus_client_config.h>
 #include <contrib/ydb/public/lib/base/msgbus_status.h>
@@ -582,7 +586,8 @@ public:
         BlobDepot,
         ExternalTable,
         ExternalDataSource,
-        View
+        View,
+        ResourcePool
     };
 
     TSchemaObject(TSchemaObject&&) = default;
@@ -856,12 +861,6 @@ protected:
     }
 
     void PrepareRequest(NKikimrClient::TSchemeOperation& request) const {
-        if (!SecurityToken.empty()) {
-            request.SetSecurityToken(SecurityToken);
-        }
-    }
-
-    void PrepareRequest(NKikimrClient::TWhoAmI& request) const {
         if (!SecurityToken.empty()) {
             request.SetSecurityToken(SecurityToken);
         }

@@ -1,0 +1,7 @@
+--- contrib/python/protobuf/py3/google/protobuf/pyext/__init__.py	(index)
++++ contrib/python/protobuf/py3/google/protobuf/pyext/__init__.py	(working tree)
+@@ -0,0 +1,4 @@
++import warnings
++
++with warnings.catch_warnings(action="ignore", category=DeprecationWarning):
++    import google.protobuf.pyext._message

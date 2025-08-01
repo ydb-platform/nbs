@@ -8,11 +8,7 @@ SRCS(
     value.go
 )
 
-GO_TEST_SRCS(
-    cast_test.go
-    types_test.go
-    value_test.go
-)
+GO_TEST_SRCS(cast_test.go)
 
 END()
 

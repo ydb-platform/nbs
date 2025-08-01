@@ -11,4 +11,6 @@ GO_XTEST_SRCS(parse_req_test.go)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

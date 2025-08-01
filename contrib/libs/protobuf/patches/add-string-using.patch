@@ -1,0 +1,13 @@
+--- contrib/libs/protobuf/src/google/protobuf/stubs/common.h    (index)
++++ contrib/libs/protobuf/src/google/protobuf/stubs/common.h    (working tree)
+@@ -191,6 +191,10 @@ class FatalException : public std::exception {
+ };
+ #endif
+ 
++// This is at the end of the file instead of the beginning to work around a bug
++// in some versions of MSVC.
++using string = TProtoStringType;
++
+ }  // namespace protobuf
+ }  // namespace google
+ 

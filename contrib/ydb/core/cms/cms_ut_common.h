@@ -11,6 +11,9 @@
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/core/testlib/basics/helpers.h>
 #include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <contrib/ydb/public/api/protos/draft/ydb_maintenance.pb.h>
+
+#include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/base.h>
 #include <util/system/mutex.h>
@@ -86,6 +89,11 @@ struct TTestEnvOpts {
     bool UseMirror3dcErasure;
     bool AdvanceCurrentTime;
     bool EnableSentinel;
+    bool EnableCMSRequestPriorities;
+    bool EnableSingleCompositeActionGroup;
+
+    using TNodeLocationCallback = std::function<TNodeLocation(ui32)>;
+    TNodeLocationCallback NodeLocationCallback;
 
     TTestEnvOpts() = default;
 
@@ -102,6 +110,8 @@ struct TTestEnvOpts {
         , UseMirror3dcErasure(false)
         , AdvanceCurrentTime(false)
         , EnableSentinel(false)
+        , EnableCMSRequestPriorities(true)
+        , EnableSingleCompositeActionGroup(true)
     {
     }
 
@@ -114,6 +124,17 @@ struct TTestEnvOpts {
         EnableSentinel = false;
         return *this;
     }
+
+    TTestEnvOpts& WithoutEnableCMSRequestPriorities() {
+        EnableCMSRequestPriorities = false;
+        return *this;
+    }
+
+    TTestEnvOpts& WithNodeLocationCallback(TNodeLocationCallback nodeLocationCallback) {
+        NodeLocationCallback = nodeLocationCallback;
+        return *this;
+    }
+
 };
 
 class TCmsTestEnv : public TTestBasicRuntime {
@@ -159,6 +180,7 @@ public:
             bool defaultTenantPolicy,
             TDuration duration,
             NKikimrCms::EAvailabilityMode availabilityMode,
+            i32 priority,
             NKikimrCms::TStatus::ECode code,
             Ts... actions)
     {
@@ -168,6 +190,8 @@ public:
         if (duration)
             req->Record.SetDuration(duration.GetValue());
         req->Record.SetAvailabilityMode(availabilityMode);
+        if (priority)
+            req->Record.SetPriority(priority);
         return CheckPermissionRequest(req, code);
     }
 
@@ -184,7 +208,7 @@ public:
     {
         return CheckPermissionRequest(user, partial, dry, schedule,
                                       defaultTenantPolicy, TDuration::Zero(),
-                                      availabilityMode,
+                                      availabilityMode, 0,
                                       code, actions...);
     }
     template <typename... Ts>
@@ -199,7 +223,7 @@ public:
             Ts... actions)
     {
         return CheckPermissionRequest(user, partial, dry, schedule, defaultTenantPolicy,
-            duration, NKikimrCms::MODE_MAX_AVAILABILITY, code, actions...);
+            duration, NKikimrCms::MODE_MAX_AVAILABILITY, 0, code, actions...);
     }
 
     template <typename... Ts>
@@ -214,6 +238,21 @@ public:
     {
         return CheckPermissionRequest(user, partial, dry, schedule, defaultTenantPolicy,
             NKikimrCms::MODE_MAX_AVAILABILITY, code, actions...);
+    }
+
+    template <typename... Ts>
+    NKikimrCms::TPermissionResponse CheckPermissionRequest(
+            const TString &user,
+            bool partial,
+            bool dry,
+            bool schedule,
+            bool defaultTenantPolicy,
+            i32 priority,
+            NKikimrCms::TStatus::ECode code,
+            Ts... actions)
+    {
+        return CheckPermissionRequest(user, partial, dry, schedule, defaultTenantPolicy,
+            TDuration::Zero(), NKikimrCms::MODE_MAX_AVAILABILITY, priority, code, actions...);
     }
 
     NKikimrCms::TPermissionResponse CheckPermissionRequest(TAutoPtr<NCms::TEvCms::TEvPermissionRequest> req,
@@ -293,6 +332,8 @@ public:
         return CheckRequest(user, id, dry, NKikimrCms::MODE_MAX_AVAILABILITY, res, count);
     }
 
+    void CheckBSCUpdateRequests(std::set<ui32> expectedNodes, NKikimrBlobStorage::EDriveStatus expectedStatus);
+
     void CheckWalleStoreTaskIsFailed(NCms::TEvCms::TEvStoreWalleTask *req);
 
     template <typename... Ts>
@@ -364,6 +405,39 @@ public:
     {
         auto req = MakeResetMarkerRequest(marker, userToken, args...);
         return CheckResetMarker(req, code);
+    }
+
+    template <typename... Ts>
+    Ydb::Maintenance::MaintenanceTaskResult CheckMaintenanceTaskCreate(
+            const TString &taskUid,
+            Ydb::StatusIds::StatusCode code,
+            Ydb::Maintenance::AvailabilityMode availabilityMode,
+            const Ts&... actionGroups) 
+    {
+        auto ev = std::make_unique<NCms::TEvCms::TEvCreateMaintenanceTaskRequest>();
+        ev->Record.SetUserSID("test-user");
+
+        auto *req = ev->Record.MutableRequest();
+        req->mutable_task_options()->set_task_uid(taskUid);
+        req->mutable_task_options()->set_availability_mode(availabilityMode);
+        AddActionGroups(*req, actionGroups...);
+
+        SendToPipe(CmsId, Sender, ev.release(), 0, GetPipeConfigWithRetries());
+        TAutoPtr<IEventHandle> handle;
+        auto reply = GrabEdgeEventRethrow<NCms::TEvCms::TEvMaintenanceTaskResponse>(handle);
+
+        const auto &rec = reply->Record;
+        UNIT_ASSERT_VALUES_EQUAL(rec.GetStatus(), code);
+        return rec.GetResult();
+    }
+
+    template <typename... Ts>
+    Ydb::Maintenance::MaintenanceTaskResult CheckMaintenanceTaskCreate(
+            const TString &taskUid,
+            Ydb::StatusIds::StatusCode code,
+            const Ts&... actionGroups) 
+    {   
+        return CheckMaintenanceTaskCreate(taskUid, code, Ydb::Maintenance::AVAILABILITY_MODE_STRONG, actionGroups...);
     }
 
     void EnableBSBaseConfig();

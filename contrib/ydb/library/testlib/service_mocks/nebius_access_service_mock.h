@@ -6,7 +6,6 @@
 
 #include <iterator>
 
-
 class TNebiusAccessServiceMock : public nebius::iam::v1::AccessService::Service {
 public:
     template <class TResonseProto>
@@ -209,6 +208,7 @@ public:
                 result.set_resultcode(nebius::iam::v1::AuthorizeResult::PERMISSION_DENIED);
                 continue;
             }
+
             bool allowedResource = true;
             if (!AllowedResourceIds.empty()) {
                 allowedResource = false;

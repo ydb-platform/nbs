@@ -20,4 +20,6 @@ SRCS(
 
 END()
 
-RECURSE(core)
+RECURSE(
+    core
+)

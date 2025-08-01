@@ -6,16 +6,22 @@ SRCS(
     certificates.go
     check_exists.go
     dsn.go
-    params_go1.18.go
+    params.go
     path.go
+    query.go
+    result.go
     stack.go
 )
 
 GO_TEST_SRCS(
     dsn_test.go
-    params_go1.18_test.go
     params_test.go
     stack_test.go
+)
+
+GO_XTEST_SRCS(
+    example_test.go
+    query_test.go
 )
 
 END()

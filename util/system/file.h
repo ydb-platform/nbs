@@ -61,7 +61,7 @@ enum SeekDir {
     sEnd = 2,
 };
 
-class TFileHandle: public TNonCopyable {
+class TFileHandle: TMoveOnly {
 public:
     constexpr TFileHandle() = default;
 
@@ -77,19 +77,18 @@ public:
         other.Fd_ = INVALID_FHANDLE;
     }
 
-    TFileHandle& operator=(TFileHandle&& other) noexcept
-    {
-        Close();
-        Fd_ = other.Release();
-        return *this;
-    }
-
     TFileHandle(const char* fName, EOpenMode oMode) noexcept;
     TFileHandle(const TString& fName, EOpenMode oMode) noexcept;
     TFileHandle(const std::filesystem::path& path, EOpenMode oMode) noexcept;
 
     inline ~TFileHandle() {
         Close();
+    }
+
+    TFileHandle& operator=(TFileHandle&& other) noexcept {
+        Close();
+        Fd_ = other.Release();
+        return *this;
     }
 
     bool Close() noexcept;

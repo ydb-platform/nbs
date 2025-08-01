@@ -1,0 +1,472 @@
+# File format ($ symbol means the beginning of a line):
+#
+# $ # this message
+# $ # =======================
+# $     # comments (all commentaries should starts with some number of spaces and # symbol)
+# ${action} {license spdx} {license text hash}
+# $BELONGS ./ya/make/file/relative/path/1/ya.make ./ya/make/2/ya.make
+# ${all_file_action} filename
+# $ # user commentaries (many lines)
+# $ generated description - files with this license, license text... (some number of lines that starts with some number of spaces, do not modify)
+# ${action} {license spdx} {license text hash}
+# $BELONGS ./ya/make/file/relative/path/3/ya.make
+# ${all_file_action} filename
+# $    #    user commentaries
+# $ generated description
+# $ ...
+#
+# You can modify action, all_file_action and add commentaries
+# Available actions:
+# keep - keep license in contrib and use in credits
+# skip - skip license
+# remove - remove all files with this license
+# rename - save license text/links into licenses texts file, but not store SPDX into LINCENSE macro. You should store correct license id into devtools.license.spdx.txt file
+#
+# {all file action} records will be generated when license text contains filename that exists on filesystem (in contrib directory)
+# We suppose that that files can contain some license info
+# Available all file actions:
+# FILE_IGNORE - ignore file (do nothing)
+# FILE_INCLUDE - include all file data into licenses text file
+# =======================
+
+KEEP     MIT                  00db824f981d0602b733ea10acb216b7
+BELONGS ya.make
+    License text:
+         o Update from 1989 MIT license text to modern MIT license text [1]
+    Scancode info:
+        Original SPDX id: MIT
+        Score           : 100.00
+        Match type      : REFERENCE
+        Links           : http://opensource.org/licenses/mit-license.php, https://spdx.org/licenses/MIT
+    Files with this license:
+        RELEASE-NOTES [18:18]
+
+KEEP     MIT                  07056dc9c6a316252fc58ce2d224dedb
+BELONGS ya.make
+    License text:
+        /* MIT License
+    Scancode info:
+        Original SPDX id: MIT
+        Score           : 100.00
+        Match type      : REFERENCE
+        Links           : http://opensource.org/licenses/mit-license.php, https://spdx.org/licenses/MIT
+    Files with this license:
+        include/ares.h [1:1]
+        include/ares_dns.h [1:1]
+        include/ares_nameser.h [1:1]
+        include/ares_rules.h [1:1]
+        include/ares_version.h [1:1]
+        src/lib/ares__addrinfo2hostent.c [1:1]
+        src/lib/ares__addrinfo_localhost.c [1:1]
+        src/lib/ares__buf.c [1:1]
+        src/lib/ares__buf.h [1:1]
+        src/lib/ares__close_sockets.c [1:1]
+        src/lib/ares__get_hostent.c [1:1]
+        src/lib/ares__htable.c [1:1]
+        src/lib/ares__htable.h [1:1]
+        src/lib/ares__htable_asvp.c [1:1]
+        src/lib/ares__htable_asvp.h [1:1]
+        src/lib/ares__htable_stvp.c [1:1]
+        src/lib/ares__htable_stvp.h [1:1]
+        src/lib/ares__llist.c [1:1]
+        src/lib/ares__llist.h [1:1]
+        src/lib/ares__parse_into_addrinfo.c [1:1]
+        src/lib/ares__read_line.c [1:1]
+        src/lib/ares__readaddrinfo.c [1:1]
+        src/lib/ares__slist.c [1:1]
+        src/lib/ares__slist.h [1:1]
+        src/lib/ares__timeval.c [1:1]
+        src/lib/ares_android.c [1:1]
+        src/lib/ares_android.h [1:1]
+        src/lib/ares_cancel.c [1:1]
+        src/lib/ares_create_query.c [1:1]
+        src/lib/ares_data.c [1:1]
+        src/lib/ares_data.h [1:1]
+        src/lib/ares_destroy.c [1:1]
+        src/lib/ares_expand_name.c [1:1]
+        src/lib/ares_expand_string.c [1:1]
+        src/lib/ares_fds.c [1:1]
+        src/lib/ares_free_hostent.c [1:1]
+        src/lib/ares_free_string.c [1:1]
+        src/lib/ares_freeaddrinfo.c [1:1]
+        src/lib/ares_getaddrinfo.c [1:1]
+        src/lib/ares_getenv.c [1:1]
+        src/lib/ares_getenv.h [1:1]
+        src/lib/ares_gethostbyaddr.c [1:1]
+        src/lib/ares_gethostbyname.c [1:1]
+        src/lib/ares_getnameinfo.c [1:1]
+        src/lib/ares_getsock.c [1:1]
+        src/lib/ares_inet_net_pton.h [1:1]
+        src/lib/ares_init.c [1:1]
+        src/lib/ares_iphlpapi.h [1:1]
+        src/lib/ares_ipv6.h [1:1]
+        src/lib/ares_library_init.c [1:1]
+        src/lib/ares_mkquery.c [1:1]
+        src/lib/ares_nowarn.c [1:1]
+        src/lib/ares_nowarn.h [1:1]
+        src/lib/ares_options.c [1:1]
+        src/lib/ares_parse_a_reply.c [1:1]
+        src/lib/ares_parse_aaaa_reply.c [1:1]
+        src/lib/ares_parse_caa_reply.c [1:1]
+        src/lib/ares_parse_mx_reply.c [1:1]
+        src/lib/ares_parse_naptr_reply.c [1:1]
+        src/lib/ares_parse_ns_reply.c [1:1]
+        src/lib/ares_parse_ptr_reply.c [1:1]
+        src/lib/ares_parse_soa_reply.c [1:1]
+        src/lib/ares_parse_srv_reply.c [1:1]
+        src/lib/ares_parse_txt_reply.c [1:1]
+        src/lib/ares_parse_uri_reply.c [1:1]
+        src/lib/ares_platform.c [1:1]
+        src/lib/ares_platform.h [1:1]
+        src/lib/ares_private.h [1:1]
+        src/lib/ares_process.c [1:1]
+        src/lib/ares_query.c [1:1]
+        src/lib/ares_rand.c [1:1]
+        src/lib/ares_search.c [1:1]
+        src/lib/ares_send.c [1:1]
+        src/lib/ares_setup.h [1:1]
+        src/lib/ares_strcasecmp.c [1:1]
+        src/lib/ares_strcasecmp.h [1:1]
+        src/lib/ares_strdup.c [1:1]
+        src/lib/ares_strdup.h [1:1]
+        src/lib/ares_strerror.c [1:1]
+        src/lib/ares_strsplit.c [1:1]
+        src/lib/ares_strsplit.h [1:1]
+        src/lib/ares_timeout.c [1:1]
+        src/lib/ares_version.c [1:1]
+        src/lib/bitncmp.h [1:1]
+        src/lib/config-win32.h [1:1]
+        src/lib/setup_once.h [1:1]
+
+KEEP     LicenseRef-scancode-mit-no-advert-export-control 2b7d01cca1385b1b6fa57bcbceadbd9b
+BELONGS ya.make
+    Note: matched license text is too long. Read it in the source files.
+    Scancode info:
+        Original SPDX id: LicenseRef-scancode-mit-no-advert-export-control
+        Score           : 70.80
+        Match type      : TEXT
+        Links           : https://fedoraproject.org/wiki/Licensing:Xerox?rd=Licensing/Xerox, https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/licenses/mit-no-advert-export-control.LICENSE
+    Files with this license:
+        src/lib/ares_parse_caa_reply.c [30:46]
+
+KEEP     MIT                  3158a75221c70090b7e127aa7c980dd8
+BELONGS ya.make
+    License text:
+         * SPDX-License-Identifier: MIT
+    Scancode info:
+        Original SPDX id: MIT
+        Score           : 100.00
+        Match type      : TAG
+        Links           : http://opensource.org/licenses/mit-license.php, https://spdx.org/licenses/MIT
+    Files with this license:
+        include/ares.h [25:25]
+        include/ares_build-ios.h [5:5]
+        include/ares_build-linux.h [5:5]
+        include/ares_dns.h [25:25]
+        include/ares_nameser.h [25:25]
+        include/ares_rules.h [24:24]
+        include/ares_version.h [24:24]
+        src/lib/ares__addrinfo2hostent.c [27:27]
+        src/lib/ares__addrinfo_localhost.c [25:25]
+        src/lib/ares__buf.c [24:24]
+        src/lib/ares__buf.h [24:24]
+        src/lib/ares__close_sockets.c [25:25]
+        src/lib/ares__get_hostent.c [25:25]
+        src/lib/ares__htable.c [24:24]
+        src/lib/ares__htable.h [24:24]
+        src/lib/ares__htable_asvp.c [24:24]
+        src/lib/ares__htable_asvp.h [24:24]
+        src/lib/ares__htable_stvp.c [24:24]
+        src/lib/ares__htable_stvp.h [24:24]
+        src/lib/ares__llist.c [24:24]
+        src/lib/ares__llist.h [24:24]
+        src/lib/ares__parse_into_addrinfo.c [24:24]
+        src/lib/ares__read_line.c [25:25]
+        src/lib/ares__readaddrinfo.c [24:24]
+        src/lib/ares__slist.c [24:24]
+        src/lib/ares__slist.h [24:24]
+        src/lib/ares__timeval.c [24:24]
+        src/lib/ares_android.c [24:24]
+        src/lib/ares_android.h [24:24]
+        src/lib/ares_cancel.c [24:24]
+        src/lib/ares_config-android.h [2:2]
+        src/lib/ares_config-linux.h [2:2]
+        src/lib/ares_config-osx.h [2:2]
+        src/lib/ares_create_query.c [25:25]
+        src/lib/ares_data.c [24:24]
+        src/lib/ares_data.h [24:24]
+        src/lib/ares_destroy.c [25:25]
+        src/lib/ares_expand_name.c [25:25]
+        src/lib/ares_expand_string.c [25:25]
+        src/lib/ares_fds.c [25:25]
+        src/lib/ares_free_hostent.c [25:25]
+        src/lib/ares_free_string.c [25:25]
+        src/lib/ares_freeaddrinfo.c [25:25]
+        src/lib/ares_getaddrinfo.c [26:26]
+        src/lib/ares_getenv.c [25:25]
+        src/lib/ares_getenv.h [25:25]
+        src/lib/ares_gethostbyaddr.c [25:25]
+        src/lib/ares_gethostbyname.c [25:25]
+        src/lib/ares_getnameinfo.c [24:24]
+        src/lib/ares_getsock.c [24:24]
+        src/lib/ares_inet_net_pton.h [24:24]
+        src/lib/ares_init.c [25:25]
+        src/lib/ares_iphlpapi.h [25:25]
+        src/lib/ares_ipv6.h [24:24]
+        src/lib/ares_library_init.c [25:25]
+        src/lib/ares_mkquery.c [25:25]
+        src/lib/ares_nowarn.c [24:24]
+        src/lib/ares_nowarn.h [24:24]
+        src/lib/ares_options.c [25:25]
+        src/lib/ares_parse_a_reply.c [25:25]
+        src/lib/ares_parse_aaaa_reply.c [26:26]
+        src/lib/ares_parse_caa_reply.c [24:24]
+        src/lib/ares_parse_mx_reply.c [25:25]
+        src/lib/ares_parse_naptr_reply.c [25:25]
+        src/lib/ares_parse_ns_reply.c [25:25]
+        src/lib/ares_parse_ptr_reply.c [25:25]
+        src/lib/ares_parse_soa_reply.c [25:25]
+        src/lib/ares_parse_srv_reply.c [25:25]
+        src/lib/ares_parse_txt_reply.c [25:25]
+        src/lib/ares_parse_uri_reply.c [25:25]
+        src/lib/ares_platform.c [25:25]
+        src/lib/ares_platform.h [25:25]
+        src/lib/ares_private.h [25:25]
+        src/lib/ares_process.c [25:25]
+        src/lib/ares_query.c [25:25]
+        src/lib/ares_rand.c [24:24]
+        src/lib/ares_search.c [25:25]
+        src/lib/ares_send.c [25:25]
+        src/lib/ares_setup.h [24:24]
+        src/lib/ares_strcasecmp.c [25:25]
+        src/lib/ares_strcasecmp.h [25:25]
+        src/lib/ares_strdup.c [25:25]
+        src/lib/ares_strdup.h [25:25]
+        src/lib/ares_strerror.c [25:25]
+        src/lib/ares_strsplit.c [24:24]
+        src/lib/ares_strsplit.h [24:24]
+        src/lib/ares_timeout.c [25:25]
+        src/lib/ares_version.c [25:25]
+        src/lib/bitncmp.c [17:17]
+        src/lib/bitncmp.h [24:24]
+        src/lib/config-win32.h [24:24]
+        src/lib/inet_net_pton.c [18:18]
+        src/lib/inet_ntop.c [17:17]
+        src/lib/setup_once.h [24:24]
+        src/lib/windows_port.c [6:6]
+
+KEEP     ISC                  496ba8557c8105b63a14ddbb272cca56
+BELONGS ya.make
+    Note: matched license text is too long. Read it in the source files.
+    Scancode info:
+        Original SPDX id: ISC
+        Score           : 100.00
+        Match type      : TEXT
+        Links           : http://fedoraproject.org/wiki/Licensing:MIT#Old_Style_with_legal_disclaimer_2, https://spdx.org/licenses/ISC, https://www.isc.org/software/license
+    Files with this license:
+        src/lib/bitncmp.c [5:15]
+        src/lib/inet_ntop.c [5:15]
+
+KEEP     MIT                  545c52fe67bc4ce2cf5ec8aa17017c21
+BELONGS ya.make
+    License text:
+        c-ares is distributed the MIT license.
+    Scancode info:
+        Original SPDX id: MIT
+        Score           : 100.00
+        Match type      : REFERENCE
+        Links           : http://opensource.org/licenses/mit-license.php, https://spdx.org/licenses/MIT
+    Files with this license:
+        README.md [24:24]
+
+KEEP     Public-Domain        707241e6bb9deec46cbbe6614eec13a8
+BELONGS ya.make
+    License text:
+        /* Uses public domain code snipets from http://graphics.stanford.edu/~seander/bithacks.html */
+    Scancode info:
+        Original SPDX id: LicenseRef-scancode-public-domain
+        Score           : 100.00
+        Match type      : NOTICE
+        Links           : http://www.linfo.org/publicdomain.html, https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/licenses/public-domain.LICENSE
+    Files with this license:
+        src/lib/ares__slist.c [124:124]
+
+KEEP     BSD-3-Clause         9d018aaf6e89baa34c9bc9407e762114
+BELONGS ya.make
+    License text:
+         * Lifted from the 'Android Bionic' project with the BSD license.
+    Scancode info:
+        Original SPDX id: BSD-3-Clause
+        Score           : 99.00
+        Match type      : REFERENCE
+        Links           : http://www.opensource.org/licenses/BSD-3-Clause, https://spdx.org/licenses/BSD-3-Clause
+    Files with this license:
+        src/lib/ares__sortaddrinfo.c [3:3]
+
+KEEP     BSD-3-Clause         9f9f74951499b982d601e33ab0c03bed
+BELONGS ya.make
+    Note: matched license text is too long. Read it in the source files.
+    Scancode info:
+        Original SPDX id: BSD-3-Clause
+        Score           : 100.00
+        Match type      : TEXT
+        Links           : http://www.opensource.org/licenses/BSD-3-Clause, https://spdx.org/licenses/BSD-3-Clause
+    Files with this license:
+        src/lib/ares__sortaddrinfo.c [12:34]
+
+KEEP     MIT                  a04466ecc0c63d6a253ebdee6a310c0a
+BELONGS ya.make
+    License text:
+        \# c-ares license
+        MIT License
+    Scancode info:
+        Original SPDX id: MIT
+        Score           : 100.00
+        Match type      : TAG
+        Links           : http://opensource.org/licenses/mit-license.php, https://spdx.org/licenses/MIT
+    Files with this license:
+        LICENSE.md [1:3]
+
+KEEP     ISC                  a33bf68b7a1c6d0ca7948114d5f40d02
+BELONGS ya.make
+    Note: matched license text is too long. Read it in the source files.
+    Scancode info:
+        Original SPDX id: ISC
+        Score           : 100.00
+        Match type      : TEXT
+        Links           : http://fedoraproject.org/wiki/Licensing:MIT#Old_Style_with_legal_disclaimer_2, https://spdx.org/licenses/ISC, https://www.isc.org/software/license
+    Files with this license:
+        src/lib/inet_net_pton.c [5:16]
+
+KEEP     BSD-3-Clause         bcd96bf495243cd22767952d056c373c
+BELONGS ya.make
+    License text:
+         * SPDX-License-Identifier: BSD-3-Clause
+    Scancode info:
+        Original SPDX id: BSD-3-Clause
+        Score           : 100.00
+        Match type      : TAG
+        Links           : http://www.opensource.org/licenses/BSD-3-Clause, https://spdx.org/licenses/BSD-3-Clause
+    Files with this license:
+        src/lib/ares__sortaddrinfo.c [36:36]
+
+KEEP     MIT                  c2fd01dec4e4c4c415b4e2bd90cd2e6b
+BELONGS ya.make
+FILE_INCLUDE AUTHORS found in files: include/ares.h at line 20, include/ares_dns.h at line 20, include/ares_nameser.h at line 20, include/ares_rules.h at line 19, include/ares_version.h at line 19, src/lib/ares__addrinfo2hostent.c at line 22, src/lib/ares__addrinfo_localhost.c at line 20, src/lib/ares__buf.c at line 19, src/lib/ares__buf.h at line 19, src/lib/ares__close_sockets.c at line 20, src/lib/ares__get_hostent.c at line 20, src/lib/ares__htable.c at line 19, src/lib/ares__htable.h at line 19, src/lib/ares__htable_asvp.c at line 19, src/lib/ares__htable_asvp.h at line 19, src/lib/ares__htable_stvp.c at line 19, src/lib/ares__htable_stvp.h at line 19, src/lib/ares__llist.c at line 19, src/lib/ares__llist.h at line 19, src/lib/ares__parse_into_addrinfo.c at line 19, src/lib/ares__read_line.c at line 20, src/lib/ares__readaddrinfo.c at line 19, src/lib/ares__slist.c at line 19, src/lib/ares__slist.h at line 19, src/lib/ares__timeval.c at line 19, src/lib/ares_android.c at line 19, src/lib/ares_android.h at line 19, src/lib/ares_cancel.c at line 19, src/lib/ares_create_query.c at line 20, src/lib/ares_data.c at line 19, src/lib/ares_data.h at line 19, src/lib/ares_destroy.c at line 20, src/lib/ares_expand_name.c at line 20, src/lib/ares_expand_string.c at line 20, src/lib/ares_fds.c at line 20, src/lib/ares_free_hostent.c at line 20, src/lib/ares_free_string.c at line 20, src/lib/ares_freeaddrinfo.c at line 20, src/lib/ares_getaddrinfo.c at line 21, src/lib/ares_getenv.c at line 20, src/lib/ares_getenv.h at line 20, src/lib/ares_gethostbyaddr.c at line 20, src/lib/ares_gethostbyname.c at line 20, src/lib/ares_getnameinfo.c at line 19, src/lib/ares_getsock.c at line 19, src/lib/ares_inet_net_pton.h at line 19, src/lib/ares_init.c at line 20, src/lib/ares_iphlpapi.h at line 20, src/lib/ares_ipv6.h at line 19, src/lib/ares_library_init.c at line 20, src/lib/ares_mkquery.c at line 20, src/lib/ares_nowarn.c at line 19, src/lib/ares_nowarn.h at line 19, src/lib/ares_options.c at line 20, src/lib/ares_parse_a_reply.c at line 20, src/lib/ares_parse_aaaa_reply.c at line 21, src/lib/ares_parse_caa_reply.c at line 19, src/lib/ares_parse_mx_reply.c at line 20, src/lib/ares_parse_naptr_reply.c at line 20, src/lib/ares_parse_ns_reply.c at line 20, src/lib/ares_parse_ptr_reply.c at line 20, src/lib/ares_parse_soa_reply.c at line 20, src/lib/ares_parse_srv_reply.c at line 20, src/lib/ares_parse_txt_reply.c at line 20, src/lib/ares_parse_uri_reply.c at line 20, src/lib/ares_platform.c at line 20, src/lib/ares_platform.h at line 20, src/lib/ares_private.h at line 20, src/lib/ares_process.c at line 20, src/lib/ares_query.c at line 20, src/lib/ares_rand.c at line 19, src/lib/ares_search.c at line 20, src/lib/ares_send.c at line 20, src/lib/ares_setup.h at line 19, src/lib/ares_strcasecmp.c at line 20, src/lib/ares_strcasecmp.h at line 20, src/lib/ares_strdup.c at line 20, src/lib/ares_strdup.h at line 20, src/lib/ares_strerror.c at line 20, src/lib/ares_strsplit.c at line 19, src/lib/ares_strsplit.h at line 19, src/lib/ares_timeout.c at line 20, src/lib/ares_version.c at line 20, src/lib/bitncmp.h at line 19, src/lib/config-win32.h at line 19, src/lib/setup_once.h at line 19
+    Note: matched license text is too long. Read it in the source files.
+    Scancode info:
+        Original SPDX id: MIT
+        Score           : 100.00
+        Match type      : TEXT
+        Links           : http://opensource.org/licenses/mit-license.php, https://spdx.org/licenses/MIT
+    Files with this license:
+        include/ares.h [6:23]
+        include/ares_dns.h [6:23]
+        include/ares_nameser.h [6:23]
+        include/ares_rules.h [5:22]
+        include/ares_version.h [5:22]
+        src/lib/ares__addrinfo2hostent.c [8:25]
+        src/lib/ares__addrinfo_localhost.c [6:23]
+        src/lib/ares__buf.c [5:22]
+        src/lib/ares__buf.h [5:22]
+        src/lib/ares__close_sockets.c [6:23]
+        src/lib/ares__get_hostent.c [6:23]
+        src/lib/ares__htable.c [5:22]
+        src/lib/ares__htable.h [5:22]
+        src/lib/ares__htable_asvp.c [5:22]
+        src/lib/ares__htable_asvp.h [5:22]
+        src/lib/ares__htable_stvp.c [5:22]
+        src/lib/ares__htable_stvp.h [5:22]
+        src/lib/ares__llist.c [5:22]
+        src/lib/ares__llist.h [5:22]
+        src/lib/ares__parse_into_addrinfo.c [5:22]
+        src/lib/ares__read_line.c [6:23]
+        src/lib/ares__readaddrinfo.c [5:22]
+        src/lib/ares__slist.c [5:22]
+        src/lib/ares__slist.h [5:22]
+        src/lib/ares__timeval.c [5:22]
+        src/lib/ares_android.c [5:22]
+        src/lib/ares_android.h [5:22]
+        src/lib/ares_cancel.c [5:22]
+        src/lib/ares_create_query.c [6:23]
+        src/lib/ares_data.c [5:22]
+        src/lib/ares_data.h [5:22]
+        src/lib/ares_destroy.c [6:23]
+        src/lib/ares_expand_name.c [6:23]
+        src/lib/ares_expand_string.c [6:23]
+        src/lib/ares_fds.c [6:23]
+        src/lib/ares_free_hostent.c [6:23]
+        src/lib/ares_free_string.c [6:23]
+        src/lib/ares_freeaddrinfo.c [6:23]
+        src/lib/ares_getaddrinfo.c [7:24]
+        src/lib/ares_getenv.c [6:23]
+        src/lib/ares_getenv.h [6:23]
+        src/lib/ares_gethostbyaddr.c [6:23]
+        src/lib/ares_gethostbyname.c [6:23]
+        src/lib/ares_getnameinfo.c [5:22]
+        src/lib/ares_getsock.c [5:22]
+        src/lib/ares_inet_net_pton.h [5:22]
+        src/lib/ares_init.c [6:23]
+        src/lib/ares_iphlpapi.h [6:23]
+        src/lib/ares_ipv6.h [5:22]
+        src/lib/ares_library_init.c [6:23]
+        src/lib/ares_mkquery.c [6:23]
+        src/lib/ares_nowarn.c [5:22]
+        src/lib/ares_nowarn.h [5:22]
+        src/lib/ares_options.c [6:23]
+        src/lib/ares_parse_a_reply.c [6:23]
+        src/lib/ares_parse_aaaa_reply.c [7:24]
+        src/lib/ares_parse_caa_reply.c [5:22]
+        src/lib/ares_parse_mx_reply.c [6:23]
+        src/lib/ares_parse_naptr_reply.c [6:23]
+        src/lib/ares_parse_ns_reply.c [6:23]
+        src/lib/ares_parse_ptr_reply.c [6:23]
+        src/lib/ares_parse_soa_reply.c [6:23]
+        src/lib/ares_parse_srv_reply.c [6:23]
+        src/lib/ares_parse_txt_reply.c [6:23]
+        src/lib/ares_parse_uri_reply.c [6:23]
+        src/lib/ares_platform.c [6:23]
+        src/lib/ares_platform.h [6:23]
+        src/lib/ares_private.h [6:23]
+        src/lib/ares_process.c [6:23]
+        src/lib/ares_query.c [6:23]
+        src/lib/ares_rand.c [5:22]
+        src/lib/ares_search.c [6:23]
+        src/lib/ares_send.c [6:23]
+        src/lib/ares_setup.h [5:22]
+        src/lib/ares_strcasecmp.c [6:23]
+        src/lib/ares_strcasecmp.h [6:23]
+        src/lib/ares_strdup.c [6:23]
+        src/lib/ares_strdup.h [6:23]
+        src/lib/ares_strerror.c [6:23]
+        src/lib/ares_strsplit.c [5:22]
+        src/lib/ares_strsplit.h [5:22]
+        src/lib/ares_timeout.c [6:23]
+        src/lib/ares_version.c [6:23]
+        src/lib/bitncmp.h [5:22]
+        src/lib/config-win32.h [5:22]
+        src/lib/setup_once.h [5:22]
+
+KEEP     MIT                  e5e4ee9811f07656fe849a31959bb283
+BELONGS ya.make
+FILE_INCLUDE AUTHORS found in files: LICENSE.md at line 24
+    Note: matched license text is too long. Read it in the source files.
+    Scancode info:
+        Original SPDX id: MIT
+        Score           : 100.00
+        Match type      : TEXT
+        Links           : http://opensource.org/licenses/mit-license.php, https://spdx.org/licenses/MIT
+    Files with this license:
+        LICENSE.md [10:27]
+
+KEEP     MIT                  f2b17175a5ee33cc6b3d00cb8a42d787
+BELONGS ya.make
+    License text:
+         *        gain approval for relicensing to the modern MIT license from the
+    Scancode info:
+        Original SPDX id: MIT
+        Score           : 100.00
+        Match type      : REFERENCE
+        Links           : http://opensource.org/licenses/mit-license.php, https://spdx.org/licenses/MIT
+    Files with this license:
+        src/lib/ares_parse_caa_reply.c [30:30]

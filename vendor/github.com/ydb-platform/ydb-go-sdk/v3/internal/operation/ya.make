@@ -6,6 +6,7 @@ SRCS(
     context.go
     mode.go
     params.go
+    status.go
     timeout.go
 )
 

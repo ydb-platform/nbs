@@ -29,9 +29,13 @@ IF (OS_DARWIN)
 ENDIF()
 
 IF (OS_WINDOWS)
-    SRCS(common_windows.go)
+    SRCS(
+        common_windows.go
+    )
 ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

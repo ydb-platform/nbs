@@ -1,20 +1,24 @@
-YQL_UDF_CONTRIB(pire_udf)
+IF (YQL_PACKAGED)
+    PACKAGE()
 
-YQL_ABI_VERSION(
-    2
-    27
-    0
-)
+    FROM_SANDBOX(FILE 6529655310 OUT_NOAUTO libpire_udf.so)
 
-SRCS(
-    pire_udf.cpp
-)
-
-PEERDIR(
-    library/cpp/regex/pire
-)
-
-END()
+    END()
+ELSE()
+    YQL_UDF_CONTRIB(pire_udf)
+    YQL_ABI_VERSION(
+        2
+        27
+        0
+    )
+    SRCS(
+        pire_udf.cpp
+    )
+    PEERDIR(
+        library/cpp/regex/pire
+    )
+    END()
+ENDIF()
 
 RECURSE_FOR_TESTS(
     test

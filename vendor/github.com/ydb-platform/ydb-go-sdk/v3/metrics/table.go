@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
+//nolint:funlen
 func table(config Config) (t trace.Table) {
 	config = config.WithSystem("table")
 	alive := config.GaugeVec("sessions", "node_id")
@@ -38,6 +39,7 @@ func table(config Config) (t trace.Table) {
 				"node_id": idToString(info.Session.NodeID()),
 			}).Add(-1)
 		}
+
 		return nil
 	}
 	t.OnPoolSessionAdd = func(info trace.TablePoolSessionAddInfo) {
@@ -54,6 +56,7 @@ func table(config Config) (t trace.Table) {
 	t.OnPoolGet = func(info trace.TablePoolGetStartInfo) func(trace.TablePoolGetDoneInfo) {
 		wait.With(nil).Add(1)
 		start := time.Now()
+
 		return func(info trace.TablePoolGetDoneInfo) {
 			wait.With(nil).Add(-1)
 			if info.Error == nil && config.Details()&trace.TablePoolEvents != 0 {
@@ -70,9 +73,15 @@ func table(config Config) (t trace.Table) {
 			if !ok {
 				panic(fmt.Sprintf("unknown session '%s'", info.Session.ID()))
 			}
-			inflightLatency.With(nil).Record(time.Since(start.(time.Time)))
+			val, ok := start.(time.Time)
+			if !ok {
+				panic(fmt.Sprintf("unsupported type conversion from %T to time.Time", val))
+			}
+			inflightLatency.With(nil).Record(time.Since(val))
 		}
+
 		return nil
 	}
+
 	return t
 }

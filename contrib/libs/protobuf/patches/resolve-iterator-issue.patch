@@ -1,0 +1,23 @@
+--- a/src/google/protobuf/util/internal/utility.cc	(index)
++++ b/src/google/protobuf/util/internal/utility.cc	(working tree)
+@@ -43,6 +43,8 @@
+ #include <google/protobuf/stubs/strutil.h>
+ #include <google/protobuf/stubs/map_util.h>
+ 
++#include <util/string/util.h>
++
+ // clang-format off
+ #include <google/protobuf/port_def.inc>
+ // clang-format on
+@@ -220,10 +222,7 @@ const google::protobuf::EnumValue* FindEnumValueByNameWithoutUnderscoreOrNull(
+       TProtoStringType enum_name_without_underscore = enum_value.name();
+ 
+       // Remove underscore from the name.
+-      enum_name_without_underscore.erase(
+-          std::remove(enum_name_without_underscore.begin(),
+-                      enum_name_without_underscore.end(), '_'),
+-          enum_name_without_underscore.end());
++	   RemoveAll(enum_name_without_underscore, '_');
+       // Make the name uppercase.
+       for (TProtoStringType::iterator it = enum_name_without_underscore.begin();
+            it != enum_name_without_underscore.end(); ++it) {

@@ -4,6 +4,7 @@
 #include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
 
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
+#include <contrib/ydb/library/ydb_issue/proto/issue_id.pb.h>
 
 #include <library/cpp/testing/unittest/tests_data.h>
 #include <library/cpp/testing/unittest/registar.h>

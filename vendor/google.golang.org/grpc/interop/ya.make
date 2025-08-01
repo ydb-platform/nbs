@@ -22,5 +22,7 @@ RECURSE(
 )
 
 IF (OS_LINUX)
-    RECURSE(grpclb_fallback)
+    RECURSE(
+        grpclb_fallback
+    )
 ENDIF()

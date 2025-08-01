@@ -6,8 +6,14 @@ SRCS(
     discovery.go
 )
 
+GO_TEST_SRCS(
+    discovery_test.go
+    grpc_client_mock_test.go
+)
+
 END()
 
 RECURSE(
     config
+    gotest
 )

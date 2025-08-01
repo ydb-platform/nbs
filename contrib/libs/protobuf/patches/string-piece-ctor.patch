@@ -1,0 +1,13 @@
+--- a/src/google/protobuf/stubs/stringpiece.h	(index)
++++ b/src/google/protobuf/stubs/stringpiece.h	(working tree)
+@@ -216,6 +216,4 @@ class LIBPROTOBUF_EXPORT StringPiece {
+-  template <class Allocator>
+-  StringPiece(  // NOLINT(runtime/explicit)
+-      const std::basic_string<char, std::char_traits<char>, Allocator>& str)
+-      : ptr_(str.data()), length_(0) {
+-    length_ = CheckSize(str.size());
+-  }
++  StringPiece(const TProtoStringType& str)
++  	  : ptr_(str.data()), length_(str.size())
++  {
++  }

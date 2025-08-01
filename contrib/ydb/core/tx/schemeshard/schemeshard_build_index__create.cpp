@@ -1,8 +1,11 @@
 #include "schemeshard_build_index.h"
+#include "schemeshard_xxport__helpers.h"
 #include "schemeshard_build_index_helpers.h"
 #include "schemeshard_build_index_tx_base.h"
 #include "schemeshard_impl.h"
 #include "schemeshard_utils.h"
+
+#include <contrib/ydb/core/ydb_convert/table_settings.h>
 
 namespace NKikimr::NSchemeShard {
 
@@ -27,7 +30,7 @@ public:
                 << "Index build with id '" << id << "' already exists");
         }
 
-        const TString& uid = GetUid(request.GetOperationParams().labels());
+        const TString& uid = GetUid(request.GetOperationParams());
         if (uid && Self->IndexBuildsByUid.contains(uid)) {
             return Reply(Ydb::StatusIds::ALREADY_EXISTS, TStringBuilder()
                 << "Index build with uid '" << uid << "' already exists");
@@ -210,11 +213,13 @@ private:
 
         if (settings.has_index() && settings.has_column_build_operation()) {
             explain = "unable to build index and column in the single operation";
-            return false;   
+            return false;
         }
 
         if (settings.has_index()) {
-            switch (settings.index().type_case()) {
+            const auto& index = settings.index();
+
+            switch (index.type_case()) {
             case Ydb::Table::TableIndex::TypeCase::kGlobalIndex:
                 buildInfo->IndexType = NKikimrSchemeOp::EIndexType::EIndexTypeGlobal;
                 break;
@@ -229,20 +234,16 @@ private:
                 return false;
             };
 
-            buildInfo->IndexName = settings.index().name();
-            buildInfo->IndexColumns.assign(settings.index().index_columns().begin(), settings.index().index_columns().end());
-            buildInfo->DataColumns.assign(settings.index().data_columns().begin(), settings.index().data_columns().end());
+            buildInfo->IndexName = index.name();
+            buildInfo->IndexColumns.assign(index.index_columns().begin(), index.index_columns().end());
+            buildInfo->DataColumns.assign(index.data_columns().begin(), index.data_columns().end());
+
+            Ydb::StatusIds::StatusCode status;
+            if (!FillIndexTablePartitioning(buildInfo->ImplTableDescription, index, status, explain)) {
+                return false;
+            }
         }
         return true;
-    }
-
-    static TString GetUid(const google::protobuf::Map<TString, TString>& labels) {
-        auto it = labels.find("uid");
-        if (it == labels.end()) {
-            return TString();
-        }
-
-        return it->second;
     }
 };
 

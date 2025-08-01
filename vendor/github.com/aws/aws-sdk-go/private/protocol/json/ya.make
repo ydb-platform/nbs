@@ -1,1 +1,3 @@
-RECURSE(jsonutil)
+RECURSE(
+    jsonutil
+)

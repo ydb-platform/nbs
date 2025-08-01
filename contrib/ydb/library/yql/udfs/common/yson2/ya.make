@@ -1,22 +1,26 @@
-YQL_UDF_CONTRIB(yson2_udf)
+IF (YQL_PACKAGED)
+    PACKAGE()
 
-YQL_ABI_VERSION(
-    2
-    28
-    0
-)
+    FROM_SANDBOX(FILE 6529704625 OUT_NOAUTO libyson2_udf.so)
 
-SRCS(
-    yson2_udf.cpp
-)
-
-PEERDIR(
-    library/cpp/containers/stack_vector
-    library/cpp/yson_pull
-    contrib/ydb/library/yql/minikql/dom
-)
-
-END()
+    END()
+ELSE()
+    YQL_UDF_CONTRIB(yson2_udf)
+    YQL_ABI_VERSION(
+        2
+        28
+        0
+    )
+    SRCS(
+        yson2_udf.cpp
+    )
+    PEERDIR(
+        library/cpp/containers/stack_vector
+        library/cpp/yson_pull
+        contrib/ydb/library/yql/minikql/dom
+    )
+    END()
+ENDIF()
 
 RECURSE_FOR_TESTS(
     test

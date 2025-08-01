@@ -8,9 +8,13 @@ SRCS(
 )
 
 IF (OS_LINUX)
-    SRCS(retry_linux.go)
+    SRCS(
+        retry_linux.go
+    )
 ENDIF()
 
 END()
 
-RECURSE(internal)
+RECURSE(
+    internal
+)

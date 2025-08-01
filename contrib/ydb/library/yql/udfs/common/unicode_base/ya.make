@@ -1,20 +1,24 @@
-YQL_UDF_CONTRIB(unicode_udf)
+IF (YQL_PACKAGED)
+    PACKAGE()
 
-YQL_ABI_VERSION(
-    2
-    27
-    0
-)
+    FROM_SANDBOX(FILE 6529695831 OUT_NOAUTO libunicode_udf.so)
 
-SRCS(
-    unicode_base.cpp
-)
-
-PEERDIR(
-    contrib/ydb/library/yql/udfs/common/unicode_base/lib
-)
-
-END()
+    END()
+ELSE()
+    YQL_UDF_CONTRIB(unicode_udf)
+    YQL_ABI_VERSION(
+        2
+        27
+        0
+    )
+    SRCS(
+        unicode_base.cpp
+    )
+    PEERDIR(
+        contrib/ydb/library/yql/udfs/common/unicode_base/lib
+    )
+    END()
+ENDIF()
 
 RECURSE_FOR_TESTS(
     test

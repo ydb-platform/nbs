@@ -5,7 +5,6 @@ LICENSE(Apache-2.0)
 SRCS(
     balancer.go
     connections_state.go
-    ctx.go
     local_dc.go
 )
 

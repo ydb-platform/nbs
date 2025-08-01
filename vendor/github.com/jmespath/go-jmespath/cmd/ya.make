@@ -1,1 +1,3 @@
-RECURSE(jpgo)
+RECURSE(
+    jpgo
+)

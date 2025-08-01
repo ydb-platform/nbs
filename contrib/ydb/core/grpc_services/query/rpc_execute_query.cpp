@@ -1,9 +1,9 @@
 #include "service_query.h"
-
 #include <contrib/ydb/core/actorlib_impl/long_timer.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/grpc_services/audit_dml_operations.h>
 #include <contrib/ydb/core/grpc_services/base/base.h>
+#include <contrib/ydb/core/grpc_services/base/flow_control.h>
 #include <contrib/ydb/core/grpc_services/cancelation/cancelation_event.h>
 #include <contrib/ydb/core/grpc_services/rpc_kqp_base.h>
 #include <contrib/ydb/core/kqp/executer_actor/kqp_executer.h>
@@ -23,49 +23,8 @@ using TEvExecuteQueryRequest = TGrpcRequestNoOperationCall<Ydb::Query::ExecuteQu
 
 struct TProducerState {
     TMaybe<ui64> LastSeqNo;
-    ui64 AckedFreeSpaceBytes = 0;
+    i64 AckedFreeSpaceBytes = 0;
     TActorId ActorId;
-};
-
-class TRpcFlowControlState {
-public:
-    TRpcFlowControlState(ui64 inflightLimitBytes)
-        : InflightLimitBytes_(inflightLimitBytes) {}
-
-    void PushResponse(ui64 responseSizeBytes) {
-        ResponseSizeQueue_.push(responseSizeBytes);
-        TotalResponsesSize_ += responseSizeBytes;
-    }
-
-    void PopResponse() {
-        Y_ENSURE(!ResponseSizeQueue_.empty());
-        TotalResponsesSize_ -= ResponseSizeQueue_.front();
-        ResponseSizeQueue_.pop();
-    }
-
-    size_t QueueSize() const {
-        return ResponseSizeQueue_.size();
-    }
-
-    ui64 FreeSpaceBytes() const {
-        return TotalResponsesSize_ < InflightLimitBytes_
-            ? InflightLimitBytes_ - TotalResponsesSize_
-            : 0;
-    }
-
-    ui64 InflightBytes() const {
-        return TotalResponsesSize_;
-    }
-
-    ui64 InflightLimitBytes() const {
-        return InflightLimitBytes_;
-    }
-
-private:
-    const ui64 InflightLimitBytes_;
-
-    TQueue<ui64> ResponseSizeQueue_;
-    ui64 TotalResponsesSize_ = 0;
 };
 
 bool FillTxSettings(const Ydb::Query::TransactionSettings& from, Ydb::Table::TransactionSettings& to,
@@ -273,6 +232,13 @@ private:
         auto cachePolicy = google::protobuf::Arena::CreateMessage<Ydb::Table::QueryCachePolicy>(Request_->GetArena());
         cachePolicy->set_keep_in_cache(true);
 
+        auto settings = NKqp::NPrivateEvents::TQueryRequestSettings()
+            .SetKeepSession(false)
+            .SetUseCancelAfter(false)
+            .SetSyntax(syntax)
+            .SetSupportStreamTrailingResult(true)
+            .SetOutputChunkMaxSize(req->response_part_limit_bytes());
+
         auto ev = MakeHolder<NKqp::TEvKqp::TEvQueryRequest>(
             QueryAction,
             queryType,
@@ -286,10 +252,8 @@ private:
             GetCollectStatsMode(req->stats_mode()),
             cachePolicy,
             nullptr, // operationParams
-            false, // keepSession
-            false, // useCancelAfter
-            syntax,
-            true); // trailing support
+            settings,
+            req->pool_id());
 
         if (!ctx.Send(NKqp::MakeKqpProxyID(ctx.SelfID.NodeId()), ev.Release())) {
             NYql::TIssues issues;
@@ -321,13 +285,13 @@ private:
             FlowControl_.PopResponse();
         }
 
-        ui64 freeSpaceBytes = FlowControl_.FreeSpaceBytes();
+        const i64 freeSpaceBytes = FlowControl_.FreeSpaceBytes();
 
         for (auto& pair : StreamChannels_) {
             const auto& channelId = pair.first;
             auto& channel = pair.second;
 
-            if (freeSpaceBytes > 0 && channel.LastSeqNo && channel.AckedFreeSpaceBytes == 0) {
+            if (freeSpaceBytes > 0 && channel.LastSeqNo && channel.AckedFreeSpaceBytes <= 0) {
                 LOG_DEBUG_S(ctx, NKikimrServices::RPC_REQUEST, this->SelfId() << "Resume execution, "
                     << ", channel: " << channelId
                     << ", seqNo: " << channel.LastSeqNo
@@ -356,7 +320,7 @@ private:
         Y_PROTOBUF_SUPPRESS_NODISCARD response.SerializeToString(&out);
 
         FlowControl_.PushResponse(out.size());
-        auto freeSpaceBytes = FlowControl_.FreeSpaceBytes();
+        const i64 freeSpaceBytes = FlowControl_.FreeSpaceBytes();
 
         Request_->SendSerializedResult(std::move(out), Ydb::StatusIds::SUCCESS);
 
@@ -387,19 +351,25 @@ private:
         bool hasTrailingMessage = false;
 
         auto& kqpResponse = record.GetResponse();
-        if (kqpResponse.GetYdbResults().size() > 1) {
+        if (kqpResponse.GetYdbResults().size() > 1 && QueryAction != NKikimrKqp::QUERY_ACTION_EXPLAIN) {
             auto issue = MakeIssue(NKikimrIssues::TIssuesIds::DEFAULT_ERROR,
                 "Unexpected trailing message with multiple result sets.");
             ReplyFinishStream(Ydb::StatusIds::INTERNAL_ERROR, issue);
             return;
         }
 
+        Ydb::Query::ExecuteQueryResponsePart response;
+
+        if (NeedReportStats(*Request_->GetProtoRequest())) {
+            hasTrailingMessage = true;
+            FillQueryStats(*response.mutable_exec_stats(), kqpResponse);
+            if (NeedReportAst(*Request_->GetProtoRequest())) {
+                response.mutable_exec_stats()->set_query_ast(kqpResponse.GetQueryAst());
+            }
+        }
+
         if (record.GetYdbStatus() == Ydb::StatusIds::SUCCESS) {
             Request_->SetRuHeader(record.GetConsumedRu());
-
-            auto& kqpResponse = record.GetResponse();
-
-            Ydb::Query::ExecuteQueryResponsePart response;
 
             if (QueryAction == NKikimrKqp::QUERY_ACTION_EXECUTE) {
                 for(int i = 0; i < kqpResponse.GetYdbResults().size(); i++) {
@@ -415,27 +385,15 @@ private:
                 hasTrailingMessage = true;
                 response.mutable_tx_meta()->set_id(kqpResponse.GetTxMeta().id());
             }
-
-            if (NeedReportStats(*Request_->GetProtoRequest())) {
-                hasTrailingMessage = true;
-                FillQueryStats(*response.mutable_exec_stats(), kqpResponse);
-                if (NeedReportAst(*Request_->GetProtoRequest())) {
-                    response.mutable_exec_stats()->set_query_ast(kqpResponse.GetQueryAst());
-                }
-            }
-
-            if (hasTrailingMessage) {
-                response.set_status(Ydb::StatusIds::SUCCESS);
-                response.mutable_issues()->CopyFrom(issueMessage);
-                TString out;
-                Y_PROTOBUF_SUPPRESS_NODISCARD response.SerializeToString(&out);
-                const auto finishStreamFlag = NYdbGrpc::IRequestContextBase::EStreamCtrl::FINISH;
-                Request_->SendSerializedResult(std::move(out), record.GetYdbStatus(), finishStreamFlag);
-                this->PassAway();
-            }
         }
 
-        if (!hasTrailingMessage) {
+        if (hasTrailingMessage) {
+            response.set_status(record.GetYdbStatus());
+            response.mutable_issues()->CopyFrom(issueMessage);
+            TString out;
+            Y_PROTOBUF_SUPPRESS_NODISCARD response.SerializeToString(&out);
+            ReplySerializedAndFinishStream(record.GetYdbStatus(), std::move(out));
+        } else {
             NYql::TIssues issues;
             NYql::IssuesFromMessage(issueMessage, issues);
             ReplyFinishStream(record.GetYdbStatus(), issueMessage);
@@ -452,6 +410,12 @@ private:
         auto issue = MakeIssue(NKikimrIssues::TIssuesIds::DEFAULT_ERROR,
             "Client should not see this message, if so... may the force be with you");
         ReplyFinishStream(Ydb::StatusIds::INTERNAL_ERROR, issue);
+    }
+
+    void ReplySerializedAndFinishStream(Ydb::StatusIds::StatusCode status, TString&& buf) {
+        const auto finishStreamFlag = NYdbGrpc::IRequestContextBase::EStreamCtrl::FINISH;
+        Request_->SendSerializedResult(std::move(buf), status, finishStreamFlag);
+        this->PassAway();
     }
 
     void ReplyFinishStream(Ydb::StatusIds::StatusCode status, const NYql::TIssue& issue) {

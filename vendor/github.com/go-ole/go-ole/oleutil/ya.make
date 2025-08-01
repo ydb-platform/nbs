@@ -2,7 +2,9 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
-SRCS(oleutil.go)
+SRCS(
+    oleutil.go
+)
 
 IF (OS_LINUX)
     SRCS(

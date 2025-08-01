@@ -50,6 +50,7 @@ func (w *Writer) WaitInit(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -61,9 +62,17 @@ func (w *Writer) WaitInitInfo(ctx context.Context) (info PublicInitialInfo, err 
 		return PublicInitialInfo{}, err
 	}
 	publicInfo := PublicInitialInfo{LastSeqNum: privateInfo.LastSeqNum}
+
 	return publicInfo, nil
 }
 
+// Close will flush rested messages from buffer and close the writer.
+// You can't write new messages after call Close
 func (w *Writer) Close(ctx context.Context) error {
 	return w.inner.Close(ctx)
+}
+
+// Flush waits till all in-flight messages are acknowledged.
+func (w *Writer) Flush(ctx context.Context) error {
+	return w.inner.Flush(ctx)
 }

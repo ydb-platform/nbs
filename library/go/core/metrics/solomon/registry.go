@@ -192,6 +192,12 @@ func (r Registry) DurationHistogram(name string, buckets metrics.DurationBuckets
 	return r.registerMetric(s).(metrics.Timer)
 }
 
+func (r Registry) RemoveMetric(name string) {
+	metricName := r.newMetricName(name)
+	metricKey := r.metricKey(metricName)
+	r.metrics.Delete(metricKey)
+}
+
 func (r *Registry) newSubregistry(prefix string, tags map[string]string) *Registry {
 	// differ simple and rated registries
 	keyTags := registryutil.MergeTags(tags, map[string]string{"rated": strconv.FormatBool(r.rated)})
@@ -230,7 +236,7 @@ func (r *Registry) registerMetric(s Metric) Metric {
 		Rated(s)
 	}
 
-	key := r.metricKey(s)
+	key := r.metricKey(s.Name())
 
 	oldMetric, loaded := r.metrics.LoadOrStore(key, s)
 	if !loaded {
@@ -250,11 +256,11 @@ func (r *Registry) unregisterMetric(s Metric) {
 		Rated(s)
 	}
 
-	r.metrics.Delete(r.metricKey(s))
+	r.metrics.Delete(r.metricKey(s.Name()))
 }
 
-func (r *Registry) metricKey(s Metric) string {
+func (r *Registry) metricKey(metricName string) string {
 	// differ simple and rated registries
 	keyTags := registryutil.MergeTags(r.tags, map[string]string{"rated": strconv.FormatBool(r.rated)})
-	return registryutil.BuildRegistryKey(s.Name(), keyTags)
+	return registryutil.BuildRegistryKey(metricName, keyTags)
 }

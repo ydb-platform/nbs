@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/background"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/empty"
@@ -34,8 +34,9 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 		baseReader.EXPECT().ReadMessageBatch(gomock.Any(), opts).Return(batch, nil)
 
 		reader := &readerReconnector{
-			streamVal: baseReader,
-			tracer:    &trace.Topic{},
+			streamVal:           baseReader,
+			streamContextCancel: func(cause error) {},
+			tracer:              &trace.Topic{},
 		}
 		reader.initChannelsAndClock()
 		res, err := reader.ReadMessageBatch(context.Background(), opts)
@@ -61,6 +62,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 				if connectCalled > 1 {
 					return nil, errors.New("unexpected call test connect function")
 				}
+
 				return baseReader, nil
 			},
 			streamErr: errUnconnected,
@@ -103,6 +105,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 		reader := &readerReconnector{
 			readerConnect: func(ctx context.Context) (batchedStreamReader, error) {
 				connectCalled++
+
 				return readers[connectCalled-1], nil
 			},
 			streamErr: errUnconnected,
@@ -161,7 +164,11 @@ func TestTopicReaderReconnectorCommit(t *testing.T) {
 			require.Equal(t, "v", ctx.Value(k{}))
 			require.Equal(t, expectedCommitRange, offset)
 		})
-		reconnector := &readerReconnector{streamVal: stream, tracer: &trace.Topic{}}
+		reconnector := &readerReconnector{
+			streamVal:           stream,
+			streamContextCancel: func(cause error) {},
+			tracer:              &trace.Topic{},
+		}
 		reconnector.initChannelsAndClock()
 		require.NoError(t, reconnector.Commit(ctx, expectedCommitRange))
 	})
@@ -172,7 +179,11 @@ func TestTopicReaderReconnectorCommit(t *testing.T) {
 			require.Equal(t, "v", ctx.Value(k{}))
 			require.Equal(t, expectedCommitRange, offset)
 		}).Return(testErr)
-		reconnector := &readerReconnector{streamVal: stream, tracer: &trace.Topic{}}
+		reconnector := &readerReconnector{
+			streamVal:           stream,
+			streamContextCancel: func(cause error) {},
+			tracer:              &trace.Topic{},
+		}
 		reconnector.initChannelsAndClock()
 		require.ErrorIs(t, reconnector.Commit(ctx, expectedCommitRange), testErr)
 	})
@@ -207,7 +218,7 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 
 		reconnector := &readerReconnector{
 			connectTimeout: value.InfiniteDuration,
-			background:     *background.NewWorker(ctx),
+			background:     *background.NewWorker(ctx, "test-worker, "+t.Name()),
 			tracer:         &trace.Topic{},
 		}
 		reconnector.initChannelsAndClock()
@@ -218,6 +229,7 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 			{
 				callback: func(ctx context.Context) (batchedStreamReader, error) {
 					close(stream1Ready)
+
 					return newStream1, nil
 				},
 			},
@@ -227,12 +239,14 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 			{
 				callback: func(ctx context.Context) (batchedStreamReader, error) {
 					close(stream2Ready)
+
 					return newStream2, nil
 				},
 			},
 			{
 				callback: func(ctx context.Context) (batchedStreamReader, error) {
 					t.Fatal()
+
 					return nil, errors.New("unexpected call")
 				},
 			},
@@ -288,10 +302,12 @@ func TestTopicReaderReconnectorStart(t *testing.T) {
 	reconnector.readerConnect = readerConnectFuncMock([]readerConnectFuncAnswer{
 		{callback: func(ctx context.Context) (batchedStreamReader, error) {
 			close(connectionRequested)
+
 			return stream, nil
 		}},
 		{callback: func(ctx context.Context) (batchedStreamReader, error) {
 			t.Error()
+
 			return nil, errors.New("unexpected call")
 		}},
 	}...)
@@ -345,6 +361,7 @@ func TestTopicReaderReconnectorWaitInit(t *testing.T) {
 		reconnector.readerConnect = readerConnectFuncMock(readerConnectFuncAnswer{
 			callback: func(ctx context.Context) (batchedStreamReader, error) {
 				cancel()
+
 				return stream, nil
 			},
 		})

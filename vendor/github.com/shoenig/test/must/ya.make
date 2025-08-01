@@ -19,21 +19,29 @@ GO_TEST_SRCS(
 )
 
 IF (OS_LINUX)
-    SRCS(fs_default.go)
+    SRCS(
+        fs_default.go
+    )
 
     GO_TEST_SRCS(examples_test.go)
 ENDIF()
 
 IF (OS_DARWIN)
-    SRCS(fs_default.go)
+    SRCS(
+        fs_default.go
+    )
 
     GO_TEST_SRCS(examples_test.go)
 ENDIF()
 
 IF (OS_WINDOWS)
-    SRCS(fs_windows.go)
+    SRCS(
+        fs_windows.go
+    )
 ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

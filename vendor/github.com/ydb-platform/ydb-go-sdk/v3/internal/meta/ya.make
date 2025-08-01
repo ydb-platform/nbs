@@ -10,7 +10,10 @@ SRCS(
     trace_id.go
 )
 
-GO_TEST_SRCS(trace_id_test.go)
+GO_TEST_SRCS(
+    context_test.go
+    trace_id_test.go
+)
 
 END()
 

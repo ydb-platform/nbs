@@ -1,0 +1,16 @@
+Temporary patch for issue https://github.com/protocolbuffers/protobuf/issues/11903
+Already fixed upstream, expected in a 22.x release.
+
+--- contrib/libs/protobuf/src/google/protobuf/parse_context.h	(cb9d27d9c4059d617d59a94e0dd6997bfa885598)
++++ contrib/libs/protobuf/src/google/protobuf/parse_context.h	(working tree)
+@@ -234,7 +234,9 @@ class PROTOBUF_EXPORT EpsCopyInputStream {
+       if (aliasing_ == kOnPatch) aliasing_ = kNoDelta;
+       return flat.data();
+     } else {
+-      std::memcpy(buffer_, flat.data(), flat.size());
++      if (!flat.empty()) {
++        std::memcpy(buffer_, flat.data(), flat.size());
++      }
+       limit_ = 0;
+       limit_end_ = buffer_end_ = buffer_ + flat.size();
+       next_chunk_ = nullptr;

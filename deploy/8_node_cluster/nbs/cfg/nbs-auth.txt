@@ -1,4 +1,0 @@
-UseBlackBox: false
-UseAccessService: true
-UseStaff: false
-UseUserAccountService: false

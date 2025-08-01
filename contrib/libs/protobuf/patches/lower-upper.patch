@@ -1,0 +1,65 @@
+--- a/src/google/protobuf/stubs/strutil.h	(index)
++++ b/src/google/protobuf/stubs/strutil.h	(working tree)
+@@ -174,19 +174,11 @@ LIBPROTOBUF_EXPORT void StripWhitespace(string* s);
+ // ----------------------------------------------------------------------
+ 
+ inline void LowerString(TProtoStringType* s) {
+-  TProtoStringType::iterator end = s->end();
+-  for (TProtoStringType::iterator i = s->begin(); i != end; ++i) {
+-    // tolower() changes based on locale.  We don't want this!
+-    if ('A' <= *i && *i <= 'Z') *i += 'a' - 'A';
+-  }
++  s->to_lower();
+ }
+ 
+ inline void UpperString(TProtoStringType* s) {
+-  TProtoStringType::iterator end = s->end();
+-  for (TProtoStringType::iterator i = s->begin(); i != end; ++i) {
+-    // toupper() changes based on locale.  We don't want this!
+-    if ('a' <= *i && *i <= 'z') *i += 'A' - 'a';
+-  }
++  s->to_upper();
+ }
+ 
+ inline void ToUpper(TProtoStringType* s) { UpperString(s); }
+--- a/src/google/protobuf/util/internal/utility.cc	(index)
++++ b/src/google/protobuf/util/internal/utility.cc	(working tree)
+@@ -244,8 +244,7 @@ const google::protobuf::EnumValue* FindEnumValueByNameWithoutUnderscoreOrNull(
+ 
+ TProtoStringType EnumValueNameToLowerCamelCase(StringPiece input) {
+   TProtoStringType input_string(input);
+-  std::transform(input_string.begin(), input_string.end(), input_string.begin(),
+-                 ::tolower);
++  input_string.to_lower();
+   return ToCamelCase(input_string);
+ }
+
+--- a/src/google/protobuf/compiler/php/php_generator.cc
++++ b/src/google/protobuf/compiler/php/php_generator.cc
+@@ -125,7 +126,7 @@ TProtoStringType ReservedNamePrefix(const TProtoStringType& classname,
+   bool is_reserved = false;
+ 
+   TProtoStringType lower = classname;
+-  std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
++  lower.to_lower();
+ 
+   for (int i = 0; i < kReservedNamesSize; i++) {
+     if (lower == kReservedNames[i]) {
+@@ -197,7 +198,7 @@ TProtoStringType LegacyGeneratedClassName(const DescriptorType* desc) {
+ 
+ TProtoStringType ClassNamePrefix(const TProtoStringType& classname) {
+   TProtoStringType lower = classname;
+-  std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
++  lower.to_lower();
+ 
+   for (int i = 0; i < kReservedNamesSize; i++) {
+     if (lower == kReservedNames[i]) {
+@@ -212,7 +213,7 @@ TProtoStringType ConstantNamePrefix(const TProtoStringType& classname) {
+   bool is_reserved = false;
+ 
+   TProtoStringType lower = classname;
+-  std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
++  lower.to_lower();
+ 
+   for (int i = 0; i < kReservedNamesSize; i++) {
+     if (lower == kReservedNames[i]) {

@@ -1,0 +1,11 @@
+--- contrib/tools/bison/lib/timevar.c	(index)
++++ contrib/tools/bison/lib/timevar.c	(working tree)
+@@ -22,7 +22,7 @@
+ 
+ #if IN_GCC
+ 
+-#include "system.h"
++#error #include "system.h"
+ #include "intl.h"
+ #include "rtl.h"
+ 

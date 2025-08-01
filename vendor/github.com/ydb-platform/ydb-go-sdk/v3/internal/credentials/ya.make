@@ -15,6 +15,7 @@ SRCS(
 GO_TEST_SRCS(
     access_error_test.go
     credentials_test.go
+    oauth2_test.go
     static_test.go
 )
 

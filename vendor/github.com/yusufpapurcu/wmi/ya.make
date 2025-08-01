@@ -16,4 +16,6 @@ ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

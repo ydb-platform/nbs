@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ydb-platform/ydb-go-genproto/Ydb_Table_V1"
@@ -16,23 +17,23 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/allocator"
-	balancerContext "github.com/ydb-platform/ydb-go-sdk/v3/internal/balancer"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/conn"
+	balancerContext "github.com/ydb-platform/ydb-go-sdk/v3/internal/endpoint"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/feature"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/meta"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/operation"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/params"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/stack"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/table/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/table/scanner"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/types"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/value"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xatomic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/retry"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/options"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/result"
-	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
@@ -44,17 +45,15 @@ import (
 // Note that after session is no longer needed it should be destroyed by
 // Close() call.
 type session struct {
+	onClose      []func(s *session)
 	id           string
 	tableService Ydb_Table_V1.TableServiceClient
+	status       table.SessionStatus
 	config       *config.Config
-
-	status    table.SessionStatus
-	statusMtx sync.RWMutex
-	nodeID    xatomic.Uint32
-	lastUsage xatomic.Int64
-
-	onClose   []func(s *session)
-	closeOnce sync.Once
+	lastUsage    atomic.Int64
+	statusMtx    sync.RWMutex
+	closeOnce    sync.Once
+	nodeID       atomic.Uint32
 }
 
 func (s *session) LastUsage() time.Time {
@@ -70,6 +69,7 @@ func nodeID(sessionID string) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	return uint32(id), err
 }
 
@@ -85,6 +85,7 @@ func (s *session) NodeID() uint32 {
 		return 0
 	}
 	s.nodeID.Store(id)
+
 	return id
 }
 
@@ -94,6 +95,7 @@ func (s *session) Status() table.SessionStatus {
 	}
 	s.statusMtx.RLock()
 	defer s.statusMtx.RUnlock()
+
 	return s.status
 }
 
@@ -111,10 +113,16 @@ func (s *session) isClosing() bool {
 	return s.Status() == table.SessionClosing
 }
 
+func (s *session) isReady() bool {
+	return s.Status() == table.SessionReady
+}
+
 func newSession(ctx context.Context, cc grpc.ClientConnInterface, config *config.Config) (
 	s *session, err error,
 ) {
-	onDone := trace.TableOnSessionNew(config.Trace(), &ctx, stack.FunctionID(""))
+	onDone := trace.TableOnSessionNew(config.Trace(), &ctx,
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/table.newSession"),
+	)
 	defer func() {
 		onDone(s, err)
 	}()
@@ -151,7 +159,7 @@ func newSession(ctx context.Context, cc grpc.ClientConnInterface, config *config
 	s.tableService = Ydb_Table_V1.NewTableServiceClient(
 		conn.WithBeforeFunc(
 			conn.WithContextModifier(cc, func(ctx context.Context) context.Context {
-				return meta.WithTrailerCallback(balancerContext.WithEndpoint(ctx, s), s.checkCloseHint)
+				return meta.WithTrailerCallback(balancerContext.WithNodeID(ctx, s.NodeID()), s.checkCloseHint)
 			}),
 			func() {
 				s.lastUsage.Store(time.Now().Unix())
@@ -166,6 +174,7 @@ func (s *session) ID() string {
 	if s == nil {
 		return ""
 	}
+
 	return s.id
 }
 
@@ -176,7 +185,7 @@ func (s *session) Close(ctx context.Context) (err error) {
 
 	s.closeOnce.Do(func() {
 		onDone := trace.TableOnSessionDelete(s.config.Trace(), &ctx,
-			stack.FunctionID(""),
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/table.(*session).Close"),
 			s,
 		)
 		defer func() {
@@ -228,7 +237,7 @@ func (s *session) KeepAlive(ctx context.Context) (err error) {
 		result Ydb_Table.KeepAliveResult
 		onDone = trace.TableOnSessionKeepAlive(
 			s.config.Trace(), &ctx,
-			stack.FunctionID(""),
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/table.(*session).KeepAlive"),
 			s,
 		)
 	)
@@ -256,12 +265,13 @@ func (s *session) KeepAlive(ctx context.Context) (err error) {
 		return xerrors.WithStackTrace(err)
 	}
 
-	switch result.SessionStatus {
+	switch result.GetSessionStatus() {
 	case Ydb_Table.KeepAliveResult_SESSION_STATUS_READY:
 		s.SetStatus(table.SessionReady)
 	case Ydb_Table.KeepAliveResult_SESSION_STATUS_BUSY:
 		s.SetStatus(table.SessionBusy)
 	}
+
 	return nil
 }
 
@@ -294,6 +304,7 @@ func (s *session) CreateTable(
 	if err != nil {
 		return xerrors.WithStackTrace(err)
 	}
+
 	return nil
 }
 
@@ -303,10 +314,44 @@ func (s *session) DescribeTable(
 	path string,
 	opts ...options.DescribeTableOption,
 ) (desc options.Description, err error) {
-	var (
-		response *Ydb_Table.DescribeTableResponse
-		result   Ydb_Table.DescribeTableResult
-	)
+	request := initializeRequest(ctx, s, path, opts)
+	response, err := s.tableService.DescribeTable(ctx, request)
+	if err != nil {
+		return desc, xerrors.WithStackTrace(err)
+	}
+
+	var result Ydb_Table.DescribeTableResult
+	if err = response.GetOperation().GetResult().UnmarshalTo(&result); err != nil {
+		return desc, xerrors.WithStackTrace(err)
+	}
+
+	desc = options.Description{
+		Name:                 result.GetSelf().GetName(),
+		PrimaryKey:           result.GetPrimaryKey(),
+		Columns:              processColumns(result.GetColumns()),
+		KeyRanges:            processKeyRanges(result.GetShardKeyBounds()),
+		Stats:                processTableStats(result.GetTableStats()),
+		ColumnFamilies:       processColumnFamilies(result.GetColumnFamilies()),
+		Attributes:           processAttributes(result.GetAttributes()),
+		ReadReplicaSettings:  options.NewReadReplicasSettings(result.GetReadReplicasSettings()),
+		StorageSettings:      options.NewStorageSettings(result.GetStorageSettings()),
+		KeyBloomFilter:       feature.FromYDB(result.GetKeyBloomFilter()),
+		PartitioningSettings: options.NewPartitioningSettings(result.GetPartitioningSettings()),
+		Indexes:              processIndexes(result.GetIndexes()),
+		TimeToLiveSettings:   NewTimeToLiveSettings(result.GetTtlSettings()),
+		Changefeeds:          processChangefeeds(result.GetChangefeeds()),
+		Tiering:              result.GetTiering(),
+	}
+
+	return desc, nil
+}
+
+func initializeRequest(
+	ctx context.Context,
+	s *session,
+	path string,
+	opts []options.DescribeTableOption,
+) *Ydb_Table.DescribeTableRequest {
 	request := Ydb_Table.DescribeTableRequest{
 		SessionId: s.id,
 		Path:      path,
@@ -322,33 +367,27 @@ func (s *session) DescribeTable(
 			opt((*options.DescribeTableDesc)(&request))
 		}
 	}
-	response, err = s.tableService.DescribeTable(ctx, &request)
-	if err != nil {
-		return desc, xerrors.WithStackTrace(err)
-	}
-	err = response.GetOperation().GetResult().UnmarshalTo(&result)
-	if err != nil {
-		return desc, xerrors.WithStackTrace(err)
-	}
 
-	cs := make(
-		[]options.Column,
-		len(result.GetColumns()),
-	)
-	for i, c := range result.Columns {
+	return &request
+}
+
+func processColumns(columns []*Ydb_Table.ColumnMeta) []options.Column {
+	cs := make([]options.Column, len(columns))
+	for i, c := range columns {
 		cs[i] = options.Column{
 			Name:   c.GetName(),
-			Type:   value.TypeFromYDB(c.GetType()),
+			Type:   types.TypeFromYDB(c.GetType()),
 			Family: c.GetFamily(),
 		}
 	}
 
-	rs := make(
-		[]options.KeyRange,
-		len(result.GetShardKeyBounds())+1,
-	)
-	var last types.Value
-	for i, b := range result.GetShardKeyBounds() {
+	return cs
+}
+
+func processKeyRanges(bounds []*Ydb.TypedValue) []options.KeyRange {
+	rs := make([]options.KeyRange, len(bounds)+1)
+	var last value.Value
+	for i, b := range bounds {
 		if last != nil {
 			rs[i].From = last
 		}
@@ -363,61 +402,70 @@ func (s *session) DescribeTable(
 		rs[i].From = last
 	}
 
-	var stats *options.TableStats
-	if result.GetTableStats() != nil {
-		resStats := result.GetTableStats()
-		partStats := make(
-			[]options.PartitionStats,
-			len(result.GetTableStats().GetPartitionStats()),
-		)
-		for i, v := range result.TableStats.PartitionStats {
-			partStats[i].RowsEstimate = v.GetRowsEstimate()
-			partStats[i].StoreSize = v.GetStoreSize()
-		}
-		var creationTime, modificationTime time.Time
-		if resStats.CreationTime.GetSeconds() != 0 {
-			creationTime = time.Unix(
-				resStats.GetCreationTime().GetSeconds(),
-				int64(resStats.GetCreationTime().GetNanos()),
-			)
-		}
-		if resStats.ModificationTime.GetSeconds() != 0 {
-			modificationTime = time.Unix(
-				resStats.GetModificationTime().GetSeconds(),
-				int64(resStats.GetModificationTime().GetNanos()),
-			)
-		}
+	return rs
+}
 
-		stats = &options.TableStats{
-			PartitionStats:   partStats,
-			RowsEstimate:     resStats.GetRowsEstimate(),
-			StoreSize:        resStats.GetStoreSize(),
-			Partitions:       resStats.GetPartitions(),
-			CreationTime:     creationTime,
-			ModificationTime: modificationTime,
-		}
+func processTableStats(resStats *Ydb_Table.TableStats) *options.TableStats {
+	if resStats == nil {
+		return nil
 	}
 
-	cf := make([]options.ColumnFamily, len(result.GetColumnFamilies()))
-	for i, c := range result.GetColumnFamilies() {
+	partStats := make([]options.PartitionStats, len(resStats.GetPartitionStats()))
+	for i, v := range resStats.GetPartitionStats() {
+		partStats[i].RowsEstimate = v.GetRowsEstimate()
+		partStats[i].StoreSize = v.GetStoreSize()
+	}
+
+	var creationTime, modificationTime time.Time
+	if resStats.GetCreationTime().GetSeconds() != 0 {
+		creationTime = time.Unix(resStats.GetCreationTime().GetSeconds(), int64(resStats.GetCreationTime().GetNanos()))
+	}
+	if resStats.GetModificationTime().GetSeconds() != 0 {
+		modificationTime = time.Unix(
+			resStats.GetModificationTime().GetSeconds(),
+			int64(resStats.GetModificationTime().GetNanos()),
+		)
+	}
+
+	return &options.TableStats{
+		PartitionStats:   partStats,
+		RowsEstimate:     resStats.GetRowsEstimate(),
+		StoreSize:        resStats.GetStoreSize(),
+		Partitions:       resStats.GetPartitions(),
+		CreationTime:     creationTime,
+		ModificationTime: modificationTime,
+	}
+}
+
+func processColumnFamilies(families []*Ydb_Table.ColumnFamily) []options.ColumnFamily {
+	cf := make([]options.ColumnFamily, len(families))
+	for i, c := range families {
 		cf[i] = options.NewColumnFamily(c)
 	}
 
-	attrs := make(map[string]string, len(result.GetAttributes()))
-	for k, v := range result.GetAttributes() {
-		attrs[k] = v
+	return cf
+}
+
+func processAttributes(attrs map[string]string) map[string]string {
+	attributes := make(map[string]string, len(attrs))
+	for k, v := range attrs {
+		attributes[k] = v
 	}
 
-	indexes := make([]options.IndexDescription, len(result.Indexes))
-	for i, idx := range result.GetIndexes() {
+	return attributes
+}
+
+func processIndexes(indexes []*Ydb_Table.TableIndexDescription) []options.IndexDescription {
+	idxs := make([]options.IndexDescription, len(indexes))
+	for i, idx := range indexes {
 		var typ options.IndexType
-		switch idx.Type.(type) {
+		switch idx.GetType().(type) {
 		case *Ydb_Table.TableIndexDescription_GlobalAsyncIndex:
 			typ = options.IndexTypeGlobalAsync
 		case *Ydb_Table.TableIndexDescription_GlobalIndex:
 			typ = options.IndexTypeGlobal
 		}
-		indexes[i] = options.IndexDescription{
+		idxs[i] = options.IndexDescription{
 			Name:         idx.GetName(),
 			IndexColumns: idx.GetIndexColumns(),
 			DataColumns:  idx.GetDataColumns(),
@@ -426,28 +474,16 @@ func (s *session) DescribeTable(
 		}
 	}
 
-	changeFeeds := make([]options.ChangefeedDescription, len(result.Changefeeds))
-	for i, proto := range result.GetChangefeeds() {
-		changeFeeds[i] = options.NewChangefeedDescription(proto)
+	return idxs
+}
+
+func processChangefeeds(changefeeds []*Ydb_Table.ChangefeedDescription) []options.ChangefeedDescription {
+	feeds := make([]options.ChangefeedDescription, len(changefeeds))
+	for i, proto := range changefeeds {
+		feeds[i] = options.NewChangefeedDescription(proto)
 	}
 
-	return options.Description{
-		Name:                 result.GetSelf().GetName(),
-		PrimaryKey:           result.GetPrimaryKey(),
-		Columns:              cs,
-		KeyRanges:            rs,
-		Stats:                stats,
-		ColumnFamilies:       cf,
-		Attributes:           attrs,
-		ReadReplicaSettings:  options.NewReadReplicasSettings(result.GetReadReplicasSettings()),
-		StorageSettings:      options.NewStorageSettings(result.GetStorageSettings()),
-		KeyBloomFilter:       feature.FromYDB(result.GetKeyBloomFilter()),
-		PartitioningSettings: options.NewPartitioningSettings(result.GetPartitioningSettings()),
-		Indexes:              indexes,
-		TimeToLiveSettings:   NewTimeToLiveSettings(result.GetTtlSettings()),
-		Changefeeds:          changeFeeds,
-		Tiering:              result.GetTiering(),
-	}, nil
+	return feeds
 }
 
 // DropTable drops table at given path with given options.
@@ -472,6 +508,7 @@ func (s *session) DropTable(
 		}
 	}
 	_, err = s.tableService.DropTable(ctx, &request)
+
 	return xerrors.WithStackTrace(err)
 }
 
@@ -479,7 +516,7 @@ func (s *session) checkError(err error) {
 	if err == nil {
 		return
 	}
-	if m := retry.Check(err); m.MustDeleteSession() {
+	if m := retry.Check(err); m.IsRetryObjectValid() {
 		s.SetStatus(table.SessionClosing)
 	}
 }
@@ -510,6 +547,7 @@ func (s *session) AlterTable(
 		}
 	}
 	_, err = s.tableService.AlterTable(ctx, &request)
+
 	return xerrors.WithStackTrace(err)
 }
 
@@ -539,6 +577,7 @@ func (s *session) CopyTable(
 	if err != nil {
 		return xerrors.WithStackTrace(err)
 	}
+
 	return nil
 }
 
@@ -568,13 +607,14 @@ func copyTables(
 			opt((*options.CopyTablesDesc)(&request))
 		}
 	}
-	if len(request.Tables) == 0 {
+	if len(request.GetTables()) == 0 {
 		return xerrors.WithStackTrace(fmt.Errorf("no CopyTablesItem: %w", errParamsRequired))
 	}
 	_, err = service.CopyTables(ctx, &request)
 	if err != nil {
 		return xerrors.WithStackTrace(err)
 	}
+
 	return nil
 }
 
@@ -587,6 +627,57 @@ func (s *session) CopyTables(
 	if err != nil {
 		return xerrors.WithStackTrace(err)
 	}
+
+	return nil
+}
+
+func renameTables(
+	ctx context.Context,
+	sessionID string,
+	operationTimeout time.Duration,
+	operationCancelAfter time.Duration,
+	service interface {
+		RenameTables(
+			ctx context.Context, in *Ydb_Table.RenameTablesRequest, opts ...grpc.CallOption,
+		) (*Ydb_Table.RenameTablesResponse, error)
+	},
+	opts ...options.RenameTablesOption,
+) (err error) {
+	request := Ydb_Table.RenameTablesRequest{
+		SessionId: sessionID,
+		OperationParams: operation.Params(
+			ctx,
+			operationTimeout,
+			operationCancelAfter,
+			operation.ModeSync,
+		),
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt((*options.RenameTablesDesc)(&request))
+		}
+	}
+	if len(request.GetTables()) == 0 {
+		return xerrors.WithStackTrace(fmt.Errorf("no RenameTablesItem: %w", errParamsRequired))
+	}
+	_, err = service.RenameTables(ctx, &request)
+	if err != nil {
+		return xerrors.WithStackTrace(err)
+	}
+
+	return nil
+}
+
+// RenameTables renames tables.
+func (s *session) RenameTables(
+	ctx context.Context,
+	opts ...options.RenameTablesOption,
+) (err error) {
+	err = renameTables(ctx, s.id, s.config.OperationTimeout(), s.config.OperationCancelAfter(), s.tableService, opts...)
+	if err != nil {
+		return xerrors.WithStackTrace(err)
+	}
+
 	return nil
 }
 
@@ -603,7 +694,7 @@ func (s *session) Explain(
 		response *Ydb_Table.ExplainDataQueryResponse
 		onDone   = trace.TableOnSessionQueryExplain(
 			s.config.Trace(), &ctx,
-			stack.FunctionID(""),
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/table.(*session).Explain"),
 			s, query,
 		)
 	)
@@ -640,7 +731,7 @@ func (s *session) Explain(
 		Explanation: table.Explanation{
 			Plan: result.GetQueryPlan(),
 		},
-		AST: result.QueryAst,
+		AST: result.GetQueryAst(),
 	}, nil
 }
 
@@ -652,7 +743,7 @@ func (s *session) Prepare(ctx context.Context, queryText string) (_ table.Statem
 		result   Ydb_Table.PrepareQueryResult
 		onDone   = trace.TableOnSessionQueryPrepare(
 			s.config.Trace(), &ctx,
-			stack.FunctionID(""),
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/table.(*session).Prepare"),
 			s, queryText,
 		)
 	)
@@ -688,7 +779,7 @@ func (s *session) Prepare(ctx context.Context, queryText string) (_ table.Statem
 	stmt = &statement{
 		session: s,
 		query:   queryPrepared(result.GetQueryId(), queryText),
-		params:  result.ParametersTypes,
+		params:  result.GetParametersTypes(),
 	}
 
 	return stmt, nil
@@ -699,7 +790,7 @@ func (s *session) Execute(
 	ctx context.Context,
 	txControl *table.TransactionControl,
 	query string,
-	params *table.QueryParameters,
+	parameters *params.Parameters,
 	opts ...options.ExecuteDataQueryOption,
 ) (
 	txr table.Transaction, r result.Result, err error,
@@ -717,10 +808,10 @@ func (s *session) Execute(
 
 	request.SessionId = s.id
 	request.TxControl = txControl.Desc()
-	request.Parameters = params.Params().ToYDB(a)
+	request.Parameters = parameters.ToYDB(a)
 	request.Query = q.toYDB(a)
 	request.QueryCachePolicy = a.TableQueryCachePolicy()
-	request.QueryCachePolicy.KeepInCache = len(params.Params()) > 0
+	request.QueryCachePolicy.KeepInCache = len(request.Parameters) > 0
 	request.OperationParams = operation.Params(ctx,
 		s.config.OperationTimeout(),
 		s.config.OperationCancelAfter(),
@@ -735,8 +826,8 @@ func (s *session) Execute(
 
 	onDone := trace.TableOnSessionQueryExecute(
 		s.config.Trace(), &ctx,
-		stack.FunctionID(""),
-		s, q, params,
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/table.(*session).Execute"),
+		s, q, parameters,
 		request.QueryCachePolicy.GetKeepInCache(),
 	)
 	defer func() {
@@ -764,12 +855,13 @@ func (s *session) executeQueryResult(
 		id: res.GetTxMeta().GetId(),
 		s:  s,
 	}
-	if txControl.CommitTx {
+	if txControl.GetCommitTx() {
 		tx.state.Store(txStateCommitted)
 	} else {
 		tx.state.Store(txStateInitialized)
 		tx.control = table.TxControl(table.WithTxID(tx.id))
 	}
+
 	return tx, scanner.NewUnary(
 		res.GetResultSets(),
 		res.GetQueryStats(),
@@ -825,10 +917,13 @@ func (s *session) ExecuteSchemeQuery(
 		}
 	}
 	_, err = s.tableService.ExecuteSchemeQuery(ctx, &request)
+
 	return xerrors.WithStackTrace(err)
 }
 
 // DescribeTableOptions describes supported table options.
+//
+//nolint:funlen
 func (s *session) DescribeTableOptions(ctx context.Context) (
 	desc options.TableOptionsDescription,
 	err error,
@@ -966,14 +1061,16 @@ func (s *session) DescribeTableOptions(ctx context.Context) (
 // Note that given ctx controls the lifetime of the whole read, not only this
 // StreamReadTable() call; that is, the time until returned result is closed
 // via Close() call or fully drained by sequential NextResultSet() calls.
+//
+//nolint:funlen
 func (s *session) StreamReadTable(
 	ctx context.Context,
 	path string,
 	opts ...options.ReadTableOption,
 ) (_ result.StreamResult, err error) {
 	var (
-		onIntermediate = trace.TableOnSessionQueryStreamRead(s.config.Trace(), &ctx,
-			stack.FunctionID(""),
+		onDone = trace.TableOnSessionQueryStreamRead(s.config.Trace(), &ctx,
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/table.(*session).StreamReadTable"),
 			s,
 		)
 		request = Ydb_Table.ReadTableRequest{
@@ -985,9 +1082,7 @@ func (s *session) StreamReadTable(
 	)
 	defer func() {
 		a.Free()
-		if err != nil {
-			onIntermediate(xerrors.HideEOF(err))(xerrors.HideEOF(err))
-		}
+		onDone(xerrors.HideEOF(err))
 	}()
 
 	for _, opt := range opts {
@@ -1001,6 +1096,7 @@ func (s *session) StreamReadTable(
 	stream, err = s.tableService.StreamReadTable(ctx, &request)
 	if err != nil {
 		cancel()
+
 		return nil, xerrors.WithStackTrace(err)
 	}
 
@@ -1010,9 +1106,6 @@ func (s *session) StreamReadTable(
 			stats *Ydb_TableStats.QueryStats,
 			err error,
 		) {
-			defer func() {
-				onIntermediate(xerrors.HideEOF(err))
-			}()
 			select {
 			case <-ctx.Done():
 				return nil, nil, xerrors.WithStackTrace(ctx.Err())
@@ -1023,12 +1116,14 @@ func (s *session) StreamReadTable(
 				if result == nil || err != nil {
 					return nil, nil, xerrors.WithStackTrace(err)
 				}
+
 				return result.GetResultSet(), nil, nil
 			}
 		},
 		func(err error) error {
 			cancel()
-			onIntermediate(xerrors.HideEOF(err))(xerrors.HideEOF(err))
+			onDone(xerrors.HideEOF(err))
+
 			return err
 		},
 		scanner.WithIgnoreTruncated(true), // stream read table always returns truncated flag on last result set
@@ -1038,7 +1133,7 @@ func (s *session) StreamReadTable(
 func (s *session) ReadRows(
 	ctx context.Context,
 	path string,
-	keys types.Value,
+	keys value.Value,
 	opts ...options.ReadRowsOption,
 ) (_ result.Result, err error) {
 	var (
@@ -1067,9 +1162,7 @@ func (s *session) ReadRows(
 
 	if response.GetStatus() != Ydb.StatusIds_SUCCESS {
 		return nil, xerrors.WithStackTrace(
-			xerrors.Operation(
-				xerrors.FromOperation(response),
-			),
+			xerrors.FromOperation(response),
 		)
 	}
 
@@ -1085,23 +1178,25 @@ func (s *session) ReadRows(
 // Note that given ctx controls the lifetime of the whole read, not only this
 // StreamExecuteScanQuery() call; that is, the time until returned result is closed
 // via Close() call or fully drained by sequential NextResultSet() calls.
+//
+//nolint:funlen
 func (s *session) StreamExecuteScanQuery(
 	ctx context.Context,
 	query string,
-	params *table.QueryParameters,
+	parameters *params.Parameters,
 	opts ...options.ExecuteScanQueryOption,
 ) (_ result.StreamResult, err error) {
 	var (
-		a              = allocator.New()
-		q              = queryFromText(query)
-		onIntermediate = trace.TableOnSessionQueryStreamExecute(
+		a      = allocator.New()
+		q      = queryFromText(query)
+		onDone = trace.TableOnSessionQueryStreamExecute(
 			s.config.Trace(), &ctx,
-			stack.FunctionID(""),
-			s, q, params,
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/table.(*session).StreamExecuteScanQuery"),
+			s, q, parameters,
 		)
 		request = Ydb_Table.ExecuteScanQueryRequest{
 			Query:      q.toYDB(a),
-			Parameters: params.Params().ToYDB(a),
+			Parameters: parameters.ToYDB(a),
 			Mode:       Ydb_Table.ExecuteScanQueryRequest_MODE_EXEC, // set default
 		}
 		stream      Ydb_Table_V1.TableService_StreamExecuteScanQueryClient
@@ -1109,9 +1204,7 @@ func (s *session) StreamExecuteScanQuery(
 	)
 	defer func() {
 		a.Free()
-		if err != nil {
-			onIntermediate(xerrors.HideEOF(err))(xerrors.HideEOF(err))
-		}
+		onDone(xerrors.HideEOF(err))
 	}()
 
 	for _, opt := range opts {
@@ -1125,6 +1218,7 @@ func (s *session) StreamExecuteScanQuery(
 	stream, err = s.tableService.StreamExecuteScanQuery(ctx, &request, callOptions...)
 	if err != nil {
 		cancel()
+
 		return nil, xerrors.WithStackTrace(err)
 	}
 
@@ -1134,9 +1228,6 @@ func (s *session) StreamExecuteScanQuery(
 			stats *Ydb_TableStats.QueryStats,
 			err error,
 		) {
-			defer func() {
-				onIntermediate(xerrors.HideEOF(err))
-			}()
 			select {
 			case <-ctx.Done():
 				return nil, nil, xerrors.WithStackTrace(ctx.Err())
@@ -1147,12 +1238,14 @@ func (s *session) StreamExecuteScanQuery(
 				if result == nil || err != nil {
 					return nil, nil, xerrors.WithStackTrace(err)
 				}
+
 				return result.GetResultSet(), result.GetQueryStats(), nil
 			}
 		},
 		func(err error) error {
 			cancel()
-			onIntermediate(xerrors.HideEOF(err))(xerrors.HideEOF(err))
+			onDone(xerrors.HideEOF(err))
+
 			return err
 		},
 		scanner.WithIgnoreTruncated(s.config.IgnoreTruncated()),
@@ -1161,7 +1254,7 @@ func (s *session) StreamExecuteScanQuery(
 }
 
 // BulkUpsert uploads given list of ydb struct values to the table.
-func (s *session) BulkUpsert(ctx context.Context, table string, rows types.Value,
+func (s *session) BulkUpsert(ctx context.Context, table string, rows value.Value,
 	opts ...options.BulkUpsertOption,
 ) (err error) {
 	var (
@@ -1169,7 +1262,7 @@ func (s *session) BulkUpsert(ctx context.Context, table string, rows types.Value
 		callOptions []grpc.CallOption
 		onDone      = trace.TableOnSessionBulkUpsert(
 			s.config.Trace(), &ctx,
-			stack.FunctionID(""),
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/table.(*session).BulkUpsert"),
 			s,
 		)
 	)
@@ -1179,7 +1272,9 @@ func (s *session) BulkUpsert(ctx context.Context, table string, rows types.Value
 	}()
 
 	for _, opt := range opts {
-		callOptions = append(callOptions, opt.ApplyBulkUpsertOption()...)
+		if opt != nil {
+			callOptions = append(callOptions, opt.ApplyBulkUpsertOption()...)
+		}
 	}
 
 	_, err = s.tableService.BulkUpsert(ctx,
@@ -1211,9 +1306,9 @@ func (s *session) BeginTransaction(
 	var (
 		result   Ydb_Table.BeginTransactionResult
 		response *Ydb_Table.BeginTransactionResponse
-		onDone   = trace.TableOnSessionTransactionBegin(
+		onDone   = trace.TableOnTxBegin(
 			s.config.Trace(), &ctx,
-			stack.FunctionID(""),
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/table.(*session).BeginTransaction"),
 			s,
 		)
 	)
@@ -1246,5 +1341,6 @@ func (s *session) BeginTransaction(
 		control: table.TxControl(table.WithTxID(result.GetTxMeta().GetId())),
 	}
 	tx.state.Store(txStateInitialized)
+
 	return tx, nil
 }

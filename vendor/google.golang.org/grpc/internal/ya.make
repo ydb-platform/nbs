@@ -45,13 +45,19 @@ RECURSE(
 )
 
 IF (OS_LINUX)
-    RECURSE(syscall)
+    RECURSE(
+        syscall
+    )
 ENDIF()
 
 IF (OS_DARWIN)
-    RECURSE(syscall)
+    RECURSE(
+        syscall
+    )
 ENDIF()
 
 IF (OS_WINDOWS)
-    RECURSE(syscall)
+    RECURSE(
+        syscall
+    )
 ENDIF()

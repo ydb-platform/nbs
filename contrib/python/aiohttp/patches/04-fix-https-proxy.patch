@@ -1,0 +1,11 @@
+--- contrib/python/aiohttp/aiohttp/connector.py	(f196d289337abcd51017bccf437635342bea9728)
++++ contrib/python/aiohttp/aiohttp/connector.py	(index)
+@@ -1210,6 +1210,8 @@ class TCPConnector(BaseConnector):
+     ) -> Tuple[asyncio.BaseTransport, ResponseHandler]:
+         self._fail_on_no_start_tls(req)
+         runtime_has_start_tls = self._loop_supports_start_tls()
++        if req.proxy.scheme != "https":
++            runtime_has_start_tls = False
+ 
+         headers = {}  # type: Dict[str, str]
+         if req.proxy_headers is not None:

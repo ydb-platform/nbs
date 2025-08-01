@@ -11,6 +11,8 @@ SRCS(
     discovery_gtrace.go
     driver.go
     driver_gtrace.go
+    query.go
+    query_gtrace.go
     ratelimiter.go
     ratelimiter_gtrace.go
     retry.go
@@ -25,7 +27,6 @@ SRCS(
     table_gtrace.go
     topic.go
     topic_gtrace.go
-    traceutil.go
 )
 
 GO_TEST_SRCS(

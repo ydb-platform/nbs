@@ -1,6 +1,6 @@
 GO_LIBRARY()
 
-OWNER(g:go-contrib)
+SUBSCRIBER(g:go-contrib)
 
 LICENSE(MIT)
 

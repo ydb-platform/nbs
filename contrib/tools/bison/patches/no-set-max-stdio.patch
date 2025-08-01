@@ -1,0 +1,25 @@
+commit a3cef560f7924cbbb6d9a3cd024fb14bf57a498d (HEAD -> yamaker-bison)
+author: thegeorg
+date: 2024-06-16T02:00:33+03:00
+
+    Put contrib/tools/bison under yamaker
+
+--- contrib/tools/bison/lib/getdtablesize.c	(f4e9156409a06687c6a75ca842e98b674ae87b7f)
++++ contrib/tools/bison/lib/getdtablesize.c	(a3cef560f7924cbbb6d9a3cd024fb14bf57a498d)
+@@ -73,12 +73,16 @@ getdtablesize (void)
+          FILE objects.  The sanity check in _setmaxstdio reveals the maximum
+          number of file descriptors.  This too allocates memory, but it is
+          freed when we call _setmaxstdio with the original value.  */
++#if !defined(_WIN32) && !defined(_WIN64)
+       int orig_max_stdio = _getmaxstdio ();
+       unsigned int bound;
+       for (bound = 0x10000; _setmaxstdio (bound) < 0; bound = bound / 2)
+         ;
+       _setmaxstdio (orig_max_stdio);
+       dtablesize = bound;
++#else
++	  dtablesize = _getmaxstdio();
++#endif
+     }
+   return dtablesize;
+ }

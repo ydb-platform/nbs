@@ -107,9 +107,11 @@ class TLocalNodeRegistrar : public TActorBootstrapped<TLocalNodeRegistrar> {
     constexpr static TDuration UPDATE_SYSTEM_USAGE_INTERVAL = TDuration::MilliSeconds(1000);
     constexpr static TDuration DRAIN_NODE_TIMEOUT = TDuration::MilliSeconds(15000);
     ui64 UserPoolUsage = 0; // (usage uS x threads) / sec
+    ui64 UserPoolLimit = 0; // PotentialMaxThreadCount of UserPool
     ui64 MemUsage = 0;
     ui64 MemLimit = 0;
     double NodeUsage = 0;
+    double CpuUsage = 0; // Sum of CPU usage in all pools / Number of CPUs
 
     bool SentDrainNode = false;
     bool DrainResultReceived = false;
@@ -199,7 +201,6 @@ class TLocalNodeRegistrar : public TActorBootstrapped<TLocalNodeRegistrar> {
             }
             tabletAvailability->SetPriority(tabletInfo.Priority);
         }
-
         if (const TString& nodeName = AppData(ctx)->NodeName; !nodeName.Empty()) {
             request->Record.SetName(nodeName);
         }
@@ -273,27 +274,28 @@ class TLocalNodeRegistrar : public TActorBootstrapped<TLocalNodeRegistrar> {
         HandlePipeDestroyed(ctx);
     }
 
+    void FillResourceMaximum(NKikimrTabletBase::TMetrics* record) {
+        record->CopyFrom(ResourceLimit);
+        if (!record->HasCPU()) {
+            if (UserPoolLimit != 0) {
+                record->SetCPU(UserPoolLimit);
+            }
+        }
+        if (!record->HasMemory()) {
+            if (MemLimit != 0) {
+                record->SetMemory(MemLimit);
+            } else {
+                record->SetMemory(NSystemInfo::TotalMemorySize());
+            }
+        }
+    }
+
     void SendStatusOk(const TActorContext &ctx) {
         LOG_DEBUG_S(ctx, NKikimrServices::LOCAL, "TLocalNodeRegistrar SendStatusOk");
         TAutoPtr<TEvLocal::TEvStatus> eventStatus = new TEvLocal::TEvStatus(TEvLocal::TEvStatus::StatusOk);
         auto& record = eventStatus->Record;
         record.SetStartTime(StartTime.GetValue());
-        record.MutableResourceMaximum()->CopyFrom(ResourceLimit);
-        if (!record.GetResourceMaximum().HasCPU()) {
-            TExecutorPoolStats poolStats;
-            TVector<TExecutorThreadStats> statsCopy;
-            ctx.ExecutorThread.ActorSystem->GetPoolStats(AppData()->UserPoolId, poolStats, statsCopy);
-            if (!statsCopy.empty()) {
-                record.MutableResourceMaximum()->SetCPU(poolStats.CurrentThreadCount * 1000000);
-            }
-        }
-        if (!record.GetResourceMaximum().HasMemory()) {
-            if (MemLimit != 0) {
-                record.MutableResourceMaximum()->SetMemory(MemLimit);
-            } else {
-                record.MutableResourceMaximum()->SetMemory(NSystemInfo::TotalMemorySize());
-            }
-        }
+        FillResourceMaximum(record.MutableResourceMaximum());
         NTabletPipe::SendData(ctx, HivePipeClient, eventStatus.Release());
     }
 
@@ -587,6 +589,8 @@ class TLocalNodeRegistrar : public TActorBootstrapped<TLocalNodeRegistrar> {
                 record.MutableTotalResourceUsage()->SetMemory(MemUsage);
             }
             record.SetTotalNodeUsage(NodeUsage);
+            record.SetTotalNodeCpuUsage(CpuUsage);
+            FillResourceMaximum(record.MutableResourceMaximum());
             NTabletPipe::SendData(ctx, HivePipeClient, event.Release());
             SendTabletMetricsTime = ctx.Now();
         } else {
@@ -647,9 +651,19 @@ class TLocalNodeRegistrar : public TActorBootstrapped<TLocalNodeRegistrar> {
         const NKikimrWhiteboard::TEvSystemStateResponse& record = ev->Get()->Record;
         if (!record.GetSystemStateInfo().empty()) {
             const NKikimrWhiteboard::TSystemStateInfo& info = record.GetSystemStateInfo(0);
+
+            if (info.HasNumberOfCpus()) {
+                double cpuUsageSum = 0;
+                for (const auto& poolInfo : info.poolstats()) {
+                    cpuUsageSum += poolInfo.usage() * poolInfo.limit();
+                }
+                CpuUsage = cpuUsageSum / info.GetNumberOfCpus();
+            }
+
             if (static_cast<ui32>(info.PoolStatsSize()) > AppData()->UserPoolId) {
                 const auto& poolStats(info.GetPoolStats(AppData()->UserPoolId));
-                UserPoolUsage = poolStats.usage() * poolStats.threads() * 1000000; // uS
+                UserPoolLimit = poolStats.limit() * 1'000'000; // microseconds
+                UserPoolUsage = poolStats.usage() * UserPoolLimit; // microseconds
             }
 
             // Note: we use allocated memory because MemoryUsed(AnonRSS) has lag
@@ -1250,11 +1264,7 @@ class TDomainLocal : public TActorBootstrapped<TDomainLocal> {
             ResolveTasks.erase(path);
 
             // subscribe for schema updates
-            const auto& domains = *AppData()->DomainsInfo;
-            const ui32 domainId = domains.GetDomainUidByTabletId(rec.GetPathDescription().GetSelf().GetSchemeshardId());
-            const ui32 boardSSId = domains.GetDomain(domainId).DefaultSchemeBoardGroup;
-
-            THolder<IActor> subscriber(CreateSchemeBoardSubscriber(SelfId(), path, boardSSId, ESchemeBoardSubscriberDeletionPolicy::Majority));
+            THolder<IActor> subscriber(CreateSchemeBoardSubscriber(SelfId(), path, ESchemeBoardSubscriberDeletionPolicy::Majority));
             tenant.Subscriber = Register(subscriber.Release());
         } else {
             LOG_WARN_S(ctx, NKikimrServices::LOCAL,
@@ -1386,8 +1396,9 @@ public:
         , SchemeRoot(domain.SchemeRoot)
         , Config(config)
     {
-        for (auto hiveUid : domain.HiveUids)
-            HiveIds.push_back(domainsInfo.GetHive(hiveUid));
+        if (const ui64 tabletId = domainsInfo.GetHive(); tabletId != TDomainsInfo::BadTabletId) {
+            HiveIds.push_back(tabletId);
+        }
 
         PipeConfig.RetryPolicy = NTabletPipe::TClientRetryPolicy::WithRetries();
 

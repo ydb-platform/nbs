@@ -1,1 +1,3 @@
-RECURSE(examplepb)
+RECURSE(
+    examplepb
+)

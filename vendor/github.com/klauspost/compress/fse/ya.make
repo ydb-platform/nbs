@@ -15,8 +15,13 @@ SRCS(
     fse.go
 )
 
-GO_TEST_SRCS(fse_test.go)
+GO_TEST_SRCS(
+    fse_test.go
+    fuzz_test.go
+)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

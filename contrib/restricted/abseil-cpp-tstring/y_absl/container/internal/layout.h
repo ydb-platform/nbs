@@ -55,7 +55,7 @@
 // `Partial()` comes in handy when the array sizes are embedded into the
 // allocation.
 //
-//   // size_t[1] containing N, size_t[1] containing M, double[N], int[M].
+//   // size_t[0] containing N, size_t[1] containing M, double[N], int[M].
 //   using L = Layout<size_t, size_t, double, int>;
 //
 //   unsigned char* Allocate(size_t n, size_t m) {
@@ -172,6 +172,7 @@
 #include <utility>
 
 #include "y_absl/base/config.h"
+#include "y_absl/debugging/internal/demangle.h"
 #include "y_absl/meta/type_traits.h"
 #include "y_absl/strings/str_cat.h"
 #include "y_absl/types/span.h"
@@ -179,14 +180,6 @@
 
 #ifdef Y_ABSL_HAVE_ADDRESS_SANITIZER
 #include <sanitizer/asan_interface.h>
-#endif
-
-#if defined(__GXX_RTTI)
-#define Y_ABSL_INTERNAL_HAS_CXA_DEMANGLE
-#endif
-
-#ifdef Y_ABSL_INTERNAL_HAS_CXA_DEMANGLE
-#include <cxxabi.h>
 #endif
 
 namespace y_absl {
@@ -294,19 +287,11 @@ constexpr size_t Max(size_t a, size_t b, Ts... rest) {
 template <class T>
 TString TypeName() {
   TString out;
-  int status = 0;
-  char* demangled = nullptr;
-#ifdef Y_ABSL_INTERNAL_HAS_CXA_DEMANGLE
-  demangled = abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status);
+#if Y_ABSL_INTERNAL_HAS_RTTI
+  y_absl::StrAppend(&out, "<",
+                  y_absl::debugging_internal::DemangleString(typeid(T).name()),
+                  ">");
 #endif
-  if (status == 0 && demangled != nullptr) {  // Demangling succeeded.
-    y_absl::StrAppend(&out, "<", demangled, ">");
-    free(demangled);
-  } else {
-#if defined(__GXX_RTTI) || defined(_CPPRTTI)
-    y_absl::StrAppend(&out, "<", typeid(T).name(), ">");
-#endif
-  }
   return out;
 }
 

@@ -631,6 +631,104 @@ Y_UNIT_TEST_SUITE(TCmsTest) {
         env.CheckListRequests("user1", 0);
     }
 
+    Y_UNIT_TEST(ActionIssue)
+    {
+        TCmsTestEnv env(16);
+
+        // Acquire lock on one node
+        auto rec = env.CheckPermissionRequest
+            ("user", false, false, true, true, TStatus::ALLOW,
+             MakeAction(TAction::SHUTDOWN_HOST, env.GetNodeId(0), 60000000));
+        UNIT_ASSERT_VALUES_EQUAL(rec.PermissionsSize(), 1);
+        UNIT_ASSERT(!rec.GetPermissions(0).GetAction().HasIssue());
+
+        auto pid = rec.GetPermissions(0).GetId();
+
+        // Schedule request
+        rec = env.CheckPermissionRequest
+            ("user", false, false, true, true, TStatus::DISALLOW_TEMP,
+             MakeAction(TAction::SHUTDOWN_HOST, env.GetNodeId(9), 60000000),
+             MakeAction(TAction::SHUTDOWN_HOST, env.GetNodeId(1), 60000000));
+        UNIT_ASSERT_VALUES_EQUAL(rec.PermissionsSize(), 0);
+    
+        auto rid = rec.GetRequestId();
+
+        // Get scheduled request
+        auto scheduledRec = env.CheckGetRequest("user", rid);
+        UNIT_ASSERT_VALUES_EQUAL(scheduledRec.RequestsSize(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(scheduledRec.GetRequests(0).ActionsSize(), 2);
+        auto action1 = scheduledRec.GetRequests(0).GetActions(0);
+        UNIT_ASSERT(!action1.HasIssue());
+        auto action2 = scheduledRec.GetRequests(0).GetActions(1);
+        UNIT_ASSERT(action2.HasIssue());
+        UNIT_ASSERT_VALUES_EQUAL(action2.GetIssue().GetType(), TAction::TIssue::TOO_MANY_UNAVAILABLE_VDISKS);
+
+        // Try to check request
+        env.CheckRequest("user", rid, false, TStatus::DISALLOW_TEMP);
+
+        // Get scheduled request
+        scheduledRec = env.CheckGetRequest("user", rid);
+        UNIT_ASSERT_VALUES_EQUAL(scheduledRec.RequestsSize(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(scheduledRec.GetRequests(0).ActionsSize(), 2);
+        action1 = scheduledRec.GetRequests(0).GetActions(0);
+        UNIT_ASSERT(!action1.HasIssue());
+        action2 = scheduledRec.GetRequests(0).GetActions(1);
+        UNIT_ASSERT(action2.HasIssue());
+        UNIT_ASSERT_VALUES_EQUAL(action2.GetIssue().GetType(), TAction::TIssue::TOO_MANY_UNAVAILABLE_VDISKS);
+
+        // Done with permission
+        env.CheckDonePermission("user", pid);
+
+        // Try to check request
+        rec = env.CheckRequest("user", rid, false, TStatus::ALLOW, 2);
+        UNIT_ASSERT(!rec.GetPermissions(0).GetAction().HasIssue());
+        UNIT_ASSERT(!rec.GetPermissions(1).GetAction().HasIssue());
+
+        env.CheckGetRequest("user", rid, false, TStatus::WRONG_REQUEST);
+    }
+
+    Y_UNIT_TEST(ActionIssuePartialPermissions)
+    {
+        TCmsTestEnv env(8);
+
+        // Schedule request
+        auto rec = env.CheckPermissionRequest
+            ("user", true, false, true, true, TStatus::ALLOW_PARTIAL,
+             MakeAction(TAction::SHUTDOWN_HOST, env.GetNodeId(0), 60000000),
+             MakeAction(TAction::SHUTDOWN_HOST, env.GetNodeId(1), 60000000));
+        UNIT_ASSERT_VALUES_EQUAL(rec.PermissionsSize(), 1);
+        UNIT_ASSERT(!rec.GetPermissions(0).GetAction().HasIssue());
+
+        auto pid = rec.GetPermissions(0).GetId();
+        auto rid = rec.GetRequestId();
+
+        // Get scheduled request
+        auto scheduledRec = env.CheckGetRequest("user", rid);
+        UNIT_ASSERT_VALUES_EQUAL(scheduledRec.RequestsSize(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(scheduledRec.GetRequests(0).ActionsSize(), 1);
+        auto action = scheduledRec.GetRequests(0).GetActions(0);
+        UNIT_ASSERT_VALUES_EQUAL(action.GetIssue().GetType(), TAction::TIssue::TOO_MANY_UNAVAILABLE_VDISKS);
+        
+        // Try to check request
+        env.CheckRequest("user", rid, false, TStatus::DISALLOW_TEMP);
+
+        // Get scheduled request
+        scheduledRec = env.CheckGetRequest("user", rid);
+        UNIT_ASSERT_VALUES_EQUAL(scheduledRec.RequestsSize(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(scheduledRec.GetRequests(0).ActionsSize(), 1);
+        action = scheduledRec.GetRequests(0).GetActions(0);
+        UNIT_ASSERT_VALUES_EQUAL(action.GetIssue().GetType(), TAction::TIssue::TOO_MANY_UNAVAILABLE_VDISKS);
+
+        // Done with permission
+        env.CheckDonePermission("user", pid);
+
+        // Try to check request
+        rec = env.CheckRequest("user", rid, false, TStatus::ALLOW, 1);
+        UNIT_ASSERT(!rec.GetPermissions(0).GetAction().HasIssue());
+
+        env.CheckGetRequest("user", rid, false, TStatus::WRONG_REQUEST);
+    }
+
     Y_UNIT_TEST(WalleTasks)
     {
         TCmsTestEnv env(24, 4);
@@ -1806,6 +1904,351 @@ Y_UNIT_TEST_SUITE(TCmsTest) {
 
         // reject until prepared
         env.CheckRejectRequest("user", request3.GetRequestId());
+    }
+
+    Y_UNIT_TEST(AllVDisksEvictionInRack)
+    {
+        auto opts = TTestEnvOpts(8)
+            .WithSentinel()
+            .WithNodeLocationCallback([](ui32 nodeId) {
+                NActorsInterconnect::TNodeLocation location;
+                location.SetRack(ToString(nodeId / 2 + 1));
+                return TNodeLocation(location); // Node = [0, 1, 2, 3, 4, 5, 6, 7]
+                                                // Rack = [1, 1, 2, 2, 3, 3, 4, 4]
+            });
+        TCmsTestEnv env(opts);
+        env.SetLogPriority(NKikimrServices::CMS, NLog::PRI_DEBUG);
+
+        // Evict all VDisks from rack 1
+        auto request1 = env.CheckPermissionRequest(
+            MakePermissionRequest(TRequestOptions("user").WithEvictVDisks(),
+                MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(0), 600000000, "storage")
+            ),
+            TStatus::DISALLOW_TEMP // ok, waiting for move VDisks
+        );
+        auto request2 = env.CheckPermissionRequest(
+            MakePermissionRequest(TRequestOptions("user").WithEvictVDisks(),
+                MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 600000000, "storage")
+            ),
+            TStatus::DISALLOW_TEMP // ok, waiting for move VDisks
+        );
+
+        // Check that FAULTY BSC requests are sent
+        env.CheckBSCUpdateRequests({ env.GetNodeId(0), env.GetNodeId(1) }, NKikimrBlobStorage::FAULTY);
+
+        // "Move" VDisks from rack 1
+        auto& node1 = TFakeNodeWhiteboardService::Info[env.GetNodeId(0)];
+        node1.VDisksMoved = true;
+        node1.VDiskStateInfo.clear();
+        auto& node2 = TFakeNodeWhiteboardService::Info[env.GetNodeId(1)];
+        node2.VDisksMoved = true;
+        node2.VDiskStateInfo.clear();
+        env.RegenerateBSConfig(TFakeNodeWhiteboardService::Config.MutableResponse()->MutableStatus(0)->MutableBaseConfig(), opts);
+
+        auto permission1 = env.CheckRequest("user", request1.GetRequestId(), false, TStatus::ALLOW, 1);
+        auto permission2 = env.CheckRequest("user", request2.GetRequestId(), false, TStatus::ALLOW, 1);
+        env.CheckDonePermission("user", permission1.GetPermissions(0).GetId());
+        env.CheckDonePermission("user", permission2.GetPermissions(0).GetId());
+    }
+
+    Y_UNIT_TEST(DisabledEvictVDisks)
+    {
+        auto opts = TTestEnvOpts(8).WithSentinel();
+        TCmsTestEnv env(opts);
+        env.SetLogPriority(NKikimrServices::CMS, NLog::PRI_DEBUG);
+
+        // Make transition faster for tests purposes
+        auto cmsConfig = env.GetCmsConfig();
+        cmsConfig.MutableSentinelConfig()->SetDefaultStateLimit(1);
+        env.SetCmsConfig(cmsConfig);
+
+        // Evict VDisks
+        auto request = env.CheckPermissionRequest(
+            MakePermissionRequest(TRequestOptions("user").WithEvictVDisks(),
+                MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(0), 600000000, "storage")
+            ),
+            TStatus::DISALLOW_TEMP // ok, waiting for move VDisks
+        );
+     
+        // Check that FAULTY BSC request is sent
+        env.CheckBSCUpdateRequests({ env.GetNodeId(0) }, NKikimrBlobStorage::FAULTY);
+
+        // Disable VDisks eviction
+        cmsConfig.MutableSentinelConfig()->SetEvictVDisksStatus(NKikimrCms::TCmsConfig::TSentinelConfig::DISABLED);
+        env.SetCmsConfig(cmsConfig);
+
+        // Check that ACTIVE BSC request is sent
+        env.CheckBSCUpdateRequests({ env.GetNodeId(0) }, NKikimrBlobStorage::ACTIVE);
+
+        // Check that CMS returns ERROR when VDisks eviction is disabled
+        env.CheckRequest("user", request.GetRequestId(), false, TStatus::ERROR, 0);
+
+        // Enable VDisks eviction again
+        cmsConfig.MutableSentinelConfig()->SetEvictVDisksStatus(NKikimrCms::TCmsConfig::TSentinelConfig::FAULTY);
+        env.SetCmsConfig(cmsConfig);
+
+        // Check that FAULTY BSC request is sent again
+        env.CheckBSCUpdateRequests({ env.GetNodeId(0) }, NKikimrBlobStorage::FAULTY);
+    }
+
+    Y_UNIT_TEST(EmergencyDuringRollingRestart)
+    {
+        TCmsTestEnv env(8);
+
+        // Start rolling restart
+        auto rollingRestart = env.CheckPermissionRequest
+            ("user", true, false, true, true, -80, TStatus::ALLOW_PARTIAL,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(0), 60000000, "storage"),
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+        UNIT_ASSERT_VALUES_EQUAL(rollingRestart.PermissionsSize(), 1);
+
+        // Done with restarting first node
+        env.CheckDonePermission("user", rollingRestart.GetPermissions(0).GetId());
+
+        // Emergency request
+        auto emergency = env.CheckPermissionRequest
+            ("user", true, false, true, true, -100, TStatus::ALLOW,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+    
+        // Rolling restart is blocked by emergency request
+        env.CheckRequest("user", rollingRestart.GetRequestId(), false, TStatus::DISALLOW_TEMP, 0);
+
+        // Done with emergency request
+        env.CheckDonePermission("user", emergency.GetPermissions(0).GetId());
+
+        // Rolling restart can continue
+        env.CheckRequest("user", rollingRestart.GetRequestId(), false, TStatus::ALLOW, 1);
+    }
+
+    Y_UNIT_TEST(ScheduledEmergencyDuringRollingRestart)
+    {
+        TCmsTestEnv env(8);
+
+        // Start rolling restart
+        auto rollingRestart = env.CheckPermissionRequest
+            ("user", true, false, true, true, -80, TStatus::ALLOW_PARTIAL,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(0), 60000000, "storage"),
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+        UNIT_ASSERT_VALUES_EQUAL(rollingRestart.PermissionsSize(), 1);
+
+        // Emergency request
+        auto emergency = env.CheckPermissionRequest
+            ("user", true, false, true, true, -100, TStatus::DISALLOW_TEMP,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+    
+        // Done with restarting first node
+        env.CheckDonePermission("user", rollingRestart.GetPermissions(0).GetId());
+
+        // Rolling restart is blocked by emergency request
+        env.CheckRequest("user", rollingRestart.GetRequestId(), false, TStatus::DISALLOW_TEMP, 0);
+
+        // Emergency request is not blocked
+        emergency = env.CheckRequest("user", emergency.GetRequestId(), false, TStatus::ALLOW, 1);
+
+        // Done with emergency request
+        env.CheckDonePermission("user", emergency.GetPermissions(0).GetId());
+
+        // Rolling restart can continue
+        env.CheckRequest("user", rollingRestart.GetRequestId(), false, TStatus::ALLOW, 1);
+    }
+
+    Y_UNIT_TEST(WalleRequestDuringRollingRestart)
+    {
+        TCmsTestEnv env(8);
+
+        // Start rolling restart
+        auto rollingRestart = env.CheckPermissionRequest
+            ("user", true, false, true, true, -80, TStatus::ALLOW_PARTIAL,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(0), 60000000, "storage"),
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+        UNIT_ASSERT_VALUES_EQUAL(rollingRestart.PermissionsSize(), 1);
+
+        // Done with restarting first node
+        env.CheckDonePermission("user", rollingRestart.GetPermissions(0).GetId());
+
+        // Wall-E task is blocked by rolling restart
+        env.CheckWalleCreateTask("task-1", "reboot", false, TStatus::DISALLOW_TEMP, env.GetNodeId(1));
+    
+        // Rolling restart is not blocked
+        rollingRestart = env.CheckRequest("user", rollingRestart.GetRequestId(), false, TStatus::ALLOW, 1);
+        UNIT_ASSERT_VALUES_EQUAL(rollingRestart.PermissionsSize(), 1);
+
+        // Done with restarting second node
+        env.CheckDonePermission("user", rollingRestart.GetPermissions(0).GetId());
+
+        // Wall-E task can continue
+        env.CheckWalleCheckTask("task-1", TStatus::ALLOW, env.GetNodeId(1));
+    }
+
+    Y_UNIT_TEST(ScheduledWalleRequestDuringRollingRestart)
+    {
+        TCmsTestEnv env(8);
+
+        // Start rolling restart
+        auto rollingRestart = env.CheckPermissionRequest
+            ("user", true, false, true, true, -80, TStatus::ALLOW_PARTIAL,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(0), 60000000, "storage"),
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+        UNIT_ASSERT_VALUES_EQUAL(rollingRestart.PermissionsSize(), 1);
+
+        // Wall-E task is blocked by rolling restart
+        env.CheckWalleCreateTask("task-1", "reboot", false, TStatus::DISALLOW_TEMP, env.GetNodeId(1));
+
+        // Done with restarting first node
+        env.CheckDonePermission("user", rollingRestart.GetPermissions(0).GetId());
+
+        // Wall-E task is stil blocked
+        env.CheckWalleCheckTask("task-1", TStatus::DISALLOW_TEMP, env.GetNodeId(1));
+
+        // Rolling restart is not blocked
+        rollingRestart = env.CheckRequest("user", rollingRestart.GetRequestId(), false, TStatus::ALLOW, 1);
+        UNIT_ASSERT_VALUES_EQUAL(rollingRestart.PermissionsSize(), 1);
+
+        // Done with restarting second node
+        env.CheckDonePermission("user", rollingRestart.GetPermissions(0).GetId());
+
+        // Wall-E task can continue
+        env.CheckWalleCheckTask("task-1", TStatus::ALLOW, env.GetNodeId(1));
+    }
+
+    Y_UNIT_TEST(EnableCMSRequestPrioritiesFeatureFlag)
+    {
+        TCmsTestEnv env(TTestEnvOpts(8).WithoutEnableCMSRequestPriorities());
+        // Start rolling restart with specified priority
+        auto rollingRestart = env.CheckPermissionRequest
+            ("user", true, false, true, true, -80, TStatus::WRONG_REQUEST,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(0), 60000000, "storage"),
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+
+        const TString expectedReason = "Unsupported: feature flag EnableCMSRequestPriorities is off";
+        UNIT_ASSERT_VALUES_EQUAL(rollingRestart.GetStatus().GetReason(), expectedReason);
+    }
+
+    Y_UNIT_TEST(SamePriorityRequest)
+    {
+        TCmsTestEnv env(8);
+
+        // Start rolling restart
+        auto rollingRestart = env.CheckPermissionRequest
+            ("user", true, false, true, true, -80, TStatus::ALLOW_PARTIAL,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(0), 60000000, "storage"),
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+        UNIT_ASSERT_VALUES_EQUAL(rollingRestart.PermissionsSize(), 1);
+
+        // Issue same priority request
+        auto samePriorityRequest = env.CheckPermissionRequest
+            ("user", true, false, true, true, -80, TStatus::DISALLOW_TEMP,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+    
+        // Done with restarting first node
+        env.CheckDonePermission("user", rollingRestart.GetPermissions(0).GetId());
+
+        // Rolling restart is not blocked by same priority request
+        rollingRestart = env.CheckRequest("user", rollingRestart.GetRequestId(), false, TStatus::ALLOW, 1);
+        UNIT_ASSERT_VALUES_EQUAL(rollingRestart.PermissionsSize(), 1);
+
+        // Done with restarting second node
+        env.CheckDonePermission("user", rollingRestart.GetPermissions(0).GetId());
+
+        // Same priority can continue
+        env.CheckRequest("user", samePriorityRequest.GetRequestId(), false, TStatus::ALLOW, 1);
+    }
+
+    Y_UNIT_TEST(SamePriorityRequest2)
+    {
+        TCmsTestEnv env(8);
+
+        // Start rolling restart
+        auto rollingRestart = env.CheckPermissionRequest
+            ("user", true, false, true, true, -80, TStatus::ALLOW_PARTIAL,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(0), 60000000, "storage"),
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+        UNIT_ASSERT_VALUES_EQUAL(rollingRestart.PermissionsSize(), 1);
+
+        // Issue same priority request
+        auto samePriorityRequest = env.CheckPermissionRequest
+            ("user", true, false, true, true, -80, TStatus::DISALLOW_TEMP,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+    
+        // Done with restarting first node
+        env.CheckDonePermission("user", rollingRestart.GetPermissions(0).GetId());
+
+        // Request is not blocked by rolling restart of same priority
+        samePriorityRequest = env.CheckRequest("user", samePriorityRequest.GetRequestId(), false, TStatus::ALLOW, 1);
+        UNIT_ASSERT_VALUES_EQUAL(samePriorityRequest.PermissionsSize(), 1);
+
+        // Done with same priority request permissions
+        env.CheckDonePermission("user", samePriorityRequest.GetPermissions(0).GetId());
+
+        // Rolling restart can continue
+        env.CheckRequest("user", rollingRestart.GetRequestId(), false, TStatus::ALLOW, 1);
+    }
+
+    Y_UNIT_TEST(PriorityRange)
+    {
+        TCmsTestEnv env(8);
+
+        const TString expectedReason = "Priority value is out of range";
+        
+        // Out of range priority
+        auto request = env.CheckPermissionRequest
+            ("user", true, false, true, true, -101, TStatus::WRONG_REQUEST,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(0), 60000000, "storage"),
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+        UNIT_ASSERT_VALUES_EQUAL(request.GetStatus().GetReason(), expectedReason);
+        
+        // Out of range priority
+        request = env.CheckPermissionRequest
+            ("user", true, false, true, true, 101, TStatus::WRONG_REQUEST,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(0), 60000000, "storage"),
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+        UNIT_ASSERT_VALUES_EQUAL(request.GetStatus().GetReason(), expectedReason);
+    }
+
+    Y_UNIT_TEST(WalleTasksDifferentPriorities)
+    {
+        TCmsTestEnv env(8);
+
+        // Without node limits
+        NKikimrCms::TCmsConfig config;
+        config.MutableClusterLimits()->SetDisabledNodesLimit(0);
+        config.MutableClusterLimits()->SetDisabledNodesRatioLimit(0);
+        env.SetCmsConfig(config);
+
+        // Start rolling restart
+        auto rollingRestart = env.CheckPermissionRequest
+            ("user", true, false, true, true, -80, TStatus::ALLOW_PARTIAL,
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(0), 60000000, "storage"),
+             MakeAction(TAction::RESTART_SERVICES, env.GetNodeId(1), 60000000, "storage"));
+        UNIT_ASSERT_VALUES_EQUAL(rollingRestart.PermissionsSize(), 1);
+
+        // Done with restarting first node
+        env.CheckDonePermission("user", rollingRestart.GetPermissions(0).GetId());
+    
+        // Rolling restart is continue
+        rollingRestart = env.CheckRequest("user", rollingRestart.GetRequestId(), false, TStatus::ALLOW, 1);
+        UNIT_ASSERT_VALUES_EQUAL(rollingRestart.PermissionsSize(), 1);
+
+        // Wall-E soft maintainance task is blocked by rolling restart
+        env.CheckWalleCreateTask("task-1", "temporary-unreachable", false, TStatus::DISALLOW_TEMP, env.GetNodeId(2));
+
+        // Wall-E reboot task is blocked by rolling restart
+        env.CheckWalleCreateTask("task-2", "reboot", false, TStatus::DISALLOW_TEMP, env.GetNodeId(1));
+
+        // Done with restarting second node
+        env.CheckDonePermission("user", rollingRestart.GetPermissions(0).GetId());
+
+        // Wall-E soft maintainance task is blocked by Wall-E reboot task
+        env.CheckWalleCheckTask("task-1", TStatus::DISALLOW_TEMP, env.GetNodeId(2));
+
+        // Wall-E reboot task can continue
+        env.CheckWalleCheckTask("task-2", TStatus::ALLOW, env.GetNodeId(1));
+
+        // Done with Wall-E reboot task
+        env.CheckWalleRemoveTask("task-2");
+
+        // Wall-E soft maintainance task can continue
+        env.CheckWalleCheckTask("task-1", TStatus::ALLOW, env.GetNodeId(2));
     }
 }
 

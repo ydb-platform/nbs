@@ -1,0 +1,17 @@
+commit 1efd2cc9274f1f5a222e759093d27c8d38825028 (HEAD -> yamaker-bison, arcadia/users/thegeorg/yamaker-bison)
+author: thegeorg
+date: 2024-06-18T12:17:40+03:00
+
+    Put contrib/tools/bison under yamaker
+
+--- contrib/tools/bison/lib/fseterr.c	(ef06a7dccff68bd15f669606131c541d158d4b1a)
++++ contrib/tools/bison/lib/fseterr.c	(1efd2cc9274f1f5a222e759093d27c8d38825028)
+@@ -39,6 +39,8 @@ fseterr (FILE *fp)
+   fp->_flags |= _IOERR;
+ #elif defined _IOERR                /* AIX, HP-UX, IRIX, OSF/1, Solaris, OpenServer, mingw, NonStop Kernel */
+   fp_->_flag |= _IOERR;
++#elif _MSC_VER
++  ((TWinSdk10File*)fp)->_flags |= WIN_SDK10_IOERROR;
+ #elif defined __UCLIBC__            /* uClibc */
+   fp->__modeflags |= __FLAG_ERROR;
+ #elif defined __QNX__               /* QNX */

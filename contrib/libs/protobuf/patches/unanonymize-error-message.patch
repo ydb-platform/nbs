@@ -1,0 +1,20 @@
+--- a/src/google/protobuf/message_lite.cc	(index)
++++ b/src/google/protobuf/message_lite.cc	(working tree)
+@@ -92,6 +92,8 @@ void ByteSizeConsistencyError(size_t byte_size_before_serialization,
+   GOOGLE_LOG(FATAL) << "This shouldn't be called if all the sizes are equal.";
+ }
+ 
++} // anonymous namespace
++
+ TProtoStringType InitializationErrorMessage(const char* action,
+                                        const MessageLite& message) {
+   // Note:  We want to avoid depending on strutil in the lite library, otherwise
+@@ -96,6 +98,8 @@ string InitializationErrorMessage(const char* action,
+   return result;
+ }
+ 
++namespace {
++
+ inline StringPiece as_string_view(const void* data, int size) {
+   return StringPiece(static_cast<const char*>(data), size);
+ }

@@ -1,7 +1,6 @@
 LIBRARY()
 
 SRCS(
-    events.h
     access_service.h
 )
 

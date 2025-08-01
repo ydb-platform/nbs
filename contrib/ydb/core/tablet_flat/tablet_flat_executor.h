@@ -229,7 +229,7 @@ public:
     }
 
     void StartExecutionSpan() noexcept {
-        TransactionExecutionSpan = NWilson::TSpan(TWilsonTablet::Tablet, TransactionSpan.GetTraceId(), "Tablet.Transaction.Execute");
+        TransactionExecutionSpan = NWilson::TSpan(TWilsonTablet::TabletDetailed, TransactionSpan.GetTraceId(), "Tablet.Transaction.Execute");
     }
 
     void FinishExecutionSpan() noexcept {
@@ -289,7 +289,7 @@ public:
     { }
 
     ITransaction(NWilson::TTraceId &&traceId)
-        : TxSpan(NWilson::TSpan(TWilsonTablet::Tablet, std::move(traceId), "Tablet.Transaction"))
+        : TxSpan(NWilson::TSpan(TWilsonTablet::TabletBasic, std::move(traceId), "Tablet.Transaction"))
     { }
 
     virtual ~ITransaction() = default;
@@ -307,13 +307,17 @@ public:
         out << TypeName(*this);
     }
 
-    virtual void SetupTxSpanName() noexcept {
-        TxSpan.Attribute("Type", TypeName(*this));
+    void SetupTxSpanName() noexcept {
+        if (TxSpan) {
+            TxSpan.Attribute("Type", TypeName(*this));
+        }
     }
 
     void SetupTxSpan(NWilson::TTraceId traceId) noexcept {
-        TxSpan = NWilson::TSpan(TWilsonTablet::Tablet, std::move(traceId), "Tablet.Transaction");
-        TxSpan.Attribute("Type", TypeName(*this));
+        TxSpan = NWilson::TSpan(TWilsonTablet::TabletBasic, std::move(traceId), "Tablet.Transaction");
+        if (TxSpan) {
+            TxSpan.Attribute("Type", TypeName(*this));
+        }
     }
 
 public:
@@ -574,6 +578,7 @@ namespace NFlatExecutorSetup {
 
         // edge and ts of last full compaction
         virtual TFinishedCompactionInfo GetFinishedCompactionInfo(ui32 tableId) const = 0;
+        virtual bool HasSchemaChanges(ui32 table) const = 0;
 
         // Forces full compaction of the specified table in the near future
         // Returns 0 if can't compact, otherwise compaction ID
@@ -617,9 +622,10 @@ namespace NFlatExecutorSetup {
         // Returns current database scheme (executor must be active)
         virtual const NTable::TScheme& Scheme() const noexcept = 0;
 
+        virtual void SetPreloadTablesData(THashSet<ui32> tables) = 0;
+
         ui32 Generation() const { return Generation0; }
         ui32 Step() const { return Step0; }
-
     protected:
         //
         IExecutor()

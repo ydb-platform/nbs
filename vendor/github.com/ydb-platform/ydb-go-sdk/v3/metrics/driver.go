@@ -9,9 +9,11 @@ import (
 )
 
 // driver makes driver with New publishing
+//
+//nolint:funlen
 func driver(config Config) (t trace.Driver) {
 	config = config.WithSystem("driver")
-	endpoints := config.WithSystem("balancer").GaugeVec("endpoints", "local_dc", "az")
+	endpoints := config.WithSystem("balancer").GaugeVec("endpoints", "az")
 	balancersDiscoveries := config.WithSystem("balancer").CounterVec("discoveries", "status", "cause")
 	balancerUpdates := config.WithSystem("balancer").CounterVec("updates", "cause")
 	conns := config.GaugeVec("conns", "endpoint", "node_id")
@@ -20,8 +22,7 @@ func driver(config Config) (t trace.Driver) {
 	tli := config.CounterVec("transaction_locks_invalidated")
 
 	type endpointKey struct {
-		localDC bool
-		az      string
+		az string
 	}
 	knownEndpoints := make(map[endpointKey]struct{})
 
@@ -31,6 +32,7 @@ func driver(config Config) (t trace.Driver) {
 			endpoint = info.Endpoint.Address()
 			nodeID   = info.Endpoint.NodeID()
 		)
+
 		return func(info trace.DriverConnInvokeDoneInfo) {
 			if config.Details()&trace.DriverConnEvents != 0 {
 				requests.With(map[string]string{
@@ -46,8 +48,6 @@ func driver(config Config) (t trace.Driver) {
 		}
 	}
 	t.OnConnNewStream = func(info trace.DriverConnNewStreamStartInfo) func(
-		trace.DriverConnNewStreamRecvInfo,
-	) func(
 		trace.DriverConnNewStreamDoneInfo,
 	) {
 		var (
@@ -55,16 +55,15 @@ func driver(config Config) (t trace.Driver) {
 			endpoint = info.Endpoint.Address()
 			nodeID   = info.Endpoint.NodeID()
 		)
-		return func(info trace.DriverConnNewStreamRecvInfo) func(trace.DriverConnNewStreamDoneInfo) {
-			return func(info trace.DriverConnNewStreamDoneInfo) {
-				if config.Details()&trace.DriverConnEvents != 0 {
-					requests.With(map[string]string{
-						"status":   errorBrief(info.Error),
-						"method":   string(method),
-						"endpoint": endpoint,
-						"node_id":  strconv.FormatUint(uint64(nodeID), 10),
-					}).Inc()
-				}
+
+		return func(info trace.DriverConnNewStreamDoneInfo) {
+			if config.Details()&trace.DriverConnStreamEvents != 0 {
+				requests.With(map[string]string{
+					"status":   errorBrief(info.Error),
+					"method":   string(method),
+					"endpoint": endpoint,
+					"node_id":  strconv.FormatUint(uint64(nodeID), 10),
+				}).Inc()
 			}
 		}
 	}
@@ -76,12 +75,14 @@ func driver(config Config) (t trace.Driver) {
 				"cause":    errorBrief(info.Cause),
 			}).Add(1)
 		}
+
 		return nil
 	}
 	t.OnBalancerClusterDiscoveryAttempt = func(info trace.DriverBalancerClusterDiscoveryAttemptStartInfo) func(
 		trace.DriverBalancerClusterDiscoveryAttemptDoneInfo,
 	) {
 		eventType := repeater.EventType(*info.Context)
+
 		return func(info trace.DriverBalancerClusterDiscoveryAttemptDoneInfo) {
 			balancersDiscoveries.With(map[string]string{
 				"status": errorBrief(info.Error),
@@ -91,6 +92,7 @@ func driver(config Config) (t trace.Driver) {
 	}
 	t.OnBalancerUpdate = func(info trace.DriverBalancerUpdateStartInfo) func(trace.DriverBalancerUpdateDoneInfo) {
 		eventType := repeater.EventType(*info.Context)
+
 		return func(info trace.DriverBalancerUpdateDoneInfo) {
 			if config.Details()&trace.DriverBalancerEvents != 0 {
 				balancerUpdates.With(map[string]string{
@@ -99,8 +101,7 @@ func driver(config Config) (t trace.Driver) {
 				newEndpoints := make(map[endpointKey]int, len(info.Endpoints))
 				for _, e := range info.Endpoints {
 					e := endpointKey{
-						localDC: e.LocalDC(),
-						az:      e.Location(),
+						az: e.Location(),
 					}
 					newEndpoints[e]++
 				}
@@ -108,16 +109,14 @@ func driver(config Config) (t trace.Driver) {
 					if _, has := newEndpoints[e]; !has {
 						delete(knownEndpoints, e)
 						endpoints.With(map[string]string{
-							"local_dc": strconv.FormatBool(e.localDC),
-							"az":       e.az,
+							"az": e.az,
 						}).Set(0)
 					}
 				}
 				for e, count := range newEndpoints {
 					knownEndpoints[e] = struct{}{}
 					endpoints.With(map[string]string{
-						"local_dc": strconv.FormatBool(e.localDC),
-						"az":       e.az,
+						"az": e.az,
 					}).Set(float64(count))
 				}
 			}
@@ -126,6 +125,7 @@ func driver(config Config) (t trace.Driver) {
 	t.OnConnDial = func(info trace.DriverConnDialStartInfo) func(trace.DriverConnDialDoneInfo) {
 		endpoint := info.Endpoint.Address()
 		nodeID := info.Endpoint.NodeID()
+
 		return func(info trace.DriverConnDialDoneInfo) {
 			if config.Details()&trace.DriverConnEvents != 0 {
 				if info.Error == nil {
@@ -144,7 +144,9 @@ func driver(config Config) (t trace.Driver) {
 				"node_id":  idToString(info.Endpoint.NodeID()),
 			}).Add(-1)
 		}
+
 		return nil
 	}
+
 	return t
 }

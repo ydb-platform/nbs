@@ -26,6 +26,8 @@ PEERDIR(
     contrib/ydb/core/client/minikql_compile
     contrib/ydb/core/formats
     contrib/ydb/core/kqp/common
+    contrib/ydb/core/kqp/compute_actor
+    contrib/ydb/core/kqp/federated_query
     contrib/ydb/core/kqp/query_compiler
     contrib/ydb/core/kqp/rm_service
     contrib/ydb/core/kqp/topics

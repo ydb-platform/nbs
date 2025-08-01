@@ -1,1 +1,3 @@
-RECURSE(e2e)
+RECURSE(
+    e2e
+)

@@ -1,0 +1,5 @@
+--- contrib/python/protobuf/py3/google/protobuf/internal/well_known_types.py	(index)
++++ contrib/python/protobuf/py3/google/protobuf/internal/well_known_types.py	(working tree)
+@@ -98 +98 @@ class Any(object):
+-_EPOCH_DATETIME_NAIVE = datetime.datetime.utcfromtimestamp(0)
++_EPOCH_DATETIME_NAIVE = datetime.datetime(1970, 1, 1, tzinfo=None)

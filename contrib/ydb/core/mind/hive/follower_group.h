@@ -2,6 +2,7 @@
 
 #include "hive.h"
 #include <contrib/ydb/core/protos/hive.pb.h>
+#include <contrib/ydb/core/protos/follower_group.pb.h>
 #include <contrib/ydb/core/base/location.h>
 
 namespace NKikimr {

@@ -4,8 +4,9 @@
 #include <contrib/ydb/library/persqueue/topic_parser_public/topic_parser.h>
 #include <contrib/ydb/public/api/protos/persqueue_error_codes_v1.pb.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/persqueue.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/impl/common.h>
+#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/persqueue.h>
+#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/common/log_lazy.h>
+#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/impl/common.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>

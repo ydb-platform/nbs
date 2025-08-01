@@ -35,3 +35,13 @@ func (pm *PortManagerT) GetPort(defaultPort ...int) int {
 	}
 	return port
 }
+
+// GetSequentialPorts allocates new sequential ports using base PortManager
+// Errors are handled by calling (testing.TB).Fatalf.
+func (pm *PortManagerT) GetSequentialPorts(count int, defaultPort ...int) []int {
+	ports, err := pm.base.GetSequentialPorts(count, defaultPort...)
+	if err != nil {
+		pm.tb.Fatal(err)
+	}
+	return ports
+}

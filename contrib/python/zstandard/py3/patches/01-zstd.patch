@@ -1,0 +1,5 @@
+--- contrib/python/zstandard/py3/c-ext/backend_c.c	(index)
++++ contrib/python/zstandard/py3/c-ext/backend_c.c	(working tree)
+@@ -155 +155 @@ void zstd_module_init(PyObject *m) {
+-    unsigned our_hardcoded_version = 10505;
++    unsigned our_hardcoded_version = 10506;

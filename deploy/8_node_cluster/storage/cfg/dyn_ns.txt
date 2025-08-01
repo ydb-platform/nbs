@@ -1,2 +1,0 @@
-MaxStaticNodeId: 50000
-

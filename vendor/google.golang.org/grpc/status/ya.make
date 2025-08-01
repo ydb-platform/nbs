@@ -2,7 +2,9 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
-SRCS(status.go)
+SRCS(
+    status.go
+)
 
 GO_TEST_SRCS(status_test.go)
 

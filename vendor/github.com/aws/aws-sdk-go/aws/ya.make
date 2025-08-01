@@ -29,6 +29,7 @@ END()
 
 RECURSE(
     arn
+    auth
     awserr
     awsutil
     client

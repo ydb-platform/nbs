@@ -1,0 +1,54 @@
+commit d80beb898ece85b8457aa92375002970850d8c3f (HEAD -> yamaker-bison)
+author: thegeorg
+date: 2024-06-19T11:53:41+03:00
+
+    Put contrib/tools/bison under yamaker
+
+--- contrib/tools/bison/src/getargs.c	(e03b59238bad8208b1b16d201f227627dd4bec91)
++++ contrib/tools/bison/src/getargs.c	(d80beb898ece85b8457aa92375002970850d8c3f)
+@@ -62,6 +62,8 @@ const char *skeleton = NULL;
+ int language_prio = default_prio;
+ struct bison_language const *language = &valid_languages[0];
+ 
++const char* m4_path = NULL;
++
+ /** Decode an option's key.
+  *
+  *  \param option   option being decoded.
+@@ -476,6 +474,7 @@ enum
+   LOCATIONS_OPTION = CHAR_MAX + 1,
+   PRINT_LOCALEDIR_OPTION,
+   PRINT_DATADIR_OPTION,
++  M4_PATH,
+   REPORT_FILE_OPTION
+ };
+ 
+@@ -504,6 +501,7 @@ static struct option const long_options[] =
+ 
+   /* Hidden. */
+   { "trace",         optional_argument,   0,     'T' },
++  { "m4",            required_argument,   0,     M4_PATH },
+ 
+   /* Output.  */
+   { "defines",     optional_argument,   0,   'd' },
+@@ -709,6 +705,10 @@ getargs (int argc, char *argv[])
+         spec_verbose_file = xstrdup (AS_FILE_NAME (optarg));
+         break;
+ 
++      case M4_PATH:
++        m4_path = xstrdup (AS_FILE_NAME (optarg));
++        break;
++
+       default:
+         usage (EXIT_FAILURE);
+       }
+--- contrib/tools/bison/src/getargs.h	(e03b59238bad8208b1b16d201f227627dd4bec91)
++++ contrib/tools/bison/src/getargs.h	(d80beb898ece85b8457aa92375002970850d8c3f)
+@@ -41,6 +41,7 @@ extern bool no_lines_flag;              /* for -l */
+ extern bool token_table_flag;           /* for -k */
+ extern bool yacc_flag;                  /* for -y */
+ 
++extern const char *m4_path;
+ 
+ /* GLR_PARSER is true if the input file says to use the GLR
+    (Generalized LR) parser, and to output some additional information

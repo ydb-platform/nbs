@@ -125,6 +125,10 @@ void TPDiskStatusComputer::SetForcedStatus(EPDiskStatus status) {
     ForcedStatus = status;
 }
 
+bool TPDiskStatusComputer::HasForcedStatus() const {
+    return ForcedStatus.Defined();
+}
+
 void TPDiskStatusComputer::ResetForcedStatus() {
     ForcedStatus.Clear();
 }
@@ -196,6 +200,7 @@ void TPDiskStatus::DisallowChanging() {
 
 TPDiskInfo::TPDiskInfo(EPDiskStatus initialStatus, const ui32& defaultStateLimit, const TLimitsMap& stateLimits)
     : TPDiskStatus(initialStatus, defaultStateLimit, stateLimits)
+    , ActualStatus(initialStatus)
 {
     Touch();
 }
@@ -307,9 +312,7 @@ TClusterMap::TPDiskIDSet TGuardian::GetAllowedPDisks(const TClusterMap& all, TSt
 /// Misc
 
 IActor* CreateBSControllerPipe(TCmsStatePtr cmsState) {
-    auto domains = AppData()->DomainsInfo;
-    const ui32 domainUid = domains->GetDomainUidByTabletId(cmsState->CmsTabletId);
-    const ui64 bscId = MakeBSControllerID(domains->GetDefaultStateStorageGroup(domainUid));
+    const ui64 bscId = MakeBSControllerID();
 
     NTabletPipe::TClientConfig config;
     config.RetryPolicy = NTabletPipe::TClientRetryPolicy::WithRetries();
@@ -892,15 +895,15 @@ class TSentinel: public TActorBootstrapped<TSentinel> {
                 continue;
             }
 
-            if (it->second.HasFaultyMarker()) {
-                info.SetForcedStatus(EPDiskStatus::FAULTY);
+            if (it->second.HasFaultyMarker() && Config.EvictVDisksStatus.Defined()) {
+                info.SetForcedStatus(*Config.EvictVDisksStatus);
             } else {
                 info.ResetForcedStatus();
             }
 
             all.AddPDisk(id);
             if (info.IsChanged()) {
-                if (info.IsNewStatusGood()) {
+                if (info.IsNewStatusGood() || info.HasForcedStatus()) {
                     alwaysAllowed.insert(id);
                 } else {
                     changed.AddPDisk(id);
@@ -986,6 +989,7 @@ class TSentinel: public TActorBootstrapped<TSentinel> {
             command.SetPDiskId(id.DiskId);
             command.SetStatus(info->GetStatus());
         }
+        request->Record.MutableRequest()->SetIgnoreDisintegratedGroupsChecks(true);
 
         NTabletPipe::SendData(SelfId(), CmsState->BSControllerPipe, request.Release(), ++SentinelState->ChangeRequestId);
     }
@@ -1117,6 +1121,7 @@ class TSentinel: public TActorBootstrapped<TSentinel> {
         }
 
         auto onPDiskStatusChanged = [&](const TPDiskID& id, TPDiskInfo& info) {
+            info.LastStatusChangeFailed = false;
             info.StatusChangeFailed = false;
             info.PrevStatus = info.ActualStatus;
             info.ActualStatus = info.GetStatus();
@@ -1130,21 +1135,22 @@ class TSentinel: public TActorBootstrapped<TSentinel> {
             (*Counters->PDisksChanged)++;
         };
 
-        if (!response.GetSuccess() || !response.StatusSize() || !response.GetStatus(0).GetSuccess()) {
-            Y_ABORT_UNLESS(SentinelState->ChangeRequests.size() == response.StatusSize());
+        if (!response.GetSuccess() || !response.StatusSize()) {
+            for (auto& [key, req] : SentinelState->ChangeRequests) {
+                req->LastStatusChangeFailed = false;
+                req->StatusChangeFailed = true;
+                req->StatusChangeAttempt = SentinelState->StatusChangeAttempt;
+            }
+
+            Y_ABORT_UNLESS(SentinelState->ChangeRequests.size() >= response.StatusSize());
             auto it = SentinelState->ChangeRequests.begin();
             for (const auto& status : response.GetStatus()) {
                 if (!status.GetSuccess()) {
+                    it->second->LastStatusChangeFailed = true;
                     LOG_E("Unsuccesful response from BSC"
                         << ": error# " << status.GetErrorDescription());
-
-                    it->second->StatusChangeFailed = true;
-                    it->second->StatusChangeAttempt = SentinelState->StatusChangeAttempt;
-                    ++it;
-                } else {
-                    onPDiskStatusChanged(it->first, *(it->second));
-                    it = SentinelState->ChangeRequests.erase(it);
                 }
+                ++it;
             }
 
             MaybeRetry();

@@ -1,0 +1,15 @@
+--- a/google/protobuf/pyext/message.cc	(index)
++++ b/google/protobuf/pyext/message.cc	(working tree)
+@@ -115,11 +115,7 @@ static int InsertEmptyWeakref(PyTypeObject* base);
+ namespace {
+ // Copied over from internal 'google/protobuf/stubs/strutil.h'.
+ inline void LowerString(TProtoStringType* s) {
+-  TProtoStringType::iterator end = s->end();
+-  for (TProtoStringType::iterator i = s->begin(); i != end; ++i) {
+-    // tolower() changes based on locale.  We don't want this!
+-    if ('A' <= *i && *i <= 'Z') *i += 'a' - 'A';
+-  }
++  s->to_lower();
+ }
+ }  // namespace
+ 

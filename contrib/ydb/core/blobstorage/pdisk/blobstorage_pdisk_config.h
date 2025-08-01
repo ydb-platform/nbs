@@ -6,6 +6,11 @@
 #include <contrib/ydb/core/blobstorage/base/vdisk_priorities.h>
 #include <contrib/ydb/core/control/immediate_control_board_wrapper.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_config.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_disk.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_pdisk_config.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_disk_color.pb.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 
 #include <contrib/ydb/library/pdisk_io/drivedata.h>
@@ -293,6 +298,7 @@ struct TPDiskConfig : public TThrRefBase {
         str << " OrangeLogChunksMultiplier# " << OrangeLogChunksMultiplier << x;
         str << " WarningLogChunksMultiplier# " << WarningLogChunksMultiplier << x;
         str << " YellowLogChunksMultiplier# " << YellowLogChunksMultiplier << x;
+        str << " SpaceColorBorder# " << SpaceColorBorder << x;
         str << "}";
         return str.Str();
     }

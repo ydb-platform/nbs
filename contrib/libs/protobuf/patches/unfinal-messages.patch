@@ -1,0 +1,11 @@
+--- a/src/google/protobuf/compiler/cpp/cpp_message.cc	(index)
++++ b/src/google/protobuf/compiler/cpp/cpp_message.cc	(working tree)
+@@ -298,7 +298,7 @@ bool HasPrivateHasMethod(const FieldDescriptor* field) {
+
+ bool ShouldMarkClassAsFinal(const Descriptor* descriptor,
+                             const Options& options) {
+-  return true;
++  return false;
+ }
+
+

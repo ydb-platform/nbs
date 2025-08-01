@@ -2,7 +2,7 @@
 
 #include <strstream>
 
-#include "../kafka_messages.h"
+#include <contrib/ydb/core/kafka_proxy/kafka_messages.h>
 
 using namespace NKafka;
 

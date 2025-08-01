@@ -3,6 +3,8 @@
 #include <contrib/ydb/core/kqp/query_data/kqp_query_data.h>
 #include <contrib/ydb/core/protos/tx_proxy.pb.h>
 #include <contrib/ydb/core/protos/tx_datashard.pb.h>
+#include <contrib/ydb/library/ydb_issue/proto/issue_id.pb.h>
+#include <contrib/ydb/core/protos/data_events.pb.h>
 
 #include <contrib/ydb/core/kqp/topics/kqp_topics.h>
 #include <contrib/ydb/core/kqp/counters/kqp_counters.h>
@@ -24,6 +26,15 @@ namespace NKikimr::NGRpcService {
 class IRequestCtxMtSafe;
 
 }
+
+namespace NKikimr::NKqp::NRm {
+    class IKqpResourceManager;
+}
+
+namespace NKikimr::NKqp::NComputeActor {
+    struct IKqpNodeComputeActorFactory;
+}
+
 
 namespace NKikimr::NKqp {
 
@@ -143,6 +154,8 @@ public:
         Ydb::Table::QueryStatsCollection::Mode StatsMode = Ydb::Table::QueryStatsCollection::STATS_COLLECTION_NONE;
         TDuration ProgressStatsPeriod;
         TKqpSnapshot Snapshot = TKqpSnapshot();
+        std::shared_ptr<NKikimr::NKqp::NRm::IKqpResourceManager> ResourceManager_;
+        std::shared_ptr<NKikimr::NKqp::NComputeActor::IKqpNodeComputeActorFactory> CaFactory_;
         NKikimrKqp::EIsolationLevel IsolationLevel = NKikimrKqp::ISOLATION_LEVEL_UNDEFINED;
         TMaybe<NKikimrKqp::TRlPath> RlPath;
         bool NeedTxId = true;
@@ -152,6 +165,8 @@ public:
         NWilson::TTraceId TraceId;
 
         NTopic::TTopicOperations TopicOperations;
+
+        ui64 OutputChunkMaxSize = 0;
 
         bool IsTrailingResultsAllowed() const {
             return AllowTrailingResults && (
@@ -173,6 +188,7 @@ public:
 
 public:
     virtual TString GetDatabase() = 0;
+    virtual TString GetDatabaseId() = 0;
     virtual bool GetDomainLoginOnly() = 0;
     virtual TMaybe<TString> GetDomainName() = 0;
 
@@ -210,9 +226,13 @@ public:
         const Ydb::Table::TransactionSettings& txSettings) = 0;
 
     virtual NThreading::TFuture<TQueryResult> ExplainGenericQuery(const TString& cluster, const TString& query) = 0;
+
+    virtual NThreading::TFuture<TQueryResult> StreamExecGenericQuery(const TString& cluster, const TString& query,
+         TQueryData::TPtr params, const TAstQuerySettings& settings,
+        const Ydb::Table::TransactionSettings& txSettings, const NActors::TActorId& target) = 0;
 };
 
-TIntrusivePtr<IKqpGateway> CreateKikimrIcGateway(const TString& cluster, NKikimrKqp::EQueryType queryType, const TString& database,
+TIntrusivePtr<IKqpGateway> CreateKikimrIcGateway(const TString& cluster, NKikimrKqp::EQueryType queryType, const TString& database, const TString& databaseId,
     std::shared_ptr<IKqpGateway::IKqpTableMetadataLoader>&& metadataLoader, NActors::TActorSystem* actorSystem,
     ui32 nodeId, TKqpRequestCounters::TPtr counters, const NKikimrConfig::TQueryServiceConfig& queryServiceConfig = NKikimrConfig::TQueryServiceConfig());
 

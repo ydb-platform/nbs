@@ -1,20 +1,24 @@
-YQL_UDF_CONTRIB(hyperloglog_udf)
+IF (YQL_PACKAGED)
+    PACKAGE()
 
-YQL_ABI_VERSION(
-    2
-    28
-    0
-)
+    FROM_SANDBOX(FILE 6529639173 OUT_NOAUTO libhyperloglog_udf.so)
 
-SRCS(
-    hyperloglog_udf.cpp
-)
-
-PEERDIR(
-    library/cpp/hyperloglog
-)
-
-END()
+    END()
+ELSE()
+    YQL_UDF_CONTRIB(hyperloglog_udf)
+    YQL_ABI_VERSION(
+        2
+        28
+        0
+    )
+    SRCS(
+        hyperloglog_udf.cpp
+    )
+    PEERDIR(
+        library/cpp/hyperloglog
+    )
+    END()
+ENDIF()
 
 RECURSE_FOR_TESTS(
     test

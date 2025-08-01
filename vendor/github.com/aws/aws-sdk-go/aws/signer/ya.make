@@ -1,1 +1,3 @@
-RECURSE(v4)
+RECURSE(
+    v4
+)

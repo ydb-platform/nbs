@@ -1,0 +1,12 @@
+--- contrib/tools/bison/lib/spawn-pipe.c	(index)
++++ contrib/tools/bison/lib/spawn-pipe.c	(working tree)
+@@ -53,6 +53,9 @@
+ #undef open
+ #undef close
+ 
++#if defined(__FreeBSD__) || defined(__MACH__)
++    extern char** environ;
++#endif
+ 
+ #ifdef EINTR
+ 

@@ -2,7 +2,9 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
-SRCS(encoding.go)
+SRCS(
+    encoding.go
+)
 
 GO_TEST_SRCS(encoding_test.go)
 

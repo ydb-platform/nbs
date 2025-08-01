@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
-SRCS(stub.go)
+SRCS(
+    stub.go
+)
 
 END()

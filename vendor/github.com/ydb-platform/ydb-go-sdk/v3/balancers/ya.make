@@ -5,6 +5,7 @@ LICENSE(Apache-2.0)
 SRCS(
     balancers.go
     config.go
+    context.go
 )
 
 GO_TEST_SRCS(

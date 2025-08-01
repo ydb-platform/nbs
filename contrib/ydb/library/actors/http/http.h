@@ -170,6 +170,7 @@ public:
     template <TStringBuf THttpRequest::* Header>
     static TStringBuf GetName();
     void Clear();
+    TString GetURL() const;
 };
 
 class THttpResponse {
@@ -291,16 +292,20 @@ public:
         return target.size() == size;
     }
 
-    void ProcessHeader(TStringBuf& header) {
-        TStringBuf name = header.NextTok(':');
+    bool ProcessHeader(TStringBuf& header) {
+        TStringBuf name;
+        TStringBuf value;
+        if (!header.TrySplit(':', name, value)) {
+            return false;
+        }
         TrimBegin(name, ' ');
-        TStringBuf value = header;
         Trim(value, ' ');
         auto cit = HeaderType::HeadersLocation.find(name);
         if (cit != HeaderType::HeadersLocation.end()) {
             this->*cit->second = value;
         }
         header.Clear();
+        return true;
     }
 
     size_t ParseHex(TStringBuf value) {
@@ -692,6 +697,9 @@ using THttpIncomingRequestPtr = TIntrusivePtr<THttpIncomingRequest>;
 class THttpOutgoingResponse;
 using THttpOutgoingResponsePtr = TIntrusivePtr<THttpOutgoingResponse>;
 
+class THttpOutgoingRequest;
+using THttpOutgoingRequestPtr = TIntrusivePtr<THttpOutgoingRequest>;
+
 class THttpIncomingRequest :
         public THttpParser<THttpRequest, TSocketBuffer>,
         public TRefCounted<THttpIncomingRequest, TAtomicCounter> {
@@ -755,6 +763,7 @@ public:
     THttpOutgoingResponsePtr CreateIncompleteResponse(TStringBuf status, TStringBuf message, const THeaders& headers, TStringBuf body);
 
     THttpIncomingRequestPtr Duplicate();
+    THttpOutgoingRequestPtr Forward(TStringBuf baseUrl) const;
 
 private:
     THttpOutgoingResponsePtr ConstructResponse(TStringBuf status, TStringBuf message);
@@ -763,9 +772,6 @@ private:
 
 class THttpIncomingResponse;
 using THttpIncomingResponsePtr = TIntrusivePtr<THttpIncomingResponse>;
-
-class THttpOutgoingRequest;
-using THttpOutgoingRequestPtr = TIntrusivePtr<THttpOutgoingRequest>;
 
 class THttpIncomingResponse :
         public THttpParser<THttpResponse, TSocketBuffer>,

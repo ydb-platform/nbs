@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync/atomic"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/background"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/empty"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicwriter"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xatomic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
@@ -24,7 +24,7 @@ type SingleStreamWriterConfig struct {
 	stream                RawTopicWriterStream
 	queue                 *messageQueue
 	encodersMap           *EncoderMap
-	getAutoSeq            bool
+	getLastSeqNum         bool
 	reconnectorInstanceID string
 }
 
@@ -33,7 +33,7 @@ func newSingleStreamWriterConfig(
 	stream RawTopicWriterStream,
 	queue *messageQueue,
 	encodersMap *EncoderMap,
-	getAutoSeq bool,
+	getLastSeqNum bool,
 	reconnectorID string,
 ) SingleStreamWriterConfig {
 	return SingleStreamWriterConfig{
@@ -41,24 +41,24 @@ func newSingleStreamWriterConfig(
 		stream:                stream,
 		queue:                 queue,
 		encodersMap:           encodersMap,
-		getAutoSeq:            getAutoSeq,
+		getLastSeqNum:         getLastSeqNum,
 		reconnectorInstanceID: reconnectorID,
 	}
 }
 
 type SingleStreamWriter struct {
-	ReceivedLastSeqNum int64
-	SessionID          string
-	PartitionID        int64
-	CodecsFromServer   rawtopiccommon.SupportedCodecs
-	Encoder            EncoderSelector
-
-	cfg            SingleStreamWriterConfig
-	allowedCodecs  rawtopiccommon.SupportedCodecs
-	background     background.Worker
-	closed         xatomic.Bool
-	closeReason    error
-	closeCompleted empty.Chan
+	cfg                 SingleStreamWriterConfig
+	Encoder             EncoderSelector
+	background          background.Worker
+	CodecsFromServer    rawtopiccommon.SupportedCodecs
+	allowedCodecs       rawtopiccommon.SupportedCodecs
+	SessionID           string
+	closeReason         error
+	ReceivedLastSeqNum  int64
+	PartitionID         int64
+	closeCompleted      empty.Chan
+	closed              atomic.Bool
+	LastSeqNumRequested bool
 }
 
 func NewSingleStreamWriter(
@@ -66,12 +66,15 @@ func NewSingleStreamWriter(
 	cfg SingleStreamWriterConfig, //nolint:gocritic
 ) (*SingleStreamWriter, error) {
 	res := newSingleStreamWriterStopped(ctxForPProfLabelsOnly, cfg)
-	err := res.initStream()
-	if err != nil {
+
+	if err := res.initStream(); err != nil {
 		_ = res.close(context.Background(), err)
+
 		return nil, err
 	}
+
 	res.start()
+
 	return res, nil
 }
 
@@ -80,8 +83,11 @@ func newSingleStreamWriterStopped(
 	cfg SingleStreamWriterConfig, //nolint:gocritic
 ) *SingleStreamWriter {
 	return &SingleStreamWriter{
-		cfg:            cfg,
-		background:     *background.NewWorker(xcontext.WithoutDeadline(ctxForPProfLabelsOnly)),
+		cfg: cfg,
+		background: *background.NewWorker(
+			xcontext.ValueOnly(ctxForPProfLabelsOnly),
+			"ydb-topic-stream-writer-background",
+		),
 		closeCompleted: make(empty.Chan),
 	}
 }
@@ -152,9 +158,11 @@ func (w *SingleStreamWriter) initStream() (err error) {
 	)
 
 	w.SessionID = result.SessionID
+	w.LastSeqNumRequested = req.GetLastSeqNo
 	w.ReceivedLastSeqNum = result.LastSeqNo
 	w.PartitionID = result.PartitionID
 	w.CodecsFromServer = result.SupportedCodecs
+
 	return nil
 }
 
@@ -164,7 +172,7 @@ func (w *SingleStreamWriter) createInitRequest() rawtopicwriter.InitRequest {
 		ProducerID:       w.cfg.producerID,
 		WriteSessionMeta: w.cfg.writerMeta,
 		Partitioning:     w.cfg.defaultPartitioning,
-		GetLastSeqNo:     w.cfg.getAutoSeq,
+		GetLastSeqNo:     w.cfg.getLastSeqNum,
 	}
 }
 
@@ -178,16 +186,18 @@ func (w *SingleStreamWriter) receiveMessagesLoop(ctx context.Context) {
 		if err != nil {
 			err = xerrors.WithStackTrace(fmt.Errorf("ydb: failed to receive message from write stream: %w", err))
 			_ = w.close(ctx, err)
+
 			return
 		}
 
 		switch m := mess.(type) {
 		case *rawtopicwriter.WriteResult:
-			if err = w.cfg.queue.AcksReceived(m.Acks); err != nil {
+			if err = w.cfg.queue.AcksReceived(m.Acks); err != nil && !errors.Is(err, errCloseClosedMessageQueue) {
 				reason := xerrors.WithStackTrace(err)
 				closeCtx, closeCtxCancel := xcontext.WithCancel(ctx)
 				closeCtxCancel()
 				_ = w.close(closeCtx, reason)
+
 				return
 			}
 		case *rawtopicwriter.UpdateTokenResponse:
@@ -211,12 +221,14 @@ func (w *SingleStreamWriter) sendMessagesFromQueueToStreamLoop(ctx context.Conte
 		messages, err := w.cfg.queue.GetMessagesForSend(ctx)
 		if err != nil {
 			_ = w.close(ctx, err)
+
 			return
 		}
 
 		targetCodec, err := w.Encoder.CompressMessages(messages)
 		if err != nil {
 			_ = w.close(ctx, err)
+
 			return
 		}
 
@@ -233,6 +245,7 @@ func (w *SingleStreamWriter) sendMessagesFromQueueToStreamLoop(ctx context.Conte
 		if err != nil {
 			err = xerrors.WithStackTrace(fmt.Errorf("ydb: error send message to topic stream: %w", err))
 			_ = w.close(ctx, err)
+
 			return
 		}
 	}
@@ -272,5 +285,6 @@ func (w *SingleStreamWriter) sendUpdateToken(ctx context.Context) (err error) {
 
 	req := &rawtopicwriter.UpdateTokenRequest{}
 	req.Token = token
+
 	return stream.Send(req)
 }

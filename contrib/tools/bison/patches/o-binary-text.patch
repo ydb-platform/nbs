@@ -1,0 +1,23 @@
+commit a21c9f41948a7d01f275966b6e9e9ff0a3ab10da (HEAD -> yamaker-bison)
+author: thegeorg
+date: 2024-06-09T22:06:28+03:00
+
+    Put contrib/tools/bison under yamaker
+
+--- contrib/tools/bison/lib/binary-io.h	(212d53b3ad2c86407d6763129fe182ff06c0cd95)
++++ contrib/tools/bison/lib/binary-io.h	(a21c9f41948a7d01f275966b6e9e9ff0a3ab10da)
+@@ -25,6 +25,14 @@
+    so we include it here first.  */
+ #include <stdio.h>
+ 
++#ifndef O_BINARY
++	#define O_BINARY 0
++#endif
++
++#ifndef O_TEXT
++	#define O_TEXT 0
++#endif
++
+ _GL_INLINE_HEADER_BEGIN
+ #ifndef BINARY_IO_INLINE
+ # define BINARY_IO_INLINE _GL_INLINE

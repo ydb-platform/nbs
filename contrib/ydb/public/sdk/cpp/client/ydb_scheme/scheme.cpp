@@ -9,6 +9,8 @@
 #include <contrib/ydb/public/api/protos/ydb_scheme.pb.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_common_client/impl/client.h>
 
+#include <util/string/join.h>
+
 namespace NYdb {
 namespace NScheme {
 
@@ -31,10 +33,10 @@ TString TVirtualTimestamp::ToString() const {
     return result;
 }
 
-void TVirtualTimestamp::Out(IOutputStream& o) const {
-    o << "{ plan_step: " << PlanStep
-      << ", tx_id: " << TxId
-      << " }";
+void TVirtualTimestamp::Out(IOutputStream& out) const {
+    out << "{ plan_step: " << PlanStep
+        << ", tx_id: " << TxId
+        << " }";
 }
 
 bool TVirtualTimestamp::operator<(const TVirtualTimestamp& rhs) const {
@@ -93,6 +95,8 @@ static ESchemeEntryType ConvertProtoEntryType(::Ydb::Scheme::Entry::Type entry) 
         return ESchemeEntryType::ExternalDataSource;
     case ::Ydb::Scheme::Entry::VIEW:
         return ESchemeEntryType::View;
+    case ::Ydb::Scheme::Entry::RESOURCE_POOL:
+        return ESchemeEntryType::ResourcePool;
     default:
         return ESchemeEntryType::Unknown;
     }
@@ -107,6 +111,15 @@ TSchemeEntry::TSchemeEntry(const ::Ydb::Scheme::Entry& proto)
 {
     PermissionToSchemeEntry(proto.effective_permissions(), &EffectivePermissions);
     PermissionToSchemeEntry(proto.permissions(), &Permissions);
+}
+
+void TSchemeEntry::Out(IOutputStream& out) const {
+    out << "{ name: " << Name
+        << ", owner: " << Owner
+        << ", type: " << Type
+        << ", size_bytes: " << SizeBytes
+        << ", created_at: " << CreatedAt
+        << " }";
 }
 
 class TSchemeClient::TImpl : public TClientImplCommon<TSchemeClient::TImpl> {
@@ -250,6 +263,14 @@ const TSchemeEntry& TDescribePathResult::GetEntry() const {
     return Entry_;
 }
 
+void TDescribePathResult::Out(IOutputStream& out) const {
+    if (IsSuccess()) {
+        return Entry_.Out(out);
+    } else {
+        return TStatus::Out(out);
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TListDirectoryResult::TListDirectoryResult(TStatus&& status, const TSchemeEntry& self, TVector<TSchemeEntry>&& children)
@@ -260,6 +281,14 @@ TListDirectoryResult::TListDirectoryResult(TStatus&& status, const TSchemeEntry&
 const TVector<TSchemeEntry>& TListDirectoryResult::GetChildren() const {
     CheckStatusOk("TListDirectoryResult::GetChildren");
     return Children_;
+}
+
+void TListDirectoryResult::Out(IOutputStream& out) const {
+    if (IsSuccess()) {
+        out << "{ children [" << JoinSeq(", ", Children_) << "] }";
+    } else {
+        return TStatus::Out(out);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -294,7 +323,3 @@ TAsyncStatus TSchemeClient::ModifyPermissions(const TString& path,
 
 } // namespace NScheme
 } // namespace NYdb
-
-Y_DECLARE_OUT_SPEC(, NYdb::NScheme::TVirtualTimestamp, o, x) {
-    return x.Out(o);
-}

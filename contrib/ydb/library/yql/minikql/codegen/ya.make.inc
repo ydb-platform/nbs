@@ -1,8 +1,3 @@
-OWNER(
-    g:yql
-    g:yql_ydb_core
-)
-
 ADDINCL(
     ${ARCADIA_BUILD_ROOT}/${MODDIR}
     contrib/ydb/library/yql/minikql/codegen

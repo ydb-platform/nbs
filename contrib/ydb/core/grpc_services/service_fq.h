@@ -4,7 +4,7 @@
 #include <memory>
 
 #include <contrib/ydb/core/base/ticket_parser.h>
-#include <contrib/ydb/core/fq/libs/control_plane_proxy/utils.h>
+#include <contrib/ydb/core/fq/libs/control_plane_proxy/utils/utils.h>
 
 namespace NKikimr {
 namespace NGRpcService {

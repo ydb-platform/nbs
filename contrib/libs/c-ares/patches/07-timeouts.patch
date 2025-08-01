@@ -1,0 +1,132 @@
+diff --git a/ares.h b/ares.h
+--- a/include/ares.h
++++ b/include/ares.h
+@@ -168,6 +168,8 @@ extern "C" {
+ #define ARES_OPT_RESOLVCONF      (1 << 17)
+ #define ARES_OPT_HOSTS_FILE      (1 << 18)
+ #define ARES_OPT_UDP_MAX_QUERIES (1 << 19)
++#define ARES_OPT_MAXTIMEOUTMS    (1 << 20)
++#define ARES_OPT_JITTER          (1 << 21)
+ 
+ /* Nameinfo flag values */
+ #define ARES_NI_NOFQDN                  (1 << 0)
+@@ -260,6 +262,9 @@ struct apattern;
+ struct ares_options {
+   int flags;
+   int timeout; /* in seconds or milliseconds, depending on options */
++  int maxtimeout; /* in milliseconds */
++  int jitter; /* in .001 */
++  unsigned int jitter_rand_seed;
+   int tries;
+   int ndots;
+   unsigned short udp_port;
+diff --git a/ares_init.c b/ares_init.c
+--- a/src/lib/ares_init.c
++++ b/src/lib/ares_init.c
+@@ -124,6 +124,9 @@ int ares_init_options(ares_channel *channelptr, struct ares_options *options,
+    */
+   channel->flags = -1;
+   channel->timeout = -1;
++  channel->maxtimeout = -1;
++  channel->jitter = -1;
++  channel->jitter_rand_state = -1;
+   channel->tries = -1;
+   channel->ndots = -1;
+   channel->rotate = -1;
+@@ -329,7 +331,8 @@ int ares_save_options(ares_channel channel, struct ares_options *options,
+   (*optmask) = (ARES_OPT_FLAGS|ARES_OPT_TRIES|ARES_OPT_NDOTS|
+                 ARES_OPT_UDP_PORT|ARES_OPT_TCP_PORT|ARES_OPT_SOCK_STATE_CB|
+                 ARES_OPT_SERVERS|ARES_OPT_DOMAINS|ARES_OPT_LOOKUPS|
+-                ARES_OPT_SORTLIST|ARES_OPT_TIMEOUTMS);
++                ARES_OPT_SORTLIST|ARES_OPT_TIMEOUTMS|ARES_OPT_MAXTIMEOUTMS|
++                ARES_OPT_JITTER);  
+   (*optmask) |= (channel->rotate ? ARES_OPT_ROTATE : ARES_OPT_NOROTATE);
+ 
+   if (channel->resolvconf_path)
+@@ -341,6 +345,9 @@ int ares_save_options(ares_channel channel, struct ares_options *options,
+   /* We return full millisecond resolution but that's only because we don't
+      set the ARES_OPT_TIMEOUT anymore, only the new ARES_OPT_TIMEOUTMS */
+   options->timeout = channel->timeout;
++  options->maxtimeout = channel->maxtimeout;
++  options->jitter = channel->jitter;
++  options->jitter_rand_seed = channel->jitter_rand_state;
+   options->tries   = channel->tries;
+   options->ndots   = channel->ndots;
+   options->udp_port = ntohs(aresx_sitous(channel->udp_port));
+@@ -430,6 +436,13 @@ static int init_by_options(ares_channel channel,
+     channel->timeout = options->timeout;
+   else if ((optmask & ARES_OPT_TIMEOUT) && channel->timeout == -1)
+     channel->timeout = options->timeout * 1000;
++  if ((optmask & ARES_OPT_MAXTIMEOUTMS) && channel->maxtimeout == -1)
++    channel->maxtimeout = options->maxtimeout;
++  if ((optmask & ARES_OPT_JITTER) && channel->jitter == -1)
++    {
++      channel->jitter = options->jitter;
++      channel->jitter_rand_state = options->jitter_rand_seed;
++    }
+   if ((optmask & ARES_OPT_TRIES) && channel->tries == -1)
+     channel->tries = options->tries;
+   if ((optmask & ARES_OPT_NDOTS) && channel->ndots == -1)
+@@ -2359,6 +2383,9 @@ static int set_options(ares_channel channel, const char *str)
+       val = try_option(p, q, "timeout:");
+       if (val && channel->timeout == -1)
+         channel->timeout = aresx_sltosi(strtol(val, NULL, 10)) * 1000;
++      val = try_option(p, q, "maxtimeout:");
++      if (val && channel->maxtimeout == -1)
++        channel->maxtimeout = aresx_sltosi(strtol(val, NULL, 10)) * 1000;
+       val = try_option(p, q, "retry:");
+       if (val && channel->tries == -1)
+         channel->tries = aresx_sltosi(strtol(val, NULL, 10));
+@@ -2368,6 +2385,9 @@ static int set_options(ares_channel channel, const char *str)
+       val = try_option(p, q, "rotate");
+       if (val && channel->rotate == -1)
+         channel->rotate = 1;
++      val = try_option(p, q, "jitter:");
++      if (val && channel->jitter == -1)
++        channel->jitter = aresx_sltosi(strtol(val, NULL, 10));
+       p = q;
+       while (ISSPACE(*p))
+         p++;
+diff --git a/ares_private.h b/ares_private.h
+--- a/src/lib/ares_private.h
++++ b/src/lib/ares_private.h
+@@ -268,6 +268,9 @@ struct ares_channeldata {
+   /* Configuration data */
+   int flags;
+   int timeout; /* in milliseconds */
++  int maxtimeout; /* in milliseconds */
++  int jitter; /* in .001 */
++  unsigned int jitter_rand_state;
+   int tries;
+   int ndots;
+   int rotate; /* if true, all servers specified are used */
+diff --git a/ares_process.c b/ares_process.c
+--- a/src/lib/ares_process.c
++++ b/src/lib/ares_process.c
+@@ -890,6 +890,26 @@ int ares__send_query(ares_channel channel, struct query *query,
+     }
+   }
+ 
++  if (channel->maxtimeout != -1 && timeplus > channel->maxtimeout)
++    timeplus = channel->maxtimeout;
++
++  if (channel->jitter != -1) {
++    int r;
++    #ifdef WIN32
++    /* Windows does not have rand_r function, so we use regular rand(). 
++      * It is thread-unsafe, but it is better than nothing. 
++      */
++    r = rand();
++    #else
++    r = rand_r(&channel->jitter_rand_state);
++    #endif
++    long long delta = (long long)(r - (RAND_MAX >> 1)) * timeplus * channel->jitter;
++    delta /= RAND_MAX;
++    /* Recall that jitter is expressed in .001 */
++    delta /= 1000;
++    timeplus += delta;
++  }
++
+   /* Keep track of queries bucketed by timeout, so we can process
+    * timeout events quickly.
+    */

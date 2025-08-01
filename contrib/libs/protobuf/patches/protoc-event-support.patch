@@ -1,0 +1,22 @@
+This patch does some tricky magic to generate _ev_pb2.py files from .ev files with protobuf syntax
+
+--- a/src/google/protobuf/compiler/python/python_helpers.cc
++++ b/src/google/protobuf/compiler/python/python_helpers.cc
+@@ -42,9 +42,16 @@ namespace protobuf {
+ namespace compiler {
+ namespace python {
+ 
++TProtoStringType FixEv(const TProtoStringType& filename) {
++  if (HasSuffixString(filename, ".ev")) {
++    return StripSuffixString(filename, ".ev") + "_ev.proto";
++  }
++  return filename;
++}
++
+ // Returns the Python module name expected for a given .proto filename.
+ TProtoStringType ModuleName(const TProtoStringType& filename) {
+-  TProtoStringType basename = StripProto(filename);
++  TProtoStringType basename = StripProto(FixEv(filename));
+   ReplaceCharacters(&basename, "-", '_');
+   ReplaceCharacters(&basename, "/", '.');
+   return basename + "_pb2";

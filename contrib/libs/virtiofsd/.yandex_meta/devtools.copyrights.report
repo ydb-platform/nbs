@@ -1,0 +1,151 @@
+# File format ($ symbol means the beginning of a line):
+#
+# $ # this message
+# $ # =======================
+# $     # comments (all commentaries should starts with some number of spaces and # symbol)
+# ${action} {license id} {license text hash}
+# $BELONGS ./ya/make/file/relative/path/1/ya.make ./ya/make/2/ya.make
+# ${all_file_action} filename
+# $ # user commentaries (many lines)
+# $ generated description - files with this license, license text... (some number of lines that starts with some number of spaces, do not modify)
+# ${action} {license spdx} {license text hash}
+# $BELONGS ./ya/make/file/relative/path/3/ya.make
+# ${all_file_action} filename
+# $    #    user commentaries
+# $ generated description
+# $ ...
+#
+# You can modify action, all_file_action and add commentaries
+# Available actions:
+# keep - keep license in contrib and use in credits
+# skip - skip license
+# remove - remove all files with this license
+# rename - save license text/links into licenses texts file, but not store SPDX into LINCENSE macro. You should store correct license id into devtools.license.spdx.txt file
+#
+# {all file action} records will be generated when license text contains filename that exists on filesystem (in contrib directory)
+# We suppose that that files can contain some license info
+# Available all file actions:
+# FILE_IGNORE - ignore file (do nothing)
+# FILE_INCLUDE - include all file data into licenses text file
+# =======================
+
+KEEP     COPYRIGHT_SERVICE_LABEL 3665327e4fab1741bc9e10326d9f02a6
+BELONGS dynamic/ya.make static/ya.make
+    License text:
+         * Copyright (C) 2018 Red Hat, Inc. and/or its affiliates
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        fuse_virtio.h [3:3]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     COPYRIGHT_SERVICE_LABEL 8e87e2ed39d2e1b2f78c4840d88eef49
+BELONGS dynamic/ya.make static/ya.make
+    License text:
+         * Copyright (C) 2019  Red Hat, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        fuse_log.c [3:3]
+        fuse_log.h [3:3]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     COPYRIGHT_SERVICE_LABEL 9a2039fe2ecdcd620a3564c061f50ef9
+BELONGS dynamic/ya.make static/ya.make
+    License text:
+            Copyright (C) 2001-2007 Miklos Szeredi. All rights reserved.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        fuse.h [12:12]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     COPYRIGHT_SERVICE_LABEL 9c569bb037cda0f6c2a1629d553466a5
+BELONGS dynamic/ya.make static/ya.make
+    License text:
+            Copyright (C) 2001-2008  Miklos Szeredi <miklos@szeredi.hu>
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        fuse.h [4:4]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     COPYRIGHT_SERVICE_LABEL a63c8bf49e481d92bc91fa34e822dbd9
+BELONGS dynamic/ya.make static/ya.make
+    License text:
+         * Copyright (C) 2010  Miklos Szeredi <miklos@szeredi.hu>
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        buffer.c [3:3]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     COPYRIGHT_SERVICE_LABEL b41aa16a7f8bea48e35a98596b047e1b
+BELONGS dynamic/ya.make static/ya.make
+    License text:
+         * Copyright (C) 2001-2007  Miklos Szeredi <miklos@szeredi.hu>
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        fuse_common.h [3:3]
+        fuse_i.h [3:3]
+        fuse_lowlevel.c [3:3]
+        fuse_lowlevel.h [3:3]
+        fuse_misc.h [3:3]
+        fuse_opt.c [3:3]
+        fuse_opt.h [3:3]
+        fuse_signals.c [3:3]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     COPYRIGHT_SERVICE_LABEL c0a580767e4df988cbeb3a33fe57d251
+BELONGS dynamic/ya.make static/ya.make
+    Note: matched license text is too long. Read it in the source files.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        COPYING.LIB [428:433]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     COPYRIGHT_SERVICE_LABEL cea1b82351539a871d540971f218116e
+BELONGS dynamic/ya.make static/ya.make
+    License text:
+         Copyright (C) 1991, 1999 Free Software Foundation, Inc.
+         51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+         Everyone is permitted to copy and distribute verbatim copies
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        COPYING.LIB [4:6]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make

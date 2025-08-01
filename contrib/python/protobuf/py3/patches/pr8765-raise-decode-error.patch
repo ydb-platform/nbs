@@ -1,0 +1,22 @@
+commit 6759971f5c37421b29d381731fd05b79aaf5cb98 (HEAD -> protobuf-update-3.15)
+author: thegeorg
+date: 2021-06-25T10:56:26+03:00
+
+     Raise DecodeError on attemt to parse invalid bytestream from Python #8765 
+
+--- a/google/protobuf/pyext/message.cc
++++ b/google/protobuf/pyext/message.cc
+@@ -1923,10 +1923,8 @@
+   // ctx has an explicit limit set (length of string_view), so we have to
+   // check we ended at that limit.
+   if (!ctx.EndedAtLimit()) {
+-    // TODO(jieluo): Raise error and return NULL instead.
+-    // b/27494216
+-    PyErr_Warn(nullptr, "Unexpected end-group tag: Not all data was converted");
+-    return PyLong_FromLong(data.len - ctx.BytesUntilLimit(ptr));
++    PyErr_Format(DecodeError_class, "Unexpected end-group tag: Not all data was converted");
++    return nullptr;
+   }
+   return PyLong_FromLong(data.len);
+ }
+

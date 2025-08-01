@@ -1,0 +1,5 @@
+--- contrib/python/aiohttp/aiohttp/cookiejar.py	(index)
++++ contrib/python/aiohttp/aiohttp/cookiejar.py	(working tree)
+@@ -57 +57 @@ class CookieJar(AbstractCookieJar):
+-    MAX_32BIT_TIME = datetime.datetime.utcfromtimestamp(2 ** 31 - 1)
++    MAX_32BIT_TIME = datetime.datetime(2038, 1, 19, 3, 14, 7)

@@ -2,7 +2,9 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
-SRCS(serverreflection.go)
+SRCS(
+    serverreflection.go
+)
 
 GO_TEST_SRCS(serverreflection_test.go)
 

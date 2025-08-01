@@ -17,9 +17,7 @@ public:
 
         TAppData* appData = AppData();
         TDomainsInfo* domainsInfo = appData->DomainsInfo.Get();
-        const TDomainsInfo::TDomain& domain = domainsInfo->GetDomain(Self->HiveDomain);
-
-        TTabletId rootHiveId = domainsInfo->GetHive(domain.DefaultHiveUid);
+        TTabletId rootHiveId = domainsInfo->GetHive();
         bool isRootHive = (rootHiveId == Self->TabletID());
 
         NIceDb::TNiceDb db(txc.DB);
@@ -58,6 +56,8 @@ public:
             auto nodeRowset = db.Table<Schema::Node>().Select();
             auto configRowset = db.Table<Schema::State>().Select();
             auto categoryRowset = db.Table<Schema::TabletCategory>().Select();
+            auto availabilityRowset = db.Table<Schema::TabletAvailabilityRestrictions>().Select();
+            auto operationsRowset = db.Table<Schema::OperationsLog>().Select();
             if (!tabletRowset.IsReady()
                     || !tabletChannelRowset.IsReady()
                     || !tabletChannelGenRowset.IsReady()
@@ -72,7 +72,9 @@ public:
                     || !tabletOwnersRowset.IsReady()
                     || !nodeRowset.IsReady()
                     || !configRowset.IsReady()
-                    || !categoryRowset.IsReady())
+                    || !categoryRowset.IsReady()
+                    || !availabilityRowset.IsReady()
+                    || !operationsRowset.IsReady())
                 return false;
         }
 
@@ -277,6 +279,9 @@ public:
                 if (domainRowset.HaveValue<Schema::SubDomain::ServerlessComputeResourcesMode>()) {
                     domain.ServerlessComputeResourcesMode = domainRowset.GetValue<Schema::SubDomain::ServerlessComputeResourcesMode>();
                 }
+                if (domainRowset.HaveValue<Schema::SubDomain::ScaleRecommenderPolicies>()) {
+                    domain.SetScaleRecommenderPolicies(domainRowset.GetValue<Schema::SubDomain::ScaleRecommenderPolicies>());
+                }
 
                 if (!domainRowset.Next())
                     return false;
@@ -315,6 +320,12 @@ public:
                 node.ServicedDomains = nodeRowset.GetValueOrDefault<Schema::Node::ServicedDomains>();
                 node.Statistics = nodeRowset.GetValueOrDefault<Schema::Node::Statistics>();
                 node.Name = nodeRowset.GetValueOrDefault<Schema::Node::Name>();
+                node.BecomeUpOnRestart = nodeRowset.GetValueOrDefault<Schema::Node::BecomeUpOnRestart>(false);
+                if (node.BecomeUpOnRestart) {
+                    // If a node must become up on restart, it must have been down
+                    // That was not persisted to avoid issues with downgrades
+                    node.Down = true;
+                }
                 if (nodeRowset.HaveValue<Schema::Node::Location>()) {
                     auto location = nodeRowset.GetValue<Schema::Node::Location>();
                     if (location.HasDataCenter()) {
@@ -330,9 +341,9 @@ public:
                     // it's safe to call here, because there is no any tablets in the node yet
                     node.BecomeDisconnected();
                 }
-                if (node.CanBeDeleted()) {
+                if (Self->TryToDeleteNode(&node)) {
+                    // node is deleted from hashmap
                     db.Table<Schema::Node>().Key(nodeId).Delete();
-                    Self->Nodes.erase(nodeId);
                 } else if (node.IsUnknown() && node.LocationAcquired) {
                     Self->AddRegisteredDataCentersNode(node.Location.GetDataCenterId(), node.Id);
                 }
@@ -381,7 +392,7 @@ public:
                             std::tuple<TTabletId>(tabletId),
                             std::tuple<TTabletId, THive&>(tabletId, *Self)).first->second;
                 tablet.State = tabletRowset.GetValue<Schema::Tablet::State>();
-                tablet.Type = tabletRowset.GetValue<Schema::Tablet::TabletType>();
+                tablet.SetType(tabletRowset.GetValue<Schema::Tablet::TabletType>());
 
                 TObjectId objectId = tabletRowset.GetValueOrDefault<Schema::Tablet::ObjectID>();
                 TOwnerIdxType::TValueType owner = tabletRowset.GetValue<Schema::Tablet::Owner>();
@@ -636,9 +647,9 @@ public:
                     TFollowerId followerId = metricsRowset.GetValue<Schema::Metrics::FollowerID>();
                     auto* leaderOrFollower = tablet->FindTablet(followerId);
                     if (leaderOrFollower) {
-                        leaderOrFollower->MutableResourceMetricsAggregates().MaximumCPU.InitiaizeFrom(metricsRowset.GetValueOrDefault<Schema::Metrics::MaximumCPU>());
-                        leaderOrFollower->MutableResourceMetricsAggregates().MaximumMemory.InitiaizeFrom(metricsRowset.GetValueOrDefault<Schema::Metrics::MaximumMemory>());
-                        leaderOrFollower->MutableResourceMetricsAggregates().MaximumNetwork.InitiaizeFrom(metricsRowset.GetValueOrDefault<Schema::Metrics::MaximumNetwork>());
+                        leaderOrFollower->MutableResourceMetricsAggregates().MaximumCPU.InitializeFrom(metricsRowset.GetValueOrDefault<Schema::Metrics::MaximumCPU>());
+                        leaderOrFollower->MutableResourceMetricsAggregates().MaximumMemory.InitializeFrom(metricsRowset.GetValueOrDefault<Schema::Metrics::MaximumMemory>());
+                        leaderOrFollower->MutableResourceMetricsAggregates().MaximumNetwork.InitializeFrom(metricsRowset.GetValueOrDefault<Schema::Metrics::MaximumNetwork>());
                         // do not reorder
                         leaderOrFollower->UpdateResourceUsage(metricsRowset.GetValueOrDefault<Schema::Metrics::ProtoMetrics>());
                     }
@@ -652,18 +663,63 @@ public:
                     << numMissingTablets << " for missing tablets)");
         }
 
+        {
+            size_t numRestrictions = 0;
+            size_t numMissingNodes = 0;
+            auto availabilityRestrictionsRowset = db.Table<Schema::TabletAvailabilityRestrictions>().Select();
+            if (!availabilityRestrictionsRowset.IsReady()) {
+                return false;
+            }
+            while (!availabilityRestrictionsRowset.EndOfSet()) {
+                ++numRestrictions;
+                TNodeId nodeId = availabilityRestrictionsRowset.GetValue<Schema::TabletAvailabilityRestrictions::Node>();
+                auto node = Self->FindNode(nodeId);
+                if (node) {
+                    auto tabletType = availabilityRestrictionsRowset.GetValue<Schema::TabletAvailabilityRestrictions::TabletType>();
+                    auto maxCount = availabilityRestrictionsRowset.GetValue<Schema::TabletAvailabilityRestrictions::MaxCount>();
+                    node->TabletAvailabilityRestrictions[tabletType] = maxCount;
+                } else {
+                    ++numMissingNodes;
+                }
+                if (!availabilityRestrictionsRowset.Next()) {
+                    return false;
+                }
+            }
+            BLOG_NOTICE("THive::TTxLoadEverything loaded " << numRestrictions << " tablet availability restrictions ("
+                        << numMissingNodes << " for missing nodes)");
+        }
+
         size_t numDeletedNodes = 0;
+        size_t numDeletedRestrictions = 0;
+        TInstant now = TActivationContext::Now();
         for (auto itNode = Self->Nodes.begin(); itNode != Self->Nodes.end();) {
-            if (itNode->second.CanBeDeleted()) {
+            if (itNode->second.CanBeDeleted(now)) {
+                ++numDeletedNodes;
+                auto restrictionsRowset = db.Table<Schema::TabletAvailabilityRestrictions>().Range(itNode->first).Select();
+                while (!restrictionsRowset.EndOfSet()) {
+                    ++numDeletedRestrictions;
+                    db.Table<Schema::TabletAvailabilityRestrictions>().Key(restrictionsRowset.GetKey()).Delete();
+                    if (!restrictionsRowset.Next()) {
+                        return false;
+                    }
+                }
                 db.Table<Schema::Node>().Key(itNode->first).Delete();
                 itNode = Self->Nodes.erase(itNode);
             } else {
                 ++itNode;
             }
         }
-        BLOG_NOTICE("THive::TTxLoadEverything deleted " << numDeletedNodes << " unnecessary nodes");
+        BLOG_NOTICE("THive::TTxLoadEverything deleted " << numDeletedNodes << " unnecessary nodes << (and " << numDeletedRestrictions << " restrictions for them)");
 
         TTabletId nextTabletId = Max(maxTabletId + 1, Self->NextTabletId);
+
+        auto operationsRowset = db.Table<Schema::OperationsLog>().All().Reverse().Select();
+        if (!operationsRowset.IsReady()) {
+            return false;
+        }
+        if (operationsRowset.IsValid()) {
+            Self->OperationsLogIndex = operationsRowset.GetValue<Schema::OperationsLog::Index>();
+        }
 
         if (isRootHive) {
             if (numSequences == 0) {

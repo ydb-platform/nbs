@@ -22,25 +22,31 @@ RECURSE(
     meta
     mock
     operation
+    params
+    pg
+    pool
+    query
     ratelimiter
     repeater
     response
+    scanner
     scheme
     scripting
     secret
+    session
     stack
     table
     topic
+    types
     value
     version
-    wait
     wrap
-    xatomic
-    xbytes
     xcontext
     xerrors
+    xiter
     xrand
     xresolver
+    xslices
     xsql
     xstring
     xsync

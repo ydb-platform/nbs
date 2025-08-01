@@ -12,7 +12,7 @@ import "contrib/ydb/public/api/client/nc_private/accessservice/access.proto";
 option java_multiple_files = true;
 option java_outer_classname = "AccessServiceProto";
 option java_package = "ai.nebius.iam.access.api.priv.v1";
-option go_package = "a.yandex-team.ru/api/nebius-ai/proto/nebius/iam/v1";
+option go_package = "github.com/ydb-platform/nbs/api/nebius-ai/proto/nebius/iam/v1";
 // END
 
 service AccessService {

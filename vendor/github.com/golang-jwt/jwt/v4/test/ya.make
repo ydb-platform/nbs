@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
-SRCS(helpers.go)
+SRCS(
+    helpers.go
+)
 
 END()

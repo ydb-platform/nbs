@@ -11,4 +11,6 @@ SRCS(
 
 END()
 
-RECURSE(ssoiface)
+RECURSE(
+    ssoiface
+)

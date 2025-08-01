@@ -1,9 +1,0 @@
-certs
-data
-logs
-
-blockstore-client
-blockstore-nbd
-diskagentd
-nbsd
-ydbd

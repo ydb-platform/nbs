@@ -11,4 +11,6 @@ GO_TEST_SRCS(store_test.go)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

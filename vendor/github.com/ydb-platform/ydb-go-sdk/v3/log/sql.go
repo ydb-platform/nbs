@@ -13,6 +13,7 @@ func DatabaseSQL(l Logger, d trace.Detailer, opts ...Option) (t trace.DatabaseSQ
 	return internalDatabaseSQL(wrapLogger(l, opts...), d)
 }
 
+//nolint:funlen
 func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 	t.OnConnectorConnect = func(
 		info trace.DatabaseSQLConnectorConnectStartInfo,
@@ -25,6 +26,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 		ctx := with(*info.Context, TRACE, "ydb", "database", "sql", "connector", "connect")
 		l.Log(ctx, "start")
 		start := time.Now()
+
 		return func(info trace.DatabaseSQLConnectorConnectDoneInfo) {
 			if info.Error == nil {
 				l.Log(WithLevel(ctx, DEBUG), "connected",
@@ -49,6 +51,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 		ctx := with(*info.Context, TRACE, "ydb", "database", "sql", "conn", "ping")
 		l.Log(ctx, "start")
 		start := time.Now()
+
 		return func(info trace.DatabaseSQLConnPingDoneInfo) {
 			if info.Error == nil {
 				l.Log(ctx, "done",
@@ -70,6 +73,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 		ctx := with(context.Background(), TRACE, "ydb", "database", "sql", "conn", "close")
 		l.Log(ctx, "start")
 		start := time.Now()
+
 		return func(info trace.DatabaseSQLConnCloseDoneInfo) {
 			if info.Error == nil {
 				l.Log(ctx, "done",
@@ -91,6 +95,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 		ctx := with(*info.Context, TRACE, "ydb", "database", "sql", "conn", "begin", "tx")
 		l.Log(ctx, "start")
 		start := time.Now()
+
 		return func(info trace.DatabaseSQLConnBeginDoneInfo) {
 			if info.Error == nil {
 				l.Log(ctx, "done",
@@ -117,6 +122,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 		)
 		query := info.Query
 		start := time.Now()
+
 		return func(info trace.DatabaseSQLConnPrepareDoneInfo) {
 			if info.Error == nil {
 				l.Log(ctx, "done",
@@ -147,6 +153,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 		query := info.Query
 		idempotent := info.Idempotent
 		start := time.Now()
+
 		return func(info trace.DatabaseSQLConnExecDoneInfo) {
 			if info.Error == nil {
 				l.Log(ctx, "done",
@@ -159,7 +166,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 						String("query", query),
 						Bool("retryable", m.MustRetry(idempotent)),
 						Int64("code", m.StatusCode()),
-						Bool("deleteSession", m.MustDeleteSession()),
+						Bool("deleteSession", m.IsRetryObjectValid()),
 						Error(info.Error),
 						latencyField(start),
 						versionField(),
@@ -181,6 +188,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 		query := info.Query
 		idempotent := info.Idempotent
 		start := time.Now()
+
 		return func(info trace.DatabaseSQLConnQueryDoneInfo) {
 			if info.Error == nil {
 				l.Log(ctx, "done",
@@ -193,7 +201,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 						String("query", query),
 						Bool("retryable", m.MustRetry(idempotent)),
 						Int64("code", m.StatusCode()),
-						Bool("deleteSession", m.MustDeleteSession()),
+						Bool("deleteSession", m.IsRetryObjectValid()),
 						Error(info.Error),
 						latencyField(start),
 						versionField(),
@@ -209,6 +217,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 		ctx := with(*info.Context, TRACE, "ydb", "database", "sql", "tx", "commit")
 		l.Log(ctx, "start")
 		start := time.Now()
+
 		return func(info trace.DatabaseSQLTxCommitDoneInfo) {
 			if info.Error == nil {
 				l.Log(ctx, "committed",
@@ -230,6 +239,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 		ctx := with(*info.Context, TRACE, "ydb", "database", "sql", "tx", "rollback")
 		l.Log(ctx, "start")
 		start := time.Now()
+
 		return func(info trace.DatabaseSQLTxRollbackDoneInfo) {
 			if info.Error == nil {
 				l.Log(ctx, "done",
@@ -251,6 +261,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 		ctx := with(context.Background(), TRACE, "ydb", "database", "sql", "stmt", "close")
 		l.Log(ctx, "start")
 		start := time.Now()
+
 		return func(info trace.DatabaseSQLStmtCloseDoneInfo) {
 			if info.Error == nil {
 				l.Log(ctx, "closed",
@@ -277,6 +288,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 		)
 		query := info.Query
 		start := time.Now()
+
 		return func(info trace.DatabaseSQLStmtExecDoneInfo) {
 			if info.Error == nil {
 				l.Log(ctx, "done",
@@ -307,6 +319,7 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 		)
 		query := info.Query
 		start := time.Now()
+
 		return func(info trace.DatabaseSQLStmtQueryDoneInfo) {
 			if info.Error == nil {
 				l.Log(ctx, "done",
@@ -324,5 +337,6 @@ func internalDatabaseSQL(l *wrapper, d trace.Detailer) (t trace.DatabaseSQL) {
 			}
 		}
 	}
+
 	return t
 }

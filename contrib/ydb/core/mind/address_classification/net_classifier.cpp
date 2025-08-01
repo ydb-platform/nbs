@@ -8,6 +8,7 @@
 #include <contrib/ydb/core/cms/console/console.h>
 #include <contrib/ydb/core/cms/console/net_classifier_updater.h>
 #include <contrib/ydb/core/mon/mon.h>
+#include <contrib/ydb/core/protos/netclassifier.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 

@@ -2,8 +2,12 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
-SRCS(errors.pb.go)
+SRCS(
+    errors.pb.go
+)
 
 END()
 
-RECURSE(casing)
+RECURSE(
+    casing
+)

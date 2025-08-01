@@ -1,5 +1,0 @@
-SchemeShardDir: "/my_cluster/NFS"
-DisableLocalService: true
-MultiTabletForwardingEnabled: true
-GetNodeAttrBatchEnabled: true
-UnalignedThreeStageWriteEnabled: true

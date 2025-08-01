@@ -1,0 +1,20 @@
+--- a/src/google/protobuf/port_def.inc
++++ b/src/google/protobuf/port_def.inc
+@@ -171,10 +171,2 @@
+-#if __has_attribute(deprecated) || PROTOBUF_GNUC_MIN(3, 0)
+-# define PROTOBUF_DEPRECATED __attribute__((deprecated))
+-# define PROTOBUF_DEPRECATED_MSG(msg) __attribute__((deprecated(msg)))
+-#elif defined(_MSC_VER)
+-# define PROTOBUF_DEPRECATED __declspec(deprecated)
+-# define PROTOBUF_DEPRECATED_MSG(msg) __declspec(deprecated(msg))
+-#else
+ # define PROTOBUF_DEPRECATED
+ # define PROTOBUF_DEPRECATED_MSG(msg)
+-#endif
+@@ -260,6 +260,1 @@
+-#if defined(__clang__) || PROTOBUF_GNUC_MIN(6, 0)
+-// https://gcc.gnu.org/gcc-6/changes.html
+-# define PROTOBUF_DEPRECATED_ENUM __attribute__((deprecated))
+-#else
+ # define PROTOBUF_DEPRECATED_ENUM
+-#endif

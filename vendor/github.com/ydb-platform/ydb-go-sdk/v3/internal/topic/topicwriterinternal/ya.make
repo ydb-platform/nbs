@@ -26,6 +26,10 @@ GO_TEST_SRCS(
     writer_test.go
 )
 
+GO_XTEST_SRCS(
+    # writer_grpc_mock_test.go
+)
+
 END()
 
 RECURSE(

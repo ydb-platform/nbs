@@ -10,4 +10,15 @@ SRCS(
     option.go
 )
 
+GO_TEST_SRCS(
+    http_test.go
+    instrument_client_test.go
+    instrument_server_test.go
+    option_test.go
+)
+
 END()
+
+RECURSE(
+    # gotest
+)

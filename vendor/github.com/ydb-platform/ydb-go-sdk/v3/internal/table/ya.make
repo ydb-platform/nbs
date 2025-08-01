@@ -6,7 +6,6 @@ SRCS(
     client.go
     data_query.go
     errors.go
-    params.go
     retry.go
     session.go
     statement.go

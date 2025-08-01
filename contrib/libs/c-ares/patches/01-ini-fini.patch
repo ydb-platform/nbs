@@ -1,0 +1,81 @@
+--- contrib/libs/c-ares/src/lib/ares_library_init.c	(index)
++++ contrib/libs/c-ares/src/lib/ares_library_init.c	(working tree)
+@@ -20,6 +20,8 @@
+ #include "ares.h"
+ #include "ares_private.h"
+ 
++#include "atomic.h"
++
+ /* library-private global and unique instance vars */
+ 
+ #if defined(ANDROID) || defined(__ANDROID__)
+@@ -28,6 +30,7 @@
+ 
+ /* library-private global vars with source visibility restricted to this file */
+ 
++static atomic_t     ares_init_lock;
+ static unsigned int ares_initialized;
+ static int          ares_init_flags;
+ 
+@@ -51,7 +54,7 @@ void *(*ares_malloc)(size_t size) = default_malloc;
+ void *(*ares_realloc)(void *ptr, size_t size) = default_realloc;
+ void (*ares_free)(void *ptr) = default_free;
+ 
+-int ares_library_init(int flags)
++int ares_library_init_unsafe(int flags)
+ {
+   if (ares_initialized)
+     {
+@@ -67,6 +70,14 @@ int ares_library_init(int flags)
+   return ARES_SUCCESS;
+ }
+ 
++int ares_library_init(int flags)
++{
++  acquire_lock(&ares_init_lock);
++  int res = ares_library_init_unsafe(flags);
++  release_lock(&ares_init_lock);
++  return res;
++}
++
+ int ares_library_init_mem(int flags,
+                           void *(*amalloc)(size_t size),
+                           void (*afree)(void *ptr),
+@@ -82,7 +93,7 @@ int ares_library_init_mem(int flags,
+ }
+ 
+ 
+-void ares_library_cleanup(void)
++void ares_library_cleanup_unsafe(void)
+ {
+   if (!ares_initialized)
+     return;
+@@ -102,8 +113,15 @@ void ares_library_cleanup(void)
+   ares_free = free;
+ }
+ 
++void ares_library_cleanup(void)
++{
++  acquire_lock(&ares_init_lock);
++  ares_library_cleanup_unsafe();
++  release_lock(&ares_init_lock);
++}
++
+ 
+-int ares_library_initialized(void)
++int ares_library_initialized_unsafe(void)
+ {
+ #ifdef USE_WINSOCK
+   if (!ares_initialized)
+@@ -111,3 +129,11 @@ int ares_library_initialized(void)
+ #endif
+   return ARES_SUCCESS;
+ }
++
++int ares_library_initialized(void)
++{
++  acquire_lock(&ares_init_lock);
++  int res = ares_library_initialized_unsafe();
++  release_lock(&ares_init_lock);
++  return res;
++}

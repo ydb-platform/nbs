@@ -1,0 +1,34 @@
+--- a/src/scan-skel.l	(index)
++++ b/src/scan-skel.l	(working tree)
+@@ -72,11 +69,12 @@ static void fail_for_invalid_at (char const *at);
+   at_directive at_ptr = NULL;
+ %}
+ 
++\r+  continue;
+ "@@" fputc ('@', yyout);
+ "@{" fputc ('[', yyout);
+ "@}" fputc (']', yyout);
+ "@'" continue;  /* Used by b4_cat in ../data/bison.m4.  */
+-@\n  continue;
++@\r*\n  continue;
+ 
+ "@oline@"  fprintf (yyout, "%d", out_lineno + 1);
+ "@ofile@"  fputs (quotearg_style (c_quoting_style, out_name), yyout);
+@@ -108,7 +104,7 @@ static void fail_for_invalid_at (char const *at);
+   "@{"   obstack_1grow (&obstack_for_string, '[');
+   "@}"   obstack_1grow (&obstack_for_string, ']');
+   "@'"   continue; /* For starting an argument that begins with whitespace. */
+-  @\n    continue;
++  @\r*\n    continue;
+ 
+   @[,)] {
+     if (argc >= ARGC_MAX)
+@@ -249,7 +245,7 @@ at_output (int argc, char *argv[], char **out_namep, int *out_linenop)
+     }
+   *out_namep = xstrdup (argv[1]);
+   output_file_name_check (out_namep);
+-  yyout = xfopen (*out_namep, "w");
++  yyout = xfopen (*out_namep, "wb");
+   *out_linenop = 1;
+ }
+ 

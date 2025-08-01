@@ -1742,7 +1742,7 @@ int fuse_req_interrupted(fuse_req_t req);
  * @param count iovec size (output)
  * @return 0 on success, -1 on failure.
  */
-int fuse_out_buf(fuse_req_t req, struct iovec **iov, int *count);
+ int fuse_out_buf(fuse_req_t req, struct iovec **iov, int *count);
 
 /**
  * Check if the session is connected via virtio

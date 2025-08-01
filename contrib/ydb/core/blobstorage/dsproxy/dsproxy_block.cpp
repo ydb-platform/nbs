@@ -132,19 +132,13 @@ public:
         return mon->ActiveBlock;
     }
 
-    TBlobStorageGroupBlockRequest(const TIntrusivePtr<TBlobStorageGroupInfo> &info,
-            const TIntrusivePtr<TGroupQueues> &state, const TActorId &source,
-            const TIntrusivePtr<TBlobStorageGroupProxyMon> &mon, TEvBlobStorage::TEvBlock *ev,
-            ui64 cookie, NWilson::TTraceId traceId, TInstant now,
-            TIntrusivePtr<TStoragePoolCounters> &storagePoolCounters)
-        : TBlobStorageGroupRequestActor(info, state, mon, source, cookie, std::move(traceId),
-                NKikimrServices::BS_PROXY_BLOCK, false, {}, now, storagePoolCounters, ev->RestartCounter,
-                "DSProxy.Block", std::move(ev->ExecutionRelay))
-        , TabletId(ev->TabletId)
-        , Generation(ev->Generation)
-        , Deadline(ev->Deadline)
-        , IssuerGuid(ev->IssuerGuid)
-        , StartTime(now)
+    TBlobStorageGroupBlockRequest(TBlobStorageGroupBlockParameters& params)
+        : TBlobStorageGroupRequestActor(params)
+        , TabletId(params.Common.Event->TabletId)
+        , Generation(params.Common.Event->Generation)
+        , Deadline(params.Common.Event->Deadline)
+        , IssuerGuid(params.Common.Event->IssuerGuid)
+        , StartTime(params.Common.Now)
         , QuorumTracker(Info.Get())
     {}
 
@@ -175,11 +169,13 @@ public:
     }
 };
 
-IActor* CreateBlobStorageGroupBlockRequest(const TIntrusivePtr<TBlobStorageGroupInfo> &info,
-        const TIntrusivePtr<TGroupQueues> &state, const TActorId &source,
-        const TIntrusivePtr<TBlobStorageGroupProxyMon> &mon, TEvBlobStorage::TEvBlock *ev,
-        ui64 cookie, NWilson::TTraceId traceId, TInstant now, TIntrusivePtr<TStoragePoolCounters> &storagePoolCounters) {
-    return new TBlobStorageGroupBlockRequest(info, state, source, mon, ev, cookie, std::move(traceId), now, storagePoolCounters);
+IActor* CreateBlobStorageGroupBlockRequest(TBlobStorageGroupBlockParameters params, NWilson::TTraceId traceId) {
+    NWilson::TSpan span(TWilson::BlobStorage, std::move(traceId), "DSProxy.Block");
+    if (span) {
+        span.Attribute("event", params.Common.Event->ToString());
+    }
+    params.Common.Span = std::move(span);
+    return new TBlobStorageGroupBlockRequest(params);
 }
 
 } // NKikimr

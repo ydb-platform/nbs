@@ -1,5 +1,8 @@
 #pragma once
 #include "defs.h"
+
+#include "vdisk_performance_params.h"
+
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo.h>
 #include <contrib/ydb/core/blobstorage/vdisk/repl/repl_quoter.h>
 #include <contrib/ydb/core/base/blobstorage.h>
@@ -116,9 +119,9 @@ namespace NKikimr {
         ui32 HullSstSizeInChunksLevel;
         ui32 HugeBlobsFreeChunkReservation;
         ui32 MinHugeBlobInBytes;
+        ui32 OldMinHugeBlobInBytes;
         ui32 MilestoneHugeBlobInBytes;
         ui32 HugeBlobOverhead;
-        bool HugeBlobOldMapCompatible;
         ui32 HullCompLevel0MaxSstsAtOnce;
         ui32 HullCompSortedPartsNum;
         double HullCompLevelRateThreshold;
@@ -128,6 +131,7 @@ namespace NKikimr {
         ui32 HullCompMaxInFlightReads;
         double HullCompReadBatchEfficiencyThreshold;
         ui64 AnubisOsirisMaxInFly;
+        bool AddHeader;
 
         //////////////// LOG CUTTER SETTINGS ////////////////
         TDuration RecoveryLogCutterFirstDuration;
@@ -153,6 +157,11 @@ namespace NKikimr {
         ui32 SyncLogAdvisedIndexedBlockSize;
         ui64 SyncLogMaxMemAmount;
 
+        TControlWrapper EnableLocalSyncLogDataCutting;
+        TControlWrapper EnableSyncLogChunkCompression;
+        TControlWrapper MaxSyncLogChunksInFlight;
+        ui32 MaxSyncLogChunkSize;
+
         ///////////// REPL SETTINGS /////////////////////////
         TDuration ReplTimeInterval;
         TDuration ReplRequestTimeout;
@@ -170,8 +179,8 @@ namespace NKikimr {
         ui32 HandoffMaxInFlightByteSize;
         TDuration HandoffTimeout;
         bool RunRepl;
-        bool RunHandoff;
         bool ReplPausedAtStart = false;
+        TDuration ReplMaxTimeToMakeProgress;
 
         ///////////// SKELETON SETTINGS /////////////////////
         ui64 SkeletonFrontGets_MaxInFlightCount;
@@ -209,6 +218,12 @@ namespace NKikimr {
         TDuration WhiteboardUpdateInterval;
         bool EnableVDiskCooldownTimeout;
         TControlWrapper EnableVPatch = true;
+        TControlWrapper DefaultHugeGarbagePerMille;
+        bool UseActorSystemTimeInBSQueue = false;
+
+        ///////////// COST METRICS SETTINGS ////////////////
+        bool UseCostTracker = true;
+        TCostMetricsParametersByMedia CostMetricsParametersByMedia;
 
         ///////////// FEATURE FLAGS ////////////////////////
         NKikimrConfig::TFeatureFlags FeatureFlags;
@@ -216,7 +231,7 @@ namespace NKikimr {
         TVDiskConfig(const TBaseInfo &baseInfo);
         void Merge(const NKikimrBlobStorage::TVDiskConfig &update);
     private:
-        // setup borders for huge blobs depending on device type
+        // setup default borders for huge blobs depending on device type
         void SetupHugeBytes();
     };
 
@@ -228,6 +243,7 @@ namespace NKikimr {
     class TAllVDiskKinds : public TThrRefBase {
     public:
         TAllVDiskKinds(const TString &prototext = TString());
+        TAllVDiskKinds(const NKikimrBlobStorage::TAllVDiskKinds &proto);
         TIntrusivePtr<TVDiskConfig> MakeVDiskConfig(const TVDiskConfig::TBaseInfo &baseInfo);
         void Merge(const NKikimrBlobStorage::TAllVDiskKinds &allVDiskKinds);
 

@@ -1,21 +1,25 @@
-YQL_UDF_CONTRIB(re2_udf)
+IF (YQL_PACKAGED)
+    PACKAGE()
 
-YQL_ABI_VERSION(
-    2
-    28
-    0
-)
+    FROM_SANDBOX(FILE 6529657825 OUT_NOAUTO libre2_udf.so)
 
-SRCS(
-    re2_udf.cpp
-)
-
-PEERDIR(
-    contrib/libs/re2
-    library/cpp/deprecated/enum_codegen
-)
-
-END()
+    END()
+ELSE()
+    YQL_UDF_CONTRIB(re2_udf)
+    YQL_ABI_VERSION(
+        2
+        28
+        0
+    )
+    SRCS(
+        re2_udf.cpp
+    )
+    PEERDIR(
+        contrib/libs/re2
+        library/cpp/deprecated/enum_codegen
+    )
+    END()
+ENDIF()
 
 RECURSE_FOR_TESTS(
     test

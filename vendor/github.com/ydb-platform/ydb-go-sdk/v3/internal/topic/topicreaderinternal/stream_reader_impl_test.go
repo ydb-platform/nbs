@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/empty"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
@@ -379,7 +379,7 @@ func TestStreamReaderImpl_OnPartitionCloseHandle(t *testing.T) {
 		e.reader.cfg.Trace.OnReaderPartitionReadStopResponse = func(info trace.TopicReaderPartitionReadStopResponseStartInfo) func(doneInfo trace.TopicReaderPartitionReadStopResponseDoneInfo) { //nolint:lll
 			expected := trace.TopicReaderPartitionReadStopResponseStartInfo{
 				ReaderConnectionID: e.reader.readConnectionID,
-				PartitionContext:   e.partitionSession.ctx,
+				PartitionContext:   &e.partitionSession.ctx,
 				Topic:              e.partitionSession.Topic,
 				PartitionID:        e.partitionSession.PartitionID,
 				PartitionSessionID: e.partitionSession.partitionSessionID.ToInt64(),
@@ -388,9 +388,10 @@ func TestStreamReaderImpl_OnPartitionCloseHandle(t *testing.T) {
 			}
 			require.Equal(t, expected, info)
 
-			require.NoError(t, info.PartitionContext.Err())
+			require.NoError(t, (*info.PartitionContext).Err())
 
 			readMessagesCtxCancel()
+
 			return nil
 		}
 
@@ -423,7 +424,7 @@ func TestStreamReaderImpl_OnPartitionCloseHandle(t *testing.T) {
 		e.reader.cfg.Trace.OnReaderPartitionReadStopResponse = func(info trace.TopicReaderPartitionReadStopResponseStartInfo) func(doneInfo trace.TopicReaderPartitionReadStopResponseDoneInfo) { //nolint:lll
 			expected := trace.TopicReaderPartitionReadStopResponseStartInfo{
 				ReaderConnectionID: e.reader.readConnectionID,
-				PartitionContext:   e.partitionSession.ctx,
+				PartitionContext:   &e.partitionSession.ctx,
 				Topic:              e.partitionSession.Topic,
 				PartitionID:        e.partitionSession.PartitionID,
 				PartitionSessionID: e.partitionSession.partitionSessionID.ToInt64(),
@@ -431,9 +432,10 @@ func TestStreamReaderImpl_OnPartitionCloseHandle(t *testing.T) {
 				Graceful:           false,
 			}
 			require.Equal(t, expected, info)
-			require.Error(t, info.PartitionContext.Err())
+			require.Error(t, (*info.PartitionContext).Err())
 
 			readMessagesCtxCancel()
+
 			return nil
 		}
 
@@ -577,6 +579,7 @@ func TestTopicStreamReaderImpl_ReadMessages(t *testing.T) {
 			_, err := writer.Write([]byte(msg))
 			require.NoError(t, writer.Close())
 			require.NoError(t, err)
+
 			return b.Bytes()
 		}
 
@@ -842,6 +845,7 @@ func TestTopicStreamReadImpl_BatchReaderWantMoreMessagesThenBufferCanHold(t *tes
 					},
 				},
 			})
+
 		return nextDataRequested
 	}
 
@@ -935,6 +939,7 @@ func TestTopicStreamReadImpl_CommitWithBadSession(t *testing.T) {
 		sleep()
 
 		require.False(t, e.reader.closed)
+
 		return commitErr
 	}
 	t.Run("CommitModeNone", func(t *testing.T) {
@@ -949,7 +954,7 @@ func TestTopicStreamReadImpl_CommitWithBadSession(t *testing.T) {
 }
 
 type streamEnv struct {
-	ctx                    context.Context
+	ctx                    context.Context //nolint:containedctx
 	t                      testing.TB
 	reader                 *topicStreamReaderImpl
 	stopReadEvents         empty.Chan
@@ -1050,7 +1055,7 @@ func newTopicReaderTestEnv(t testing.TB) streamEnv {
 }
 
 func (e *streamEnv) Start() {
-	require.NoError(e.t, e.reader.startLoops())
+	require.NoError(e.t, e.reader.startBackgroundWorkers())
 	xtest.SpinWaitCondition(e.t, nil, func() bool {
 		return e.reader.restBufferSizeBytes.Load() == e.initialBufferSizeBytes
 	})
@@ -1109,6 +1114,7 @@ readMessages:
 			e.m.WithLock(func() {
 				e.nextMessageNeedCallback = res.nextMessageCallback
 			})
+
 			return res.msg, res.err
 		}
 	}

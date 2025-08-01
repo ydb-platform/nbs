@@ -1,0 +1,100 @@
+#!/usr/bin/env python
+##
+## Convert test vectors for the CityHash algorithm from the C++ implementation
+## into Go.
+##
+## Usage:
+##   convert_tests
+##
+## Output is written to cityhash_testdata_test.go
+##
+from __future__ import print_function
+import subprocess as proc
+import os, re, sys
+
+CITYHASH_REPO = 'https://github.com/google/cityhash.git'
+REPO_MIRROR   = '/Users/ivaxer/Temp/cityhash'
+CITYHASH_TEST = os.path.join(REPO_MIRROR, 'src/city-test.cc')
+OUTPUT_FILE   = 'cityhash_testdata_test.go'
+
+def checkout(repo, dir):
+    """Check out the specified Git repo URL into the specified local directory.
+    """
+    proc.check_call(['git', 'clone', repo, dir])
+
+def cleanup(dir):
+    """Delete the named directory and all its contents, if it exists."""
+    proc.check_call(['rm', '-rf', dir])
+
+def extract_testdata(path):
+    """Extract and return the testdata vectors from the given test source."""
+    data = proc.check_output(['gcc', '-E', path])
+    testdata = {
+        'k0':        findconst(data, 'k0').rstrip('UL'),
+        'kSeed0':    findconst(data, 'kSeed0'),
+        'kSeed1':    findconst(data, 'kSeed1'),
+        'kTestSize': findconst(data, 'kTestSize'),
+        'kDataSize': findconst(data, 'kDataSize'),
+    }
+    bits = findconst(data, 'testdata')
+    raw_rows = bits.strip().replace('\n', ' ').replace('{', '').split('},')
+    testdata['testdata'] = list(
+        list(t.rstrip('UL') for t in row.split(', '))
+        for row in raw_rows if row)
+    return testdata
+
+def findconst(data, name):
+    """Return the value text associated with the given constant variable name
+    in the specified source, or throw KeyError.
+    """
+    start = re.search(r'(?m)^static const (\w+) %s\b.+?=\s*' % name, data)
+    if not start:
+        raise KeyError('variable %s not found' % name)
+    tail = data[start.end():]
+    if tail.startswith('{'):
+        end = re.search(r'(?m)};\s*$', tail)
+        if not end:
+            raise KeyError('variable ending not found')
+        return tail[:end.start()]
+    else:
+        end = tail.index(';')
+        return tail[:end].strip()
+
+def write_testdata(testdata, path):
+    """Write the testdata values in rows to the file named by path."""
+    with file(path, 'wt') as ofp:
+        p = proc.Popen(['gofmt'], stdin=proc.PIPE, stdout=ofp)
+        p.stdin.write('// Generated code, do not edit.\n')
+        p.stdin.write('// To re-generate this file, run: %s\n\n' % ' '.join(sys.argv))
+        p.stdin.write('package cityhash\n')
+        p.stdin.write('const (\n')
+        p.stdin.write('dataSize=%s\n' % testdata['kDataSize'])
+        p.stdin.write('seed0=%s\n' % testdata['kSeed0'])
+        p.stdin.write('seed1=%s\n' % testdata['kSeed1'])
+        p.stdin.write(')\n')
+        p.stdin.write('var testData = [][]uint64{\n')
+        for row in testdata['testdata']:
+            p.stdin.write('{')
+            p.stdin.write(', '.join(row))
+            p.stdin.write('},\n')
+        p.stdin.write('}\n')
+        p.stdin.close()
+        return p.wait()
+
+def main(argv):
+    #cleanup(REPO_MIRROR)
+    #print('-- Checking out %s...' % CITYHASH_REPO, file=sys.stderr)
+    #checkout(CITYHASH_REPO, REPO_MIRROR)
+    print('-- Extracting testdata from %s...' % CITYHASH_TEST, file=sys.stderr)
+    testdata = extract_testdata(CITYHASH_TEST)
+    print('-- Writing test vectors to %s...' % OUTPUT_FILE, file=sys.stderr)
+    write_testdata(testdata, OUTPUT_FILE)
+    #cleanup(REPO_MIRROR)
+    print('<done>', file=sys.stderr)
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main(sys.argv))
+    except Exception as e:
+        print("Fatal error: %s" % e, file=sys.stderr)
+        sys.exit(1)

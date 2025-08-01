@@ -471,7 +471,7 @@ void TEventLog::WriteFrame(TBuffer& buffer,
     });
 
     if (writeFrameCallback) {
-        writeFrameCallback->OnAfterCompress(frameData, startTimestamp, endTimestamp);
+        writeFrameCallback->OnAfterCompress(frameData, startTimestamp, endTimestamp, metaFlags);
     }
 
     Log_.Write(frameData.Data(), frameData.Size(), std::move(metaFlags));
@@ -480,8 +480,8 @@ void TEventLog::WriteFrame(TBuffer& buffer,
     }
 }
 
-TEvent* TProtobufEventFactory::CreateLogEvent(TEventClass c) {
-    return new TProtobufEvent(c, EventFactory_);
+THolder<TEvent> TProtobufEventFactory::CreateLogEvent(TEventClass c) {
+    return MakeHolder<TProtobufEvent>(c, EventFactory_);
 }
 
 TEventClass TProtobufEventFactory::ClassByName(TStringBuf name) const {

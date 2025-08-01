@@ -445,7 +445,9 @@ namespace NActors {
         void Terminate(TDisconnectReason reason);
         void PassAway() override;
 
+        void Enqueue(STATEFN_SIG);
         void Forward(STATEFN_SIG);
+        void ForwardDelayed();
         void Subscribe(STATEFN_SIG);
         void Unsubscribe(STATEFN_SIG);
 
@@ -456,6 +458,7 @@ namespace NActors {
             TimeLimit.emplace(GetMaxCyclesPerEvent());
             STRICT_STFUNC_BODY(
                 fFunc(TEvInterconnect::EvForward, Forward)
+                cFunc(TEvInterconnect::EvForwardDelayed, ForwardDelayed)
                 cFunc(TEvents::TEvPoisonPill::EventType, HandlePoison)
                 fFunc(TEvInterconnect::TEvConnectNode::EventType, Subscribe)
                 fFunc(TEvents::TEvSubscribe::EventType, Subscribe)
@@ -497,7 +500,7 @@ namespace NActors {
             return 128 * 1024;
         }
 
-        void SendUpdateToWhiteboard(bool connected = true);
+        void SendUpdateToWhiteboard(bool connected = true, bool reschedule = true);
         ui32 CalculateQueueUtilization();
 
         void Handle(TEvPollerReady::TPtr& ev);
@@ -610,6 +613,12 @@ namespace NActors {
         ui64 InflightDataAmount = 0;
 
         std::unordered_map<TActorId, ui64, TActorId::THash> Subscribers;
+
+        struct TDelayedEvent {
+            TAutoPtr<IEventHandle> Event;
+            NWilson::TSpan Span;
+        };
+        std::deque<TDelayedEvent> DelayedEvents;
 
         // time at which we want to send confirmation packet even if there was no outgoing data
         ui64 UnconfirmedBytes = 0;

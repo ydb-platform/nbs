@@ -7,7 +7,10 @@ SRCS(
     record.go
 )
 
-GO_TEST_SRCS(record_test.go)
+GO_TEST_SRCS(
+    function_id_test.go
+    record_test.go
+)
 
 END()
 

@@ -40,6 +40,13 @@ struct TKqpEvents {
         EvCancelQueryResponse,
         EvParseRequest,
         EvParseResponse,
+        EvSplitResponse,
+        EvListSessionsRequest,
+        EvListSessionsResponse,
+        EvListProxyNodesRequest,
+        EvListProxyNodesResponse,
+        EvUpdateDatabaseInfo,
+        EvDelayedRequestError
     };
 
     static_assert (EvCompileInvalidateRequest + 1 == EvAbortExecution);
@@ -143,7 +150,7 @@ struct TKqpScriptExecutionEvents {
         EvSaveScriptResultFinished,
         EvCheckAliveRequest,
         EvCheckAliveResponse,
-        EvFetchScriptResultsQueryResponse,
+        EvFetchScriptResultsResponse,
         EvSaveScriptExternalEffectRequest,
         EvSaveScriptExternalEffectResponse,
         EvScriptFinalizeRequest,
@@ -151,6 +158,8 @@ struct TKqpScriptExecutionEvents {
         EvSaveScriptFinalStatusResponse,
         EvGetScriptExecutionOperationQueryResponse,
         EvDescribeSecretsResponse,
+        EvSaveScriptResultPartFinished,
+        EvScriptExecutionsTableCreationFinished,
     };
 };
 
@@ -158,6 +167,18 @@ struct TKqpResourceInfoExchangerEvents {
     enum EKqpResourceInfoExchangerEvents {
         EvPublishResource = EventSpaceBegin(TKikimrEvents::ES_KQP) + 600,
         EvSendResources,
+    };
+};
+
+struct TKqpWorkloadServiceEvents {
+    enum EKqpWorkloadServiceEvents {
+        EvPlaceRequestIntoPool = EventSpaceBegin(TKikimrEvents::ES_KQP) + 700,
+        EvContinueRequest,
+        EvCleanupRequest,
+        EvCleanupResponse,
+        EvUpdatePoolInfo,
+        EvSubscribeOnPoolChanges,
+        EvFetchDatabaseResponse,
     };
 };
 

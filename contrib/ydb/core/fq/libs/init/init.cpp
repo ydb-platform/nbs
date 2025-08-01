@@ -30,6 +30,7 @@
 #include <contrib/ydb/library/security/ydb_credentials_provider_factory.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_checkpoints.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io_factory.h>
+#include <contrib/ydb/library/yql/dq/actors/input_transforms/dq_input_transform_lookup_factory.h>
 #include <contrib/ydb/library/yql/dq/comp_nodes/yql_common_dq_factory.h>
 #include <contrib/ydb/library/yql/dq/transform/yql_common_dq_transform.h>
 #include <contrib/ydb/library/yql/utils/actor_log/log.h>
@@ -37,9 +38,8 @@
 #include <contrib/ydb/library/yql/providers/common/comp_nodes/yql_factory.h>
 #include <contrib/ydb/library/yql/providers/dq/task_runner/tasks_runner_local.h>
 #include <contrib/ydb/library/yql/providers/dq/worker_manager/local_worker_manager.h>
-#include <contrib/ydb/library/yql/providers/generic/actors/yql_generic_source_factory.h>
-#include <contrib/ydb/library/yql/providers/s3/actors/yql_s3_sink_factory.h>
-#include <contrib/ydb/library/yql/providers/s3/actors/yql_s3_source_factory.h>
+#include <contrib/ydb/library/yql/providers/generic/actors/yql_generic_provider_factories.h>
+#include <contrib/ydb/library/yql/providers/s3/actors/yql_s3_actors_factory_impl.h>
 #include <contrib/ydb/library/yql/providers/s3/proto/retry_config.pb.h>
 #include <contrib/ydb/library/yql/providers/pq/async_io/dq_pq_read_actor.h>
 #include <contrib/ydb/library/yql/providers/pq/async_io/dq_pq_write_actor.h>
@@ -177,7 +177,10 @@ void Init(
         &protoConfig.GetGateways().GetHttpGateway(),
         yqCounters->GetSubgroup("subcomponent", "http_gateway"));
 
-    const auto connectorClient = NYql::NConnector::MakeClientGRPC(protoConfig.GetGateways().GetGeneric().GetConnector());
+    NYql::NConnector::IClient::TPtr connectorClient = nullptr;
+    if (protoConfig.GetGateways().GetGeneric().HasConnector()) {
+        connectorClient = NYql::NConnector::MakeClientGRPC(protoConfig.GetGateways().GetGeneric().GetConnector());
+    }
 
     if (protoConfig.GetTokenAccessor().GetEnabled()) {
         const auto& tokenAccessorConfig = protoConfig.GetTokenAccessor();
@@ -190,9 +193,11 @@ void Init(
         credentialsFactory = NYql::CreateSecuredServiceAccountCredentialsOverTokenAccessorFactory(tokenAccessorConfig.GetEndpoint(), tokenAccessorConfig.GetUseSsl(), caContent, tokenAccessorConfig.GetConnectionPoolSize());
     }
 
+    auto s3ActorsFactory = NYql::NDq::CreateS3ActorsFactory();
+
     if (protoConfig.GetPrivateApi().GetEnabled()) {
         const auto& s3readConfig = protoConfig.GetReadActorsFactoryConfig().GetS3ReadActorFactoryConfig();
-        auto s3HttpRetryPolicy = NYql::GetHTTPDefaultRetryPolicy(TDuration::Max());
+        auto s3HttpRetryPolicy = NYql::GetHTTPDefaultRetryPolicy(NYql::THttpRetryPolicyOptions{.MaxTime = TDuration::Max(), .RetriedCurlCodes = NYql::FqRetriedCurlCodes()});
         NYql::NDq::TS3ReadActorFactoryConfig readActorFactoryCfg;
         if (const ui64 rowsInBatch = s3readConfig.GetRowsInBatch()) {
             readActorFactoryCfg.RowsInBatch = rowsInBatch;
@@ -217,16 +222,17 @@ void Init(
             readActorFactoryCfg.BlockFileSizeLimit =
                 protoConfig.GetGateways().GetS3().GetBlockFileSizeLimit();
         }
-
-        RegisterDqPqReadActorFactory(*asyncIoFactory, yqSharedResources->UserSpaceYdbDriver, credentialsFactory, !protoConfig.GetReadActorsFactoryConfig().GetPqReadActorFactoryConfig().GetCookieCommitMode());
+        RegisterDqInputTransformLookupActorFactory(*asyncIoFactory);
+        RegisterDqPqReadActorFactory(*asyncIoFactory, yqSharedResources->UserSpaceYdbDriver, credentialsFactory);
         RegisterYdbReadActorFactory(*asyncIoFactory, yqSharedResources->UserSpaceYdbDriver, credentialsFactory);
-        RegisterS3ReadActorFactory(*asyncIoFactory, credentialsFactory, httpGateway, s3HttpRetryPolicy, readActorFactoryCfg,
-            yqCounters->GetSubgroup("subsystem", "S3ReadActor"));
-        RegisterS3WriteActorFactory(*asyncIoFactory, credentialsFactory,
-            httpGateway, s3HttpRetryPolicy);
-        RegisterGenericReadActorFactory(*asyncIoFactory, credentialsFactory, connectorClient);
 
-        RegisterDqPqWriteActorFactory(*asyncIoFactory, yqSharedResources->UserSpaceYdbDriver, credentialsFactory);
+        s3ActorsFactory->RegisterS3ReadActorFactory(*asyncIoFactory, credentialsFactory, httpGateway, s3HttpRetryPolicy, readActorFactoryCfg,
+            yqCounters->GetSubgroup("subsystem", "S3ReadActor"));
+        s3ActorsFactory->RegisterS3WriteActorFactory(*asyncIoFactory, credentialsFactory,
+            httpGateway, s3HttpRetryPolicy);
+
+        RegisterGenericProviderFactories(*asyncIoFactory, credentialsFactory, connectorClient);
+        RegisterDqPqWriteActorFactory(*asyncIoFactory, yqSharedResources->UserSpaceYdbDriver, credentialsFactory, yqCounters->GetSubgroup("subsystem", "DqSinkTracker"));
         RegisterDQSolomonWriteActorFactory(*asyncIoFactory, credentialsFactory);
     }
 
@@ -258,7 +264,7 @@ void Init(
         lwmOptions.MkqlProgramHardMemoryLimit = protoConfig.GetResourceManager().GetMkqlTaskHardMemoryLimit();
         lwmOptions.MkqlMinAllocSize = mkqlAllocSize;
         lwmOptions.TaskRunnerActorFactory = NYql::NDq::NTaskRunnerActor::CreateLocalTaskRunnerActorFactory(
-            [=](NKikimr::NMiniKQL::TScopedAlloc& alloc, const NYql::NDq::TDqTaskSettings& task, NYql::NDqProto::EDqStatsMode statsMode, const NYql::NDq::TLogFunc&) {
+            [=](std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> alloc, const NYql::NDq::TDqTaskSettings& task, NYql::NDqProto::EDqStatsMode statsMode, const NYql::NDq::TLogFunc&) {
                 return lwmOptions.Factory->Get(alloc, task, statsMode);
             });
         if (protoConfig.GetRateLimiter().GetDataPlaneEnabled()) {
@@ -335,7 +341,8 @@ void Init(
             std::move(pqCmConnections),
             clientCounters,
             tenant,
-            appData->Mon
+            appData->Mon,
+            s3ActorsFactory
             );
 
         actorRegistrator(MakePendingFetcherId(nodeId), fetcher);

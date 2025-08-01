@@ -1,0 +1,19 @@
+diff --git a/ares_init.c b/ares_init.c
+--- a/src/lib/ares_init.c
++++ b/src/lib/ares_init.c
+@@ -2356,9 +2356,15 @@ static int set_options(ares_channel channel, const char *str)
+       val = try_option(p, q, "retrans:");
+       if (val && channel->timeout == -1)
+         channel->timeout = aresx_sltosi(strtol(val, NULL, 10));
++      val = try_option(p, q, "timeout:");
++      if (val && channel->timeout == -1)
++        channel->timeout = aresx_sltosi(strtol(val, NULL, 10)) * 1000;
+       val = try_option(p, q, "retry:");
+       if (val && channel->tries == -1)
+         channel->tries = aresx_sltosi(strtol(val, NULL, 10));
++      val = try_option(p, q, "attempts:");
++      if (val && channel->tries == -1)
++        channel->tries = aresx_sltosi(strtol(val, NULL, 10));
+       val = try_option(p, q, "rotate");
+       if (val && channel->rotate == -1)
+         channel->rotate = 1;

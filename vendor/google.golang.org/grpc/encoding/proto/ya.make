@@ -2,7 +2,9 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
-SRCS(proto.go)
+SRCS(
+    proto.go
+)
 
 GO_TEST_SRCS(
     proto_benchmark_test.go
@@ -11,4 +13,6 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

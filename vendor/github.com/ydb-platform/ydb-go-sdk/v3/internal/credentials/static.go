@@ -19,6 +19,8 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xstring"
 )
 
+const TokenRefreshDivisor = 10
+
 var (
 	_ Credentials             = (*Static)(nil)
 	_ fmt.Stringer            = (*Static)(nil)
@@ -47,8 +49,11 @@ func NewStaticCredentials(user, password, endpoint string, opts ...StaticCredent
 		sourceInfo: stack.Record(1),
 	}
 	for _, opt := range opts {
-		opt.ApplyStaticCredentialsOption(c)
+		if opt != nil {
+			opt.ApplyStaticCredentialsOption(c)
+		}
 	}
+
 	return c
 }
 
@@ -70,6 +75,7 @@ type Static struct {
 	sourceInfo string
 }
 
+//nolint:funlen
 func (c *Static) Token(ctx context.Context) (token string, err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -82,9 +88,7 @@ func (c *Static) Token(ctx context.Context) (token string, err error) {
 			fmt.Errorf("dial failed: %w", err),
 		)
 	}
-	defer func() {
-		_ = cc.Close()
-	}()
+	defer cc.Close()
 
 	client := Ydb_Auth_V1.NewAuthServiceClient(cc)
 
@@ -130,7 +134,7 @@ func (c *Static) Token(ctx context.Context) (token string, err error) {
 		return "", xerrors.WithStackTrace(err)
 	}
 
-	c.requestAt = time.Now().Add(time.Until(expiresAt) / 10)
+	c.requestAt = time.Now().Add(time.Until(expiresAt) / TokenRefreshDivisor)
 	c.token = result.GetToken()
 
 	return c.token, nil
@@ -141,6 +145,7 @@ func parseExpiresAt(raw string) (expiresAt time.Time, err error) {
 	if _, _, err = jwt.NewParser().ParseUnverified(raw, &claims); err != nil {
 		return expiresAt, xerrors.WithStackTrace(err)
 	}
+
 	return claims.ExpiresAt.Time, nil
 }
 
@@ -158,5 +163,6 @@ func (c *Static) String() string {
 		fmt.Fprintf(buffer, "%q", c.sourceInfo)
 	}
 	buffer.WriteByte('}')
+
 	return buffer.String()
 }

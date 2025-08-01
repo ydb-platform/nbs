@@ -52,7 +52,7 @@ Y_UNIT_TEST_SUITE(THiveImplTest) {
         for (ui64 i = 0; i < NUM_TABLETS; ++i) {
             TLeaderTabletInfo& tablet = tablets.emplace(std::piecewise_construct, std::tuple<TTabletId>(i), std::tuple<TTabletId, THive&>(i, hive)).first->second;
             tablet.Weight = RandomNumber<double>();
-            bootQueue.AddToBootQueue(tablet);
+            bootQueue.EmplaceToBootQueue(tablet);
         }
 
         double passed = timer.Get().SecondsFloat();
@@ -72,7 +72,7 @@ Y_UNIT_TEST_SUITE(THiveImplTest) {
             auto record = bootQueue.PopFromBootQueue();
             UNIT_ASSERT(record.Priority <= maxP);
             maxP = record.Priority;
-            auto itTablet = tablets.find(record.TabletId.first);
+            auto itTablet = tablets.find(record.TabletId);
             if (itTablet != tablets.end()) {
                 bootQueue.AddToWaitQueue(itTablet->second);
             }
@@ -109,7 +109,7 @@ Y_UNIT_TEST_SUITE(THiveImplTest) {
 
         auto CheckSpeedAndDistribution = [](
             std::unordered_map<ui64, TLeaderTabletInfo>& allTablets,
-            std::function<void(std::vector<TTabletInfo*>&, EResourceToBalance)> func,
+            std::function<void(std::vector<TTabletInfo*>::iterator, std::vector<TTabletInfo*>::iterator, EResourceToBalance)> func,
             EResourceToBalance resource) -> void {
 
             std::vector<TTabletInfo*> tablets;
@@ -119,7 +119,7 @@ Y_UNIT_TEST_SUITE(THiveImplTest) {
 
             TProfileTimer timer;
 
-            func(tablets, resource);
+            func(tablets.begin(), tablets.end(), resource);
 
             double passed = timer.Get().SecondsFloat();
 
@@ -192,6 +192,12 @@ Y_UNIT_TEST_SUITE(THiveImplTest) {
 
         Ctest << "HIVE_TABLET_BALANCE_STRATEGY_RANDOM" << Endl;
         CheckSpeedAndDistribution(allTablets, BalanceTablets<NKikimrConfig::THiveConfig::HIVE_TABLET_BALANCE_STRATEGY_RANDOM>, EResourceToBalance::Memory);
+    }
+
+    Y_UNIT_TEST(TestShortTabletTypes) {
+        // This asserts we don't have different tablet types with same short name
+        // In a world with constexpr maps this could have been a static_assert...
+        UNIT_ASSERT_VALUES_EQUAL(TABLET_TYPE_SHORT_NAMES.size(), TABLET_TYPE_BY_SHORT_NAME.size());
     }
 
     Y_UNIT_TEST(TestStDev) {

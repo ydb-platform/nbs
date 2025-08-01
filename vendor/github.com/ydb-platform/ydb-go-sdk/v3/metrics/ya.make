@@ -12,6 +12,7 @@ SRCS(
     gauge.go
     histogram.go
     node_id.go
+    query.go
     ratelimiter.go
     registry.go
     retry.go

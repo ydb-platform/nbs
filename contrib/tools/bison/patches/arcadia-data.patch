@@ -1,0 +1,31 @@
+Take data dir from arcadia
+--- contrib/tools/bison/src/output.c	(e03b59238bad8208b1b16d201f227627dd4bec91)
++++ contrib/tools/bison/src/output.c	(da44a0c0a985e23994e04d9185de45ab1abcffd0)
+@@ -42,6 +42,27 @@
+ #include "symtab.h"
+ #include "tables.h"
+ 
++#include "uniqstr.h"
++
++#include <contrib/tools/bison/arcadia_root.h>
++
++#undef M4
++#define M4 (m4_path)
++
++#define STR(a) XSTR(a)
++#define XSTR(a) #a
++
++const char*
++default_pkgdatadir()
++{
++    const char* arc_path  = getenv("ARCADIA_ROOT_DISTBUILD");
++    if (arc_path == NULL)
++        arc_path = ArcadiaRoot();
++    return uniqstr_vsprintf("%s/" STR(BISON_DATA_DIR), arc_path);
++}
++#undef PKGDATADIR
++#define PKGDATADIR (default_pkgdatadir())
++
+ static struct obstack format_obstack;
+ 
+ 

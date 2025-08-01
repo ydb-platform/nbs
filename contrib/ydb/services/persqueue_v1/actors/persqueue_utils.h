@@ -7,6 +7,8 @@
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/base/ticket_parser.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
+#include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
+#include <contrib/ydb/public/api/protos/draft/persqueue_error_codes.pb.h> // double check
 
 namespace NKikimr::NGRpcProxy::V1 {
 
@@ -94,5 +96,7 @@ static inline TVector<TEvTicketParser::TEvAuthorizeTicket::TEntry>  GetTicketPar
     }
     return {};
 }
+
+Ydb::PersQueue::ErrorCode::ErrorCode ConvertNavigateStatus(NSchemeCache::TSchemeCacheNavigate::EStatus status);
 
 } //namespace NKikimr::NGRpcProxy::V1

@@ -36,6 +36,38 @@ namespace NKikimr::NCms {
 using namespace NNodeWhiteboard;
 using namespace NKikimrCms;
 
+namespace {
+
+constexpr size_t MAX_ISSUES_TO_STORE = 100;
+
+TAction::TIssue ConvertIssue(const TReason& reason) {
+    TAction::TIssue issue;
+    switch (reason.GetType()) {
+        case TReason::EType::Generic:
+            issue.SetType(TAction::TIssue::GENERIC);
+            break;
+        case TReason::EType::TooManyUnavailableVDisks:
+            issue.SetType(TAction::TIssue::TOO_MANY_UNAVAILABLE_VDISKS);
+            break;
+        case TReason::EType::TooManyUnavailableStateStorageRings:
+            issue.SetType(TAction::TIssue::TOO_MANY_UNAVAILABLE_STATE_STORAGE_RINGS);
+            break;
+        case TReason::EType::DisabledNodesLimitReached:
+            issue.SetType(TAction::TIssue::DISABLED_NODES_LIMIT_REACHED);
+            break;
+        case TReason::EType::TenantDisabledNodesLimitReached:
+            issue.SetType(TAction::TIssue::TENANT_DISABLED_NODES_LIMIT_REACHED);
+            break;
+        case TReason::EType::SysTabletsNodeLimitReached:
+            issue.SetType(TAction::TIssue::SYS_TABLETS_NODE_LIMIT_REACHED);
+            break;
+    }
+    issue.SetMessage(reason.GetMessage());
+    return issue;
+}
+
+} // anonymous namespace
+
 void TCms::DefaultSignalTabletActive(const TActorContext &)
 {
     // must be empty
@@ -43,12 +75,8 @@ void TCms::DefaultSignalTabletActive(const TActorContext &)
 
 void TCms::OnActivateExecutor(const TActorContext &ctx)
 {
-    if (AppData(ctx)->DomainsInfo->Domains.size() > 1) {
-        NotSupportedReason = "Multiple domains are not supported.";
-        Become(&TThis::StateNotSupported);
-        SignalTabletActive(ctx);
-        return;
-    }
+    State->EnableCMSRequestPriorities = AppData(ctx)->FeatureFlags.GetEnableCMSRequestPriorities();
+    State->EnableSingleCompositeActionGroup = AppData(ctx)->FeatureFlags.GetEnableSingleCompositeActionGroup();
 
     Executor()->RegisterExternalTabletCounters(TabletCountersPtr.Release());
 
@@ -244,13 +272,16 @@ void TCms::ProcessInitQueue(const TActorContext &ctx)
 
 void TCms::SubscribeForConfig(const TActorContext &ctx)
 {
-    NConsole::SubscribeViaConfigDispatcher(ctx, {(ui32)NKikimrConsole::TConfigItem::CmsConfigItem}, ctx.SelfID);
+    NConsole::SubscribeViaConfigDispatcher(ctx, {(ui32)NKikimrConsole::TConfigItem::CmsConfigItem,
+        (ui32)NKikimrConsole::TConfigItem::FeatureFlagsItem}, ctx.SelfID);
 }
 
 void TCms::AdjustInfo(TClusterInfoPtr &info, const TActorContext &ctx) const
 {
     for (const auto &entry : State->Permissions)
         info->AddLocks(entry.second, &ctx);
+    for (const auto &entry : State->ScheduledRequests)
+        info->ScheduleActions(entry.second, &ctx);
     for (const auto &entry : State->Notifications)
         info->AddExternalLocks(entry.second, &ctx);
     for (const auto &entry : State->HostMarkers)
@@ -305,6 +336,9 @@ bool TCms::CheckPermissionRequest(const TPermissionRequest &request,
             scheduled.SetDuration(request.GetDuration());
         scheduled.SetTenantPolicy(request.GetTenantPolicy());
         scheduled.SetAvailabilityMode(request.GetAvailabilityMode());
+        if (request.HasPriority()) {
+            scheduled.SetPriority(request.GetPriority());
+        }
     }
 
     LOG_INFO_S(ctx, NKikimrServices::CMS,
@@ -324,6 +358,8 @@ bool TCms::CheckPermissionRequest(const TPermissionRequest &request,
     };
 
     auto point = ClusterInfo->PushRollbackPoint();
+    size_t storedIssues = 0;
+    size_t processedActions = 0;
     for (const auto &action : request.GetActions()) {
         TDuration permissionDuration = State->Config.DefaultPermissionDuration;
         if (request.HasDuration())
@@ -350,28 +386,40 @@ bool TCms::CheckPermissionRequest(const TPermissionRequest &request,
 
             auto *permission = response.AddPermissions();
             permission->MutableAction()->CopyFrom(action);
+            permission->MutableAction()->ClearIssue();
             permission->SetDeadline(error.Deadline.GetValue());
             AddPermissionExtensions(action, *permission);
 
             ClusterInfo->AddTempLocks(action, &ctx);
         } else {
             LOG_DEBUG(ctx, NKikimrServices::CMS, "Result: %s (reason: %s)",
-                      ToString(error.Code).data(), error.Reason.data());
+                      ToString(error.Code).data(), error.Reason.GetMessage().data());
 
             if (CodesRate[response.GetStatus().GetCode()] > CodesRate[error.Code]) {
                 response.MutableStatus()->SetCode(error.Code);
-                response.MutableStatus()->SetReason(error.Reason);
+                response.MutableStatus()->SetReason(error.Reason.GetMessage());
                 if (error.Code == TStatus::DISALLOW_TEMP
                     || error.Code == TStatus::ERROR_TEMP)
                     response.SetDeadline(error.Deadline.GetValue());
             }
 
+            if (schedule) {
+                auto *scheduledAction = scheduled.AddActions();
+                scheduledAction->CopyFrom(action);
+
+                // Limit stored issues to avoid overloading the local database
+                if (storedIssues < MAX_ISSUES_TO_STORE) {
+                    *scheduledAction->MutableIssue() = ConvertIssue(error.Reason);
+                    ++storedIssues;
+                } else {
+                    scheduledAction->ClearIssue();
+                }
+            }
+
             if (!allowPartial)
                 break;
-
-            if (schedule)
-                scheduled.AddActions()->CopyFrom(action);
         }
+        ++processedActions;
     }
     ClusterInfo->RollbackLocks(point);
 
@@ -394,9 +442,21 @@ bool TCms::CheckPermissionRequest(const TPermissionRequest &request,
     if (schedule && response.GetStatus().GetCode() != TStatus::ALLOW_PARTIAL) {
         if (response.GetStatus().GetCode() == TStatus::DISALLOW_TEMP
             || response.GetStatus().GetCode() == TStatus::ERROR_TEMP)
-            scheduled.MutableActions()->CopyFrom(request.GetActions());
-        else
+        {   
+            if (!allowPartial) {
+                // Only the first problem action was scheduled during
+                // the actions check loop. Merge it with rest actions.
+                Y_ABORT_UNLESS(scheduled.ActionsSize() == 1);
+                TAction::TIssue issue = std::move(*scheduled.MutableActions()->begin()->MutableIssue());
+                scheduled.MutableActions()->CopyFrom(request.GetActions());
+                for (auto &action : *scheduled.MutableActions()) {
+                    action.ClearIssue();
+                }
+                *scheduled.MutableActions(processedActions)->MutableIssue() = std::move(issue);
+            }
+        } else {
             scheduled.ClearActions();
+        }
     }
 
     return response.GetStatus().GetCode() == TStatus::ALLOW
@@ -500,6 +560,12 @@ bool TCms::CheckEvictVDisks(const TAction &action, TErrorInfo &error) const {
     if (!State->Sentinel) {
         error.Code = TStatus::ERROR;
         error.Reason = "Unable to evict vdisks while Sentinel (self heal) is disabled";
+        return false;
+    }
+
+    if (State->Config.SentinelConfig.EvictVDisksStatus.Empty()) {
+        error.Code = TStatus::ERROR;
+        error.Reason = "Evict vdisks is disabled in Sentinel (self heal)";
         return false;
     }
 
@@ -699,12 +765,15 @@ bool TCms::TryToLockStateStorageReplica(const TAction& action,
         case MODE_MAX_AVAILABILITY:
             if (restartRings + lockedRings > 1) {
                 error.Code = TStatus::DISALLOW_TEMP;
-                error.Reason = TStringBuilder() << "Too many unavailable state storage rings"
-                                                << ". Restarting rings: "
-                                                    << (currentRingState == TStateStorageRingInfo::Restart ? restartRings : restartRings - 1)
-                                                << ". Temporary (for a 2 minutes) locked rings: "
-                                                    << (currentRingState == TStateStorageRingInfo::Locked ? lockedRings + 1 : lockedRings)
-                                                << ". Maximum allowed number of unavailable rings for this mode: " << 1;
+                error.Reason = TReason(
+                    TStringBuilder() << "Too many unavailable state storage rings"
+                    << ". Restarting rings: "
+                    << (currentRingState == TStateStorageRingInfo::Restart ? restartRings : restartRings - 1)
+                    << ". Temporary (for a 2 minutes) locked rings: "
+                    << (currentRingState == TStateStorageRingInfo::Locked ? lockedRings + 1 : lockedRings)
+                    << ". Maximum allowed number of unavailable rings for this mode: " << 1,
+                    TReason::EType::TooManyUnavailableStateStorageRings
+                );
                 error.Deadline = defaultDeadline;
                 return false;
             }
@@ -712,13 +781,16 @@ bool TCms::TryToLockStateStorageReplica(const TAction& action,
         case MODE_KEEP_AVAILABLE:
             if (restartRings + lockedRings + disabledRings > (nToSelect - 1) / 2) {
                 error.Code = TStatus::DISALLOW_TEMP;
-                error.Reason = TStringBuilder() << "Too many unavailable state storage rings"
-                                                << ". Restarting rings: "
-                                                    << (currentRingState == TStateStorageRingInfo::Restart ? restartRings : restartRings - 1)
-                                                << ". Temporary (for a 2 minutes) locked rings: "
-                                                    << (currentRingState == TStateStorageRingInfo::Locked ? lockedRings + 1 : lockedRings)
-                                                << ". Disabled rings: " << disabledRings
-                                                << ". Maximum allowed number of unavailable rings for this mode: " << (nToSelect - 1) / 2;
+                error.Reason = TReason(
+                    TStringBuilder() << "Too many unavailable state storage rings"
+                    << ". Restarting rings: "
+                    << (currentRingState == TStateStorageRingInfo::Restart ? restartRings : restartRings - 1)
+                    << ". Temporary (for a 2 minutes) locked rings: "
+                    << (currentRingState == TStateStorageRingInfo::Locked ? lockedRings + 1 : lockedRings)
+                    << ". Disabled rings: " << disabledRings
+                    << ". Maximum allowed number of unavailable rings for this mode: " << (nToSelect - 1) / 2,
+                    TReason::EType::TooManyUnavailableStateStorageRings
+                );
                 error.Deadline = defaultDeadline;
                 return false;
             }
@@ -855,7 +927,7 @@ bool TCms::TryToLockVDisk(const TActionOptions& opts,
             return false;
         }
 
-        auto counters = CreateErasureCounter(ClusterInfo->BSGroup(groupId).Erasure.GetErasure(), vdisk, groupId);
+        auto counters = CreateErasureCounter(ClusterInfo->BSGroup(groupId).Erasure.GetErasure(), vdisk, groupId, TabletCounters);
         counters->CountGroupState(ClusterInfo, State->Config.DefaultRetryTime, duration, error);
 
         switch (opts.AvailabilityMode) {
@@ -870,10 +942,11 @@ bool TCms::TryToLockVDisk(const TActionOptions& opts,
             }
             break;
         case MODE_FORCE_RESTART:
-            if ( counters->GroupAlreadyHasLockedDisks() && opts.PartialPermissionAllowed) {
+            if (counters->GroupAlreadyHasLockedDisks() && !counters->GroupHasMoreThanOneDiskPerNode() && opts.PartialPermissionAllowed) {
+                TabletCounters->Cumulative()[COUNTER_PARTIAL_PERMISSIONS_OPTIMIZED].Increment(1);
                 error.Code = TStatus::DISALLOW_TEMP;
                 error.Reason = "You cannot get two or more disks from the same group at the same time"
-                               " without specifying the PartialPermissionAllowed parameter";
+                               " in partial permissions allowed mode";
                 error.Deadline = defaultDeadline;
                 return false;
             }
@@ -1468,6 +1541,27 @@ void TCms::CheckAndEnqueueRequest(TEvCms::TEvPermissionRequest::TPtr &ev, const 
         }
     }
 
+    if (rec.HasPriority() && !State->EnableCMSRequestPriorities) {
+        if (rec.GetUser() == WALLE_CMS_USER) {
+            rec.ClearPriority();
+        } else {
+            return ReplyWithError<TEvCms::TEvPermissionResponse>(
+                ev, TStatus::WRONG_REQUEST, "Unsupported: feature flag EnableCMSRequestPriorities is off", ctx);
+        }
+    }
+
+    if (-100 > rec.GetPriority() || rec.GetPriority() > 100) {
+        return ReplyWithError<TEvCms::TEvPermissionResponse>(
+            ev, TStatus::WRONG_REQUEST, "Priority value is out of range", ctx);
+    }
+
+    for (const auto &action : rec.GetActions()) {
+        if (action.HasIssue()) {
+            return ReplyWithError<TEvCms::TEvPermissionResponse>(
+                ev, TStatus::WRONG_REQUEST, TStringBuilder() << "Action issue is read-only", ctx);
+        }
+    }
+
     EnqueueRequest(ev.Release(), ctx);
 }
 
@@ -1820,7 +1914,6 @@ void TCms::Handle(TEvCms::TEvPermissionRequest::TPtr &ev,
     TAutoPtr<TEvCms::TEvPermissionResponse> resp = new TEvCms::TEvPermissionResponse;
     TRequestInfo scheduled;
     auto &rec = ev->Get()->Record;
-    TString user = rec.GetUser();
 
     auto requestStartTime = TInstant::Now();
 
@@ -1860,12 +1953,25 @@ void TCms::Handle(TEvCms::TEvPermissionRequest::TPtr &ev,
         }
     }
 
+    ClusterInfo->LogManager.PushRollbackPoint();
+    const i32 priority = rec.GetPriority();
+    for (const auto &[_, scheduledRequest] : State->ScheduledRequests) {
+        if (scheduledRequest.Priority < priority) {
+            for (const auto &action : scheduledRequest.Request.GetActions()) {
+                ClusterInfo->LogManager.ApplyAction(action, ClusterInfo);
+            }
+        }
+    }
+    ClusterInfo->DeactivateScheduledLocks(priority);
     bool ok = CheckPermissionRequest(rec, resp->Record, scheduled.Request, ctx);
+    ClusterInfo->ReactivateScheduledLocks();
+    ClusterInfo->LogManager.RollbackOperations();
 
     // Schedule request if required.
     if (rec.GetDryRun()) {
         Reply(ev, std::move(resp), ctx);
     } else {
+        TString user = rec.GetUser();
         auto reqId = user + "-r-" + ToString(State->NextRequestId++);
         resp->Record.SetRequestId(reqId);
 
@@ -1873,7 +1979,9 @@ void TCms::Handle(TEvCms::TEvPermissionRequest::TPtr &ev,
         if (scheduled.Request.ActionsSize() || scheduled.Request.GetEvictVDisks()) {
             scheduled.Owner = user;
             scheduled.Order = State->NextRequestId - 1;
+            scheduled.Priority = priority;
             scheduled.RequestId = reqId;
+            ClusterInfo->ScheduleActions(scheduled, &ctx);
 
             copy = new TRequestInfo(scheduled);
             State->ScheduledRequests.emplace(reqId, std::move(scheduled));
@@ -1924,8 +2032,19 @@ void TCms::Handle(TEvCms::TEvCheckRequest::TPtr &ev, const TActorContext &ctx)
 
     auto requestStartTime = TInstant::Now();
 
+    ClusterInfo->LogManager.PushRollbackPoint();
+    for (const auto &scheduled_request : State->ScheduledRequests) {
+        if (scheduled_request.second.Priority < request.Priority) {
+            for (const auto &action : scheduled_request.second.Request.GetActions())
+                ClusterInfo->LogManager.ApplyAction(action, ClusterInfo);
+        }
+    }
+
+    ClusterInfo->DeactivateScheduledLocks(request.Priority);
     request.Request.SetAvailabilityMode(rec.GetAvailabilityMode());
     bool ok = CheckPermissionRequest(request.Request, resp->Record, scheduled.Request, ctx);
+    ClusterInfo->ReactivateScheduledLocks();
+    ClusterInfo->LogManager.RollbackOperations();
 
     // Schedule request if required.
     if (rec.GetDryRun()) {
@@ -1933,13 +2052,18 @@ void TCms::Handle(TEvCms::TEvCheckRequest::TPtr &ev, const TActorContext &ctx)
     } else {
         TAutoPtr<TRequestInfo> copy;
         auto order = request.Order;
+        auto priority = request.Priority;
 
+        ClusterInfo->UnscheduleActions(request.RequestId);
         State->ScheduledRequests.erase(it);
         if (scheduled.Request.ActionsSize() || scheduled.Request.GetEvictVDisks()) {
             scheduled.Owner = user;
             scheduled.Order = order;
+            scheduled.Priority = priority;
             scheduled.RequestId = rec.GetRequestId();
             resp->Record.SetRequestId(scheduled.RequestId);
+
+            ClusterInfo->ScheduleActions(scheduled, &ctx);
 
             copy = new TRequestInfo(scheduled);
             State->ScheduledRequests.emplace(rec.GetRequestId(), std::move(scheduled));
@@ -2224,6 +2348,12 @@ void TCms::Handle(TEvCms::TEvGetSentinelStateRequest::TPtr &ev, const TActorCont
 void TCms::Handle(TEvConsole::TEvConfigNotificationRequest::TPtr &ev,
                   const TActorContext &ctx)
 {
+    const auto& appConfig = ev->Get()->Record.GetConfig();
+    if (appConfig.HasFeatureFlags()) {
+        State->EnableCMSRequestPriorities = appConfig.GetFeatureFlags().GetEnableCMSRequestPriorities();
+        State->EnableSingleCompositeActionGroup = appConfig.GetFeatureFlags().GetEnableSingleCompositeActionGroup();
+    }
+
     if (ev->Get()->Record.HasLocal() && ev->Get()->Record.GetLocal()) {
         Execute(CreateTxUpdateConfig(ev), ctx);
     } else {

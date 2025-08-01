@@ -939,6 +939,9 @@ cdef public class _Element [ type LxmlElementType, object LxmlElement ]:
         if c_node is NULL:
             _appendChild(self, element)
             return
+        # prevent cycles
+        if _isAncestorOrSame(element._c_node, self._c_node):
+            raise ValueError("cannot append parent to itself")
         c_source_doc = element._c_node.doc
         c_next = element._c_node.next
         tree.xmlAddPrevSibling(c_node, element._c_node)
@@ -982,8 +985,12 @@ cdef public class _Element [ type LxmlElementType, object LxmlElement ]:
         c_old_node = old_element._c_node
         if c_old_node.parent is not self._c_node:
             raise ValueError, u"Element is not a child of this node."
-        c_old_next = c_old_node.next
         c_new_node = new_element._c_node
+        # prevent cycles
+        if _isAncestorOrSame(c_new_node, self._c_node):
+            raise ValueError("cannot append parent to itself")
+        # replace node
+        c_old_next = c_old_node.next
         c_new_next = c_new_node.next
         c_source_doc = c_new_node.doc
         tree.xmlReplaceNode(c_old_node, c_new_node)
@@ -1983,7 +1990,7 @@ cdef public class _ElementTree [ type LxmlElementTreeType,
         Defaults to ASCII encoding and writing a declaration as needed.
 
         The keyword argument 'method' selects the output method:
-        'xml', 'html', 'text' or 'c14n'.  Default is 'xml'.
+        'xml', 'html', 'text', 'c14n' or 'c14n2'.  Default is 'xml'.
 
         With ``method="c14n"`` (C14N version 1), the options ``exclusive``,
         ``with_comments`` and ``inclusive_ns_prefixes`` request exclusive

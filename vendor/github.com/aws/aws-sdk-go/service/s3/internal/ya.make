@@ -1,1 +1,3 @@
-RECURSE(s3testing)
+RECURSE(
+    s3testing
+)

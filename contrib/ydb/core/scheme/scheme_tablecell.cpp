@@ -136,13 +136,15 @@ namespace {
         SerializeCellVecBody(cells, resultBufferData, resultCells);
     }
 
+    constexpr size_t CellMatrixHeaderSize = sizeof(ui32) + sizeof(ui16);
+
     Y_FORCE_INLINE void SerializeCellMatrix(TConstArrayRef<TCell> cells, ui32 rowCount, ui16 colCount, TString& resultBuffer, TVector<TCell>* resultCells) {
         Y_ABORT_UNLESS(cells.size() == (size_t)rowCount * (size_t)colCount);
 
         if (!SerializeCellVecInit(cells, resultBuffer, resultCells))
             return;
 
-        size_t size = sizeof(ui32) + sizeof(ui16);
+        size_t size = CellMatrixHeaderSize;
         for (auto& cell : cells)
             size += sizeof(TCellHeader) + cell.Size();
 
@@ -385,24 +387,11 @@ size_t TOwnedCellVecBatch::Append(TConstArrayRef<TCell> cells) {
 
 
 TString DbgPrintCell(const TCell& r, NScheme::TTypeInfo typeInfo, const NScheme::TTypeRegistry &reg) {
-    auto typeId = typeInfo.GetTypeId();
-    TString res;
-
-    if (typeId == NScheme::NTypeIds::Pg) {
-        res = NPg::PgTypeNameFromTypeDesc(typeInfo.GetTypeDesc());
-    } else {
-        NScheme::ITypeSP t = reg.GetType(typeId);
-
-        if (!t.IsKnownType())
-            return Sprintf("Unknow typeId 0x%x", (ui32)typeId);
-
-        res = t->GetName();
-    }
-
-    res += " : ";
-    DbgPrintValue(res, r, typeInfo);
-
-    return res;
+    Y_UNUSED(reg);
+    TString typeName = NScheme::TypeName(typeInfo, "");
+    typeName += " : ";
+    DbgPrintValue(typeName, r, typeInfo);
+    return typeName;
 }
 
 void DbgPrintValue(TString &res, const TCell &r, NScheme::TTypeInfo typeInfo) {
@@ -437,6 +426,9 @@ void DbgPrintValue(TString &res, const TCell &r, NScheme::TTypeInfo typeInfo) {
         case NScheme::NTypeIds::ActorId:
             res += ToString(r.AsValue<NActors::TActorId>());
             break;
+        case NScheme::NTypeIds::Decimal:
+            res += typeInfo.GetDecimalType().CellValueToString(r.AsValue<std::pair<ui64, i64>>());
+            break;
         case NScheme::NTypeIds::Pg:
             // TODO: support pg types
             break;
@@ -455,6 +447,14 @@ TString DbgPrintTuple(const TDbTupleRef& row, const NScheme::TTypeRegistry& type
     }
     res += ")";
     return res;
+}
+
+size_t GetCellMatrixHeaderSize() {
+    return CellMatrixHeaderSize;
+}
+
+size_t GetCellHeaderSize() {
+    return sizeof(TCellHeader);
 }
 
 } // namespace NKikimr

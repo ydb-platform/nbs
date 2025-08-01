@@ -1,6 +1,0 @@
-StartTcp: true
-MaxInflightAmountOfDataInKB: 10240
-HandshakeTimeoutDuration {
-  Seconds: 1
-}
-

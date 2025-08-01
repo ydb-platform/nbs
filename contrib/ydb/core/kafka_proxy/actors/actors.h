@@ -5,8 +5,9 @@
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/library/aclib/aclib.h>
 #include <contrib/ydb/public/api/protos/persqueue_error_codes_v1.pb.h>
+#include <contrib/ydb/public/api/protos/draft/persqueue_error_codes.pb.h> // strange
 
-#include "../kafka_messages.h"
+#include <contrib/ydb/core/kafka_proxy/kafka_messages.h>
 
 namespace NKafka {
 
@@ -169,5 +170,6 @@ NActors::IActor* CreateKafkaOffsetCommitActor(const TContext::TPtr context, cons
 NActors::IActor* CreateKafkaOffsetFetchActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TOffsetFetchRequestData>& message);
 NActors::IActor* CreateKafkaCreateTopicsActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TCreateTopicsRequestData>& message);
 NActors::IActor* CreateKafkaCreatePartitionsActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TCreatePartitionsRequestData>& message);
+NActors::IActor* CreateKafkaAlterConfigsActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TAlterConfigsRequestData>& message);
 
 } // namespace NKafka

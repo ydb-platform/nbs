@@ -11,6 +11,7 @@ SRCS(
     level.go
     logger.go
     options.go
+    query.go
     ratelimiter.go
     retry.go
     scheme.go

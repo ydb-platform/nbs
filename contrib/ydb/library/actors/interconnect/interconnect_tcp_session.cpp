@@ -89,6 +89,12 @@ namespace NActors {
         Proxy->Metrics->SubSubscribersCount(Subscribers.size());
         Subscribers.clear();
 
+        for (auto& d : DelayedEvents) {
+            d.Span.EndError("nondelivery");
+            TActivationContext::Send(IEventHandle::ForwardOnNondelivery(d.Event, TEvents::TEvUndelivered::Disconnected));
+        }
+        DelayedEvents.clear();
+
         ChannelScheduler->ForEach([&](TEventOutputChannel& channel) {
             channel.NotifyUndelivered();
         });
@@ -115,15 +121,11 @@ namespace NActors {
         Y_ABORT("TInterconnectSessionTCP::PassAway() can't be called directly");
     }
 
-    void TInterconnectSessionTCP::Forward(STATEFN_SIG) {
-        Proxy->ValidateEvent(ev, "Forward");
+    void TInterconnectSessionTCP::Enqueue(STATEFN_SIG) {
+        Proxy->ValidateEvent(ev, "Enqueue");
 
         LOG_DEBUG_IC_SESSION("ICS02", "send event from: %s to: %s", ev->Sender.ToString().data(), ev->Recipient.ToString().data());
         ++MessagesGot;
-
-        if (ev->Flags & IEventHandle::FlagSubscribeOnSession) {
-            Subscribe(ev);
-        }
 
         ui16 evChannel = ev->GetChannel();
         auto& oChannel = ChannelScheduler->GetOutputChannel(evChannel);
@@ -164,6 +166,35 @@ namespace NActors {
         IssueRam(true);
     }
 
+    void TInterconnectSessionTCP::Forward(STATEFN_SIG) {
+        Proxy->ValidateEvent(ev, "Forward");
+
+        if (ev->Flags & IEventHandle::FlagSubscribeOnSession) {
+            Subscribe(ev);
+        }
+
+        if (Y_UNLIKELY(Proxy->Common->Settings.EventDelay)) {
+            auto& d = DelayedEvents.emplace_back();
+            d.Event = std::move(ev);
+            if (Y_UNLIKELY(d.Event->TraceId)) {
+                d.Span = NWilson::TSpan(15 /*max verbosity*/, std::move(d.Event->TraceId), "Interconnect.Delay");
+                // Reparent event to the delay span
+                d.Event->TraceId = d.Span.GetTraceId();
+            }
+            Schedule(Proxy->Common->Settings.EventDelay, new TEvInterconnect::TEvForwardDelayed);
+        } else {
+            Enqueue(ev);
+        }
+    }
+
+    void TInterconnectSessionTCP::ForwardDelayed() {
+        Y_ABORT_UNLESS(!DelayedEvents.empty());
+        auto d = std::move(DelayedEvents.front());
+        DelayedEvents.pop_front();
+        d.Span.End();
+        Enqueue(d.Event);
+    }
+
     void TInterconnectSessionTCP::Subscribe(STATEFN_SIG) {
         LOG_DEBUG_IC_SESSION("ICS04", "subscribe for session state for %s", ev->Sender.ToString().data());
         const auto [it, inserted] = Subscribers.emplace(ev->Sender, ev->Cookie);
@@ -177,7 +208,7 @@ namespace NActors {
 
     void TInterconnectSessionTCP::Unsubscribe(STATEFN_SIG) {
         LOG_DEBUG_IC_SESSION("ICS05", "unsubscribe for session state for %s", ev->Sender.ToString().data());
-        Proxy->Metrics->SubSubscribersCount( Subscribers.erase(ev->Sender));
+        Proxy->Metrics->SubSubscribersCount(Subscribers.erase(ev->Sender));
     }
 
     THolder<TEvHandshakeAck> TInterconnectSessionTCP::ProcessHandshakeRequest(TEvHandshakeAsk::TPtr& ev) {
@@ -282,6 +313,8 @@ namespace NActors {
         LastHandshakeDone = TActivationContext::Now();
 
         GenerateTraffic();
+
+        SendUpdateToWhiteboard(true, false);
     }
 
     void TInterconnectSessionTCP::Handle(TEvUpdateFromInputSession::TPtr& ev) {
@@ -502,6 +535,7 @@ namespace NActors {
             XdcSocket->Shutdown(SHUT_RDWR);
             XdcSocket.Reset();
         }
+        SendUpdateToWhiteboard(true, false);
     }
 
     void TInterconnectSessionTCP::ReestablishConnectionExecute() {
@@ -965,16 +999,11 @@ namespace NActors {
         return sumBusy * 1000000 / sumPeriod;
     }
 
-    void TInterconnectSessionTCP::SendUpdateToWhiteboard(bool connected) {
+    void TInterconnectSessionTCP::SendUpdateToWhiteboard(bool connected, bool reschedule) {
+        using EFlag = TWhiteboardSessionStatus::EFlag;
         const ui32 utilization = Socket ? CalculateQueueUtilization() : 0;
 
         if (const auto& callback = Proxy->Common->UpdateWhiteboard) {
-            enum class EFlag {
-                GREEN,
-                YELLOW,
-                ORANGE,
-                RED,
-            };
             EFlag flagState = EFlag::RED;
 
             if (Socket) {
@@ -999,18 +1028,29 @@ namespace NActors {
                 } while (false);
             }
 
-            callback({TlsActivationContext->ExecutorThread.ActorSystem,
-                     Proxy->PeerNodeId,
-                     Proxy->Metrics->GetHumanFriendlyPeerHostName(),
-                     connected,
-                     flagState == EFlag::GREEN,
-                     flagState == EFlag::YELLOW,
-                     flagState == EFlag::ORANGE,
-                     flagState == EFlag::RED,
-                     ReceiveContext->ClockSkew_us.load()});
+            // we need track clockskew only if it's one tenant nodes connection
+            // they have one scope in this case
+            bool reportClockSkew = Proxy->Common->LocalScopeId.first != 0 && Proxy->Common->LocalScopeId == Params.PeerScopeId;
+
+            callback({
+                .ActorSystem = TlsActivationContext->ExecutorThread.ActorSystem,
+                .PeerNodeId = Proxy->PeerNodeId,
+                .PeerName = Proxy->Metrics->GetHumanFriendlyPeerHostName(),
+                .Connected = connected,
+                .SessionClosed = !connected,
+                .SessionPendingConnection = connected && !Socket,
+                .SessionConnected = connected && Socket,
+                .ConnectStatus = flagState,
+                .ClockSkewUs = ReceiveContext->ClockSkew_us,
+                .ReportClockSkew = reportClockSkew,
+                .PingTimeUs = ReceiveContext->PingRTT_us,
+                .ScopeId = Params.PeerScopeId,
+                .ConnectTime = LastHandshakeDone.MilliSeconds(),
+                .BytesWrittenToSocket = BytesWrittenToSocket,
+            });
         }
 
-        if (connected) {
+        if (connected && reschedule) {
             Schedule(TDuration::Seconds(1), new TEvents::TEvWakeup);
         }
     }

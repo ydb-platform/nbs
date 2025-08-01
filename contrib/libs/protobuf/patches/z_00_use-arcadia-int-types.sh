@@ -1,0 +1,32 @@
+cat << EOF > fix.py
+import sys
+
+def fix_line(l):
+    l = l.replace('~basic_string()', '~TBasicString()')
+
+    if 'ByteCount' in l and 'int64_t' in l and 'const' in l:
+        return l
+
+    if 'GetSupportedFeatures' in l and 'const' in l and 'uint64_t' in l:
+        return l
+
+    l = l.replace('std::uint64_t', 'arc_ui64').replace('std::int64_t', 'arc_i64')
+    l = l.replace('std::uint32_t', 'arc_ui32').replace('std::int32_t', 'arc_i32')
+    l = l.replace('uint64_t', 'arc_ui64').replace('int64_t', 'arc_i64')
+    l = l.replace('uint32_t', 'arc_ui32').replace('int32_t', 'arc_i32')
+
+    return l
+
+print('\n'.join(fix_line(x) for x in sys.stdin.read().split('\n')).strip())
+EOF
+
+(
+    find . -type f -name '*.cc'
+    find . -type f -name '*.h'
+    find . -type f -name '*.inc'
+) | while read l; do
+    cat ${l} | python3 ./fix.py > _
+    mv _ ${l}
+done
+
+rm fix.py

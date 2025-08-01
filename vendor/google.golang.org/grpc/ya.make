@@ -40,6 +40,8 @@ GO_TEST_SRCS(
     trace_test.go
 )
 
+GO_XTEST_SRCS(server_ext_test.go)
+
 END()
 
 RECURSE(

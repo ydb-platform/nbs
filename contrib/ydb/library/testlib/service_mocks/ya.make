@@ -10,6 +10,7 @@ SRCS(
     nebius_access_service_mock.h
     service_account_service_mock.h
     user_account_service_mock.h
+    session_service_mock.h
 )
 
 PEERDIR(
@@ -19,6 +20,7 @@ PEERDIR(
     contrib/ydb/public/api/grpc/draft
     contrib/ydb/public/api/client/yc_private/resourcemanager
     contrib/ydb/public/api/client/yc_private/iam
+    contrib/ydb/public/api/client/yc_private/oauth
 )
 
 END()

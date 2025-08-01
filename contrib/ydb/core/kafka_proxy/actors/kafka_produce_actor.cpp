@@ -1,11 +1,11 @@
 #include "kafka_produce_actor.h"
-#include "../kafka_metrics.h"
-
+#include <contrib/ydb/core/kafka_proxy/kafka_metrics.h>
 
 #include <contrib/libs/protobuf/src/google/protobuf/util/time_util.h>
 
 #include <contrib/ydb/core/persqueue/utils.h>
 #include <contrib/ydb/core/protos/grpc_pq_old.pb.h>
+#include <contrib/ydb/public/api/protos/draft/persqueue_common.pb.h>
 
 namespace NKafka {
 
@@ -263,6 +263,7 @@ THolder<TEvPartitionWriter::TEvWriteRequest> Convert(const TProduceRequestData::
 
     for (const auto& record : batch->Records) {
         NKikimrPQClient::TDataChunk proto;
+        proto.set_codec(NPersQueueCommon::RAW);
         for(auto& h : record.Headers) {
                 auto res = proto.AddMessageMeta();
             if (h.Key) {
@@ -292,11 +293,13 @@ THolder<TEvPartitionWriter::TEvWriteRequest> Convert(const TProduceRequestData::
         w->SetSourceId(sourceId);
         w->SetSeqNo(batch->BaseOffset + record.OffsetDelta);
         w->SetData(str);
-        w->SetCreateTimeMS(batch->BaseTimestamp + record.TimestampDelta);
+        ui64 createTime = batch->BaseTimestamp + record.TimestampDelta;
+        w->SetCreateTimeMS(createTime ? createTime : TInstant::Now().MilliSeconds());
         w->SetDisableDeduplication(true);
         w->SetUncompressedSize(record.Value ? record.Value->size() : 0);
         w->SetClientDC(clientDC);
         w->SetIgnoreQuotaDeadline(true);
+        w->SetExternalOperation(true);
 
         totalSize += record.Value ? record.Value->size() : 0;
     }

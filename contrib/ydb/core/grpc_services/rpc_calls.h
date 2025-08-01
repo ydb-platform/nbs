@@ -6,13 +6,14 @@
 #include <contrib/ydb/library/ydb_issue/issue_helpers.h>
 #include <contrib/ydb/core/grpc_services/base/base.h>
 
-#include <contrib/ydb/public/api/protos/ydb_auth.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_clickhouse_internal.pb.h>
 
 #include <contrib/ydb/public/api/protos/ydb_coordination.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_discovery.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_monitoring.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_table.pb.h>
+#include <contrib/ydb/public/api/protos/draft/ydb_object_storage.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_persqueue_cluster_discovery.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_persqueue_v1.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_federation_discovery.pb.h>
@@ -44,18 +45,6 @@ void FillYdbStatus(Draft::Dummy::PingResponse& resp, const NYql::TIssues& issues
 template <>
 void FillYdbStatus(Ydb::Coordination::SessionResponse& resp, const NYql::TIssues& issues, Ydb::StatusIds::StatusCode status);
 
-inline bool ValidateAndReplyOnError(IRequestProxyCtx* ctx) {
-    TString validationError;
-    if (!ctx->Validate(validationError)) {
-        const auto issue = MakeIssue(NKikimrIssues::TIssuesIds::YDB_API_VALIDATION_ERROR, validationError);
-        ctx->RaiseIssue(issue);
-        ctx->ReplyWithYdbStatus(Ydb::StatusIds::BAD_REQUEST);
-        return false;
-    } else {
-        return true;
-    }
-}
-
 
 using TEvListEndpointsRequest = TGRpcRequestWrapper<TRpcServices::EvListEndpoints, Ydb::Discovery::ListEndpointsRequest, Ydb::Discovery::ListEndpointsResponse, true>;
 
@@ -71,7 +60,6 @@ using TEvPQReadInfoRequest = TGRpcRequestWrapper<TRpcServices::EvPQReadInfo, Ydb
 using TEvDiscoverPQClustersRequest = TGRpcRequestWrapper<TRpcServices::EvDiscoverPQClusters, Ydb::PersQueue::ClusterDiscovery::DiscoverClustersRequest, Ydb::PersQueue::ClusterDiscovery::DiscoverClustersResponse, true>;
 using TEvListFederationDatabasesRequest = TGRpcRequestWrapper<TRpcServices::EvListFederationDatabases, Ydb::FederationDiscovery::ListFederationDatabasesRequest, Ydb::FederationDiscovery::ListFederationDatabasesResponse, true>;
 
-using TEvLoginRequest = TGRpcRequestWrapperNoAuth<TRpcServices::EvLogin, Ydb::Auth::LoginRequest, Ydb::Auth::LoginResponse>;
 using TEvNodeCheckRequest = TGRpcRequestWrapperNoAuth<TRpcServices::EvNodeCheckRequest, Ydb::Monitoring::NodeCheckRequest, Ydb::Monitoring::NodeCheckResponse>;
 using TEvCoordinationSessionRequest = TGRpcRequestBiStreamWrapper<TRpcServices::EvCoordinationSession, Ydb::Coordination::SessionRequest, Ydb::Coordination::SessionResponse>;
 
@@ -142,7 +130,8 @@ void TGRpcRequestBiStreamWrapper<TRpcId, TReq, TResp, RlMode>::RefreshToken(cons
 }
 
 template <ui32 TRpcId>
-void TRefreshTokenImpl<TRpcId>::ReplyUnauthenticated(const TString&) {
+void TRefreshTokenImpl<TRpcId>::ReplyUnauthenticated(const TString& msg) {
+    IssueManager_.RaiseIssue(NYql::TIssue(msg));
     RefreshTokenReplyUnauthenticated(From_, TActorId(), IssueManager_.GetIssues());
 }
 

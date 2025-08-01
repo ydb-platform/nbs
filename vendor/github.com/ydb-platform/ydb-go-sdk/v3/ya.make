@@ -7,17 +7,20 @@ SRCS(
     context.go
     driver.go
     driver_string.go
+    dsn.go
     errors.go
     meta.go
     options.go
+    params_builder.go
     sql.go
-    sql_unwrap_go1.18.go
+    sql_unwrap.go
     version.go
     with.go
 )
 
 GO_TEST_SRCS(
     driver_string_test.go
+    dsn_test.go
     with_test.go
 )
 
@@ -39,6 +42,7 @@ RECURSE(
     log
     meta
     metrics
+    query
     ratelimiter
     retry
     scheme

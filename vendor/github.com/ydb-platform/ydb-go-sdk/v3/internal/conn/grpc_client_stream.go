@@ -3,41 +3,71 @@ package conn
 import (
 	"context"
 	"io"
-	"time"
 
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/meta"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/stack"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/wrap"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
 type grpcClientStream struct {
-	grpc.ClientStream
-	c        *conn
-	wrapping bool
-	traceID  string
-	sentMark *modificationMark
-	onDone   func(ctx context.Context, md metadata.MD)
-	recv     func(error) func(error, trace.ConnState, map[string][]string)
+	parentConn   *conn
+	stream       grpc.ClientStream
+	streamCtx    context.Context //nolint:containedctx
+	streamCancel context.CancelFunc
+	wrapping     bool
+	traceID      string
+	sentMark     *modificationMark
+}
+
+func (s *grpcClientStream) Header() (metadata.MD, error) {
+	return s.stream.Header()
+}
+
+func (s *grpcClientStream) Trailer() metadata.MD {
+	return s.stream.Trailer()
+}
+
+func (s *grpcClientStream) Context() context.Context {
+	return s.stream.Context()
 }
 
 func (s *grpcClientStream) CloseSend() (err error) {
-	err = s.ClientStream.CloseSend()
+	var (
+		ctx    = s.streamCtx
+		onDone = trace.DriverOnConnStreamCloseSend(s.parentConn.config.Trace(), &ctx,
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/conn.(*grpcClientStream).CloseSend"),
+		)
+	)
+	defer func() {
+		onDone(err)
+	}()
+
+	stop := s.parentConn.lastUsage.Start()
+	defer stop()
+
+	err = s.stream.CloseSend()
 
 	if err != nil {
+		if xerrors.IsContextError(err) {
+			return xerrors.WithStackTrace(err)
+		}
+
 		if s.wrapping {
 			return s.wrapError(
 				xerrors.Transport(
 					err,
-					xerrors.WithAddress(s.c.Address()),
+					xerrors.WithAddress(s.parentConn.Address()),
 					xerrors.WithTraceID(s.traceID),
 				),
 			)
 		}
+
 		return s.wrapError(err)
 	}
 
@@ -45,19 +75,33 @@ func (s *grpcClientStream) CloseSend() (err error) {
 }
 
 func (s *grpcClientStream) SendMsg(m interface{}) (err error) {
-	cancel := createPinger(s.c)
-	defer cancel()
+	var (
+		ctx    = s.streamCtx
+		onDone = trace.DriverOnConnStreamSendMsg(s.parentConn.config.Trace(), &ctx,
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/conn.(*grpcClientStream).SendMsg"),
+		)
+	)
+	defer func() {
+		onDone(err)
+	}()
 
-	err = s.ClientStream.SendMsg(m)
+	stop := s.parentConn.lastUsage.Start()
+	defer stop()
+
+	err = s.stream.SendMsg(m)
 
 	if err != nil {
+		if xerrors.IsContextError(err) {
+			return xerrors.WithStackTrace(err)
+		}
+
 		defer func() {
-			s.c.onTransportError(s.Context(), err)
+			s.parentConn.onTransportError(ctx, err)
 		}()
 
 		if s.wrapping {
 			err = xerrors.Transport(err,
-				xerrors.WithAddress(s.c.Address()),
+				xerrors.WithAddress(s.parentConn.Address()),
 				xerrors.WithTraceID(s.traceID),
 			)
 			if s.sentMark.canRetry() {
@@ -65,6 +109,7 @@ func (s *grpcClientStream) SendMsg(m interface{}) (err error) {
 					xerrors.WithName("SendMsg"),
 				))
 			}
+
 			return s.wrapError(err)
 		}
 
@@ -74,37 +119,53 @@ func (s *grpcClientStream) SendMsg(m interface{}) (err error) {
 	return nil
 }
 
-func (s *grpcClientStream) RecvMsg(m interface{}) (err error) {
-	cancel := createPinger(s.c)
-	defer cancel()
+func (s *grpcClientStream) finish(err error) {
+	s.streamCancel()
+	trace.DriverOnConnStreamFinish(s.parentConn.config.Trace(), s.streamCtx,
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/conn.(*grpcClientStream).finish"), err,
+	)
+}
 
+func (s *grpcClientStream) RecvMsg(m interface{}) (err error) {
+	var (
+		ctx    = s.streamCtx
+		onDone = trace.DriverOnConnStreamRecvMsg(s.parentConn.config.Trace(), &ctx,
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/3/internal/conn.(*grpcClientStream).RecvMsg"),
+		)
+	)
 	defer func() {
-		onDone := s.recv(xerrors.HideEOF(err))
+		onDone(err)
 		if err != nil {
-			md := s.ClientStream.Trailer()
-			onDone(xerrors.HideEOF(err), s.c.GetState(), md)
-			s.onDone(s.ClientStream.Context(), md)
+			meta.CallTrailerCallback(s.streamCtx, s.stream.Trailer())
 		}
 	}()
 
-	err = s.ClientStream.RecvMsg(m)
+	stop := s.parentConn.lastUsage.Start()
+	defer stop()
 
-	if err != nil {
+	err = s.stream.RecvMsg(m)
+
+	if err != nil { //nolint:nestif
+		if xerrors.IsContextError(err) {
+			return xerrors.WithStackTrace(err)
+		}
+
 		defer func() {
 			if !xerrors.Is(err, io.EOF) {
-				s.c.onTransportError(s.Context(), err)
+				s.parentConn.onTransportError(ctx, err)
 			}
 		}()
 
 		if s.wrapping {
 			err = xerrors.Transport(err,
-				xerrors.WithAddress(s.c.Address()),
+				xerrors.WithAddress(s.parentConn.Address()),
 			)
 			if s.sentMark.canRetry() {
 				return s.wrapError(xerrors.Retryable(err,
 					xerrors.WithName("RecvMsg"),
 				))
 			}
+
 			return s.wrapError(err)
 		}
 
@@ -117,7 +178,7 @@ func (s *grpcClientStream) RecvMsg(m interface{}) (err error) {
 				return s.wrapError(
 					xerrors.Operation(
 						xerrors.FromOperation(operation),
-						xerrors.WithAddress(s.c.Address()),
+						xerrors.WithAddress(s.parentConn.Address()),
 					),
 				)
 			}
@@ -132,26 +193,8 @@ func (s *grpcClientStream) wrapError(err error) error {
 		return nil
 	}
 
-	nodeErr := newConnError(s.c.endpoint.NodeID(), s.c.endpoint.Address(), err)
-	return xerrors.WithStackTrace(nodeErr, xerrors.WithSkipDepth(1))
-}
-
-func createPinger(c *conn) context.CancelFunc {
-	c.touchLastUsage()
-	ctx, cancel := xcontext.WithCancel(context.Background())
-	go func() {
-		ticker := time.NewTicker(time.Second)
-		ctxDone := ctx.Done()
-		for {
-			select {
-			case <-ctxDone:
-				ticker.Stop()
-				return
-			case <-ticker.C:
-				c.touchLastUsage()
-			}
-		}
-	}()
-
-	return cancel
+	return xerrors.WithStackTrace(
+		newConnError(s.parentConn.endpoint.NodeID(), s.parentConn.endpoint.Address(), err),
+		xerrors.WithSkipDepth(1),
+	)
 }

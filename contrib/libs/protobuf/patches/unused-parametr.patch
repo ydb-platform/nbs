@@ -1,0 +1,37 @@
+--- contrib/libs/protobuf/src/google/protobuf/port.h	(index)
++++ contrib/libs/protobuf/src/google/protobuf/port.h	(working tree)
+@@ -47,6 +47,8 @@ inline void SizedDelete(void* p, size_t size) {
+ #if defined(__cpp_sized_deallocation)
+   ::operator delete(p, size);
+ #else
++  // Avoid -Wunused-parameter
++  (void)size;
+   ::operator delete(p);
+ #endif
+ }
+@@ -54,6 +56,8 @@ inline void SizedArrayDelete(void* p, size_t size) {
+ #if defined(__cpp_sized_deallocation)
+   ::operator delete[](p, size);
+ #else
++  // Avoid -Wunused-parameter
++  (void)size;
+   ::operator delete[](p);
+ #endif
+ }
+--- contrib/libs/protobuf/src/google/protobuf/port_def.inc	(index)
++++ contrib/libs/protobuf/src/google/protobuf/port_def.inc	(working tree)
+@@ -819,12 +819,14 @@
+ // TODO(gerbens) ideally we cleanup the code. But a cursory try shows many
+ // violations. So let's ignore for now.
+ #pragma clang diagnostic ignored "-Wshorten-64-to-32"
++#pragma clang diagnostic ignored "-Wunused-parameter"
+ #elif PROTOBUF_GNUC_MIN(3, 0)
+ // GCC does not allow disabling diagnostics within an expression:
+ // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=60875, so we disable this one
+ // globally even though it's only used for PROTOBUF_FIELD_OFFSET.
+ #pragma GCC diagnostic push
+ #pragma GCC diagnostic ignored "-Winvalid-offsetof"
++#pragma GCC diagnostic ignored "-Wunused-parameter"
+ #endif
+ 
+ // Silence some MSVC warnings in all our code.

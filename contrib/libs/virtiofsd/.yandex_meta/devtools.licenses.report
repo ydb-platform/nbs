@@ -1,0 +1,195 @@
+# File format ($ symbol means the beginning of a line):
+#
+# $ # this message
+# $ # =======================
+# $     # comments (all commentaries should starts with some number of spaces and # symbol)
+# ${action} {license spdx} {license text hash}
+# $BELONGS ./ya/make/file/relative/path/1/ya.make ./ya/make/2/ya.make
+# ${all_file_action} filename
+# $ # user commentaries (many lines)
+# $ generated description - files with this license, license text... (some number of lines that starts with some number of spaces, do not modify)
+# ${action} {license spdx} {license text hash}
+# $BELONGS ./ya/make/file/relative/path/3/ya.make
+# ${all_file_action} filename
+# $    #    user commentaries
+# $ generated description
+# $ ...
+#
+# You can modify action, all_file_action and add commentaries
+# Available actions:
+# keep - keep license in contrib and use in credits
+# skip - skip license
+# remove - remove all files with this license
+# rename - save license text/links into licenses texts file, but not store SPDX into LINCENSE macro. You should store correct license id into devtools.license.spdx.txt file
+#
+# {all file action} records will be generated when license text contains filename that exists on filesystem (in contrib directory)
+# We suppose that that files can contain some license info
+# Available all file actions:
+# FILE_IGNORE - ignore file (do nothing)
+# FILE_INCLUDE - include all file data into licenses text file
+# =======================
+
+KEEP     LGPL-2.1-only        23c2a5e0106b99d75238986559bb5fc6
+BELONGS dynamic/ya.make static/ya.make
+    Note: matched license text is too long. Read it in the source files.
+    Scancode info:
+        Original SPDX id: LGPL-2.1-only
+        Score           : 100.00
+        Match type      : TEXT
+        Links           : http://www.gnu.org/licenses/lgpl-2.1.html, http://www.gnu.org/licenses/lgpl-2.1.txt, https://spdx.org/licenses/LGPL-2.1-only
+    Files with this license:
+        COPYING.LIB [1:502]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     BSD-2-Clause         30a176e52e2c4e4e1cda8314b0feb4c5
+BELONGS dynamic/ya.make static/ya.make
+    License text:
+            This -- and only this -- header file may also be distributed under
+            the terms of the BSD Licence as follows:
+    Scancode info:
+        Original SPDX id: BSD-2-Clause
+        Score           : 100.00
+        Match type      : NOTICE
+        Links           : http://opensource.org/licenses/bsd-license.php, http://www.opensource.org/licenses/BSD-2-Clause, https://spdx.org/licenses/BSD-2-Clause
+    Files with this license:
+        fuse.h [9:10]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     LGPL-2.0-only        4d34cce8326e3de782a544d698b2b8fd
+BELONGS dynamic/ya.make static/ya.make
+FILE_INCLUDE COPYING.LIB found in files: buffer.c at line 9, fuse_i.h at line 6, fuse_log.c at line 8, fuse_lowlevel.c at line 9, fuse_misc.h at line 6, fuse_opt.c at line 9, fuse_signals.c at line 8
+    License text:
+         * This program can be distributed under the terms of the GNU LGPLv2.
+         * See the file COPYING.LIB
+    Scancode info:
+        Original SPDX id: LGPL-2.0-only
+        Score           : 94.00
+        Match type      : REFERENCE
+        Links           : http://www.gnu.org/licenses/lgpl-2.0.html, http://www.gnu.org/licenses/old-licenses/lgpl-2.0.html, https://spdx.org/licenses/LGPL-2.0-only
+    Files with this license:
+        buffer.c [8:9]
+        fuse_i.h [5:6]
+        fuse_log.c [7:8]
+        fuse_lowlevel.c [8:9]
+        fuse_misc.h [5:6]
+        fuse_opt.c [8:9]
+        fuse_signals.c [7:8]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     LGPL-2.0-only        5020c565fe9d68230595af07374bc684
+BELONGS dynamic/ya.make static/ya.make
+FILE_INCLUDE COPYING.LIB found in files: fuse_common.h at line 6, fuse_log.h at line 6, fuse_lowlevel.h at line 6, fuse_opt.h at line 6
+    License text:
+         * This program can be distributed under the terms of the GNU LGPLv2.
+         * See the file COPYING.LIB.
+    Scancode info:
+        Original SPDX id: LGPL-2.0-only
+        Score           : 94.00
+        Match type      : REFERENCE
+        Links           : http://www.gnu.org/licenses/lgpl-2.0.html, http://www.gnu.org/licenses/old-licenses/lgpl-2.0.html, https://spdx.org/licenses/LGPL-2.0-only
+    Files with this license:
+        fuse_common.h [5:6]
+        fuse_log.h [5:6]
+        fuse_lowlevel.h [5:6]
+        fuse_opt.h [5:6]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     LGPL-2.0-only        9e9d5d860338744c8cbc248a70216356
+BELONGS dynamic/ya.make static/ya.make
+FILE_INCLUDE COPYING.LIB found in files: fuse_virtio.h at line 11
+    License text:
+         * This program can be distributed under the terms of the GNU LGPLv2.
+         *  See the file COPYING.LIB
+    Scancode info:
+        Original SPDX id: LGPL-2.0-only
+        Score           : 94.00
+        Match type      : REFERENCE
+        Links           : http://www.gnu.org/licenses/lgpl-2.0.html, http://www.gnu.org/licenses/old-licenses/lgpl-2.0.html, https://spdx.org/licenses/LGPL-2.0-only
+    Files with this license:
+        fuse_virtio.h [10:11]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     BSD-2-Clause         b5ac55600c5433772a50e54b5c2b4fed
+BELONGS dynamic/ya.make static/ya.make
+    Note: matched license text is too long. Read it in the source files.
+    Scancode info:
+        Original SPDX id: BSD-2-Clause
+        Score           : 100.00
+        Match type      : TEXT
+        Links           : http://opensource.org/licenses/bsd-license.php, http://www.opensource.org/licenses/BSD-2-Clause, https://spdx.org/licenses/BSD-2-Clause
+    Files with this license:
+        fuse.h [14:33]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+SKIP     BSD-3-Clause         bfd75eb823b21a5a622aea6962cc34e5
+BELONGS dynamic/ya.make static/ya.make
+    # not a license
+    License text:
+         * FUSE_FLOCK_LOCKS: remote locking for BSD style file locks
+    Scancode info:
+        Original SPDX id: BSD-3-Clause
+        Score           : 90.00
+        Match type      : REFERENCE
+        Links           : http://www.opensource.org/licenses/BSD-3-Clause, https://spdx.org/licenses/BSD-3-Clause
+    Files with this license:
+        fuse.h [296:296]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     GPL-2.0-only WITH Linux-syscall-note OR BSD-2-Clause d48b313e0aef8b3710de6c719f0840ff
+BELONGS dynamic/ya.make static/ya.make
+    License text:
+        /* SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-2-Clause) */
+    Scancode info:
+        Original SPDX id: GPL-2.0-only
+        Score           : 100.00
+        Match type      : TAG
+        Links           : http://www.gnu.org/licenses/gpl-2.0.html, http://www.gnu.org/licenses/gpl-2.0.txt, https://spdx.org/licenses/GPL-2.0-only
+    Files with this license:
+        fuse.h [1:1]
+    Scancode info:
+        Original SPDX id: Linux-syscall-note
+        Score           : 100.00
+        Match type      : TAG
+        Links           : https://spdx.org/licenses/Linux-syscall-note
+    Files with this license:
+        fuse.h [1:1]
+    Scancode info:
+        Original SPDX id: BSD-2-Clause
+        Score           : 100.00
+        Match type      : TAG
+        Links           : http://opensource.org/licenses/bsd-license.php, http://www.opensource.org/licenses/BSD-2-Clause, https://spdx.org/licenses/BSD-2-Clause
+    Files with this license:
+        fuse.h [1:1]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make
+
+KEEP     GPL-1.0-or-later OR BSD-3-Clause d5780989bea2feacc16a910ec6d60525
+BELONGS dynamic/ya.make static/ya.make
+    License text:
+            This program can be distributed under the terms of the GNU GPL.
+            See the file COPYING.
+    Scancode info:
+        Original SPDX id: GPL-1.0-or-later
+        Score           : 100.00
+        Match type      : REFERENCE
+        Links           : http://www.gnu.org/licenses/old-licenses/gpl-1.0-standalone.html, https://spdx.org/licenses/GPL-1.0-or-later
+    Files with this license:
+        fuse.h [6:7]
+    Belongs difference:
+        + dynamic/ya.make static/ya.make
+        - ya.make

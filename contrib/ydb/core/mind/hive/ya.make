@@ -25,6 +25,7 @@ SRCS(
     leader_tablet_info.h
     metrics.h
     monitoring.cpp
+    monitoring.h
     node_info.cpp
     node_info.h
     object_distribution.h
@@ -43,9 +44,11 @@ SRCS(
     tablet_move_info.cpp
     tx__adopt_tablet.cpp
     tx__block_storage_result.cpp
+    tx__configure_scale_recommender.cpp
     tx__configure_subdomain.cpp
     tx__create_tablet.cpp
     tx__cut_tablet_history.cpp
+    tx__delete_node.cpp
     tx__delete_tablet.cpp
     tx__delete_tablet_result.cpp
     tx__disconnect_node.cpp
@@ -82,6 +85,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/library/aclib
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
     library/cpp/containers/ring_buffer

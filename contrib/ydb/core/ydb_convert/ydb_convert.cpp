@@ -3,6 +3,8 @@
 #include <contrib/ydb/core/engine/mkql_proto.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 #include <contrib/ydb/library/ydb_issue/issue_helpers.h>
+#include <contrib/ydb/core/protos/table_stats.pb.h>
+#include <contrib/ydb/core/protos/subdomains.pb.h>
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
 
@@ -13,6 +15,7 @@
 #include <contrib/ydb/library/yql/minikql/dom/json.h>
 #include <contrib/ydb/library/yql/minikql/dom/yson.h>
 #include <contrib/ydb/library/yql/public/udf/udf_types.h>
+#include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
 #include <contrib/ydb/library/yql/utils/utf8.h>
 
 namespace NKikimr {
@@ -168,7 +171,6 @@ void ConvertYdbTypeToMiniKQLType(const Ydb::Type& input, NKikimrMiniKQL::TType& 
             break;
         }
         case Ydb::Type::kDecimalType: {
-            // TODO: Decimal parameters
             output.SetKind(NKikimrMiniKQL::ETypeKind::Data);
             auto data = output.MutableData();
             data->SetScheme(NYql::NProto::TypeIds::Decimal);
@@ -303,6 +305,14 @@ Y_FORCE_INLINE void ConvertData(NUdf::TDataTypeId typeId, const NKikimrMiniKQL::
             res.set_uint64_value(value.GetUint64());
             break;
         case NUdf::TDataType<NUdf::TInterval>::Id:
+            res.set_int64_value(value.GetInt64());
+            break;
+        case NUdf::TDataType<NUdf::TDate32>::Id:
+            res.set_int32_value(value.GetInt32());
+            break;
+        case NUdf::TDataType<NUdf::TDatetime64>::Id:
+        case NUdf::TDataType<NUdf::TTimestamp64>::Id:
+        case NUdf::TDataType<NUdf::TInterval64>::Id:
             res.set_int64_value(value.GetInt64());
             break;
         case NUdf::TDataType<NUdf::TDecimal>::Id:
@@ -441,6 +451,34 @@ Y_FORCE_INLINE void ConvertData(NUdf::TDataTypeId typeId, const Ydb::Value& valu
             CheckTypeId(value.value_case(), Ydb::Value::kInt64Value, "Interval");
             if ((ui64)std::abs(value.int64_value()) >= NUdf::MAX_TIMESTAMP) {
                 throw yexception() << "Invalid Interval value";
+            }
+            res.SetInt64(value.int64_value());
+            break;
+        case NUdf::TDataType<NUdf::TDate32>::Id:
+            CheckTypeId(value.value_case(), Ydb::Value::kInt32Value, "Date");
+            if (value.int32_value() >= NUdf::MAX_DATE32) {
+                throw yexception() << "Invalid Date32 value";
+            }
+            res.SetInt32(value.int32_value());
+            break;
+        case NUdf::TDataType<NUdf::TDatetime64>::Id:
+            CheckTypeId(value.value_case(), Ydb::Value::kInt64Value, "Datetime");
+            if (value.int64_value() >= NUdf::MAX_DATETIME64) {
+                throw yexception() << "Invalid Datetime64 value";
+            }
+            res.SetInt64(value.int64_value());
+            break;
+        case NUdf::TDataType<NUdf::TTimestamp64>::Id:
+            CheckTypeId(value.value_case(), Ydb::Value::kInt64Value, "Timestamp");
+            if (value.int64_value() >= NUdf::MAX_TIMESTAMP64) {
+                throw yexception() << "Invalid Timestamp64 value";
+            }
+            res.SetInt64(value.int64_value());
+            break;
+        case NUdf::TDataType<NUdf::TInterval64>::Id:
+            CheckTypeId(value.value_case(), Ydb::Value::kInt64Value, "Interval");
+            if (std::abs(value.int64_value()) >= NUdf::MAX_INTERVAL64) {
+                throw yexception() << "Invalid Interval64 value";
             }
             res.SetInt64(value.int64_value());
             break;
@@ -615,8 +653,17 @@ void ConvertMiniKQLValueToYdbValue(const NKikimrMiniKQL::TType& inputType,
             break;
         }
         case NKikimrMiniKQL::ETypeKind::Pg: {
-            const auto& stringRef = inputValue.GetText();
-            output.set_text_value(stringRef.data(), stringRef.size());
+            if (inputValue.GetValueValueCase() == NKikimrMiniKQL::TValue::kNullFlagValue) {
+                output.Setnull_flag_value(::google::protobuf::NULL_VALUE);
+            } else if (inputValue.HasBytes()) {
+                const auto& stringRef = inputValue.GetBytes();
+                output.set_bytes_value(stringRef.data(), stringRef.size());
+            } else if (inputValue.HasText()) {
+                const auto& stringRef = inputValue.GetText();
+                output.set_text_value(stringRef.data(), stringRef.size());
+            } else {
+                Y_ENSURE(false, "malformed pg value");
+            }
             break;
         }
         default: {
@@ -1064,6 +1111,22 @@ bool CheckValueData(NScheme::TTypeInfo type, const TCell& cell, TString& err) {
         ok = (ui64)std::abs(cell.AsValue<i64>()) < NUdf::MAX_TIMESTAMP;
         break;
 
+    case NScheme::NTypeIds::Date32:
+        ok = cell.AsValue<i32>() < NUdf::MAX_DATE32;
+        break;
+
+    case NScheme::NTypeIds::Datetime64:
+        ok = cell.AsValue<i64>() < NUdf::MAX_DATETIME64;
+        break;
+
+    case NScheme::NTypeIds::Timestamp64:
+        ok = cell.AsValue<i64>() < NUdf::MAX_TIMESTAMP64;
+        break;
+
+    case NScheme::NTypeIds::Interval64:
+        ok = std::abs(cell.AsValue<i64>()) < NUdf::MAX_INTERVAL64;
+        break;        
+
     case NScheme::NTypeIds::Utf8:
         ok = NYql::IsUtf8(cell.AsBuf());
         break;
@@ -1104,9 +1167,7 @@ bool CheckValueData(NScheme::TTypeInfo type, const TCell& cell, TString& err) {
     return ok;
 }
 
-
-
-bool CellFromProtoVal(NScheme::TTypeInfo type, i32 typmod, const Ydb::Value* vp,
+bool CellFromProtoVal(const NScheme::TTypeInfo& type, i32 typmod, const Ydb::Value* vp,
                                 TCell& c, TString& err, TMemoryPool& valueDataPool)
 {
     if (vp->Hasnull_flag_value()) {
@@ -1143,6 +1204,10 @@ bool CellFromProtoVal(NScheme::TTypeInfo type, i32 typmod, const Ydb::Value* vp,
     EXTRACT_VAL(Datetime, uint32, ui32);
     EXTRACT_VAL(Timestamp, uint64, ui64);
     EXTRACT_VAL(Interval, int64, i64);
+    EXTRACT_VAL(Date32, int32, i32);
+    EXTRACT_VAL(Datetime64, int64, i64);
+    EXTRACT_VAL(Timestamp64, int64, i64);
+    EXTRACT_VAL(Interval64, int64, i64);
     case NScheme::NTypeIds::Json :
     case NScheme::NTypeIds::Utf8 : {
             TString v = val.Gettext_value();
@@ -1189,7 +1254,7 @@ bool CellFromProtoVal(NScheme::TTypeInfo type, i32 typmod, const Ydb::Value* vp,
         TString text = val.Gettext_value();
         if (!text.empty()) {
             isText = true;
-            auto desc = type.GetTypeDesc();
+            auto desc = type.GetPgTypeDesc();
             auto res = NPg::PgNativeBinaryFromNativeText(text, desc);
             if (res.Error) {
                 err = TStringBuilder() << "Invalid text value for "
@@ -1200,7 +1265,7 @@ bool CellFromProtoVal(NScheme::TTypeInfo type, i32 typmod, const Ydb::Value* vp,
         } else {
             binary = val.Getbytes_value();
         }
-        auto* desc = type.GetTypeDesc();
+        auto* desc = type.GetPgTypeDesc();
         if (typmod != -1 && NPg::TypeDescNeedsCoercion(desc)) {
             auto res = NPg::PgNativeBinaryCoerce(TStringBuf(binary), desc, typmod);
             if (res.Error) {
@@ -1293,6 +1358,18 @@ void ProtoValueFromCell(NYdb::TValueBuilder& vb, const NScheme::TTypeInfo& typeI
     case EPrimitiveType::Interval:
         vb.Interval(cell.AsValue<i64>());
         break;
+    case EPrimitiveType::Date32:
+        vb.Date32(cell.AsValue<i32>());
+        break;
+    case EPrimitiveType::Datetime64:
+        vb.Datetime64(cell.AsValue<i64>());
+        break;
+    case EPrimitiveType::Timestamp64:
+        vb.Timestamp64(cell.AsValue<i64>());
+        break;
+    case EPrimitiveType::Interval64:
+        vb.Interval64(cell.AsValue<i64>());
+        break;        
     case EPrimitiveType::TzDate:
         vb.TzDate(getString());
         break;
@@ -1314,15 +1391,21 @@ void ProtoValueFromCell(NYdb::TValueBuilder& vb, const NScheme::TTypeInfo& typeI
     case EPrimitiveType::Json:
         vb.Json(getString());
         break;
-    case EPrimitiveType::Uuid:
-        vb.Uuid(getString());
+    case EPrimitiveType::Uuid: {
+        ui64 hi;
+        ui64 lo;
+        NUuid::UuidBytesToHalfs(cell.AsBuf().Data(), 16, hi, lo);
+        vb.Uuid(TUuidValue(lo, hi));
         break;
+    }
     case EPrimitiveType::JsonDocument:
-        vb.JsonDocument(getString());
+        vb.JsonDocument(NBinaryJson::SerializeToJson(getString()));
         break;
     case EPrimitiveType::DyNumber:
         vb.DyNumber(getString());
         break;
+    default:
+        Y_ENSURE(false, TStringBuilder() << "Unsupported type: " << primitive);
     }
 }
 

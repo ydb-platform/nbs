@@ -1,0 +1,33 @@
+--- contrib/tools/bison/lib/obstack.h	(ef06a7dccff68bd15f669606131c541d158d4b1a)
++++ contrib/tools/bison/lib/obstack.h	(1efd2cc9274f1f5a222e759093d27c8d38825028)
+@@ -511,4 +511,8 @@ __extension__                                                           \
+ }       /* C++ */
+ #endif
+ 
++#if !defined(obstack_printf)
++int obstack_printf(struct obstack *obs, const char *format, ...);
++#endif
++
+ #endif /* obstack.h */
+--- contrib/tools/bison/lib/obstack_printf.c	(ef06a7dccff68bd15f669606131c541d158d4b1a)
++++ contrib/tools/bison/lib/obstack_printf.c	(1efd2cc9274f1f5a222e759093d27c8d38825028)
+@@ -26,6 +26,8 @@
+ #include <stdarg.h>
+ #include <stdlib.h>
+ 
++int obstack_vprintf(struct obstack *obs, const char *format, va_list args);
++
+ /* Grow an obstack with formatted output.  Return the number of bytes
+    added to OBS.  No trailing nul byte is added, and the object should
+    be closed with obstack_finish before use.
+--- contrib/tools/bison/lib/vasnprintf.c	(ef06a7dccff68bd15f669606131c541d158d4b1a)
++++ contrib/tools/bison/lib/vasnprintf.c	(1efd2cc9274f1f5a222e759093d27c8d38825028)
+@@ -4870,7 +4870,7 @@ VASNPRINTF (DCHAR_T *resultbuf, size_t *lengthp,
+ #endif
+                   *fbp = dp->conversion;
+ #if USE_SNPRINTF
+-# if !(((__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 3)) && !defined __UCLIBC__) || ((defined _WIN32 || defined __WIN32__) && ! defined __CYGWIN__))
++# if !defined(__APPLE__) && !(((__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 3)) && !defined __UCLIBC__) || ((defined _WIN32 || defined __WIN32__) && ! defined __CYGWIN__))
+                 fbp[1] = '%';
+                 fbp[2] = 'n';
+                 fbp[3] = '\0';

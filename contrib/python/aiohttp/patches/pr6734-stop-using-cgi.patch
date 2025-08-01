@@ -1,0 +1,56 @@
+From cb79f0dc1597b683ab5a5a9fed8262954a086d35 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ville=20Skytt=C3=A4?= <ville.skytta@iki.fi>
+Date: Fri, 6 May 2022 19:21:41 +0300
+Subject: [PATCH] Stop using the cgi module, deprecated in Python 3.11 per PEP
+ 594 (#6708) (#6734)
+
+* Stop using the cgi module, deprecated in Python 3.11 per PEP 594
+
+https://peps.python.org/pep-0594/#cgi
+
+* Simplify creating params dict
+
+Co-authored-by: Sam Bull <aa6bs0@sambull.org>
+
+* Create 6708.misc
+
+Co-authored-by: Sam Bull <aa6bs0@sambull.org>
+(cherry picked from commit a0454809e3fd15f70c95d794addf005d9bd95b23)
+---
+ CHANGES/6708.misc  | 1 +
+ aiohttp/helpers.py | 7 +++++--
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+ create mode 100644 CHANGES/6708.misc
+
+diff --git a/aiohttp/helpers.py b/aiohttp/helpers.py
+index 92f52c49c7..0469ee41de 100644
+--- a/aiohttp/helpers.py
++++ b/aiohttp/helpers.py
+@@ -3,7 +3,6 @@
+ import asyncio
+ import base64
+ import binascii
+-import cgi
+ import datetime
+ import functools
+ import inspect
+@@ -17,6 +16,7 @@
+ import weakref
+ from collections import namedtuple
+ from contextlib import suppress
++from email.parser import HeaderParser
+ from email.utils import parsedate
+ from math import ceil
+ from pathlib import Path
+@@ -755,7 +755,10 @@ def _parse_content_type(self, raw: str) -> None:
+             self._content_type = "application/octet-stream"
+             self._content_dict = {}
+         else:
+-            self._content_type, self._content_dict = cgi.parse_header(raw)
++            msg = HeaderParser().parsestr("Content-Type: " + raw)
++            self._content_type = msg.get_content_type()
++            params = msg.get_params()
++            self._content_dict = dict(params[1:])  # First element is content type again
+ 
+     @property
+     def content_type(self) -> str:

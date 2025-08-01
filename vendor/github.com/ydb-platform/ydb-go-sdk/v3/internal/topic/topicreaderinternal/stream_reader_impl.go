@@ -9,35 +9,36 @@ import (
 	"math/big"
 	"reflect"
 	"runtime/pprof"
+	"sync/atomic"
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/background"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xatomic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
+const defaultBufferSize = 1024 * 1024
+
 var (
 	PublicErrCommitSessionToExpiredSession = xerrors.Wrap(errors.New("ydb: commit to expired session"))
 
-	errPartitionSessionStoppedByServer = xerrors.Wrap(errors.New("ydb: topic partition session stopped by server"))
-	errCommitWithNilPartitionSession   = xerrors.Wrap(errors.New("ydb: commit with nil partition session"))
+	errCommitWithNilPartitionSession = xerrors.Wrap(errors.New("ydb: commit with nil partition session"))
 )
 
 type partitionSessionID = rawtopicreader.PartitionSessionID
 
 type topicStreamReaderImpl struct {
 	cfg    topicStreamReaderConfig
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx
 	cancel context.CancelFunc
 
 	freeBytes           chan int
-	restBufferSizeBytes xatomic.Int64
+	restBufferSizeBytes atomic.Int64
 	sessionController   partitionSessionStorage
 	backgroundWorkers   background.Worker
 
@@ -59,11 +60,12 @@ type topicStreamReaderImpl struct {
 type topicStreamReaderConfig struct {
 	CommitterBatchTimeLag           time.Duration
 	CommitterBatchCounterTrigger    int
-	BaseContext                     context.Context
+	BaseContext                     context.Context //nolint:containedctx
 	BufferSizeProtoBytes            int
 	Cred                            credentials.Credentials
 	CredUpdateInterval              time.Duration
 	Consumer                        string
+	ReadWithoutConsumer             bool
 	ReadSelectors                   []*PublicReadSelector
 	Trace                           *trace.Topic
 	GetPartitionStartOffsetCallback PublicGetPartitionStartOffsetFunc
@@ -74,7 +76,7 @@ type topicStreamReaderConfig struct {
 func newTopicStreamReaderConfig() topicStreamReaderConfig {
 	return topicStreamReaderConfig{
 		BaseContext:           context.Background(),
-		BufferSizeProtoBytes:  1024 * 1024,
+		BufferSizeProtoBytes:  defaultBufferSize,
 		Cred:                  credentials.NewAnonymousCredentials(),
 		CredUpdateInterval:    time.Hour,
 		CommitMode:            CommitModeAsync,
@@ -122,7 +124,7 @@ func newTopicStreamReader(
 	if err = reader.initSession(); err != nil {
 		return nil, err
 	}
-	if err = reader.startLoops(); err != nil {
+	if err = reader.startBackgroundWorkers(); err != nil {
 		return nil, err
 	}
 
@@ -149,17 +151,19 @@ func newTopicStreamReaderStopped(
 		stream:                &syncedStream{stream: stream},
 		cancel:                cancel,
 		batcher:               newBatcher(),
-		backgroundWorkers:     *background.NewWorker(stopPump),
 		readConnectionID:      "preinitID-" + readerConnectionID.String(),
 		readerID:              readerID,
 		rawMessagesFromBuffer: make(chan rawtopicreader.ServerMessage, 1),
 	}
 
-	res.committer = newCommitter(cfg.Trace, labeledContext, cfg.CommitMode, res.send)
+	res.backgroundWorkers = *background.NewWorker(stopPump, "topic-reader-stream-background")
+
+	res.committer = newCommitterStopped(cfg.Trace, labeledContext, cfg.CommitMode, res.send)
 	res.committer.BufferTimeLagTrigger = cfg.CommitterBatchTimeLag
 	res.committer.BufferCountTrigger = cfg.CommitterBatchCounterTrigger
 	res.sessionController.init()
 	res.freeBytes <- cfg.BufferSizeProtoBytes
+
 	return res
 }
 
@@ -167,6 +171,7 @@ func (r *topicStreamReaderImpl) WaitInit(_ context.Context) error {
 	if !r.started {
 		return errors.New("not started: can be started only after initialize from constructor")
 	}
+
 	return nil
 }
 
@@ -176,7 +181,7 @@ func (r *topicStreamReaderImpl) ReadMessageBatch(
 ) (batch *PublicBatch, err error) {
 	onDone := trace.TopicOnReaderReadMessages(
 		r.cfg.Trace,
-		ctx,
+		&ctx,
 		opts.MinCount,
 		opts.MaxCount,
 		r.getRestBufferBytes(),
@@ -263,6 +268,7 @@ func (r *topicStreamReaderImpl) consumeRawMessageFromBuffer(ctx context.Context)
 		case *rawtopicreader.StartPartitionSessionRequest:
 			if err := r.onStartPartitionSessionRequestFromBuffer(m); err != nil {
 				_ = r.CloseWithError(ctx, err)
+
 				return
 			}
 		case *rawtopicreader.StopPartitionSessionRequest:
@@ -270,6 +276,7 @@ func (r *topicStreamReaderImpl) consumeRawMessageFromBuffer(ctx context.Context)
 				_ = r.CloseWithError(ctx, xerrors.WithStackTrace(
 					fmt.Errorf("ydb: unexpected error on stop partition handler: %w", err),
 				))
+
 				return
 			}
 		case *rawtopicreader.PartitionSessionStatusResponse:
@@ -290,15 +297,18 @@ func (r *topicStreamReaderImpl) onStopPartitionSessionRequestFromBuffer(
 		return err
 	}
 
-	onDone := trace.TopicOnReaderPartitionReadStopResponse(
-		r.cfg.Trace,
-		r.readConnectionID,
-		session.Context(),
-		session.Topic,
-		session.PartitionID,
-		session.partitionSessionID.ToInt64(),
-		msg.CommittedOffset.ToInt64(),
-		msg.Graceful,
+	var (
+		ctx    = session.Context()
+		onDone = trace.TopicOnReaderPartitionReadStopResponse(
+			r.cfg.Trace,
+			r.readConnectionID,
+			&ctx,
+			session.Topic,
+			session.PartitionID,
+			session.partitionSessionID.ToInt64(),
+			msg.CommittedOffset.ToInt64(),
+			msg.Graceful,
+		)
 	)
 	defer func() {
 		onDone(err)
@@ -352,7 +362,7 @@ func (r *topicStreamReaderImpl) Commit(ctx context.Context, commitRange commitRa
 	session := commitRange.partitionSession
 	onDone := trace.TopicOnReaderCommit(
 		r.cfg.Trace,
-		ctx,
+		&ctx,
 		session.Topic,
 		session.PartitionID,
 		session.partitionSessionID.ToInt64(),
@@ -366,6 +376,7 @@ func (r *topicStreamReaderImpl) Commit(ctx context.Context, commitRange commitRa
 	if err = r.checkCommitRange(commitRange); err != nil {
 		return err
 	}
+
 	return r.committer.Commit(ctx, commitRange)
 }
 
@@ -380,7 +391,7 @@ func (r *topicStreamReaderImpl) checkCommitRange(commitRange commitRange) error 
 	}
 
 	if session.Context().Err() != nil {
-		return xerrors.WithStackTrace(fmt.Errorf("ydb: commit error: %w", errPartitionSessionStoppedByServer))
+		return xerrors.WithStackTrace(PublicErrCommitSessionToExpiredSession)
 	}
 
 	ownSession, err := r.sessionController.Get(session.partitionSessionID)
@@ -400,13 +411,16 @@ func (r *topicStreamReaderImpl) send(msg rawtopicreader.ClientMessage) error {
 		trace.TopicOnReaderError(r.cfg.Trace, r.readConnectionID, err)
 		_ = r.CloseWithError(r.ctx, err)
 	}
+
 	return err
 }
 
-func (r *topicStreamReaderImpl) startLoops() error {
+func (r *topicStreamReaderImpl) startBackgroundWorkers() error {
 	if err := r.setStarted(); err != nil {
 		return err
 	}
+
+	r.committer.Start()
 
 	r.backgroundWorkers.Start("readMessagesLoop", r.readMessagesLoop)
 	r.backgroundWorkers.Start("dataRequestLoop", r.dataRequestLoop)
@@ -426,6 +440,7 @@ func (r *topicStreamReaderImpl) setStarted() error {
 	}
 
 	r.started = true
+
 	return nil
 }
 
@@ -465,6 +480,7 @@ func (r *topicStreamReaderImpl) addRestBufferBytes(delta int) int {
 	if val <= 0 {
 		r.batcher.IgnoreMinRestrictionsOnNextPop()
 	}
+
 	return int(val)
 }
 
@@ -472,6 +488,7 @@ func (r *topicStreamReaderImpl) getRestBufferBytes() int {
 	return int(r.restBufferSizeBytes.Load())
 }
 
+//nolint:funlen
 func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
 	ctx, cancel := xcontext.WithCancel(ctx)
 	defer cancel()
@@ -487,6 +504,7 @@ func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
 				continue
 			}
 			_ = r.CloseWithError(ctx, err)
+
 			return
 		}
 
@@ -507,16 +525,19 @@ func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
 		case *rawtopicreader.StartPartitionSessionRequest:
 			if err = r.onStartPartitionSessionRequest(m); err != nil {
 				_ = r.CloseWithError(ctx, err)
+
 				return
 			}
 		case *rawtopicreader.StopPartitionSessionRequest:
 			if err = r.onStopPartitionSessionRequest(m); err != nil {
 				_ = r.CloseWithError(ctx, err)
+
 				return
 			}
 		case *rawtopicreader.CommitOffsetResponse:
 			if err = r.onCommitResponse(m); err != nil {
 				_ = r.CloseWithError(ctx, err)
+
 				return
 			}
 
@@ -546,6 +567,7 @@ func (r *topicStreamReaderImpl) dataRequestLoop(ctx context.Context) {
 		select {
 		case <-doneChan:
 			_ = r.CloseWithError(ctx, r.ctx.Err())
+
 			return
 
 		case free := <-r.freeBytes:
@@ -686,6 +708,7 @@ func (r *topicStreamReaderImpl) CloseWithError(ctx context.Context, reason error
 	if closeErr == nil {
 		closeErr = bgCloseErr
 	}
+
 	return closeErr
 }
 
@@ -741,6 +764,7 @@ func (r *topicStreamReaderImpl) onStartPartitionSessionRequest(m *rawtopicreader
 	if err := r.sessionController.Add(session); err != nil {
 		return err
 	}
+
 	return r.batcher.PushRawMessage(session, m)
 }
 
@@ -752,13 +776,16 @@ func (r *topicStreamReaderImpl) onStartPartitionSessionRequestFromBuffer(
 		return err
 	}
 
-	onDone := trace.TopicOnReaderPartitionReadStartResponse(
-		r.cfg.Trace,
-		r.readConnectionID,
-		session.Context(),
-		session.Topic,
-		session.PartitionID,
-		session.partitionSessionID.ToInt64(),
+	var (
+		ctx    = session.Context()
+		onDone = trace.TopicOnReaderPartitionReadStartResponse(
+			r.cfg.Trace,
+			r.readConnectionID,
+			&ctx,
+			session.Topic,
+			session.PartitionID,
+			session.partitionSessionID.ToInt64(),
+		)
 	)
 
 	respMessage := &rawtopicreader.StartPartitionSessionResponse{

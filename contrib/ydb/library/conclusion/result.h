@@ -30,11 +30,18 @@ public:
         Y_ABORT_UNLESS(IsFail());
     }
 
-    TConclusion(TResult&& result)
+    template <class TResultArg>
+    TConclusion(TResultArg&& result)
         : Result(std::move(result)) {
     }
 
-    TConclusion(const TResult& result)
+    template <class TResultArg>
+    TConclusion(const TResultArg& result)
+        : Result(result) {
+    }
+
+    template <class TResultArg>
+    TConclusion(TResultArg& result)
         : Result(result) {
     }
 
@@ -58,7 +65,7 @@ public:
 
     TResult&& DetachResult() {
         auto result = std::get_if<TResult>(&Result);
-        Y_ABORT_UNLESS(result, "incorrect object for result request");
+        Y_ABORT_UNLESS(result, "incorrect object for result request: %s", GetErrorMessage().data());
         return std::move(*result);
     }
 
@@ -78,8 +85,8 @@ public:
         return IsFail();
     }
 
-    explicit operator bool() const {
-        return IsSuccess();
+    operator TConclusionStatus() const {
+        return GetError();
     }
 
     const TString& GetErrorMessage() const {

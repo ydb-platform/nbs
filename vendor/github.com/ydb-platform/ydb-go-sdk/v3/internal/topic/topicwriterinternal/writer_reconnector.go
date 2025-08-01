@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/big"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,7 +23,6 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicwriter"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/value"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xatomic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
@@ -69,6 +69,7 @@ func (cfg *WriterReconnectorConfig) validate() error {
 		cfg.producerID != cfg.defaultPartitioning.MessageGroupID {
 		return xerrors.WithStackTrace(errProducerIDNotEqualMessageGroupID)
 	}
+
 	return nil
 }
 
@@ -83,8 +84,8 @@ func newWriterReconnectorConfig(options ...PublicWriterOption) WriterReconnector
 		},
 		AutoSetSeqNo:       true,
 		AutoSetCreatedTime: true,
-		MaxMessageSize:     50 * 1024 * 1024,
-		MaxQueueLen:        1000,
+		MaxMessageSize:     50 * 1024 * 1024, //nolint:gomnd
+		MaxQueueLen:        1000,             //nolint:gomnd
 		RetrySettings: topic.RetrySettings{
 			StartTimeout: topic.DefaultStartTimeout,
 		},
@@ -113,25 +114,21 @@ func newWriterReconnectorConfig(options ...PublicWriterOption) WriterReconnector
 }
 
 type WriterReconnector struct {
-	cfg           WriterReconnectorConfig
-	retrySettings topic.RetrySettings
-
-	semaphore                      *semaphore.Weighted
+	cfg                            WriterReconnectorConfig
 	queue                          messageQueue
 	background                     background.Worker
-	clock                          clockwork.Clock
-	firstConnectionHandled         xatomic.Bool
-	firstInitResponseProcessedChan empty.Chan
+	retrySettings                  topic.RetrySettings
 	writerInstanceID               string
-
-	m           xsync.RWMutex
-	sessionID   string
-	lastSeqNo   int64
-	encodersMap *EncoderMap
-
-	initDone   bool
-	initDoneCh empty.Chan
-	initInfo   InitialInfo
+	sessionID                      string
+	semaphore                      *semaphore.Weighted
+	firstInitResponseProcessedChan empty.Chan
+	lastSeqNo                      int64
+	encodersMap                    *EncoderMap
+	initDoneCh                     empty.Chan
+	initInfo                       InitialInfo
+	m                              xsync.RWMutex
+	firstConnectionHandled         atomic.Bool
+	initDone                       bool
 }
 
 func newWriterReconnector(
@@ -139,6 +136,7 @@ func newWriterReconnector(
 ) *WriterReconnector {
 	res := newWriterReconnectorStopped(cfg)
 	res.start()
+
 	return res
 }
 
@@ -150,7 +148,6 @@ func newWriterReconnectorStopped(
 		cfg:                            cfg,
 		semaphore:                      semaphore.NewWeighted(int64(cfg.MaxQueueLen)),
 		queue:                          newMessageQueue(),
-		clock:                          clockwork.NewRealClock(),
 		lastSeqNo:                      -1,
 		firstInitResponseProcessedChan: make(empty.Chan),
 		encodersMap:                    NewEncoderMap(),
@@ -190,7 +187,7 @@ func (w *WriterReconnector) fillFields(messages []messageWithDataContent) error 
 		if w.cfg.AutoSetCreatedTime {
 			if msg.CreatedAt.IsZero() {
 				if now.IsZero() {
-					now = w.clock.Now()
+					now = w.cfg.clock.Now()
 				}
 				msg.CreatedAt = now
 			} else {
@@ -252,7 +249,26 @@ func (w *WriterReconnector) Write(ctx context.Context, messages []PublicMessage)
 		return err
 	}
 
-	var waiter MessageQueueAckWaiter
+	waiter, err := w.processMessagesWithLock(messagesSlice, &semaphoreWeight)
+	if err != nil {
+		return err
+	}
+
+	if !w.cfg.WaitServerAck {
+		return nil
+	}
+
+	return w.queue.Wait(ctx, waiter)
+}
+
+func (w *WriterReconnector) processMessagesWithLock(
+	messagesSlice []messageWithDataContent,
+	semaphoreWeight *int64,
+) (MessageQueueAckWaiter, error) {
+	var (
+		waiter MessageQueueAckWaiter
+		err    error
+	)
 	w.m.WithLock(func() {
 		// need set numbers and add to queue atomically
 		err = w.fillFields(messagesSlice)
@@ -267,18 +283,11 @@ func (w *WriterReconnector) Write(ctx context.Context, messages []PublicMessage)
 		}
 		if err == nil {
 			// move semaphore weight to queue
-			semaphoreWeight = 0
+			*semaphoreWeight = 0
 		}
 	})
-	if err != nil {
-		return err
-	}
 
-	if !w.cfg.WaitServerAck {
-		return nil
-	}
-
-	return w.queue.Wait(ctx, waiter)
+	return waiter, err
 }
 
 func (w *WriterReconnector) checkMessages(messages []messageWithDataContent) error {
@@ -288,6 +297,7 @@ func (w *WriterReconnector) checkMessages(messages []messageWithDataContent) err
 			return xerrors.WithStackTrace(fmt.Errorf("message size bytes %v: %w", size, errLargeMessage))
 		}
 	}
+
 	return nil
 }
 
@@ -321,11 +331,26 @@ func (w *WriterReconnector) createMessagesWithContent(messages []PublicMessage) 
 	if err != nil {
 		return nil, err
 	}
+
 	return res, nil
 }
 
+func (w *WriterReconnector) Flush(ctx context.Context) error {
+	return w.queue.WaitLastWritten(ctx)
+}
+
 func (w *WriterReconnector) Close(ctx context.Context) error {
-	return w.close(ctx, xerrors.WithStackTrace(errStopWriterReconnector))
+	reason := xerrors.WithStackTrace(errStopWriterReconnector)
+	w.queue.StopAddNewMessages(reason)
+
+	flushErr := w.Flush(ctx) //nolint:ifshort
+	closeErr := w.close(ctx, reason)
+
+	if flushErr != nil {
+		return flushErr
+	}
+
+	return closeErr
 }
 
 func (w *WriterReconnector) close(ctx context.Context, reason error) (resErr error) {
@@ -334,24 +359,29 @@ func (w *WriterReconnector) close(ctx context.Context, reason error) (resErr err
 		onDone(resErr)
 	}()
 
-	resErr = w.queue.Close(reason)
+	// stop background work and single stream writer
 	bgErr := w.background.Close(ctx, reason)
-	if resErr == nil {
+	if resErr == nil && bgErr != nil {
 		resErr = bgErr
 	}
+
+	closeErr := w.queue.Close(reason)
+	if resErr == nil && closeErr != nil {
+		resErr = closeErr
+	}
+
 	return resErr
 }
 
 func (w *WriterReconnector) connectionLoop(ctx context.Context) {
-	doneCtx := ctx.Done()
 	attempt := 0
 
 	createStreamContext := func() (context.Context, context.CancelFunc) {
 		// need suppress parent context cancelation for flush buffer while close writer
-		return xcontext.WithCancel(xcontext.WithoutDeadline(ctx))
+		return xcontext.WithCancel(xcontext.ValueOnly(ctx))
 	}
 
-	//nolint:ineffassign,staticcheck
+	//nolint:ineffassign,staticcheck,wastedassign
 	streamCtx, streamCtxCancel := createStreamContext()
 
 	defer streamCtxCancel()
@@ -369,25 +399,16 @@ func (w *WriterReconnector) connectionLoop(ctx context.Context) {
 		streamCtx, streamCtxCancel = createStreamContext()
 
 		now := time.Now()
-		if topic.CheckResetReconnectionCounters(prevAttemptTime, now, w.cfg.connectTimeout) {
+		if startOfRetries.IsZero() || topic.CheckResetReconnectionCounters(prevAttemptTime, now, w.cfg.connectTimeout) {
 			attempt = 0
-			startOfRetries = w.clock.Now()
+			startOfRetries = w.cfg.clock.Now()
 		} else {
 			attempt++
 		}
 		prevAttemptTime = now
 
 		if reconnectReason != nil {
-			if backoff, retry := topic.CheckRetryMode(reconnectReason, w.retrySettings, w.clock.Since(startOfRetries)); retry {
-				delay := backoff.Delay(attempt)
-				select {
-				case <-doneCtx:
-					return
-				case <-w.clock.After(delay):
-					// pass
-				}
-			} else {
-				_ = w.close(ctx, reconnectReason)
+			if w.handleReconnectRetry(ctx, reconnectReason, attempt, startOfRetries) {
 				return
 			}
 		}
@@ -401,6 +422,34 @@ func (w *WriterReconnector) connectionLoop(ctx context.Context) {
 			reconnectReason = err
 		}
 	}
+}
+
+func (w *WriterReconnector) handleReconnectRetry(
+	ctx context.Context,
+	reconnectReason error,
+	attempt int,
+	startOfRetries time.Time,
+) bool {
+	retryDuration := w.cfg.clock.Since(startOfRetries)
+	if backoff, retry := topic.CheckRetryMode(reconnectReason, w.retrySettings, retryDuration); retry {
+		delay := backoff.Delay(attempt)
+		delayTimer := w.cfg.clock.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			delayTimer.Stop()
+
+			return true
+		case <-delayTimer.Chan():
+			delayTimer.Stop() // no really need, stop for common style only
+			// pass
+		}
+	} else {
+		_ = w.close(ctx, fmt.Errorf("%w, was retried (%v)", reconnectReason, retryDuration))
+
+		return true
+	}
+
+	return false
 }
 
 func (w *WriterReconnector) startWriteStream(ctx, streamCtx context.Context, attempt int) (
@@ -424,11 +473,13 @@ func (w *WriterReconnector) startWriteStream(ctx, streamCtx context.Context, att
 	}
 
 	w.queue.ResetSentProgress()
+
 	return NewSingleStreamWriter(ctx, w.createWriterStreamConfig(stream))
 }
 
 func (w *WriterReconnector) needReceiveLastSeqNo() bool {
-	res := w.cfg.AutoSetSeqNo && !w.firstConnectionHandled.Load()
+	res := !w.firstConnectionHandled.Load()
+
 	return res
 }
 
@@ -462,11 +513,13 @@ func (w *WriterReconnector) connectWithTimeout(streamLifetimeContext context.Con
 	select {
 	case <-timer.C:
 		connectCancel()
+
 		return nil, xerrors.WithStackTrace(errConnTimeout)
 	case res := <-resCh:
 		// force no cancel connect context - because it will break stream
 		// context will cancel by cancel streamLifetimeContext while reconnect or stop connection
 		_ = connectCancel
+
 		return res.stream, res.err
 	}
 }
@@ -480,6 +533,7 @@ func (w *WriterReconnector) onWriterChange(writerStream *SingleStreamWriter) {
 	w.m.WithLock(func() {
 		if writerStream == nil {
 			w.sessionID = ""
+
 			return
 		}
 		w.sessionID = writerStream.SessionID
@@ -490,7 +544,7 @@ func (w *WriterReconnector) onWriterChange(writerStream *SingleStreamWriter) {
 		defer close(w.firstInitResponseProcessedChan)
 		isFirstInit = true
 
-		if w.cfg.AutoSetSeqNo {
+		if writerStream.LastSeqNumRequested {
 			w.lastSeqNo = writerStream.ReceivedLastSeqNum
 		}
 	})
@@ -561,6 +615,7 @@ func (w *WriterReconnector) createWriterStreamConfig(stream RawTopicWriterStream
 		w.needReceiveLastSeqNo(),
 		w.writerInstanceID,
 	)
+
 	return cfg
 }
 
@@ -581,6 +636,7 @@ func sendMessagesToStream(
 	if err != nil {
 		return xerrors.WithStackTrace(fmt.Errorf("ydb: failed send write request: %w", err))
 	}
+
 	return nil
 }
 
@@ -614,6 +670,7 @@ func splitMessagesByBufCodec(messages []messageWithDataContent) (res [][]message
 		}
 	}
 	res = append(res, messages[currentGroupStart:len(messages):len(messages)])
+
 	return res
 }
 
@@ -674,6 +731,7 @@ func calculateAllowedCodecs(forceCodec rawtopiccommon.Codec, encoderMap *Encoder
 		if serverCodecs.AllowedByCodecsList(forceCodec) && encoderMap.IsSupported(forceCodec) {
 			return rawtopiccommon.SupportedCodecs{forceCodec}
 		}
+
 		return nil
 	}
 
@@ -692,6 +750,7 @@ func calculateAllowedCodecs(forceCodec rawtopiccommon.Codec, encoderMap *Encoder
 	if len(res) == 0 {
 		res = nil
 	}
+
 	return res
 }
 
@@ -702,5 +761,6 @@ func createPublicCodecsFromRaw(codecs rawtopiccommon.SupportedCodecs) []topictyp
 	for i, v := range codecs {
 		res[i] = topictypes.Codec(v)
 	}
+
 	return res
 }

@@ -22,6 +22,7 @@ func Example_select() {
 	db, err := ydb.Open(ctx, "grpc://localhost:2136/local")
 	if err != nil {
 		fmt.Printf("failed connect: %v", err)
+
 		return
 	}
 	defer db.Close(ctx) // cleanup resources
@@ -51,6 +52,7 @@ func Example_select() {
 				}
 				fmt.Printf("id=%v, myStr='%s'\n", id, myStr)
 			}
+
 			return res.Err() // return finally result error for auto-retry with driver
 		},
 		table.WithIdempotent(),
@@ -60,11 +62,49 @@ func Example_select() {
 	}
 }
 
+func Example_explainQuery() {
+	ctx := context.TODO()
+	db, err := ydb.Open(ctx, "grpc://localhost:2136/local")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close(ctx) // cleanup resources
+	var (
+		plan string
+		ast  string
+	)
+	err = db.Table().Do( // Do retry operation on errors with best effort
+		ctx, // context manage exiting from Do
+		func(ctx context.Context, s table.Session) (err error) { // retry operation
+			explanation, err := s.Explain(ctx, `
+				DECLARE $id AS Optional<Uint64>;
+				DECLARE $myStr AS Optional<Text>;
+				SELECT $id AS id, $myStr AS myStr;
+			`)
+			if err != nil {
+				return err // for auto-retry with driver
+			}
+
+			plan, ast = explanation.Plan, explanation.AST
+
+			return nil
+		},
+		table.WithIdempotent(),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Plan: %s\n", plan)
+	fmt.Printf("AST: %s\n", ast)
+}
+
 func Example_createTable() {
 	ctx := context.TODO()
 	db, err := ydb.Open(ctx, "grpc://localhost:2136/local")
 	if err != nil {
 		fmt.Printf("failed connect: %v", err)
+
 		return
 	}
 	defer db.Close(ctx) // cleanup resources
@@ -99,6 +139,7 @@ func Example_bulkUpsert() {
 	db, err := ydb.Open(ctx, "grpc://localhost:2136/local")
 	if err != nil {
 		fmt.Printf("failed connect: %v", err)
+
 		return
 	}
 	defer db.Close(ctx) // cleanup resources
@@ -135,6 +176,7 @@ func Example_bulkUpsert() {
 					types.StructFieldValue("Message", types.TextValue(msg.Message)),
 				))
 			}
+
 			return s.BulkUpsert(ctx, "/local/bulk_upsert_example", types.ListValue(rows...))
 		},
 		table.WithIdempotent(),
@@ -149,6 +191,7 @@ func Example_alterTable() {
 	db, err := ydb.Open(ctx, "grpc://localhost:2136/local")
 	if err != nil {
 		fmt.Printf("failed connect: %v", err)
+
 		return
 	}
 	defer db.Close(ctx) // cleanup resources
@@ -184,6 +227,7 @@ func Example_lazyTransaction() {
 	db, err := ydb.Open(ctx, "grpc://localhost:2136/local")
 	if err != nil {
 		fmt.Printf("failed connect: %v", err)
+
 		return
 	}
 	defer db.Close(ctx)
@@ -240,6 +284,7 @@ func Example_lazyTransaction() {
 			if err != nil {
 				return err
 			}
+
 			return result.Err()
 		},
 		table.WithIdempotent(),
@@ -254,6 +299,7 @@ func Example_bulkUpsertWithCompression() {
 	db, err := ydb.Open(ctx, "grpc://localhost:2136/local")
 	if err != nil {
 		fmt.Printf("failed connect: %v", err)
+
 		return
 	}
 	defer db.Close(ctx) // cleanup resources
@@ -290,6 +336,7 @@ func Example_bulkUpsertWithCompression() {
 					types.StructFieldValue("Message", types.TextValue(msg.Message)),
 				))
 			}
+
 			return s.BulkUpsert(ctx, "/local/bulk_upsert_example", types.ListValue(rows...),
 				options.WithCallOptions(grpc.UseCompressor(gzip.Name)),
 			)
@@ -306,6 +353,7 @@ func Example_dataQueryWithCompression() {
 	db, err := ydb.Open(ctx, "grpc://localhost:2136/local")
 	if err != nil {
 		fmt.Printf("failed connect: %v", err)
+
 		return
 	}
 	defer db.Close(ctx) // cleanup resources
@@ -339,6 +387,7 @@ func Example_dataQueryWithCompression() {
 				}
 				fmt.Printf("id=%v, myStr='%s'\n", id, myStr)
 			}
+
 			return res.Err() // return finally result error for auto-retry with driver
 		},
 		table.WithIdempotent(),
@@ -353,6 +402,7 @@ func Example_scanQueryWithCompression() {
 	db, err := ydb.Open(ctx, "grpc://localhost:2136/local")
 	if err != nil {
 		fmt.Printf("failed connect: %v", err)
+
 		return
 	}
 	defer db.Close(ctx) // cleanup resources
@@ -386,6 +436,7 @@ func Example_scanQueryWithCompression() {
 				}
 				fmt.Printf("id=%v, myStr='%s'\n", id, myStr)
 			}
+
 			return res.Err() // return finally result error for auto-retry with driver
 		},
 		table.WithIdempotent(),
@@ -400,6 +451,7 @@ func Example_copyTables() {
 	db, err := ydb.Open(ctx, "grpc://localhost:2136/local")
 	if err != nil {
 		fmt.Printf("failed connect: %v", err)
+
 		return
 	}
 	defer db.Close(ctx) // cleanup resources

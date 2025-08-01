@@ -11,7 +11,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
-    #server_metrics_test.go
+    # server_metrics_test.go
 )
 
 GO_XTEST_SRCS(

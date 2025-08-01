@@ -2,6 +2,8 @@ GO_PROGRAM()
 
 LICENSE(MIT)
 
-SRCS(main.go)
+SRCS(
+    main.go
+)
 
 END()

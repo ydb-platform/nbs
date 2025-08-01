@@ -1,13 +1,11 @@
 LIBRARY()
 
 SRCS(
-    cbo_optimizer.cpp
     cbo_optimizer_new.cpp
+    cbo_hints.cpp
 )
 
-PEERDIR(
-    library/cpp/disjoint_sets
-)
+GENERATE_ENUM_SERIALIZATION(cbo_optimizer_new.h)
 
 END()
 

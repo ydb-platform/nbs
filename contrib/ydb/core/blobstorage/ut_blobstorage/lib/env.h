@@ -5,6 +5,7 @@
 #include "node_warden_mock.h"
 
 #include <contrib/ydb/core/driver_lib/version/version.h>
+#include <contrib/ydb/core/base/blobstorage_common.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -13,7 +14,7 @@ struct TEnvironmentSetup {
     static constexpr ui32 DrivesPerNode = 5;
     const TString DomainName = "Root";
     const ui32 DomainId = 1;
-    const ui64 TabletId = MakeBSControllerID(DomainId);
+    const ui64 TabletId = MakeBSControllerID();
     const ui32 GroupId = 0;
     const TString StoragePoolName = "test";
     const ui32 NumGroups = 1;
@@ -22,6 +23,10 @@ struct TEnvironmentSetup {
     TVector<TActorId> PDiskActors;
     std::set<TActorId> CommencedReplication;
     std::unordered_map<ui32, TString> Cache;
+
+    using TIcbControlKey = std::pair<ui32, TString>;  // { nodeId, name }
+
+    std::unordered_map<TIcbControlKey, TControlWrapper> IcbControls;
 
     struct TSettings {
         const ui32 NodeCount = 9;
@@ -38,6 +43,15 @@ struct TEnvironmentSetup {
         const bool SetupHive = false;
         const bool SuppressCompatibilityCheck = false;
         const TFeatureFlags FeatureFlags;
+        const NPDisk::EDeviceType DiskType = NPDisk::EDeviceType::DEVICE_TYPE_NVME;
+        const ui64 BurstThresholdNs = 0;
+        const ui32 MinHugeBlobInBytes = 0;
+        const float DiskTimeAvailableScale = 1;
+        const bool UseFakeConfigDispatcher = false;
+        const float SlowDiskThreshold = 2;
+        const float VDiskPredictedDelayMultiplier = 1;
+        const ui32 MaxNumOfSlowDisks = 2;
+        const bool UseActorSystemTimeInBSQueue = true;
     };
 
     const TSettings Settings;
@@ -55,12 +69,58 @@ struct TEnvironmentSetup {
             const auto key = std::make_pair(nodeId, pdiskId);
             TIntrusivePtr<TPDiskMockState>& state = Env.PDiskMockStates[key];
             if (!state) {
-                state.Reset(new TPDiskMockState(nodeId, pdiskId, cfg->PDiskGuid, ui64(10) << 40, cfg->ChunkSize));
+                state.Reset(new TPDiskMockState(nodeId, pdiskId, cfg->PDiskGuid, ui64(10) << 40, cfg->ChunkSize,
+                        Env.Settings.DiskType));
             }
             const TActorId& actorId = ctx.Register(CreatePDiskMockActor(state), TMailboxType::HTSwap, poolId);
             const TActorId& serviceId = MakeBlobStoragePDiskID(nodeId, pdiskId);
             ctx.ExecutorThread.ActorSystem->RegisterLocalService(serviceId, actorId);
             Env.PDiskActors.push_back(actorId);
+        }
+    };
+
+
+    class TFakeConfigDispatcher : public TActor<TFakeConfigDispatcher> {
+        std::unordered_set<TActorId> Subscribers;
+        TActorId EdgeId;
+    public:
+        TFakeConfigDispatcher()
+            : TActor<TFakeConfigDispatcher>(&TFakeConfigDispatcher::StateWork)
+        {
+        }
+
+        STFUNC(StateWork) {
+            switch (ev->GetTypeRewrite()) {
+                hFunc(NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest, Handle);
+                hFunc(NConsole::TEvConsole::TEvConfigNotificationRequest, Handle)
+                hFunc(NConsole::TEvConsole::TEvConfigNotificationResponse, Handle)
+                hFunc(NConsole::TEvConfigsDispatcher::TEvRemoveConfigSubscriptionRequest, Handle)
+            }
+        }
+
+        void Handle(NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest::TPtr& ev) {
+            auto& items = ev->Get()->ConfigItemKinds;
+            if (items.at(0) != NKikimrConsole::TConfigItem::BlobStorageConfigItem) {
+                return;
+            }
+            Subscribers.emplace(ev->Sender);
+        }
+
+        void Handle(NConsole::TEvConsole::TEvConfigNotificationRequest::TPtr& ev) {
+            EdgeId = ev->Sender;
+            for (auto& id : Subscribers) {
+                auto update = MakeHolder<NConsole::TEvConsole::TEvConfigNotificationRequest>();
+                update->Record.CopyFrom(ev->Get()->Record);
+                Send(id, update.Release());
+            }
+        }
+
+        void Handle(NConsole::TEvConsole::TEvConfigNotificationResponse::TPtr& ev) {
+            Forward(ev, EdgeId);
+        }
+
+        void Handle(NConsole::TEvConfigsDispatcher::TEvRemoveConfigSubscriptionRequest::TPtr& ev) {
+                Send(ev->Sender, MakeHolder<NConsole::TEvConsole::TEvRemoveConfigSubscriptionResponse>().Release());
         }
     };
 
@@ -134,7 +194,7 @@ struct TEnvironmentSetup {
         auto domain = TDomainsInfo::TDomain::ConstructEmptyDomain(DomainName, DomainId);
         domainsInfo->AddDomain(domain.Get());
         if (Settings.SetupHive) {
-            domainsInfo->AddHive(domain->DefaultHiveUid, MakeDefaultHiveID(domain->DefaultStateStorageGroup));
+            domainsInfo->AddHive(MakeDefaultHiveID());
         }
 
         return std::make_unique<TTestActorSystem>(Settings.NodeCount, NLog::PRI_ERROR, domainsInfo, featureFlags);
@@ -271,6 +331,7 @@ struct TEnvironmentSetup {
 //            NKikimrServices::LOCAL,
 //            NActorsServices::INTERCONNECT,
 //            NActorsServices::INTERCONNECT_SESSION,
+//            NKikimrServices::BS_VDISK_BALANCING,
         };
         for (const auto& comp : debug) {
             Runtime->SetLogPriority(comp, NLog::PRI_DEBUG);
@@ -306,6 +367,7 @@ struct TEnvironmentSetup {
                 auto config = MakeIntrusive<TNodeWardenConfig>(new TMockPDiskServiceFactory(*this));
                 config->BlobStorageConfig.MutableServiceSet()->AddAvailabilityDomains(DomainId);
                 config->VDiskReplPausedAtStart = Settings.VDiskReplPausedAtStart;
+                config->UseActorSystemTimeInBSQueue = Settings.UseActorSystemTimeInBSQueue;
                 if (Settings.ConfigPreprocessor) {
                     Settings.ConfigPreprocessor(nodeId, *config);
                 }
@@ -321,11 +383,53 @@ struct TEnvironmentSetup {
                     config->CacheAccessor = std::make_unique<TAccessor>(Cache[nodeId]);
                 }
                 config->FeatureFlags = Settings.FeatureFlags;
+
+                TAppData* appData = Runtime->GetNode(nodeId)->AppData.get();
+
+#define ADD_ICB_CONTROL(controlName, defaultVal, minVal, maxVal, currentValue) {        \
+                    TControlWrapper control(defaultVal, minVal, maxVal);                \
+                    appData->Icb->RegisterSharedControl(control, controlName);          \
+                    control = currentValue;                                             \
+                    IcbControls.insert({{nodeId, controlName}, std::move(control)});    \
+                }
+
+                if (Settings.BurstThresholdNs) {
+                    ADD_ICB_CONTROL("VDiskControls.BurstThresholdNsHDD", 200'000'000, 1, 1'000'000'000'000, Settings.BurstThresholdNs);
+                    ADD_ICB_CONTROL("VDiskControls.BurstThresholdNsSSD", 50'000'000,  1, 1'000'000'000'000, Settings.BurstThresholdNs);
+                    ADD_ICB_CONTROL("VDiskControls.BurstThresholdNsNVME", 32'000'000,  1, 1'000'000'000'000, Settings.BurstThresholdNs);
+                }
+                ADD_ICB_CONTROL("VDiskControls.DiskTimeAvailableScaleHDD", 1'000, 1, 1'000'000, std::round(Settings.DiskTimeAvailableScale * 1'000));
+                ADD_ICB_CONTROL("VDiskControls.DiskTimeAvailableScaleSSD", 1'000, 1, 1'000'000, std::round(Settings.DiskTimeAvailableScale * 1'000));
+                ADD_ICB_CONTROL("VDiskControls.DiskTimeAvailableScaleNVME", 1'000, 1, 1'000'000, std::round(Settings.DiskTimeAvailableScale * 1'000));
+
+                ADD_ICB_CONTROL("DSProxyControls.SlowDiskThreshold", 2'000, 1, 1'000'000, std::round(Settings.SlowDiskThreshold * 1'000));
+                ADD_ICB_CONTROL("DSProxyControls.SlowDiskThresholdHDD", 2'000, 1, 1'000'000, std::round(Settings.SlowDiskThreshold * 1'000));
+                ADD_ICB_CONTROL("DSProxyControls.SlowDiskThresholdSSD", 2'000, 1, 1'000'000, std::round(Settings.SlowDiskThreshold * 1'000));
+                ADD_ICB_CONTROL("DSProxyControls.PredictedDelayMultiplier", 1'000, 1, 1'000'000, std::round(Settings.VDiskPredictedDelayMultiplier * 1'000));
+                ADD_ICB_CONTROL("DSProxyControls.PredictedDelayMultiplierHDD", 1'000, 1, 1'000'000, std::round(Settings.VDiskPredictedDelayMultiplier * 1'000));
+                ADD_ICB_CONTROL("DSProxyControls.PredictedDelayMultiplierSSD", 1'000, 1, 1'000'000, std::round(Settings.VDiskPredictedDelayMultiplier * 1'000));
+                ADD_ICB_CONTROL("DSProxyControls.MaxNumOfSlowDisks", 2, 1, 2, Settings.MaxNumOfSlowDisks);
+                ADD_ICB_CONTROL("DSProxyControls.MaxNumOfSlowDisksHDD", 2, 1, 2, Settings.MaxNumOfSlowDisks);
+                ADD_ICB_CONTROL("DSProxyControls.MaxNumOfSlowDisksSSD", 2, 1, 2, Settings.MaxNumOfSlowDisks);
+                
+#undef ADD_ICB_CONTROL
+
+                {
+                    auto* type = config->BlobStorageConfig.MutableVDiskPerformanceSettings()->AddVDiskTypes();
+                    type->SetPDiskType(PDiskTypeToPDiskType(Settings.DiskType));
+                    if (Settings.MinHugeBlobInBytes) {
+                        type->SetMinHugeBlobSizeInBytes(Settings.MinHugeBlobInBytes);
+                    }
+                }
+
                 warden.reset(CreateBSNodeWarden(config));
             }
 
             const TActorId wardenId = Runtime->Register(warden.release(), nodeId);
             Runtime->RegisterService(MakeBlobStorageNodeWardenID(nodeId), wardenId);
+            if (Settings.UseFakeConfigDispatcher) {
+                Runtime->RegisterService(NConsole::MakeConfigsDispatcherID(nodeId), Runtime->Register(new TFakeConfigDispatcher(), nodeId));
+            }
         }
     }
 
@@ -337,11 +441,10 @@ struct TEnvironmentSetup {
             ui32 NumChannels = 3;
         };
         std::vector<TTabletInfo> tablets{
-            {MakeBSControllerID(DomainId), TTabletTypes::BSController, &CreateFlatBsController},
+            {MakeBSControllerID(), TTabletTypes::BSController, &CreateFlatBsController},
         };
 
-
-        for (const auto& [uid, tabletId] : Runtime->GetDomainsInfo()->HivesByHiveUid) {
+        if (const ui64 tabletId = Runtime->GetDomainsInfo()->GetHive(); tabletId != TDomainsInfo::BadTabletId) {
             tablets.push_back(TTabletInfo{tabletId, TTabletTypes::Hive, &CreateDefaultHive});
         }
 
@@ -471,7 +574,7 @@ struct TEnvironmentSetup {
         for (const auto& vslot : baseConfig.GetVSlot()) {
             const auto& l = vslot.GetVSlotId();
             vslotToDiskMap.emplace(MakeBlobStorageVDiskID(l.GetNodeId(), l.GetPDiskId(), l.GetVSlotId()),
-                TVDiskID(vslot.GetGroupId(), vslot.GetGroupGeneration(), vslot.GetFailRealmIdx(),
+                TVDiskID(TGroupId::FromProto(&vslot, &NKikimrBlobStorage::TBaseConfig_TVSlot::GetGroupId), vslot.GetGroupGeneration(), vslot.GetFailRealmIdx(),
                 vslot.GetFailDomainIdx(), vslot.GetVDiskIdx()));
         }
         for (const auto& group : baseConfig.GetGroup()) {
@@ -484,7 +587,7 @@ struct TEnvironmentSetup {
                     const auto it = vslotToDiskMap.find(MakeBlobStorageVDiskID(l.GetNodeId(), l.GetPDiskId(), l.GetVSlotId()));
                     Y_ABORT_UNLESS(it != vslotToDiskMap.end());
                     const TVDiskID& vdiskId = it->second;
-                    Y_ABORT_UNLESS(vdiskId.GroupID == groupId);
+                    Y_ABORT_UNLESS(vdiskId.GroupID.GetRawId() == groupId);
                     Y_ABORT_UNLESS(vdiskId.GroupGeneration == group.GetGroupGeneration());
                     const bool inserted = vdisks.emplace(it->second, it->first).second;
                     Y_ABORT_UNLESS(inserted);
@@ -496,7 +599,7 @@ struct TEnvironmentSetup {
                 TBlobStorageGroupInfo::TTopology topology(TBlobStorageGroupType(
                     TBlobStorageGroupType::ErasureSpeciesByName(group.GetErasureSpecies())),
                     numFailRealms, numFailDomainsPerFailRealm, numVDisksPerFailDomain);
-                TBlobStorageGroupInfo::TDynamicInfo dyn(group.GetGroupId(), group.GetGroupGeneration());
+                TBlobStorageGroupInfo::TDynamicInfo dyn(TGroupId::FromProto(&group, &NKikimrBlobStorage::TBaseConfig::TGroup::GetGroupId), group.GetGroupGeneration());
                 for (const auto& [vdiskId, vdiskActorId] : vdisks) {
                     dyn.PushBackActorId(vdiskActorId);
                 }
@@ -509,7 +612,7 @@ struct TEnvironmentSetup {
     TActorId CreateQueueActor(const TVDiskID& vdiskId, NKikimrBlobStorage::EVDiskQueueId queueId, ui32 index) {
         TBSProxyContextPtr bspctx = MakeIntrusive<TBSProxyContext>(MakeIntrusive<::NMonitoring::TDynamicCounters>());
         auto flowRecord = MakeIntrusive<NBackpressure::TFlowRecord>();
-        auto groupInfo = GetGroupInfo(vdiskId.GroupID);
+        auto groupInfo = GetGroupInfo(vdiskId.GroupID.GetRawId());
         std::unique_ptr<IActor> actor(CreateVDiskBackpressureClient(groupInfo, vdiskId, queueId,
             MakeIntrusive<::NMonitoring::TDynamicCounters>(), bspctx,
             NBackpressure::TQueueClientId(NBackpressure::EQueueClientType::DSProxy, index), TStringBuilder()
@@ -625,6 +728,16 @@ struct TEnvironmentSetup {
                 << NKikimrProto::EReplyStatus_Name(record.GetStatus()) << " ***" << Endl;
             UNIT_ASSERT_VALUES_EQUAL(record.GetStatus(), NKikimrProto::OK);
         });
+    }
+
+    void PutBlob(const ui32 groupId, const TLogoBlobID& blobId, const TString& part) {
+        TActorId edge = Runtime->AllocateEdgeActor(Settings.ControllerNodeId);
+        Runtime->WrapInActorContext(edge, [&] {
+            SendToBSProxy(edge, groupId, new TEvBlobStorage::TEvPut(blobId, part, TInstant::Max(),
+                NKikimrBlobStorage::TabletLog, TEvBlobStorage::TEvPut::TacticMaxThroughput));
+        });
+        auto res = WaitForEdgeActorEvent<TEvBlobStorage::TEvPutResult>(edge);
+        Y_ABORT_UNLESS(res->Get()->Status == NKikimrProto::OK);
     }
 
     void CommenceReplication() {
@@ -815,6 +928,46 @@ struct TEnvironmentSetup {
     template<typename TResult, typename TQuery, typename... TArgs>
     std::unique_ptr<TResult> SyncQuery(const TActorId& actorId, TArgs&&... args) {
         return SyncQueryFactory<TResult>(actorId, [&] { return std::make_unique<TQuery>(args...); });
+    }
+
+    ui64 AggregateVDiskCounters(TString storagePool, ui32 nodesCount, ui32 groupSize, ui32 groupId,
+            const std::vector<ui32>& pdiskLayout, TString subsystem, TString counter, bool derivative = false) {
+        ui64 ctr = 0;
+
+        for (ui32 nodeId = 1; nodeId <= nodesCount; ++nodeId) {
+            auto* appData = Runtime->GetNode(nodeId)->AppData.get();
+            for (ui32 i = 0; i < groupSize; ++i) {
+                TStringStream ss;
+                ss << LeftPad(i, 2, '0');
+                TString orderNumber = ss.Str();
+                ss.Clear();
+                ss << LeftPad(pdiskLayout[i], 9, '0');
+                TString pdisk = ss.Str();
+                ctr += GetServiceCounters(appData->Counters, "vdisks")->
+                        GetSubgroup("storagePool", storagePool)->
+                        GetSubgroup("group", std::to_string(groupId))->
+                        GetSubgroup("orderNumber", orderNumber)->
+                        GetSubgroup("pdisk", pdisk)->
+                        GetSubgroup("media", "rot")->
+                        GetSubgroup("subsystem", subsystem)->
+                        GetCounter(counter, derivative)->Val();
+            }
+        }
+        return ctr;
+    };
+
+    void SetIcbControl(ui32 nodeId, TString controlName, ui64 value) {
+        if (nodeId == 0) {
+            for (nodeId = 1; nodeId <= Settings.NodeCount; ++nodeId) {
+                auto it = IcbControls.find({nodeId, controlName});
+                Y_ABORT_UNLESS(it != IcbControls.end());
+                it->second = value;
+            }
+        } else {
+            auto it = IcbControls.find({nodeId, controlName});
+            Y_ABORT_UNLESS(it != IcbControls.end());
+            it->second = value;
+        }
     }
 
 };

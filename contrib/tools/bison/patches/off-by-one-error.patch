@@ -1,0 +1,34 @@
+commit 65d0a60cc161e08d0a46f9c182a1dd3d41df63d2 (HEAD -> yamaker-bison)
+author: thegeorg
+date: 2024-06-16T00:55:52+03:00
+
+    Put contrib/tools/bison under yamaker
+
+--- contrib/tools/bison/src/symtab.c	(f4e9156409a06687c6a75ca842e98b674ae87b7f)
++++ contrib/tools/bison/src/symtab.c	(65d0a60cc161e08d0a46f9c182a1dd3d41df63d2)
+@@ -173,7 +173,7 @@ symbol_print (symbol const *s, FILE *f)
+ static bool
+ is_identifier (uniqstr s)
+ {
++  static char const alphanum[26 + 26 + 1 + 10 + 1] =
+-  static char const alphanum[26 + 26 + 1 + 10] =
+     "abcdefghijklmnopqrstuvwxyz"
+     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+     "_"
+commit 65d0a60cc161e08d0a46f9c182a1dd3d41df63d2 (HEAD -> yamaker-bison)
+author: thegeorg
+date: 2024-06-16T00:55:52+03:00
+
+    Put contrib/tools/bison under yamaker
+
+--- contrib/tools/bison/src/parse-gram.y	(f4e9156409a06687c6a75ca842e98b674ae87b7f)
++++ contrib/tools/bison/src/parse-gram.y	(65d0a60cc161e08d0a46f9c182a1dd3d41df63d2)
+@@ -778,7 +778,7 @@ translate_code_braceless (char *code, location loc)
+ static void
+ add_param (param_type type, char *decl, location loc)
+ {
++  static char const alphanum[26 + 26 + 1 + 10 + 1] =
+-  static char const alphanum[26 + 26 + 1 + 10] =
+     "abcdefghijklmnopqrstuvwxyz"
+     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+     "_"

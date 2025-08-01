@@ -22,6 +22,9 @@ var (
 		errors.New("ydb: first connection attempt not finished"),
 	))
 	errReaderClosed                 = xerrors.Wrap(errors.New("ydb: reader closed"))
+	errUnexpectedEmptyConsumername  = xerrors.Wrap(errors.New("ydb: create ydb reader with empty consumer name. Set one of: consumer name or option WithReaderWithoutConsumer")) //nolint:lll
+	errSetConsumerAndNoConsumer     = xerrors.Wrap(errors.New("ydb: reader has non empty consumer name and set option WithReaderWithoutConsumer. Only one of them must be set")) //nolint:lll
+	errCantCommitWithoutConsumer    = xerrors.Wrap(errors.New("ydb: reader can't commit messages without consumer"))
 	errCommitSessionFromOtherReader = xerrors.Wrap(errors.New("ydb: commit with session from other reader"))
 )
 
@@ -73,6 +76,7 @@ type readExplicitMessagesCount int
 func (count readExplicitMessagesCount) Apply(options ReadMessageBatchOptions) ReadMessageBatchOptions {
 	options.MinCount = int(count)
 	options.MaxCount = int(count)
+
 	return options
 }
 
@@ -81,8 +85,13 @@ func NewReader(
 	consumer string,
 	readSelectors []PublicReadSelector,
 	opts ...PublicReaderOption,
-) Reader {
+) (Reader, error) {
 	cfg := convertNewParamsToStreamConfig(consumer, readSelectors, opts...)
+
+	if err := cfg.Validate(); err != nil {
+		return Reader{}, err
+	}
+
 	readerID := nextReaderID()
 
 	readerConnector := func(ctx context.Context) (batchedStreamReader, error) {
@@ -101,14 +110,13 @@ func NewReader(
 			cfg.OperationTimeout(),
 			cfg.RetrySettings,
 			cfg.Trace,
-			cfg.BaseContext,
 		),
 		defaultBatchConfig: cfg.DefaultBatchConfig,
 		tracer:             cfg.Trace,
 		readerID:           readerID,
 	}
 
-	return res
+	return res, nil
 }
 
 func (r *Reader) WaitInit(ctx context.Context) error {
@@ -226,6 +234,20 @@ type ReaderConfig struct {
 	topicStreamReaderConfig
 }
 
+func (c *ReaderConfig) Validate() error {
+	if c.Consumer != "" && c.ReadWithoutConsumer {
+		return xerrors.WithStackTrace(errSetConsumerAndNoConsumer)
+	}
+	if c.Consumer == "" && !c.ReadWithoutConsumer {
+		return xerrors.WithStackTrace(errUnexpectedEmptyConsumername)
+	}
+	if c.ReadWithoutConsumer && c.CommitMode != CommitModeNone {
+		return xerrors.WithStackTrace(errCantCommitWithoutConsumer)
+	}
+
+	return nil
+}
+
 type PublicReaderOption func(cfg *ReaderConfig)
 
 func WithCredentials(cred credentials.Credentials) PublicReaderOption {
@@ -257,9 +279,9 @@ func convertNewParamsToStreamConfig(
 		cfg.ReadSelectors[i] = readSelectors[i].Clone()
 	}
 
-	for _, f := range opts {
-		if f != nil {
-			f(&cfg)
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
 		}
 	}
 
@@ -276,5 +298,6 @@ type PublicReadSelector struct {
 // Clone create deep clone of the selector
 func (s PublicReadSelector) Clone() *PublicReadSelector { //nolint:gocritic
 	s.Partitions = clone.Int64Slice(s.Partitions)
+
 	return &s
 }

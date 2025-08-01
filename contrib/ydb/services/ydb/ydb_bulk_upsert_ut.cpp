@@ -89,6 +89,75 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         UNIT_ASSERT_VALUES_EQUAL(count, BATCH_COUNT * BATCH_SIZE);
     }
 
+    Y_UNIT_TEST(ValidRetry) {
+        TKikimrWithGrpcAndRootSchema server;
+        ui16 grpc = server.GetPort();
+
+        TString location = TStringBuilder() << "localhost:" << grpc;
+
+        auto connection = NYdb::TDriver(TDriverConfig().SetEndpoint(location));
+
+        NYdb::NTable::TTableClient client(connection);
+        auto session = client.GetSession().ExtractValueSync().GetSession();
+
+        {
+            auto tableBuilder = client.GetTableBuilder();
+            tableBuilder
+                .AddNullableColumn("Shard", EPrimitiveType::Uint64)
+                .AddNullableColumn("Message", EPrimitiveType::Utf8);
+            tableBuilder.SetPrimaryKeyColumns({"Shard"});
+            NYdb::NTable::TCreateTableSettings tableSettings;
+            tableSettings.PartitioningPolicy(NYdb::NTable::TPartitioningPolicy().UniformPartitions(32));
+            auto result = session.CreateTable("/Root/Logs", tableBuilder.Build(), tableSettings).ExtractValueSync();
+
+            UNIT_ASSERT_EQUAL(result.GetStatus(), EStatus::SUCCESS);
+        }
+
+        TValueBuilder rows;
+        rows.BeginList();
+        rows.AddListItem()
+            .BeginStruct()
+                .AddMember("Shard").Uint64(1)
+                .AddMember("Message").Utf8("message")
+            .EndStruct();
+        rows.EndList();
+
+        auto v1 = rows.Build();
+        auto v2 = v1;
+
+        ui32 limit = 100;
+        while (true && --limit) {
+            NYdb::NTable::TBulkUpsertSettings upsertSettings;
+            upsertSettings.ClientTimeout(TDuration::MicroSeconds(10));
+            auto res = client.BulkUpsert("/Root/Logs", std::move(v2), upsertSettings).GetValueSync();
+
+            Cerr << res.GetStatus() << Endl;
+            if (res.GetStatus() == EStatus::CLIENT_DEADLINE_EXCEEDED)
+                break;
+        }
+
+        UNIT_ASSERT_C(limit, "Unable to get client error response");
+
+        {
+            auto res = client.BulkUpsert("/Root/Logs", std::move(v1)).GetValueSync();
+            UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SUCCESS);
+        }
+
+        {
+            auto res = session.ExecuteDataQuery(
+                "SELECT Message as col FROM `/Root/Logs`;",
+                NYdb::NTable::TTxControl::BeginTx().CommitTx()
+            ).ExtractValueSync();
+
+            UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SUCCESS);
+
+            auto rs = NYdb::TResultSetParser(res.GetResultSet(0));
+            UNIT_ASSERT(rs.TryNextRow());
+            auto msg = rs.ColumnParser("col").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(msg, "message");
+        }
+    }
+
     void TestNull(NYdb::TDriver& connection, EPrimitiveType valueType, bool inKey) {
         TString tableName = Sprintf("/Root/TestNulls_0x%04x", valueType);
 
@@ -408,7 +477,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
 
             auto res = client.BulkUpsert("/Root/Logs", rows.Build()).GetValueSync();
             Cerr << res.GetIssues().ToString() << Endl;
-            UNIT_ASSERT_STRING_CONTAINS(res.GetIssues().ToString(), "Type mismatch for column App: expected Utf8, got Uint64");
+            UNIT_ASSERT_STRING_CONTAINS(res.GetIssues().ToString(), "Type mismatch, got type Uint64 for column App, but expected Utf8");
             UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SCHEME_ERROR);
         }
 
@@ -428,7 +497,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
 
             auto res = client.BulkUpsert("/Root/Logs", rows.Build()).GetValueSync();
             Cerr << res.GetIssues().ToString() << Endl;
-            UNIT_ASSERT_STRING_CONTAINS(res.GetIssues().ToString(), "Type mismatch for column Message: expected Utf8, got Uint64");
+            UNIT_ASSERT_STRING_CONTAINS(res.GetIssues().ToString(), "Type mismatch, got type Uint64 for column Message, but expected Utf8");
             UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SCHEME_ERROR);
         }
 
@@ -508,6 +577,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
                     .AddNullableColumn("Column_JsonDocument", EPrimitiveType::JsonDocument)
                     .AddNullableColumn("Column_DyNumber", EPrimitiveType::DyNumber)
                     .AddNullableColumn("Column_Decimal",  TDecimalType(22, 9))
+                    .AddNullableColumn("Column_Decimal35",  TDecimalType(35, 10))
 // These types are not currently supported for table columns
 //                    .AddNullableColumn("Column_Int8",  EPrimitiveType::Int8)
 //                    .AddNullableColumn("Column_Int16",  EPrimitiveType::Int16)
@@ -521,8 +591,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
             auto result = session.CreateTable("/Root/Types", tableBuilder.Build()).ExtractValueSync();
 
             UNIT_ASSERT_EQUAL(result.IsTransportError(), false);
-            Cerr << result.GetIssues().ToString() << Endl;
-            UNIT_ASSERT_EQUAL(result.GetStatus(), EStatus::SUCCESS);
+            UNIT_ASSERT_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
         }
 
         {
@@ -557,13 +626,13 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
                         .AddMember("Column_JsonDocument").JsonDocument("{}")
                         .AddMember("Column_DyNumber").DyNumber("123")
 //                        .AddMember("Column_Uuid").Uuid("")
-                        .AddMember("Column_Decimal").Decimal(TDecimalValue("99.95"))
+                        .AddMember("Column_Decimal").Decimal(TDecimalValue("99.95", 22, 9))
+                        .AddMember("Column_Decimal35").Decimal(TDecimalValue("555555555555555.95", 35, 10))
                     .EndStruct();
             rows.EndList();
 
             auto res = client.BulkUpsert("/Root/Types", rows.Build()).GetValueSync();
-            Cerr << res.GetIssues().ToString() << Endl;
-            UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SUCCESS);
+            UNIT_ASSERT_EQUAL_C(res.GetStatus(), EStatus::SUCCESS, res.GetIssues().ToString());
         }
 
         // With Optionals
@@ -599,13 +668,13 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
                         .AddMember("Column_JsonDocument").OptionalJsonDocument("{}")
                         .AddMember("Column_DyNumber").OptionalDyNumber("42")
 //                        .AddMember("Column_Uuid").OptionalUuid("")
-                        .AddMember("Column_Decimal").Decimal(TDecimalValue("99.95"))
+                        .AddMember("Column_Decimal").Decimal(TDecimalValue("99.95", 22, 9))
+                        .AddMember("Column_Decimal35").Decimal(TDecimalValue("555555555555555.95", 35, 10))
                     .EndStruct();
             rows.EndList();
 
             auto res = client.BulkUpsert("/Root/Types", rows.Build()).GetValueSync();
-            Cerr << res.GetIssues().ToString() << Endl;
-            UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SUCCESS);
+            UNIT_ASSERT_EQUAL_C(res.GetStatus(), EStatus::SUCCESS, res.GetIssues().ToString());
         }
     }
 
@@ -730,6 +799,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
             tableBuilder
                     .AddNullableColumn("Key", EPrimitiveType::Uint32)
                     .AddNullableColumn("Value_Decimal",     TDecimalType(22, 9))
+                    .AddNullableColumn("Value_Decimal35",     TDecimalType(35, 10))
                     .AddNullableColumn("Value_Date",        EPrimitiveType::Date)
                     .AddNullableColumn("Value_DateTime",    EPrimitiveType::Datetime)
                     .AddNullableColumn("Value_Timestamp",   EPrimitiveType::Timestamp)
@@ -751,7 +821,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
 
         {
             TString table = "/Root/TestInvalidData";
-            TDecimalValue val("0");
+            TDecimalValue val("0", 22, 9);
             val.Low_ = 0;
             val.Hi_ =  11000000000000000000ULL;
             TValueBuilder rows;
@@ -892,10 +962,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         for (ui32 i = 0; i < 256; ++i) {
             {
                 auto res = TestUpsertRow(client, "/Root/ui8", i, 42);
-                if (i <= 127)
-                    UNIT_ASSERT_VALUES_EQUAL(res.GetStatus(), EStatus::SUCCESS);
-                else
-                    UNIT_ASSERT_VALUES_EQUAL(res.GetStatus(), EStatus::BAD_REQUEST);
+                UNIT_ASSERT_VALUES_EQUAL(res.GetStatus(), EStatus::SUCCESS);
             }
 
             {

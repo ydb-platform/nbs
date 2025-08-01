@@ -1,23 +1,26 @@
-YQL_UDF_CONTRIB(topfreq_udf)
+IF (YQL_PACKAGED)
+    PACKAGE()
 
-YQL_ABI_VERSION(
-    2
-    28
-    0
-)
+    FROM_SANDBOX(FILE 6529693064 OUT_NOAUTO libtopfreq_udf.so)
 
-SRCS(
-    topfreq_udf.cpp
-)
-
-PEERDIR(
-    contrib/ydb/library/yql/udfs/common/topfreq/static
-)
-
-END()
+    END()
+ELSE()
+    YQL_UDF_CONTRIB(topfreq_udf)
+    YQL_ABI_VERSION(
+        2
+        28
+        0
+    )
+    SRCS(
+        topfreq_udf.cpp
+    )
+    PEERDIR(
+        contrib/ydb/library/yql/udfs/common/topfreq/static
+    )
+    END()
+ENDIF()
 
 RECURSE_FOR_TESTS(
     test
     ut
 )
-

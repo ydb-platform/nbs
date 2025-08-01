@@ -1,3 +1,5 @@
+#include "yql_dq_exectransformer.h"
+
 #include <contrib/ydb/library/yql/providers/dq/provider/yql_dq_datasource.h>
 #include <contrib/ydb/library/yql/providers/dq/provider/yql_dq_state.h>
 
@@ -46,6 +48,7 @@
 #include <library/cpp/yson/node/node_io.h>
 #include <library/cpp/svnversion/svnversion.h>
 #include <library/cpp/digest/md5/md5.h>
+#include <library/cpp/threading/future/future.h>
 
 #include <util/system/env.h>
 #include <util/generic/size_literals.h>
@@ -53,6 +56,7 @@
 #include <util/string/builder.h>
 
 #include <memory>
+#include <vector>
 
 namespace NYql {
 
@@ -122,9 +126,9 @@ public:
             ? CreateDeterministicRandomProvider(1)
             : State->RandomProvider;
 
-        TScopedAlloc alloc(
-            __LOCATION__, 
-            NKikimr::TAlignedPagePoolCounters(), 
+        auto alloc = std::make_shared<NKikimr::NMiniKQL::TScopedAlloc>(
+            __LOCATION__,
+            NKikimr::TAlignedPagePoolCounters(),
             State->FunctionRegistry->SupportsSizedAllocators(),
             false);
         NDq::TDqTaskRunnerContext executionContext;
@@ -153,6 +157,8 @@ public:
         }
 
         TVector<NDq::TDqSerializedBatch> rows;
+        ui64 totalSize = 0;
+        ui64 totalRows = 0;
         {
             auto guard = runner->BindAllocator(State->Settings->MemoryLimit.Get().GetOrElse(0));
             YQL_CLOG(DEBUG, ProviderDq) << " NDq::ERunStatus " << runner->Run();
@@ -162,33 +168,39 @@ public:
                 if (!fillSettings.Discard) {
                     NDq::TDqSerializedBatch data;
                     while (runner->GetOutputChannel(0)->Pop(data)) {
+                        totalSize += data.Size();
+                        totalRows += data.RowCount();
                         rows.push_back(std::move(data));
+                        if (!fillSettings.Discard) {
+                            if (fillSettings.AllResultsBytesLimit && totalSize >= *fillSettings.AllResultsBytesLimit) {
+                                result.Truncated = true;
+                                break;
+                            }
+                            if (fillSettings.RowsLimitPerWrite && totalRows >= *fillSettings.RowsLimitPerWrite) {
+                                result.Truncated = true;
+                                break;
+                            }
+                        }
+
                         data = {};
                     }
                 }
-                if (status == NDq::ERunStatus::Finished) {
+                if (status == NDq::ERunStatus::Finished || result.Truncated) {
                     break;
-                }
-                if (!fillSettings.Discard) {
-                    if (fillSettings.AllResultsBytesLimit && runner->GetOutputChannel(0)->GetPopStats().Bytes >= *fillSettings.AllResultsBytesLimit) {
-                        result.Truncated = true;
-                        break;
-                    }
-                    if (fillSettings.RowsLimitPerWrite && runner->GetOutputChannel(0)->GetPopStats().Rows >= *fillSettings.RowsLimitPerWrite) {
-                        result.Truncated = true;
-                        break;
-                    }
                 }
             }
 
-            YQL_ENSURE(status == NDq::ERunStatus::Finished || status == NDq::ERunStatus::PendingOutput);
+            YQL_ENSURE(status == NDq::ERunStatus::Finished || status == NDq::ERunStatus::PendingOutput || result.Truncated);
         }
 
         auto serializedResultType = GetSerializedResultType(lambda);
         NYql::NDqs::TProtoBuilder protoBuilder(serializedResultType, columns);
 
-        result.Data = protoBuilder.BuildYson(std::move(rows));
+        bool ysonTruncated = false;
+        result.Data = protoBuilder.BuildYson(std::move(rows), fillSettings.AllResultsBytesLimit.GetOrElse(Max<ui64>()),
+            fillSettings.RowsLimitPerWrite.GetOrElse(Max<ui64>()), &ysonTruncated);
 
+        result.Truncated = result.Truncated || ysonTruncated;
         AddCounter("LocalRun", TInstant::Now() - t);
 
         FlushStatisticsToState();
@@ -256,37 +268,28 @@ public:
     TDqsPipelineConfigurator(const TDqStatePtr& state, const THashMap<TString, TString>& providerParams)
         : State_(state)
         , ProviderParams_(providerParams)
-    {
-        for (const auto& ds: State_->TypeCtx->DataSources) {
-            if (const auto dq = ds->GetDqIntegration()) {
-                UniqIntegrations_.emplace(dq);
-            }
-        }
-        for (const auto& ds: State_->TypeCtx->DataSinks) {
-            if (const auto dq = ds->GetDqIntegration()) {
-                UniqIntegrations_.emplace(dq);
-            }
-        }
-    }
+        , UniqIntegrations_(GetUniqueIntegrations(*State_->TypeCtx))
+    {}
+
 private:
     void AfterCreate(TTransformationPipeline*) const final {}
 
     void AfterTypeAnnotation(TTransformationPipeline* pipeline) const final {
         // First truncate graph by calculated precomputes
-        pipeline->Add(NDqs::CreateDqsReplacePrecomputesTransformer(*pipeline->GetTypeAnnotationContext(), State_->FunctionRegistry), "ReplacePrecomputes");
+        pipeline->Add(NDqs::CreateDqsReplacePrecomputesTransformer(*pipeline->GetTypeAnnotationContext()), "ReplacePrecomputes");
 
         // Then apply provider specific transformers on truncated graph
         std::for_each(UniqIntegrations_.cbegin(), UniqIntegrations_.cend(), [&](const auto dqInt) {
             dqInt->ConfigurePeepholePipeline(true, ProviderParams_, pipeline);
         });
 
-        if (State_->Settings->UseBlockReader.Get().GetOrElse(false)) {
-            pipeline->Add(NDqs::CreateDqsRewritePhyBlockReadOnDqIntegrationTransformer(*pipeline->GetTypeAnnotationContext()), "ReplaceWideReadsWithBlock");
-        }
         TTypeAnnotationContext& typesCtx = *pipeline->GetTypeAnnotationContext();
+        if (State_->Settings->UseBlockReader.Get().GetOrElse(typesCtx.BlockEngineMode != EBlockEngineMode::Disable)) {
+            pipeline->Add(NDqs::CreateDqsRewritePhyBlockReadOnDqIntegrationTransformer(typesCtx), "ReplaceWideReadsWithBlock");
+        }
         NDq::EChannelMode mode = GetConfiguredChannelMode(State_, typesCtx);
         pipeline->Add(
-            NDq::CreateDqBuildPhyStagesTransformer(!State_->Settings->SplitStageOnDqReplicate.Get().GetOrElse(true), typesCtx, mode),
+            NDq::CreateDqBuildPhyStagesTransformer(!State_->Settings->SplitStageOnDqReplicate.Get().GetOrElse(TDqSettings::TDefault::SplitStageOnDqReplicate), typesCtx, mode),
             "BuildPhy");
         pipeline->Add(NDqs::CreateDqsRewritePhyCallablesTransformer(*pipeline->GetTypeAnnotationContext()), "RewritePhyCallables");
     }
@@ -303,7 +306,7 @@ private:
     std::unordered_set<IDqIntegration*> UniqIntegrations_;
 };
 
-TExprNode::TPtr DqMarkBlockStage(const TDqPhyStage& stage, TExprContext& ctx) {
+TExprNode::TPtr DqMarkBlockStage(const TDqStatePtr& state, const TPublicIds::TPtr& publicIds, const TDqPhyStage& stage, TExprContext& ctx) {
     using NDq::TDqStageSettings;
     TDqStageSettings settings = NDq::TDqStageSettings::Parse(stage);
     if (settings.BlockStatus.Defined()) {
@@ -357,7 +360,20 @@ TExprNode::TPtr DqMarkBlockStage(const TDqPhyStage& stage, TExprContext& ctx) {
         return true;
     });
 
-    YQL_CLOG(INFO, CoreDq) << "Setting block status for stage #" << settings.LogicalId << " = " << ToString(blockStatus);
+    auto publicId = publicIds->Stage2publicId.find(settings.LogicalId);
+    TString publicIdMsg;
+    if (publicId != publicIds->Stage2publicId.end()) {
+        publicIdMsg = TStringBuilder() << " (public id #" << publicId->second << ")";
+        auto p = TOperationProgress(TString(DqProviderName), publicId->second, TOperationProgress::EState::InProgress);
+        switch (blockStatus) {
+        case TDqStageSettings::EBlockStatus::None: p.BlockStatus = TOperationProgress::EOpBlockStatus::None; break;
+        case TDqStageSettings::EBlockStatus::Partial: p.BlockStatus = TOperationProgress::EOpBlockStatus::Partial; break;
+        case TDqStageSettings::EBlockStatus::Full: p.BlockStatus = TOperationProgress::EOpBlockStatus::Full; break;
+        }
+        state->ProgressWriter(p);
+    }
+
+    YQL_CLOG(INFO, CoreDq) << "Setting block status for stage #" << settings.LogicalId << publicIdMsg << " to " << ToString(blockStatus);
     return Build<TDqPhyStage>(ctx, stage.Pos())
         .InitFrom(stage)
         .Settings(settings.SetBlockStatus(blockStatus).BuildNode(ctx, stage.Settings().Pos()))
@@ -366,8 +382,9 @@ TExprNode::TPtr DqMarkBlockStage(const TDqPhyStage& stage, TExprContext& ctx) {
 
 struct TDqsFinalPipelineConfigurator : public IPipelineConfigurator {
 public:
-    explicit TDqsFinalPipelineConfigurator(const TDqStatePtr& state)
+    explicit TDqsFinalPipelineConfigurator(const TDqStatePtr& state, const TPublicIds::TPtr& publicIds)
         : State_(state)
+        , PublicIds_(publicIds)
     {
     }
 private:
@@ -382,13 +399,13 @@ private:
             "DqBuildWideBlockChannels",
             TIssuesIds::DEFAULT_ERROR);
         pipeline->Add(CreateFunctorTransformer(
-            [typeCtx](const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx) {
+            [typeCtx, state = State_, publicIds = PublicIds_](const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx) {
                 TOptimizeExprSettings optSettings{typeCtx.Get()};
                 optSettings.VisitLambdas = false;
-                return OptimizeExpr(input, output, [](const TExprNode::TPtr& node, TExprContext& ctx) -> TExprNode::TPtr {
+                return OptimizeExpr(input, output, [state, publicIds](const TExprNode::TPtr& node, TExprContext& ctx) -> TExprNode::TPtr {
                     TExprBase expr{node};
                     if (auto stage = expr.Maybe<TDqPhyStage>()) {
-                        return DqMarkBlockStage(stage.Cast(), ctx);
+                        return DqMarkBlockStage(state, publicIds, stage.Cast(), ctx);
                     }
                     return node;
                 }, ctx, optSettings);
@@ -397,15 +414,29 @@ private:
         "DqMarkBlockStages",
         TIssuesIds::DEFAULT_ERROR);
     }
-    TDqStatePtr State_;
+    const TDqStatePtr State_;
+    const TPublicIds::TPtr PublicIds_;
+};
+
+class TSimpleSkiffConverter : public ISkiffConverter {
+public:
+    TString ConvertNodeToSkiff(const TDqStatePtr /*state*/, const IDataProvider::TFillSettings& /*fillSettings*/, const NYT::TNode& /*rowSpec*/, const NYT::TNode& /*item*/) override {
+        Y_ABORT("not implemented");
+    }
+
+    TYtType ParseYTType(const TExprNode& /*node*/, TExprContext& /*ctx*/, const TMaybe<NYql::TColumnOrder>& /*columns*/) override {
+        Y_ABORT("not implemented");
+    }
 };
 
 class TDqExecTransformer: public TExecTransformerBase, TCounters
 {
 public:
-    TDqExecTransformer(const TDqStatePtr& state)
+    TDqExecTransformer(const TDqStatePtr& state, const ISkiffConverterPtr& skiffConverter)
         : State(state)
-        , ExecState(MakeIntrusive<TExecState>())
+        , SkiffConverter(skiffConverter)
+        , ExecPrecomputeState_(MakeIntrusive<TExecPrecomputeState>())
+        , UploadCache_(std::make_shared<TUploadCache>())
     {
         AddHandler({TStringBuf("Result")}, RequireNone(), Hndl(&TDqExecTransformer::HandleResult));
         AddHandler({TStringBuf("Pull")}, RequireNone(), Hndl(&TDqExecTransformer::HandlePull));
@@ -414,15 +445,14 @@ public:
     }
 
     void Rewind() override {
-        ExecState = MakeIntrusive<TExecState>();
-        FileLinks.clear();
-        ModulesMapping.clear();
+        ExecPrecomputeState_ = MakeIntrusive<TExecPrecomputeState>();
+        UploadCache_ = std::make_shared<TUploadCache>();
 
         TExecTransformerBase::Rewind();
     }
 
 private:
-    struct TExecState : public TThrRefBase {
+    struct TExecPrecomputeState : public TThrRefBase {
         TAdaptiveLock Lock;
 
         struct TItem : public TIntrusiveListItem<TItem> {
@@ -430,13 +460,12 @@ private:
             TAsyncTransformCallback Callback;
         };
 
-        using TQueueType = TIntrusiveListWithAutoDelete<TExecState::TItem, TDelete>;
+        using TQueueType = TIntrusiveListWithAutoDelete<TExecPrecomputeState::TItem, TDelete>;
         TQueueType Completed;
-        NThreading::TPromise<void> Promise = NThreading::NewPromise();
-        bool HasResult = false;
+        TNodeMap<NThreading::TFuture<void>> PrecomputeFutures; // Precompute node -> future
     };
 
-    using TExecStatePtr = TIntrusivePtr<TExecState>;
+    using TExecPrecomputeStatePtr = TIntrusivePtr<TExecPrecomputeState>;
 
     void GetResultType(TString* type, TVector<TString>* columns, const TExprNode& resOrPull, const TExprNode& resOrPullInput) const
     {
@@ -464,16 +493,16 @@ private:
         if (path.StartsWith(NKikimr::NMiniKQL::StaticModulePrefix)
             || !State->Settings->EnableStrip.Get() || !State->Settings->EnableStrip.Get().GetOrElse(false))
         {
-            ModulesMapping.emplace(objectId, path);
+            UploadCache_->ModulesMapping.emplace(objectId, path);
             return std::make_tuple(path, objectId);
         }
 
-        TFileLinkPtr& fileLink = FileLinks[objectId];
+        TFileLinkPtr& fileLink = UploadCache_->FileLinks[objectId];
         if (!fileLink) {
             fileLink = State->FileStorage->PutFileStripped(path, md5);
         }
 
-        ModulesMapping.emplace(objectId  + DqStrippedSuffied, path);
+        UploadCache_->ModulesMapping.emplace(objectId  + DqStrippedSuffied, path);
 
         return std::make_tuple(fileLink->GetPath(), objectId + DqStrippedSuffied);
     }
@@ -681,7 +710,7 @@ private:
             sizeSum += f.GetSize();
         }
 
-        i64 dataLimit = static_cast<i64>(4_GB);
+        i64 dataLimit = static_cast<i64>(State->Settings->_MaxAttachmentsSize.Get().GetOrElse(TDqSettings::TDefault::MaxAttachmentsSize));
         if (sizeSum > dataLimit) {
             YQL_CLOG(WARN, ProviderDq) << "Too much data: " << sizeSum << " > " << dataLimit;
             fallbackFlag = true;
@@ -731,9 +760,10 @@ private:
 
             TVector<TExprBase> fakeReads;
             auto paramsType = NDq::CollectParameters(programLambda, ctx);
+            NDq::TSpillingSettings spillingSettings{State->Settings->GetEnabledSpillingNodes()};
             *lambda = NDq::BuildProgram(
                 programLambda, *paramsType, compiler, typeEnv, *State->FunctionRegistry,
-                ctx, fakeReads);
+                ctx, fakeReads, spillingSettings);
         }
 
         auto block = MeasureBlock("RuntimeNodeVisitor");
@@ -838,9 +868,10 @@ private:
         }
 
         TInstant startTime = TInstant::Now();
+        ui64 executionTimeout = State->Settings->_LiteralTimeout.Get().GetOrElse(TDqSettings::TDefault::LiteralTimeout);
 
         try {
-            auto result = TMaybeNode<TResult>(input).Cast();
+            auto result = TResult(input);
 
             THashMap<TString, TString> resSettings;
             for (auto s: result.Settings()) {
@@ -849,19 +880,9 @@ private:
                 }
             }
 
-            auto precomputes = FindIndependentPrecomputes(result.Input().Ptr());
-            if (!precomputes.empty()) {
-                auto status = HandlePrecomputes(precomputes, ctx, resSettings);
-                if (status.Level != TStatus::Ok) {
-                    if (status == TStatus::Async) {
-                        return std::make_pair(status, ExecState->Promise.GetFuture().Apply([execState = ExecState](const TFuture<void>& completedFuture) {
-                            completedFuture.GetValue();
-                            return HandlePrecomputeAsyncComplete(execState);
-                        }));
-                    } else {
-                        return SyncStatus(status);
-                    }
-                }
+            auto statusPair = HandlePrecomputes(result, resSettings, ctx, executionTimeout);
+            if (statusPair.first.Level != TStatus::Ok) {
+                return statusPair;
             }
 
             IDataProvider::TFillSettings fillSettings = NCommon::GetFillSettings(result.Ref());
@@ -870,11 +891,12 @@ private:
                 settings->_AllResultsBytesLimit = 64_MB;
             }
 
+            TPublicIds::TPtr publicIds = std::make_shared<TPublicIds>();
             int level;
             TExprNode::TPtr resInput = WrapLambdaBody(level, result.Input().Ptr(), ctx);
             {
                 auto block = MeasureBlock("PeepHole");
-                if (const auto status = PeepHole(resInput, resInput, ctx, resSettings); status.Level != TStatus::Ok) {
+                if (const auto status = PeepHole(resInput, resInput, ctx, resSettings, publicIds); status.Level != TStatus::Ok) {
                     return SyncStatus(status);
                 }
             }
@@ -889,7 +911,6 @@ private:
             TVector<TString> columns;
             GetResultType(&type, &columns, result.Ref(), result.Input().Ref());
 
-            TPublicIds::TPtr publicIds = std::make_shared<TPublicIds>();
             VisitExpr(result.Ptr(), [&](const TExprNode::TPtr& node) {
                 const TExprBase expr(node);
                 if (expr.Maybe<TResFill>()) {
@@ -949,7 +970,7 @@ private:
                 auto executionPlanner = THolder<IDqsExecutionPlanner>(
                     new TDqsSingleExecutionPlanner(
                         lambda, NActors::TActorId(),
-                        NActors::TActorId(1, 0, 1, 0), State->FunctionRegistry,
+                        NActors::TActorId(1, 0, 1, 0),
                         result.Input().Ref().GetTypeAnn()));
                 auto& tasks = executionPlanner->GetTasks();
                 Yql::DqsProto::TTaskMeta taskMeta;
@@ -980,7 +1001,7 @@ private:
                     graphParams["Evaluation"] = ToString(!ctx.Step.IsDone(TExprStep::ExprEval));
                     future = State->ExecutePlan(
                         State->SessionId, executionPlanner->GetPlan(), columns, secureParams, graphParams,
-                        settings, progressWriter, ModulesMapping, fillSettings.Discard);
+                        settings, progressWriter, UploadCache_->ModulesMapping, fillSettings.Discard, executionTimeout);
                 }
             }
 
@@ -994,7 +1015,17 @@ private:
 
             FlushStatisticsToState();
 
-            return WrapFutureCallback<false>(future, [localRun, startTime, type, fillSettings, level, settings, enableFullResultWrite, columns, graphParams, state = State](const IDqGateway::TResult& res, const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx) {
+            TString skiffType;
+            NYT::TNode rowSpec;
+            if (fillSettings.Format == IDataProvider::EResultFormat::Skiff) {
+                auto parsedYtType =  SkiffConverter->ParseYTType(result.Input().Ref(), ctx, columns);
+
+                type = parsedYtType.Type;
+                rowSpec = parsedYtType.RowSpec;
+                skiffType = parsedYtType.SkiffType;
+            }
+
+            return WrapFutureCallback<false>(future, [localRun, startTime, type, rowSpec, skiffType, fillSettings, level, settings, enableFullResultWrite, columns, graphParams, state = State, skiffConverter = SkiffConverter](const IDqGateway::TResult& res, const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx) {
                 YQL_CLOG(DEBUG, ProviderDq) << state->SessionId <<  " WrapFutureCallback";
 
                 auto duration = TInstant::Now() - startTime;
@@ -1036,6 +1067,20 @@ private:
                 TStringStream out;
                 NYson::TYsonWriter writer((IOutputStream*)&out);
                 writer.OnBeginMap();
+
+                if (skiffType) {
+                    writer.OnKeyedItem("SkiffType");
+                    writer.OnRaw(skiffType, ::NYson::EYsonType::Node);
+
+                    writer.OnKeyedItem("Columns");
+                    writer.OnBeginList();
+                    for (auto& column: columns) {
+                        writer.OnListItem();
+                        writer.OnStringScalar(column);
+                    }
+                    writer.OnEndList();
+                }
+
                 if (type) {
                     writer.OnKeyedItem("Type");
                     writer.OnRaw(type);
@@ -1054,21 +1099,34 @@ private:
                 if (truncated && item.IsList()) {
                     ui64 bytes = 0;
                     ui64 rows = 0;
-                    writer.OnBeginList();
-                    for (auto& node : item.AsList()) {
-                        raw = NYT::NodeToYsonString(node);
-                        bytes += raw.size();
-                        rows += 1;
-                        writer.OnListItem();
-                        writer.OnRaw(raw);
-                        if (fillSettings.AllResultsBytesLimit && bytes >= *fillSettings.AllResultsBytesLimit) {
+                    switch (fillSettings.Format) {
+                        case IDataProvider::EResultFormat::Yson: {
+                            writer.OnBeginList();
+                            for (auto& node : item.AsList()) {
+                                raw = NYT::NodeToYsonString(node);
+                                bytes += raw.size();
+                                rows += 1;
+                                writer.OnListItem();
+                                writer.OnRaw(raw);
+                                if (fillSettings.AllResultsBytesLimit && bytes >= *fillSettings.AllResultsBytesLimit) {
+                                    break;
+                                }
+                                if (fillSettings.RowsLimitPerWrite && rows >= *fillSettings.RowsLimitPerWrite) {
+                                    break;
+                                }
+                            }
+                            writer.OnEndList();
                             break;
                         }
-                        if (fillSettings.RowsLimitPerWrite && rows >= *fillSettings.RowsLimitPerWrite) {
+                        case IDataProvider::EResultFormat::Skiff: {
+                            writer.OnStringScalar(skiffConverter->ConvertNodeToSkiff(state, fillSettings, rowSpec, item));
                             break;
+                        }
+                        default: {
+                            YQL_LOG_CTX_THROW yexception() << "Invalid result type: " << fillSettings.Format;
                         }
                     }
-                    writer.OnEndList();
+
                     if (enableFullResultWrite) {
                         writer.OnKeyedItem("Ref");
                         writer.OnBeginList();
@@ -1081,11 +1139,35 @@ private:
                     writer.OnKeyedItem("Truncated");
                     writer.OnBooleanScalar(true);
                 } else if (truncated) {
-                    writer.OnRaw("[]");
+                    switch (fillSettings.Format) {
+                        case IDataProvider::EResultFormat::Yson: {
+                            writer.OnRaw("[]");
+                            break;
+                        }
+                        case IDataProvider::EResultFormat::Skiff: {
+                            writer.OnStringScalar("");
+                            break;
+                        }
+                        default: {
+                            YQL_LOG_CTX_THROW yexception() << "Invalid result type: " << fillSettings.Format;
+                        }
+                    }
                     writer.OnKeyedItem("Truncated");
                     writer.OnBooleanScalar(true);
                 } else {
-                    writer.OnRaw(raw);
+                    switch (fillSettings.Format) {
+                        case IDataProvider::EResultFormat::Yson: {
+                            writer.OnRaw(raw);
+                            break;
+                        }
+                        case IDataProvider::EResultFormat::Skiff: {
+                            writer.OnStringScalar(skiffConverter->ConvertNodeToSkiff(state, fillSettings, rowSpec, item));
+                            break;
+                        }
+                        default: {
+                            YQL_LOG_CTX_THROW yexception() << "Invalid result type: " << fillSettings.Format;
+                        }
+                    }
                 }
 
                 if (rowsCount) {
@@ -1166,6 +1248,7 @@ private:
         YQL_CLOG(TRACE, ProviderDq) << "HandlePull " << NCommon::ExprToPrettyString(ctx, *input);
 
         TInstant startTime = TInstant::Now();
+        ui64 executionTimeout = State->Settings->_TableTimeout.Get().GetOrElse(TDqSettings::TDefault::TableTimeout);
         auto pull = TPull(input);
 
         THashMap<TString, TString> pullSettings;
@@ -1182,19 +1265,9 @@ private:
         auto publicIds = GetPublicIds(pull.Ptr());
         YQL_ENSURE(!oneGraphPerQuery || publicIds->GraphsCount == 1, "Internal error: only one graph per query is allowed");
 
-        auto precomputes = FindIndependentPrecomputes(pull.Input().Ptr());
-        if (!precomputes.empty()) {
-            auto status = HandlePrecomputes(precomputes, ctx, pullSettings);
-            if (status.Level != TStatus::Ok) {
-                if (status == TStatus::Async) {
-                    return std::make_pair(status, ExecState->Promise.GetFuture().Apply([execState = ExecState](const TFuture<void>& completedFuture) {
-                        completedFuture.GetValue();
-                        return HandlePrecomputeAsyncComplete(execState);
-                    }));
-                } else {
-                    return SyncStatus(status);
-                }
-            }
+        auto statusPair = HandlePrecomputes(pull, pullSettings, ctx, executionTimeout);
+        if (statusPair.first.Level != TStatus::Ok) {
+            return statusPair;
         }
 
         TString type;
@@ -1206,7 +1279,7 @@ private:
         optimizedInput->SetTypeAnn(pull.Input().Ref().GetTypeAnn());
         optimizedInput->CopyConstraints(pull.Input().Ref());
 
-        auto status = PeepHole(optimizedInput, optimizedInput, ctx, pullSettings);
+        auto status = PeepHole(optimizedInput, optimizedInput, ctx, pullSettings, publicIds);
         if (status.Level != TStatus::Ok) {
             return SyncStatus(status);
         }
@@ -1365,7 +1438,7 @@ private:
         IDqGateway::TDqProgressWriter progressWriter = MakeDqProgressWriter(publicIds);
 
         auto future = State->ExecutePlan(State->SessionId, executionPlanner->GetPlan(), columns, secureParams, graphParams,
-            settings, progressWriter, ModulesMapping, fillSettings.Discard);
+            settings, progressWriter, UploadCache_->ModulesMapping, fillSettings.Discard, executionTimeout);
 
         future.Subscribe([publicIds, progressWriter = State->ProgressWriter](const NThreading::TFuture<IDqGateway::TResult>& completedFuture) {
             YQL_ENSURE(!completedFuture.HasException());
@@ -1373,9 +1446,19 @@ private:
         });
         executionPlanner.Destroy();
 
+        TString skiffType;
+        NYT::TNode rowSpec;
+        if (fillSettings.Format == IDataProvider::EResultFormat::Skiff) {
+            auto parsedYtType = SkiffConverter->ParseYTType(pull.Input().Ref(), ctx, columns);
+
+            type = parsedYtType.Type;
+            rowSpec = parsedYtType.RowSpec;
+            skiffType = parsedYtType.SkiffType;
+        }
+
         int level = 0;
         // TODO: remove copy-paste
-        return WrapFutureCallback<false>(future, [settings, startTime, localRun, type, fillSettings, level, graphParams, columns, enableFullResultWrite, state = State](const IDqGateway::TResult& res, const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx) {
+        return WrapFutureCallback<false>(future, [settings, startTime, localRun, type, rowSpec, skiffType, fillSettings, level, graphParams, columns, enableFullResultWrite, state = State, skiffConverter = SkiffConverter](const IDqGateway::TResult& res, const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx) {
             auto duration = TInstant::Now() - startTime;
             YQL_CLOG(INFO, ProviderDq) << "Execution Pull complete, duration: " << duration;
             if (state->Metrics) {
@@ -1406,8 +1489,26 @@ private:
             input->SetState(TExprNode::EState::ExecutionComplete);
 
             TStringStream out;
-            NYson::TYsonWriter writer((IOutputStream*)&out, NCommon::GetYsonFormat(fillSettings), ::NYson::EYsonType::Node, false);
+
+            IDataProvider::TFillSettings ysonFormatSettings;
+            ysonFormatSettings.FormatDetails = fillSettings.FormatDetails;
+            ysonFormatSettings.Format = IDataProvider::EResultFormat::Yson;
+            NYson::TYsonWriter writer((IOutputStream*)&out, NCommon::GetYsonFormat(ysonFormatSettings), ::NYson::EYsonType::Node, false);
             writer.OnBeginMap();
+
+            if (skiffType) {
+                writer.OnKeyedItem("SkiffType");
+                writer.OnRaw(skiffType, ::NYson::EYsonType::Node);
+
+                writer.OnKeyedItem("Columns");
+                writer.OnBeginList();
+                for (auto& column: columns) {
+                    writer.OnListItem();
+                    writer.OnStringScalar(column);
+                }
+                writer.OnEndList();
+            }
+
             if (type) {
                 writer.OnKeyedItem("Type");
                 writer.OnRaw(type);
@@ -1447,21 +1548,35 @@ private:
                 // TODO:
                 ui64 bytes = 0;
                 ui64 rows = 0;
-                writer.OnBeginList();
-                for (auto& node : item.AsList()) {
-                    raw = NYT::NodeToYsonString(node);
-                    bytes += raw.size();
-                    rows += 1;
-                    writer.OnListItem();
-                    writer.OnRaw(raw);
-                    if (fillSettings.AllResultsBytesLimit && bytes >= *fillSettings.AllResultsBytesLimit) {
+                switch (fillSettings.Format) {
+                    case IDataProvider::EResultFormat::Yson: {
+                        writer.OnBeginList();
+
+                        for (auto& node : item.AsList()) {
+                            raw = NYT::NodeToYsonString(node);
+                            bytes += raw.size();
+                            rows += 1;
+                            writer.OnListItem();
+                            writer.OnRaw(raw);
+
+                            if (fillSettings.AllResultsBytesLimit && bytes >= *fillSettings.AllResultsBytesLimit) {
+                                break;
+                            }
+                            if (fillSettings.RowsLimitPerWrite && rows >= *fillSettings.RowsLimitPerWrite) {
+                                break;
+                            }
+                        }
+                        writer.OnEndList();
                         break;
                     }
-                    if (fillSettings.RowsLimitPerWrite && rows >= *fillSettings.RowsLimitPerWrite) {
+                    case IDataProvider::EResultFormat::Skiff: {
+                        writer.OnStringScalar(skiffConverter->ConvertNodeToSkiff(state, fillSettings, rowSpec, item));
                         break;
+                    }
+                    default: {
+                        YQL_LOG_CTX_THROW yexception() << "Invalid result type: " << fillSettings.Format;
                     }
                 }
-                writer.OnEndList();
 
                 if (enableFullResultWrite) {
                     writer.OnKeyedItem("Ref");
@@ -1476,7 +1591,19 @@ private:
                 writer.OnKeyedItem("Truncated");
                 writer.OnBooleanScalar(true);
             } else {
-                writer.OnRaw(raw);
+                switch (fillSettings.Format) {
+                    case IDataProvider::EResultFormat::Yson: {
+                        writer.OnRaw(raw);
+                        break;
+                    }
+                    case IDataProvider::EResultFormat::Skiff: {
+                        writer.OnStringScalar(skiffConverter->ConvertNodeToSkiff(state, fillSettings, rowSpec, item));
+                        break;
+                    }
+                    default: {
+                        YQL_LOG_CTX_THROW yexception() << "Invalid result type: " << fillSettings.Format;
+                    }
+                }
             }
 
             if (rowsCount) {
@@ -1493,17 +1620,22 @@ private:
     }
 
     IDqGateway::TDqProgressWriter MakeDqProgressWriter(const TPublicIds::TPtr& publicIds) const {
-        IDqGateway::TDqProgressWriter dqProgressWriter = [progressWriter = State->ProgressWriter, publicIds, current = std::make_shared<TString>()](const TString& stage) {
-            if (*current != stage) {
+        IDqGateway::TDqProgressWriter dqProgressWriter = [progressWriter = State->ProgressWriter, publicIds, current = std::make_shared<IDqGateway::TProgressWriterState>()](IDqGateway::TProgressWriterState state) 
+        {
+            if (*current != state) {
                 for (const auto& publicId : publicIds->AllPublicIds) {
-                    auto p = TOperationProgress(TString(DqProviderName), publicId.first, TOperationProgress::EState::InProgress, stage);
+                    auto p = TOperationProgress(TString(DqProviderName), publicId.first, TOperationProgress::EState::InProgress, state.Stage);
                     if (publicId.second) {
                         p.Counters.ConstructInPlace();
                         p.Counters->Running = p.Counters->Total = publicId.second;
+                        auto maybeStats = state.Stats.find(publicId.first);
+                        if (maybeStats != state.Stats.end()) {
+                            p.Counters->Custom = maybeStats->second.ToMap();
+                        }
                     }
                     progressWriter(p);
                 }
-                *current = stage;
+                *current = std::move(state);
             }
         };
         return dqProgressWriter;
@@ -1611,41 +1743,29 @@ private:
         return hasPrecompute;
     }
 
-    static void CompleteNode(const TExecStatePtr& execState, TExprNode* node, const TAsyncTransformCallback& callback) {
-        auto item = MakeHolder<TExecState::TItem>();
+    static void CompleteNode(const TExecPrecomputeStatePtr& execState, TExprNode* node, const TAsyncTransformCallback& callback) {
+        auto item = MakeHolder<TExecPrecomputeState::TItem>();
         item->Node = node;
         item->Callback = callback;
 
-        NThreading::TPromise<void> promiseToSet;
         with_lock(execState->Lock) {
             execState->Completed.PushBack(item.Release());
-            if (!execState->HasResult) {
-                execState->HasResult = true;
-                promiseToSet = execState->Promise;
-            }
-        }
-
-        if (promiseToSet.Initialized()) {
-            promiseToSet.SetValue();
         }
     }
 
-    static TAsyncTransformCallback HandlePrecomputeAsyncComplete(TExecStatePtr execState) {
+    static TAsyncTransformCallback HandlePrecomputeAsyncComplete(TExecPrecomputeStatePtr execState) {
         return TAsyncTransformCallback([execState](const TExprNode::TPtr& input, TExprNode::TPtr& output, TExprContext& ctx) {
             output = input;
             input->SetState(TExprNode::EState::ExecutionRequired);
             TStatus combinedStatus = TStatus::Repeat;
-            TExecState::TQueueType completed;
-            auto newPromise = NThreading::NewPromise();
-            {
-                TGuard<TAdaptiveLock> guard(execState->Lock);
+            TExecPrecomputeState::TQueueType completed;
+            with_lock(execState->Lock) {
                 completed.Swap(execState->Completed);
-                execState->Promise.Swap(newPromise);
-                execState->HasResult = false;
             }
 
             for (auto& item : completed) {
                 TExprNode::TPtr callableOutput;
+                execState->PrecomputeFutures.erase(item.Node);
                 auto status = item.Callback(item.Node, callableOutput, ctx);
                 if (status.Level != TStatus::Error) {
                     YQL_ENSURE(callableOutput == item.Node, "Unsupported node rewrite");
@@ -1657,8 +1777,13 @@ private:
         });
     }
 
-    IGraphTransformer::TStatus HandlePrecomputes(const TNodeOnNodeOwnedMap& precomputes, TExprContext& ctx, const THashMap<TString, TString>& providerParams) {
-
+    IGraphTransformer::TStatus RunPrecomputes(
+        const TNodeOnNodeOwnedMap& precomputes,
+        TExprContext& ctx,
+        const THashMap<TString, TString>& providerParams,
+        ui64 executionTimeout,
+        std::vector<NThreading::TFuture<void>>& futures
+    ) {
         IDataProvider::TFillSettings fillSettings;
         fillSettings.AllResultsBytesLimit.Clear();
         fillSettings.RowsLimitPerWrite.Clear();
@@ -1666,13 +1791,17 @@ private:
         commonSettings->EnableFullResultWrite = false;
 
         IGraphTransformer::TStatus combinedStatus = TStatus::Ok;
+        futures.clear();
 
         for (auto [_, input]: precomputes) {
             TString uniqId = TStringBuilder() << input->Content() << "(#" << input->UniqueId() << ')';
             YQL_LOG_CTX_SCOPE(uniqId);
+            NThreading::TFuture<void>& precomputeFuture = ExecPrecomputeState_->PrecomputeFutures[input.Get()];
             if (input->GetState() > TExprNode::EState::ExecutionRequired) {
                 YQL_CLOG(DEBUG, ProviderDq) << "Continue async execution";
                 combinedStatus = combinedStatus.Combine(TStatus::Async);
+                YQL_ENSURE(precomputeFuture.Initialized());
+                futures.push_back(precomputeFuture);
                 continue;
             }
 
@@ -1684,7 +1813,7 @@ private:
 
             auto optimizedInput = input;
             optimizedInput->SetState(TExprNode::EState::ConstrComplete);
-            auto status = PeepHole(optimizedInput, optimizedInput, ctx, providerParams);
+            auto status = PeepHole(optimizedInput, optimizedInput, ctx, providerParams, publicIds);
             if (status.Level != TStatus::Ok) {
                 return combinedStatus.Combine(status);
             }
@@ -1707,12 +1836,13 @@ private:
                 }
                 YQL_CLOG(DEBUG, ProviderDq) << "Freezing files for " << input->Content();
                 if (filesRes.first.Level == TStatus::Async) {
-                    filesRes.second.Subscribe([execState = ExecState, node = input.Get(), logCtx](const TAsyncTransformCallbackFuture& future) {
+                    precomputeFuture = filesRes.second.Apply([execState = ExecPrecomputeState_, node = input.Get(), logCtx](const TAsyncTransformCallbackFuture& future) {
                         YQL_LOG_CTX_ROOT_SESSION_SCOPE(logCtx);
                         YQL_ENSURE(!future.HasException());
                         YQL_CLOG(DEBUG, ProviderDq) << "Finishing freezing files";
                         CompleteNode(execState, node, future.GetValue());
                     });
+                    futures.push_back(precomputeFuture);
                 }
                 continue;
             }
@@ -1825,12 +1955,12 @@ private:
             IDqGateway::TDqProgressWriter progressWriter = MakeDqProgressWriter(publicIds);
 
             auto future = State->ExecutePlan(State->SessionId, executionPlanner->GetPlan(), {}, secureParams, graphParams,
-                settings, progressWriter, ModulesMapping, false);
+                settings, progressWriter, UploadCache_->ModulesMapping, false, executionTimeout);
 
             executionPlanner.Destroy();
 
             bool neverFallback = settings->FallbackPolicy.Get().GetOrElse(EFallbackPolicy::Default) == EFallbackPolicy::Never;
-            future.Subscribe([publicIds, state = State, startTime, execState = ExecState, node = input.Get(), neverFallback, logCtx](const NThreading::TFuture<IDqGateway::TResult>& completedFuture) {
+            precomputeFuture = future.Apply([publicIds, state = State, startTime, execState = ExecPrecomputeState_, node = input.Get(), neverFallback, logCtx](const NThreading::TFuture<IDqGateway::TResult>& completedFuture) {
                 YQL_LOG_CTX_ROOT_SESSION_SCOPE(logCtx);
                 YQL_ENSURE(!completedFuture.HasException());
                 const IDqGateway::TResult& res = completedFuture.GetValueSync();
@@ -1900,13 +2030,33 @@ private:
                 }
             });
             combinedStatus = combinedStatus.Combine(IGraphTransformer::TStatus::Async);
+            futures.push_back(precomputeFuture);
         }
         return combinedStatus;
     }
 
-    IGraphTransformer::TStatus PeepHole(TExprNode::TPtr input, TExprNode::TPtr& output, TExprContext& ctx, const THashMap<TString, TString>& providerParams) const {
+    TStatusCallbackPair HandlePrecomputes(const TResOrPullBase& resOrPull, const THashMap<TString, TString>& settings, TExprContext& ctx, ui64 executionTimeout) {
+        TStatus status = TStatus::Ok;
+        auto precomputes = FindIndependentPrecomputes(resOrPull.Input().Ptr());
+        if (!precomputes.empty()) {
+            std::vector<NThreading::TFuture<void>> futures;
+            status = RunPrecomputes(precomputes, ctx, settings, executionTimeout, futures);
+            YQL_CLOG(TRACE, ProviderDq) << "RunPrecomputes returns status " << status << ", with " << futures.size() << " futures";
+            if (status == TStatus::Async) {
+                return std::make_pair(status, NThreading::WaitAny(futures).Apply([execState = ExecPrecomputeState_](const TFuture<void>& completedFuture) {
+                    completedFuture.TryRethrow();
+                    return HandlePrecomputeAsyncComplete(execState);
+                }));
+            }
+        }
+        return SyncStatus(status);
+    }
+
+    IGraphTransformer::TStatus PeepHole(TExprNode::TPtr input, TExprNode::TPtr& output, TExprContext& ctx,
+        const THashMap<TString, TString>& providerParams, const TPublicIds::TPtr& publicIds) const
+    {
         TDqsPipelineConfigurator peepholeConfig(State, providerParams);
-        TDqsFinalPipelineConfigurator finalPeepholeConfg(State);
+        TDqsFinalPipelineConfigurator finalPeepholeConfg(State, publicIds);
         TPeepholeSettings peepholeSettings;
         peepholeSettings.CommonConfig = &peepholeConfig;
         peepholeSettings.FinalConfig = &finalPeepholeConfg;
@@ -1922,9 +2072,9 @@ private:
 
 private:
     TDqStatePtr State;
-    TExecStatePtr ExecState;
-    mutable THashMap<TString, TFileLinkPtr> FileLinks;
-    mutable THashMap<TString, TString> ModulesMapping;
+    ISkiffConverterPtr SkiffConverter;
+    TExecPrecomputeStatePtr ExecPrecomputeState_;
+    TUploadCache::TPtr UploadCache_;
 
     const ui64 MaxFileReadSize = 1_MB;
 };
@@ -1932,7 +2082,11 @@ private:
 }
 
 IGraphTransformer* CreateDqExecTransformer(const TDqStatePtr& state) {
-    return new TDqExecTransformer(state);
+    return new TDqExecTransformer(state, MakeIntrusive<TSimpleSkiffConverter>());
+}
+
+TExecTransformerFactory CreateDqExecTransformerFactory(const ISkiffConverterPtr& skiffConverter) {
+    return [skiffConverter] (const TDqStatePtr& state) { return new TDqExecTransformer(state, skiffConverter); };
 }
 
 } // namespace NYql

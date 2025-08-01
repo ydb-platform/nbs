@@ -54,6 +54,7 @@ private:
         auto ev = MakeHolder<NKqp::TEvKqp::TEvQueryRequest>();
         SetAuthToken(ev, *Request_);
         SetDatabase(ev, *Request_);
+        ev->Record.MutableRequest()->SetClientAddress(Request_->GetPeerName());
 
         if (CheckSession(req->session_id(), Request_.get())) {
             ev->Record.MutableRequest()->SetSessionId(req->session_id());
@@ -87,7 +88,7 @@ private:
 
         ev->Record.MutableRequest()->SetAction(NKikimrKqp::QUERY_ACTION_BEGIN_TX);
         ev->Record.MutableRequest()->MutableTxControl()->mutable_begin_tx()->CopyFrom(req->tx_settings());
-        ctx.Send(NKqp::MakeKqpProxyID(ctx.SelfID.NodeId()), ev.Release());
+        ctx.Send(NKqp::MakeKqpProxyID(ctx.SelfID.NodeId()), ev.Release(), 0, 0, Span_.GetTraceId());
     }
 
     void Handle(NKqp::TEvKqp::TEvQueryResponse::TPtr& ev, const TActorContext& ctx) {

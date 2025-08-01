@@ -4,7 +4,7 @@ LICENSE(Apache-2.0)
 
 SRCS(
     buffer.go
-    convert_go1.20.go
+    convert.go
 )
 
 GO_TEST_SRCS(

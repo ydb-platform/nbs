@@ -1,0 +1,1946 @@
+# File format ($ symbol means the beginning of a line):
+#
+# $ # this message
+# $ # =======================
+# $     # comments (all commentaries should starts with some number of spaces and # symbol)
+# $ IGNORE_FILES {file1.ext1} {file2.ext2} - (optional) ignore listed files when generating license macro and credits
+# $ RENAME {original license id} TO {new license id} # user comments - (optional) use {new license id} instead {original license id} in ya.make files
+# $ # user comments
+# $
+# ${action} {license id} {license text hash}
+# $BELONGS ./ya/make/file/relative/path/1/ya.make ./ya/make/2/ya.make
+# ${all_file_action} filename
+# $ # user commentaries (many lines)
+# $ generated description - files with this license, license text... (some number of lines that starts with some number of spaces, do not modify)
+# ${action} {license spdx} {license text hash}
+# $BELONGS ./ya/make/file/relative/path/3/ya.make
+# ${all_file_action} filename
+# $    #    user commentaries
+# $ generated description
+# $ ...
+#
+# You can modify action, all_file_action and add commentaries
+# Available actions:
+# keep - keep license in contrib and use in credits
+# skip - skip license
+# remove - remove all files with this license
+# rename - save license text/links into licenses texts file, but not store SPDX into LINCENSE macro. You should store correct license id into devtools.license.spdx.txt file
+#
+# {all file action} records will be generated when license text contains filename that exists on filesystem (in contrib directory)
+# We suppose that that files can contain some license info
+# Available all file actions:
+# FILE_IGNORE - ignore file (do nothing)
+# FILE_INCLUDE - include all file data into licenses text file
+# =======================
+
+KEEP     COPYRIGHT_SERVICE_LABEL 00c986dd4ba920668d906f7bffbf6c5f
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001, 2003, 2005, 2008-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/binary-io.h [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 00dd95d1fc1ff44a6b8f1eaeaca16484
+BELONGS lib/ya.make ya.make
+    License text:
+           Copyright (C) 2002, 2004, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/abitset.h [3:3]
+        lib/bitsetv-print.h [3:3]
+        lib/bitsetv.h [3:3]
+        lib/ebitset.h [3:3]
+        lib/lbitset.h [3:3]
+        lib/vbitset.h [3:3]
+        src/relation.h [3:3]
+        src/tables.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 058f1c652a23a2496bbf854dbca10300
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001, 2003, 2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/stdio-safer.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 063d09ea2a5468e2afe41cfa15c927f5
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2000, 2002, 2004, 2006, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/timevar.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 0702da6758f2577f59e5bd336aa87866
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1999, 2002-2003, 2005-2007, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/printf-args.c [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 09e897e3ccb0cecb90981328d372a171
+BELONGS ya.make
+    License text:
+           Copyright (C) 1988-1989, 2000-2003, 2005-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/reduce.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 0bc8b63acd6ba3e7095b3cc002d7355d
+BELONGS ya.make
+    License text:
+           Copyright (C) 2000, 2002, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/nullable.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 0d947c75a02496f83a5fc81c6c73ba00
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1986, 1989, 2000-2005, 2007, 2009-2013 Free
+           Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/print.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 110bb374a466559e87c9da3e8204e92a
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2002, 2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/get-errno.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 115f02d7dda2d6bf7dd3885d7af2c783
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1986, 1989, 2000-2002, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/LR0.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 120581a5d502bc366df71ac0f1e21603
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2002-2003, 2005-2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/raise.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 1229ae41ea00ec7cef49fc6db333e618
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001-2004, 2006, 2009-2013 Free Software Foundation, Inc.
+           Written by Bruno Haible <bruno@clisp.org>, 2001.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/progname.h [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 13c7848e680b03caaed4b925d4531cd5
+BELONGS ya.make
+    License text:
+           Copyright (C) 2002, 2005-2007, 2009-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/symlist.c [3:4]
+        src/symlist.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 15e124024eb2c86926816fb98a7bec11
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1995-1998, 2000-2002, 2004-2006, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/gettext.h [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 19b6c37a57b3f819d4f3981234726713
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1986, 1989, 1992, 1995, 2000-2002, 2004-2013 Free
+           Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/main.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 1ad2b427b79e2ebd3412ca0a54bfe627
+BELONGS ya.make
+    License text:
+           Copyright (C) 2001-2003, 2006-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/muscle-tab.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 1e7f599a240efccbda3ab4c9efc32120
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001, 2003, 2005, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/unistd-safer.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 1f41079d08ce5f59bf01135deba247c4
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2006-2007, 2010-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/wcwidth.c [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 1f89814f081e24eebf375e5c30252c5f
+BELONGS ya.make
+    License text:
+        Copyright (C) 2002, 2008-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        data/README [55:55]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 232de1f77bbafd80547ce6228d7649f5
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1999, 2002-2003, 2005, 2007, 2010-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/printf-parse.h [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 2a95c5c93500406da275ace71c40beb9
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1991, 2004-2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/cloexec.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 2dbefb710287caf60ae462785dc52fde
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2002-2004, 2007-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/vasnprintf.h [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 2e182f93884b2a3949c39e8591b0e31e
+BELONGS ya.make
+    License text:
+        \# Copyright (C) 2006-2007, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        data/c++-skel.m4 [5:5]
+        data/c-skel.m4 [5:5]
+        src/graphviz.c [3:3]
+        src/scan-code.h [3:3]
+        src/scan-gram.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 2e732ac9f6b74dbcc834df9e53324a9f
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001-2004, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/unlocked-io.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 2eb8f1fb67449136ee939472aa7fa3eb
+BELONGS ya.make
+    License text:
+           Copyright (C) 2001-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/muscle-tab.c [3:3]
+        src/scan-skel.c [622:622]
+        src/scan-skel.l [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 324db0696928de41d577abb6a030c9bf
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001-2002, 2005, 2007, 2009-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/uniwidth.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 3289f2428f1bde15c29edfb025786a00
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1990, 2001, 2003-2006, 2009-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/stripslash.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 3294e832e79174df7252e8e6e973cb25
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1986, 1989, 2000, 2002, 2004, 2006-2007,
+           2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/lalr.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 334f42ec891b15fd249ee99c750c0ea8
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1990, 1998-1999, 2001-2002, 2004-2005, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/argmatch.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 36ffa696d53329f321433cf3b247a878
+BELONGS ya.make
+    License text:
+        \# Copyright (C) 1984, 1989-1990, 2000-2013 Free Software Foundation,
+        \# Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        data/yacc.c [4:5]
+        src/parse-gram.c [5:5]
+        src/parse-gram.h [5:5]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 372539316e62c1ce62c57f38df8eb67e
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1990-2000, 2003-2004, 2006-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/xalloc-oversized.h [3:3]
+        lib/xalloc.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 37641f5b43836a3429601194ebc9a4f2
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2002, 2005-2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/unitypes.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 3b643fb3a489e9de6c5ea29048b94696
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1987-1996, 1998-2004, 2006, 2008-2013 Free Software
+           Foundation, Inc.
+           This file is part of the GNU C Library.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/getopt.c [5:7]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 3d1c5160866e31c4478a17530dbde5f0
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2000-2003, 2006, 2008-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/c-ctype.h [8:8]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 3e7a384e94a5349c3bd79dc469a46d0d
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2002-2004, 2006, 2009-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/bbitset.h [3:4]
+        lib/lbitset.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 40459d4dbef659e21f6bb0d6a096e438
+BELONGS ya.make
+    License text:
+           Copyright (C) 2000-2002, 2004, 2007, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/conflicts.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 4184562b88c3624de8cdb446d894c390
+BELONGS lib/ya.make ya.make
+    License text:
+        \# Copyright (C) 2008-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        data/m4sugar/foreach.m4 [7:7]
+        lib/bitrotate.h [2:2]
+        lib/close.c [2:2]
+        lib/getdtablesize.c [2:3]
+        lib/isnand.c [2:2]
+        lib/obstack_printf.c [2:2]
+        lib/platform/win64/sched.h [3:3]
+        lib/sig-handler.h [3:3]
+        lib/sigaction.c [2:3]
+        lib/xmemdup0.c [3:3]
+        lib/xmemdup0.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 4854918d3ca04b7f4687772c04e78711
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1990-1998, 2000-2007, 2009-2013 Free Software Foundation, Inc.
+           This file is part of the GNU C Library.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/error.c [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 4a34e1bd4cc3225f66a00029dd3d9fba
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2007-2008, 2010-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/stdio-impl.h [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 4c1dd767a16278f08645643b62405f7f
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2002-2004, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/bitset.h [3:3]
+        lib/bitset_stats.h [3:3]
+        lib/libiberty.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 4d6253f33abc179952f327ee3b1f4e15
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1995, 1999, 2001-2004, 2006-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/platform/win64/alloca.h [4:5]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 4e7a32172851ba99194436761a31ea1f
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1986, 1989, 2000-2002, 2004-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/LR0.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 4f5224922ca1060274bb2d14132e28d2
+BELONGS lib/ya.make ya.make
+    License text:
+           Copyright (C) 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/fcntl.c [3:3]
+        lib/fd-hook.c [2:3]
+        lib/fd-hook.h [2:2]
+        lib/pipe2.c [2:2]
+        src/AnnotationList.c [3:3]
+        src/AnnotationList.h [3:3]
+        src/InadequacyList.c [3:3]
+        src/InadequacyList.h [3:3]
+        src/Sbitset.c [3:3]
+        src/Sbitset.h [3:3]
+        src/ielr.c [3:3]
+        src/ielr.h [3:3]
+        src/named-ref.c [3:3]
+        src/named-ref.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 5321d65e6ca662e722b1d7cf5c99dcdd
+BELONGS ya.make
+    License text:
+           Copyright (C) 2000, 2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/print_graph.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 53e8e76430c1f9f176e2b86cae3a1550
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2002-2003, 2006, 2009-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/abitset.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 544ab2438f7aa43ef1ce1ed67e54b937
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1989-1994, 1996-1999, 2001, 2003-2007, 2009-2013 Free Software
+           Foundation, Inc.
+           This file is part of the GNU C Library.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/platform/win64/getopt.h [3:5]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 5a88a0f0ec2edacc94ec9985fb835ad1
+BELONGS ya.make
+    License text:
+           Copyright (C) 2002-2005, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/uniqstr.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 5c9564f545f124dd0fe089c741ae0867
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1989, 2000-2002, 2007, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/closure.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 5ccfd3fc29d53e79100f45ae23b3ce40
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1998-2002, 2004, 2006, 2008-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/closeout.c [3:4]
+        lib/quotearg.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 5cf58f8181afaefcc10f195e706bd7ef
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2010-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/strerror-override.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 5d1667bf16257cb8c0eddfec1ef63a4f
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2003-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/platform/win64/unistd.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 5fa676449042cb8d35db7a6420ec9887
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1989, 2000-2002, 2004-2005, 2007, 2009-2013 Free
+           Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/closure.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 605c920eb2434c3b95d6aa972321ec57
+BELONGS lib/ya.make
+    License text:
+           Copyright 2000-2003, 2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/c-ctype.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 64f4044ab5e89b15adc1b10141e80bf8
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1995-1996, 2001, 2003, 2005, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/c-strcase.h [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 66d9e77c3f2d7507f9842af6cd5bb6ff
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1999, 2002, 2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/asnprintf.c [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 67b620c22382ceac67c59e3655823122
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001-2002, 2004-2006, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/bitsetv.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 6a1b8cf39b7aab5d906edb00659c6986
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2000-2004, 2007, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/mbswidth.h [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 6bf98b764139379753db5406efa84fc6
+BELONGS ya.make
+    License text:
+           Copyright (C) 2000-2003, 2005-2007, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/reader.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 6de66b010a0194aab3aa38e295986d51
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2002, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/exitfail.h [3:3]
+        lib/get-errno.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 71de0111bb2934395d6c712100e955bf
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2000, 2003-2004, 2008-2013 Free Software Foundation, Inc.
+           This file is part of the GNU C Library.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/platform/win64/spawn.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 746d5c809161ab209e276c2923d2a1bb
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1989, 2000-2002, 2004-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/symtab.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 773aa1e6c51eddee7d07ce7ce2b1ab99
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2004, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/cloexec.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 78283ff5133f1e769ba584bd31744897
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1992, 1995, 1997-1998, 2006, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/stpcpy.c [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 784d708766ce06df6c18e76dbf618bbe
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1997-2000, 2002-2004, 2006, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/xalloc-die.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 7935d41d0aedbcd3a9d31d6965831efc
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1986, 1989, 1992, 2001-2007, 2009-2013 Free
+           Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/gram.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 7aa58448380465b33fba89dad986d31e
+BELONGS lib/ya.make
+    Note: matched license text is too long. Read it in the source files.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/strverscmp.c [2:5]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 7ac575d17a582e20f8b561c93c284942
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2000-2001, 2004-2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/dosname.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 7af94b0141964410f71a364f05e9aa02
+BELONGS ya.make
+    License text:
+           Copyright (C) 2006, 2010-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/graphviz.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 7b7a440b5b9672dede4b45418bd6ff73
+BELONGS ya.make
+    License text:
+        \# Copyright (C) 2012-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        data/c-like.m4 [5:5]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 7fe411a514c6a2124401c5518cfce0bf
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001-2003, 2006, 2008-2013 Free Software Foundation, Inc.
+           Written by Bruno Haible <haible@clisp.cons.org>, 2001.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/spawn-pipe.h [2:3]
+        lib/wait-process.h [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 82553ecf28801654901f5bf04dc89de8
+BELONGS ya.make
+    License text:
+           Copyright (C) 2002, 2006, 2008-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/assoc.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 8359cd0ae7652f33a000b8decf60feaf
+BELONGS ya.make
+    License text:
+        Copyright (C) 2002, 2005, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        PACKAGING [39:39]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 8558e31aa50787a2c1061fcdb2207b6f
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2002-2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/bitset.c [3:3]
+        lib/bitset_stats.c [3:3]
+        lib/ebitset.c [3:3]
+        lib/vbitset.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 87b4383fae83c0bc4b1abfa5c78e9304
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2003, 2006-2007, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/xstrndup.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 8853eda4f48bd2e1c9bfc3ef3d311b03
+BELONGS ya.make
+    License text:
+           Copyright (C) 2000-2003, 2006-2007, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/output.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 8988632bc136efb8041411edd4493b82
+BELONGS ya.make
+    License text:
+        \# Copyright (C) 2002-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        data/c++.m4 [5:5]
+        data/glr.cc [3:3]
+        data/lalr1.cc [3:3]
+        data/location.cc [3:3]
+        data/stack.hh [3:3]
+        data/variant.hh [3:3]
+        src/parse-gram.y [3:3]
+        src/scan-gram.c [1022:1022]
+        src/scan-gram.l [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 8c32b84ace7652058445cfe1ba65cb92
+BELONGS ya.make
+    License text:
+           Copyright (C) 2002, 2004-2005, 2009-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/relation.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 90ffc0412eb4612be24ef2f7051895af
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1989, 2000-2002, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/derives.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 92888c328fc5b80476163710d2c48557
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1998-1999, 2001, 2003, 2009-2013 Free Software Foundation,
+           Inc.
+           Written by Jim Meyering <meyering@ascend.com>, 1998.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/hash.h [2:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 933b801e54cb6f67e1dbdd577168ba48
+BELONGS ya.make
+    License text:
+        Copyright (C) 2001-2004, 2006, 2008-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        TODO [372:372]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 9384394a620e0cb9ade742113242c202
+BELONGS ya.make
+    License text:
+           Copyright (C) 2000-2007, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/system.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 93b226e3d32ea3a3aee38ccefc218f65
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1986, 1989, 1992, 2000-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/files.c [3:4]
+        src/getargs.c [3:4]
+        src/getargs.h [3:4]
+        src/output.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 951365a51f6640f4abefc658cd5a58a9
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001, 2004-2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/dup-safer-flag.c [4:4]
+        lib/dup-safer.c [3:3]
+        lib/fopen-safer.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 97248f9adaddd0161d09fed429d59d4d
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2002, 2007, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/timevar.def [4:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 9ae366a7ff1d7343508f4419d8f30902
+BELONGS lib/ya.make ya.make
+    License text:
+           Copyright (C) 2007-2013 Free Software Foundation, Inc.
+           Written by Bruno Haible <bruno@clisp.org>, 2007.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/fpucw.h [2:3]
+        lib/fseterr.c [2:2]
+        lib/isnan.c [2:2]
+        lib/isnand-nolibm.h [2:2]
+        lib/isnanf-nolibm.h [2:2]
+        lib/isnanl-nolibm.h [2:2]
+        lib/open.c [2:2]
+    Belongs difference:
+        + ya.make
+
+KEEP     COPYRIGHT_SERVICE_LABEL 9bb892918c974cd6eeeeccb82aaaf94b
+BELONGS ya.make
+    License text:
+                   _("Copyright (C) %d Free Software Foundation, Inc.\n"),
+                   PACKAGE_COPYRIGHT_YEAR);
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/getargs.c [390:391]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 9c30f1ea78d9be9ddafdcf0189aec4c9
+BELONGS ya.make
+    License text:
+           Copyright (C) 2000-2002, 2007, 2009-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/reduce.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 9d8402ad502e486aa208505a9dfe8317
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1989, 2000-2002, 2006-2007, 2009-2013 Free
+           Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/files.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL 9fbaab46200cfc8c4b4e1562ded458ac
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1987-1994, 1996-1998, 2004, 2006, 2009-2013 Free Software
+           Foundation, Inc.
+           This file is part of the GNU C Library.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/getopt1.c [2:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL a095890ba91487130748c65b613c370b
+BELONGS ya.make
+    License text:
+        Copyright (C) 1992, 1998-1999, 2003-2005, 2008-2013 Free Software
+        Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        README [47:48]
+
+KEEP     COPYRIGHT_SERVICE_LABEL a1f4e854db830a50c24ee5b826dcb9e8
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1989, 1992, 2000-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/conflicts.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL a2658233b244808dfe9f5e8edcd20137
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1986, 1989, 1992, 1998, 2000-2003, 2005-2007,
+           2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/reader.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL a2a73a0e4276a111cc70d4e0c2a55b58
+BELONGS lib/ya.make
+    License text:
+            Copyright (C) 1998, 2001, 2003-2006, 2009-2013 Free Software Foundation,
+            Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/dirname.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL a330e7f0c906968eef680ce3d2a69536
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001-2004, 2007-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/concat-filename.h [2:2]
+        lib/filename.h [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL a49d222350d83caf91027426eed2347d
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1999, 2004-2007, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/dup2.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL a4c17a0a339347eccb15204e2957c984
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2005-2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/fd-safer-flag.c [4:4]
+        lib/fd-safer.c [3:3]
+        lib/pipe-safer.c [2:2]
+        lib/pipe2-safer.c [2:2]
+        lib/verify.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL a5b0a04f1aecea5af0e263f069cffbfb
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1989, 2000-2003, 2005, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/derives.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL a681cce71fccede25a5d0637e74d4cf1
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1998-2002, 2004, 2006-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/close-stream.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL a6fa5ef5a6e35f8d45c238c9c265b6bc
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2003, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/xstrndup.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL ab903f5ef928a2cb58231aac19020512
+BELONGS ya.make
+    License text:
+        Copyright (C) 1998-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        AUTHORS [27:27]
+
+KEEP     COPYRIGHT_SERVICE_LABEL b2c9d31895ebbcb3a10166e1aa5da8dd
+BELONGS ya.make
+    License text:
+           Copyright (C) 2000-2002, 2006, 2009-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/complain.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL b5af52841336985408a23491689633dc
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2000, 2002, 2004, 2009-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/timevar.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL b66af3479dc35debfb845432fcee9505
+BELONGS ya.make
+    License text:
+           Copyright (C) 2001-2007, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/print_graph.c [3:3]
+        src/state.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL b78d2fba2b832b27e3066a77aeceb44a
+BELONGS lib/ya.make ya.make
+    License text:
+           Copyright (C) 2006-2013 Free Software Foundation, Inc.
+           Written by Bruno Haible <bruno@clisp.org>, 2006.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/platform/win64/fcntl.h [4:4]
+        lib/platform/win64/signal.h [4:4]
+        lib/sigprocmask.c [2:3]
+        src/scan-code.c [633:633]
+        src/scan-code.l [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL b8eb228e92142d90c52ac1f532deded9
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1999, 2002-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/vasnprintf.c [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL b957f28d6fe2a6c19bfd1b221880d900
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2011-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/msvc-inval.c [2:2]
+        lib/msvc-inval.h [2:2]
+        lib/msvc-nothrow.c [3:3]
+        lib/msvc-nothrow.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL b97536f0f5df238c15d5c12d52ab0c5a
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2000-2003, 2009-2013 Free Software Foundation, Inc.
+           This file is part of the GNU CHARSET Library.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/localcharset.h [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL baa1a924d12ea2e1dd8741c79f2bc6e2
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1986, 1989, 2000-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/lalr.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL bbdd659b46c4082c0eeaca1c99b1fc95
+BELONGS ya.make
+    License text:
+           Copyright (C) 2002-2003, 2008-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/uniqstr.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL bc024ddbff3d1712047f5138bde3fd38
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2003-2004, 2006-2013 Free Software Foundation, Inc.
+           Written by Bruno Haible <bruno@clisp.org>, 2003.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/fatal-signal.c [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL bd69d607134ae9156c6d0e83aac20d6c
+BELONGS ya.make
+    License text:
+        \# Copyright (C) 1999-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        data/m4sugar/m4sugar.m4 [6:6]
+
+KEEP     COPYRIGHT_SERVICE_LABEL bfbbd857033939813dcecf5eb6330a33
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1986, 1989, 1992, 2000-2006, 2009-2013 Free
+           Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/tables.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL bff340ef4d002beefef7f8ee38124215
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1998, 2000, 2003-2004, 2006, 2008-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/closeout.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL c0163a2fe88e2703b1880e204238f2ec
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2005-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/glthread/lock.c [2:2]
+        lib/glthread/lock.h [2:2]
+        lib/glthread/threadlib.c [2:2]
+        lib/platform/win64/sys/stat.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL c34e2546d35ccbb2c1f4737dd351e6af
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001-2004, 2006-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/concat-filename.c [2:2]
+        lib/spawn-pipe.c [2:3]
+        lib/xconcat-filename.c [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL c5b4c3795b41b032298298e3146a344c
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1995-1997, 2003, 2006, 2008-2013 Free Software Foundation,
+           Inc.
+           This file is part of the GNU C Library.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/error.h [2:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL cbb5e809e75ec34efb45dd221cee01cd
+BELONGS ya.make
+    License text:
+           Copyright (C) 2002, 2005-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/location.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL cbdf063c9090fff599e42620773cfc42
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2000-2006, 2008-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/localcharset.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL ce730c13959bb52afcf459694cce2f32
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001, 2003-2013 Free Software Foundation, Inc.
+           Written by Bruno Haible <bruno@clisp.org>, 2003.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/w32spawn.h [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL cee5aea79c265d30d27535c2526b3ee2
+BELONGS ya.make
+    License text:
+           Copyright (C) 2002, 2005-2006, 2008-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/assoc.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL d00ba1bf4e95526accacbc7f64aeccc8
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001-2003, 2005-2013 Free Software Foundation, Inc.
+           Written by Bruno Haible <bruno@clisp.org>, 2001.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/platform/win64/sys/wait.h [3:3]
+        lib/progname.c [2:3]
+        lib/wait-process.c [2:3]
+        lib/waitpid.c [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL d2a4dc23c40d2e7ebfda72ac558a7e00
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2000, 2003, 2005-2006, 2009-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/fpending.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL d306c8c4fdfe6db9e5acc75df9b76651
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1996-1998, 2001-2003, 2005-2007, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/strndup.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL d439cf68b7f9268c998c12bf99084afe
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1989, 1992, 2000-2002, 2004-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/symtab.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL d4f3dde6c93b99bac65dd76fa1b716dc
+BELONGS ya.make
+    License text:
+        \# Copyright (C) 2002, 2004-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        data/bison.m4 [5:5]
+        data/c.m4 [5:5]
+        src/location.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL d667ff08e8fafd0a2a686f94251f31af
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1990, 1998, 2000-2001, 2003-2006, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/dirname-lgpl.c [3:4]
+        lib/dirname.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL d82bb852333bcf3b61ce6e4e93b89bfc
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1990-2000, 2002-2006, 2008-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/xmalloc.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL db6dbf9bcaacaf77ea5d31d8bbdd1630
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001-2002, 2007, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/c-strcaseeq.h [2:2]
+        lib/streq.h [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL dbe06cb527798aade152667fb71b0913
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1998-2002, 2004-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/quotearg.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL dcfa1931578f1a4061e7fc8c5efdf19a
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1990, 1998-1999, 2001-2007, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/argmatch.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL def6c8d17d8b4ebfbe8abdc5ffe362c0
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001-2002, 2005-2007, 2009-2013 Free Software Foundation, Inc.
+           Written by Bruno Haible <bruno@clisp.org>, 2002.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/uniwidth/cjk.h [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL e04888e6284b3d292729f957fce5ea5c
+BELONGS ya.make
+    License text:
+           Copyright (C) 2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/flex-scanner.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL e09a4e35b0ddd119f86db14e8e583499
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2000, 2004, 2006-2007, 2009-2013 Free Software Foundation,
+           Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/fpending.c [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL e329f07beb92d1b098a25208dc86a840
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2003, 2008-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/xsize.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL e595547844fab779f343fa93a6e559e7
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1998-2001, 2003, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/quote.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL e65fd6e5ba4f2ec80c3b64809d46a5a8
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2002-2003, 2005-2007, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/exitfail.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL e69675bed2dd82e4bedc940d9de1930b
+BELONGS ya.make
+    License text:
+           Copyright (C) 2000-2002, 2004-2006, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/complain.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL e74e555b63d2c0888f49c3596fa5e8d5
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1999-2000, 2002-2003, 2006-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/printf-parse.c [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL e88757980644cf5eae50af779a400879
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1998-1999, 2005-2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/c-strcasecmp.c [2:2]
+        lib/c-strncasecmp.c [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL e922d0e340952e8a672efb7856e820f9
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1989-1994, 1996-1999, 2001, 2003-2004, 2009-2013 Free Software
+           Foundation, Inc.
+           This file is part of the GNU C Library.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/getopt_int.h [2:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL ea529c8bbc5b15ff88bb87fbba92801e
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1988-1994, 1996-2006, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/obstack.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL ece2dc9da1a472caf28566b49eb32168
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1988-1994, 1996-1999, 2003-2006, 2009-2013 Free Software
+           Foundation, Inc.
+           This file is part of the GNU C Library.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/obstack.h [2:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL ee86e96aba3e305f890e3242468ea4e9
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1990, 1998-2001, 2003-2006, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/basename-lgpl.c [3:4]
+        lib/basename.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL f1339d5d8e0306a4d480d601898663ee
+BELONGS ya.make
+    License text:
+           Copyright (C) 2000, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/print.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL f1b0e82c75e56c254067166dec9b3de8
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001-2002, 2004, 2006, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/bitsetv-print.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL f543df5a888ae1d9e91c52c201670303
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1989, 2000-2004, 2007, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/state.h [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL f5aa7024a2f8294083c22018f6aa36cc
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1986, 1989, 2001-2003, 2005-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/gram.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL f62c5288c2c96dd652c7da573c17f4b3
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1999, 2002-2003, 2006-2007, 2011-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/printf-args.h [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL f685ea5bcfd7737b3b787a467fc2e782
+BELONGS ya.make
+    License text:
+           Copyright (C) 1984, 1989, 2000-2006, 2009-2013 Free Software
+           Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/nullable.c [3:4]
+
+KEEP     COPYRIGHT_SERVICE_LABEL f827cb68394ea15cb2b0b092b774f5b2
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 1998-2004, 2006-2007, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/hash.c [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL fbaaeb67f80365fc3ed5e085bc80881b
+BELONGS ya.make
+    License text:
+           Copyright (C) 2005-2007, 2009-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        src/scan-skel.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL fda68d61b4c86c59c32f621da2b17880
+BELONGS lib/ya.make ya.make
+    License text:
+        Copyright (C) 2000-2013 Free Software Foundation, Inc.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        THANKS [155:155]
+        lib/mbswidth.c [2:2]
+
+KEEP     COPYRIGHT_SERVICE_LABEL fe2068a4ac32499bd9c90c3059b52a95
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2003-2004, 2009-2013 Free Software Foundation, Inc.
+           Written by Bruno Haible <bruno@clisp.org>, 2003.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/fatal-signal.h [2:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL fe6f4a2cadd39168e946fc1f97e42e56
+BELONGS ya.make
+    License text:
+         Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>
+         Everyone is permitted to copy and distribute verbatim copies
+         of this license document, but changing it is not allowed.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        COPYING [4:6]
+
+KEEP     COPYRIGHT_SERVICE_LABEL fe8fcc676c3dcc20548fbdd1a0ce99a9
+BELONGS lib/ya.make ya.make
+    License text:
+           Copyright (C) 2007, 2009-2013 Free Software Foundation, Inc.
+           Written by Bruno Haible <bruno@clisp.org>, 2007.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/float+.h [2:3]
+        lib/fseterr.h [2:2]
+        lib/isnanf.c [2:2]
+        lib/isnanl.c [2:2]
+        lib/printf-frexp.c [2:2]
+        lib/printf-frexp.h [2:2]
+        lib/printf-frexpl.c [2:2]
+        lib/printf-frexpl.h [2:2]
+        src/print-xml.c [3:3]
+        src/print-xml.h [3:3]
+
+KEEP     COPYRIGHT_SERVICE_LABEL ffcb7ba2bd3e2505e88b4b6008cf627b
+BELONGS lib/ya.make
+    License text:
+           Copyright (C) 2001-2002, 2006-2013 Free Software Foundation, Inc.
+           Written by Bruno Haible <bruno@clisp.org>, 2002.
+    Scancode info:
+        Original SPDX id: COPYRIGHT_SERVICE_LABEL
+        Score           : 100.00
+        Match type      : COPYRIGHT
+    Files with this license:
+        lib/uniwidth/width.c [2:3]

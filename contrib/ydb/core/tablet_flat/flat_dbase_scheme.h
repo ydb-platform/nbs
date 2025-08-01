@@ -103,6 +103,9 @@ public:
         bool EraseCacheEnabled = false;
         ui32 EraseCacheMinRows = 0; // 0 means use default
         ui32 EraseCacheMaxBytes = 0; // 0 means use default
+
+        // When true this table has an in-memory caching enabled that has not been processed yet
+        mutable bool PendingCacheEnable = false;
     };
 
     struct TRedo {
@@ -240,7 +243,7 @@ public:
     TAlter& AddTable(const TString& name, ui32 id);
     TAlter& DropTable(ui32 id);
     TAlter& AddColumn(ui32 table, const TString& name, ui32 id, ui32 type, bool notNull, TCell null = { });
-    TAlter& AddPgColumn(ui32 table, const TString& name, ui32 id, ui32 type, ui32 pgType, const TString& pgTypeMod, bool notNull, TCell null = { });
+    TAlter& AddColumnWithTypeInfo(ui32 table, const TString& name, ui32 id, ui32 type, const std::optional<NKikimrProto::TTypeInfo>& typeInfoProto, bool notNull, TCell null = { });
     TAlter& DropColumn(ui32 table, ui32 id);
     TAlter& AddColumnToFamily(ui32 table, ui32 column, ui32 family);
     TAlter& AddFamily(ui32 table, ui32 family, ui32 room);
@@ -259,6 +262,7 @@ public:
     TAlter& SetByKeyFilter(ui32 tableId, bool enabled);
     TAlter& SetColdBorrow(ui32 tableId, bool enabled);
     TAlter& SetEraseCache(ui32 tableId, bool enabled, ui32 minRows, ui32 maxBytes);
+    TAlter& SetRewrite();
 
     TAutoPtr<TSchemeChanges> Flush();
 
