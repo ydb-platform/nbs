@@ -1,6 +1,7 @@
 LIBRARY()
 
 GENERATE_ENUM_SERIALIZATION(propagate_to_follower.h)
+GENERATE_ENUM_SERIALIZATION(volume_as_partition_actor.h)
 
 SRCS(
     create_volume_link_actor.cpp
@@ -9,11 +10,13 @@ SRCS(
     read_disk_registry_based_overlay.cpp
     release_devices_actor.cpp
     shadow_disk_actor.cpp
+    volume_as_partition_actor.cpp
 )
 
 PEERDIR(
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/partition_common
+    cloud/blockstore/libs/storage/partition_nonrepl
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/libs/storage/protos_ydb
 

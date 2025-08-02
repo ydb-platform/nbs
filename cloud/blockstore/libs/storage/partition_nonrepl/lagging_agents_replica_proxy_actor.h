@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
-#include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
