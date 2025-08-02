@@ -4,6 +4,7 @@
 #include "fs.h"
 #include "fuse.h"
 #include "handle_ops_queue.h"
+#include "directory_handles_storage.h"
 #include "log.h"
 #include "util/system/file_lock.h"
 
@@ -54,6 +55,7 @@ namespace {
 
 static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
+static constexpr TStringBuf DirectoryHandlesStorageFileName = "directory_handles_storage";
 
 NProto::TError CreateAndLockFile(
     const TString& dir,
@@ -558,9 +560,11 @@ private:
 
     THolder<TFileLock> HandleOpsQueueFileLock;
     THolder<TFileLock> WriteBackCacheFileLock;
+    THolder<TFileLock> DirectoryHandlesStorageFileLock;
 
     bool HandleOpsQueueInitialized = false;
     bool WriteBackCacheInitialized = false;
+    bool DirectoryHandlesStorageInitialized = false;
 
 public:
     TFileSystemLoop(
@@ -688,6 +692,18 @@ public:
                             p->WriteBackCacheFileLock);
                         if (HasError(error)) {
                             ReportWriteBackCacheCreatingOrDeletingError(
+                                error.GetMessage());
+                        }
+                    }
+
+                    if (p->DirectoryHandlesStorageInitialized) {
+                        auto error = UnlockAndDeleteFile(
+                            TFsPath(
+                                p->Config->GetDirectoryHandlesStoragePath()) /
+                                p->Config->GetFileSystemId() / p->SessionId,
+                            p->DirectoryHandlesStorageFileLock);
+                        if (HasError(error)) {
+                            ReportDirectoryHandlesStorageError(
                                 error.GetMessage());
                         }
                     }
@@ -930,6 +946,32 @@ private:
                 }
             }
 
+            TDirectoryHandlesStoragePtr directoryHandlesStorage;
+            if (FileSystemConfig->GetDirectoryHandlesStorageEnabled() &&
+                Config->GetDirectoryHandlesStoragePath())
+            {
+                auto path = TFsPath(Config->GetDirectoryHandlesStoragePath()) /
+                            FileSystemConfig->GetFileSystemId() / SessionId;
+
+                auto error = CreateAndLockFile(
+                    path,
+                    DirectoryHandlesStorageFileName,
+                    DirectoryHandlesStorageFileLock);
+
+                if (HasError(error)) {
+                    ReportDirectoryHandlesStorageError(error.GetMessage());
+                    return error;
+                }
+
+                directoryHandlesStorage = CreateDirectoryHandlesStorage(
+                    Log,
+                    path / DirectoryHandlesStorageFileName,
+                    Config->GetDirectoryHandlesTableSize(),
+                    Config->GetDirectoryHandlesInitialDataSize());
+
+                DirectoryHandlesStorageInitialized = true;
+            }
+
             FileSystem = CreateFileSystem(
                 Logging,
                 ProfileLog,
@@ -940,6 +982,7 @@ private:
                 RequestStats,
                 CompletionQueue,
                 std::move(handleOpsQueue),
+                std::move(directoryHandlesStorage),
                 std::move(writeBackCache));
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
@@ -1025,6 +1068,9 @@ private:
 
         config.SetServerWriteBackCacheEnabled(
             features.GetServerWriteBackCacheEnabled());
+
+        config.SetDirectoryHandlesStorageEnabled(
+            features.GetDirectoryHandlesStorageEnabled());
 
         config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
 

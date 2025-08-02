@@ -34,6 +34,7 @@ TFileSystem::TFileSystem(
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
+        TDirectoryHandlesStoragePtr directoryHandlesStorage,
         TWriteBackCache writeBackCache)
     : Logging(std::move(logging))
     , ProfileLog(std::move(profileLog))
@@ -49,14 +50,19 @@ TFileSystem::TFileSystem(
         Config->GetXAttrCacheLimit(),
         Config->GetXAttrCacheTimeout())
     , HandleOpsQueue(std::move(handleOpsQueue))
+    , DirectoryHandlesStorage(std::move(directoryHandlesStorage))
     , WriteBackCache(std::move(writeBackCache))
 {
     Log = Logging->CreateLog("NFS_FUSE");
+
+    if (DirectoryHandlesStorage) {
+        DirectoryHandlesStorage->LoadHandles(DirectoryHandles);
+    }
 }
 
 TFileSystem::~TFileSystem()
 {
-    Reset();
+    ClearDirectoryCache();
 }
 
 void TFileSystem::Init()
@@ -68,7 +74,15 @@ void TFileSystem::Init()
 void TFileSystem::Reset()
 {
     STORAGE_INFO("resetting filesystem cache");
-    ClearDirectoryCache();
+    with_lock (DirectoryHandlesLock) {
+        STORAGE_DEBUG("clear directory cache of size %lu",
+            DirectoryHandles.size());
+        DirectoryHandles.clear();
+
+        if (DirectoryHandlesStorage) {
+            DirectoryHandlesStorage->Clear();
+        }
+    }
 }
 
 void TFileSystem::ScheduleProcessHandleOpsQueue()

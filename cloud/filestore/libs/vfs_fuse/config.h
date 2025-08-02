@@ -51,6 +51,8 @@ public:
 
     bool GetServerWriteBackCacheEnabled() const;
 
+    bool GetDirectoryHandlesStorageEnabled() const;
+
     bool GetGuestKeepCacheAllowed() const;
 
     ui32 GetMaxBackground() const;

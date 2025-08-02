@@ -80,4 +80,6 @@ message TFileSystemConfig
     // Limits max requests allowed at a time.
     optional uint32 MaxBackground = 23;
 
+    // Enable directory handles storage functionality
+    optional bool DirectoryHandlesStorageEnabled = 24;
 }
