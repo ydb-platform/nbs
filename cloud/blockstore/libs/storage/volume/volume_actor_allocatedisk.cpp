@@ -670,7 +670,10 @@ void TVolumeActor::CompleteUpdateDevices(
     ResetServicePipes(ctx);
     if (!args.LiteReallocation) {
         // Non-lite reallocation means that new devices could have been added.
-        AcquireDiskIfNeeded(ctx);
+        AcquireDiskIfNeeded(
+            ctx,
+            true   // retryIfUndelivery
+        );
         // Try to release devices that don't belong to the volume anymore. This
         // task is not critical, and in case of failure, the acquire will become
         // obsolete in some time.

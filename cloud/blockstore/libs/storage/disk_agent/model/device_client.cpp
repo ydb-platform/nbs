@@ -15,9 +15,11 @@ namespace NCloud::NBlockStore::NStorage {
 TDeviceClient::TDeviceClient(
         TDuration releaseInactiveSessionsTimeout,
         TVector<TString> uuids,
-        TLog log)
+        TLog log,
+        bool allowToKickOutOldClients)
     : ReleaseInactiveSessionsTimeout(releaseInactiveSessionsTimeout)
     , Devices(MakeDevices(std::move(uuids)))
+    , AllowToKickOutOldClients(allowToKickOutOldClients)
     , Log(std::move(log))
 {}
 
@@ -109,13 +111,19 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 << ", LastGeneration: " << deviceState->VolumeGeneration);
         }
 
+        const bool canKickOutClient =
+            deviceState->DiskId == diskId &&
+            deviceState->VolumeGeneration < volumeGeneration &&
+            AllowToKickOutOldClients;
+
         if (IsReadWriteMode(accessMode)
                 && deviceState->WriterSession.Id
                 && deviceState->WriterSession.Id != clientId
                 && deviceState->WriterSession.MountSeqNumber >= mountSeqNumber
                 && deviceState->WriterSession.LastActivityTs
                     + ReleaseInactiveSessionsTimeout
-                    > now)
+                    > now
+                && !canKickOutClient)
         {
             return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
                 << "Error acquiring device " << uuid.Quote()
