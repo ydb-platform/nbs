@@ -492,6 +492,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(HiveProxyFallbackMode,                     bool,      false           )\
     xxx(SSProxyFallbackMode,                       bool,      false           )\
+    xxx(UseSchemeCache,                            bool,      false           )\
     xxx(DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode, bool, false )\
                                                                                \
     xxx(RdmaTargetPort,                            ui32,      10020           )\
