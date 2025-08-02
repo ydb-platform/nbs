@@ -124,6 +124,7 @@ public:
 
 NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
     const NProto::TMultiAgentWriteRequest& request,
+    const TNonreplicatedPartitionConfigPtr& partConfig,
     bool assignVolumeRequestId)
 {
     NProto::TWriteDeviceBlocksRequest result;
@@ -141,6 +142,23 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
     if (assignVolumeRequestId) {
         result.SetVolumeRequestId(request.GetHeaders().GetVolumeRequestId());
         result.SetMultideviceRequest(false);
+    }
+
+    if (request.ChecksumsSize() > 0) {
+        Y_DEBUG_ABORT_UNLESS(request.ChecksumsSize() == 1);
+        const auto& checksum = request.GetChecksums(0);
+        if (checksum.GetByteCount() == request.Range.Size() * request.BlockSize)
+        {
+            *result.MutableChecksum() = checksum;
+        } else {
+            ReportChecksumCalculationError(
+                TStringBuilder()
+                << "Incorrectly calculated checksum for block range "
+                << DescribeRange(request.Range) << ": request range length="
+                << request.Range.Size() << ", checksum length="
+                << checksum.GetByteCount() / request.BlockSize
+                << ", diskId=" << partConfig->GetName().Quote());
+        }
     }
     return result;
 }
@@ -228,6 +246,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
     NProto::TWriteDeviceBlocksRequest writeDeviceBlocksRequest =
         MakeWriteDeviceBlocksRequest(
             msg->Record,
+            PartConfig,
             AssignIdToWriteAndZeroRequestsEnabled);
 
     const auto requestId = RequestsInProgress.GenerateRequestId();

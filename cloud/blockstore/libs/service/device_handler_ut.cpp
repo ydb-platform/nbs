@@ -138,7 +138,8 @@ public:
                 });
             };
 
-        auto factory = CreateDeviceHandlerFactory(maxBlockCount * BlockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(maxBlockCount * BlockSize);
         DeviceHandler = factory->CreateDeviceHandler(
             std::move(testStorage),
             "disk1",
@@ -362,7 +363,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandler = factory->CreateDeviceHandler(
             storage,
             diskId,
@@ -433,7 +435,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandler = factory->CreateDeviceHandler(
             storage,
             diskId,
@@ -713,7 +716,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandler = factory->CreateDeviceHandler(
             storage,
             diskId,
@@ -1033,7 +1037,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandler = factory->CreateDeviceHandler(
             storage,
             diskId,
@@ -1118,7 +1123,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandlerForReliableDisk = factory->CreateDeviceHandler(
             storage,
             diskId,
@@ -1273,7 +1279,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandlerForReliableDisk = factory->CreateDeviceHandler(
             storage,
             diskId,

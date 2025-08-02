@@ -31,6 +31,47 @@ struct TDeviceRequestInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TWriteDeviceBlocksRequest CreateWriteDeviceBlocksRequest(
+    const TDeviceRequest& deviceRequest,
+    const NProto::TWriteBlocksRequest& sourceRequest,
+    const TNonreplicatedPartitionConfigPtr& partConfig,
+    bool assignIdToWriteAndZeroRequestsEnabled,
+    bool multideviceRequest,
+    ui32 requestIndex)
+{
+    NProto::TWriteDeviceBlocksRequest request;
+    request.MutableHeaders()->CopyFrom(sourceRequest.GetHeaders());
+    request.SetDeviceUUID(deviceRequest.Device.GetDeviceUUID());
+    request.SetStartIndex(deviceRequest.DeviceBlockRange.Start);
+    request.SetBlockSize(partConfig->GetBlockSize());
+    if (assignIdToWriteAndZeroRequestsEnabled) {
+        request.SetVolumeRequestId(
+            sourceRequest.GetHeaders().GetVolumeRequestId());
+        request.SetMultideviceRequest(multideviceRequest);
+    }
+    if (requestIndex < sourceRequest.ChecksumsSize()) {
+        const auto& checksum = sourceRequest.GetChecksums(requestIndex);
+        if (checksum.GetByteCount() ==
+            deviceRequest.BlockRange.Size() * partConfig->GetBlockSize())
+        {
+            *request.MutableChecksum() = checksum;
+        } else {
+            ReportChecksumCalculationError(
+                TStringBuilder()
+                << "Incorrectly calculated checksum for block range "
+                << DescribeRange(deviceRequest.BlockRange)
+                << ": request range length=" << deviceRequest.BlockRange.Size()
+                << ", checksum length="
+                << checksum.GetByteCount() / partConfig->GetBlockSize()
+                << ", diskId=" << partConfig->GetName().Quote());
+        }
+    }
+
+    return request;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TRdmaWriteBlocksResponseHandler final
     : public TRdmaDeviceRequestHandlerBase<TRdmaWriteBlocksResponseHandler>
 {
@@ -180,41 +221,44 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
     TRequestContext sentRequestCtx;
 
-    for (auto& r: deviceRequests) {
-        auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
+    for (ui32 i = 0; i < deviceRequests.size(); ++i) {
+        const auto& deviceRequest = deviceRequests[i];
+        auto ep = AgentId2Endpoint[deviceRequest.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
 
-        NProto::TWriteDeviceBlocksRequest deviceRequest;
-        deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
-        deviceRequest.SetDeviceUUID(r.Device.GetDeviceUUID());
-        deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
-        deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
-        if (AssignIdToWriteAndZeroRequestsEnabled) {
-            deviceRequest.SetVolumeRequestId(
-                msg->Record.GetHeaders().GetVolumeRequestId());
-            deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
-        }
+        auto request = CreateWriteDeviceBlocksRequest(
+            deviceRequest,
+            msg->Record,
+            PartConfig,
+            AssignIdToWriteAndZeroRequestsEnabled,
+            deviceRequests.size() > 1,
+            i);
 
         auto context = std::make_unique<TDeviceRequestRdmaContext>();
-        context->DeviceIdx = r.DeviceIdx;
+        context->DeviceIdx = deviceRequest.DeviceIdx;
 
-        sentRequestCtx.emplace_back(r.DeviceIdx);
+        sentRequestCtx.emplace_back(deviceRequest.DeviceIdx);
 
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
             std::move(context),
             NRdma::TProtoMessageSerializer::MessageByteSize(
-                deviceRequest,
-                r.DeviceBlockRange.Size() * PartConfig->GetBlockSize()),
+                request,
+                deviceRequest.DeviceBlockRange.Size() *
+                    PartConfig->GetBlockSize()),
             4_KB);
 
         if (HasError(err)) {
-            LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "Failed to allocate rdma memory for WriteDeviceBlocksRequest, "
                 " error: %s",
                 FormatError(err).c_str());
 
-            NotifyDeviceTimedOutIfNeeded(ctx, r.Device.GetDeviceUUID());
+            NotifyDeviceTimedOutIfNeeded(
+                ctx,
+                deviceRequest.Device.GetDeviceUUID());
 
             using TResponse = TEvService::TEvWriteBlocksResponse;
             NCloud::Reply(
@@ -237,7 +281,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,
-            deviceRequest,
+            request,
             sglist);
 
         requests.push_back({std::move(ep), std::move(req)});
@@ -337,40 +381,44 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
     TRequestContext sentRequestCtx;
 
     ui64 blocks = 0;
-    for (auto& r: deviceRequests) {
-        auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
+    for (ui32 i = 0; i < deviceRequests.size(); ++i) {
+        const auto& deviceRequest = deviceRequests[i];
+        auto ep = AgentId2Endpoint[deviceRequest.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
 
-        sentRequestCtx.emplace_back(r.DeviceIdx);
+        sentRequestCtx.emplace_back(deviceRequest.DeviceIdx);
 
-        NProto::TWriteDeviceBlocksRequest deviceRequest;
-        deviceRequest.MutableHeaders()->CopyFrom(msg->Record.GetHeaders());
-        deviceRequest.SetDeviceUUID(r.Device.GetDeviceUUID());
-        deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
-        deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
-        if (AssignIdToWriteAndZeroRequestsEnabled) {
-            deviceRequest.SetVolumeRequestId(
-                msg->Record.GetHeaders().GetVolumeRequestId());
-            deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
-        }
+        auto request = CreateWriteDeviceBlocksRequest(
+            deviceRequest,
+            msg->Record,
+            PartConfig,
+            AssignIdToWriteAndZeroRequestsEnabled,
+            deviceRequests.size() > 1,
+            i);
+
         auto context = std::make_unique<TDeviceRequestRdmaContext>();
-        context->DeviceIdx = r.DeviceIdx;
+        context->DeviceIdx = deviceRequest.DeviceIdx;
 
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
             std::move(context),
             NRdma::TProtoMessageSerializer::MessageByteSize(
-                deviceRequest,
-                r.DeviceBlockRange.Size() * PartConfig->GetBlockSize()),
+                request,
+                deviceRequest.DeviceBlockRange.Size() *
+                    PartConfig->GetBlockSize()),
             4_KB);
 
         if (HasError(err)) {
-            LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "Failed to allocate rdma memory for WriteDeviceBlocksRequest"
                 ", error: %s",
                 FormatError(err).c_str());
 
-            NotifyDeviceTimedOutIfNeeded(ctx, r.Device.GetDeviceUUID());
+            NotifyDeviceTimedOutIfNeeded(
+                ctx,
+                deviceRequest.Device.GetDeviceUUID());
 
             using TResponse = TEvService::TEvWriteBlocksLocalResponse;
             NCloud::Reply(
@@ -390,12 +438,12 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,
-            deviceRequest,
+            request,
             TBlockDataRefSpan(
                 sglist.begin() + blocks,
-                r.DeviceBlockRange.Size()));
+                deviceRequest.DeviceBlockRange.Size()));
 
-        blocks += r.DeviceBlockRange.Size();
+        blocks += deviceRequest.DeviceBlockRange.Size();
 
         requests.push_back({std::move(ep), std::move(req)});
     }

@@ -112,6 +112,23 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
         request->Record.SetMultideviceRequest(false);
     }
 
+    if (Request.ChecksumsSize() > 0) {
+        Y_DEBUG_ABORT_UNLESS(Request.ChecksumsSize() == 1);
+        const auto& checksum = Request.GetChecksums(0);
+        if (checksum.GetByteCount() == Request.Range.Size() * Request.BlockSize)
+        {
+            *request->Record.MutableChecksum() = checksum;
+        } else {
+            ReportChecksumCalculationError(
+                TStringBuilder()
+                << "Incorrectly calculated checksum for block range "
+                << DescribeRange(Request.Range) << ": request range length="
+                << Request.Range.Size() << ", checksum length="
+                << checksum.GetByteCount() / Request.BlockSize
+                << ", diskId=" << PartConfig->GetName().Quote());
+        }
+    }
+
     auto event = std::make_unique<NActors::IEventHandle>(
         MakeDiskAgentServiceId(Request.DevicesAndRanges[0].Device.GetNodeId()),
         ctx.SelfID,
