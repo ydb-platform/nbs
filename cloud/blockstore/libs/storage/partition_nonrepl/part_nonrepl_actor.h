@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/disk_registry_based_part_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
@@ -104,6 +105,9 @@ private:
 
     void ReplyAndDie(const NActors::TActorContext& ctx);
 
+    TPartNonreplCountersData ExtractPartCounters(
+        const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateWork);
     STFUNC(StateZombie);
@@ -189,6 +193,11 @@ private:
 
     void HandleAgentIsBackOnline(
         const TEvNonreplPartitionPrivate::TEvAgentIsBackOnline::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCountersRequest(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
