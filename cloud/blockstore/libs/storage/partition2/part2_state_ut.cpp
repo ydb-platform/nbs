@@ -1496,7 +1496,6 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultIndexCachingConfig(),
             Max<ui32>(),  // maxIORequestsInFlight
             0,  // reassignChannelsPercentageThreshold
-            100,  // reassignMixedChannelsPercentageThreshold
             Max<ui32>()  // lastStep
         );
 
@@ -1608,6 +1607,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             DefaultIndexCachingConfig(),
             Max(),  // maxIORequestsInFlight
             100,  // reassignChannelsPercentageThreshold
+            0,
             reassignMixedChannelsPercentageThreshold
         );
 
@@ -1641,6 +1641,156 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                     EChannelPermission::SystemWritesAllowed);
             state.UpdatePermissions(
                 DataChannelStart + mergedChannelCount + 5,
+                EChannelPermission::UserWritesAllowed |
+                    EChannelPermission::SystemWritesAllowed);
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+        }
+    }
+
+    Y_UNIT_TEST(TestReassignedSystemChannelsImmediately)
+    {
+        const ui32 mixedChannelCount = 10;
+        const ui32 mergedChannelCount = 10;
+
+        NProto::TPartitionMeta meta;
+
+        auto& config = *meta.MutableConfig();
+        config.SetBlockSize(DefaultBlockSize);
+        config.SetBlocksCount(1024);
+        config.SetZoneBlockCount(32 * MaxBlocksCount);
+
+        auto* cps = config.MutableExplicitChannelProfiles();
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
+        for (ui32 i = 0; i < mergedChannelCount; ++i) {
+            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
+        }
+        for (ui32 i = 0; i < mixedChannelCount; ++i) {
+            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
+        }
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Fresh));
+
+        TPartitionState state(
+            meta,
+            TestTabletId,
+            0,
+            mixedChannelCount + mergedChannelCount + DataChannelStart + 1, // channelCount
+            MaxBlobSize,
+            MaxRangesPerBlob,
+            EOptimizationMode::OptimizeForLongRanges,
+            BuildDefaultCompactionPolicy(5),
+            DefaultBPConfig(),
+            DefaultFreeSpaceConfig(),
+            DefaultIndexCachingConfig(),
+            Max(),  // maxIORequestsInFlight
+            100,  // reassignChannelsPercentageThreshold
+            0,
+            100,
+            true
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+
+        {
+            state.UpdatePermissions(
+                1, // Log
+                EChannelPermission::SystemWritesAllowed);
+
+            const auto channelsToReassign = state.GetChannelsToReassign();
+            UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                channelsToReassign[0]);
+        }
+
+        {
+            state.UpdatePermissions(
+                1,
+                EChannelPermission::UserWritesAllowed |
+                    EChannelPermission::SystemWritesAllowed);
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+        }
+    }
+
+    Y_UNIT_TEST(TestReassignedFreshChannelsPercentageThreshold)
+    {
+        const ui32 mixedChannelCount = 10;
+        const ui32 mergedChannelCount = 10;
+        const ui32 freshChannelCount = 10;
+        const ui32 reassignFreshChannelsPercentageThreshold = 20;
+
+        NProto::TPartitionMeta meta;
+
+        auto& config = *meta.MutableConfig();
+        config.SetBlockSize(DefaultBlockSize);
+        config.SetBlocksCount(1024);
+        config.SetZoneBlockCount(32 * MaxBlocksCount);
+
+        auto* cps = config.MutableExplicitChannelProfiles();
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
+        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
+        for (ui32 i = 0; i < mergedChannelCount; ++i) {
+            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
+        }
+        for (ui32 i = 0; i < mixedChannelCount; ++i) {
+            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
+        }
+        for (ui32 i = 0; i < freshChannelCount; ++i) {
+            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Fresh));
+        }
+
+        TPartitionState state(
+            meta,
+            TestTabletId,
+            0,
+            mixedChannelCount + mergedChannelCount + DataChannelStart + freshChannelCount, // channelCount
+            MaxBlobSize,
+            MaxRangesPerBlob,
+            EOptimizationMode::OptimizeForLongRanges,
+            BuildDefaultCompactionPolicy(5),
+            DefaultBPConfig(),
+            DefaultFreeSpaceConfig(),
+            DefaultIndexCachingConfig(),
+            Max(),  // maxIORequestsInFlight
+            100,  // reassignChannelsPercentageThreshold
+            0,
+            100,
+            false,
+            reassignFreshChannelsPercentageThreshold
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+
+        {
+            state.UpdatePermissions(
+                DataChannelStart + mergedChannelCount + mixedChannelCount,
+                EChannelPermission::SystemWritesAllowed);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+
+            state.UpdatePermissions(
+                DataChannelStart + mergedChannelCount + mixedChannelCount + 5,
+                EChannelPermission::SystemWritesAllowed);
+
+            const auto channelsToReassign = state.GetChannelsToReassign();
+            UNIT_ASSERT_VALUES_EQUAL(2, channelsToReassign.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                DataChannelStart + mergedChannelCount + mixedChannelCount,
+                channelsToReassign[0]);
+            UNIT_ASSERT_VALUES_EQUAL(
+                DataChannelStart + mergedChannelCount + mixedChannelCount + 5,
+                channelsToReassign[1]);
+        }
+
+        {
+            state.UpdatePermissions(
+                DataChannelStart + mergedChannelCount + mixedChannelCount,
+                EChannelPermission::UserWritesAllowed |
+                    EChannelPermission::SystemWritesAllowed);
+            state.UpdatePermissions(
+                DataChannelStart + mergedChannelCount + mixedChannelCount + 5,
                 EChannelPermission::UserWritesAllowed |
                     EChannelPermission::SystemWritesAllowed);
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
