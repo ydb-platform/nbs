@@ -45,8 +45,6 @@ class ClusterTestConfig:
         return self.folder_desc.get(folder_id)
 
     def get_solomon_cluster(self, host: str) -> str:
-        if self.name != 'prod':
-            return self.solomon_cluster
         return self.solomon_cluster + '_' + host[:3]
 
 
