@@ -43,6 +43,14 @@ void TPartitionActor::HandleReadBlob(
         requestInfo->CallContext->RequestId);
 
     const auto& blob = msg->BlobId;
+    ui32 channel = blob.Channel();
+    ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
+
+    GroupOperationTimeTracker.OnStarted(
+        requestInfo->CallContext->RequestId,
+        groupId,
+        TGroupOperationTimeTracker::EGroupOperationType::Read,
+        GetCycleCount());
 
     auto readBlobActor = std::make_unique<TReadBlobActor>(
         requestInfo,
@@ -66,8 +74,6 @@ void TPartitionActor::HandleReadBlob(
         Actors.Insert(actorId);
         return;
     }
-
-    ui32 channel = blob.Channel();
 
     State->EnqueueIORequest(channel, std::move(readBlobActor));
     ProcessIOQueue(ctx, channel);
@@ -164,6 +170,8 @@ void TPartitionActor::HandleReadBlobCompleted(
     } else {
         State->RegisterSuccess(ctx.Now(), groupId);
     }
+
+    GroupOperationTimeTracker.OnFinished(msg->RequestId, GetCycleCount());
 
     ProcessIOQueue(ctx, channel);
 }

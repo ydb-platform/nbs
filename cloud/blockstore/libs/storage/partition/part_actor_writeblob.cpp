@@ -200,6 +200,7 @@ void TWriteBlobActor::NotifyCompleted(
     request->StorageStatusFlags = StorageStatusFlags;
     request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
     request->RequestTime = ResponseReceived - RequestSent;
+    request->RequestId = RequestInfo->CallContext->RequestId;
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }
@@ -393,6 +394,12 @@ void TPartitionActor::HandleWriteBlob(
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->BlobId.Generation());
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
 
+    GroupOperationTimeTracker.OnStarted(
+        requestInfo->CallContext->RequestId,
+        groupId,
+        TGroupOperationTimeTracker::EGroupOperationType::Write,
+        GetCycleCount());
+
     State->EnqueueIORequest(
         channel,
         std::make_unique<TWriteBlobActor>(
@@ -505,6 +512,8 @@ void TPartitionActor::HandleWriteBlobCompleted(
     } else {
         State->RegisterSuccess(ctx.Now(), groupId);
     }
+
+    GroupOperationTimeTracker.OnFinished(msg->RequestId, GetCycleCount());
 
     ProcessIOQueue(ctx, channel);
 }

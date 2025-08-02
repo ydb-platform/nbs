@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
@@ -155,6 +156,7 @@ private:
     bool FirstGarbageCollectionCompleted = false;
 
     TTransactionTimeTracker TransactionTimeTracker;
+    TGroupOperationTimeTracker GroupOperationTimeTracker;
 
 public:
     TPartitionActor(
@@ -536,6 +538,11 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_GetTransactionsLatency(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetGroupLatencies(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

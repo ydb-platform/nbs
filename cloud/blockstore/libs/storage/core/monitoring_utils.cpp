@@ -332,7 +332,8 @@ void BuildPartitionTabs(IOutputStream& out)
         << "<li><a href='#Tables' data-toggle='tab'>Tables</a>" << "</li>"
         << "<li><a href='#Channels' data-toggle='tab'>Channels</a>" << "</li>"
         << "<li><a href='#Latency' data-toggle='tab'>Latency</a>" << "</li>"
-        << "<li><a href='#Index' data-toggle='tab'>Index</a>" << "</li>" << "</ul>";
+        << "<li><a href='#Index' data-toggle='tab'>Index</a>" << "</li>"
+        << "<li><a href='#GroupLatency' data-toggle='tab'>GroupLatency</a>" << "</li>" << "</ul>";
 }
 
 void GeneratePartitionTabsJs(IOutputStream& out)
@@ -1430,6 +1431,198 @@ void RenderAutoRefreshScript(
     });
 })();
 </script>)";
+}
+
+void AddGroupLatencyCSS(IOutputStream& out)
+{
+    out << "<style>"
+        << R"(
+        #latency-table-Read th, #latency-table-Write th {
+            position: relative;
+            width: 30px;
+            height: 70px;
+            padding: 0 5px;
+            vertical-align: bottom;
+            border: 1px solid #ccc;
+            white-space: nowrap;
+            overflow: visible;
+            text-align: center;
+        }
+        #latency-table-Read th > div,
+        #latency-table-Write th > div {
+            position: absolute;
+            bottom: 35px;
+            left: 60%;
+            transform: translateX(-50%) rotate(-90deg);
+            transform-origin: bottom center;
+            white-space: nowrap;
+            padding: 0 5px;
+            font-size: 12px;
+            max-width: 160px;
+            word-wrap: break-word;
+        }
+        #latency-table-Read, #latency-table-Write {
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            width: max-content;
+        }
+        #latency-table-Read td, #latency-table-Write td {
+            border: 1px solid #ccc;
+            padding: 5px;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+        #latency-table-Read td:first-child,
+        #latency-table-Write td:first-child {
+            text-align: left;
+            font-weight: bold;
+        })"
+        << "</style>";
+}
+
+void DumpLatencyForOperations(
+    IOutputStream& out,
+    const TGroupOperationTimeTracker& tracker)
+{
+    const auto timeBuckets = tracker.GetTimeBuckets();
+
+    for (const TString& op: {"Read", "Write"}) {
+        out << "<h3>" << op << " Latency by Group</h3>";
+        out << "<table id='latency-table-" << op << "'>";
+        out << "<thead><tr><th>Group ID</th>";
+
+        for (const auto& bucket: timeBuckets) {
+            out << "<th title='" << bucket.Tooltip << "' data-bucket-key='"
+                << bucket.Key << "'><div>" << bucket.Description
+                << "</div></th>";
+        }
+        out << "</tr></thead><tbody></tbody></table>";
+    }
+}
+
+void DumpGroupLatencyTab(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TGroupOperationTimeTracker& tracker)
+{
+    const TString containerId = "group-latency-container";
+    const TString toggleId = "group-latency-auto-refresh-toggle";
+
+    HTML (out) {
+        AddGroupLatencyCSS(out);
+
+        RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
+
+        out << "<div id='" << containerId << "'></div>";
+
+        DumpLatencyForOperations(out, tracker);
+
+        out << R"(
+            <script>
+            function parseKey(key) {
+                const parts = key.split('_');
+                if (parts.length < 4) {
+                    return null;
+                }
+                return {
+                    op: parts[0],
+                    groupId: parts[1],
+                    status: parts[2],
+                    latencyBucket: parts.slice(3).join('_')
+                };
+            }
+
+            function updateGroupLatencyTable(result, container) {
+                if (!result || !result.stat) {
+                    return;
+                }
+
+                const finished = { Read: {}, Write: {} };
+                const inflight = { Read: {}, Write: {} };
+
+                for (const key in result.stat) {
+                    const info = parseKey(key);
+                    if (!info) {
+                        continue;
+                    }
+                    if (!(info.op in finished)) {
+                        continue;
+                    }
+
+                    const target = info.status === "finished" ? finished : (info.status === "inflight" ? inflight : null);
+                    if (!target) {
+                        continue;
+                    }
+
+                    if (!target[info.op][info.groupId]) {
+                        target[info.op][info.groupId] = {};
+                    }
+                    target[info.op][info.groupId][info.latencyBucket] = result.stat[key];
+                }
+
+                ['Read', 'Write'].forEach(op => {
+                    const tbody = document.querySelector('#latency-table-' + op + ' tbody');
+                    if (!tbody) {
+                        return;
+                    }
+
+                    const groups = new Set([...Object.keys(finished[op] || {}), ...Object.keys(inflight[op] || {})]);
+
+                    groups.forEach(groupId => {
+                        let tr = tbody.querySelector('tr[data-group="' + groupId + '"]');
+                        if (!tr) {
+                            tr = document.createElement('tr');
+                            tr.setAttribute('data-group', groupId);
+
+                            const tdGroup = document.createElement('td');
+                            tdGroup.textContent = groupId;
+                            tr.appendChild(tdGroup);
+
+                            const colsCount = document.querySelectorAll('#latency-table-' + op + ' thead th').length - 1;
+                            for (let i = 0; i < colsCount; ++i) {
+                                const td = document.createElement('td');
+                                tr.appendChild(td);
+                            }
+                            tbody.appendChild(tr);
+                        }
+
+                        const headers = document.querySelectorAll('#latency-table-' + op + ' thead th');
+                        for (let i = 1; i < headers.length; i++) {
+                            const bucketKey = headers[i].getAttribute('data-bucket-key');
+                            const td = tr.children[i];
+
+                            const finVal = (finished[op][groupId] && finished[op][groupId][bucketKey]) ? finished[op][groupId][bucketKey] : "";
+                            const inflightVal = (inflight[op][groupId] && inflight[op][groupId][bucketKey]) ? inflight[op][groupId][bucketKey] : "0";
+
+                            td.textContent = "";
+
+                            const spanFinished = document.createElement("span");
+                            spanFinished.textContent = finVal;
+                            td.appendChild(spanFinished);
+
+                            if (inflightVal && inflightVal !== "0") {
+                                td.appendChild(document.createTextNode(" "));
+                                const spanInflight = document.createElement("span");
+                                spanInflight.textContent = inflightVal;
+                                td.appendChild(spanInflight);
+                            }
+                        }
+                    });
+                });
+            }
+            </script>
+        )";
+
+        RenderAutoRefreshScript(
+            out,
+            containerId,
+            toggleId,
+            "getGroupLatencies",
+            tabletId,
+            1000,
+            "updateGroupLatencyTable");
+    }
 }
 
 }   // namespace NMonitoringUtils
