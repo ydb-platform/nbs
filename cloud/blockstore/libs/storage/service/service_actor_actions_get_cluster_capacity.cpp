@@ -315,17 +315,17 @@ void TGetClusterCapacityActor::HandleGetYDBCapacityResponse(
         }
     }
 
-    auto& ssd_capacity = Capacities.emplace_back();
-    ssd_capacity.SetStorageMediaKind(
+    auto& ssdCapacity = Capacities.emplace_back();
+    ssdCapacity.SetStorageMediaKind(
         NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
-    ssd_capacity.SetFreeBytes(freeBytesSSD);
-    ssd_capacity.SetTotalBytes(totalBytesSSD);
+    ssdCapacity.SetFreeBytes(freeBytesSSD);
+    ssdCapacity.SetTotalBytes(totalBytesSSD);
 
-    auto& hdd_capacity = Capacities.emplace_back();
-    hdd_capacity.SetStorageMediaKind(
+    auto& hddCapacity = Capacities.emplace_back();
+    hddCapacity.SetStorageMediaKind(
         NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
-    hdd_capacity.SetFreeBytes(freeBytesHDD);
-    hdd_capacity.SetTotalBytes(totalBytesHDD);
+    hddCapacity.SetFreeBytes(freeBytesHDD);
+    hddCapacity.SetTotalBytes(totalBytesHDD);
 
     NPrivateProto::TGetClusterCapacityResponse result;
     for (auto& capacity: Capacities) {
