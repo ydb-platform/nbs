@@ -494,7 +494,7 @@ func taskPinger(
 		err := ping()
 		// Pinger being cancelled does not constitute an error.
 		// It is crucial to check original ctx here.
-		if err != nil && ctx.Err() == nil {
+		if err != nil && !errors.Is(err, ctx.Err()) {
 			logError(
 				ctx,
 				err,
