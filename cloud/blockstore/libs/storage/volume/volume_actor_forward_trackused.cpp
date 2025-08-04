@@ -109,7 +109,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     State->GetStorageAccessMode(),
                     GetDowntimeThreshold(
                         *DiagnosticsConfig,
-                        NProto::STORAGE_MEDIA_SSD));
+                        NProto::STORAGE_MEDIA_SSD),
+                    LogTitle.GetChild(GetCycleCount()));
             } else {
                 NCloud::Register<TReadAndClearEmptyBlocksActor<TMethod>>(
                     ctx,
@@ -118,7 +119,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     State->GetUsedBlocks(),
                     partActorId,
                     TabletID(),
-                    SelfId());
+                    SelfId(),
+                    LogTitle.GetChild(GetCycleCount()));
             }
 
             return true;

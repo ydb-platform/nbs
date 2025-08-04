@@ -72,7 +72,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                TDuration()});
+                TDuration(),
+                TLogTitle(0, TString("test"), GetCycleCount())
+                    .GetChild(GetCycleCount())});
 
         auto requestToPartition = ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -138,7 +140,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                TDuration()});
+                TDuration(),
+                TLogTitle(0, TString("test"), GetCycleCount())
+                    .GetChild(GetCycleCount())});
 
         ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -191,7 +195,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                TDuration()});
+                TDuration(),
+                TLogTitle(0, TString("test"), GetCycleCount())
+                    .GetChild(GetCycleCount())});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -376,7 +382,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                TDuration()});
+                TDuration(),
+                TLogTitle(0, TString("test"), GetCycleCount())
+                    .GetChild(GetCycleCount())});
 
         TAutoPtr<NActors::IEventHandle> handle;
         ActorSystem.GrabEdgeEventIf<
@@ -430,7 +438,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                TDuration()});
+                TDuration(),
+                TLogTitle(0, TString("test"), GetCycleCount())
+                    .GetChild(GetCycleCount())});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -521,7 +531,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 "BaseDiskCheckpointId",
                 blockSize,
                 EStorageAccessMode::Default,
-                TDuration()});
+                TDuration(),
+                TLogTitle(0, TString("test"), GetCycleCount())
+                    .GetChild(GetCycleCount())});
 
         // read from overlay disk
         auto requestToPartition = ActorSystem.GrabEdgeEvent<

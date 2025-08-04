@@ -17,13 +17,15 @@ TReleaseDevicesActor::TReleaseDevicesActor(
         ui32 volumeGeneration,
         TDuration requestTimeout,
         TVector<NProto::TDeviceConfig> devices,
-        bool muteIOErrors)
+        bool muteIOErrors,
+        TChildLogTitle logTitle)
     : Owner(owner)
     , DiskId(std::move(diskId))
     , ClientId(std::move(clientId))
     , VolumeGeneration(volumeGeneration)
     , RequestTimeout(requestTimeout)
     , MuteIOErrors(muteIOErrors)
+    , LogTitle(std::move(logTitle))
     , Devices(std::move(devices))
 {}
 
@@ -97,8 +99,9 @@ void TReleaseDevicesActor::OnReleaseResponse(
             ctx,
             MuteIOErrors ? NLog::PRI_WARN : NLog::PRI_ERROR,
             TBlockStoreComponents::VOLUME,
-            "ReleaseDevices DiskId: %s, NodeId: %d, AgentId: %s, "
+            "%s ReleaseDevices DiskId: %s, NodeId: %d, AgentId: %s, "
             "PendingAgents: %s, error: %s",
+            LogTitle.GetWithTime().c_str(),
             DiskId.Quote().c_str(),
             nodeId,
             PendingAgents.at(nodeId).c_str(),
@@ -161,6 +164,7 @@ void TReleaseDevicesActor::HandleTimeout(
     Y_UNUSED(ev);
 
     const auto err = TStringBuilder()
+                     << LogTitle.GetWithTime()
                      << "TReleaseDevicesActor timeout."
                      << " DiskId: " << DiskId.Quote()
                      << " ClientId: " << ClientId

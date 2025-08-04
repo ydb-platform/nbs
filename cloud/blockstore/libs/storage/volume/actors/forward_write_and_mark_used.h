@@ -280,9 +280,11 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUpdateUsedBlocksResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->Record)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] %s failed to update used blocks: %s",
-            VolumeTabletId,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s %s failed to update used blocks: %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(msg->Record.GetError()).c_str());
 
@@ -303,9 +305,11 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUpdateUsedBlocksUndelivery(
     Record.MutableError()->CopyFrom(MakeError(E_REJECTED, TStringBuilder()
         << TMethod::Name << " used blocks update undelivered"));
 
-    LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] %s failed to update used blocks: %s",
-        VolumeTabletId,
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s %s failed to update used blocks: %s",
+        LogTitle.GetWithTime().c_str(),
         TMethod::Name,
         FormatError(Record.GetError()).c_str());
 

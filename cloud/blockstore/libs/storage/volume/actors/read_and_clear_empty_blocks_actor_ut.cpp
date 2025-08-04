@@ -60,7 +60,9 @@ Y_UNIT_TEST_SUITE(TForwardReadTests)
                 usedBlocks,
                 EdgeActor,
                 0,
-                EdgeActor});
+                EdgeActor,
+                TLogTitle(0, TString("test"), GetCycleCount())
+                    .GetChild(GetCycleCount())});
 
         ActorSystem.GrabEdgeEvent<TEvService::TReadBlocksMethod::TRequest>();
 
