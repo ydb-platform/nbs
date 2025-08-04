@@ -415,7 +415,7 @@ int virtio_session_mount(struct fuse_session* se)
 
 clean:
     while (queue_index) {
-        vhd_release_request_queue(dev->rqs[queue_index--]);
+        vhd_release_request_queue(dev->rqs[--queue_index]);
     }
     if (dev->rqs) {
         vhd_free(dev->rqs);

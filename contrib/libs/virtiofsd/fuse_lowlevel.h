@@ -1871,6 +1871,8 @@ int fuse_session_mount(struct fuse_session *se);
  * (positive) signal value that triggered the exit.
  *
  * @param se the session
+ * @param queue_index the index of queue which will be used in event loop
+ *                    (should be 0 in case of single queue session)
  * @return 0, -errno, or a signal value
  */
 int fuse_session_loop(struct fuse_session *se, int queue_index);

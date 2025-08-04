@@ -465,8 +465,9 @@ class TFuseLoopThread final
 {
 private:
     TSession& Session;
-    ui32 FuseLoopIndex = 0;
-    ui32 QueueIndex = 0;
+    const ui32 FuseLoopIndex = 0;
+    const ui32 QueueIndex = 0;
+    bool InterruptSignaled = false;
     TLog Log;
 
     pthread_t ThreadId = 0;
@@ -488,9 +489,11 @@ public:
         ISimpleThread::Start();
     }
 
-    void StopThread()
+    void SignalInterrupt()
     {
-        STORAGE_INFO("stopping FUSE loop " << FuseLoopIndex << "." << QueueIndex);
+        if (InterruptSignaled) {
+            return;
+        }
 
         if (auto threadId = AtomicGet(ThreadId)) {
             // session loop may get stuck on sem_wait/read.
@@ -498,6 +501,14 @@ public:
             pthread_kill(threadId, SIGUSR1);
         }
 
+        InterruptSignaled = true;
+    }
+
+    void StopThread()
+    {
+        STORAGE_INFO("stopping FUSE loop " << FuseLoopIndex << "." << QueueIndex);
+
+        SignalInterrupt();
         Join();
 
         STORAGE_INFO("stopped FUSE loop "  << FuseLoopIndex << "." << QueueIndex);
@@ -518,7 +529,6 @@ private:
 };
 
 class TFuseLoop final
-    : public ISimpleThread
 {
 private:
     TLog Log;
@@ -557,11 +567,16 @@ public:
         }
     }
 
-    void StopThread()
+    void Stop()
     {
         STORAGE_INFO("stopping FUSE loop");
 
         Session.Exit();
+
+        for (auto& thread: QueueThreads) {
+            thread->SignalInterrupt();
+        }
+
         for (auto& thread: QueueThreads) {
             thread->StopThread();
         }
@@ -576,7 +591,7 @@ public:
 
     void Unmount()
     {
-        StopThread();
+        Stop();
 
         STORAGE_INFO("unmounting FUSE session");
         Session.Unmount();
@@ -585,12 +600,6 @@ public:
     const TSession& GetSession() const
     {
         return Session;
-    }
-
-private:
-    void* ThreadProc() override
-    {
-        return nullptr;
     }
 };
 
@@ -794,7 +803,7 @@ public:
             }
 
             // just stop loop, leave connection
-            p->FuseLoop->StopThread();
+            p->FuseLoop->Stop();
             p->FuseLoop->Suspend();
             p->FuseLoop = nullptr;
 
