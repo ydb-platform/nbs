@@ -718,8 +718,6 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             ->GetSubgroup("request", "WriteBlocks")
             ->GetSubgroup("histogram", "Time");
 
-        group->OutputPlainText(Cerr);
-
         for (const auto& [name, value]: expectedHistogramValues) {
             const auto counter = group->FindCounter(name);
             UNIT_ASSERT_C(counter, "Counter " + name.Quote() + " not found");
