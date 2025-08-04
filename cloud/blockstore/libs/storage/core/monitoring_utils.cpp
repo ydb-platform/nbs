@@ -1488,16 +1488,34 @@ void DumpLatencyForOperations(
     const auto timeBuckets = tracker.GetTimeBuckets();
 
     for (const TString& op: {"Read", "Write"}) {
-        out << "<h3>" << op << " Latency by Group</h3>";
-        out << "<table id='latency-table-" << op << "'>";
-        out << "<thead><tr><th>Group ID</th>";
-
-        for (const auto& bucket: timeBuckets) {
-            out << "<th title='" << bucket.Tooltip << "' data-bucket-key='"
-                << bucket.Key << "'><div>" << bucket.Description
-                << "</div></th>";
+        HTML (out) {
+            TAG (TH3) {
+                out << op << " Latency by Group";
+            }
+            TAG_CLASS_ID(TTable, " ", "latency-table-" + op)
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "Group ID";
+                        }
+                        for (const auto& bucket: timeBuckets) {
+                            TAG_ATTRS(
+                                TTableH,
+                                {{"title", bucket.Tooltip},
+                                 {"data-bucket-key", bucket.Key}})
+                            {
+                                DIV_CLASS ("tooltip-latency") {
+                                    out << bucket.Description;
+                                }
+                            }
+                        }
+                    }
+                }
+                TABLEBODY()
+                {}
+            }
         }
-        out << "</tr></thead><tbody></tbody></table>";
     }
 }
 
