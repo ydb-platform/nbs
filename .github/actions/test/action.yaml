@@ -323,8 +323,12 @@ runs:
           then
             chown -R github:github "$TESTS_DATA_DIR"
             echo "::group::remove-binaries-from-tests-data-dir"
-            find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
-            find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
+            find "$TESTS_DATA_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+              if file --mime-type "$file" | grep -q 'application/x-executable'; then
+                echo "$file"
+                rm -f "$file"
+              fi
+            done
             echo "::endgroup::"
             echo "::group::remove-images-from-tests-data-dir"
             find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name 'NVMENBS0*' -o -name generated_other_big_raw_image
@@ -377,8 +381,12 @@ runs:
 
           if [ -d "$ARTIFACTS_DIR/logs/" ]; then
             echo "::group::cleaning-artifacts-log-dir"
-            find "$ARTIFACTS_DIR/logs/" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
-            find "$ARTIFACTS_DIR/logs/" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
+            find "$ARTIFACTS_DIR/logs/" -type f -print0 | while IFS= read -r -d '' file; do
+              if file --mime-type "$file" | grep -q 'application/x-executable'; then
+                echo "$file"
+                rm -f "$file"
+              fi
+            done
             echo "::endgroup::"
           fi
 
