@@ -383,8 +383,10 @@ struct TTestVerbs
     TConnectionPtr CreateConnection(
         rdma_event_channel* channel,
         void* context,
-        rdma_port_space ps) override
+        rdma_port_space ps,
+        ui8 tos) override
     {
+        Y_UNUSED(tos);
 
         auto* connection = new TConnection(channel, context, ps);
         TestContext->Connection = static_cast<rdma_cm_id*>(connection);
