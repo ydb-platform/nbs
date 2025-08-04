@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -50,6 +51,7 @@ private:
     const TActorId PartActorId;
     const ui64 VolumeTabletId;
     const TActorId VolumeActorId;
+    TChildLogTitle LogTitle;
 
     std::bitset<Count> State;
     typename TMethod::TResponse::ProtoRecordType Record;
@@ -65,7 +67,8 @@ public:
         ui64 volumeRequestId,
         TActorId partActorId,
         ui64 volumeTabletId,
-        TActorId volumeActorId);
+        TActorId volumeActorId,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -112,7 +115,8 @@ TWriteAndMarkUsedActor<TMethod>::TWriteAndMarkUsedActor(
         ui64 volumeRequestId,
         TActorId partActorId,
         ui64 volumeTabletId,
-        TActorId volumeActorId)
+        TActorId volumeActorId,
+        TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , BlockSize(blockSize)
@@ -121,6 +125,7 @@ TWriteAndMarkUsedActor<TMethod>::TWriteAndMarkUsedActor(
     , PartActorId(partActorId)
     , VolumeTabletId(volumeTabletId)
     , VolumeActorId(volumeActorId)
+    , LogTitle(std::move(logTitle))
 {}
 
 template <WriteRequest TMethod>
@@ -219,9 +224,11 @@ void TWriteAndMarkUsedActor<TMethod>::HandleUndelivery(
 {
     Y_DEBUG_ABORT_UNLESS(ev->Cookie == VolumeRequestId);
 
-    LOG_WARN(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] %s request undelivered to partition",
-        VolumeTabletId,
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s %s request undelivered to partition",
+        LogTitle.GetWithTime().c_str(),
         TMethod::Name);
 
     Record.MutableError()->CopyFrom(MakeError(E_REJECTED, TStringBuilder()
@@ -242,9 +249,11 @@ void TWriteAndMarkUsedActor<TMethod>::HandleResponse(
     const bool error = HasError(msg->Record);
 
     if (error) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] %s got error from partition: %s",
-            VolumeTabletId,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s %s got error from partition: %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(msg->Record.GetError()).c_str());
     }

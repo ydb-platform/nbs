@@ -113,11 +113,11 @@ TString TVolumeActor::GetStateName(ui32 state)
 
 void TVolumeActor::Enqueue(STFUNC_SIG)
 {
-    ALOG_ERROR(TBlockStoreComponents::VOLUME,
-        "[" << TabletID() << "]"
-        << " IGNORING message type# " << ev->GetTypeRewrite()
-        << " from Sender# " << ToString(ev->Sender)
-        << " in StateBoot");
+    ALOG_ERROR(
+        TBlockStoreComponents::VOLUME,
+        LogTitle.GetWithTime().c_str()
+            << " IGNORING message type# " << ev->GetTypeRewrite()
+            << " from Sender# " << ToString(ev->Sender) << " in StateBoot");
 }
 
 void TVolumeActor::DefaultSignalTabletActive(const TActorContext& ctx)
