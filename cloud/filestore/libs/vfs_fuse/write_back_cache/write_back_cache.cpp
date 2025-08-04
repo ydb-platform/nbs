@@ -1,6 +1,6 @@
 #include "write_back_cache_impl.h"
 
-#include "session_sequencer.h"
+#include "read_write_range_lock.h"
 
 #include <cloud/filestore/libs/service/context.h>
 
@@ -66,6 +66,121 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+// TODO(nasonov): remove after rewriting Flush logic
+// Will be referenced directly via
+// THashMap<ui64, std::unique_ptr<THandleState>> HandleStates;
+class TGlobalReadWriteRangeLock
+    : public std::enable_shared_from_this<TGlobalReadWriteRangeLock>
+{
+public:
+    using TAction = std::function<void()>;
+
+private:
+    TMutex Lock;
+    THashMap<ui64, TReadWriteRangeLock> RangeLockByHandle;
+    TVector<TAction> PendingActions;
+
+public:
+    void LockRead(ui64 handle, ui64 begin, ui64 end, TAction action)
+    {
+        TVector<TAction> pendingActions;
+
+        with_lock (Lock) {
+            auto& rangeLock = RangeLockByHandle[handle];
+            rangeLock.LockRead(
+                begin,
+                end,
+                [ptr = weak_from_this(), action = std::move(action)]() mutable
+                {
+                    if (auto self = ptr.lock()) {
+                        self->PendingActions.push_back(std::move(action));
+                    }
+                });
+            if (rangeLock.Empty()) {
+                RangeLockByHandle.erase(handle);
+            }
+            swap(pendingActions, PendingActions);
+        }
+
+        for (const auto& action: pendingActions) {
+            action();
+        }
+    }
+
+    void LockWrite(ui64 handle, ui64 begin, ui64 end, TAction action)
+    {
+        TVector<TAction> pendingActions;
+
+        with_lock (Lock) {
+            auto& rangeLock = RangeLockByHandle[handle];
+            rangeLock.LockWrite(
+                begin,
+                end,
+                [ptr = weak_from_this(), action = std::move(action)]() mutable
+                {
+                    if (auto self = ptr.lock()) {
+                        self->PendingActions.push_back(std::move(action));
+                    }
+                });
+            if (rangeLock.Empty()) {
+                RangeLockByHandle.erase(handle);
+            }
+            swap(pendingActions, PendingActions);
+        }
+
+        for (const auto& action: pendingActions) {
+            action();
+        }
+    }
+
+    void UnlockRead(ui64 handle, ui64 begin, ui64 end)
+    {
+        TVector<TAction> pendingActions;
+
+        with_lock (Lock) {
+            auto& rangeLock = RangeLockByHandle[handle];
+            rangeLock.UnlockRead(begin, end);
+            if (rangeLock.Empty()) {
+                RangeLockByHandle.erase(handle);
+            }
+            swap(pendingActions, PendingActions);
+        }
+
+        for (const auto& action: pendingActions) {
+            action();
+        }
+    }
+
+    void UnlockWrite(ui64 handle, ui64 begin, ui64 end)
+    {
+        TVector<TAction> pendingActions;
+
+        with_lock (Lock) {
+            auto& rangeLock = RangeLockByHandle[handle];
+            rangeLock.UnlockWrite(begin, end);
+            if (rangeLock.Empty()) {
+                RangeLockByHandle.erase(handle);
+            }
+            swap(pendingActions, PendingActions);
+        }
+
+        for (const auto& action: pendingActions) {
+            action();
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TPendingReadDataRequest
+{
+    TCallContextPtr CallContext;
+    std::shared_ptr<NProto::TReadDataRequest> Request;
+    TPromise<NProto::TReadDataResponse> Promise;
+};
+
 } // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,7 +192,7 @@ private:
     using TWriteDataEntry = TWriteBackCache::TWriteDataEntry;
     using TWriteDataEntryPart = TWriteBackCache::TWriteDataEntryPart;
 
-    const TSessionSequencerPtr Session;
+    const IFileStorePtr Session;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
     const TDuration AutomaticFlushPeriod;
@@ -95,6 +210,8 @@ private:
             , Promise(std::move(promise))
         {}
     };
+
+    std::shared_ptr<TGlobalReadWriteRangeLock> RangeLock;
 
     // all fields below should be protected by this lock
     TMutex Lock;
@@ -126,10 +243,11 @@ public:
             const TString& filePath,
             ui32 capacityBytes,
             TDuration automaticFlushPeriod)
-        : Session(CreateSessionSequencer(std::move(session)))
+        : Session(std::move(session))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , AutomaticFlushPeriod(automaticFlushPeriod)
+        , RangeLock(new TGlobalReadWriteRangeLock())
         , WriteDataRequestsQueue(filePath, capacityBytes)
     {
         // File ring buffer should be able to store any valid TWriteDataRequest.
@@ -225,127 +343,40 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request)
     {
-        TString buffer(request->GetLength(), 0);
-        TVector<TWriteDataEntryPart> parts;
-
-        with_lock (Lock) {
-            parts = CalculateCachedDataPartsToRead(
-                request->GetHandle(),
-                request->GetOffset(),
-                request->GetLength());
-
-            for (const auto& part: parts)  {
-                ReadDataPart(part, request->GetOffset(), &buffer);
-            }
-
-            if (!parts.empty() &&
-                parts.front().Offset == request->GetOffset() &&
-                parts.back().End() ==
-                    request->GetOffset() + request->GetLength()
-            ) {
-                bool sufficient = true;
-
-                for (size_t i = 1; i < parts.size(); i++) {
-                    Y_DEBUG_ABORT_UNLESS(parts[i-1].End() <= parts[i].Offset);
-
-                    if (parts[i-1].End() != parts[i].Offset) {
-                        sufficient = false;
-                        break;
-                    }
-                }
-
-                if (sufficient) {
-                    // serve request from cache
-
-                    NProto::TReadDataResponse response;
-                    response.SetBuffer(std::move(buffer));
-
-                    auto promise = NewPromise<NProto::TReadDataResponse>();
-                    promise.SetValue(std::move(response));
-                    return promise.GetFuture();
-                }
-            }
-
-            // cache is not sufficient to serve the request - read all the data
-            // and apply cache on top of it
-            return Session->ReadData(std::move(callContext), request).Apply(
-                [handle = request->GetHandle(),
-                 startingFromOffset = request->GetOffset(),
-                 length = request->GetLength(),
-                 buffer = std::move(buffer),
-                 parts = std::move(parts)] (auto future) mutable
-                {
-                    auto response = future.ExtractValue();
-
-                    // TODO(svartmetal): handle response error
-                    Y_ABORT_UNLESS(SUCCEEDED(response.GetError().GetCode()));
-
-                    if (response.GetBuffer().empty()) {
-                        *response.MutableBuffer() = std::move(buffer);
-                        return response;
-                    }
-
-                    Y_ABORT_UNLESS(
-                        response.GetBufferOffset() <=
-                        response.GetBuffer().length());
-
-                    char* responseBufferData =
-                        response.MutableBuffer()->begin() +
-                        response.GetBufferOffset();
-
-                    auto responseBufferLength =
-                        response.GetBuffer().length() -
-                        response.GetBufferOffset();
-
-                    Y_ABORT_UNLESS(
-                        responseBufferLength <= length,
-                        "response buffer length %lu is expected to be <= %lu",
-                        responseBufferLength,
-                        length);
-
-                    // Determine if it is better to apply cached data parts on
-                    // top of the ReadData response or copy non-cached data from
-                    // the response to the buffer with cached data parts
-                    bool useResponseBuffer = responseBufferLength == length;
-                    if (useResponseBuffer) {
-                        size_t sumPartsSize = 0;
-                        for (const auto& part: parts) {
-                            sumPartsSize += part.Length;
-                        }
-                        if (sumPartsSize > responseBufferLength / 2) {
-                            useResponseBuffer = false;
-                        }
-                    }
-
-                    if (useResponseBuffer) {
-                        // be careful and don't touch |part.Source| here as it
-                        // may be already deleted
-                        for (const auto& part: parts) {
-                            ui64 offset = part.Offset - startingFromOffset;
-                            const char* from = buffer.data() + offset;
-                            char* to = responseBufferData + offset;
-                            MemCopy(to, from, part.Length);
-                        }
-                    } else {
-                        // Note that responseBufferLength may be < length
-                        parts = TUtil::InvertDataParts(
-                            parts,
-                            startingFromOffset,
-                            responseBufferLength);
-
-                        for (const auto& part: parts) {
-                            ui64 offset = part.Offset - startingFromOffset;
-                            const char* from = responseBufferData + offset;
-                            char* to = buffer.begin() + offset;
-                            MemCopy(to, from, part.Length);
-                        }
-                        response.MutableBuffer()->swap(buffer);
-                        response.ClearBufferOffset();
-                    }
-
-                    return response;
-                });
+        if (request->GetLength() == 0) {
+            return MakeFuture<NProto::TReadDataResponse>();
         }
+
+        auto handle = request->GetHandle();
+        auto offset = request->GetOffset();
+        auto end = request->GetOffset() + request->GetLength();
+
+        auto unlocker =
+            [ptr = weak_from_this(), handle, offset, end](const auto&)
+        {
+            if (auto self = ptr.lock()) {
+                self->RangeLock->UnlockRead(handle, offset, end);
+            }
+        };
+
+        TPendingReadDataRequest pendingRequest = {
+            .CallContext = std::move(callContext),
+            .Request = std::move(request),
+            .Promise = NewPromise<NProto::TReadDataResponse>()};
+
+        auto result = pendingRequest.Promise.GetFuture();
+        result.Subscribe(std::move(unlocker));
+
+        RangeLock->LockRead(handle, offset, end,
+            [ptr = weak_from_this(),
+             pendingRequest = std::move(pendingRequest)]() mutable
+            {
+                auto self = ptr.lock();
+                Y_ABORT_UNLESS(self);
+                self->StartPendingReadDataRequest(std::move(pendingRequest));
+            });
+
+        return result;
     }
 
     TFuture<NProto::TWriteDataResponse> WriteData(
@@ -357,6 +388,10 @@ public:
         }
 
         auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
+        if (entry->GetBuffer().Size() == 0) {
+            return MakeFuture<NProto::TWriteDataResponse>();
+        }
+
         auto serializedSize = entry->GetSerializedSize();
 
         Y_ABORT_UNLESS(
@@ -365,30 +400,34 @@ public:
             serializedSize,
             WriteDataRequestsQueue.MaxAllocationSize());
 
+        auto unlocker = [ptr = weak_from_this(),
+                         handle = entry->GetHandle(),
+                         offset = entry->Offset(),
+                         end = entry->End()](const auto&)
+        {
+            if (auto self = ptr.lock()) {
+                self->RangeLock->UnlockWrite(handle, offset, end);
+            }
+        };
+
         auto promise = NewPromise<NProto::TWriteDataResponse>();
         auto future = promise.GetFuture();
+        future.Subscribe(std::move(unlocker));
 
-
-        with_lock (Lock) {
-            char* allocationPtr = nullptr;
-            bool allocated = WriteDataRequestsQueue.AllocateBack(
-                serializedSize,
-                &allocationPtr);
-
-            if (allocated) {
-                Y_ABORT_UNLESS(allocationPtr != nullptr);
-                entry->SerializeAndMoveRequestBuffer(allocationPtr);
-                WriteDataRequestsQueue.CommitAllocation(allocationPtr);
-                AddWriteDataEntry(std::move(entry));
-                promise.SetValue({});
-            } else {
-                auto pending = std::make_unique<TPendingWriteDataRequest>(
-                    std::move(entry),
+        RangeLock->LockWrite(
+            entry->GetHandle(),
+            entry->Offset(),
+            entry->End(),
+            [ptr = weak_from_this(),
+             promise = std::move(promise),
+             entry = entry.release()]() mutable
+            {
+                auto self = ptr.lock();
+                Y_ABORT_UNLESS(self);
+                self->StartPendingWriteDataRequest(
+                    std::unique_ptr<TWriteDataEntry>(entry),
                     std::move(promise));
-                PendingWriteDataRequests.PushBack(pending.release());
-                FlushAllData(); // flushes asynchronously
-            }
-        }
+            });
 
         return future;
     }
@@ -706,6 +745,202 @@ public:
         });
 
         return future;
+    }
+
+private:
+    TVector<TWriteDataEntryPart> CalculateDataPartsToReadAndFillBuffer(
+        ui64 handle,
+        ui64 startingFromOffset,
+        ui64 length,
+        TString* buffer)
+    {
+        *buffer = TString(length, 0);
+
+        with_lock (Lock) {
+            auto parts = CalculateCachedDataPartsToRead(
+                handle,
+                startingFromOffset,
+                length);
+
+            for (const auto& part: parts)  {
+                ReadDataPart(part, startingFromOffset, buffer);
+            }
+
+            return parts;
+        }
+    }
+
+    static bool IsIntervalFullyCoveredByParts(
+        const TVector<TWriteDataEntryPart>& parts,
+        ui64 startingFromOffset,
+        ui64 length)
+    {
+        if (parts.empty() || parts.front().Offset != startingFromOffset ||
+            parts.back().End() != startingFromOffset + length)
+        {
+            return false;
+        }
+
+        for (size_t i = 1; i < parts.size(); i++) {
+            Y_DEBUG_ABORT_UNLESS(parts[i - 1].End() <= parts[i].Offset);
+            if (parts[i - 1].End() != parts[i].Offset) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    struct TReadDataState
+    {
+        ui64 StartingFromOffset = 0;
+        ui64 Length = 0;
+        TString Buffer;
+        TVector<TWriteDataEntryPart> Parts;
+        TPromise<NProto::TReadDataResponse> Promise;
+    };
+
+    void StartPendingReadDataRequest(TPendingReadDataRequest request)
+    {
+        auto handle = request.Request->GetHandle();
+
+        TReadDataState state;
+        state.StartingFromOffset = request.Request->GetOffset();
+        state.Length = request.Request->GetLength();
+        state.Promise = std::move(request.Promise);
+
+        state.Parts = CalculateDataPartsToReadAndFillBuffer(
+            handle,
+            state.StartingFromOffset,
+            state.Length,
+            &state.Buffer);
+
+        if (IsIntervalFullyCoveredByParts(
+                state.Parts,
+                state.StartingFromOffset,
+                state.Length))
+        {
+            // Serve request from cache
+            NProto::TReadDataResponse response;
+            response.SetBuffer(std::move(state.Buffer));
+            state.Promise.SetValue(std::move(response));
+            return;
+        }
+
+        // Cache is not sufficient to serve the request - read all the data
+        // and merge with the cached parts
+        auto future = Session->ReadData(
+            std::move(request.CallContext),
+            std::move(request.Request));
+
+        future.Subscribe(
+            [state = std::move(state)](auto future) mutable
+            {
+                auto response = future.ExtractValue();
+
+                if (HasError(response)) {
+                    state.Promise.SetValue(std::move(response));
+                } else {
+                    HandleReadDataResponse(
+                        std::move(state),
+                        std::move(response));
+                }
+            });
+    }
+
+    static void HandleReadDataResponse(
+        TReadDataState state,
+        NProto::TReadDataResponse response)
+    {
+        if (response.GetBuffer().empty()) {
+            *response.MutableBuffer() = std::move(state.Buffer);
+            state.Promise.SetValue(std::move(response));
+            return;
+        }
+
+        Y_ABORT_UNLESS(
+            response.GetBufferOffset() <= response.GetBuffer().length());
+
+        char* responseBufferData =
+            response.MutableBuffer()->begin() + response.GetBufferOffset();
+
+        auto responseBufferLength =
+            response.GetBuffer().length() - response.GetBufferOffset();
+
+        Y_ABORT_UNLESS(
+            responseBufferLength <= state.Length,
+            "response buffer length %lu is expected to be <= %lu",
+            responseBufferLength,
+            state.Length);
+
+        // Determine if it is better to apply cached data parts on
+        // top of the ReadData response or copy non-cached data from
+        // the response to the buffer with cached data parts
+        bool useResponseBuffer = responseBufferLength == state.Length;
+        if (useResponseBuffer) {
+            size_t sumPartsSize = 0;
+            for (const auto& part: state.Parts) {
+                sumPartsSize += part.Length;
+            }
+            if (sumPartsSize > responseBufferLength / 2) {
+                useResponseBuffer = false;
+            }
+        }
+
+        if (useResponseBuffer) {
+            // be careful and don't touch |part.Source| here as it
+            // may be already deleted
+            for (const auto& part: state.Parts) {
+                ui64 offset = part.Offset - state.StartingFromOffset;
+                const char* from = state.Buffer.data() + offset;
+                char* to = responseBufferData + offset;
+                MemCopy(to, from, part.Length);
+            }
+        } else {
+            // Note that responseBufferLength may be < length
+            auto parts = TUtil::InvertDataParts(
+                state.Parts,
+                state.StartingFromOffset,
+                responseBufferLength);
+
+            for (const auto& part: parts) {
+                ui64 offset = part.Offset - state.StartingFromOffset;
+                const char* from = responseBufferData + offset;
+                char* to = state.Buffer.begin() + offset;
+                MemCopy(to, from, part.Length);
+            }
+            response.MutableBuffer()->swap(state.Buffer);
+            response.ClearBufferOffset();
+        }
+
+        state.Promise.SetValue(std::move(response));
+    }
+
+    void StartPendingWriteDataRequest(
+        std::unique_ptr<TWriteDataEntry> entry,
+        TPromise<NProto::TWriteDataResponse> promise)
+    {
+        auto serializedSize = entry->GetSerializedSize();
+        auto guard = Guard(Lock);
+
+        char* allocationPtr = nullptr;
+        bool allocated = WriteDataRequestsQueue.AllocateBack(
+            serializedSize,
+            &allocationPtr);
+
+        if (allocated) {
+            Y_ABORT_UNLESS(allocationPtr != nullptr);
+            entry->SerializeAndMoveRequestBuffer(allocationPtr);
+            WriteDataRequestsQueue.CommitAllocation(allocationPtr);
+            AddWriteDataEntry(std::move(entry));
+            promise.SetValue({});
+        } else {
+            auto pending = std::make_unique<TPendingWriteDataRequest>(
+                std::move(entry),
+                std::move(promise));
+            PendingWriteDataRequests.PushBack(pending.release());
+            FlushAllData();   // flushes asynchronously
+        }
     }
 };
 
