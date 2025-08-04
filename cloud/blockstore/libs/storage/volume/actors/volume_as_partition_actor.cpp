@@ -17,11 +17,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-namespace {
-
 ////////////////////////////////////////////////////////////////////////////////
-
-}   // namespace
 
 TVolumeAsPartitionActor::TVolumeAsPartitionActor(
     TChildLogTitle logTitle,
@@ -58,7 +54,7 @@ bool TVolumeAsPartitionActor::CheckRange(TBlockRange64 range) const
 template <typename TEvent>
 void TVolumeAsPartitionActor::ForwardRequestToFollower(
     const TEvent& ev,
-    const NActors::TActorContext& ctx,
+    const TActorContext& ctx,
     bool replyLocal)
 {
     const auto* msg = ev->Get();
@@ -120,7 +116,7 @@ void TVolumeAsPartitionActor::ForwardResponse(
 
 template <typename TMethod>
 void TVolumeAsPartitionActor::ReplyUndelivery(
-    const NActors::TActorContext& ctx,
+    const TActorContext& ctx,
     ui64 cookie)
 {
     if (auto requestCtx = RequestsInProgress.ExtractRequest(cookie)) {
@@ -193,7 +189,7 @@ void TVolumeAsPartitionActor::ReplyInvalidState(
 template <typename TMethod>
 void TVolumeAsPartitionActor::ReplyInvalidRange(
     const typename TMethod::TRequest::TPtr& ev,
-    const NActors::TActorContext& ctx,
+    const TActorContext& ctx,
     bool replyLocal)
 {
     auto message =
@@ -225,7 +221,7 @@ void TVolumeAsPartitionActor::ReplyInvalidRange(
 
 void TVolumeAsPartitionActor::DoWriteBlocks(
     const TEvService::TEvWriteBlocksRequest::TPtr& ev,
-    const NActors::TActorContext& ctx,
+    const TActorContext& ctx,
     bool replyLocal)
 {
     auto* msg = ev->Get();
@@ -373,7 +369,11 @@ void TVolumeAsPartitionActor::HandleWriteBlocks(
         return;
     }
 
-    DoWriteBlocks(ev, ctx, false);
+    DoWriteBlocks(
+        ev,
+        ctx,
+        false   // replyLocal
+    );
 }
 
 void TVolumeAsPartitionActor::HandleWriteBlocksLocal(
@@ -401,6 +401,7 @@ void TVolumeAsPartitionActor::HandleWriteBlocksLocal(
                 E_CANCELLED,
                 "Can't WriteBlocksLocal to follower disk. Failed to acquire "
                 "sglist.")));
+        return;
     }
 
     auto writeRequest = std::make_unique<TEvService::TEvWriteBlocksRequest>();
@@ -427,10 +428,11 @@ void TVolumeAsPartitionActor::HandleWriteBlocksLocal(
             : nullptr));
 
     DoWriteBlocks(
-        *reinterpret_cast<typename TEvService::TEvWriteBlocksRequest::TPtr*>(
-            &newEv),
+        IEventHandle::Downcast<TEvService::TEvWriteBlocksRequest>(
+            std::move(newEv)),
         ctx,
-        true);
+        true   // replyLocal
+    );
 }
 
 void TVolumeAsPartitionActor::HandleZeroBlocks(
