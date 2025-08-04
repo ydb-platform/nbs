@@ -188,7 +188,14 @@ struct TBootstrap
             data = TStringBuf(data).SubString(
                 request->GetOffset(),
                 request->GetLength());
-            response.SetBuffer(data);
+
+            auto responseOffset = RandomNumber(10u);
+            auto responseBuffer = TString(data.size() + responseOffset, 0);
+            data.copy(responseBuffer.begin() + responseOffset, data.size());
+
+            response.SetBuffer(std::move(responseBuffer));
+            response.SetBufferOffset(responseOffset);
+
             return MakeFuture(response);
         };
 
@@ -288,7 +295,7 @@ struct TBootstrap
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             expected,
-            response.GetBuffer(),
+            response.GetBuffer().substr(response.GetBufferOffset()),
             TStringBuilder() << " while validating @" << handle
             << " at offset " << offset
             << " and length " << expected.length());
