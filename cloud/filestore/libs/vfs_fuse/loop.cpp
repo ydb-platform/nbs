@@ -263,7 +263,6 @@ public:
             AddArg("--socket-path=" + path);
         }
 
-
         // HIPRIO + number of requests queues
         ui32 backendQueues = Max(2u, config.GetVhostQueuesCount());
         AddArg("--num-backend-queues=" + ToString(backendQueues));
@@ -466,7 +465,7 @@ class TFuseLoopThread final
 private:
     TSession& Session;
     const ui32 FuseLoopIndex = 0;
-    const ui32 QueueIndex = 0;
+    const ui32 FrontendQueueIndex = 0;
     bool InterruptSignaled = false;
     TLog Log;
 
@@ -474,20 +473,15 @@ private:
 
 public:
     TFuseLoopThread(
-        TSession& session,
-        ui32 fuseLoopIndex,
-        ui32 queueIndex,
-        TLog log)
+            TSession& session,
+            ui32 fuseLoopIndex,
+            ui32 frontendQueueIndex,
+            TLog log)
         : Session(session)
         , FuseLoopIndex(fuseLoopIndex)
-        , QueueIndex(queueIndex)
+        , FrontendQueueIndex(frontendQueueIndex)
         , Log(std::move(log))
     {}
-
-    void Start()
-    {
-        ISimpleThread::Start();
-    }
 
     void SignalInterrupt()
     {
@@ -504,25 +498,30 @@ public:
         InterruptSignaled = true;
     }
 
-    void StopThread()
+    void Stop()
     {
-        STORAGE_INFO("stopping FUSE loop " << FuseLoopIndex << "." << QueueIndex);
+        STORAGE_INFO(
+            "stopping FUSE loop thread " << FuseLoopIndex << "."
+                                         << FrontendQueueIndex);
 
         SignalInterrupt();
         Join();
 
-        STORAGE_INFO("stopped FUSE loop "  << FuseLoopIndex << "." << QueueIndex);
+        STORAGE_INFO(
+            "stopped FUSE loop thread " << FuseLoopIndex << "."
+                                        << FrontendQueueIndex);
     }
 
 private:
     void* ThreadProc() override
     {
         ::NCloud::SetCurrentThreadName(
-            "FUSE" + ToString(FuseLoopIndex) + "." + ToString(QueueIndex),
+            "FUSE" + ToString(FuseLoopIndex) + "." +
+                ToString(FrontendQueueIndex),
             4);
 
         AtomicSet(ThreadId, pthread_self());
-        fuse_session_loop(Session, QueueIndex);
+        fuse_session_loop(Session, FrontendQueueIndex);
 
         return nullptr;
     }
@@ -534,7 +533,7 @@ private:
     TLog Log;
     TSession Session;
 
-    TVector<std::unique_ptr<TFuseLoopThread>> QueueThreads;
+    TVector<std::unique_ptr<TFuseLoopThread>> FrontendQueueThreads;
 
 public:
     TFuseLoop(
@@ -546,13 +545,13 @@ public:
             void* context)
         : Log(std::move(log))
         , Session(config, threadsCount, ops, state, context)
-        , QueueThreads(threadsCount)
+        , FrontendQueueThreads(threadsCount)
     {
-        static std::atomic<ui64> NexFuseLoopIndex = 0;
-        ui64 fuseLoopIndex = NexFuseLoopIndex++;
+        static std::atomic<ui64> NextFuseLoopIndex = 0;
+        ui64 fuseLoopIndex = NextFuseLoopIndex++;
 
-        for (ui32 queueIndex = 0; queueIndex < QueueThreads.size(); queueIndex++) {
-            QueueThreads[queueIndex] = std::make_unique<TFuseLoopThread>(
+        for (ui32 queueIndex = 0; queueIndex < FrontendQueueThreads.size(); queueIndex++) {
+            FrontendQueueThreads[queueIndex] = std::make_unique<TFuseLoopThread>(
                 Session,
                 fuseLoopIndex,
                 queueIndex,
@@ -562,7 +561,7 @@ public:
 
     void Start()
     {
-        for (auto& thread: QueueThreads) {
+        for (auto& thread: FrontendQueueThreads) {
             thread->Start();
         }
     }
@@ -573,12 +572,12 @@ public:
 
         Session.Exit();
 
-        for (auto& thread: QueueThreads) {
+        for (auto& thread: FrontendQueueThreads) {
             thread->SignalInterrupt();
         }
 
-        for (auto& thread: QueueThreads) {
-            thread->StopThread();
+        for (auto& thread: FrontendQueueThreads) {
+            thread->Stop();
         }
 
         STORAGE_INFO("stopped FUSE loop");

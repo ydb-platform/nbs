@@ -74,7 +74,7 @@ struct fuse_session {
     struct fuse_virtio_dev *virtio_dev;
     /* number of queues on backend device (qemu) */
     int num_backend_queues;
-    /* number of queus used to submit requests to backend device (vhd_request_queue) */
+    /* number of queues used to submit requests to backend device (vhd_request_queue) */
     int num_frontend_queues;
 };
 
