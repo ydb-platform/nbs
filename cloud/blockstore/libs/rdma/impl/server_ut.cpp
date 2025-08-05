@@ -75,6 +75,38 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
         server->Stop();
     }
 
+    Y_UNIT_TEST(ShouldStartEndpointWithToS)
+    {
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        auto verbs =
+            NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverConfig = std::make_shared<TServerConfig>();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        serverConfig->IpTypeOfService = 42;
+        UNIT_ASSERT_VALUES_UNEQUAL(42, testContext->ToS);
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto server = CreateServer(
+            verbs,
+            logging,
+            monitoring,
+            serverConfig);
+
+        server->Start();
+
+        auto serverEndpoint = server->StartEndpoint(
+            "::",
+            10020,
+            std::make_shared<TServerHandler>());
+        UNIT_ASSERT_VALUES_EQUAL(42, testContext->ToS);
+
+        server->Stop();
+    }
+
     Y_UNIT_TEST(StartEndpointShouldNotThrow)
     {
         auto context = MakeIntrusive<NVerbs::TTestContext>();

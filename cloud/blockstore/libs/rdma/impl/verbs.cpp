@@ -227,13 +227,26 @@ struct TVerbs
     TConnectionPtr CreateConnection(
         rdma_event_channel* channel,
         void* context,
-        rdma_port_space ps) override
+        rdma_port_space ps,
+        ui8 tos) override
     {
         rdma_cm_id* id = nullptr;
 
         int res = rdma_create_id(channel, &id, context, ps);
         if (res < 0) {
             RDMA_THROW_ERROR("rdma_create_id");
+        }
+
+        if (tos != 0) {
+            res = rdma_set_option(
+                id,
+                RDMA_OPTION_ID,
+                RDMA_OPTION_ID_TOS,
+                &tos,
+                sizeof(tos));
+            if (res < 0) {
+                RDMA_THROW_ERROR("rdma_set_option RDMA_OPTION_ID_TOS");
+            }
         }
 
         return WrapPtr(id);
