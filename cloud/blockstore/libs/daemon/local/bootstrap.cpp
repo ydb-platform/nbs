@@ -68,7 +68,7 @@ ITraceSerializerPtr TBootstrapLocal::GetTraceSerializer()
 
 void TBootstrapLocal::SetupCellsManager()
 {
-    CellsManager = NCells::CreateCellsManagerStub();
+    CellsManager = NCells::CreateCellManagerStub();
 }
 
 TProgramShouldContinue& TBootstrapLocal::GetShouldContinue()
