@@ -255,7 +255,7 @@ void TStorageServiceActor::HandleGetNodeXAttr(
     // If there are no extended attributes in the filesystem we don't
     // forward corresponding requests to the tablet and reply from the service
     // actor
-    if (!session->FileStore.GetFeatures().GetHasXAttrs()) {
+    if (StorageConfig->GetLazyXAttrsEnabled() && !session->FileStore.GetFeatures().GetHasXAttrs()) {
         auto response =
             std::make_unique<TEvService::TGetNodeXAttrMethod::TResponse>(
                 ErrorAttributeDoesNotExist(
@@ -286,7 +286,7 @@ void TStorageServiceActor::HandleListNodeXAttr(
 
     // if there no extended attributes in the file system we return an empty
     // list
-    if (!session->FileStore.GetFeatures().GetHasXAttrs()) {
+    if (StorageConfig->GetLazyXAttrsEnabled() && !session->FileStore.GetFeatures().GetHasXAttrs()) {
         auto response =
             std::make_unique<TEvService::TListNodeXAttrMethod::TResponse>();
 
@@ -314,7 +314,7 @@ void TStorageServiceActor::HandleSetNodeXAttr(
         return;
     }
 
-    if (!session->FileStore.GetFeatures().GetHasXAttrs()) {
+    if (StorageConfig->GetLazyXAttrsEnabled() && !session->FileStore.GetFeatures().GetHasXAttrs()) {
         // Send TSetHasXAttrsRequest to the index tablet
         auto* msg = ev->Get();
         LOG_INFO(
