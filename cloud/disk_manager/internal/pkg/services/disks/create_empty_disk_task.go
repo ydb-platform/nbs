@@ -52,6 +52,9 @@ func (t *createEmptyDiskTask) Run(
 	zoneID := t.params.Disk.ZoneId
 	if !isLocalDiskKind(t.params.Kind) {
 		zoneID, err = t.cellSelector.PrepareZoneID(ctx, t.params.Disk, t.params.FolderId)
+		if err != nil {
+			return err
+		}
 	}
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
@@ -130,12 +133,11 @@ func (t *createEmptyDiskTask) Cancel(
 		)
 	}
 
-	zoneID := t.params.Disk.ZoneId
 	if len(diskMeta.ZoneID) > 0 {
-		zoneID = diskMeta.ZoneID
+		t.params.Disk.ZoneId = diskMeta.ZoneID
 	}
 
-	client, err := t.nbsFactory.GetClient(ctx, zoneID)
+	client, err := t.nbsFactory.GetClient(ctx, t.params.Disk.ZoneId)
 	if err != nil {
 		return err
 	}

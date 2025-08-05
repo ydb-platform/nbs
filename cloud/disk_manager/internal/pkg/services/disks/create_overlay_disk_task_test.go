@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	cells_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -36,6 +37,7 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 	nbsFactory := nbs_mocks.NewFactoryMock()
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	request := &protos.CreateOverlayDiskRequest{
 		SrcImageId: "image",
@@ -53,17 +55,26 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 	}
 
 	task := &createOverlayDiskTask{
-		storage:     storage,
-		scheduler:   scheduler,
-		poolService: poolService,
-		nbsFactory:  nbsFactory,
-		request:     request,
-		state:       &protos.CreateOverlayDiskTaskState{},
+		storage:      storage,
+		scheduler:    scheduler,
+		poolService:  poolService,
+		nbsFactory:   nbsFactory,
+		request:      request,
+		state:        &protos.CreateOverlayDiskTaskState{},
+		cellSelector: cellSelector,
 	}
+
+	cellSelector.On(
+		"PrepareZoneID",
+		ctx,
+		mock.Anything,
+		mock.Anything,
+	).Return("zone", nil)
 
 	// TODO: Improve this expectations.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{
-		ID: "disk",
+		ID:     "disk",
+		ZoneID: "zone",
 	}, nil)
 	storage.On("DiskCreated", ctx, mock.Anything).Return(nil)
 
@@ -110,8 +121,8 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testin
 	scheduler := tasks_mocks.NewSchedulerMock()
 	poolService := pools_mocks.NewServiceMock()
 	nbsFactory := nbs_mocks.NewFactoryMock()
-	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	request := &protos.CreateOverlayDiskRequest{
 		SrcImageId: "image",
@@ -129,18 +140,27 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testin
 	}
 
 	task := &createOverlayDiskTask{
-		storage:     storage,
-		scheduler:   scheduler,
-		poolService: poolService,
-		nbsFactory:  nbsFactory,
-		request:     request,
-		state:       &protos.CreateOverlayDiskTaskState{},
+		storage:      storage,
+		scheduler:    scheduler,
+		poolService:  poolService,
+		nbsFactory:   nbsFactory,
+		request:      request,
+		state:        &protos.CreateOverlayDiskTaskState{},
+		cellSelector: cellSelector,
 	}
 
-	// TODO: Improve this expectation.
-	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{}, nil)
+	cellSelector.On(
+		"PrepareZoneID",
+		ctx,
+		mock.Anything,
+		mock.Anything,
+	).Return("zone", nil)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
+	// TODO: Improve this expectation.
+	storage.On("CreateDisk", ctx, mock.Anything).Return(
+		&resources.DiskMeta{ZoneID: "zone"},
+		nil,
+	)
 
 	poolService.On(
 		"AcquireBaseDisk",
@@ -163,7 +183,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testin
 	)
 
 	err := task.Run(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, execCtx)
 	require.Error(t, err)
 }
 
@@ -173,8 +193,8 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 	scheduler := tasks_mocks.NewSchedulerMock()
 	poolService := pools_mocks.NewServiceMock()
 	nbsFactory := nbs_mocks.NewFactoryMock()
-	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	request := &protos.CreateOverlayDiskRequest{
 		SrcImageId: "image",
@@ -192,18 +212,27 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 	}
 
 	task := &createOverlayDiskTask{
-		storage:     storage,
-		scheduler:   scheduler,
-		poolService: poolService,
-		nbsFactory:  nbsFactory,
-		request:     request,
-		state:       &protos.CreateOverlayDiskTaskState{},
+		storage:      storage,
+		scheduler:    scheduler,
+		poolService:  poolService,
+		nbsFactory:   nbsFactory,
+		request:      request,
+		state:        &protos.CreateOverlayDiskTaskState{},
+		cellSelector: cellSelector,
 	}
 
-	// TODO: Improve this expectation.
-	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{}, nil)
+	cellSelector.On(
+		"PrepareZoneID",
+		ctx,
+		mock.Anything,
+		mock.Anything,
+	).Return("zone", nil)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
+	// TODO: Improve this expectation.
+	storage.On("CreateDisk", ctx, mock.Anything).Return(
+		&resources.DiskMeta{ZoneID: "zone"},
+		nil,
+	)
 
 	poolService.On(
 		"AcquireBaseDisk",
@@ -226,7 +255,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 	)
 
 	err := task.Run(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, execCtx)
 	require.Error(t, err)
 }
 
@@ -238,6 +267,7 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 	nbsFactory := nbs_mocks.NewFactoryMock()
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	request := &protos.CreateOverlayDiskRequest{
 		SrcImageId: "image",
@@ -255,13 +285,21 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 	}
 
 	task := &createOverlayDiskTask{
-		storage:     storage,
-		scheduler:   scheduler,
-		poolService: poolService,
-		nbsFactory:  nbsFactory,
-		request:     request,
-		state:       &protos.CreateOverlayDiskTaskState{},
+		storage:      storage,
+		scheduler:    scheduler,
+		poolService:  poolService,
+		nbsFactory:   nbsFactory,
+		request:      request,
+		state:        &protos.CreateOverlayDiskTaskState{},
+		cellSelector: cellSelector,
 	}
+
+	cellSelector.On(
+		"PrepareZoneID",
+		ctx,
+		mock.Anything,
+		mock.Anything,
+	).Return("zone", nil)
 
 	storage.On(
 		"DeleteDisk",

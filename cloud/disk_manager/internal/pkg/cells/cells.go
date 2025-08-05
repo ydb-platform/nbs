@@ -70,15 +70,6 @@ func (s *cellSelector) PrepareZoneID(
 	folderID string,
 ) (string, error) {
 
-	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, diskID.DiskId)
-	if err != nil {
-		return "", err
-	}
-
-	if diskMeta != nil {
-		return diskMeta.ZoneID, nil
-	}
-
 	return s.selectCell(diskID, folderID), nil
 }
 
