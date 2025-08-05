@@ -934,10 +934,10 @@ void TBootstrapYdb::InitRdmaRequestServer()
         std::move(rdmaConfig));
 }
 
-void TBootstrapYdb::SetupCellsManager()
+void TBootstrapYdb::SetupCellManager()
 {
     if (Configs->CellsConfig->GetCellsEnabled()) {
-        CellsManager = CreateCellManager(
+        CellManager = CreateCellManager(
             Configs->CellsConfig,
             Timer,
             Scheduler,
@@ -947,7 +947,7 @@ void TBootstrapYdb::SetupCellsManager()
             ServerStats,
             RdmaClient);
     } else {
-        CellsManager = NCells::CreateCellManagerStub();
+        CellManager = NCells::CreateCellManagerStub();
     }
 }
 

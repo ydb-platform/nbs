@@ -53,7 +53,7 @@ protected:
 
     void InitRdmaRequestServer() override;
 
-    void SetupCellsManager() override;
+    void SetupCellManager() override;
 };
 
 }   // namespace NCloud::NBlockStore::NServer
