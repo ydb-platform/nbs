@@ -446,9 +446,7 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
                     .Stats = std::move(r.Stats[i])
                 };
 
-                Devices.emplace(
-                    config.GetDeviceUUID(),
-                    std::move(device));
+                Devices.emplace(config.GetDeviceUUID(), std::move(device));
             }
 
             return TInitializeResult{
@@ -456,6 +454,7 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
                 .Errors = std::move(r.Errors),
                 .ConfigMismatchErrors = std::move(r.ConfigMismatchErrors),
                 .DevicesWithSuspendedIO = std::move(r.DevicesWithSuspendedIO),
+                .LostDevicesIds = std::move(r.LostDevicesIds),
                 .Guard = std::move(r.Guard)};
         });
 }
@@ -512,7 +511,11 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
                 }
             }
 
-            RestoreSessions(*DeviceClient);
+            RestoreSessions(
+                *DeviceClient,
+                THashSet<TString>{
+                    r.LostDevicesIds.begin(),
+                    r.LostDevicesIds.end()});
 
             return r;
         });
@@ -969,7 +972,9 @@ bool TDiskAgentState::GetPartiallySuspended() const
     return PartiallySuspended;
 }
 
-void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
+void TDiskAgentState::RestoreSessions(
+    TDeviceClient& client,
+    const THashSet<TString>& lostDevicesIds) const
 {
     const TString storagePath = StorageConfig->GetCachedDiskAgentSessionsPath();
     const TString agentPath = AgentConfig->GetCachedSessionsPath();
@@ -1001,6 +1006,10 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
             TVector<TString> uuids(
                 std::make_move_iterator(session.MutableDeviceIds()->begin()),
                 std::make_move_iterator(session.MutableDeviceIds()->end()));
+
+            EraseIf(uuids, [&] (const auto& uuid) {
+                return lostDevicesIds.contains(uuid);
+            });
 
             const auto [_, error] = client.AcquireDevices(
                 uuids,
