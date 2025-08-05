@@ -83,7 +83,9 @@ void TVolumeActor::ProcessNextAcquireReleaseDiskRequest(const TActorContext& ctx
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
+void TVolumeActor::AcquireDiskIfNeeded(
+    const TActorContext& ctx,
+    bool retryIfUndelivery)
 {
     if (!State->GetClients()) {
         return;
@@ -102,7 +104,7 @@ void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
             }
         }
 
-        if (skip) {
+        if (skip && !retryIfUndelivery) {
             continue;
         }
 
@@ -110,8 +112,8 @@ void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
             x.first,
             x.second.GetVolumeClientInfo().GetVolumeAccessMode(),
             x.second.GetVolumeClientInfo().GetMountSeqNumber(),
-            nullptr
-        );
+            nullptr,
+            retryIfUndelivery);
 
         LOG_DEBUG(
             ctx,
@@ -149,7 +151,10 @@ void TVolumeActor::HandleAcquireDiskIfNeeded(
 {
     Y_UNUSED(ev);
 
-    AcquireDiskIfNeeded(ctx);
+    AcquireDiskIfNeeded(
+        ctx,
+        false   // retryIfUndelivery
+    );
 
     AcquireDiskScheduled = false;
 }
@@ -174,7 +179,32 @@ void TVolumeActor::HandleReacquireDisk(
         }
     }
 
-    AcquireDiskIfNeeded(ctx);
+    AcquireDiskIfNeeded(
+        ctx,
+        false   // retryIfUndelivery
+    );
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeActor::HandleRetryAcquireDisk(
+    const TEvVolume::TEvRetryAcquireDisk::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    if (AcquireReleaseDiskRequests.empty() ||
+        !AcquireReleaseDiskRequests.front().RetryIfTimeoutOrUndelivery)
+    {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Unexpected TEvRetryAcquireDisk",
+            LogTitle.GetWithTime().c_str());
+
+        return;
+    }
+
+    ProcessNextAcquireReleaseDiskRequest(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -218,6 +248,18 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
+        if (request.RetryIfTimeoutOrUndelivery &&
+            GetErrorKind(error) == EErrorKind::ErrorRetriable &&
+            Config->GetRetryAcquireReleaseDiskTimeout())
+        {
+            auto delay = BackoffDelayProviderForAcquireReleaseDiskRequests
+                             .GetDelayAndIncrease();
+            ctx.Schedule(
+                delay,
+                std::make_unique<TEvVolume::TEvRetryAcquireDisk>().release());
+            return;
+        }
+
         if (cr) {
             auto response =
                 std::make_unique<TEvVolume::TEvAddClientResponse>(error);
@@ -230,14 +272,17 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             PendingClientRequests.pop_front();
             ProcessNextPendingClientRequest(ctx);
         }
-    } else if (cr) {
-        ExecuteTx<TAddClient>(
-            ctx,
-            cr->RequestInfo,
-            cr->DiskId,
-            cr->PipeServerActorId,
-            cr->AddedClientInfo
-        );
+    } else {
+        BackoffDelayProviderForAcquireReleaseDiskRequests.Reset();
+
+        if (cr) {
+            ExecuteTx<TAddClient>(
+                ctx,
+                cr->RequestInfo,
+                cr->DiskId,
+                cr->PipeServerActorId,
+                cr->AddedClientInfo);
+        }
     }
 
     AcquireReleaseDiskRequests.pop_front();
@@ -330,7 +375,8 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
                     request->AddedClientInfo.GetClientId(),
                     request->AddedClientInfo.GetVolumeAccessMode(),
                     request->AddedClientInfo.GetMountSeqNumber(),
-                    request
+                    request,
+                    false   // retryIfTimeoutOrUndelivery
                 );
             }
 

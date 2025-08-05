@@ -273,17 +273,20 @@ private:
         ui64 MountSeqNumber;
         TClientRequestPtr ClientRequest;
         TVector<NProto::TDeviceConfig> DevicesToRelease;
+        bool RetryIfTimeoutOrUndelivery = false;
 
         TAcquireReleaseDiskRequest(
                 TString clientId,
                 NProto::EVolumeAccessMode accessMode,
                 ui64 mountSeqNumber,
-                TClientRequestPtr clientRequest)
+                TClientRequestPtr clientRequest,
+                bool retryIfTimeoutOrUndelivery)
             : IsAcquire(true)
             , ClientId(std::move(clientId))
             , AccessMode(accessMode)
             , MountSeqNumber(mountSeqNumber)
             , ClientRequest(std::move(clientRequest))
+            , RetryIfTimeoutOrUndelivery(retryIfTimeoutOrUndelivery)
         {
         }
 
@@ -302,6 +305,9 @@ private:
     };
     TList<TAcquireReleaseDiskRequest> AcquireReleaseDiskRequests;
     bool AcquireDiskScheduled = false;
+    TBackoffDelayProvider BackoffDelayProviderForAcquireReleaseDiskRequests{
+        Config->GetRetryAcquireReleaseDiskTimeout(),
+        TDuration::Seconds(5)};
 
     NProto::TError StorageAllocationResult;
     bool DiskAllocationScheduled = false;
@@ -799,7 +805,10 @@ private:
         const TEvVolumePrivate::TEvDevicesAcquireFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void AcquireDiskIfNeeded(const NActors::TActorContext& ctx);
+    void AcquireDiskIfNeeded(
+        const NActors::TActorContext& ctx,
+        bool retryIfUndelivery);
+
     void ReleaseReplacedDevices(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TDeviceConfig>& replacedDevices);
@@ -812,6 +821,10 @@ private:
 
     void HandleReacquireDisk(
         const TEvVolume::TEvReacquireDisk::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRetryAcquireDisk(
+        const TEvVolume::TEvRetryAcquireDisk::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRdmaUnavailable(
