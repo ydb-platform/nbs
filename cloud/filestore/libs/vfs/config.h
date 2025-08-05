@@ -47,6 +47,10 @@ public:
     ui64 GetWriteBackCacheCapacity() const;
     TDuration GetWriteBackCacheAutomaticFlushPeriod() const;
 
+    TString GetDirectoryHandlesStoragePath() const;
+    ui64 GetDirectoryHandlesTableSize() const;
+    ui64 GetDirectoryHandlesInitialDataSize() const;
+
     bool GetGuestKeepCacheAllowed() const;
 
     void Dump(IOutputStream& out) const;

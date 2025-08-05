@@ -632,4 +632,7 @@ message TStorageConfig
     // filesystem behaves as if it has XAttrs. Knowledge about XAttrs presence
     // allows to reply early to GetNodeXAttr and ListNodeXAttr queries.
     optional bool LazyXAttrsEnabled = 436;
+
+    // Enable directory handles storage functionality.
+    optional bool DirectoryHandlesStorageEnabled = 437;
 }

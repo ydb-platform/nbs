@@ -32,6 +32,10 @@ namespace {
     xxx(WriteBackCacheCapacity,             ui64,      1_GB                   )\
     xxx(WriteBackCacheAutomaticFlushPeriod, TDuration,                         \
                                             TDuration::MilliSeconds(100)      )\
+                                                                               \
+    xxx(DirectoryHandlesStoragePath,        TString,   ""                     )\
+    xxx(DirectoryHandlesTableSize,          ui64,      1000                   )\
+    xxx(DirectoryHandlesInitialDataSize,    ui64,      1_GB                   )\
 // FILESTORE_VFS_CONFIG
 
 #define FILESTORE_VFS_DECLARE_CONFIG(name, type, value)                        \

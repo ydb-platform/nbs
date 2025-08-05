@@ -57,6 +57,17 @@ message TVhostServiceConfig
 
     // WriteBackCache automatic flush period (in milliseconds).
     optional uint32 WriteBackCacheAutomaticFlushPeriod = 14;
+
+    // Path to the directory where DirectoryHandles storage is stored for all sessions.
+    // Will create a directory with filesystem id as name
+    // (and a subdirectory with session id as name) if not present.
+    optional string DirectoryHandlesStoragePath = 15;
+
+    // Capacity for DirectoryHandles persistent table.
+    optional uint64 DirectoryHandlesTableSize = 16;
+
+    // Initial data area size for DirectoryHandles persistent table.
+    optional uint64 DirectoryHandlesInitialDataSize = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
