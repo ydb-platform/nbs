@@ -8,11 +8,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCellsManagerStub
-    : public ICellsManager
+struct TCellManagerStub
+    : public ICellManager
 {
-    explicit TCellsManagerStub()
-        : ICellsManager(nullptr)
+    explicit TCellManagerStub()
+        : ICellManager(nullptr)
     {}
 
     [[nodiscard]] TResultOrError<THostEndpoint> GetCellEndpoint(
@@ -24,7 +24,7 @@ struct TCellsManagerStub
         return MakeError(E_NOT_IMPLEMENTED, "not implemented");
     }
 
-    [[nodiscard]] std::optional<TDescribeFuture> DescribeVolume(
+    [[nodiscard]] std::optional<TDescribeVolumeFuture> DescribeVolume(
         const TString& diskId,
         const NProto::THeaders& headers,
         const IBlockStorePtr& localService,
@@ -48,9 +48,9 @@ struct TCellsManagerStub
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICellsManagerPtr CreateCellsManagerStub()
+ICellManagerPtr CreateCellManagerStub()
 {
-    return std::make_shared<TCellsManagerStub>();
+    return std::make_shared<TCellManagerStub>();
 }
 
 }   // namespace NCloud::NBlockStore::NCells

@@ -19,12 +19,12 @@ struct THostEndpointsSetupProvider
     using IHostEndpointsSetupProvider::TSetupRdmaEndpointFuture;
 
     auto SetupHostGrpcEndpoint(
-        const TArguments& args,
-        const TCellHostConfig& config) -> TSetupGrpcEndpointFuture override;
+        const TBootstrap& args,
+        const THostConfig& config) -> TSetupGrpcEndpointFuture override;
 
     auto SetupHostRdmaEndpoint(
-        const TArguments& args,
-        const TCellHostConfig& config,
+        const TBootstrap& args,
+        const THostConfig& config,
         IBlockStorePtr client) -> TSetupRdmaEndpointFuture override;
 };
 

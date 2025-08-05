@@ -52,8 +52,8 @@ struct TTestHostEndpointsSetupProvider
     {}
 
     TSetupGrpcEndpointFuture SetupHostGrpcEndpoint(
-        const TArguments& args,
-        const TCellHostConfig& config) override
+        const TBootstrap& args,
+        const THostConfig& config) override
     {
         Y_UNUSED(args);
         Y_UNUSED(config);
@@ -62,8 +62,8 @@ struct TTestHostEndpointsSetupProvider
     };
 
     TSetupRdmaEndpointFuture SetupHostRdmaEndpoint(
-        const TArguments& args,
-        const TCellHostConfig& config,
+        const TBootstrap& args,
+        const THostConfig& config,
         IBlockStorePtr client) override
     {
         Y_UNUSED(args);
@@ -162,7 +162,7 @@ struct TTestGrpcClient
 void ConfigureHosts(NProto::TCellConfig& proto, const THosts& hosts)
 {
     for (const auto& host: hosts) {
-        NProto::TCellHostConfig cfg;
+        NProto::THostConfig cfg;
         cfg.SetFqdn(host.second.Fqdn);
         cfg.SetTransport(host.second.Transport);
         *proto.AddHosts() = std::move(cfg);
@@ -173,7 +173,7 @@ void ConfigureHosts(NProto::TCellConfig& proto, const THosts& hosts)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TCellManagerTest)
+Y_UNIT_TEST_SUITE(TCellTest)
 {
     Y_UNIT_TEST(ShouldAllocateEndpoints)
     {
@@ -188,12 +188,12 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         ConfigureHosts(proto, hosts);
         TCellConfig config {std::move(proto)};
 
-        TArguments args;
+        TBootstrap args;
         args.GrpcClient = std::make_shared<TTestGrpcClient>();
         args.EndpointsSetup =
             std::make_shared<TTestHostEndpointsSetupProvider>(hosts);
 
-        auto cell = std::make_shared<TCellManager>(args,config);
+        auto cell = std::make_shared<TCell>(args,config);
 
         auto clientConfig = std::make_shared<NClient::TClientAppConfig>();
 
@@ -230,18 +230,18 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             {"h3", {.Fqdn = "h3", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}}}};
 
         NProto::TCellConfig proto;
-        proto.SetCellDescribeHostCnt(3);
+        proto.SetDescribeVolumeHostCount(3);
         proto.SetMinCellConnections(3);
         proto.SetTransport(NProto::CELL_DATA_TRANSPORT_GRPC);
         ConfigureHosts(proto, hosts);
         TCellConfig config {std::move(proto)};
 
-        TArguments args;
+        TBootstrap args;
         args.GrpcClient = std::make_shared<TTestGrpcClient>();
         args.EndpointsSetup =
             std::make_shared<TTestHostEndpointsSetupProvider>(hosts);
 
-        auto cell = std::make_shared<TCellManager>(args,config);
+        auto cell = std::make_shared<TCell>(args,config);
         cell->Start();
 
         auto clientConfig = std::make_shared<NClient::TClientAppConfig>();

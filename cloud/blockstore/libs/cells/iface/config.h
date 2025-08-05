@@ -4,7 +4,6 @@
 
 #include <cloud/blockstore/config/cells.pb.h>
 #include <cloud/blockstore/libs/client/config.h>
-
 #include <cloud/blockstore/libs/diagnostics/dumpable.h>
 
 #include <util/datetime/base.h>
@@ -18,11 +17,12 @@ namespace NCloud::NBlockStore::NCells {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TCellConfig;
-struct TCellHostConfig
+
+struct THostConfig
 {
-    TCellHostConfig(
-        NProto::TCellHostConfig hostConfig,
-        TCellConfig CellConfig);
+    THostConfig(
+        NProto::THostConfig hostConfig,
+        TCellConfig cellConfig);
 
     ui32 GetGrpcPort() const
     {
@@ -60,12 +60,12 @@ private:
     ui32 RdmaPort = 0;
     ui32 NbdPort = 0;
     TString Fqdn;
-    NProto::ECellDataTransport Transport;
+    NProto::ECellDataTransport Transport = NProto::CELL_DATA_TRANSPORT_UNSET;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TConfiguredHosts = THashMap<TString, TCellHostConfig>;
+using TConfiguredHosts = THashMap<TString, THostConfig>;
 
 class TCellConfig
     : public IDumpable
@@ -89,7 +89,7 @@ public:
     [[nodiscard]] ui32 GetNbdPort() const;
     [[nodiscard]] NProto::ECellDataTransport GetTransport() const;
     [[nodiscard]] const TConfiguredHosts& GetHosts() const;
-    [[nodiscard]] ui32 GetCellDescribeHostCnt() const;
+    [[nodiscard]] ui32 GetDescribeVolumeHostCount() const;
     [[nodiscard]] ui32 GetMinCellConnections() const;
 
     void Dump(IOutputStream& out) const override;
@@ -113,14 +113,14 @@ private:
 public:
     explicit TCellsConfig(NProto::TCellsConfig Config = {});
 
-    [[nodiscard]] const NProto::TCellsConfig& GetCellingConfig() const
+    [[nodiscard]] const NProto::TCellsConfig& GetCellsConfig() const
     {
         return Config;
     }
 
     [[nodiscard]] TString GetCellId() const;
     [[nodiscard]] const TConfiguredCells& GetCells() const;
-    [[nodiscard]] TDuration GetDescribeTimeout() const;
+    [[nodiscard]] TDuration GetDescribeVolumeTimeout() const;
     [[nodiscard]] const NClient::TClientAppConfig& GetGrpcClientConfig() const;
     [[nodiscard]] ui32 GetRdmaTransportWorkers() const;
     [[nodiscard]] bool GetCellsEnabled() const;
@@ -129,4 +129,4 @@ public:
     void DumpHtml(IOutputStream& out) const override;
 };
 
-}   // namespace NCloud::NBlockStore::NCelling
+}   // namespace NCloud::NBlockStore::NCells

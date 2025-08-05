@@ -192,11 +192,8 @@ message TClientConfig
     // First retry timeout for YDB based disks (in milliseconds).
     optional uint32 YDBBasedDiskInitialRetryTimeout = 44;
 
-    // Allows to specify clientId later (by upper client).
-    optional bool NoClientId = 45;
-
     // True if this is a server-side client.
-    optional bool IsServerSideClient = 46;
+    optional bool DoNotSendStats = 46;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "config.h"
-#include "arguments.h"
+#include "bootstrap.h"
 
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -14,7 +14,7 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCellHostConfig;
+struct THostConfig;
 
 struct IHostEndpointsSetupProvider
 {
@@ -26,12 +26,12 @@ struct IHostEndpointsSetupProvider
     using TShutdownEndpointFuture = NThreading::TFuture<void>;
 
     virtual TSetupGrpcEndpointFuture SetupHostGrpcEndpoint(
-        const TArguments& args,
-        const TCellHostConfig& config) = 0;
+        const TBootstrap& args,
+        const THostConfig& config) = 0;
 
     virtual TSetupRdmaEndpointFuture SetupHostRdmaEndpoint(
-        const TArguments& args,
-        const TCellHostConfig& config,
+        const TBootstrap& args,
+        const THostConfig& config,
         IBlockStorePtr client) = 0;
 
     virtual ~IHostEndpointsSetupProvider() = default;

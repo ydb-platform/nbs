@@ -9,8 +9,8 @@ namespace NCloud::NBlockStore::NCells {
 class TCellsConfig;
 using TCellsConfigPtr = std::shared_ptr<TCellsConfig>;
 
-struct ICellsManager;
-using ICellsManagerPtr = std::shared_ptr<ICellsManager>;
+struct ICellManager;
+using ICellManagerPtr = std::shared_ptr<ICellManager>;
 
 struct IHostEndpointsSetupProvider;
 using IHostEndpointsSetupProviderPtr =

@@ -12,8 +12,8 @@ using namespace NThreading;
 ////////////////////////////////////////////////////////////////////////////////
 
 auto THostEndpointsSetupProvider::SetupHostGrpcEndpoint(
-    const TArguments& args,
-    const TCellHostConfig& config) -> TSetupGrpcEndpointFuture
+    const TBootstrap& args,
+    const THostConfig& config) -> TSetupGrpcEndpointFuture
 {
     auto endpoint = CreateMultiClientEndpoint(
         args.GrpcClient,
@@ -25,8 +25,8 @@ auto THostEndpointsSetupProvider::SetupHostGrpcEndpoint(
 }
 
 auto THostEndpointsSetupProvider::SetupHostRdmaEndpoint(
-    const TArguments& args,
-    const TCellHostConfig& config,
+    const TBootstrap& args,
+    const THostConfig& config,
     IBlockStorePtr client) -> TSetupRdmaEndpointFuture
 {
     NClient::TRdmaEndpointConfig rdmaEndpoint {
@@ -39,7 +39,7 @@ auto THostEndpointsSetupProvider::SetupHostRdmaEndpoint(
         args.RdmaClient,
         std::move(client),
         args.TraceSerializer,
-        args.Workers,
+        args.RdmaTaskQueue,
         rdmaEndpoint);
 }
 

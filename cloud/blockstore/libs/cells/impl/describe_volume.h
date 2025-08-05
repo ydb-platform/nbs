@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/blockstore/libs/cells/iface/arguments.h>
+#include <cloud/blockstore/libs/cells/iface/bootstrap.h>
 #include <cloud/blockstore/libs/cells/iface/cells.h>
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -15,12 +15,12 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::optional<TDescribeFuture> DescribeVolume(
+std::optional<TDescribeVolumeFuture> DescribeVolume(
     const NProto::TDescribeVolumeRequest& request,
     const IBlockStorePtr& localService,
     const TCellsEndpoints& endpoints,
     bool hasUnavailableCells,
     TDuration timeout,
-    TArguments args);
+    TBootstrap args);
 
 }   // namespace NCloud::NBlockStore::NCells

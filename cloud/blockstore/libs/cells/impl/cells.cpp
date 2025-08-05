@@ -32,10 +32,10 @@ class TCellsMonPage final
     : public THtmlMonPage
 {
 private:
-    TCellsManager& Manager;
+    TCellManager& Manager;
 
 public:
-    TCellsMonPage(TCellsManager& manager, const TString& componentName)
+    TCellsMonPage(TCellManager& manager, const TString& componentName)
         : THtmlMonPage(componentName, componentName, true)
         , Manager(manager)
     {}
@@ -48,16 +48,16 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCellsManager::TCellsManager(
+TCellManager::TCellManager(
         TCellsConfigPtr config,
-        TArguments args)
-    : ICellsManager(std::move(config))
+        TBootstrap args)
+    : ICellManager(std::move(config))
     , Args(std::move(args))
 {
     for (const auto& cell: Config->GetCells()) {
         Cells.emplace(
             cell.first,
-            CreateCellManager(Args, cell.second));
+            CreateCell(Args, cell.second));
     }
 
     if (args.Monitoring) {
@@ -69,7 +69,7 @@ TCellsManager::TCellsManager(
     }
 }
 
-void TCellsManager::Start()
+void TCellManager::Start()
 {
     Args.GrpcClient->Start();
 
@@ -78,12 +78,12 @@ void TCellsManager::Start()
     }
 }
 
-void TCellsManager::Stop()
+void TCellManager::Stop()
 {
     Args.GrpcClient->Stop();
 }
 
-TResultOrError<THostEndpoint> TCellsManager::GetCellEndpoint(
+TResultOrError<THostEndpoint> TCellManager::GetCellEndpoint(
     const TString& cellId,
     const NClient::TClientAppConfigPtr& clientConfig)
 {
@@ -92,7 +92,7 @@ TResultOrError<THostEndpoint> TCellsManager::GetCellEndpoint(
     return it->second->GetCellClient(clientConfig);
 }
 
-TCellsEndpoints TCellsManager::GetCellsEndpoints(
+TCellsEndpoints TCellManager::GetCellsEndpoints(
     const NClient::TClientAppConfigPtr& clientConfig)
 {
     TCellsEndpoints res;
@@ -106,7 +106,7 @@ TCellsEndpoints TCellsManager::GetCellsEndpoints(
     return res;
 }
 
-[[nodiscard]] std::optional<TDescribeFuture> TCellsManager::DescribeVolume(
+[[nodiscard]] std::optional<TDescribeVolumeFuture> TCellManager::DescribeVolume(
     const TString& diskId,
     const NProto::THeaders& headers,
     const IBlockStorePtr& localService,
@@ -136,11 +136,11 @@ TCellsEndpoints TCellsManager::GetCellsEndpoints(
         localService,
         celledEndpoints,
         hasUnavailableCells,
-        Config->GetDescribeTimeout(),
+        Config->GetDescribeVolumeTimeout(),
         Args);
 }
 
-void TCellsManager::OutputHtml(
+void TCellManager::OutputHtml(
     IOutputStream& out,
     const IMonHttpRequest& request)
 {
@@ -150,7 +150,7 @@ void TCellsManager::OutputHtml(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICellsManagerPtr CreateCellsManager(
+ICellManagerPtr CreateCellManager(
     TCellsConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
@@ -173,13 +173,13 @@ ICellsManagerPtr CreateCellsManager(
             << "unable to create gRPC client";
     }
 
-    auto workers = config->GetRdmaTransportWorkers() ?
+    auto rdmaTaskQueue = config->GetRdmaTransportWorkers() ?
         CreateThreadPool("SHRD", config->GetRdmaTransportWorkers()) :
         CreateTaskQueueStub();
 
-    workers->Start();
+    rdmaTaskQueue->Start();
 
-    TArguments args {
+    TBootstrap args {
         .Timer = std::move(timer),
         .Scheduler = std::move(scheduler),
         .Logging = std::move(logging),
@@ -187,11 +187,11 @@ ICellsManagerPtr CreateCellsManager(
         .TraceSerializer = std::move(traceSerializer),
         .GrpcClient = std::move(result.GetResult()),
         .RdmaClient = std::move(rdmaClient),
-        .Workers = std::move(workers),
+        .RdmaTaskQueue = std::move(rdmaTaskQueue),
         .EndpointsSetup = CreateHostEndpointsSetupProvider()
     };
 
-    return std::make_shared<TCellsManager>(std::move(config), args);
+    return std::make_shared<TCellManager>(std::move(config), args);
 }
 
 }   // namespace NCloud::NBlockStore::NCells

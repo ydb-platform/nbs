@@ -1,13 +1,13 @@
 LIBRARY()
 
 SRCS(
-    arguments.cpp
-    cell_host.cpp
+    bootstrap.cpp
     cell.cpp
     cells.cpp
     config.cpp
     endpoints_setup.cpp
     host_endpoint.cpp
+    host.cpp
     remote_storage.cpp
 )
 
