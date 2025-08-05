@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/blockstore/libs/cells/iface/arguments.h>
+#include <cloud/blockstore/libs/cells/iface/bootstrap.h>
 #include <cloud/blockstore/libs/cells/iface/cell.h>
 #include <cloud/blockstore/libs/cells/iface/cells.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
@@ -29,16 +29,16 @@ using namespace NMonitoring;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCellsManager
-    : public ICellsManager
+struct TCellManager
+    : public ICellManager
 {
-    const TArguments Args;
+    const TBootstrap Args;
 
-    THashMap<TString, ICellManagerPtr> Cells;
+    THashMap<TString, ICellPtr> Cells;
 
-    TCellsManager(
+    TCellManager(
         TCellsConfigPtr config,
-        TArguments args);
+        TBootstrap args);
 
     void Start() override;
     void Stop() override;
@@ -47,7 +47,7 @@ struct TCellsManager
         const TString& cellId,
         const NClient::TClientAppConfigPtr& clientConfig) override;
 
-    [[nodiscard]] std::optional<TDescribeFuture> DescribeVolume(
+    [[nodiscard]] std::optional<TDescribeVolumeFuture> DescribeVolume(
         const TString& diskId,
         const NProto::THeaders& headers,
         const IBlockStorePtr& localService,

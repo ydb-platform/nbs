@@ -1,8 +1,8 @@
 #pragma once
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
-#include <cloud/blockstore/libs/cells/iface/cell_host.h>
 #include <cloud/blockstore/libs/cells/iface/cell.h>
+#include <cloud/blockstore/libs/cells/iface/host.h>
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -22,24 +22,24 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCellManager
-    : public ICellManager
-    , public std::enable_shared_from_this<TCellManager>
+class TCell
+    : public ICell
+    , public std::enable_shared_from_this<TCell>
 {
 private:
-    const TArguments Args;
+    const TBootstrap Args;
     const TCellConfig Config;
 
     TAdaptiveLock Lock;
 
-    THashMap<TString, IHostEndpointsManagerPtr> Active;
-    THashMap<TString, IHostEndpointsManagerPtr> Activating;
-    THashSet<IHostEndpointsManagerPtr> Deactivating;
+    THashMap<TString, IHostPtr> Active;
+    THashMap<TString, IHostPtr> Activating;
+    THashSet<IHostPtr> Deactivating;
     TVector<TString> Unused;
 
 public:
-    TCellManager(
-        TArguments args,
+    TCell(
+        TBootstrap args,
         TCellConfig config);
 
     [[nodiscard]] TResultOrError<THostEndpoint> GetCellClient(
@@ -51,24 +51,24 @@ public:
     [[nodiscard]] TCellEndpoints GetCellClients(
         const NClient::TClientAppConfigPtr& clientConfig) override
     {
-        return PickHosts(Config.GetCellDescribeHostCnt(), clientConfig);
+        return PickHosts(Config.GetDescribeVolumeHostCount(), clientConfig);
     }
 
-    [[nodiscard]]THashMap<TString, IHostEndpointsManagerPtr>  GetActive() const
+    [[nodiscard]]THashMap<TString, IHostPtr>  GetActive() const
     {
         with_lock(Lock) {
             return Active;
         }
     }
 
-    [[nodiscard]]THashMap<TString, IHostEndpointsManagerPtr>  GetActivating() const
+    [[nodiscard]]THashMap<TString, IHostPtr>  GetActivating() const
     {
         with_lock(Lock) {
             return Activating;
         }
     }
 
-    [[nodiscard]]THashSet<IHostEndpointsManagerPtr>  GetDeactivating() const
+    [[nodiscard]]THashSet<IHostPtr>  GetDeactivating() const
     {
         with_lock(Lock) {
             return Deactivating;
@@ -94,7 +94,7 @@ private:
     void ResizeIfNeeded();
 };
 
-using TCellManagerPtr = std::shared_ptr<TCellManager>;
+using TCellPtr = std::shared_ptr<TCell>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

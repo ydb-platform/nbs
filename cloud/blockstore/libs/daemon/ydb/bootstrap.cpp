@@ -869,7 +869,7 @@ void TBootstrapYdb::InitRdmaRequestServer()
 void TBootstrapYdb::SetupCellsManager()
 {
     if (Configs->CellsConfig->GetCellsEnabled()) {
-        CellsManager = CreateCellsManager(
+        CellsManager = CreateCellManager(
             Configs->CellsConfig,
             Timer,
             Scheduler,
@@ -879,7 +879,7 @@ void TBootstrapYdb::SetupCellsManager()
             ServerStats,
             RdmaClient);
     } else {
-        CellsManager = NCells::CreateCellsManagerStub();
+        CellsManager = NCells::CreateCellManagerStub();
     }
 }
 

@@ -98,7 +98,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto localService = std::make_shared<TTestServiceClient>();
 
-        TArguments args;
+        TBootstrap args;
         args.Logging = CreateLoggingService("console");
         args.Scheduler = CreateScheduler();
         args.Scheduler->Start();
@@ -144,7 +144,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         request.MutableHeaders()->CopyFrom(NProto::THeaders());
         request.SetDiskId("cell1disk");
 
-        TArguments args;
+        TBootstrap args;
         args.Logging = CreateLoggingService("console");
         args.Scheduler = CreateScheduler();
         args.Scheduler->Start();
@@ -190,7 +190,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         request.MutableHeaders()->CopyFrom(NProto::THeaders());
         request.SetDiskId("cell1disk");
 
-        TArguments args;
+        TBootstrap args;
         args.Logging = CreateLoggingService("console");
         args.Scheduler = CreateScheduler();
         args.Scheduler->Start();
@@ -254,7 +254,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         request.MutableHeaders()->CopyFrom(NProto::THeaders());
         request.SetDiskId("cell1disk");
 
-        TArguments args;
+        TBootstrap args;
         args.Logging = CreateLoggingService("console");
         args.Scheduler = CreateScheduler();
         args.Scheduler->Start();
@@ -319,7 +319,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         request.MutableHeaders()->CopyFrom(NProto::THeaders());
         request.SetDiskId("cell1disk");
 
-        TArguments args;
+        TBootstrap args;
         args.Logging = CreateLoggingService("console");
         args.Scheduler = CreateScheduler();
         args.Scheduler->Start();
@@ -374,7 +374,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto localService = std::make_shared<TTestServiceClient>();
 
-        TArguments args;
+        TBootstrap args;
         args.Logging = CreateLoggingService("console");
         args.Scheduler = CreateScheduler();
         args.Scheduler->Start();

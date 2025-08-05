@@ -18,11 +18,11 @@ enum ECellDataTransport
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TCellHostConfig
+message THostConfig
 {
     optional string Fqdn = 1;
 
-    // overrides Transport in TShardInfo.
+    // overrides Transport in TCellConfig.
     optional ECellDataTransport Transport = 2;
 };
 
@@ -30,32 +30,25 @@ message TCellHostConfig
 
 message TCellConfig
 {
-    // Id of the shard.
     optional string CellId = 1;
 
-    // Insecure Grpc port number.
     optional uint32 GrpcPort = 2;
 
-    // RDMA port number.
     optional uint32 RdmaPort = 4;
 
-    // NBD port number.
     optional uint32 NbdPort = 5;
 
-    // Secure GRPC port number.
     optional uint32 SecureGrpcPort = 6;
 
-    // Transport for this shard.
     optional ECellDataTransport Transport = 7;
 
-    // List of host belonging to this shard.
-    repeated TCellHostConfig Hosts = 8;
+    repeated THostConfig Hosts = 8;
 
-    // Number of host in a shard to send Describe requests during volume
+    // Number of host in a cell to send DescribeVolume requests during volume
     // lookup.
-    optional uint32 CellDescribeHostCnt = 9;
+    optional uint32 DescribeVolumeHostCount = 9;
 
-    // Number of host in a shard to have connections to.
+    // Minimum number of hosts in a cell to have connections to.
     optional uint32 MinCellConnections = 10;
 }
 
@@ -63,14 +56,15 @@ message TCellConfig
 
 message TCellsConfig
 {
-    // Mapping from ShardId to fqdn hosts.
+    // Mapping from CellId to fqdn hosts.
     repeated TCellConfig Cells = 1;
 
-    // Shard Id, nbs belongs to.
+    // Cell id, blockstore server belongs to.
     optional string CellId = 2;
 
-    // Describe timeout.
-    optional uint32 DescribeTimeout = 3;
+    // DescribeVolume timeout. If timeout is exceeded then we reply with error
+    // indicating this and client may retry request.
+    optional uint32 DescribeVolumeTimeout = 3;
 
     // Settings for Grpc client.
     optional TClientConfig GrpcClientConfig = 4;

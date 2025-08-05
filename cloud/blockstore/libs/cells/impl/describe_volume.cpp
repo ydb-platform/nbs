@@ -278,13 +278,13 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::optional<TDescribeFuture> DescribeVolume(
+std::optional<TDescribeVolumeFuture> DescribeVolume(
     const NProto::TDescribeVolumeRequest& request,
     const IBlockStorePtr& localService,
     const TCellsEndpoints& endpoints,
     bool hasUnavailableCells,
     TDuration timeout,
-    TArguments args)
+    TBootstrap args)
 {
     TCells cells;
 

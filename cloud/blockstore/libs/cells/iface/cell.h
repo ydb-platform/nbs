@@ -2,7 +2,7 @@
 
 #include "config.h"
 #include "host_endpoint.h"
-#include "arguments.h"
+#include "bootstrap.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -21,7 +21,7 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ICellManager
+struct ICell
     : public IStartable
 {
     [[nodiscard]] virtual TResultOrError<THostEndpoint> GetCellClient(
@@ -31,13 +31,11 @@ struct ICellManager
         const NClient::TClientAppConfigPtr& clientConfig) = 0;
 };
 
-using ICellManagerPtr = std::shared_ptr<ICellManager>;
+using ICellPtr = std::shared_ptr<ICell>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICellManagerPtr CreateCellManager(
-    TArguments args,
-    TCellConfig config);
+ICellPtr CreateCell(TBootstrap args, TCellConfig config);
 
 ////////////////////////////////////////////////////////////////////////////////
 

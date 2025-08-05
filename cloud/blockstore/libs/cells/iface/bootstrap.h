@@ -13,7 +13,7 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TArguments
+struct TBootstrap
 {
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
@@ -24,7 +24,7 @@ struct TArguments
     NClient::IClientPtr GrpcClient;
     NRdma::IClientPtr RdmaClient;
 
-    ITaskQueuePtr Workers;
+    ITaskQueuePtr RdmaTaskQueue;
 
     IHostEndpointsSetupProviderPtr EndpointsSetup;
 };

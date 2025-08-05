@@ -1,4 +1,4 @@
-#include "cell_host.h"
+#include "host.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/config/client.pb.h>
@@ -37,8 +37,8 @@ struct TestHostEndpointsSetupProvider
         NewPromise<IHostEndpointsSetupProvider::TRdmaResult>();
 
     TSetupGrpcEndpointFuture SetupHostGrpcEndpoint(
-        const TArguments& args,
-        const TCellHostConfig& config) override
+        const TBootstrap& args,
+        const THostConfig& config) override
     {
         Y_UNUSED(args);
         Y_UNUSED(config);
@@ -47,8 +47,8 @@ struct TestHostEndpointsSetupProvider
     };
 
     TSetupRdmaEndpointFuture SetupHostRdmaEndpoint(
-        const TArguments& args,
-        const TCellHostConfig& config,
+        const TBootstrap& args,
+        const THostConfig& config,
         IBlockStorePtr client) override
     {
         Y_UNUSED(args);
@@ -150,7 +150,7 @@ struct TTestGrpcClient
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(THostEndpointsManagerTest)
+Y_UNIT_TEST_SUITE(THostTest)
 {
     Y_UNIT_TEST(ShouldStartGrpcEndpoint)
     {
@@ -159,16 +159,16 @@ Y_UNIT_TEST_SUITE(THostEndpointsManagerTest)
         cellCfg.SetTransport(NProto::CELL_DATA_TRANSPORT_GRPC);
         TCellConfig cell{cellCfg};
 
-        NProto::TCellHostConfig hostCfg;
+        NProto::THostConfig hostCfg;
         hostCfg.SetFqdn("host");
-        TCellHostConfig hostConfig{hostCfg, cell};
+        THostConfig hostConfig{hostCfg, cell};
 
         auto setup = std::make_shared<TestHostEndpointsSetupProvider>();
 
-        TArguments args;
+        TBootstrap args;
         args.EndpointsSetup = setup;
 
-        auto manager = std::make_shared<THostEndpointsManager>(
+        auto manager = std::make_shared<THost>(
             hostConfig,
             args);
 
@@ -248,16 +248,16 @@ Y_UNIT_TEST_SUITE(THostEndpointsManagerTest)
         cellCfg.SetTransport(NProto::CELL_DATA_TRANSPORT_RDMA);
         TCellConfig cell{cellCfg};
 
-        NProto::TCellHostConfig hostCfg;
+        NProto::THostConfig hostCfg;
         hostCfg.SetFqdn("host");
-        TCellHostConfig hostConfig{hostCfg, cell};
+        THostConfig hostConfig{hostCfg, cell};
 
         auto setup = std::make_shared<TestHostEndpointsSetupProvider>();
 
-        TArguments args;
+        TBootstrap args;
         args.EndpointsSetup = setup;
 
-        auto manager = std::make_shared<THostEndpointsManager>(
+        auto manager = std::make_shared<THost>(
             hostConfig,
             args);
 
@@ -332,16 +332,16 @@ Y_UNIT_TEST_SUITE(THostEndpointsManagerTest)
         cellCfg.SetTransport(NProto::CELL_DATA_TRANSPORT_RDMA);
         TCellConfig cell{cellCfg};
 
-        NProto::TCellHostConfig hostCfg;
+        NProto::THostConfig hostCfg;
         hostCfg.SetFqdn("host");
-        TCellHostConfig hostConfig{hostCfg, cell};
+        THostConfig hostConfig{hostCfg, cell};
 
         auto setup = std::make_shared<TestHostEndpointsSetupProvider>();
 
-        TArguments args;
+        TBootstrap args;
         args.EndpointsSetup = setup;
 
-        auto manager = std::make_shared<THostEndpointsManager>(
+        auto manager = std::make_shared<THost>(
             hostConfig,
             args);
 
