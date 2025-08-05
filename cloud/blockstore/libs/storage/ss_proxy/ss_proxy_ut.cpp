@@ -54,9 +54,9 @@ void SetupTestEnv(
     runtime.RegisterService(MakeSSProxyServiceId(), ssProxyId, nodeIdx);
 }
 
-auto CreateStorageConfig()
+auto CreateStorageConfig(NProto::TStorageServiceConfig config = {})
 {
-    return CreateTestStorageConfig({});
+    return CreateTestStorageConfig(std::move(config));
 }
 
 void SetupTestEnv(TTestEnv& env)
@@ -470,6 +470,31 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         TTestEnv env;
         auto& runtime = env.GetRuntime();
         auto config = CreateStorageConfig();
+        SetupTestEnv(env, config);
+
+        CreateVolumeViaModifySchemeDeprecated(runtime, config, "old-volume");
+        CreateVolumeViaModifyScheme(runtime, config, "new-volume");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "/local/nbs/old-volume",
+            DescribeVolumeAndReturnPath(runtime, "old-volume"));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "/local/nbs/_17A/new-volume",
+            DescribeVolumeAndReturnPath(runtime, "new-volume"));
+    }
+
+    Y_UNIT_TEST(ShouldDescribeVolumesWithSchemeCache)
+    {
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+        auto config = CreateStorageConfig(
+            []() {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(true);
+                return config;
+            }()
+        );
         SetupTestEnv(env, config);
 
         CreateVolumeViaModifySchemeDeprecated(runtime, config, "old-volume");
