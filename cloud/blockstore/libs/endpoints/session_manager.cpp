@@ -319,7 +319,7 @@ private:
     const IVolumeStatsPtr VolumeStats;
     const IServerStatsPtr ServerStats;
     const IBlockStorePtr Service;
-    const NCells::ICellManagerPtr CellsManager;
+    const NCells::ICellManagerPtr CellManager;
     const IStorageProviderPtr StorageProvider;
     const NRdma::IClientPtr RdmaClient;
     const IThrottlerProviderPtr ThrottlerProvider;
@@ -345,7 +345,7 @@ public:
             IVolumeStatsPtr volumeStats,
             IServerStatsPtr serverStats,
             IBlockStorePtr service,
-            NCells::ICellManagerPtr cellsManager,
+            NCells::ICellManagerPtr CellManager,
             IStorageProviderPtr storageProvider,
             NRdma::IClientPtr rdmaClient,
             IThrottlerProviderPtr throttlerProvider,
@@ -361,7 +361,7 @@ public:
         , VolumeStats(std::move(volumeStats))
         , ServerStats(std::move(serverStats))
         , Service(std::move(service))
-        , CellsManager(std::move(cellsManager))
+        , CellManager(std::move(CellManager))
         , StorageProvider(std::move(storageProvider))
         , RdmaClient(std::move(rdmaClient))
         , ThrottlerProvider(std::move(throttlerProvider))
@@ -503,7 +503,7 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     const TString& diskId,
     const NProto::THeaders& headers)
 {
-    auto multiShardFuture = CellsManager->DescribeVolume(
+    auto multiShardFuture = CellManager->DescribeVolume(
         diskId,
         headers,
         Service,
@@ -703,7 +703,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     auto clientConfig = CreateClientConfig(request);
 
     if (!shardId.empty()) {
-        auto result = CellsManager->GetCellEndpoint(
+        auto result = CellManager->GetCellEndpoint(
             shardId,
             clientConfig);
         if (HasError(result.GetError())) {
@@ -891,7 +891,7 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    NCells::ICellManagerPtr cellsManager,
+    NCells::ICellManagerPtr CellManager,
     IStorageProviderPtr storageProvider,
     NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,
@@ -917,7 +917,7 @@ ISessionManagerPtr CreateSessionManager(
         std::move(volumeStats),
         std::move(serverStats),
         std::move(service),
-        std::move(cellsManager),
+        std::move(CellManager),
         std::move(storageProvider),
         std::move(rdmaClient),
         std::move(throttlerProvider),
