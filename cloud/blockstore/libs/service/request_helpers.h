@@ -297,6 +297,7 @@ constexpr bool IsControlRequest(EBlockStoreRequest requestType)
         case EBlockStoreRequest::ExecuteAction:
         case EBlockStoreRequest::DescribeVolumeModel:
         case EBlockStoreRequest::UpdateDiskRegistryConfig:
+        case EBlockStoreRequest::UpdateThrottlingConfig:
         case EBlockStoreRequest::DescribeDiskRegistryConfig:
         case EBlockStoreRequest::CreatePlacementGroup:
         case EBlockStoreRequest::DestroyPlacementGroup:

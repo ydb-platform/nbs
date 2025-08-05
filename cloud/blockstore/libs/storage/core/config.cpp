@@ -614,6 +614,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(PartitionBootTimeout,                 TDuration,   Seconds(0)         )\
     xxx(DirectWriteBandwidthQuota,            ui64,        0                  )\
+    xxx(ThrottlingManagerEnabled,             bool,        false              )\
+    xxx(ThrottlingManagerCycleTimeSeconds,    TDuration,   Seconds(5)         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

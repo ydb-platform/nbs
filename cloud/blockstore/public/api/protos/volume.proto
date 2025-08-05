@@ -3,6 +3,7 @@ syntax = "proto3";
 import "cloud/blockstore/public/api/protos/encryption.proto";
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/blockstore/public/api/protos/rdma.proto";
+import "cloud/blockstore/public/api/protos/throttling.proto";
 import "cloud/storage/core/protos/error.proto";
 import "cloud/storage/core/protos/media.proto";
 import "cloud/storage/core/protos/trace.proto";
@@ -650,6 +651,13 @@ message TStatVolumeRequest
     bool NoPartition = 5;
 }
 
+message TVolumeVolatileThrottlingInfo
+{
+    uint32 Version = 1;
+    TThrottlingRule AppliedRule = 2;
+    TVolumePerformanceProfile ActualPerformanceProfile = 3;
+}
+
 message TStatVolumeResponse
 {
     // Optional error, set only if error happened.
@@ -685,6 +693,9 @@ message TStatVolumeResponse
     // Debug string with some other contents of volume state. There are no
     // guarantees about the format.
     string DebugString = 11;
+
+    // Volatile throttling config info
+    TVolumeVolatileThrottlingInfo VolatileThrottlingInfo = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
