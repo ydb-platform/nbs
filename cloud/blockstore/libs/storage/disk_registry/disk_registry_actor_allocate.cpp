@@ -409,7 +409,7 @@ void TDiskRegistryActor::ReplyToPendingDeallocations(
             ctx,
             *requestInfo,
             std::make_unique<TEvDiskRegistry::TEvDeallocateDiskResponse>(
-                std::move(error)));
+                error));
     }
     requestInfos.clear();
 }
