@@ -374,7 +374,7 @@ void TBootstrapBase::Init()
         CreateEncryptionKeyProvider(KmsKeyProvider, RootKmsKeyProvider),
         Configs->ServerConfig->GetEncryptZeroPolicy());
 
-    SetupCellsManager();
+    SetupCellManager();
 
     auto sessionManager = CreateSessionManager(
         Timer,
@@ -385,7 +385,7 @@ void TBootstrapBase::Init()
         VolumeStats,
         ServerStats,
         Service,
-        CellsManager,
+        CellManager,
         StorageProvider,
         RdmaClient,
         encryptionClientFactory,
@@ -957,7 +957,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(RdmaClient);
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
-    START_COMMON_COMPONENT(CellsManager);
+    START_COMMON_COMPONENT(CellManager);
     START_COMMON_COMPONENT(GetTraceServiceClient());
 
     // we need to start scheduler after all other components for 2 reasons:
@@ -1012,7 +1012,7 @@ void TBootstrapBase::Stop()
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
     STOP_COMMON_COMPONENT(GetTraceServiceClient());
-    STOP_COMMON_COMPONENT(CellsManager);
+    STOP_COMMON_COMPONENT(CellManager);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaClient);

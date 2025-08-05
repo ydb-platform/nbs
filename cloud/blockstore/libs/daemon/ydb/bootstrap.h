@@ -140,7 +140,7 @@ protected:
 
     void WarmupBSGroupConnections() override;
 
-    void SetupCellsManager() override;
+    void SetupCellManager() override;
 
 private:
     void InitConfigs();
