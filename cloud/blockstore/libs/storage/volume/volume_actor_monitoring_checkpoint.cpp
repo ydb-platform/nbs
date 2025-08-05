@@ -134,7 +134,7 @@ void THttpCheckpointActor::ReplyAndDie(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "%s Cannot %s. Operation completed with error : ",
+            "%s Cannot %s. Operation completed with error : %s",
             LogTitle.GetWithTime().c_str(),
             action.c_str(),
             FormatError(error).c_str());
