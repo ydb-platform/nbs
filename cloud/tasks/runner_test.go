@@ -1456,10 +1456,9 @@ func TestTryExecutingTaskFailToPing(t *testing.T) {
 
 	runnerMetrics.On("OnExecutionStarted", mock.Anything)
 	runner.On("executeTask", mock.Anything, mock.Anything, task).Run(func(args mock.Arguments) {
-		// Wait for pingPeriod, so that the first ping has had a chance to run.
-		// TODO: This is bad.
-		<-time.After(pingPeriod)
-		require.Error(t, args.Get(0).(context.Context).Err())
+		ctx := args.Get(0).(context.Context)
+		<-ctx.Done()
+		require.Error(t, ctx.Err())
 	})
 	runnerMetrics.On("OnExecutionStopped")
 
@@ -1502,24 +1501,22 @@ func TestRunnerLoopSucceeds(t *testing.T) {
 	taskStorage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	runner := &mockRunner{}
+	onClose := &mockCallback{}
 	handle := taskHandle{
 		task: storage.TaskInfo{
 			ID: regularTaskId,
 		},
-		onClose: func() {},
+		onClose: onClose.Run,
 	}
 
 	runner.On("receiveTask", mock.Anything).Return(handle, nil)
 	runner.On("lockAndExecuteTask", ctx, handle.task).Return(nil)
-
-	go func() {
-		// Cancel runner loop on some iteration.
-		// TODO: This is bad.
-		<-time.After(time.Second)
+	onClose.On("Run").Run(func(mock.Arguments) {
 		cancel()
-	}()
+	})
+
 	runnerLoop(ctx, registry, runner)
-	mock.AssertExpectationsForObjects(t, taskStorage, runner)
+	mock.AssertExpectationsForObjects(t, taskStorage, runner, onClose)
 }
 
 func testListerLoop(
