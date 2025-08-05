@@ -200,8 +200,10 @@ public:
         TIndexCachingConfig indexCachingConfig,
         ui32 maxIORequestsInFlight = Max(),
         ui32 reassignChannelsPercentageThreshold = 0,
+        ui32 lastStep = 0,
         ui32 reassignMixedChannelsPercentageThreshold = 100,
-        ui32 lastStep = 0);
+        bool reassignSystemChannelsImmediately = false,
+        ui32 reassignFreshChannelsPercentageThreshold = 100);
 
 private:
     bool LoadStateFinished = false;
@@ -292,6 +294,8 @@ private:
     const ui32 MaxIORequestsInFlight;
     const ui32 ReassignChannelsPercentageThreshold;
     const ui32 ReassignMixedChannelsPercentageThreshold;
+    const bool ReassignSystemChannelsImmediately;
+    const ui32 ReassignFreshChannelsPercentageThreshold;
 
     TVector<TChannelState> Channels;
     TVector<ui32> FreshChannels;

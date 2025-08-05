@@ -489,6 +489,8 @@ public:
     TDuration GetReassignRequestRetryTimeout() const;
     ui32 GetReassignChannelsPercentageThreshold() const;
     ui32 GetReassignMixedChannelsPercentageThreshold() const;
+    bool GetReassignSystemChannelsImmediately() const;
+    ui32 GetReassignFreshChannelsPercentageThreshold() const;
 
     TString GetCommonSSDPoolKind() const;
     ui64 GetMaxSSDGroupWriteBandwidth() const;

@@ -327,14 +327,16 @@ public:
         const TFreeSpaceConfig& freeSpaceConfig,
         ui32 maxIORequestsInFlight,
         ui32 reassignChannelsPercentageThreshold,
-        ui32 reassignMixedChannelsPercentageThreshold,
         ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
         ui32 maxBLobsPerRange,
-        ui32 compactionRangeCountPerRun);
+        ui32 compactionRangeCountPerRun,
+        ui32 reassignMixedChannelsPercentageThreshold = 100,
+        bool reassignSystemChannelsImmediately = false,
+        ui32 reassignFreshChannelsPercentageThreshold = 100);
 
 private:
     bool LoadStateFinished = false;
@@ -427,6 +429,8 @@ private:
     const ui32 MaxIORequestsInFlight;
     const ui32 ReassignChannelsPercentageThreshold;
     const ui32 ReassignMixedChannelsPercentageThreshold;
+    const bool ReassignSystemChannelsImmediately;
+    const ui32 ReassignFreshChannelsPercentageThreshold;
 
 public:
     ui32 GetChannelCount() const

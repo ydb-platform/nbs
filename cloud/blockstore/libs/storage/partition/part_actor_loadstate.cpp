@@ -220,14 +220,16 @@ void TPartitionActor::CompleteLoadState(
         fsConfig,
         GetMaxIORequestsInFlight(*Config, PartitionConfig),
         Config->GetReassignChannelsPercentageThreshold(),
-        Config->GetReassignMixedChannelsPercentageThreshold(),
-        0,  // lastCommitId
-        Min(tabletChannelCount, configChannelCount),  // channelCount
+        0,                                             // lastCommitId
+        Min(tabletChannelCount, configChannelCount),   // channelCount
         mixedIndexCacheSize,
         GetAllocationUnit(*Config, mediaKind),
         maxBlobsPerUnit,
         maxBlobsPerRange,
-        Config->GetCompactionRangeCountPerRun());
+        Config->GetCompactionRangeCountPerRun(),
+        Config->GetReassignMixedChannelsPercentageThreshold(),
+        Config->GetReassignSystemChannelsImmediately(),
+        Config->GetReassignFreshChannelsPercentageThreshold());
 
     MapBaseDiskIdToTabletId(ctx);
 
