@@ -80,4 +80,6 @@ message TFileSystemConfig
     // Limits max requests allowed at a time.
     optional uint32 MaxBackground = 23;
 
+    // Limits max threads used in fuse loop per mount
+    optional uint32 MaxFuseLoopThreads = 24;
 }

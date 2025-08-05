@@ -25,7 +25,8 @@ struct fuse_virtio_dev
     struct vhd_fsdev_info fsdev;
 
     struct vhd_vdev* vdev;
-    struct vhd_request_queue* rq;
+    struct vhd_request_queue** rqs;
+    int rq_count;
 };
 
 struct fuse_virtio_queue
@@ -295,19 +296,28 @@ static void unregister_complete(void* ctx)
 {
     struct fuse_session* se = ctx;
     struct fuse_virtio_dev* dev = se->virtio_dev;
+    int queue_index;
 
     VHD_LOG_INFO("stopping device %s", dev->fsdev.socket_path);
-    vhd_stop_queue(dev->rq);
+    for (queue_index = 0; queue_index < dev->rq_count; queue_index++) {
+        vhd_stop_queue(dev->rqs[queue_index]);
+    }
+
 }
 
 static void unregister_complete_and_free_dev(void* ctx)
 {
+    int queue_index;
+
     unregister_complete(ctx);
 
     struct fuse_session* se = ctx;
     struct fuse_virtio_dev* dev = se->virtio_dev;
 
-    vhd_release_request_queue(dev->rq);
+    for (queue_index = 0; queue_index < dev->rq_count; queue_index++) {
+        vhd_release_request_queue(dev->rqs[queue_index]);
+    }
+    vhd_free(dev->rqs);
     vhd_free(dev);
 }
 
@@ -364,25 +374,34 @@ int fuse_cancel_request(
 int virtio_session_mount(struct fuse_session* se)
 {
     struct fuse_virtio_dev* dev = vhd_zalloc(sizeof(struct fuse_virtio_dev));
+    int queue_index = 0;
+    int ret = 0;
 
     // no need to supply tag here - it will be handled by the QEMU
     dev->fsdev.socket_path = se->vu_socket_path;
-    dev->fsdev.num_queues = se->thread_pool_size;
+    dev->fsdev.num_queues = se->num_backend_queues;
 
-    VHD_LOG_INFO("starting device %s", dev->fsdev.socket_path);
+    VHD_LOG_INFO(
+        "starting device %s, num_backend_queues=%d, num_frontend_queues=%d",
+        dev->fsdev.socket_path,
+        se->num_backend_queues,
+        se->num_frontend_queues);
 
-    // TODO: multiple request queues
-    dev->rq = vhd_create_request_queue();
-    if (!dev->rq) {
-        vhd_free(dev);
-        return -ENOMEM;
+    dev->rq_count = se->num_frontend_queues;
+    dev->rqs = vhd_zalloc(sizeof(dev->rqs[0]) * dev->rq_count);
+
+    for (queue_index = 0; queue_index < dev->rq_count; queue_index++) {
+        dev->rqs[queue_index] = vhd_create_request_queue();
+        if (!dev->rqs[queue_index]) {
+            ret = -ENOMEM;
+            goto clean;
+        }
     }
 
-    dev->vdev = vhd_register_fs(&dev->fsdev, dev->rq, NULL);
+    dev->vdev = vhd_register_fs_mq(&dev->fsdev, dev->rqs, dev->rq_count, NULL);
     if (!dev->vdev) {
-        vhd_release_request_queue(dev->rq);
-        vhd_free(dev);
-        return -ENOMEM;
+        ret = -ENOMEM;
+        goto clean;
     }
 
     int err = chmod(se->vu_socket_path, S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR);
@@ -393,14 +412,30 @@ int virtio_session_mount(struct fuse_session* se)
 
     se->virtio_dev = dev;
     return 0;
+
+clean:
+    while (queue_index) {
+        vhd_release_request_queue(dev->rqs[--queue_index]);
+    }
+    if (dev->rqs) {
+        vhd_free(dev->rqs);
+    }
+    vhd_free(dev);
+
+    return ret;
 }
 
 void virtio_session_close(struct fuse_session* se)
 {
     struct fuse_virtio_dev* dev = se->virtio_dev;
+    int queue_index;
 
     VHD_LOG_INFO("destroying device %s", dev->fsdev.socket_path);
-    vhd_release_request_queue(dev->rq);
+
+    for (queue_index = 0; queue_index < dev->rq_count; queue_index++) {
+        vhd_release_request_queue(dev->rqs[queue_index]);
+    }
+    vhd_free(dev->rqs);
     vhd_free(dev);
 }
 
@@ -412,13 +447,13 @@ void virtio_session_exit(struct fuse_session* se)
     vhd_unregister_fs(dev->vdev, unregister_complete, se);
 }
 
-int virtio_session_loop(struct fuse_session* se)
+int virtio_session_loop(struct fuse_session* se, int queue_index)
 {
     struct fuse_virtio_dev* dev = se->virtio_dev;
 
     int res;
     for (;;) {
-        res = vhd_run_queue(dev->rq);
+        res = vhd_run_queue(dev->rqs[queue_index]);
         if (res != -EAGAIN) {
             if (res < 0) {
                 VHD_LOG_WARN("request queue failure %d", -res);
@@ -427,7 +462,7 @@ int virtio_session_loop(struct fuse_session* se)
         }
 
         struct vhd_request req;
-        while (vhd_dequeue_request(dev->rq, &req)) {
+        while (vhd_dequeue_request(dev->rqs[queue_index], &req)) {
             res = process_request(se, req.io);
             if (res < 0) {
                 VHD_LOG_WARN("request processing failure %d", -res);

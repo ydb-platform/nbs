@@ -1708,9 +1708,11 @@ void *fuse_session_data(struct fuse_session *se);
  * Enter a single threaded event loop
  *
  * @param se the session
+ * @param queue_index the index of queue which will be used in event loop
+ *                    (should be 0 in case of single queue session)
  * @return 0 on success, -1 on error
  */
-int fuse_session_loop(struct fuse_session *se);
+int fuse_session_loop(struct fuse_session *se, int queue_index);
 
 /**
  * Enter a multi-threaded event loop
