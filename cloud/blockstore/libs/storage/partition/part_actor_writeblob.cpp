@@ -207,7 +207,7 @@ void TWriteBlobActor::NotifyCompleted(
     request->RequestTime = ResponseReceived - RequestSent;
     request->RequestId = OperationId;
 
-    NCloud::Send(ctx, TabletActorId, std::move(request)); // here
+    NCloud::Send(ctx, TabletActorId, std::move(request));
 }
 
 void TWriteBlobActor::ReplyAndDie(
@@ -397,12 +397,6 @@ void TPartitionActor::HandleWriteBlob(
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
     ui64 operation = GroupOperationId++;
 
-    // GroupOperationTimeTracker.OnStarted(
-    //     ev->Cookie,
-    //     groupId,
-    //     TGroupOperationTimeTracker::EGroupOperationType::Write,
-    //     GetCycleCount());
-
     State->EnqueueIORequest(
         channel,
         std::make_unique<TWriteBlobActor>(
@@ -419,9 +413,9 @@ void TPartitionActor::HandleWriteBlob(
             groupId,
             LogTitle.GetChild(GetCycleCount()),
             operation),
-            operation,    // ui64 operationId
-            groupId,      // ui32 groupId
-            TGroupOperationTimeTracker::EGroupOperationType::Write);
+        operation,
+        groupId,
+        TGroupOperationTimeTracker::EGroupOperationType::Write);
 
     ProcessIOQueue(ctx, channel);
 }

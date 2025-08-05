@@ -37,6 +37,33 @@ TReadBlobActor::TReadBlobActor(
     , Request(std::move(request))
 {}
 
+TReadBlobActor::TReadBlobActor(
+        TRequestInfoPtr requestInfo,
+        const TActorId& partitionActorId,
+        const TActorId& volumeActorId,
+        ui64 partitionTabletId,
+        ui32 blockSize,
+        bool shouldCalculateChecksums,
+        const EStorageAccessMode storageAccessMode,
+        std::unique_ptr<TRequest> request,
+        TDuration longRunningThreshold,
+        ui64 operationId)
+    : TLongRunningOperationCompanion(
+          partitionActorId,
+          volumeActorId,
+          longRunningThreshold,
+          TLongRunningOperationCompanion::EOperation::ReadBlob,
+          request->GroupId)
+    , RequestInfo(std::move(requestInfo))
+    , PartitionActorId(partitionActorId)
+    , PartitionTabletId(partitionTabletId)
+    , BlockSize(blockSize)
+    , ShouldCalculateChecksums(shouldCalculateChecksums)
+    , StorageAccessMode(storageAccessMode)
+    , Request(std::move(request))
+    , OperationId(operationId)
+{}
+
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
 {
     TRequestScope timer(*RequestInfo);
@@ -104,7 +131,7 @@ void TReadBlobActor::NotifyCompleted(
     request->BytesCount = Request->BlobOffsets.size() * BlockSize;
     request->RequestTime = ResponseReceived - RequestSent;
     request->GroupId = Request->GroupId;
-    request->RequestId = RequestInfo->CallContext->RequestId;
+    request->RequestId = OperationId;
 
     if (DeadlineSeen) {
         request->DeadlineSeen = true;

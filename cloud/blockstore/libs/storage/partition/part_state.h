@@ -261,17 +261,20 @@ struct TScanDiskState
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TQueuedRequest {
+struct TQueuedRequest
+{
     NActors::IActorPtr Actor;
     std::optional<ui64> OperationId;
     std::optional<ui32> GroupId;
-    std::optional<TGroupOperationTimeTracker::EGroupOperationType> OperationType;
+    std::optional<TGroupOperationTimeTracker::EGroupOperationType>
+        OperationType;
 
     explicit TQueuedRequest(
         NActors::IActorPtr actor,
         std::optional<ui64> operationId = {},
         std::optional<ui32> groupId = {},
-        std::optional<TGroupOperationTimeTracker::EGroupOperationType> opType = {})
+        std::optional<TGroupOperationTimeTracker::EGroupOperationType> opType =
+            {})
         : Actor(std::move(actor))
         , OperationId(operationId)
         , GroupId(groupId)
@@ -474,7 +477,6 @@ public:
     TBackpressureReport CalculateCurrentBackpressure() const;
     ui32 GetAlmostFullChannelCount() const;
 
-    // void EnqueueIORequest(ui32 channel, NActors::IActorPtr requestActor);
     void EnqueueIORequest(
         ui32 channel,
         NActors::IActorPtr actor,
