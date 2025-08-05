@@ -23,13 +23,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func isLocalDiskKind(kind types.DiskKind) bool {
-	return (kind == types.DiskKind_DISK_KIND_HDD_LOCAL ||
-		kind == types.DiskKind_DISK_KIND_SSD_LOCAL)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 	switch kind {
 	case disk_manager.DiskKind_DISK_KIND_UNSPECIFIED:
@@ -56,6 +49,11 @@ func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 			kind,
 		)
 	}
+}
+
+func isLocalDiskKind(kind types.DiskKind) bool {
+	return (kind == types.DiskKind_DISK_KIND_HDD_LOCAL ||
+		kind == types.DiskKind_DISK_KIND_SSD_LOCAL)
 }
 
 func prepareEncryptionMode(

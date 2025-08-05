@@ -57,10 +57,11 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateOverlayDisk", func() tasks.Task {
 		return &createOverlayDiskTask{
-			storage:     resourceStorage,
-			scheduler:   taskScheduler,
-			poolService: poolService,
-			nbsFactory:  nbsFactory,
+			storage:      resourceStorage,
+			scheduler:    taskScheduler,
+			poolService:  poolService,
+			nbsFactory:   nbsFactory,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {
@@ -73,6 +74,7 @@ func RegisterForExecution(
 			storage:           resourceStorage,
 			scheduler:         taskScheduler,
 			nbsFactory:        nbsFactory,
+			cellSelector:      cellSelector,
 		}
 	})
 	if err != nil {
@@ -85,6 +87,7 @@ func RegisterForExecution(
 			storage:           resourceStorage,
 			scheduler:         taskScheduler,
 			nbsFactory:        nbsFactory,
+			cellSelector:      cellSelector,
 		}
 	})
 	if err != nil {
