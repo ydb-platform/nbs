@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
+#include <cloud/blockstore/libs/storage/core/group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
@@ -260,6 +261,26 @@ struct TScanDiskState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TQueuedRequest {
+    NActors::IActorPtr Actor;
+    std::optional<ui64> OperationId;
+    std::optional<ui32> GroupId;
+    std::optional<TGroupOperationTimeTracker::EGroupOperationType> OperationType;
+
+    explicit TQueuedRequest(
+        NActors::IActorPtr actor,
+        std::optional<ui64> operationId = {},
+        std::optional<ui32> groupId = {},
+        std::optional<TGroupOperationTimeTracker::EGroupOperationType> opType = {})
+        : Actor(std::move(actor))
+        , OperationId(operationId)
+        , GroupId(groupId)
+        , OperationType(opType)
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TChannelState
 {
     EChannelPermissions Permissions = EChannelPermission::UserWritesAllowed
@@ -268,7 +289,7 @@ struct TChannelState
     double FreeSpaceScore = 0;
     bool ReassignRequestedByBlobStorage = false;
 
-    std::list<NActors::IActorPtr> IORequests;
+    std::list<TQueuedRequest> IORequests;
     size_t IORequestsInFlight = 0;
     size_t IORequestsQueued = 0;
 };
@@ -453,8 +474,16 @@ public:
     TBackpressureReport CalculateCurrentBackpressure() const;
     ui32 GetAlmostFullChannelCount() const;
 
-    void EnqueueIORequest(ui32 channel, NActors::IActorPtr requestActor);
-    NActors::IActorPtr DequeueIORequest(ui32 channel);
+    // void EnqueueIORequest(ui32 channel, NActors::IActorPtr requestActor);
+    void EnqueueIORequest(
+        ui32 channel,
+        NActors::IActorPtr actor,
+        std::optional<ui64> operationId = {},
+        std::optional<ui32> groupId = {},
+        std::optional<TGroupOperationTimeTracker::EGroupOperationType> opType =
+            {});
+
+    std::optional<TQueuedRequest> DequeueIORequest(ui32 channel);
     void CompleteIORequest(ui32 channel);
     ui32 GetIORequestsInFlight() const;
     ui32 GetIORequestsQueued() const;

@@ -41,6 +41,8 @@ private:
     const ui32 GroupId;
     TChildLogTitle LogTitle;
 
+    ui64 OperationId;
+
     TInstant RequestSent;
     TInstant ResponseReceived;
     TStorageStatusFlags StorageStatusFlags;
@@ -57,7 +59,8 @@ public:
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
         ui32 groupId,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        ui64 operationId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -98,7 +101,8 @@ TWriteBlobActor::TWriteBlobActor(
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
         ui32 groupId,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        ui64 operationId)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -112,6 +116,7 @@ TWriteBlobActor::TWriteBlobActor(
     , Request(std::move(request))
     , GroupId(groupId)
     , LogTitle(std::move(logTitle))
+    , OperationId(operationId)
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -200,9 +205,9 @@ void TWriteBlobActor::NotifyCompleted(
     request->StorageStatusFlags = StorageStatusFlags;
     request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
     request->RequestTime = ResponseReceived - RequestSent;
-    request->RequestId = RequestInfo->CallContext->RequestId;
+    request->RequestId = OperationId;
 
-    NCloud::Send(ctx, TabletActorId, std::move(request));
+    NCloud::Send(ctx, TabletActorId, std::move(request)); // here
 }
 
 void TWriteBlobActor::ReplyAndDie(
@@ -390,12 +395,13 @@ void TPartitionActor::HandleWriteBlob(
     ui32 channel = msg->BlobId.Channel();
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->BlobId.Generation());
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
+    ui64 operation = GroupOperationId++;
 
-    GroupOperationTimeTracker.OnStarted(
-        requestInfo->CallContext->RequestId,
-        groupId,
-        TGroupOperationTimeTracker::EGroupOperationType::Write,
-        GetCycleCount());
+    // GroupOperationTimeTracker.OnStarted(
+    //     ev->Cookie,
+    //     groupId,
+    //     TGroupOperationTimeTracker::EGroupOperationType::Write,
+    //     GetCycleCount());
 
     State->EnqueueIORequest(
         channel,
@@ -411,7 +417,11 @@ void TPartitionActor::HandleWriteBlob(
                 *DiagnosticsConfig,
                 PartitionConfig.GetStorageMediaKind()),
             groupId,
-            LogTitle.GetChild(GetCycleCount())));
+            LogTitle.GetChild(GetCycleCount()),
+            operation),
+            operation,    // ui64 operationId
+            groupId,      // ui32 groupId
+            TGroupOperationTimeTracker::EGroupOperationType::Write);
 
     ProcessIOQueue(ctx, channel);
 }
@@ -421,6 +431,8 @@ void TPartitionActor::HandleWriteBlobCompleted(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    GroupOperationTimeTracker.OnFinished(msg->RequestId, GetCycleCount());
 
     Actors.Erase(ev->Sender);
 
@@ -514,8 +526,6 @@ void TPartitionActor::HandleWriteBlobCompleted(
     } else {
         State->RegisterSuccess(ctx.Now(), groupId);
     }
-
-    GroupOperationTimeTracker.OnFinished(msg->RequestId, GetCycleCount());
 
     ProcessIOQueue(ctx, channel);
 }

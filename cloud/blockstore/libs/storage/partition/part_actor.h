@@ -157,6 +157,7 @@ private:
 
     TTransactionTimeTracker TransactionTimeTracker;
     TGroupOperationTimeTracker GroupOperationTimeTracker;
+    ui64 GroupOperationId = 0;
 
 public:
     TPartitionActor(
