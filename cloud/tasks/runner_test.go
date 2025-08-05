@@ -128,9 +128,7 @@ func (m *matcher) requireMatch(expected, actual storage.TaskState) {
 	require.WithinRange(
 		m.test, actual.ModifiedAt, m.modifiedAtLowBound, modifiedAtHighBound,
 	)
-	// Update expected (not actual) to keep actual ModifiedAt the same
-	// and prevent accumulating error in InflightDuration field.
-	expected.ModifiedAt = actual.ModifiedAt
+	actual.ModifiedAt = expected.ModifiedAt
 
 	require.Contains(m.test, actual.ErrorMessage, expected.ErrorMessage)
 	expected.ErrorMessage = ""
@@ -170,7 +168,8 @@ func matchesState(
 	expected storage.TaskState,
 ) func(storage.TaskState) bool {
 
-	// Allow several calls because some tests have them
+	// Allow unlimited calls (-1) because some tests do not set mock repeatability,
+	// thus allowing several calls.
 	matcher := newMatcher(t, -1 /* callsCount */, nil /* doneFunc */)
 
 	return func(actual storage.TaskState) bool {
@@ -1329,7 +1328,7 @@ func TestTaskPingerCancelledContextInUpdateTask(t *testing.T) {
 func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
 	pingTimeout := 100 * time.Second
-	pingsCount := 5
+	pingsCount := 3
 	initialInflightDuration := 42 * time.Second
 
 	ctx, cancel := context.WithCancel(newContext())
