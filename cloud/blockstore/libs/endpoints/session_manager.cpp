@@ -319,7 +319,7 @@ private:
     const IVolumeStatsPtr VolumeStats;
     const IServerStatsPtr ServerStats;
     const IBlockStorePtr Service;
-    const NCells::ICellsManagerPtr CellsManager;
+    const NCells::ICellManagerPtr CellsManager;
     const IStorageProviderPtr StorageProvider;
     const NRdma::IClientPtr RdmaClient;
     const IThrottlerProviderPtr ThrottlerProvider;
@@ -345,7 +345,7 @@ public:
             IVolumeStatsPtr volumeStats,
             IServerStatsPtr serverStats,
             IBlockStorePtr service,
-            NCells::ICellsManagerPtr cellsManager,
+            NCells::ICellManagerPtr cellsManager,
             IStorageProviderPtr storageProvider,
             NRdma::IClientPtr rdmaClient,
             IThrottlerProviderPtr throttlerProvider,
@@ -871,7 +871,7 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    NCells::ICellsManagerPtr cellsManager,
+    NCells::ICellManagerPtr cellsManager,
     IStorageProviderPtr storageProvider,
     NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,

@@ -60,7 +60,7 @@ protected:
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IBlockStorePtr Service;
-    NCells::ICellsManagerPtr CellsManager;
+    NCells::ICellManagerPtr CellsManager;
     ISocketEndpointListenerPtr GrpcEndpointListener;
     NVhost::IServerPtr VhostServer;
     NVhost::TVhostCallbacks VhostCallbacks;

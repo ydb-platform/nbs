@@ -1,4 +1,4 @@
-#include "cell_host.h"
+#include "host.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -13,7 +13,7 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<THostEndpoint> THostEndpointsManager::GetHostEndpoint(
+TResultOrError<THostEndpoint> THost::GetHostEndpoint(
     const NClient::TClientAppConfigPtr& clientConfig,
     std::optional<NProto::ECellDataTransport> desiredTransport,
     bool allowGrpcFallback)
@@ -56,7 +56,7 @@ TResultOrError<THostEndpoint> THostEndpointsManager::GetHostEndpoint(
     }
 }
 
-bool THostEndpointsManager::IsReady(NProto::ECellDataTransport transport) const
+bool THost::IsReady(NProto::ECellDataTransport transport) const
 {
     switch (transport) {
         case NProto::CELL_DATA_TRANSPORT_GRPC: {
@@ -71,7 +71,7 @@ bool THostEndpointsManager::IsReady(NProto::ECellDataTransport transport) const
     return false;
 }
 
-TFuture<void> THostEndpointsManager::Start()
+TFuture<void> THost::Start()
 {
     auto target = Config.GetTransport();
     Y_ENSURE(
@@ -120,7 +120,7 @@ TFuture<void> THostEndpointsManager::Start()
     return StartPromise.GetFuture();
 }
 
-void THostEndpointsManager::HandleRdmaSetupResult(
+void THost::HandleRdmaSetupResult(
     const IHostEndpointsSetupProvider::TRdmaResult& result)
 {
     if (HasError(result.GetError())) {
@@ -143,7 +143,7 @@ void THostEndpointsManager::HandleRdmaSetupResult(
     }
 }
 
-bool THostEndpointsManager::SetupRdmaIfNeeded()
+bool THost::SetupRdmaIfNeeded()
 {
     if (Config.GetTransport() != NProto::CELL_DATA_TRANSPORT_RDMA) {
         return false;
@@ -156,12 +156,12 @@ bool THostEndpointsManager::SetupRdmaIfNeeded()
     return true;
 }
 
-TFuture<void> THostEndpointsManager::Stop()
+TFuture<void> THost::Stop()
 {
     return {};
 }
 
-THostEndpoint THostEndpointsManager::CreateGrpcEndpoint(
+THostEndpoint THost::CreateGrpcEndpoint(
     const NClient::TClientAppConfigPtr& clientConfig)
 {
     auto& endp = GrpcHostEndpoint;
@@ -176,7 +176,7 @@ THostEndpoint THostEndpointsManager::CreateGrpcEndpoint(
         service};
 }
 
-THostEndpoint THostEndpointsManager::CreateRdmaEndpoint(
+THostEndpoint THost::CreateRdmaEndpoint(
     const NClient::TClientAppConfigPtr& clientConfig)
 {
     auto& endp = GrpcHostEndpoint;
@@ -193,13 +193,9 @@ THostEndpoint THostEndpointsManager::CreateRdmaEndpoint(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IHostEndpointsManagerPtr CreateHostEndpointsManager(
-    TCellHostConfig config,
-    TArguments args)
+IHostPtr CreateHost(THostConfig config, TBootstrap args)
 {
-    return std::make_shared<THostEndpointsManager>(
-        std::move(config),
-        std::move(args));
+    return std::make_shared<THost>(std::move(config), std::move(args));
 }
 
 }   // namespace NCloud::NBlockStore::NCells

@@ -89,7 +89,7 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    NCells::ICellsManagerPtr remoteStorageProvider,
+    NCells::ICellManagerPtr remoteStorageProvider,
     IStorageProviderPtr storageProvider,
     NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,

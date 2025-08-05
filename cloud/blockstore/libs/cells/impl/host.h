@@ -1,8 +1,8 @@
 #pragma once
 
-#include <cloud/blockstore/libs/cells/iface/cell_host.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/cells/iface/endpoints_setup.h>
+#include <cloud/blockstore/libs/cells/iface/host.h>
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
 #include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/client/public.h>
@@ -16,9 +16,9 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct THostEndpointsManager
-    : public IHostEndpointsManager
-    , public std::enable_shared_from_this<THostEndpointsManager>
+struct THost
+    : public IHost
+    , public std::enable_shared_from_this<THost>
 {
     enum class EState
     {
@@ -31,7 +31,7 @@ struct THostEndpointsManager
     using TSetupHostFuture = NThreading::TFuture<void>;
     using TShutdownHostFuture = NThreading::TFuture<void>;
 
-    const TArguments Args;
+    const TBootstrap Args;
 
     NClient::IMultiClientEndpointPtr GrpcHostEndpoint;
     IBlockStorePtr RdmaHostEndpoint;
@@ -47,10 +47,10 @@ struct THostEndpointsManager
 
     IHostEndpointsSetupProvider::TSetupRdmaEndpointFuture RdmaFuture;
 
-    THostEndpointsManager(
-            TCellHostConfig config,
-            TArguments args)
-        : IHostEndpointsManager(std::move(config))
+    THost(
+            THostConfig config,
+            TBootstrap args)
+        : IHost(std::move(config))
         , Args(std::move(args))
     {}
 
@@ -62,7 +62,7 @@ struct THostEndpointsManager
         std::optional<NProto::ECellDataTransport> transport,
         bool allowGrpcFallback) override;
 
-    [[nodiscard]] TCellHostConfig GetConfig() const
+    [[nodiscard]] THostConfig GetConfig() const
     {
         return Config;
     }

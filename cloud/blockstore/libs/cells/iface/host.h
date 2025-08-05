@@ -15,15 +15,15 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IHostEndpointsManager
+struct IHost
 {
-    const TCellHostConfig Config;
+    const THostConfig Config;
 
-    explicit IHostEndpointsManager(TCellHostConfig config)
+    explicit IHost(THostConfig config)
         : Config(std::move(config))
     {}
 
-    const TCellHostConfig& GetConfig() const
+    const THostConfig& GetConfig() const
     {
         return Config;
     }
@@ -36,15 +36,13 @@ struct IHostEndpointsManager
         std::optional<NProto::ECellDataTransport> transport,
         bool allowGrpcFallback) = 0;
 
-    virtual ~IHostEndpointsManager() = default;
+    virtual ~IHost() = default;
 };
 
-using IHostEndpointsManagerPtr = std::shared_ptr<IHostEndpointsManager>;
+using IHostPtr = std::shared_ptr<IHost>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IHostEndpointsManagerPtr CreateHostEndpointsManager(
-    TCellHostConfig config,
-    TArguments args);
+IHostPtr CreateHost(THostConfig config, TBootstrap args);
 
 }   // namespace NCloud::NBlockStore::NCells

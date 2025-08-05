@@ -62,13 +62,13 @@ struct TTestBlockStore
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TCellsManagerTest)
+Y_UNIT_TEST_SUITE(TCellManagerTest)
 {
     Y_UNIT_TEST(ShouldNotReturnDescribeFutureIfNoCellsConfigures)
     {
-        TArguments args;
+        TBootstrap args;
 
-        auto cells = std::make_shared<TCellsManager>(
+        auto cells = std::make_shared<TCellManager>(
             std::make_shared<TCellsConfig>(),
             args);
 

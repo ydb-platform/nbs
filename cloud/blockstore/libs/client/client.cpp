@@ -426,8 +426,28 @@ private:
     void PrepareRequestContext()
     {
         auto& headers = *Request->MutableHeaders();
-        if (!AppCtx.Config->GetNoClientId()) {
-            headers.SetClientId(AppCtx.Config->GetClientId());
+
+        if constexpr (HasClientId<TRequest>) {
+            if (!headers.GetClientId()) {
+                Y_ABORT_UNLESS(AppCtx.Config->GetClientId());
+                headers.SetClientId(AppCtx.Config->GetClientId());
+                ClientId = AppCtx.Config->GetClientId();
+            } else {
+                ClientId = Request->GetHeaders().GetClientId();
+            }
+        } else {
+            ClientId = AppCtx.Config->GetClientId();
+        }
+
+        if constexpr (HasInstanceId<TRequest>) {
+            if (!headers.GetInstanceId()) {
+                headers.SetInstanceId(AppCtx.Config->GetInstanceId());
+                InstanceId = AppCtx.Config->GetInstanceId();
+            } else {
+                InstanceId = Request->GetHeaders().GetInstanceId();
+            }
+        }  else {
+            InstanceId = AppCtx.Config->GetInstanceId();
         }
 
         auto now = TInstant::Now();
@@ -449,14 +469,6 @@ private:
         if (!RequestId) {
             RequestId = CreateRequestId();
             headers.SetRequestId(RequestId);
-        }
-
-        if constexpr (HasClientId<TRequest>) {
-            ClientId = Request->GetHeaders().GetClientId();
-        }
-
-        if constexpr (HasInstanceId<TRequest>) {
-            InstanceId = Request->GetInstanceId();
         }
 
         DiskId = GetDiskId(*Request);
@@ -504,7 +516,7 @@ private:
                     RequestType,
                     RequestId,
                     DiskId,
-                    AppCtx.Config->GetClientId(),
+                    ClientId,
                     "ProcessResponse: value already set (request cancelled?)");
             }
         } catch (...) {
@@ -513,7 +525,7 @@ private:
                 RequestType,
                 RequestId,
                 DiskId,
-                AppCtx.Config->GetClientId());
+                ClientId);
         }
     }
 
@@ -530,7 +542,7 @@ private:
                     RequestType,
                     RequestId,
                     DiskId,
-                    AppCtx.Config->GetClientId(),
+                    ClientId,
                     "ReportError: value already set (request completed?)");
             }
         } catch (...) {
@@ -539,7 +551,7 @@ private:
                 RequestType,
                 RequestId,
                 DiskId,
-                AppCtx.Config->GetClientId());
+                ClientId);
         }
     }
 
@@ -554,8 +566,8 @@ private:
         if (!HasError(response) && response.HasVolume()) {
             AppCtx.ClientStats->MountVolume(
                 response.GetVolume(),
-                AppCtx.Config->GetClientId(),
-                AppCtx.Config->GetInstanceId());
+                ClientId,
+                InstanceId);
         }
     }
 
@@ -564,7 +576,7 @@ private:
         if (!HasError(response)) {
             AppCtx.ClientStats->UnmountVolume(
                 DiskId,
-                AppCtx.Config->GetClientId());
+                ClientId);
         }
     }
 };
@@ -662,8 +674,6 @@ TClient::TClient(
     Monitoring = std::move(monitoring);
     ClientStats = std::move(clientStats);
 
-    Y_ABORT_UNLESS(Config->GetClientId() || Config->GetNoClientId());
-
     GrpcLoggerInit(
         logging->CreateLog("GRPC"),
         Config->GetLogConfig().GetEnableGrpcTracing());
@@ -682,7 +692,7 @@ void TClient::Start()
         Executors.push_back(std::move(executor));
     }
 
-    if (!Config->GetIsServerSideClient()) {
+    if (!Config->GetDoNotSendStats()) {
         // init any service for UploadClientMetrics
         with_lock (EndpointLock) {
             bool anyEndpoint = InitDataEndpoint();
@@ -1217,10 +1227,6 @@ TResultOrError<IClientPtr> CreateClient(
     IMonitoringServicePtr monitoring,
     IServerStatsPtr clientStats)
 {
-    if (!config->GetClientId() && !config->GetNoClientId()) {
-        return MakeError(E_ARGUMENT, "ClientId not set");
-    }
-
     IClientPtr client = std::make_shared<TClient>(
         std::move(config),
         std::move(timer),

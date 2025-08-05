@@ -1,11 +1,11 @@
 LIBRARY()
 
 SRCS(
-    cell_host.cpp
     cell.cpp
     cells.cpp
     describe_volume.cpp
     endpoints_setup.cpp
+    host.cpp
     remote_storage.cpp
 )
 

@@ -19,8 +19,8 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCellManager::TCellManager(
-        TArguments args,
+TCell::TCell(
+        TBootstrap args,
         TCellConfig config)
     : Args(std::move(args))
     , Config(std::move(config))
@@ -31,7 +31,7 @@ TCellManager::TCellManager(
     Shuffle(Unused.begin(), Unused.end());
 }
 
-TResultOrError<THostEndpoint> TCellManager::PickHost(
+TResultOrError<THostEndpoint> TCell::PickHost(
     const NClient::TClientAppConfigPtr& clientConfig)
 {
     ResizeIfNeeded();
@@ -55,7 +55,7 @@ TResultOrError<THostEndpoint> TCellManager::PickHost(
     }
 }
 
-TCellEndpoints TCellManager::PickHosts(
+TCellEndpoints TCell::PickHosts(
         ui32 count,
         const NClient::TClientAppConfigPtr& clientConfig)
 {
@@ -78,9 +78,9 @@ TCellEndpoints TCellManager::PickHosts(
     }
 }
 
-void TCellManager::ResizeIfNeeded()
+void TCell::ResizeIfNeeded()
 {
-    TVector<IHostEndpointsManagerPtr> tmp;
+    TVector<IHostPtr> tmp;
     with_lock(Lock) {
         if (Active.size() >= Config.GetMinCellConnections()) {
             return;
@@ -90,7 +90,7 @@ void TCellManager::ResizeIfNeeded()
         while (delta-- && !Unused.empty()) {
             auto host = Unused.back();
             Unused.pop_back();
-            auto hostManager = CreateHostEndpointsManager(
+            auto hostManager = CreateHost(
                 Config.GetHosts().find(host)->second,
                 Args);
             Activating.emplace(host, hostManager);
@@ -117,11 +117,11 @@ void TCellManager::ResizeIfNeeded()
     }
 }
 
-ICellManagerPtr CreateCellManager(
-    TArguments args,
+ICellPtr CreateCell(
+    TBootstrap args,
     TCellConfig config)
 {
-    return std::make_shared<TCellManager>(std::move(args), std::move(config));
+    return std::make_shared<TCell>(std::move(args), std::move(config));
 }
 
 }   // namespace NCloud::NBlockStore::NCells

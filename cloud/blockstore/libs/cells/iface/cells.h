@@ -15,14 +15,14 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TDescribeFuture = NThreading::TFuture<NProto::TDescribeVolumeResponse>;
+using TDescribeVolumeFuture = NThreading::TFuture<NProto::TDescribeVolumeResponse>;
 
-struct ICellsManager
+struct ICellManager
     : public IStartable
 {
     TCellsConfigPtr Config;
 
-    explicit ICellsManager(TCellsConfigPtr config)
+    explicit ICellManager(TCellsConfigPtr config)
         : Config(std::move(config))
     {}
 
@@ -30,7 +30,7 @@ struct ICellsManager
         const TString& cellId,
         const NClient::TClientAppConfigPtr& clientConfig) = 0;
 
-    [[nodiscard]] virtual std::optional<TDescribeFuture> DescribeVolume(
+    [[nodiscard]] virtual std::optional<TDescribeVolumeFuture> DescribeVolume(
         const TString& diskId,
         const NProto::THeaders& headers,
         const IBlockStorePtr& localService,
@@ -39,7 +39,7 @@ struct ICellsManager
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICellsManagerPtr CreateCellsManager(
+ICellManagerPtr CreateCellManager(
     TCellsConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
@@ -49,6 +49,6 @@ ICellsManagerPtr CreateCellsManager(
     IServerStatsPtr serverStats,
     NRdma::IClientPtr rdmaClient);
 
-ICellsManagerPtr CreateCellsManagerStub();
+ICellManagerPtr CreateCellManagerStub();
 
 }   // namespace NCloud::NBlockStore::NCells
