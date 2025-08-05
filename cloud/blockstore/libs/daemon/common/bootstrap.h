@@ -60,7 +60,7 @@ protected:
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IBlockStorePtr Service;
-    NCells::ICellManagerPtr CellsManager;
+    NCells::ICellManagerPtr CellManager;
     ISocketEndpointListenerPtr GrpcEndpointListener;
     NVhost::IServerPtr VhostServer;
     NVhost::TVhostCallbacks VhostCallbacks;
@@ -131,7 +131,7 @@ protected:
 
     virtual void WarmupBSGroupConnections() = 0;
 
-    virtual void SetupCellsManager() = 0;
+    virtual void SetupCellManager() = 0;
 
     void InitLWTrace(const TString& serviceNameForExporter);
     void InitProfileLog();
