@@ -30,13 +30,19 @@ public:
         Zombie,
     };
 
+    enum class EReplyType
+    {
+        Ordinary,
+        Local,
+    };
+
 private:
     struct TRequestCtx
     {
         const NActors::TActorId OriginalSender;
         const ui64 OriginalCookie = 0;
         const TBlockRange64 BlockRange;
-        const bool ReplyLocal = false;
+        const EReplyType ReplyType = EReplyType::Ordinary;
     };
 
     const TChildLogTitle LogTitle;
@@ -70,7 +76,7 @@ private:
     void ForwardRequestToFollower(
         const TEvent& ev,
         const NActors::TActorContext& ctx,
-        bool replyLocal);
+        EReplyType replyType);
 
     template <typename TMethod>
     void ForwardResponse(
@@ -89,12 +95,12 @@ private:
     void ReplyInvalidRange(
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx,
-        bool replyLocal);
+        EReplyType replyType);
 
     void DoWriteBlocks(
         const TEvService::TEvWriteBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx,
-        bool replyLocal);
+        EReplyType replyType);
 
     void ReplyAndDie(const NActors::TActorContext& ctx);
 
@@ -119,5 +125,7 @@ private:
 private:
     STFUNC(StateWork);
 };
+
+///////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NStorage

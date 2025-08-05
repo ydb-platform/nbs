@@ -20,9 +20,9 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeAsPartitionActor::TVolumeAsPartitionActor(
-    TChildLogTitle logTitle,
-    ui32 originalBlockSize,
-    TString diskId)
+        TChildLogTitle logTitle,
+        ui32 originalBlockSize,
+        TString diskId)
     : LogTitle(std::move(logTitle))
     , OriginalBlockSize(originalBlockSize)
     , DiskId(std::move(diskId))
@@ -55,7 +55,7 @@ template <typename TEvent>
 void TVolumeAsPartitionActor::ForwardRequestToFollower(
     const TEvent& ev,
     const TActorContext& ctx,
-    bool replyLocal)
+    EReplyType replyType)
 {
     const auto* msg = ev->Get();
 
@@ -64,7 +64,7 @@ void TVolumeAsPartitionActor::ForwardRequestToFollower(
             .OriginalSender = ev->Sender,
             .OriginalCookie = ev->Cookie,
             .BlockRange = BuildRequestBlockRange(*msg, OriginalBlockSize),
-            .ReplyLocal = replyLocal});
+            .ReplyType = replyType});
 
     NActors::TActorId nondeliveryActor = SelfId();
     auto message = std::make_unique<NActors::IEventHandle>(
@@ -85,7 +85,7 @@ void TVolumeAsPartitionActor::ForwardResponse(
     auto* msg = ev->Get();
 
     if (auto requestCtx = RequestsInProgress.ExtractRequest(ev->Cookie)) {
-        if (requestCtx->Value.ReplyLocal) {
+        if (requestCtx->Value.ReplyType == EReplyType::Local) {
             ctx.Send(
                 requestCtx->Value.OriginalSender,
                 new TEvService::TEvWriteBlocksLocalResponse(
@@ -130,7 +130,7 @@ void TVolumeAsPartitionActor::ReplyUndelivery(
             LogTitle.GetWithTime().c_str(),
             message.c_str());
 
-        if (requestCtx->Value.ReplyLocal) {
+        if (requestCtx->Value.ReplyType == EReplyType::Local) {
             ctx.Send(
                 requestCtx->Value.OriginalSender,
                 std::make_unique<
@@ -190,7 +190,7 @@ template <typename TMethod>
 void TVolumeAsPartitionActor::ReplyInvalidRange(
     const typename TMethod::TRequest::TPtr& ev,
     const TActorContext& ctx,
-    bool replyLocal)
+    EReplyType replyType)
 {
     auto message =
         TStringBuilder()
@@ -204,7 +204,7 @@ void TVolumeAsPartitionActor::ReplyInvalidRange(
         LogTitle.GetWithTime().c_str(),
         message.c_str());
 
-    if (replyLocal) {
+    if (replyType == EReplyType::Local) {
         NCloud::Reply(
             ctx,
             *ev,
@@ -222,7 +222,7 @@ void TVolumeAsPartitionActor::ReplyInvalidRange(
 void TVolumeAsPartitionActor::DoWriteBlocks(
     const TEvService::TEvWriteBlocksRequest::TPtr& ev,
     const TActorContext& ctx,
-    bool replyLocal)
+    EReplyType replyType)
 {
     auto* msg = ev->Get();
 
@@ -230,7 +230,7 @@ void TVolumeAsPartitionActor::DoWriteBlocks(
         BuildRequestBlockRange(*msg, OriginalBlockSize);
     const ui64 offset = originalRange.Start * OriginalBlockSize;
     const ui64 size = originalRange.Size() * OriginalBlockSize;
-    const bool needReadModifyWrite = (offset % BlockSize) || (size % BlockSize);
+    const bool needReadModifyWrite = ((offset % BlockSize) != 0) || ((size % BlockSize) != 0);
 
     if (needReadModifyWrite) {
         auto message = TStringBuilder()
@@ -244,7 +244,7 @@ void TVolumeAsPartitionActor::DoWriteBlocks(
             LogTitle.GetWithTime().c_str(),
             message.c_str());
 
-        if (replyLocal) {
+        if (replyType == EReplyType::Local) {
             ctx.Send(
                 ev->Sender,
                 std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
@@ -278,7 +278,7 @@ void TVolumeAsPartitionActor::DoWriteBlocks(
         needReadModifyWrite ? " with RMW" : "");
 
     if (!CheckRange(destRange)) {
-        ReplyInvalidRange<TEvService::TWriteBlocksMethod>(ev, ctx, replyLocal);
+        ReplyInvalidRange<TEvService::TWriteBlocksMethod>(ev, ctx, replyType);
         return;
     }
 
@@ -299,7 +299,7 @@ void TVolumeAsPartitionActor::DoWriteBlocks(
     msg->Record.SetDiskId(DiskId);
     msg->Record.MutableHeaders()->SetClientId(TString(CopyVolumeClientId));
 
-    ForwardRequestToFollower(ev, ctx, replyLocal);
+    ForwardRequestToFollower(ev, ctx, replyType);
 }
 
 void TVolumeAsPartitionActor::ReplyAndDie(const NActors::TActorContext& ctx)
@@ -369,11 +369,7 @@ void TVolumeAsPartitionActor::HandleWriteBlocks(
         return;
     }
 
-    DoWriteBlocks(
-        ev,
-        ctx,
-        false   // replyLocal
-    );
+    DoWriteBlocks(ev, ctx, EReplyType::Ordinary);
 }
 
 void TVolumeAsPartitionActor::HandleWriteBlocksLocal(
@@ -431,8 +427,7 @@ void TVolumeAsPartitionActor::HandleWriteBlocksLocal(
         IEventHandle::Downcast<TEvService::TEvWriteBlocksRequest>(
             std::move(newEv)),
         ctx,
-        true   // replyLocal
-    );
+        EReplyType::Local);
 }
 
 void TVolumeAsPartitionActor::HandleZeroBlocks(
@@ -455,7 +450,7 @@ void TVolumeAsPartitionActor::HandleZeroBlocks(
         BuildRequestBlockRange(*msg, OriginalBlockSize);
     const ui64 offset = originalRange.Start * OriginalBlockSize;
     const ui64 size = originalRange.Size() * OriginalBlockSize;
-    const bool needReadModifyWrite = (offset % BlockSize) || (size % BlockSize);
+    const bool needReadModifyWrite = ((offset % BlockSize) != 0) || ((size % BlockSize) != 0);
 
     if (needReadModifyWrite) {
         auto message = TStringBuilder() << "Can't ZeroBlocks to follower disk. "
@@ -491,7 +486,10 @@ void TVolumeAsPartitionActor::HandleZeroBlocks(
         needReadModifyWrite ? " with RMW" : "");
 
     if (!CheckRange(destRange)) {
-        ReplyInvalidRange<TEvService::TZeroBlocksMethod>(ev, ctx, false);
+        ReplyInvalidRange<TEvService::TZeroBlocksMethod>(
+            ev,
+            ctx,
+            EReplyType::Ordinary);
         return;
     }
 
@@ -503,7 +501,7 @@ void TVolumeAsPartitionActor::HandleZeroBlocks(
     msg->Record.SetDiskId(DiskId);
     msg->Record.MutableHeaders()->SetClientId(TString(CopyVolumeClientId));
 
-    ForwardRequestToFollower(ev, ctx, false);
+    ForwardRequestToFollower(ev, ctx, EReplyType::Ordinary);
 }
 
 void TVolumeAsPartitionActor::HandlePoisonPill(
