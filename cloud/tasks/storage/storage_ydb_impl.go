@@ -1796,7 +1796,7 @@ func (s *storageYDB) clearEndedTasksChunk(
 			pragma TablePathPrefix = "%v";
 			declare $ended_before as Timestamp;
 			declare $limit as Uint64;
-			
+
 			$ended_tasks = (
 				select * from ended
 				where ended_at < $ended_before
