@@ -192,7 +192,18 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     TEvTxProxySchemeCache::TEvNavigateKeySetResult* msg = ev->Get();
     const TSchemeCacheNavigate* record = msg->Request.Get();
 
-    Y_ABORT_UNLESS(record->ResultSet.size() == 1);
+    Y_DEBUG_ABORT_UNLESS(record->ResultSet.size() == 1);
+    if (record->ResultSet.size() != 1) {
+        HandleError(
+            ctx,
+            MakeError(
+                E_REJECTED,
+                TStringBuilder() << "SchemeCache ResultSet returned unexpected "
+                                    "number of entries: "
+                                 << record->ResultSet.size()));
+        return;
+    }
+
     const auto& entry = record->ResultSet.front();
 
     if (record->ErrorCount > 0) {
