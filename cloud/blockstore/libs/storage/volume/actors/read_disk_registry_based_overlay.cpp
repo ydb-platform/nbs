@@ -368,7 +368,8 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
                     false, // shouldCalculateChecksums
                     Mode,
                     std::move(currentRequest),
-                    LongRunningThreshold);
+                    LongRunningThreshold,
+                    0ull);
                 currentRequest = std::make_unique<
                     TEvPartitionCommonPrivate::TEvReadBlobRequest>();
                 currentRequest->Deadline = TInstant::Max();
@@ -395,7 +396,8 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
             false, // shouldCalculateChecksums
             EStorageAccessMode::Default,
             std::move(currentRequest),
-            LongRunningThreshold);
+            LongRunningThreshold,
+            0ull);
     }
 }
 

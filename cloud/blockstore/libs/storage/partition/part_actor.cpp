@@ -452,9 +452,9 @@ void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
     while (auto reqOpt = State->DequeueIORequest(channel)) {
         auto req = std::move(*reqOpt);
 
-        if (req.OperationId && req.GroupId && req.OperationType) {
+        if (req.BlobOperationId && req.GroupId && req.OperationType) {
             GroupOperationTimeTracker.OnStarted(
-                *req.OperationId,
+                *req.BlobOperationId,
                 *req.GroupId,
                 *req.OperationType,
                 GetCycleCount());

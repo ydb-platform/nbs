@@ -32,7 +32,7 @@ private:
     const EStorageAccessMode StorageAccessMode;
     const std::unique_ptr<TRequest> Request;
 
-    ui64 OperationId = 0;
+    ui64 BlopOperationId = 0;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -49,19 +49,8 @@ public:
         bool shouldCalculateChecksums,
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
-        TDuration longRunningThreshold);
-
-    TReadBlobActor(
-        TRequestInfoPtr requestInfo,
-        const NActors::TActorId& partitionActorId,
-        const NActors::TActorId& volumeActorId,
-        ui64 partitionTabletId,
-        ui32 blockSize,
-        bool shouldCalculateChecksums,
-        const EStorageAccessMode storageAccessMode,
-        std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
-        ui64 operationId);
+        ui64 blopOperationId);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

@@ -41,7 +41,7 @@ private:
     const ui32 GroupId;
     TChildLogTitle LogTitle;
 
-    ui64 OperationId;
+    ui64 BlobOperationId;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -60,7 +60,7 @@ public:
         TDuration longRunningThreshold,
         ui32 groupId,
         TChildLogTitle logTitle,
-        ui64 operationId);
+        ui64 BlobOperationId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -102,7 +102,7 @@ TWriteBlobActor::TWriteBlobActor(
         TDuration longRunningThreshold,
         ui32 groupId,
         TChildLogTitle logTitle,
-        ui64 operationId)
+        ui64 blobOperationId)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -116,7 +116,7 @@ TWriteBlobActor::TWriteBlobActor(
     , Request(std::move(request))
     , GroupId(groupId)
     , LogTitle(std::move(logTitle))
-    , OperationId(operationId)
+    , BlobOperationId(blobOperationId)
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -205,7 +205,7 @@ void TWriteBlobActor::NotifyCompleted(
     request->StorageStatusFlags = StorageStatusFlags;
     request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
     request->RequestTime = ResponseReceived - RequestSent;
-    request->RequestId = OperationId;
+    request->RequestId = BlobOperationId;
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }
@@ -395,7 +395,7 @@ void TPartitionActor::HandleWriteBlob(
     ui32 channel = msg->BlobId.Channel();
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->BlobId.Generation());
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
-    ui64 operation = GroupOperationId++;
+    ui64 blobOperationId = BlobOperationId;
 
     State->EnqueueIORequest(
         channel,
@@ -412,8 +412,8 @@ void TPartitionActor::HandleWriteBlob(
                 PartitionConfig.GetStorageMediaKind()),
             groupId,
             LogTitle.GetChild(GetCycleCount()),
-            operation),
-        operation,
+            blobOperationId),
+        blobOperationId,
         groupId,
         TGroupOperationTimeTracker::EGroupOperationType::Write);
 

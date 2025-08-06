@@ -264,19 +264,19 @@ struct TScanDiskState
 struct TQueuedRequest
 {
     NActors::IActorPtr Actor;
-    std::optional<ui64> OperationId;
+    std::optional<ui64> BlobOperationId;
     std::optional<ui32> GroupId;
     std::optional<TGroupOperationTimeTracker::EGroupOperationType>
         OperationType;
 
     explicit TQueuedRequest(
         NActors::IActorPtr actor,
-        std::optional<ui64> operationId = {},
+        std::optional<ui64> blopOperationId = {},
         std::optional<ui32> groupId = {},
         std::optional<TGroupOperationTimeTracker::EGroupOperationType> opType =
             {})
         : Actor(std::move(actor))
-        , OperationId(operationId)
+        , BlobOperationId(blopOperationId)
         , GroupId(groupId)
         , OperationType(opType)
     {}
@@ -480,7 +480,7 @@ public:
     void EnqueueIORequest(
         ui32 channel,
         NActors::IActorPtr actor,
-        std::optional<ui64> operationId = {},
+        std::optional<ui64> blopOperationId = {},
         std::optional<ui32> groupId = {},
         std::optional<TGroupOperationTimeTracker::EGroupOperationType> opType =
             {});
