@@ -12,11 +12,13 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class TWriteBackCache::EFlushStatus
+enum class TWriteBackCache::EWriteDataEntryStatus
 {
-    NotStarted,
-    Started,
-    Finished
+    Invalid,
+    Pending,
+    Cached,
+    CachedFlushRequested,
+    Flushed
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,15 +33,23 @@ private:
     std::shared_ptr<NProto::TWriteDataRequest> Request;
     TString RequestBuffer;
 
+    // Memory allocated in CachedEntriesPersistentQueue
+    char* AllocationPtr = nullptr;
+
     // Reference to either RequestBuffer or a memory region
-    // in WriteDataRequestsQueue
+    // referenced by AllocationPtr in CachedEntriesPersistentQueue
     TStringBuf BufferRef;
+
+    NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
+    NThreading::TPromise<void> FlushedPromise;
+    EWriteDataEntryStatus Status = EWriteDataEntryStatus::Invalid;
 
 public:
     explicit TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
     TWriteDataEntry(ui32 checksum, TStringBuf serializedRequest);
+
 
     const NProto::TWriteDataRequest* GetRequest() const
     {
@@ -66,10 +76,31 @@ public:
         return Request->GetOffset() + BufferRef.size();
     }
 
-    size_t GetSerializedSize() const;
-    void SerializeAndMoveRequestBuffer(char* allocationPtr);
+    bool IsCached() const
+    {
+        return Status == EWriteDataEntryStatus::Cached ||
+               Status == EWriteDataEntryStatus::CachedFlushRequested;
+    }
 
-    EFlushStatus FlushStatus = EFlushStatus::NotStarted;
+    bool IsFinished() const
+    {
+        return Status == EWriteDataEntryStatus::Flushed ||
+               Status == EWriteDataEntryStatus::Invalid;
+    }
+
+    size_t GetSerializedSize() const;
+
+    void SerializeAndMoveRequestBuffer(
+        char* allocationPtr,
+        TPendingOperations& pendingOperations);
+
+    void Finish(TPendingOperations& pendingOperations);
+
+    bool IsFlushRequested() const;
+    bool RequestFlush();
+
+    NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
+    NThreading::TFuture<void> GetFlushedFuture();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -110,7 +141,7 @@ public:
      *   data.
      */
     static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
-        const TVector<TWriteDataEntry*>& entries,
+        const TDeque<TWriteDataEntry*>& entries,
         ui64 startingFromOffset,
         ui64 length);
 
