@@ -137,7 +137,6 @@ NProto::TClientAppConfig CreateClientAppConfig(
     NProto::TClientAppConfig proto;
     auto& clientConfig = *proto.MutableClientConfig();
     clientConfig = config;
-    clientConfig.SetDoNotSendStats(true);
     return proto;
 }
 

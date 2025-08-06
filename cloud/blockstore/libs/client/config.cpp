@@ -70,7 +70,6 @@ TDuration MSeconds(ui64 x)
     xxx(RdmaDevicePort,         ui32,             0                           )\
     xxx(LocalNonreplDisableDurableClient,         bool, false                 )\
     xxx(SkipCertVerification,   bool,             false                       )\
-    xxx(DoNotSendStats,         bool,             false                       )\
 // BLOCKSTORE_CLIENT_CONFIG
 
 #define BLOCKSTORE_CLIENT_DECLARE_CONFIG(name, type, value)                    \

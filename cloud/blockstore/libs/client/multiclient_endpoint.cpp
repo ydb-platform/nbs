@@ -25,13 +25,13 @@ namespace {
 template <typename TRequest>
 concept HasClientId = requires (TRequest r)
 {
-    { r.GetHeaders().GetClientId()} -> std::same_as<TString>;
+    { r.MutableHeaders().SetClientId(TString())};
 };
 
 template <typename TRequest>
 concept HasInstanceId = requires (TRequest r)
 {
-    { r.GetInstanceId() } -> std::same_as<TString>;
+    { r.SetInstanceId(TString()) };
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,7 +69,7 @@ struct TClientEndpoint
         }
 
         if constexpr (HasInstanceId<TRequest>) {
-            request.MutableHeaders()->SetInstanceId(InstanceId);
+            request.SetInstanceId(InstanceId);
         }
 
         if constexpr (std::same_as<TRequest, NProto::TMountVolumeRequest>) {
@@ -191,7 +191,7 @@ TClientEndpoint::~TClientEndpoint()
 ////////////////////////////////////////////////////////////////////////////////
 
 IMultiClientEndpointPtr CreateMultiClientEndpoint(
-    IClientPtr client,
+    IMultiHostClientPtr client,
     const TString& host,
     ui32 port,
     bool isSecure)
