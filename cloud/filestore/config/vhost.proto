@@ -57,6 +57,21 @@ message TVhostServiceConfig
 
     // WriteBackCache automatic flush period (in milliseconds).
     optional uint32 WriteBackCacheAutomaticFlushPeriod = 14;
+
+    // Maximum size of a single consolidated write request in bytes for flush.
+    // If this limit is exceeded, write requests will be split into multiple
+    // requests, each not exceeding this limit.
+    optional uint32 WriteBackCacheFlushMaxWriteRequestSize = 15;
+
+    // Maximum number of consolidated write requests for a flush operation.
+    // If this limit is exceeded, flush request will be split into
+    // a sequence of multiple flush operations.
+    optional uint32 WriteBackCacheFlushMaxWriteRequestsCount = 16;
+
+    // Maximum total size of all WriteData requests in bytes for a flush
+    // operation. If this limit is exceeded, flush request will be split into
+    // a sequence of multiple flush operations.
+    optional uint64 WriteBackCacheFlushMaxSumWriteRequestsSize = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
