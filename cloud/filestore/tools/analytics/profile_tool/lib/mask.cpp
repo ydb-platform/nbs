@@ -47,7 +47,9 @@ public:
             .DefaultValue("nodeid");
 
         Opts.AddLongOption("seed", "Seed for hash mode").StoreResult(&Seed);
-        Opts.AddLongOption("keep-file-extension", "Keep file extention, max length")
+        Opts.AddLongOption(
+                "keep-file-extension",
+                "Keep file extention, max length")
             .StoreResult(&MaxExtensionLength);
     }
 
@@ -107,7 +109,9 @@ bool TMaskSensitiveData::Advance()
     return false;
 }
 
-TString TMaskSensitiveData::Transform(const TString& str, const ui64 nodeId)
+TString TMaskSensitiveData::Transform(
+    const TString& str,
+    const ui64 nodeId) const
 {
     TString extension;
     if (MaxExtensionLength > 0) {
@@ -130,6 +134,21 @@ TString TMaskSensitiveData::Transform(const TString& str, const ui64 nodeId)
     }
 }
 
+void TMaskSensitiveData::MaskRequest(
+    NProto::TProfileLogRequestInfo& request) const
+{
+    if (request.GetNodeInfo().HasNodeName()) {
+        request.MutableNodeInfo()->SetNodeName(Transform(
+            request.GetNodeInfo().GetNodeName(),
+            request.GetNodeInfo().GetNodeId()));
+    }
+    if (request.GetNodeInfo().HasNewNodeName()) {
+        request.MutableNodeInfo()->SetNewNodeName(Transform(
+            request.GetNodeInfo().GetNewNodeName(),
+            request.GetNodeInfo().GetNodeId()));
+    }
+}
+
 void TMaskSensitiveData::MaskSensitiveData(
     const TString& in,
     const TString& out)
@@ -149,17 +168,7 @@ void TMaskSensitiveData::MaskSensitiveData(
 
         while (EventMessageNumber > 0) {
             auto request = MessagePtr->GetRequests()[--EventMessageNumber];
-
-            if (request.GetNodeInfo().HasNodeName()) {
-                request.MutableNodeInfo()->SetNodeName(Transform(
-                    request.GetNodeInfo().GetNodeName(),
-                    request.GetNodeInfo().GetNodeId()));
-            }
-            if (request.GetNodeInfo().HasNewNodeName()) {
-                request.MutableNodeInfo()->SetNewNodeName(Transform(
-                    request.GetNodeInfo().GetNewNodeName(),
-                    request.GetNodeInfo().GetNodeId()));
-            }
+            MaskRequest(request);
             *recordOut.AddRequests() = std::move(request);
         }
         logFrame.LogEvent(recordOut);
