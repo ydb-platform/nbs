@@ -439,15 +439,19 @@ public:
         const TStorageOptions& options,
         IStoragePtr storage)
     {
-        auto deviceHandler = AppCtx.DeviceHandlerFactory->CreateDeviceHandler(
-            std::move(storage),
-            options.DiskId,
-            options.ClientId,
-            options.BlockSize,
-            options.UnalignedRequestsDisabled,
-            options.CheckBufferModificationDuringWriting,
-            options.StorageMediaKind,
-            options.MaxZeroBlocksSubRequestSize);
+        TDeviceHandlerParams params{
+            .Storage = std::move(storage),
+            .DiskId = options.DiskId,
+            .ClientId = options.ClientId,
+            .BlockSize = options.BlockSize,
+            .MaxZeroBlocksSubRequestSize = options.MaxZeroBlocksSubRequestSize,
+            .CheckBufferModificationDuringWriting =
+                options.CheckBufferModificationDuringWriting,
+            .UnalignedRequestsDisabled = options.UnalignedRequestsDisabled,
+            .StorageMediaKind = options.StorageMediaKind};
+
+        auto deviceHandler =
+            AppCtx.DeviceHandlerFactory->CreateDeviceHandler(std::move(params));
 
         auto endpoint = std::make_shared<TEndpoint>(
             AppCtx,
