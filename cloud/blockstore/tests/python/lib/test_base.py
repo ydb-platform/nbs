@@ -11,6 +11,7 @@ import tempfile
 import time
 import urllib3
 import uuid
+import logging
 
 import yatest.common as common
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -27,6 +28,8 @@ from cloud.blockstore.public.sdk.python.client.error_codes import EFacility
 
 from google.protobuf import text_format
 
+
+logger = logging.getLogger(__name__)
 
 def get_restart_interval():
     if common.context.sanitize is not None:
@@ -378,6 +381,25 @@ def get_nbs_device_path(path=None):
         raise RuntimeError("Path does not exist: {}".format(path))
 
     return path
+
+
+def get_all_nbs_paths(nbs_instances_count):
+    paths = []
+
+    for i in range(nbs_instances_count):
+        path = (os.getenv("NBS_{}_DEVICE_PATH".format(i)))
+        logger.info("path from NBS_{}_DEVICE_PATH: {}".format(i, path))
+
+        if not path:
+            raise RuntimeError("Invalid path")
+
+        if not os.path.exists(path):
+            raise RuntimeError("Path does not exist: {}".format(path))
+
+        paths.append(path)
+
+    logger.info("find paths: {}".format(len(paths)))
+    return paths
 
 
 def get_sensor(sensors, default_value, **kwargs):

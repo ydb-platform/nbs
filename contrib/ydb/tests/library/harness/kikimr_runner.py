@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import time
 import itertools
+import random
 from pkg_resources import resource_string
 from google.protobuf import text_format
 
@@ -465,7 +466,7 @@ class KiKiMR(kikimr_cluster_interface.KiKiMRClusterInterface):
                 get_unique_path_for_current_test(
                     self.__configurator.output_path,
                     join(
-                        self.__cluster_name, "kikimr_configs"
+                        self.__cluster_name, "kikimr_configs_{}".format(random.randint(10000, 99999))
                     )
                 )
             )
