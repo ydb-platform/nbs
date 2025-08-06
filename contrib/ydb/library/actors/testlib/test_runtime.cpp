@@ -1581,7 +1581,7 @@ namespace NActors {
 
     bool TTestActorRuntimeBase::IsScheduleForActorEnabled(const TActorId& actorId) const {
         TGuard<TMutex> guard(Mutex);
-        return ScheduleWhiteList.find(actorId) != ScheduleWhiteList.end();
+        return ScheduleWhiteList.find(actorId) != ScheduleWhiteList.end() || true;
     }
 
     TIntrusivePtr<NMonitoring::TDynamicCounters> TTestActorRuntimeBase::GetDynamicCounters(ui32 nodeIndex) {
