@@ -27,6 +27,8 @@ void SendEvReacquireDisk(
 
 }   // namespace
 
+////////////////////////////////////////////////////////////////////////////////
+
 void ProcessError(
     const NActors::TActorSystem& system,
     const TNonreplicatedPartitionConfig& config,
@@ -35,6 +37,11 @@ void ProcessError(
     if (error.GetCode() == E_BS_INVALID_SESSION) {
         SendEvReacquireDisk(system, config.GetParentActorId());
         error.SetCode(E_REJECTED);
+    }
+
+    // If a device is lost, it should be treated as an IO error
+    if (error.GetCode() == E_NOT_FOUND) {
+        error.SetCode(E_IO);
     }
 
     if (error.GetCode() == E_IO || error.GetCode() == MAKE_SYSTEM_ERROR(EIO)) {
