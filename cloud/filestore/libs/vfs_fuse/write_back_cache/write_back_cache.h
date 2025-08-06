@@ -30,7 +30,10 @@ public:
         ITimerPtr timer,
         const TString& filePath,
         ui32 capacityBytes,
-        TDuration automaticFlushPeriod);
+        TDuration automaticFlushPeriod,
+        ui32 maxWriteRequestSize,
+        ui32 maxWriteRequestsCount,
+        ui32 maxSumWriteRequestsSize);
 
     ~TWriteBackCache();
 
@@ -62,6 +65,7 @@ private:
     struct TFlushState;
     class TUtil;
     struct TPendingOperations;
+    class TContiguousWriteDataEntryPartsReader;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -129,6 +129,12 @@ public:
         protoConfig.SetWriteBackCacheCapacity(WriteBackCacheConfig.Capacity);
         protoConfig.SetWriteBackCacheAutomaticFlushPeriod(
             WriteBackCacheConfig.AutomaticFlushPeriod.MilliSeconds());
+        protoConfig.SetWriteBackCacheFlushMaxWriteRequestSize(
+            WriteBackCacheConfig.FlushMaxWriteRequestSize);
+        protoConfig.SetWriteBackCacheFlushMaxWriteRequestsCount(
+            WriteBackCacheConfig.FlushMaxWriteRequestsCount);
+        protoConfig.SetWriteBackCacheFlushMaxSumWriteRequestsSize(
+            WriteBackCacheConfig.FlushMaxSumWriteRequestsSize);
 
         auto vFSConfig = std::make_shared<TVFSConfig>(std::move(protoConfig));
         auto Loop = LoopFactory->Create(

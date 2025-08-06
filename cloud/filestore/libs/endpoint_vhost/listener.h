@@ -27,6 +27,9 @@ struct TWriteBackCacheConfig
     TString PathPrefix;
     ui64 Capacity = 0;
     TDuration AutomaticFlushPeriod;
+    ui32 FlushMaxWriteRequestSize = 0;
+    ui32 FlushMaxWriteRequestsCount = 0;
+    ui32 FlushMaxSumWriteRequestsSize = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

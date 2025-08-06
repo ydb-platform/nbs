@@ -915,7 +915,11 @@ private:
                         Timer,
                         path / WriteBackCacheFileName,
                         Config->GetWriteBackCacheCapacity(),
-                        Config->GetWriteBackCacheAutomaticFlushPeriod());
+                        Config->GetWriteBackCacheAutomaticFlushPeriod(),
+                        Config->GetWriteBackCacheFlushMaxWriteRequestSize(),
+                        Config->GetWriteBackCacheFlushMaxWriteRequestsCount(),
+                        Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize()
+                    );
                     WriteBackCacheInitialized = true;
                 } else {
                     TString msg =

@@ -46,6 +46,9 @@ public:
     TString GetWriteBackCachePath() const;
     ui64 GetWriteBackCacheCapacity() const;
     TDuration GetWriteBackCacheAutomaticFlushPeriod() const;
+    ui32 GetWriteBackCacheFlushMaxWriteRequestSize() const;
+    ui32 GetWriteBackCacheFlushMaxWriteRequestsCount() const;
+    ui32 GetWriteBackCacheFlushMaxSumWriteRequestsSize() const;
 
     bool GetGuestKeepCacheAllowed() const;
 
