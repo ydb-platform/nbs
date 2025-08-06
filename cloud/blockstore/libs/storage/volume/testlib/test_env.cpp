@@ -54,15 +54,16 @@ public:
             [&](TAutoPtr<IEventHandle>& event)
                 -> NActors::TTestActorRuntime::EEventAction
             {
-                if (PrevObserverFunc) {
-                    NActors::TTestActorRuntime::EEventAction result =
-                        PrevObserverFunc(event);
-                    if (result !=
-                        NActors::TTestActorRuntime::EEventAction::PROCESS) {
-                        return result;
-                    }
+                NActors::TTestActorRuntime::EEventAction result =
+                    GuardObserverFunc(event);
+                if (result != NActors::TTestActorRuntime::EEventAction::PROCESS)
+                {
+                    return result;
                 }
-                return GuardObserverFunc(event);
+                if (PrevObserverFunc) {
+                    result = PrevObserverFunc(event);
+                }
+                return result;
             });
 
         GuardRegistrationObserverFunc = Runtime.SetRegistrationObserverFunc(
@@ -70,10 +71,10 @@ public:
                 const TActorId& parentId,
                 const TActorId& actorId) -> void
             {
+                GuardRegistrationObserverFunc(runtime, parentId, actorId);
                 if (PrevRegistrationObserverFunc) {
                     PrevRegistrationObserverFunc(runtime, parentId, actorId);
                 }
-                GuardRegistrationObserverFunc(runtime, parentId, actorId);
             });
 
         GuardScheduledFilterFunc = Runtime.SetScheduledEventFilter(
@@ -82,21 +83,19 @@ public:
                 TDuration delay,
                 TInstant& deadline) -> bool
             {
+                bool result =
+                    GuardScheduledFilterFunc(runtime, event, delay, deadline);
+                if (result) {
+                    return result;
+                }
                 if (PrevScheduledFilterFunc) {
-                    bool result = PrevScheduledFilterFunc(
+                    result = PrevScheduledFilterFunc(
                         runtime,
                         event,
                         delay,
                         deadline);
-                    if (!result) {
-                        return result;
-                    }
                 }
-                return GuardScheduledFilterFunc(
-                    runtime,
-                    event,
-                    delay,
-                    deadline);
+                return result;
             });
 
         GuardScheduledEventsSelector = Runtime.SetScheduledEventsSelectorFunc(
@@ -104,13 +103,13 @@ public:
                 TScheduledEventsList& scheduledEvents,
                 TEventsList& queue)
             {
+                GuardScheduledEventsSelector(runtime, scheduledEvents, queue);
                 if (PrevScheduledEventsSelector) {
                     PrevScheduledEventsSelector(
                         runtime,
                         scheduledEvents,
                         queue);
                 }
-                GuardScheduledEventsSelector(runtime, scheduledEvents, queue);
             });
     }
 
@@ -253,9 +252,11 @@ void TVolumeClient::ReconnectPipe()
         NKikimr::GetPipeConfigWithRetries());
 }
 
+
 void TVolumeClient::RebootTablet()
 {
     TVector<ui64> tablets = { VolumeTabletId };
+
     auto guard = TTabletScheduledEventsGuard(
         tablets,
         Runtime,
