@@ -321,12 +321,10 @@ private:
     const IBlockStorePtr Service;
     const NCells::ICellManagerPtr CellManager;
     const IStorageProviderPtr StorageProvider;
-    const NRdma::IClientPtr RdmaClient;
     const IThrottlerProviderPtr ThrottlerProvider;
     const IEncryptionClientFactoryPtr EncryptionClientFactory;
     const TExecutorPtr Executor;
     const TSessionManagerOptions Options;
-    const TServerAppConfigPtr Config;
 
     TLog Log;
 
@@ -345,14 +343,12 @@ public:
             IVolumeStatsPtr volumeStats,
             IServerStatsPtr serverStats,
             IBlockStorePtr service,
-            NCells::ICellManagerPtr CellManager,
+            NCells::ICellManagerPtr cellManager,
             IStorageProviderPtr storageProvider,
-            NRdma::IClientPtr rdmaClient,
             IThrottlerProviderPtr throttlerProvider,
             IEncryptionClientFactoryPtr encryptionClientFactory,
             TExecutorPtr executor,
-            TSessionManagerOptions options,
-            TServerAppConfigPtr config)
+            TSessionManagerOptions options)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
@@ -361,14 +357,12 @@ public:
         , VolumeStats(std::move(volumeStats))
         , ServerStats(std::move(serverStats))
         , Service(std::move(service))
-        , CellManager(std::move(CellManager))
+        , CellManager(std::move(cellManager))
         , StorageProvider(std::move(storageProvider))
-        , RdmaClient(std::move(rdmaClient))
         , ThrottlerProvider(std::move(throttlerProvider))
         , EncryptionClientFactory(std::move(encryptionClientFactory))
         , Executor(std::move(executor))
         , Options(std::move(options))
-        , Config(std::move(config))
     {
         Log = Logging->CreateLog("BLOCKSTORE_SERVER");
     }
@@ -871,13 +865,11 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    NCells::ICellManagerPtr CellManager,
+    NCells::ICellManagerPtr cellManager,
     IStorageProviderPtr storageProvider,
-    NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,
     TExecutorPtr executor,
-    TSessionManagerOptions options,
-    TServerAppConfigPtr config)
+    TSessionManagerOptions options)
 {
     auto throttlerProvider = CreateThrottlerProvider(
         options.HostProfile,
@@ -897,14 +889,12 @@ ISessionManagerPtr CreateSessionManager(
         std::move(volumeStats),
         std::move(serverStats),
         std::move(service),
-        std::move(CellManager),
+        std::move(cellManager),
         std::move(storageProvider),
-        std::move(rdmaClient),
         std::move(throttlerProvider),
         std::move(encryptionClientFactory),
         std::move(executor),
-        std::move(options),
-        std::move(config));
+        std::move(options));
 }
 
 }   // namespace NCloud::NBlockStore::NServer

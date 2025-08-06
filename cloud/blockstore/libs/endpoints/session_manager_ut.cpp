@@ -1,5 +1,6 @@
 #include "session_manager.h"
 
+#include <cloud/blockstore/libs/cells/iface/cells.h>
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/dumpable.h>
@@ -25,6 +26,7 @@
 
 namespace NCloud::NBlockStore::NServer {
 
+using namespace NCells;
 using namespace NThreading;
 
 namespace {
@@ -155,6 +157,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             CreateVolumeStatsStub(),
             serverStats,
             service,
+            CreateCellManagerStub(),
             CreateDefaultStorageProvider(service),
             encryptionClientFactory,
             executor,
@@ -271,6 +274,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
             service,
+            CreateCellManagerStub(),
             CreateDefaultStorageProvider(service),
             encryptionClientFactory,
             executor,
@@ -396,6 +400,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             volumeStats,
             serverStats,
             service,
+            CreateCellManagerStub(),
             CreateDefaultStorageProvider(service),
             encryptionClientFactory,
             executor,
