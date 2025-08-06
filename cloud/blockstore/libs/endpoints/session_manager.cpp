@@ -5,12 +5,10 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/session.h>
-#include <cloud/blockstore/libs/client_rdma/rdma_client.h>
 #include <cloud/blockstore/libs/client/throttling.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
-#include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -23,13 +21,9 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-
 #include <util/generic/hash.h>
-#include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
-#include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -319,7 +313,7 @@ private:
     const IVolumeStatsPtr VolumeStats;
     const IServerStatsPtr ServerStats;
     const IBlockStorePtr Service;
-    const NCells::ICellManagerPtr CellsManager;
+    const NCells::ICellManagerPtr CellManager;
     const IStorageProviderPtr StorageProvider;
     const IThrottlerProviderPtr ThrottlerProvider;
     const IEncryptionClientFactoryPtr EncryptionClientFactory;
@@ -497,7 +491,7 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     const TString& diskId,
     const NProto::THeaders& headers)
 {
-    auto multiShardFuture = CellsManager->DescribeVolume(
+    auto multiShardFuture = CellManager->DescribeVolume(
         diskId,
         headers,
         Service,
@@ -697,7 +691,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     auto clientConfig = CreateClientConfig(request);
 
     if (!shardId.empty()) {
-        auto result = CellsManager->GetCellEndpoint(
+        auto result = CellManager->GetCellEndpoint(
             shardId,
             clientConfig);
         if (HasError(result.GetError())) {
@@ -763,15 +757,16 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     }
     client = clientOrError.GetResult();
 
-    auto throttler = ThrottlerProvider->GetThrottler(
-        clientConfig->GetClientConfig(),
-        request.GetClientProfile(),
-        request.GetClientPerformanceProfile());
+    if (!Options.DisableClientThrottler) {
+        auto throttler = ThrottlerProvider->GetThrottler(
+            clientConfig->GetClientConfig(),
+            request.GetClientProfile(),
+            request.GetClientPerformanceProfile());
 
-    if (throttler) {
-        client = CreateThrottlingClient(
-            std::move(client),
-            std::move(throttler));
+        if (throttler) {
+            client =
+                CreateThrottlingClient(std::move(client), std::move(throttler));
+        }
     }
 
     if (Options.StrictContractValidation &&

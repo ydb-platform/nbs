@@ -2,6 +2,9 @@
 
 #include <cloud/blockstore/libs/cells/iface/cells.h>
 #include <cloud/blockstore/libs/client/session.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/diagnostics/dumpable.h>
+#include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
@@ -25,6 +28,22 @@ using namespace NCells;
 using namespace NThreading;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestDumpable
+    : public IDumpable
+{
+    void Dump(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    };
+
+    void DumpHtml(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
