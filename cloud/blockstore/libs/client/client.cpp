@@ -344,7 +344,9 @@ public:
         , CallContext(std::move(callContext))
         , Request(std::move(request))
         , Promise(promise)
-    {}
+    {
+        Context.set_wait_for_ready(true);
+    }
 
     static void Start(
         TAppContext& appCtx,
@@ -564,8 +566,6 @@ class TClientBase
 
     TVector<std::unique_ptr<TExecutor>> Executors;
 
-    TAdaptiveLock EndpointLock;
-
 public:
     TClientBase(
         TClientAppConfigPtr config,
@@ -574,11 +574,6 @@ public:
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         IServerStatsPtr clientStats);
-
-    virtual ~TClientBase()
-    {
-        Stop();
-    }
 
     void Start() override;
     void Stop() override;
@@ -590,6 +585,10 @@ public:
         std::shared_ptr<typename TMethod::TRequest> request);
 
     grpc::ChannelArguments CreateChannelArguments();
+
+    std::shared_ptr<grpc::Channel> CreateUnixSocketChannel(
+        const TString& unixSocketPath,
+        const grpc::ChannelArguments& args);
 
     std::shared_ptr<grpc::Channel> CreateTcpSocketChannel(
         const TString& address,
@@ -625,10 +624,6 @@ public:
 
     IBlockStorePtr CreateDataEndpoint(
         const TString& socketPath) override;
-
-    std::shared_ptr<grpc::Channel> CreateUnixSocketChannel(
-        const TString& unixSocketPath,
-        const grpc::ChannelArguments& args);
 
 private:
     bool InitControlEndpoint();
@@ -749,6 +744,28 @@ std::shared_ptr<grpc::Channel> TClientBase::CreateTcpSocketChannel(
         CreateChannelArguments());
 }
 
+std::shared_ptr<grpc::Channel> TClientBase::CreateUnixSocketChannel(
+    const TString& unixSocketPath,
+    const grpc::ChannelArguments& args)
+{
+    STORAGE_INFO("Connect to " << unixSocketPath.Quote() << " socket");
+
+    TSockAddrLocal addr(unixSocketPath.c_str());
+
+    TLocalStreamSocket socket;
+    if (socket.Connect(&addr) < 0) {
+        return nullptr;
+    }
+
+    auto channel = grpc::CreateCustomInsecureChannelFromFd(
+        "localhost",
+        socket,
+        args);
+
+    socket.Release();   // ownership transferred to Channel
+    return channel;
+}
+
 template <typename TMethod, typename TService>
 TFuture<typename TMethod::TResponse> TClientBase::ExecuteRequest(
     TService& service,
@@ -799,36 +816,10 @@ void TClient::Stop()
 {
     TClientBase::Stop();
 
-    if (AtomicSwap(&ShouldStop, 1) == 1) {
-        return;
-    }
-
     with_lock (EndpointLock) {
         ControlEndpoint.reset();
         DataEndpoint.reset();
     }
-}
-
-std::shared_ptr<grpc::Channel> TClient::CreateUnixSocketChannel(
-    const TString& unixSocketPath,
-    const grpc::ChannelArguments& args)
-{
-    STORAGE_INFO("Connect to " << unixSocketPath.Quote() << " socket");
-
-    TSockAddrLocal addr(unixSocketPath.c_str());
-
-    TLocalStreamSocket socket;
-    if (socket.Connect(&addr) < 0) {
-        return nullptr;
-    }
-
-    auto channel = grpc::CreateCustomInsecureChannelFromFd(
-        "localhost",
-        socket,
-        args);
-
-    socket.Release();   // ownership transferred to Channel
-    return channel;
 }
 
 void TClient::UploadStats()
@@ -1093,7 +1084,7 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return TBase::ExecuteRequest<T##name##Method>(                         \
+        return ExecuteRequest<T##name##Method>(                                \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
