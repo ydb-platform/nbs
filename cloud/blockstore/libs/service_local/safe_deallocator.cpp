@@ -141,6 +141,13 @@ private:
 
         ValidatedBlockIndex = StartIndex + Rand.Uniform(BlocksCount);
 
+        // Fill the buffer with an unexpected value (any except 0x00 or 0xFF)
+        // before reading to make sure that IFileIOService actually reads the
+        // data. If it doesn't, we can't be secure that deallocation works
+        // properly.
+        const int unexpectedValue = 0xBEEF;
+        std::memset(Buffer.get(), unexpectedValue, BlockSize);
+
         FileIO->AsyncRead(
             Fd,
             static_cast<i64>(ValidatedBlockIndex * BlockSize),
