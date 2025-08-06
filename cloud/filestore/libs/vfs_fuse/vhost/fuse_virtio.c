@@ -25,7 +25,8 @@ struct fuse_virtio_dev
     struct vhd_fsdev_info fsdev;
 
     struct vhd_vdev* vdev;
-    struct vhd_request_queue* rq;
+    struct vhd_request_queue **rqs;
+    int rq_count;
 };
 
 struct fuse_virtio_queue
@@ -293,11 +294,15 @@ static int process_request(struct fuse_session* se, struct vhd_io* io)
 
 static void unregister_complete(void* ctx)
 {
+    /* int queue_index; */
     struct fuse_session* se = ctx;
     struct fuse_virtio_dev* dev = se->virtio_dev;
 
-    VHD_LOG_INFO("stopping device %s", dev->fsdev.socket_path);
-    vhd_stop_queue(dev->rq);
+    VHD_LOG_INFO("stopping device %s rq_count=%d", dev->fsdev.socket_path, dev->rq_count);
+    /* for (queue_index = 0; queue_index < dev->rq_count; queue_index++) { */
+        /* vhd_stop_queue(dev->rqs[queue_index]); */
+        vhd_stop_queue(dev->rqs[0]);
+    /* } */
 }
 
 static void unregister_complete_and_free_dev(void* ctx)
@@ -307,7 +312,8 @@ static void unregister_complete_and_free_dev(void* ctx)
     struct fuse_session* se = ctx;
     struct fuse_virtio_dev* dev = se->virtio_dev;
 
-    vhd_release_request_queue(dev->rq);
+    vhd_release_request_queue(dev->rqs[0]);
+    vhd_free(dev->rqs);
     vhd_free(dev);
 }
 
@@ -370,17 +376,19 @@ int virtio_session_mount(struct fuse_session* se)
     dev->fsdev.num_queues = se->thread_pool_size;
 
     VHD_LOG_INFO("starting device %s", dev->fsdev.socket_path);
+    dev->rq_count = 1;
+    dev->rqs = vhd_zalloc(sizeof(dev->rqs[0]) * dev->rq_count);
 
     // TODO: multiple request queues
-    dev->rq = vhd_create_request_queue();
-    if (!dev->rq) {
+    dev->rqs[0] = vhd_create_request_queue();
+    if (!dev->rqs[0]) {
         vhd_free(dev);
         return -ENOMEM;
     }
 
-    dev->vdev = vhd_register_fs(&dev->fsdev, dev->rq, NULL);
+    dev->vdev = vhd_register_fs(&dev->fsdev, dev->rqs[0], NULL);
     if (!dev->vdev) {
-        vhd_release_request_queue(dev->rq);
+        vhd_release_request_queue(dev->rqs[0]);
         vhd_free(dev);
         return -ENOMEM;
     }
@@ -400,7 +408,8 @@ void virtio_session_close(struct fuse_session* se)
     struct fuse_virtio_dev* dev = se->virtio_dev;
 
     VHD_LOG_INFO("destroying device %s", dev->fsdev.socket_path);
-    vhd_release_request_queue(dev->rq);
+    vhd_release_request_queue(dev->rqs[0]);
+    vhd_free(dev->rqs);
     vhd_free(dev);
 }
 
@@ -418,7 +427,7 @@ int virtio_session_loop(struct fuse_session* se)
 
     int res;
     for (;;) {
-        res = vhd_run_queue(dev->rq);
+        res = vhd_run_queue(dev->rqs[0]);
         if (res != -EAGAIN) {
             if (res < 0) {
                 VHD_LOG_WARN("request queue failure %d", -res);
@@ -427,7 +436,7 @@ int virtio_session_loop(struct fuse_session* se)
         }
 
         struct vhd_request req;
-        while (vhd_dequeue_request(dev->rq, &req)) {
+        while (vhd_dequeue_request(dev->rqs[0], &req)) {
             res = process_request(se, req.io);
             if (res < 0) {
                 VHD_LOG_WARN("request processing failure %d", -res);
