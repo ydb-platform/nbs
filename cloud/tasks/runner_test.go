@@ -168,8 +168,8 @@ func matchesState(
 	expected storage.TaskState,
 ) func(storage.TaskState) bool {
 
-	// Allow unlimited calls (-1) because some tests do not set mock repeatability,
-	// thus allowing several calls.
+	// Set callsCount to unlimited (-1) because some tests
+	// do not set mock repeatability, thus allowing several calls.
 	matcher := newMatcher(t, -1 /* callsCount */, nil /* doneFunc */)
 
 	return func(actual storage.TaskState) bool {
@@ -1457,8 +1457,13 @@ func TestTryExecutingTaskFailToPing(t *testing.T) {
 	runnerMetrics.On("OnExecutionStarted", mock.Anything)
 	runner.On("executeTask", mock.Anything, mock.Anything, task).Run(func(args mock.Arguments) {
 		ctx := args.Get(0).(context.Context)
-		<-ctx.Done()
-		require.Error(t, ctx.Err())
+
+		timeout := 5 * time.Second
+		select {
+		case <-ctx.Done():
+		case <-time.After(timeout):
+			require.FailNow(t, "expected context to cancel")
+		}
 	})
 	runnerMetrics.On("OnExecutionStopped")
 
