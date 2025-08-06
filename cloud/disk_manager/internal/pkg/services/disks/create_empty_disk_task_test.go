@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	cells_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -21,6 +22,7 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 	nbsFactory := nbs_mocks.NewFactoryMock()
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	params := &protos.CreateDiskParams{
 		BlocksCount: 123,
@@ -34,15 +36,24 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 		FolderId:  "folder",
 	}
 	task := &createEmptyDiskTask{
-		storage:    storage,
-		nbsFactory: nbsFactory,
-		params:     params,
-		state:      &protos.CreateEmptyDiskTaskState{},
+		storage:      storage,
+		nbsFactory:   nbsFactory,
+		params:       params,
+		state:        &protos.CreateEmptyDiskTaskState{},
+		cellSelector: cellSelector,
 	}
+
+	cellSelector.On(
+		"PrepareZoneID",
+		ctx,
+		mock.Anything,
+		mock.Anything,
+	).Return("zone", nil)
 
 	// TODO: Improve this expectations.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{
-		ID: "disk",
+		ID:     "disk",
+		ZoneID: "zone",
 	}, nil)
 	storage.On("DiskCreated", ctx, mock.Anything).Return(nil)
 
@@ -67,6 +78,7 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 	nbsFactory := nbs_mocks.NewFactoryMock()
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	params := &protos.CreateDiskParams{
 		BlocksCount: 123,
@@ -80,14 +92,25 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 		FolderId:  "folder",
 	}
 	task := &createEmptyDiskTask{
-		storage:    storage,
-		nbsFactory: nbsFactory,
-		params:     params,
-		state:      &protos.CreateEmptyDiskTaskState{},
+		storage:      storage,
+		nbsFactory:   nbsFactory,
+		params:       params,
+		state:        &protos.CreateEmptyDiskTaskState{},
+		cellSelector: cellSelector,
 	}
 
+	cellSelector.On(
+		"PrepareZoneID",
+		ctx,
+		mock.Anything,
+		mock.Anything,
+	).Return("zone", nil)
+
 	// TODO: Improve this expectation.
-	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{}, nil)
+	storage.On("CreateDisk", ctx, mock.Anything).Return(
+		&resources.DiskMeta{ZoneID: "zone"},
+		nil,
+	)
 
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
@@ -110,6 +133,7 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 	nbsFactory := nbs_mocks.NewFactoryMock()
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	params := &protos.CreateDiskParams{
 		BlocksCount: 123,
@@ -123,11 +147,19 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 		FolderId:  "folder",
 	}
 	task := &createEmptyDiskTask{
-		storage:    storage,
-		nbsFactory: nbsFactory,
-		params:     params,
-		state:      &protos.CreateEmptyDiskTaskState{},
+		storage:      storage,
+		nbsFactory:   nbsFactory,
+		params:       params,
+		state:        &protos.CreateEmptyDiskTaskState{},
+		cellSelector: cellSelector,
 	}
+
+	cellSelector.On(
+		"PrepareZoneID",
+		ctx,
+		mock.Anything,
+		mock.Anything,
+	).Return("zone", nil)
 
 	storage.On(
 		"DeleteDisk",
@@ -154,6 +186,7 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 	nbsFactory := nbs_mocks.NewFactoryMock()
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	params := &protos.CreateDiskParams{
 		BlocksCount: 123,
@@ -167,11 +200,19 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		FolderId:  "folder",
 	}
 	task := &createEmptyDiskTask{
-		storage:    storage,
-		nbsFactory: nbsFactory,
-		params:     params,
-		state:      &protos.CreateEmptyDiskTaskState{},
+		storage:      storage,
+		nbsFactory:   nbsFactory,
+		params:       params,
+		state:        &protos.CreateEmptyDiskTaskState{},
+		cellSelector: cellSelector,
 	}
+
+	cellSelector.On(
+		"PrepareZoneID",
+		ctx,
+		mock.Anything,
+		mock.Anything,
+	).Return("zone", nil)
 
 	storage.On(
 		"DeleteDisk",
