@@ -26,7 +26,7 @@ struct IMultiClientEndpoint
 ////////////////////////////////////////////////////////////////////////////////
 
 IMultiClientEndpointPtr CreateMultiClientEndpoint(
-    IClientPtr client,
+    IMultiHostClientPtr client,
     const TString& host,
     ui32 port,
     bool isSecure);

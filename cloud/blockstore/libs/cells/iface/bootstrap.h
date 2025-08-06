@@ -21,7 +21,7 @@ struct TBootstrap
     IMonitoringServicePtr Monitoring;
     ITraceSerializerPtr TraceSerializer;
 
-    NClient::IClientPtr GrpcClient;
+    NClient::IMultiHostClientPtr GrpcClient;
     NRdma::IClientPtr RdmaClient;
 
     ITaskQueuePtr RdmaTaskQueue;
