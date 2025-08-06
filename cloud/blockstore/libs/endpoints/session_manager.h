@@ -88,7 +88,7 @@ ISessionManagerPtr CreateSessionManager(
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    NCells::ICellManagerPtr remoteStorageProvider,
+    NCells::ICellManagerPtr cellManager,
     IStorageProviderPtr storageProvider,
     IEncryptionClientFactoryPtr encryptionClientFactory,
     TExecutorPtr executor,
