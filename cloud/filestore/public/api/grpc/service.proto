@@ -397,7 +397,6 @@ service TFileStoreService
         };
     }
 
-
     rpc ReadNodeRefs(TReadNodeRefsRequest) returns (TReadNodeRefsResponse) {
         option (google.api.http) = {
             post: "/node_refs"
