@@ -569,8 +569,6 @@ public:
         IMonitoringServicePtr monitoring,
         IServerStatsPtr clientStats);
 
-    virtual ~TClientBase() = default;
-
     void Start() override;
     void Stop() override;
 
@@ -605,23 +603,7 @@ private:
     TAdaptiveLock EndpointLock;
 
 public:
-    //using TClientBase::TClientBase;
-
-    TClient(
-        TClientAppConfigPtr config,
-        ITimerPtr timer,
-        ISchedulerPtr scheduler,
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
-        IServerStatsPtr clientStats)
-        : TClientBase(
-            std::move(config),
-            std::move(timer),
-            std::move(scheduler),
-            std::move(logging),
-            std::move(monitoring),
-            std::move(clientStats))
-    {}
+    using TClientBase::TClientBase;
 
     ~TClient() override
     {
@@ -1072,7 +1054,7 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return TBase::template ExecuteRequest<T##name##Method>(                \
+        return ExecuteRequest<T##name##Method>(                                \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
@@ -1097,7 +1079,7 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return TBase::template ExecuteRequest<T##name##Method>(                \
+        return ExecuteRequest<T##name##Method>(                                \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
