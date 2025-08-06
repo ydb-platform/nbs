@@ -23,6 +23,8 @@ struct ITestVhostDevice
         TSgList sgList) = 0;
 
     virtual void DisableAutostop(bool disable) = 0;
+
+    [[nodiscard]] virtual ui32 GetOptimalIoSize() const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

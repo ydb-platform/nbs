@@ -53,7 +53,8 @@ class TTestVhostDevice final
 {
 private:
     const TString SocketPath;
-    void* Cookie;
+    void* const Cookie;
+    const ui32 OptimalIoSize;
 
     TLockFreeQueue<TVhostRequest*> Requests;
 
@@ -65,9 +66,10 @@ private:
     TPromise<void> Autostop;
 
 public:
-    TTestVhostDevice(TString socketPath, void* cookie)
+    TTestVhostDevice(TString socketPath, void* cookie, ui32 optimalIoSize)
         : SocketPath(std::move(socketPath))
         , Cookie(cookie)
+        , OptimalIoSize(optimalIoSize)
     {
         Autostop = NewPromise<void>();
         Autostop.SetValue();
@@ -147,6 +149,11 @@ public:
         }
         return nullptr;
     }
+
+    ui32 GetOptimalIoSize() const override
+    {
+        return OptimalIoSize;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -206,6 +213,7 @@ public:
         ui64 blocksCount,
         ui32 queuesCount,
         bool discardEnabled,
+        ui32 optimalIoSize,
         void* cookie,
         const TVhostCallbacks& callbacks) override
     {
@@ -218,7 +226,8 @@ public:
 
         auto vhostDevice = std::make_shared<TTestVhostDevice>(
             std::move(socketPath),
-            cookie);
+            cookie,
+            optimalIoSize);
 
         with_lock (Lock) {
             Devices.push_back(vhostDevice);
