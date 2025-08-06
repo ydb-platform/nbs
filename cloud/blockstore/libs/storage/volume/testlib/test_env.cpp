@@ -17,7 +17,122 @@ using namespace NCloud::NStorage;
 
 namespace NTestVolume {
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
+
+class TTabletScheduledEventsGuard
+{
+private:
+    TTestActorRuntime& Runtime;
+    TTestActorRuntime::TEventObserver PrevObserverFunc;
+    TTestActorRuntime::TScheduledEventFilter PrevScheduledFilterFunc;
+    TTestActorRuntime::TScheduledEventsSelector PrevScheduledEventsSelector;
+    TTestActorRuntime::TRegistrationObserver PrevRegistrationObserverFunc;
+
+    std::unique_ptr<ITabletScheduledEventsGuard> Guard;
+    TTestActorRuntime::TEventObserver GuardObserverFunc;
+    TTestActorRuntime::TScheduledEventFilter GuardScheduledFilterFunc;
+    TTestActorRuntime::TScheduledEventsSelector GuardScheduledEventsSelector;
+    TTestActorRuntime::TRegistrationObserver GuardRegistrationObserverFunc;
+
+public:
+    TTabletScheduledEventsGuard(
+            const TVector<ui64>& tablets,
+            TTestActorRuntime& runtime,
+            const TActorId& sender)
+        : Runtime(runtime)
+        , PrevObserverFunc(runtime.SetObserverFunc({}))
+        , PrevScheduledFilterFunc(runtime.SetScheduledEventFilter({}))
+        , PrevScheduledEventsSelector(
+              runtime.SetScheduledEventsSelectorFunc({}))
+        , PrevRegistrationObserverFunc(runtime.SetRegistrationObserverFunc({}))
+        , Guard(CreateTabletScheduledEventsGuard(tablets, runtime, sender)
+                    .Release())
+    {
+        GuardObserverFunc = Runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+                -> NActors::TTestActorRuntime::EEventAction
+            {
+                if (PrevObserverFunc) {
+                    NActors::TTestActorRuntime::EEventAction result =
+                        PrevObserverFunc(event);
+                    if (result !=
+                        NActors::TTestActorRuntime::EEventAction::PROCESS) {
+                        return result;
+                    }
+                }
+                return GuardObserverFunc(event);
+            });
+
+        GuardRegistrationObserverFunc = Runtime.SetRegistrationObserverFunc(
+            [&](TTestActorRuntimeBase& runtime,
+                const TActorId& parentId,
+                const TActorId& actorId) -> void
+            {
+                if (PrevRegistrationObserverFunc) {
+                    PrevRegistrationObserverFunc(runtime, parentId, actorId);
+                }
+                GuardRegistrationObserverFunc(runtime, parentId, actorId);
+            });
+
+        GuardScheduledFilterFunc = Runtime.SetScheduledEventFilter(
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event,
+                TDuration delay,
+                TInstant& deadline) -> bool
+            {
+                if (PrevScheduledFilterFunc) {
+                    bool result = PrevScheduledFilterFunc(
+                        runtime,
+                        event,
+                        delay,
+                        deadline);
+                    if (!result) {
+                        return result;
+                    }
+                }
+                return GuardScheduledFilterFunc(
+                    runtime,
+                    event,
+                    delay,
+                    deadline);
+            });
+
+        GuardScheduledEventsSelector = Runtime.SetScheduledEventsSelectorFunc(
+            [&](TTestActorRuntimeBase& runtime,
+                TScheduledEventsList& scheduledEvents,
+                TEventsList& queue)
+            {
+                if (PrevScheduledEventsSelector) {
+                    PrevScheduledEventsSelector(
+                        runtime,
+                        scheduledEvents,
+                        queue);
+                }
+                GuardScheduledEventsSelector(runtime, scheduledEvents, queue);
+            });
+    }
+
+    ~TTabletScheduledEventsGuard()
+    {
+        Guard.reset();
+        Runtime.SetObserverFunc(PrevObserverFunc);
+        Runtime.SetScheduledEventFilter(PrevScheduledFilterFunc);
+        Runtime.SetScheduledEventsSelectorFunc(PrevScheduledEventsSelector);
+        Runtime.SetRegistrationObserverFunc(PrevRegistrationObserverFunc);
+    }
+};
+
+bool IsAllUpperCase(TStringBuf str)
+{
+    return AllOf(
+        str.begin(),
+        str.end(),
+        [](char c) { return std::isupper(c) || c == '_'; });
+}
+
+}   // namespace
 
 TString GetBlockContent(char fill, size_t size)
 {
@@ -141,7 +256,7 @@ void TVolumeClient::ReconnectPipe()
 void TVolumeClient::RebootTablet()
 {
     TVector<ui64> tablets = { VolumeTabletId };
-    auto guard = CreateTabletScheduledEventsGuard(
+    auto guard = TTabletScheduledEventsGuard(
         tablets,
         Runtime,
         Sender);
@@ -156,7 +271,7 @@ void TVolumeClient::RebootTablet()
 void TVolumeClient::RebootSysTablet()
 {
     TVector<ui64> tablets = {VolumeTabletId };
-    auto guard = CreateTabletScheduledEventsGuard(
+    auto guard = TTabletScheduledEventsGuard(
         tablets,
         Runtime,
         Sender);
@@ -671,7 +786,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     TDiskRegistryStatePtr diskRegistryState,
     NProto::TFeaturesConfig featuresConfig,
     NRdma::IClientPtr rdmaClient,
-    TVector<TDiskAgentStatePtr> diskAgentStates)
+    TVector<TDiskAgentStatePtr> diskAgentStates,
+    bool debugActorRegistration)
 {
     const ui32 agentCount = Max<ui32>(diskAgentStates.size(), 1);
     auto runtime = std::make_unique<TTestBasicRuntime>(agentCount);
@@ -687,9 +803,20 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     // runtime->SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
 
     runtime->SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        [debugActorRegistration](
+            auto& runtime,
+            const auto& parentId,
+            const auto& actorId)
         {
             Y_UNUSED(parentId);
+
+            if (debugActorRegistration) {
+                TStringBuf actorName = runtime.FindActorName(actorId, 0);
+                if (!IsAllUpperCase(actorName)) {
+                    Cout << "Registering actor " << actorId << " "
+                         << runtime.FindActorName(actorId, 0) << Endl;
+                }
+            }
             runtime.EnableScheduleForActor(actorId);
         });
 
