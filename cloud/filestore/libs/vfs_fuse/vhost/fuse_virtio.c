@@ -304,6 +304,10 @@ static void unregister_complete(void* ctx)
         vhd_stop_queue(dev->rqs[queue_index]);
         /* vhd_stop_queue(dev->rqs[0]); */
     }
+#if __has_feature(thread_sanitizer)
+    __tsan_release(dev);
+#endif
+
 }
 
 static void unregister_complete_and_free_dev(void* ctx)
@@ -312,6 +316,10 @@ static void unregister_complete_and_free_dev(void* ctx)
 
     struct fuse_session* se = ctx;
     struct fuse_virtio_dev* dev = se->virtio_dev;
+
+#if __has_feature(thread_sanitizer)
+    __tsan_acquire(dev);
+#endif
 
     vhd_release_request_queue(dev->rqs[0]);
     vhd_free(dev->rqs);
@@ -407,6 +415,9 @@ int virtio_session_mount(struct fuse_session* se)
 void virtio_session_close(struct fuse_session* se)
 {
     struct fuse_virtio_dev* dev = se->virtio_dev;
+#if __has_feature(thread_sanitizer)
+    __tsan_acquire(dev);
+#endif
 
     VHD_LOG_INFO("destroying device %s", dev->fsdev.socket_path);
     vhd_release_request_queue(dev->rqs[0]);
