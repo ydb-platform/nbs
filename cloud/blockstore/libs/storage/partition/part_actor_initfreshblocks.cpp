@@ -62,10 +62,10 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
 
         if (FAILED(error.GetCode())) {
             ReportInitFreshBlocksError(
-                TStringBuilder()
-                << LogTitle.GetWithTime()
-                << " Failed to parse fresh blob (blob commitId: "
-                << blob.CommitId << "): " << FormatError(error));
+                TStringBuilder() << LogTitle.GetWithTime()
+                                 << " Failed to parse fresh blob error: "
+                                 << FormatError(error),
+                {{"commit_id", blob.CommitId}});
             Suicide(ctx);
             return;
         }

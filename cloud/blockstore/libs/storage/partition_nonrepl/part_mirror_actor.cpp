@@ -241,12 +241,10 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
         const bool hasQuorum = majorCount > checksums.size() / 2;
         if (hasQuorum) {
             ReportMirroredDiskMinorityChecksumMismatch(
-                TStringBuilder() << " disk: " << DiskId.Quote()
-                                 << ", range: " << GetScrubbingRange());
+                {{"disk", DiskId}, {"range", GetScrubbingRange()}});
         } else {
             ReportMirroredDiskMajorityChecksumMismatch(
-                TStringBuilder() << " disk: " << DiskId.Quote()
-                                 << ", range: " << GetScrubbingRange());
+                {{"disk", DiskId}, {"range", GetScrubbingRange()}});
         }
         if (Config->GetResyncRangeAfterScrubbing() &&
             CanFixMismatch(hasQuorum, Config->GetScrubbingResyncPolicy()))
@@ -704,9 +702,10 @@ void TMirrorPartitionActor::HandleAddTagsResponse(
     if (HasError(error)) {
         ReportMirroredDiskAddTagFailed(
             TStringBuilder()
-            << "Failed to add " << IntermediateWriteBufferTagName
-            << " tag for disk [" << DiskId << "] with "
-            << FormatError(error));
+                << "Failed to add tag for disk, error: " << FormatError(error),
+            {{"disk", DiskId},
+             {"IntermediateWriteBufferTagName",
+              IntermediateWriteBufferTagName}});
         return;
     }
     LOG_WARN(

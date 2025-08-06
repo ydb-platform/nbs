@@ -2495,9 +2495,7 @@ void TDiskRegistryState::CleanupMirroredDisk(
 
     if (affectedDisks.size()) {
         ReportMirroredDiskAllocationPlacementGroupCleanupFailure(
-            TStringBuilder()
-                << "AllocateMirroredDisk:PlacementGroupCleanupFailure:DiskId: "
-                << diskId);
+            {{"disk", diskId}});
     }
 
     AddToBrokenDisks(now, db, diskId);
@@ -2621,9 +2619,8 @@ NProto::TError TDiskRegistryState::AllocateMirroredDisk(
         if (!isNewDisk) {
             // TODO (NBS-3419):
             // support automatic cleanup after a failed resize
-            ReportMirroredDiskAllocationCleanupFailure(TStringBuilder()
-                << "AllocateMirroredDisk:ResizeCleanupFailure:DiskId: "
-                << params.DiskId);
+            ReportMirroredDiskAllocationCleanupFailure(
+                {{"disk", params.DiskId}});
         }
 
         onError();
@@ -2949,8 +2946,9 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
     }
 
     if (!IsReadyForCleanup(diskId)) {
-        auto message = ReportNrdDestructionError(TStringBuilder()
-            << "attempting to clean up unmarked disk " << diskId.Quote());
+        auto message = ReportNrdDestructionError(
+            "attempting to clean up unmarked disk",
+            {{"disk", diskId}});
 
         return MakeError(E_INVALID_STATE, std::move(message));
     }
@@ -7693,9 +7691,7 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
     if (rateLimit
             && rateLimit <= AutomaticReplacementTimestamps.size()) {
         ReportMirroredDiskDeviceReplacementRateLimitExceeded(
-            TStringBuilder()
-            << "DiskId=" << masterDiskId << ", DeviceId=" << deviceId
-            << ", automatic device replacement cancelled due to rate limit");
+            {{"disk", masterDiskId}, {"device", deviceId}});
         return false;
     }
 
@@ -7705,9 +7701,7 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
 
     if (!canReplaceDevice) {
         ReportMirroredDiskDeviceReplacementForbidden(
-            TStringBuilder()
-            << "DiskId=" << masterDiskId << ", DeviceId=" << deviceId
-            << " automatic device replacement forbidden by ReplicaTable");
+            {{"disk", masterDiskId}, {"device", deviceId}});
         return false;
     }
 

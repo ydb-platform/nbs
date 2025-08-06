@@ -519,10 +519,7 @@ private:
             int res = RunRequestQueue();
             if (res != -EAGAIN) {
                 if (res < 0) {
-                    ReportVhostQueueRunningError(
-                        TStringBuilder()
-                        << "Failed to run vhost request queue. Return code: "
-                        << -res);
+                    ReportVhostQueueRunningError({{"retrun_code", -res}});
                 }
                 break;
             }

@@ -2,11 +2,13 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
+
 #include <variant>
 
 namespace NCloud::NBlockStore {
 
-using TValue = std::variant<TString, int, ui16, ui32, ui64>;
+using TValue = std::variant<TString, int, ui16, ui32, ui64, TBlockRange64, TStringBuf>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

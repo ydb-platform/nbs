@@ -226,9 +226,7 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         ui64 value = stats.Get##category##Counters().Get##name();             \
         Y_DEBUG_ABORT_UNLESS(value >= counter.Get());                         \
         if (value < counter.Get()) {                                          \
-            ReportCounterUpdateRace(                                          \
-                TStringBuilder() << "category="                               \
-                << #category  << " name=" << #name);                          \
+            ReportCounterUpdateRace({{"disk", PartitionConfig.GetDiskId()}}); \
             LOG_ERROR(                                                        \
                 ctx,                                                          \
                 TBlockStoreComponents::PARTITION,                             \
@@ -317,9 +315,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         std::move(channels));
 
     ReportReassignTablet(
-        TStringBuilder() << TabletID()
-                         << " tablet; reassign request sent for channels: "
-                         << sb);
+        {{"disk", PartitionConfig.diskid()},
+         {"tablet_id", TabletID()},
+         {"channels", sb}});
     ReassignRequestSentTs = ctx.Now();
 }
 

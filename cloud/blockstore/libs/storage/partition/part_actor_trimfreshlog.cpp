@@ -139,7 +139,8 @@ void TPartitionActor::HandleTrimFreshLog(
         trimFreshLogToCommitId,
         Executor()->Generation(),
         nextPerGenerationCounter,
-        std::move(freshChannels));
+        std::move(freshChannels),
+        PartitionConfig.diskid());
 
     Actors.Insert(actor);
 }
