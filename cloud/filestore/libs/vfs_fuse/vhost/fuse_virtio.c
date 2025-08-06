@@ -294,15 +294,16 @@ static int process_request(struct fuse_session* se, struct vhd_io* io)
 
 static void unregister_complete(void* ctx)
 {
-    /* int queue_index; */
+    int queue_index;
     struct fuse_session* se = ctx;
     struct fuse_virtio_dev* dev = se->virtio_dev;
 
+    VHD_ASSERT(dev->rq_count == 1);
     VHD_LOG_INFO("stopping device %s rq_count=%d", dev->fsdev.socket_path, dev->rq_count);
-    /* for (queue_index = 0; queue_index < dev->rq_count; queue_index++) { */
-        /* vhd_stop_queue(dev->rqs[queue_index]); */
-        vhd_stop_queue(dev->rqs[0]);
-    /* } */
+    for (queue_index = 0; queue_index < dev->rq_count; queue_index++) {
+        vhd_stop_queue(dev->rqs[queue_index]);
+        /* vhd_stop_queue(dev->rqs[0]); */
+    }
 }
 
 static void unregister_complete_and_free_dev(void* ctx)
