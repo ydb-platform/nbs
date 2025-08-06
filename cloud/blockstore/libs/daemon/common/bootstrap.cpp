@@ -387,12 +387,9 @@ void TBootstrapBase::Init()
         Service,
         CellManager,
         StorageProvider,
-        RdmaClient,
         encryptionClientFactory,
         Executor,
-        sessionManagerOptions,
-        Configs->ServerConfig
-    );
+        sessionManagerOptions);
 
     STORAGE_INFO("SessionManager initialized");
 

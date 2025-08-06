@@ -90,10 +90,8 @@ ISessionManagerPtr CreateSessionManager(
     IBlockStorePtr service,
     NCells::ICellManagerPtr remoteStorageProvider,
     IStorageProviderPtr storageProvider,
-    NRdma::IClientPtr rdmaClient,
     IEncryptionClientFactoryPtr encryptionClientFactory,
     TExecutorPtr executor,
-    TSessionManagerOptions options,
-    const TServerAppConfigPtr config);
+    TSessionManagerOptions options);
 
 }   // namespace NCloud::NBlockStore::NServer
