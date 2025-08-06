@@ -100,7 +100,8 @@ struct IVerbs
     virtual TConnectionPtr CreateConnection(
         rdma_event_channel* channel,
         void* context,
-        rdma_port_space ps) = 0;
+        rdma_port_space ps,
+        ui8 tos) = 0;
 
     virtual void BindAddress(rdma_cm_id* id, sockaddr* addr) = 0;
     virtual void ResolveAddress(

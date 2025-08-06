@@ -108,6 +108,10 @@ void TStorageServiceActor::HandleExecuteAction(
             "readnoderefs",
             &TStorageServiceActor::CreateReadNodeRefsActionActor
         },
+        {
+            "sethasxattrs",
+            &TStorageServiceActor::CreateSetHasXAttrsActionActor
+        }
     };
 
     auto it = actions.find(action);

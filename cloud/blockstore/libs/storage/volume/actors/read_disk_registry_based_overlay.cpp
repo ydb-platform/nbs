@@ -241,12 +241,16 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::ReplyAndDie(
 {
     auto response = std::make_unique<typename TMethod::TResponse>(error);
 
-    if constexpr (std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>) {
-        ReadHandler->GetLocalResponse(response->Record);
-        ClearEmptyBlocks(BlockMarks, OriginalRequest.Sglist);
-    } else {
-        ReadHandler->GetResponse(response->Record);
-        ClearEmptyBlocks(BlockMarks, response->Record);
+    if (!HasError(error)) {
+        if constexpr (
+            std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>)
+        {
+            ReadHandler->GetLocalResponse(response->Record);
+            ClearEmptyBlocks(BlockMarks, OriginalRequest.Sglist);
+        } else {
+            ReadHandler->GetResponse(response->Record);
+            ClearEmptyBlocks(BlockMarks, response->Record);
+        }
     }
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));

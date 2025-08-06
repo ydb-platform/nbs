@@ -7,7 +7,7 @@ namespace NCloud::NBlockStore::NStorage {
 TDuration TDeviceStat::WorstRequestTime() const
 {
     TDuration result;
-    for (ui32 i = ResponseTimes.FirstIndex(); i < ResponseTimes.TotalSize();
+    for (size_t i = ResponseTimes.FirstIndex(); i < ResponseTimes.TotalSize();
          ++i)
     {
         result = Max(result, ResponseTimes[i]);

@@ -43,7 +43,7 @@ def list_xattr(ssh: SshToGuest, file: str):
 
 
 @retry(stop_max_attempt_number=RETRY_COUNT, wait_fixed=WAIT_TIMEOUT)
-def del_xattr(ssh: SshToGuest, file: str, xattr_name: str):
+def delete_xattr(ssh: SshToGuest, file: str, xattr_name: str):
     return ssh(f"xattr -d {xattr_name} {file}")
 
 
@@ -83,7 +83,7 @@ def check_xattrs(ssh: SshToGuest, file: str):
     assert out.find(f"{xattr_names[1]}: {xattr_values[1]}") != -1
 
     # delete the first one
-    del_xattr(ssh, file, xattr_names[0])
+    delete_xattr(ssh, file, xattr_names[0])
     out = get_str(list_xattr(ssh, file))
     assert out.find(f"{xattr_names[0]}: {xattr_values[0]}") == -1
     assert out.find(f"{xattr_names[1]}: {xattr_values[1]}") != -1
@@ -94,12 +94,12 @@ def check_xattrs(ssh: SshToGuest, file: str):
     assert out.find(f"{xattr_names[1]}: {xattr_values[0]}") != -1
 
     # and finally delete everything
-    del_xattr(ssh, file, xattr_names[1])
+    delete_xattr(ssh, file, xattr_names[1])
     out = get_str(list_xattr(ssh, file))
     assert len(out) == 0
 
 
-def test():
+def test_xattrs():
     port = int(os.getenv("QEMU_FORWARDING_PORT"))
     ssh_key = os.getenv("QEMU_SSH_KEY")
     mount_dir = os.getenv("NFS_MOUNT_PATH")

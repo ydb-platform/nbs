@@ -1,6 +1,7 @@
 #include "storage_local.h"
 
 #include "file_io_service_provider.h"
+#include "safe_deallocator.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
@@ -443,7 +444,7 @@ auto SendAsyncRequest(
         TResponse proto;
         *proto.MutableError() = MakeError(
             E_CANCELLED,
-            "failed to acquire sglist in AioStorage");
+            "failed to acquire sglist in Local Storage");
         response.SetValue(std::move(proto));
     } else {
         ProcessRequest(std::move(request));
@@ -476,7 +477,7 @@ TFuture<NProto::TZeroBlocksResponse> WriteZeroes(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAioStorage final
+class TLocalStorage final
     : public IStorage
     , public TStorageContext
 {
@@ -511,8 +512,6 @@ public:
     TFuture<NProto::TError> EraseDevice(NProto::EDeviceEraseMethod method) override;
 
 private:
-    TFuture<NProto::TError> SafeDeallocateDevice();
-
     TFuture<NProto::TZeroBlocksResponse> DoZeroBlocks(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TZeroBlocksRequest> request);
@@ -555,7 +554,7 @@ NProto::TError MakeTooBigRequestError(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFuture<NProto::TReadBlocksLocalResponse> TAioStorage::DoReadBlocksLocal(
+TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
@@ -594,7 +593,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TAioStorage::DoReadBlocksLocal(
         byteCount);
 }
 
-TFuture<NProto::TWriteBlocksLocalResponse> TAioStorage::DoWriteBlocksLocal(
+TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
@@ -633,7 +632,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TAioStorage::DoWriteBlocksLocal(
         byteCount);
 }
 
-TFuture<NProto::TZeroBlocksResponse> TAioStorage::DoZeroBlocks(
+TFuture<NProto::TZeroBlocksResponse> TLocalStorage::DoZeroBlocks(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
@@ -659,7 +658,7 @@ TFuture<NProto::TZeroBlocksResponse> TAioStorage::DoZeroBlocks(
         BlockSize);
 }
 
-TFuture<NProto::TZeroBlocksResponse> TAioStorage::ZeroBlocks(
+TFuture<NProto::TZeroBlocksResponse> TLocalStorage::ZeroBlocks(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
@@ -669,7 +668,7 @@ TFuture<NProto::TZeroBlocksResponse> TAioStorage::ZeroBlocks(
         });
 }
 
-TFuture<NProto::TReadBlocksLocalResponse> TAioStorage::ReadBlocksLocal(
+TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::ReadBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
@@ -679,7 +678,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TAioStorage::ReadBlocksLocal(
         });
 }
 
-TFuture<NProto::TWriteBlocksLocalResponse> TAioStorage::WriteBlocksLocal(
+TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::WriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
@@ -689,7 +688,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> TAioStorage::WriteBlocksLocal(
         });
 }
 
-TFuture<NProto::TError> TAioStorage::EraseDevice(NProto::EDeviceEraseMethod method)
+TFuture<NProto::TError> TLocalStorage::EraseDevice(
+    NProto::EDeviceEraseMethod method)
 {
     if (method != NProto::DEVICE_ERASE_METHOD_NONE &&
         method != NProto::DEVICE_ERASE_METHOD_ZERO_FILL)
@@ -729,186 +729,33 @@ TFuture<NProto::TError> TAioStorage::EraseDevice(NProto::EDeviceEraseMethod meth
             File.GetName(),
             NVME_FMT_NVM_SES_CRYPTO_ERASE);
 
-    case NProto::DEVICE_ERASE_METHOD_DEALLOCATE:
-        return SafeDeallocateDevice();
+    case NProto::DEVICE_ERASE_METHOD_DEALLOCATE: {
+        const EOpenMode flags =
+            EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly |
+            (DirectIO ? EOpenModeFlag::DirectAligned | EOpenModeFlag::Sync
+                      : EOpenModeFlag());
+
+        return SafeDeallocateDevice(
+            File.GetName(),
+            TFileHandle{File.GetName(), flags},
+            FileIOService,
+            StorageStartIndex,
+            StorageBlockCount,
+            BlockSize,
+            NvmeManager);
+    }
 
     case NProto::DEVICE_ERASE_METHOD_NONE:
         return {};
     }
-
 }
 
-class TSafeDeallocator
-    : TFileIOCompletion
-{
-private:
-    static constexpr ui64 ValidatedBlocksRatio = 1000; // 0.1% of blocks in device
-    static constexpr ui64 MaxDeallocateChunkSize = 1_GB;
-    std::shared_ptr<TStorageContext> StorageContext;
-    TPromise<NProto::TError> Response;
-    ui64 ValidateRemainingBlockCount;
-    ui64 ValidatedBlockIndex = 0;
-    ui64 DeallocateNextBlockIndex = 0;
-    TAlignedBuffer Buffer;
-    TAlignedBuffer ZeroBuffer;
-    TAlignedBuffer FFBuffer;
-    TFileHandleRef Handle;
-    TFastRng64 Rand;
-
-public:
-    TSafeDeallocator(
-            std::shared_ptr<TStorageContext> storageContext,
-            TPromise<NProto::TError> response)
-        : TFileIOCompletion{.Func = &TSafeDeallocator::ReadBlockCompleteCb}
-        , StorageContext(std::move(storageContext))
-        , Response(std::move(response))
-        , ValidateRemainingBlockCount(
-            StorageContext->StorageBlockCount / ValidatedBlocksRatio)
-        , DeallocateNextBlockIndex(StorageContext->StorageStartIndex)
-        , Buffer(AllocateZero(StorageContext->BlockSize))
-        , ZeroBuffer(AllocateZero(StorageContext->BlockSize))
-        , FFBuffer(AllocateZero(StorageContext->BlockSize))
-        , Handle(StorageContext->File)
-        , Rand(GetCycleCount())
-    {
-        memset(FFBuffer.get(), 0xff, StorageContext->BlockSize);
-    }
-
-    void Deallocate()
-    {
-        DeallocateNextChunk();
-    }
-
-private:
-    void DeallocateNextChunk()
-    {
-        const auto remainingBlockCount = StorageContext->StorageStartIndex +
-                                         StorageContext->StorageBlockCount -
-                                         DeallocateNextBlockIndex;
-        if (remainingBlockCount == 0) {
-            ValidateNextBlock();
-            return;
-        }
-
-        const auto deallocateBlockCount = std::min(
-            remainingBlockCount,
-            MaxDeallocateChunkSize / StorageContext->BlockSize);
-
-        auto future = StorageContext->NvmeManager->Deallocate(
-            StorageContext->File.GetName(),
-            DeallocateNextBlockIndex * StorageContext->BlockSize,
-            deallocateBlockCount * StorageContext->BlockSize);
-
-        DeallocateNextBlockIndex += deallocateBlockCount;
-
-        future.Subscribe([this] (auto& future) {
-            const auto& error = future.GetValue();
-            if (HasError(error)) {
-                Response.SetValue(error);
-                return;
-            }
-
-            DeallocateNextChunk();
-        });
-    }
-
-    void ValidateNextBlock()
-    {
-        if (ValidateRemainingBlockCount == 0) {
-            Response.SetValue(NProto::TError());
-            return;
-        }
-
-        ValidateRemainingBlockCount--;
-
-        ValidatedBlockIndex = StorageContext->StorageStartIndex +
-            Rand.Uniform(StorageContext->StorageBlockCount);
-        TArrayRef<char> buffer = {Buffer.get(), StorageContext->BlockSize};
-
-        StorageContext->FileIOService->AsyncRead(
-            Handle,
-            ValidatedBlockIndex * StorageContext->BlockSize,
-            buffer,
-            this);
-    }
-
-    bool IsDeallocatedBlock()
-    {
-        auto res = memcmp(
-            Buffer.get(),
-            ZeroBuffer.get(),
-            StorageContext->BlockSize);
-        if (res == 0) {
-            return true;
-        }
-
-        // some vendors can return FF in deallocated block
-        res = memcmp(
-            Buffer.get(),
-            FFBuffer.get(),
-            StorageContext->BlockSize);
-        if (res == 0) {
-            return true;
-        }
-
-        return false;
-    }
-
-    void ReadBlockComplete(const NProto::TError& error, ui32 bytes)
-    {
-        if (HasError(error)) {
-            Response.SetValue(error);
-            return;
-        }
-
-        if (bytes != StorageContext->BlockSize) {
-            Response.SetValue(
-                MakeError(E_IO, TStringBuilder() <<
-                    "dealloc validator read " << bytes << " bytes"));
-            return;
-        }
-
-        if (!IsDeallocatedBlock()) {
-            Response.SetValue(
-                MakeError(E_IO, TStringBuilder() <<
-                    "read non 00/ff block after deallocate at index " <<
-                    ValidatedBlockIndex));
-            return;
-        }
-
-        ValidateNextBlock();
-    }
-
-    static void ReadBlockCompleteCb(
-        TFileIOCompletion* completion,
-        const NProto::TError& error,
-        ui32 bytes)
-    {
-        auto* checker = static_cast<TSafeDeallocator*>(completion);
-        checker->ReadBlockComplete(error, bytes);
-    }
-};
-
-TFuture<NProto::TError> TAioStorage::SafeDeallocateDevice()
-{
-    auto response = NewPromise<NProto::TError>();
-
-    auto safeDeallocator = std::make_shared<TSafeDeallocator>(
-        shared_from_this(), response);
-    safeDeallocator->Deallocate();
-
-    response.GetFuture().Subscribe([_ = std::move(safeDeallocator)] (auto&) {
-    });
-
-    return response;
-}
-
-TStorageBuffer TAioStorage::AllocateBuffer(size_t byteCount)
+TStorageBuffer TLocalStorage::AllocateBuffer(size_t byteCount)
 {
     return AllocateUninitialized(byteCount);
 }
 
-void TAioStorage::ReportIOError()
+void TLocalStorage::ReportIOError()
 {}
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -957,7 +804,7 @@ public:
                     ? EOpenModeFlag::DirectAligned | EOpenModeFlag::Sync
                     : EOpenModeFlag());
 
-        auto storage = std::make_shared<TAioStorage>(
+        auto storage = std::make_shared<TLocalStorage>(
             SubmitQueue,
             FileIOServiceProvider->CreateFileIOService(filePath),
             NvmeManager,

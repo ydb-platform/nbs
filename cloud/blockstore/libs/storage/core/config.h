@@ -450,6 +450,7 @@ public:
     ui32 GetExpectedDiskAgentSize() const;
     ui32 GetMaxNonReplicatedDeviceMigrationsInProgress() const;
     ui32 GetMaxNonReplicatedDeviceMigrationPercentageInProgress() const;
+    ui32 GetMaxNonReplicatedDeviceMigrationBatchSize() const;
 
     bool GetMirroredMigrationStartAllowed() const;
 
@@ -487,6 +488,7 @@ public:
     bool GetDiskRegistryCleanupConfigOnRemoveHost() const;
     TDuration GetReassignRequestRetryTimeout() const;
     ui32 GetReassignChannelsPercentageThreshold() const;
+    ui32 GetReassignMixedChannelsPercentageThreshold() const;
 
     TString GetCommonSSDPoolKind() const;
     ui64 GetMaxSSDGroupWriteBandwidth() const;
@@ -521,6 +523,7 @@ public:
     bool GetHiveProxyFallbackMode() const;
     TString GetPathDescriptionBackupFilePath() const;
     bool GetSSProxyFallbackMode() const;
+    bool GetUseSchemeCache() const;
     bool GetDontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode() const;
 
     ui32 GetRdmaTargetPort() const;
@@ -695,6 +698,8 @@ public:
     [[nodiscard]] ui32 GetMaxOutOfOrderCompactionMapChunksInflight() const;
 
     [[nodiscard]] TDuration GetPartitionBootTimeout() const;
+
+    [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
 };
 
 ui64 GetAllocationUnit(

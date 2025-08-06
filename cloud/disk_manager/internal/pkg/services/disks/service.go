@@ -155,7 +155,7 @@ func (s *service) getZoneIDForExistingDisk(
 	}
 
 	if diskMeta == nil {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"no such disk: %v",
 			diskID,
 		)
@@ -163,7 +163,7 @@ func (s *service) getZoneIDForExistingDisk(
 
 	if diskMeta.ZoneID != diskID.ZoneId &&
 		!s.cellSelector.IsCellOfZone(diskMeta.ZoneID, diskID.ZoneId) {
-		return "", errors.NewInvalidArgumentError(
+		return "", common.NewInvalidArgumentError(
 			"provided zone ID %v does not match with an actual zone ID %v",
 			diskID.ZoneId,
 			diskMeta.ZoneID,

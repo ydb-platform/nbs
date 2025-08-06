@@ -6,14 +6,26 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Create a single-threaded io_uring service: IFileIOService operations should
-// not be invoked concurrently.
-IFileIOServicePtr CreateIoUringService(
-    TString completionThreadName,
-    ui32 submissionQueueEntries);
+struct TIoUringServiceParams
+{
+    static constexpr ui32 DefaultSubmissionQueueEntries = 1024;
 
-IFileIOServicePtr CreateIoUringServiceNull(
-    TString completionThreadName,
-    ui32 submissionQueueEntries);
+    TString SubmissionThreadName = "IO.SQ";
+    TString CompletionThreadName = "IO.CQ";
+
+    ui32 SubmissionQueueEntries = DefaultSubmissionQueueEntries;
+
+    ui32 MaxKernelWorkersCount = 0;
+    bool ShareKernelWorkers = false;
+    bool ForceAsyncIO = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
+    TIoUringServiceParams params);
+
+IFileIOServiceFactoryPtr CreateIoUringServiceNullFactory(
+    TIoUringServiceParams params);
 
 }   // namespace NCloud

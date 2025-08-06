@@ -852,6 +852,36 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             },
         });
     }
+
+    Y_UNIT_TEST(ShouldReportTabletStartTime)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetBlobCompressionRate(2);
+        storageConfig.SetWriteBlobThreshold(1);
+
+        TTestEnv env({}, std::move(storageConfig));
+        auto registry = env.GetRegistry();
+
+        auto startTime = env.GetRuntime().GetCurrentTime().MicroSeconds();
+
+        env.CreateSubDomain("nfs");
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+
+        TTestRegistryVisitor visitor;
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCountersWithPredicate({
+            {{{"sensor", "TabletStartTimestamp"}, {"filesystem", "test"}},
+             [startTime](i64 val)
+             {
+                 return val > static_cast<i64>(startTime);
+             }},
+        });
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

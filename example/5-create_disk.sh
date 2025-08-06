@@ -70,9 +70,9 @@ done
 
 case $kind in
 "ssd")
-    default_id="vol0"; blocks_count=8388608;; # 32GiB
+    default_id="vol0"; blocks_count=262144;;
 "hdd")
-    default_id="hdd0"; blocks_count=8388608;; # 32GiB
+    default_id="hdd0"; blocks_count=262144;;
 "nonreplicated")
     default_id="nbr0"; blocks_count=262144;;
 "mirror2")

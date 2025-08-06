@@ -366,11 +366,7 @@ void InitVhostLog(ILoggingServicePtr logging)
 
 IVhostQueueFactoryPtr CreateVhostQueueFactory()
 {
-    struct TInitializer
-    {
-        IVhostQueueFactoryPtr Factory = std::make_shared<TVhostQueueFactory>();
-    };
-    return Singleton<TInitializer>()->Factory;
+    return std::make_shared<TVhostQueueFactory>();
 }
 
 }   // namespace NCloud::NBlockStore::NVhost

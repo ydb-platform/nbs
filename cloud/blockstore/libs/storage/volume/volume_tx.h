@@ -728,20 +728,22 @@ struct TTxVolume
     struct TAddLaggingAgent
     {
         const TRequestInfoPtr RequestInfo;
-        const NProto::TLaggingAgent Agent;
+        const TString TimedOudDeviceUUID;
 
+        NProto::TLaggingAgent Agent;
         NProto::TError Error;
 
         TAddLaggingAgent(
                 TRequestInfoPtr requestInfo,
-                NProto::TLaggingAgent agent)
+                TString timedOudDeviceUUID)
             : RequestInfo(std::move(requestInfo))
-            , Agent(std::move(agent))
+            , TimedOudDeviceUUID(std::move(timedOudDeviceUUID))
         {}
 
         void Clear()
         {
             Error.Clear();
+            Agent.Clear();
         }
     };
 

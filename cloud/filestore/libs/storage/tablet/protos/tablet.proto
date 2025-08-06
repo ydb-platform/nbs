@@ -60,6 +60,7 @@ message TFileSystemStats
     uint64 LastLockId = 2;
     uint64 LastCollectCommitId = 3;
     uint64 LastXAttr = 4;
+    uint64 HasXAttrs = 5;
 
     // index stats
     uint64 UsedNodesCount = 100;

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/common"
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
@@ -417,6 +418,73 @@ func scheduleHangingTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type waitingTask struct {
+	request   *wrappers.StringValue
+	scheduler tasks.Scheduler
+}
+
+func (t *waitingTask) Save() ([]byte, error) {
+	return proto.Marshal(t.request)
+}
+
+func (t *waitingTask) Load(request, state []byte) error {
+	t.request = &wrappers.StringValue{}
+	return proto.Unmarshal(request, t.request)
+}
+
+func (t *waitingTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	_, err := waitTaskAsync(ctx, execCtx, t.scheduler, t.request.Value)
+	if err != nil {
+		return err
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(5 * time.Second):
+		return nil
+	}
+}
+
+func (t *waitingTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	return nil
+}
+
+func (t *waitingTask) GetMetadata(ctx context.Context) (proto.Message, error) {
+	return &empty.Empty{}, nil
+}
+
+func (t *waitingTask) GetResponse() proto.Message {
+	return &wrappers.UInt64Value{
+		Value: 1,
+	}
+}
+
+func registerWaitingTask(registry *tasks.Registry, scheduler tasks.Scheduler) error {
+	return registry.RegisterForExecution(
+		"waiting",
+		func() tasks.Task {
+			return &waitingTask{scheduler: scheduler}
+		},
+	)
+}
+
+func scheduleWaitingTask(
+	ctx context.Context,
+	scheduler tasks.Scheduler,
+	depTaskId string,
+) (string, error) {
+
+	return scheduler.ScheduleTask(
+		ctx,
+		"waiting",
+		"Waiting task",
+		&wrappers.StringValue{Value: depTaskId},
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Fails exactly n times in a row.
 type unstableTask struct {
 	// Represents 'number of failures until success'.
@@ -464,7 +532,7 @@ func (t *unstableTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
-	return &empty.Empty{}, nil
+	return t.state, nil
 }
 
 func (t *unstableTask) GetResponse() proto.Message {
@@ -692,6 +760,35 @@ func waitTask(
 ) (uint64, error) {
 
 	return waitTaskWithTimeout(ctx, scheduler, id, defaultTimeout)
+}
+
+func waitTaskAsync(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	scheduler tasks.Scheduler,
+	id string,
+) (uint64, error) {
+
+	response, err := scheduler.WaitTask(ctx, execCtx, id)
+	if err != nil {
+		return 0, err
+	}
+
+	return response.(*wrappers.UInt64Value).GetValue(), nil
+}
+
+func getTaskMetadata(
+	ctx context.Context,
+	scheduler tasks.Scheduler,
+	id string,
+) (uint64, error) {
+
+	metadata, err := scheduler.GetTaskMetadata(ctx, id)
+	if err != nil {
+		return 0, err
+	}
+
+	return metadata.(*wrappers.UInt64Value).GetValue(), nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1018,6 +1115,64 @@ func TestTasksShouldFailRunningAfterRetriableErrorCountExceeded(t *testing.T) {
 	status, ok := grpc_status.FromError(err)
 	require.True(t, ok)
 	require.Equal(t, expected.Error(), status.Message())
+}
+
+func TestTasksShouldFailRunningAfterRetriableErrorCountForTaskTypeExceeded(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	config := proto.Clone(newDefaultConfig()).(*tasks_config.TasksConfig)
+	runnersCount := uint64(2)
+	config.RunnersCount = &runnersCount
+	config.StalkingRunnersCount = &runnersCount
+
+	unstableTaskMaxRetriesCount := uint64(6)
+	defaultMaxRetriesCount := uint64(100)
+	config.MaxRetriableErrorCount = &defaultMaxRetriesCount
+	config.MaxRetriableErrorCountByTaskType = map[string]uint64{
+		"unstable": unstableTaskMaxRetriesCount,
+		"doubler":  uint64(3),
+	}
+
+	s := createServicesWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics_empty.NewRegistry())
+
+	err := registerUnstableTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	id, err := scheduleUnstableTask(
+		reqCtx,
+		s.scheduler,
+		unstableTaskMaxRetriesCount+1, // failuresUntilSuccess
+	)
+	require.NoError(t, err)
+
+	_, err = waitTask(ctx, s.scheduler, id)
+	require.Error(t, err)
+
+	expected := errors.NewRetriableError(assert.AnError)
+
+	status, ok := grpc_status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, expected.Error(), status.Message())
+
+	failsCount, err := getTaskMetadata(ctx, s.scheduler, id)
+	require.NoError(t, err)
+	require.EqualValues(t, unstableTaskMaxRetriesCount+1, failsCount)
 }
 
 func TestTasksShouldNotRestoreRunningAfterNonRetriableError(t *testing.T) {
@@ -1526,4 +1681,261 @@ func TestListerMetricsCleanup(t *testing.T) {
 	waitForValue(t, hangingTasksChannel, 0)
 
 	registry.AssertAllExpectations(t)
+}
+
+func createTaskWithEndTime(
+	t *testing.T,
+	ctx context.Context,
+	storage tasks_storage.Storage,
+	idempotencyKey string,
+	at time.Time,
+	status tasks_storage.TaskStatus,
+) string {
+
+	taskId, err := storage.CreateTask(ctx, tasks_storage.TaskState{
+		IdempotencyKey: idempotencyKey,
+		TaskType:       "task1",
+		Description:    "Some task",
+		CreatedAt:      at,
+		CreatedBy:      "some_user",
+		ModifiedAt:     at,
+		GenerationID:   0,
+		Status:         status,
+		State:          []byte{},
+		Dependencies:   common.NewStringSet(),
+		EndedAt:        at,
+	})
+	require.NoError(t, err)
+
+	return taskId
+}
+
+func TestClearEndedTasksBulk(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	s := createServices(t, ctx, db, 2)
+
+	// Set chunk size to 1 so clearEndedTasksChunk will be called several times
+	clearEndedTasksLimit := uint64(1)
+	s.config.ClearEndedTasksLimit = &clearEndedTasksLimit
+
+	err := s.startRunners(ctx)
+	require.NoError(t, err)
+
+	expirationTimeout, err := time.ParseDuration(
+		*s.config.EndedTaskExpirationTimeout)
+	require.NoError(t, err)
+
+	clearScheduleInterval, err := time.ParseDuration(
+		*s.config.ClearEndedTasksTaskScheduleInterval)
+	require.NoError(t, err)
+
+	expiredTime := time.Now().Add(-2 * expirationTimeout)
+	remainingTaskIds := []string{
+		createTaskWithEndTime(
+			t,
+			ctx,
+			s.storage,
+			fmt.Sprintf("%v_remaining_finished", t.Name()),
+			time.Now(),
+			tasks_storage.TaskStatusFinished,
+		),
+		createTaskWithEndTime(
+			t,
+			ctx,
+			s.storage,
+			fmt.Sprintf("%v_remaining_cancelled", t.Name()),
+			time.Now(),
+			tasks_storage.TaskStatusCancelled,
+		),
+		createTaskWithEndTime(
+			t,
+			ctx,
+			s.storage,
+			fmt.Sprintf("%v_remaining_running", t.Name()),
+			expiredTime,
+			tasks_storage.TaskStatusRunning,
+		),
+	}
+
+	expiredTaskIds := []string{
+		createTaskWithEndTime(
+			t,
+			ctx,
+			s.storage,
+			fmt.Sprintf("%v_expired_finished", t.Name()),
+			expiredTime,
+			tasks_storage.TaskStatusFinished,
+		),
+		createTaskWithEndTime(
+			t,
+			ctx,
+			s.storage,
+			fmt.Sprintf("%v_expired_cancelled", t.Name()),
+			expiredTime,
+			tasks_storage.TaskStatusCancelled,
+		),
+	}
+
+	// Wait for ClearEndedTasks to run
+	time.Sleep(2 * clearScheduleInterval)
+
+	for _, taskId := range remainingTaskIds {
+		_, err := s.storage.GetTask(ctx, taskId)
+		require.NoError(t, err)
+	}
+
+	for _, taskId := range expiredTaskIds {
+		_, err := s.storage.GetTask(ctx, taskId)
+		require.ErrorIs(t, err, errors.NewNotFoundErrorWithTaskID(taskId))
+	}
+}
+
+func TestTaskInflightDuration(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	s := createServices(t, ctx, db, 2)
+
+	pingPeriod, err := time.ParseDuration(*s.config.TaskPingPeriod)
+	if err != nil {
+		t.Fatalf("failed to parse taskPingPeriod: %v", err)
+	}
+
+	err = registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	id, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	_, err = waitTask(ctx, s.scheduler, id)
+	require.NoError(t, err)
+
+	taskState, err := s.storage.GetTask(ctx, id)
+	require.NoError(t, err)
+
+	require.True(t, tasks_storage.IsEnded(taskState.Status))
+
+	expectedDuration := 10 * time.Second
+	actualDuration := taskState.InflightDuration
+	threshold := 2 * pingPeriod
+	require.InDelta(t, expectedDuration, actualDuration, float64(threshold))
+}
+
+func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	// runnersCount must be at least the count of tasks + 1 (for CollectListerMetrics).
+	// Otherwise, a race condition can occur where longTask is picked up
+	// before waitingTask. This results in a WaitingDuration of zero,
+	// which causes the test to fail.
+	s := createServices(t, ctx, db, 3 /* runnersCount */)
+
+	err := registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	err = registerWaitingTask(s.registry, s.scheduler)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	depTaskID, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	reqCtx = getRequestContext(t, ctx)
+	waitingTaskID, err := scheduleWaitingTask(reqCtx, s.scheduler, depTaskID)
+	require.NoError(t, err)
+
+	timeout := 30 * time.Second
+
+	_, err = waitTaskWithTimeout(ctx, s.scheduler, waitingTaskID, timeout)
+	require.NoError(t, err)
+	_, err = waitTaskWithTimeout(ctx, s.scheduler, depTaskID, timeout)
+	require.NoError(t, err)
+
+	waitingState, err := s.storage.GetTask(ctx, waitingTaskID)
+	require.NoError(t, err)
+
+	inflightDuration := waitingState.InflightDuration
+	waitingDuration := waitingState.WaitingDuration
+	durationThreshold := float64(time.Second)
+
+	totalDuration := waitingState.EndedAt.Sub(waitingState.CreatedAt)
+	totalThreshold := float64(2 * time.Second)
+
+	require.InDelta(t, 5*time.Second, inflightDuration, durationThreshold)
+	require.InDelta(t, 10*time.Second, waitingDuration, durationThreshold)
+	require.InDelta(t, 15*time.Second, totalDuration, totalThreshold)
+}
+
+func TestTaskWaitingDurationInChain(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	s := createServices(t, ctx, db, 4)
+
+	err := registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	err = registerWaitingTask(s.registry, s.scheduler)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	task1ID, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	reqCtx = getRequestContext(t, ctx)
+	task2ID, err := scheduleWaitingTask(reqCtx, s.scheduler, task1ID)
+	require.NoError(t, err)
+
+	reqCtx = getRequestContext(t, ctx)
+	task3ID, err := scheduleWaitingTask(reqCtx, s.scheduler, task2ID)
+	require.NoError(t, err)
+
+	timeout := 30 * time.Second
+
+	for _, taskID := range []string{task1ID, task2ID, task3ID} {
+		_, err = waitTaskWithTimeout(ctx, s.scheduler, taskID, timeout)
+		require.NoError(t, err)
+	}
+
+	threshold := float64(2 * time.Second)
+
+	state1, err := s.storage.GetTask(ctx, task1ID)
+	require.NoError(t, err)
+	require.InDelta(t, 10*time.Second, state1.InflightDuration, threshold)
+	require.EqualValues(t, 0, state1.WaitingDuration)
+
+	state2, err := s.storage.GetTask(ctx, task2ID)
+	require.NoError(t, err)
+	require.InDelta(t, 5*time.Second, state2.InflightDuration, threshold)
+	require.InDelta(t, 10*time.Second, state2.WaitingDuration, threshold)
+
+	state3, err := s.storage.GetTask(ctx, task3ID)
+	require.NoError(t, err)
+	require.InDelta(t, 5*time.Second, state3.InflightDuration, threshold)
+	require.InDelta(t, 15*time.Second, state3.WaitingDuration, threshold)
 }

@@ -8,9 +8,9 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
-	task_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -289,8 +289,8 @@ func (s *legacyStorage) GetIncremental(
 
 func (s *legacyStorage) ListSnapshots(
 	ctx context.Context,
-) (task_storage.StringSet, error) {
+) (tasks_common.StringSet, error) {
 
-	return task_storage.NewStringSet(),
+	return tasks_common.NewStringSet(),
 		task_errors.NewNonRetriableErrorf("not implemented")
 }

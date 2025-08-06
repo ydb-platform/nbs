@@ -338,7 +338,9 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
 
-        ReportAddConfirmedBlobsError();
+        ReportAddConfirmedBlobsError(
+            FormatError(msg->GetError()),
+            {{"disk", PartitionConfig.GetDiskId()}});
         Suicide(ctx);
         return;
     }

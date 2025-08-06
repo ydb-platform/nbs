@@ -43,32 +43,32 @@ func getCsiMethodName(fullMethodName string) string {
 ////////////////////////////////////////////////////////////////////////////////
 
 type Config struct {
-	DriverName                 string
-	Endpoint                   string
-	NodeID                     string
-	VendorVersion              string
-	VMMode                     bool
-	MonPort                    uint
-	NbsHost                    string
-	NbsPort                    uint
-	NbsSocket                  string
-	NfsServerHost              string
-	NfsServerPort              uint
-	NfsServerSocket            string
-	NfsVhostHost               string
-	NfsVhostPort               uint
-	NfsVhostSocket             string
-	SocketsDir                 string
-	LocalFilestoreOverridePath string
-	NfsLocalHost               string
-	NfsLocalFilestorePort      uint
-	NfsLocalFilestoreSocket    string
-	NfsLocalEndpointPort       uint
-	NfsLocalEndpointSocket     string
-	MountOptions               string
-	UseDiscardForYDBBasedDisks bool
-	GrpcRequestTimeout         time.Duration
-	StartEndpointRetryTimeout  time.Duration
+	DriverName                  string
+	Endpoint                    string
+	NodeID                      string
+	VendorVersion               string
+	VMMode                      bool
+	MonPort                     uint
+	NbsHost                     string
+	NbsPort                     uint
+	NbsSocket                   string
+	NfsServerHost               string
+	NfsServerPort               uint
+	NfsServerSocket             string
+	NfsVhostHost                string
+	NfsVhostPort                uint
+	NfsVhostSocket              string
+	SocketsDir                  string
+	LocalFilestoreOverridePath  string
+	NfsLocalHost                string
+	NfsLocalFilestorePort       uint
+	NfsLocalFilestoreSocket     string
+	NfsLocalEndpointPort        uint
+	NfsLocalEndpointSocket      string
+	MountOptions                string
+	UseDiscardForYDBBasedDisks  bool
+	GrpcRequestTimeout          time.Duration
+	StartEndpointRequestTimeout time.Duration
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -164,16 +164,16 @@ func NewDriver(cfg Config) (*Driver, error) {
 		return nil, err
 	}
 
-	// Ensure StartEndpointRetryTimeout is set to a value less than
+	// Ensure StartEndpointRequestTimeout is set to a value less than
 	// GrpcRequestTimeout to prevent issues with dangling endpoints.
 	// StartEndpoint may return GRPC_DEADLINE_ERROR however the
 	// blockstore-server queues the request and may eventually start the
 	// endpoint. As NodeStageVolume fails, Kubernetes will not call
 	// NodeUnstageVolume.
-	if cfg.StartEndpointRetryTimeout >= cfg.GrpcRequestTimeout {
+	if cfg.StartEndpointRequestTimeout >= cfg.GrpcRequestTimeout {
 		return nil,
-			fmt.Errorf("Invalid timeout values. StartEndpointRetryTimeout %q must be less than GrpcRequestTimeout %q",
-				cfg.StartEndpointRetryTimeout, cfg.GrpcRequestTimeout)
+			fmt.Errorf("Invalid timeout values. StartEndpointRequestTimeout %q must be less than GrpcRequestTimeout %q",
+				cfg.StartEndpointRequestTimeout, cfg.GrpcRequestTimeout)
 	}
 
 	clients, err := createClients(cfg)
@@ -240,7 +240,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			mounter.NewMounter(),
 			strings.Split(cfg.MountOptions, ","),
 			cfg.UseDiscardForYDBBasedDisks,
-			cfg.StartEndpointRetryTimeout))
+			cfg.StartEndpointRequestTimeout))
 
 	return &Driver{
 		grpcServer: grpcServer,

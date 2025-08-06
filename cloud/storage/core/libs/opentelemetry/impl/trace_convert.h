@@ -8,7 +8,13 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<opentelemetry::proto::trace::v1::Span> ConvertToOpenTelemetrySpans(
-    const NLWTrace::TTrackLog& tl);
+struct TTraceInfo
+{
+    ui64 RequestId = 0;
+    TString DiskId;
+    TVector<opentelemetry::proto::trace::v1::Span> Spans;
+};
+
+TTraceInfo ConvertToOpenTelemetrySpans(const NLWTrace::TTrackLog& tl);
 
 }   // namespace NCloud

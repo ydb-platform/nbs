@@ -1266,4 +1266,19 @@ message TStorageServiceConfig
     // In emergency (SSProxy/HiveProxy fallback mode), don't pass SchemeShardDir
     // when registering node in Node Broker
     optional bool DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode = 439;
+
+    // Bandwidth quota for direct write requests to mirror disks.
+    // If a disk starts sending more than the DirectWriteBandwidthQuota bytes per second,
+    // we start using MultiAgent write requests.
+    optional uint64 DirectWriteBandwidthQuota = 440;
+
+    // Max number of devices in a TStartMigration transaction.
+    optional uint32 MaxNonReplicatedDeviceMigrationBatchSize = 441;
+
+    // Min percentage of reassignable mixed channels after which reassign requests
+    // are sent.
+    optional uint32 ReassignMixedChannelsPercentageThreshold = 442;
+
+    // If true, describes will be done using SchemeCache instead of TxProxy.
+    optional bool UseSchemeCache = 443;
 }

@@ -391,6 +391,8 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
 
+    REGISTER_LOCAL(TabletStartTimestamp, EMetricType::MT_ABSOLUTE);
+
     REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
 
@@ -760,6 +762,13 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
         GetBackpressureValues());
+
+    // TabletStartTimestamp is intialised once per tablet lifetime and thus it is
+    // acceptable to set it in RegisterStatCounters if it is not set yet.
+    i64 expected = 0;
+    Metrics.TabletStartTimestamp.compare_exchange_strong(
+        expected,
+        now.MicroSeconds());
 
     Metrics.Register(fsId, fs.GetCloudId(), fs.GetFolderId(), storageMediaKind);
 }

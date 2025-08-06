@@ -135,4 +135,20 @@ IActorPtr TStorageServiceActor::CreateReadNodeRefsActionActor(
         std::move(input));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// SetHasXAttrs
+
+IActorPtr TStorageServiceActor::CreateSetHasXAttrsActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TSetHasXAttrsActionActor = TTabletActionActor<
+        TEvIndexTablet::TEvSetHasXAttrsRequest,
+        TEvIndexTablet::TEvSetHasXAttrsResponse>;
+
+    return std::make_unique<TSetHasXAttrsActionActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
 }   // namespace NCloud::NFileStore::NStorage

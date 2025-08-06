@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # $FreeBSD: src/tools/regression/fstest/tests/symlink/00.t,v 1.1 2007/01/17 01:42:11 pjd Exp $
 
 desc="symlink creates symbolic links"
@@ -22,7 +22,7 @@ expect 0 unlink ${n1}
 
 expect 0 mkdir ${n0} 0755
 time=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect 0 symlink test ${n0}/${n1}
 mtime=`${fstest} stat ${n0} mtime`
 test_check $time -lt $mtime

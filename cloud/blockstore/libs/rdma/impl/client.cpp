@@ -1107,10 +1107,12 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
     try {
         Verbs->PostSend(Connection->qp, &send->wr);
     } catch (const TServiceError& e) {
-        RDMA_ERROR(
-            "SEND " << TWorkRequestId(send->wr.wr_id) << ": " << e.what());
         SendQueue.Push(send);
-        ReportRdmaError();
+
+        ReportRdmaError(
+            TStringBuilder()
+            << "SEND " << TWorkRequestId(send->wr.wr_id) << ": " << e.what());
+
         Disconnect();
 
         Counters->RequestEnqueued();
@@ -1140,11 +1142,13 @@ void TClientEndpoint::SendRequestCompleted(
     };
 
     if (status != IBV_WC_SUCCESS) {
-        RDMA_ERROR("SEND " << TWorkRequestId(send->wr.wr_id)
-            << ": " << NVerbs::GetStatusString(status));
-
         Counters->SendRequestError();
-        ReportRdmaError();
+
+        ReportRdmaError(
+            TStringBuilder()
+            << "SEND request completed " << TWorkRequestId(send->wr.wr_id)
+            << " failed: " << NVerbs::GetStatusString(status));
+
         Disconnect();
         return;
     }
@@ -1187,10 +1191,13 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv)
     try {
         Verbs->PostRecv(Connection->qp, &recv->wr);
     } catch (const TServiceError& e) {
-        RDMA_ERROR(
-            "RECV " << TWorkRequestId(recv->wr.wr_id) << ": " << e.what());
         RecvQueue.Push(recv);
-        ReportRdmaError();
+
+        ReportRdmaError(
+            TStringBuilder()
+            << "RECV " << TWorkRequestId(recv->wr.wr_id)
+            << " failed to post receive request: " << e.what());
+
         Disconnect();
         return;
     }
@@ -1203,12 +1210,14 @@ void TClientEndpoint::RecvResponseCompleted(
     ibv_wc_status wc_status)
 {
     if (wc_status != IBV_WC_SUCCESS) {
-        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << ": " << NVerbs::GetStatusString(wc_status));
-
         Counters->RecvResponseError();
         RecvQueue.Push(recv);
-        ReportRdmaError();
+
+        ReportRdmaError(
+            TStringBuilder()
+            << "RECV " << TWorkRequestId(recv->wr.wr_id)
+            << " failed: " << NVerbs::GetStatusString(wc_status));
+
         Disconnect();
         return;
     }
@@ -1416,12 +1425,13 @@ public:
         Join();
     }
 
-    NVerbs::TConnectionPtr CreateConnection()
+    NVerbs::TConnectionPtr CreateConnection(ui8 tos)
     {
         return Verbs->CreateConnection(
             EventChannel.get(),
             nullptr,    // context
-            RDMA_PS_TCP);
+            RDMA_PS_TCP,
+            tos);
     }
 
     void Attach(TClientEndpoint* endpoint)
@@ -1912,7 +1922,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     try {
         auto endpoint = std::make_shared<TClientEndpoint>(
             Verbs,
-            ConnectionPoller->CreateConnection(),
+            ConnectionPoller->CreateConnection(Config->IpTypeOfService),
             std::move(host),
             port,
             Config,
@@ -2054,7 +2064,8 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
         case EEndpointState::Disconnected:
             endpoint->Poller->Detach(endpoint);
             endpoint->DestroyQP();
-            endpoint->SetConnection(ConnectionPoller->CreateConnection());
+            endpoint->SetConnection(
+                ConnectionPoller->CreateConnection(Config->IpTypeOfService));
             break;
 
         // reconnect timer hit at the same time connection was established

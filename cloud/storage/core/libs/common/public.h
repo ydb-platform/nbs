@@ -70,6 +70,8 @@ using ITaskQueuePtr = std::shared_ptr<ITaskQueue>;
 struct ITimer;
 using ITimerPtr = std::shared_ptr<ITimer>;
 
+struct TFileIOCompletion;
+
 struct IFileIOService;
 using IFileIOServicePtr = std::shared_ptr<IFileIOService>;
 

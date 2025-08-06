@@ -78,6 +78,40 @@ NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
     return response;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void WaitForTabletStart(TServiceClient& service)
+{
+    TDispatchOptions options;
+    options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+        TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
+    service.AccessRuntime().DispatchEvents(options);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProtoPrivate::TSetHasXAttrsResponse ExecuteSetHasXAttrs(
+    TServiceClient& service,
+    bool value = true)
+{
+    NProtoPrivate::TSetHasXAttrsRequest request;
+    request.SetFileSystemId("test");
+
+    request.SetValue(value);
+
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+
+    auto jsonResponse = service.ExecuteAction("sethasxattrs", buf);
+    NProtoPrivate::TSetHasXAttrsResponse response;
+    UNIT_ASSERT(
+        google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(),
+            &response)
+            .ok());
+    return response;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1497,6 +1531,88 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 {"CompactionThresholdForBackpressure", "Default"}
             },
             service);
+    }
+
+    Y_UNIT_TEST(ShouldChangeLazyXAttrsEnabledFlag)
+    {
+        // This test creates a filesystem with a default config and then changes
+        // LazyXAttrsEnabled to true. In spite the change and the fact that
+        // there are no XAttrs in the file system, TFileStoreFeatures::HasXAttrs
+        // should be true.
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const char* fsId = "test";
+        const char* clientId = "client";
+        service.CreateFileStore(fsId, 1'000);
+        THeaders headers;
+        auto session = service.InitSession(headers, fsId, clientId);
+
+        CheckStorageConfigValues(
+            {"LazyXAttrsEnabled"},
+            {{"LazyXAttrsEnabled", "Default"}},
+            service);
+
+        UNIT_ASSERT(
+            session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+
+        NProto::TStorageConfig newConfig;
+        newConfig.SetLazyXAttrsEnabled(true);
+        const auto response =
+            ExecuteChangeStorageConfig(std::move(newConfig), service);
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            response.GetStorageConfig().GetLazyXAttrsEnabled());
+
+        WaitForTabletStart(service);
+        session = service.InitSession(headers, fsId, clientId);
+
+        CheckStorageConfigValues(
+            {"LazyXAttrsEnabled"},
+            {{"LazyXAttrsEnabled", "true"}},
+            service);
+
+        // If a filestore is created with LazyXAttrsEnabled == false
+        // TFileStoreFeatures::HasXAttrs should always be true
+        UNIT_ASSERT(
+            session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+    }
+
+    Y_UNIT_TEST(ShouldSetHasXAttrs)
+    {
+        // This test create a filestore with LazyXAttraEnabled == true,
+        // then fires "sethasxattrs" action and checks that HasXAttrs == true
+
+        NProto::TStorageConfig config;
+        config.SetLazyXAttrsEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+        const TString fsId = "test";
+        const TString clientId = "client";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+
+        THeaders headers;
+        auto session = service.InitSession(headers, fsId, clientId);
+
+        UNIT_ASSERT(
+            !session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
+
+        ExecuteSetHasXAttrs(service, true);
+
+        WaitForTabletStart(service);
+
+        session = service.InitSession(headers, fsId, clientId);
+
+        UNIT_ASSERT(
+            session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
     }
 
     Y_UNIT_TEST(ShouldDescribeSessions)

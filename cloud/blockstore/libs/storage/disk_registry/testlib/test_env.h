@@ -1103,6 +1103,13 @@ public:
         return request;
     }
 
+    auto CreateGetClusterCapacityRequest()
+    {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvGetClusterCapacityRequest>();
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \

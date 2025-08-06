@@ -406,12 +406,10 @@ void TStatsServiceActor::PushYdbStats(const NActors::TActorContext& ctx)
         const auto now = ctx.Now();
 
         if (deadline < now) {
-            LOG_WARN(ctx, TBlockStoreComponents::STATS_SERVICE,
-                "YdbStatsRequest hanging, sent at %s, now %s",
-                YdbStatsRequestSentTs.ToString().c_str(),
-                now.ToString().c_str());
-
-            ReportHangingYdbStatsRequest();
+            ReportHangingYdbStatsRequest(
+                TStringBuilder() << "YdbStatsRequest hanging, sent at "
+                                 << YdbStatsRequestSentTs.ToString() << ", now "
+                                 << now.ToString());
         }
     }
 }

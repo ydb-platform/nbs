@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/ydb-platform/nbs/cloud/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	grpc_codes "google.golang.org/grpc/codes"
@@ -113,85 +114,6 @@ func NewMetadata(vals map[string]string) Metadata {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type StringSet struct {
-	vals map[string]struct{}
-}
-
-func (s *StringSet) Has(val string) bool {
-	if s.vals != nil {
-		_, ok := s.vals[val]
-		return ok
-	}
-
-	return false
-}
-
-func (s *StringSet) Vals() map[string]struct{} {
-	return s.vals
-}
-
-func (s *StringSet) Size() int {
-	return len(s.vals)
-}
-
-func (s *StringSet) Add(val string) {
-	if s.vals == nil {
-		s.vals = make(map[string]struct{})
-	}
-
-	s.vals[val] = struct{}{}
-}
-
-func (s *StringSet) Remove(val string) {
-	if s.vals != nil {
-		delete(s.vals, val)
-	}
-}
-
-func (s *StringSet) List() []string {
-	if s.vals == nil {
-		return []string{}
-	}
-
-	vals := make([]string, 0, len(s.vals))
-	for v := range s.vals {
-		vals = append(vals, v)
-	}
-	return vals
-}
-
-func (s *StringSet) DeepCopy() StringSet {
-	return NewStringSet(s.List()...)
-}
-
-func (s *StringSet) Subtract(other StringSet) StringSet {
-	result := NewStringSet()
-
-	for v := range s.vals {
-		if !other.Has(v) {
-			result.Add(v)
-		}
-	}
-
-	return result
-}
-
-func NewStringSet(vals ...string) StringSet {
-	if len(vals) == 0 {
-		return StringSet{}
-	}
-
-	set := StringSet{
-		vals: make(map[string]struct{}),
-	}
-	for _, val := range vals {
-		set.Add(val)
-	}
-	return set
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 // This is mapped into a DB row. If you change this struct, make sure to update
 // the mapping code.
 type TaskState struct {
@@ -215,20 +137,23 @@ type TaskState struct {
 	Request             []byte
 	State               []byte
 	Metadata            Metadata
-	Dependencies        StringSet
+	Dependencies        common.StringSet
 	ChangedStateAt      time.Time
 	EndedAt             time.Time
 	LastHost            string
 	LastRunner          string
 	ZoneID              string
 	EstimatedTime       time.Time
+	InflightDuration    time.Duration
+	StallingDuration    time.Duration
+	WaitingDuration     time.Duration
 	PanicCount          uint64
 	Events              []int64
 
 	// Internal part of the state. Fully managed by DB and can't be overwritten
 	// by client.
 	// TODO: Should be extracted from TaskState.
-	dependants StringSet
+	dependants common.StringSet
 }
 
 func (s *TaskState) DeepCopy() TaskState {

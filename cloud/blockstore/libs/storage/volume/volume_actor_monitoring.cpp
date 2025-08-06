@@ -285,12 +285,8 @@ void RenderFollowers(IOutputStream& out, const TFollowerDisks& followers)
                             out << follower.Link.FollowerDiskIdForPrint();
                             if (follower.MediaKind) {
                                 out << "<br>(";
-                                if (follower.MediaKind) {
-                                    out << NProto::EStorageMediaKind_Name(
-                                        *follower.MediaKind);
-                                } else {
-                                    out << "unknown";
-                                }
+                                out << NProto::EStorageMediaKind_Name(
+                                    follower.MediaKind);
                                 out << ")";
                             }
                         }
@@ -1239,7 +1235,7 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
     HTML (out) {
         out << style;
 
-        RenderAutoRefreshToggle(out, toggleId, "Auto update info", false);
+        RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
 
         out << "<div id=\"" << containerId << "\">";
         DIV_CLASS ("row") {
@@ -1248,14 +1244,17 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         out << "</div>";
 
         out << R"(<script>
-            function updateRequestsData(result, container) {
-                const data = { ...result.stat, ...result.percentiles };
-                for (let key in data) {
-                    const element = container.querySelector('#' + key);
+            function applyRequestsValues(stat) {
+                for (let key in stat) {
+                    const element = document.getElementById(key);
                     if (element) {
-                        element.textContent = data[key];
+                        element.textContent = stat[key];
                     }
                 }
+            }
+            function updateRequestsData(result, container) {
+                applyRequestsValues(result.stat);
+                applyRequestsValues(result.percentiles);
             }
         </script>)";
 
@@ -2184,9 +2183,9 @@ void TVolumeActor::RenderLaggingStateForDevice(
     IOutputStream& out,
     const NProto::TDeviceConfig& d)
 {
-    const auto* stateMsg = "ok";
-    const auto* color = "green";
-    auto laggingDevices = State->GetLaggingDevices();
+    const char* stateMsg = "ok";
+    const char* color = "green";
+    auto laggingDevices = State->GetLaggingDeviceIds();
 
     if (laggingDevices.contains(d.GetDeviceUUID())) {
         stateMsg = "lagging";
@@ -2433,8 +2432,6 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
 
                 bool renderLaggingState = IsReliableDiskRegistryMediaKind(
                     State->GetConfig().GetStorageMediaKind());
-                auto laggingDevices = State->GetLaggingDevices();
-
                 auto outputDevices = [&] (const TDevices& devices) {
                     TABLED() {
                         TABLE_CLASS("table table-bordered") {

@@ -186,8 +186,11 @@ void TPatchBlobActor::ReplyError(
         description.c_str(),
         response.Print(false).c_str());
 
-    auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvPatch failed: " + description);
-    ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+    ReplyAndDie(
+        ctx,
+        std::make_unique<TResponse>(MakeError(
+            E_REJECTED,
+            "TEvBlobStorage::TEvPatch failed: " + description)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -371,14 +374,10 @@ void TPartitionActor::HandlePatchBlobCompleted(
     }
 
     if (FAILED(msg->GetStatus())) {
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "%s Stop tablet because of PatchBlob error: %s",
-            LogTitle.GetWithTime().c_str(),
-            FormatError(msg->GetError()).c_str());
-
-        ReportTabletBSFailure();
+        ReportTabletBSFailure(
+            TStringBuilder() << LogTitle.GetWithTime()
+                             << " Stop tablet because of PatchBlob error: "
+                             << FormatError(msg->GetError()));
         Suicide(ctx);
         return;
     }

@@ -226,7 +226,9 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         ui64 value = stats.Get##category##Counters().Get##name();             \
         Y_DEBUG_ABORT_UNLESS(value >= counter.Get());                         \
         if (value < counter.Get()) {                                          \
-            ReportCounterUpdateRace();                                        \
+            ReportCounterUpdateRace(                                          \
+                TStringBuilder() << "category="                               \
+                << #category  << " name=" << #name);                          \
             LOG_ERROR(                                                        \
                 ctx,                                                          \
                 TBlockStoreComponents::PARTITION,                             \
@@ -289,8 +291,8 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
             FormatDuration(timeout).c_str());
     }
 
+    TStringBuilder sb;
     {
-        TStringBuilder sb;
         for (const auto channel: channels) {
             if (sb.size()) {
                 sb << ", ";
@@ -314,7 +316,10 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         TabletID(),
         std::move(channels));
 
-    ReportReassignTablet();
+    ReportReassignTablet(
+        TStringBuilder() << TabletID()
+                         << " tablet; reassign request sent for channels: "
+                         << sb);
     ReassignRequestSentTs = ctx.Now();
 }
 
@@ -1120,7 +1125,8 @@ NProto::TError VerifyBlockChecksum(
     const NKikimr::TLogoBlobID& blobID,
     const ui64 blockIndex,
     const ui16 blobOffset,
-    const ui32 expectedChecksum)
+    const ui32 expectedChecksum,
+    const TString& diskId)
 {
     if (expectedChecksum == 0) {
         // 0 is a special case - block digest calculation can be
@@ -1133,7 +1139,11 @@ NProto::TError VerifyBlockChecksum(
     }
 
     if (actualChecksum != expectedChecksum) {
-        ReportBlockDigestMismatchInBlob();
+        ReportBlockDigestMismatchInBlob(
+            {{"disk", diskId},
+             {"BlockIndex", blockIndex},
+             {"blobOffset", blobOffset},
+             {"blob", blobID.ToString()}});
         // we might read proper data upon retry - let's give it a chance
         return MakeError(
             E_REJECTED,

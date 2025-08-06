@@ -416,7 +416,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval, ui32, 1       )\
                                                                                \
     xxx(BrokenDiskDestructionDelay,                     TDuration, Seconds(5) )\
-    xxx(AutomaticallyReplacedDevicesFreezePeriod,       TDuration, {}         )\
+    xxx(AutomaticallyReplacedDevicesFreezePeriod,       TDuration, Seconds(0) )\
     xxx(MaxAutomaticDeviceReplacementsPerHour,          ui32,      0          )\
                                                                                \
     xxx(VolumeHistoryDuration,                     TDuration, Days(7)         )\
@@ -444,6 +444,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     /* 75 devices = 5 agents */                                                \
     xxx(MaxNonReplicatedDeviceMigrationsInProgress,             ui32,      75 )\
     xxx(MaxNonReplicatedDeviceMigrationPercentageInProgress,    ui32,      5  )\
+    xxx(MaxNonReplicatedDeviceMigrationBatchSize,               ui32,    1000 )\
     xxx(MirroredMigrationStartAllowed,             bool,      false           )\
     xxx(PlacementGroupAlertPeriod,                 TDuration, Hours(8)        )\
     xxx(EnableLoadActor,                           bool,      false           )\
@@ -475,6 +476,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(ReassignRequestRetryTimeout,               TDuration, Seconds(5)      )\
     xxx(ReassignChannelsPercentageThreshold,       ui32,      10              )\
+    xxx(ReassignMixedChannelsPercentageThreshold,  ui32,      100             )\
                                                                                \
     xxx(MixedIndexCacheV1Enabled,                  bool,      false           )\
     xxx(MixedIndexCacheV1SizeSSD,                  ui32,      32 * 1024       )\
@@ -490,6 +492,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(HiveProxyFallbackMode,                     bool,      false           )\
     xxx(SSProxyFallbackMode,                       bool,      false           )\
+    xxx(UseSchemeCache,                            bool,      false           )\
     xxx(DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode, bool, false )\
                                                                                \
     xxx(RdmaTargetPort,                            ui32,      10020           )\
@@ -611,6 +614,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxOutOfOrderCompactionMapChunksInflight,          ui32,   5          )\
                                                                                \
     xxx(PartitionBootTimeout,                 TDuration,   Seconds(0)         )\
+    xxx(DirectWriteBandwidthQuota,            ui64,        0                  )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
@@ -662,8 +666,6 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////////////////////////////////
-
 template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
@@ -705,30 +707,6 @@ TVector<NProto::TLinkedDiskFillBandwidth> ConvertValue(
         v.push_back(x);
     }
     return v;
-}
-
-template <typename T>
-bool IsEmpty(const T& value)
-{
-    return !value;
-}
-
-template <>
-bool IsEmpty(const NCloud::NProto::TConfigDispatcherSettings& value)
-{
-    return !value.HasAllowList() && !value.HasDenyList();
-}
-
-template <typename T>
-bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
-{
-    return value.empty();
-}
-
-template <>
-bool IsEmpty(const NCloud::NProto::TCertificate& value)
-{
-    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -800,18 +778,42 @@ void DumpImpl(
     }
 }
 
-}   // namespace
+////////////////////////////////////////////////////////////////////////////////
+
+#define CONFIG_ITEM_IS_SET_CHECKER(name, ...)                                  \
+    template <typename TProto>                                                 \
+    [[nodiscard]] bool Is##name##Set(const TProto& proto)                      \
+    {                                                                          \
+        if constexpr (requires() { proto.name##Size(); }) {                    \
+            return proto.name##Size() > 0;                                     \
+        } else {                                                               \
+            return proto.Has##name();                                          \
+        }                                                                      \
+    }
+
+BLOCKSTORE_STORAGE_CONFIG(CONFIG_ITEM_IS_SET_CHECKER);
+
+#undef CONFIG_ITEM_IS_SET_CHECKER
+
+#define BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value) \
+    (Is##name##Set(config) ? ConvertValue<type>(config.Get##name()) : value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TValue>
-constexpr TAtomicBase ConvertToAtomicBase(const TValue& value, const TValue& defVal)
+constexpr TAtomicBase ConvertToAtomicBase(const TValue& value)
 {
-    if constexpr (std::is_nothrow_convertible<TValue, TAtomicBase>::value) {
-        return (value != TValue{} ? value : defVal);
-    }
-    return 0;
+    static_assert(std::is_nothrow_convertible<TValue, TAtomicBase>::value);
+    return value;
 }
+
+template <>
+constexpr TAtomicBase ConvertToAtomicBase(const TDuration& value)
+{
+    return value.MilliSeconds();
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -821,14 +823,15 @@ struct TStorageConfig::TImpl
     NFeatures::TFeaturesConfigPtr FeaturesConfig;
 
 #define BLOCKSTORE_CONFIG_CONTROL(name, type, value)                           \
-    TControlWrapper Control##name {                                            \
-        ConvertToAtomicBase<type>(                                             \
-            ConvertValue<type>(StorageServiceConfig.Get##name()),              \
-            value),                                                            \
+    TControlWrapper Control##name{                                             \
+        ConvertToAtomicBase<type>(BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(          \
+            StorageServiceConfig,                                              \
+            name,                                                              \
+            type,                                                              \
+            value)),                                                           \
         0,                                                                     \
-        Max()                                                                  \
-    };                                                                         \
-// BLOCKSTORE_CONFIG_CONTROL
+        Max()};                                                                \
+    // BLOCKSTORE_CONFIG_CONTROL
 
     BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_CONTROL)
 
@@ -850,13 +853,15 @@ struct TStorageConfig::TImpl
     {
         NProto::TStorageServiceConfig proto = StorageServiceConfig;
 
-        // Overriding fields with values from ICB
+    // Overriding fields with values from ICB
 #define BLOCKSTORE_CONFIG_COPY(name, type, ...)                                \
-        if (const ui64 value = Control##name) {                                \
-            using T = decltype(StorageServiceConfig.Get##name());              \
-            proto.Set##name(static_cast<T>(value));                            \
-        }                                                                      \
-// BLOCKSTORE_CONFIG_COPY
+    if (const ui64 value = Control##name;                                      \
+        ConvertValue<type>(value) != ConvertValue<type>(proto.Get##name()))    \
+    {                                                                          \
+        using T = decltype(StorageServiceConfig.Get##name());                  \
+        proto.Set##name(static_cast<T>(value));                                \
+    }                                                                          \
+    // BLOCKSTORE_CONFIG_COPY
 
         BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_COPY)
 
@@ -897,25 +902,33 @@ void TStorageConfig::Register(TControlBoard& controlBoard){
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \
-        bool hasValue = NCloud::HasField(Impl->StorageServiceConfig, #name) && \
-                        !IsEmpty(Impl->StorageServiceConfig.Get##name());      \
-        return hasValue ? ConvertValue<type>(                                  \
-                              Impl->StorageServiceConfig.Get##name())          \
-                        : Default##name;                                       \
-    }   // namespace NCloud::NBlockStore::NStorage
+        return BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(                             \
+            Impl->StorageServiceConfig,                                        \
+            name,                                                              \
+            type,                                                              \
+            Default##name);                                                    \
+    }
 
 BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
 
 #undef BLOCKSTORE_CONFIG_GETTER
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
-type TStorageConfig::Get##name() const                                         \
-{                                                                              \
-    ui64 value = Impl->Control##name;                                          \
-    if (!value) value = Impl->StorageServiceConfig.Get##name();                \
-    return value ? ConvertValue<type>(value) : Default##name;                  \
-}                                                                              \
-// BLOCKSTORE_CONFIG_GETTER
+    type TStorageConfig::Get##name() const                                     \
+    {                                                                          \
+        const type configValue = BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(           \
+            Impl->StorageServiceConfig,                                        \
+            name,                                                              \
+            type,                                                              \
+            Default##name);                                                    \
+        const ui64 rawControlValue = Impl->Control##name;                      \
+        const type controlValue = ConvertValue<type>(rawControlValue);         \
+        if (controlValue != configValue) {                                     \
+            return controlValue;                                               \
+        }                                                                      \
+        return configValue;                                                    \
+    }                                                                          \
+    // BLOCKSTORE_CONFIG_GETTER
 
 BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_GETTER)
 
@@ -1115,22 +1128,30 @@ void AdaptNodeRegistrationParams(
     const NProto::TServerConfig& serverConfig,
     NProto::TStorageServiceConfig& storageConfig)
 {
-    if (!storageConfig.GetNodeRegistrationMaxAttempts()) {
+    if (!storageConfig.HasNodeRegistrationMaxAttempts() &&
+        serverConfig.HasNodeRegistrationMaxAttempts())
+    {
         storageConfig.SetNodeRegistrationMaxAttempts(
             serverConfig.GetNodeRegistrationMaxAttempts());
     }
 
-    if (!storageConfig.GetNodeRegistrationTimeout()) {
+    if (!storageConfig.HasNodeRegistrationTimeout() &&
+        serverConfig.HasNodeRegistrationTimeout())
+    {
         storageConfig.SetNodeRegistrationTimeout(
             serverConfig.GetNodeRegistrationTimeout());
     }
 
-    if (!storageConfig.GetNodeRegistrationErrorTimeout()) {
+    if (!storageConfig.HasNodeRegistrationErrorTimeout() &&
+        serverConfig.HasNodeRegistrationErrorTimeout())
+    {
         storageConfig.SetNodeRegistrationErrorTimeout(
             serverConfig.GetNodeRegistrationErrorTimeout());
     }
 
-    if (!storageConfig.GetNodeRegistrationToken()) {
+    if (!storageConfig.HasNodeRegistrationToken() &&
+        serverConfig.HasNodeRegistrationToken())
+    {
         storageConfig.SetNodeRegistrationToken(
             serverConfig.GetNodeRegistrationToken());
     }
@@ -1139,7 +1160,7 @@ void AdaptNodeRegistrationParams(
         storageConfig.SetNodeType(overriddenNodeType);
     }
 
-    if (!storageConfig.GetNodeType()) {
+    if (!storageConfig.HasNodeType() && serverConfig.HasNodeType()) {
         storageConfig.SetNodeType(serverConfig.GetNodeType());
     }
 }

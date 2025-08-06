@@ -156,6 +156,19 @@ void TIndexTabletActor::ExecuteTx_LoadState(
         TABLET_VERIFY(newTabletStorageInfo.GetTabletId());
         args.TabletStorageInfo.CopyFrom(newTabletStorageInfo);
         db.WriteTabletStorageInfo(newTabletStorageInfo);
+
+        // When a new file system is created, there are no XAttrs in it,
+        // but if LazyXAttrsEnabled == false, we don't track XAttrs, and for
+        // this reason, HasXAttrs is set to it's default value:
+        // EHasXAttrs::Unknown. In case of EHasXAttrs::Unknown, the service
+        // actor behaves as if XAttrs are present and always redirects XAttrs
+        // reqeusts to shards
+        if (Config->GetLazyXAttrsEnabled()) {
+            constexpr ui64 hasXAttrs = static_cast<ui64>(EHasXAttrs::False);
+            args.FileSystemStats.SetHasXAttrs(hasXAttrs);
+            db.WriteHasXAttrs(hasXAttrs);
+        }
+
         return;
     }
 

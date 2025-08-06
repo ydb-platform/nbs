@@ -76,7 +76,8 @@ struct TFollowerDiskInfo
     TLeaderFollowerLink Link;
     TInstant CreatedAt;
     EState State = EState::None;
-    std::optional<NProto::EStorageMediaKind> MediaKind;
+    NProto::EStorageMediaKind MediaKind =
+        NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
     std::optional<ui64> MigratedBytes;
     TString ErrorMessage;
 

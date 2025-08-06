@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    context.cpp
     service.cpp
 )
 

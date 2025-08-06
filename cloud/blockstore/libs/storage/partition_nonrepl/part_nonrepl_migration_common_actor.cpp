@@ -30,7 +30,8 @@ TNonreplicatedPartitionMigrationCommonActor::
         TString rwClientId,
         NActors::TActorId statActorId,
         ui32 maxIoDepth,
-        NActors::TActorId volumeActorId)
+        NActors::TActorId volumeActorId,
+        EDirectCopyPolicy directCopyPolicy)
     : MigrationOwner(migrationOwner)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -41,6 +42,7 @@ TNonreplicatedPartitionMigrationCommonActor::
     , BlockDigestGenerator(std::move(digestGenerator))
     , MaxIoDepth(maxIoDepth)
     , VolumeActorId(volumeActorId)
+    , DirectCopyPolicy(directCopyPolicy)
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
     , NonZeroRangesMap(blockCount, blockSize, MigrationRangeSize)

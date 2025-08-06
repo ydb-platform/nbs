@@ -572,9 +572,9 @@ public:
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TString& diskId);
 
     void DeleteDiskToReallocate(
+        TInstant now,
         TDiskRegistryDatabase& db,
-        const TString& diskId,
-        ui64 seqNo);
+        TDiskNotificationResult notification);
 
     const TVector<TDiskStateUpdate>& GetDiskStateUpdates() const;
 
@@ -813,6 +813,10 @@ public:
         return AutomaticallyReplacedDeviceIds.contains(deviceId);
     }
 
+    void AddAutomaticallyReplacedDevice(
+        TDiskRegistryDatabase& db,
+        const TAutomaticallyReplacedDeviceInfo& deviceInfo);
+
     ui32 DeleteAutomaticallyReplacedDevices(
         TDiskRegistryDatabase& db,
         const TInstant until);
@@ -878,7 +882,8 @@ public:
         TDiskRegistryDatabase& db,
         TInstant now);
 
-    TVector<TString> GetPoolNames() const;
+    TVector<TString> GetPoolNames(
+        std::optional<NProto::EDevicePoolKind> kind = std::nullopt) const;
 
     const NProto::TDeviceConfig* FindDevice(const TDeviceId& uuid) const;
 

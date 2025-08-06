@@ -119,7 +119,6 @@ TReadDataActor::TReadDataActor(
         ReadRequest.GetLength(),
         BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
-    , BlockBuffer(CreateBlockBuffer(AlignedByteRange))
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
@@ -128,6 +127,12 @@ TReadDataActor::TReadDataActor(
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
+    // BlockBuffer should not be initialized in constructor, because creating
+    // a block buffer leads to memory allocation (and initialization) which is
+    // heavy and we would like to execute that on a separate thread (instead of
+    // this actor's parent thread)
+    BlockBuffer = CreateBlockBuffer(AlignedByteRange);
+
     DescribeData(ctx);
     Become(&TThis::StateWork);
 }

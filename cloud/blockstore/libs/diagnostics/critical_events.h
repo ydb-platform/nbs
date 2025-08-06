@@ -2,7 +2,11 @@
 
 #include "public.h"
 
+#include <variant>
+
 namespace NCloud::NBlockStore {
+
+using TValue = std::variant<TString, int, ui16, ui32, ui64>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -119,6 +123,11 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 #define BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE(name)                        \
     TString Report##name(const TString& message = "");                         \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
+    TString Report##name(                                                      \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE
 

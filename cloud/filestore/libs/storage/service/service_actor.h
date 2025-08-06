@@ -111,6 +111,13 @@ private:
         const TSessionInfo*);
 
     template <typename TMethod>
+    void ReplyToXAttrRequest(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev,
+        std::unique_ptr<typename TMethod::TResponse> response,
+        const TSessionInfo*);
+
+    template <typename TMethod>
     void CompleteRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TResponse::TPtr& ev);
@@ -245,6 +252,10 @@ private:
         TString input);
 
     NActors::IActorPtr CreateReadNodeRefsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateSetHasXAttrsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

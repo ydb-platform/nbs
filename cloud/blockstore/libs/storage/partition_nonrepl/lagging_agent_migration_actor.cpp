@@ -55,14 +55,17 @@ void TLaggingAgentMigrationActor::OnBootstrap(const TActorContext& ctx)
 {
     InitWork(
         ctx,
-        SourceActorId,
-        SourceActorId,
-        TargetActorId,
-        false,   // takeOwnershipOverActors
-        std::make_unique<TMigrationTimeoutCalculator>(
-            Config->GetLaggingDeviceMaxMigrationBandwidth(),
-            Config->GetExpectedDiskAgentSize(),
-            PartConfig));
+        TInitParams{
+            .MigrationSrcActorId = SourceActorId,
+            .SrcActorId = SourceActorId,
+            .DstActorId = TargetActorId,
+            .TakeOwnershipOverSrcActor = false,
+            .TakeOwnershipOverDstActor = false,
+            .SendWritesToSrc = false,
+            .TimeoutCalculator = std::make_unique<TMigrationTimeoutCalculator>(
+                Config->GetLaggingDeviceMaxMigrationBandwidth(),
+                Config->GetExpectedDiskAgentSize(),
+                PartConfig)});
 }
 
 bool TLaggingAgentMigrationActor::OnMessage(

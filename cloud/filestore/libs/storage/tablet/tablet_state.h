@@ -354,7 +354,7 @@ public:
         return AllocatorRegistry.GetAllocator(tag);
     }
 
-    bool CalculateExpectedShardCount() const;
+    ui64 CalculateExpectedShardCount() const;
 
     NProto::TError SelectShard(ui64 fileSize, TString* shardId);
 
@@ -560,6 +560,20 @@ public:
         ui64 minCommitId,
         ui64 maxCommitId,
         const IIndexTabletDatabase::TNodeAttr& attr);
+
+
+    //
+    // hasXAttrs
+    //
+
+public:
+    enum class EHasXAttrs : ui64 {
+        Unknown = 0,
+        True = 1,
+        False = 2
+    };
+
+    void WriteHasXAttrs(TIndexTabletDatabase& db, EHasXAttrs hasXAttrs);
 
     //
     // NodeRefs

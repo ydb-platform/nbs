@@ -193,7 +193,7 @@ void TDiskRegistryActor::HandleFinishMigration(
                 // to migrate again, which is inefficient but which won't
                 // break anything
 
-                ReportUnexpectedBatchMigration();
+                ReportUnexpectedBatchMigration({{"disk", record.GetDiskId()}});
 
                 break;
             }
@@ -377,8 +377,6 @@ void TDiskRegistryActor::ExecuteStartMigration(
     TTransactionContext& tx,
     TTxDiskRegistry::TStartMigration& args)
 {
-    Y_UNUSED(args);
-
     TDiskRegistryDatabase db(tx.DB);
 
     for (const auto& [diskId, deviceId]: State->BuildMigrationList()) {
@@ -393,6 +391,8 @@ void TDiskRegistryActor::ExecuteStartMigration(
                 FormatError(result.GetError()).Quote().c_str()
             );
         } else {
+            ++args.StartedDeviceMigrationsCount;
+
             const auto& target = result.GetResult();
             LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
                 "[%lu] Start migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %lu(%lu) }",
@@ -418,7 +418,8 @@ void TDiskRegistryActor::CompleteStartMigration(
     NCloud::Reply(
         ctx,
         *args.RequestInfo,
-        std::make_unique<TEvDiskRegistryPrivate::TEvStartMigrationResponse>());
+        std::make_unique<TEvDiskRegistryPrivate::TEvStartMigrationResponse>(
+            args.StartedDeviceMigrationsCount));
 }
 
 void TDiskRegistryActor::HandleStartMigrationResponse(

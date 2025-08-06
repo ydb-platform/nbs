@@ -228,6 +228,8 @@ def test_nbd_reconnect():
     runtime = request_timeout * 2
     nbs_downtime = request_timeout + 2
     iodepth = 1024
+    reconnects = 3
+    nbs_runtime_between_reconnects = request_timeout
 
     env, run = init(
         with_netlink=True,
@@ -260,29 +262,32 @@ def test_nbd_reconnect():
         )
         assert result.returncode == 0
 
-        proc = subprocess.Popen(
-            [
-                "fio",
-                "--name=fio",
-                "--ioengine=libaio",
-                "--direct=1",
-                "--time_based=1",
-                "--rw=randrw",
-                "--rwmixread=50",
-                "--filename=" + nbd_device,
-                "--runtime=" + str(runtime),
-                "--blocksize=" + str(block_size),
-                "--iodepth=" + str(iodepth),
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT)
+        for i in range(0, reconnects):
+            proc = subprocess.Popen(
+                [
+                    "fio",
+                    "--name=fio",
+                    "--ioengine=libaio",
+                    "--direct=1",
+                    "--time_based=1",
+                    "--rw=randrw",
+                    "--rwmixread=50",
+                    "--filename=" + nbd_device,
+                    "--runtime=" + str(runtime),
+                    "--blocksize=" + str(block_size),
+                    "--iodepth=" + str(iodepth),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT)
 
-        os.kill(env.nbs.pid, signal.SIGSTOP)
-        time.sleep(nbs_downtime)
-        os.kill(env.nbs.pid, signal.SIGCONT)
+            os.kill(env.nbs.pid, signal.SIGSTOP)
+            time.sleep(nbs_downtime)
+            os.kill(env.nbs.pid, signal.SIGCONT)
 
-        proc.communicate(timeout=60)
-        assert proc.returncode == 0
+            proc.communicate(timeout=60)
+            assert proc.returncode == 0
+
+            time.sleep(nbs_runtime_between_reconnects)
 
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)

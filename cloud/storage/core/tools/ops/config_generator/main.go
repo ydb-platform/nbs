@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -95,7 +94,7 @@ func getConfigMap(serviceName string) configurator.ConfigMap {
 	switch serviceName {
 	case "nbs":
 		return getNbsConfigMap()
-	case "disk_agent":
+	case "disk_agent", "nbs_disk_agent":
 		return getNbsConfigMap()
 	case "nfs":
 		return getNfsConfigMap()
@@ -107,7 +106,7 @@ func getConfigMap(serviceName string) configurator.ConfigMap {
 }
 
 func loadServiceConfig(configPath string) (*configurator.ServiceSpec, error) {
-	configTmpl, err := ioutil.ReadFile(path.Join(configPath, "spec.yaml"))
+	configTmpl, err := os.ReadFile(path.Join(configPath, "spec.yaml"))
 	if err != nil {
 		return nil, fmt.Errorf("can't read service config: %w", err)
 	}

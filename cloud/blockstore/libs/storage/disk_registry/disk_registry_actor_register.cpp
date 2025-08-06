@@ -43,7 +43,9 @@ void TDiskRegistryActor::HandleRegisterAgent(
             continue;
         }
 
-        ReportRegisterAgentWithEmptyRackName();
+        ReportRegisterAgentWithEmptyRackName(
+            {{"AgentId", agentConfig.GetAgentId()},
+             {"NodeId", agentConfig.GetNodeId()}});
 
         TString fakeRackName = "Rack-" + agentConfig.GetAgentId();
         device.SetRack(fakeRackName);

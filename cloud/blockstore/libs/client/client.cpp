@@ -846,7 +846,7 @@ protected:
         }
         auto request = requestOrError.ExtractResult();
 
-        return Client->ExecuteRequest<TWriteBlocksMethod>(
+        return Client->template ExecuteRequest<TWriteBlocksMethod>(
             *Service,
             std::move(callContext),
             std::move(request));
@@ -857,7 +857,7 @@ protected:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
     {
-        auto future = Client->ExecuteRequest<TReadBlocksMethod>(
+        auto future = Client->template ExecuteRequest<TReadBlocksMethod>(
             *Service,
             std::move(callContext),
             request);

@@ -100,6 +100,9 @@ func (s *storageYDB) updateClusterCapacities(ctx context.Context,
 		persistence.ValueParam("$delete_before",
 			persistence.TimestampValue(deleteBefore)),
 	)
+	if err != nil {
+		return err
+	}
 
 	var values []persistence.Value
 	createdAt := time.Now()

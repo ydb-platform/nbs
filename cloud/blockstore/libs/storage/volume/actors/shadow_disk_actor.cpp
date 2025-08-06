@@ -555,7 +555,8 @@ TShadowDiskActor::TShadowDiskActor(
               checkpointInfo.ShadowDiskState == EShadowDiskState::Ready),
           volumeActorId,
           config->GetMaxShadowDiskFillIoDepth(),
-          volumeActorId)
+          volumeActorId,
+          EDirectCopyPolicy::CanUse)
     , RdmaClient(std::move(rdmaClient))
     , SrcConfig(std::move(srcConfig))
     , CheckpointId(checkpointInfo.CheckpointId)
@@ -855,14 +856,18 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
         State = EActorState::Preparing;
         InitWork(
             ctx,
-            SrcActorId,
-            SrcActorId,
-            DstActorId,
-            true,   // takeOwnershipOverActors
-            std::make_unique<TMigrationTimeoutCalculator>(
-                GetConfig()->GetMaxShadowDiskFillBandwidth(),
-                GetConfig()->GetExpectedDiskAgentSize(),
-                DstConfig));
+            TInitParams{
+                .MigrationSrcActorId = SrcActorId,
+                .SrcActorId = SrcActorId,
+                .DstActorId = DstActorId,
+                .TakeOwnershipOverSrcActor = true,
+                .TakeOwnershipOverDstActor = true,
+                .SendWritesToSrc = true,
+                .TimeoutCalculator =
+                    std::make_unique<TMigrationTimeoutCalculator>(
+                        GetConfig()->GetMaxShadowDiskFillBandwidth(),
+                        GetConfig()->GetExpectedDiskAgentSize(),
+                        DstConfig)});
         StartWork(ctx);
 
         // Persist state.

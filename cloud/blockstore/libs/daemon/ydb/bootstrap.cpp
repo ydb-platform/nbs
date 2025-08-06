@@ -42,6 +42,7 @@
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/bootstrap.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/init/server/actorsystem.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
@@ -57,6 +58,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
+#include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
@@ -326,7 +328,6 @@ void TBootstrapYdb::InitConfigs()
     Configs->InitKmsClientConfig();
     Configs->InitRootKmsConfig();
     Configs->InitComputeClientConfig();
-    Configs->InitTraceServiceClientConfig();
 }
 
 void TBootstrapYdb::InitSpdk()
@@ -382,6 +383,32 @@ void TBootstrapYdb::InitRdmaServer()
         Logging,
         Monitoring,
         std::move(rdmaConfig));
+}
+
+void TBootstrapYdb::InitDiskAgentBackend()
+{
+    const auto& config = *Configs->DiskAgentConfig;
+    if (!config.GetEnabled()) {
+        return;
+    }
+
+    if (config.GetBackend() == NProto::DISK_AGENT_BACKEND_SPDK) {
+        Y_ABORT_UNLESS(Spdk, "SPDK backend should be already initialized");
+    }
+
+    Y_ABORT_IF(NvmeManager);
+    Y_ABORT_IF(FileIOServiceProvider);
+    Y_ABORT_IF(LocalStorageProvider);
+
+    auto r = CreateDiskAgentBackendComponents(config);
+    NvmeManager = std::move(r.NvmeManager);
+    FileIOServiceProvider = std::move(r.FileIOServiceProvider);
+    LocalStorageProvider = std::move(r.StorageProvider);
+
+    STORAGE_INFO(
+        "Disk Agent backend ("
+        << NProto::EDiskAgentBackendType_Name(config.GetBackend())
+        << ") initialized");
 }
 
 void TBootstrapYdb::InitKikimrService()
@@ -636,44 +663,7 @@ void TBootstrapYdb::InitKikimrService()
 
     InitSpdk();
 
-    if (const auto& config = *Configs->DiskAgentConfig;
-        config.GetEnabled() &&
-        config.GetBackend() == NProto::DISK_AGENT_BACKEND_AIO &&
-        !LocalStorageProvider)
-    {
-        NvmeManager = CreateNvmeManager(
-            Configs->DiskAgentConfig->GetSecureEraseTimeout());
-
-        auto factory = CreateAIOServiceFactory(
-            {.MaxEvents = config.GetMaxAIOContextEvents()});
-
-        FileIOServiceProvider = config.GetPathsPerFileIOService()
-                                    ? CreateFileIOServiceProvider(
-                                          config.GetPathsPerFileIOService(),
-                                          std::move(factory))
-                                    : CreateSingleFileIOServiceProvider(
-                                          factory->CreateFileIOService());
-
-        LocalStorageProvider = CreateLocalStorageProvider(
-            FileIOServiceProvider,
-            NvmeManager,
-            {.DirectIO = !config.GetDirectIoFlagDisabled(),
-             .UseSubmissionThread =
-                 config.GetUseLocalStorageSubmissionThread()});
-
-        STORAGE_INFO("LocalStorageProvider initialized");
-    }
-
-    if (Configs->DiskAgentConfig->GetEnabled() &&
-        Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_NULL &&
-        !LocalStorageProvider)
-    {
-        NvmeManager = CreateNvmeManager(
-            Configs->DiskAgentConfig->GetSecureEraseTimeout());
-        LocalStorageProvider = CreateNullStorageProvider();
-
-        STORAGE_INFO("LocalStorageProvider (null) initialized");
-    }
+    InitDiskAgentBackend();
 
     Allocator = CreateCachingAllocator(
         Spdk ? Spdk->GetAllocator() : TDefaultAllocator::Instance(),
@@ -791,7 +781,8 @@ void TBootstrapYdb::InitKikimrService()
     }
 
     TraceServiceClient = ServerModuleFactories->TraceServiceClientFactory(
-        Configs->TraceServiceClientConfig.GetClientConfig(),
+        Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
+            .GetClientConfig(),
         logging);
 
     STORAGE_INFO("Trace service client initialized");
@@ -801,7 +792,8 @@ void TBootstrapYdb::InitKikimrService()
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
-    InitLWTrace(Configs->TraceServiceClientConfig.GetServiceName());
+    InitLWTrace(Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
+                    .GetServiceName());
 
     STORAGE_INFO("LWTrace initialized");
 

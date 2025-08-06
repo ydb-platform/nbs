@@ -118,7 +118,7 @@ public:
             ChannelCredentials
         );
 
-        auto promise = requestContext->Promise;
+        auto future = requestContext->Promise.GetFuture();
 
         requestContext->Reader->Finish(
             &requestContext->ResponseInfo.Record,
@@ -126,9 +126,11 @@ public:
             &*requestContext
         );
 
+        // At this point, requestContext object can already be freed after
+        // request completion. It is not safe to use it.
         requestContext.release();
 
-        return promise;
+        return future;
     }
 
     void Start() override

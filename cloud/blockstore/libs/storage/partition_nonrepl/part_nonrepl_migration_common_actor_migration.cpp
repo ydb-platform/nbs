@@ -23,21 +23,19 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     const NActors::TActorContext& ctx,
-    NActors::TActorId migrationSrcActorId,
-    NActors::TActorId srcActorId,
-    NActors::TActorId dstActorId,
-    bool takeOwnershipOverActors,
-    std::unique_ptr<TMigrationTimeoutCalculator> timeoutCalculator)
+    TInitParams initParams)
 {
-    MigrationSrcActorId = migrationSrcActorId;
-    SrcActorId = srcActorId;
-    DstActorId = dstActorId;
-    TimeoutCalculator = std::move(timeoutCalculator);
+    MigrationSrcActorId = initParams.MigrationSrcActorId;
+    SrcActorId = initParams.SrcActorId;
+    DstActorId = initParams.DstActorId;
+    TimeoutCalculator = std::move(initParams.TimeoutCalculator);
     STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
 
-    ActorOwner = takeOwnershipOverActors;
-    if (ActorOwner) {
+    SendWritesToSrc = initParams.SendWritesToSrc;
+    if (initParams.TakeOwnershipOverSrcActor) {
         PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
+    }
+    if (initParams.TakeOwnershipOverDstActor) {
         PoisonPillHelper.TakeOwnership(ctx, DstActorId);
     }
 
@@ -104,7 +102,9 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
                              << range << ", diskId: " << DiskId);
     }
 
-    if (Config->GetUseDirectCopyRange()) {
+    if (DirectCopyPolicy == EDirectCopyPolicy::CanUse &&
+        Config->GetUseDirectCopyRange())
+    {
         NCloud::Register<TDirectCopyRangeActor>(
             ctx,
             CreateRequestInfo(
@@ -450,7 +450,9 @@ void TNonreplicatedPartitionMigrationCommonActor::DoRegisterTrafficSource(
 void TNonreplicatedPartitionMigrationCommonActor::OnMigrationNonRetriableError(
     const NActors::TActorContext& ctx)
 {
-    ReportMigrationFailed();
+    ReportMigrationFailed(
+        TStringBuilder() << "Non-retriable migration error occurred; diskId: "
+                         << DiskId);
     MigrationOwner->OnMigrationError(ctx);
     MigrationEnabled = false;
 }

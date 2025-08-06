@@ -346,7 +346,10 @@ void TVolumeActor::HandleAllocateDiskError(
 
     if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED && !localDiskAllocationRetry)
     {
-        ReportDiskAllocationFailure();
+        ReportDiskAllocationFailure(
+            TStringBuilder()
+            << "Disk: " << GetNewestConfig().GetDiskId().Quote()
+            << " allocation failed");
     }
     LOG_ERROR(
         ctx,
@@ -559,7 +562,9 @@ bool TVolumeActor::CheckAllocationResult(
     }
 
     if (!ok) {
-        ReportDiskAllocationFailure();
+        ReportDiskAllocationFailure(
+            TStringBuilder() << "Disk " << State->GetDiskId().Quote()
+                             << ": invalid disk allocation response received");
 
         if (State->GetAcceptInvalidDiskAllocationResponse()) {
             LOG_WARN(
@@ -622,6 +627,7 @@ void TVolumeActor::ExecuteUpdateDevices(
 
     db.WriteMeta(newMeta);
     State->ResetMeta(std::move(newMeta));
+    State->FillOutdatedDevices();
 }
 
 void TVolumeActor::CompleteUpdateDevices(
@@ -642,8 +648,10 @@ void TVolumeActor::CompleteUpdateDevices(
     }
 
     TPoisonCallback onPartitionDestroy =
-        [requestInfo =
-             args.RequestInfo](const TActorContext& ctx, NProto::TError error)
+        [outdatedDevices = State->GetOutdatedDevices(),
+         requestInfo = args.RequestInfo](
+            const TActorContext& ctx,
+            NProto::TError error) mutable
     {
         if (!requestInfo) {
             return;
@@ -652,7 +660,8 @@ void TVolumeActor::CompleteUpdateDevices(
             ctx,
             *requestInfo,
             std::make_unique<TEvVolumePrivate::TEvUpdateDevicesResponse>(
-                std::move(error)));
+                std::move(error),
+                std::move(outdatedDevices)));
     };
 
     StopPartitions(ctx, onPartitionDestroy);

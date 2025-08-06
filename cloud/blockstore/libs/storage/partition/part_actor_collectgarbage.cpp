@@ -229,7 +229,10 @@ void TCollectGarbageActor::NotifyCompleted(
 void TCollectGarbageActor::HandleError(NProto::TError error)
 {
     if (FAILED(error.GetCode())) {
-        ReportCollectGarbageError();
+        ReportCollectGarbageError(
+            TStringBuilder() << "Garbage collection error on disk "
+                             << DiskId.Quote() << ": " << FormatError(error));
+
         Error = std::move(error);
     }
 }
@@ -472,7 +475,10 @@ void TCollectGarbageHardActor::NotifyCompleted(
 void TCollectGarbageHardActor::HandleError(NProto::TError error)
 {
     if (FAILED(error.GetCode())) {
-        ReportCollectGarbageError();
+        ReportCollectGarbageError(
+            TStringBuilder() << "Hard garbage collection error on disk "
+                             << DiskId.Quote() << ": " << FormatError(error));
+
         Error = std::move(error);
     }
 }

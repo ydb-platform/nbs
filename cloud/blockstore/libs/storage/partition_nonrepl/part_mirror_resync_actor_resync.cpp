@@ -208,7 +208,10 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
             State.AddPendingResyncRange(rangeId.first);
             ScheduleResyncNextRange(ctx);
         } else {
-            ReportResyncFailed();
+            ReportResyncFailed(
+                FormatError(msg->GetError()),
+                {{"disk", PartConfig->GetName()},
+                 {"range", DescribeRange(range)}});
         }
 
         TDeque<TPostponedRead> postponedReads;
