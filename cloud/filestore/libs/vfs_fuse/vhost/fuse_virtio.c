@@ -20,6 +20,14 @@
 #define Y_UNUSED(x) (void)x;
 #endif
 
+#if __has_feature(thread_sanitizer)
+#define TSAN_ACQUIRE(x) __tsan_acquire(x)
+#define TSAN_RELEASE(x) __tsan_release(x)
+#else
+#define TSAN_ACQUIRE(x)
+#define TSAN_RELEASE(x)
+#endif
+
 struct fuse_virtio_dev
 {
     struct vhd_fsdev_info fsdev;
@@ -303,6 +311,7 @@ static void unregister_complete(void* ctx)
         vhd_stop_queue(dev->rqs[queue_index]);
     }
 
+    TSAN_RELEASE(dev);
 }
 
 static void unregister_complete_and_free_dev(void* ctx)
@@ -313,6 +322,8 @@ static void unregister_complete_and_free_dev(void* ctx)
 
     struct fuse_session* se = ctx;
     struct fuse_virtio_dev* dev = se->virtio_dev;
+
+    TSAN_ACQUIRE(dev);
 
     for (queue_index = 0; queue_index < dev->rq_count; queue_index++) {
         vhd_release_request_queue(dev->rqs[queue_index]);
@@ -429,6 +440,8 @@ void virtio_session_close(struct fuse_session* se)
 {
     struct fuse_virtio_dev* dev = se->virtio_dev;
     int queue_index;
+
+    TSAN_ACQUIRE(dev);
 
     VHD_LOG_INFO("destroying device %s", dev->fsdev.socket_path);
 
