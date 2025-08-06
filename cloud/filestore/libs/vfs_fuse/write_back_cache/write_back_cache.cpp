@@ -72,6 +72,17 @@ struct TPendingReadDataRequest
     TPromise<NProto::TReadDataResponse> Promise;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFlushConfig
+{
+    TDuration AutomaticFlushPeriod;
+    TDuration FlushRetryPeriod;
+    ui32 MaxWriteRequestSize = 0;
+    ui32 MaxWriteRequestsCount = 0;
+    ui32 MaxSumWriteRequestsSize = 0;
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -164,6 +175,90 @@ struct TWriteBackCache::TPendingOperations
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TWriteBackCache::TContiguousWriteDataEntryPartsReader
+{
+public:
+    using TIterator = TVector<TWriteDataEntryPart>::const_iterator;
+
+private:
+    TIterator Current;
+    ui64 CurrentReadOffset = 0;
+    ui64 RemainingSize = 0;
+
+public:
+    TContiguousWriteDataEntryPartsReader(
+            TIterator begin,
+            TIterator end)
+        : Current(begin)
+    {
+        if (begin < end) {
+            Y_DEBUG_ABORT_UNLESS(Validate(begin, end));
+            RemainingSize = std::prev(end)->End() - begin->Offset;
+        }
+    }
+
+    ui64 GetOffset() const
+    {
+        return Current->Offset + CurrentReadOffset;
+    }
+
+    ui64 GetRemainingSize() const
+    {
+        return RemainingSize;
+    }
+
+    TString Read(ui64 count)
+    {
+        Y_ENSURE(
+            count <= RemainingSize,
+            "Trying to read more data (" << count << ") than is remaining ("
+                                         << RemainingSize << ")");
+
+        TString buffer(count, 0);
+
+        while (count > 0) {
+            while (CurrentReadOffset == Current->Length) {
+                Current++;
+                CurrentReadOffset = 0;
+            }
+
+            const char* from = Current->Source->GetBuffer().data();
+            from += Current->OffsetInSource + CurrentReadOffset;
+
+            char* to = buffer.vend() - count;
+
+            auto len = Min(Current->Length - CurrentReadOffset, count);
+
+            MemCopy(to, from, len);
+
+            count -= len;
+            CurrentReadOffset += len;
+            RemainingSize -= len;
+        }
+
+        return buffer;
+    }
+
+    static bool Validate(TIterator begin, TIterator end)
+    {
+        if (begin == end) {
+            return true;
+        }
+
+        const auto* prev = begin;
+        for (const auto* it = std::next(begin); it != end; it = std::next(it)) {
+            if (prev->End() != it->Offset) {
+                return false;
+            }
+            prev = it;
+        }
+
+        return true;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteBackCache::TImpl final
     : public std::enable_shared_from_this<TImpl>
 {
@@ -174,8 +269,7 @@ private:
     const IFileStorePtr Session;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
-    const TDuration AutomaticFlushPeriod;
-    const TDuration FlushRetryPeriod;
+    const TFlushConfig FlushConfig;
 
     // All fields below should be protected by this lock
     TMutex Lock;
@@ -205,13 +299,11 @@ public:
             ITimerPtr timer,
             const TString& filePath,
             ui32 capacityBytes,
-            TDuration automaticFlushPeriod,
-            TDuration flushRetryPeriod)
+            TFlushConfig flushConfig)
         : Session(std::move(session))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
-        , AutomaticFlushPeriod(automaticFlushPeriod)
-        , FlushRetryPeriod(flushRetryPeriod)
+        , FlushConfig(flushConfig)
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
         // File ring buffer should be able to store any valid TWriteDataRequest.
@@ -247,12 +339,12 @@ public:
 
     void ScheduleAutomaticFlushIfNeeded()
     {
-        if (!AutomaticFlushPeriod) {
+        if (!FlushConfig.AutomaticFlushPeriod) {
             return;
         }
 
         Scheduler->Schedule(
-            Timer->Now() + AutomaticFlushPeriod,
+            Timer->Now() + FlushConfig.AutomaticFlushPeriod,
             [ptr = weak_from_this()] () {
                 if (auto self = ptr.lock()) {
                     self->FlushAllData().Subscribe(
@@ -280,12 +372,6 @@ public:
             entriesIter->second->CachedEntries,
             startingFromOffset,
             length);
-    }
-
-    // should be protected by |Lock|
-    TVector<TWriteDataEntryPart> CalculateCachedDataPartsToRead(ui64 handle)
-    {
-        return CalculateCachedDataPartsToRead(handle, 0, 0);
     }
 
     // should be protected by |Lock|
@@ -430,9 +516,9 @@ public:
     }
 
     // should be protected by |Lock|
-    static auto MakeWriteDataRequestsForFlush(
+    auto MakeWriteDataRequestsForFlush(
         ui64 handle,
-        const TVector<TWriteDataEntryPart>& parts)
+        const TVector<TWriteDataEntryPart>& parts) const
         -> TVector<std::shared_ptr<NProto::TWriteDataRequest>>
     {
         TVector<std::shared_ptr<NProto::TWriteDataRequest>> res;
@@ -451,27 +537,29 @@ public:
                 }
             }
 
-            ui64 rangeLength = 0;
-            for (size_t i = partIndex; i < rangeEndIndex; i++) {
-                rangeLength += parts[i].Length;
+            TContiguousWriteDataEntryPartsReader reader(
+                parts.begin() + partIndex,
+                parts.begin() + rangeEndIndex);
+
+            while (reader.GetRemainingSize() > 0) {
+                auto size = Min(
+                    reader.GetRemainingSize(),
+                    static_cast<ui64>(FlushConfig.MaxWriteRequestSize));
+
+                auto offset = reader.GetOffset();
+                auto buffer = reader.Read(size);
+
+                auto request = std::make_shared<NProto::TWriteDataRequest>();
+                request->SetFileSystemId(
+                    parts[partIndex].Source->GetRequest()->GetFileSystemId());
+                *request->MutableHeaders() =
+                    parts[partIndex].Source->GetRequest()->GetHeaders();
+                request->SetHandle(handle);
+                request->SetOffset(offset);
+                request->SetBuffer(std::move(buffer));
+
+                res.push_back(std::move(request));
             }
-            TString buffer(rangeLength, 0);
-
-            const auto startingFromOffset = parts[partIndex].Offset;
-            for (size_t i = partIndex; i < rangeEndIndex; i++) {
-                ReadDataPart(parts[i], startingFromOffset, &buffer);
-            }
-
-            auto request = std::make_shared<NProto::TWriteDataRequest>();
-            request->SetFileSystemId(
-                parts[partIndex].Source->GetRequest()->GetFileSystemId());
-            *request->MutableHeaders() =
-                parts[partIndex].Source->GetRequest()->GetHeaders();
-            request->SetHandle(handle);
-            request->SetOffset(parts[partIndex].Offset);
-            request->SetBuffer(std::move(buffer));
-
-            res.push_back(std::move(request));
 
             partIndex = rangeEndIndex;
         }
@@ -915,16 +1003,26 @@ private:
             // Flush cannot be scheduled when CachedEntries is empty
             Y_ABORT_UNLESS(!handleState->CachedEntries.empty());
 
-            parts = TUtil::CalculateDataPartsToRead(
+            auto entryCount = TUtil::CalculateEntriesCountToFlush(
                 handleState->CachedEntries,
-                0,
-                0);
+                FlushConfig.MaxWriteRequestSize,
+                FlushConfig.MaxWriteRequestsCount,
+                FlushConfig.MaxSumWriteRequestsSize);
+
+            if (entryCount == 0) {
+                // Even a single entry is too large to flush
+                // TODO(nasonov): report and try to flush it anyway
+                entryCount = 1;
+            }
+
+            parts = TUtil::CalculateDataPartsToFlush(
+                handleState->CachedEntries,
+                entryCount);
 
             // Non-empty CachedEntries cannot produce empty parts
             Y_ABORT_UNLESS(!parts.empty());
 
-            handleState->FlushState.AffectedWriteDataEntriesCount =
-                handleState->CachedEntries.size();
+            handleState->FlushState.AffectedWriteDataEntriesCount = entryCount;
         }
 
         handleState->FlushState.WriteRequests =
@@ -1037,7 +1135,7 @@ private:
     {
         // TODO(nasonov): better retry policy
         Scheduler->Schedule(
-            Timer->Now() + FlushRetryPeriod,
+            Timer->Now() + FlushConfig.FlushRetryPeriod,
             [handleState, ptr = weak_from_this()]()
             {
                 auto self = ptr.lock();
@@ -1059,16 +1157,22 @@ TWriteBackCache::TWriteBackCache(
         const TString& filePath,
         ui32 capacityBytes,
         TDuration automaticFlushPeriod,
-        TDuration flushRetryPeriod)
+        TDuration flushRetryPeriod,
+        ui32 maxWriteRequestSize,
+        ui32 maxWriteRequestsCount,
+        ui32 maxSumWriteRequestsSize)
     : Impl(
         new TImpl(
-            session,
-            scheduler,
-            timer,
+            std::move(session),
+            std::move(scheduler),
+            std::move(timer),
             filePath,
             capacityBytes,
-            automaticFlushPeriod,
-            flushRetryPeriod))
+            {.AutomaticFlushPeriod = automaticFlushPeriod,
+             .FlushRetryPeriod = flushRetryPeriod,
+             .MaxWriteRequestSize = maxWriteRequestSize,
+             .MaxWriteRequestsCount = maxWriteRequestsCount,
+             .MaxSumWriteRequestsSize = maxSumWriteRequestsSize}))
 {
     Impl->ScheduleAutomaticFlushIfNeeded();
 }

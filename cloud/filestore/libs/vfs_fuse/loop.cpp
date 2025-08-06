@@ -993,7 +993,11 @@ private:
                         path / WriteBackCacheFileName,
                         Config->GetWriteBackCacheCapacity(),
                         Config->GetWriteBackCacheAutomaticFlushPeriod(),
-                        Config->GetWriteBackCacheFlushRetryPeriod());
+                        Config->GetWriteBackCacheFlushRetryPeriod(),
+                        Config->GetWriteBackCacheFlushMaxWriteRequestSize(),
+                        Config->GetWriteBackCacheFlushMaxWriteRequestsCount(),
+                        Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize()
+                    );
                     WriteBackCacheInitialized = true;
                 } else {
                     TString msg =

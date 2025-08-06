@@ -172,6 +172,19 @@ struct TCalculateDataPartsToReadTestBootstrap
             length);
     }
 
+    size_t CalculateEntriesCountToFlush(
+        const TDeque<TWriteDataEntry*>& entries,
+        ui32 maxWriteRequestSize,
+        ui32 maxWriteRequestsCount,
+        ui32 maxSumWriteRequestsSize)
+    {
+        return TWriteBackCache::TUtil::CalculateEntriesCountToFlush(
+            entries,
+            maxWriteRequestSize,
+            maxWriteRequestsCount,
+            maxSumWriteRequestsSize);
+    }
+
     bool IsSorted(const TVector<TWriteDataEntryPart>& parts)
     {
         return TWriteBackCache::TUtil::IsSorted(parts);
@@ -233,6 +246,32 @@ struct TCalculateDataPartsToReadTestBootstrap
 using TWriteDataEntry = TCalculateDataPartsToReadTestBootstrap::TWriteDataEntry;
 using TWriteDataEntryPart =
     TCalculateDataPartsToReadTestBootstrap::TWriteDataEntryPart;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestCaseWriteDataEntries
+{
+    TVector<std::unique_ptr<TWriteDataEntry>> Entries;
+    TDeque<TWriteDataEntry*> EntryPtrs;
+
+    TTestCaseWriteDataEntries(
+        std::initializer_list<TTestCaseWriteDataEntry> testCaseEntries)
+    {
+        for (const auto& e: testCaseEntries) {
+            auto request = std::make_shared<NProto::TWriteDataRequest>();
+            request->SetHandle(e.Handle);
+            request->SetOffset(e.Offset);
+            request->SetBuffer(TString(e.Length, 'a'));   // dummy buffer
+
+            auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
+            Entries.push_back(std::move(entry));
+        }
+
+        for (auto& entry: Entries) {
+            EntryPtrs.push_back(entry.get());
+        }
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -665,6 +704,55 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             RandomNumber<ui64>(MaxLength - rangeOffset) + 1;
 
         TestShouldCorrectlyInvertDataParts(entries, rangeOffset, rangeLength);
+    }
+
+    Y_UNIT_TEST(ShouldCalculateEntriesCountToFlush)
+    {
+        TCalculateDataPartsToReadTestBootstrap b;
+
+        TTestCaseWriteDataEntries singleEntry{{1, 0, 3}};
+
+        UNIT_ASSERT_EQUAL(1, b.CalculateEntriesCountToFlush(
+            singleEntry.EntryPtrs, 100, 100, 1000));
+
+        UNIT_ASSERT_EQUAL(0, b.CalculateEntriesCountToFlush(
+            singleEntry.EntryPtrs, 1, 2, 1000));
+
+        UNIT_ASSERT_EQUAL(0, b.CalculateEntriesCountToFlush(
+            singleEntry.EntryPtrs, 100, 100, 2));
+
+
+        TTestCaseWriteDataEntries twoOverlappingEntries{{1, 0, 3}, {1, 1, 3}};
+
+        UNIT_ASSERT_EQUAL(2, b.CalculateEntriesCountToFlush(
+            twoOverlappingEntries.EntryPtrs, 100, 100, 1000));
+
+        UNIT_ASSERT_EQUAL(2, b.CalculateEntriesCountToFlush(
+            twoOverlappingEntries.EntryPtrs, 100, 100, 4));
+
+        UNIT_ASSERT_EQUAL(1, b.CalculateEntriesCountToFlush(
+            twoOverlappingEntries.EntryPtrs, 100, 100, 3));
+
+        UNIT_ASSERT_EQUAL(2, b.CalculateEntriesCountToFlush(
+            twoOverlappingEntries.EntryPtrs, 100, 1, 1000));
+
+        UNIT_ASSERT_EQUAL(2, b.CalculateEntriesCountToFlush(
+            twoOverlappingEntries.EntryPtrs, 3, 100, 1000));
+
+
+        TTestCaseWriteDataEntries twoSeparateEntries{{1, 0, 3}, {1, 4, 3}};
+
+        UNIT_ASSERT_EQUAL(2, b.CalculateEntriesCountToFlush(
+            twoSeparateEntries.EntryPtrs, 100, 100, 1000));
+
+        UNIT_ASSERT_EQUAL(1, b.CalculateEntriesCountToFlush(
+            twoSeparateEntries.EntryPtrs, 100, 100, 4));
+
+        UNIT_ASSERT_EQUAL(1, b.CalculateEntriesCountToFlush(
+            twoSeparateEntries.EntryPtrs, 100, 1, 1000));
+
+        UNIT_ASSERT_EQUAL(2, b.CalculateEntriesCountToFlush(
+            twoSeparateEntries.EntryPtrs, 3, 100, 1000));
     }
 }
 

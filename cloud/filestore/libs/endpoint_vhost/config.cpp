@@ -36,6 +36,9 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     xxx(WriteBackCacheFlushRetryPeriod,                                        \
         TDuration,                                                             \
         TDuration::MilliSeconds(100)                                          )\
+    xxx(WriteBackCacheFlushMaxWriteRequestSize,     ui32,       1_MB          )\
+    xxx(WriteBackCacheFlushMaxWriteRequestsCount,   ui32,       64            )\
+    xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32,       32_MB         )\
 // VHOST_SERVICE_CONFIG
 
 #define VHOST_SERVICE_DECLARE_CONFIG(name, type, value)                        \

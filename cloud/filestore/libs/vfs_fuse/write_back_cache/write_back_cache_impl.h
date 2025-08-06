@@ -183,7 +183,47 @@ public:
         ui64 startingFromOffset,
         ui64 length);
 
+    /**
+    * Count the number of entries that can be taken for flushing.
+    *
+    * @param entries The sequence of client write requests.
+    * @param maxWriteRequestSize The maximum size of a single consolidated
+    *   WriteData request.
+    * @param maxWriteRequestsCount The maximum number of consolidated WriteData
+    *   requests.
+    * @param maxSumWriteRequestsSize The maximum total size of all consolidated
+    *   WriteData requests.
+    *
+    * @return The number of entries that can be taken from the beginning of
+    *   the entries sequence for flushing.
+    */
+    static size_t CalculateEntriesCountToFlush(
+        const TDeque<TWriteDataEntry*>& entries,
+        ui32 maxWriteRequestSize,
+        ui32 maxWriteRequestsCount,
+        ui32 maxSumWriteRequestsSize);
+
+    /**
+     * Finds cached data from the sequence of write operations.
+     *
+     * @param entries The sequence of write operations. Write operations may
+     *   overlap and are applied on top of each other.
+     * @param count Take the first 'count' entries from the sequence.
+     * @return A sorted vector of non-overlapping intervals representing cached
+     *   data.
+     */
+    static TVector<TWriteDataEntryPart> CalculateDataPartsToFlush(
+        const TDeque<TWriteDataEntry*>& entries,
+        size_t count);
+
     static bool IsSorted(const TVector<TWriteDataEntryPart>& parts);
+    static bool IsContiguousSequence(const TVector<TWriteDataEntryPart>& parts);
+
+private:
+    struct TPoint;
+
+    static TVector<TWriteDataEntryPart> CalculateDataParts(
+        TVector<TPoint> points);
 };
 
 }   // namespace NCloud::NFileStore::NFuse
