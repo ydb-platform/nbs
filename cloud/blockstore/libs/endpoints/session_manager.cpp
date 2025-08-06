@@ -917,11 +917,7 @@ ISessionManagerPtr CreateSessionManager(
         std::move(volumeStats),
         std::move(serverStats),
         std::move(service),
-<<<<<<< HEAD
-        std::move(cellsManager),
-=======
         std::move(cellManager),
->>>>>>> 1ea662a17f... fix build
         std::move(storageProvider),
         std::move(throttlerProvider),
         std::move(encryptionClientFactory),
