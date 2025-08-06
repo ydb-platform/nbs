@@ -558,8 +558,6 @@ class TClientBase
 
     TVector<std::unique_ptr<TExecutor>> Executors;
 
-    TAdaptiveLock EndpointLock;
-
 public:
     TClientBase(
         TClientAppConfigPtr config,
