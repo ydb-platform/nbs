@@ -64,7 +64,7 @@ fi
 # successful chmod(2) updates ctime.
 expect 0 create ${n0} 0644
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect 0 chmod ${n0} 0111
 ctime2=`${fstest} stat ${n0} ctime`
 test_check $ctime1 -lt $ctime2
@@ -72,7 +72,7 @@ expect 0 unlink ${n0}
 
 expect 0 mkdir ${n0} 0755
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect 0 chmod ${n0} 0753
 ctime2=`${fstest} stat ${n0} ctime`
 test_check $ctime1 -lt $ctime2
@@ -80,7 +80,7 @@ expect 0 rmdir ${n0}
 
 expect 0 mkfifo ${n0} 0644
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect 0 chmod ${n0} 0310
 ctime2=`${fstest} stat ${n0} ctime`
 test_check $ctime1 -lt $ctime2
@@ -89,7 +89,7 @@ expect 0 unlink ${n0}
 if supported lchmod; then
 	expect 0 symlink ${n1} ${n0}
 	ctime1=`${fstest} lstat ${n0} ctime`
-	sleep 1
+	sleep 2
 	expect 0 lchmod ${n0} 0321
 	ctime2=`${fstest} lstat ${n0} ctime`
 	test_check $ctime1 -lt $ctime2
@@ -99,7 +99,7 @@ fi
 # unsuccessful chmod(2) does not update ctime.
 expect 0 create ${n0} 0644
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect EPERM -u 65534 chmod ${n0} 0111
 ctime2=`${fstest} stat ${n0} ctime`
 test_check $ctime1 -eq $ctime2
@@ -107,7 +107,7 @@ expect 0 unlink ${n0}
 
 expect 0 mkdir ${n0} 0755
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect EPERM -u 65534 chmod ${n0} 0753
 ctime2=`${fstest} stat ${n0} ctime`
 test_check $ctime1 -eq $ctime2
@@ -115,7 +115,7 @@ expect 0 rmdir ${n0}
 
 expect 0 mkfifo ${n0} 0644
 ctime1=`${fstest} stat ${n0} ctime`
-sleep 1
+sleep 2
 expect EPERM -u 65534 chmod ${n0} 0310
 ctime2=`${fstest} stat ${n0} ctime`
 test_check $ctime1 -eq $ctime2
@@ -124,7 +124,7 @@ expect 0 unlink ${n0}
 if supported lchmod; then
 	expect 0 symlink ${n1} ${n0}
 	ctime1=`${fstest} lstat ${n0} ctime`
-	sleep 1
+	sleep 2
 	expect EPERM -u 65534 lchmod ${n0} 0321
 	ctime2=`${fstest} lstat ${n0} ctime`
 	test_check $ctime1 -eq $ctime2
