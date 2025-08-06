@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -111,7 +110,7 @@ func (g *ConfigGenerator) updateConfigMapFromDir(
 		configProtoPath := path.Join(overridesPath, configDesc.FileName)
 		g.LogDbg(ctx, "Reading file %v", configProtoPath)
 
-		configData, err := ioutil.ReadFile(configProtoPath)
+		configData, err := os.ReadFile(configProtoPath)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf(
 				"failed to read protobuf from config proto file %v: %w",
@@ -284,7 +283,7 @@ func (g *ConfigGenerator) dumpConfigs(
 		if _, err := os.Stat(path.Join(g.spec.OverridesPath, cluster, cfgFile)); err == nil {
 			cfgFilePath = path.Join(g.spec.OverridesPath, cluster, cfgFile)
 		}
-		cfgFileData, err := ioutil.ReadFile(cfgFilePath)
+		cfgFileData, err := os.ReadFile(cfgFilePath)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to read cfg file %v: %w",
@@ -321,7 +320,7 @@ func (g *ConfigGenerator) dumpConfigs(
 				g.spec.ServiceSpec.Clusters[cluster].AdditionalFilesPathTargetPrefix,
 				fileName)
 		}
-		fileData, err := ioutil.ReadFile(filePath)
+		fileData, err := os.ReadFile(filePath)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to read file %v: %w",
