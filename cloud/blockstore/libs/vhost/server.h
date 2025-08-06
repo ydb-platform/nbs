@@ -32,6 +32,7 @@ struct TStorageOptions
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
     bool DiscardEnabled = false;
     ui32 MaxZeroBlocksSubRequestSize = 0;
+    ui32 OptimalIoSize = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

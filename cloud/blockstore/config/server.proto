@@ -253,6 +253,9 @@ message TServerConfig
 
     // Policy for encryption of zeroed blocks.
     optional EEncryptZeroPolicy EncryptZeroPolicy = 126;
+
+    // Optimal IO size for vhost devices. Zero value is the default one.
+    optional uint32 VhostOptimalIoSize = 127;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

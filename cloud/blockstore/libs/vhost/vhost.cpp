@@ -256,6 +256,7 @@ public:
         ui64 blocksCount,
         ui32 queuesCount,
         bool discardEnabled,
+        ui32 optimalIoSize,
         void* cookie,
         const TVhostCallbacks& callbacks) override
     {
@@ -267,6 +268,7 @@ public:
             blocksCount,
             queuesCount,
             discardEnabled,
+            optimalIoSize,
             cookie,
             callbacks);
     }
