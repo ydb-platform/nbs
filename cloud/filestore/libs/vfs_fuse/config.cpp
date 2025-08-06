@@ -43,7 +43,6 @@ namespace {
                                                                                \
     xxx(GuestKeepCacheAllowed,        bool,     false                         )\
     xxx(MaxBackground,                ui32,     0                             )\
-    xxx(MaxFuseLoopThreads,           ui32,     1                             )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \

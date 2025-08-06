@@ -72,10 +72,7 @@ struct fuse_session {
     int   vu_listen_fd;
     int   vu_socketfd;
     struct fuse_virtio_dev *virtio_dev;
-    /* number of queues on backend device (qemu) */
-    int num_backend_queues;
-    /* number of queues used to submit requests to backend device (vhd_request_queue) */
-    int num_frontend_queues;
+    int thread_pool_size;
 };
 
 struct fuse_chan {

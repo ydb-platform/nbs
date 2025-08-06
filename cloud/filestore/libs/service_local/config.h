@@ -110,8 +110,6 @@ public:
     TFileIOConfig GetFileIOConfig() const;
 
     ui32 GetMaxBackground() const;
-
-    ui32 GetMaxFuseLoopThreads() const;
 };
 
 }   // namespace NCloud::NFileStore

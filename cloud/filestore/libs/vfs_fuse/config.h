@@ -55,8 +55,6 @@ public:
 
     ui32 GetMaxBackground() const;
 
-    ui32 GetMaxFuseLoopThreads() const;
-
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
