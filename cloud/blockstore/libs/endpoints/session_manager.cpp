@@ -343,11 +343,7 @@ public:
             IVolumeStatsPtr volumeStats,
             IServerStatsPtr serverStats,
             IBlockStorePtr service,
-<<<<<<< HEAD
-            NCells::ICellManagerPtr cellsManager,
-=======
             NCells::ICellManagerPtr cellManager,
->>>>>>> 1ea662a17f... fix build
             IStorageProviderPtr storageProvider,
             IThrottlerProviderPtr throttlerProvider,
             IEncryptionClientFactoryPtr encryptionClientFactory,
@@ -361,11 +357,7 @@ public:
         , VolumeStats(std::move(volumeStats))
         , ServerStats(std::move(serverStats))
         , Service(std::move(service))
-<<<<<<< HEAD
-        , CellsManager(std::move(cellsManager))
-=======
         , CellManager(std::move(cellManager))
->>>>>>> 1ea662a17f... fix build
         , StorageProvider(std::move(storageProvider))
         , ThrottlerProvider(std::move(throttlerProvider))
         , EncryptionClientFactory(std::move(encryptionClientFactory))
