@@ -160,7 +160,7 @@ ICellManagerPtr CreateCellManager(
     IServerStatsPtr serverStats,
     NRdma::IClientPtr rdmaClient)
 {
-    auto result = NClient::CreateClient(
+    auto result = NClient::CreateMultiHostClient(
         std::make_shared<NClient::TClientAppConfig>(config->GetGrpcClientConfig()),
         timer,
         scheduler,

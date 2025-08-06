@@ -43,6 +43,7 @@
 #include <contrib/libs/grpc/include/grpcpp/support/status.h>
 
 #include <util/datetime/cputimer.h>
+#include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -70,17 +71,10 @@ const char AUTH_METHOD[] = "Bearer";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
-template <typename TRequest>
-concept HasClientId = requires (TRequest r)
-{
-    { r.GetHeaders().GetClientId()} -> std::same_as<TString>;
-};
-
 template <typename TRequest>
 concept HasInstanceId = requires (TRequest r)
 {
-    { r.GetInstanceId() } -> std::same_as<TString>;
+    { r.SetInstanceId(TString()) };
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -335,9 +329,6 @@ private:
     TResponse Response;
     grpc::Status Status;
 
-    TString ClientId;
-    TString InstanceId;
-
 public:
     TRequestHandler(
             TAppContext& appCtx,
@@ -427,27 +418,9 @@ private:
     {
         auto& headers = *Request->MutableHeaders();
 
-        if constexpr (HasClientId<TRequest>) {
-            if (!headers.GetClientId()) {
-                Y_ABORT_UNLESS(AppCtx.Config->GetClientId());
-                headers.SetClientId(AppCtx.Config->GetClientId());
-                ClientId = AppCtx.Config->GetClientId();
-            } else {
-                ClientId = Request->GetHeaders().GetClientId();
-            }
-        } else {
-            ClientId = AppCtx.Config->GetClientId();
-        }
-
-        if constexpr (HasInstanceId<TRequest>) {
-            if (!headers.GetInstanceId()) {
-                headers.SetInstanceId(AppCtx.Config->GetInstanceId());
-                InstanceId = AppCtx.Config->GetInstanceId();
-            } else {
-                InstanceId = Request->GetHeaders().GetInstanceId();
-            }
-        }  else {
-            InstanceId = AppCtx.Config->GetInstanceId();
+        if (!headers.GetClientId()) {
+            Y_ABORT_UNLESS(AppCtx.Config->GetClientId());
+            headers.SetClientId(AppCtx.Config->GetClientId());
         }
 
         auto now = TInstant::Now();
@@ -516,7 +489,7 @@ private:
                     RequestType,
                     RequestId,
                     DiskId,
-                    ClientId,
+                    AppCtx.Config->GetClientId(),
                     "ProcessResponse: value already set (request cancelled?)");
             }
         } catch (...) {
@@ -525,7 +498,7 @@ private:
                 RequestType,
                 RequestId,
                 DiskId,
-                ClientId);
+                AppCtx.Config->GetClientId());
         }
     }
 
@@ -542,7 +515,7 @@ private:
                     RequestType,
                     RequestId,
                     DiskId,
-                    ClientId,
+                    AppCtx.Config->GetClientId(),
                     "ReportError: value already set (request completed?)");
             }
         } catch (...) {
@@ -551,7 +524,7 @@ private:
                 RequestType,
                 RequestId,
                 DiskId,
-                ClientId);
+                AppCtx.Config->GetClientId());
         }
     }
 
@@ -566,8 +539,8 @@ private:
         if (!HasError(response) && response.HasVolume()) {
             AppCtx.ClientStats->MountVolume(
                 response.GetVolume(),
-                ClientId,
-                InstanceId);
+                AppCtx.Config->GetClientId(),
+                AppCtx.Config->GetInstanceId());
         }
     }
 
@@ -576,30 +549,25 @@ private:
         if (!HasError(response)) {
             AppCtx.ClientStats->UnmountVolume(
                 DiskId,
-                ClientId);
+                AppCtx.Config->GetClientId());
         }
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClient final
+class TClientBase
     : public TAppContext
-    , public IClient
-    , public std::enable_shared_from_this<TClient>
+    , public IStartable
 {
-private:
     TGrpcInitializer GrpcInitializer;
-
-    IBlockStorePtr ControlEndpoint;
-    IBlockStorePtr DataEndpoint;
 
     TVector<std::unique_ptr<TExecutor>> Executors;
 
     TAdaptiveLock EndpointLock;
 
 public:
-    TClient(
+    TClientBase(
         TClientAppConfigPtr config,
         ITimerPtr timer,
         ISchedulerPtr scheduler,
@@ -607,30 +575,13 @@ public:
         IMonitoringServicePtr monitoring,
         IServerStatsPtr clientStats);
 
-    ~TClient() override
+    virtual ~TClientBase()
     {
         Stop();
     }
 
     void Start() override;
     void Stop() override;
-
-    IBlockStorePtr CreateEndpoint() override;
-
-    IBlockStorePtr CreateEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure) override;
-
-    IBlockStorePtr CreateDataEndpoint() override;
-
-    IBlockStorePtr CreateDataEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure) override;
-
-    IBlockStorePtr CreateDataEndpoint(
-        const TString& socketPath) override;
 
     template <typename TMethod, typename TService>
     TFuture<typename TMethod::TResponse> ExecuteRequest(
@@ -643,6 +594,37 @@ public:
     std::shared_ptr<grpc::Channel> CreateTcpSocketChannel(
         const TString& address,
         bool secureEndpoint);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TClient final
+    : public TClientBase
+    , public IClient
+    , public std::enable_shared_from_this<TClient>
+{
+private:
+    IBlockStorePtr ControlEndpoint;
+    IBlockStorePtr DataEndpoint;
+
+    TAdaptiveLock EndpointLock;
+public:
+    using TClientBase::TClientBase;
+
+    ~TClient() override
+    {
+        Stop();
+    }
+
+    void Start() override;
+    void Stop() override;
+
+    IBlockStorePtr CreateEndpoint() override;
+
+    IBlockStorePtr CreateDataEndpoint() override;
+
+    IBlockStorePtr CreateDataEndpoint(
+        const TString& socketPath) override;
 
     std::shared_ptr<grpc::Channel> CreateUnixSocketChannel(
         const TString& unixSocketPath,
@@ -659,7 +641,47 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TClient::TClient(
+class TMultiHostClient final
+    : public TClientBase
+    , public IMultiHostClient
+    , public std::enable_shared_from_this<TMultiHostClient>
+{
+private:
+    TAdaptiveLock EndpointLock;
+
+    THashMap<std::pair<TString, bool>, IBlockStorePtr> Cache;
+
+public:
+
+    using TClientBase::TClientBase;
+
+    ~TMultiHostClient() override
+    {
+        Stop();
+    }
+
+    void Start() override {
+       TClientBase::Start();
+    };
+
+    void Stop() override {
+        TClientBase::Stop();
+    };
+
+    IBlockStorePtr CreateEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure) override;
+
+    IBlockStorePtr CreateDataEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure) override;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TClientBase::TClientBase(
     TClientAppConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
@@ -679,7 +701,7 @@ TClient::TClient(
         Config->GetLogConfig().GetEnableGrpcTracing());
 }
 
-void TClient::Start()
+void TClientBase::Start()
 {
     ui32 threadsCount = Config->GetThreadsCount();
     for (size_t i = 1; i <= threadsCount; ++i) {
@@ -691,25 +713,9 @@ void TClient::Start()
         executor->Start();
         Executors.push_back(std::move(executor));
     }
-
-    if (!Config->GetDoNotSendStats()) {
-        // init any service for UploadClientMetrics
-        with_lock (EndpointLock) {
-            bool anyEndpoint = InitDataEndpoint();
-            if (!DataEndpoint) {
-                anyEndpoint |= InitControlEndpoint();
-            }
-            STORAGE_VERIFY(
-                anyEndpoint,
-                TWellKnownEntityTypes::CLIENT,
-                Config->GetClientId());
-        }
-
-        ScheduleUploadStats();
-    }
 }
 
-void TClient::Stop()
+void TClientBase::Stop()
 {
     if (AtomicSwap(&ShouldStop, 1) == 1) {
         return;
@@ -720,19 +726,14 @@ void TClient::Stop()
     for (auto& executor: Executors) {
         executor->Shutdown();
     }
-
-    with_lock (EndpointLock) {
-        ControlEndpoint.reset();
-        DataEndpoint.reset();
-    }
 }
 
-grpc::ChannelArguments TClient::CreateChannelArguments()
+grpc::ChannelArguments TClientBase::CreateChannelArguments()
 {
     return NStorage::NGrpc::CreateChannelArguments(*Config);
 }
 
-std::shared_ptr<grpc::Channel> TClient::CreateTcpSocketChannel(
+std::shared_ptr<grpc::Channel> TClientBase::CreateTcpSocketChannel(
     const TString& address,
     bool secureEndpoint)
 {
@@ -746,6 +747,66 @@ std::shared_ptr<grpc::Channel> TClient::CreateTcpSocketChannel(
         address,
         credentials,
         CreateChannelArguments());
+}
+
+template <typename TMethod, typename TService>
+TFuture<typename TMethod::TResponse> TClientBase::ExecuteRequest(
+    TService& service,
+    TCallContextPtr callContext,
+    std::shared_ptr<typename TMethod::TRequest> request)
+{
+    auto promise = NewPromise<typename TMethod::TResponse>();
+
+    size_t index = 0;
+    if (Executors.size() > 1) {
+        // pick random executor
+        index = RandomNumber(Executors.size());
+    }
+
+    TRequestHandler<TService, TMethod>::Start(
+        *this,
+        *Executors[index],
+        service,
+        std::move(callContext),
+        std::move(request),
+        promise);
+
+    return promise.GetFuture();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TClient::Start()
+{
+    TClientBase::Start();
+
+    // init any service for UploadClientMetrics
+    with_lock (EndpointLock) {
+        bool anyEndpoint = InitDataEndpoint();
+        if (!DataEndpoint) {
+            anyEndpoint |= InitControlEndpoint();
+        }
+        STORAGE_VERIFY(
+            anyEndpoint,
+            TWellKnownEntityTypes::CLIENT,
+            Config->GetClientId());
+    }
+
+    ScheduleUploadStats();
+}
+
+void TClient::Stop()
+{
+    TClientBase::Stop();
+
+    if (AtomicSwap(&ShouldStop, 1) == 1) {
+        return;
+    }
+
+    with_lock (EndpointLock) {
+        ControlEndpoint.reset();
+        DataEndpoint.reset();
+    }
 }
 
 std::shared_ptr<grpc::Channel> TClient::CreateUnixSocketChannel(
@@ -768,31 +829,6 @@ std::shared_ptr<grpc::Channel> TClient::CreateUnixSocketChannel(
 
     socket.Release();   // ownership transferred to Channel
     return channel;
-}
-
-template <typename TMethod, typename TService>
-TFuture<typename TMethod::TResponse> TClient::ExecuteRequest(
-    TService& service,
-    TCallContextPtr callContext,
-    std::shared_ptr<typename TMethod::TRequest> request)
-{
-    auto promise = NewPromise<typename TMethod::TResponse>();
-
-    size_t index = 0;
-    if (Executors.size() > 1) {
-        // pick random executor
-        index = RandomNumber(Executors.size());
-    }
-
-    TRequestHandler<TService, TMethod>::Start(
-        *this,
-        *Executors[index],
-        service,
-        std::move(callContext),
-        std::move(request),
-        promise);
-
-    return promise.GetFuture();
 }
 
 void TClient::UploadStats()
@@ -824,7 +860,7 @@ void TClient::UploadStats()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TService>
+template <typename TService, typename TClient>
 class TEndpointBase
     : public IBlockStore
 {
@@ -876,7 +912,7 @@ protected:
         TCallContextPtr callContext,
         std::shared_ptr<typename TMethod::TRequest> request)
     {
-        return Client->ExecuteRequest<TMethod>(
+        return Client->template ExecuteRequest<TMethod>(
             *Service,
             std::move(callContext),
             std::move(request));
@@ -962,18 +998,21 @@ protected:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TClient>
 class TEndpoint final
-    : public TEndpointBase<NProto::TBlockStoreService>
+    : public TEndpointBase<NProto::TBlockStoreService, TClient>
 {
+    using TBase = TEndpointBase<NProto::TBlockStoreService, TClient>;
+
 public:
-    using TEndpointBase::TEndpointBase;
+    using TEndpointBase<NProto::TBlockStoreService, TClient>::TEndpointBase;
 
 #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return ExecuteRequest<T##name##Method>(                                \
+        return TBase::template ExecuteRequest<T##name##Method>(                \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
@@ -986,18 +1025,20 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TClient>
 class TDataEndpoint final
-    : public TEndpointBase<NProto::TBlockStoreDataService>
+    : public TEndpointBase<NProto::TBlockStoreDataService, TClient>
 {
+    using TBase = TEndpointBase<NProto::TBlockStoreDataService, TClient>;
 public:
-    using TEndpointBase::TEndpointBase;
+    using TEndpointBase<NProto::TBlockStoreDataService, TClient>::TEndpointBase;
 
 #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return ExecuteRequest<T##name##Method>(                                \
+        return TBase::template ExecuteRequest<T##name##Method>(                                \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
@@ -1016,10 +1057,10 @@ using TNbsUdsSocketClient = TUdsSocketClient<TBase, TCallContextPtr>;
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSocketEndpoint final
-    : public TNbsUdsSocketClient<TEndpointBase<typename NProto::TBlockStoreService>>
+    : public TNbsUdsSocketClient<TEndpointBase<typename NProto::TBlockStoreService, TClient>>
 {
 public:
-    using TBase = TEndpointBase<typename NProto::TBlockStoreService>;
+    using TBase = TEndpointBase<typename NProto::TBlockStoreService, TClient>;
     using TNbsUdsSocketClient<TBase>::TNbsUdsSocketClient;
 
 #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
@@ -1041,10 +1082,10 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSocketDataEndpoint final
-    : public TNbsUdsSocketClient<TEndpointBase<typename NProto::TBlockStoreDataService>>
+    : public TNbsUdsSocketClient<TEndpointBase<typename NProto::TBlockStoreDataService, TClient>>
 {
 public:
-    using TBase = TEndpointBase<typename NProto::TBlockStoreDataService>;
+    using TBase = TEndpointBase<typename NProto::TBlockStoreDataService, TClient>;
     using TNbsUdsSocketClient<TBase>::TNbsUdsSocketClient;
 
 #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
@@ -1052,7 +1093,7 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return ExecuteRequest<T##name##Method>(                                \
+        return TBase::ExecuteRequest<T##name##Method>(                         \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
@@ -1110,7 +1151,7 @@ bool TClient::InitControlEndpoint()
                 << "could not start gRPC client";
         }
 
-        ControlEndpoint = std::make_shared<TEndpoint>(
+        ControlEndpoint = std::make_shared<TEndpoint<TClient>>(
             shared_from_this(),
             NProto::TBlockStoreService::NewStub(std::move(channel)));
         return true;
@@ -1136,7 +1177,7 @@ bool TClient::InitDataEndpoint()
                 << "could not start gRPC client";
         }
 
-        DataEndpoint = std::make_shared<TDataEndpoint>(
+        DataEndpoint = std::make_shared<TDataEndpoint<TClient>>(
             shared_from_this(),
             NProto::TBlockStoreDataService::NewStub(std::move(channel)));
         return true;
@@ -1153,54 +1194,11 @@ IBlockStorePtr TClient::CreateEndpoint()
     }
 }
 
-IBlockStorePtr TClient::CreateEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure)
-{
-    with_lock (EndpointLock) {
-        Y_ENSURE(port);
-        auto address = Join(":", host, port);
-
-        auto channel = CreateTcpSocketChannel(address, isSecure);
-        if (!channel) {
-            ythrow TServiceError(E_FAIL)
-                << "could not start gRPC client";
-        }
-
-        return std::make_shared<TEndpoint>(
-            shared_from_this(),
-            NProto::TBlockStoreService::NewStub(std::move(channel)));
-    }
-}
-
-
 IBlockStorePtr TClient::CreateDataEndpoint()
 {
     with_lock (EndpointLock) {
         InitDataEndpoint();
         return DataEndpoint;
-    }
-}
-
-IBlockStorePtr TClient::CreateDataEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure)
-{
-    with_lock (EndpointLock) {
-        Y_ENSURE(port);
-        auto address = Join(":", host, port);
-
-        auto channel = CreateTcpSocketChannel(address, isSecure);
-        if (!channel) {
-            ythrow TServiceError(E_FAIL)
-                << "could not start gRPC client";
-        }
-
-        return std::make_shared<TDataEndpoint>(
-            shared_from_this(),
-            NProto::TBlockStoreDataService::NewStub(std::move(channel)));
     }
 }
 
@@ -1215,6 +1213,63 @@ IBlockStorePtr TClient::CreateDataEndpoint(const TString& socketPath)
     return endpoint;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+IBlockStorePtr TMultiHostClient::CreateEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure)
+{
+    with_lock (EndpointLock) {
+        Y_ENSURE(port);
+        auto address = Join(":", host, port);
+
+        if (auto it = Cache.find(make_pair(address, false)); it != Cache.end()) {
+            return it->second;
+        }
+
+        auto channel = CreateTcpSocketChannel(address, isSecure);
+        if (!channel) {
+            ythrow TServiceError(E_FAIL)
+                << "could not start gRPC client";
+        }
+
+        auto endpoint = std::make_shared<TEndpoint<TMultiHostClient>>(
+            shared_from_this(),
+            NProto::TBlockStoreService::NewStub(std::move(channel)));
+        Cache.emplace(make_pair(address, false), endpoint);
+        return endpoint;
+    }
+}
+
+IBlockStorePtr TMultiHostClient::CreateDataEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure)
+{
+    with_lock (EndpointLock) {
+        Y_ENSURE(port);
+        auto address = Join(":", host, port);
+
+        if (auto it = Cache.find(make_pair(address, true)); it != Cache.end()) {
+            return it->second;
+        }
+
+        auto channel = CreateTcpSocketChannel(address, isSecure);
+        if (!channel) {
+            ythrow TServiceError(E_FAIL)
+                << "could not start gRPC client";
+        }
+
+        auto endpoint = std::make_shared<TDataEndpoint<TMultiHostClient>>(
+            shared_from_this(),
+            NProto::TBlockStoreDataService::NewStub(std::move(channel)));
+
+        Cache.emplace(make_pair(address, true), endpoint);
+        return endpoint;
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1227,7 +1282,30 @@ TResultOrError<IClientPtr> CreateClient(
     IMonitoringServicePtr monitoring,
     IServerStatsPtr clientStats)
 {
+    if (!config->GetClientId()) {
+        return MakeError(E_ARGUMENT, "ClientId not set");
+    }
+
     IClientPtr client = std::make_shared<TClient>(
+        std::move(config),
+        std::move(timer),
+        std::move(scheduler),
+        std::move(logging),
+        std::move(monitoring),
+        std::move(clientStats));
+
+    return client;
+}
+
+TResultOrError<IMultiHostClientPtr> CreateMultiHostClient(
+    TClientAppConfigPtr config,
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    IServerStatsPtr clientStats)
+{
+    IMultiHostClientPtr client = std::make_shared<TMultiHostClient>(
         std::move(config),
         std::move(timer),
         std::move(scheduler),

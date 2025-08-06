@@ -98,18 +98,13 @@ struct TTestBlockStore
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTestGrpcClient
-    : public NClient::IClient
+    : public NClient::IMultiHostClient
 {
     void Start() override
     {}
 
     void Stop() override
     {}
-
-    IBlockStorePtr CreateEndpoint() override
-    {
-        return {};
-    }
 
     virtual IBlockStorePtr CreateEndpoint(
         const TString& host,
@@ -122,11 +117,6 @@ struct TTestGrpcClient
         return std::make_shared<TTestBlockStore>();
     }
 
-    IBlockStorePtr CreateDataEndpoint()  override
-    {
-        return {};
-    }
-
     virtual IBlockStorePtr CreateDataEndpoint(
         const TString& host,
         ui32 port,
@@ -135,13 +125,6 @@ struct TTestGrpcClient
         Y_UNUSED(host);
         Y_UNUSED(port);
         Y_UNUSED(isSecure);
-        return {};
-    }
-
-    virtual IBlockStorePtr CreateDataEndpoint(
-        const TString& socketPath) override
-    {
-        Y_UNUSED(socketPath);
         return {};
     }
 };
