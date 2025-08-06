@@ -210,7 +210,6 @@ public:
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , AutomaticFlushPeriod(automaticFlushPeriod)
-        , RangeLock(std::make_shared<TGlobalReadWriteRangeLock>())
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
         // File ring buffer should be able to store any valid TWriteDataRequest.
@@ -379,10 +378,12 @@ public:
             serializedSize,
             CachedEntriesPersistentQueue.MaxAllocationSize());
 
-        auto unlocker = [ptr = weak_from_this(),
-                         handle = entry->GetHandle(),
-                         offset = entry->Offset(),
-                         end = entry->End()](const auto&)
+        auto handle = entry->GetHandle();
+        auto offset = entry->Offset();
+        auto end = entry->End();
+
+        auto unlocker =
+            [ptr = weak_from_this(), handle, offset, end](const auto&)
         {
             if (auto self = ptr.lock()) {
                 auto guard = Guard(self->Lock);
@@ -412,11 +413,8 @@ public:
 
         auto guard = Guard(Lock);
 
-        auto* handleState = GetOrCreateHandleState(entry->GetHandle());
-        handleState->RangeLock.LockWrite(
-            entry->Offset(),
-            entry->End(),
-            std::move(locker));
+        auto* handleState = GetOrCreateHandleState(handle);
+        handleState->RangeLock.LockWrite(offset, end, std::move(locker));
 
         ExecutePendingOperations(guard);
 
