@@ -71,14 +71,6 @@ const char AUTH_METHOD[] = "Bearer";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TRequest>
-concept HasInstanceId = requires (TRequest r)
-{
-    { r.SetInstanceId(TString()) };
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 NProto::TError CompleteReadBlocksLocalRequest(
     NProto::TReadBlocksLocalRequest& request,
     const NProto::TReadBlocksLocalResponse& response)
@@ -344,7 +336,9 @@ public:
         , CallContext(std::move(callContext))
         , Request(std::move(request))
         , Promise(promise)
-    {}
+    {
+        Context.set_wait_for_ready(true);
+    }
 
     static void Start(
         TAppContext& appCtx,
@@ -575,10 +569,7 @@ public:
         IMonitoringServicePtr monitoring,
         IServerStatsPtr clientStats);
 
-    virtual ~TClientBase()
-    {
-        Stop();
-    }
+    virtual ~TClientBase() = default;
 
     void Start() override;
     void Stop() override;
@@ -608,6 +599,7 @@ private:
     IBlockStorePtr DataEndpoint;
 
     TAdaptiveLock EndpointLock;
+
 public:
     using TClientBase::TClientBase;
 
@@ -798,10 +790,6 @@ void TClient::Start()
 void TClient::Stop()
 {
     TClientBase::Stop();
-
-    if (AtomicSwap(&ShouldStop, 1) == 1) {
-        return;
-    }
 
     with_lock (EndpointLock) {
         ControlEndpoint.reset();
@@ -1068,7 +1056,7 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return ExecuteRequest<T##name##Method>(                                \
+        return TBase::template ExecuteRequest<T##name##Method>(                \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
@@ -1093,7 +1081,7 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return TBase::ExecuteRequest<T##name##Method>(                         \
+        return TBase::template ExecuteRequest<T##name##Method>(                \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
