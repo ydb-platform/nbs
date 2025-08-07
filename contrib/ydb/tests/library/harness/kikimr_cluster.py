@@ -24,13 +24,13 @@ DEFAULT_MON_PORT = 8765
 DEFAULT_GRPC_PORT = 2135
 
 
-def kikimr_cluster_factory(configurator=None, config_path=None):
+def kikimr_cluster_factory(configurator=None, config_path=None, sub_folder_name=None):
     logger.info("All test params = {}".format(pprint.pformat(yatest_common.get_param_dict_copy())))
     logger.info("Starting standalone YDB cluster")
     if config_path is not None:
         return ExternalKiKiMRCluster(config_path)
     else:
-        return KiKiMR(configurator)
+        return KiKiMR(configurator, sub_folder_name)
 
 
 def load_yaml(path):

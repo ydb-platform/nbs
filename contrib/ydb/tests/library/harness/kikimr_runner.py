@@ -5,7 +5,6 @@ import shutil
 import tempfile
 import time
 import itertools
-import random
 from pkg_resources import resource_string
 from google.protobuf import text_format
 
@@ -232,7 +231,7 @@ class KiKiMRNode(daemon.Daemon, kikimr_node_interface.NodeInterface):
 
 
 class KiKiMR(kikimr_cluster_interface.KiKiMRClusterInterface):
-    def __init__(self, configurator=None, cluster_name=''):
+    def __init__(self, configurator=None, cluster_name='', sub_folder_name=None):
         super(KiKiMR, self).__init__()
 
         self.__tmpdir = tempfile.mkdtemp(prefix="kikimr_" + cluster_name + "_")
@@ -250,6 +249,10 @@ class KiKiMR(kikimr_cluster_interface.KiKiMRClusterInterface):
         self._node_index_allocator = itertools.count(1)
         self.default_channel_bindings = None
         self.__initialy_prepared = False
+        if (sub_folder_name == None):
+            self.__sub_folder_name = 'kikimr_configs'
+        else:
+            self.__sub_folder_name = sub_folder_name
 
     @property
     def config(self):
@@ -466,7 +469,7 @@ class KiKiMR(kikimr_cluster_interface.KiKiMRClusterInterface):
                 get_unique_path_for_current_test(
                     self.__configurator.output_path,
                     join(
-                        self.__cluster_name, "kikimr_configs_{}".format(random.randint(10000, 99999))
+                        self.__cluster_name, self.__sub_folder_name
                     )
                 )
             )
