@@ -1259,7 +1259,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         state->MigrationMode = EMigrationMode::InProgress;
         TBlockRange64 migratedRange;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        auto original = runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 using TMigratedEvent =
@@ -1283,6 +1283,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(migratedRange.Size() == 1024);
         UNIT_ASSERT_VALUES_EQUAL(0, state->FinishMigrationRequests);
 
+        runtime->SetObserverFunc(original);
         // rebooting volume to stop partition actors
         volume.RebootTablet();
 
@@ -1415,7 +1416,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         ui32 migrationProgressCounter = 0;
 
         bool drop = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        auto original = runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 using TMigratedEvent =
@@ -1458,6 +1459,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1, migrationStartedCounter);
         UNIT_ASSERT_VALUES_EQUAL(60, migrationProgressCounter);
 
+        runtime->SetObserverFunc(original);
         volume.RebootTablet();
         volume.AddClient(clientInfo);
 
@@ -7710,7 +7712,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
-        runtime->SetObserverFunc(obs);
+        auto original = runtime->SetObserverFunc(obs);
 
         volume.AddClient(clientInfo);
         volume.ReconnectPipe();
@@ -7723,6 +7725,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT(v.GetResyncInProgress());
         }
 
+        runtime->SetObserverFunc(original);
         volume.RebootTablet();
         volume.AddClient(clientInfo);
         volume.WaitReady();

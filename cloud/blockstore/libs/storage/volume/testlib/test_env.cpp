@@ -27,13 +27,11 @@ private:
     TTestActorRuntime& Runtime;
     TTestActorRuntime::TEventObserver PrevObserverFunc;
     TTestActorRuntime::TScheduledEventFilter PrevScheduledFilterFunc;
-    TTestActorRuntime::TScheduledEventsSelector PrevScheduledEventsSelector;
     TTestActorRuntime::TRegistrationObserver PrevRegistrationObserverFunc;
 
     std::unique_ptr<ITabletScheduledEventsGuard> Guard;
     TTestActorRuntime::TEventObserver GuardObserverFunc;
     TTestActorRuntime::TScheduledEventFilter GuardScheduledFilterFunc;
-    TTestActorRuntime::TScheduledEventsSelector GuardScheduledEventsSelector;
     TTestActorRuntime::TRegistrationObserver GuardRegistrationObserverFunc;
 
 public:
@@ -44,8 +42,6 @@ public:
         : Runtime(runtime)
         , PrevObserverFunc(runtime.SetObserverFunc({}))
         , PrevScheduledFilterFunc(runtime.SetScheduledEventFilter({}))
-        , PrevScheduledEventsSelector(
-              runtime.SetScheduledEventsSelectorFunc({}))
         , PrevRegistrationObserverFunc(runtime.SetRegistrationObserverFunc({}))
         , Guard(CreateTabletScheduledEventsGuard(tablets, runtime, sender)
                     .Release())
@@ -97,20 +93,6 @@ public:
                 }
                 return result;
             });
-
-        GuardScheduledEventsSelector = Runtime.SetScheduledEventsSelectorFunc(
-            [&](TTestActorRuntimeBase& runtime,
-                TScheduledEventsList& scheduledEvents,
-                TEventsList& queue)
-            {
-                GuardScheduledEventsSelector(runtime, scheduledEvents, queue);
-                if (PrevScheduledEventsSelector) {
-                    PrevScheduledEventsSelector(
-                        runtime,
-                        scheduledEvents,
-                        queue);
-                }
-            });
     }
 
     ~TTabletScheduledEventsGuard()
@@ -118,7 +100,6 @@ public:
         Guard.reset();
         Runtime.SetObserverFunc(PrevObserverFunc);
         Runtime.SetScheduledEventFilter(PrevScheduledFilterFunc);
-        Runtime.SetScheduledEventsSelectorFunc(PrevScheduledEventsSelector);
         Runtime.SetRegistrationObserverFunc(PrevRegistrationObserverFunc);
     }
 };
