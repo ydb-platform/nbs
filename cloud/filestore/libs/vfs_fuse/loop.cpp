@@ -521,7 +521,11 @@ private:
             4);
 
         AtomicSet(ThreadId, pthread_self());
+#if defined(FUSE_VIRTIO)
         fuse_session_loop(Session, FrontendQueueIndex);
+#else
+        fuse_session_loop(Session);
+#endif
 
         return nullptr;
     }
