@@ -493,7 +493,8 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
                 // that configure TDiskRegistryState in a 'peculiar' way
                 if (!device) {
                     ReportDiskRegistryDeviceNotFoundSoft(
-                        TStringBuilder() << "ProcessDisks:DeviceId: " << uuid);
+                        "ProcessDisks",
+                        {{"DeviceId", uuid}});
                     continue;
                 }
 
@@ -615,10 +616,9 @@ void TDiskRegistryState::ProcessCheckpoints()
             auto* sourceDisk = Disks.FindPtr(checkpointReplica.GetSourceDiskId());
             if (!sourceDisk) {
                 ReportDiskRegistrySourceDiskNotFound(
-                    TStringBuilder()
-                    << "CheckpointId: " << checkpointReplica.GetCheckpointId()
-                    << " SourceDiskId: " << checkpointReplica.GetSourceDiskId()
-                    << " ReplicaDiskId: " << diskId);
+                    {{"CheckpointId", checkpointReplica.GetCheckpointId()},
+                     {"SourceDiskId", checkpointReplica.GetSourceDiskId()},
+                     {"ReplicaDiskId", diskId}});
                 continue;
             }
 
@@ -5257,12 +5257,9 @@ void TDiskRegistryState::ApplyAgentStateChange(
         if (agent.GetState() == NProto::AGENT_STATE_WARNING) {
             if (MigrationCanBeStarted(disk, deviceId)) {
                 if (!FindPtr(disk.Devices, deviceId)) {
-                    ReportDiskRegistryWrongMigratedDeviceOwnership(Sprintf(
-                        "ApplyAgentStateChange: device[DeviceUUID = %s] not "
-                        "found in disk[DiskId "
-                        "= %s]",
-                        deviceId.c_str(),
-                        diskId.c_str()));
+                    ReportDiskRegistryWrongMigratedDeviceOwnership(
+                        "ApplyAgentStateChange: device not found in disk",
+                        {{"disk", diskId}, {"DeviceUUID", deviceId}});
                     continue;
                 }
 
@@ -6517,8 +6514,8 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
 
     if (devIt == disk.Devices.end()) {
         auto message = ReportDiskRegistryWrongMigratedDeviceOwnership(
-            TStringBuilder() << "FinishDeviceMigration: device "
-                             << sourceId.Quote() << " not found");
+            "FinishDeviceMigration device not found",
+            {{"disk", diskId}, {"device", sourceId}});
         return MakeError(E_INVALID_STATE, std::move(message));
     }
 

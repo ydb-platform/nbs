@@ -1687,10 +1687,9 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
 
     const auto& switchError = Executor->WaitFor(switchFuture);
     if (HasError(switchError)) {
-        ReportEndpointSwitchFailure(TStringBuilder()
-            << "Failed to switch endpoint for volume "
-            << sessionInfo.Volume.GetDiskId()
-            << ", " << switchError.GetMessage());
+        ReportEndpointSwitchFailure(
+            FormatError(switchError),
+            {{"Volume", sessionInfo.Volume.GetDiskId()}});
     }
 
     return switchError;
