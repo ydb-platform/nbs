@@ -12,6 +12,8 @@ int main(int argc, char** argv)
 
     auto moduleFactories = std::make_shared<NKikimr::TModuleFactories>();
     moduleFactories->CreateTicketParser = NKikimr::CreateTicketParser;
+    moduleFactories->SchemeOperationFactory.reset(
+        NKikimr::NSchemeShard::DefaultOperationFactory());
 
     NDaemon::TBootstrapServer bootstrap(std::move(moduleFactories));
     return NCloud::DoMain(bootstrap, argc, argv);
