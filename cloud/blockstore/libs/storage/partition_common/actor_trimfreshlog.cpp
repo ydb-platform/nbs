@@ -134,8 +134,7 @@ void TTrimFreshLogActor::HandleCollectGarbageResult(
         HasError(error))
     {
         ReportTrimFreshLogError(
-            TStringBuilder()
-                << "Fresh blobs collect request failed: " << FormatError(error),
+            FormatError(error),
             {{"disk", DiskId}, {"TabletId", TabletInfo->TabletID}});
         Error = std::move(error);
     }

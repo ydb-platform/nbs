@@ -8,7 +8,8 @@
 
 namespace NCloud::NBlockStore {
 
-using TValue = std::variant<TString, int, ui16, ui32, ui64, TBlockRange64, TStringBuf>;
+using TValue =
+    std::variant<TString, int, ui16, ui32, ui64, TBlockRange64, TStringBuf>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

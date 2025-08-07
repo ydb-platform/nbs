@@ -237,8 +237,7 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
 
     if (CritOnChecksumMismatch && msg->WriteStartTs > TInstant()) {
         ReportMirroredDiskResyncChecksumMismatch(
-            "Checksum mismatch during resync in range",
-            {{"disk", PartConfig->GetName()}, {"range", DescribeRange(range)}});
+            {{"disk", PartConfig->GetName()}, {"range", range}});
     }
 
     auto resyncRange = State.BuildResyncRange();

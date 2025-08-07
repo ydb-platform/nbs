@@ -1689,7 +1689,7 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
     if (HasError(switchError)) {
         ReportEndpointSwitchFailure(
             FormatError(switchError),
-            {{"Volume", sessionInfo.Volume.GetDiskId()}});
+            {{"disk", sessionInfo.Volume.GetDiskId()}});
     }
 
     return switchError;

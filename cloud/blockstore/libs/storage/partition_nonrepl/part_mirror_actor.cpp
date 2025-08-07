@@ -700,8 +700,7 @@ void TMirrorPartitionActor::HandleAddTagsResponse(
 
     if (HasError(error)) {
         ReportMirroredDiskAddTagFailed(
-            TStringBuilder()
-                << "Failed to add tag for disk, error: " << FormatError(error),
+            FormatError(error),
             {{"disk", DiskId},
              {"IntermediateWriteBufferTagName",
               IntermediateWriteBufferTagName}});

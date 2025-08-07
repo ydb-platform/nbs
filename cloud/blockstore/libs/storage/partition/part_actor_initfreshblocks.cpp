@@ -37,9 +37,9 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
 
     if (FAILED(msg->GetStatus())) {
         ReportInitFreshBlocksError(
-            TStringBuilder()
-            << LogTitle.GetWithTime() << " LoadFreshBlobs failed. error: "
-            << FormatError(msg->GetError()));
+            TStringBuilder() << "LoadFreshBlobs failed, error: "
+                             << FormatError(msg->GetError()),
+            {{"disk", PartitionConfig.GetDiskId()}});
         Suicide(ctx);
         return;
     }
@@ -62,10 +62,10 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
 
         if (FAILED(error.GetCode())) {
             ReportInitFreshBlocksError(
-                TStringBuilder() << LogTitle.GetWithTime()
-                                 << " Failed to parse fresh blob error: "
+                TStringBuilder() << "Failed to parse fresh blob error: "
                                  << FormatError(error),
-                {{"commit_id", blob.CommitId}});
+                {{"disk", PartitionConfig.GetDiskId()},
+                 {"commit_id", blob.CommitId}});
             Suicide(ctx);
             return;
         }

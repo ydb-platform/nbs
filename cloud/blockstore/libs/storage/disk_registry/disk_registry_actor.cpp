@@ -491,7 +491,6 @@ void TDiskRegistryActor::ProcessInitialAgentRejectionPhase(
 
     if (k > Config->GetDiskRegistryInitialAgentRejectionThreshold()) {
         ReportDiskRegistryInitialAgentRejectionThresholdExceeded(
-            "Too many agents haven't reconnected",
             {{"agentsToReject", agentsToReject.size()},
              {"expectedToBeOnline", expectedToBeOnline}});
         return;

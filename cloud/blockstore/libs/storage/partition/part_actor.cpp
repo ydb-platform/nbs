@@ -315,7 +315,7 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         std::move(channels));
 
     ReportReassignTablet(
-        {{"disk", PartitionConfig.diskid()},
+        {{"disk", PartitionConfig.GetDiskId()},
          {"tablet_id", TabletID()},
          {"channels", sb}});
     ReassignRequestSentTs = ctx.Now();

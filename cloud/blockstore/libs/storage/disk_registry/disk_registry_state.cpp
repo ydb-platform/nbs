@@ -492,9 +492,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
                 // can't use impossible events here since there are some uts
                 // that configure TDiskRegistryState in a 'peculiar' way
                 if (!device) {
-                    ReportDiskRegistryDeviceNotFoundSoft(
-                        "ProcessDisks",
-                        {{"DeviceId", uuid}});
+                    ReportDiskRegistryDeviceNotFoundSoft({{"DeviceId", uuid}});
                     continue;
                 }
 
@@ -618,7 +616,7 @@ void TDiskRegistryState::ProcessCheckpoints()
                 ReportDiskRegistrySourceDiskNotFound(
                     {{"CheckpointId", checkpointReplica.GetCheckpointId()},
                      {"SourceDiskId", checkpointReplica.GetSourceDiskId()},
-                     {"ReplicaDiskId", diskId}});
+                     {"ShadowDiskId", diskId}});
                 continue;
             }
 
@@ -2946,9 +2944,7 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
     }
 
     if (!IsReadyForCleanup(diskId)) {
-        auto message = ReportNrdDestructionError(
-            "attempting to clean up unmarked disk",
-            {{"disk", diskId}});
+        auto message = ReportNrdDestructionError({{"disk", diskId}});
 
         return MakeError(E_INVALID_STATE, std::move(message));
     }
