@@ -27,7 +27,7 @@ void TServiceActor::HandleListMountedVolumes(
             volume->VolumeActor);
     }
 
-    NCloud::Send(ctx, ev->Sender, std::move(response));
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

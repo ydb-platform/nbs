@@ -301,7 +301,7 @@ void TVolumeActor::HandleStatVolume(
             partConfig->GetMaxTimedOutDeviceStateDuration().MilliSeconds());
     }
 
-    auto* throttlingInfo = record.MutableVolatileThrottlingInfo();\
+    auto* throttlingInfo = record.MutableVolatileThrottlingInfo();
     throttlingInfo->SetVersion(State->GetThrottlingPolicy().GetVolatileThrottlingVersion());
     *throttlingInfo->MutableActualPerformanceProfile() = State->GetThrottlingPolicy().GetCurrentPerformanceProfile();
     *throttlingInfo->MutableAppliedRule() = State->GetThrottlingPolicy().GetVolatileThrottlingRule();
