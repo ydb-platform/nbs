@@ -107,6 +107,7 @@ constexpr TDuration Seconds(int s)
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
     xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
     xxx(VhostDiscardEnabled,         bool,                   false            )\
+    xxx(VhostOptimalIoSize,          ui32,                   0                )\
     xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )\
     xxx(EncryptZeroPolicy,                                                     \
         NProto::EEncryptZeroPolicy,                                            \

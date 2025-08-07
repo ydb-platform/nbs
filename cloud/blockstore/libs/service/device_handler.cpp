@@ -3,6 +3,8 @@
 #include "aligned_device_handler.h"
 #include "unaligned_device_handler.h"
 
+#include <cloud/blockstore/libs/common/public.h>
+
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
@@ -11,18 +13,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 MaxUnalignedRequestSize = 32_MB;
-
-// Keep the value less than MaxBufferSize in
-// cloud/blockstore/libs/rdma/iface/client.h
-constexpr ui32 MaxSubRequestSize = 4_MB;
-
 constexpr ui32 MaxZeroBlocksSubRequestSize = 2048_MB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDefaultDeviceHandlerFactory final
-    : public IDeviceHandlerFactory
+struct TDefaultDeviceHandlerFactory final: public IDeviceHandlerFactory
 {
     const ui32 MaxSubRequestSize;
 
@@ -30,46 +25,25 @@ struct TDefaultDeviceHandlerFactory final
         : MaxSubRequestSize(maxSubRequestSize)
     {}
 
-    IDeviceHandlerPtr CreateDeviceHandler(
-        IStoragePtr storage,
-        TString diskId,
-        TString clientId,
-        ui32 blockSize,
-        bool unalignedRequestsDisabled,
-        bool checkBufferModificationDuringWriting,
-        NProto::EStorageMediaKind storageMediaKind,
-        ui32 maxZeroBlocksSubRequestSize) override
+    IDeviceHandlerPtr CreateDeviceHandler(TDeviceHandlerParams params) override
     {
-        if (maxZeroBlocksSubRequestSize != 0) {
-            maxZeroBlocksSubRequestSize = std::min(
+        if (params.MaxZeroBlocksSubRequestSize != 0) {
+            params.MaxZeroBlocksSubRequestSize = std::min(
                 MaxZeroBlocksSubRequestSize,
-                maxZeroBlocksSubRequestSize);
+                params.MaxZeroBlocksSubRequestSize);
         } else {
-            maxZeroBlocksSubRequestSize = MaxSubRequestSize;
+            params.MaxZeroBlocksSubRequestSize = MaxSubRequestSize;
         }
 
-        if (unalignedRequestsDisabled) {
+        if (params.UnalignedRequestsDisabled) {
             return std::make_shared<TAlignedDeviceHandler>(
-                std::move(storage),
-                std::move(diskId),
-                std::move(clientId),
-                blockSize,
-                MaxSubRequestSize,
-                maxZeroBlocksSubRequestSize,
-                checkBufferModificationDuringWriting,
-                storageMediaKind);
+                std::move(params),
+                MaxSubRequestSize);
         }
 
         return std::make_shared<TUnalignedDeviceHandler>(
-            std::move(storage),
-            std::move(diskId),
-            std::move(clientId),
-            blockSize,
-            MaxSubRequestSize,
-            maxZeroBlocksSubRequestSize,
-            MaxUnalignedRequestSize,
-            checkBufferModificationDuringWriting,
-            storageMediaKind);
+            std::move(params),
+            MaxSubRequestSize);
     }
 };
 
@@ -82,7 +56,8 @@ IDeviceHandlerFactoryPtr CreateDefaultDeviceHandlerFactory()
     return std::make_shared<TDefaultDeviceHandlerFactory>(MaxSubRequestSize);
 }
 
-IDeviceHandlerFactoryPtr CreateDeviceHandlerFactory(ui32 maxSubRequestSize)
+IDeviceHandlerFactoryPtr CreateDeviceHandlerFactoryForTesting(
+    ui32 maxSubRequestSize)
 {
     return std::make_shared<TDefaultDeviceHandlerFactory>(maxSubRequestSize);
 }

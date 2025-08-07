@@ -429,7 +429,8 @@ void TBootstrapBase::Init()
             VhostServer,
             Configs->ServerConfig->GetChecksumFlags(),
             Configs->ServerConfig->GetVhostDiscardEnabled(),
-            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize());
+            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
+            Configs->ServerConfig->GetVhostOptimalIoSize());
 
         if (Configs->ServerConfig->GetVhostServerPath()
                 && !Configs->Options->TemporaryServer)

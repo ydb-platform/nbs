@@ -139,6 +139,7 @@ public:
     TString GetNodeRegistrationToken() const;
     NProto::TChecksumFlags GetChecksumFlags() const;
     bool GetVhostDiscardEnabled() const;
+    ui32 GetVhostOptimalIoSize() const;
     ui32 GetMaxZeroBlocksSubRequestSize() const;
     NProto::EEncryptZeroPolicy GetEncryptZeroPolicy() const;
     ui64 GetVhostPteFlushByteThreshold() const;
