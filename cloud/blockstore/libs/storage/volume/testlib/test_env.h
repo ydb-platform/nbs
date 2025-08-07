@@ -291,7 +291,7 @@ public:
         TAutoPtr<IEventHandle> handle;
         Runtime.GrabEdgeEventRethrow<TResponse>(handle, WaitTimeout);
 
-        UNIT_ASSERT(handle);
+        Y_ABORT_UNLESS(handle);
         return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
     }
 
@@ -593,7 +593,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     TDiskRegistryStatePtr diskRegistryState = {},
     NProto::TFeaturesConfig featuresConfig = {},
     NRdma::IClientPtr rdmaClient = {},
-    TVector<TDiskAgentStatePtr> diskAgentStates = {});
+    TVector<TDiskAgentStatePtr> diskAgentStates = {},
+    bool debugActorRegistration = false);
 
 struct TTestRuntimeBuilder
 {
