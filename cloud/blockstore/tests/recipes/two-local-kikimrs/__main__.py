@@ -62,7 +62,7 @@ def start(argv):
             ],
             use_log_files=args.use_log_files)
 
-        kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
+        kikimr_cluster = kikimr_cluster_factory(configurator=configurator, sub_folder_name='kikimr_configs_{}'.format(i))
         kikimr_cluster.start()
         clusters.append((configurator, kikimr_cluster))
 
