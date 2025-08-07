@@ -68,6 +68,11 @@ void TPartitionActor::HandleReadBlob(
         // disk partition tablet.
         auto actorId = NCloud::Register(ctx, std::move(readBlobActor));
         Actors.Insert(actorId);
+        GroupOperationTimeTracker.OnStarted(
+            blobOperationId,
+            groupId,
+            TGroupOperationTimeTracker::EGroupOperationType::Read,
+            GetCycleCount());
         return;
     }
 
@@ -87,7 +92,7 @@ void TPartitionActor::HandleReadBlobCompleted(
 {
     const auto* msg = ev->Get();
 
-    GroupOperationTimeTracker.OnFinished(msg->RequestId, GetCycleCount());
+    GroupOperationTimeTracker.OnFinished(msg->BlobOperationId, GetCycleCount());
 
     Actors.Erase(ev->Sender);
 

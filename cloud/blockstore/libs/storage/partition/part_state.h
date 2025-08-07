@@ -284,11 +284,13 @@ struct TBlobOperationData
 struct TQueuedRequest
 {
     NActors::IActorPtr Actor;
-    TBlobOperationData BlobOpData;
+    std::optional<TBlobOperationData> BlobOpData;
 
-    explicit TQueuedRequest(NActors::IActorPtr actor, TBlobOperationData blobOpData = {})
+    explicit TQueuedRequest(
+        NActors::IActorPtr actor,
+        std::optional<TBlobOperationData> blobOpData)
         : Actor(std::move(actor))
-        , BlobOpData(std::move(blobOpData))
+        , BlobOpData(blobOpData)
     {}
 };
 

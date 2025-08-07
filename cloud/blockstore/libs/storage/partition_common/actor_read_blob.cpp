@@ -106,7 +106,7 @@ void TReadBlobActor::NotifyCompleted(
     request->BytesCount = Request->BlobOffsets.size() * BlockSize;
     request->RequestTime = ResponseReceived - RequestSent;
     request->GroupId = Request->GroupId;
-    request->RequestId =  BlobOperationId;
+    request->BlobOperationId = BlobOperationId;
 
     if (DeadlineSeen) {
         request->DeadlineSeen = true;

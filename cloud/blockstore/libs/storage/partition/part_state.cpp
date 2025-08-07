@@ -435,11 +435,11 @@ ui32 TPartitionState::GetAlmostFullChannelCount() const
 
 void TPartitionState::EnqueueIORequest(
     ui32 channel,
-    NActors::IActorPtr actor,
-    TBlobOperationData blobOpData = {})
+    NActors::IActorPtr requestActor,
+    TBlobOperationData blobOpData)
 {
     auto& ch = GetChannel(channel);
-    ch.IORequests.emplace_back(std::move(actor), std::move(blobOpData));
+    ch.IORequests.emplace_back(std::move(requestActor), blobOpData);
     ++ch.IORequestsQueued;
 }
 
@@ -454,7 +454,7 @@ std::optional<TQueuedRequest> TPartitionState::DequeueIORequest(ui32 channel)
         return req;
     }
 
-    return {};
+    return std::nullopt;
 }
 
 void TPartitionState::CompleteIORequest(ui32 channel)
