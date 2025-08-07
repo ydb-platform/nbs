@@ -372,6 +372,9 @@ public:
              pendingRequest = std::move(pendingRequest)]() mutable
             {
                 auto self = ptr.lock();
+                // Lock action is invoked immediately or from
+                // UnlockRead/UnlockWrite calls that can be made only when
+                // TImpl is alive
                 Y_ABORT_UNLESS(self);
                 self->StartPendingReadDataRequest(std::move(pendingRequest));
             });
@@ -423,6 +426,9 @@ public:
              entry = entry.release()]() mutable
             {
                 auto self = ptr.lock();
+                // Lock action is invoked immediately or from
+                // UnlockRead/UnlockWrite calls that can be made only when
+                // TImpl is alive
                 Y_ABORT_UNLESS(self);
                 self->StartPendingWriteDataRequest(
                     std::unique_ptr<TWriteDataEntry>(entry),

@@ -1,13 +1,17 @@
 #include "overlapping_interval_set.h"
 
 #include <util/generic/algorithm.h>
-#include <util/system/yassert.h>
+#include <util/generic/yexception.h>
 
 namespace NCloud::NFileStore::NFuse {
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TOverlappingIntervalSet::AddInterval(ui64 begin, ui64 end)
 {
-    Y_ABORT_UNLESS(begin < end);
+    Y_ENSURE(
+        begin < end,
+        "Input argument [" << begin << ", " << end << ") is invalid");
 
     Intervals.push_back({
         .Begin = begin,
@@ -17,13 +21,17 @@ void TOverlappingIntervalSet::AddInterval(ui64 begin, ui64 end)
 
 void TOverlappingIntervalSet::RemoveInterval(ui64 begin, ui64 end)
 {
-    Y_ABORT_UNLESS(begin < end);
+    Y_ENSURE(
+        begin < end,
+        "Input argument [" << begin << ", " << end << ") is invalid");
 
     auto *it = FindIf(Intervals, [=](const TInterval& interval) {
         return interval.Begin == begin && interval.End == end;
     });
 
-    Y_ABORT_UNLESS(it != Intervals.end());
+    Y_ENSURE(it != Intervals.end(),
+        "Interval to remove [" << begin << ", " << end <<
+        ") was not found in the set");
 
     Intervals.erase(it);
 }

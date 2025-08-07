@@ -43,24 +43,23 @@ private:
     TVector<TPendingLock> PendingLocks;
 
 public:
-
-    // Requests a read lock on the specified range [begin, end).
+    // Requests a read lock on the specified non-empty range [begin, end).
     // If the lock can be acquired immediately, 'action' is called.
     // Otherwise, the request is queued.
     void LockRead(ui64 begin, ui64 end, std::function<void()> action);
 
-    // Requests a write lock on the specified range [begin, end).
+    // Requests a write lock on the specified non-empty range [begin, end).
     // If the lock can be acquired immediately, 'action' is called.
     // Otherwise, the request is queued.
     void LockWrite(ui64 begin, ui64 end, std::function<void()> action);
 
-    // Releases a read lock on the specified range [begin, end).
+    // Releases a read lock on the specified non-empty range [begin, end).
     // The lock must be acquired (it is not possible to cancel pending locks).
     // If there are any pending lock requests that can now be granted as
     // a result of this unlock, they will be processed.
     void UnlockRead(ui64 begin, ui64 end);
 
-    // Releases a write lock on the specified range [begin, end).
+    // Releases a write lock on the specified non-empty range [begin, end).
     // The lock must be acquired (it is not possible to cancel pending locks).
     // If there are any pending lock requests that can now be granted as
     // a result of this unlock, they will be processed.

@@ -2,11 +2,14 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/vector.h>
 #include <util/random/random.h>
 
 namespace NCloud::NFileStore::NFuse {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TInterval
 {

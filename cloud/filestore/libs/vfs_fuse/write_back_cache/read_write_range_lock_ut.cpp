@@ -6,6 +6,8 @@
 
 namespace NCloud::NFileStore::NFuse {
 
+////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
 {
     Y_UNIT_TEST(SimpleLockAndUnlock)
@@ -48,23 +50,23 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
         int readLockCount = 0;
         int writeLockCount = 0;
 
-        auto readLockIncrementer = [&]() {
+        auto readLockAction = [&]() {
             readLockCount++;
         };
 
-        auto writeLockIncrementer = [&]() {
+        auto writeLockAction = [&]() {
             writeLockCount++;
         };
 
-        rangeLock.LockRead(0, 10, readLockIncrementer);
-        rangeLock.LockRead(0, 10, readLockIncrementer);
-        rangeLock.LockRead(5, 15, readLockIncrementer);
+        rangeLock.LockRead(0, 10, readLockAction);
+        rangeLock.LockRead(0, 10, readLockAction);
+        rangeLock.LockRead(5, 15, readLockAction);
 
         UNIT_ASSERT_EQUAL(3, readLockCount);
 
-        rangeLock.LockWrite(20, 30, writeLockIncrementer);
-        rangeLock.LockWrite(20, 30, writeLockIncrementer);
-        rangeLock.LockWrite(25, 35, writeLockIncrementer);
+        rangeLock.LockWrite(20, 30, writeLockAction);
+        rangeLock.LockWrite(20, 30, writeLockAction);
+        rangeLock.LockWrite(25, 35, writeLockAction);
 
         UNIT_ASSERT_EQUAL(3, writeLockCount);
     }

@@ -1,7 +1,7 @@
 #include "read_write_range_lock.h"
 
 #include <util/generic/algorithm.h>
-#include <util/system/yassert.h>
+#include <util/generic/yexception.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -12,18 +12,20 @@ void TReadWriteRangeLock::LockRead(
     ui64 end,
     std::function<void()> action)
 {
-    Y_ABORT_UNLESS(begin < end);
+    Y_ENSURE(
+        begin < end,
+        "Input argument [" << begin << ", " << end << ") is invalid");
 
-    if (!WriteLocks.HasIntersection(begin, end)) {
-        ReadLocks.AddInterval(begin, end);
-        action();
-    } else {
+    if (WriteLocks.HasIntersection(begin, end)) {
         PendingLocks.push_back({
             .Begin = begin,
             .End = end,
             .Action = std::move(action),
             .IsWrite = false
         });
+    } else {
+        ReadLocks.AddInterval(begin, end);
+        action();
     }
 }
 
@@ -32,19 +34,21 @@ void TReadWriteRangeLock::LockWrite(
     ui64 end,
     std::function<void()> action)
 {
-    Y_ABORT_UNLESS(begin < end);
+    Y_ENSURE(
+        begin < end,
+        "Input argument [" << begin << ", " << end << ") is invalid");
 
     WriteLocks.AddInterval(begin, end);
 
-    if (!ReadLocks.HasIntersection(begin, end)) {
-        action();
-    } else {
+    if (ReadLocks.HasIntersection(begin, end)) {
         PendingLocks.push_back({
             .Begin = begin,
             .End = end,
             .Action = std::move(action),
             .IsWrite = true
         });
+    } else {
+        action();
     }
 }
 
