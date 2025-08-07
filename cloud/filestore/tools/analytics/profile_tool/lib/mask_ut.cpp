@@ -30,6 +30,8 @@ Y_UNIT_TEST_SUITE(TMaskSensitiveData)
             UNIT_ASSERT_VALUES_EQUAL("nodeid-7", mask.Transform("", 7));
             UNIT_ASSERT_VALUES_EQUAL("nodeid-8", mask.Transform("\x00", 8));
             UNIT_ASSERT_VALUES_EQUAL("nodeid-9", mask.Transform("\x00.cpp", 9));
+            UNIT_ASSERT_VALUES_EQUAL("nodeid-10", mask.Transform("1.\x00", 10));
+            UNIT_ASSERT_VALUES_EQUAL("nodeid-11.cpp", mask.Transform("1.2.3.cpp", 11));
         }
 
         {
