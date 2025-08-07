@@ -1,6 +1,6 @@
 #include "service_actor.h"
 
-#include "cloud/blockstore/libs/storage/api/throttling_manager.h"
+#include <cloud/blockstore/libs/storage/api/throttling_manager.h>
 
 #include <util/string/join.h>
 
@@ -76,8 +76,7 @@ void TUpdateThrottlingConfigActor::ReplyAndDie(
     NCloud::Reply(
         ctx,
         *RequestInfo,
-        std::make_unique<TEvService::TEvUpdateThrottlingConfigResponse>(
-            error));
+        std::make_unique<TEvService::TEvUpdateThrottlingConfigResponse>(error));
     Die(ctx);
 }
 
@@ -88,7 +87,7 @@ void TUpdateThrottlingConfigActor::HandleUpdateConfigResponse(
     auto* msg = ev->Get();
 
     const auto& error = msg->Error;
-    if (FAILED(error.GetCode())) {
+    if (HasError(error)) {
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::SERVICE,
@@ -100,9 +99,10 @@ void TUpdateThrottlingConfigActor::HandleUpdateConfigResponse(
 }
 
 void TUpdateThrottlingConfigActor::HandleWakeup(
-    const TEvents::TEvWakeup::TPtr& /*unused*/,
+    const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
+    Y_UNUSED(ev);
     ReplyAndDie(
         ctx,
         MakeError(E_TIMEOUT, "Throttling config was not applied: timeout hit"));
@@ -139,7 +139,7 @@ void TServiceActor::HandleUpdateThrottlingConfig(
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    LOG_DEBUG(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::SERVICE,
         "Update Throttling Manager config");

@@ -33,8 +33,9 @@ public:
         : CycleTime(cycleTime)
     {}
 
-    void Bootstrap(const TActorContext& /*unused*/)
+    void Bootstrap(const TActorContext& ctx)
     {
+        Y_UNUSED(ctx);
         Become(&TThis::StateWork);
     }
 
@@ -109,7 +110,7 @@ private:
             NotifyVolumes(ctx);
         }
 
-        NCloud::Send(ctx, event->Sender, std::move(response));
+        NCloud::Reply(ctx, *ev, std::move(response));
     }
 
     void HandleListMountedVolumesResponse(
@@ -136,9 +137,10 @@ private:
     }
 
     void HandleWakeup(
-        TEvents::TEvWakeup::TPtr& /*unused*/,
+        TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
+        Y_UNUSED(ev);
         NotifyVolumes(ctx);
     }
 };
