@@ -32,7 +32,7 @@ private:
     const EStorageAccessMode StorageAccessMode;
     const std::unique_ptr<TRequest> Request;
 
-    ui64 BlopOperationId = 0;
+    const ui64 BlobOperationId = 0;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -50,7 +50,7 @@ public:
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
-        ui64 blopOperationId);
+        ui64 blobOperationId);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

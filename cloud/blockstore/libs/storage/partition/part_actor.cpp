@@ -447,16 +447,18 @@ void TPartitionActor::ReleaseTransactions()
     }
 }
 
-void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
+void TPartitionActor::ProcessIOQueue(
+    const NActors::TActorContext& ctx,
+    ui32 channel)
 {
     while (auto reqOpt = State->DequeueIORequest(channel)) {
         auto req = std::move(*reqOpt);
 
-        if (req.BlobOperationId && req.GroupId && req.OperationType) {
+        if (req.BlobOpData.Id && req.BlobOpData.Group && req.BlobOpData.Type) {
             GroupOperationTimeTracker.OnStarted(
-                *req.BlobOperationId,
-                *req.GroupId,
-                *req.OperationType,
+                *req.BlobOpData.Id,
+                *req.BlobOpData.Group,
+                *req.BlobOpData.Type,
                 GetCycleCount());
         }
 

@@ -261,24 +261,34 @@ struct TScanDiskState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBlobOperationData
+{
+    std::optional<ui64> Id;
+    std::optional<ui32> Group;
+    std::optional<TGroupOperationTimeTracker::EGroupOperationType> Type;
+
+    TBlobOperationData() = default;
+
+    TBlobOperationData(
+        std::optional<ui64> id,
+        std::optional<ui32> group,
+        std::optional<TGroupOperationTimeTracker::EGroupOperationType> type)
+        : Id(id)
+        , Group(group)
+        , Type(type)
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TQueuedRequest
 {
     NActors::IActorPtr Actor;
-    std::optional<ui64> BlobOperationId;
-    std::optional<ui32> GroupId;
-    std::optional<TGroupOperationTimeTracker::EGroupOperationType>
-        OperationType;
+    TBlobOperationData BlobOpData;
 
-    explicit TQueuedRequest(
-        NActors::IActorPtr actor,
-        std::optional<ui64> blopOperationId = {},
-        std::optional<ui32> groupId = {},
-        std::optional<TGroupOperationTimeTracker::EGroupOperationType> opType =
-            {})
+    explicit TQueuedRequest(NActors::IActorPtr actor, TBlobOperationData blobOpData = {})
         : Actor(std::move(actor))
-        , BlobOperationId(blopOperationId)
-        , GroupId(groupId)
-        , OperationType(opType)
+        , BlobOpData(std::move(blobOpData))
     {}
 };
 
@@ -476,15 +486,10 @@ public:
     TVector<ui32> GetChannelsToReassign() const;
     TBackpressureReport CalculateCurrentBackpressure() const;
     ui32 GetAlmostFullChannelCount() const;
-
     void EnqueueIORequest(
         ui32 channel,
         NActors::IActorPtr actor,
-        std::optional<ui64> blopOperationId = {},
-        std::optional<ui32> groupId = {},
-        std::optional<TGroupOperationTimeTracker::EGroupOperationType> opType =
-            {});
-
+        TBlobOperationData blobOpData);
     std::optional<TQueuedRequest> DequeueIORequest(ui32 channel);
     void CompleteIORequest(ui32 channel);
     ui32 GetIORequestsInFlight() const;

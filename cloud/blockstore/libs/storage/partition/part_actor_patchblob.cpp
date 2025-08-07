@@ -326,7 +326,8 @@ void TPartitionActor::HandlePatchBlob(
             std::unique_ptr<TEvPartitionPrivate::TEvPatchBlobRequest>(
                 msg.Release()),
             originalGroupId,
-            LogTitle.GetChild(GetCycleCount())));
+            LogTitle.GetChild(GetCycleCount())),
+        {});
 
     ProcessIOQueue(ctx, channel);
 }

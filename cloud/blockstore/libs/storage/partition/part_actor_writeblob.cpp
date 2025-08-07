@@ -41,7 +41,7 @@ private:
     const ui32 GroupId;
     TChildLogTitle LogTitle;
 
-    ui64 BlobOperationId;
+    const ui64 BlobOperationId;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -413,9 +413,10 @@ void TPartitionActor::HandleWriteBlob(
             groupId,
             LogTitle.GetChild(GetCycleCount()),
             blobOperationId),
-        blobOperationId,
-        groupId,
-        TGroupOperationTimeTracker::EGroupOperationType::Write);
+        TBlobOperationData(
+            blobOperationId,
+            groupId,
+            TGroupOperationTimeTracker::EGroupOperationType::Write));
 
     ProcessIOQueue(ctx, channel);
 }
