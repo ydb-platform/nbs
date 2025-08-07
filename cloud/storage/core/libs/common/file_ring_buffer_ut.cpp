@@ -45,6 +45,17 @@ TString Dump(const TVector<TString>& entries)
     return sb;
 }
 
+TString Dump(TFileRingBuffer& rb)
+{
+    TVector<TString> entries;
+    rb.Visit([&](ui32 checksum, TStringBuf entry)
+    {
+        Y_UNUSED(checksum);
+        entries.emplace_back(entry);
+    });
+    return Dump(entries);
+}
+
 TString PopAll(TFileRingBuffer& rb)
 {
     TStringBuilder sb;
@@ -533,6 +544,126 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
             UNIT_ASSERT_EQUAL(Dump(afterVisit), Dump(afterPopBack));
         }
+    }
+
+    Y_UNIT_TEST(ShouldAllocateNoMoreThanMaxAllocationSize)
+    {
+        const auto f = TTempFileHandle();
+        const ui64 len = 64;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        TFileRingBuffer::TAllocationHandle handle;
+        UNIT_ASSERT(!rb.AllocateBack(rb.MaxAllocationSize() + 1, &handle));
+        UNIT_ASSERT(rb.AllocateBack(rb.MaxAllocationSize(), &handle));
+    }
+
+    Y_UNIT_TEST(ShouldSupportSeparateAllocationAndWritingEntries)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 32;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        TString data1 = "vasya";
+        TString data2 = "konstantin";
+        TString data3 = "petya";
+
+        TFileRingBuffer::TAllocationHandle handle1;
+        TFileRingBuffer::TAllocationHandle handle2;
+        TFileRingBuffer::TAllocationHandle handle3;
+
+        UNIT_ASSERT(rb.AllocateBack(data1.size(), &handle1));
+        UNIT_ASSERT(rb.AllocateBack(data2.size(), &handle2));
+        UNIT_ASSERT(!rb.AllocateBack(data3.size(), &handle3));
+
+        UNIT_ASSERT(handle1);
+        UNIT_ASSERT(handle2);
+        UNIT_ASSERT(!handle3);
+
+        rb.Write(handle2, [&](char* ptr, size_t size) {
+            UNIT_ASSERT_EQUAL(data2.size(), size);
+            data2.copy(ptr, data2.size());
+        });
+        rb.CommitAllocation(handle2);
+
+        rb.Write(handle1, [&](char* ptr, size_t size) {
+            UNIT_ASSERT_EQUAL(data1.size(), size);
+            data1.copy(ptr, data1.size());
+        });
+        rb.CommitAllocation(handle1);
+
+        UNIT_ASSERT_VALUES_EQUAL("vasya", rb.Front());
+        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL("konstantin", rb.Front());
+        rb.PopFront();
+        UNIT_ASSERT(rb.Empty());
+    }
+
+    Y_UNIT_TEST(ShouldFreeIncompleteEntriesOnRestore)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+
+        TString data1 = "vasya";
+        TString data2 = "tanya";
+        TString data3 = "petya";
+        TString data4 = "ivan";
+        TString data5 = "dima";
+
+        TFileRingBuffer::TAllocationHandle handle1;
+        TFileRingBuffer::TAllocationHandle handle2;
+        TFileRingBuffer::TAllocationHandle handle3;
+        TFileRingBuffer::TAllocationHandle handle4;
+        TFileRingBuffer::TAllocationHandle handle5;
+
+        UNIT_ASSERT(rb->AllocateBack(data1.size(), &handle1));
+        UNIT_ASSERT(rb->AllocateBack(data2.size(), &handle2));
+        UNIT_ASSERT(rb->AllocateBack(data3.size(), &handle3));
+        UNIT_ASSERT(rb->AllocateBack(data4.size(), &handle4));
+        UNIT_ASSERT(rb->AllocateBack(data5.size(), &handle5));
+
+        rb->Write(handle2, [&](char* ptr, size_t size) {
+            UNIT_ASSERT_EQUAL(data2.size(), size);
+            data2.copy(ptr, data2.size());
+        });
+        rb->CommitAllocation(handle2);
+
+        rb->Write(handle4, [&](char* ptr, size_t size) {
+            UNIT_ASSERT_EQUAL(data4.size(), size);
+            data4.copy(ptr, data4.size());
+        });
+        rb->CommitAllocation(handle4);
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+        UNIT_ASSERT_EQUAL("tanya", rb->Front());
+        UNIT_ASSERT_EQUAL("ivan", rb->Back());
+        UNIT_ASSERT_EQUAL("tanya, ivan", Dump(*rb));
+        UNIT_ASSERT_EQUAL(2, rb->Size());
+
+        UNIT_ASSERT(rb->PushBack("olya"));
+        UNIT_ASSERT(rb->PushBack("igor"));
+
+        rb->PopFront();
+        UNIT_ASSERT_EQUAL("ivan", rb->Front());
+
+        UNIT_ASSERT(rb->PushBack("konstantin"));
+        UNIT_ASSERT_EQUAL("ivan, olya, igor, konstantin", Dump(*rb));
+    }
+
+    Y_UNIT_TEST(ShouldGetEmptyBufferOnRestoreWhenAllEntriesAreIncomplete)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+
+        TFileRingBuffer::TAllocationHandle handle1;
+        TFileRingBuffer::TAllocationHandle handle2;
+
+        UNIT_ASSERT(rb->AllocateBack(10, &handle1));
+        UNIT_ASSERT(rb->AllocateBack(20, &handle2));
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
+        UNIT_ASSERT(rb->Empty());
     }
 }
 
