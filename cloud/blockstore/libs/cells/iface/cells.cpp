@@ -15,7 +15,7 @@ struct TCellManagerStub
         : ICellManager(nullptr)
     {}
 
-    [[nodiscard]] TResultOrError<THostEndpoint> GetCellEndpoint(
+    [[nodiscard]] TResultOrError<TCellHostEndpoint> GetCellEndpoint(
         const TString& cellId,
         const NClient::TClientAppConfigPtr& clientConfig) override
     {

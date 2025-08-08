@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
-#include <cloud/blockstore/libs/cells/iface/endpoints_setup.h>
+#include <cloud/blockstore/libs/cells/iface/endpoint_bootstrap.h>
 #include <cloud/blockstore/libs/cells/iface/host.h>
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
 #include <cloud/blockstore/libs/cells/iface/public.h>
@@ -16,9 +16,9 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct THost
-    : public IHost
-    , public std::enable_shared_from_this<THost>
+struct TCellHost
+    : public ICellHost
+    , public std::enable_shared_from_this<TCellHost>
 {
     enum class EState
     {
@@ -45,24 +45,24 @@ struct THost
     NThreading::TPromise<void> StartPromise = NThreading::NewPromise<void>();
     NThreading::TPromise<void> StopPromise = NThreading::NewPromise<void>();
 
-    IHostEndpointsSetupProvider::TSetupRdmaEndpointFuture RdmaFuture;
+    IHostEndpointsBoorstrap::TRdmaEndpointBootstrapFuture RdmaFuture;
 
-    THost(
-            THostConfig config,
+    TCellHost(
+            TCellHostConfig config,
             TBootstrap args)
-        : IHost(std::move(config))
+        : ICellHost(std::move(config))
         , Args(std::move(args))
     {}
 
     NThreading::TFuture<void> Start() override;
     NThreading::TFuture<void> Stop() override;
 
-    [[nodiscard]] TResultOrError<THostEndpoint> GetHostEndpoint(
+    [[nodiscard]] TResultOrError<TCellHostEndpoint> GetHostEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig,
         std::optional<NProto::ECellDataTransport> transport,
         bool allowGrpcFallback) override;
 
-    [[nodiscard]] THostConfig GetConfig() const
+    [[nodiscard]] TCellHostConfig GetConfig() const
     {
         return Config;
     }
@@ -73,12 +73,12 @@ private:
     bool SetupRdmaIfNeeded();
 
     void HandleRdmaSetupResult(
-        const IHostEndpointsSetupProvider::TRdmaResult& result);
+        const TResultOrError<IBlockStorePtr>& result);
 
-    [[nodiscard]] THostEndpoint CreateGrpcEndpoint(
+    [[nodiscard]] TCellHostEndpoint CreateGrpcEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig);
 
-    [[nodiscard]] THostEndpoint CreateRdmaEndpoint(
+    [[nodiscard]] TCellHostEndpoint CreateRdmaEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig);
 };
 

@@ -25,35 +25,35 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct THostInfo
+struct TCellHostInfo
 {
     TString Fqdn;
     NProto::ECellDataTransport Transport;
-    TPromise<IHostEndpointsSetupProvider::TGrpcResult> GrpcSetupPromise =
-        NewPromise<IHostEndpointsSetupProvider::TGrpcResult>();
-    TPromise<IHostEndpointsSetupProvider::TRdmaResult> RdmaSetupPromise =
-        NewPromise<IHostEndpointsSetupProvider::TRdmaResult>();
+    TPromise<NClient::IMultiClientEndpointPtr> GrpcSetupPromise =
+        NewPromise<NClient::IMultiClientEndpointPtr>();
+    TPromise<TResultOrError<IBlockStorePtr>> RdmaSetupPromise =
+        NewPromise<TResultOrError<IBlockStorePtr>>();
 };
 
-using THosts = THashMap<TString, THostInfo>;
+using TCellHosts = THashMap<TString, TCellHostInfo>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTestHostEndpointsSetupProvider
-    : public IHostEndpointsSetupProvider
+    : public IHostEndpointsBoorstrap
 {
-    using IHostEndpointsSetupProvider::TSetupGrpcEndpointFuture;
-    using IHostEndpointsSetupProvider::TSetupRdmaEndpointFuture;
+    using IHostEndpointsBoorstrap::TGrpcEndpointBootstrapFuture;
+    using IHostEndpointsBoorstrap::TRdmaEndpointBootstrapFuture;
 
-    THosts Hosts;
+    TCellHosts Hosts;
 
-    explicit TTestHostEndpointsSetupProvider(THosts hosts)
+    explicit TTestHostEndpointsSetupProvider(TCellHosts hosts)
         : Hosts(std::move(hosts))
     {}
 
-    TSetupGrpcEndpointFuture SetupHostGrpcEndpoint(
+    TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
         const TBootstrap& args,
-        const THostConfig& config) override
+        const TCellHostConfig& config) override
     {
         Y_UNUSED(args);
         Y_UNUSED(config);
@@ -61,9 +61,9 @@ struct TTestHostEndpointsSetupProvider
         return Hosts[config.GetFqdn()].GrpcSetupPromise.GetFuture();
     };
 
-    TSetupRdmaEndpointFuture SetupHostRdmaEndpoint(
+    TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
         const TBootstrap& args,
-        const THostConfig& config,
+        const TCellHostConfig& config,
         IBlockStorePtr client) override
     {
         Y_UNUSED(args);
@@ -141,10 +141,10 @@ struct TTestGrpcClient
     }
 };
 
-void ConfigureHosts(NProto::TCellConfig& proto, const THosts& hosts)
+void ConfigureHosts(NProto::TCellConfig& proto, const TCellHosts& hosts)
 {
     for (const auto& host: hosts) {
-        NProto::THostConfig cfg;
+        NProto::TCellHostConfig cfg;
         cfg.SetFqdn(host.second.Fqdn);
         cfg.SetTransport(host.second.Transport);
         *proto.AddHosts() = std::move(cfg);
@@ -159,7 +159,7 @@ Y_UNIT_TEST_SUITE(TCellTest)
 {
     Y_UNIT_TEST(ShouldAllocateEndpoints)
     {
-        THosts hosts {{
+        TCellHosts hosts {{
             {"h1", {.Fqdn = "h1", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}},
             {"h2", {.Fqdn = "h2", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}},
             {"h3", {.Fqdn = "h3", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}}}};
@@ -206,7 +206,7 @@ Y_UNIT_TEST_SUITE(TCellTest)
 
     Y_UNIT_TEST(ShouldAllocateMultipleEndpoints)
     {
-        THosts hosts {{
+        TCellHosts hosts {{
             {"h1", {.Fqdn = "h1", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}},
             {"h2", {.Fqdn = "h2", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}},
             {"h3", {.Fqdn = "h3", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}}}};

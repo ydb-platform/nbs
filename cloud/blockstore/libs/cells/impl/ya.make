@@ -4,7 +4,7 @@ SRCS(
     cell.cpp
     cells.cpp
     describe_volume.cpp
-    endpoints_setup.cpp
+    endpoint_bootstrap.cpp
     host.cpp
     remote_storage.cpp
 )

@@ -31,7 +31,7 @@ TCell::TCell(
     Shuffle(Unused.begin(), Unused.end());
 }
 
-TResultOrError<THostEndpoint> TCell::PickHost(
+TResultOrError<TCellHostEndpoint> TCell::PickHost(
     const NClient::TClientAppConfigPtr& clientConfig)
 {
     ResizeIfNeeded();
@@ -80,7 +80,7 @@ TCellEndpoints TCell::PickHosts(
 
 void TCell::ResizeIfNeeded()
 {
-    TVector<IHostPtr> tmp;
+    TVector<ICellHostPtr> tmp;
     with_lock(Lock) {
         if (Active.size() >= Config.GetMinCellConnections()) {
             return;
