@@ -149,6 +149,51 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleUpdateCounters(
     ScheduleCountersUpdate(ctx);
 }
 
+void TNonreplicatedPartitionMigrationCommonActor::HandleCreateCheckpoint(
+    const TEvService::TEvCreateCheckpointRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (!SrcActorId) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvCreateCheckpointResponse>(
+                MakeError(E_REJECTED, "Migration actors not set")));
+        return;
+    }
+    ForwardMessageToActor(ev, ctx, SrcActorId);
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::HandleDeleteCheckpoint(
+    const TEvService::TEvDeleteCheckpointRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (!SrcActorId) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvDeleteCheckpointResponse>(
+                MakeError(E_REJECTED, "Migration actors not set")));
+        return;
+    }
+    ForwardMessageToActor(ev, ctx, SrcActorId);
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::HandleDeleteCheckpointData(
+    const TEvVolume::TEvDeleteCheckpointDataRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (!SrcActorId) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvVolume::TEvDeleteCheckpointDataResponse>(
+                MakeError(E_REJECTED, "Migration actors not set")));
+        return;
+    }
+    ForwardMessageToActor(ev, ctx, SrcActorId);
+}
+
 void TNonreplicatedPartitionMigrationCommonActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
@@ -249,6 +294,12 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
             TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse,
             TimeoutCalculator->HandleUpdateBandwidthLimit);
 
+        HFunc(TEvService::TEvCreateCheckpointRequest, HandleCreateCheckpoint);
+        HFunc(TEvService::TEvDeleteCheckpointRequest, HandleDeleteCheckpoint);
+        HFunc(
+            TEvVolume::TEvDeleteCheckpointDataRequest,
+            HandleDeleteCheckpointData);
+
         HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -310,6 +361,12 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
 
         IgnoreFunc(TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse);
+
+        HFunc(TEvService::TEvCreateCheckpointRequest, RejectCreateCheckpoint);
+        HFunc(TEvService::TEvDeleteCheckpointRequest, RejectDeleteCheckpoint);
+        HFunc(
+            TEvVolume::TEvDeleteCheckpointDataRequest,
+            RejectDeleteCheckpointData);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         IgnoreFunc(NActors::TEvents::TEvWakeup);

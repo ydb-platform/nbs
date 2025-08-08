@@ -156,7 +156,7 @@ void TFollowerDiskActor::OnMigrationProgress(
 {
     auto newFollowerInfo = FollowerDiskInfo;
     newFollowerInfo.State = TFollowerDiskInfo::EState::Preparing;
-    newFollowerInfo.MigratedBytes = migrationIndex * LeaderBlockCount;
+    newFollowerInfo.MigratedBytes = migrationIndex * LeaderBlockSize;
 
     PersistFollowerState(ctx, newFollowerInfo);
 }

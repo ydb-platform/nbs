@@ -6,6 +6,8 @@
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/testlib/test_env.h>
 
+#include <cloud/storage/core/libs/common/media.h>
+
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -26,11 +28,18 @@ namespace {
 
 struct TFixture: public NUnitTest::TBaseFixture
 {
+    struct TVolumeInfo
+    {
+        TVolumeClient* VolumeClient = nullptr;
+        NProto::TVolumeClientInfo* VolumeClientInfo = nullptr;
+    };
+
     const ui64 VolumeBlockCount =
         DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
 
     std::unique_ptr<TTestActorRuntime> Runtime;
-    TMap<TString, TVolumeClient*> VolumeClients;
+
+    TMap<TString, TVolumeInfo> Volumes;
 
     void SetUp(NUnitTest::TTestContext& /*testContext*/) override
     {
@@ -60,7 +69,7 @@ struct TFixture: public NUnitTest::TBaseFixture
              i < TBlockStoreComponents::END;
              ++i)
         {
-            Runtime->SetLogPriority(i, NLog::PRI_DEBUG);
+            // Runtime->SetLogPriority(i, NLog::PRI_DEBUG);
         }
 
         Runtime->RegisterService(
@@ -107,8 +116,8 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     void ForwardToVolume(const TString& diskId, TAutoPtr<IEventHandle>& event)
     {
-        if (auto* volumeClient = VolumeClients.FindPtr(diskId)) {
-            (*volumeClient)->ForwardToPipe(event);
+        if (auto* volume = Volumes.FindPtr(diskId)) {
+            volume->VolumeClient->ForwardToPipe(event);
         } else {
             UNIT_ASSERT_C(
                 false,
@@ -116,22 +125,39 @@ struct TFixture: public NUnitTest::TBaseFixture
         }
     }
 
-    void CheckVolumesDataMatch(
-        TVolumeClient& volume1,
-        TVolumeClient& volume2,
-        const NProto::TVolumeClientInfo& clientInfo1,
-        const NProto::TVolumeClientInfo& clientInfo2) const
+    void CheckVolumesDataMatch() const
     {
+        const auto* volume1 = Volumes.FindPtr("vol1");
+        if (!volume1) {
+            UNIT_ASSERT_C(false, "Volume vol1 not found");
+            return;
+        }
+        const auto* volume2 = Volumes.FindPtr("vol2");
+        if (!volume2) {
+            UNIT_ASSERT_C(false, "Volume vol2 not found");
+            return;
+        }
+
+        // Make read client for volume2
+        auto clientInfo2 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume2->VolumeClient->AddClient(clientInfo2);
+
+        // Read all data and match it.
         for (ui64 position = 0; position < VolumeBlockCount; position += 1024) {
             auto range = TBlockRange64::MakeClosedIntervalWithLimit(
                 position,
                 position + 1024,
                 VolumeBlockCount - 1);
 
-            auto response1 =
-                volume1.ReadBlocks(range, clientInfo1.GetClientId());
-            auto response2 =
-                volume2.ReadBlocks(range, clientInfo2.GetClientId());
+            auto response1 = volume1->VolumeClient->ReadBlocks(
+                range,
+                volume1->VolumeClientInfo->GetClientId());
+            auto response2 = volume2->VolumeClient->ReadBlocks(
+                range,
+                clientInfo2.GetClientId());
             const auto& bufs1 = response1->Record.GetBlocks().GetBuffers();
             const auto& bufs2 = response2->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(bufs1.size(), bufs2.size());
@@ -162,9 +188,142 @@ struct TFixture: public NUnitTest::TBaseFixture
             }
         }
     }
+
+    void CreateCheckpoint(NProto::EStorageMediaKind mediaType)
+    {
+        auto* volume = Volumes.FindPtr("vol1");
+        if (!volume) {
+            UNIT_ASSERT_C(false, "Volume not found");
+            return;
+        }
+
+        volume->VolumeClient->CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume->VolumeClient->ReconnectPipe();
+        volume->VolumeClient->AddClient(*volume->VolumeClientInfo);
+
+        auto status = volume->VolumeClient->GetCheckpointStatus("c1");
+        const auto expectedStatus = IsDiskRegistryMediaKind(mediaType)
+                                        ? NProto::ECheckpointStatus::NOT_READY
+                                        : NProto::ECheckpointStatus::READY;
+        UNIT_ASSERT_EQUAL(expectedStatus, status->Record.GetCheckpointStatus());
+    }
+
+    void DeleteCheckpoint()
+    {
+        auto* volume = Volumes.FindPtr("vol1");
+        if (!volume) {
+            UNIT_ASSERT_C(false, "Volume not found");
+            return;
+        }
+
+        volume->VolumeClient->DeleteCheckpointData("c1");
+        // Reconnect pipe since partition has restarted.
+        volume->VolumeClient->ReconnectPipe();
+        volume->VolumeClient->AddClient(*volume->VolumeClientInfo);
+
+        volume->VolumeClient->DeleteCheckpoint("c1");
+        // Reconnect pipe since partition has restarted.
+        volume->VolumeClient->ReconnectPipe();
+        volume->VolumeClient->AddClient(*volume->VolumeClientInfo);
+    }
+
+    void WaitCheckpointReady()
+    {
+        auto* volume = Volumes.FindPtr("vol1");
+        if (!volume) {
+            UNIT_ASSERT_C(false, "Volume not found");
+            return;
+        }
+
+        for (size_t i = 0; i < 100; ++i) {
+            auto status = volume->VolumeClient->GetCheckpointStatus("c1");
+            if (status->Record.GetCheckpointStatus() ==
+                NProto::ECheckpointStatus::READY)
+            {
+                break;
+            }
+            Runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        }
+
+        auto status = volume->VolumeClient->GetCheckpointStatus("c1");
+        UNIT_ASSERT_EQUAL(
+            NProto::ECheckpointStatus::READY,
+            status->Record.GetCheckpointStatus());
+    }
+
+    void WriteBlocks(TBlockRange64 range) const
+    {
+        const auto* volume = Volumes.FindPtr("vol1");
+        if (!volume) {
+            UNIT_ASSERT_C(false, "Volume not found");
+            return;
+        }
+
+        for (size_t i = 0; i < 100; ++i) {
+            volume->VolumeClient->SendWriteBlocksRequest(
+                range,
+                volume->VolumeClientInfo->GetClientId(),
+                'b');
+            auto response = volume->VolumeClient->RecvWriteBlocksResponse();
+            if (response->GetStatus() == S_OK) {
+                return;
+            }
+            if (response->GetStatus() == E_REJECTED) {
+                Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+                continue;
+            }
+            UNIT_ASSERT_C(
+                false,
+                TStringBuilder() << "WriteBlocks " << range.Print() << "failed"
+                                 << FormatError(response->GetError()));
+        }
+        UNIT_ASSERT_C(
+            false,
+            TStringBuilder() << "WriteBlocks " << range.Print() << " failed");
+    }
+
+    void ZeroBlocks(TBlockRange64 range) const
+    {
+        const auto* volume = Volumes.FindPtr("vol1");
+        if (!volume) {
+            UNIT_ASSERT_C(false, "Volume not found");
+            return;
+        }
+
+        for (size_t i = 0; i < 100; ++i) {
+            volume->VolumeClient->SendZeroBlocksRequest(
+                range,
+                volume->VolumeClientInfo->GetClientId());
+            auto response = volume->VolumeClient->RecvZeroBlocksResponse();
+            if (response->GetStatus() == S_OK) {
+                return;
+            }
+            if (response->GetStatus() == E_REJECTED) {
+                Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+                continue;
+            }
+            UNIT_ASSERT_C(
+                false,
+                TStringBuilder() << "ZeroBlocks " << range.Print() << "failed"
+                                 << FormatError(response->GetError()));
+        }
+        UNIT_ASSERT_C(
+            false,
+            TStringBuilder() << "ZeroBlocks " << range.Print() << " failed");
+    }
 };
 
 }   // namespace
+
+enum class ECheckpointBehaviour
+{
+    None,
+    CreateBeforeLink,
+    CreateAfterLink,
+    CreateThenDelete,
+};
 
 Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
 {
@@ -508,10 +667,10 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
     }
 
     void DoShouldPrepareFollowerVolume(
-        TFixture& fixture,
+        TFixture & fixture,
         NProto::EStorageMediaKind leaderMediaType,
         NProto::EStorageMediaKind followerMediaType,
-        bool withCheckpoint)
+        ECheckpointBehaviour checkpoint)
     {
         // Intercept leader state changes
         TTestActorRuntimeBase::TEventFilter prevFilter;
@@ -533,7 +692,6 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
 
         // Create leader volume
         TVolumeClient volume1(*fixture.Runtime, 0, TestVolumeTablets[0]);
-        fixture.VolumeClients["vol1"] = &volume1;
         volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
             0,
             0,
@@ -552,10 +710,15 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL,
             0);
         volume1.AddClient(clientInfo1);
+        fixture.Volumes["vol1"] = {
+            .VolumeClient = &volume1,
+            .VolumeClientInfo = &clientInfo1};
 
         // Create follower volume
         TVolumeClient volume2(*fixture.Runtime, 0, TestVolumeTablets[1]);
-        fixture.VolumeClients["vol2"] = &volume2;
+        fixture.Volumes["vol2"] = {
+            .VolumeClient = &volume2,
+            .VolumeClientInfo = nullptr};
         volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
             0,
             0,
@@ -576,16 +739,8 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 'a');
         }
 
-        if (withCheckpoint) {
-            volume1.CreateCheckpoint("c1");
-
-            // Reconnect pipe since partition has restarted.
-            volume1.ReconnectPipe();
-
-            auto status = volume1.GetCheckpointStatus("c1");
-            UNIT_ASSERT_EQUAL(
-                NProto::ECheckpointStatus::NOT_READY,
-                status->Record.GetCheckpointStatus());
+        if (checkpoint == ECheckpointBehaviour::CreateBeforeLink) {
+            fixture.CreateCheckpoint(leaderMediaType);
         }
 
         // Link volumes
@@ -610,38 +765,19 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             volume1.AddClient(clientInfo1);
         };
 
+        if (checkpoint == ECheckpointBehaviour::CreateAfterLink) {
+            fixture.CreateCheckpoint(leaderMediaType);
+        }
+
+        if (checkpoint == ECheckpointBehaviour::CreateThenDelete) {
+            fixture.CreateCheckpoint(leaderMediaType);
+            fixture.DeleteCheckpoint();
+        }
+
         // Send WriteBlocks and ZeroBlocks to leader during migration
         for (ui64 pos = 0; pos < fixture.VolumeBlockCount; pos += 2048) {
-            for (;;) {
-                auto range = TBlockRange64::MakeOneBlock(pos + 1);
-                volume1.SendWriteBlocksRequest(
-                    range,
-                    clientInfo1.GetClientId(),
-                    'b');
-                auto response = volume1.RecvWriteBlocksResponse();
-                if (response->GetStatus() == S_OK) {
-                    break;
-                }
-                Cout << "WriteBlocks " << range
-                     << "failed: " << FormatError(response->GetError()) << Endl;
-                fixture.Runtime->DispatchEvents(
-                    {},
-                    TDuration::MilliSeconds(10));
-            }
-            for (;;) {
-                auto range = TBlockRange64::MakeOneBlock(pos + 2);
-                volume1.SendZeroBlocksRequest(range, clientInfo1.GetClientId());
-                auto response = volume1.RecvZeroBlocksResponse();
-                if (response->GetStatus() == S_OK) {
-                    break;
-                }
-                Cout << "ZeroBlocks " << range
-                     << " failed: " << FormatError(response->GetError())
-                     << Endl;
-                fixture.Runtime->DispatchEvents(
-                    {},
-                    TDuration::MilliSeconds(10));
-            }
+            fixture.WriteBlocks(TBlockRange64::MakeOneBlock(pos + 1));
+            fixture.ZeroBlocks(TBlockRange64::MakeOneBlock(pos + 2));
         }
 
         // Waiting for the follower disk to fill up.
@@ -657,34 +793,14 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 followerState);
         }
 
-        if (withCheckpoint) {
-            for (;;) {
-                auto status = volume1.GetCheckpointStatus("c1");
-                if (status->Record.GetCheckpointStatus() ==
-                    NProto::ECheckpointStatus::READY)
-                {
-                    break;
-                }
-                fixture.Runtime->DispatchEvents(
-                    {},
-                    TDuration::MilliSeconds(100));
-            }
-
-            auto status = volume1.GetCheckpointStatus("c1");
-            UNIT_ASSERT_EQUAL(
-                NProto::ECheckpointStatus::READY,
-                status->Record.GetCheckpointStatus());
+        if (checkpoint == ECheckpointBehaviour::CreateBeforeLink ||
+            checkpoint == ECheckpointBehaviour::CreateAfterLink)
+        {
+            fixture.WaitCheckpointReady();
         }
 
-        // Make read client for volume2 and check volumes content match.
-        auto clientInfo2 = CreateVolumeClientInfo(
-            NProto::VOLUME_ACCESS_READ_ONLY,
-            NProto::VOLUME_MOUNT_LOCAL,
-            0);
-        volume2.AddClient(clientInfo2);
-
-        fixture
-            .CheckVolumesDataMatch(volume1, volume2, clientInfo1, clientInfo2);
+        // Check volumes content match.
+        fixture.CheckVolumesDataMatch();
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_NRD_SSD, TFixture)
@@ -693,7 +809,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             *this,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::STORAGE_MEDIA_SSD,
-            false);
+            ECheckpointBehaviour::None);
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_SSD_NRD, TFixture)
@@ -702,7 +818,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             *this,
             NProto::STORAGE_MEDIA_SSD,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            false);
+            ECheckpointBehaviour::None);
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_NRD_NRD, TFixture)
@@ -711,7 +827,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             *this,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            false);
+            ECheckpointBehaviour::None);
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_SSD_MIRROR, TFixture)
@@ -720,7 +836,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             *this,
             NProto::STORAGE_MEDIA_SSD,
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
-            false);
+            ECheckpointBehaviour::None);
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_MIRROR_SSD, TFixture)
@@ -729,26 +845,60 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             *this,
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
             NProto::STORAGE_MEDIA_SSD,
-            false);
+            ECheckpointBehaviour::None);
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_SSD_SSD, TFixture)
     {
-        /* TODO(drbasic) vol1 partition can't reboot. Need to figure out why.
-        DoShouldPrepareFollowerVolume(
-            *this,
+        /* TODO(drbasic) vol1 partition can't reboot. Need to figure out
+        why. DoShouldPrepareFollowerVolume( *this,
             NProto::STORAGE_MEDIA_SSD,
             NProto::STORAGE_MEDIA_SSD);
         */
     }
 
-    Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_NRD_SSD_WithCheckpoint, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldPrepareFollowerVolume_NRD_SSD_WithCheckpointBefore,
+        TFixture)
     {
         DoShouldPrepareFollowerVolume(
             *this,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::STORAGE_MEDIA_SSD,
-            true);
+            ECheckpointBehaviour::CreateBeforeLink);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldPrepareFollowerVolume_NRD_SSD_WithCheckpointAfter,
+        TFixture)
+    {
+        DoShouldPrepareFollowerVolume(
+            *this,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            NProto::STORAGE_MEDIA_SSD,
+            ECheckpointBehaviour::CreateAfterLink);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldPrepareFollowerVolume_NRD_SSD_WithCheckpointCreateThenDelete,
+        TFixture)
+    {
+        DoShouldPrepareFollowerVolume(
+            *this,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            NProto::STORAGE_MEDIA_SSD,
+            ECheckpointBehaviour::CreateThenDelete);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldPrepareFollowerVolume_SSD_NRD_WithCheckpointAfter,
+        TFixture)
+    {
+        DoShouldPrepareFollowerVolume(
+            *this,
+            NProto::STORAGE_MEDIA_SSD,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            ECheckpointBehaviour::CreateAfterLink);
     }
 }
 
