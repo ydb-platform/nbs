@@ -301,20 +301,48 @@ struct TBootstrap
             << " and length " << expected.length());
     }
 
-    void ValidateCache(ui64 handle)
+    void ValidateCache(ui64 handle, ui64 offset, size_t length)
     {
-        TString data;
+        auto future = ReadFromCache(handle, offset, length);
+        auto response = future.GetValueSync();
+
+        // In concurrent tests, new data may be written at any moment.
+        // We need take the most recent ExpectedData each time.
+        //
+        // Also, a race condition is still possible here:
+        // ExpectedData is not fully synchonized with the internal state.
+        // The following scenario may happen:
+        // 1. WriteData has written new data.
+        // 2. ReadFromCache reads new data.
+        // 3. The callback updates ExpectedData.
+        TString expected;
         {
             std::unique_lock lock(ExpectedDataMutex);
-            data = ExpectedData[handle];
+            expected =
+                TStringBuf(ExpectedData[handle]).SubString(offset, length);
         }
 
-        for (size_t offset = 0; offset < data.length(); offset++) {
-            for (size_t len = 1; len + offset < data.length(); len++) {
-                auto substr = TStringBuf(data).SubString(offset, len);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expected,
+            response.GetBuffer().substr(response.GetBufferOffset()),
+            TStringBuilder() << " while validating @" << handle
+            << " at offset " << offset
+            << " and length " << length);
+    }
+
+    void ValidateCache(ui64 handle)
+    {
+        size_t dataLength = 0;
+        {
+            std::unique_lock lock(ExpectedDataMutex);
+            dataLength = ExpectedData[handle].length();
+        }
+
+        for (size_t offset = 0; offset < dataLength; offset++) {
+            for (size_t len = 1; len + offset < dataLength; len++) {
                 // TODO(svartmetal): validate with 'out of bounds'
                 // requests also
-                ValidateCache(handle, offset, TString(substr));
+                ValidateCache(handle, offset, len);
             }
         }
     }
@@ -481,154 +509,104 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldSequenceReadAndWriteRequestsAvoidingConflicts)
     {
+        // WriteBackCache implementation ensures than Flush can execute
+        // as fast as it can - when an entry is cached, nothing prevents it
+        // from being flushed.
+        //
+        // The synchronization point is transition of pending request to cache.
+        //
+        // It is not allowed:
+        // 1. To read data that overlaps with any pending write requests.
+        // 2. To write data that overlaps with any in-flight read operation.
+        //
+        // It is allowed to simultaneously read the same data or have
+        // multiple overlapping pending write requests.
+
         TBootstrap b;
+        b.Session->WriteDataHandler = [&] (auto, auto) {
+            return MakeFuture<NProto::TWriteDataResponse>({});
+        };
 
-        ui32 readAttempts = 0;
+        TVector<TPromise<NProto::TReadDataResponse>> readPromises;
 
-        auto readPromise1 = NewPromise<NProto::TReadDataResponse>();
         b.Session->ReadDataHandler = [&] (auto, auto) {
-            readAttempts++;
-            return readPromise1.GetFuture();
+            readPromises.push_back(NewPromise<NProto::TReadDataResponse>());
+            return readPromises.back().GetFuture();
         };
 
         auto readFuture1 = b.ReadFromCache(1, 0, 10);
-        UNIT_ASSERT_VALUES_EQUAL(1, readAttempts);
+        UNIT_ASSERT_VALUES_EQUAL(1, readPromises.size());
         UNIT_ASSERT(!readFuture1.HasValue());
 
-        auto readPromise2 = NewPromise<NProto::TReadDataResponse>();
-        b.Session->ReadDataHandler = [&] (auto, auto) {
-            readAttempts++;
-            return readPromise2.GetFuture();
-        };
-
+        // Multiple read requests do not block each other
         auto readFuture2 = b.ReadFromCache(1, 0, 10);
-        // it is allowed to read same data twice
-        UNIT_ASSERT_VALUES_EQUAL(2, readAttempts);
+        UNIT_ASSERT_VALUES_EQUAL(2, readPromises.size());
         UNIT_ASSERT(!readFuture2.HasValue());
 
-        ui32 flushAttempts = 0;
-
-        auto flushPromise1 = NewPromise<NProto::TWriteDataResponse>();
-        b.Session->WriteDataHandler = [&] (auto, auto) {
-            flushAttempts++;
-            return flushPromise1.GetFuture();
-        };
-
+        // It is not allowed to write data that is being read
         auto writeFuture1 = b.WriteToCache(1, 0, "abcdefghij");
-        // data is stored in cache, flush should not happen
-        UNIT_ASSERT_VALUES_EQUAL(0, flushAttempts);
-        UNIT_ASSERT(writeFuture1.HasValue());
+        UNIT_ASSERT(!writeFuture1.HasValue());
 
-        auto flushFuture1 = b.Cache.FlushData(1);
-        // it is not allowed to flush because read requests are in progress
-        UNIT_ASSERT_VALUES_EQUAL(0, flushAttempts);
-        UNIT_ASSERT(!flushFuture1.HasValue());
-
-        NProto::TReadDataResponse response;
-        response.SetBuffer("abcdefghij");
-
-        readPromise1.SetValue(response);
-        // still it is not allowed to flush, because one read request is left
-        UNIT_ASSERT_VALUES_EQUAL(0, flushAttempts);
-        UNIT_ASSERT(!flushFuture1.HasValue());
-
-        UNIT_ASSERT_VALUES_EQUAL(2, readAttempts);
-        UNIT_ASSERT(!readFuture2.HasValue());
-
-        readPromise2.SetValue(response);
-        // finally it is allowed to flush
-        UNIT_ASSERT_VALUES_EQUAL(1, flushAttempts);
-        UNIT_ASSERT(!flushFuture1.HasValue());
-
-        auto readPromise3 = NewPromise<NProto::TReadDataResponse>();
-        b.Session->ReadDataHandler = [&] (auto, auto) {
-            readAttempts++;
-            return readPromise3.GetFuture();
-        };
-
-        auto readFuture3 = b.ReadFromCache(1, 10, 10);
-        // and it is allowed to read other (non-overlapping) range
-        UNIT_ASSERT_VALUES_EQUAL(3, readAttempts);
+        // Write requests has priority over read requests
+        // Read request will not proceed because of pending write requests
+        auto readFuture3 = b.ReadFromCache(1, 0, 10);
+        UNIT_ASSERT_VALUES_EQUAL(2, readPromises.size());
         UNIT_ASSERT(!readFuture3.HasValue());
 
-        auto readPromise4 = NewPromise<NProto::TReadDataResponse>();
-        b.Session->ReadDataHandler = [&] (auto, auto) {
-            readAttempts++;
-            return readPromise4.GetFuture();
-        };
-
-        auto readFuture4 = b.ReadFromCache(2, 0, 10);
-        // also it is allowed to read other handle for the overlapping range
-        UNIT_ASSERT_VALUES_EQUAL(4, readAttempts);
+        // Can read and write other handle
+        auto writeFuture2 = b.WriteToCache(2, 0, "abcdefghij");
+        UNIT_ASSERT(writeFuture2.HasValue());
+        auto readFuture4 = b.ReadFromCache(2, 5, 15);
+        UNIT_ASSERT_VALUES_EQUAL(3, readPromises.size());
         UNIT_ASSERT(!readFuture4.HasValue());
 
-        auto flushPromise2 = NewPromise<NProto::TWriteDataResponse>();
-        b.Session->WriteDataHandler = [&] (auto, auto) {
-            flushAttempts++;
-            return flushPromise2.GetFuture();
-        };
+        // Cannot write to [5, 15) because there is an in-flight read request
+        // at [0, 10)
+        auto writeFuture3 = b.WriteToCache(1, 5, "0123456789");
+        UNIT_ASSERT(!writeFuture3.HasValue());
 
-        auto writeFuture2 = b.WriteToCache(2, 0, "abcdefghij");
-        // data is stored in cache, flush should not happen
-        UNIT_ASSERT_VALUES_EQUAL(1, flushAttempts);
-        UNIT_ASSERT(writeFuture2.HasValue());
+        // It is possible to write to [10, 20) because there are no in-flight
+        // read requests. There are write request but they don't interfere.
+        auto writeFuture4 = b.WriteToCache(1, 10, "ABCDEFGHIJ");
+        UNIT_ASSERT(writeFuture4.HasValue());
 
-        auto flushFuture2 = b.Cache.FlushData(2);
-        UNIT_ASSERT_VALUES_EQUAL(1, flushAttempts);
-        UNIT_ASSERT(!flushFuture2.HasValue());
-
-        readPromise4.SetValue(response);
-        UNIT_ASSERT(readFuture4.HasValue());
-        // it is allowed to flush other handle for the overlapping range
-        // once read is finished
-        UNIT_ASSERT_VALUES_EQUAL(2, flushAttempts);
-        UNIT_ASSERT(!flushFuture2.HasValue());
-
-        auto readPromise5 = NewPromise<NProto::TReadDataResponse>();
-        b.Session->ReadDataHandler = [&] (auto, auto) {
-            readAttempts++;
-            return readPromise5.GetFuture();
-        };
-
-        auto readFuture5 = b.ReadFromCache(1, 0, 11);
-        // but it is not allowed to read range that is not flushed yet
-        UNIT_ASSERT_VALUES_EQUAL(4, readAttempts);
+        // Cannot read [10, 25) because of pending write request at [5, 15)
+        auto readFuture5 = b.ReadFromCache(1, 10, 15);
+        UNIT_ASSERT_VALUES_EQUAL(3, readPromises.size());
         UNIT_ASSERT(!readFuture5.HasValue());
 
-        // finish writing (flushing) the data
-        flushPromise1.SetValue({});
-        // finally flush should happen
-        UNIT_ASSERT(flushFuture1.HasValue());
+        // It is still possible to write to [10, 20) because there are only
+        // pending read requests but no in-flight requests
+        auto writeFuture5 = b.WriteToCache(1, 10, "ABCDEFGHIJ");
+        UNIT_ASSERT(writeFuture5.HasValue());
 
-        // now it is allowed to read flushed range
-        UNIT_ASSERT_VALUES_EQUAL(5, readAttempts);
+        // Proceed with readFuture1
+        readPromises[0].SetValue({});
+        UNIT_ASSERT_VALUES_EQUAL(3, readPromises.size());
+        UNIT_ASSERT(readFuture1.HasValue());
+        UNIT_ASSERT(!readFuture2.HasValue());
+        UNIT_ASSERT(!readFuture3.HasValue());
         UNIT_ASSERT(!readFuture5.HasValue());
+        UNIT_ASSERT(!writeFuture1.HasValue());
+        UNIT_ASSERT(!writeFuture3.HasValue());
 
-        auto flushPromise3 = NewPromise<NProto::TWriteDataResponse>();
-        b.Session->WriteDataHandler = [&] (auto, auto) {
-            flushAttempts++;
-            return flushPromise3.GetFuture();
-        };
-
-        auto writeFuture3 = b.WriteToCache(1, 0, "abcdefghij");
-        // data is stored in cache, flush should not happen
-        UNIT_ASSERT_VALUES_EQUAL(2, flushAttempts);
+        // Proceed with readFuture2
+        // All write requests will be completed
+        // The remaining read requests ([0, 10) or [10, 25)) will proceed
+        // Read request [0, 10) is fullfilled by cache - it will not pass
+        // request to Session
+        readPromises[1].SetValue({});
+        UNIT_ASSERT_VALUES_EQUAL(4, readPromises.size());
+        UNIT_ASSERT(readFuture2.HasValue());
+        UNIT_ASSERT(readFuture3.HasValue());
+        UNIT_ASSERT(!readFuture5.HasValue());
+        UNIT_ASSERT(writeFuture1.HasValue());
         UNIT_ASSERT(writeFuture3.HasValue());
 
-        auto flushFuture3 = b.Cache.FlushData(1);
-        UNIT_ASSERT_VALUES_EQUAL(2, flushAttempts);
-        UNIT_ASSERT(!flushFuture2.HasValue());
-
-        response.SetBuffer("abcdefghijk");
-        readPromise5.SetValue(response);
+        // Complete all read requests
+        readPromises[3].SetValue({});
+        UNIT_ASSERT_VALUES_EQUAL(4, readPromises.size());
         UNIT_ASSERT(readFuture5.HasValue());
-        // and it is allowed to flush once read is finished
-        UNIT_ASSERT_VALUES_EQUAL(3, flushAttempts);
-        UNIT_ASSERT(!flushFuture2.HasValue());
-
-        flushPromise3.SetValue({});
-        // flush is finished
-        UNIT_ASSERT(flushFuture3.HasValue());
     }
 
     Y_UNIT_TEST(ShouldReadAfterWrite)
