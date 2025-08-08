@@ -1085,7 +1085,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     Now(),
                     db,
                     TDiskNotificationResult{
-                        TDiskNotification{"nrd0", notification->second},
+                        TDiskNotification{
+                            "nrd0",
+                            notification->second.SeqNo,
+                            state.GetAndDeleteRowToSeqNo("nrd0")},
                         {},
                     });
             });

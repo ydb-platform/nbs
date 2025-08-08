@@ -1297,4 +1297,8 @@ message TStorageServiceConfig
     optional bool VolumeThrottlingManagerEnabled = 447;
     // Duration between VolumeThrottlingManager notifications to volumes
     optional uint32 VolumeThrottlingManagerNotificationPeriodSeconds = 448;
+
+    // if true, disk registry doesn't replace devices of mirrored disks in one row
+    // per reallocation.
+    optional bool LimitMirrorDisksDeviceReplacementsPerRow = 449;
 }

@@ -224,30 +224,52 @@ auto TNotificationSystem::GetUserNotifications() const
 
 ui64 TNotificationSystem::AddReallocateRequest(
     TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    ui32 deviceRow)
+{
+    db.AddDiskToReallocate(diskId);
+    return AddReallocateRequest(diskId, deviceRow);
+}
+
+ui64 TNotificationSystem::AddReallocateRequest(
+    TDiskRegistryDatabase& db,
     const TDiskId& diskId)
 {
     db.AddDiskToReallocate(diskId);
     return AddReallocateRequest(diskId);
 }
 
+ui64 TNotificationSystem::AddReallocateRequest(
+    const TDiskId& diskId,
+    ui32 deviceRow)
+{
+    const auto seqNo = DisksToReallocateSeqNo++;
+    auto& notifyInfo = DisksToReallocate[diskId];
+
+    notifyInfo.SeqNo = seqNo;
+    notifyInfo.RowToSeqNo[deviceRow] = seqNo;
+
+    return seqNo;
+}
+
 ui64 TNotificationSystem::AddReallocateRequest(const TDiskId& diskId)
 {
     const auto seqNo = DisksToReallocateSeqNo++;
 
-    DisksToReallocate[diskId] = seqNo;
+    DisksToReallocate[diskId].SeqNo = seqNo;
 
     return seqNo;
 }
 
 ui64 TNotificationSystem::GetDiskSeqNo(const TDiskId& diskId) const
 {
-    const ui64* seqNo = DisksToReallocate.FindPtr(diskId);
+    const TNotifyDiskInfo* notifyDiskInfo = DisksToReallocate.FindPtr(diskId);
 
-    return seqNo ? *seqNo : 0;
+    return notifyDiskInfo ? notifyDiskInfo->SeqNo : 0;
 }
 
 auto TNotificationSystem::GetDisksToReallocate() const
-    -> const THashMap<TDiskId, ui64>&
+    -> const THashMap<TDiskId, TNotifyDiskInfo>&
 {
     return DisksToReallocate;
 }
@@ -258,7 +280,7 @@ void TNotificationSystem::DeleteDiskToReallocate(
     ui64 seqNo)
 {
     auto it = DisksToReallocate.find(diskId);
-    if (it != DisksToReallocate.end() && it->second == seqNo) {
+    if (it != DisksToReallocate.end() && it->second.SeqNo == seqNo) {
         DisksToReallocate.erase(it);
         db.DeleteDiskToReallocate(diskId);
     }
@@ -368,6 +390,19 @@ void TNotificationSystem::AddOutdatedVolumeConfig(
 {
     OutdatedVolumeConfigs[diskId] = VolumeConfigSeqNo++;
     db.AddOutdatedVolumeConfig(diskId);
+}
+
+THashMap<ui32, ui64> TNotificationSystem::GetAndDeleteRowToSeqNo(
+    const TDiskId& diskId)
+{
+    auto it = DisksToReallocate.find(diskId);
+    if (it == DisksToReallocate.end()) {
+        return {};
+    }
+    auto rowToSeqNo = std::move(it->second.RowToSeqNo);
+    it->second.RowToSeqNo.clear();
+
+    return rowToSeqNo;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskRegistry

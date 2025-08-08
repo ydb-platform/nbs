@@ -622,6 +622,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeThrottlingManagerNotificationPeriodSeconds,                      \
         TDuration,                                                             \
         Seconds(5)                                                            )\
+    xxx(LimitMirrorDisksDeviceReplacementsPerRow,          bool,   false      )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
