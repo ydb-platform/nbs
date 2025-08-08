@@ -263,16 +263,14 @@ struct TScanDiskState
 
 struct TBlobOperationData
 {
-    std::optional<ui64> Id;
-    std::optional<ui32> Group;
-    std::optional<TGroupOperationTimeTracker::EGroupOperationType> Type;
-
-    TBlobOperationData() = default;
+    ui64 Id;
+    ui32 Group;
+    TGroupOperationTimeTracker::EGroupOperationType Type;
 
     TBlobOperationData(
-        std::optional<ui64> id,
-        std::optional<ui32> group,
-        std::optional<TGroupOperationTimeTracker::EGroupOperationType> type)
+        ui64 id,
+        ui32 group,
+        TGroupOperationTimeTracker::EGroupOperationType type)
         : Id(id)
         , Group(group)
         , Type(type)
@@ -284,11 +282,11 @@ struct TBlobOperationData
 struct TQueuedRequest
 {
     NActors::IActorPtr Actor;
-    std::optional<TBlobOperationData> BlobOpData;
+    TBlobOperationData BlobOpData;
 
     explicit TQueuedRequest(
         NActors::IActorPtr actor,
-        std::optional<TBlobOperationData> blobOpData)
+        TBlobOperationData blobOpData)
         : Actor(std::move(actor))
         , BlobOpData(blobOpData)
     {}

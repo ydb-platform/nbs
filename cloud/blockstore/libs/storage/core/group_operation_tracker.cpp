@@ -77,6 +77,10 @@ void TGroupOperationTimeTracker::OnStarted(
             operationName = "Write";
             break;
         }
+        case EGroupOperationType::Patch: {
+            operationName = "Patch";
+            break;
+        }
     }
 
     TKey key{

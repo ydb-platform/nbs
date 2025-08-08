@@ -1437,7 +1437,9 @@ void AddGroupLatencyCSS(IOutputStream& out)
 {
     out << "<style>"
         << R"(
-        #latency-table-Read th, #latency-table-Write th {
+        #latency-table-Read th,
+        #latency-table-Write th,
+        #latency-table-Patch th {
             position: relative;
             width: 30px;
             height: 70px;
@@ -1449,7 +1451,8 @@ void AddGroupLatencyCSS(IOutputStream& out)
             text-align: center;
         }
         #latency-table-Read th > div,
-        #latency-table-Write th > div {
+        #latency-table-Write th > div,
+        #latency-table-Patch th > div {
             position: absolute;
             bottom: 35px;
             left: 60%;
@@ -1461,12 +1464,16 @@ void AddGroupLatencyCSS(IOutputStream& out)
             max-width: 160px;
             word-wrap: break-word;
         }
-        #latency-table-Read, #latency-table-Write {
+        #latency-table-Read,
+        #latency-table-Write,
+        #latency-table-Patch{
             border-collapse: collapse;
             margin-bottom: 20px;
             width: max-content;
         }
-        #latency-table-Read td, #latency-table-Write td {
+        #latency-table-Read td,
+        #latency-table-Write td,
+        #latency-table-Patch td {
             border: 1px solid #ccc;
             padding: 5px;
             text-align: center;
@@ -1474,7 +1481,8 @@ void AddGroupLatencyCSS(IOutputStream& out)
             vertical-align: middle;
         }
         #latency-table-Read td:first-child,
-        #latency-table-Write td:first-child {
+        #latency-table-Write td:first-child,
+        #latency-table-Patch td:first-child {
             text-align: left;
             font-weight: bold;
         })"
@@ -1487,7 +1495,7 @@ void DumpLatencyForOperations(
 {
     const auto timeBuckets = tracker.GetTimeBuckets();
 
-    for (const TString& op: {"Read", "Write"}) {
+    for (const TString& op: {"Read", "Write", "Patch"}) {
         HTML (out) {
             TAG (TH3) {
                 out << op << " Latency by Group";
@@ -1556,8 +1564,8 @@ void DumpGroupLatencyTab(
                     return;
                 }
 
-                const finished = { Read: {}, Write: {} };
-                const inflight = { Read: {}, Write: {} };
+                const finished = { Read: {}, Write: {}, Patch: {} };
+                const inflight = { Read: {}, Write: {}, Patch: {} };
 
                 for (const key in result.stat) {
                     const info = parseKey(key);
@@ -1579,7 +1587,7 @@ void DumpGroupLatencyTab(
                     target[info.op][info.groupId][info.latencyBucket] = result.stat[key];
                 }
 
-                ['Read', 'Write'].forEach(op => {
+                ['Read', 'Write', 'Patch'].forEach(op => {
                     const tbody = document.querySelector('#latency-table-' + op + ' tbody');
                     if (!tbody) {
                         return;

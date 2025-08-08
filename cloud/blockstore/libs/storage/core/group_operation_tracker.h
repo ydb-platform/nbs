@@ -25,6 +25,7 @@ public:
     {
         Read,
         Write,
+        Patch,
     };
 
     struct TBucketInfo

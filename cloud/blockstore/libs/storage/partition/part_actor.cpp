@@ -451,17 +451,19 @@ void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
 {
     while (auto reqOpt = State->DequeueIORequest(channel)) {
         auto req = std::move(*reqOpt);
-
-        if (req.BlobOpData->Id && req.BlobOpData->Group && req.BlobOpData->Type) {
-            GroupOperationTimeTracker.OnStarted(
-                *req.BlobOpData->Id,
-                *req.BlobOpData->Group,
-                *req.BlobOpData->Type,
-                GetCycleCount());
-        }
-
         auto actorId = NCloud::Register(ctx, std::move(req.Actor));
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Partition registered request actor with id [%lu]",
+            LogTitle.GetWithTime().c_str(),
+            actorId);
         Actors.Insert(actorId);
+        GroupOperationTimeTracker.OnStarted(
+            req.BlobOpData.Id,
+            req.BlobOpData.Group,
+            req.BlobOpData.Type,
+            GetCycleCount());
     }
 }
 

@@ -60,7 +60,7 @@ public:
         TDuration longRunningThreshold,
         ui32 groupId,
         TChildLogTitle logTitle,
-        ui64 BlobOperationId);
+        ui64 blobOperationId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -205,7 +205,7 @@ void TWriteBlobActor::NotifyCompleted(
     request->StorageStatusFlags = StorageStatusFlags;
     request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
     request->RequestTime = ResponseReceived - RequestSent;
-    request->RequestId = BlobOperationId;
+    request->BlopOperationId = BlobOperationId;
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }
@@ -395,7 +395,7 @@ void TPartitionActor::HandleWriteBlob(
     ui32 channel = msg->BlobId.Channel();
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->BlobId.Generation());
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
-    ui64 blobOperationId = BlobOperationId;
+    ui64 blobOperationId = BlobOperationId++;
 
     State->EnqueueIORequest(
         channel,
@@ -427,7 +427,7 @@ void TPartitionActor::HandleWriteBlobCompleted(
 {
     const auto* msg = ev->Get();
 
-    GroupOperationTimeTracker.OnFinished(msg->RequestId, GetCycleCount());
+    GroupOperationTimeTracker.OnFinished(msg->BlopOperationId, GetCycleCount());
 
     Actors.Erase(ev->Sender);
 
