@@ -85,13 +85,12 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
             readLock1 = true;
         });
 
-        // Obtaining second read lock for [0, 10) is done immediately
-        // RangeLock status:
-        // - read locks: [0, 10), [0, 10)
-
         UNIT_ASSERT(!rangeLock.Empty());
         UNIT_ASSERT(readLock1);
 
+        // Obtaining second read lock for [0, 10) is done immediately
+        // RangeLock status:
+        // - read locks: [0, 10), [0, 10)
         readLock1 = false;
         rangeLock.LockRead(0, 10, [&]() {
             readLock1 = true;
