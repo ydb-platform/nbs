@@ -247,7 +247,7 @@ public:
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , AutomaticFlushPeriod(automaticFlushPeriod)
-        , RangeLock(new TGlobalReadWriteRangeLock())
+        , RangeLock(std::make_shared<TGlobalReadWriteRangeLock>())
         , WriteDataRequestsQueue(filePath, capacityBytes)
     {
         // File ring buffer should be able to store any valid TWriteDataRequest.
