@@ -701,9 +701,7 @@ void TMirrorPartitionActor::HandleAddTagsResponse(
     if (HasError(error)) {
         ReportMirroredDiskAddTagFailed(
             FormatError(error),
-            {{"disk", DiskId},
-             {"IntermediateWriteBufferTagName",
-              IntermediateWriteBufferTagName}});
+            {{"disk", DiskId}, {"tag", IntermediateWriteBufferTagName}});
         return;
     }
     LOG_WARN(

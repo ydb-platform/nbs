@@ -226,7 +226,10 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         ui64 value = stats.Get##category##Counters().Get##name();             \
         Y_DEBUG_ABORT_UNLESS(value >= counter.Get());                         \
         if (value < counter.Get()) {                                          \
-            ReportCounterUpdateRace({{"disk", PartitionConfig.GetDiskId()}}); \
+            ReportCounterUpdateRace(                                          \
+                {{"disk", PartitionConfig.GetDiskId()},                       \
+                 {"category", TString(#category)},                            \
+                 {"counter", TString(#name)}});                               \
             LOG_ERROR(                                                        \
                 ctx,                                                          \
                 TBlockStoreComponents::PARTITION,                             \
