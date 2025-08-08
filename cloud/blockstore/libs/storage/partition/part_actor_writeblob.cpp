@@ -205,7 +205,7 @@ void TWriteBlobActor::NotifyCompleted(
     request->StorageStatusFlags = StorageStatusFlags;
     request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
     request->RequestTime = ResponseReceived - RequestSent;
-    request->BlopOperationId = BlobOperationId;
+    request->BlobOperationId = BlobOperationId;
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }
@@ -427,7 +427,7 @@ void TPartitionActor::HandleWriteBlobCompleted(
 {
     const auto* msg = ev->Get();
 
-    GroupOperationTimeTracker.OnFinished(msg->BlopOperationId, GetCycleCount());
+    GroupOperationTimeTracker.OnFinished(msg->BlobOperationId, GetCycleCount());
 
     Actors.Erase(ev->Sender);
 
