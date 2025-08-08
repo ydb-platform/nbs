@@ -26,19 +26,19 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TestHostEndpointsSetupProvider
-    : public IHostEndpointsSetupProvider
+    : public IHostEndpointsBoorstrap
 {
-    using IHostEndpointsSetupProvider::TSetupGrpcEndpointFuture;
-    using IHostEndpointsSetupProvider::TSetupRdmaEndpointFuture;
+    using IHostEndpointsBoorstrap::TGrpcEndpointBootstrapFuture;
+    using IHostEndpointsBoorstrap::TRdmaEndpointBootstrapFuture;
 
-    TPromise<IHostEndpointsSetupProvider::TGrpcResult> GrpcSetupPromise =
-        NewPromise<IHostEndpointsSetupProvider::TGrpcResult>();
-    TPromise<IHostEndpointsSetupProvider::TRdmaResult> RdmaSetupPromise =
-        NewPromise<IHostEndpointsSetupProvider::TRdmaResult>();
+    TPromise<NClient::IMultiClientEndpointPtr> GrpcSetupPromise =
+        NewPromise<NClient::IMultiClientEndpointPtr>();
+    TPromise<TResultOrError<IBlockStorePtr>> RdmaSetupPromise =
+        NewPromise<TResultOrError<IBlockStorePtr>>();
 
-    TSetupGrpcEndpointFuture SetupHostGrpcEndpoint(
+    TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
         const TBootstrap& args,
-        const THostConfig& config) override
+        const TCellHostConfig& config) override
     {
         Y_UNUSED(args);
         Y_UNUSED(config);
@@ -46,9 +46,9 @@ struct TestHostEndpointsSetupProvider
         return GrpcSetupPromise.GetFuture();
     };
 
-    TSetupRdmaEndpointFuture SetupHostRdmaEndpoint(
+    TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
         const TBootstrap& args,
-        const THostConfig& config,
+        const TCellHostConfig& config,
         IBlockStorePtr client) override
     {
         Y_UNUSED(args);
@@ -56,7 +56,7 @@ struct TestHostEndpointsSetupProvider
         Y_UNUSED(client);
 
          RdmaSetupPromise =
-            NewPromise<IHostEndpointsSetupProvider::TRdmaResult>();
+            NewPromise<TResultOrError<IBlockStorePtr>>();
 
         return RdmaSetupPromise.GetFuture();
     }
@@ -106,7 +106,7 @@ struct TTestGrpcClient
     void Stop() override
     {}
 
-    virtual IBlockStorePtr CreateEndpoint(
+    IBlockStorePtr CreateEndpoint(
         const TString& host,
         ui32 port,
         bool isSecure) override
@@ -117,7 +117,7 @@ struct TTestGrpcClient
         return std::make_shared<TTestBlockStore>();
     }
 
-    virtual IBlockStorePtr CreateDataEndpoint(
+    IBlockStorePtr CreateDataEndpoint(
         const TString& host,
         ui32 port,
         bool isSecure) override
@@ -133,7 +133,7 @@ struct TTestGrpcClient
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(THostTest)
+Y_UNIT_TEST_SUITE(TCellHostTest)
 {
     Y_UNIT_TEST(ShouldStartGrpcEndpoint)
     {
@@ -142,16 +142,16 @@ Y_UNIT_TEST_SUITE(THostTest)
         cellCfg.SetTransport(NProto::CELL_DATA_TRANSPORT_GRPC);
         TCellConfig cell{cellCfg};
 
-        NProto::THostConfig hostCfg;
+        NProto::TCellHostConfig hostCfg;
         hostCfg.SetFqdn("host");
-        THostConfig hostConfig{hostCfg, cell};
+        TCellHostConfig hostConfig{hostCfg, cell};
 
         auto setup = std::make_shared<TestHostEndpointsSetupProvider>();
 
         TBootstrap args;
         args.EndpointsSetup = setup;
 
-        auto manager = std::make_shared<THost>(
+        auto manager = std::make_shared<TCellHost>(
             hostConfig,
             args);
 
@@ -231,16 +231,16 @@ Y_UNIT_TEST_SUITE(THostTest)
         cellCfg.SetTransport(NProto::CELL_DATA_TRANSPORT_RDMA);
         TCellConfig cell{cellCfg};
 
-        NProto::THostConfig hostCfg;
+        NProto::TCellHostConfig hostCfg;
         hostCfg.SetFqdn("host");
-        THostConfig hostConfig{hostCfg, cell};
+        TCellHostConfig hostConfig{hostCfg, cell};
 
         auto setup = std::make_shared<TestHostEndpointsSetupProvider>();
 
         TBootstrap args;
         args.EndpointsSetup = setup;
 
-        auto manager = std::make_shared<THost>(
+        auto manager = std::make_shared<TCellHost>(
             hostConfig,
             args);
 
@@ -263,8 +263,7 @@ Y_UNIT_TEST_SUITE(THostTest)
         UNIT_ASSERT(!manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
 
         setup->RdmaSetupPromise.SetValue(
-            IHostEndpointsSetupProvider::TRdmaResult(
-                std::make_shared<TTestBlockStore>()));
+            TResultOrError<IBlockStorePtr>(std::make_shared<TTestBlockStore>()));
 
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_GRPC));
@@ -315,16 +314,16 @@ Y_UNIT_TEST_SUITE(THostTest)
         cellCfg.SetTransport(NProto::CELL_DATA_TRANSPORT_RDMA);
         TCellConfig cell{cellCfg};
 
-        NProto::THostConfig hostCfg;
+        NProto::TCellHostConfig hostCfg;
         hostCfg.SetFqdn("host");
-        THostConfig hostConfig{hostCfg, cell};
+        TCellHostConfig hostConfig{hostCfg, cell};
 
         auto setup = std::make_shared<TestHostEndpointsSetupProvider>();
 
         TBootstrap args;
         args.EndpointsSetup = setup;
 
-        auto manager = std::make_shared<THost>(
+        auto manager = std::make_shared<TCellHost>(
             hostConfig,
             args);
 
@@ -347,14 +346,13 @@ Y_UNIT_TEST_SUITE(THostTest)
         UNIT_ASSERT(!manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
 
         setup->RdmaSetupPromise.SetValue(
-            IHostEndpointsSetupProvider::TRdmaResult(MakeError(E_FAIL, "Error")));
+            TResultOrError<IBlockStorePtr>(MakeError(E_FAIL, "Error")));
 
         UNIT_ASSERT(!manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_GRPC));
 
         setup->RdmaSetupPromise.SetValue(
-            IHostEndpointsSetupProvider::TRdmaResult(
-                std::make_shared<TTestBlockStore>()));
+            TResultOrError<IBlockStorePtr>(std::make_shared<TTestBlockStore>()));
 
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_GRPC));

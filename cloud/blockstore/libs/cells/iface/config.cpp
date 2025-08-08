@@ -144,9 +144,9 @@ NProto::TClientAppConfig CreateClientAppConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THostConfig::THostConfig(
-        NProto::THostConfig hostConfig,
-        TCellConfig cellConfig)
+TCellHostConfig::TCellHostConfig(
+        NProto::TCellHostConfig hostConfig,
+        const TCellConfig& cellConfig)
     : GrpcPort(cellConfig.GetGrpcPort())
     , SecureGrpcPort(cellConfig.GetSecureGrpcPort())
     , RdmaPort(cellConfig.GetRdmaPort())
@@ -164,7 +164,7 @@ TCellConfig::TCellConfig(NProto::TCellConfig config)
     : Config(std::move(config))
 {
     for (const auto& h: Config.GetHosts()) {
-        ConfiguredHosts.emplace(h.GetFqdn(), THostConfig(h, *this));
+        ConfiguredHosts.emplace(h.GetFqdn(), TCellHostConfig(h, *this));
     }
 }
 

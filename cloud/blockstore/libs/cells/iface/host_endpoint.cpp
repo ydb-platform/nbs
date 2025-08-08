@@ -7,17 +7,17 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THostEndpoint::THostEndpoint(
+TCellHostEndpoint::TCellHostEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig,
         const TString& fqdn,
         IBlockStorePtr controlService,
-        IBlockStorePtr storageService)
+        IBlockStorePtr dataService)
     : LogTag(BuildLogTag(clientConfig, fqdn))
     , Service(std::move(controlService))
-    , Storage(CreateRemoteStorage(std::move(storageService)))
+    , Storage(CreateRemoteStorage(std::move(dataService)))
 {}
 
-TString THostEndpoint::BuildLogTag(
+TString TCellHostEndpoint::BuildLogTag(
     const NClient::TClientAppConfigPtr& clientConfig,
     const TString& fqdn)
 {

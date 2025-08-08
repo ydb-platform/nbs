@@ -9,7 +9,7 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THostEndpoint
+class TCellHostEndpoint
 {
 private:
     const TString LogTag;
@@ -21,12 +21,12 @@ private:
         const TString& fqdn);
 
 public:
-    THostEndpoint() = default;
-    THostEndpoint(
+    TCellHostEndpoint() = default;
+    TCellHostEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig,
         const TString& fqdn,
         IBlockStorePtr controlService,
-        IBlockStorePtr storageService);
+        IBlockStorePtr dataService);
 
     const TString& GetLogTag() const
     {
@@ -44,7 +44,9 @@ public:
     }
 };
 
-using TCellEndpoints = TVector<THostEndpoint>;
+using TCellEndpoints = TVector<TCellHostEndpoint>;
+
+// maps cellid to vector of endpoints in the cell
 using TCellsEndpoints = THashMap<TString, TCellEndpoints>;
 
 }   // namespace NCloud::NBlockStore::NCells

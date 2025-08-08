@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/cells/iface/cell.h>
 #include <cloud/blockstore/libs/cells/iface/cells.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
-#include <cloud/blockstore/libs/cells/iface/endpoints_setup.h>
+#include <cloud/blockstore/libs/cells/iface/endpoint_bootstrap.h>
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -43,7 +43,7 @@ struct TCellManager
     void Start() override;
     void Stop() override;
 
-    TResultOrError<THostEndpoint> GetCellEndpoint(
+    TResultOrError<TCellHostEndpoint> GetCellEndpoint(
         const TString& cellId,
         const NClient::TClientAppConfigPtr& clientConfig) override;
 

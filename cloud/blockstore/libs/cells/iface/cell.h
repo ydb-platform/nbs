@@ -24,7 +24,7 @@ namespace NCloud::NBlockStore::NCells {
 struct ICell
     : public IStartable
 {
-    [[nodiscard]] virtual TResultOrError<THostEndpoint> GetCellClient(
+    [[nodiscard]] virtual TResultOrError<TCellHostEndpoint> GetCellClient(
         const NClient::TClientAppConfigPtr& clientConfig) = 0;
 
     [[nodiscard]] virtual TCellEndpoints GetCellClients(

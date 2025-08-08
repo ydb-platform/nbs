@@ -83,7 +83,7 @@ void TCellManager::Stop()
     Args.GrpcClient->Stop();
 }
 
-TResultOrError<THostEndpoint> TCellManager::GetCellEndpoint(
+TResultOrError<TCellHostEndpoint> TCellManager::GetCellEndpoint(
     const TString& cellId,
     const NClient::TClientAppConfigPtr& clientConfig)
 {

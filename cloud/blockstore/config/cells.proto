@@ -18,7 +18,7 @@ enum ECellDataTransport
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message THostConfig
+message TCellHostConfig
 {
     optional string Fqdn = 1;
 
@@ -42,7 +42,7 @@ message TCellConfig
 
     optional ECellDataTransport Transport = 7;
 
-    repeated THostConfig Hosts = 8;
+    repeated TCellHostConfig Hosts = 8;
 
     // Number of host in a cell to send DescribeVolume requests during volume
     // lookup.

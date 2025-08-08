@@ -26,7 +26,7 @@ struct ICellManager
         : Config(std::move(config))
     {}
 
-    [[nodiscard]] virtual TResultOrError<THostEndpoint> GetCellEndpoint(
+    [[nodiscard]] virtual TResultOrError<TCellHostEndpoint> GetCellEndpoint(
         const TString& cellId,
         const NClient::TClientAppConfigPtr& clientConfig) = 0;
 
