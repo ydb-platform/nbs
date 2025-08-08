@@ -1054,7 +1054,8 @@ private:
             volume.GetBlockSize() != DefaultLocalSSDBlockSize)
         {
             ReportStartExternalEndpointError(
-                "Local disks should have block size of 512 bytes.");
+                "Local disks should have block size of 512 bytes",
+                {{"disk", volume.GetDiskId()}});
         }
 
         TVector<TString> args {
