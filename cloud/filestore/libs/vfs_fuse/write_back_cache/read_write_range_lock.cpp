@@ -14,7 +14,7 @@ void TReadWriteRangeLock::LockRead(
 {
     Y_ENSURE(
         begin < end,
-        "Input argument [" << begin << ", " << end << ") is invalid");
+        "Input argument [" << begin << ", " << end << ") is invalid interval");
 
     if (WriteLocks.HasIntersection(begin, end)) {
         PendingLocks.push_back({
@@ -36,7 +36,7 @@ void TReadWriteRangeLock::LockWrite(
 {
     Y_ENSURE(
         begin < end,
-        "Input argument [" << begin << ", " << end << ") is invalid");
+        "Input argument [" << begin << ", " << end << ") is invalid interval");
 
     WriteLocks.AddInterval(begin, end);
 

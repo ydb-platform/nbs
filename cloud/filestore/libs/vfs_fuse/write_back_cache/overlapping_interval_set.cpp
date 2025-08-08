@@ -11,7 +11,7 @@ void TOverlappingIntervalSet::AddInterval(ui64 begin, ui64 end)
 {
     Y_ENSURE(
         begin < end,
-        "Input argument [" << begin << ", " << end << ") is invalid");
+        "Input argument [" << begin << ", " << end << ") is invalid interval");
 
     Intervals.push_back({
         .Begin = begin,
@@ -23,7 +23,7 @@ void TOverlappingIntervalSet::RemoveInterval(ui64 begin, ui64 end)
 {
     Y_ENSURE(
         begin < end,
-        "Input argument [" << begin << ", " << end << ") is invalid");
+        "Input argument [" << begin << ", " << end << ") is invalid interval");
 
     auto *it = FindIf(Intervals, [=](const TInterval& interval) {
         return interval.Begin == begin && interval.End == end;

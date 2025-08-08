@@ -344,7 +344,10 @@ public:
         std::shared_ptr<NProto::TReadDataRequest> request)
     {
         if (request->GetLength() == 0) {
-            return MakeFuture<NProto::TReadDataResponse>();
+            NProto::TReadDataResponse response;
+            *response.MutableError() =
+                MakeError(E_ARGUMENT, "ReadData request has zero length");
+            return MakeFuture(std::move(response));
         }
 
         auto handle = request->GetHandle();
@@ -375,8 +378,11 @@ public:
                 // Lock action is invoked immediately or from
                 // UnlockRead/UnlockWrite calls that can be made only when
                 // TImpl is alive
-                Y_ABORT_UNLESS(self);
-                self->StartPendingReadDataRequest(std::move(pendingRequest));
+                Y_DEBUG_ABORT_UNLESS(self);
+                if (self) {
+                    self->StartPendingReadDataRequest(
+                        std::move(pendingRequest));
+                }
             });
 
         return result;
@@ -392,7 +398,10 @@ public:
 
         auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
         if (entry->GetBuffer().Size() == 0) {
-            return MakeFuture<NProto::TWriteDataResponse>();
+            NProto::TWriteDataResponse response;
+            *response.MutableError() =
+                MakeError(E_ARGUMENT, "WriteData request has zero length");
+            return MakeFuture(std::move(response));
         }
 
         auto serializedSize = entry->GetSerializedSize();
@@ -429,10 +438,12 @@ public:
                 // Lock action is invoked immediately or from
                 // UnlockRead/UnlockWrite calls that can be made only when
                 // TImpl is alive
-                Y_ABORT_UNLESS(self);
-                self->StartPendingWriteDataRequest(
-                    std::unique_ptr<TWriteDataEntry>(entry),
-                    std::move(promise));
+                Y_DEBUG_ABORT_UNLESS(self);
+                if (self) {
+                    self->StartPendingWriteDataRequest(
+                        std::unique_ptr<TWriteDataEntry>(entry),
+                        std::move(promise));
+                }
             });
 
         return future;
@@ -778,11 +789,11 @@ private:
 
     static bool IsIntervalFullyCoveredByParts(
         const TVector<TWriteDataEntryPart>& parts,
-        ui64 startingFromOffset,
+        ui64 offset,
         ui64 length)
     {
-        if (parts.empty() || parts.front().Offset != startingFromOffset ||
-            parts.back().End() != startingFromOffset + length)
+        if (parts.empty() || parts.front().Offset != offset ||
+            parts.back().End() != offset + length)
         {
             return false;
         }
@@ -864,18 +875,21 @@ private:
             return;
         }
 
-        Y_ABORT_UNLESS(
-            response.GetBufferOffset() <= response.GetBuffer().length());
-
         char* responseBufferData =
             response.MutableBuffer()->begin() + response.GetBufferOffset();
+
+        Y_ABORT_UNLESS(
+            response.GetBuffer().length() >= response.GetBufferOffset(),
+            "reponse buffer length %lu is expected to be >= buffer offset %u",
+            response.GetBuffer().length(),
+            response.GetBufferOffset());
 
         auto responseBufferLength =
             response.GetBuffer().length() - response.GetBufferOffset();
 
         Y_ABORT_UNLESS(
             responseBufferLength <= state.Length,
-            "response buffer length %lu is expected to be <= %lu",
+            "response buffer length %lu is expected to be <= request length %lu",
             responseBufferLength,
             state.Length);
 

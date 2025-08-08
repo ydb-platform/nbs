@@ -510,7 +510,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldSequenceReadAndWriteRequestsAvoidingConflicts)
     {
         // WriteBackCache implementation ensures than Flush can execute
-        // as fast as is can - when an entry is cached, nothing prevents it
+        // as fast as it can - when an entry is cached, nothing prevents it
         // from being flushed.
         //
         // The synchronization point is transition of pending request to cache.
