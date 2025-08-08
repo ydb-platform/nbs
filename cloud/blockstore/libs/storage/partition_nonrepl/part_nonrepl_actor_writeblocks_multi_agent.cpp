@@ -4,6 +4,7 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
@@ -112,16 +113,16 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
         request->Record.SetMultideviceRequest(false);
     }
 
-    if (Request.ChecksumsSize() > 0) {
-        Y_DEBUG_ABORT_UNLESS(Request.ChecksumsSize() == 1);
-        const auto& checksum = Request.GetChecksums(0);
+    const auto& checksum = CombineChecksums(Request.GetChecksums());
+    if (checksum.GetByteCount() > 0) {
         if (checksum.GetByteCount() == Request.Range.Size() * Request.BlockSize)
         {
             *request->Record.MutableChecksum() = checksum;
         } else {
             ReportChecksumCalculationError(
                 TStringBuilder()
-                << "Incorrectly calculated checksum for block range "
+                << "DiskAgentMultiWriteActor: Incorrectly calculated checksum "
+                   "for block range "
                 << DescribeRange(Request.Range) << ": request range length="
                 << Request.Range.Size() << ", checksum length="
                 << checksum.GetByteCount() / Request.BlockSize

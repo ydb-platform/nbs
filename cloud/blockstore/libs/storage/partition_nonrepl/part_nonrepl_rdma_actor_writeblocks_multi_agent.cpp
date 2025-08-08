@@ -3,6 +3,7 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -144,16 +145,16 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
         result.SetMultideviceRequest(false);
     }
 
-    if (request.ChecksumsSize() > 0) {
-        Y_DEBUG_ABORT_UNLESS(request.ChecksumsSize() == 1);
-        const auto& checksum = request.GetChecksums(0);
+    const auto& checksum = CombineChecksums(request.GetChecksums());
+    if (checksum.GetByteCount() > 0) {
         if (checksum.GetByteCount() == request.Range.Size() * request.BlockSize)
         {
             *result.MutableChecksum() = checksum;
         } else {
             ReportChecksumCalculationError(
                 TStringBuilder()
-                << "Incorrectly calculated checksum for block range "
+                << "NonreplicatedPartitionRdmaActor: Incorrectly calculated "
+                   "checksum for block range "
                 << DescribeRange(request.Range) << ": request range length="
                 << request.Range.Size() << ", checksum length="
                 << checksum.GetByteCount() / request.BlockSize

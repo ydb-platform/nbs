@@ -42,8 +42,14 @@ NProto::TChecksum CalculateChecksum(const TSgList& sglist)
     TBlockChecksum checksumCalculator;
     NProto::TChecksum checksum;
     for (auto blockData: sglist) {
-        checksumCalculator.Extend(blockData.Data(), blockData.Size());
-        checksum.SetByteCount(checksum.GetByteCount() + blockData.Size());
+        Y_DEBUG_ABORT_UNLESS(blockData.Size() > 0);
+        if (!blockData.Data()) {
+            checksumCalculator.Extend(GetZeroBuffer(), blockData.Size());
+            checksum.SetByteCount(checksum.GetByteCount() + blockData.Size());
+        } else {
+            checksumCalculator.Extend(blockData.Data(), blockData.Size());
+            checksum.SetByteCount(checksum.GetByteCount() + blockData.Size());
+        }
     }
     checksum.SetChecksum(checksumCalculator.GetValue());
     return checksum;
@@ -82,6 +88,17 @@ void CombineChecksumsInPlace(
 
 [[nodiscard]] NProto::TChecksum CombineChecksums(
     const TVector<NProto::TChecksum>& checksums)
+{
+    NProto::TChecksum checksum;
+    if (checksums.empty()) {
+        return checksum;
+    }
+
+    return ConcatenateChecksums(checksums);
+}
+
+[[nodiscard]] NProto::TChecksum CombineChecksums(
+    const google::protobuf::RepeatedPtrField<NProto::TChecksum>& checksums)
 {
     NProto::TChecksum checksum;
     if (checksums.empty()) {

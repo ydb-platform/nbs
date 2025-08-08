@@ -4,6 +4,7 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
@@ -87,6 +88,11 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
         Request);
 
     ui32 index = 0;
+
+    if (DeviceRequests.size() == 1) {
+        CombineChecksumsInPlace(*Request.MutableChecksums());
+    }
+
     for (const auto& deviceRequest: DeviceRequests) {
         auto request =
             std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
@@ -108,7 +114,8 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
             } else {
                 ReportChecksumCalculationError(
                     TStringBuilder()
-                    << "Incorrectly calculated checksum for block range "
+                    << "DiskAgentWriteActor: Incorrectly calculated checksum "
+                       "for block range "
                     << DescribeRange(deviceRequest.BlockRange)
                     << ": request range length="
                     << deviceRequest.BlockRange.Size() << ", checksum length="

@@ -240,8 +240,11 @@ bool TDataIntegrityClient::HandleRequest(
             const auto currentChecksum = CalculateChecksum(sgList);
             const auto& checksum = response.GetChecksum();
 
-            STORAGE_INFO("READ; currentChecksum: " << currentChecksum.DebugString()
-                << "; incoming checksum: " << checksum.DebugString());
+            STORAGE_INFO(
+                "READ; currentChecksum: "
+                << currentChecksum.DebugString()
+                << "; incoming checksum: " << checksum.DebugString()
+                << "; AllZeros = " << response.GetAllZeroes());
             if (!MessageDifferencer::Equals(checksum, currentChecksum)) {
                 RequestCounters.ReadChecksumMismatch->Inc();
                 return TErrorResponse{MakeError(
@@ -265,12 +268,15 @@ bool TDataIntegrityClient::HandleRequest(
 {
     RequestCounters.ReadRequests->Inc();
 
+    auto blocksCount = request->GetBlocksCount();
+    auto startIndex = request->GetStartIndex();
+
     auto sgList = request->Sglist;
     auto result =
         Client->ReadBlocksLocal(std::move(callContext), std::move(request));
 
     response = result.Apply(
-        [guaredSgList = std::move(sgList), result, this](const auto&) mutable
+        [guaredSgList = std::move(sgList), result, this, blocksCount, startIndex](const auto&) mutable
             -> NProto::TReadBlocksLocalResponse
         {
             NProto::TReadBlocksLocalResponse response = result.ExtractValue();
@@ -293,8 +299,14 @@ bool TDataIntegrityClient::HandleRequest(
             const auto currentChecksum = CalculateChecksum(sgList);
             const auto& checksum = response.GetChecksum();
 
-            STORAGE_INFO("READ_LOCAL; currentChecksum: " << currentChecksum.DebugString()
-                 << "; incoming checksum: " << checksum.DebugString());
+            STORAGE_INFO(
+                "READ_LOCAL; currentChecksum: "
+                << currentChecksum.DebugString()
+                << "; incoming checksum: " << checksum.DebugString()
+                << "; AllZeros = " << response.GetAllZeroes()
+                << "; sglist size = " << sgList.size() << "; blocksCount = "
+                << blocksCount << "; startIndex = " << startIndex);
+
             if (!MessageDifferencer::Equals(checksum, currentChecksum)) {
                 RequestCounters.ReadChecksumMismatch->Inc();
                 return TErrorResponse{MakeError(

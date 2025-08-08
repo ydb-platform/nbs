@@ -2,6 +2,7 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -49,6 +50,7 @@ NProto::TWriteDeviceBlocksRequest CreateWriteDeviceBlocksRequest(
             sourceRequest.GetHeaders().GetVolumeRequestId());
         request.SetMultideviceRequest(multideviceRequest);
     }
+
     if (requestIndex < sourceRequest.ChecksumsSize()) {
         const auto& checksum = sourceRequest.GetChecksums(requestIndex);
         if (checksum.GetByteCount() ==
@@ -221,6 +223,10 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
     TRequestContext sentRequestCtx;
 
+    if (deviceRequests.size() == 1) {
+        CombineChecksumsInPlace(*msg->Record.MutableChecksums());
+    }
+
     for (ui32 i = 0; i < deviceRequests.size(); ++i) {
         const auto& deviceRequest = deviceRequests[i];
         auto ep = AgentId2Endpoint[deviceRequest.Device.GetAgentId()];
@@ -379,6 +385,10 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
 
     TVector<TDeviceRequestInfo> requests;
     TRequestContext sentRequestCtx;
+
+    if (deviceRequests.size() == 1) {
+        CombineChecksumsInPlace(*msg->Record.MutableChecksums());
+    }
 
     ui64 blocks = 0;
     for (ui32 i = 0; i < deviceRequests.size(); ++i) {

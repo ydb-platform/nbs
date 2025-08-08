@@ -586,6 +586,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
 
     TReadGuard readGuard(WriteSubmissionLock);
 
+    auto sglist = request->Sglist;
     TFuture<NProto::TReadBlocksLocalResponse> future =
         SendAsyncRequest<TAsyncReadRequest>(
             this->weak_from_this(),
@@ -595,12 +596,13 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
             byteCount)
             .GetFuture();
     return future.Apply(
-        [future, blockSize = BlockSize](const auto&) mutable
+        [future, sglist = std::move(sglist)](const auto&) mutable
         {
             NProto::TReadBlocksLocalResponse response =
                 future.ExtractValueSync();
-            *response.MutableChecksum() =
-                CalculateChecksum(response.GetBlocks(), blockSize);
+            if (auto guard = sglist.Acquire()) {
+                *response.MutableChecksum() = CalculateChecksum(guard.Get());
+            }
             return response;
         });
 }

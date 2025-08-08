@@ -53,7 +53,8 @@ ui32 InitPartitionRequest(
             } else {
                 ReportChecksumCalculationError(
                     TStringBuilder()
-                    << "Incorrectly calculated checksum for block range "
+                    << "VolumeActor: Incorrectly calculated checksum for block "
+                       "range "
                     << DescribeRange(stripeInfo.BlockRange)
                     << ": request range length=" << stripeInfo.BlockRange.Size()
                     << ", checksum length="
