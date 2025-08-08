@@ -1379,4 +1379,8 @@ message TStorageServiceConfig
 
     // Policy for allocating nonreplicated disks.
     optional ENonreplAllocationPolicy NonreplAllocationPolicy = 469;
+
+    // If true, disk registry doesn't replace devices of mirrored disks in one
+    // row per reallocation.
+    optional bool LimitMirrorDisksDeviceReplacementsPerRow = 470;
 }
