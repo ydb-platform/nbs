@@ -5,7 +5,6 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
-#include <cloud/storage/core/libs/iam/iface/public.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -50,17 +49,11 @@ struct TNotification
 struct IService
     : public IStartable
 {
-    virtual ~IService() = default;
-
     virtual NThreading::TFuture<NProto::TError> Notify(
         const TNotification& data) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-IServicePtr CreateService(
-    TNotifyConfigPtr config,
-    NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr);
 
 IServicePtr CreateNullService(ILoggingServicePtr logging);
 

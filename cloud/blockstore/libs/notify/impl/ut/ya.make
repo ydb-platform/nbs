@@ -1,9 +1,10 @@
-UNITTEST_FOR(cloud/blockstore/libs/notify)
+UNITTEST_FOR(cloud/blockstore/libs/notify/impl)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     notify_ut.cpp
+    json_generator_ut.cpp
 )
 
 PEERDIR(

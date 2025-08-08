@@ -22,8 +22,8 @@
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
-#include <cloud/blockstore/libs/notify/config.h>
-#include <cloud/blockstore/libs/notify/notify.h>
+#include <cloud/blockstore/libs/notify/iface/config.h>
+#include <cloud/blockstore/libs/notify/impl/notify.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/fake/client.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
@@ -704,9 +704,10 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("LogbrokerService initialized");
 
-    NotifyService = Configs->NotifyConfig->GetEndpoint()
-        ? NNotify::CreateService(Configs->NotifyConfig, IamTokenClient)
-        : NNotify::CreateNullService(logging);
+    NotifyService = ServerModuleFactories->NotifyServiceFactory(
+        Configs->NotifyConfig,
+        IamTokenClient,
+        logging);
 
     STORAGE_INFO("NotifyService initialized");
 

@@ -1,7 +1,10 @@
 #include "notify.h"
 
-#include "config.h"
 #include "https.h"
+#include "json_generator.h"
+
+#include <cloud/blockstore/libs/notify/iface/config.h>
+#include <cloud/blockstore/libs/notify/iface/notify.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
@@ -19,91 +22,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-concept TDiskEvent = std::is_same_v<T, TDiskError>
-                  || std::is_same_v<T, TDiskBackOnline>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-TStringBuf GetTemplateId(const TDiskError&)
-{
-    return "nbs.nonrepl.error";
-}
-
-TStringBuf GetTemplateId(const TDiskBackOnline&)
-{
-    return "nbs.nonrepl.back-online";
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void OutputEvent(IOutputStream& out, const TDiskEvent auto& event)
-{
-    out << GetTemplateId(event) << " { " << event.DiskId << " }";
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void FillData(const TDiskEvent auto& event, NJson::TJsonValue& data)
-{
-    data["diskId"] = event.DiskId;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TServiceStub final
-    : public IService
-{
-public:
-    void Start() override
-    {}
-
-    void Stop() override
-    {}
-
-    TFuture<NProto::TError> Notify(const TNotification& data) override
-    {
-        Y_UNUSED(data);
-
-        return MakeFuture(NProto::TError());
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TServiceNull final
-    : public IService
-{
-private:
-    const ILoggingServicePtr Logging;
-    TLog Log;
-
-public:
-    explicit TServiceNull(ILoggingServicePtr logging)
-        : Logging(std::move(logging))
-    {}
-
-    void Start() override
-    {
-        Log = Logging->CreateLog("BLOCKSTORE_NOTIFY");
-    }
-
-    void Stop() override
-    {}
-
-    TFuture<NProto::TError> Notify(const TNotification& data) override
-    {
-        STORAGE_WARN("Discard notification "
-            << data.Event
-            << " " << data.UserId.Quote()
-            << " " << data.CloudId.Quote() << "/" << data.FolderId.Quote());
-
-        return MakeFuture(NProto::TError());
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TService final
     : public IService
     , public std::enable_shared_from_this<TService>
@@ -113,13 +31,16 @@ private:
     NCloud::NIamClient::IIamTokenClientPtr IamClient;
     THttpsClient HttpsClient;
     TLog Log;
+    IJsonGeneratorPtr JsonGenerator;
 
 public:
     TService(
             TNotifyConfigPtr config,
-            NCloud::NIamClient::IIamTokenClientPtr iamClient)
+            NCloud::NIamClient::IIamTokenClientPtr iamClient,
+            IJsonGeneratorPtr jsonGenerator)
         : Config(std::move(config))
         , IamClient(std::move(iamClient))
+        , JsonGenerator(std::move(jsonGenerator))
     {}
 
     void Start() override
@@ -172,35 +93,13 @@ public:
 
     TFuture<NProto::TError> Notify(const TNotification& data) override
     {
-        // TODO: Add Timestamp when time formatting will be supported
-        // by Cloud Notify service
-        NJson::TJsonMap v {
-            { "type", std::visit([] (const auto& event) {
-                    return GetTemplateId(event);
-                },
-                data.Event)
-            },
-            { "data", NJson::TJsonMap {
-                { "cloudId", data.CloudId },
-                { "folderId", data.FolderId },
-            }}
-        };
-
-        if (!data.UserId.empty()) {
-            v["userId"] = data.UserId;
-        } else {
-            v["cloudId"] = data.CloudId;
-        }
-
-        std::visit([&v] (const auto& e) {
-                FillData(e, v["data"]);
-            },
-            data.Event);
-
         auto p = NewPromise<NProto::TError>();
 
         GetIamToken().Subscribe(
-            [weakPtr = weak_from_this(), p, event = data.Event, v = std::move(v)](
+            [weakPtr = weak_from_this(),
+             p,
+             event = data.Event,
+             v = JsonGenerator->Generate(data)](
                 TFuture<TResultOrError<TString>> future) mutable
             {
                 auto [token, error] = future.ExtractValue();
@@ -248,30 +147,23 @@ public:
 
 IServicePtr CreateService(
     TNotifyConfigPtr config,
-    NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr)
+    NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr,
+    IJsonGeneratorPtr jsonGenerator)
 {
     return std::make_shared<TService>(
         std::move(config),
-        std::move(iamTokenClientPtr));
+        std::move(iamTokenClientPtr),
+        std::move(jsonGenerator));
 }
 
-IServicePtr CreateServiceStub()
+IServicePtr CreateService(
+    TNotifyConfigPtr config,
+    NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr)
 {
-    return std::make_shared<TServiceStub>();
-}
-
-IServicePtr CreateNullService(ILoggingServicePtr logging)
-{
-    return std::make_shared<TServiceNull>(std::move(logging));
+    return CreateService(
+        std::move(config),
+        std::move(iamTokenClientPtr),
+        std::make_unique<TJsonGenerator>());
 }
 
 }   // namespace NCloud::NBlockStore::NNotify
-
-////////////////////////////////////////////////////////////////////////////////
-
-Y_DECLARE_OUT_SPEC(, NCloud::NBlockStore::NNotify::TEvent, out, event)
-{
-    using namespace NCloud::NBlockStore::NNotify;
-
-    std::visit([&] (const auto& e) { OutputEvent(out, e); }, event);
-}
