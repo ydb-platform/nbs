@@ -31,12 +31,17 @@ struct TDiskNotification
 {
     TString DiskId;
     ui64 SeqNo = 0;
+    THashMap<ui32, ui64> RowToSeqNo;
 
     TDiskNotification() = default;
 
-    TDiskNotification(TString diskId, ui64 seqNo)
+    TDiskNotification(
+            TString diskId,
+            ui64 seqNo,
+            THashMap<ui32, ui64> rowToSeqNo)
         : DiskId(std::move(diskId))
         , SeqNo(seqNo)
+        , RowToSeqNo(std::move(rowToSeqNo))
     {}
 };
 

@@ -568,8 +568,15 @@ public:
         TDiskRegistryDatabase& db,
         TVector<TDiskId> ids);
 
-    const THashMap<TString, ui64>& GetDisksToReallocate() const;
+    const THashMap<
+        TString,
+        NDiskRegistry::TNotificationSystem::TNotifyDiskInfo>&
+    GetDisksToReallocate() const;
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TString& diskId);
+    ui64 AddReallocateRequest(
+        TDiskRegistryDatabase& db,
+        const TString& diskId,
+        ui32 deviceRow);
 
     void DeleteDiskToReallocate(
         TInstant now,
@@ -847,6 +854,8 @@ public:
         const TDeviceId& sourceDeviceId,
         const TDeviceId& targetDeviceId);
 
+    THashMap<ui32, ui64> GetAndDeleteRowToSeqNo(const TDiskId& diskId);
+
     // for tests and monpages
     const TReplicaTable& GetReplicaTable() const
     {
@@ -882,6 +891,10 @@ public:
         TDiskRegistryDatabase& db,
         TInstant now);
 
+    void ReplaceNextDevicesAfterRestart(
+        TInstant now,
+        TDiskRegistryDatabase& db);
+
     TVector<TString> GetPoolNames() const;
 
     const NProto::TDeviceConfig* FindDevice(const TDeviceId& uuid) const;
@@ -910,6 +923,7 @@ private:
     void ProcessAgents();
     void ProcessDisksToCleanup(TVector<TString> diskIds);
     void ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices);
+    void ProcessDisksToReallocate();
 
     void AddMigration(
         const TDiskState& disk,
@@ -1096,6 +1110,12 @@ private:
         TDiskRegistryDatabase& db,
         const TString& diskId,
         TDiskState& disk);
+
+    void UpdateAndReallocateDisk(
+        TDiskRegistryDatabase& db,
+        const TString& diskId,
+        TDiskState& disk,
+        ui32 deviceRow);
 
     void AdjustDeviceIfNeeded(
         NProto::TDeviceConfig& device,
@@ -1372,6 +1392,11 @@ private:
     void ReallocateDisksWithLostOrReappearedDevices(
         const TAgentList::TAgentRegistrationResult& r,
         THashSet<TDiskId>& disksToReallocate);
+
+    void ReplaceNextDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TString& masterDiskId);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -30,6 +30,19 @@ class TNotificationSystem
         {}
     };
 
+public:
+    struct TNotifyDiskInfo
+    {
+        ui64 SeqNo = 0;
+        THashMap<ui32, ui64> RowToSeqNo;
+
+        TNotifyDiskInfo() = default;
+
+        explicit TNotifyDiskInfo(ui64 seqNo)
+            : SeqNo(seqNo)
+        {}
+    };
+
 private:
     const TStorageConfigPtr StorageConfig;
 
@@ -39,7 +52,7 @@ private:
     TUserNotifications UserNotifications;
 
     // notify volumes (reallocate)
-    THashMap<TDiskId, ui64> DisksToReallocate;
+    THashMap<TDiskId, TNotifyDiskInfo> DisksToReallocate;
     ui64 DisksToReallocateSeqNo = 1;
 
     // notify Compute (write events to Logbroker)
@@ -81,12 +94,18 @@ public:
 
     auto GetUserNotifications() const -> const TUserNotifications&;
 
+    ui64 AddReallocateRequest(
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        ui32 deviceRow);
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TDiskId& diskId);
+    ui64 AddReallocateRequest(const TDiskId& diskId, ui32 deviceRow);
     ui64 AddReallocateRequest(const TDiskId& diskId);
 
     ui64 GetDiskSeqNo(const TDiskId& diskId) const;
 
-    auto GetDisksToReallocate() const -> const THashMap<TDiskId, ui64>&;
+    auto GetDisksToReallocate() const
+        -> const THashMap<TDiskId, TNotifyDiskInfo>&;
 
     void DeleteDiskToReallocate(
         TDiskRegistryDatabase& db,
@@ -117,6 +136,8 @@ public:
     void DeleteOutdatedVolumeConfig(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId);
+
+    THashMap<ui32, ui64> GetAndDeleteRowToSeqNo(const TDiskId& diskId);
 
 private:
     void PullInUserNotifications(
