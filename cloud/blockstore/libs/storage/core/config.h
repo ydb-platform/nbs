@@ -700,6 +700,8 @@ public:
     [[nodiscard]] TDuration GetPartitionBootTimeout() const;
 
     [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
+
+    [[nodiscard]] bool GetLimitMirrorDisksDeviceReplacementsPerRow() const;
 };
 
 ui64 GetAllocationUnit(

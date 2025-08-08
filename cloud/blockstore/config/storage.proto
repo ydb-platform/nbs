@@ -1281,4 +1281,8 @@ message TStorageServiceConfig
 
     // If true, describes will be done using SchemeCache instead of TxProxy.
     optional bool UseSchemeCache = 443;
+
+    // if true, disk registry doesn't replace devices of mirrored disks in one row
+    // per reallocation.
+    optional bool LimitMirrorDisksDeviceReplacementsPerRow = 444;
 }
