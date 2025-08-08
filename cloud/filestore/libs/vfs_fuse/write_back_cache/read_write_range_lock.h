@@ -19,6 +19,9 @@ namespace NCloud::NFileStore::NFuse {
  * write locks. Write locks are prioritized over read locks.
  *
  * @note All ranges are specified as [begin, end).
+ *   Obtaining multiple locks over the same range is possible.
+ *   Each lock is treated independently and requires the correspondent
+ *   number of unlock operations.
  *
  * @section Usage
  * - Use LockRead() and LockWrite() to request locks.
@@ -55,12 +58,14 @@ public:
 
     // Releases a read lock on the specified non-empty range [begin, end).
     // The lock must be acquired (it is not possible to cancel pending locks).
+    // If there are multiple locks, unlocks any single one.
     // If there are any pending lock requests that can now be granted as
     // a result of this unlock, they will be processed.
     void UnlockRead(ui64 begin, ui64 end);
 
     // Releases a write lock on the specified non-empty range [begin, end).
     // The lock must be acquired (it is not possible to cancel pending locks).
+    // If there are multiple locks, unlocks any single one.
     // If there are any pending lock requests that can now be granted as
     // a result of this unlock, they will be processed.
     void UnlockWrite(ui64 begin, ui64 end);
