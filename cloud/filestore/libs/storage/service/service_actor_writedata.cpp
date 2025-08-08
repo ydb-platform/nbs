@@ -271,6 +271,11 @@ private:
                 msg->ErrorReason.Quote().c_str());
             // We still may receive some responses, but we do not want to
             // process them
+            for (auto& inFlight: InFlightBSRequests) {
+                if (inFlight && !inFlight->IsCompleted()) {
+                    inFlight->Complete(ctx.Now(), error);
+                }
+            }
             return WriteData(ctx, error);
         }
 
