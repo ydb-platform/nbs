@@ -1307,4 +1307,8 @@ message TStorageServiceConfig
     // Do AddClient/RemoveClient transaction
     // and then do right Acquire/Release devices requests.
     optional bool NonReplicatedVolumeAcquireDiskAfterAddClientEnabled = 451;
+
+    // if true, disk registry doesn't replace devices of mirrored disks in one row
+    // per reallocation.
+    optional bool LimitMirrorDisksDeviceReplacementsPerRow = 452;
 }

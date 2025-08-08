@@ -715,6 +715,8 @@ public:
 
     [[nodiscard]] bool
     GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() const;
+
+    [[nodiscard]] bool GetLimitMirrorDisksDeviceReplacementsPerRow() const;
 };
 
 ui64 GetAllocationUnit(
