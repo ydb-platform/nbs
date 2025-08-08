@@ -218,7 +218,7 @@ public:
             token->PostponedMultiAgentWrites.size() ||
             token->PostponedZeroRequests.size())
         {
-            ReportDiskAgentSecureEraseDuringIo();
+            ReportDiskAgentSecureEraseDuringIo({{"deviceUUID", deviceUUID}});
             return MakeError(
                 E_REJECTED,
                 TStringBuilder()
@@ -406,13 +406,12 @@ private:
     {
         if (synchronizedData.SecureEraseInProgress) {
             ReportDiskAgentIoDuringSecureErase(
-                TStringBuilder()
-                << " Device=" << requestDetails.DeviceUUID
-                << ", ClientId=" << requestDetails.ClientId
-                << ", StartIndex=" << requestDetails.Range.Start
-                << ", BlocksCount=" << requestDetails.Range.Size()
-                << ", IsWrite=1"
-                << ", IsRdma=1");
+                {{"device", requestDetails.DeviceUUID},
+                 {"client", requestDetails.ClientId},
+                 {"start", requestDetails.Range.Start},
+                 {"blocks", requestDetails.Range.Size()},
+                 {"isWrite", 1},
+                 {"isRdma", 1}});
             *overlapDetails = "Secure erase in progress";
             return ECheckRange::ResponseRejected;
         }
@@ -563,13 +562,12 @@ private:
             const auto& clientId = request.GetHeaders().GetClientId();
             if (clientId != CheckHealthClientId) {
                 ReportDiskAgentIoDuringSecureErase(
-                    TStringBuilder()
-                    << " Device=" << request.GetDeviceUUID()
-                    << ", ClientId=" << clientId
-                    << ", StartIndex=" << request.GetStartIndex()
-                    << ", BlocksCount=" << request.GetBlocksCount()
-                    << ", IsWrite=0"
-                    << ", IsRdma=1");
+                    {{"device", request.GetDeviceUUID()},
+                     {"client", clientId},
+                     {"start", request.GetStartIndex()},
+                     {"blocks", request.GetBlocksCount()},
+                     {"isWrite", 0},
+                     {"isRdma", 1}});
             }
             return MakeError(E_REJECTED, "Secure erase in progress");
         }

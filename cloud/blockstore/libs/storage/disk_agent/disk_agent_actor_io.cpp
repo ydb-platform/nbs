@@ -214,13 +214,12 @@ void TDiskAgentActor::PerformIO(
             IsReadDeviceMethod<TMethod> && clientId == BackgroundOpsClientId;
         if (!isHealthCheckRead && !isBackgroundOpsRead) {
             ReportDiskAgentIoDuringSecureErase(
-                TStringBuilder()
-                << " Device=" << deviceUUID
-                << ", ClientId=" << clientId
-                << ", StartIndex=" << range.Start
-                << ", BlocksCount=" << range.Size()
-                << ", IsWrite=" << IsWriteDeviceMethod<TMethod>
-                << ", IsRdma=0");
+                {{"device", deviceUUID},
+                 {"client", clientId},
+                 {"start", range.Start},
+                 {"blocks", range.Size()},
+                 {"isWrite", IsWriteDeviceMethod<TMethod>},
+                 {"isRdma", 0}});
         }
         replyError(E_REJECTED, "Secure erase in progress");
         return;

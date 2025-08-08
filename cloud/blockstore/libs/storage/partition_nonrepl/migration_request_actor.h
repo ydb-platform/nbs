@@ -220,10 +220,10 @@ bool TMigrationRequestActor<TMethod>::ProcessResponse(
             break;
         default: {
             auto message = ReportUnexpectedCookie(
-                TStringBuilder() << __PRETTY_FUNCTION__ << " #"
-                                 << RequestInfo->CallContext->RequestId
-                                 << " DiskId: " << DiskId.Quote() << " "
-                                 << " Cookie: " << cookie);
+                __PRETTY_FUNCTION__,
+                {{"disk", DiskId},
+                 {"cookie", cookie},
+                 {"request", RequestInfo->CallContext->RequestId}});
 
             LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION_WORKER, message);
 

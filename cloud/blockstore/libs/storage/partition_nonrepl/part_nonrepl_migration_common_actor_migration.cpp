@@ -97,9 +97,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
     const bool inserted = MigrationsInProgress.TryInsert(range);
     if (!inserted) {
         ReportOverlappingRangesDuringMigrationDetected(
-            TStringBuilder() << "An error occurred while inserting a range to "
-                                "the container. Range: "
-                             << range << ", diskId: " << DiskId);
+            "An error occurred while inserting a range to the container",
+            {{"disk", DiskId}, {"range", range}});
     }
 
     if (DirectCopyPolicy == EDirectCopyPolicy::CanUse &&
@@ -314,9 +313,8 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         const bool inserted = DeferredMigrations.TryInsert(msg->Range);
         if (!inserted) {
             ReportOverlappingRangesDuringMigrationDetected(
-                TStringBuilder()
-                << "Can't defer a range to migrate later. Range: " << msg->Range
-                << ", diskId: " << DiskId);
+                "Can't defer a range to migrate later",
+                {{"disk", DiskId}, {"range", msg->Range}});
         }
         ScheduleRangeMigration(ctx);
         return;

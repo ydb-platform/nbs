@@ -892,7 +892,8 @@ bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize)
 {
     const auto blockSize = device.GetBlockSize();
     if (logicalBlockSize % blockSize != 0) {
-        ReportDiskRegistryLogicalPhysicalBlockSizeMismatch();
+        ReportDiskRegistryLogicalPhysicalBlockSizeMismatch(
+            {{"deviceUUID", device.GetDeviceUUID()}});
 
         return false;
     }
