@@ -23,13 +23,16 @@
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 #include <cloud/blockstore/libs/notify/iface/config.h>
-#include <cloud/blockstore/libs/notify/impl/notify.h>
+#include <cloud/blockstore/libs/notify/iface/notify.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/fake/client.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
+#include <cloud/blockstore/libs/rdma/impl/client.h>
+#include <cloud/blockstore/libs/rdma/impl/server.h>
+#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/root_kms/iface/client.h>
 #include <cloud/blockstore/libs/root_kms/iface/key_provider.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -40,6 +43,7 @@
 #include <cloud/blockstore/libs/service_local/storage_local.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
+#include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/bootstrap.h>
@@ -63,6 +67,7 @@
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
+#include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 
 #include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
 #include <contrib/ydb/core/tablet_flat/probes.h>
@@ -259,6 +264,79 @@ private:
 };
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+TServerModuleFactories::TServerModuleFactories()
+{
+    LogbrokerServiceFactory = [](auto...)
+    {
+        return NLogbroker::CreateServiceStub();
+    };
+
+    IamClientFactory = [](auto...)
+    {
+        return NIamClient::CreateIamTokenClientStub();
+    };
+
+    ComputeClientFactory = [](auto...)
+    {
+        return CreateComputeClientStub();
+    };
+
+    KmsClientFactory = [](auto...)
+    {
+        return CreateKmsClientStub();
+    };
+
+    RootKmsClientFactory = [](auto...)
+    {
+        return CreateRootKmsClientStub();
+    };
+
+    TraceServiceClientFactory = [](auto...)
+    {
+        return CreateTraceServiceClientStub();
+    };
+
+    SpdkFactory = [](auto...)
+    {
+        return TSpdkParts{
+            .Env = NSpdk::CreateEnvStub(),
+            .VhostCallbacks = {},
+            .LogInitializer = {},
+        };
+    };
+
+    RdmaClientFactory = [] (
+        NCloud::ILoggingServicePtr logging,
+        NCloud::IMonitoringServicePtr monitoring,
+        NRdma::TClientConfigPtr config)
+    {
+        return NRdma::CreateClient(
+            NRdma::NVerbs::CreateVerbs(),
+            std::move(logging),
+            std::move(monitoring),
+            std::move(config));
+    };
+
+    RdmaServerFactory = [] (
+        NCloud::ILoggingServicePtr logging,
+        NCloud::IMonitoringServicePtr monitoring,
+        NRdma::TServerConfigPtr config)
+    {
+        return NRdma::CreateServer(
+            NRdma::NVerbs::CreateVerbs(),
+            std::move(logging),
+            std::move(monitoring),
+            std::move(config));
+    };
+
+    NotifyServiceFactory = [](auto...)
+    {
+        return NNotify::CreateServiceStub();
+    };
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

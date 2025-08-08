@@ -34,6 +34,8 @@ struct TSpdkParts
 
 struct TServerModuleFactories
 {
+    TServerModuleFactories();
+
     std::function<NLogbroker::IServicePtr(
         NLogbroker::TLogbrokerConfigPtr config,
         ILoggingServicePtr logging)> LogbrokerServiceFactory;
