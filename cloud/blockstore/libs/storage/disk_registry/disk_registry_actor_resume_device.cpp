@@ -88,9 +88,8 @@ void TResumeDeviceActor::HandleResponse(
     *response->Record.MutableError() = msg->GetError();
     if (HasError(msg->GetError()) && !Request.GetDryRun()) {
         ReportDiskRegistryResumeDeviceFailed(
-            TStringBuilder() << "AgentId: " << Request.GetAgentId()
-                             << "; Path: " << Request.GetPath()
-                             << "; Error: " << msg->GetErrorReason());
+            msg->GetErrorReason(),
+            {{"AgentId", Request.GetAgentId()}, {"Path", Request.GetPath()}});
     }
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));

@@ -407,9 +407,8 @@ void TStatsServiceActor::PushYdbStats(const NActors::TActorContext& ctx)
 
         if (deadline < now) {
             ReportHangingYdbStatsRequest(
-                TStringBuilder() << "YdbStatsRequest hanging, sent at "
-                                 << YdbStatsRequestSentTs.ToString() << ", now "
-                                 << now.ToString());
+                {{"YdbStatsRequestSentTs", YdbStatsRequestSentTs.ToString()},
+                 {"now", now.ToString()}});
         }
     }
 }

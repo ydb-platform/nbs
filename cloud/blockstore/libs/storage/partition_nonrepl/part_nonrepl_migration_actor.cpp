@@ -230,12 +230,12 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
 
             if (device.GetBlocksCount() != target.GetBlocksCount()) {
                 ReportBadMigrationConfig(
-                    TStringBuilder()
-                    << "[" << SrcConfig->GetName() << "] "
-                    << "source (" << device.GetDeviceUUID() << ") block count ("
-                    << device.GetBlocksCount() << ") "
-                    << "!= target (" << target.GetDeviceUUID()
-                    << ") block count (" << target.GetBlocksCount() << ")");
+                    "source != target blocks count",
+                    {{"disk", SrcConfig->GetName()},
+                     {"source", device.GetDeviceUUID()},
+                     {"source_blocks_count", device.GetBlocksCount()},
+                     {"target", target.GetDeviceUUID()},
+                     {"target_blocks_count", target.GetBlocksCount()}});
                 return {};
             }
 
@@ -289,8 +289,8 @@ void TNonreplicatedPartitionMigrationActor::HandleFinishMigrationResponse(
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
             ReportMigrationFailed(
-                TStringBuilder() << "Finish migration failed, diskId: "
-                                 << SrcConfig->GetName().Quote());
+                "Finish migration failed",
+                {{"disk", SrcConfig->GetName()}});
             return;
         }
     }

@@ -25,7 +25,8 @@ TTrimFreshLogActor::TTrimFreshLogActor(
         ui64 trimFreshLogToCommitId,
         ui32 recordGeneration,
         ui32 perGenerationCounter,
-        TVector<ui32> freshChannels)
+        TVector<ui32> freshChannels,
+        TString diskId)
     : RequestInfo(std::move(requestInfo))
     , PartitionActorId(partitionActorId)
     , TabletInfo(std::move(tabletInfo))
@@ -33,6 +34,7 @@ TTrimFreshLogActor::TTrimFreshLogActor(
     , RecordGeneration(recordGeneration)
     , PerGenerationCounter(perGenerationCounter)
     , FreshChannels(std::move(freshChannels))
+    , DiskId(std::move(diskId))
 {}
 
 void TTrimFreshLogActor::Bootstrap(const TActorContext& ctx)
@@ -132,10 +134,8 @@ void TTrimFreshLogActor::HandleCollectGarbageResult(
         HasError(error))
     {
         ReportTrimFreshLogError(
-            TStringBuilder()
-            << "[" << TabletInfo->TabletID
-            << "] Fresh blobs collect request failed: " << FormatError(error));
-
+            FormatError(error),
+            {{"disk", DiskId}, {"TabletId", TabletInfo->TabletID}});
         Error = std::move(error);
     }
 

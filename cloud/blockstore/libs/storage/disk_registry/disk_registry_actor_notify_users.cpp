@@ -184,9 +184,7 @@ void TNotifyActor::HandleNotifyUserEventResponse(
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
             ReportUserNotificationError(
-                TStringBuilder()
-                << "TabletID=" << TabletID
-                << " Notification failed: " << ToString(notif));
+                {{"TabletID", TabletID}, {"Notification", ToString(notif)}});
 
             Failures.push_back(MakeNotificationKey(notif));
         }
