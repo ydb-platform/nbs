@@ -131,8 +131,8 @@ std::unique_ptr<MessageDifferencer> CreateLiteReallocationDifferencer()
 
     if (size_t index = FindIndex(descriptors, nullptr); index != NPOS) {
         ReportFieldDescriptorNotFound(
-            TStringBuilder() << "Lite reallocation is impossible. Descriptor #"
-                             << index << " is nullptr.");
+            "Lite reallocation is impossible. Descriptor is nullptr",
+            {{"index", index}});
         return nullptr;
     }
 

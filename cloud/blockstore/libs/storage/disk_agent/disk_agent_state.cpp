@@ -767,7 +767,8 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
             && sessionInfo.LastActivityTs
                 + AgentConfig->GetReleaseInactiveSessionsTimeout() > now)
     {
-        ReportAcquiredDiskEraseAttempt();
+        ReportAcquiredDiskEraseAttempt(
+            {{"device", uuid}, {"client", sessionInfo.Id}});
 
         ythrow TServiceError(E_INVALID_STATE)
             << "Device " << uuid.Quote()

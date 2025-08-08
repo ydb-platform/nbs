@@ -337,7 +337,9 @@ void TLaggingAgentsReplicaProxyActor::ReadBlocks(
                               << ", in range " << blockRange
                               << ", lagging agent: " << agentId
                               << ", disk id: " << PartConfig->GetName();
-            ReportLaggingAgentsProxyWrongRecipientActor(message);
+
+            ReportLaggingAgentsProxyWrongRecipientActor(
+                {{"disk", PartConfig->GetName()}});
             NCloud::Reply(
                 ctx,
                 *ev,
