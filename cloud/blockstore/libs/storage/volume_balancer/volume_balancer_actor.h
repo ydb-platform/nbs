@@ -44,7 +44,7 @@ private:
 
     std::unique_ptr<TVolumeBalancerState> State;
 
-    TInstant LastCpuWaitTs;
+    TMonotonic LastCpuWaitTs;
 
 public:
     TVolumeBalancerActor(

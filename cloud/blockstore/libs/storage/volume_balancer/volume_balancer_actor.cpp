@@ -157,6 +157,8 @@ TVolumeBalancerActor::TVolumeBalancerActor(
 
 void TVolumeBalancerActor::Bootstrap(const TActorContext& ctx)
 {
+    LastCpuWaitTs = ctx.Monotonic();
+
     RegisterPages(ctx);
     RegisterCounters(ctx);
     Become(&TThis::StateWork);
@@ -255,17 +257,19 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
                     "Failed to get CpuWait stats: " << errorMessage);
         }
 
-        auto now = ctx.Now();
-        auto intervalUs = (now - LastCpuWaitTs).MicroSeconds();
-        auto cpuLack = CpuLackPercentsMultiplier * cpuWait.MicroSeconds();
-        cpuLack /= intervalUs;
-        *CpuWaitCounter = cpuLack;
+        auto now = ctx.Monotonic();
+        if (LastCpuWaitTs < now) {
+            auto intervalUs = (now - LastCpuWaitTs).MicroSeconds();
+            auto cpuLack = CpuLackPercentsMultiplier * cpuWait.MicroSeconds();
+            cpuLack /= intervalUs;
+            *CpuWaitCounter = cpuLack;
 
-        LastCpuWaitTs = now;
+            LastCpuWaitTs = now;
 
-        if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
-            LOG_WARN_S(ctx, TBlockStoreComponents::VOLUME_BALANCER,
-                "Cpu wait is " << cpuLack);
+            if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
+                LOG_WARN_S(ctx, TBlockStoreComponents::VOLUME_BALANCER,
+                    "Cpu wait is " << cpuLack);
+            }
         }
 
         ui64 numManuallyPreempted = 0;
@@ -306,8 +310,8 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
         State->UpdateVolumeStats(
             std::move(msg->VolumeStats),
             std::move(statusMap),
-            cpuLack,
-            now);
+            *CpuWaitCounter,
+            ctx.Now());
 
         if (IsBalancerEnabled()) {
             if (auto vol = State->GetVolumeToPush()) {

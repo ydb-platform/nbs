@@ -57,7 +57,7 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr SsdFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr SsdTabletCount;
 
-    TInstant LastCpuWaitTs;
+    TMonotonic LastCpuWaitTs;
 
 public:
     TStorageServiceActor(
