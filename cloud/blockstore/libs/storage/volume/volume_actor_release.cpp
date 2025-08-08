@@ -51,7 +51,8 @@ void TVolumeActor::SendReleaseDevicesToAgents(
         volumeGeneration,
         Config->GetAgentRequestTimeout(),
         std::move(devicesToRelease),
-        State->GetMeta().GetMuteIOErrors());
+        State->GetMeta().GetMuteIOErrors(),
+        LogTitle.GetChild(GetCycleCount()));
 
     Actors.insert(actor);
 }

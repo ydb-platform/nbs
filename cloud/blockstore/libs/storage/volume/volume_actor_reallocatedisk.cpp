@@ -19,18 +19,18 @@ class TReallocateActor final
 private:
     const TActorId Owner;
     const TRequestInfoPtr Request;
-    const ui64 TabletId;
     const TString DiskId;
 
     NProto::TAllocateDiskRequest Record;
+    TChildLogTitle LogTitle;
 
 public:
     TReallocateActor(
         const TActorId& owner,
         TRequestInfoPtr request,
-        ui64 tabletId,
         TString diskId,
-        NProto::TAllocateDiskRequest record);
+        NProto::TAllocateDiskRequest record,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -57,14 +57,14 @@ private:
 TReallocateActor::TReallocateActor(
         const TActorId& owner,
         TRequestInfoPtr request,
-        ui64 tabletId,
         TString diskId,
-        NProto::TAllocateDiskRequest record)
+        NProto::TAllocateDiskRequest record,
+        TChildLogTitle logTitle)
     : Owner(owner)
     , Request(std::move(request))
-    , TabletId(tabletId)
     , DiskId(std::move(diskId))
     , Record(std::move(record))
+    , LogTitle(std::move(logTitle))
 {}
 
 void TReallocateActor::Bootstrap(const TActorContext& ctx)
@@ -104,22 +104,23 @@ void TReallocateActor::HandleAllocateDiskResponse(
     auto& record = msg->Record;
 
     if (HasError(msg->GetError())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Disk reallocation failed with error: %s. DiskId=%s",
-            TabletId,
-            FormatError(msg->GetError()).c_str(),
-            DiskId.Quote().c_str());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Disk reallocation failed with error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
 
         ReplyAndDie(ctx, msg->GetError(), {});
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] Disk reallocation success. DiskId=%s, %s",
-        TabletId,
-        DiskId.Quote().c_str(),
-        DescribeAllocation(msg->Record).c_str()
-    );
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Disk reallocation success. %s",
+        LogTitle.GetWithTime().c_str(),
+        DescribeAllocation(msg->Record).c_str());
 
     TVector<TDevices> replicas;
     for (auto& msgReplica: *msg->Record.MutableReplicas()) {
@@ -224,9 +225,9 @@ void TVolumeActor::HandleReallocateDisk(
         ctx,
         ctx.SelfID,
         std::move(requestInfo),
-        TabletID(),
         GetNewestConfig().GetDiskId(),
-        std::move(request));
+        std::move(request),
+        LogTitle.GetChild(GetCycleCount()));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
