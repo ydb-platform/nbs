@@ -85,13 +85,25 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
             readLock1 = true;
         });
 
+        // Obtaining second read lock for [0, 10) is done immediately
+        // RangeLock status:
+        // - read locks: [0, 10), [0, 10)
+
+        UNIT_ASSERT(!rangeLock.Empty());
+        UNIT_ASSERT(readLock1);
+
+        readLock1 = false;
+        rangeLock.LockRead(0, 10, [&]() {
+            readLock1 = true;
+        });
+
         UNIT_ASSERT(!rangeLock.Empty());
         UNIT_ASSERT(readLock1);
 
         // A request to obtain write lock for [5, 15) becomes pending because
         // it intersects with the existing read lock [0, 10)
         // RangeLock status:
-        // - read locks: [0, 10)
+        // - read locks: [0, 10), [0, 10)
         // - pending write locks: [5, 15)
         bool writeLock1 = false;
         rangeLock.LockWrite(5, 15, [&]() {
@@ -106,7 +118,7 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
         // Pending write locks affect read lock acquision because write
         // lock requests have priority over read lock requests.
         // RangeLock status:
-        // - read locks: [0, 10)
+        // - read locks: [0, 10), [0, 10)
         // - pending read locks: [10, 20)
         // - pending write locks: [5, 15)
         bool readLock2 = false;
@@ -115,6 +127,18 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
         });
 
         UNIT_ASSERT(!rangeLock.Empty());
+        UNIT_ASSERT(!readLock2);
+
+        // Unlocking the first read lock [0, 10) will trigger nothing because
+        // there is second lock at the same interval
+        // RangeLock status:
+        // - read locks: [0, 10)
+        // - pending read locks: [10, 20)
+        // - pending write locks: [5, 15)
+        rangeLock.UnlockRead(0, 10);
+
+        UNIT_ASSERT(!rangeLock.Empty());
+        UNIT_ASSERT(!writeLock1);
         UNIT_ASSERT(!readLock2);
 
         // Unlocking read lock [0, 10) will trigger write lock acquisition

@@ -151,6 +151,24 @@ Y_UNIT_TEST_SUITE(TOverlappedIntervalTest)
         UNIT_ASSERT(!set.HasIntersection(5, 7));
     }
 
+    Y_UNIT_TEST(AddAndRemoveTwoIdenticalIntervals)
+    {
+        TOverlappingIntervalSet set;
+
+        set.AddInterval(2, 5);
+        set.AddInterval(2, 5);
+
+        UNIT_ASSERT(set.HasIntersection(2, 5));
+
+        set.RemoveInterval(2, 5);
+
+        UNIT_ASSERT(set.HasIntersection(2, 5));
+
+        set.RemoveInterval(2, 5);
+
+        UNIT_ASSERT(!set.HasIntersection(2, 5));
+    }
+
     void ValidateOverlappingIntervalSet(
         const TOverlappingIntervalSet& set,
         const TVector<TInterval>& intervalSet,
