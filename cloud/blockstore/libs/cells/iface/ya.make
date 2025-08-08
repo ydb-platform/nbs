@@ -5,7 +5,7 @@ SRCS(
     cell.cpp
     cells.cpp
     config.cpp
-    endpoints_setup.cpp
+    endpoint_bootstrap.cpp
     host_endpoint.cpp
     host.cpp
     remote_storage.cpp

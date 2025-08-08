@@ -1,4 +1,4 @@
-#include "endpoints_setup.h"
+#include "endpoint_bootstrap.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -11,9 +11,9 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto THostEndpointsSetupProvider::SetupHostGrpcEndpoint(
+auto TCellHostEndpointsBootstrap::SetupHostGrpcEndpoint(
     const TBootstrap& args,
-    const THostConfig& config) -> TSetupGrpcEndpointFuture
+    const TCellHostConfig& config) -> TGrpcEndpointBootstrapFuture
 {
     auto endpoint = CreateMultiClientEndpoint(
         args.GrpcClient,
@@ -24,10 +24,10 @@ auto THostEndpointsSetupProvider::SetupHostGrpcEndpoint(
     return MakeFuture(endpoint);
 }
 
-auto THostEndpointsSetupProvider::SetupHostRdmaEndpoint(
+auto TCellHostEndpointsBootstrap::SetupHostRdmaEndpoint(
     const TBootstrap& args,
-    const THostConfig& config,
-    IBlockStorePtr client) -> TSetupRdmaEndpointFuture
+    const TCellHostConfig& config,
+    IBlockStorePtr client) -> TRdmaEndpointBootstrapFuture
 {
     NClient::TRdmaEndpointConfig rdmaEndpoint {
         .Address = config.GetFqdn(),
@@ -43,9 +43,9 @@ auto THostEndpointsSetupProvider::SetupHostRdmaEndpoint(
         rdmaEndpoint);
 }
 
-IHostEndpointsSetupProviderPtr CreateHostEndpointsSetupProvider()
+IHostEndpointsBoorstrapPtr CreateHostEndpointsSetupProvider()
 {
-    return std::make_shared<THostEndpointsSetupProvider>();
+    return std::make_shared<TCellHostEndpointsBootstrap>();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

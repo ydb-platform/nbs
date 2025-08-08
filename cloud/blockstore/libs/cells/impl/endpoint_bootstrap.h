@@ -1,5 +1,5 @@
 #include <cloud/blockstore/libs/cells/iface/config.h>
-#include <cloud/blockstore/libs/cells/iface/endpoints_setup.h>
+#include <cloud/blockstore/libs/cells/iface/endpoint_bootstrap.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
@@ -10,22 +10,20 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct THostEndpointsSetupProvider
-    : public IHostEndpointsSetupProvider
+struct TCellHostEndpointsBootstrap
+    : public IHostEndpointsBoorstrap
 {
-    using IHostEndpointsSetupProvider::TGrpcResult;
-    using IHostEndpointsSetupProvider::TRdmaResult;
-    using IHostEndpointsSetupProvider::TSetupGrpcEndpointFuture;
-    using IHostEndpointsSetupProvider::TSetupRdmaEndpointFuture;
+    using IHostEndpointsBoorstrap::TGrpcEndpointBootstrapFuture;
+    using IHostEndpointsBoorstrap::TRdmaEndpointBootstrapFuture;
 
     auto SetupHostGrpcEndpoint(
         const TBootstrap& args,
-        const THostConfig& config) -> TSetupGrpcEndpointFuture override;
+        const TCellHostConfig& config) -> TGrpcEndpointBootstrapFuture override;
 
     auto SetupHostRdmaEndpoint(
         const TBootstrap& args,
-        const THostConfig& config,
-        IBlockStorePtr client) -> TSetupRdmaEndpointFuture override;
+        const TCellHostConfig& config,
+        IBlockStorePtr client) -> TRdmaEndpointBootstrapFuture override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

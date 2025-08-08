@@ -32,9 +32,9 @@ private:
 
     TAdaptiveLock Lock;
 
-    THashMap<TString, IHostPtr> Active;
-    THashMap<TString, IHostPtr> Activating;
-    THashSet<IHostPtr> Deactivating;
+    THashMap<TString, ICellHostPtr> Active;
+    THashMap<TString, ICellHostPtr> Activating;
+    THashSet<ICellHostPtr> Deactivating;
     TVector<TString> Unused;
 
 public:
@@ -42,7 +42,7 @@ public:
         TBootstrap args,
         TCellConfig config);
 
-    [[nodiscard]] TResultOrError<THostEndpoint> GetCellClient(
+    [[nodiscard]] TResultOrError<TCellHostEndpoint> GetCellClient(
         const NClient::TClientAppConfigPtr& clientConfig) override
     {
         return PickHost(clientConfig);
@@ -54,21 +54,21 @@ public:
         return PickHosts(Config.GetDescribeVolumeHostCount(), clientConfig);
     }
 
-    [[nodiscard]]THashMap<TString, IHostPtr>  GetActive() const
+    [[nodiscard]]THashMap<TString, ICellHostPtr>  GetActive() const
     {
         with_lock(Lock) {
             return Active;
         }
     }
 
-    [[nodiscard]]THashMap<TString, IHostPtr>  GetActivating() const
+    [[nodiscard]]THashMap<TString, ICellHostPtr>  GetActivating() const
     {
         with_lock(Lock) {
             return Activating;
         }
     }
 
-    [[nodiscard]]THashSet<IHostPtr>  GetDeactivating() const
+    [[nodiscard]]THashSet<ICellHostPtr>  GetDeactivating() const
     {
         with_lock(Lock) {
             return Deactivating;
@@ -85,7 +85,7 @@ public:
     }
 
 private:
-    TResultOrError<THostEndpoint> PickHost(
+    TResultOrError<TCellHostEndpoint> PickHost(
         const NClient::TClientAppConfigPtr& clientConfig);
     TCellEndpoints PickHosts(
         ui32 count,

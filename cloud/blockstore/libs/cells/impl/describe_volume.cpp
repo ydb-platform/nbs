@@ -23,7 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct THostInfo {
+struct TCellHostInfo {
     TString LogTag;
     IBlockStorePtr Client;
 };
@@ -32,7 +32,7 @@ struct TCell {
     TAdaptiveLock Lock;
     NProto::TError FatalError;
     NProto::TError RetriableError;
-    TVector<THostInfo> Hosts;
+    TVector<TCellHostInfo> Hosts;
 };
 
 using TCells = THashMap<TString, TCell>;

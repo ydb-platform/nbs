@@ -18,11 +18,11 @@ namespace NCloud::NBlockStore::NCells {
 
 class TCellConfig;
 
-struct THostConfig
+struct TCellHostConfig
 {
-    THostConfig(
-        NProto::THostConfig hostConfig,
-        TCellConfig cellConfig);
+    TCellHostConfig(
+        NProto::TCellHostConfig hostConfig,
+        const TCellConfig& cellConfig);
 
     ui32 GetGrpcPort() const
     {
@@ -65,7 +65,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TConfiguredHosts = THashMap<TString, THostConfig>;
+using TConfiguredHosts = THashMap<TString, TCellHostConfig>;
 
 class TCellConfig
     : public IDumpable
@@ -98,6 +98,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// maps cellid to corresponding cell configuration
 using TConfiguredCells = THashMap<TString, TCellConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////

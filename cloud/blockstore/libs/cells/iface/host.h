@@ -1,7 +1,7 @@
 #pragma once
 
 #include "config.h"
-#include "endpoints_setup.h"
+#include "endpoint_bootstrap.h"
 #include "host_endpoint.h"
 
 #include <cloud/blockstore/libs/client/public.h>
@@ -15,15 +15,15 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IHost
+struct ICellHost
 {
-    const THostConfig Config;
+    const TCellHostConfig Config;
 
-    explicit IHost(THostConfig config)
+    explicit ICellHost(TCellHostConfig config)
         : Config(std::move(config))
     {}
 
-    const THostConfig& GetConfig() const
+    const TCellHostConfig& GetConfig() const
     {
         return Config;
     }
@@ -31,18 +31,18 @@ struct IHost
     virtual NThreading::TFuture<void> Start() = 0;
     virtual NThreading::TFuture<void> Stop() = 0;
 
-    [[nodiscard]] virtual TResultOrError<THostEndpoint> GetHostEndpoint(
+    [[nodiscard]] virtual TResultOrError<TCellHostEndpoint> GetHostEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig,
         std::optional<NProto::ECellDataTransport> transport,
         bool allowGrpcFallback) = 0;
 
-    virtual ~IHost() = default;
+    virtual ~ICellHost() = default;
 };
 
-using IHostPtr = std::shared_ptr<IHost>;
+using ICellHostPtr = std::shared_ptr<ICellHost>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IHostPtr CreateHost(THostConfig config, TBootstrap args);
+ICellHostPtr CreateHost(TCellHostConfig config, TBootstrap args);
 
 }   // namespace NCloud::NBlockStore::NCells
