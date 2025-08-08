@@ -211,10 +211,16 @@ func (c *executionContext) updateStateWithPreparation(
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 
+	lastStatus := c.taskState.Status
+
 	taskState := transition(c.taskState)
 	taskState = taskState.DeepCopy()
 
-	taskState.ModifiedAt = time.Now()
+	now := time.Now()
+	if storage.IsExecuting(lastStatus) {
+		taskState.InflightDuration += now.Sub(taskState.ModifiedAt)
+	}
+	taskState.ModifiedAt = now
 
 	var newTaskState storage.TaskState
 	var err error
@@ -351,7 +357,6 @@ func (c *executionContext) setCancelled(ctx context.Context) error {
 
 func (c *executionContext) ping(ctx context.Context) error {
 	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
-		taskState.InflightDuration += time.Since(taskState.ModifiedAt)
 		return taskState
 	})
 }
