@@ -1,154 +1,154 @@
 TEST SUITE[chmod, 00.t] 1..58
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-ok 11
-ok 12
-ok 13
-ok 14
-ok 15
-ok 16
-ok 17
-ok 18
-ok 19
-ok 20
-ok 21
-ok 22
-ok 23
-ok 24
-ok 25
-ok 26
-ok 27
-ok 28
-ok 29
-ok 30
-ok 31
-ok 32
-ok 33
-ok 34
-ok 35
-ok 36
-ok 37
-ok 38
-ok 39
-ok 40
-ok 41
-ok 42
-ok 43
-ok 44
-ok 45
-ok 46
-ok 47
-ok 48
-ok 49
-not ok 50
-not ok 51
-not ok 52
-not ok 53
-ok 54
-not ok 55
-ok 56
-ok 57
-ok 58
+ok 1 (line: 19)
+ok 2 (line: 23)
+ok 3 (line: 24)
+ok 4 (line: 25)
+ok 5 (line: 26)
+ok 6 (line: 27)
+ok 7 (line: 29)
+ok 8 (line: 30)
+ok 9 (line: 31)
+ok 10 (line: 32)
+ok 11 (line: 33)
+ok 12 (line: 35)
+ok 13 (line: 36)
+ok 14 (line: 37)
+ok 15 (line: 38)
+ok 16 (line: 39)
+ok 17 (line: 41)
+ok 18 (line: 42)
+ok 19 (line: 43)
+ok 20 (line: 44)
+ok 21 (line: 45)
+ok 22 (line: 46)
+ok 23 (line: 47)
+ok 24 (line: 48)
+ok 25 (line: 65)
+ok 26 (line: 68)
+ok 27 (line: 70)
+ok 28 (line: 71)
+ok 29 (line: 73)
+ok 30 (line: 76)
+ok 31 (line: 78)
+ok 32 (line: 79)
+ok 33 (line: 81)
+ok 34 (line: 84)
+ok 35 (line: 86)
+ok 36 (line: 87)
+ok 37 (line: 100)
+ok 38 (line: 103)
+ok 39 (line: 105)
+ok 40 (line: 106)
+ok 41 (line: 108)
+ok 42 (line: 111)
+ok 43 (line: 113)
+ok 44 (line: 114)
+ok 45 (line: 116)
+ok 46 (line: 119)
+ok 47 (line: 121)
+ok 48 (line: 122)
+ok 49 (line: 140)
+not ok 50 (line: 141)
+not ok 51 (line: 142)
+not ok 52 (line: 143)
+not ok 53 (line: 144)
+ok 54 (line: 145)
+not ok 55 (line: 154)
+ok 56 (line: 155)
+ok 57 (line: 158)
+ok 58 (line: 161)
 TEST SUITE[chmod, 01.t] 1..5
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 18)
 TEST SUITE[chmod, 02.t] 1..5
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
+ok 1 (line: 11)
+ok 2 (line: 12)
+ok 3 (line: 13)
+ok 4 (line: 14)
+ok 5 (line: 15)
 TEST SUITE[chmod, 03.t] 1..12
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-ok 11
-ok 12
+ok 1 (line: 11)
+ok 2 (line: 12)
+ok 3 (line: 13)
+ok 4 (line: 14)
+ok 5 (line: 15)
+ok 6 (line: 16)
+ok 7 (line: 17)
+ok 8 (line: 19)
+ok 9 (line: 21)
+ok 10 (line: 22)
+ok 11 (line: 23)
+ok 12 (line: 24)
 TEST SUITE[chmod, 04.t] 1..4
-ok 1
-ok 2
-ok 3
-ok 4
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
 TEST SUITE[chmod, 05.t] 1..14
-ok 1
-ok 2
-not ok 3
-not ok 4
-not ok 5
-not ok 6
-ok 7
-ok 8
-ok 9
-not ok 10
-not ok 11
-not ok 12
-ok 13
-ok 14
+ok 1 (line: 15)
+ok 2 (line: 18)
+not ok 3 (line: 19)
+not ok 4 (line: 20)
+not ok 5 (line: 21)
+not ok 6 (line: 22)
+ok 7 (line: 23)
+ok 8 (line: 24)
+ok 9 (line: 25)
+not ok 10 (line: 26)
+not ok 11 (line: 27)
+not ok 12 (line: 28)
+ok 13 (line: 29)
+ok 14 (line: 31)
 TEST SUITE[chmod, 06.t] 1..6
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 18)
+ok 6 (line: 19)
 TEST SUITE[chmod, 07.t] 1..14
-ok 1
-ok 2
-not ok 3
-not ok 4
-not ok 5
-not ok 6
-not ok 7
-not ok 8
-not ok 9
-not ok 10
-not ok 11
-not ok 12
-ok 13
-ok 14
+ok 1 (line: 15)
+ok 2 (line: 18)
+not ok 3 (line: 19)
+not ok 4 (line: 20)
+not ok 5 (line: 21)
+not ok 6 (line: 22)
+not ok 7 (line: 23)
+not ok 8 (line: 24)
+not ok 9 (line: 25)
+not ok 10 (line: 26)
+not ok 11 (line: 27)
+not ok 12 (line: 28)
+ok 13 (line: 29)
+ok 14 (line: 31)
 TEST SUITE[chmod, 08.t] 1..1
 ok 1
 TEST SUITE[chmod, 09.t] 1..1
 ok 1
 TEST SUITE[chmod, 10.t] 1..2
-ok 1
-ok 2
+ok 1 (line: 11)
+ok 2 (line: 12)
 TEST SUITE[chmod, 11.t] 1..20
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-not ok 11
-not ok 12
-not ok 13
-ok 14
-ok 15
-not ok 16
-not ok 17
-not ok 18
-ok 19
-ok 20
+ok 1 (line: 14)
+ok 2 (line: 18)
+ok 3 (line: 19)
+ok 4 (line: 20)
+ok 5 (line: 21)
+ok 6 (line: 23)
+ok 7 (line: 24)
+ok 8 (line: 25)
+ok 9 (line: 26)
+ok 10 (line: 28)
+not ok 11 (line: 29)
+not ok 12 (line: 30)
+not ok 13 (line: 31)
+ok 14 (line: 32)
+ok 15 (line: 34)
+not ok 16 (line: 35)
+not ok 17 (line: 46)
+not ok 18 (line: 47)
+ok 19 (line: 50)
+ok 20 (line: 53)

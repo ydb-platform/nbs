@@ -3,9 +3,11 @@ RECURSE(
     chmod
     chown
     link
+    ls
     mkdir
     mkfifo
     open
+    opendir
     rename
     symlink
     truncate
