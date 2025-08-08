@@ -89,6 +89,29 @@ void SetBlocksCount(
     config.SetBlocksCount(blocksCount);
 }
 
+TVector<TString> GetLostDevicesIds(
+    const TVector<NProto::TFileDeviceArgs>& expectedConfig,
+    const TVector<NProto::TFileDeviceArgs>& currentConfig)
+{
+    TVector<NProto::TFileDeviceArgs> tmp;
+    std::set_difference(
+        expectedConfig.begin(),
+        expectedConfig.end(),
+        currentConfig.begin(),
+        currentConfig.end(),
+        std::back_inserter(tmp),
+        [](const auto& lhs, const auto& rhs)
+        { return lhs.GetDeviceId() < rhs.GetDeviceId(); });
+
+    TVector<TString> result;
+    result.reserve(tmp.size());
+    for (auto& device: tmp) {
+        result.push_back(device.GetDeviceId());
+    }
+
+    return result;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TInitializer
@@ -110,6 +133,7 @@ private:
     TVector<TString> Errors;
     TVector<TString> ConfigMismatchErrors;
     TVector<TString> DevicesWithSuspendedIO;
+    TVector<TString> LostDevicesIds;
     TMutex Lock;
 
     THashMap<TString, TString> PathToSerial;
@@ -437,6 +461,9 @@ void TInitializer::ValidateCurrentConfigs(
     const auto error = CompareConfigs(cachedDevices, FileDevices);
     if (!HasError(error)) {
         STORAGE_INFO("Current config is OK. Update cached config.");
+
+        LostDevicesIds = GetLostDevicesIds(cachedDevices, FileDevices);
+
         SaveCurrentConfig();
         return;
     }
@@ -670,6 +697,7 @@ TInitializeStorageResult TInitializer::GetResult()
     r.Errors = std::move(Errors);
     r.ConfigMismatchErrors = std::move(ConfigMismatchErrors);
     r.DevicesWithSuspendedIO = std::move(DevicesWithSuspendedIO);
+    r.LostDevicesIds = std::move(LostDevicesIds);
     r.Guard = std::move(Guard);
 
     return r;
