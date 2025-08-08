@@ -723,6 +723,8 @@ public:
     [[nodiscard]] TDuration GetTrimFreshLogTimeout() const;
 
     [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
+
+    [[nodiscard]] bool GetLimitMirrorDisksDeviceReplacementsPerRow() const;
 };
 
 ui64 GetAllocationUnit(

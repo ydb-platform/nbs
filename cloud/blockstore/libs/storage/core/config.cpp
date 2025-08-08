@@ -631,6 +631,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(EnableDataIntegrityValidationForYdbBasedDisks,       bool,   false    )\
                                                                                \
     xxx(TrimFreshLogTimeout,                  TDuration,   Seconds(0)         )\
+    xxx(LimitMirrorDisksDeviceReplacementsPerRow,          bool,   false      )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

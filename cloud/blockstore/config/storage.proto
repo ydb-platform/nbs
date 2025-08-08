@@ -1323,4 +1323,8 @@ message TStorageServiceConfig
     // Enables data integrity validation for the YDB-based disks.
     // See "EnableDataIntegrityClient" in server.proto for more details.
     optional bool EnableDataIntegrityValidationForYdbBasedDisks = 455;
+
+    // if true, disk registry doesn't replace devices of mirrored disks in one row
+    // per reallocation.
+    optional bool LimitMirrorDisksDeviceReplacementsPerRow = 456;
 }

@@ -1177,7 +1177,7 @@ void TDiskRegistryActor::RenderDisksToNotify(IOutputStream& out) const
                 TABLER() {
                     TABLED() {
                         DumpDiskLink(out, TabletID(), p.first);
-                        out << " <font color=gray>" << p.second << "</font>";
+                        out << " <font color=gray>" << p.second.SeqNo << "</font>";
                     }
 
                     auto it = FindIf(DisksBeingNotified, [&] (auto& x) {
