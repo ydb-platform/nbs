@@ -241,6 +241,12 @@ public:
     {
         return SafeExecute<TResultOrError<TString>>([&] {
             TFileHandle device(path, OpenExisting | RdOnly);
+            if (!device.IsOpen()) {
+                int err = errno;
+                ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+                    << "unable to open " << path.Quote() << ": "
+                    << strerror(err);
+            }
 
             auto str = [] (auto& arr) {
                 auto* sn = std::bit_cast<const char*>(&arr[0]);

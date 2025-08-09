@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     nvme.cpp
+    nvme_allocator.cpp
     nvme_stub.cpp
 )
 
@@ -13,6 +14,11 @@ ENDIF(OS_LINUX)
 
 PEERDIR(
     cloud/blockstore/config
+
+    cloud/storage/core/libs/common
+    cloud/storage/core/libs/diagnostics
 )
 
 END()
+
+RECURSE_FOR_TESTS(ut)
