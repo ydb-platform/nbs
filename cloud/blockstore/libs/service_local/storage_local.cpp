@@ -4,6 +4,7 @@
 #include "safe_deallocator.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -585,12 +586,25 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
 
     TReadGuard readGuard(WriteSubmissionLock);
 
-    return SendAsyncRequest<TAsyncReadRequest>(
-        this->weak_from_this(),
-        std::move(callContext),
-        std::move(request->Sglist),
-        fileOffset,
-        byteCount);
+    auto sglist = request->Sglist;
+    TFuture<NProto::TReadBlocksLocalResponse> future =
+        SendAsyncRequest<TAsyncReadRequest>(
+            this->weak_from_this(),
+            std::move(callContext),
+            std::move(request->Sglist),
+            fileOffset,
+            byteCount)
+            .GetFuture();
+    return future.Apply(
+        [future, sglist = std::move(sglist)](const auto&) mutable
+        {
+            NProto::TReadBlocksLocalResponse response =
+                future.ExtractValueSync();
+            if (auto guard = sglist.Acquire()) {
+                *response.MutableChecksum() = CalculateChecksum(guard.Get());
+            }
+            return response;
+        });
 }
 
 TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(

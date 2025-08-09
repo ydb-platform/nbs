@@ -115,6 +115,7 @@ using TValue = std::variant<TString, int, ui16, ui32, ui64>;
     xxx(LaggingAgentsProxyWrongRecipientActor)                                 \
     xxx(UnexpectedCookie)                                                      \
     xxx(MultiAgentRequestAffectsTwoDevices)                                    \
+    xxx(ChecksumCalculationError)                                              \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
