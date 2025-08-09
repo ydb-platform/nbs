@@ -48,6 +48,8 @@ private:
 
     ui32 OriginalGroupId = 0;
 
+    const ui64 BlobOperationId = 0;
+
 public:
     TPatchBlobActor(
         const TActorId& tabletActorId,
@@ -56,7 +58,8 @@ public:
         TString diskId,
         std::unique_ptr<TRequest> request,
         ui32 originalGroupId,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        ui64 blobOperationId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -95,7 +98,8 @@ TPatchBlobActor::TPatchBlobActor(
         TString diskId,
         std::unique_ptr<TRequest> request,
         ui32 originalGroupId,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        ui64 blobOperationId)
     : TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
@@ -103,6 +107,7 @@ TPatchBlobActor::TPatchBlobActor(
     , Request(std::move(request))
     , LogTitle(std::move(logTitle))
     , OriginalGroupId(originalGroupId)
+    , BlobOperationId(blobOperationId)
 {}
 
 void TPatchBlobActor::Bootstrap(const TActorContext& ctx)
@@ -153,6 +158,7 @@ void TPatchBlobActor::NotifyCompleted(
     request->StorageStatusFlags = StorageStatusFlags;
     request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
     request->RequestTime = ResponseReceived - RequestSent;
+    request->BlobOperationId = BlobOperationId;
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }
@@ -318,6 +324,7 @@ void TPartitionActor::HandlePatchBlob(
 
     ui32 channel = msg->PatchedBlobId.Channel();
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->PatchedBlobId.Generation());
+    ui64 blobOperationId = BlobOperationId++;
 
     State->EnqueueIORequest(
         channel,
@@ -329,7 +336,12 @@ void TPartitionActor::HandlePatchBlob(
             std::unique_ptr<TEvPartitionPrivate::TEvPatchBlobRequest>(
                 msg.Release()),
             originalGroupId,
-            LogTitle.GetChild(GetCycleCount())));
+            LogTitle.GetChild(GetCycleCount()),
+            blobOperationId),
+        TBlobOperationData(
+            blobOperationId,
+            originalGroupId,
+            TGroupOperationTimeTracker::EGroupOperationType::Patch));
 
     ProcessIOQueue(ctx, channel);
 }
@@ -339,6 +351,7 @@ void TPartitionActor::HandlePatchBlobCompleted(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    GroupOperationTimeTracker.OnFinished(msg->BlobOperationId, GetCycleCount());
 
     Actors.Erase(ev->Sender);
 

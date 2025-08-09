@@ -454,8 +454,9 @@ void TPartitionActor::ReleaseTransactions()
 
 void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
 {
-    while (auto requestActor = State->DequeueIORequest(channel)) {
-        auto actorId = NCloud::Register(ctx, std::move(requestActor));
+    while (auto reqOpt = State->DequeueIORequest(channel)) {
+        auto req = std::move(*reqOpt);
+        auto actorId = NCloud::Register(ctx, std::move(req.Actor));
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION,
@@ -463,6 +464,11 @@ void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
             LogTitle.GetWithTime().c_str(),
             actorId);
         Actors.Insert(actorId);
+        GroupOperationTimeTracker.OnStarted(
+            req.BlobOpData.Id,
+            req.BlobOpData.Group,
+            req.BlobOpData.Type,
+            GetCycleCount());
     }
 }
 
