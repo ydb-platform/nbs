@@ -1,5 +1,6 @@
 #include "request_counters.h"
 
+#include "library/cpp/string_utils/quote/quote.h"
 #include "monitoring.h"
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -321,8 +322,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
-            UNIT_ASSERT_VALUES_EQUAL(200, p100->Val());
-            UNIT_ASSERT_VALUES_EQUAL(150, p50->Val());
+            UNIT_ASSERT_VALUES_EQUAL(200000, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(150000, p50->Val());
         }
 
         {
@@ -330,8 +331,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
-            UNIT_ASSERT_VALUES_EQUAL(100, p100->Val());
-            UNIT_ASSERT_VALUES_EQUAL(75, p50->Val());
+            UNIT_ASSERT_VALUES_EQUAL(100000, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(75000, p50->Val());
         }
     }
 
@@ -383,8 +384,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
-            UNIT_ASSERT_VALUES_EQUAL(200, p100->Val());
-            UNIT_ASSERT_VALUES_EQUAL(150, p50->Val());
+            UNIT_ASSERT_VALUES_EQUAL(200000, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(150000, p50->Val());
         }
 
         {
@@ -392,8 +393,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
-            UNIT_ASSERT_VALUES_EQUAL(100, p100->Val());
-            UNIT_ASSERT_VALUES_EQUAL(75, p50->Val());
+            UNIT_ASSERT_VALUES_EQUAL(100000, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(75000, p50->Val());
         }
 
         {
@@ -401,8 +402,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
-            UNIT_ASSERT_VALUES_EQUAL(50, p100->Val());
-            UNIT_ASSERT_VALUES_EQUAL(35, p50->Val());
+            UNIT_ASSERT_VALUES_EQUAL(50000, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(35000, p50->Val());
         }
     }
 
@@ -704,11 +705,11 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         });
 
         TMap<TString, uint64_t> expectedHistogramValues;
-        for (const auto& bucketName : TRequestMsTimeBuckets::MakeNames()) {
+        for (const auto& bucketName : TRequestUsTimeBuckets::MakeNames()) {
             expectedHistogramValues[bucketName] = 0;
         }
-        expectedHistogramValues["10000ms"] = 1;
-        expectedHistogramValues["35000ms"] = 2;
+        expectedHistogramValues["10000000"] = 1;
+        expectedHistogramValues["35000000"] = 2;
         expectedHistogramValues["Inf"] = 3;
 
         counters->UpdateStats();
@@ -719,7 +720,7 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
         for (const auto& [name, value]: expectedHistogramValues) {
             const auto counter = group->FindCounter(name);
-            UNIT_ASSERT(counter);
+            UNIT_ASSERT_C(counter, "Counter " + name.Quote() + " not found");
             UNIT_ASSERT_VALUES_EQUAL(counter->Val(), value);
         }
     }
