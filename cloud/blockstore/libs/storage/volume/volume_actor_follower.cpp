@@ -47,8 +47,6 @@ void TVolumeActor::CompleteUpdateLeader(
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
             MakeError(S_OK));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    RestartPartition(ctx, {});
 }
 
 ////////////////////////////////////////////////////////////////////////////////

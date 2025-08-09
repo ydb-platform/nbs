@@ -357,6 +357,10 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(GetRebuildMetadataStatus, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ScanDisk, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(GetScanDiskStatus, TEvVolume);
+
+    BLOCKSTORE_IMPLEMENT_REQUEST(CreateCheckpoint, TEvService);
+    BLOCKSTORE_IMPLEMENT_REQUEST(DeleteCheckpoint, TEvService);
+    BLOCKSTORE_IMPLEMENT_REQUEST(DeleteCheckpointData, TEvVolume);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

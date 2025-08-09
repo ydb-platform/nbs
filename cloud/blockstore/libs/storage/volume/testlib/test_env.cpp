@@ -233,11 +233,9 @@ void TVolumeClient::ReconnectPipe()
         NKikimr::GetPipeConfigWithRetries());
 }
 
-
 void TVolumeClient::RebootTablet()
 {
     TVector<ui64> tablets = { VolumeTabletId };
-
     auto guard = TTabletScheduledEventsGuard(
         tablets,
         Runtime,

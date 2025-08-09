@@ -1109,6 +1109,11 @@ private:
         TActorsStack actors,
         std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
 
+    TActorsStack WrapWithFollowerActorIfNeeded(
+        const NActors::TActorContext& ctx,
+        TActorsStack actors,
+        bool takePartitionOwnership);
+
     void HandleCreateLinkFinished(
         const TEvVolumePrivate::TEvCreateLinkFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
