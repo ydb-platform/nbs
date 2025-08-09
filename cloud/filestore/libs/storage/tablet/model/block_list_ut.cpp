@@ -210,12 +210,12 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         UNIT_ASSERT_VALUES_EQUAL(decodedBlocks.size(), blocksCount);
 
         for (size_t i = 0; i < blocksCount; ++i) {
-            const auto& block = blocks[i];
             const auto& decodedBlock = decodedBlocks[i];
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.NodeId, block.NodeId);
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.BlockIndex, block.BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.MinCommitId, block.MinCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.MaxCommitId, block.MaxCommitId);
+            const auto& expectedBlock = blocks[i];
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlock.NodeId, decodedBlock.NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlock.BlockIndex, decodedBlock.BlockIndex);
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlock.MinCommitId, decodedBlock.MinCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlock.MaxCommitId, decodedBlock.MaxCommitId);
         }
     }
 
@@ -230,12 +230,12 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         UNIT_ASSERT_VALUES_EQUAL(decodedBlocks.size(), blocksCount);
 
         for (size_t i = 0; i < blocksCount; ++i) {
-            const auto& block = blocks[i];
             const auto& decodedBlock = decodedBlocks[i];
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.NodeId, block.NodeId);
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.BlockIndex, block.BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.MinCommitId, block.MinCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.MaxCommitId, block.MaxCommitId);
+            const auto& expectedBlock = blocks[i];
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlock.NodeId, decodedBlock.NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlock.BlockIndex, decodedBlock.BlockIndex);
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlock.MinCommitId, decodedBlock.MinCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlock.MaxCommitId, decodedBlock.MaxCommitId);
         }
     }
 }
