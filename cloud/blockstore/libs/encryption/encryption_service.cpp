@@ -128,10 +128,16 @@ public:
                 request->GetHeaders().GetClientId())
             << " start creating encryption client " << encryptionSpec);
 
-        auto future = EncryptionClientFactory->CreateEncryptionClient(
-            Service,
-            encryptionSpec,
-            request->GetDiskId());
+        NThreading::TFuture<IEncryptionClientFactory::TResponse> future;
+
+        if (request->GetDisableEncryption()) {
+            future = MakeFuture(TResultOrError{Service});
+        } else {
+            future = EncryptionClientFactory->CreateEncryptionClient(
+                Service,
+                encryptionSpec,
+                request->GetDiskId());
+        }
 
         return future.Apply([
             weakPtr = weak_from_this(),
