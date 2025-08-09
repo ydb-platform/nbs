@@ -12,7 +12,6 @@
 #include <library/cpp/digest/md5/md5.h>
 #include <library/cpp/getopt/last_getopt.h>
 
-#include <util/folder/path.h>
 #include <util/generic/guid.h>
 
 namespace NCloud::NFileStore::NProfileTool {
@@ -115,9 +114,18 @@ TString TMaskSensitiveData::Transform(
 {
     TString extension;
     if (MaxExtensionLength > 0) {
-        extension = TFsPath(str).GetExtension();
+        if (const auto pos = str.find_last_of(".");
+            pos != TString::npos && pos > 0)
+        {
+            extension = str.substr(pos + 1);
+        }
+
         if (extension.size() > MaxExtensionLength) {
             extension = "";
+        }
+        
+        if (!extension.empty()) {
+            extension = "." + extension;
         }
     }
 
