@@ -136,8 +136,7 @@ public:
     ui64 GetMaxCommitId(ui32 blobOffset);
 
 private:
-    bool IsDecoded(ui32 blobOffset) const;
-
+    bool IsMaxCommitIdSet(ui32 blobOffset) const;
     void SetMaxCommitId(ui32 blobOffset, ui64 maxCommitId);
 };
 
@@ -152,7 +151,7 @@ TLazyDeletionMarkersDecoder::TLazyDeletionMarkersDecoder(
 
 ui64 TLazyDeletionMarkersDecoder::GetMaxCommitId(ui32 blobOffset)
 {
-    if (IsDecoded(blobOffset)) {
+    if (IsMaxCommitIdSet(blobOffset)) {
         return MaxCommitIds[blobOffset];
     }
 
@@ -182,7 +181,7 @@ ui64 TLazyDeletionMarkersDecoder::GetMaxCommitId(ui32 blobOffset)
             }
         }
 
-        if (IsDecoded(blobOffset)) {
+        if (IsMaxCommitIdSet(blobOffset)) {
             return MaxCommitIds[blobOffset];
         }
     }
@@ -190,7 +189,7 @@ ui64 TLazyDeletionMarkersDecoder::GetMaxCommitId(ui32 blobOffset)
     return InvalidCommitId;
 }
 
-bool TLazyDeletionMarkersDecoder::IsDecoded(ui32 blobOffset) const
+bool TLazyDeletionMarkersDecoder::IsMaxCommitIdSet(ui32 blobOffset) const
 {
     return blobOffset < MaxCommitIds.size() &&
         MaxCommitIds[blobOffset] != InvalidCommitId;
