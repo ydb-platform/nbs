@@ -133,7 +133,7 @@ public:
     explicit TLazyDeletionMarkersDecoder(
         const TByteVector& encodedDeletionMarkers);
 
-    ui64 DecodeMaxCommitId(ui32 blobOffset);
+    ui64 GetMaxCommitId(ui32 blobOffset);
 
 private:
     bool IsDecoded(ui32 blobOffset) const;
@@ -150,7 +150,7 @@ TLazyDeletionMarkersDecoder::TLazyDeletionMarkersDecoder(
     Y_ABORT_UNLESS(header.ListType == NBlockListSpec::TListHeader::DeletionMarkers);
 }
 
-ui64 TLazyDeletionMarkersDecoder::DecodeMaxCommitId(ui32 blobOffset)
+ui64 TLazyDeletionMarkersDecoder::GetMaxCommitId(ui32 blobOffset)
 {
     if (IsDecoded(blobOffset)) {
         return MaxCommitIds[blobOffset];
@@ -394,7 +394,7 @@ public:
             if (!group.IsMulti) {
                 const auto& entry = Reader.Read<NBlockListSpec::TBlockEntry>();
                 if (Filter.CheckGroup(group.NodeId, group.CommitId)) {
-                    ui64 maxCommitId = DeletionMarkers.DecodeMaxCommitId(
+                    ui64 maxCommitId = DeletionMarkers.GetMaxCommitId(
                         entry.BlobOffset);
 
                     if (Filter.CheckEntry(entry.BlockIndex, maxCommitId)) {
@@ -486,7 +486,7 @@ private:
             ui16 blobOffset = Group.Merged.BlobOffset + Group.Index;
             ++Group.Index;
 
-            ui64 maxCommitId = DeletionMarkers.DecodeMaxCommitId(blobOffset);
+            ui64 maxCommitId = DeletionMarkers.GetMaxCommitId(blobOffset);
 
             if (Filter.CheckEntry(blockIndex, maxCommitId)) {
                 Block.BlockIndex = blockIndex;
@@ -507,7 +507,7 @@ private:
             ui16 blobOffset = Group.Mixed.BlobOffsets[Group.Index];
             ++Group.Index;
 
-            ui64 maxCommitId = DeletionMarkers.DecodeMaxCommitId(blobOffset);
+            ui64 maxCommitId = DeletionMarkers.GetMaxCommitId(blobOffset);
 
             if (Filter.CheckEntry(blockIndex, maxCommitId)) {
                 Block.BlockIndex = blockIndex;
