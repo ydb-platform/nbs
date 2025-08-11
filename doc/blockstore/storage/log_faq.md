@@ -75,5 +75,5 @@ Used for detailed logging of nested operations.
 * g - volume tablet generation (parent)
 * d - disk id (parent)
 * cp - checkpoint id (child)
-* t - time since actor start (parent)
+* t - time since child actor start (child)
 * \+ 15us - operation duration (child)
