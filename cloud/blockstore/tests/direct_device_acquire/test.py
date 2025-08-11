@@ -191,12 +191,15 @@ def restart_volume(client, disk_id):
     restart_tablet(client, tablet_id)
 
 
-def wait_for_all_volumes_to_be_notified(client):
+def wait_for_all_volumes_to_be_notified(client, timeout=60):
+    start_time = time.time()
     while True:
         bkp = client.backup_disk_registry_state()
-        print(bkp)
         if not ("DisksToNotify" in bkp):
             break
+        if time.time() - start_time > timeout:
+            raise TimeoutError(
+                f"Timeout waiting for all volumes to be notified (waited {timeout} seconds). Last state: {bkp}")
         time.sleep(1)
 
 
