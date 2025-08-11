@@ -60,10 +60,6 @@ func HasResult(status TaskStatus) bool {
 	return status > TaskStatusRunning
 }
 
-func IsExecuting(status TaskStatus) bool {
-	return status == TaskStatusRunning || status == TaskStatusCancelling
-}
-
 func IsEnded(status TaskStatus) bool {
 	return status == TaskStatusFinished || status == TaskStatusCancelled
 }
