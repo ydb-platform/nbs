@@ -2383,6 +2383,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
         UNIT_ASSERT_VALUES_EQUAL(8, evGets);
         UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
+
+        auto counters = env.GetCounters()
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("cloud", "test_cloud")
+                            ->FindSubgroup("folder", "test_folder")
+                            ->FindSubgroup("request", "ReadBlob");
+        UNIT_ASSERT(counters);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldReassignTablet)
@@ -2893,6 +2904,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(3, runtime.GetCounter(TEvService::EvWriteDataResponse));
         UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
         // clang-format on
+
+
+        auto counters = env.GetCounters()
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("cloud", "test_cloud")
+                            ->FindSubgroup("folder", "test_folder")
+                            ->FindSubgroup("request", "WriteBlob");
+        UNIT_ASSERT(counters);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldThrottleMulipleStageReadsAndWrites)

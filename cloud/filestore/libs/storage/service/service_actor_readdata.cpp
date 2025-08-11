@@ -399,8 +399,12 @@ void TReadDataActor::HandleReadBlobResponse(
             LogTag.c_str(),
             msg->Print(false).c_str());
 
-        const auto errorReason = FormatError(
+        const NProto::TError error(
             MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason));
+
+        InFlightRequest->Complete(ctx.Now(), error);
+
+        const auto errorReason = FormatError(error);
         ReadData(ctx, errorReason);
         return;
     }
@@ -433,9 +437,10 @@ void TReadDataActor::HandleReadBlobResponse(
                 NKikimrProto::EReplyStatus_Name(response.Status).c_str(),
                 msg->Print(false).c_str());
 
-            const auto errorReason = FormatError(
-                MakeError(MAKE_KIKIMR_ERROR(response.Status), "read error"));
-            ReadData(ctx, errorReason);
+            const auto error =
+                MakeError(MAKE_KIKIMR_ERROR(response.Status), "read error");
+            InFlightRequest->Complete(ctx.Now(), error);
+            ReadData(ctx, FormatError(error));
             return;
         }
 
@@ -459,6 +464,7 @@ void TReadDataActor::HandleReadBlobResponse(
                 "%s ReadBlob error: %s",
                 LogTag.c_str(),
                 error.c_str());
+            InFlightRequest->Complete(ctx.Now(), MakeError(E_FAIL, error));
             ReadData(ctx, error);
 
             return;
