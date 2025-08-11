@@ -519,7 +519,7 @@ private:
             int res = RunRequestQueue();
             if (res != -EAGAIN) {
                 if (res < 0) {
-                    ReportVhostQueueRunningError({{"retrun_code", -res}});
+                    ReportVhostQueueRunningError({{"return_code", -res}});
                 }
                 break;
             }
