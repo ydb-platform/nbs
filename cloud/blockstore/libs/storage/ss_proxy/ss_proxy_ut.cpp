@@ -155,8 +155,9 @@ void FillVolumeConfig(
     partition->SetBlockCount(blocksCount);
 }
 
-const TEvSSProxy::TEvDescribeSchemeResponse* DescribeSubDomain(
-    TTestActorRuntime& runtime, const TStorageConfigPtr& config)
+TEvSSProxy::TEvDescribeSchemeResponse::TPtr DescribeSubDomain(
+    TTestActorRuntime& runtime,
+    const TStorageConfigPtr& config)
 {
     TActorId sender = runtime.AllocateEdgeActor();
     Send(
@@ -167,11 +168,12 @@ const TEvSSProxy::TEvDescribeSchemeResponse* DescribeSubDomain(
             config->GetSchemeShardDir()));
 
     TAutoPtr<IEventHandle> handle;
-    const auto* response =
+    auto* response =
         runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(
             handle);
     UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
-    return response;
+    return IEventHandle::Downcast<TEvSSProxy::TEvDescribeSchemeResponse>(
+        std::move(handle));
 }
 
 void CreateVolumeViaModifyScheme(
@@ -541,19 +543,21 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             }());
         SetupTestEnv(env, config);
 
-        const auto* response = DescribeSubDomain(runtime, config);
+        const auto response = DescribeSubDomain(runtime, config);
         UNIT_ASSERT_VALUES_EQUAL(
             NKikimrSchemeOp::EPathTypeSubDomain,
-            response->PathDescription.GetSelf().GetPathType());
+            response->Get()->PathDescription.GetSelf().GetPathType());
         UNIT_ASSERT_GT(
-            response->PathDescription.GetDomainDescription().StoragePoolsSize(),
+            response->Get()
+                ->PathDescription.GetDomainDescription()
+                .StoragePoolsSize(),
             0);
     }
 
-    Y_UNIT_TEST(ShouldDescribeDRWithSchemeCache)
+    Y_UNIT_TEST(ShouldDescribeSubDomain)
     {
-        TestShouldDescribeDR(true);
-        TestShouldDescribeDR(false);
+        TestShouldDescribeSubDomain(true);
+        TestShouldDescribeSubDomain(false);
     }
 
     Y_UNIT_TEST(ShouldDescribeVolumesInFallbackMode)
