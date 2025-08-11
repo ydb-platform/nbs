@@ -266,8 +266,9 @@ private:
 
     TVolumeSelfCountersPtr VolumeSelfCounters;
 
-    struct TAcquireReleaseDiskRequest
+    class TAcquireReleaseDiskRequest
     {
+    public:
         bool IsAcquire;
         TString ClientId;
         NProto::EVolumeAccessMode AccessMode;
@@ -277,6 +278,35 @@ private:
         const bool RetryIfTimeoutOrUndelivery = false;
         const bool ForceTabletRestart = false;
 
+        static TAcquireReleaseDiskRequest MakeAcquire(
+            TString clientId,
+            NProto::EVolumeAccessMode accessMode,
+            ui64 mountSeqNumber,
+            TClientRequestPtr clientRequest,
+            bool forceTabletRestart)
+        {
+            return {
+                std::move(clientId),
+                accessMode,
+                mountSeqNumber,
+                std::move(clientRequest),
+                forceTabletRestart};
+        }
+
+        static TAcquireReleaseDiskRequest MakeRelease(
+            TString clientId,
+            TClientRequestPtr clientRequest,
+            TVector<NProto::TDeviceConfig> devicesToRelease,
+            bool retryIfTimeoutOrUndelivery)
+        {
+            return {
+                std::move(clientId),
+                std::move(clientRequest),
+                std::move(devicesToRelease),
+                retryIfTimeoutOrUndelivery};
+        }
+
+    private:
         TAcquireReleaseDiskRequest(
                 TString clientId,
                 NProto::EVolumeAccessMode accessMode,
@@ -289,8 +319,7 @@ private:
             , MountSeqNumber(mountSeqNumber)
             , ClientRequest(std::move(clientRequest))
             , ForceTabletRestart(forceTabletRestart)
-        {
-        }
+        {}
 
         TAcquireReleaseDiskRequest(
                 TString clientId,
@@ -306,34 +335,6 @@ private:
             , DevicesToRelease(std::move(devicesToRelease))
             , RetryIfTimeoutOrUndelivery(retryIfTimeoutOrUndelivery)
         {}
-
-        static TAcquireReleaseDiskRequest MakeAcquire(
-            TString clientId,
-            NProto::EVolumeAccessMode accessMode,
-            ui64 mountSeqNumber,
-            TClientRequestPtr clientRequest,
-            bool forceTabletRestart)
-        {
-            return TAcquireReleaseDiskRequest(
-                std::move(clientId),
-                accessMode,
-                mountSeqNumber,
-                std::move(clientRequest),
-                forceTabletRestart);
-        }
-
-        static TAcquireReleaseDiskRequest MakeRelease(
-            TString clientId,
-            TClientRequestPtr clientRequest,
-            TVector<NProto::TDeviceConfig> devicesToRelease,
-            bool retryIfTimeoutOrUndelivery)
-        {
-            return TAcquireReleaseDiskRequest(
-                std::move(clientId),
-                std::move(clientRequest),
-                std::move(devicesToRelease),
-                retryIfTimeoutOrUndelivery);
-        }
     };
     TList<TAcquireReleaseDiskRequest> AcquireReleaseDiskRequests;
     bool AcquireDiskScheduled = false;
