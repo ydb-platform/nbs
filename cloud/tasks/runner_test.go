@@ -403,9 +403,11 @@ func TestExecutionContextFinish(t *testing.T) {
 
 	err := execCtx.FinishWithPreparation(ctx, nil /* preparation */)
 	require.NoError(t, err)
+
 	// Check for idempotency
-	err = execCtx.FinishWithPreparation(ctx, nil /* preparation */)
+	err = execCtx.FinishWithPreparation(ctx, nil)
 	require.NoError(t, err)
+
 	mock.AssertExpectationsForObjects(t, task, taskStorage)
 }
 
@@ -1504,20 +1506,20 @@ func TestRunnerLoopSucceeds(t *testing.T) {
 	taskStorage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	runner := &mockRunner{}
-	onClose := &mockCallback{}
+	onCloseCallback := &mockCallback{}
 	handle := taskHandle{
 		task: storage.TaskInfo{
 			ID: regularTaskId,
 		},
-		onClose: onClose.Run,
+		onClose: onCloseCallback.Run,
 	}
 
 	runner.On("receiveTask", mock.Anything).Return(handle, nil)
 	runner.On("lockAndExecuteTask", ctx, handle.task).Return(nil)
-	onClose.On("Run").Run(toCallback(cancel))
+	onCloseCallback.On("Run").Run(toCallback(cancel))
 
 	runnerLoop(ctx, registry, runner)
-	mock.AssertExpectationsForObjects(t, taskStorage, runner, onClose)
+	mock.AssertExpectationsForObjects(t, taskStorage, runner, onCloseCallback)
 }
 
 func testListerLoop(
