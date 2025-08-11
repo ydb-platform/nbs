@@ -19,6 +19,9 @@ struct TBlockStoreServerProtocol
 
         EvZeroBlocksRequest = 5,
         EvZeroBlocksResponse = 6,
+
+        EvPingRequest = 7,
+        EvPingResponse = 8,
     };
 
     static NRdma::TProtoMessageSerializer* Serializer();
