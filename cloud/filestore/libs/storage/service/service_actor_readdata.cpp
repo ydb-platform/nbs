@@ -119,7 +119,6 @@ TReadDataActor::TReadDataActor(
         ReadRequest.GetLength(),
         BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
-    , BlockBuffer(std::make_unique<TString>())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
@@ -132,8 +131,9 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
     // a block buffer leads to memory allocation (and initialization) which is
     // heavy and we would like to execute that on a separate thread (instead of
     // this actor's parent thread)
-    BlockBuffer->ReserveAndResize(
-        AlignedByteRange.BlockCount() * AlignedByteRange.BlockSize);
+    BlockBuffer = std::make_unique<TString>(
+        AlignedByteRange.BlockCount() * AlignedByteRange.BlockSize,
+        0);
 
     DescribeData(ctx);
     Become(&TThis::StateWork);
