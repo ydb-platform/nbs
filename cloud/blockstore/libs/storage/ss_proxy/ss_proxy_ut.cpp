@@ -528,7 +528,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             DescribeVolumeAndReturnPath(runtime, "new-volume"));
     }
 
-    void TestShouldDescribeDR(bool useSchemeCache)
+    void TestShouldDescribeSubDomain(bool useSchemeCache)
     {
         TTestEnv env;
         auto& runtime = env.GetRuntime();
@@ -543,8 +543,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         const auto* response = DescribeSubDomain(runtime, config);
         UNIT_ASSERT_VALUES_EQUAL(
-            response->PathDescription.GetSelf().GetPathType(),
-            NKikimrSchemeOp::EPathTypeSubDomain);
+            NKikimrSchemeOp::EPathTypeSubDomain,
+            response->PathDescription.GetSelf().GetPathType());
         UNIT_ASSERT_GT(
             response->PathDescription.GetDomainDescription().StoragePoolsSize(),
             0);
