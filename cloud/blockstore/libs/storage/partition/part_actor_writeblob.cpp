@@ -413,10 +413,9 @@ void TPartitionActor::HandleWriteBlob(
             groupId,
             LogTitle.GetChild(GetCycleCount()),
             blobOperationId),
-        TBlobOperationData(
-            blobOperationId,
-            groupId,
-            TGroupOperationTimeTracker::EGroupOperationType::Write));
+        blobOperationId,
+        groupId,
+        TGroupOperationTimeTracker::EGroupOperationType::Write);
 
     ProcessIOQueue(ctx, channel);
 }

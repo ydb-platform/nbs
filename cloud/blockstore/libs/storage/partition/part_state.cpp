@@ -436,10 +436,16 @@ ui32 TPartitionState::GetAlmostFullChannelCount() const
 void TPartitionState::EnqueueIORequest(
     ui32 channel,
     NActors::IActorPtr requestActor,
-    TBlobOperationData blobOpData)
+    ui64 blobOperationId,
+    ui32 group,
+    TGroupOperationTimeTracker::EGroupOperationType operationType)
 {
     auto& ch = GetChannel(channel);
-    ch.IORequests.emplace_back(std::move(requestActor), blobOpData);
+    ch.IORequests.emplace_back(
+        std::move(requestActor),
+        blobOperationId,
+        group,
+        operationType);
     ++ch.IORequestsQueued;
 }
 

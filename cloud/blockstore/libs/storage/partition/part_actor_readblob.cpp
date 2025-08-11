@@ -79,10 +79,9 @@ void TPartitionActor::HandleReadBlob(
     State->EnqueueIORequest(
         channel,
         std::move(readBlobActor),
-        TBlobOperationData(
-            blobOperationId,
-            groupId,
-            TGroupOperationTimeTracker::EGroupOperationType::Read));
+        blobOperationId,
+        groupId,
+        TGroupOperationTimeTracker::EGroupOperationType::Read);
     ProcessIOQueue(ctx, channel);
 }
 

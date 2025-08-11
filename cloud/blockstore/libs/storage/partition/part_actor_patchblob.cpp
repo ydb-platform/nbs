@@ -335,10 +335,9 @@ void TPartitionActor::HandlePatchBlob(
             originalGroupId,
             LogTitle.GetChild(GetCycleCount()),
             blobOperationId),
-        TBlobOperationData(
-            blobOperationId,
-            originalGroupId,
-            TGroupOperationTimeTracker::EGroupOperationType::Patch));
+        blobOperationId,
+        originalGroupId,
+        TGroupOperationTimeTracker::EGroupOperationType::Patch);
 
     ProcessIOQueue(ctx, channel);
 }

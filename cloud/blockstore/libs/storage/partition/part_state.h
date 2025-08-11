@@ -261,35 +261,12 @@ struct TScanDiskState
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBlobOperationData
-{
-    ui64 Id;
-    ui32 Group;
-    TGroupOperationTimeTracker::EGroupOperationType Type;
-
-    TBlobOperationData(
-        ui64 id,
-        ui32 group,
-        TGroupOperationTimeTracker::EGroupOperationType type)
-        : Id(id)
-        , Group(group)
-        , Type(type)
-    {}
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TQueuedRequest
 {
     NActors::IActorPtr Actor;
-    TBlobOperationData BlobOpData;
-
-    explicit TQueuedRequest(
-        NActors::IActorPtr actor,
-        TBlobOperationData blobOpData)
-        : Actor(std::move(actor))
-        , BlobOpData(blobOpData)
-    {}
+    ui64 BlopOperationId;
+    ui32 Group;
+    TGroupOperationTimeTracker::EGroupOperationType OperationType;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -488,8 +465,10 @@ public:
     ui32 GetAlmostFullChannelCount() const;
     void EnqueueIORequest(
         ui32 channel,
-        NActors::IActorPtr actor,
-        TBlobOperationData blobOpData);
+        NActors::IActorPtr requestActor,
+        ui64 blobOperationId,
+        ui32 group,
+        TGroupOperationTimeTracker::EGroupOperationType operationType);
     std::optional<TQueuedRequest> DequeueIORequest(ui32 channel);
     void CompleteIORequest(ui32 channel);
     ui32 GetIORequestsInFlight() const;
