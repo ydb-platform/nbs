@@ -155,6 +155,27 @@ void FillVolumeConfig(
     partition->SetBlockCount(blocksCount);
 }
 
+TEvSSProxy::TEvDescribeSchemeResponse::TPtr DescribeSubDomain(
+    TTestActorRuntime& runtime,
+    const TStorageConfigPtr& config)
+{
+    TActorId sender = runtime.AllocateEdgeActor();
+    Send(
+        runtime,
+        MakeSSProxyServiceId(),
+        sender,
+        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+            config->GetSchemeShardDir()));
+
+    TAutoPtr<IEventHandle> handle;
+    auto* response =
+        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(
+            handle);
+    UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
+    return IEventHandle::Downcast<TEvSSProxy::TEvDescribeSchemeResponse>(
+        std::move(handle));
+}
+
 void CreateVolumeViaModifyScheme(
     TTestActorRuntime& runtime,
     TStorageConfigPtr config,
@@ -507,6 +528,36 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "/local/nbs/_17A/new-volume",
             DescribeVolumeAndReturnPath(runtime, "new-volume"));
+    }
+
+    void TestShouldDescribeSubDomain(bool useSchemeCache)
+    {
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+        auto config = CreateStorageConfig(
+            [useSchemeCache]()
+            {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(useSchemeCache);
+                return config;
+            }());
+        SetupTestEnv(env, config);
+
+        const auto response = DescribeSubDomain(runtime, config);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NKikimrSchemeOp::EPathTypeSubDomain,
+            response->Get()->PathDescription.GetSelf().GetPathType());
+        UNIT_ASSERT_GT(
+            response->Get()
+                ->PathDescription.GetDomainDescription()
+                .StoragePoolsSize(),
+            0);
+    }
+
+    Y_UNIT_TEST(ShouldDescribeSubDomain)
+    {
+        TestShouldDescribeSubDomain(true);
+        TestShouldDescribeSubDomain(false);
     }
 
     Y_UNIT_TEST(ShouldDescribeVolumesInFallbackMode)
