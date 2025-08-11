@@ -44,11 +44,11 @@
 #include <dirent.h>
 
 #ifndef HAS_TRUNCATE64
-#define	truncate64	truncate
+#define truncate64 truncate
 #endif
 #ifndef HAS_STAT64
-#define	stat64	stat
-#define	lstat64	lstat
+#define stat64 stat
+#define lstat64 lstat
 #endif
 
 #ifndef ALLPERMS
