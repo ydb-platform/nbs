@@ -215,7 +215,7 @@ void TVolumeActor::HandleReacquireDisk(
             && ctx.Now() > StateLoadTimestamp + TDuration::Seconds(5))
     {
         auto releaseRequest = TAcquireReleaseDiskRequest::MakeRelease(
-            AnyWriterClientId,
+            TString(AnyWriterClientId),
             nullptr,
             TVector<NProto::TDeviceConfig>{},
             false);   // retryIfTimeoutOrUndelivery
