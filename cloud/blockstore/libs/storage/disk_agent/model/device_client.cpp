@@ -144,7 +144,7 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
             return MakeError(
                 E_BS_INVALID_SESSION,
                 TStringBuilder()
-                    << "Error acquiring device by "
+                    << "Error acquiring device " << uuid.Quote() << " by "
                     << DescribeDeviceOwner(clientId, diskId, volumeGeneration)
                     << " already acquired by another client: "
                     << DescribeDeviceOwner(
