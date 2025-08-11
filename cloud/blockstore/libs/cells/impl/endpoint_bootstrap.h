@@ -11,10 +11,10 @@ using namespace NThreading;
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TCellHostEndpointsBootstrap
-    : public IHostEndpointsBoorstrap
+    : public IHostEndpointsBootstrap
 {
-    using IHostEndpointsBoorstrap::TGrpcEndpointBootstrapFuture;
-    using IHostEndpointsBoorstrap::TRdmaEndpointBootstrapFuture;
+    using IHostEndpointsBootstrap::TGrpcEndpointBootstrapFuture;
+    using IHostEndpointsBootstrap::TRdmaEndpointBootstrapFuture;
 
     auto SetupHostGrpcEndpoint(
         const TBootstrap& args,

@@ -27,20 +27,18 @@ class TCell
     , public std::enable_shared_from_this<TCell>
 {
 private:
-    const TBootstrap Args;
+    const TBootstrap Bootstrap;
     const TCellConfig Config;
 
     TAdaptiveLock Lock;
 
-    THashMap<TString, ICellHostPtr> Active;
-    THashMap<TString, ICellHostPtr> Activating;
-    THashSet<ICellHostPtr> Deactivating;
-    TVector<TString> Unused;
+    THashMap<TString, ICellHostPtr> ActiveHosts;
+    THashMap<TString, ICellHostPtr> ActivatingHosts;
+    THashSet<ICellHostPtr> DeactivatingHosts;
+    TVector<TString> UnusedHosts;
 
 public:
-    TCell(
-        TBootstrap args,
-        TCellConfig config);
+    TCell(TBootstrap bootstrap, TCellConfig config);
 
     [[nodiscard]] TResultOrError<TCellHostEndpoint> GetCellClient(
         const NClient::TClientAppConfigPtr& clientConfig) override
@@ -48,36 +46,36 @@ public:
         return PickHost(clientConfig);
     }
 
-    [[nodiscard]] TCellEndpoints GetCellClients(
+    [[nodiscard]] TCellHostEndpoints GetCellClients(
         const NClient::TClientAppConfigPtr& clientConfig) override
     {
         return PickHosts(Config.GetDescribeVolumeHostCount(), clientConfig);
     }
 
-    [[nodiscard]]THashMap<TString, ICellHostPtr>  GetActive() const
+    [[nodiscard]]THashMap<TString, ICellHostPtr>  GetActiveHosts() const
     {
         with_lock(Lock) {
-            return Active;
+            return ActiveHosts;
         }
     }
 
-    [[nodiscard]]THashMap<TString, ICellHostPtr>  GetActivating() const
+    [[nodiscard]]THashMap<TString, ICellHostPtr>  GetActivatingHosts() const
     {
         with_lock(Lock) {
-            return Activating;
+            return ActivatingHosts;
         }
     }
 
-    [[nodiscard]]THashSet<ICellHostPtr>  GetDeactivating() const
+    [[nodiscard]]THashSet<ICellHostPtr>  GetDeactivatingHosts() const
     {
         with_lock(Lock) {
-            return Deactivating;
+            return DeactivatingHosts;
         }
     }
 
     void Start() override
     {
-        ResizeIfNeeded();
+        AdjustActiveHostsToMinConnections();
     }
 
     void Stop() override
@@ -87,11 +85,11 @@ public:
 private:
     TResultOrError<TCellHostEndpoint> PickHost(
         const NClient::TClientAppConfigPtr& clientConfig);
-    TCellEndpoints PickHosts(
+    TCellHostEndpoints PickHosts(
         ui32 count,
         const NClient::TClientAppConfigPtr& clientConfig);
 
-    void ResizeIfNeeded();
+    void AdjustActiveHostsToMinConnections();
 };
 
 using TCellPtr = std::shared_ptr<TCell>;

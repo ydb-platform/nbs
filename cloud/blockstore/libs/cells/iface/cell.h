@@ -27,7 +27,7 @@ struct ICell
     [[nodiscard]] virtual TResultOrError<TCellHostEndpoint> GetCellClient(
         const NClient::TClientAppConfigPtr& clientConfig) = 0;
 
-    [[nodiscard]] virtual TCellEndpoints GetCellClients(
+    [[nodiscard]] virtual TCellHostEndpoints GetCellClients(
         const NClient::TClientAppConfigPtr& clientConfig) = 0;
 };
 

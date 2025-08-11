@@ -45,7 +45,7 @@ struct TCellHost
     NThreading::TPromise<void> StartPromise = NThreading::NewPromise<void>();
     NThreading::TPromise<void> StopPromise = NThreading::NewPromise<void>();
 
-    IHostEndpointsBoorstrap::TRdmaEndpointBootstrapFuture RdmaFuture;
+    IHostEndpointsBootstrap::TRdmaEndpointBootstrapFuture RdmaFuture;
 
     TCellHost(
             TCellHostConfig config,

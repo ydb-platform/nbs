@@ -44,9 +44,8 @@ public:
     }
 };
 
-using TCellEndpoints = TVector<TCellHostEndpoint>;
+using TCellHostEndpoints = TVector<TCellHostEndpoint>;
 
-// maps cellid to vector of endpoints in the cell
-using TCellsEndpoints = THashMap<TString, TCellEndpoints>;
+using TCellHostEndpointsByCellId = THashMap<TString, TCellHostEndpoints>;
 
 }   // namespace NCloud::NBlockStore::NCells

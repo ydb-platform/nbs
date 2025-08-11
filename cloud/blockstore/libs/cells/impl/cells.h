@@ -32,13 +32,11 @@ using namespace NMonitoring;
 struct TCellManager
     : public ICellManager
 {
-    const TBootstrap Args;
+    const TBootstrap Bootstrap;
 
     THashMap<TString, ICellPtr> Cells;
 
-    TCellManager(
-        TCellsConfigPtr config,
-        TBootstrap args);
+    TCellManager(TCellsConfigPtr config, TBootstrap bootstrap);
 
     void Start() override;
     void Stop() override;
@@ -56,7 +54,7 @@ struct TCellManager
     void OutputHtml(IOutputStream& out, const IMonHttpRequest& request);
 
 private:
-    [[nodiscard]] TCellsEndpoints GetCellsEndpoints(
+    [[nodiscard]] TCellHostEndpointsByCellId GetCellsEndpoints(
         const NClient::TClientAppConfigPtr& clientConfig);
 };
 

@@ -43,7 +43,7 @@ auto TCellHostEndpointsBootstrap::SetupHostRdmaEndpoint(
         rdmaEndpoint);
 }
 
-IHostEndpointsBoorstrapPtr CreateHostEndpointsSetupProvider()
+IHostEndpointsBootstrapPtr CreateHostEndpointsBootstrap()
 {
     return std::make_shared<TCellHostEndpointsBootstrap>();
 }

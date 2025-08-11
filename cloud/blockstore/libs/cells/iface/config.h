@@ -65,14 +65,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TConfiguredHosts = THashMap<TString, TCellHostConfig>;
+using TConfiguredHostsByFqdn = THashMap<TString, TCellHostConfig>;
 
 class TCellConfig
     : public IDumpable
 {
 private:
     const NProto::TCellConfig Config;
-    TConfiguredHosts ConfiguredHosts;
+    TConfiguredHostsByFqdn ConfiguredHosts;
 
 public:
     explicit TCellConfig(NProto::TCellConfig config = {});
@@ -88,7 +88,7 @@ public:
     [[nodiscard]] ui32 GetRdmaPort() const;
     [[nodiscard]] ui32 GetNbdPort() const;
     [[nodiscard]] NProto::ECellDataTransport GetTransport() const;
-    [[nodiscard]] const TConfiguredHosts& GetHosts() const;
+    [[nodiscard]] const TConfiguredHostsByFqdn& GetHosts() const;
     [[nodiscard]] ui32 GetDescribeVolumeHostCount() const;
     [[nodiscard]] ui32 GetMinCellConnections() const;
 
@@ -98,8 +98,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// maps cellid to corresponding cell configuration
-using TConfiguredCells = THashMap<TString, TCellConfig>;
+using TCellConfigByCellId = THashMap<TString, TCellConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -108,7 +107,7 @@ class TCellsConfig
 {
 private:
     const NProto::TCellsConfig Config;
-    TConfiguredCells ConfiguredCells;
+    TCellConfigByCellId ConfiguredCells;
     NClient::TClientAppConfig GrpcClientConfig;
 
 public:
@@ -120,7 +119,7 @@ public:
     }
 
     [[nodiscard]] TString GetCellId() const;
-    [[nodiscard]] const TConfiguredCells& GetCells() const;
+    [[nodiscard]] const TCellConfigByCellId& GetCells() const;
     [[nodiscard]] TDuration GetDescribeVolumeTimeout() const;
     [[nodiscard]] const NClient::TClientAppConfig& GetGrpcClientConfig() const;
     [[nodiscard]] ui32 GetRdmaTransportWorkers() const;

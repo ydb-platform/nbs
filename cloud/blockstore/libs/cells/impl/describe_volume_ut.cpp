@@ -67,7 +67,7 @@ struct TTestServiceClient
 std::shared_ptr<TTestServiceClient> CreateCellEndpoint(
     const TString& cellId,
     const TString& host,
-    TCellsEndpoints& endpoints)
+    TCellHostEndpointsByCellId& endpoints)
 {
     auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
     auto service = std::make_shared<TTestServiceClient>();
@@ -87,7 +87,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 {
     Y_UNIT_TEST(ShouldDescribeRemoteVolume)
     {
-        TCellsEndpoints endpoints;
+        TCellHostEndpointsByCellId endpoints;
 
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
@@ -133,7 +133,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
     Y_UNIT_TEST(ShouldDescribeLocalVolume)
     {
-        TCellsEndpoints endpoints;
+        TCellHostEndpointsByCellId endpoints;
 
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
@@ -179,7 +179,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
     Y_UNIT_TEST(ShouldReturnFatalErrorIfVolumeIsAbsent)
     {
-        TCellsEndpoints endpoints;
+        TCellHostEndpointsByCellId endpoints;
 
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
@@ -243,7 +243,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
     Y_UNIT_TEST(ShouldReturnRetribleErrorIfAtLeastOneCellIsNotReachable)
     {
-        TCellsEndpoints endpoints;
+        TCellHostEndpointsByCellId endpoints;
 
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
@@ -309,7 +309,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
     Y_UNIT_TEST(ShouldReturnRetribleErrorIfAtLeastOneCellUnavailable)
     {
-        TCellsEndpoints endpoints;
+        TCellHostEndpointsByCellId endpoints;
 
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
 
@@ -363,7 +363,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
     Y_UNIT_TEST(ShouldReplyRetriableErrorOnTimeout)
     {
-        TCellsEndpoints endpoints;
+        TCellHostEndpointsByCellId endpoints;
 
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
