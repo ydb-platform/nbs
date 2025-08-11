@@ -201,12 +201,12 @@ void TVolumeActor::HandleRetryAcquireDisk(
 {
     Y_UNUSED(ev);
     if (AcquireReleaseDiskRequests.empty() ||
-        !AcquireReleaseDiskRequests.front().RetryIfTimeoutOrUndelivery)
+        !AcquireReleaseDiskRequests.front().ForceRequest)
     {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Unexpected TEvRetryAcquireDisk",
+            "%s Unexpected force TEvRetryAcquireDisk",
             LogTitle.GetWithTime().c_str());
 
         return;
@@ -255,7 +255,7 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
-        if (request.RetryIfTimeoutOrUndelivery &&
+        if (request.ForceRequest &&
             GetErrorKind(error) == EErrorKind::ErrorRetriable &&
             Config->GetRetryAcquireReleaseDiskInitialDelay())
         {
@@ -392,7 +392,7 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
                     request->AddedClientInfo.GetVolumeAccessMode(),
                     request->AddedClientInfo.GetMountSeqNumber(),
                     request,
-                    false   // retryIfTimeoutOrUndelivery
+                    false   // forceRequest
                 );
             }
 
