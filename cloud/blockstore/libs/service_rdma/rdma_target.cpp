@@ -151,6 +151,7 @@ private:
             BLOCKSTORE_HANDLE_REQUEST(ReadBlocks)
             BLOCKSTORE_HANDLE_REQUEST(WriteBlocks)
             BLOCKSTORE_HANDLE_REQUEST(ZeroBlocks)
+            BLOCKSTORE_HANDLE_REQUEST(Ping)
 
             default:
                 return MakeError(
@@ -389,6 +390,36 @@ private:
                     ep->SendResponse(context, responseBytes);
                 }
             });
+
+        return {};
+    }
+
+    NProto::TError HandlePingRequest(
+        void* context,
+        TCallContextPtr callContext,
+        NProto::TPingRequest& request,
+        TStringBuf requestData,
+        TStringBuf out) const
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+
+        Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
+
+        NProto::TPingResponse response;
+
+        ui32 flags = 0;
+        SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        size_t responseBytes =
+            NRdma::TProtoMessageSerializer::Serialize(
+                out,
+                TBlockStoreServerProtocol::EvZeroBlocksResponse,
+                flags,   // flags
+                response);
+
+        if (auto ep = Endpoint.lock()) {
+            ep->SendResponse(context, responseBytes);
+        }
 
         return {};
     }
