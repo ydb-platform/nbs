@@ -31,6 +31,8 @@ struct TProfileLogSettings
 {
     TString FilePath;
     TDuration TimeThreshold;
+    ui64 MaxFlushRecords;
+    ui64 MaxFrameFlushRecords;
 };
 
 IProfileLogPtr CreateProfileLog(
