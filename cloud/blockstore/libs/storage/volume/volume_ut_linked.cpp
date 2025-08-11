@@ -22,6 +22,23 @@ using namespace NCloud::NStorage;
 
 using namespace NTestVolume;
 
+////////////////////////////////////////////////////////////////////////////////
+
+enum class ECheckpointBehaviour
+{
+    None,
+    CreateBeforeLink,
+    CreateAfterLink,
+    CreateThenDelete,
+};
+
+enum class ERebootBehaviour
+{
+    RebootLeader,
+    RebootFollower,
+    RebootBoth,
+};
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,6 +72,8 @@ struct TFixture: public NUnitTest::TBaseFixture
         }
         config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
         config.SetMaxShadowDiskFillIoDepth(2);
+        // 8192 * 4096 = 32_MB
+        config.SetMigrationIndexCachingInterval(8192);
 
         auto state = MakeIntrusive<TDiskRegistryState>();
         Runtime = PrepareTestActorRuntime(
@@ -69,49 +88,8 @@ struct TFixture: public NUnitTest::TBaseFixture
              i < TBlockStoreComponents::END;
              ++i)
         {
-            // Runtime->SetLogPriority(i, NLog::PRI_DEBUG);
+            Runtime->SetLogPriority(i, NLog::PRI_DEBUG);
         }
-
-        Runtime->RegisterService(
-            MakeVolumeProxyServiceId(),
-            Runtime->AllocateEdgeActor(),
-            0);
-
-        auto volumeProxyEventFilter =
-            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
-        {
-            if (event->Recipient == MakeVolumeProxyServiceId()) {
-                if (event->GetTypeRewrite() ==
-                    TEvVolume::EvUpdateLinkOnFollowerRequest)
-                {
-                    auto* msg =
-                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
-                    ForwardToVolume(GetDiskId(*msg), event);
-                } else if (
-                    event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest)
-                {
-                    auto* msg = event->Get<TEvService::TEvWriteBlocksRequest>();
-                    ForwardToVolume(GetDiskId(*msg), event);
-                } else if (
-                    event->GetTypeRewrite() == TEvService::EvZeroBlocksRequest)
-                {
-                    auto* msg = event->Get<TEvService::TEvZeroBlocksRequest>();
-                    ForwardToVolume(GetDiskId(*msg), event);
-                } else {
-                    UNIT_ASSERT_C(
-                        false,
-                        TStringBuilder() << "Unexpected event type: "
-                                         << event->GetTypeName());
-                    return false;
-                }
-
-                return true;
-            }
-
-            return false;
-        };
-
-        Runtime->SetEventFilter(volumeProxyEventFilter);
     }
 
     void ForwardToVolume(const TString& diskId, TAutoPtr<IEventHandle>& event)
@@ -270,8 +248,10 @@ struct TFixture: public NUnitTest::TBaseFixture
             if (response->GetStatus() == S_OK) {
                 return;
             }
+            Runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
             if (response->GetStatus() == E_REJECTED) {
-                Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+                Cout << "WriteBlocks " << range.Print() << " failed"
+                     << FormatError(response->GetError()) << Endl;
                 continue;
             }
             UNIT_ASSERT_C(
@@ -300,8 +280,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             if (response->GetStatus() == S_OK) {
                 return;
             }
+            Runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
             if (response->GetStatus() == E_REJECTED) {
-                Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
                 continue;
             }
             UNIT_ASSERT_C(
@@ -313,17 +293,38 @@ struct TFixture: public NUnitTest::TBaseFixture
             false,
             TStringBuilder() << "ZeroBlocks " << range.Print() << " failed");
     }
+
+    void RebootTablets(ERebootBehaviour rebootBehaviour) const
+    {
+        const auto* volume1 = Volumes.FindPtr("vol1");
+        if (!volume1) {
+            UNIT_ASSERT_C(false, "Volume vol1 not found");
+            return;
+        }
+        const auto* volume2 = Volumes.FindPtr("vol2");
+        if (!volume2) {
+            UNIT_ASSERT_C(false, "Volume vol2 not found");
+            return;
+        }
+
+        if (rebootBehaviour == ERebootBehaviour::RebootLeader ||
+            rebootBehaviour == ERebootBehaviour::RebootBoth)
+        {
+            volume1->VolumeClient->RebootTablet();
+            volume1->VolumeClient->WaitReady();
+            volume1->VolumeClient->AddClient(*volume1->VolumeClientInfo);
+        }
+
+        if (rebootBehaviour == ERebootBehaviour::RebootFollower ||
+            rebootBehaviour == ERebootBehaviour::RebootBoth)
+        {
+            volume2->VolumeClient->RebootTablet();
+            volume2->VolumeClient->WaitReady();
+        }
+    }
 };
 
 }   // namespace
-
-enum class ECheckpointBehaviour
-{
-    None,
-    CreateBeforeLink,
-    CreateAfterLink,
-    CreateThenDelete,
-};
 
 Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
 {
@@ -675,6 +676,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         // Intercept leader state changes
         TTestActorRuntimeBase::TEventFilter prevFilter;
         std::optional<TFollowerDiskInfo::EState> followerState;
+        std::optional<ui64> migratedBytes;
         auto followerStateFilter =
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
@@ -684,6 +686,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 auto* msg = event->Get<
                     TEvVolumePrivate::TEvUpdateFollowerStateResponse>();
                 followerState = msg->Follower.State;
+                migratedBytes = msg->Follower.MigratedBytes;
             }
 
             return prevFilter(runtime, event);
@@ -899,6 +902,195 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             NProto::STORAGE_MEDIA_SSD,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             ECheckpointBehaviour::CreateAfterLink);
+    }
+
+    void DoShouldPrepareFollowerVolumeWithReboot(
+        TFixture& fixture,
+        NProto::EStorageMediaKind leaderMediaType,
+        NProto::EStorageMediaKind followerMediaType)
+    {
+        struct TRestart
+        {
+            ui64 Position = 0;
+            ERebootBehaviour RebootBehaviour = ERebootBehaviour::RebootFollower;
+            bool Done = false;
+        };
+        TRestart restarts[] = {
+            {.Position = 32_MB,
+             .RebootBehaviour = ERebootBehaviour::RebootFollower},
+            {.Position = 64_MB,
+             .RebootBehaviour = ERebootBehaviour::RebootLeader},
+            {.Position = 96_MB,
+             .RebootBehaviour = ERebootBehaviour::RebootBoth},
+        };
+
+        // Intercept leader state changes
+        TTestActorRuntimeBase::TEventFilter prevFilter;
+        std::optional<TFollowerDiskInfo::EState> followerState;
+        std::optional<ui64> migratedBytes;
+        auto followerStateFilter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvUpdateFollowerStateResponse)
+            {
+                auto* msg = event->Get<
+                    TEvVolumePrivate::TEvUpdateFollowerStateResponse>();
+                followerState = msg->Follower.State;
+
+                if (msg->Follower.State ==
+                        TFollowerDiskInfo::EState::Preparing &&
+                    msg->Follower.MigratedBytes)
+                {
+                    UNIT_ASSERT_C(
+                        !migratedBytes.has_value() ||
+                            migratedBytes.value() < msg->Follower.MigratedBytes,
+                        TStringBuilder()
+                            << "Migration progress should advance: "
+                            << migratedBytes.value() << " < "
+                            << msg->Follower.MigratedBytes);
+                    migratedBytes = msg->Follower.MigratedBytes;
+                }
+            }
+
+            return prevFilter(runtime, event);
+        };
+        prevFilter = fixture.Runtime->SetEventFilter(followerStateFilter);
+
+        // Create leader volume
+        TVolumeClient volume1(*fixture.Runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            leaderMediaType,
+            fixture.VolumeBlockCount,   // block count per partition
+            "vol1"));
+        volume1.WaitReady();
+
+        // registering a writer
+        auto clientInfo1 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume1.AddClient(clientInfo1);
+        fixture.Volumes["vol1"] = {
+            .VolumeClient = &volume1,
+            .VolumeClientInfo = &clientInfo1};
+
+        // Create follower volume
+        TVolumeClient volume2(*fixture.Runtime, 0, TestVolumeTablets[1]);
+        fixture.Volumes["vol2"] = {
+            .VolumeClient = &volume2,
+            .VolumeClientInfo = nullptr};
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            followerMediaType,
+            fixture.VolumeBlockCount,   // block count per partition
+            "vol2"));
+        volume2.WaitReady();
+
+        // Write some blocks to leader before migration starts.
+        for (ui64 pos = 0; pos < fixture.VolumeBlockCount; pos += 2048) {
+            volume1.WriteBlocks(
+                TBlockRange64::MakeOneBlock(pos),
+                clientInfo1.GetClientId(),
+                'a');
+        }
+
+        // Link volumes
+        {
+            TLeaderFollowerLink link{
+                .LinkUUID = "",
+                .LeaderDiskId = "vol1",
+                .LeaderShardId = "su1",
+                .FollowerDiskId = "vol2",
+                .FollowerShardId = "su2"};
+
+            auto response = volume1.LinkLeaderVolumeToFollower(link);
+            link.LinkUUID = response->Record.GetLinkUUID();
+
+            UNIT_ASSERT_EQUAL(
+                TFollowerDiskInfo::EState::Preparing,
+                followerState);
+
+            // It is necessary to reconnect the pipe as the previous one broke
+            // when the partition was restarted.
+            volume1.ReconnectPipe();
+            volume1.AddClient(clientInfo1);
+        };
+
+        // Send WriteBlocks to leader during migration
+        for (ui64 pos = 0;; pos += 2048) {
+            fixture.WriteBlocks(
+                TBlockRange64::MakeOneBlock(
+                    ((pos + 1) % fixture.VolumeBlockCount)));
+
+            TDispatchOptions options;
+            std::optional<ui64> oldMigratedBytes = migratedBytes;
+            options.CustomFinalCondition = [&]
+            {
+                return migratedBytes != oldMigratedBytes;
+            };
+            fixture.Runtime->DispatchEvents(
+                options,
+                TDuration::MilliSeconds(100));
+
+            if (followerState == TFollowerDiskInfo::EState::DataReady) {
+                break;
+            }
+
+            for (auto& restart: restarts) {
+                if (restart.Position != migratedBytes || restart.Done) {
+                    continue;
+                }
+                fixture.RebootTablets(restart.RebootBehaviour);
+                restart.Done = true;
+            }
+        }
+
+        for (const auto& restart: restarts) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                true,
+                restart.Done,
+                TStringBuilder()
+                    << "Restart at " << restart.Position << " failed");
+        }
+
+        // Check volumes content match.
+        fixture.CheckVolumesDataMatch();
+    }
+
+    Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_SSD_NRD_WithReboot, TFixture)
+    {
+        DoShouldPrepareFollowerVolumeWithReboot(
+            *this,
+            NProto::STORAGE_MEDIA_SSD,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_NRD_SSD_WithReboot, TFixture)
+    {
+        DoShouldPrepareFollowerVolumeWithReboot(
+            *this,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_NRD_NRD_WithReboot, TFixture)
+    {
+        DoShouldPrepareFollowerVolumeWithReboot(
+            *this,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     }
 }
 
