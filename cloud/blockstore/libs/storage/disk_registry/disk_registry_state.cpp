@@ -492,8 +492,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
                 // can't use impossible events here since there are some uts
                 // that configure TDiskRegistryState in a 'peculiar' way
                 if (!device) {
-                    ReportDiskRegistryDeviceNotFoundSoft(
-                        TStringBuilder() << "ProcessDisks:DeviceId: " << uuid);
+                    ReportDiskRegistryDeviceNotFoundSoft({{"DeviceId", uuid}});
                     continue;
                 }
 
@@ -615,10 +614,9 @@ void TDiskRegistryState::ProcessCheckpoints()
             auto* sourceDisk = Disks.FindPtr(checkpointReplica.GetSourceDiskId());
             if (!sourceDisk) {
                 ReportDiskRegistrySourceDiskNotFound(
-                    TStringBuilder()
-                    << "CheckpointId: " << checkpointReplica.GetCheckpointId()
-                    << " SourceDiskId: " << checkpointReplica.GetSourceDiskId()
-                    << " ReplicaDiskId: " << diskId);
+                    {{"CheckpointId", checkpointReplica.GetCheckpointId()},
+                     {"SourceDiskId", checkpointReplica.GetSourceDiskId()},
+                     {"ShadowDiskId", diskId}});
                 continue;
             }
 
@@ -2495,9 +2493,7 @@ void TDiskRegistryState::CleanupMirroredDisk(
 
     if (affectedDisks.size()) {
         ReportMirroredDiskAllocationPlacementGroupCleanupFailure(
-            TStringBuilder()
-                << "AllocateMirroredDisk:PlacementGroupCleanupFailure:DiskId: "
-                << diskId);
+            {{"disk", diskId}});
     }
 
     AddToBrokenDisks(now, db, diskId);
@@ -2621,9 +2617,8 @@ NProto::TError TDiskRegistryState::AllocateMirroredDisk(
         if (!isNewDisk) {
             // TODO (NBS-3419):
             // support automatic cleanup after a failed resize
-            ReportMirroredDiskAllocationCleanupFailure(TStringBuilder()
-                << "AllocateMirroredDisk:ResizeCleanupFailure:DiskId: "
-                << params.DiskId);
+            ReportMirroredDiskAllocationCleanupFailure(
+                {{"disk", params.DiskId}});
         }
 
         onError();
@@ -2949,8 +2944,7 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
     }
 
     if (!IsReadyForCleanup(diskId)) {
-        auto message = ReportNrdDestructionError(TStringBuilder()
-            << "attempting to clean up unmarked disk " << diskId.Quote());
+        auto message = ReportNrdDestructionError({{"disk", diskId}});
 
         return MakeError(E_INVALID_STATE, std::move(message));
     }
@@ -5259,12 +5253,9 @@ void TDiskRegistryState::ApplyAgentStateChange(
         if (agent.GetState() == NProto::AGENT_STATE_WARNING) {
             if (MigrationCanBeStarted(disk, deviceId)) {
                 if (!FindPtr(disk.Devices, deviceId)) {
-                    ReportDiskRegistryWrongMigratedDeviceOwnership(Sprintf(
-                        "ApplyAgentStateChange: device[DeviceUUID = %s] not "
-                        "found in disk[DiskId "
-                        "= %s]",
-                        deviceId.c_str(),
-                        diskId.c_str()));
+                    ReportDiskRegistryWrongMigratedDeviceOwnership(
+                        "ApplyAgentStateChange: device not found in disk",
+                        {{"disk", diskId}, {"DeviceUUID", deviceId}});
                     continue;
                 }
 
@@ -6519,8 +6510,8 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
 
     if (devIt == disk.Devices.end()) {
         auto message = ReportDiskRegistryWrongMigratedDeviceOwnership(
-            TStringBuilder() << "FinishDeviceMigration: device "
-                             << sourceId.Quote() << " not found");
+            "FinishDeviceMigration device not found",
+            {{"disk", diskId}, {"device", sourceId}});
         return MakeError(E_INVALID_STATE, std::move(message));
     }
 
@@ -7693,9 +7684,7 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
     if (rateLimit
             && rateLimit <= AutomaticReplacementTimestamps.size()) {
         ReportMirroredDiskDeviceReplacementRateLimitExceeded(
-            TStringBuilder()
-            << "DiskId=" << masterDiskId << ", DeviceId=" << deviceId
-            << ", automatic device replacement cancelled due to rate limit");
+            {{"disk", masterDiskId}, {"device", deviceId}});
         return false;
     }
 
@@ -7705,9 +7694,7 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
 
     if (!canReplaceDevice) {
         ReportMirroredDiskDeviceReplacementForbidden(
-            TStringBuilder()
-            << "DiskId=" << masterDiskId << ", DeviceId=" << deviceId
-            << " automatic device replacement forbidden by ReplicaTable");
+            {{"disk", masterDiskId}, {"device", deviceId}});
         return false;
     }
 

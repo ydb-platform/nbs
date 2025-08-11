@@ -375,9 +375,9 @@ void TPartitionActor::HandlePatchBlobCompleted(
 
     if (FAILED(msg->GetStatus())) {
         ReportTabletBSFailure(
-            TStringBuilder() << LogTitle.GetWithTime()
-                             << " Stop tablet because of PatchBlob error: "
-                             << FormatError(msg->GetError()));
+            TStringBuilder() << "Stop tablet because of PatchBlob error: "
+                             << FormatError(msg->GetError()),
+            {{"disk", PartitionConfig.GetDiskId()}});
         Suicide(ctx);
         return;
     }

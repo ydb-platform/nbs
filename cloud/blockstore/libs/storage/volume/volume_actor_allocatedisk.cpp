@@ -347,9 +347,8 @@ void TVolumeActor::HandleAllocateDiskError(
     if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED && !localDiskAllocationRetry)
     {
         ReportDiskAllocationFailure(
-            TStringBuilder()
-            << "Disk: " << GetNewestConfig().GetDiskId().Quote()
-            << " allocation failed");
+            "allocation failed",
+            {{"disk", GetNewestConfig().GetDiskId()}});
     }
     LOG_ERROR(
         ctx,
@@ -563,8 +562,8 @@ bool TVolumeActor::CheckAllocationResult(
 
     if (!ok) {
         ReportDiskAllocationFailure(
-            TStringBuilder() << "Disk " << State->GetDiskId().Quote()
-                             << ": invalid disk allocation response received");
+            "invalid disk allocation response received",
+            {{"disk", State->GetDiskId()}});
 
         if (State->GetAcceptInvalidDiskAllocationResponse()) {
             LOG_WARN(

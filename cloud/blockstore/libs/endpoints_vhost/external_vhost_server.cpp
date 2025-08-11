@@ -652,10 +652,9 @@ private:
                 break;
             }
 
-            ReportExternalEndpointUnexpectedExit(TStringBuilder()
-                << "External endpoint for a disk " << Stats.DiskId.Quote()
-                << " and a client " << Stats.ClientId.Quote()
-                << " unexpectedly stopped: " << FormatError(error));
+            ReportExternalEndpointUnexpectedExit(
+                FormatError(error),
+                {{"disk", Stats.DiskId}, {"client", Stats.ClientId}});
 
             auto process = RestartProcess();
             if (!process) {

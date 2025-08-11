@@ -495,10 +495,11 @@ void TPartitionActor::HandleWriteBlobCompleted(
         {
             ReportTabletBSFailure(
                 TStringBuilder()
-                << LogTitle.GetWithTime()
-                << "Stop tablet because of too many WriteBlob errors (actor "
-                << ev->Sender.ToString() << " group " << groupId << "): "
-                << FormatError(msg->GetError()));
+                    << "Stop tablet because of too many WriteBlob errors"
+                    << FormatError(msg->GetError()),
+                {{"disk", PartitionConfig.GetDiskId()},
+                 {"actor", ev->Sender.ToString()},
+                 {"group", groupId}});
             Suicide(ctx);
             return;
         }

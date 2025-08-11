@@ -1687,10 +1687,9 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
 
     const auto& switchError = Executor->WaitFor(switchFuture);
     if (HasError(switchError)) {
-        ReportEndpointSwitchFailure(TStringBuilder()
-            << "Failed to switch endpoint for volume "
-            << sessionInfo.Volume.GetDiskId()
-            << ", " << switchError.GetMessage());
+        ReportEndpointSwitchFailure(
+            FormatError(switchError),
+            {{"disk", sessionInfo.Volume.GetDiskId()}});
     }
 
     return switchError;
@@ -1820,9 +1819,9 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
 
         if (!request) {
             ReportEndpointRestoringError(
-                TStringBuilder()
-                << "Failed to deserialize request. ID: " << endpointId
-                << ", error: " << FormatError(error));
+                TStringBuilder() << "Failed to deserialize request, error: "
+                                 << FormatError(error),
+                {{"endpointId", endpointId}});
             continue;
         }
 
@@ -1835,10 +1834,10 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
                 if (HasError(error)) {
                     ReportEndpointRestoringError(
                         TStringBuilder()
-                        << "Failed to acquire nbd device, endpoint: "
-                        << request->GetUnixSocketPath().Quote()
-                        << ", DiskId: " << request->GetDiskId().Quote()
-                        << ", error: " << FormatError(error));
+                            << "Failed to acquire nbd device, error: "
+                            << ", error: " << FormatError(error),
+                        {{"disk", request->GetDiskId()},
+                         {"endpoint", request->GetUnixSocketPath()}});
                     continue;
                 }
             }
@@ -1867,9 +1866,10 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
             const auto& response = f.GetValue();
             if (HasError(response)) {
                 ReportEndpointRestoringError(
-                    TStringBuilder()
-                    << "Endpoint restoring error occurred for endpoint ID: "
-                    << endpointId << ", socket path: " << socketPath);
+                    TStringBuilder() << "Endpoint restoring error occurred for "
+                                        "endpoint, error: "
+                                     << FormatError(response.GetError()),
+                    {{"endpointId", endpointId}, {"socketPath", socketPath}});
             }
 
             if (auto ptr = weakPtr.lock()) {

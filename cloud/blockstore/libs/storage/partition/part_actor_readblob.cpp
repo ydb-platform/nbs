@@ -154,10 +154,11 @@ void TPartitionActor::HandleReadBlobCompleted(
         {
             ReportTabletBSFailure(
                 TStringBuilder()
-                << LogTitle.GetWithTime()
-                << "Stop tablet because of too many ReadBlob errors (actor "
-                << ev->Sender.ToString() << " group " << groupId
-                << "): " << FormatError(msg->GetError()));
+                    << "Stop tablet because of too many ReadBlob errors"
+                    << FormatError(msg->GetError()),
+                {{"disk", PartitionConfig.GetDiskId()},
+                 {"actor", ev->Sender.ToString()},
+                 {"group", groupId}});
             Suicide(ctx);
             return;
         }
