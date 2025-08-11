@@ -10,6 +10,22 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString DescribeDeviceOwner(
+    const auto& clientId,
+    const auto& diskId,
+    auto volumeGeneration)
+{
+    return TStringBuilder()
+           << "[clientId=" << clientId.Quote() << ", diskId=" << diskId.Quote()
+           << ", volumeGeneration=" << volumeGeneration << "]";
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TDeviceClient::TDeviceClient(
@@ -125,11 +141,16 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                     > now
                 && !canKickOutClient)
         {
-            return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
-                << "Error acquiring device " << uuid.Quote()
-                << " with client " << clientId.Quote()
-                << " already acquired by another client: "
-                << deviceState->WriterSession.Id.Quote());
+            return MakeError(
+                E_BS_INVALID_SESSION,
+                TStringBuilder()
+                    << "Error acquiring device by "
+                    << DescribeDeviceOwner(clientId, diskId, volumeGeneration)
+                    << " already acquired by another client: "
+                    << DescribeDeviceOwner(
+                           deviceState->WriterSession.Id,
+                           deviceState->DiskId,
+                           deviceState->VolumeGeneration));
         }
     }
 

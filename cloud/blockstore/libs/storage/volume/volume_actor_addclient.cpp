@@ -83,9 +83,23 @@ void TVolumeActor::ProcessNextAcquireReleaseDiskRequest(const TActorContext& ctx
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeActor::AcquireDiskIfNeeded(
-    const TActorContext& ctx,
-    bool retryIfUndelivery)
+void TVolumeActor::ForceAcquireDisk(const TActorContext& ctx)
+{
+    AcquireDiskImpl(
+        ctx,
+        true   // forceAcquire
+    );
+}
+
+void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
+{
+    AcquireDiskImpl(
+        ctx,
+        false   // forceAcquire
+    );
+}
+
+void TVolumeActor::AcquireDiskImpl(const TActorContext& ctx, bool forceAcquire)
 {
     if (!State->GetClients()) {
         return;
@@ -104,7 +118,7 @@ void TVolumeActor::AcquireDiskIfNeeded(
             }
         }
 
-        if (skip && !retryIfUndelivery) {
+        if (skip && !forceAcquire) {
             continue;
         }
 
@@ -113,7 +127,7 @@ void TVolumeActor::AcquireDiskIfNeeded(
             x.second.GetVolumeClientInfo().GetVolumeAccessMode(),
             x.second.GetVolumeClientInfo().GetMountSeqNumber(),
             nullptr,
-            retryIfUndelivery);
+            forceAcquire);
 
         LOG_DEBUG(
             ctx,
@@ -151,10 +165,7 @@ void TVolumeActor::HandleAcquireDiskIfNeeded(
 {
     Y_UNUSED(ev);
 
-    AcquireDiskIfNeeded(
-        ctx,
-        false   // retryIfUndelivery
-    );
+    AcquireDiskIfNeeded(ctx);
 
     AcquireDiskScheduled = false;
 }
@@ -179,10 +190,7 @@ void TVolumeActor::HandleReacquireDisk(
         }
     }
 
-    AcquireDiskIfNeeded(
-        ctx,
-        false   // retryIfUndelivery
-    );
+    AcquireDiskIfNeeded(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -225,9 +233,8 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
     const NProto::TError& error,
     const NActors::TActorContext& ctx)
 {
-    ScheduleAcquireDiskIfNeeded(ctx);
-
     if (AcquireReleaseDiskRequests.empty()) {
+        ScheduleAcquireDiskIfNeeded(ctx);
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -250,8 +257,13 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
 
         if (request.RetryIfTimeoutOrUndelivery &&
             GetErrorKind(error) == EErrorKind::ErrorRetriable &&
-            Config->GetRetryAcquireReleaseDiskTimeout())
+            Config->GetRetryAcquireReleaseDiskInitialDelay())
         {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "Retrying acquire disk");
+
             auto delay = BackoffDelayProviderForAcquireReleaseDiskRequests
                              .GetDelayAndIncrease();
             ctx.Schedule(
@@ -259,7 +271,11 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
                 std::make_unique<TEvVolume::TEvRetryAcquireDisk>().release());
             return;
         }
+    }
 
+    ScheduleAcquireDiskIfNeeded(ctx);
+
+    if (HasError(error)) {
         if (cr) {
             auto response =
                 std::make_unique<TEvVolume::TEvAddClientResponse>(error);

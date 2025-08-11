@@ -615,7 +615,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(PartitionBootTimeout,                 TDuration,   Seconds(0)         )\
     xxx(DirectWriteBandwidthQuota,            ui64,        0                  )\
-    xxx(RetryAcquireReleaseDiskTimeout,       TDuration,   Seconds(0)         )\
+    xxx(RetryAcquireReleaseDiskInitialDelay,  TDuration,   Seconds(0)         )\
+    xxx(RetryAcquireReleaseDiskMaxDelay,      TDuration,   Seconds(0)         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

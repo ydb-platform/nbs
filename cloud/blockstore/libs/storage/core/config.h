@@ -701,7 +701,8 @@ public:
 
     [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
 
-    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskTimeout() const;
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskInitialDelay() const;
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskMaxDelay() const;
 };
 
 ui64 GetAllocationUnit(

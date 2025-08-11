@@ -306,8 +306,8 @@ private:
     TList<TAcquireReleaseDiskRequest> AcquireReleaseDiskRequests;
     bool AcquireDiskScheduled = false;
     TBackoffDelayProvider BackoffDelayProviderForAcquireReleaseDiskRequests{
-        Config->GetRetryAcquireReleaseDiskTimeout(),
-        TDuration::Seconds(5)};
+        Config->GetRetryAcquireReleaseDiskInitialDelay(),
+        Config->GetRetryAcquireReleaseDiskMaxDelay()};
 
     NProto::TError StorageAllocationResult;
     bool DiskAllocationScheduled = false;
@@ -805,9 +805,11 @@ private:
         const TEvVolumePrivate::TEvDevicesAcquireFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void AcquireDiskIfNeeded(
-        const NActors::TActorContext& ctx,
-        bool retryIfUndelivery);
+    void ForceAcquireDisk(const NActors::TActorContext& ctx);
+
+    void AcquireDiskIfNeeded(const NActors::TActorContext& ctx);
+
+    void AcquireDiskImpl(const NActors::TActorContext& ctx, bool forceAcquire);
 
     void ReleaseReplacedDevices(
         const NActors::TActorContext& ctx,
