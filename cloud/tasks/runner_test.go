@@ -1697,7 +1697,6 @@ func TestHeartbeats(t *testing.T) {
 	).Return(nil).Once()
 
 	wg.Add(1)
-
 	go startHeartbeats(ctx, 10*time.Millisecond, host, taskStorage, inflightTasksReporter)
 	wg.Wait()
 	mock.AssertExpectationsForObjects(t, taskStorage)
