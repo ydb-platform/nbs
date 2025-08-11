@@ -281,13 +281,13 @@ func TestExecutionContextAddTaskDependency(t *testing.T) {
 
 	state := storage.TaskState{
 		ID:               inflightDurationTaskId,
-		Dependencies:     common.NewStringSet("taskIdDependency"),
+		Dependencies:     common.NewStringSet("dependencyTaskId"),
 		InflightDuration: inflightDuration,
 	}
 	task.On("Save").Return(state.State, nil)
 	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
 
-	err := execCtx.AddTaskDependency(ctx, "taskIdDependency")
+	err := execCtx.AddTaskDependency(ctx, "dependencyTaskId")
 	mock.AssertExpectationsForObjects(t, task, taskStorage)
 	require.NoError(t, err)
 }
@@ -1663,6 +1663,7 @@ func TestHeartbeats(t *testing.T) {
 	taskStorage := mocks.NewStorageMock()
 
 	idx := uint32(0)
+	wg := sync.WaitGroup{}
 	inflightTasksReporter := func() uint32 {
 		idx += 1
 		return idx
@@ -1688,8 +1689,16 @@ func TestHeartbeats(t *testing.T) {
 		host,
 		mock.Anything,
 		uint32(3),
-	).Run(toCallback(cancel)).Return(nil).Once()
+	).Run(
+		func(args mock.Arguments) {
+			cancel()
+			wg.Done()
+		},
+	).Return(nil).Once()
 
-	startHeartbeats(ctx, 10*time.Millisecond, host, taskStorage, inflightTasksReporter)
+	wg.Add(1)
+
+	go startHeartbeats(ctx, 10*time.Millisecond, host, taskStorage, inflightTasksReporter)
+	wg.Wait()
 	mock.AssertExpectationsForObjects(t, taskStorage)
 }
