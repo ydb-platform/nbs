@@ -191,6 +191,18 @@ def restart_volume(client, disk_id):
     restart_tablet(client, tablet_id)
 
 
+def wait_for_all_volumes_to_be_notified(client, timeout=60):
+    start_time = time.time()
+    while True:
+        bkp = client.backup_disk_registry_state()
+        if not ("DisksToNotify" in bkp):
+            break
+        if time.time() - start_time > timeout:
+            raise TimeoutError(
+                f"Timeout waiting for all volumes to be notified (waited {timeout} seconds). Last state: {bkp}")
+        time.sleep(1)
+
+
 def test_should_mount_volume_with_unknown_devices(
         nbs_with_dr,
         nbs,
@@ -260,7 +272,7 @@ def test_should_mount_volume_with_unknown_devices(
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0
 
-    time.sleep(1)
+    wait_for_all_volumes_to_be_notified(client)
 
     nbs_with_dr.kill()
     restart_volume(client, "vol1")
@@ -389,6 +401,8 @@ def test_should_mount_volume_with_unavailable_agents(
     agents[0].kill()
 
     client.wait_agent_state(agent_ids[0], "AGENT_STATE_UNAVAILABLE")
+
+    wait_for_all_volumes_to_be_notified(client)
 
     nbs_with_dr.kill()
     restart_volume(client, "vol1")
