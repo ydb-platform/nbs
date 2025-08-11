@@ -19,25 +19,25 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCell::TCell(
-        TBootstrap args,
-        TCellConfig config)
-    : Args(std::move(args))
+TCell::TCell(TBootstrap args, TCellConfig config)
+    : Bootstrap(std::move(args))
     , Config(std::move(config))
 {
     for (const auto& host: Config.GetHosts()) {
-        Unused.emplace_back(host.first);
+        UnusedHosts.emplace_back(host.first);
     }
-    Shuffle(Unused.begin(), Unused.end());
+    Shuffle(UnusedHosts.begin(), UnusedHosts.end());
 }
 
 TResultOrError<TCellHostEndpoint> TCell::PickHost(
     const NClient::TClientAppConfigPtr& clientConfig)
 {
-    ResizeIfNeeded();
+    AdjustActiveHostsToMinConnections();
+
+    ICellHostPtr host;
 
     with_lock (Lock) {
-        if (Active.empty()) {
+        if (ActiveHosts.empty()) {
             return MakeError(
                 E_REJECTED,
                 TStringBuilder() <<
@@ -45,28 +45,33 @@ TResultOrError<TCellHostEndpoint> TCell::PickHost(
                     Config.GetCellId());
         }
 
-        auto index = RandomNumber<ui32>(Active.size());
+        auto index = RandomNumber<ui32>(ActiveHosts.size());
 
-        auto hostManagetIt = std::next(Active.begin(), index);
-        return hostManagetIt->second->GetHostEndpoint(
-            clientConfig,
-            {},
-            false);
+        host = std::next(ActiveHosts.begin(), index)->second;
     }
+    // empty optional value, TCellHost will choose transport based on config
+    std::optional<NProto::ECellDataTransport> transport;
+    return host->GetHostEndpoint(
+        clientConfig,
+        transport,
+        false);
+
 }
 
-TCellEndpoints TCell::PickHosts(
-        ui32 count,
-        const NClient::TClientAppConfigPtr& clientConfig)
+TCellHostEndpoints TCell::PickHosts(
+    ui32 count,
+    const NClient::TClientAppConfigPtr& clientConfig)
 {
-    ResizeIfNeeded();
+    AdjustActiveHostsToMinConnections();
 
     with_lock (Lock) {
-        TCellEndpoints res;
-        auto it = Active.begin();
-        while (count && it != Active.end()) {
+        TCellHostEndpoints res;
+        auto it = ActiveHosts.begin();
+        while (count && it != ActiveHosts.end()) {
             auto result = it->second->GetHostEndpoint(
-                clientConfig, NProto::CELL_DATA_TRANSPORT_GRPC, false);
+                clientConfig,
+                NProto::CELL_DATA_TRANSPORT_GRPC,
+                false);
             if (!HasError(result.GetError())) {
                 auto endpoint = result.ExtractResult();
                 res.emplace_back(endpoint);
@@ -78,48 +83,45 @@ TCellEndpoints TCell::PickHosts(
     }
 }
 
-void TCell::ResizeIfNeeded()
+void TCell::AdjustActiveHostsToMinConnections()
 {
-    TVector<ICellHostPtr> tmp;
+    TVector<ICellHostPtr> hostsToActivate;
     with_lock(Lock) {
-        if (Active.size() >= Config.GetMinCellConnections()) {
+        if (Config.GetMinCellConnections() <= ActiveHosts.size()) {
             return;
         }
 
-        auto delta = Config.GetMinCellConnections() - Active.size();
-        while (delta-- && !Unused.empty()) {
-            auto host = Unused.back();
-            Unused.pop_back();
-            auto hostManager = CreateHost(
-                Config.GetHosts().find(host)->second,
-                Args);
-            Activating.emplace(host, hostManager);
-            tmp.push_back(hostManager);
+        auto delta = Config.GetMinCellConnections() - ActiveHosts.size();
+        while (delta-- && !UnusedHosts.empty()) {
+            auto fqdn = UnusedHosts.back();
+            UnusedHosts.pop_back();
+            auto host = CreateHost(
+                Config.GetHosts().find(fqdn)->second,
+                Bootstrap);
+            ActivatingHosts.emplace(fqdn, host);
+            hostsToActivate.push_back(host);
         }
     }
 
     auto weakPtr = this->weak_from_this();
-    for (const auto& host: tmp) {
+    for (const auto& host: hostsToActivate) {
         auto future = host->Start();
         future.Subscribe(
-            [=] (const auto& future) {
-                Y_UNUSED(future);
-                if (auto pThis = weakPtr.lock(); pThis) {
-                    with_lock(pThis->Lock) {
+            [=] (const auto& ) {
+                if (auto self = weakPtr.lock(); self) {
+                    with_lock(self->Lock) {
                         auto fqdn = host->GetConfig().GetFqdn();
-                        pThis->Active.emplace(
+                        self->ActiveHosts.emplace(
                             fqdn,
-                            pThis->Activating.find(fqdn)->second);
-                        pThis->Activating.erase(fqdn);
+                            self->ActivatingHosts.find(fqdn)->second);
+                        self->ActivatingHosts.erase(fqdn);
                     }
                 }
         });
     }
 }
 
-ICellPtr CreateCell(
-    TBootstrap args,
-    TCellConfig config)
+ICellPtr CreateCell(TBootstrap args, TCellConfig config)
 {
     return std::make_shared<TCell>(std::move(args), std::move(config));
 }

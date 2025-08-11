@@ -16,7 +16,7 @@ namespace NCloud::NBlockStore::NCells {
 
 struct THostConfig;
 
-struct IHostEndpointsBoorstrap
+struct IHostEndpointsBootstrap
 {
     using TGrpcEndpointBootstrapFuture =
         NThreading::TFuture<NClient::IMultiClientEndpointPtr>;
@@ -33,9 +33,9 @@ struct IHostEndpointsBoorstrap
         const TCellHostConfig& config,
         IBlockStorePtr client) = 0;
 
-    virtual ~IHostEndpointsBoorstrap() = default;
+    virtual ~IHostEndpointsBootstrap() = default;
 };
 
-IHostEndpointsBoorstrapPtr CreateHostEndpointsSetupProvider();
+IHostEndpointsBootstrapPtr CreateHostEndpointsBootstrap();
 
 }   // namespace NCloud::NBlockStore::NCells

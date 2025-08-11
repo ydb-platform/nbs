@@ -35,7 +35,7 @@ struct TCell {
     TVector<TCellHostInfo> Hosts;
 };
 
-using TCells = THashMap<TString, TCell>;
+using TCellByCellId = THashMap<TString, TCell>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -52,12 +52,12 @@ struct TDescribeResponseHandler
     TCell& Cell;
 
     TDescribeResponseHandler(
-            std::weak_ptr<TMultiCellDescribeHandler> owner,
-            TString cellId,
-            TString logTag,
-            TString diskId,
-            TFuture<NProto::TDescribeVolumeResponse> future,
-            TCell& cell);
+        std::weak_ptr<TMultiCellDescribeHandler> owner,
+        TString cellId,
+        TString logTag,
+        TString diskId,
+        TFuture<NProto::TDescribeVolumeResponse> future,
+        TCell& cell);
 
     void HandleResponse(const auto& future);
 
@@ -89,9 +89,7 @@ TFuture<NProto::TDescribeVolumeResponse> Describe(
         req->MutableHeaders()->ClearInternal();
     }
 
-    auto future = service->DescribeVolume(
-        callContext,
-        std::move(req));
+    auto future = service->DescribeVolume(callContext, std::move(req));
     return future;
 }
 
@@ -103,7 +101,7 @@ struct TMultiCellDescribeHandler
     const ISchedulerPtr Scheduler;
     TLog Log;
     std::atomic<ui64> Counter{0};
-    TCells Cells;
+    TCellByCellId Cells;
     NProto::TDescribeVolumeRequest Request;
     bool IncompleteCells;
 
@@ -115,7 +113,7 @@ struct TMultiCellDescribeHandler
     TMultiCellDescribeHandler(
             ISchedulerPtr scheduler,
             TLog log,
-            TCells cells,
+            TCellByCellId cells,
             NProto::TDescribeVolumeRequest request,
             bool incompleteCells)
         : Scheduler(std::move(scheduler))
@@ -281,12 +279,12 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
 std::optional<TDescribeVolumeFuture> DescribeVolume(
     const NProto::TDescribeVolumeRequest& request,
     const IBlockStorePtr& localService,
-    const TCellsEndpoints& endpoints,
+    const TCellHostEndpointsByCellId& endpoints,
     bool hasUnavailableCells,
     TDuration timeout,
     TBootstrap args)
 {
-    TCells cells;
+    TCellByCellId cells;
 
     for (const auto& cell: endpoints) {
         TCell s;

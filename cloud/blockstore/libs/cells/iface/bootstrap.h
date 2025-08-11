@@ -26,7 +26,7 @@ struct TBootstrap
 
     ITaskQueuePtr RdmaTaskQueue;
 
-    IHostEndpointsBoorstrapPtr EndpointsSetup;
+    IHostEndpointsBootstrapPtr EndpointsSetup;
 };
 
 }   // namespace NCloud::NBlockStore::NCells
