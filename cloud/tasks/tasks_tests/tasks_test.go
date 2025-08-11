@@ -1839,6 +1839,7 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	// Otherwise, a race condition can occur where longTask is picked up
 	// before waitingTask. This results in a WaitingDuration of zero,
 	// which causes the test to fail.
+	// https://github.com/ydb-platform/nbs/pull/4002
 	s := createServices(t, ctx, db, 3 /* runnersCount */)
 
 	err := registerLongTask(s.registry)
