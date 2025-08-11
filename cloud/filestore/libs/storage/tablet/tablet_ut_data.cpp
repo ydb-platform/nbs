@@ -6061,6 +6061,90 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    TABLET_TEST(CleanupSholdNotInterfereWithAddData)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        // Unlink data to ensure that cleanup will have something to clean up
+        tablet.WriteData(handle, 0, block * BlockGroupSize, 'a');
+        tablet.UnlinkNode(RootNodeId, "test", false);
+
+        id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        handle = CreateHandle(tablet, id);
+
+        TAutoPtr<IEventHandle> cleanupCompletion;
+        bool releaseBarrierEncountered = false;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvTablet::EvCommitResult) {
+                    if (!cleanupCompletion) {
+                        cleanupCompletion = event.Release();
+                    }
+                    return true;
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvIndexTabletPrivate::EvReleaseCollectBarrier)
+                {
+                    releaseBarrierEncountered = true;
+                }
+                return false;
+            });
+
+        auto generateBlobIdsResponse =
+            tablet.GenerateBlobIds(id, handle, 0, block);
+
+        tablet.SendCleanupRequest(GetMixedRangeIndex(id, 0));
+
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]() -> bool
+                {
+                    return !!cleanupCompletion;
+                }});
+        TVector<NKikimr::TLogoBlobID> blobIds;
+        for (const auto& blob: generateBlobIdsResponse->Record.GetBlobs()) {
+            blobIds.push_back(LogoBlobIDFromLogoBlobID(blob.GetBlobId()));
+        }
+
+        // Expecting that the original collect barrier is released by the lease
+        // expiration
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(15));
+
+        // Adding data to an invalid handle to ensure that collect barrier is
+        // released twice
+        tablet.AssertAddDataFailed(
+            id,
+            InvalidHandle,
+            0,
+            block * BlockGroupSize,
+            blobIds,
+            generateBlobIdsResponse->Record.GetCommitId());
+
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+        env.GetRuntime().Send(cleanupCompletion.Release(), nodeIdx);
+
+        tablet.RecvCleanupResponse();
+    }
+
     TABLET_TEST(ShouldGenerateCommitId)
     {
         const auto block = tabletConfig.BlockSize;
