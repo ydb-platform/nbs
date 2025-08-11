@@ -18,7 +18,7 @@ namespace NCloud::NBlockStore::NCells {
 std::optional<TDescribeVolumeFuture> DescribeVolume(
     const NProto::TDescribeVolumeRequest& request,
     const IBlockStorePtr& localService,
-    const TCellsEndpoints& endpoints,
+    const TCellHostEndpointsByCellId& endpoints,
     bool hasUnavailableCells,
     TDuration timeout,
     TBootstrap args);

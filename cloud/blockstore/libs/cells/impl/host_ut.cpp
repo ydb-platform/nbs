@@ -25,11 +25,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TestHostEndpointsSetupProvider
-    : public IHostEndpointsBoorstrap
+struct TestHostEndpointsBootstrap
+    : public IHostEndpointsBootstrap
 {
-    using IHostEndpointsBoorstrap::TGrpcEndpointBootstrapFuture;
-    using IHostEndpointsBoorstrap::TRdmaEndpointBootstrapFuture;
+    using IHostEndpointsBootstrap::TGrpcEndpointBootstrapFuture;
+    using IHostEndpointsBootstrap::TRdmaEndpointBootstrapFuture;
 
     TPromise<NClient::IMultiClientEndpointPtr> GrpcSetupPromise =
         NewPromise<NClient::IMultiClientEndpointPtr>();
@@ -146,7 +146,7 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
         hostCfg.SetFqdn("host");
         TCellHostConfig hostConfig{hostCfg, cell};
 
-        auto setup = std::make_shared<TestHostEndpointsSetupProvider>();
+        auto setup = std::make_shared<TestHostEndpointsBootstrap>();
 
         TBootstrap args;
         args.EndpointsSetup = setup;
@@ -235,7 +235,7 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
         hostCfg.SetFqdn("host");
         TCellHostConfig hostConfig{hostCfg, cell};
 
-        auto setup = std::make_shared<TestHostEndpointsSetupProvider>();
+        auto setup = std::make_shared<TestHostEndpointsBootstrap>();
 
         TBootstrap args;
         args.EndpointsSetup = setup;
@@ -318,7 +318,7 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
         hostCfg.SetFqdn("host");
         TCellHostConfig hostConfig{hostCfg, cell};
 
-        auto setup = std::make_shared<TestHostEndpointsSetupProvider>();
+        auto setup = std::make_shared<TestHostEndpointsBootstrap>();
 
         TBootstrap args;
         args.EndpointsSetup = setup;

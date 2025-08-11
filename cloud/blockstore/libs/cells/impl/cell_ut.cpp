@@ -40,10 +40,10 @@ using TCellHosts = THashMap<TString, TCellHostInfo>;
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTestHostEndpointsSetupProvider
-    : public IHostEndpointsBoorstrap
+    : public IHostEndpointsBootstrap
 {
-    using IHostEndpointsBoorstrap::TGrpcEndpointBootstrapFuture;
-    using IHostEndpointsBoorstrap::TRdmaEndpointBootstrapFuture;
+    using IHostEndpointsBootstrap::TGrpcEndpointBootstrapFuture;
+    using IHostEndpointsBootstrap::TRdmaEndpointBootstrapFuture;
 
     TCellHosts Hosts;
 
@@ -56,7 +56,6 @@ struct TTestHostEndpointsSetupProvider
         const TCellHostConfig& config) override
     {
         Y_UNUSED(args);
-        Y_UNUSED(config);
 
         return Hosts[config.GetFqdn()].GrpcSetupPromise.GetFuture();
     };
@@ -67,7 +66,6 @@ struct TTestHostEndpointsSetupProvider
         IBlockStorePtr client) override
     {
         Y_UNUSED(args);
-        Y_UNUSED(config);
         Y_UNUSED(client);
 
         return Hosts[config.GetFqdn()].RdmaSetupPromise.GetFuture();
@@ -193,7 +191,7 @@ Y_UNIT_TEST_SUITE(TCellTest)
             9766,
             false);
 
-        hosts[cell->GetActivating().begin()->first].GrpcSetupPromise.SetValue(grpc);
+        hosts[cell->GetActivatingHosts().begin()->first].GrpcSetupPromise.SetValue(grpc);
 
         {
             auto result = cell->GetCellClient(clientConfig);

@@ -48,20 +48,18 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCellManager::TCellManager(
-        TCellsConfigPtr config,
-        TBootstrap args)
+TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
     : ICellManager(std::move(config))
-    , Args(std::move(args))
+    , Bootstrap(std::move(bootstrap))
 {
     for (const auto& cell: Config->GetCells()) {
         Cells.emplace(
             cell.first,
-            CreateCell(Args, cell.second));
+            CreateCell(Bootstrap, cell.second));
     }
 
-    if (args.Monitoring) {
-        auto rootPage = Args.Monitoring->RegisterIndexPage(
+    if (bootstrap.Monitoring) {
+        auto rootPage = Bootstrap.Monitoring->RegisterIndexPage(
             "blockstore",
             "BlockStore");
         static_cast<TIndexMonPage&>(*rootPage).Register(
@@ -71,7 +69,7 @@ TCellManager::TCellManager(
 
 void TCellManager::Start()
 {
-    Args.GrpcClient->Start();
+    Bootstrap.GrpcClient->Start();
 
     for (auto& cell: Cells) {
         cell.second->Start();
@@ -80,7 +78,7 @@ void TCellManager::Start()
 
 void TCellManager::Stop()
 {
-    Args.GrpcClient->Stop();
+    Bootstrap.GrpcClient->Stop();
 }
 
 TResultOrError<TCellHostEndpoint> TCellManager::GetCellEndpoint(
@@ -92,10 +90,10 @@ TResultOrError<TCellHostEndpoint> TCellManager::GetCellEndpoint(
     return it->second->GetCellClient(clientConfig);
 }
 
-TCellsEndpoints TCellManager::GetCellsEndpoints(
+TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     const NClient::TClientAppConfigPtr& clientConfig)
 {
-    TCellsEndpoints res;
+    TCellHostEndpointsByCellId res;
     for (auto& cell: Cells) {
         auto clientList = cell.second->GetCellClients(clientConfig);
         if (clientList.empty()) {
@@ -109,11 +107,11 @@ TCellsEndpoints TCellManager::GetCellsEndpoints(
 [[nodiscard]] std::optional<TDescribeVolumeFuture> TCellManager::DescribeVolume(
     const TString& diskId,
     const NProto::THeaders& headers,
-    const IBlockStorePtr& localService,
+    const IBlockStorePtr& service,
     const NProto::TClientConfig& clientConfig)
 {
-    auto numConfigured = Config->GetCells().size();
-    if (numConfigured == 0) {
+    auto configuredCellCount = Config->GetCells().size();
+    if (configuredCellCount == 0) {
         return {};
     }
 
@@ -123,9 +121,9 @@ TCellsEndpoints TCellManager::GetCellsEndpoints(
     config.SetClientId(FQDNHostName());
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(clientAppConfig);
 
-    auto celledEndpoints = GetCellsEndpoints(appConfig);
+    auto cellHostEndpoints = GetCellsEndpoints(appConfig);
 
-    bool hasUnavailableCells = celledEndpoints.size() < numConfigured;
+    bool hasUnavailableCells = cellHostEndpoints.size() < configuredCellCount;
 
     NProto::TDescribeVolumeRequest request;
     request.MutableHeaders()->CopyFrom(headers);
@@ -133,11 +131,11 @@ TCellsEndpoints TCellManager::GetCellsEndpoints(
 
     return NCloud::NBlockStore::NCells::DescribeVolume(
         request,
-        localService,
-        celledEndpoints,
+        service,
+        cellHostEndpoints,
         hasUnavailableCells,
         Config->GetDescribeVolumeTimeout(),
-        Args);
+        Bootstrap);
 }
 
 void TCellManager::OutputHtml(
@@ -174,12 +172,12 @@ ICellManagerPtr CreateCellManager(
     }
 
     auto rdmaTaskQueue = config->GetRdmaTransportWorkers() ?
-        CreateThreadPool("SHRD", config->GetRdmaTransportWorkers()) :
+        CreateThreadPool("CELLS", config->GetRdmaTransportWorkers()) :
         CreateTaskQueueStub();
 
     rdmaTaskQueue->Start();
 
-    TBootstrap args {
+    TBootstrap bootstrap {
         .Timer = std::move(timer),
         .Scheduler = std::move(scheduler),
         .Logging = std::move(logging),
@@ -188,10 +186,10 @@ ICellManagerPtr CreateCellManager(
         .GrpcClient = std::move(result.GetResult()),
         .RdmaClient = std::move(rdmaClient),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
-        .EndpointsSetup = CreateHostEndpointsSetupProvider()
+        .EndpointsSetup = CreateHostEndpointsBootstrap()
     };
 
-    return std::make_shared<TCellManager>(std::move(config), args);
+    return std::make_shared<TCellManager>(std::move(config), bootstrap);
 }
 
 }   // namespace NCloud::NBlockStore::NCells

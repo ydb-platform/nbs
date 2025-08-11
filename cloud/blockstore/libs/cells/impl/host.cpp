@@ -79,7 +79,7 @@ TFuture<void> TCellHost::Start()
         target != NProto::CELL_DATA_TRANSPORT_NBD);
 
     auto weak = weak_from_this();
-    IHostEndpointsBoorstrap::TGrpcEndpointBootstrapFuture future;
+    IHostEndpointsBootstrap::TGrpcEndpointBootstrapFuture future;
 
     with_lock(StateLock) {
         if (State == EState::ACTIVATING || State == EState::ACTIVE) {
