@@ -181,7 +181,7 @@ create_nested_dirs() {
 
 rm_nested_dirs() {
     local path=""
-    
+
     for token in "$@"; do
         if [ -z "$path" ]; then
             path="$token"
@@ -189,7 +189,7 @@ rm_nested_dirs() {
             path="$path/$token"
         fi
     done
-    
+
     while [ -n "$path" ]; do
         rmdir "$path"
         case "$path" in
