@@ -155,6 +155,25 @@ void FillVolumeConfig(
     partition->SetBlockCount(blocksCount);
 }
 
+const TEvSSProxy::TEvDescribeSchemeResponse* DescribeSubDomain(
+    TTestActorRuntime& runtime, const TStorageConfigPtr& config)
+{
+    TActorId sender = runtime.AllocateEdgeActor();
+    Send(
+        runtime,
+        MakeSSProxyServiceId(),
+        sender,
+        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+            config->GetSchemeShardDir()));
+
+    TAutoPtr<IEventHandle> handle;
+    const auto* response =
+        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(
+            handle);
+    UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
+    return response;
+}
+
 void CreateVolumeViaModifyScheme(
     TTestActorRuntime& runtime,
     TStorageConfigPtr config,
@@ -507,6 +526,34 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "/local/nbs/_17A/new-volume",
             DescribeVolumeAndReturnPath(runtime, "new-volume"));
+    }
+
+    void TestShouldDescribeDR(bool useSchemeCache)
+    {
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+        auto config = CreateStorageConfig(
+            [useSchemeCache]()
+            {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(useSchemeCache);
+                return config;
+            }());
+        SetupTestEnv(env, config);
+
+        const auto* response = DescribeSubDomain(runtime, config);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response->PathDescription.GetSelf().GetPathType(),
+            NKikimrSchemeOp::EPathTypeSubDomain);
+        UNIT_ASSERT_GT(
+            response->PathDescription.GetDomainDescription().StoragePoolsSize(),
+            0);
+    }
+
+    Y_UNIT_TEST(ShouldDescribeDRWithSchemeCache)
+    {
+        TestShouldDescribeDR(true);
+        TestShouldDescribeDR(false);
     }
 
     Y_UNIT_TEST(ShouldDescribeVolumesInFallbackMode)

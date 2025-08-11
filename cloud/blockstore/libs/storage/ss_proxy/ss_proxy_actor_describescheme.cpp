@@ -230,24 +230,32 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
         }
     }
 
-    if (entry.Kind !=
-            NSchemeCache::TSchemeCacheNavigate::KindBlockStoreVolume ||
-        !entry.BlockStoreVolumeInfo)
-    {
-        HandleError(
-            ctx,
-            MakeError(
-                E_INVALID_STATE,
-                TStringBuilder() << "Described path " << Path.Quote()
-                                 << " is not a blockstore volume"));
-        return;
+    NKikimrSchemeOp::TPathDescription pathDescription;
+    switch (entry.Kind) {
+        case NSchemeCache::TSchemeCacheNavigate::KindBlockStoreVolume: {
+            pathDescription.MutableBlockStoreVolumeDescription()->CopyFrom(
+                entry.BlockStoreVolumeInfo->Description);
+            pathDescription.MutableSelf()->SetPathType(
+                NKikimrSchemeOp::EPathTypeBlockStoreVolume);
+            break;
+        }
+        case NSchemeCache::TSchemeCacheNavigate::KindSubdomain: {
+            pathDescription.MutableDomainDescription()->CopyFrom(
+                entry.DomainDescription->Description);
+            pathDescription.MutableSelf()->SetPathType(
+                NKikimrSchemeOp::EPathTypeSubDomain);
+            break;
+        }
+        default: {
+            HandleError(
+                ctx,
+                MakeError(
+                    E_REJECTED,
+                    TStringBuilder() << "Unknown path kind: " << entry.Kind));
+            return;
+        }
     }
 
-    NKikimrSchemeOp::TPathDescription pathDescription;
-    pathDescription.MutableBlockStoreVolumeDescription()->CopyFrom(
-        entry.BlockStoreVolumeInfo->Description);
-    pathDescription.MutableSelf()->SetPathType(
-        NKikimrSchemeOp::EPathTypeBlockStoreVolume);
 
     if (PathDescriptionBackup) {
         auto updateRequest = std::make_unique<
