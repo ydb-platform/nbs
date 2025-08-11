@@ -265,12 +265,14 @@ func TestExecutionContextAddTaskDependency(t *testing.T) {
 	ctx := newContext()
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
+	inflightDuration := 42 * time.Second
 
 	execCtx := newExecutionContext(
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:           "taskId1",
+			ID:           inflightDurationTaskId,
+			ModifiedAt:   time.Now().Add(-inflightDuration),
 			Dependencies: common.NewStringSet(),
 		},
 		time.Hour,
@@ -278,13 +280,14 @@ func TestExecutionContextAddTaskDependency(t *testing.T) {
 	)
 
 	state := storage.TaskState{
-		ID:           "taskId1",
-		Dependencies: common.NewStringSet("taskId2"),
+		ID:               inflightDurationTaskId,
+		Dependencies:     common.NewStringSet("taskIdDependency"),
+		InflightDuration: inflightDuration,
 	}
 	task.On("Save").Return(state.State, nil)
 	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
 
-	err := execCtx.AddTaskDependency(ctx, "taskId2")
+	err := execCtx.AddTaskDependency(ctx, "taskIdDependency")
 	mock.AssertExpectationsForObjects(t, task, taskStorage)
 	require.NoError(t, err)
 }
@@ -370,6 +373,40 @@ func TestExecutionContextShouldNotBeHangingByDefault(t *testing.T) {
 	)
 
 	require.Equal(t, false, execCtx.IsHanging())
+}
+
+func TestExecutionContextFinish(t *testing.T) {
+	ctx := newContext()
+	taskStorage := mocks.NewStorageMock()
+	task := NewTaskMock()
+	inflightDuration := 42 * time.Second
+
+	execCtx := newExecutionContext(
+		task,
+		taskStorage, storage.TaskState{
+			ID:         inflightDurationTaskId,
+			ModifiedAt: time.Now().Add(-inflightDuration),
+		},
+		time.Hour,
+		2,
+	)
+
+	state := storage.TaskState{
+		ID:               inflightDurationTaskId,
+		Status:           storage.TaskStatusFinished,
+		InflightDuration: inflightDuration,
+	}
+	task.On("Save").Return(state.State, nil)
+	taskStorage.On(
+		"UpdateTask", ctx, mock.MatchedBy(matchesState(t, state)),
+	).Return(state, nil).Once()
+
+	err := execCtx.FinishWithPreparation(ctx, nil /* preparation */)
+	require.NoError(t, err)
+	// Check for idempotency
+	err = execCtx.FinishWithPreparation(ctx, nil /* preparation */)
+	require.NoError(t, err)
+	mock.AssertExpectationsForObjects(t, task, taskStorage)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1282,7 +1319,7 @@ func TestTaskPingerCancelledContextInUpdateTask(t *testing.T) {
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
 }
 
-func testTaskPingerAccumulatesInflightDuration(t *testing.T, status storage.TaskStatus) {
+func TestTaskPingerAccumulatesInflightDuration(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
 	pingTimeout := 100 * time.Second
 	pingsCount := 3
@@ -1300,7 +1337,6 @@ func testTaskPingerAccumulatesInflightDuration(t *testing.T, status storage.Task
 		storage.TaskState{
 			ID:               inflightDurationTaskId,
 			ModifiedAt:       time.Now(),
-			Status:           status,
 			InflightDuration: initialInflightDuration,
 		},
 		time.Hour,
@@ -1309,9 +1345,11 @@ func testTaskPingerAccumulatesInflightDuration(t *testing.T, status storage.Task
 
 	for i := 0; i < pingsCount; i++ {
 		spent := time.Duration(i) * pingPeriod
-		state := execCtx.taskState.DeepCopy()
-		state.ModifiedAt = state.ModifiedAt.Add(spent)
-		state.InflightDuration = state.InflightDuration + spent
+		state := storage.TaskState{
+			ID:               inflightDurationTaskId,
+			ModifiedAt:       time.Now().Add(spent),
+			InflightDuration: initialInflightDuration + spent,
+		}
 
 		callback := matchesStateCallback(t, state)
 		if i == pingsCount-1 {
@@ -1328,11 +1366,6 @@ func testTaskPingerAccumulatesInflightDuration(t *testing.T, status storage.Task
 	// since code provided in On().Run() argument is executed in the order On() functions were called.
 	// https://github.com/stretchr/testify/blob/a53be35c3b0cfcd5189cffcfd75df60ea581104c/mock/mock.go#L531
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
-}
-
-func TestTaskPingerAccumulatesInflightDuration(t *testing.T) {
-	testTaskPingerAccumulatesInflightDuration(t, storage.TaskStatusRunning)
-	testTaskPingerAccumulatesInflightDuration(t, storage.TaskStatusCancelling)
 }
 
 func TestTryExecutingTask(t *testing.T) {

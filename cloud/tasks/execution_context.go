@@ -211,15 +211,13 @@ func (c *executionContext) updateStateWithPreparation(
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 
-	lastStatus := c.taskState.Status
-
 	taskState := transition(c.taskState)
 	taskState = taskState.DeepCopy()
 
 	now := time.Now()
-	if storage.IsExecuting(lastStatus) {
-		taskState.InflightDuration += now.Sub(taskState.ModifiedAt)
-	}
+	// Since executionContext exists only within the scope of lockAndExecuteTask,
+	// the task is always inflight during any method call on executionContext.
+	taskState.InflightDuration += now.Sub(taskState.ModifiedAt)
 	taskState.ModifiedAt = now
 
 	var newTaskState storage.TaskState
