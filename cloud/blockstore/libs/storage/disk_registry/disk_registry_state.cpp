@@ -683,7 +683,7 @@ void TDiskRegistryState::FillMigrations()
 
             if (!agent) {
                 ReportDiskRegistryAgentNotFound(
-                    {{"AgentId", device->GetAgentId()}});
+                    {{"disk", diskId}, {"AgentId", device->GetAgentId()}});
 
                 continue;
             }
@@ -1285,7 +1285,8 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::AllocateReplacementDev
         device,
         NProto::DEVICE_STATE_ONLINE,
         timestamp,
-        std::move(message));
+        std::move(message),
+        diskId);
 
     return device;
 }
@@ -1454,7 +1455,8 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
             timestamp,
             db,
             targetDevice,
-            logicalBlockCount * disk.LogicalBlockSize / targetDevice.GetBlockSize()
+            logicalBlockCount * disk.LogicalBlockSize / targetDevice.GetBlockSize(),
+            diskId
         );
 
         NProto::TDiskHistoryItem historyItem;
@@ -1539,12 +1541,14 @@ void TDiskRegistryState::AdjustDeviceBlockCount(
     TInstant now,
     TDiskRegistryDatabase& db,
     NProto::TDeviceConfig& device,
-    ui64 newBlockCount)
+    ui64 newBlockCount,
+    const TString& diskId)
 {
     Y_UNUSED(now);
     if (newBlockCount > device.GetUnadjustedBlockCount()) {
         ReportDiskRegistryBadDeviceSizeAdjustment(
-            {{"DeviceId", device.GetDeviceUUID()},
+            {{"disk", diskId},
+             {"DeviceId", device.GetDeviceUUID()},
              {"UnadjustedBlockCount", device.GetUnadjustedBlockCount()},
              {"newBlockCount", newBlockCount}});
 
@@ -1558,7 +1562,8 @@ void TDiskRegistryState::AdjustDeviceBlockCount(
     auto [agent, source] = FindDeviceLocation(device.GetDeviceUUID());
     if (!agent || !source) {
         ReportDiskRegistryBadDeviceSizeAdjustment(
-            {{"DeviceId", device.GetDeviceUUID()},
+            {{"disk", diskId},
+             {"DeviceId", device.GetDeviceUUID()},
              {"agent?", !!agent},
              {"source?", !!source}});
 
@@ -1578,7 +1583,8 @@ void TDiskRegistryState::AdjustDeviceState(
     NProto::TDeviceConfig& device,
     NProto::EDeviceState state,
     TInstant timestamp,
-    TString message)
+    TString message,
+    const TString& diskId)
 {
     if (device.GetState() == state) {
         return;
@@ -1587,7 +1593,8 @@ void TDiskRegistryState::AdjustDeviceState(
     auto [agent, source] = FindDeviceLocation(device.GetDeviceUUID());
     if (!agent || !source) {
         ReportDiskRegistryBadDeviceStateAdjustment(
-            {{"DeviceId", device.GetDeviceUUID()},
+            {{"disk", diskId},
+             {"DeviceId", device.GetDeviceUUID()},
              {"agent?", !!agent},
              {"source?", !!source}});
         return;
@@ -1737,7 +1744,8 @@ NProto::TDeviceConfig TDiskRegistryState::StartDeviceMigrationImpl(
         now,
         db,
         targetDevice,
-        logicalBlockCount * disk.LogicalBlockSize / targetDevice.GetBlockSize()
+        logicalBlockCount * disk.LogicalBlockSize / targetDevice.GetBlockSize(),
+        sourceDiskId
     );
 
     disk.MigrationTarget2Source[targetDevice.GetDeviceUUID()]
@@ -7140,7 +7148,7 @@ NProto::TError TDiskRegistryState::UpdateDiskBlockSize(
                 * GetDeviceBlockCountWithOverrides(diskId, device)
                 / disk.LogicalBlockSize * disk.LogicalBlockSize
                 / device.GetBlockSize();
-            AdjustDeviceBlockCount(now, db, device, newBlocksCount);
+            AdjustDeviceBlockCount(now, db, device, newBlocksCount, diskId);
         }
     }
 
@@ -7800,7 +7808,12 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
             diskId,
             "device " << uuid.Quote() << " not found");
 
-        AdjustDeviceBlockCount(now, db, *device, device->GetUnadjustedBlockCount());
+        AdjustDeviceBlockCount(
+            now,
+            db,
+            *device,
+            device->GetUnadjustedBlockCount(),
+            diskId);
 
         result->Devices.push_back(*device);
     }

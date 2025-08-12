@@ -1106,14 +1106,16 @@ private:
         TInstant now,
         TDiskRegistryDatabase& db,
         NProto::TDeviceConfig& device,
-        ui64 newBlockCount);
+        ui64 newBlockCount,
+        const TString& diskId);
 
     void AdjustDeviceState(
         TDiskRegistryDatabase& db,
         NProto::TDeviceConfig& device,
         NProto::EDeviceState state,
         TInstant timestamp,
-        TString message);
+        TString message,
+        const TString& diskId);
 
     ui64 GetDeviceBlockCountWithOverrides(
         const TDiskId& diskId,
