@@ -1200,9 +1200,9 @@ IBlockStorePtr TClient::CreateDataEndpoint(const TString& socketPath)
 ////////////////////////////////////////////////////////////////////////////////
 
 IBlockStorePtr TMultiHostClient::CreateEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure)
+    const TString& host,
+    ui32 port,
+    bool isSecure)
 {
     with_lock (EndpointLock) {
         Y_ENSURE(port);
@@ -1227,9 +1227,9 @@ IBlockStorePtr TMultiHostClient::CreateEndpoint(
 }
 
 IBlockStorePtr TMultiHostClient::CreateDataEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure)
+    const TString& host,
+    ui32 port,
+    bool isSecure)
 {
     with_lock (EndpointLock) {
         Y_ENSURE(port);

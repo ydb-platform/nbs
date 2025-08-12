@@ -43,6 +43,6 @@ using ICellHostPtr = std::shared_ptr<ICellHost>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICellHostPtr CreateHost(TCellHostConfig config, TBootstrap args);
+ICellHostPtr CreateHost(TCellHostConfig config, TBootstrap boorstrap);
 
 }   // namespace NCloud::NBlockStore::NCells

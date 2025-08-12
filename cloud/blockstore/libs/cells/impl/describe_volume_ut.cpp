@@ -98,10 +98,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto localService = std::make_shared<TTestServiceClient>();
 
-        TBootstrap args;
-        args.Logging = CreateLoggingService("console");
-        args.Scheduler = CreateScheduler();
-        args.Scheduler->Start();
+        TBootstrap boorstrap;
+        boorstrap.Logging = CreateLoggingService("console");
+        boorstrap.Scheduler = CreateScheduler();
+        boorstrap.Scheduler->Start();
 
         auto response = DescribeVolume(
             request,
@@ -109,9 +109,8 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             endpoints,
             false,
             TDuration::Seconds(Max<ui32>()),
-            args);
+            boorstrap);
 
-        UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             s1h1Client->DescribeVolumeCalled);
@@ -125,7 +124,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         NProto::TDescribeVolumeResponse msg;
         s1h1Client->DescribeVolumePromise.SetValue(std::move(msg));
 
-        auto describeResponse = response->GetValueSync();
+        auto describeResponse = response.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(
             "cell1",
             describeResponse.GetCellId());
@@ -142,12 +141,12 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         NProto::TDescribeVolumeRequest request;
         request.MutableHeaders()->CopyFrom(NProto::THeaders());
-        request.SetDiskId("cell1disk");
+        request.SetDiskId("localdisk");
 
-        TBootstrap args;
-        args.Logging = CreateLoggingService("console");
-        args.Scheduler = CreateScheduler();
-        args.Scheduler->Start();
+        TBootstrap boorstrap;
+        boorstrap.Logging = CreateLoggingService("console");
+        boorstrap.Scheduler = CreateScheduler();
+        boorstrap.Scheduler->Start();
 
         auto response = DescribeVolume(
             request,
@@ -155,9 +154,8 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             endpoints,
             false,
             TDuration::Seconds(Max<ui32>()),
-            args);
+            boorstrap);
 
-        UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             s1h1Client->DescribeVolumeCalled);
@@ -169,11 +167,11 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             localService->DescribeVolumeCalled);
 
         NProto::TDescribeVolumeResponse msg;
-        s1h1Client->DescribeVolumePromise.SetValue(std::move(msg));
+        localService->DescribeVolumePromise.SetValue(std::move(msg));
 
-        auto describeResponse = response->GetValueSync();
+        auto describeResponse = response.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(
-            "cell1",
+            "",
             describeResponse.GetCellId());
     }
 
@@ -190,10 +188,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         request.MutableHeaders()->CopyFrom(NProto::THeaders());
         request.SetDiskId("cell1disk");
 
-        TBootstrap args;
-        args.Logging = CreateLoggingService("console");
-        args.Scheduler = CreateScheduler();
-        args.Scheduler->Start();
+        TBootstrap boorstrap;
+        boorstrap.Logging = CreateLoggingService("console");
+        boorstrap.Scheduler = CreateScheduler();
+        boorstrap.Scheduler->Start();
 
         auto response = DescribeVolume(
             request,
@@ -201,9 +199,8 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             endpoints,
             false,
             TDuration::Seconds(Max<ui32>()),
-            args);
+            boorstrap);
 
-        UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             s1h1Client->DescribeVolumeCalled);
@@ -232,7 +229,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             localService->DescribeVolumePromise.SetValue(std::move(msg));
         }
 
-        auto describeResponse = response->GetValueSync();
+        auto describeResponse = response.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(
             E_NOT_FOUND,
             describeResponse.GetError().GetCode());
@@ -241,7 +238,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             describeResponse.GetError().GetMessage());
     }
 
-    Y_UNIT_TEST(ShouldReturnRetribleErrorIfAtLeastOneCellIsNotReachable)
+    Y_UNIT_TEST(ShouldReturnRetriableErrorIfAtLeastOneCellIsNotReachable)
     {
         TCellHostEndpointsByCellId endpoints;
 
@@ -254,10 +251,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         request.MutableHeaders()->CopyFrom(NProto::THeaders());
         request.SetDiskId("cell1disk");
 
-        TBootstrap args;
-        args.Logging = CreateLoggingService("console");
-        args.Scheduler = CreateScheduler();
-        args.Scheduler->Start();
+        TBootstrap boorstrap;
+        boorstrap.Logging = CreateLoggingService("console");
+        boorstrap.Scheduler = CreateScheduler();
+        boorstrap.Scheduler->Start();
 
         auto response = DescribeVolume(
             request,
@@ -265,9 +262,8 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             endpoints,
             false,
             TDuration::Seconds(Max<ui32>()),
-            args);
+            boorstrap);
 
-        UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             s1h1Client->DescribeVolumeCalled);
@@ -298,7 +294,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             localService->DescribeVolumePromise.SetValue(std::move(msg));
         }
 
-        auto describeResponse = response->GetValueSync();
+        auto describeResponse = response.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(
             E_GRPC_UNAVAILABLE,
             describeResponse.GetError().GetCode());
@@ -319,10 +315,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         request.MutableHeaders()->CopyFrom(NProto::THeaders());
         request.SetDiskId("cell1disk");
 
-        TBootstrap args;
-        args.Logging = CreateLoggingService("console");
-        args.Scheduler = CreateScheduler();
-        args.Scheduler->Start();
+        TBootstrap boorstrap;
+        boorstrap.Logging = CreateLoggingService("console");
+        boorstrap.Scheduler = CreateScheduler();
+        boorstrap.Scheduler->Start();
 
         auto response = DescribeVolume(
             request,
@@ -330,9 +326,8 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             endpoints,
             true,
             TDuration::Seconds(Max<ui32>()),
-            args);
+            boorstrap);
 
-        UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             s1h1Client->DescribeVolumeCalled);
@@ -352,7 +347,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             localService->DescribeVolumePromise.SetValue(std::move(msg));
         }
 
-        auto describeResponse = response->GetValueSync();
+        auto describeResponse = response.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             describeResponse.GetError().GetCode());
@@ -374,10 +369,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto localService = std::make_shared<TTestServiceClient>();
 
-        TBootstrap args;
-        args.Logging = CreateLoggingService("console");
-        args.Scheduler = CreateScheduler();
-        args.Scheduler->Start();
+        TBootstrap boorstrap;
+        boorstrap.Logging = CreateLoggingService("console");
+        boorstrap.Scheduler = CreateScheduler();
+        boorstrap.Scheduler->Start();
 
         auto response = DescribeVolume(
             request,
@@ -385,9 +380,8 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             endpoints,
             false,
             TDuration::Seconds(1),
-            args);
+            boorstrap);
 
-        UNIT_ASSERT_C(response.has_value(), "No future is set");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             s1h1Client->DescribeVolumeCalled);
@@ -398,7 +392,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             1,
             localService->DescribeVolumeCalled);
 
-        auto describeResponse = response->GetValue(TDuration::Seconds(2));
+        auto describeResponse = response.GetValue(TDuration::Seconds(2));
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             describeResponse.GetError().GetCode());

@@ -45,7 +45,7 @@ TResultOrError<TCellHostEndpoint> TCellHost::GetHostEndpoint(
                     return MakeError(
                         E_INVALID_STATE,
                         TStringBuilder() <<
-                            "Unsupportted transport type " <<
+                            "Unsupported transport type " <<
                             static_cast<int>(transport));
             }
         }
@@ -79,7 +79,7 @@ TFuture<void> TCellHost::Start()
         target != NProto::CELL_DATA_TRANSPORT_NBD);
 
     auto weak = weak_from_this();
-    IHostEndpointsBootstrap::TGrpcEndpointBootstrapFuture future;
+    ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture future;
 
     with_lock(StateLock) {
         if (State == EState::ACTIVATING || State == EState::ACTIVE) {
@@ -193,9 +193,9 @@ TCellHostEndpoint TCellHost::CreateRdmaEndpoint(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICellHostPtr CreateHost(TCellHostConfig config, TBootstrap args)
+ICellHostPtr CreateHost(TCellHostConfig config, TBootstrap boorstrap)
 {
-    return std::make_shared<TCellHost>(std::move(config), std::move(args));
+    return std::make_shared<TCellHost>(std::move(config), std::move(boorstrap));
 }
 
 }   // namespace NCloud::NBlockStore::NCells

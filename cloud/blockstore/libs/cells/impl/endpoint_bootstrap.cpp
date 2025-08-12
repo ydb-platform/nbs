@@ -11,12 +11,12 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto TCellHostEndpointsBootstrap::SetupHostGrpcEndpoint(
-    const TBootstrap& args,
+auto TCellCellHostEndpointBootstrap::SetupHostGrpcEndpoint(
+    const TBootstrap& boorstrap,
     const TCellHostConfig& config) -> TGrpcEndpointBootstrapFuture
 {
     auto endpoint = CreateMultiClientEndpoint(
-        args.GrpcClient,
+        boorstrap.GrpcClient,
         config.GetFqdn(),
         config.GetGrpcPort(),
         false);
@@ -24,8 +24,8 @@ auto TCellHostEndpointsBootstrap::SetupHostGrpcEndpoint(
     return MakeFuture(endpoint);
 }
 
-auto TCellHostEndpointsBootstrap::SetupHostRdmaEndpoint(
-    const TBootstrap& args,
+auto TCellCellHostEndpointBootstrap::SetupHostRdmaEndpoint(
+    const TBootstrap& boorstrap,
     const TCellHostConfig& config,
     IBlockStorePtr client) -> TRdmaEndpointBootstrapFuture
 {
@@ -35,20 +35,19 @@ auto TCellHostEndpointsBootstrap::SetupHostRdmaEndpoint(
     };
 
     return CreateRdmaEndpointClientAsync(
-        args.Logging,
-        args.RdmaClient,
+        boorstrap.Logging,
+        boorstrap.RdmaClient,
         std::move(client),
-        args.TraceSerializer,
-        args.RdmaTaskQueue,
+        boorstrap.TraceSerializer,
+        boorstrap.RdmaTaskQueue,
         rdmaEndpoint);
 }
 
-IHostEndpointsBootstrapPtr CreateHostEndpointsBootstrap()
+ICellHostEndpointBootstrapPtr CreateCellHostEndpointBootstrap()
 {
-    return std::make_shared<TCellHostEndpointsBootstrap>();
+    return std::make_shared<TCellCellHostEndpointBootstrap>();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
 
 }   // namespace NCloud::NBlockStore::NCells
