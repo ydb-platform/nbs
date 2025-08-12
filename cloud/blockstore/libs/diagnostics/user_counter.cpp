@@ -91,8 +91,6 @@ TBuckets MakeBuckets(auto convertBound)
     return result;
 }
 
-const TBuckets MS_BUCKETS = MakeBuckets<TRequestMsTimeBuckets>(
-    [](double data) {return data;});
 const TBuckets US_BUCKETS = MakeBuckets<TRequestUsTimeBuckets>(
     [](double data) {return data == std::numeric_limits<double>::max()
         ? data : data / 1000.;});
@@ -356,7 +354,7 @@ void RegisterServerVolumeInstance(
         "MaxInProgressBytes",
         DISK_READ_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        MS_BUCKETS,
+        US_BUCKETS,
         dsc,
         commonLabels,
         readSub,
@@ -420,7 +418,7 @@ void RegisterServerVolumeInstance(
         "MaxInProgressBytes",
         DISK_WRITE_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        MS_BUCKETS,
+        US_BUCKETS,
         dsc,
         commonLabels,
         writeSub,
