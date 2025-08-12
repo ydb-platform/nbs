@@ -330,7 +330,7 @@ void TLogTitle::RebuildForPartitionNonrepl()
     auto builder = TStringBuilder();
 
     builder << "[";
-    builder << "nr:";
+    builder << "nrd:";
     builder << " d:" << DiskId;
 
     CachedPrefix = builder;
