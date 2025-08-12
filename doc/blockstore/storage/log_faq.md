@@ -55,3 +55,25 @@
 * pg - pipe generation
 * t - time since actor start
 * ~ - means temporary server (NBS-2)
+
+---
+
+# Child Logs
+
+```
+[parent_params child_params t + operation_duration]
+```
+
+* Child logs inherit all parameters from parent and add operation-specific context.
+Used for detailed logging of nested operations.
+
+## Volume Checkpoint
+```
+[v:17592186044417 g:2 d:vol0 cp:c1 t:25.010ms + 15us]
+```
+* v - volume TabletId (parent)
+* g - volume tablet generation (parent)
+* d - disk id (parent)
+* cp - checkpoint id (child)
+* t - time since child actor start (child)
+* \+ 15us - operation duration (child)
