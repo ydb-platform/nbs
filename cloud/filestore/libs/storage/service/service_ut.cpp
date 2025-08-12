@@ -3643,20 +3643,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 InvalidHandle,
                 256_KB - 1,
                 data.size());
-            UNIT_ASSERT_VALUES_EQUAL(data, response->Record.GetBuffer());
+
+            const auto& buffer = response->Record.GetBuffer();
+            const auto& offset = response->Record.GetBufferOffset();
+            UNIT_ASSERT_VALUES_EQUAL(
+                data.size() + DefaultBlockSize - 1,
+                buffer.size());
+            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize - 1, offset);
+            UNIT_ASSERT_VALUES_EQUAL(
+                data,
+                TString(buffer.data() + offset, data.size()));
         }
         {
             // Small unaligned data
             auto data = GenerateValidateData(123, 2);
-            service.WriteData(headers, fs, nodeId, InvalidHandle, 77, data);
+            auto dataOffset = 77;
+            service.WriteData(headers, fs, nodeId, InvalidHandle, dataOffset, data);
             auto response = service.ReadData(
                 headers,
                 fs,
                 nodeId,
                 InvalidHandle,
-                77,
+                dataOffset,
                 data.size());
-            UNIT_ASSERT_VALUES_EQUAL(data, response->Record.GetBuffer());
+            const auto& buffer = response->Record.GetBuffer();
+            const auto& offset = response->Record.GetBufferOffset();
+            UNIT_ASSERT_VALUES_EQUAL(data.size() + dataOffset, buffer.size());
+            UNIT_ASSERT_VALUES_EQUAL(dataOffset, offset);
+            UNIT_ASSERT_EQUAL(
+                data,
+                TString(buffer.data() + offset, data.size()));
         }
         {
             // Multiple blobs
