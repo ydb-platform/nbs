@@ -101,7 +101,7 @@ void TVolumeActor::AddAcquireReleaseDiskRequest(
     if (AcquireReleaseDiskRequests.size() == 1) {
         ProcessNextAcquireReleaseDiskRequest(ctx);
     } else {
-        LOG_INFO(
+        LOG_DEBUG(
             ctx,
             TBlockStoreComponents::VOLUME,
             "%s Postponing AcquireReleaseRequest[%s]: another request in "
@@ -216,7 +216,7 @@ void TVolumeActor::HandleReacquireDisk(
     {
         auto releaseRequest = TAcquireReleaseDiskRequest::MakeRelease(
             TString(AnyWriterClientId),
-            nullptr,
+            nullptr,   // clientRequest
             TVector<NProto::TDeviceConfig>{},
             false);   // retryIfTimeoutOrUndelivery
         AddAcquireReleaseDiskRequest(ctx, std::move(releaseRequest));
@@ -380,37 +380,26 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
             Config->GetAcquireNonReplicatedDevices() &&
             !Config->GetDoAcquireReleaseDevicesAfterTransaction();
         if (acquireDevices) {
-            if (request->RemovedClientId) {
-                auto releaseRequest = TAcquireReleaseDiskRequest::MakeRelease(
-                    request->AddedClientInfo.GetClientId(),
-                    request,
-                    TVector<NProto::TDeviceConfig>{},
-                    false);   // retryIfTimeoutOrUndelivery
-                AcquireReleaseDiskRequests.emplace_back(
-                    std::move(releaseRequest));
-            } else {
-                auto acquireRequest = TAcquireReleaseDiskRequest::MakeAcquire(
+            auto acquireReleaseRequest = [&]()
+            {
+                if (request->RemovedClientId) {
+                    return TAcquireReleaseDiskRequest::MakeRelease(
+                        request->RemovedClientId,
+                        request,
+                        TVector<NProto::TDeviceConfig>{},
+                        false   // retryIfTimeoutOrUndelivery
+                    );
+                }
+                return TAcquireReleaseDiskRequest::MakeAcquire(
                     request->AddedClientInfo.GetClientId(),
                     request->AddedClientInfo.GetVolumeAccessMode(),
                     request->AddedClientInfo.GetMountSeqNumber(),
                     request,
                     false   // ForceTabletRestart
                 );
-                AcquireReleaseDiskRequests.emplace_back(
-                    std::move(acquireRequest));
-            }
+            }();
 
-            if (AcquireReleaseDiskRequests.size() == 1) {
-                ProcessNextAcquireReleaseDiskRequest(ctx);
-            } else {
-                LOG_DEBUG(
-                    ctx,
-                    TBlockStoreComponents::VOLUME,
-                    "%s Postponing AcquireReleaseRequest[%s]: "
-                    "another request in flight",
-                    LogTitle.GetWithTime().c_str(),
-                    AcquireReleaseDiskRequests.back().ClientId.Quote().c_str());
-            }
+            AddAcquireReleaseDiskRequest(ctx, std::move(acquireReleaseRequest));
 
             return;
         }
