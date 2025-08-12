@@ -6,8 +6,6 @@
 #include <util/string/builder.h>
 #include <util/system/datetime.h>
 
-#include <utility>
-
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
