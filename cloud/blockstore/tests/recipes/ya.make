@@ -5,5 +5,6 @@ RECURSE(
     local-kikimr
     local-null
     notify-mock
+    nvme-loop
     resize-disk
 )

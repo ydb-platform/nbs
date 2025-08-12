@@ -50,6 +50,7 @@ public:
     TDeviceLocker(
         ILoggingServicePtr logging,
         TFsPath devicesFolder,
+        TFsPath locksFolder,
         TStringBuf nameMask = DefaultNameMask);
 
     TDeviceLocker(TDeviceLocker&&) noexcept;
@@ -59,6 +60,10 @@ public:
     TDeviceLocker& operator=(const TDeviceLocker&) = delete;
 
     ~TDeviceLocker();
+
+    static TDeviceLocker CreateFromEnv(
+        ILoggingServicePtr logging,
+        TStringBuf nameMask = DefaultNameMask);
 
     [[nodiscard]] size_t AvailableDevicesCount() const;
 
