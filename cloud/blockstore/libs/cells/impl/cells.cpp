@@ -186,7 +186,7 @@ ICellManagerPtr CreateCellManager(
         .GrpcClient = std::move(result.GetResult()),
         .RdmaClient = std::move(rdmaClient),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
-        .EndpointsSetup = CreateHostEndpointsBootstrap()
+        .EndpointsSetup = CreateCellHostEndpointBootstrap()
     };
 
     return std::make_shared<TCellManager>(std::move(config), bootstrap);

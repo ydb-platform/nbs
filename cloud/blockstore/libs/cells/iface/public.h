@@ -12,8 +12,8 @@ using TCellsConfigPtr = std::shared_ptr<TCellsConfig>;
 struct ICellManager;
 using ICellManagerPtr = std::shared_ptr<ICellManager>;
 
-struct IHostEndpointsBootstrap;
-using IHostEndpointsBootstrapPtr =
-    std::shared_ptr<IHostEndpointsBootstrap>;
+struct ICellHostEndpointBootstrap;
+using ICellHostEndpointBootstrapPtr =
+    std::shared_ptr<ICellHostEndpointBootstrap>;
 
 }   // namespace NCloud::NBlockStore::NCells

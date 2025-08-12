@@ -16,7 +16,7 @@ namespace NCloud::NBlockStore::NCells {
 
 struct THostConfig;
 
-struct IHostEndpointsBootstrap
+struct ICellHostEndpointBootstrap
 {
     using TGrpcEndpointBootstrapFuture =
         NThreading::TFuture<NClient::IMultiClientEndpointPtr>;
@@ -25,17 +25,17 @@ struct IHostEndpointsBootstrap
     using TShutdownEndpointFuture = NThreading::TFuture<void>;
 
     virtual TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
-        const TBootstrap& args,
+        const TBootstrap& boorstrap,
         const TCellHostConfig& config) = 0;
 
     virtual TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
-        const TBootstrap& args,
+        const TBootstrap& boorstrap,
         const TCellHostConfig& config,
         IBlockStorePtr client) = 0;
 
-    virtual ~IHostEndpointsBootstrap() = default;
+    virtual ~ICellHostEndpointBootstrap() = default;
 };
 
-IHostEndpointsBootstrapPtr CreateHostEndpointsBootstrap();
+ICellHostEndpointBootstrapPtr CreateCellHostEndpointBootstrap();
 
 }   // namespace NCloud::NBlockStore::NCells

@@ -40,10 +40,10 @@ using TCellHosts = THashMap<TString, TCellHostInfo>;
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTestHostEndpointsSetupProvider
-    : public IHostEndpointsBootstrap
+    : public ICellHostEndpointBootstrap
 {
-    using IHostEndpointsBootstrap::TGrpcEndpointBootstrapFuture;
-    using IHostEndpointsBootstrap::TRdmaEndpointBootstrapFuture;
+    using ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture;
+    using ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture;
 
     TCellHosts Hosts;
 
@@ -52,20 +52,20 @@ struct TTestHostEndpointsSetupProvider
     {}
 
     TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
-        const TBootstrap& args,
+        const TBootstrap& boorstrap,
         const TCellHostConfig& config) override
     {
-        Y_UNUSED(args);
+        Y_UNUSED(boorstrap);
 
         return Hosts[config.GetFqdn()].GrpcSetupPromise.GetFuture();
     };
 
     TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
-        const TBootstrap& args,
+        const TBootstrap& boorstrap,
         const TCellHostConfig& config,
         IBlockStorePtr client) override
     {
-        Y_UNUSED(args);
+        Y_UNUSED(boorstrap);
         Y_UNUSED(client);
 
         return Hosts[config.GetFqdn()].RdmaSetupPromise.GetFuture();
@@ -168,12 +168,12 @@ Y_UNIT_TEST_SUITE(TCellTest)
         ConfigureHosts(proto, hosts);
         TCellConfig config {std::move(proto)};
 
-        TBootstrap args;
-        args.GrpcClient = std::make_shared<TTestGrpcClient>();
-        args.EndpointsSetup =
+        TBootstrap boorstrap;
+        boorstrap.GrpcClient = std::make_shared<TTestGrpcClient>();
+        boorstrap.EndpointsSetup =
             std::make_shared<TTestHostEndpointsSetupProvider>(hosts);
 
-        auto cell = std::make_shared<TCell>(args,config);
+        auto cell = std::make_shared<TCell>(boorstrap,config);
 
         auto clientConfig = std::make_shared<NClient::TClientAppConfig>();
 
@@ -216,12 +216,12 @@ Y_UNIT_TEST_SUITE(TCellTest)
         ConfigureHosts(proto, hosts);
         TCellConfig config {std::move(proto)};
 
-        TBootstrap args;
-        args.GrpcClient = std::make_shared<TTestGrpcClient>();
-        args.EndpointsSetup =
+        TBootstrap boorstrap;
+        boorstrap.GrpcClient = std::make_shared<TTestGrpcClient>();
+        boorstrap.EndpointsSetup =
             std::make_shared<TTestHostEndpointsSetupProvider>(hosts);
 
-        auto cell = std::make_shared<TCell>(args,config);
+        auto cell = std::make_shared<TCell>(boorstrap,config);
         cell->Start();
 
         auto clientConfig = std::make_shared<NClient::TClientAppConfig>();

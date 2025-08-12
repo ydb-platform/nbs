@@ -45,13 +45,13 @@ struct TCellHost
     NThreading::TPromise<void> StartPromise = NThreading::NewPromise<void>();
     NThreading::TPromise<void> StopPromise = NThreading::NewPromise<void>();
 
-    IHostEndpointsBootstrap::TRdmaEndpointBootstrapFuture RdmaFuture;
+    ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture RdmaFuture;
 
     TCellHost(
             TCellHostConfig config,
-            TBootstrap args)
+            TBootstrap boorstrap)
         : ICellHost(std::move(config))
-        , Args(std::move(args))
+        , Args(std::move(boorstrap))
     {}
 
     NThreading::TFuture<void> Start() override;
