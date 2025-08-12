@@ -10,23 +10,22 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCellHostEndpointsBootstrap
-    : public IHostEndpointsBootstrap
+struct TCellCellHostEndpointBootstrap
+    : public ICellHostEndpointBootstrap
 {
-    using IHostEndpointsBootstrap::TGrpcEndpointBootstrapFuture;
-    using IHostEndpointsBootstrap::TRdmaEndpointBootstrapFuture;
+    using ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture;
+    using ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture;
 
     auto SetupHostGrpcEndpoint(
-        const TBootstrap& args,
+        const TBootstrap& boorstrap,
         const TCellHostConfig& config) -> TGrpcEndpointBootstrapFuture override;
 
     auto SetupHostRdmaEndpoint(
-        const TBootstrap& args,
+        const TBootstrap& boorstrap,
         const TCellHostConfig& config,
         IBlockStorePtr client) -> TRdmaEndpointBootstrapFuture override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
 
 }   // namespace NCloud::NBlockStore::NCells

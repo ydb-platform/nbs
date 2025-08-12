@@ -66,11 +66,11 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
 {
     Y_UNIT_TEST(ShouldNotReturnDescribeFutureIfNoCellsConfigures)
     {
-        TBootstrap args;
+        TBootstrap boorstrap;
 
         auto cells = std::make_shared<TCellManager>(
             std::make_shared<TCellsConfig>(),
-            args);
+            boorstrap);
 
         auto optionalFuture = cells->DescribeVolume(
             "disk",

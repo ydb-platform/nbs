@@ -25,11 +25,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TestHostEndpointsBootstrap
-    : public IHostEndpointsBootstrap
+struct TestCellHostEndpointBootstrap
+    : public ICellHostEndpointBootstrap
 {
-    using IHostEndpointsBootstrap::TGrpcEndpointBootstrapFuture;
-    using IHostEndpointsBootstrap::TRdmaEndpointBootstrapFuture;
+    using ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture;
+    using ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture;
 
     TPromise<NClient::IMultiClientEndpointPtr> GrpcSetupPromise =
         NewPromise<NClient::IMultiClientEndpointPtr>();
@@ -37,21 +37,21 @@ struct TestHostEndpointsBootstrap
         NewPromise<TResultOrError<IBlockStorePtr>>();
 
     TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
-        const TBootstrap& args,
+        const TBootstrap& boorstrap,
         const TCellHostConfig& config) override
     {
-        Y_UNUSED(args);
+        Y_UNUSED(boorstrap);
         Y_UNUSED(config);
 
         return GrpcSetupPromise.GetFuture();
     };
 
     TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
-        const TBootstrap& args,
+        const TBootstrap& boorstrap,
         const TCellHostConfig& config,
         IBlockStorePtr client) override
     {
-        Y_UNUSED(args);
+        Y_UNUSED(boorstrap);
         Y_UNUSED(config);
         Y_UNUSED(client);
 
@@ -146,14 +146,14 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
         hostCfg.SetFqdn("host");
         TCellHostConfig hostConfig{hostCfg, cell};
 
-        auto setup = std::make_shared<TestHostEndpointsBootstrap>();
+        auto setup = std::make_shared<TestCellHostEndpointBootstrap>();
 
-        TBootstrap args;
-        args.EndpointsSetup = setup;
+        TBootstrap boorstrap;
+        boorstrap.EndpointsSetup = setup;
 
         auto manager = std::make_shared<TCellHost>(
             hostConfig,
-            args);
+            boorstrap);
 
         UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->GrpcHostEndpoint);
         UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->RdmaHostEndpoint);
@@ -235,14 +235,14 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
         hostCfg.SetFqdn("host");
         TCellHostConfig hostConfig{hostCfg, cell};
 
-        auto setup = std::make_shared<TestHostEndpointsBootstrap>();
+        auto setup = std::make_shared<TestCellHostEndpointBootstrap>();
 
-        TBootstrap args;
-        args.EndpointsSetup = setup;
+        TBootstrap boorstrap;
+        boorstrap.EndpointsSetup = setup;
 
         auto manager = std::make_shared<TCellHost>(
             hostConfig,
-            args);
+            boorstrap);
 
         UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->GrpcHostEndpoint);
         UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->RdmaHostEndpoint);
@@ -318,14 +318,14 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
         hostCfg.SetFqdn("host");
         TCellHostConfig hostConfig{hostCfg, cell};
 
-        auto setup = std::make_shared<TestHostEndpointsBootstrap>();
+        auto setup = std::make_shared<TestCellHostEndpointBootstrap>();
 
-        TBootstrap args;
-        args.EndpointsSetup = setup;
+        TBootstrap boorstrap;
+        boorstrap.EndpointsSetup = setup;
 
         auto manager = std::make_shared<TCellHost>(
             hostConfig,
-            args);
+            boorstrap);
 
         UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->GrpcHostEndpoint);
         UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->RdmaHostEndpoint);

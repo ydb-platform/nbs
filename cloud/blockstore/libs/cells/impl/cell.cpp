@@ -19,8 +19,8 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCell::TCell(TBootstrap args, TCellConfig config)
-    : Bootstrap(std::move(args))
+TCell::TCell(TBootstrap boorstrap, TCellConfig config)
+    : Bootstrap(std::move(boorstrap))
     , Config(std::move(config))
 {
     for (const auto& host: Config.GetHosts()) {
@@ -121,9 +121,9 @@ void TCell::AdjustActiveHostsToMinConnections()
     }
 }
 
-ICellPtr CreateCell(TBootstrap args, TCellConfig config)
+ICellPtr CreateCell(TBootstrap boorstrap, TCellConfig config)
 {
-    return std::make_shared<TCell>(std::move(args), std::move(config));
+    return std::make_shared<TCell>(std::move(boorstrap), std::move(config));
 }
 
 }   // namespace NCloud::NBlockStore::NCells
