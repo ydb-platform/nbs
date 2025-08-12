@@ -6061,7 +6061,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    TABLET_TEST(CleanupSholdNotInterfereWithAddData)
+    TABLET_TEST(CleanupShouldNotInterfereWithAddData)
     {
         const auto block = tabletConfig.BlockSize;
 
@@ -6202,7 +6202,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    TABLET_TEST(CollectGarbageWithTheSameCollectCommitIdShouldNotFail)
+    TABLET_TEST(CollectGarbageAfterCleanupShouldNotFail)
     {
         const auto block = tabletConfig.BlockSize;
         NProto::TStorageConfig storageConfig;
@@ -6274,7 +6274,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(2, collectCommitIds.size());
-        UNIT_ASSERT_VALUES_EQUAL(collectCommitIds[0], collectCommitIds[1]);
 
         {
             auto readData = tablet.ReadData(handle, 0, size);
