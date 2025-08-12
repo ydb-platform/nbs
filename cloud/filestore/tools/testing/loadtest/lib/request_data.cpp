@@ -434,11 +434,17 @@ private:
             CheckResponse(response);
 
             const auto& buffer = response.GetBuffer();
+            const auto& bufferOffset = response.GetBufferOffset();
+            if (buffer.empty()) {
+                Y_ABORT_UNLESS(bufferOffset == 0);
+            } else {
+                Y_ABORT_UNLESS(bufferOffset < buffer.size());
+            }
 
             ui64 segmentId = byteOffset / SEGMENT_SIZE;
             for (ui64 offset = 0; offset < ReadBytes; offset += SEGMENT_SIZE) {
-                const TSegment* segment =
-                    reinterpret_cast<const TSegment*>(buffer.data() + offset);
+                const TSegment* segment = reinterpret_cast<const TSegment*>(
+                    buffer.data() + bufferOffset + offset);
                 if (Spec.GetValidationEnabled()) {
                     Y_ABORT_UNLESS(handleInfo.Segments);
 
