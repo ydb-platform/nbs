@@ -52,7 +52,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     };
 
     const ui64 VolumeBlockCount =
-        DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+        DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize / 2;
 
     std::unique_ptr<TTestActorRuntime> Runtime;
 
@@ -72,8 +72,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         }
         config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
         config.SetMaxShadowDiskFillIoDepth(2);
-        // 8192 * 4096 = 32_MB
-        config.SetMigrationIndexCachingInterval(8192);
+        config.SetMigrationIndexCachingInterval(16_MB / DefaultBlockSize);
 
         auto state = MakeIntrusive<TDiskRegistryState>();
         Runtime = PrepareTestActorRuntime(
@@ -916,11 +915,11 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             bool Done = false;
         };
         TRestart restarts[] = {
-            {.Position = 32_MB,
+            {.Position = 16_MB,
              .RebootBehaviour = ERebootBehaviour::RebootFollower},
-            {.Position = 64_MB,
+            {.Position = 32_MB,
              .RebootBehaviour = ERebootBehaviour::RebootLeader},
-            {.Position = 96_MB,
+            {.Position = 48_MB,
              .RebootBehaviour = ERebootBehaviour::RebootBoth},
         };
 

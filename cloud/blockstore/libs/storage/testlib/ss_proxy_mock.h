@@ -27,7 +27,7 @@ public:
     struct TVolumeTabletDescr
     {
         TString DiskId;
-        ui64 TabletId;
+        ui64 TabletId = 0;
     };
 
 private:

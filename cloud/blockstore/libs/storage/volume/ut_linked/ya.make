@@ -3,13 +3,7 @@ UNITTEST_FOR(cloud/blockstore/libs/storage/volume)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCS(
-    volume_database_ut.cpp
-    volume_lagging_agent_ut.cpp
-    volume_state_ut.cpp
-    volume_ut.cpp
-    volume_ut_checkpoint.cpp
-    volume_ut_session.cpp
-    volume_ut_stats.cpp
+    volume_ut_linked.cpp
 )
 
 PEERDIR(
