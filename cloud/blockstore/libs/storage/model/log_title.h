@@ -26,6 +26,7 @@ public:
         Session,
         Client,
         VolumeProxy,
+        PartitionNonrepl,
     };
 
 private:
@@ -74,6 +75,9 @@ public:
     // Constructor for VolumeProxy
     TLogTitle(TString diskId, bool temporaryServer, ui64 startTime);
 
+    // Constructor for PartitionNonrepl
+    TLogTitle(TString diskId, ui64 startTime);
+
     static TString
     GetPartitionPrefix(ui64 tabletId, ui32 partitionIndex, ui32 partitionCount);
 
@@ -104,6 +108,7 @@ private:
     void RebuildForSession();
     void RebuildForClient();
     void RebuildForVolumeProxy();
+    void RebuildForPartitionNonrepl();
     TString GetPartitionPrefix() const;
 };
 
