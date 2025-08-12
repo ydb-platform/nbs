@@ -142,10 +142,10 @@ message TDiagnosticsConfig
     // Type of fetching CPU stats
     optional NCloud.NProto.EStatsFetcherType StatsFetcherType = 28;
 
-    // Limit nunber of records flushed in single profile log flush iteration
+    // Limit number of records flushed in a single profile log flush iteration
     optional uint64 ProfileLogMaxFlushRecords = 29;
 
-    // Limit nunber of records flushed in each frame during flush iteration
+    // Limit number of records flushed in each frame during flush iteration
     optional uint64 ProfileLogMaxFrameFlushRecords = 30;
 
 }
