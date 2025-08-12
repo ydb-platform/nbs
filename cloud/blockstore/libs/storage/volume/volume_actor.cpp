@@ -677,7 +677,7 @@ void TVolumeActor::HandleUpdateCounters(
     UpdateCounters(ctx);
     ScheduleRegularUpdates(ctx);
 
-    CleanUpHistory(ctx, ev->Sender, ev->Cookie, ev->Get()->CallContext);
+    CleanupHistory(ctx, ev->Sender, ev->Cookie, ev->Get()->CallContext);
 }
 
 void TVolumeActor::HandleServerConnected(

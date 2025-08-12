@@ -436,7 +436,7 @@ void TVolumeActor::CompleteSavePartStats(
         State->IsDiskRegistryMediaKind())
     {
         UpdateCounters(ctx);
-        CleanUpHistory(
+        CleanupHistory(
             ctx,
             SelfId(),                       // sender
             0,                              // cookie
@@ -721,7 +721,7 @@ void TVolumeActor::SendStatisticRequestForDiskRegistryBasedPartition(
                              TEvGetDiskRegistryBasedPartCountersRequest>());
 }
 
-void TVolumeActor::CleanUpHistory(
+void TVolumeActor::CleanupHistory(
     const TActorContext& ctx,
     const TActorId& sender,
     ui64 cookie,
@@ -730,15 +730,17 @@ void TVolumeActor::CleanUpHistory(
     if (!State) {
         return;
     }
-    State->AccessMountHistory().CleanupHistoryIfNeeded(
-        ctx.Now() - Config->GetVolumeHistoryDuration());
+
+    const auto oldestEntry = ctx.Now() - Config->GetVolumeHistoryDuration();
+
+    State->AccessMountHistory().CleanupHistoryIfNeeded(oldestEntry);
 
     auto requestInfo = CreateRequestInfo(sender, cookie, callContext);
 
     ExecuteTx<TCleanupHistory>(
         ctx,
         std::move(requestInfo),
-        ctx.Now() - Config->GetVolumeHistoryDuration(),
+        oldestEntry,
         Config->GetVolumeHistoryCleanupItemCount());
 }
 
