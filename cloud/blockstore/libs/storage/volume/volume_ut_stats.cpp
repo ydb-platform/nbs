@@ -1424,7 +1424,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(updated);
     }
 
-    Y_UNIT_TEST(ShouldVolumePullsStatisticsFromDiskRegistryBasedPartWithResync)
+    Y_UNIT_TEST(ShouldPullStatisticsFromDiskRegistryBasedPartitionWithResync)
     {
         NProto::TStorageServiceConfig config;
         config.SetUsePullSchemeForVolumeStatistics(true);
@@ -1437,12 +1437,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         auto runtime = PrepareTestActorRuntime(config, state);
 
-        bool isStatUpdated = false;
+        bool statUpdated = false;
         auto _ = runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
             [&](TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev)
             {
                 Y_UNUSED(ev);
-                isStatUpdated = true;
+                statUpdated = true;
             });
 
         TVolumeClient volume(*runtime);
@@ -1470,11 +1470,11 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
 
         // Check that statistics was updated
-        UNIT_ASSERT(isStatUpdated);
+        UNIT_ASSERT(statUpdated);
     }
 
     Y_UNIT_TEST(
-        ShouldVolumePullsStatisticsFromDiskRegistryBasedPartWithMigration)
+        ShouldPullStatisticsFromDiskRegistryBasedPartitionWithMigration)
     {
         NProto::TStorageServiceConfig config;
         config.SetUsePullSchemeForVolumeStatistics(true);
@@ -1485,12 +1485,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         state->ReplicaCount = 2;
         auto runtime = PrepareTestActorRuntime(config, state);
 
-        bool isStatUpdated = false;
+        bool statUpdated = false;
         auto _ = runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
             [&](TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev)
             {
                 Y_UNUSED(ev);
-                isStatUpdated = true;
+                statUpdated = true;
             });
 
         TVolumeClient volume(*runtime);
@@ -1518,11 +1518,11 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
 
         // Check that statistics was updated
-        UNIT_ASSERT(isStatUpdated);
+        UNIT_ASSERT(statUpdated);
     }
 
     Y_UNIT_TEST(
-        ShouldVolumePullsStatisticsFromDiskRegistryBasedPartWithFreshDevices)
+        ShouldPullStatisticsFromDiskRegistryBasedPartitionWithFreshDevices)
     {
         NProto::TStorageServiceConfig config;
         config.SetUsePullSchemeForVolumeStatistics(true);
@@ -1535,12 +1535,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         auto runtime = PrepareTestActorRuntime(config, state);
 
-        bool isStatUpdated = false;
+        bool statUpdated = false;
         auto _ = runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
             [&](TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev)
             {
                 Y_UNUSED(ev);
-                isStatUpdated = true;
+                statUpdated = true;
             });
 
         TVolumeClient volume(*runtime);
@@ -1568,10 +1568,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
 
         // Check that statistics was updated
-        UNIT_ASSERT(isStatUpdated);
+        UNIT_ASSERT(statUpdated);
     }
 
-    Y_UNIT_TEST(ShouldVolumePullsStatisticsFromDiskRegistryBasedPartWithTimeout)
+    Y_UNIT_TEST(ShouldPullStatisticsFromDiskRegistryBasedPartitionWithTimeout)
     {
         NProto::TStorageServiceConfig config;
         config.SetUsePullSchemeForVolumeStatistics(true);
@@ -1584,10 +1584,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         TVolumeClient volume(*runtime);
 
         TActorId volumeId;
-        bool seenAnswer = false;
-        bool isStatUpdated = false;
+        bool answerSeen = false;
+        bool statUpdated = false;
+        bool firstRequest = false;
         bool isGrabResponse = false;
-        bool isFirstRequest = false;
 
         runtime->SetEventFilter(
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
@@ -1597,9 +1597,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 if (ev->GetTypeRewrite() ==
                         TEvNonreplPartitionPrivate::
                             EvGetDiskRegistryBasedPartCountersRequest &&
-                    !isFirstRequest)
+                    !firstRequest)
                 {
-                    isFirstRequest = true;
+                    firstRequest = true;
                     volumeId = ev->Sender;
                     return false;
                 }
@@ -1618,7 +1618,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                             EvGetDiskRegistryBasedPartCountersResponse &&
                     ev->Recipient == volumeId)
                 {
-                    seenAnswer = true;
+                    answerSeen = true;
                     auto* msg = ev->Get<
                         TEvNonreplPartitionPrivate::
                             TEvGetDiskRegistryBasedPartCountersResponse>();
@@ -1629,7 +1629,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
                 if (ev->GetTypeRewrite() == TEvVolumePrivate::EvPartStatsSaved)
                 {
-                    isStatUpdated = true;
+                    statUpdated = true;
                 }
 
                 return false;
@@ -1679,10 +1679,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(isGrabResponse);
 
         // Check that we see answer with error
-        UNIT_ASSERT(seenAnswer);
+        UNIT_ASSERT(answerSeen);
 
         // Check that statistics was updated
-        UNIT_ASSERT(isStatUpdated);
+        UNIT_ASSERT(statUpdated);
     }
 }
 

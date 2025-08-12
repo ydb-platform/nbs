@@ -21,7 +21,7 @@ private:
 
     TEvNonreplPartitionPrivate::TDiskRegistryBasedPartCountersCombined Response;
 
-    NProto::TError Error;
+    NProto::TError LastError;
 
 public:
     TDiskRegistryBasedPartitionStatisticsCollectorActor(

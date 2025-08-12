@@ -43,7 +43,7 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::SendStatistics(
         Owner,
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvDiskRegistryBasedPartCountersCombined>(
-            std::move(Error),
+            std::move(LastError),
             std::move(Response)));
 
     Die(ctx);
@@ -79,7 +79,7 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::
     auto* record = ev->Get();
 
     if (HasError(record->Error)) {
-        Error = record->Error;
+        LastError = record->Error;
     }
 
     Response.Counters.push_back(std::move(*record));
