@@ -72,6 +72,13 @@ struct TEventProcessor
     : TProtobufEventProcessor
 {
     TVector<TString> FlatMessages;
+    TVector<ui32> MessageCountByRecord;
+
+    void Clear()
+    {
+        FlatMessages.clear();
+        MessageCountByRecord.clear();
+    }
 
     void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
     {
@@ -101,6 +108,8 @@ struct TEventProcessor
                         "\t" << RangesToString(r.GetRanges());
                 }
             }
+
+            MessageCountByRecord.push_back(message->GetRequests().size());
         }
     }
 };
@@ -122,7 +131,14 @@ struct TEnv
     TEnv()
         : Timer(CreateWallClockTimer())
         , Scheduler(new TTestScheduler())
-        , Settings{ProfilePath.c_str(), TDuration::Seconds(1)}
+        , Settings{ProfilePath.c_str(), TDuration::Seconds(1), 0, 0}
+        , ProfileLog(CreateProfileLog(Settings, Timer, Scheduler))
+    {}
+
+    TEnv(ui64 maxFlushRecords, ui64 maxFrameFlushRecords)
+        : Timer(CreateWallClockTimer())
+        , Scheduler(new TTestScheduler())
+        , Settings{ProfilePath.c_str(), TDuration::Seconds(1), maxFlushRecords, maxFrameFlushRecords}
         , ProfileLog(CreateProfileLog(Settings, Timer, Scheduler))
     {}
 
@@ -143,10 +159,26 @@ struct TEnv
             Scheduler->RunAllScheduledTasks();
         }
 
-        EventProcessor.FlatMessages.clear();
+        EventProcessor.Clear();
         const char* argv[] = {"foo", Settings.FilePath.c_str()};
         IterateEventLog(NEvClass::Factory(), &EventProcessor, 2, argv);
         Sort(EventProcessor.FlatMessages);
+    }
+};
+
+struct TEnvWithLimits
+    : public TEnv
+{
+    TEnvWithLimits(ui64 maxFlushRecords, ui64 maxFrameFlushRecords)
+        : TEnv(maxFlushRecords, maxFrameFlushRecords)
+    {
+        ProfileLog->Start();
+    }
+
+    ~TEnvWithLimits()
+    {
+        ProfileLog->Stop();
+        ProfilePath.DeleteIfExists();
     }
 };
 
@@ -390,6 +422,42 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
             EventProcessor.FlatMessages[6]);
     }
 
+    Y_UNIT_TEST(TestRecordLimits)
+    {
+        ui64 maxFlushRecords = 10;
+        ui64 maxFrameFlushRecords = 2;
+
+        TEnvWithLimits env{maxFlushRecords, maxFrameFlushRecords};
+
+        for (ui64 i = 0; i < maxFlushRecords + 10; i++) {
+                    env.ProfileLog->Write({
+                            "fs1",
+                            TRequestInfoBuilder()
+                            .SetTimestamp(TInstant::Seconds(1))
+                            .SetDuration(TDuration::MilliSeconds(100))
+                            .SetRequestType(1)
+                            .SetError(0)
+                            .AddRange(111, 23, 200, 10)
+                            .AddRange(111, 23, 300, 5)
+                            .Build()
+                        });
+        }
+
+        env.ProcessLog();
+
+        // check all messages flushed
+        UNIT_ASSERT_VALUES_EQUAL(maxFlushRecords, env.EventProcessor.FlatMessages.size());
+
+        // check maxFlushRecords / maxFrameFlushRecords records were written
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxFlushRecords / maxFrameFlushRecords,
+            env.EventProcessor.MessageCountByRecord.size());
+
+        // check each record contains maxFrameFlushRecords records
+        for (ui64 i = 0; i < maxFlushRecords / maxFrameFlushRecords; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(maxFrameFlushRecords, env.EventProcessor.MessageCountByRecord[i]);
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore
