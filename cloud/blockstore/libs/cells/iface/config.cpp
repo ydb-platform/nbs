@@ -35,7 +35,7 @@ BLOCKSTORE_CELL_DEFAULT_CONFIG(BLOCKSTORE_CELL_DECLARE_CONFIG)
 #undef BLOCKSTORE_CELL_DECLARE_CONFIG
 
 #define BLOCKSTORE_CELL_COMPUTED_CONFIG(xxx)                                   \
-    xxx(Hosts,                     TCellConfigByCellId                    )\
+    xxx(Hosts,                     TCellConfigByCellId                        )\
 // BLOCKSTORE_CELL_COMPUTED_CONFIG
 
 #define BLOCKSTORE_CELL_CONFIG(xxx)                                            \
@@ -60,7 +60,7 @@ BLOCKSTORE_CELLS_DEFAULT_CONFIG(BLOCKSTORE_CELLS_DECLARE_CONFIG)
 #undef BLOCKSTORE_CELLS_DECLARE_CONFIG
 
 #define BLOCKSTORE_CELLS_COMPUTED_CONFIG(xxx)                                  \
-    xxx(Cells,                     TCellConfigByCellId                    )\
+    xxx(Cells,                     TCellConfigByCellId                        )\
 // BLOCKSTORE_CELLS_COMPUTED_CONFIG
 
 #define BLOCKSTORE_CELLS_CONFIG(xxx)                                           \

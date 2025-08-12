@@ -120,19 +120,19 @@ public:
 
         const auto& encryptionSpec = request->GetEncryptionSpec();
 
-        STORAGE_INFO(
-            TRequestInfo(
-                EBlockStoreRequest::MountVolume,
-                ctx->RequestId,
-                request->GetDiskId(),
-                request->GetHeaders().GetClientId())
-            << " start creating encryption client " << encryptionSpec);
-
         NThreading::TFuture<IEncryptionClientFactory::TResponse> future;
 
         if (request->GetDisableEncryption()) {
             future = MakeFuture(TResultOrError{Service});
         } else {
+            STORAGE_INFO(
+                TRequestInfo(
+                    EBlockStoreRequest::MountVolume,
+                    ctx->RequestId,
+                    request->GetDiskId(),
+                    request->GetHeaders().GetClientId())
+                << " start creating encryption client " << encryptionSpec);
+
             future = EncryptionClientFactory->CreateEncryptionClient(
                 Service,
                 encryptionSpec,

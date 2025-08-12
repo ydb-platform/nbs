@@ -89,7 +89,6 @@ class TReadBlocksHandler final
 public:
     using TRequest = NProto::TReadBlocksLocalRequest;
     using TResponse = NProto::TReadBlocksLocalResponse;
-    using TReceivedResponse = NProto::TReadBlocksResponse;
 
 private:
     const TCallContextPtr CallContext;
@@ -97,7 +96,7 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
 
-    ui64 SendTime = 0;
+    ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
     NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
@@ -142,7 +141,7 @@ public:
         TraceSerializer->BuildTraceRequest(
             *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
             CallContext->LWOrbit);
-        SendTime = GetCycleCount();
+        StartTime = GetCycleCount();
 
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
@@ -162,7 +161,8 @@ public:
         const auto& response = resultOrError.GetResult();
         Y_ENSURE(response.MsgId == TBlockStoreProtocol::ReadBlocksResponse);
 
-        auto& responseMsg = static_cast<TReceivedResponse&>(*response.Proto);
+        auto& responseMsg = static_cast<NProto::TReadBlocksResponse&>(
+            *response.Proto);
         TResponse localResponse;
         localResponse.CopyFrom(responseMsg);
 
@@ -174,7 +174,7 @@ public:
             TraceSerializer->HandleTraceInfo(
                 responseMsg.GetTrace(),
                 CallContext->LWOrbit,
-                SendTime,
+                StartTime,
                 GetCycleCount());
             responseMsg.ClearTrace();
         }
@@ -226,7 +226,7 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
 
-    ui64 SendTime = 0;
+    ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
     NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
@@ -277,7 +277,7 @@ public:
                 *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
                 CallContext->LWOrbit);
 
-            SendTime = GetCycleCount();
+            StartTime = GetCycleCount();
         }
 
         return NRdma::TProtoMessageSerializer::SerializeWithData(
@@ -306,7 +306,7 @@ public:
             TraceSerializer->HandleTraceInfo(
                 responseMsg.GetTrace(),
                 CallContext->LWOrbit,
-                SendTime,
+                StartTime,
                 GetCycleCount());
             responseMsg.ClearTrace();
         }
@@ -337,7 +337,7 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
 
-    ui64 SendTime = 0;
+    ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
     NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
@@ -380,7 +380,7 @@ public:
         TraceSerializer->BuildTraceRequest(
             *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
             CallContext->LWOrbit);
-        SendTime = GetCycleCount();
+        StartTime = GetCycleCount();
 
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
@@ -406,7 +406,7 @@ public:
         TraceSerializer->HandleTraceInfo(
             responseMsg.GetTrace(),
             CallContext->LWOrbit,
-            SendTime,
+            StartTime,
             GetCycleCount());
         responseMsg.ClearTrace();
 
