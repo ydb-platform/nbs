@@ -40,8 +40,8 @@ storage/disk_agent/ut_large/cloud-blockstore-libs-storage-disk_agent-ut_large
 storage/disk_agent/ut/cloud-blockstore-libs-storage-disk_agent-ut
 storage/disk_registry_proxy/ut/blockstore-libs-storage-disk_registry_proxy-ut
 storage/disk_registry/actors/ut/libs-storage-disk_registry-actors-ut
-storage/disk_registry/model/ut/blockstore-libs-storage-disk_registry-model-ut
 storage/disk_registry/benchmark/benchmark
+storage/disk_registry/model/ut/blockstore-libs-storage-disk_registry-model-ut
 storage/disk_registry/ut_allocation/libs-storage-disk_registry-ut_allocation
 storage/disk_registry/ut_checkpoint/libs-storage-disk_registry-ut_checkpoint
 storage/disk_registry/ut_cms/blockstore-libs-storage-disk_registry-ut_cms
@@ -75,6 +75,7 @@ storage/volume_balancer/ut/cloud-blockstore-libs-storage-volume_balancer-ut
 storage/volume_proxy/ut/cloud-blockstore-libs-storage-volume_proxy-ut
 storage/volume/actors/ut/cloud-blockstore-libs-storage-volume-actors-ut
 storage/volume/model/ut/cloud-blockstore-libs-storage-volume-model-ut
+storage/volume/ut_linked/cloud-blockstore-libs-storage-volume-ut_linked
 storage/volume/ut/cloud-blockstore-libs-storage-volume-ut
 throttling/ut/cloud-blockstore-libs-throttling-ut
 validation/ut/cloud-blockstore-libs-validation-ut

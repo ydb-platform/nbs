@@ -1,7 +1,9 @@
 #include "test_env.h"
 
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
+#include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -110,6 +112,15 @@ bool IsAllUpperCase(TStringBuf str)
         str.begin(),
         str.end(),
         [](char c) { return std::isupper(c) || c == '_'; });
+}
+
+TStorageConfigPtr MakeStorageConfig()
+{
+    NProto::TStorageServiceConfig config;
+
+    return std::make_shared<TStorageConfig>(
+        std::move(config),
+        std::make_shared<NFeatures::TFeaturesConfig>());
 }
 
 }   // namespace
@@ -824,7 +835,25 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
 
     runtime->AddLocalService(
         MakeSSProxyServiceId(),
-        TActorSetupCmd(new TSSProxyMock(), TMailboxType::Simple, 0));
+        TActorSetupCmd(
+            new TSSProxyMock(
+                {{.DiskId = "vol1", .TabletId = TestVolumeTablets[0]},
+                 {.DiskId = "vol2", .TabletId = TestVolumeTablets[1]}}),
+            TMailboxType::Simple,
+            0));
+
+    auto traceSerializer = CreateTraceSerializerStub();
+    traceSerializer->Start();
+
+    runtime->AddLocalService(
+        MakeVolumeProxyServiceId(),
+        TActorSetupCmd(
+            CreateVolumeProxy(
+                MakeStorageConfig(),
+                std::move(traceSerializer),
+                false),
+            TMailboxType::Simple,
+            0));
 
     if (!diskRegistryState) {
         diskRegistryState = MakeIntrusive<TDiskRegistryState>();

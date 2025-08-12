@@ -637,6 +637,22 @@ void TVolumeActor::ForwardRequest(
     auto* msg = ev->Get();
     auto now = GetCycleCount();
 
+    // Fill block range.
+    TBlockRange64 blockRange;
+    if constexpr (
+        IsReadOrWriteMethod<TMethod> || IsDescribeBlocksMethod<TMethod>)
+    {
+        blockRange = BuildRequestBlockRange(*msg, State->GetBlockSize());
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s ForwardRequest %s %s",
+        LogTitle.GetWithTime().c_str(),
+        TMethod::Name,
+        blockRange.Print().c_str());
+
     bool isTraced = false;
 
     if (ev->Recipient != ev->GetRecipientRewrite())
@@ -740,7 +756,7 @@ void TVolumeActor::ForwardRequest(
     if constexpr (RequiresMount<TMethod>) {
         clientsIt = clients.find(clientId);
         if (clientsIt == clients.end()) {
-            if (clientId == CopyVolumeClientId ) {
+            if (clientId == CopyVolumeClientId) {
                 if (!clients.empty()) {
                     replyError(MakeError(
                         E_BS_INVALID_SESSION,
@@ -849,14 +865,6 @@ void TVolumeActor::ForwardRequest(
             replyError(std::move(error));
             return;
         }
-    }
-
-    // Fill block range.
-    TBlockRange64 blockRange;
-    if constexpr (
-        IsReadOrWriteMethod<TMethod> || IsDescribeBlocksMethod<TMethod>)
-    {
-        blockRange = BuildRequestBlockRange(*msg, State->GetBlockSize());
     }
 
     /*
