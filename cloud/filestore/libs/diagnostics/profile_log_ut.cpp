@@ -138,7 +138,11 @@ struct TEnv
     TEnv(ui64 maxFlushRecords, ui64 maxFrameFlushRecords)
         : Timer(CreateWallClockTimer())
         , Scheduler(new TTestScheduler())
-        , Settings{ProfilePath.c_str(), TDuration::Seconds(1), maxFlushRecords, maxFrameFlushRecords}
+        , Settings(
+              ProfilePath.c_str(),
+              TDuration::Seconds(1),
+              maxFlushRecords,
+              maxFrameFlushRecords)
         , ProfileLog(CreateProfileLog(Settings, Timer, Scheduler))
     {}
 
@@ -446,7 +450,9 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         env.ProcessLog();
 
         // check all messages flushed
-        UNIT_ASSERT_VALUES_EQUAL(maxFlushRecords, env.EventProcessor.FlatMessages.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxFlushRecords,
+            env.EventProcessor.FlatMessages.size());
 
         // check maxFlushRecords / maxFrameFlushRecords records were written
         UNIT_ASSERT_VALUES_EQUAL(
@@ -455,7 +461,9 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
 
         // check each record contains maxFrameFlushRecords records
         for (ui64 i = 0; i < maxFlushRecords / maxFrameFlushRecords; ++i) {
-            UNIT_ASSERT_VALUES_EQUAL(maxFrameFlushRecords, env.EventProcessor.MessageCountByRecord[i]);
+            UNIT_ASSERT_VALUES_EQUAL(
+                maxFrameFlushRecords,
+                env.EventProcessor.MessageCountByRecord[i]);
         }
     }
 }
