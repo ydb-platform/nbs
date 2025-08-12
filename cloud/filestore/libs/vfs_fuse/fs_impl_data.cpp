@@ -414,9 +414,7 @@ void TFileSystem::Write(
 
     const auto size = buffer.size();
 
-    if (WriteBackCache && Config->GetServerWriteBackCacheEnabled()) {
-        // TODO(svartmetal): check whether handle is non-direct and has write
-        // permission
+    if (ShouldUseWriteBackCache(fi)) {
         WriteBackCache.WriteData(callContext, std::move(request))
             .Subscribe(
                 [=,
@@ -562,7 +560,7 @@ void TFileSystem::WriteBuf(
     request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
     request->SetBuffer(alignedBuffer.TakeBuffer());
 
-    if (WriteBackCache && Config->GetServerWriteBackCacheEnabled()) {
+    if (ShouldUseWriteBackCache(fi)) {
         WriteBackCache.WriteData(callContext, std::move(request))
             .Subscribe(
                 [=, ptr = weak_from_this()] (const auto& future)
@@ -941,6 +939,26 @@ void TFileSystem::FSyncDir(
     }
 
     future.Subscribe(std::move(waitCallback));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TFileSystem::ShouldUseWriteBackCache(const fuse_file_info* fi) const
+{
+    if (!WriteBackCache || !Config->GetServerWriteBackCacheEnabled()) {
+        return false;
+    }
+
+    if (fi->flags & O_DIRECT) {
+        return false;
+    }
+
+    const int accessMode = fi->flags & O_ACCMODE;
+    if (accessMode != O_WRONLY && accessMode != O_RDWR) {
+        return false;
+    }
+
+    return true;
 }
 
 }   // namespace NCloud::NFileStore::NFuse

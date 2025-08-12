@@ -1944,8 +1944,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
         UNIT_ASSERT_VALUES_EQUAL(1, readDataCalled.load());
 
-        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
-            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        auto reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
         // should not write (flush) data from cache immediately
         UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
@@ -1980,8 +1985,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // no new writes (flushes) are expected
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
 
-        write = bootstrap.Fuse->SendRequest<TWriteRequest>(
-            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_WRONLY;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
 
@@ -1994,8 +2004,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // cache should be flushed
         UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
 
-        write = bootstrap.Fuse->SendRequest<TWriteRequest>(
-            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_WRONLY;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
 
@@ -2041,8 +2056,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
-            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        auto reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
         // should not write (flush) data from cache immediately
         UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
@@ -2058,8 +2078,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // cache should be flushed
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
 
-        write = bootstrap.Fuse->SendRequest<TWriteRequest>(
-            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_WRONLY;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
         // should not write (flush) data from cache immediately
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
@@ -2072,6 +2097,88 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(2, fsyncDirCalled.load());
         // cache should be flushed
         UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
+    }
+
+    Y_UNIT_TEST(
+        ShouldHandleFlagsWhenWriteToCacheWithServerWriteBackCacheEnabled)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        std::atomic<int> writeDataCalled = 0;
+
+        bootstrap.Service->WriteDataHandler = [&](auto callContext, auto)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            writeDataCalled++;
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        auto reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_DIRECT;
+        reqWrite->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+
+        // write without write flag should not write to cache
+        reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
+
+        reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_DIRECT;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
+
+        reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_WRONLY;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
+
+        reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_RDONLY;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(4, writeDataCalled.load());
     }
 
     Y_UNIT_TEST(ShouldFlushWithServerWriteBackCacheEnabled)
@@ -2101,8 +2208,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
-            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        auto writeReq = std::make_shared<TWriteRequest>(nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        writeReq->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(writeReq);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
         // should not write (flush) data from cache immediately
         UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
@@ -2158,8 +2266,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
-            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        auto reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
         // should not write (flush) data from cache immediately
         UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
@@ -2202,8 +2315,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
-            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        auto reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
 
         while (true) {
