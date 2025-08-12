@@ -73,11 +73,16 @@ void TIndexTabletActor::HandleCleanup(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
+    ui64 collectBarrier = GenerateCommitId();
+    if (collectBarrier == InvalidCommitId) {
+        return RebootTabletOnCommitOverflow(ctx, "Cleanup");
+    }
+
     ExecuteTx<TCleanup>(
         ctx,
         std::move(requestInfo),
         msg->RangeId,
-        GetCurrentCommitId());
+        collectBarrier);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
