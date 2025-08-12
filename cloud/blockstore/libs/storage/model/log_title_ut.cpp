@@ -193,13 +193,14 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
 
     Y_UNIT_TEST(GetForPartitionNonrepl)
     {
-        TLogTitle logTitle("disk1", GetCycleCount());
+        TLogTitle logTitle =
+            TLogTitle::CreatePartitionNonreplLog("disk1", GetCycleCount());
 
         UNIT_ASSERT_STRINGS_EQUAL(
-            "[nrd: d:disk1]",
+            "[nrd:disk1]",
             logTitle.Get(TLogTitle::EDetails::Brief));
 
-        UNIT_ASSERT_STRING_CONTAINS(logTitle.GetWithTime(), "[nrd: d:disk1 t:");
+        UNIT_ASSERT_STRING_CONTAINS(logTitle.GetWithTime(), "[nrd:disk1 t:");
     }
 
     Y_UNIT_TEST(GetChildLogger)

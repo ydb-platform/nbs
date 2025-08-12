@@ -6,6 +6,8 @@
 #include <util/string/builder.h>
 #include <util/system/datetime.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,12 +79,17 @@ TLogTitle::TLogTitle(TString diskId, bool temporaryServer, ui64 startTime)
     Rebuild();
 }
 
-TLogTitle::TLogTitle(TString diskId, ui64 startTime)
-    : Type(EType::PartitionNonrepl)
+TLogTitle::TLogTitle(EType type, ui64 startTime)
+    : Type(type)
     , StartTime(startTime)
-    , DiskId(std::move(diskId))
+{}
+
+TLogTitle TLogTitle::CreatePartitionNonreplLog(TString diskId, ui64 startTime)
 {
-    Rebuild();
+    auto log = TLogTitle(EType::PartitionNonrepl, startTime);
+    log.DiskId = std::move(diskId);
+    log.Rebuild();
+    return log;
 }
 
 // static
@@ -330,8 +337,7 @@ void TLogTitle::RebuildForPartitionNonrepl()
     auto builder = TStringBuilder();
 
     builder << "[";
-    builder << "nrd:";
-    builder << " d:" << DiskId;
+    builder << "nrd:" << DiskId;
 
     CachedPrefix = builder;
 }
