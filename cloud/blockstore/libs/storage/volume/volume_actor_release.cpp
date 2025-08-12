@@ -86,7 +86,7 @@ void TVolumeActor::ReleaseReplacedDevices(
             nullptr,   // clientRequest
             replacedDevices,
             false);   // retryIfTimeoutOrUndelivery
-        AcquireReleaseDiskRequests.push_back(std::move(request));
+        AddAcquireReleaseDiskRequest(ctx, std::move(request));
     }
 }
 
