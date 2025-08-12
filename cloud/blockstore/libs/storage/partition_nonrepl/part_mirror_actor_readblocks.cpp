@@ -237,7 +237,14 @@ void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
                 DescribeRange(Range).c_str(),
                 errorMessage.c_str());
 
-            *Response.MutableError() = MakeError(E_REJECTED, errorMessage);
+            ui32 flags = 0;
+            // If it's a minor replica mismatch, the instant retry will minimize
+            // the latency. If it's a major, the durable client won't retry one
+            // request instantly more than once and this will not cause the
+            // retry storm.
+            SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
+            *Response.MutableError() =
+                MakeError(E_REJECTED, std::move(errorMessage), flags);
             ChecksumMismatchObserved = true;
             break;
         }
