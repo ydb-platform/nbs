@@ -201,7 +201,7 @@ private:
                 GetCycleCount());
         }
 
-        LWTRACK(RequestReceived_Cells, callContext->LWOrbit);
+        LWTRACK(RequestReceived_RdmaTarget, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
         Y_ENSURE_RETURN(request.GetBlockSize() != 0, "empty BlockSize");
@@ -293,7 +293,7 @@ private:
                 GetCycleCount());
         }
 
-        LWTRACK(RequestReceived_Cells, callContext->LWOrbit);
+        LWTRACK(RequestReceived_RdmaTarget, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() > 0, "invalid request");
         auto [sglist, error] = SgListNormalize({ requestData.data(), requestData.length() }, request.GetBlockSize());
@@ -353,7 +353,7 @@ private:
                 GetCycleCount());
         }
 
-        LWTRACK(RequestReceived_Cells, callContext->LWOrbit);
+        LWTRACK(RequestReceived_RdmaTarget, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
@@ -363,9 +363,9 @@ private:
 
         future.Subscribe(
             [out = out,
-             context = std::move(context),
+             context = context,
              endpoint = Endpoint,
-             callContext](auto future)
+             callContext = std::move(callContext)](auto future)
             {
                 auto response = ExtractResponse(future);
                 FillResponse(callContext, response);

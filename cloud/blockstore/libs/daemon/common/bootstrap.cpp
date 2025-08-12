@@ -1018,8 +1018,8 @@ void TBootstrapBase::Stop()
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
     STOP_COMMON_COMPONENT(CellManager);
-    STOP_COMMON_COMPONENT(RdmaRequestServer);
     STOP_COMMON_COMPONENT(RdmaTarget);
+    STOP_COMMON_COMPONENT(RdmaRequestServer);
     STOP_COMMON_COMPONENT(GetTraceServiceClient());
     STOP_COMMON_COMPONENT(RdmaClient);
     STOP_COMMON_COMPONENT(BackgroundThreadPool);

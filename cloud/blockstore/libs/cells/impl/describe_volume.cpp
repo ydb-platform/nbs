@@ -219,7 +219,7 @@ void TDescribeResponseHandler::Start()
 
     auto req = std::make_shared<NProto::TDescribeVolumeRequest>();
     req->CopyFrom(Request);
-    if (!CellId) {
+    if (CellId) {
         req->MutableHeaders()->ClearInternal();
     }
 

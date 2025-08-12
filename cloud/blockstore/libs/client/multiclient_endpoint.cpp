@@ -40,26 +40,111 @@ struct TMultiClientEndpoint;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+IBlockStorePtr CreateClient(
+    IBlockStorePtr client,
+    std::weak_ptr<TMultiClientEndpoint> owner,
+    TString clientId,
+    TString instanceId);
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TMultiClientEndpoint
+    : public IMultiClientEndpoint
+    , public std::enable_shared_from_this<TMultiClientEndpoint>
+{
+    const IBlockStorePtr Client;
+    // maps pair of client id and instance id to IBlockStorePtr
+    THashMap<std::pair<TString, TString>, IBlockStorePtr> ClientCache;
+    TAdaptiveLock Lock;
+
+    explicit TMultiClientEndpoint(IBlockStorePtr client)
+        : Client(std::move(client))
+    {}
+
+    IBlockStorePtr CreateClientEndpoint(
+        const TString& clientId,
+        const TString& instanceId) override
+    {
+        with_lock (Lock) {
+            auto key = std::make_pair(clientId, instanceId);
+            if (auto it = ClientCache.find(key);
+                it != ClientCache.end())
+            {
+                return it->second;
+            }
+            auto client = CreateClient(
+                Client,
+                weak_from_this(),
+                clientId,
+                instanceId);
+            ClientCache.emplace(key, client);
+            return client;
+        }
+    }
+
+    void Start() override
+    {
+    }
+
+    void Stop() override
+    {
+    }
+
+    void ReleaseClient(const TString& clientId, const TString& instanceId)
+    {
+        with_lock (Lock) {
+            ClientCache.erase(std::make_pair(clientId, instanceId));
+        }
+    }
+
+    TStorageBuffer AllocateBuffer(size_t bytesCount) override
+    {
+        return Client->AllocateBuffer(bytesCount);
+    }
+
+    #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                             \
+    TFuture<NProto::T##name##Response> name(                                   \
+        TCallContextPtr callContext,                                           \
+        std::shared_ptr<NProto::T##name##Request> request) override            \
+    {                                                                          \
+        return Client->name(                                                   \
+            std::move(callContext),                                            \
+            std::move(request));                                               \
+    }                                                                          \
+// BLOCKSTORE_IMPLEMENT_METHOD
+
+    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
+
+#undef BLOCKSTORE_IMPLEMENT_METHOD
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TClientEndpoint
     : public IBlockStore
 {
     const IBlockStorePtr Client;
-    const std::weak_ptr<TMultiClientEndpoint> MultiClientEndpoint;
+    const std::weak_ptr<TMultiClientEndpoint> Owner;
     const TString ClientId;
     const TString InstanceId;
 
     TClientEndpoint(
             IBlockStorePtr client,
-            std::weak_ptr<TMultiClientEndpoint> multiClientEndpoint,
+            std::weak_ptr<TMultiClientEndpoint> owner,
             TString clientId,
             TString instanceId)
         : Client(std::move(client))
-        , MultiClientEndpoint(std::move(multiClientEndpoint))
+        , Owner(std::move(owner))
         , ClientId(std::move(clientId))
         , InstanceId(std::move(instanceId))
     {}
 
-    ~TClientEndpoint() override;
+    ~TClientEndpoint() override
+    {
+        if (auto owner = Owner.lock(); owner) {
+            owner->ReleaseClient(ClientId, InstanceId);
+        }
+    }
 
     template <typename TRequest>
     void PrepareRequest(TRequest& request)
@@ -108,82 +193,17 @@ struct TClientEndpoint
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TMultiClientEndpoint
-    : public IMultiClientEndpoint
-    , public std::enable_shared_from_this<TMultiClientEndpoint>
+IBlockStorePtr CreateClient(
+    IBlockStorePtr client,
+    std::weak_ptr<TMultiClientEndpoint> owner,
+    TString clientId,
+    TString instanceId)
 {
-    const IBlockStorePtr Client;
-    THashMap<std::pair<TString, TString>, IBlockStorePtr> Cache;
-    TAdaptiveLock Lock;
-
-    TMultiClientEndpoint(IBlockStorePtr client)
-        : Client(std::move(client))
-    {}
-
-    IBlockStorePtr CreateClientEndpoint(
-        const TString& clientId,
-        const TString& instanceId) override
-    {
-        with_lock (Lock) {
-            auto key = std::make_pair(clientId, instanceId);
-            if (auto it = Cache.find(key);
-                it != Cache.end())
-            {
-                return it->second;
-            }
-            auto client = std::make_shared<TClientEndpoint>(
-                Client,
-                weak_from_this(),
-                clientId,
-                instanceId);
-            Cache.emplace(key, client);
-            return client;
-        }
-    }
-
-    void Start() override
-    {
-    }
-
-    void Stop() override
-    {
-    }
-
-    void Release(
-        const TString& clientId,
-        const TString& instanceId)
-    {
-        with_lock (Lock) {
-            Cache.erase(std::make_pair(clientId, instanceId));
-        }
-    }
-
-    TStorageBuffer AllocateBuffer(size_t bytesCount) override
-    {
-        return Client->AllocateBuffer(bytesCount);
-    }
-
-    #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                             \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return Client->name(                                                   \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TClientEndpoint::~TClientEndpoint()
-{
-    if (auto owner = MultiClientEndpoint.lock(); owner) {
-        owner->Release(ClientId, InstanceId);
-    }
+    return std::make_shared<TClientEndpoint>(
+        client,
+        owner,
+        clientId,
+        instanceId);
 }
 
 }  // namespace

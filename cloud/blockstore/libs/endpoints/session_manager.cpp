@@ -194,7 +194,7 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        SetupBlockSize(*request);                                              \
+        SetBlockSize(*request);                                              \
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);       \
         return Storage->name(std::move(callContext), std::move(request));      \
     }                                                                          \
@@ -287,7 +287,7 @@ private:
     }
 
     template <typename TRequest>
-    void SetupBlockSize(TRequest& request)
+    void SetBlockSize(TRequest& request)
     {
         if constexpr (HasBlockSize<TRequest>) {
             request.BlockSize = BlockSize;
@@ -324,8 +324,6 @@ private:
 
     TMutex EndpointLock;
     THashMap<TString, TEndpointPtr> Endpoints;
-
-    IBlockStorePtr ClientEndpoint;
 
 public:
     TSessionManager(
@@ -417,7 +415,7 @@ private:
     TResultOrError<TEndpointPtr> CreateEndpoint(
         const NProto::TStartEndpointRequest& request,
         const NProto::TVolume& volume,
-        const TString& suId);
+        const TString& cellId);
 
     TClientAppConfigPtr CreateClientConfig(
         const NProto::TStartEndpointRequest& request);
@@ -457,9 +455,9 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
         return TErrorResponse(describeResponse.GetError());
     }
     const auto& volume = describeResponse.GetVolume();
-    const auto& suId = describeResponse.GetCellId();
+    const auto& cellId = describeResponse.GetCellId();
 
-    auto result = CreateEndpoint(request, volume, suId);
+    auto result = CreateEndpoint(request, volume, cellId);
     if (HasError(result)) {
         return TErrorResponse(result.GetError());
     }
@@ -491,14 +489,14 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     const TString& diskId,
     const NProto::THeaders& headers)
 {
-    auto multiShardFuture = CellManager->DescribeVolume(
+    auto cellDescribeFuture = CellManager->DescribeVolume(
         diskId,
         headers,
         Service,
         Options.DefaultClientConfig);
 
-    if (multiShardFuture.has_value()) {
-        return Executor->WaitFor(multiShardFuture.value());
+    if (cellDescribeFuture.has_value()) {
+        return Executor->WaitFor(cellDescribeFuture.value());
     }
 
     auto describeRequest = std::make_shared<NProto::TDescribeVolumeRequest>();
@@ -680,9 +678,9 @@ TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
 TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     const NProto::TStartEndpointRequest& request,
     const NProto::TVolume& volume,
-    const TString& shardId)
+    const TString& cellId)
 {
-    const auto clientId = request.GetClientId();
+    const auto& clientId = request.GetClientId();
     auto accessMode = request.GetVolumeAccessMode();
 
     auto service = Service;
@@ -690,9 +688,9 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
 
     auto clientConfig = CreateClientConfig(request);
 
-    if (!shardId.empty()) {
+    if (!cellId.empty()) {
         auto result = CellManager->GetCellEndpoint(
-            shardId,
+            cellId,
             clientConfig);
         if (HasError(result.GetError())) {
             return result.GetError();

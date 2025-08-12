@@ -6,10 +6,6 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/service/request.h>
 #include <cloud/blockstore/libs/service/service.h>
-#include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/startable.h>
-
-#include <library/cpp/threading/future/future.h>
 
 namespace NCloud::NBlockStore::NClient {
 
