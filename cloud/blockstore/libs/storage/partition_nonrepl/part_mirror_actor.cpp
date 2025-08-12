@@ -155,7 +155,7 @@ void TMirrorPartitionActor::StartScrubbingRange(
     const NActors::TActorContext& ctx,
     ui64 scrubbingRangeId)
 {
-    if (ScrubbingRangeId != scrubbingRangeId) {
+    if (ScrubbingRangeId != scrubbingRangeId || !ScrubbingRangeStarted) {
         ScrubbingRangeId = scrubbingRangeId;
         if (GetScrubbingRange().Start >= State.GetBlockCount()) {
             ScrubbingRangeId = 0;
