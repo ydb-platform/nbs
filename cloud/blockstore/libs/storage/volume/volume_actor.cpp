@@ -91,6 +91,7 @@ TVolumeActor::TVolumeActor(
                   static_cast<TVolumeThrottlingPolicy::EOpType>(opType),
                   time);
           })
+    , DiskId(std::move(diskId))
     , TransactionTimeTracker(VolumeTransactions)
 {}
 

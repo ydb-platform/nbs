@@ -129,6 +129,8 @@ void TVolumeActor::HandleUpdateVolumeConfig(
 {
     const auto* msg = ev->Get();
 
+    DiskId = msg->Record.GetVolumeConfig().GetDiskId();
+
     LogTitle.SetDiskId(msg->Record.GetVolumeConfig().GetDiskId());
 
     ui32 configVersion = msg->Record.GetVolumeConfig().GetVersion();

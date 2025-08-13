@@ -21,7 +21,8 @@ void TMirrorPartitionResyncActor::HandleWriteOrZeroCompleted(
     const auto requestIdentityKey = ev->Get()->RequestId;
     if (!WriteAndZeroRequestsInProgress.RemoveRequest(requestIdentityKey)) {
         ReportResyncUnexpectedWriteOrZeroCounter(
-            {{"requestIdentityKey", requestIdentityKey}});
+            {{"disk", PartConfig->GetName()},
+             {"requestIdentityKey", requestIdentityKey}});
     }
 
     DrainActorCompanion.ProcessDrainRequests(ctx);

@@ -213,7 +213,8 @@ void TMirrorPartitionResyncActor::ProcessReadResponseFastPath(
 
     if (blockCount != sglist.size()) {
         ReportReadBlockCountMismatch(
-            {{"blockCount", blockCount},
+            {{"disk", PartConfig->GetName()},
+             {"blockCount", blockCount},
              {"sglistSize", sglist.size()},
              {"range", record.BlockRange}});
 

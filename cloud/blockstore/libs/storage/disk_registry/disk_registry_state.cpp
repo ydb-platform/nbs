@@ -2972,7 +2972,9 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
             if (HasError(error)) {
                 ReportDiskRegistryInsertToPendingCleanupFailed(
                     "An error occurred while deallocating disk replica",
-                    {{"disk", diskId}, {"affectedDisk", affectedDiskId}});
+                    {{"disk", diskId},
+                     {"affectedDisk", affectedDiskId},
+                     {"error", FormatError(error)}});
             }
         }
 
@@ -6471,7 +6473,8 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
     if (HasError(error)) {
         ReportDiskRegistryInsertToPendingCleanupFailed(
             "An error occurred while aborting migration",
-            {{"masterDiskId", disk.MasterDiskId}});
+            {{"masterDiskId", disk.MasterDiskId},
+             {"error", FormatError(error)}});
     }
 
     NProto::TDiskHistoryItem historyItem;
@@ -6623,14 +6626,15 @@ NProto::TError TDiskRegistryState::AddOutdatedLaggingDevices(
         if (!replicaState) {
             ReportDiskRegistryDiskNotFound(
                 "AddOutdatedLaggingDevices",
-                {{"replicaId", replicaId}});
+                {{"disk", diskId}, {"replicaId", replicaId}});
             continue;
         }
         if (replicaState->MasterDiskId != diskId) {
             // The device is a part of another disk.
             ReportDiskRegistryDeviceDoesNotBelongToDisk(
                 "AddOutdatedLaggingDevices",
-                {{"masterDiskId", replicaState->MasterDiskId},
+                {{"disk", diskId},
+                 {"masterDiskId", replicaState->MasterDiskId},
                  {"deviceId", outdatedDeviceUUID},
                  {"replicaId", replicaId}});
             continue;
@@ -6719,7 +6723,7 @@ auto TDiskRegistryState::FindReplicaByMigration(
         if (!replica) {
             ReportDiskRegistryDiskNotFound(
                 "FindReplicaByMigration",
-                {{"replicaId", replicaId}});
+                {{"masterDiskId", masterDiskId}, {"replicaId", replicaId}});
 
             return {};
         }
@@ -7396,7 +7400,8 @@ NProto::TError TDiskRegistryState::DeallocateDiskReplicas(
         if (HasError(error)) {
             ReportDiskRegistryInsertToPendingCleanupFailed(
                 "An error occurred while deallocating disk replica",
-                {{"replicaDiskId", replicaDiskId}});
+                {{"replicaDiskId", replicaDiskId},
+                 {"error", FormatError(error)}});
         }
 
         // TODO (NBS-3418): update ReplicaTable

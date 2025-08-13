@@ -293,7 +293,8 @@ NProto::TDeviceConfig TDeviceList::AllocateDevice(
         auto it = FindIf(devices, [&] (const auto& device) {
             if (device.GetRack() != currentRack) {
                 ReportDiskRegistryPoolDeviceRackMismatch(
-                    {{"NodeId", nodeId},
+                    {{"disk", diskId},
+                     {"NodeId", nodeId},
                      {"PoolRack", currentRack},
                      {"Device", device.GetDeviceUUID()},
                      {"DeviceRack", device.GetRack()}});
