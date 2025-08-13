@@ -380,7 +380,6 @@ void TBootstrapYdb::InitRdmaClient()
 
 void TBootstrapYdb::InitRdmaServer()
 {
-    // TODO: read config
     auto rdmaConfig = std::make_shared<NRdma::TServerConfig>();
 
     RdmaServer = ServerModuleFactories->RdmaServerFactory(

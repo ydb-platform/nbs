@@ -23,6 +23,9 @@ NRdma::TProtoMessageSerializer* TBlockStoreProtocol::Serializer()
 
             RegisterProto<NProto::TZeroBlocksRequest>(ZeroBlocksRequest);
             RegisterProto<NProto::TZeroBlocksResponse>(ZeroBlocksResponse);
+
+            RegisterProto<NProto::TZeroBlocksRequest>(PingRequest);
+            RegisterProto<NProto::TZeroBlocksResponse>(PingResponse);
         }
     };
 

@@ -37,6 +37,7 @@ struct TTestServiceClient
     }
 
     #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                             \
+    std::function<void(const NProto::T##name##Request&)> On##name;             \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
@@ -44,6 +45,9 @@ struct TTestServiceClient
         Y_UNUSED(callContext);                                                 \
         Y_UNUSED(request);                                                     \
         ++name##Called;                                                        \
+        if (On##name) {                                                        \
+            On##name(*request);                                                \
+        }                                                                      \
         return name##Promise.GetFuture();                                      \
     }                                                                          \
 // BLOCKSTORE_IMPLEMENT_METHOD
@@ -64,19 +68,48 @@ struct TTestServiceClient
 
 };
 
+std::shared_ptr<TTestServiceClient> CreateService()
+{
+    auto service = std::make_shared<TTestServiceClient>();
+
+    auto describeCheck = [](const NProto::TDescribeVolumeRequest& req) {
+        UNIT_ASSERT_C(
+            req.GetHeaders().HasInternal(),
+            "Internal should not be set");
+    };
+
+    service->OnDescribeVolume = describeCheck;
+    return service;
+}
+
 std::shared_ptr<TTestServiceClient> CreateCellEndpoint(
     const TString& cellId,
     const TString& host,
     TCellHostEndpointsByCellId& endpoints)
 {
+    auto describeCheck = [](const NProto::TDescribeVolumeRequest& req) {
+        UNIT_ASSERT_C(
+            !req.GetHeaders().HasInternal(),
+            "Internal should not be set");
+    };
+
     auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
     auto service = std::make_shared<TTestServiceClient>();
+    service->OnDescribeVolume = describeCheck;
     endpoints[cellId].emplace_back(
         clientAppConfig,
         host,
         service,
         service);
     return service;
+}
+
+NProto::TDescribeVolumeRequest CreateDescribeRequest()
+{
+    NProto::TDescribeVolumeRequest request;
+    request.MutableHeaders()->CopyFrom(NProto::THeaders());
+    *request.MutableHeaders()->MutableInternal()->MutableAuthToken() = "auth";
+    return request;
 }
 
 }   // namespace
@@ -92,11 +125,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
 
-        NProto::TDescribeVolumeRequest request;
-        request.MutableHeaders()->CopyFrom(NProto::THeaders());
+        auto request = CreateDescribeRequest();
         request.SetDiskId("cell1disk");
 
-        auto localService = std::make_shared<TTestServiceClient>();
+        auto localService = CreateService();
 
         TBootstrap boorstrap;
         boorstrap.Logging = CreateLoggingService("console");
@@ -137,11 +169,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
 
-        auto localService = std::make_shared<TTestServiceClient>();
-
-        NProto::TDescribeVolumeRequest request;
-        request.MutableHeaders()->CopyFrom(NProto::THeaders());
+        auto request = CreateDescribeRequest();
         request.SetDiskId("localdisk");
+
+        auto localService = CreateService();
 
         TBootstrap boorstrap;
         boorstrap.Logging = CreateLoggingService("console");
@@ -182,11 +213,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
 
-        auto localService = std::make_shared<TTestServiceClient>();
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("celldisk");
 
-        NProto::TDescribeVolumeRequest request;
-        request.MutableHeaders()->CopyFrom(NProto::THeaders());
-        request.SetDiskId("cell1disk");
+        auto localService = CreateService();
 
         TBootstrap boorstrap;
         boorstrap.Logging = CreateLoggingService("console");
@@ -245,11 +275,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
 
-        auto localService = std::make_shared<TTestServiceClient>();
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("celldisk");
 
-        NProto::TDescribeVolumeRequest request;
-        request.MutableHeaders()->CopyFrom(NProto::THeaders());
-        request.SetDiskId("cell1disk");
+        auto localService = CreateService();
 
         TBootstrap boorstrap;
         boorstrap.Logging = CreateLoggingService("console");
@@ -309,11 +338,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
 
-        auto localService = std::make_shared<TTestServiceClient>();
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("celldisk");
 
-        NProto::TDescribeVolumeRequest request;
-        request.MutableHeaders()->CopyFrom(NProto::THeaders());
-        request.SetDiskId("cell1disk");
+        auto localService = CreateService();
 
         TBootstrap boorstrap;
         boorstrap.Logging = CreateLoggingService("console");
@@ -363,11 +391,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
 
-        NProto::TDescribeVolumeRequest request;
-        request.MutableHeaders()->CopyFrom(NProto::THeaders());
-        request.SetDiskId("cell1disk");
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("celldisk");
 
-        auto localService = std::make_shared<TTestServiceClient>();
+        auto localService = CreateService();
 
         TBootstrap boorstrap;
         boorstrap.Logging = CreateLoggingService("console");
