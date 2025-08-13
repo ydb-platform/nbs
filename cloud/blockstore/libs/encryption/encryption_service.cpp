@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include "library/cpp/threading/future/subscription/wait_all.h"
 #include <util/generic/map.h>
 #include <util/system/rwlock.h>
 
@@ -128,12 +129,40 @@ public:
                 request->GetHeaders().GetClientId())
             << " start creating encryption client " << encryptionSpec);
 
-        auto future = EncryptionClientFactory->CreateEncryptionClient(
-            Service,
-            encryptionSpec,
-            request->GetDiskId());
+        auto describeRequest = std::make_shared<NProto::TDescribeVolumeRequest>();
+        describeRequest->MutableHeaders()->CopyFrom(request->GetHeaders());
+        describeRequest->SetDiskId(request->GetDiskId());
 
-        return future.Apply([
+        auto describeFuture = Service->DescribeVolume(
+            ctx,
+            describeRequest);
+
+        auto encryptionClientFuture = describeFuture.Apply([
+            weakPtr = weak_from_this(),
+            ctx = ctx,
+            request = request] (const auto& f)
+        {
+            auto ptr = weakPtr.lock();
+            if (!ptr) {
+                return MakeFuture<IEncryptionClientFactory::TResponse>(TErrorResponse(
+                    E_REJECTED,
+                    "Multiple encryption service is destroyed"));
+            }
+
+            const auto& responseOrError = f.GetValue();
+
+            if (HasError(responseOrError)) {
+                return MakeFuture<IEncryptionClientFactory::TResponse>(TErrorResponse(
+                    responseOrError.GetError()));
+            }
+
+            return ptr->EncryptionClientFactory->CreateEncryptionClient(
+                ptr->Service,
+                request->GetEncryptionSpec(),
+                request->GetDiskId());
+        });
+
+        return encryptionClientFuture.Apply([
             weakPtr = weak_from_this(),
             ctx = std::move(ctx),
             request = std::move(request)] (const auto& f)
