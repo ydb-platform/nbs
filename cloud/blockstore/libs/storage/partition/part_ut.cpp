@@ -13043,15 +13043,18 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     case TEvBlobStorage::EvCollectGarbage: {
                         auto* msg =
                             ev->Get<TEvBlobStorage::TEvCollectGarbage>();
-                        TBarrierKey key = std::tie(
-                            msg->RecordGeneration,
-                            msg->PerGenerationCounter,
-                            msg->Channel);
-                        TBarrierValue value = std::make_pair(
-                            msg->CollectGeneration,
-                            msg->CollectStep);
-                        const auto it = barriers.insert(TBarriers::value_type(key, value));
-                        UNIT_ASSERT(it.second || it.first->second == value);
+                        if (msg->RecordGeneration != msg->CollectGeneration) {
+                            TBarrierKey key = std::tie(
+                                msg->RecordGeneration,
+                                msg->PerGenerationCounter,
+                                msg->Channel);
+                            TBarrierValue value = std::make_pair(
+                                msg->CollectGeneration,
+                                msg->CollectStep);
+                            const auto it = barriers.insert(
+                                TBarriers::value_type(key, value));
+                            UNIT_ASSERT(it.second || it.first->second == value);
+                        }
                         return false;
                     }
                 };
@@ -13061,8 +13064,18 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(11, 1), 0);
-        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(10, 1), 1);
+        const ui32 blobCount = 50;
+        const auto sendWriteBlocksRequests = [&]()
+        {
+            for (ui32 i = 0; i < blobCount; ++i) {
+                partition.SendWriteBlocksRequest(
+                    TBlockRange32::WithLength(i, 1),
+                    i % 255);
+            }
+        };
+
+        sendWriteBlocksRequests();
+
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         {
@@ -13072,18 +13085,21 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         rejectWrite = true;
-        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(11, 1), 0);
-        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(10, 1), 1);
+        sendWriteBlocksRequests();
+
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUnconfirmedBlobCount());
+
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(blobCount, stats.GetUnconfirmedBlobCount());
         }
 
-        rejectWrite = false;
+        UNIT_ASSERT(barriers.empty());
 
+        rejectWrite = false;
         partition.RebootTablet();
         partition.WaitReady();
 
@@ -13096,6 +13112,54 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         UNIT_ASSERT(!barriers.empty());
+    }
+
+    Y_UNIT_TEST(ShouldNotConfirmBlobInCaseOfError)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            4096,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvWriteBlobResponse)
+                {
+                    auto* msg =
+                        ev->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                    auto& e = const_cast<NProto::TError&>(msg->Error);
+                    e.SetCode(E_REJECTED);
+                };
+                return false;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const ui32 blobCount = 50;
+        for (ui32 i = 0; i < blobCount; ++i) {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(i, 1),
+                i % 255);
+        }
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                blobCount,
+                stats.GetUnconfirmedBlobCount());
+        }
     }
 }
 
