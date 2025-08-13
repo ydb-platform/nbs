@@ -1324,7 +1324,7 @@ func TestTaskPingerCancelledContextInUpdateTask(t *testing.T) {
 func TestTaskPingerAccumulatesInflightDuration(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
 	pingTimeout := 100 * time.Second
-	pingsCount := 3
+	pingsCount := 5
 	initialInflightDuration := 42 * time.Second
 
 	ctx, cancel := context.WithCancel(newContext())
