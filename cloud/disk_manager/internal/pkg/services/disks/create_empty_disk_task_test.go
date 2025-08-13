@@ -45,7 +45,6 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 
 	cellSelector.On(
 		"PrepareZoneID",
-		ctx,
 		mock.Anything,
 		mock.Anything,
 	).Return("zone", nil)
@@ -101,7 +100,6 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 
 	cellSelector.On(
 		"PrepareZoneID",
-		ctx,
 		mock.Anything,
 		mock.Anything,
 	).Return("zone", nil)
@@ -156,7 +154,6 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 
 	cellSelector.On(
 		"PrepareZoneID",
-		ctx,
 		mock.Anything,
 		mock.Anything,
 	).Return("zone", nil)
@@ -209,7 +206,6 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 
 	cellSelector.On(
 		"PrepareZoneID",
-		ctx,
 		mock.Anything,
 		mock.Anything,
 	).Return("zone", nil)
