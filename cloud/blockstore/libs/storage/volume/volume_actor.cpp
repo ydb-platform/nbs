@@ -661,28 +661,23 @@ void TVolumeActor::HandleUpdateCounters(
     const TEvVolumePrivate::TEvUpdateCounters::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
     UpdateCountersScheduled = false;
+
+    // if we use pull scheme we must send request to the partitions
+    // to collect statistics
+    if (Config->GetUsePullSchemeForVolumeStatistics() && State &&
+        State->IsDiskRegistryMediaKind() &&
+        GetVolumeStatus() != EStatus::STATUS_INACTIVE)
+    {
+        ScheduleRegularUpdates(ctx);
+        SendStatisticRequestForDiskRegistryBasedPartition(ctx);
+        return;
+    }
 
     UpdateCounters(ctx);
     ScheduleRegularUpdates(ctx);
 
-    if (State) {
-        State->AccessMountHistory().CleanupHistoryIfNeeded(
-            ctx.Now() - Config->GetVolumeHistoryDuration());
-
-        auto requestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            ev->Get()->CallContext);
-
-        ExecuteTx<TCleanupHistory>(
-            ctx,
-            std::move(requestInfo),
-            ctx.Now() - Config->GetVolumeHistoryDuration(),
-            Config->GetVolumeHistoryCleanupItemCount());
-    }
+    CleanupHistory(ctx, ev->Sender, ev->Cookie, ev->Get()->CallContext);
 }
 
 void TVolumeActor::HandleServerConnected(
@@ -1060,6 +1055,11 @@ STFUNC(TVolumeActor::StateWork)
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
 
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersResponse,
+            HandleGetDiskRegistryBasedPartCountersResponse);
+
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:
@@ -1119,6 +1119,9 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvLinkLeaderVolumeToFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUpdateLinkOnFollowerResponse);
+
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvGetDiskRegistryBasedPartCountersResponse);
 
         default:
             if (!RejectRequests(ev)) {
