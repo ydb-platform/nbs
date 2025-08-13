@@ -2,6 +2,8 @@
 
 #include "write_back_cache.h"
 
+#include "disjoint_interval_map.h"
+
 #include <cloud/filestore/libs/service/filestore.h>
 
 #include <util/generic/intrlist.h>
@@ -132,15 +134,14 @@ public:
      * Finds cached data from the sequence of write operations for the specified
      *   interval.
      *
-     * @param entries The sequence of write operations. Write operations may
-     *   overlap and are applied on top of each other.
+     * @param map The interval map of cached write operations.
      * @param startingFromOffset The starting offset of the interval to read.
      * @param length The length of the interval to read.
      * @return A sorted vector of non-overlapping intervals representing cached
      *   data.
      */
     static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
-        const TDeque<TWriteDataEntry*>& entries,
+        const TCachedIntervalsMap& map,
         ui64 startingFromOffset,
         ui64 length);
 
@@ -210,6 +211,18 @@ private:
 
     static TVector<TWriteDataEntryPart> CalculateDataParts(
         TVector<TPoint> points);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TWriteBackCache::TCachedIntervalsMap
+    : public TDisjointIntervalMap<ui64, TWriteDataEntry*>
+{
+public:
+    using TBase = TDisjointIntervalMap<ui64, TWriteDataEntry*>;
+
+    void Add(TWriteDataEntry* entry);
+    void Remove(TWriteDataEntry* entry);
 };
 
 }   // namespace NCloud::NFileStore::NFuse
