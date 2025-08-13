@@ -700,6 +700,8 @@ public:
     [[nodiscard]] TDuration GetPartitionBootTimeout() const;
 
     [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
+
+    [[nodiscard]] bool GetUsePullSchemeForVolumeStatistics() const;
 };
 
 ui64 GetAllocationUnit(
