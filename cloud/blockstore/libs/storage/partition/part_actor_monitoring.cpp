@@ -387,13 +387,15 @@ void TPartitionActor::HandleHttpInfo(
 
     using THttpHandlers = THashMap<TString, THttpHandler>;
 
-    static const THttpHandlers postActions {{
-        {"addGarbage",       &TPartitionActor::HandleHttpInfo_AddGarbage      },
-        {"collectGarbage",   &TPartitionActor::HandleHttpInfo_CollectGarbage  },
-        {"compact",          &TPartitionActor::HandleHttpInfo_ForceCompaction },
-        {"compactAll",       &TPartitionActor::HandleHttpInfo_ForceCompaction },
-        {"rebuildMetadata",  &TPartitionActor::HandleHttpInfo_RebuildMetadata },
-        {"scanDisk",         &TPartitionActor::HandleHttpInfo_ScanDisk        }
+    static const THttpHandlers postActions{{
+        {"addGarbage", &TPartitionActor::HandleHttpInfo_AddGarbage},
+        {"collectGarbage", &TPartitionActor::HandleHttpInfo_CollectGarbage},
+        {"compact", &TPartitionActor::HandleHttpInfo_ForceCompaction},
+        {"compactAll", &TPartitionActor::HandleHttpInfo_ForceCompaction},
+        {"rebuildMetadata", &TPartitionActor::HandleHttpInfo_RebuildMetadata},
+        {"scanDisk", &TPartitionActor::HandleHttpInfo_ScanDisk},
+        {"resetTransactionsLatency",
+         &TPartitionActor::HandleHttpInfo_ResetTransactionsLatency},
     }};
 
     static const THttpHandlers getActions{{
