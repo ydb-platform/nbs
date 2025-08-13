@@ -111,10 +111,7 @@ void DeleteDisksToNotify(
                     Now(),
                     db,
                     TDiskNotificationResult{
-                        TDiskNotification{
-                            x.first,
-                            x.second.SeqNo,
-                            state.GetAndDeleteRowToSeqNo(x.first)},
+                        TDiskNotification{x.first, x.second},
                         {},
                     });
             }

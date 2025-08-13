@@ -111,7 +111,7 @@ void TNotifyActor::ReallocateDisks(const TActorContext& ctx)
     PendingOperations = DiskNotifications.size();
 
     ui64 cookie = 0;
-    for (const auto& [diskId, seqNo, _] : DiskNotifications) {
+    for (const auto& [diskId, seqNo]: DiskNotifications) {
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "[%lu] Notifying volume: DiskId=%s",
             TabletID,
@@ -224,7 +224,7 @@ void TDiskRegistryActor::HandleListDisksToNotify(
     const auto& disksToReallocate = State->GetDisksToReallocate();
 
     TVector<TString> diskIds(Reserve(disksToReallocate.size()));
-    for (const auto& [diskId, notifyDiskInfo]: disksToReallocate) {
+    for (const auto& [diskId, seqNo]: disksToReallocate) {
         diskIds.push_back(diskId);
     }
 
@@ -276,11 +276,8 @@ void TDiskRegistryActor::HandleNotifyDisks(
     DisksNotificationStartTs = ctx.Now();
 
     DisksBeingNotified.reserve(State->GetDisksToReallocate().size());
-    for (const auto& [diskId, notifyDiskInfo]: State->GetDisksToReallocate()) {
-        DisksBeingNotified.emplace_back(
-            diskId,
-            notifyDiskInfo.SeqNo,
-            State->GetAndDeleteRowToSeqNo(diskId));
+    for (const auto& [diskId, seqNo]: State->GetDisksToReallocate()) {
+        DisksBeingNotified.emplace_back(diskId, seqNo);
     }
 
     auto actor = NCloud::Register<TNotifyActor>(

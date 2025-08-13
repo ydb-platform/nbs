@@ -339,6 +339,8 @@ private:
 
     THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
 
+    THashSet<TDiskId> MasterDisksToReallocateAfterStart;
+
 public:
     TDiskRegistryState(
         ILoggingServicePtr logging,
@@ -568,15 +570,8 @@ public:
         TDiskRegistryDatabase& db,
         TVector<TDiskId> ids);
 
-    const THashMap<
-        TString,
-        NDiskRegistry::TNotificationSystem::TNotifyDiskInfo>&
-    GetDisksToReallocate() const;
+    const THashMap<TString, ui64>& GetDisksToReallocate() const;
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TString& diskId);
-    ui64 AddReallocateRequest(
-        TDiskRegistryDatabase& db,
-        const TString& diskId,
-        ui32 deviceRow);
 
     void DeleteDiskToReallocate(
         TInstant now,
@@ -854,8 +849,6 @@ public:
         const TDeviceId& sourceDeviceId,
         const TDeviceId& targetDeviceId);
 
-    THashMap<ui32, ui64> GetAndDeleteRowToSeqNo(const TDiskId& diskId);
-
     // for tests and monpages
     const TReplicaTable& GetReplicaTable() const
     {
@@ -891,7 +884,7 @@ public:
         TDiskRegistryDatabase& db,
         TInstant now);
 
-    void ReplaceNextDevicesAfterRestart(
+    void ReplaceBrokenDevicesAfterRestart(
         TInstant now,
         TDiskRegistryDatabase& db);
 
@@ -1112,7 +1105,7 @@ private:
         const TString& diskId,
         TDiskState& disk);
 
-    void UpdateAndReallocateDisk(
+    void UpdateAndReallocateDiskAfterReplacing(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         TDiskState& disk,
@@ -1396,7 +1389,7 @@ private:
         const TAgentList::TAgentRegistrationResult& r,
         THashSet<TDiskId>& disksToReallocate);
 
-    void ReplaceNextDevices(
+    void ReplacePostponedDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TString& masterDiskId);

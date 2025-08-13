@@ -788,22 +788,15 @@ void TDiskRegistryState::ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices)
 
 void TDiskRegistryState::ProcessDisksToReallocate()
 {
-    THashMap<TDiskId, ui64> masterDiskToSeqNo;
-    for (const auto& [diskId, notifyDiskInfo]: GetDisksToReallocate()) {
+    for (const auto& [diskId, _]: GetDisksToReallocate()) {
         const TDiskState* disk = FindDiskState(diskId);
         if (!disk || (disk->MediaKind != NProto::STORAGE_MEDIA_SSD_MIRROR2 &&
                       disk->MediaKind != NProto::STORAGE_MEDIA_SSD_MIRROR3))
         {
             continue;
         }
-        auto it = masterDiskToSeqNo.find(diskId);
-        if (it == masterDiskToSeqNo.end()) {
-            masterDiskToSeqNo.emplace(diskId, notifyDiskInfo.SeqNo);
-            continue;
-        }
-        it->second = std::max(it->second, notifyDiskInfo.SeqNo);
+        MasterDisksToReallocateAfterStart.insert(diskId);
     }
-    ReplicaTable.SetMasterDiskToSeqNo(std::move(masterDiskToSeqNo));
 }
 
 const TVector<NProto::TAgentConfig>& TDiskRegistryState::GetAgents() const
@@ -1549,7 +1542,7 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
         UpdatePlacementGroup(db, diskId, disk, "ReplaceDevice");
 
         if (disk.MasterDiskId) {
-            UpdateAndReallocateDisk(
+            UpdateAndReallocateDiskAfterReplacing(
                 db,
                 diskId,
                 disk,
@@ -4937,14 +4930,14 @@ void TDiskRegistryState::UpdateAndReallocateDisk(
     AddReallocateRequest(db, diskId);
 }
 
-void TDiskRegistryState::UpdateAndReallocateDisk(
+void TDiskRegistryState::UpdateAndReallocateDiskAfterReplacing(
     TDiskRegistryDatabase& db,
     const TString& diskId,
     TDiskState& disk,
     ui32 deviceRow)
 {
     db.UpdateDisk(BuildDiskConfig(diskId, disk));
-    ui64 seqNo = AddReallocateRequest(db, diskId, deviceRow);
+    ui64 seqNo = AddReallocateRequest(db, diskId);
     ReplicaTable.SetRecentlyReplacedDevice(
         disk.MasterDiskId,
         deviceRow,
@@ -4961,19 +4954,7 @@ ui64 TDiskRegistryState::AddReallocateRequest(
         GetDiskIdToNotify(diskId));
 }
 
-ui64 TDiskRegistryState::AddReallocateRequest(
-    TDiskRegistryDatabase& db,
-    const TString& diskId,
-    ui32 deviceRow)
-{
-    return NotificationSystem.AddReallocateRequest(
-        db,
-        GetDiskIdToNotify(diskId),
-        deviceRow);
-}
-
-const THashMap<TString, NDiskRegistry::TNotificationSystem::TNotifyDiskInfo>&
-TDiskRegistryState::GetDisksToReallocate() const
+const THashMap<TString, ui64>& TDiskRegistryState::GetDisksToReallocate() const
 {
     return NotificationSystem.GetDisksToReallocate();
 }
@@ -5107,10 +5088,10 @@ void TDiskRegistryState::DeleteDiskToReallocate(
         (disk->MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2 ||
          disk->MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR3))
     {
-        ReplicaTable.DeleteItemFromMasterDiskToSeqNo(diskId, seqNo);
-        auto rowToSeqNo = std::move(notification.DiskNotification.RowToSeqNo);
-        for (auto [row, oldSeqNo]: rowToSeqNo) {
-            if (oldSeqNo < ReplicaTable.GetSeqNo(diskId, row)) {
+        MasterDisksToReallocateAfterStart.erase(diskId);
+        auto rowToSeqNo = ReplicaTable.GetRowToSeqNo(diskId);
+        for (auto [row, currSeqNo]: rowToSeqNo) {
+            if (currSeqNo > seqNo) {
                 continue;
             }
             ReplicaTable.SetRecentlyReplacedDevice(
@@ -5119,7 +5100,7 @@ void TDiskRegistryState::DeleteDiskToReallocate(
                 seqNo,
                 /*isRecentlyReplaced*/ false);
         }
-        ReplaceNextDevices(now, db, diskId);
+        ReplacePostponedDevices(now, db, diskId);
     }
 }
 
@@ -7775,7 +7756,8 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
     }
 
     const bool isRecentlyReplacedDevice =
-        ReplicaTable.IsRecentlyReplacedDevice(masterDiskId, deviceId);
+        ReplicaTable.IsRecentlyReplacedDevice(masterDiskId, deviceId) ||
+        MasterDisksToReallocateAfterStart.contains(masterDiskId);
     if (StorageConfig->GetLimitMirrorDisksDeviceReplacementsPerRow() &&
         isRecentlyReplacedDevice)
     {
@@ -8206,7 +8188,7 @@ bool TDiskRegistryState::MigrationCanBeStarted(
     return true;
 }
 
-void TDiskRegistryState::ReplaceNextDevices(
+void TDiskRegistryState::ReplacePostponedDevices(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TString& masterDiskId)
@@ -8251,18 +8233,12 @@ void TDiskRegistryState::ReplaceNextDevices(
     }
 }
 
-THashMap<ui32, ui64> TDiskRegistryState::GetAndDeleteRowToSeqNo(
-    const TDiskId& diskId)
-{
-    return NotificationSystem.GetAndDeleteRowToSeqNo(diskId);
-}
-
-void TDiskRegistryState::ReplaceNextDevicesAfterRestart(
+void TDiskRegistryState::ReplaceBrokenDevicesAfterRestart(
     TInstant now,
     TDiskRegistryDatabase& db)
 {
     for (const auto& masterDiskId: GetMasterDiskIds()) {
-        ReplaceNextDevices(now, db, masterDiskId);
+        ReplacePostponedDevices(now, db, masterDiskId);
     }
 }
 
