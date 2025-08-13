@@ -168,7 +168,6 @@ void TServiceActor::HandleVolumeMountStateChanged(
     }
 }
 
-
 void TServiceActor::HandleRegisterVolume(
     const TEvService::TEvRegisterVolume::TPtr& ev,
     const TActorContext& ctx)

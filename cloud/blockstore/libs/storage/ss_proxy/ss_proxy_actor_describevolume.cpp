@@ -1,13 +1,14 @@
 #include "ss_proxy_actor.h"
 
+#include <cloud/blockstore/libs/storage/api/public.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/volume_label.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy_events_private.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -21,6 +22,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using EBehavior = TEvSSProxy::TEvDescribeVolumeRequest::EBehavior;
+
 constexpr TDuration Timeout = TDuration::Seconds(20);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,18 +32,25 @@ class TDescribeVolumeActor final
     : public TActorBootstrapped<TDescribeVolumeActor>
 {
 private:
-    const TRequestInfoPtr RequestInfo;
+    enum class EState {
+        DescribePrimary,
+        DescribePrimaryWithFallback,
+        DescribeSecondary,
+    };
 
+    const TRequestInfoPtr RequestInfo;
     const TStorageConfigPtr Config;
     const TString DiskId;
+    const EBehavior Behavior = EBehavior::OnlyVisible;
 
-    bool FallbackRequest = false;
+    EState State = EState::DescribePrimary;
 
 public:
     TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
-        TString diskId);
+        TString diskId,
+        EBehavior behavior);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -56,6 +66,7 @@ private:
         const NKikimrBlockStore::TVolumeConfig& volumeConfig) const;
 
     TString GetFullPath() const;
+    TString GetDiskId() const;
 
 private:
     STFUNC(StateWork);
@@ -74,10 +85,12 @@ private:
 TDescribeVolumeActor::TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
-        TString diskId)
+        TString diskId,
+        EBehavior behavior)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
+    , Behavior(behavior)
 {}
 
 void TDescribeVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -111,13 +124,30 @@ TString TDescribeVolumeActor::GetFullPath() const
     TStringBuilder fullPath;
     fullPath << Config->GetSchemeShardDir() << '/';
 
-    if (!FallbackRequest) {
-        fullPath << DiskIdToPathDeprecated(DiskId);
-    } else {
-        fullPath << DiskIdToPath(DiskId);
+    switch (State) {
+        case EState::DescribePrimary:
+            fullPath << DiskIdToPath(GetDiskId());
+            break;
+        case EState::DescribePrimaryWithFallback:
+            fullPath << DiskIdToPathDeprecated(GetDiskId());
+            break;
+        case EState::DescribeSecondary:
+            fullPath << DiskIdToPath(GetDiskId());
+            break;
     }
 
     return fullPath;
+}
+
+TString TDescribeVolumeActor::GetDiskId() const
+{
+    switch (State) {
+        case EState::DescribePrimary:
+        case EState::DescribePrimaryWithFallback:
+            return DiskId;
+        case EState::DescribeSecondary:
+            return GetSecondaryDiskId(DiskId);
+    }
 }
 
 void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
@@ -150,11 +180,29 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
             auto status =
                 static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
             // TODO: return E_NOT_FOUND instead of StatusPathDoesNotExist
+
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::SS_PROXY,
+                "Describe request error for volume %s %s %s",
+                DiskId.c_str(),
+                GetFullPath().Quote().data(),
+                FormatError(error).c_str());
+
             if (status == NKikimrScheme::StatusPathDoesNotExist) {
-                if (!FallbackRequest) {
-                    FallbackRequest = true;
-                    DescribeVolume(ctx);
-                    return;
+                switch (State) {
+                    case EState::DescribePrimary: {
+                        State = EState::DescribePrimaryWithFallback;
+                        DescribeVolume(ctx);
+                        return;
+                    }
+                    case EState::DescribePrimaryWithFallback: {
+                        State = EState::DescribeSecondary;
+                        DescribeVolume(ctx);
+                        return;
+                    }
+                    case EState::DescribeSecondary:
+                        break;
                 }
             }
         }
@@ -176,7 +224,8 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
             std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
                 MakeError(
                     E_INVALID_STATE,
-                    TStringBuilder() << "Described path is not a blockstore volume: "
+                    TStringBuilder()
+                        << "Described path is not a blockstore volume: "
                         << GetFullPath().Quote()),
                 GetFullPath()));
         return;
@@ -184,6 +233,42 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
 
     const auto& volumeDescription =
         pathDescription.GetBlockStoreVolumeDescription();
+
+    auto parsedTags =
+        ParseTags(volumeDescription.GetVolumeConfig().GetTagsStr());
+    const bool isVisibilityMatch =
+        (Behavior == EBehavior::ExactName) ||
+        (Behavior == EBehavior::OnlyVisible &&
+         !parsedTags.contains(InvisibleVolumeTagName)) ||
+        true;
+    if (!isVisibilityMatch) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
+            "Describe isExpectedVisibilityMatch=false %s %s %s %s",
+            DiskId.c_str(),
+            GetFullPath().Quote().c_str(),
+            ToString(Behavior).c_str(),
+            parsedTags.contains(InvisibleVolumeTagName) ? "true" : "false"
+            );
+
+        if (State != EState::DescribeSecondary) {
+            State = EState::DescribeSecondary;
+            DescribeVolume(ctx);
+            return;
+        }
+        TString message = TStringBuilder()
+                          << "Can't find tablet for " << DiskId.Quote()
+                          << " with " << ToString(Behavior);
+        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY, message);
+
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                MakeError(E_REJECTED, message),
+                GetFullPath()));
+        return;
+    }
 
     const auto& descr = msg->PathDescription.GetBlockStoreVolumeDescription();
     // Emptiness of VolumeTabletId or any of partition tablet ids means that
@@ -248,10 +333,8 @@ void TDescribeVolumeActor::HandleWakeup(
         MakeError(
             E_TIMEOUT,
             TStringBuilder() << "DescribeVolume timeout for volume: "
-                << GetFullPath().Quote()
-        ),
-        GetFullPath()
-    );
+                             << GetFullPath().Quote()),
+        GetFullPath());
 
     ReplyAndDie(ctx, std::move(response));
 }
@@ -291,7 +374,8 @@ void TSSProxyActor::HandleDescribeVolume(
         ctx,
         std::move(requestInfo),
         Config,
-        msg->DiskId);
+        msg->DiskId,
+        msg->Behavior);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

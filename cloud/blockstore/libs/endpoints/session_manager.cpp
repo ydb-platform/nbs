@@ -387,7 +387,7 @@ public:
 private:
     TSessionOrError CreateSessionImpl(
         TCallContextPtr callContext,
-        const NProto::TStartEndpointRequest& request);
+        NProto::TStartEndpointRequest request);
 
     NProto::TError RemoveSessionImpl(
         TCallContextPtr callContext,
@@ -452,7 +452,7 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::CreateSession(
 
 TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     TCallContextPtr callContext,
-    const NProto::TStartEndpointRequest& request)
+    NProto::TStartEndpointRequest request)
 {
     auto describeResponse = DescribeVolume(
         callContext,
@@ -461,8 +461,11 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     if (HasError(describeResponse)) {
         return TErrorResponse(describeResponse.GetError());
     }
-    const auto& volume = describeResponse.GetVolume();
+    auto& volume = *describeResponse.MutableVolume();
     const auto& cellId = describeResponse.GetCellId();
+
+    // Replace user (logical) disk id with real disk id.
+    request.SetDiskId(volume.GetDiskId());
 
     auto result = CreateEndpoint(request, volume, cellId);
     if (HasError(result)) {
@@ -484,6 +487,9 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
             TWellKnownEntityTypes::ENDPOINT,
             request.GetUnixSocketPath());
     }
+
+    // Return logical disk id.
+    volume.SetDiskId(volume.GetLogicalDiskId());
 
     return TSessionInfo {
         .Volume = volume,
@@ -645,6 +651,10 @@ TSessionManager::TSessionOrError TSessionManager::GetSessionImpl(
         return TErrorResponse(describeResponse.GetError());
     }
 
+    // Return logical disk id.
+    describeResponse.MutableVolume()->SetDiskId(
+        describeResponse.GetVolume().GetLogicalDiskId());
+
     return TSessionInfo {
         .Volume = describeResponse.GetVolume(),
         .Session = endpoint->GetSession()
@@ -762,7 +772,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     auto encryptionFuture = EncryptionClientFactory->CreateEncryptionClient(
         std::move(client),
         request.GetEncryptionSpec(),
-        request.GetDiskId());
+        volume.GetDiskId());
 
     const auto& clientOrError = Executor->WaitFor(encryptionFuture);
     if (HasError(clientOrError)) {

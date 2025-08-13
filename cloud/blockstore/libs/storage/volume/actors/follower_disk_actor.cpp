@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/actors/propagate_to_follower.h>
 #include <cloud/blockstore/libs/storage/volume/actors/volume_as_partition_actor.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
@@ -116,6 +117,10 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
                 nullptr)});
 
     StartWork(ctx);
+
+    if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady) {
+        RemoveInvisibleTagFromFollower(ctx);
+    }
 }
 
 bool TFollowerDiskActor::OnMessage(
@@ -128,10 +133,21 @@ bool TFollowerDiskActor::OnMessage(
         HFunc(
             TEvVolumePrivate::TEvUpdateFollowerStateResponse,
             HandleUpdateFollowerStateResponse);
+        HFunc(TEvService::TEvRemoveTagsResponse, HandleRemoveInvisibleTag);
+        HFunc(
+            TEvVolumePrivate::TEvLinkOnFollowerDestroyed,
+            HandleLinkOnFollowerDestroyed);
+        HFunc(TEvService::TEvDestroyVolumeResponse, HandleDestroyLeaderVolume);
 
         // Intercepting the message to block the sending of statistics by the
         // base class.
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvUpdateCounters);
+
+        case NActors::TEvents::TEvWakeup::EventType: {
+            return HandleWakeup(
+                *reinterpret_cast<NActors::TEvents::TEvWakeup::TPtr*>(&ev),
+                ctx);
+        }
 
         // ClientId changed event.
         case TEvVolume::TEvRWClientIdChanged::EventType: {
@@ -197,6 +213,36 @@ void TFollowerDiskActor::PersistFollowerState(
     NCloud::Send(ctx, LeaderVolumeActorId, std::move(request));
 }
 
+void TFollowerDiskActor::RemoveInvisibleTagFromFollower(
+    const NActors::TActorContext& ctx)
+{
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Remove invisible tag from follower",
+        LogTitle.GetWithTime().c_str());
+
+    auto requestInfo = CreateRequestInfo(
+        SelfId(),
+        0,  // cookie
+        MakeIntrusive<TCallContext>());
+
+    TVector<TString> tags({TString(InvisibleVolumeTagName)});
+    auto request = std::make_unique<TEvService::TEvRemoveTagsRequest>(
+        FollowerDiskInfo.Link.FollowerDiskId,
+        std::move(tags));
+
+    ctx.Send(MakeStorageServiceId(), std::move(request));
+}
+
+void TFollowerDiskActor::DestroyLeaderVolume(const NActors::TActorContext& ctx)
+{
+    auto request = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
+    request->Record.SetDiskId(FollowerDiskInfo.Link.LeaderDiskId);
+    request->Record.SetSync(false);
+    NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
+}
+
 template <typename TMethod>
 void TFollowerDiskActor::ForwardRequestToLeaderPartition(
     const typename TMethod::TRequest::TPtr& ev,
@@ -249,11 +295,123 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
+    const auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s UpdateFollowerState error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->Error).c_str());
+        return;
+    }
+
+    FollowerDiskInfo = msg->Follower;
+    LOG_INFO( ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s HandleUpdateFollowerStateResponse %s",
+            LogTitle.GetWithTime().c_str(),
+            FollowerDiskInfo.Describe().c_str());
+
+    if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady) {
+        RemoveInvisibleTagFromFollower(ctx);
+    }
+}
+
+void TFollowerDiskActor::HandleRemoveInvisibleTag(
+    const TEvService::TEvRemoveTagsResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Remove tags error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
+
+        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            Schedule(
+                Backoff.GetDelayAndIncrease(),
+                new TEvents::TEvWakeup(RETRY_REMOVE_TAG_NOTIFY));
+        }
+        return;
+    }
+
+    Backoff.Reset();
+    DestroyLeaderVolume(ctx);
+
+    NCloud::Register<TPropagateLinkToFollowerActor>(
+        ctx,
+        LogTitle.GetWithTime(),
+        CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
+        FollowerDiskInfo.Link,
+        TPropagateLinkToFollowerActor::EReason::Destruction);
+}
+
+void TFollowerDiskActor::HandleLinkOnFollowerDestroyed(
+    const TEvVolumePrivate::TEvLinkOnFollowerDestroyed::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
     Y_UNUSED(ctx);
 
     const auto* msg = ev->Get();
 
-    FollowerDiskInfo = msg->Follower;
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s HandleLinkOnFollowerDestroyed. Error: %s",
+        LogTitle.GetWithTime().c_str(),
+        FormatError(msg->GetError()).c_str());
+}
+
+void TFollowerDiskActor::HandleDestroyLeaderVolume(
+    const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Destroy leader volume error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
+
+        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            Schedule(
+                Backoff.GetDelayAndIncrease(),
+                new TEvents::TEvWakeup(RETRY_DESTROY_LEADER_VOLUME));
+        }
+        return;
+    }
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Destroy leader volume success",
+        LogTitle.GetWithTime().c_str());
+}
+
+bool TFollowerDiskActor::HandleWakeup(
+    const NActors::TEvents::TEvWakeup::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    switch (ev->Get()->Tag) {
+        case EFollowerWakeupReason::RETRY_REMOVE_TAG_NOTIFY: {
+            RemoveInvisibleTagFromFollower(ctx);
+            return true;
+        }
+        case EFollowerWakeupReason::RETRY_DESTROY_LEADER_VOLUME: {
+            DestroyLeaderVolume(ctx);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

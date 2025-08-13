@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/core/volume_label.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/volume/volume.h>
 
@@ -831,7 +832,9 @@ void TStartVolumeActor::HandleWaitReadyResponse(
         LogTitle.GetWithTime().c_str());
 
     const auto& volume = msg->Record.GetVolume();
-    Y_ABORT_UNLESS(volume.GetDiskId() == DiskId);
+    Y_ABORT_UNLESS(
+        volume.GetDiskId() == DiskId ||
+        volume.GetDiskId() == GetSecondaryDiskId(DiskId));
 
     Ready = true;
     Volume = std::move(volume);

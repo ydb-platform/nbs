@@ -1675,8 +1675,9 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
     }
 
     STORAGE_INFO("Switching endpoint"
-        << ", reason=" << request->GetReason()
-        << ", volume=" << sessionInfo.Volume.GetDiskId()
+        << ", reason=" << request->GetReason().Quote()
+        << ", volume=" << sessionInfo.Volume.GetDiskId().Quote()
+        << ", endpoint volume=" << it->second->Volume.GetDiskId().Quote()
         << ", IsFastPathEnabled=" << sessionInfo.Volume.GetIsFastPathEnabled()
         << ", Migrations=" << sessionInfo.Volume.GetMigrations().size());
 

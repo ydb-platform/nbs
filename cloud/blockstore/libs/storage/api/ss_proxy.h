@@ -170,10 +170,22 @@ struct TEvSSProxy
 
     struct TDescribeVolumeRequest
     {
+        enum class EBehavior
+        {
+            OnlyVisible,
+            ExactName,
+        };
+
         const TString DiskId;
+        const EBehavior Behavior = EBehavior::OnlyVisible;
 
         explicit TDescribeVolumeRequest(TString diskId)
             : DiskId(std::move(diskId))
+        {}
+
+        TDescribeVolumeRequest(TString diskId, EBehavior behavior)
+            : DiskId(std::move(diskId))
+            , Behavior(behavior)
         {}
     };
 
