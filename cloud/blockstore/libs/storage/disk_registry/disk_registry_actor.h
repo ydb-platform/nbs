@@ -320,6 +320,8 @@ private:
 
     void ProcessInitialAgentRejectionPhase(const NActors::TActorContext& ctx);
 
+    void ProcessRecentlyReplaceDevices(const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);

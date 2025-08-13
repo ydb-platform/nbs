@@ -339,6 +339,8 @@ private:
 
     THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
 
+    THashSet<TDiskId> MasterDisksToReallocateAfterStart;
+
 public:
     TDiskRegistryState(
         ILoggingServicePtr logging,
@@ -882,6 +884,10 @@ public:
         TDiskRegistryDatabase& db,
         TInstant now);
 
+    void ReplaceBrokenDevicesAfterRestart(
+        TInstant now,
+        TDiskRegistryDatabase& db);
+
     TVector<TString> GetPoolNames(
         std::optional<NProto::EDevicePoolKind> kind = std::nullopt) const;
 
@@ -911,6 +917,7 @@ private:
     void ProcessAgents();
     void ProcessDisksToCleanup(TVector<TString> diskIds);
     void ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices);
+    void ProcessDisksToReallocate();
 
     void AddMigration(
         const TDiskState& disk,
@@ -1097,6 +1104,12 @@ private:
         TDiskRegistryDatabase& db,
         const TString& diskId,
         TDiskState& disk);
+
+    void UpdateAndReallocateDiskAfterReplacing(
+        TDiskRegistryDatabase& db,
+        const TString& diskId,
+        TDiskState& disk,
+        ui32 deviceRow);
 
     void AdjustDeviceIfNeeded(
         NProto::TDeviceConfig& device,
@@ -1373,6 +1386,11 @@ private:
     void ReallocateDisksWithLostOrReappearedDevices(
         const TAgentList::TAgentRegistrationResult& r,
         THashSet<TDiskId>& disksToReallocate);
+
+    void ReplacePostponedDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TString& masterDiskId);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
