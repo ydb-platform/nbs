@@ -83,6 +83,7 @@ public:
         ));
 
         CheckResponse(readResponse);
+
         Cout << readResponse.GetBuffer().substr(readResponse.GetBufferOffset());
 
         return true;
