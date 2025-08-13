@@ -20,9 +20,9 @@ private:
 
     TEvPartitionCommonPrivate::TPartCountersCombined Response;
 
-    NProto::TError Error;
+    NProto::TError LastError;
 
-    ui32 NumberResponsesWithError = 0;
+    ui32 FailedResponses = 0;
 
 public:
     TPartitionStatisticsCollectorActor(

@@ -38,7 +38,7 @@ void TPartitionStatisticsCollectorActor::SendStatToVolume(
         ctx,
         Owner,
         std::make_unique<TEvPartitionCommonPrivate::TEvPartCountersCombined>(
-            std::move(Error),
+            std::move(LastError),
             std::move(Response)));
 
     Die(ctx);
@@ -75,15 +75,13 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersResponse(
     auto* record = ev->Get();
 
     if (HasError(record->Error)) {
-        Error = record->Error;
-        ++NumberResponsesWithError;
+        LastError = record->Error;
+        ++FailedResponses;
     } else {
         Response.PartCounters.push_back(std::move(*record));
     }
 
-    if (Partitions.size() ==
-        Response.PartCounters.size() + NumberResponsesWithError)
-    {
+    if (Partitions.size() == Response.PartCounters.size() + FailedResponses) {
         SendStatToVolume(ctx);
     }
 }

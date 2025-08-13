@@ -638,7 +638,7 @@ private:
 
     void SendStatisticRequests(const NActors::TActorContext& ctx);
 
-    void CleanUpHistory(
+    void CleanupHistory(
         const NActors::TActorContext& ctx,
         const NActors::TActorId& sender,
         ui64 cookie,

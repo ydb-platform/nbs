@@ -7612,23 +7612,21 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             response->Record.FailInfo.FailedRanges.size());
     }
 
-    Y_UNIT_TEST(ShouldPartitionSendStatistics)
+    Y_UNIT_TEST(ShouldSendPartitionStatistics)
     {
         auto config = DefaultConfig();
-
-        // Enable push scheme
         config.SetUsePullSchemeForVolumeStatistics(true);
 
         auto runtime = PrepareTestActorRuntime(config);
 
-        bool isPartitionSendStatistic = false;
+        bool partitionStatisticsSent = false;
 
         auto _ = runtime->AddObserver<
             TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
             [&](TEvPartitionCommonPrivate::TEvGetPartCountersResponse::TPtr& ev)
             {
                 Y_UNUSED(ev);
-                isPartitionSendStatistic = true;
+                partitionStatisticsSent = true;
             });
 
         TPartitionClient partition(*runtime);
@@ -7642,7 +7640,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         runtime->DispatchEvents();
 
         // Check that partition sent statistics
-        UNIT_ASSERT(isPartitionSendStatistic);
+        UNIT_ASSERT(partitionStatisticsSent);
     }
 }
 

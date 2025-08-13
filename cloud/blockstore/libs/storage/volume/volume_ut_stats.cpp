@@ -1254,11 +1254,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldVolumePullStatisticsFromPartitions)
+    Y_UNIT_TEST(ShouldPullStatisticsFromPartitions)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
-
-        // Enable pull scheme
         storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
 
         auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
@@ -1291,11 +1289,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(updated);
     }
 
-    Y_UNIT_TEST(ShouldMultiPartitionVolumePullStatisticFromPartitions)
+    Y_UNIT_TEST(ShouldPullStatisticsFromFewPartitions)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
-
-        // Enable pull scheme
         storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
 
         auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
@@ -1343,11 +1339,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(updated);
     }
 
-    Y_UNIT_TEST(ShouldVolumePullStatisticFromPartitionsWithTimeout)
+    Y_UNIT_TEST(ShouldPullStatisticsFromPartitionsWithTimeout)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
-
-        // Enable pull scheme
         storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
 
         auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
@@ -1355,15 +1349,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         bool updated = false;
 
         bool isGrabRequest = false;
-
-        auto updatedObserver = runtime->AddObserver<
-            TEvPartitionCommonPrivate::TEvPartCountersCombined>(
-            [&](TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev)
-            {
-                UNIT_ASSERT(ev->Get()->PartCounters.size() == 1);
-                UNIT_ASSERT(HasError(ev->Get()->Error));
-                updated = true;
-            });
 
         runtime->SetEventFilter(
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
@@ -1375,6 +1360,16 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 {
                     isGrabRequest = true;
                     return true;
+                }
+
+                if (ev->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvPartCountersCombined)
+                {
+                    auto* msg = ev->Get<
+                        TEvPartitionCommonPrivate::TEvPartCountersCombined>();
+                    UNIT_ASSERT(msg->PartCounters.size() == 1);
+                    UNIT_ASSERT(HasError(msg->Error));
+                    updated = true;
                 }
 
                 return false;
