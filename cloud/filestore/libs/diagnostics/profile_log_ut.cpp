@@ -434,17 +434,16 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         TEnvWithLimits env{maxFlushRecords, maxFrameFlushRecords};
 
         for (ui64 i = 0; i < maxFlushRecords + 10; i++) {
-                    env.ProfileLog->Write({
-                            "fs1",
-                            TRequestInfoBuilder()
-                            .SetTimestamp(TInstant::Seconds(1))
-                            .SetDuration(TDuration::MilliSeconds(100))
-                            .SetRequestType(1)
-                            .SetError(0)
-                            .AddRange(111, 23, 200, 10)
-                            .AddRange(111, 23, 300, 5)
-                            .Build()
-                        });
+            env.ProfileLog->Write(
+                {"fs1",
+                 TRequestInfoBuilder()
+                     .SetTimestamp(TInstant::Seconds(1))
+                     .SetDuration(TDuration::MilliSeconds(100))
+                     .SetRequestType(1)
+                     .SetError(0)
+                     .AddRange(111, 23, 200, 10)
+                     .AddRange(111, 23, 300, 5)
+                     .Build()});
         }
 
         env.ProcessLog();
