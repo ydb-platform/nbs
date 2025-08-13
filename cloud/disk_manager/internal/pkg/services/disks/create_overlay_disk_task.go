@@ -56,10 +56,7 @@ func (t *createOverlayDiskTask) Run(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	zoneID, err := t.cellSelector.PrepareZoneID(ctx, overlayDisk, params.FolderId)
-	if err != nil {
-		return err
-	}
+	zoneID := t.cellSelector.PrepareZoneID(overlayDisk, params.FolderId)
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:          overlayDisk.DiskId,

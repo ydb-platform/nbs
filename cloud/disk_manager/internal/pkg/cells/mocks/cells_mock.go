@@ -1,10 +1,7 @@
 package mocks
 
 import (
-	"context"
-
 	"github.com/stretchr/testify/mock"
-	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
@@ -21,20 +18,15 @@ func NewCellSelectorMock() *CellSelectorMock {
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *CellSelectorMock) PrepareZoneID(
-	ctx context.Context,
 	diskID *types.Disk,
 	folderID string,
-) (string, error) {
+) string {
 
-	args := s.Called(ctx, diskID, folderID)
-	return args.String(0), args.Error(1)
+	args := s.Called(diskID, folderID)
+	return args.String(0)
 }
 
-func (s *CellSelectorMock) GetZoneIDForExistingDisk(
-	ctx context.Context,
-	diskID *disk_manager.DiskId,
-) (string, error) {
-
-	args := s.Called(ctx, diskID)
-	return args.String(0), args.Error(1)
+func (s *CellSelectorMock) IsCellOfZone(cellID string, zoneID string) bool {
+	args := s.Called(cellID, zoneID)
+	return args.Bool(0)
 }

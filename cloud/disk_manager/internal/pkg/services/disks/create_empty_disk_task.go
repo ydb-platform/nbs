@@ -45,16 +45,13 @@ func (t *createEmptyDiskTask) Load(request, state []byte) error {
 func (t *createEmptyDiskTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-) (err error) {
+) error {
 
 	selfTaskID := execCtx.GetTaskID()
 
 	zoneID := t.params.Disk.ZoneId
 	if !isLocalDiskKind(t.params.Kind) {
-		zoneID, err = t.cellSelector.PrepareZoneID(ctx, t.params.Disk, t.params.FolderId)
-		if err != nil {
-			return err
-		}
+		zoneID = t.cellSelector.PrepareZoneID(t.params.Disk, t.params.FolderId)
 	}
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{

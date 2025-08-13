@@ -52,7 +52,7 @@ func (t *createDiskFromImageTask) Load(request, state []byte) error {
 func (t *createDiskFromImageTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-) (err error) {
+) error {
 
 	params := t.request.Params
 
