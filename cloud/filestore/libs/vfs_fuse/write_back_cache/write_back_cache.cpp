@@ -667,13 +667,15 @@ private:
                 PendingOperations);
 
             CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
-            CachedEntries.PushBack(entry);
+
             PendingEntries.PopFront();
-            HandlesWithNewCachedEntries.insert(entry->GetHandle());
+            CachedEntries.PushBack(entry);
 
             auto* handleState = GetHandleState(entry->GetHandle());
             handleState->CachedEntries.emplace_back(entry);
             handleState->PendingEntriesCount--;
+
+            HandlesWithNewCachedEntries.insert(entry->GetHandle());
         }
     }
 

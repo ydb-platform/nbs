@@ -867,6 +867,38 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         TestShouldReadAfterWriteConcurrently(true /* withManualFlush */);
     }
 
+    Y_UNIT_TEST(ShouldNotMissPendingEntries)
+    {
+        TBootstrap b;
+
+        int writeRequestsActual = 0;
+        int writeRequestsExpected = 0;
+        int pendingWriteRequests = 0;
+        ui64 nextOffset = 0;
+
+        auto promise = NewPromise<NProto::TWriteDataResponse>();
+
+        b.Session->WriteDataHandler = [&] (auto, auto) {
+            writeRequestsActual++;
+            return promise.GetFuture();
+        };
+
+        while (pendingWriteRequests < 32) {
+            auto future = b.WriteToCache(1, nextOffset, "a");
+            nextOffset += 10;
+            writeRequestsExpected++;
+            if (!future.HasValue()) {
+                pendingWriteRequests++;
+            }
+        }
+
+        promise.SetValue({});
+
+        b.Cache.FlushData(1);
+
+        UNIT_ASSERT_VALUES_EQUAL(writeRequestsExpected, writeRequestsActual);
+    }
+
     /* TODO(svartmetal): fix tests with automatic flush
     Y_UNIT_TEST(ShouldReadAfterWriteConcurrentlyWithAutomaticFlush)
     {
