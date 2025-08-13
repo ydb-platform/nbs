@@ -144,6 +144,35 @@ type service struct {
 	cellSelector    cells.CellSelector
 }
 
+func (s *service) getZoneIDForExistingDisk(
+	ctx context.Context,
+	diskID *disk_manager.DiskId,
+) (string, error) {
+
+	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, diskID.DiskId)
+	if err != nil {
+		return "", err
+	}
+
+	if diskMeta == nil {
+		return "", common.NewInvalidArgumentError(
+			"no such disk: %v",
+			diskID,
+		)
+	}
+
+	if diskMeta.ZoneID != diskID.ZoneId &&
+		!s.cellSelector.IsCellOfZone(diskMeta.ZoneID, diskID.ZoneId) {
+		return "", common.NewInvalidArgumentError(
+			"provided zone ID %v does not match with an actual zone ID %v",
+			diskID.ZoneId,
+			diskMeta.ZoneID,
+		)
+	}
+
+	return diskMeta.ZoneID, nil
+}
+
 func (s *service) prepareCreateDiskParams(
 	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
@@ -430,7 +459,7 @@ func (s *service) ResizeDisk(
 		)
 	}
 
-	zoneID, err := s.cellSelector.GetZoneIDForExistingDisk(ctx, req.DiskId)
+	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return "", err
 	}
@@ -461,7 +490,7 @@ func (s *service) AlterDisk(
 		)
 	}
 
-	zoneID, err := s.cellSelector.GetZoneIDForExistingDisk(ctx, req.DiskId)
+	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return "", err
 	}
@@ -634,7 +663,7 @@ func (s *service) StatDisk(
 		)
 	}
 
-	zoneID, err := s.cellSelector.GetZoneIDForExistingDisk(ctx, req.DiskId)
+	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return nil, err
 	}
@@ -672,7 +701,7 @@ func (s *service) MigrateDisk(
 		)
 	}
 
-	zoneID, err := s.cellSelector.GetZoneIDForExistingDisk(ctx, req.DiskId)
+	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return "", err
 	}
@@ -751,7 +780,7 @@ func (s *service) DescribeDisk(
 		)
 	}
 
-	zoneID, err := s.cellSelector.GetZoneIDForExistingDisk(ctx, req.DiskId)
+	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return nil, err
 	}

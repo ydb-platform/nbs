@@ -52,7 +52,7 @@ func (t *createDiskFromImageTask) Load(request, state []byte) error {
 func (t *createDiskFromImageTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-) (err error) {
+) error {
 
 	params := t.request.Params
 
@@ -60,10 +60,7 @@ func (t *createDiskFromImageTask) Run(
 
 	zoneID := params.Disk.ZoneId
 	if !isLocalDiskKind(params.Kind) {
-		zoneID, err = t.cellSelector.PrepareZoneID(ctx, params.Disk, params.FolderId)
-		if err != nil {
-			return err
-		}
+		zoneID = t.cellSelector.PrepareZoneID(params.Disk, params.FolderId)
 	}
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
