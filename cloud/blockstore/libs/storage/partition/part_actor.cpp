@@ -74,11 +74,12 @@ TPartitionActor::TPartitionActor(
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
     , VolumeTabletId(volumeTabletId)
     , LogTitle(
-          TabletID(),
-          PartitionConfig.GetDiskId(),
           StartTime,
-          partitionIndex,
-          siblingCount)
+          TLogTitle::TPartition{
+              .TabletId = TabletID(),
+              .DiskId = PartitionConfig.GetDiskId(),
+              .PartitionIndex = partitionIndex,
+              .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
 {}
 

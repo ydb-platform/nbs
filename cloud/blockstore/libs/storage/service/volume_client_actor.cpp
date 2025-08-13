@@ -161,12 +161,13 @@ TVolumeClientActor::TVolumeClientActor(
     , TabletId(tabletId)
     , ClientConfig(CreateTabletPipeClientConfig(*config))
     , LogTitle(
-          TabletId,
-          std::move(sessionId),
-          std::move(clientId),
-          DiskId,
-          temporaryServer,
-          GetCycleCount())
+          GetCycleCount(),
+          TLogTitle::TClient{
+              .TabletId = TabletId,
+              .SessionId = std::move(sessionId),
+              .ClientId = std::move(clientId),
+              .DiskId = DiskId,
+              .TemporaryServer = temporaryServer})
 {}
 
 void TVolumeClientActor::OnConnectionError(

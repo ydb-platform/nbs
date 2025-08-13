@@ -82,7 +82,11 @@ TVolumeActor::TVolumeActor(
     , RdmaClient(std::move(rdmaClient))
     , EndpointEventHandler(std::move(endpointEventHandler))
     , StartMode(startMode)
-    , LogTitle(TabletID(), std::move(diskId), StartTime)
+    , LogTitle(
+          StartTime,
+          TLogTitle::TVolume{
+              .TabletId = TabletID(),
+              .DiskId = std::move(diskId)})
     , ThrottlerLogger(
           TabletID(),
           [this](ui32 opType, TDuration time)

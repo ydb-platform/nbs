@@ -59,11 +59,11 @@ private:
     const bool TemporaryServer;
 
     TLogTitle LogTitle{
-        TLogTitle::EType::Session,
-        VolumeInfo->SessionId,
-        VolumeInfo->DiskId,
-        TemporaryServer,
-        GetCycleCount()};
+        GetCycleCount(),
+        TLogTitle::TSession{
+            .SessionId = VolumeInfo->SessionId,
+            .DiskId = VolumeInfo->DiskId,
+            .TemporaryServer = TemporaryServer}};
 
     TQueue<NActors::IEventHandlePtr> MountUnmountRequests;
 

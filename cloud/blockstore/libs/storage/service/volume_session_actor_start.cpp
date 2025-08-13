@@ -79,7 +79,9 @@ private:
     // Duration between reboot attempts
     TDuration RebootSleepDuration;
 
-    TLogTitle LogTitle{VolumeTabletId, DiskId, GetCycleCount()};
+    TLogTitle LogTitle{
+        GetCycleCount(),
+        TLogTitle::TVolume{.TabletId = VolumeTabletId, .DiskId = DiskId}};
 
 public:
     TStartVolumeActor(

@@ -60,11 +60,12 @@ TPartitionActor::TPartitionActor(
     , ChannelHistorySize(CalcChannelHistorySize())
     , VolumeTabletId(volumeTabletId)
     , LogTitle(
-          TabletID(),
-          PartitionConfig.GetDiskId(),
           StartTime,
-          0,
-          siblingCount)
+          TLogTitle::TPartition{
+              .TabletId = TabletID(),
+              .DiskId = PartitionConfig.GetDiskId(),
+              .PartitionIndex = 0,
+              .PartitionCount = siblingCount})
 {}
 
 TPartitionActor::~TPartitionActor()

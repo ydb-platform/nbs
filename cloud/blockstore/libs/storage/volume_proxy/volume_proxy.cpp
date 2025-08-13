@@ -84,7 +84,11 @@ class TVolumeProxyActor final
         TConnection(ui64 id, TString diskId, bool temporaryServer)
             : Id(id)
             , DiskId(std::move(diskId))
-            , LogTitle(DiskId, temporaryServer, GetCycleCount())
+            , LogTitle(
+                  GetCycleCount(),
+                  TLogTitle::TVolumeProxy{
+                      .DiskId = DiskId,
+                      .TemporaryServer = temporaryServer})
         {}
 
         void AdvanceGeneration()
