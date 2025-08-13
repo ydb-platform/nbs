@@ -28,12 +28,11 @@ void NotifyDisks(
     TInstant now)
 {
     TVector<TDiskNotificationResult> diskBeingNotify;
-    for (const auto& [disk, notifyDiskInfo]: state.GetDisksToReallocate()) {
-        TDiskNotification diskNotification(
-            disk,
-            notifyDiskInfo.SeqNo,
-            state.GetAndDeleteRowToSeqNo(disk));
-        TDiskNotificationResult notification(diskNotification, {});
+    for (const auto& [disk, seqNo]: state.GetDisksToReallocate()) {
+        TDiskNotificationResult notification{
+            TDiskNotification{disk, seqNo},
+            {},
+        };
         diskBeingNotify.push_back(notification);
     }
     for (auto& notification: diskBeingNotify) {
@@ -977,10 +976,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                             Now(),
                             db,
                             TDiskNotificationResult{
-                                TDiskNotification{
-                                    x.first,
-                                    x.second.SeqNo,
-                                    state.GetAndDeleteRowToSeqNo(x.first)},
+                                TDiskNotification{x.first, x.second},
                                 {},
                             });
                     }
@@ -1333,10 +1329,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                             Now(),
                             db,
                             TDiskNotificationResult{
-                                TDiskNotification{
-                                    x.first,
-                                    x.second.SeqNo,
-                                    state.GetAndDeleteRowToSeqNo(x.first)},
+                                TDiskNotification{x.first, x.second},
                                 {},
                             });
                     }
@@ -2965,10 +2958,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 Now(),
                 db,
                 TDiskNotificationResult{
-                    TDiskNotification{
-                        "disk-1",
-                        4,
-                        state.GetAndDeleteRowToSeqNo("disk-1")},
+                    TDiskNotification{"disk-1", 4},
                     {},
                 });
         });
@@ -3174,10 +3164,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                             Now(),
                             db,
                             TDiskNotificationResult{
-                                TDiskNotification{
-                                    x.first,
-                                    x.second.SeqNo,
-                                    state.GetAndDeleteRowToSeqNo(x.first)},
+                                TDiskNotification{x.first, x.second},
                                 {},
                             });
                     }
@@ -3969,8 +3956,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
     }
 
-    Y_UNIT_TEST(
-        ShouldDiskRegistryCorrectLimitMirrorDiskDeviceReplacementAfterRestart)
+    Y_UNIT_TEST(ShouldCorrectLimitMirrorDiskDeviceReplacementAfterRestart)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
@@ -4139,8 +4125,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
     }
 
-    Y_UNIT_TEST(
-        ShouldDiskRegistryDontLimitMirrorDiskDeviceReplacementInDifferentRows)
+    Y_UNIT_TEST(ShouldNotLimitMirrorDiskDeviceReplacementInDifferentRows)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });

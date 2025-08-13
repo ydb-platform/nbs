@@ -93,10 +93,8 @@ public:
         ui32 deviceRow,
         ui64 seqNo,
         bool isRecentlyReplaced);
-    void SetMasterDiskToSeqNo(THashMap<TDiskId, ui64> masterDiskToSeqNo);
-    void DeleteItemFromMasterDiskToSeqNo(const TDiskId& diskId, ui64 seqNo);
     ui32 GetDeviceRow(const TDiskId& diskId, const TDeviceId& deviceId);
-    ui64 GetSeqNo(const TDiskId& diskId, ui32 row);
+    THashMap<ui32, ui64> GetRowToSeqNo(const TDiskId& diskId);
 
     // for tests and monpages
     TVector<TVector<TDeviceInfo>> AsMatrix(const TString& diskId) const;
@@ -136,8 +134,6 @@ private:
 
     THashMap<TDiskId, TDiskState> Disks;
     const TDeviceList* const DeviceList = nullptr;
-
-    THashMap<TDiskId, ui64> MasterDiskToSeqNo;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
