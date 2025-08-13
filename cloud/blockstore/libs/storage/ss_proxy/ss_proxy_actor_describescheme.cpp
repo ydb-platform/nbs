@@ -24,6 +24,23 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+std::optional<NKikimrSchemeOp::EPathType> ConvertSchemeCacheKind(
+    TSchemeCacheNavigate::EKind navigate)
+{
+    switch (navigate) {
+        case TSchemeCacheNavigate::KindSubdomain:
+            return NKikimrSchemeOp::EPathTypeSubDomain;
+        case TSchemeCacheNavigate::KindPath:
+            return NKikimrSchemeOp::EPathTypeDir;
+        case TSchemeCacheNavigate::KindBlockStoreVolume:
+            return NKikimrSchemeOp::EPathTypeBlockStoreVolume;
+        default:
+            return std::nullopt;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDescribeSchemeActor final
     : public TActorBootstrapped<TDescribeSchemeActor>
 {
@@ -95,7 +112,7 @@ void TDescribeSchemeActor::DescribeScheme(const TActorContext& ctx)
         auto request = std::make_unique<TSchemeCacheNavigate>();
         request->DatabaseName = Config->GetSchemeShardDir();
         TSchemeCacheNavigate::TEntry& entry = request->ResultSet.emplace_back();
-        entry.Operation = TSchemeCacheNavigate::OpPath;
+        entry.Operation = TSchemeCacheNavigate::OpList;
         entry.SyncVersion = true;
         entry.Path = SplitPath(Path);
 
@@ -231,31 +248,54 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     }
 
     NKikimrSchemeOp::TPathDescription pathDescription;
+    if (entry.Self) {
+        pathDescription.MutableSelf()->CopyFrom(entry.Self->Info);
+    }
+    if (entry.ListNodeEntry) {
+        for (const auto& child: entry.ListNodeEntry->Children) {
+            NKikimrSchemeOp::TDirEntry* entry =
+                pathDescription.MutableChildren()->Add();
+            auto pathType = ConvertSchemeCacheKind(child.Kind);
+            if (!pathType) {
+                HandleError(
+                    ctx,
+                    MakeError(
+                        E_REJECTED,
+                        TStringBuilder()
+                            << "Unknown child path kind: " << child.Kind));
+                return;
+            }
+            entry->SetPathType(*pathType);
+            entry->SetName(child.Name);
+            entry->SetPathId(child.PathId.LocalPathId);
+            entry->SetSchemeshardId(child.PathId.OwnerId);
+        }
+    }
     switch (entry.Kind) {
-        case NSchemeCache::TSchemeCacheNavigate::KindBlockStoreVolume: {
+        case NSchemeCache::TSchemeCacheNavigate::KindBlockStoreVolume:
             pathDescription.MutableBlockStoreVolumeDescription()->CopyFrom(
                 entry.BlockStoreVolumeInfo->Description);
             pathDescription.MutableSelf()->SetPathType(
                 NKikimrSchemeOp::EPathTypeBlockStoreVolume);
             break;
-        }
-        case NSchemeCache::TSchemeCacheNavigate::KindSubdomain: {
+        case NSchemeCache::TSchemeCacheNavigate::KindSubdomain:
             pathDescription.MutableDomainDescription()->CopyFrom(
                 entry.DomainDescription->Description);
             pathDescription.MutableSelf()->SetPathType(
                 NKikimrSchemeOp::EPathTypeSubDomain);
             break;
-        }
-        default: {
+        case NSchemeCache::TSchemeCacheNavigate::KindPath:
+            pathDescription.MutableSelf()->SetPathType(
+                NKikimrSchemeOp::EPathTypeDir);
+            break;
+        default:
             HandleError(
                 ctx,
                 MakeError(
                     E_REJECTED,
                     TStringBuilder() << "Unknown path kind: " << entry.Kind));
             return;
-        }
     }
-
 
     if (PathDescriptionBackup) {
         auto updateRequest = std::make_unique<
