@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
@@ -50,6 +51,11 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
         NTabletPipe::CreateUnboundedClientCache(clientConfig));
 }
 
+TString GetMangledDiskId(const TString& diskId, bool exactDiskId)
+{
+    return diskId + (exactDiskId ? "_e" : "_v");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TVolumeProxyActor final
@@ -68,6 +74,8 @@ class TVolumeProxyActor final
     {
         const ui64 Id;
         const TString DiskId;
+        const bool ExactDiskId = false;
+        TString ReadDiskId;
 
         EConnectionState State = INITIAL;
         ui64 TabletId = 0;
@@ -81,10 +89,18 @@ class TVolumeProxyActor final
 
         TLogTitle LogTitle;
 
-        TConnection(ui64 id, TString diskId, bool temporaryServer)
+        TConnection(
+                ui64 id,
+                TString diskId,
+                bool temporaryServer,
+                bool exactDiskId)
             : Id(id)
             , DiskId(std::move(diskId))
-            , LogTitle(DiskId, temporaryServer, GetCycleCount())
+            , ExactDiskId(exactDiskId)
+            , LogTitle(
+                  DiskId + (exactDiskId ? TString("(exact)") : TString()),
+                  temporaryServer,
+                  GetCycleCount())
         {}
 
         void AdvanceGeneration()
@@ -151,7 +167,8 @@ public:
         bool temporaryServer);
 
 private:
-    TConnection& CreateConnection(const TString& diskId);
+    TConnection& CreateConnection(const TString& diskId, bool exactDiskId);
+    void RemoveConnection(const TConnection& conn);
 
     void StartConnection(
         const TActorContext& ctx,
@@ -246,21 +263,30 @@ TVolumeProxyActor::TVolumeProxyActor(
 }
 
 TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
-    const TString& diskId)
+    const TString& diskId,
+    bool exactDiskId)
 {
-    if (TConnection* conn = Connections.FindPtr(diskId)) {
+    TString mangledDiskId = GetMangledDiskId(diskId, exactDiskId);
+    if (TConnection* conn = Connections.FindPtr(mangledDiskId)) {
         return *conn;
     }
 
     ui64 connectionId = ++ConnectionId;
 
     auto ins = Connections.emplace(
-        diskId,
-        TConnection(connectionId, diskId, TemporaryServer));
+        mangledDiskId,
+        TConnection(connectionId, diskId, TemporaryServer, exactDiskId));
     Y_ABORT_UNLESS(ins.second);
 
     ConnectionById[connectionId] = &ins.first->second;
     return ins.first->second;
+}
+
+void TVolumeProxyActor::RemoveConnection(const TConnection& conn)
+{
+    ConnectionById.erase(conn.Id);
+    ConnectionByTablet.erase(conn.TabletId);
+    Connections.erase(GetMangledDiskId(conn.DiskId, conn.ExactDiskId));
 }
 
 void TVolumeProxyActor::StartConnection(
@@ -296,10 +322,7 @@ void TVolumeProxyActor::DestroyConnection(
 
     // Cancel all pending requests.
     ProcessPendingRequests(conn);
-
-    ConnectionById.erase(conn.Id);
-    ConnectionByTablet.erase(conn.TabletId);
-    Connections.erase(conn.DiskId);
+    RemoveConnection(conn);
 }
 
 void TVolumeProxyActor::OnDisconnect(
@@ -388,14 +411,14 @@ void TVolumeProxyActor::ForwardRequest(
 {
     auto* msg = ev->Get();
 
-    auto clientId = ClientCache->Prepare(ctx, conn.TabletId);
+    auto volumePipe = ClientCache->Prepare(ctx, conn.TabletId);
 
-    LOG_TRACE(
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME_PROXY,
         "%s Forward request to volume (remote: %s)",
         conn.LogTitle.GetWithTime().c_str(),
-        ToString(clientId).data());
+        ToString(volumePipe).c_str());
 
     ui64 requestId = ++RequestId;
 
@@ -427,7 +450,7 @@ void TVolumeProxyActor::ForwardRequest(
         TMethod::Name,
         msg->CallContext->RequestId);
 
-    NCloud::PipeSend(ctx, clientId, std::move(event));
+    NCloud::PipeSend(ctx, volumePipe, std::move(event));
     ++conn.RequestsInflight;
 }
 
@@ -444,7 +467,11 @@ void TVolumeProxyActor::DescribeVolume(
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(conn.DiskId),
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            conn.DiskId,
+            conn.ExactDiskId
+                ? TEvSSProxy::TEvDescribeVolumeRequest::EBehavior::ExactName
+                : TEvSSProxy::TEvDescribeVolumeRequest::EBehavior::OnlyVisible),
         conn.Id);
 }
 
@@ -489,9 +516,7 @@ void TVolumeProxyActor::HandleWakeup(
             conn->LogTitle.GetWithTime().c_str());
 
         ClientCache->Shutdown(ctx, conn->TabletId);
-        ConnectionById.erase(conn->Id);
-        ConnectionByTablet.erase(conn->TabletId);
-        Connections.erase(conn->DiskId);
+        RemoveConnection(*conn);
     } else {
         if (conn->LastActivity >= now - PipeInactivityTimeout) {
             auto timeEstimate = conn->LastActivity + PipeInactivityTimeout - now;
@@ -571,7 +596,7 @@ void TVolumeProxyActor::HandleDescribeResponse(
     }
 
     const auto& error = msg->GetError();
-    if (FAILED(error.GetCode())) {
+    if (HasError(error)) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME_PROXY,
@@ -585,6 +610,9 @@ void TVolumeProxyActor::HandleDescribeResponse(
 
     const auto& pathDescr = msg->PathDescription;
     const auto& volumeDescr = pathDescr.GetBlockStoreVolumeDescription();
+
+    conn->ReadDiskId = volumeDescr.GetVolumeConfig().GetDiskId();
+
     StartConnection(
         ctx,
         *conn,
@@ -617,8 +645,17 @@ void TVolumeProxyActor::HandleRequest(
     const auto* msg = ev->Get();
 
     const TString& diskId = GetDiskId(*msg);
+    const TString& clientId = GetClientId(*msg);
+    const bool exactDiskId = clientId == CopyVolumeClientId;
 
-    TConnection& conn = CreateConnection(diskId);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME_PROXY,
+        "TVolumeProxyActor::HandleRequest %s %s",
+        diskId.c_str(),
+        clientId.c_str());
+
+    TConnection& conn = CreateConnection(diskId, exactDiskId);
     switch (conn.State) {
         case INITIAL:
         case FAILED:

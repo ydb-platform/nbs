@@ -220,6 +220,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::IActorPtr CreateAddClientActor(
+    TChildLogTitle logTitle,
     std::unique_ptr<TEvVolume::TEvAddClientRequest> request,
     TRequestInfoPtr requestInfo,
     TDuration timeout,
@@ -227,6 +228,7 @@ NActors::IActorPtr CreateAddClientActor(
     NActors::TActorId volumeProxy);
 
 NActors::IActorPtr CreateWaitReadyActor(
+    TChildLogTitle logTitle,
     std::unique_ptr<TEvVolume::TEvWaitReadyRequest> request,
     TRequestInfoPtr requestInfo,
     TDuration timeout,

@@ -109,4 +109,9 @@ std::tuple<TString, TString> DiskIdToVolumeDirAndName(
     return ExtractParentDirAndName(rootDir, path);
 }
 
+TString GetSecondaryDiskId(const TString& diskId)
+{
+    return diskId + "-copy";
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

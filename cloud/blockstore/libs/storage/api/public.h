@@ -11,6 +11,10 @@ namespace NCloud::NBlockStore::NStorage {
 constexpr TStringBuf IntermediateWriteBufferTagName =
     "use-intermediate-write-buffer";
 
+constexpr TStringBuf FollowerReadyTagName = "follower-ready";
+
+constexpr TStringBuf InvisibleVolumeTagName = "invisible";
+
 ////////////////////////////////////////////////////////////////////////////////
 // BackpressureReport event descriptor
 

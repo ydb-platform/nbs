@@ -116,6 +116,10 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
                 nullptr)});
 
     StartWork(ctx);
+
+    if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady) {
+        AddReadyTagToFollower(ctx);
+    }
 }
 
 bool TFollowerDiskActor::OnMessage(
@@ -128,6 +132,7 @@ bool TFollowerDiskActor::OnMessage(
         HFunc(
             TEvVolumePrivate::TEvUpdateFollowerStateResponse,
             HandleUpdateFollowerStateResponse);
+        HFunc(TEvService::TEvAddTagsResponse, HandleSetFollowerReadyTag);
 
         // Intercepting the message to block the sending of statistics by the
         // base class.
@@ -197,6 +202,28 @@ void TFollowerDiskActor::PersistFollowerState(
     NCloud::Send(ctx, LeaderVolumeActorId, std::move(request));
 }
 
+void TFollowerDiskActor::AddReadyTagToFollower(
+    const NActors::TActorContext& ctx)
+{
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Set follower-ready tag",
+        LogTitle.GetWithTime().c_str());
+
+    auto requestInfo = CreateRequestInfo(
+        SelfId(),
+        0,  // cookie
+        MakeIntrusive<TCallContext>());
+
+    TVector<TString> tags({TString(FollowerReadyTagName)});
+    auto request = std::make_unique<TEvService::TEvAddTagsRequest>(
+        FollowerDiskInfo.Link.FollowerDiskId,
+        std::move(tags));
+
+    ctx.Send(MakeStorageServiceId(), std::move(request));
+}
+
 template <typename TMethod>
 void TFollowerDiskActor::ForwardRequestToLeaderPartition(
     const typename TMethod::TRequest::TPtr& ev,
@@ -249,11 +276,38 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
+    const auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s UpdateFollowerState error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->Error).c_str());
+        return;
+    }
+
+    FollowerDiskInfo = msg->Follower;
+
+    if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady) {
+        AddReadyTagToFollower(ctx);
+    }
+}
+
+void TFollowerDiskActor::HandleSetFollowerReadyTag(
+    const TEvService::TEvAddTagsResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
     Y_UNUSED(ctx);
 
     const auto* msg = ev->Get();
-
-    FollowerDiskInfo = msg->Follower;
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s SetTag error: %s",
+        LogTitle.GetWithTime().c_str(),
+        FormatError(msg->GetError()).c_str());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

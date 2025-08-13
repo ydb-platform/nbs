@@ -111,7 +111,8 @@ void TReadPathDescriptionBackupActor<TResponse>::HandleReadCacheResponse(
         response = std::make_unique<TResponse>(std::move(error));
     } else {
         response = std::make_unique<TResponse>(
-            std::move(msg->Path), std::move(msg->PathDescription));
+            std::move(msg->Path),
+            std::move(msg->PathDescription));
     }
 
     ReplyAndDie(ctx, std::move(response));

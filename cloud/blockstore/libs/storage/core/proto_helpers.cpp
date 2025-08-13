@@ -542,4 +542,23 @@ NProto::TVolumePerformanceProfile VolumeConfigToVolumePerformanceProfile(
     return performanceProfile;
 }
 
+TMultiMap<TString, TString> ParseTags(const TString& tags)
+{
+    TMultiMap<TString, TString> result;
+
+    TStringBuf tok;
+    TStringBuf sit(tags);
+    while (sit.NextTok(',', tok)) {
+        TStringBuf key;
+        TStringBuf value;
+        if (tok.TrySplit('=', key, value)) {
+            result.insert({key.data(), value.data()});
+        } else {
+            result.insert({tok.data(), ""});
+        }
+    }
+
+    return result;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

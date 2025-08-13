@@ -9,6 +9,19 @@
 namespace NCloud::NBlockStore::NStorage {
 
 ///////////////////////////////////////////////////////////////////////////////
+/*
+              |----------|             |            |------------|
+              |  Leader  |             |            |  Follower  |
+              |----------|             |            |------------|
+                                       |
+ 0.  State DataReady                   |
+ 1.                                    |  + tag Ready
+ 2.  + tag Outdated                    |
+ 3.  DestroyVolume Leader              |  DestroyVolume Leader
+ 4.                                    |  - RemoveLeader
+ 5.                                    |  - tag Ready
+*/
+///////////////////////////////////////////////////////////////////////////////
 
 struct TFollowerDiskActorParams
 {
@@ -72,6 +85,8 @@ private:
         const NActors::TActorContext& ctx,
         const TFollowerDiskInfo& newDiskInfo);
 
+    void AddReadyTagToFollower(const NActors::TActorContext& ctx);
+
     template <typename TMethod>
     void ForwardRequestToLeaderPartition(
         const typename TMethod::TRequest::TPtr& ev,
@@ -96,6 +111,10 @@ private:
 
     void HandleUpdateFollowerStateResponse(
         const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleSetFollowerReadyTag(
+        const TEvService::TEvAddTagsResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

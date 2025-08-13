@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/core/mount_token.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -34,6 +35,7 @@ class TVolumeProxyTimedDeliveryActor final
     using TThis = TVolumeProxyTimedDeliveryActor<TMethod>;
 private:
     std::unique_ptr<typename TMethod::TRequest> Request;
+    const TChildLogTitle LogTitle;
     const TRequestInfoPtr RequestInfo;
     const TDuration Timeout;
     const TDuration BackoffIncrement;
@@ -45,12 +47,14 @@ private:
 
 public:
     TVolumeProxyTimedDeliveryActor(
+            TChildLogTitle logTitle,
             std::unique_ptr<typename TMethod::TRequest> request,
             TRequestInfoPtr requestInfo,
             TDuration timeout,
             TDuration backoffIncrement,
             TActorId volumeProxy)
         : Request(std::move(request))
+        , LogTitle(std::move(logTitle))
         , RequestInfo(std::move(requestInfo))
         , Timeout(timeout)
         , BackoffIncrement(backoffIncrement)
@@ -93,11 +97,13 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::SendRequest(const TActorContext& c
     auto request = std::make_unique<typename TMethod::TRequest>();
     request->Record = Request->Record;
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Sending %s %s to volume %s",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Sending %s %s",
+        LogTitle.GetWithTime().c_str(),
         TMethod::Name,
-        Request->Record.GetHeaders().GetClientId().Quote().c_str(),
-        Request->Record.GetDiskId().Quote().c_str());
+        Request->Record.GetHeaders().GetClientId().Quote().c_str());
 
     ctx.Send(
         VolumeProxy,
@@ -114,11 +120,13 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleResponse(
     auto* msg = ev->Get();
 
     if (msg->Record.GetError().GetCode() == E_REJECTED) {
-        LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-            "%s %s request sent to volume %s is rejected",
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s %s %s request sent to volume is rejected",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
-            Request->Record.GetHeaders().GetClientId().Quote().c_str(),
-            Request->Record.GetDiskId().Quote().c_str());
+            Request->Record.GetHeaders().GetClientId().Quote().c_str());
 
         LastError = msg->Record.GetError();
         CurrentBackoff += BackoffIncrement;
@@ -137,23 +145,28 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleWakeup(
     const auto* msg = ev->Get();
 
     if (msg->Tag) {
-        LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-            "Resend %s %s request to volume %s. Last error %s",
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "%s Resend %s %s request to volume. Last error %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             Request->Record.GetHeaders().GetClientId().Quote().c_str(),
-            Request->Record.GetDiskId().Quote().c_str(),
-            LastError.GetMessage().Quote().c_str());
+            FormatError(LastError).c_str());
 
         SendRequest(ctx);
         return;
     }
 
-    LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
-        "%s %s request sent to volume %s timed out. Last error %s",
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s %s %s request sent to volume timed out. Last error %s",
+        LogTitle.GetWithTime().c_str(),
         TMethod::Name,
         Request->Record.GetHeaders().GetClientId().Quote().c_str(),
         Request->Record.GetDiskId().Quote().c_str(),
-        LastError.GetMessage().Quote().c_str());
+        FormatError(LastError).c_str());
 
     ReplyErrorAndDie(
         ctx,
@@ -200,6 +213,7 @@ STFUNC(TVolumeProxyTimedDeliveryActor<TMethod>::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 IActorPtr CreateAddClientActor(
+    TChildLogTitle logTitle,
     std::unique_ptr<TEvVolume::TEvAddClientRequest> request,
     TRequestInfoPtr requestInfo,
     TDuration timeout,
@@ -208,6 +222,7 @@ IActorPtr CreateAddClientActor(
 {
     using TActorType = TVolumeProxyTimedDeliveryActor<TEvVolume::TAddClientMethod>;
     return std::make_unique<TActorType>(
+        std::move(logTitle),
         std::move(request),
         std::move(requestInfo),
         timeout,
@@ -216,6 +231,7 @@ IActorPtr CreateAddClientActor(
 }
 
 IActorPtr CreateWaitReadyActor(
+    TChildLogTitle logTitle,
     std::unique_ptr<TEvVolume::TEvWaitReadyRequest> request,
     TRequestInfoPtr requestInfo,
     TDuration timeout,
@@ -224,6 +240,7 @@ IActorPtr CreateWaitReadyActor(
 {
     using TActorType = TVolumeProxyTimedDeliveryActor<TEvVolume::TWaitReadyMethod>;
     return std::make_unique<TActorType>(
+        std::move(logTitle),
         std::move(request),
         std::move(requestInfo),
         timeout,

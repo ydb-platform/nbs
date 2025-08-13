@@ -541,6 +541,7 @@ void TMountRequestActor::AddClient(const TActorContext& ctx, TDuration timeout)
         RequestInfo->CallContext);
 
     NCloud::Register(ctx, CreateAddClientActor(
+        LogTitle,
         std::move(request),
         std::move(requestInfo),
         timeout,
@@ -564,12 +565,15 @@ void TMountRequestActor::WaitForVolume(const TActorContext& ctx, TDuration timeo
         RequestInfo->Cookie,
         RequestInfo->CallContext);
 
-    NCloud::Register(ctx, CreateWaitReadyActor(
-        std::move(request),
-        std::move(requestInfo),
-        timeout,
-        Config->GetAddClientRetryTimeoutIncrement(),
-        Params.VolumeClient));
+    NCloud::Register(
+        ctx,
+        CreateWaitReadyActor(
+            LogTitle,
+            std::move(request),
+            std::move(requestInfo),
+            timeout,
+            Config->GetAddClientRetryTimeoutIncrement(),
+            Params.VolumeClient));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
