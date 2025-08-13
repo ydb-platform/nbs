@@ -84,7 +84,12 @@ public:
 
         CheckResponse(readResponse);
 
-        Cout << readResponse.GetBuffer();
+        const auto& buffer = readResponse.GetBuffer();
+        const auto& bufferOffset = readResponse.GetBufferOffset();
+        if (!buffer.empty()) {
+            Y_ABORT_UNLESS(bufferOffset < buffer.size());
+            Cout << buffer.substr(bufferOffset);
+        }
 
         return true;
     }
