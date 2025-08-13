@@ -28,6 +28,7 @@ from contrib.ydb.tests.library.harness.kikimr_runner import \
 
 DEVICE_SIZE = 1024 ** 3  # 1 GiB
 DEVICES_PER_PATH = 6
+INACTIVE_CLIENTS_TIMEOUT = 1  # in seconds
 
 KNOWN_DEVICE_POOLS = {
     "KnownDevicePools": [
@@ -43,11 +44,18 @@ def start_ydb_cluster():
     ydb_cluster.stop()
 
 
-def apply_common_params_to_config(cfg):
+def apply_common_params_to_config(cfg, params):
     cfg.files["storage"].NonReplicatedDontSuspendDevices = True
     cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
     cfg.files["storage"].NonReplicatedVolumeDirectAcquireEnabled = True
     cfg.files["storage"].AcquireNonReplicatedDevices = True
+    cfg.files["storage"].InactiveClientsTimeout = INACTIVE_CLIENTS_TIMEOUT * 1000
+
+    timeout = params.get("NonReplicatedAgentTimeout", 60000)
+    cfg.files["storage"].NonReplicatedAgentMinTimeout = timeout
+    cfg.files["storage"].NonReplicatedAgentMaxTimeout = timeout
+
+    cfg.files["storage"].DoAcquireReleaseDevicesAfterTransaction = True
 
     cfg.files["server"].ServerConfig.VhostEnabled = True
     cfg.files["server"].ServerConfig.VhostServerPath = yatest_common.binary_path(
@@ -59,15 +67,12 @@ def start_nbs_daemon_with_dr(request, ydb):
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
 
-    apply_common_params_to_config(cfg)
-    cfg.files["storage"].DisableLocalService = False
-
-    timeout = 60000
+    params = {}
     if hasattr(request, 'param'):
-        timeout = request.param
+        params = request.param
 
-    cfg.files["storage"].NonReplicatedAgentMinTimeout = timeout
-    cfg.files["storage"].NonReplicatedAgentMaxTimeout = timeout
+    apply_common_params_to_config(cfg, params)
+    cfg.files["storage"].DisableLocalService = False
 
     daemon = start_nbs(cfg)
 
@@ -81,12 +86,16 @@ def start_nbs_daemon_with_dr(request, ydb):
 
 
 @pytest.fixture(name='nbs')
-def start_nbs_daemon(ydb):
+def start_nbs_daemon(request, ydb):
 
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
 
-    apply_common_params_to_config(cfg)
+    params = {}
+    if hasattr(request, 'param'):
+        params = request.param
+
+    apply_common_params_to_config(cfg, params)
     cfg.files["storage"].DisableLocalService = True
 
     daemon = start_nbs(cfg)
@@ -346,7 +355,7 @@ def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_
     session.unmount_volume()
 
 
-@pytest.mark.parametrize("nbs_with_dr", [(6000)], indirect=["nbs_with_dr"])
+@pytest.mark.parametrize("nbs_with_dr", [({"NonReplicatedAgentTimeout": 6000})], indirect=["nbs_with_dr"])
 def test_should_mount_volume_with_unavailable_agents(
         nbs_with_dr,
         nbs,
@@ -422,10 +431,11 @@ def test_should_mount_volume_with_unavailable_agents(
     session.unmount_volume()
 
 
-def test_should_stop_not_restored_endpoint(nbs_with_dr,
-                                           nbs,
-                                           agent_ids,
-                                           disk_agent_configurators):
+def do_test_should_stop_not_restored_endpoint(nbs_with_dr,
+                                              nbs,
+                                              agent_ids,
+                                              disk_agent_configurators,
+                                              pass_client_id):
 
     client = CreateTestClient(f"localhost:{nbs.port}")
 
@@ -457,17 +467,20 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
     )
 
     nbs.kill()
+    if not pass_client_id:
+        time.sleep(INACTIVE_CLIENTS_TIMEOUT + 1)
     nbs.start()
 
     client.stop_endpoint(
         unix_socket_path=socket.name,
     )
 
-    client.stop_endpoint(
-        unix_socket_path=socket.name,
-        client_id=f"{socket.name}-id",
-        disk_id=test_disk_id,
-    )
+    if pass_client_id:
+        client.stop_endpoint(
+            unix_socket_path=socket.name,
+            client_id=f"{socket.name}-id",
+            disk_id=test_disk_id,
+        )
 
     assert not Path(socket.name).exists()
 
@@ -483,11 +496,31 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
 
     client.stop_endpoint(
         unix_socket_path=another_socket.name,
-        client_id=f"{another_socket.name}-id-1",
-        disk_id=test_disk_id,
     )
 
     assert not Path(another_socket.name).exists()
+
+
+def test_should_stop_not_restored_endpoint(nbs_with_dr,
+                                           nbs,
+                                           agent_ids,
+                                           disk_agent_configurators):
+    do_test_should_stop_not_restored_endpoint(nbs_with_dr,
+                                              nbs,
+                                              agent_ids,
+                                              disk_agent_configurators,
+                                              pass_client_id=False)
+
+
+def test_should_stop_not_restored_endpoint_pass_client_id(nbs_with_dr,
+                                                          nbs,
+                                                          agent_ids,
+                                                          disk_agent_configurators):
+    do_test_should_stop_not_restored_endpoint(nbs_with_dr,
+                                              nbs,
+                                              agent_ids,
+                                              disk_agent_configurators,
+                                              pass_client_id=True)
 
 
 def test_should_stop_not_restored_endpoint_when_volume_was_deleted(nbs_with_dr,

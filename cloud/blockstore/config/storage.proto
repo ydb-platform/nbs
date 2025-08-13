@@ -1281,4 +1281,14 @@ message TStorageServiceConfig
 
     // If true, describes will be done using SchemeCache instead of TxProxy.
     optional bool UseSchemeCache = 443;
+
+    // Initial delay to retry acquire request (in milliseconds).
+    optional uint32 RetryAcquireReleaseDiskInitialDelay = 444;
+
+    // Max delay to retry acquire request (in milliseconds).
+    optional uint32 RetryAcquireReleaseDiskMaxDelay = 445;
+
+    // Do AddClient/RemoveClient transaction
+    // and then do right Acquire/Release devices requests.
+    optional bool DoAcquireReleaseDevicesAfterTransaction = 446;
 }
