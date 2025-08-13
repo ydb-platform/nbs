@@ -272,7 +272,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         const TVector<TTestCaseWriteDataEntry>& testCaseEntries,
         const TVector<TTestCaseWriteDataEntryPart>& expectedParts)
     {
-        TIntrusiveListWithAutoDelete<TWriteDataEntry, TDelete> entries;
+        TVector<std::unique_ptr<TWriteDataEntry>> entries;
         for (const auto& e: testCaseEntries) {
             Y_ABORT_UNLESS(e.Offset + e.Length < MaxLength);
 
@@ -282,12 +282,12 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
             auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
-            entries.PushBack(entry.release());
+            entries.push_back(std::move(entry));
         }
 
         TDeque<TWriteDataEntry*> entryPtrs;
         for (auto& entry: entries) {
-            entryPtrs.push_back(&entry);
+            entryPtrs.push_back(entry.get());
         }
 
         TCalculateDataPartsToReadTestBootstrap b;
@@ -325,7 +325,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
     void TestShouldCorrectlyCalculateDataPartsToReadWithReferenceImpl(
         const TVector<TTestCaseWriteDataEntry>& testCaseEntries)
     {
-        TIntrusiveListWithAutoDelete<TWriteDataEntry, TDelete> entries;
+        TVector<std::unique_ptr<TWriteDataEntry>> entries;
         for (const auto& e: testCaseEntries) {
             Y_ABORT_UNLESS(e.Offset + e.Length <= MaxLength);
 
@@ -335,12 +335,12 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
             auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
-            entries.PushBack(entry.release());
+            entries.push_back(std::move(entry));
         }
 
         TDeque<TWriteDataEntry*> entryPtrs;
         for (auto& entry: entries) {
-            entryPtrs.push_back(&entry);
+            entryPtrs.push_back(entry.get());
         }
 
         TCalculateDataPartsToReadTestBootstrap b;
@@ -431,7 +431,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         ui64 rangeOffset,
         ui64 rangeLength)
     {
-        TIntrusiveListWithAutoDelete<TWriteDataEntry, TDelete> entries;
+        TVector<std::unique_ptr<TWriteDataEntry>> entries;
         for (const auto& e: testCaseEntries) {
             Y_ABORT_UNLESS(e.Offset + e.Length <= MaxLength);
 
@@ -441,12 +441,12 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
             auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
-            entries.PushBack(entry.release());
+            entries.push_back(std::move(entry));
         }
 
         TDeque<TWriteDataEntry*> entryPtrs;
         for (auto& entry: entries) {
-            entryPtrs.push_back(&entry);
+            entryPtrs.push_back(entry.get());
         }
 
         TCalculateDataPartsToReadTestBootstrap b;

@@ -9,7 +9,6 @@
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
 #include <util/generic/hash_set.h>
-#include <util/generic/intrlist.h>
 #include <util/generic/mem_copy.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/vector.h>
@@ -181,7 +180,7 @@ private:
     TMutex Lock;
 
     // Entries with Cached and CachedFlushRequested statuses
-    TIntrusiveListWithAutoDelete<TWriteDataEntry, TDelete> CachedEntries;
+    TDeque<std::unique_ptr<TWriteDataEntry>> CachedEntries;
 
     // Serialized entries from |CachedEntries| with the same order
     TFileRingBuffer CachedEntriesPersistentQueue;
@@ -190,7 +189,7 @@ private:
     THashMap<ui64, std::unique_ptr<THandleState>> HandleStates;
 
     // Entries with Pending status
-    TIntrusiveList<TWriteDataEntry> PendingEntries;
+    TDeque<std::unique_ptr<TWriteDataEntry>> PendingEntries;
 
     // Handles with new cached WriteData entries since last FlushAll
     THashSet<ui64> HandlesWithNewCachedEntries;
@@ -239,7 +238,7 @@ public:
                     handleState->CachedEntries.emplace_back(entry.get());
                 }
 
-                CachedEntries.PushBack(entry.release());
+                CachedEntries.push_back(std::move(entry));
             });
     }
 
@@ -646,8 +645,8 @@ private:
     // should be protected by |Lock|
     void ProcessPendingEntries()
     {
-        while (!PendingEntries.Empty()) {
-            auto* entry = PendingEntries.Front();
+        while (!PendingEntries.empty()) {
+            auto& entry = PendingEntries.front();
             auto serializedSize = entry->GetSerializedSize();
 
             char* allocationPtr = nullptr;
@@ -668,14 +667,14 @@ private:
 
             CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
 
-            PendingEntries.PopFront();
-            CachedEntries.PushBack(entry);
-
             auto* handleState = GetHandleState(entry->GetHandle());
-            handleState->CachedEntries.emplace_back(entry);
+            handleState->CachedEntries.push_back(entry.get());
             handleState->PendingEntriesCount--;
 
             HandlesWithNewCachedEntries.insert(entry->GetHandle());
+
+            CachedEntries.push_back(std::move(entry));
+            PendingEntries.pop_front();
         }
     }
 
@@ -860,7 +859,7 @@ private:
         if (handleState->PendingEntriesCount > 0)
         {
             handleState->PendingEntriesCount++;
-            PendingEntries.PushBack(entry.release());
+            PendingEntries.push_back(std::move(entry));
             return;
         }
 
@@ -879,10 +878,10 @@ private:
             CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
             handleState->CachedEntries.emplace_back(entry.get());
             HandlesWithNewCachedEntries.insert(handleState->Handle);
-            CachedEntries.PushBack(entry.release());
+            CachedEntries.push_back(std::move(entry));
         } else {
             handleState->PendingEntriesCount++;
-            PendingEntries.PushBack(entry.release());
+            PendingEntries.push_back(std::move(entry));
             ScheduleFlushAll();
         }
     }
@@ -1015,9 +1014,9 @@ private:
         }
 
         // Clear finished entries form the persistent queue
-        while (!CachedEntries.Empty() && CachedEntries.Front()->IsFinished())
+        while (!CachedEntries.empty() && CachedEntries.front()->IsFinished())
         {
-            CachedEntries.PopFront();
+            CachedEntries.pop_front();
             CachedEntriesPersistentQueue.PopFront();
             PendingOperations.ShouldProcessPendingEntries = true;
         }

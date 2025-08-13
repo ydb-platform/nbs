@@ -24,7 +24,6 @@ enum class TWriteBackCache::EWriteDataEntryStatus
 ////////////////////////////////////////////////////////////////////////////////
 
 class TWriteBackCache::TWriteDataEntry
-    : public TIntrusiveListItem<TWriteDataEntry>
 {
 private:
     // Store request metadata and request buffer separately
