@@ -159,7 +159,9 @@ void TBootstrapCommon::Init()
         ProfileLog = CreateProfileLog(
             {
                 Configs->Options->ProfileFile,
-                Configs->DiagnosticsConfig->GetProfileLogTimeThreshold()
+                Configs->DiagnosticsConfig->GetProfileLogTimeThreshold(),
+                Configs->DiagnosticsConfig->GetProfileLogMaxFlushRecords(),
+                Configs->DiagnosticsConfig->GetProfileLogMaxFrameFlushRecords()
             },
             Timer,
             BackgroundScheduler);

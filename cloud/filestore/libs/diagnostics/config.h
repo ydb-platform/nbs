@@ -139,6 +139,9 @@ public:
 
     NCloud::NProto::EStatsFetcherType GetStatsFetcherType() const;
 
+    ui64 GetProfileLogMaxFlushRecords() const;
+    ui64 GetProfileLogMaxFrameFlushRecords() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
