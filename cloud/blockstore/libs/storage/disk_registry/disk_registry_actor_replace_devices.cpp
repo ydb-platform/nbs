@@ -36,7 +36,7 @@ void TDiskRegistryActor::ExecuteProcessRecentlyReplaceDevices(
     Y_UNUSED(args);
 
     TDiskRegistryDatabase db(tx.DB);
-    State->ReplaceNextDevicesAfterRestart(ctx.Now(), db);
+    State->ReplaceBrokenDevicesAfterRestart(ctx.Now(), db);
 }
 
 void TDiskRegistryActor::CompleteProcessRecentlyReplaceDevices(
