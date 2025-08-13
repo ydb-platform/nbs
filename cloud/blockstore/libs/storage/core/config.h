@@ -700,6 +700,9 @@ public:
     [[nodiscard]] TDuration GetPartitionBootTimeout() const;
 
     [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
+
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskInitialDelay() const;
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskMaxDelay() const;
 };
 
 ui64 GetAllocationUnit(
