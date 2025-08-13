@@ -84,7 +84,9 @@ private:
 
     TRequestInfoPtr Poisoner;
 
-    TLogTitle LogTitle;
+    TLogTitle LogTitle{TLogTitle::MakeForPartitionNonrepl(
+        PartConfig->GetName(),
+        GetCycleCount())};
 
 public:
     TNonreplicatedPartitionActor(

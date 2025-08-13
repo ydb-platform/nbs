@@ -36,9 +36,6 @@ TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
           DiagnosticsConfig->GetHistogramCounterOptions()))
-    , LogTitle(TLogTitle::CreatePartitionNonreplLog(
-          PartConfig->GetName(),
-          GetCycleCount()))
 {}
 
 TNonreplicatedPartitionActor::~TNonreplicatedPartitionActor() = default;

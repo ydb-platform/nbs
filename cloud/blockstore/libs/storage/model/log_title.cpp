@@ -82,7 +82,7 @@ TLogTitle::TLogTitle(EType type, ui64 startTime)
     , StartTime(startTime)
 {}
 
-TLogTitle TLogTitle::CreatePartitionNonreplLog(TString diskId, ui64 startTime)
+TLogTitle TLogTitle::MakeForPartitionNonrepl(TString diskId, ui64 startTime)
 {
     auto log = TLogTitle(EType::PartitionNonrepl, startTime);
     log.DiskId = std::move(diskId);
@@ -332,10 +332,7 @@ void TLogTitle::RebuildForVolumeProxy()
 
 void TLogTitle::RebuildForPartitionNonrepl()
 {
-    auto builder = TStringBuilder();
-
-    builder << "[";
-    builder << "nrd:" << DiskId;
+    auto builder = TStringBuilder() << "[nrd:" << DiskId;
 
     CachedPrefix = builder;
 }

@@ -194,7 +194,7 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
     Y_UNIT_TEST(GetForPartitionNonrepl)
     {
         TLogTitle logTitle =
-            TLogTitle::CreatePartitionNonreplLog("disk1", GetCycleCount());
+            TLogTitle::MakeForPartitionNonrepl("disk1", GetCycleCount());
 
         UNIT_ASSERT_STRINGS_EQUAL(
             "[nrd:disk1]",
