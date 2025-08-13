@@ -114,31 +114,31 @@ TVector<TResult> CalculateDataParts(TVector<TPoint<TEntry>> points)
 
 // static
 auto TWriteBackCache::TUtil::CalculateDataPartsToRead(
-    const TDeque<TWriteDataEntry*>& entries,
+    const TWriteDataEntryIntervalMap& map,
     ui64 startingFromOffset,
     ui64 length) -> TVector<TWriteDataEntryPart>
 {
     Y_ABORT_UNLESS(length > 0);
 
-    TVector<TPoint<TWriteDataEntry>> points(Reserve(2*entries.size()));
+    TVector<TWriteDataEntryPart> res;
 
-    for (size_t i = 0; i < entries.size(); i++) {
-        const auto* entry = entries[i];
+    map.VisitOverlapping(
+        startingFromOffset,
+        startingFromOffset + length,
+        [&res, offset = startingFromOffset, end = startingFromOffset + length](
+            auto it)
+        {
+            auto ioffset = Max(offset, it->second.Begin);
+            auto iend = Min(end, it->second.End);
+            auto* entry = it->second.Value;
+            res.emplace_back(
+                it->second.Value,
+                ioffset - entry->Offset(),
+                ioffset,
+                iend - ioffset);
+        });
 
-        auto pointBegin = entry->Offset();
-        auto pointEnd = entry->End();
-
-        // intersect with [startingFromOffset, length)
-        pointBegin = Max(pointBegin, startingFromOffset);
-        pointEnd = Min(pointEnd, startingFromOffset + length);
-
-        if (pointBegin < pointEnd) {
-            points.emplace_back(entry, pointBegin, false, i);
-            points.emplace_back(entry, pointEnd, true, i);
-        }
-    }
-
-    return CalculateDataParts<TWriteDataEntryPart>(std::move(points));
+    return res;
 }
 
 // static

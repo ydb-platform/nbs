@@ -67,6 +67,7 @@ private:
     class TUtil;
     struct TPendingOperations;
     class TContiguousWriteDataEntryPartsReader;
+    class TWriteDataEntryIntervalMap;
 };
 
 }   // namespace NCloud::NFileStore::NFuse
