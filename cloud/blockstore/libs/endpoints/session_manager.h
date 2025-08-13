@@ -5,8 +5,6 @@
 #include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-
 #include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/client/throttling.h>
