@@ -18,7 +18,7 @@ def test_unaligned_read():
     data_file = os.path.join(common.output_path(), "data.txt")
     with open(data_file, "w") as f:
         f.write('a' * 10)
-        f.write('b' * 156)
+        f.write('b' * 10)
 
     client, results_path = __init_test()
     client.create("fs0", "test_cloud", "test_folder")
