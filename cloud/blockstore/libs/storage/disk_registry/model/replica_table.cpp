@@ -264,9 +264,7 @@ bool TReplicaTable::IsRecentlyReplacedDevice(
     const TDeviceId& deviceId)
 {
     const auto* diskState = Disks.FindPtr(diskId);
-    if (diskState == nullptr ||
-        MasterDiskToSeqNo.find(diskId) != MasterDiskToSeqNo.end())
-    {
+    if (!diskState) {
         return true;
     }
 
@@ -310,32 +308,21 @@ ui32 TReplicaTable::GetDeviceRow(
     return (*cell)->Row;
 }
 
-ui64 TReplicaTable::GetSeqNo(const TDiskId& diskId, ui32 row)
+THashMap<ui32, ui64> TReplicaTable::GetRowToSeqNo(const TDiskId& diskId)
 {
     auto* diskState = Disks.FindPtr(diskId);
-    if (!diskState || row >= diskState->Cells.size()) {
-        return Max<ui64>();
+    if (!diskState) {
+        return {};
     }
 
-    return diskState->Cells[row].SeqNo;
-}
-
-void TReplicaTable::SetMasterDiskToSeqNo(
-    THashMap<TDiskId, ui64> masterDiskToSeqNo)
-{
-    MasterDiskToSeqNo = std::move(masterDiskToSeqNo);
-}
-
-void TReplicaTable::DeleteItemFromMasterDiskToSeqNo(
-    const TDiskId& diskId,
-    ui64 seqNo)
-{
-    auto it = MasterDiskToSeqNo.find(diskId);
-    if (it == MasterDiskToSeqNo.end() || it->second > seqNo) {
-        return;
+    THashMap<ui32, ui64> rowToSeqNo;
+    for (const auto& cell: diskState->Cells) {
+        if (cell.IsRecentlyReplacedDevice) {
+            rowToSeqNo.emplace(cell.Row, cell.SeqNo);
+        }
     }
 
-    MasterDiskToSeqNo.erase(it);
+    return rowToSeqNo;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
