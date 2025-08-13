@@ -1223,6 +1223,7 @@ void DumpLatency(
 
     HTML (out) {
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
+        BuildResetButton(out, tabletId, "resetTransactionsLatency");
 
         DIV_CLASS_ID(" ", containerId) {
             TAG (TH3) { out << "Transactions"; }
@@ -1651,6 +1652,33 @@ void DumpGroupLatencyTab(
             1000,
             "updateGroupLatencyTable");
     }
+}
+
+void BuildResetButton(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TString& actionName)
+{
+    out << R"(<script>
+    function )"
+        << actionName << R"(() {
+        if (confirm('Are you sure?')) {
+            $.ajax({
+                url: '?action=)"
+        << actionName << R"(&TabletID=)" << ToString(tabletId) << R"(',
+                method: 'POST',
+                success: function() {
+                    location.reload();
+                },
+                error: function(xhr) {
+                    alert('Error: ' + xhr.statusText);
+                }
+            });
+        }
+    }
+    </script>)";
+
+    out << "<button onclick=\"" << actionName << "()\">reset</button>";
 }
 
 }   // namespace NMonitoringUtils

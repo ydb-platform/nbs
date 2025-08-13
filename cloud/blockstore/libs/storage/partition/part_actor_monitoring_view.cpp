@@ -344,4 +344,19 @@ void TPartitionActor::HandleHttpInfo_GetGroupLatencies(
             BSGroupOperationTimeTracker.GetStatJson(GetCycleCount())));
 }
 
+void TPartitionActor::HandleHttpInfo_ResetTransactionsLatency(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    TransactionTimeTracker.ResetStats();
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Reset transaction latensy tracker info",
+        LogTitle.GetWithTime().c_str());
+    SendHttpResponse(ctx, *requestInfo, "reset successfully");
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
