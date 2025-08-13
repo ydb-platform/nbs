@@ -1,6 +1,5 @@
 #include "request_counters.h"
 
-#include "library/cpp/string_utils/quote/quote.h"
 #include "monitoring.h"
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -8,6 +7,7 @@
 #include "cloud/storage/core/libs/diagnostics/histogram_types.h"
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/string_utils/quote/quote.h>
 #include <library/cpp/testing/hook/hook.h>
 #include <library/cpp/testing/unittest/registar.h>
 
