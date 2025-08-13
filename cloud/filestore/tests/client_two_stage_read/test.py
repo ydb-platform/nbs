@@ -4,9 +4,6 @@ import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 
-BLOCK_SIZE = 4 * 1024
-SHARD_SIZE = 1024 * 1024 * 1024
-
 
 def __init_test():
     port = os.getenv("NFS_SERVER_PORT")
