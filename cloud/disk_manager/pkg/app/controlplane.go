@@ -420,7 +420,7 @@ func initControlplane(
 		cellsConfig = &cells_config.CellsConfig{}
 	}
 
-	cellSelector := cells.NewCellSelector(cellsConfig, nbsFactory, resourceStorage)
+	cellSelector := cells.NewCellSelector(cellsConfig)
 
 	err = registerControlplaneTasks(
 		ctx,
