@@ -122,7 +122,7 @@ public:
 
         NThreading::TFuture<IEncryptionClientFactory::TResponse> future;
 
-        if (request->GetDisableEncryption()) {
+        if (request->GetForceDisableEncryption()) {
             future = MakeFuture(TResultOrError{Service});
         } else {
             STORAGE_INFO(
