@@ -572,7 +572,7 @@ TFuture<NProto::TError> TSessionManager::AlterSession(
                 mountMode,
                 mountSeqNumber,
                 headers);
-            }
+        }
     );
 }
 
@@ -618,7 +618,7 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::GetSession(
                 std::move(callContext),
                 socketPath,
                 headers);
-            }
+        }
     );
 }
 

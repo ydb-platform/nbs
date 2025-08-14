@@ -605,7 +605,8 @@ void TRdmaEndpoint::HandleResponse(
     auto self = shared_from_this();
     TaskQueue->ExecuteSimple(
         [
-            =,
+            responseBytes = responseBytes,
+            status = status,
             Log = Log,
             self = std::move(self),
             req = std::move(req)

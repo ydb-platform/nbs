@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
 
@@ -159,7 +160,7 @@ struct TClientEndpoint
 
         if constexpr (std::same_as<TRequest, NProto::TMountVolumeRequest>) {
             request.MutableEncryptionSpec()->Clear();
-            request.SetDisableEncryption(true);
+            request.SetForceDisableEncryption(true);
         }
     }
 

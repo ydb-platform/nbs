@@ -86,7 +86,7 @@ message TMountVolumeRequest
     uint64 FillGeneration = 17;
 
     // Forces MountVolume handler to ignore encryption spec.
-    bool DisableEncryption = 18;
+    bool ForceDisableEncryption = 18;
 }
 
 message TMountVolumeResponse
