@@ -50,7 +50,10 @@ private:
     STFUNC(StateWork);
 
     void SendRequests(const TActorContext& ctx);
-    void SendRequestToFileSystem(const TActorContext& ctx, const TString& fileSystemId, ui32 cookie);
+    void SendRequestToFileSystem(
+        const TActorContext& ctx,
+        const TString& fileSystemId,
+        ui32 cookie);
 
     void HandleGetStorageStatsResponse(
         const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
@@ -105,7 +108,10 @@ void TGetShardStatsActor::SendRequests(const TActorContext& ctx)
     }
 }
 
-void TGetShardStatsActor::SendRequestToFileSystem(const TActorContext& ctx, const TString& fileSystemId, ui32 cookie)
+void TGetShardStatsActor::SendRequestToFileSystem(
+    const TActorContext& ctx,
+    const TString& fileSystemId,
+    ui32 cookie)
 {
     auto request =
         std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
