@@ -67,7 +67,14 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 	}).Return(nil)
 
 	err := task.Run(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
 	require.NoError(t, err)
 }
 
@@ -121,7 +128,14 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 	}).Return(assert.AnError)
 
 	err := task.Run(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
 	require.Equal(t, err, assert.AnError)
 }
 
@@ -152,12 +166,6 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 		cellSelector: cellSelector,
 	}
 
-	cellSelector.On(
-		"PrepareZoneID",
-		mock.Anything,
-		mock.Anything,
-	).Return("zone", nil)
-
 	storage.On(
 		"DeleteDisk",
 		ctx,
@@ -166,6 +174,7 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 		mock.Anything,
 	).Return(&resources.DiskMeta{
 		DeleteTaskID: "toplevel_task_id",
+		ZoneID:       "zone",
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
@@ -173,7 +182,14 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 	nbsClient.On("Delete", ctx, "disk").Return(nil)
 
 	err := task.Cancel(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
 	require.NoError(t, err)
 }
 
@@ -204,12 +220,6 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		cellSelector: cellSelector,
 	}
 
-	cellSelector.On(
-		"PrepareZoneID",
-		mock.Anything,
-		mock.Anything,
-	).Return("zone", nil)
-
 	storage.On(
 		"DeleteDisk",
 		ctx,
@@ -218,13 +228,21 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		mock.Anything,
 	).Return(&resources.DiskMeta{
 		DeleteTaskID: "toplevel_task_id",
+		ZoneID:       "zone",
 	}, nil)
 
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 	nbsClient.On("Delete", ctx, "disk").Return(assert.AnError)
 
 	err := task.Cancel(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
 	require.Equal(t, err, assert.AnError)
 }
 

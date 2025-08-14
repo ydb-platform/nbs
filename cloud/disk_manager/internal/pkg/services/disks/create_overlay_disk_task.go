@@ -164,10 +164,13 @@ func (t *createOverlayDiskTask) Cancel(
 		return nil
 	}
 
-	if len(disk.ZoneID) > 0 {
-		overlayDisk.ZoneId = disk.ZoneID
+	if len(disk.ZoneID) == 0 {
+		// Got empty ZoneID, because disk was not created
+		// or has been already deleted.
+		return t.storage.DiskDeleted(ctx, overlayDisk.DiskId, time.Now())
 	}
 
+	overlayDisk.ZoneId = disk.ZoneID
 	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
 	if err != nil {
 		return err
