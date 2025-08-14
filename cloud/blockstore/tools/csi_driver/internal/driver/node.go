@@ -291,7 +291,8 @@ func (s *nodeService) NodeStageVolume(
 		if s.vmMode {
 			nfsBackend := (req.VolumeContext[backendVolumeContextKey] == "nfs")
 
-			vhostSettings, err := readVhostSettings(req.VolumeContext)
+			var vhostSettings vhostSettings
+			vhostSettings, err = readVhostSettings(req.VolumeContext)
 			if err != nil {
 				return nil, s.statusErrorf(codes.InvalidArgument, "%s", err.Error())
 			}
