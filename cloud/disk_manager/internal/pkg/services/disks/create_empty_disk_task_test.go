@@ -268,7 +268,10 @@ func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
 		state:      &protos.CreateEmptyDiskTaskState{},
 	}
 
+<<<<<<< HEAD
 	// There is no such disk in storage.
+=======
+>>>>>>> add test for Cancelling task for NonExistentDisk
 	storage.On(
 		"DeleteDisk",
 		ctx,
