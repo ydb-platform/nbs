@@ -157,6 +157,12 @@ message TStorageStats
     repeated TShardStats ShardStats = 6001;
 }
 
+enum StatsRequestMode {
+    STATS_REQUEST_MODE_DEFAULT = 0;
+    STATS_REQUEST_MODE_FORCE_FETCH_SHARDS = 1;
+    STATS_REQUEST_MODE_GET_ONLY_SELF = 2;
+};
+
 message TGetStorageStatsRequest
 {
     // Optional request headers.
@@ -175,9 +181,10 @@ message TGetStorageStatsRequest
     // Use cached data, don't require up-to-date stats.
     bool AllowCache = 6;
 
-    // Forces shard stats fetching even if this request is itself sent to a
-    // shard.
-    bool ForceFetchShardStats = 7;
+    // Statitics fetching mode: DEFAULT/FORCE_FETCH_SHARDS/GET_ONLY_SELF.
+    // By default requests to shards do not fetch other shards, requests
+    // to the main tablet fetch all the shards.
+    StatsRequestMode Mode = 7;
 }
 
 message TGetStorageStatsResponse
@@ -581,6 +588,10 @@ message TConfigureShardsRequest
 
     // Make it possible to create directories in shards.
     bool DirectoryCreationInShardsEnabled = 4;
+
+    // Allow shards aggregate statistics from all other shards and sctricly
+    // enforce filesystem size.
+    bool StrictFileSystemSizeEnforcementEnabled = 5;
 }
 
 message TConfigureShardsResponse
@@ -607,6 +618,10 @@ message TConfigureAsShardRequest
 
     // Make it possible to create directories in shards.
     bool DirectoryCreationInShardsEnabled = 5;
+
+    // Allow shards aggregate statistics from all other shards and sctricly
+    // enforce filesystem size.
+    bool StrictFileSystemSizeEnforcementEnabled = 6;
 }
 
 message TConfigureAsShardResponse
@@ -743,6 +758,8 @@ message TGetFileSystemTopologyResponse
     uint32 ShardNo = 3;
 
     bool DirectoryCreationInShardsEnabled = 4;
+
+    bool StrictFileSystemSizeEnforcementEnabled = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
