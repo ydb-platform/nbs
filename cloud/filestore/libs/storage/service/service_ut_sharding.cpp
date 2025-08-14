@@ -4910,7 +4910,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 stats.GetMixedBlocksCount());
 
             request.SetAllowCache(true);
-            request.SetMode(NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+            request.SetMode(
+                NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
             buf.clear();
             google::protobuf::util::MessageToJsonString(request, &buf);
             response = service.ExecuteAction("GetStorageStats", buf);
