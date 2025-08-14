@@ -9,7 +9,25 @@ namespace NCloud::NBlockStore::NCells {
 
 using namespace NThreading;
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
+
+struct TCellCellHostEndpointBootstrap
+    : public ICellHostEndpointBootstrap
+{
+    using ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture;
+    using ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture;
+
+    auto SetupHostGrpcEndpoint(
+        const TBootstrap& boorstrap,
+        const TCellHostConfig& config) -> TGrpcEndpointBootstrapFuture override;
+
+    auto SetupHostRdmaEndpoint(
+        const TBootstrap& boorstrap,
+        const TCellHostConfig& config,
+        IBlockStorePtr client) -> TRdmaEndpointBootstrapFuture override;
+};
 
 auto TCellCellHostEndpointBootstrap::SetupHostGrpcEndpoint(
     const TBootstrap& boorstrap,
@@ -43,11 +61,13 @@ auto TCellCellHostEndpointBootstrap::SetupHostRdmaEndpoint(
         rdmaEndpoint);
 }
 
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 ICellHostEndpointBootstrapPtr CreateCellHostEndpointBootstrap()
 {
     return std::make_shared<TCellCellHostEndpointBootstrap>();
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NCells

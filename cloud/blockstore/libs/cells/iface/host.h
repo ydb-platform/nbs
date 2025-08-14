@@ -1,7 +1,6 @@
 #pragma once
 
 #include "config.h"
-#include "endpoint_bootstrap.h"
 #include "host_endpoint.h"
 
 #include <cloud/blockstore/libs/client/public.h>
@@ -17,19 +16,13 @@ namespace NCloud::NBlockStore::NCells {
 
 struct ICellHost
 {
-    const TCellHostConfig Config;
+    using TStartResult = TResultOrError<TCellHostConfig>;
 
-    explicit ICellHost(TCellHostConfig config)
-        : Config(std::move(config))
-    {}
-
-    const TCellHostConfig& GetConfig() const
-    {
-        return Config;
-    }
-
-    virtual NThreading::TFuture<void> Start() = 0;
+    virtual NThreading::TFuture<TStartResult> Start() = 0;
     virtual NThreading::TFuture<void> Stop() = 0;
+
+    [[nodiscard]] virtual bool IsReady(
+        NProto::ECellDataTransport transport) const = 0;
 
     [[nodiscard]] virtual TResultOrError<TCellHostEndpoint> GetHostEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig,
@@ -38,11 +31,5 @@ struct ICellHost
 
     virtual ~ICellHost() = default;
 };
-
-using ICellHostPtr = std::shared_ptr<ICellHost>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-ICellHostPtr CreateHost(TCellHostConfig config, TBootstrap boorstrap);
 
 }   // namespace NCloud::NBlockStore::NCells

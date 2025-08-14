@@ -1,6 +1,7 @@
 #pragma once
 
-#include <cloud/blockstore/libs/cells/iface/bootstrap.h>
+#include "endpoint_bootstrap.h"
+
 #include <cloud/blockstore/libs/cells/iface/cells.h>
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
 #include <cloud/blockstore/libs/client/public.h>
@@ -13,7 +14,7 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDescribeVolumeFuture DescribeVolume(
+NThreading::TFuture<NProto::TDescribeVolumeResponse> DescribeVolume(
     const NProto::TDescribeVolumeRequest& request,
     IBlockStorePtr service,
     const TCellHostEndpointsByCellId& endpoints,

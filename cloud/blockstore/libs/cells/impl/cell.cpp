@@ -1,5 +1,8 @@
 #include "cell.h"
 
+#include "endpoint_bootstrap.h"
+
+#include <cloud/blockstore/libs/cells/impl/host.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/multiclient_endpoint.h>
@@ -16,6 +19,80 @@
 #include <util/random/shuffle.h>
 
 namespace NCloud::NBlockStore::NCells {
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TCell
+    : public ICell
+    , public std::enable_shared_from_this<TCell>
+{
+private:
+    const TBootstrap Bootstrap;
+    const TCellConfig Config;
+
+    TAdaptiveLock Lock;
+
+    THashMap<TString, ICellHostPtr> ActiveHosts;
+    THashMap<TString, ICellHostPtr> ActivatingHosts;
+    THashSet<ICellHostPtr> DeactivatingHosts;
+    TVector<TString> UnusedHosts;
+
+public:
+    TCell(TBootstrap bootstrap, TCellConfig config);
+
+    [[nodiscard]] TResultOrError<TCellHostEndpoint> GetCellClient(
+        const NClient::TClientAppConfigPtr& clientConfig) override
+    {
+        return PickHost(clientConfig);
+    }
+
+    [[nodiscard]] TCellHostEndpoints GetCellClients(
+        const NClient::TClientAppConfigPtr& clientConfig) override
+    {
+        return PickHosts(Config.GetDescribeVolumeHostCount(), clientConfig);
+    }
+
+    [[nodiscard]] THashMap<TString, ICellHostPtr> GetActiveHosts() const
+    {
+        with_lock (Lock) {
+            return ActiveHosts;
+        }
+    }
+
+    [[nodiscard]] THashMap<TString, ICellHostPtr> GetActivatingHosts() const
+    {
+        with_lock (Lock) {
+            return ActivatingHosts;
+        }
+    }
+
+    [[nodiscard]]THashSet<ICellHostPtr>  GetDeactivatingHosts() const
+    {
+        with_lock(Lock) {
+            return DeactivatingHosts;
+        }
+    }
+
+    void Start() override
+    {
+        AdjustActiveHostsToMinConnections();
+    }
+
+    void Stop() override
+    {
+    }
+
+private:
+    TResultOrError<TCellHostEndpoint> PickHost(
+        const NClient::TClientAppConfigPtr& clientConfig);
+    TCellHostEndpoints PickHosts(
+        ui32 count,
+        const NClient::TClientAppConfigPtr& clientConfig);
+
+    void AdjustActiveHostsToMinConnections();
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -71,7 +148,7 @@ TCellHostEndpoints TCell::PickHosts(
             auto result = it->second->GetHostEndpoint(
                 clientConfig,
                 NProto::CELL_DATA_TRANSPORT_GRPC,
-                false);
+                false);   // allowGrpcFallback
             if (!HasError(result.GetError())) {
                 auto endpoint = result.ExtractResult();
                 res.emplace_back(endpoint);
@@ -107,19 +184,33 @@ void TCell::AdjustActiveHostsToMinConnections()
     for (const auto& host: hostsToActivate) {
         auto future = host->Start();
         future.Subscribe(
-            [=] (const auto& ) {
-                if (auto self = weakPtr.lock(); self) {
-                    with_lock(self->Lock) {
-                        auto fqdn = host->GetConfig().GetFqdn();
-                        self->ActiveHosts.emplace(
-                            fqdn,
-                            self->ActivatingHosts.find(fqdn)->second);
-                        self->ActivatingHosts.erase(fqdn);
-                    }
+            [=] (const auto& future) {
+                auto self = weakPtr.lock();
+                if (!self) {
+                    return;
+                }
+
+                auto [config, error] = future.GetValue();
+                // XXX
+                Y_ABORT_UNLESS(
+                    !HasError(error),
+                    "Unable to start host: %s",
+                    FormatError(error).c_str());
+
+                with_lock(self->Lock) {
+                    auto fqdn = config.GetFqdn();
+                    self->ActiveHosts.emplace(
+                        fqdn,
+                        self->ActivatingHosts.find(fqdn)->second);
+                    self->ActivatingHosts.erase(fqdn);
                 }
         });
     }
 }
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 ICellPtr CreateCell(TBootstrap boorstrap, TCellConfig config)
 {

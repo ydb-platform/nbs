@@ -1,5 +1,7 @@
 #include "cell.h"
 
+#include "endpoint_bootstrap.h"
+
 #include <cloud/blockstore/config/cells.pb.h>
 #include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/libs/client/client.h>
@@ -173,7 +175,7 @@ Y_UNIT_TEST_SUITE(TCellTest)
         boorstrap.EndpointsSetup =
             std::make_shared<TTestHostEndpointsSetupProvider>(hosts);
 
-        auto cell = std::make_shared<TCell>(boorstrap,config);
+        auto cell = CreateCell(boorstrap, config);
 
         auto clientConfig = std::make_shared<NClient::TClientAppConfig>();
 
@@ -191,14 +193,14 @@ Y_UNIT_TEST_SUITE(TCellTest)
             9766,
             false);
 
-        hosts[cell->GetActivatingHosts().begin()->first].GrpcSetupPromise.SetValue(grpc);
+        hosts["h1"].GrpcSetupPromise.SetValue(grpc);
 
         {
             auto result = cell->GetCellClient(clientConfig);
 
             UNIT_ASSERT_C(
                 !HasError(result.GetError()),
-                "Should not fail");
+                FormatError(result.GetError()));
         }
     }
 
@@ -221,7 +223,7 @@ Y_UNIT_TEST_SUITE(TCellTest)
         boorstrap.EndpointsSetup =
             std::make_shared<TTestHostEndpointsSetupProvider>(hosts);
 
-        auto cell = std::make_shared<TCell>(boorstrap,config);
+        auto cell = CreateCell(boorstrap, config);
         cell->Start();
 
         auto clientConfig = std::make_shared<NClient::TClientAppConfig>();

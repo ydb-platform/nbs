@@ -5,11 +5,14 @@
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/multiclient_endpoint.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -25,7 +28,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestBlockStore
+struct TTestBlockStoreBase
     : public IBlockStore
 {
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
@@ -58,6 +61,24 @@ struct TTestBlockStore
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestBlockStore: TTestBlockStoreBase
+{
+    THashSet<TString> Disks;
+
+    TFuture<NProto::TDescribeVolumeResponse> DescribeVolume(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TDescribeVolumeRequest> request) final
+    {
+        Y_UNUSED(callContext);
+        NProto::TDescribeVolumeResponse response;
+        if (!Disks.contains(request->GetDiskId())) {
+            *response.MutableError() = MakeError(E_NOT_FOUND);
+        }
+
+        return MakeFuture(response);
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,22 +87,47 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
 {
     Y_UNIT_TEST(ShouldNotReturnDescribeFutureIfNoCellsConfigures)
     {
-        TBootstrap boorstrap;
-
-        auto cells = std::make_shared<TCellManager>(
+        auto cells = CreateCellManager(
             std::make_shared<TCellsConfig>(),
-            boorstrap);
-
-        auto optionalFuture = cells->DescribeVolume(
-            "disk",
-            {},
-            std::make_shared<TTestBlockStore>(),
-            {}
+            CreateWallClockTimer(),
+            CreateSchedulerStub(),
+            CreateLoggingService("console"),
+            CreateMonitoringServiceStub(),
+            CreateTraceSerializerStub(),
+            CreateServerStatsStub(),
+            nullptr   // rdmaClient
         );
 
-        UNIT_ASSERT_C(
-            !optionalFuture.has_value(),
-            "future should not be returned");
+        auto blockStore = std::make_shared<TTestBlockStore>();
+        blockStore->Disks.insert("vol0");
+
+        {
+            auto future = cells->DescribeVolume(
+                MakeIntrusive<TCallContext>(),
+                "vol0",
+                {},   // headers
+                blockStore,
+                {}   // clientConfig
+            );
+
+            auto response = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        }
+
+        {
+            auto future = cells->DescribeVolume(
+                MakeIntrusive<TCallContext>(),
+                "unknown",
+                {},   // headers
+                blockStore,
+                {}   // clientConfig
+            );
+
+            auto response = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_NOT_FOUND,
+                response.GetError().GetCode());
+        }
     }
 }
 

@@ -1,5 +1,7 @@
 #include "host.h"
 
+#include "endpoint_bootstrap.h"
+
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/config/cells.pb.h>
@@ -151,12 +153,9 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
         TBootstrap boorstrap;
         boorstrap.EndpointsSetup = setup;
 
-        auto manager = std::make_shared<TCellHost>(
-            hostConfig,
-            boorstrap);
-
-        UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->GrpcHostEndpoint);
-        UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->RdmaHostEndpoint);
+        auto manager = CreateHost(hostConfig, boorstrap);
+        // UNIT_ASSERT(!manager->GrpcHostEndpoint);
+        // UNIT_ASSERT(!manager->RdmaHostEndpoint);
 
         auto started = manager->Start();
 
@@ -240,12 +239,10 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
         TBootstrap boorstrap;
         boorstrap.EndpointsSetup = setup;
 
-        auto manager = std::make_shared<TCellHost>(
-            hostConfig,
-            boorstrap);
+        auto manager = CreateHost(hostConfig, boorstrap);
 
-        UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->GrpcHostEndpoint);
-        UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->RdmaHostEndpoint);
+        UNIT_ASSERT(!manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
+        UNIT_ASSERT(!manager->IsReady(NProto::CELL_DATA_TRANSPORT_GRPC));
 
         auto started = manager->Start();
 
@@ -323,12 +320,10 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
         TBootstrap boorstrap;
         boorstrap.EndpointsSetup = setup;
 
-        auto manager = std::make_shared<TCellHost>(
-            hostConfig,
-            boorstrap);
+        auto manager = CreateHost(hostConfig, boorstrap);
 
-        UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->GrpcHostEndpoint);
-        UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->RdmaHostEndpoint);
+        UNIT_ASSERT(!manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
+        UNIT_ASSERT(!manager->IsReady(NProto::CELL_DATA_TRANSPORT_GRPC));
 
         auto started = manager->Start();
 

@@ -11,6 +11,74 @@ namespace NCloud::NBlockStore::NCells {
 
 using namespace NThreading;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TCellHost
+    : public ICellHost
+    , public std::enable_shared_from_this<TCellHost>
+{
+    enum class EState
+    {
+        INACTIVE,
+        ACTIVATING,
+        ACTIVE,
+        DEACTIVATING
+    };
+
+    const TCellHostConfig Config;
+    const TBootstrap Args;
+
+    NClient::IMultiClientEndpointPtr GrpcHostEndpoint;
+    IBlockStorePtr RdmaHostEndpoint;
+
+    EState GrpcState = EState::INACTIVE;
+    EState RdmaState = EState::INACTIVE;
+
+    TAdaptiveLock StateLock;
+    EState State = EState::INACTIVE;
+
+    TPromise<TStartResult> StartPromise = NewPromise<TStartResult>();
+    TPromise<void> StopPromise = NewPromise<void>();
+
+    ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture RdmaFuture;
+
+    TCellHost(
+            TCellHostConfig config,
+            TBootstrap boorstrap)
+        : Config(std::move(config))
+        , Args(std::move(boorstrap))
+    {}
+
+    TFuture<TStartResult> Start() final;
+    TFuture<void> Stop() final;
+
+    [[nodiscard]] TResultOrError<TCellHostEndpoint> GetHostEndpoint(
+        const NClient::TClientAppConfigPtr& clientConfig,
+        std::optional<NProto::ECellDataTransport> transport,
+        bool allowGrpcFallback) final;
+
+    [[nodiscard]] TCellHostConfig GetConfig() const
+    {
+        return Config;
+    }
+
+    bool IsReady(NProto::ECellDataTransport transport) const final;
+
+private:
+    bool SetupRdmaIfNeeded();
+
+    void HandleRdmaSetupResult(
+        const TResultOrError<IBlockStorePtr>& result);
+
+    [[nodiscard]] TCellHostEndpoint CreateGrpcEndpoint(
+        const NClient::TClientAppConfigPtr& clientConfig);
+
+    [[nodiscard]] TCellHostEndpoint CreateRdmaEndpoint(
+        const NClient::TClientAppConfigPtr& clientConfig);
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TResultOrError<TCellHostEndpoint> TCellHost::GetHostEndpoint(
@@ -18,11 +86,11 @@ TResultOrError<TCellHostEndpoint> TCellHost::GetHostEndpoint(
     std::optional<NProto::ECellDataTransport> desiredTransport,
     bool allowGrpcFallback)
 {
-    auto transport =
-        desiredTransport.has_value() ? *desiredTransport : Config.GetTransport();
+    auto transport = desiredTransport.value_or(Config.GetTransport());
+
     Y_ENSURE(transport != NProto::CELL_DATA_TRANSPORT_UNSET);
 
-    with_lock(StateLock) {
+    with_lock (StateLock) {
         if (!IsReady(transport)) {
             if (transport != NProto::CELL_DATA_TRANSPORT_GRPC) {
                 if (allowGrpcFallback && IsReady(NProto::CELL_DATA_TRANSPORT_GRPC)) {
@@ -49,11 +117,9 @@ TResultOrError<TCellHostEndpoint> TCellHost::GetHostEndpoint(
                             static_cast<int>(transport));
             }
         }
-
-        return MakeError(
-            E_REJECTED,
-            TStringBuilder() << "No transport available");
     }
+
+    return MakeError(E_REJECTED, "No transport available");
 }
 
 bool TCellHost::IsReady(NProto::ECellDataTransport transport) const
@@ -71,7 +137,7 @@ bool TCellHost::IsReady(NProto::ECellDataTransport transport) const
     return false;
 }
 
-TFuture<void> TCellHost::Start()
+auto TCellHost::Start() -> TFuture<TStartResult>
 {
     auto target = Config.GetTransport();
     Y_ENSURE(
@@ -91,7 +157,7 @@ TFuture<void> TCellHost::Start()
                 if (auto self = weak.lock(); self) {
                     return self->Start();
                 }
-                return MakeFuture();
+                return MakeFuture(TStartResult(MakeError(E_CANCELLED)));
             });
         }
         State = EState::ACTIVATING;
@@ -114,7 +180,7 @@ TFuture<void> TCellHost::Start()
                     }
                 });
             }
-            self->StartPromise.SetValue();
+            self->StartPromise.SetValue(Config);
         }
     });
     return StartPromise.GetFuture();
@@ -190,6 +256,8 @@ TCellHostEndpoint TCellHost::CreateRdmaEndpoint(
         service,
         RdmaHostEndpoint};
 }
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

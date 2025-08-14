@@ -1,10 +1,8 @@
 #pragma once
 
-#include <cloud/blockstore/libs/cells/iface/bootstrap.h>
 #include <cloud/blockstore/libs/cells/iface/cell.h>
 #include <cloud/blockstore/libs/cells/iface/cells.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
-#include <cloud/blockstore/libs/cells/iface/endpoint_bootstrap.h>
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -29,35 +27,14 @@ using namespace NMonitoring;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCellManager
-    : public ICellManager
-{
-    const TBootstrap Bootstrap;
-
-    THashMap<TString, ICellPtr> Cells;
-
-    TCellManager(TCellsConfigPtr config, TBootstrap bootstrap);
-
-    void Start() override;
-    void Stop() override;
-
-    TResultOrError<TCellHostEndpoint> GetCellEndpoint(
-        const TString& cellId,
-        const NClient::TClientAppConfigPtr& clientConfig) override;
-
-    [[nodiscard]] std::optional<TDescribeVolumeFuture> DescribeVolume(
-        const TString& diskId,
-        const NProto::THeaders& headers,
-        const IBlockStorePtr& localService,
-        const NProto::TClientConfig& clientConfig) override;
-
-    void OutputHtml(IOutputStream& out, const IMonHttpRequest& request);
-
-private:
-    [[nodiscard]] TCellHostEndpointsByCellId GetCellsEndpoints(
-        const NClient::TClientAppConfigPtr& clientConfig);
-};
-
-////////////////////////////////////////////////////////////////////////////////
+ICellManagerPtr CreateCellManager(
+    TCellsConfigPtr config,
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    ITraceSerializerPtr traceSerializer,
+    IServerStatsPtr serverStats,
+    NRdma::IClientPtr rdmaClient);
 
 }   // namespace NCloud::NBlockStore::NCells

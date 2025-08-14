@@ -1,5 +1,8 @@
-#include "describe_volume.h"
 #include "cells.h"
+
+#include "cell.h"
+#include "describe_volume.h"
+#include "endpoint_bootstrap.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -8,6 +11,7 @@
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/server/config.h>
+#include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
@@ -25,6 +29,41 @@
 namespace NCloud::NBlockStore::NCells {
 
 using namespace NMonitoring;
+using namespace NThreading;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TCellManager
+    : public ICellManager
+{
+    const TBootstrap Bootstrap;
+
+    THashMap<TString, ICellPtr> Cells;
+
+    TCellManager(TCellsConfigPtr config, TBootstrap bootstrap);
+
+    void Start() override;
+    void Stop() override;
+
+    TResultOrError<TCellHostEndpoint> GetCellEndpoint(
+        const TString& cellId,
+        const NClient::TClientAppConfigPtr& clientConfig) override;
+
+    [[nodiscard]] TFuture<NProto::TDescribeVolumeResponse> DescribeVolume(
+        TCallContextPtr callContext,
+        const TString& diskId,
+        const NProto::THeaders& headers,
+        IBlockStorePtr localService,
+        const NProto::TClientConfig& clientConfig) override;
+
+    void OutputHtml(IOutputStream& out, const IMonHttpRequest& request);
+
+private:
+    [[nodiscard]] TCellHostEndpointsByCellId GetCellsEndpoints(
+        const NClient::TClientAppConfigPtr& clientConfig);
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -52,10 +91,8 @@ TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
     : ICellManager(std::move(config))
     , Bootstrap(std::move(bootstrap))
 {
-    for (const auto& cell: Config->GetCells()) {
-        Cells.emplace(
-            cell.first,
-            CreateCell(Bootstrap, cell.second));
+    for (const auto& [cellId, config]: Config->GetCells()) {
+        Cells.emplace(cellId, CreateCell(Bootstrap, config));
     }
 
     if (bootstrap.Monitoring) {
@@ -94,25 +131,33 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     const NClient::TClientAppConfigPtr& clientConfig)
 {
     TCellHostEndpointsByCellId res;
-    for (auto& cell: Cells) {
-        auto clientList = cell.second->GetCellClients(clientConfig);
+    for (auto& [cellId, cellPtr]: Cells) {
+        auto clientList = cellPtr->GetCellClients(clientConfig);
         if (clientList.empty()) {
             continue;
         }
-        res.emplace(cell.first, std::move(clientList));
+        res.emplace(cellId, std::move(clientList));
     }
     return res;
 }
 
-[[nodiscard]] std::optional<TDescribeVolumeFuture> TCellManager::DescribeVolume(
+TFuture<NProto::TDescribeVolumeResponse> TCellManager::DescribeVolume(
+    TCallContextPtr callContext,
     const TString& diskId,
     const NProto::THeaders& headers,
-    const IBlockStorePtr& service,
+    IBlockStorePtr service,
     const NProto::TClientConfig& clientConfig)
 {
-    auto configuredCellCount = Config->GetCells().size();
+    NProto::TDescribeVolumeRequest request;
+    request.MutableHeaders()->CopyFrom(headers);
+    request.SetDiskId(diskId);
+
+    const auto configuredCellCount = Config->GetCells().size();
     if (configuredCellCount == 0) {
-        return {};
+        return service->DescribeVolume(
+            std::move(callContext),
+            std::make_shared<NProto::TDescribeVolumeRequest>(
+                std::move(request)));
     }
 
     NProto::TClientAppConfig clientAppConfig;
@@ -124,10 +169,6 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     auto cellHostEndpoints = GetCellsEndpoints(appConfig);
 
     bool hasUnavailableCells = cellHostEndpoints.size() < configuredCellCount;
-
-    NProto::TDescribeVolumeRequest request;
-    request.MutableHeaders()->CopyFrom(headers);
-    request.SetDiskId(diskId);
 
     return NCloud::NBlockStore::NCells::DescribeVolume(
         request,
@@ -146,6 +187,8 @@ void TCellManager::OutputHtml(
     Y_UNUSED(request);
 }
 
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 ICellManagerPtr CreateCellManager(
@@ -159,7 +202,8 @@ ICellManagerPtr CreateCellManager(
     NRdma::IClientPtr rdmaClient)
 {
     auto result = NClient::CreateMultiHostClient(
-        std::make_shared<NClient::TClientAppConfig>(config->GetGrpcClientConfig()),
+        std::make_shared<NClient::TClientAppConfig>(
+            config->GetGrpcClientConfig()),
         timer,
         scheduler,
         logging,

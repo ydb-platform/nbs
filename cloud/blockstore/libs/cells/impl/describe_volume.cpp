@@ -23,12 +23,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCellHostInfo {
+struct TCellHostInfo
+{
     TString Fqdn;
     IBlockStorePtr Client;
 };
 
-struct TCell {
+struct TCell
+{
     TAdaptiveLock Lock;
     NProto::TError FatalError;
     NProto::TError RetriableError;
@@ -84,11 +86,11 @@ struct TMultiCellDescribeHandler
 
 public:
     TMultiCellDescribeHandler(
-            ISchedulerPtr scheduler,
-            TLog log,
-            TCellByCellId cells,
-            NProto::TDescribeVolumeRequest request,
-            bool hasUnavailableCells);
+        ISchedulerPtr scheduler,
+        TLog log,
+        TCellByCellId cells,
+        NProto::TDescribeVolumeRequest request,
+        bool hasUnavailableCells);
 
     void Start(TDuration describeTimeout);
     void HandleResponse(NProto::TDescribeVolumeResponse response);
@@ -123,17 +125,16 @@ void TMultiCellDescribeHandler::Start(TDuration describeTimeout)
     auto weak = weak_from_this();
     for (auto& [cellId, cell]: Cells) {
         for (auto& host: cell.Hosts) {
-
             if (!cellId.empty()) {
                 STORAGE_DEBUG(
                     TStringBuilder()
-                        << "Send remote Describe Request to " << host.Fqdn
-                        << " for volume " << Request.GetDiskId());
+                    << "Send remote Describe Request to " << host.Fqdn
+                    << " for volume " << Request.GetDiskId());
             } else {
                 STORAGE_DEBUG(
                     TStringBuilder()
-                        << "Send local Describe Request for volume "
-                        << Request.GetDiskId());
+                    << "Send local Describe Request for volume "
+                    << Request.GetDiskId());
             }
 
             auto handler = std::make_shared<TDescribeResponseHandler>(
@@ -152,9 +153,7 @@ void TMultiCellDescribeHandler::Start(TDuration describeTimeout)
     auto self = shared_from_this();
     Scheduler->Schedule(
         TInstant::Now() + describeTimeout,
-        [self=std::move(self)]() {
-            self->HandleTimeout();
-        });
+        [self = std::move(self)]() { self->HandleTimeout(); });
 }
 
 void TMultiCellDescribeHandler::Reply(NProto::TDescribeVolumeResponse response)
@@ -281,7 +280,7 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDescribeVolumeFuture DescribeVolume(
+NThreading::TFuture<NProto::TDescribeVolumeResponse> DescribeVolume(
     const NProto::TDescribeVolumeRequest& request,
     IBlockStorePtr service,
     const TCellHostEndpointsByCellId& endpoints,

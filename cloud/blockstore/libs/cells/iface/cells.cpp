@@ -24,17 +24,24 @@ struct TCellManagerStub
         return MakeError(E_NOT_IMPLEMENTED, "not implemented");
     }
 
-    [[nodiscard]] std::optional<TDescribeVolumeFuture> DescribeVolume(
+    [[nodiscard]] NThreading::TFuture<NProto::TDescribeVolumeResponse>
+    DescribeVolume(
+        TCallContextPtr callContext,
         const TString& diskId,
         const NProto::THeaders& headers,
-        const IBlockStorePtr& localService,
+        IBlockStorePtr localService,
         const NProto::TClientConfig& clientConfig) override
     {
-        Y_UNUSED(diskId);
-        Y_UNUSED(headers);
-        Y_UNUSED(localService);
         Y_UNUSED(clientConfig);
-        return {};
+
+        auto describeRequest =
+            std::make_shared<NProto::TDescribeVolumeRequest>();
+        describeRequest->MutableHeaders()->CopyFrom(headers);
+        describeRequest->SetDiskId(diskId);
+
+        return localService->DescribeVolume(
+            std::move(callContext),
+            std::move(describeRequest));
     }
 
     void Start() override

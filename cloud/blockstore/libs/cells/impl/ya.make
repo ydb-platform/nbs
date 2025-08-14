@@ -6,7 +6,6 @@ SRCS(
     describe_volume.cpp
     endpoint_bootstrap.cpp
     host.cpp
-    remote_storage.cpp
 )
 
 PEERDIR(
