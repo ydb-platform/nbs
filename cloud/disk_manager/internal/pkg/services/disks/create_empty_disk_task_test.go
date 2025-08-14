@@ -242,3 +242,51 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 	)
 	require.Equal(t, err, assert.AnError)
 }
+
+func TestCancelCreateEmptyDiskTaskForNonExistentDisk(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient := nbs_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+
+	params := &protos.CreateDiskParams{
+		BlocksCount: 123,
+		Disk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		BlockSize: 456,
+		Kind:      types.DiskKind_DISK_KIND_SSD,
+		CloudId:   "cloud",
+		FolderId:  "folder",
+	}
+	task := &createEmptyDiskTask{
+		storage:    storage,
+		nbsFactory: nbsFactory,
+		params:     params,
+		state:      &protos.CreateEmptyDiskTaskState{},
+	}
+
+	storage.On(
+		"DeleteDisk",
+		ctx,
+		"disk",
+		"toplevel_task_id",
+		mock.Anything,
+	).Return(&resources.DiskMeta{
+		DeleteTaskID: "toplevel_task_id",
+		ZoneID:       "", // There was no such disk in storage.
+	}, nil)
+	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
+
+	err := task.Cancel(ctx, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+	)
+	require.NoError(t, err)
+}
