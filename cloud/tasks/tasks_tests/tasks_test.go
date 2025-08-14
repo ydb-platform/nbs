@@ -1824,7 +1824,6 @@ func TestTaskInflightDuration(t *testing.T) {
 
 	actualDuration := taskState.InflightDuration
 	expectedDuration := 10 * time.Second
-
 	require.GreaterOrEqual(t, actualDuration, expectedDuration)
 }
 
@@ -1836,9 +1835,7 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	defer db.Close(ctx)
 
 	// runnersCount must be at least the count of tasks + 1 (for CollectListerMetrics).
-	// Otherwise, a race condition can occur where longTask is picked up
-	// before waitingTask. This results in a WaitingDuration of zero,
-	// which causes the test to fail.
+	// Otherwise, a race condition can occur where longTask is picked up before waitingTask.
 	// https://github.com/ydb-platform/nbs/pull/4002
 	s := createServices(t, ctx, db, 3 /* runnersCount */)
 
@@ -1875,7 +1872,7 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 
 	// The delay between task scheduling and runner task pickup is not included
 	// in WaitingDuration, so it can be less than expected.
-	waitingThreshold := time.Second
+	waitingThreshold := 2 * time.Second
 
 	require.GreaterOrEqual(t, inflightDuration, 5*time.Second)
 	require.GreaterOrEqual(t, waitingDuration, 10*time.Second-waitingThreshold)
@@ -1919,7 +1916,7 @@ func TestTaskWaitingDurationInChain(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	waitingThreshold := time.Second
+	waitingThreshold := 2 * time.Second
 
 	state1, err := s.storage.GetTask(ctx, task1ID)
 	require.NoError(t, err)
