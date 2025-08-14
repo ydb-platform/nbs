@@ -199,7 +199,6 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 	nbsFactory := nbs_mocks.NewFactoryMock()
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
-	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	params := &protos.CreateDiskParams{
 		BlocksCount: 123,
@@ -213,11 +212,10 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		FolderId:  "folder",
 	}
 	task := &createEmptyDiskTask{
-		storage:      storage,
-		nbsFactory:   nbsFactory,
-		params:       params,
-		state:        &protos.CreateEmptyDiskTaskState{},
-		cellSelector: cellSelector,
+		storage:    storage,
+		nbsFactory: nbsFactory,
+		params:     params,
+		state:      &protos.CreateEmptyDiskTaskState{},
 	}
 
 	storage.On(
@@ -241,7 +239,6 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		nbsFactory,
 		nbsClient,
 		execCtx,
-		cellSelector,
 	)
 	require.Equal(t, err, assert.AnError)
 }
