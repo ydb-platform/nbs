@@ -110,7 +110,16 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 	}).Return(nil)
 
 	err := task.Run(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		scheduler,
+		poolService,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
 	require.NoError(t, err)
 }
 
@@ -181,7 +190,15 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testin
 	)
 
 	err := task.Run(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		scheduler,
+		poolService,
+		nbsFactory,
+		execCtx,
+		cellSelector,
+	)
 	require.Error(t, err)
 }
 
@@ -252,7 +269,15 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 	)
 
 	err := task.Run(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		scheduler,
+		poolService,
+		nbsFactory,
+		execCtx,
+		cellSelector,
+	)
 	require.Error(t, err)
 }
 
@@ -282,20 +307,13 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 	}
 
 	task := &createOverlayDiskTask{
-		storage:      storage,
-		scheduler:    scheduler,
-		poolService:  poolService,
-		nbsFactory:   nbsFactory,
-		request:      request,
-		state:        &protos.CreateOverlayDiskTaskState{},
-		cellSelector: cellSelector,
+		storage:     storage,
+		scheduler:   scheduler,
+		poolService: poolService,
+		nbsFactory:  nbsFactory,
+		request:     request,
+		state:       &protos.CreateOverlayDiskTaskState{},
 	}
-
-	cellSelector.On(
-		"PrepareZoneID",
-		mock.Anything,
-		mock.Anything,
-	).Return("zone", nil)
 
 	storage.On(
 		"DeleteDisk",
@@ -305,6 +323,7 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 		mock.Anything,
 	).Return(&resources.DiskMeta{
 		DeleteTaskID: "toplevel_task_id",
+		ZoneID:       "zone",
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
@@ -323,6 +342,15 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 	scheduler.On("WaitTask", ctx, execCtx, "release").Return(nil, nil)
 
 	err := task.Cancel(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		scheduler,
+		poolService,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
 	require.NoError(t, err)
 }
