@@ -644,7 +644,7 @@ private:
         ui64 cookie,
         TCallContextPtr callContext);
 
-    const TString& GetDiskId();
+    const TString& GetDiskId() const;
 
 private:
     STFUNC(StateBoot);

@@ -423,7 +423,7 @@ ui64 TVolumeActor::GetBlocksCount() const
     return State ? State->GetBlocksCount() : 0;
 }
 
-const TString& TVolumeActor::GetDiskId()
+const TString& TVolumeActor::GetDiskId() const
 {
     return State->GetConfig().GetDiskId();
 }
