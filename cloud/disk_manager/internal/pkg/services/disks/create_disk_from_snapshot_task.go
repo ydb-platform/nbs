@@ -55,7 +55,6 @@ func (t *createDiskFromSnapshotTask) Run(
 ) error {
 
 	params := t.request.Params
-
 	selfTaskID := execCtx.GetTaskID()
 
 	zoneID := params.Disk.ZoneId
