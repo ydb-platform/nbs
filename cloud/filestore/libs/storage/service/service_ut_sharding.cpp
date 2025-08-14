@@ -2254,13 +2254,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         auto data2 = GenerateValidateData(512_KB);
         service.WriteData(headers, fsConfig.FsId, nodeId2, handle2, 0, data2);
 
-        auto testFileSystemTopology = [&](const ui32 shardNo, const TString& shardId) {
+        auto testFileSystemTopology =
+            [&](const ui32 shardNo, const TString& shardId)
+        {
             NProtoPrivate::TGetFileSystemTopologyRequest request;
             request.SetFileSystemId(shardId);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
-            const auto actionResponse = service.ExecuteAction("getfilesystemtopology", buf);
+            const auto actionResponse =
+                service.ExecuteAction("getfilesystemtopology", buf);
             NProtoPrivate::TGetFileSystemTopologyResponse response;
             auto status = google::protobuf::util::JsonStringToMessage(
                 actionResponse->Record.GetOutput(),
@@ -2393,7 +2396,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 stats.GetUsedBlocksCount());
         }
 
-        // Shards in FORCE_FETCH_SHARDS mode fetch statistics from all the shards.
+        // Shards in FORCE_FETCH_SHARDS mode fetch statistics from all the
+        // shards.
         {
             NProtoPrivate::TGetStorageStatsResponse response;
             getFileSystemStats(
