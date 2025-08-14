@@ -1662,19 +1662,17 @@ void BuildResetButton(
     out << R"(<script>
     function )"
         << actionName << R"(() {
-        if (confirm('Are you sure?')) {
-            $.ajax({
-                url: '?action=)"
+        $.ajax({
+            url: '?action=)"
         << actionName << R"(&TabletID=)" << ToString(tabletId) << R"(',
-                method: 'POST',
-                success: function() {
-                    location.reload();
-                },
-                error: function(xhr) {
-                    alert('Error: ' + xhr.statusText);
-                }
-            });
-        }
+            method: 'POST',
+            success: function() {
+                location.reload();
+            },
+            error: function(xhr) {
+                alert('Error: ' + xhr.statusText);
+            }
+        });
     }
     </script>)";
 
