@@ -68,6 +68,7 @@ def start(argv):
 
 
 def start_instance(args, inst_index):
+    logger.info("start instance with index = {}".format(inst_index))
     virtio = _get_vm_virtio(args)
     mount_paths = get_mount_paths(inst_index=inst_index)
 
@@ -76,7 +77,9 @@ def start_instance(args, inst_index):
         vhost_socket = os.getenv(
             env_with_guest_index("NFS_VHOST_SOCKET", inst_index))
     elif virtio == "blk":
-        vhost_socket = os.getenv("NBS_VHOST_SOCKET")
+        vhost_socket = os.getenv("NBS_{}_VHOST_SOCKET".format(inst_index))
+        if vhost_socket == None:
+            vhost_socket = os.getenv("NBS_VHOST_SOCKET")
 
     use_virtiofs_server = _get_vm_use_virtiofs_server(args)
 
@@ -128,7 +131,7 @@ def start_instance(args, inst_index):
             ssh("sudo mkdir -p {} && sudo ln -s {} {}".format(
                 os.path.dirname(real_path), path, real_path))
 
-    _prepare_test_environment(ssh, virtio)
+    _prepare_test_environment(ssh, virtio, inst_index)
 
     if args.invoke_test:
         recipe_set_env("TEST_COMMAND_WRAPPER",
@@ -337,8 +340,10 @@ def _get_qemu_options(args):
     return args.qemu_options.split()
 
 
-def _get_nbs_device_path():
-    disk_id = os.getenv("NBS_DISK_ID")
+def _get_nbs_device_path(instance_idx):
+    disk_id = os.getenv("NBS_{}_DISK_ID".format(instance_idx))
+    if disk_id == None:
+        disk_id = os.getenv("NBS_DISK_ID")
     if not disk_id:
         raise QemuKvmRecipeException("Cannot determine nbs disk id")
 
@@ -368,7 +373,7 @@ def _get_vm_use_virtiofs_server(args):
     return _str_to_bool(args.use_virtiofs_server)
 
 
-def _prepare_test_environment(ssh, virtio):
+def _prepare_test_environment(ssh, virtio, instance_idx):
     # Workaround for DISKMAN-63
     if "TMPDIR" in os.environ:
         ssh("sudo mkdir -m a=rwx -p {}".format(os.environ['TMPDIR']))
@@ -391,9 +396,12 @@ def _prepare_test_environment(ssh, virtio):
     elif virtio == "blk":
         # Use virtio-blk device
         ssh("sudo lsblk")
-        vm_env["NBS_DEVICE_PATH"] = _get_nbs_device_path()
+        vm_env["NBS_DEVICE_PATH"] = _get_nbs_device_path(instance_idx)
         library.python.testing.recipe.set_env(
-            "NBS_DEVICE_PATH", _get_nbs_device_path())
+            "NBS_DEVICE_PATH", _get_nbs_device_path(instance_idx))
+        vm_env["NBS_{}_DEVICE_PATH".format(instance_idx)] = _get_nbs_device_path(instance_idx)
+        library.python.testing.recipe.set_env(
+            "NBS_{}_DEVICE_PATH".format(instance_idx), _get_nbs_device_path(instance_idx))
     elif virtio == "nfs":
         # Mount NFS share
         mount_path = "/mnt/nfs0"
