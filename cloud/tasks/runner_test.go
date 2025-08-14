@@ -22,8 +22,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	regularTaskId = "taskId"
-	pingerTaskId  = "pingerTaskId"
+	regularTaskId          = "taskId"
+	inflightDurationTaskId = "inflightDurationTaskId"
 )
 
 type mockCallback struct {
@@ -109,51 +109,60 @@ func matchesState(
 	t *testing.T,
 	expected storage.TaskState,
 ) func(storage.TaskState) bool {
-	threshold := 20 * time.Millisecond
 
 	modifiedAtLowBound := time.Now()
 	return func(actual storage.TaskState) bool {
-		if expected.ModifiedAt.After(time.Time{}) {
-			require.WithinDuration(
-				t, actual.ModifiedAt, expected.ModifiedAt, threshold,
-			)
-		} else {
-			modifiedAtHighBound := time.Now()
-			require.WithinRange(
-				t, actual.ModifiedAt, modifiedAtLowBound, modifiedAtHighBound,
-			)
-		}
+		modifiedAtHighBound := time.Now()
+		require.WithinRange(
+			t, actual.ModifiedAt, modifiedAtLowBound, modifiedAtHighBound,
+		)
+		actual.ModifiedAt = expected.ModifiedAt
 
 		require.Contains(t, actual.ErrorMessage, expected.ErrorMessage)
 		expected.ErrorMessage = ""
 		actual.ErrorMessage = ""
 
-		if actual.ID == pingerTaskId {
-			// ping takes <1ms to complete
-			require.InDelta(
+		if actual.ID == inflightDurationTaskId {
+			require.GreaterOrEqual(
 				t,
-				expected.InflightDuration,
 				actual.InflightDuration,
-				float64(threshold),
+				expected.InflightDuration,
 			)
 		}
-
 		actual.InflightDuration = expected.InflightDuration
-		actual.ModifiedAt = expected.ModifiedAt
+
 		require.Equal(t, expected, actual)
 
 		return true
 	}
 }
 
-func matchesStateArguments(
+////////////////////////////////////////////////////////////////////////////////
+
+func matchesStateCallback(
 	t *testing.T,
 	expected storage.TaskState,
 ) func(mock.Arguments) {
+
 	callback := matchesState(t, expected)
 	return func(args mock.Arguments) {
 		state := args[1].(storage.TaskState)
 		callback(state)
+	}
+}
+
+func toCallback(function func()) func(mock.Arguments) {
+	return func(mock.Arguments) { function() }
+}
+
+// mergeCallbacks merges several callbacks into one
+// as testify/mock accepts only one callback.
+// https://github.com/stretchr/testify/blob/a53be35c3b0cfcd5189cffcfd75df60ea581104c/mock/mock.go#L186
+func mergeCallbacks(callbacks ...func(mock.Arguments)) func(mock.Arguments) {
+	return func(args mock.Arguments) {
+		for _, callback := range callbacks {
+			callback(args)
+		}
 	}
 }
 
@@ -256,12 +265,14 @@ func TestExecutionContextAddTaskDependency(t *testing.T) {
 	ctx := newContext()
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
+	inflightDuration := 42 * time.Second
 
 	execCtx := newExecutionContext(
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:           "taskId1",
+			ID:           inflightDurationTaskId,
+			ModifiedAt:   time.Now().Add(-inflightDuration),
 			Dependencies: common.NewStringSet(),
 		},
 		time.Hour,
@@ -269,13 +280,14 @@ func TestExecutionContextAddTaskDependency(t *testing.T) {
 	)
 
 	state := storage.TaskState{
-		ID:           "taskId1",
-		Dependencies: common.NewStringSet("taskId2"),
+		ID:               inflightDurationTaskId,
+		Dependencies:     common.NewStringSet("dependencyTaskId"),
+		InflightDuration: inflightDuration,
 	}
 	task.On("Save").Return(state.State, nil)
 	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
 
-	err := execCtx.AddTaskDependency(ctx, "taskId2")
+	err := execCtx.AddTaskDependency(ctx, "dependencyTaskId")
 	mock.AssertExpectationsForObjects(t, task, taskStorage)
 	require.NoError(t, err)
 }
@@ -361,6 +373,42 @@ func TestExecutionContextShouldNotBeHangingByDefault(t *testing.T) {
 	)
 
 	require.Equal(t, false, execCtx.IsHanging())
+}
+
+func TestExecutionContextFinish(t *testing.T) {
+	ctx := newContext()
+	taskStorage := mocks.NewStorageMock()
+	task := NewTaskMock()
+	inflightDuration := 42 * time.Second
+
+	execCtx := newExecutionContext(
+		task,
+		taskStorage, storage.TaskState{
+			ID:         inflightDurationTaskId,
+			ModifiedAt: time.Now().Add(-inflightDuration),
+		},
+		time.Hour,
+		2,
+	)
+
+	state := storage.TaskState{
+		ID:               inflightDurationTaskId,
+		Status:           storage.TaskStatusFinished,
+		InflightDuration: inflightDuration,
+	}
+	task.On("Save").Return(state.State, nil)
+	taskStorage.On(
+		"UpdateTask", ctx, mock.MatchedBy(matchesState(t, state)),
+	).Return(state, nil).Once()
+
+	err := execCtx.FinishWithPreparation(ctx, nil /* preparation */)
+	require.NoError(t, err)
+
+	// Check for idempotency
+	err = execCtx.FinishWithPreparation(ctx, nil)
+	require.NoError(t, err)
+
+	mock.AssertExpectationsForObjects(t, task, taskStorage)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1129,26 +1177,18 @@ func TestTaskPingerOnce(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:         pingerTaskId,
-			ModifiedAt: time.Now(),
+			ID: regularTaskId,
 		},
 		time.Hour,
 		2,
 	)
 
 	state := storage.TaskState{
-		ID:               pingerTaskId,
-		ModifiedAt:       time.Now(),
-		InflightDuration: 0,
+		ID: regularTaskId,
 	}
-	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
-
-	go func() {
-		// Cancel runner loop on first iteration.
-		// TODO: This is bad.
-		<-time.After(pingPeriod / 2)
-		cancel()
-	}()
+	taskStorage.On(
+		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
+	).Run(toCallback(cancel)).Return(state, nil)
 
 	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
@@ -1166,7 +1206,7 @@ func TestTaskPingerImmediateFailure(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:         pingerTaskId,
+			ID:         regularTaskId,
 			ModifiedAt: time.Now(),
 		},
 		time.Hour,
@@ -1174,19 +1214,13 @@ func TestTaskPingerImmediateFailure(t *testing.T) {
 	)
 
 	state := storage.TaskState{
-		ID:               pingerTaskId,
-		ModifiedAt:       time.Now(),
-		InflightDuration: 0,
+		ID:         regularTaskId,
+		ModifiedAt: time.Now(),
 	}
-	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, assert.AnError)
+	taskStorage.On(
+		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
+	).Run(toCallback(cancel)).Return(state, assert.AnError)
 	callback.On("Run")
-
-	go func() {
-		// Cancel runner loop on first iteration.
-		// TODO: This is bad.
-		<-time.After(pingPeriod / 2)
-		cancel()
-	}()
 
 	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
@@ -1204,33 +1238,21 @@ func TestTaskPingerTwice(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:         pingerTaskId,
-			ModifiedAt: time.Now(),
+			ID: regularTaskId,
 		},
 		time.Hour,
 		2,
 	)
 
-	state1 := storage.TaskState{
-		ID:               pingerTaskId,
-		ModifiedAt:       time.Now(),
-		InflightDuration: 0,
+	state := storage.TaskState{
+		ID: regularTaskId,
 	}
-	taskStorage.On("UpdateTask", mock.Anything, mock.Anything).Run(matchesStateArguments(t, state1)).Return(state1, nil).Once()
-
-	state2 := storage.TaskState{
-		ID:               pingerTaskId,
-		ModifiedAt:       time.Now().Add(pingPeriod),
-		InflightDuration: pingPeriod,
-	}
-	taskStorage.On("UpdateTask", mock.Anything, mock.Anything).Run(matchesStateArguments(t, state2)).Return(state2, nil).Once()
-
-	go func() {
-		// Cancel runner loop on second iteration.
-		// TODO: This is bad.
-		<-time.After(pingPeriod + pingPeriod/2)
-		cancel()
-	}()
+	taskStorage.On(
+		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
+	).Return(state, nil).Once()
+	taskStorage.On(
+		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
+	).Run(toCallback(cancel)).Return(state, nil).Once()
 
 	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
@@ -1248,35 +1270,23 @@ func TestTaskPingerFailureOnSecondIteration(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:         pingerTaskId,
-			ModifiedAt: time.Now(),
+			ID: regularTaskId,
 		},
 		time.Hour,
 		2,
 	)
 
-	state1 := storage.TaskState{
-		ID:               pingerTaskId,
-		ModifiedAt:       time.Now(),
-		InflightDuration: 0,
+	state := storage.TaskState{
+		ID: regularTaskId,
 	}
-	taskStorage.On("UpdateTask", mock.Anything, mock.Anything).Run(matchesStateArguments(t, state1)).Return(state1, nil).Once()
-
-	state2 := storage.TaskState{
-		ID:               pingerTaskId,
-		ModifiedAt:       time.Now().Add(pingPeriod),
-		InflightDuration: pingPeriod,
-	}
-	taskStorage.On("UpdateTask", mock.Anything, mock.Anything).Run(matchesStateArguments(t, state2)).Return(state2, assert.AnError).Once()
+	taskStorage.On(
+		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
+	).Return(state, nil).Once()
+	taskStorage.On(
+		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
+	).Run(toCallback(cancel)).Return(state, assert.AnError).Once()
 
 	callback.On("Run")
-
-	go func() {
-		// Cancel runner loop on second iteration.
-		// TODO: This is bad.
-		<-time.After(pingPeriod + pingPeriod/2)
-		cancel()
-	}()
 
 	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
@@ -1294,33 +1304,31 @@ func TestTaskPingerCancelledContextInUpdateTask(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:         pingerTaskId,
-			ModifiedAt: time.Now(),
+			ID: regularTaskId,
 		},
 		time.Hour,
 		2,
 	)
 
 	state := storage.TaskState{
-		ID:               pingerTaskId,
-		ModifiedAt:       time.Now(),
-		InflightDuration: 0,
+		ID: regularTaskId,
 	}
-	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Run(func(args mock.Arguments) {
-		cancel()
-	}).Return(state, context.Canceled).Once()
+	taskStorage.On(
+		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
+	).Run(toCallback(cancel)).Return(state, context.Canceled).Once()
 
 	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
 }
 
-func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
+func TestTaskPingerAccumulatesInflightDuration(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
 	pingTimeout := 100 * time.Second
 	pingsCount := 5
 	initialInflightDuration := 42 * time.Second
 
 	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
 	callback := &mockCallback{}
@@ -1329,7 +1337,7 @@ func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
 		task,
 		taskStorage,
 		storage.TaskState{
-			ID:               pingerTaskId,
+			ID:               inflightDurationTaskId,
 			ModifiedAt:       time.Now(),
 			InflightDuration: initialInflightDuration,
 		},
@@ -1340,22 +1348,20 @@ func TestTaskPingerAccumulatesTimeInRunningState(t *testing.T) {
 	for i := 0; i < pingsCount; i++ {
 		spent := time.Duration(i) * pingPeriod
 		state := storage.TaskState{
-			ID:               pingerTaskId,
+			ID:               inflightDurationTaskId,
 			ModifiedAt:       time.Now().Add(spent),
 			InflightDuration: initialInflightDuration + spent,
 		}
 
+		callback := matchesStateCallback(t, state)
+		if i == pingsCount-1 {
+			callback = mergeCallbacks(callback, toCallback(cancel))
+		}
+
 		taskStorage.On(
 			"UpdateTask", mock.Anything, mock.Anything,
-		).Run(matchesStateArguments(t, state)).Return(state, nil).Once()
+		).Run(callback).Return(state, nil).Once()
 	}
-
-	go func() {
-		// Cancel runner loop after all tasks are finished.
-		// TODO: This is bad.
-		<-time.After(time.Duration(pingsCount-1)*pingPeriod + pingPeriod/2)
-		cancel()
-	}()
 
 	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	// There is no need to additionally ensure order,
@@ -1450,10 +1456,14 @@ func TestTryExecutingTaskFailToPing(t *testing.T) {
 
 	runnerMetrics.On("OnExecutionStarted", mock.Anything)
 	runner.On("executeTask", mock.Anything, mock.Anything, task).Run(func(args mock.Arguments) {
-		// Wait for pingPeriod, so that the first ping has had a chance to run.
-		// TODO: This is bad.
-		<-time.After(pingPeriod)
-		require.Error(t, args.Get(0).(context.Context).Err())
+		ctx := args.Get(0).(context.Context)
+
+		timeout := 5 * time.Second
+		select {
+		case <-ctx.Done():
+		case <-time.After(timeout):
+			require.FailNow(t, "expected context to cancel")
+		}
 	})
 	runnerMetrics.On("OnExecutionStopped")
 
@@ -1496,24 +1506,20 @@ func TestRunnerLoopSucceeds(t *testing.T) {
 	taskStorage := mocks.NewStorageMock()
 	registry := NewRegistry()
 	runner := &mockRunner{}
+	onCloseCallback := &mockCallback{}
 	handle := taskHandle{
 		task: storage.TaskInfo{
 			ID: regularTaskId,
 		},
-		onClose: func() {},
+		onClose: onCloseCallback.Run,
 	}
 
 	runner.On("receiveTask", mock.Anything).Return(handle, nil)
 	runner.On("lockAndExecuteTask", ctx, handle.task).Return(nil)
+	onCloseCallback.On("Run").Run(toCallback(cancel))
 
-	go func() {
-		// Cancel runner loop on some iteration.
-		// TODO: This is bad.
-		<-time.After(time.Second)
-		cancel()
-	}()
 	runnerLoop(ctx, registry, runner)
-	mock.AssertExpectationsForObjects(t, taskStorage, runner)
+	mock.AssertExpectationsForObjects(t, taskStorage, runner, onCloseCallback)
 }
 
 func testListerLoop(
