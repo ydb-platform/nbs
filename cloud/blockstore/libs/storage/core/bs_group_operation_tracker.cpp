@@ -1,4 +1,4 @@
-#include "group_operation_tracker.h"
+#include "bs_group_operation_tracker.h"
 
 #include <cloud/storage/core/libs/common/format.h>
 
@@ -31,7 +31,7 @@ const TString& GetTimeBucketName(TDuration duration)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString TGroupOperationTimeTracker::TKey::GetHtmlPrefix() const
+TString TBSGroupOperationTimeTracker::TKey::GetHtmlPrefix() const
 {
     TStringBuilder builder;
 
@@ -50,7 +50,7 @@ TString TGroupOperationTimeTracker::TKey::GetHtmlPrefix() const
     return builder;
 }
 
-ui64 TGroupOperationTimeTracker::THash::operator()(const TKey& key) const
+ui64 TBSGroupOperationTimeTracker::THash::operator()(const TKey& key) const
 {
     return MultiHash(
         static_cast<size_t>(key.Status),
@@ -60,24 +60,24 @@ ui64 TGroupOperationTimeTracker::THash::operator()(const TKey& key) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGroupOperationTimeTracker::OnStarted(
+void TBSGroupOperationTimeTracker::OnStarted(
     ui64 operationId,
     ui32 groupId,
-    EGroupOperationType operationType,
+    EOperationType operationType,
     ui64 startTime)
 {
     TString operationName;
 
     switch (operationType) {
-        case EGroupOperationType::Read: {
+        case EOperationType::Read: {
             operationName = "Read";
             break;
         }
-        case EGroupOperationType::Write: {
+        case EOperationType::Write: {
             operationName = "Write";
             break;
         }
-        case EGroupOperationType::Patch: {
+        case EOperationType::Patch: {
             operationName = "Patch";
             break;
         }
@@ -100,7 +100,7 @@ void TGroupOperationTimeTracker::OnStarted(
             .GroupId = groupId});
 }
 
-void TGroupOperationTimeTracker::OnFinished(ui64 operationId, ui64 finishTime)
+void TBSGroupOperationTimeTracker::OnFinished(ui64 operationId, ui64 finishTime)
 {
     auto it = Inflight.find(operationId);
     if (it == Inflight.end()) {
@@ -124,7 +124,7 @@ void TGroupOperationTimeTracker::OnFinished(ui64 operationId, ui64 finishTime)
     Inflight.erase(operationId);
 }
 
-TString TGroupOperationTimeTracker::GetStatJson(ui64 nowCycles) const
+TString TBSGroupOperationTimeTracker::GetStatJson(ui64 nowCycles) const
 {
     NJson::TJsonValue allStat(NJson::EJsonValueType::JSON_MAP);
 
@@ -181,8 +181,8 @@ TString TGroupOperationTimeTracker::GetStatJson(ui64 nowCycles) const
     return out.Str();
 }
 
-TVector<TGroupOperationTimeTracker::TBucketInfo>
-TGroupOperationTimeTracker::GetTimeBuckets() const
+TVector<TBSGroupOperationTimeTracker::TBucketInfo>
+TBSGroupOperationTimeTracker::GetTimeBuckets() const
 {
     TVector<TBucketInfo> result;
     TDuration last;

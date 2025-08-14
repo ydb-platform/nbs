@@ -41,7 +41,7 @@ private:
     const ui32 GroupId;
     TChildLogTitle LogTitle;
 
-    const ui64 BlobOperationId;
+    const ui64 BSGroupOperationId;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -60,7 +60,7 @@ public:
         TDuration longRunningThreshold,
         ui32 groupId,
         TChildLogTitle logTitle,
-        ui64 blobOperationId);
+        ui64 bsGroupOperationId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -102,7 +102,7 @@ TWriteBlobActor::TWriteBlobActor(
         TDuration longRunningThreshold,
         ui32 groupId,
         TChildLogTitle logTitle,
-        ui64 blobOperationId)
+        ui64 bsGroupOperationId)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -116,7 +116,7 @@ TWriteBlobActor::TWriteBlobActor(
     , Request(std::move(request))
     , GroupId(groupId)
     , LogTitle(std::move(logTitle))
-    , BlobOperationId(blobOperationId)
+    , BSGroupOperationId(bsGroupOperationId)
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -205,7 +205,7 @@ void TWriteBlobActor::NotifyCompleted(
     request->StorageStatusFlags = StorageStatusFlags;
     request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
     request->RequestTime = ResponseReceived - RequestSent;
-    request->BlobOperationId = BlobOperationId;
+    request->BSGroupOperationId = BSGroupOperationId;
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }
@@ -395,7 +395,7 @@ void TPartitionActor::HandleWriteBlob(
     ui32 channel = msg->BlobId.Channel();
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->BlobId.Generation());
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
-    ui64 blobOperationId = BlobOperationId++;
+    ui64 bsGroupOperationId = BSGroupOperationId++;
 
     State->EnqueueIORequest(
         channel,
@@ -412,10 +412,10 @@ void TPartitionActor::HandleWriteBlob(
                 PartitionConfig.GetStorageMediaKind()),
             groupId,
             LogTitle.GetChild(GetCycleCount()),
-            blobOperationId),
-        blobOperationId,
+            bsGroupOperationId),
+        bsGroupOperationId,
         groupId,
-        TGroupOperationTimeTracker::EGroupOperationType::Write);
+        TBSGroupOperationTimeTracker::EOperationType::Write);
 
     ProcessIOQueue(ctx, channel);
 }
@@ -426,7 +426,7 @@ void TPartitionActor::HandleWriteBlobCompleted(
 {
     const auto* msg = ev->Get();
 
-    GroupOperationTimeTracker.OnFinished(msg->BlobOperationId, GetCycleCount());
+    GroupOperationTimeTracker.OnFinished(msg->BSGroupOperationId, GetCycleCount());
 
     Actors.Erase(ev->Sender);
 

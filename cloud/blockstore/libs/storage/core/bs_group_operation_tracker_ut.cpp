@@ -1,4 +1,4 @@
-#include "group_operation_tracker.h"
+#include "bs_group_operation_tracker.h"
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/writer/json_value.h>
@@ -29,30 +29,30 @@ Y_UNIT_TEST_SUITE(TGroupRequestTrackerTest)
 {
     Y_UNIT_TEST(ShouldCountInflight)
     {
-        TGroupOperationTimeTracker timeTracker;
+        TBSGroupOperationTimeTracker timeTracker;
 
         timeTracker.OnStarted(
             1,
             1,
-            TGroupOperationTimeTracker::EGroupOperationType::Write,
+            TBSGroupOperationTimeTracker::EOperationType::Write,
             0);
 
         timeTracker.OnStarted(
             2,
             2,
-            TGroupOperationTimeTracker::EGroupOperationType::Read,
+            TBSGroupOperationTimeTracker::EOperationType::Read,
             1000 * GetCyclesPerMillisecond());
 
         timeTracker.OnStarted(
             3,
             2,
-            TGroupOperationTimeTracker::EGroupOperationType::Read,
+            TBSGroupOperationTimeTracker::EOperationType::Read,
             2000 * GetCyclesPerMillisecond());
 
         timeTracker.OnStarted(
             4,
             4,
-            TGroupOperationTimeTracker::EGroupOperationType::Patch,
+            TBSGroupOperationTimeTracker::EOperationType::Patch,
             1000 * GetCyclesPerMillisecond());
 
         auto json = timeTracker.GetStatJson(2000 * GetCyclesPerMillisecond());
@@ -72,27 +72,27 @@ Y_UNIT_TEST_SUITE(TGroupRequestTrackerTest)
 
     Y_UNIT_TEST(ShouldCountFinished)
     {
-        TGroupOperationTimeTracker timeTracker;
+        TBSGroupOperationTimeTracker timeTracker;
 
         timeTracker.OnStarted(
             1,
             1,
-            TGroupOperationTimeTracker::EGroupOperationType::Read,
+            TBSGroupOperationTimeTracker::EOperationType::Read,
             0);
         timeTracker.OnStarted(
             2,
             2,
-            TGroupOperationTimeTracker::EGroupOperationType::Write,
+            TBSGroupOperationTimeTracker::EOperationType::Write,
             1000 * GetCyclesPerMillisecond());
         timeTracker.OnStarted(
             3,
             2,
-            TGroupOperationTimeTracker::EGroupOperationType::Patch,
+            TBSGroupOperationTimeTracker::EOperationType::Patch,
             1000 * GetCyclesPerMillisecond());
         timeTracker.OnStarted(
             4,
             2,
-            TGroupOperationTimeTracker::EGroupOperationType::Write,
+            TBSGroupOperationTimeTracker::EOperationType::Write,
             2000 * GetCyclesPerMillisecond());
 
         timeTracker.OnFinished(1, 3000 * GetCyclesPerMillisecond());

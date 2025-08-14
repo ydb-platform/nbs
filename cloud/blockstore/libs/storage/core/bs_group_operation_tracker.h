@@ -12,7 +12,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGroupOperationTimeTracker
+class TBSGroupOperationTimeTracker
 {
 public:
     enum class EStatus
@@ -21,7 +21,7 @@ public:
         Finished,
     };
 
-    enum class EGroupOperationType
+    enum class EOperationType
     {
         Read,
         Write,
@@ -74,12 +74,12 @@ private:
     THashMap<TKey, TTimeHistogram, THash> Histograms;
 
 public:
-    explicit TGroupOperationTimeTracker() = default;
+    explicit TBSGroupOperationTimeTracker() = default;
 
     void OnStarted(
         ui64 operationId,
         ui32 groupId,
-        EGroupOperationType operationType,
+        EOperationType operationType,
         ui64 startTime);
 
     void OnFinished(ui64 operationId, ui64 finishTime);

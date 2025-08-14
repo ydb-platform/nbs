@@ -333,7 +333,7 @@ void BuildPartitionTabs(IOutputStream& out)
         << "<li><a href='#Channels' data-toggle='tab'>Channels</a>" << "</li>"
         << "<li><a href='#Latency' data-toggle='tab'>Latency</a>" << "</li>"
         << "<li><a href='#Index' data-toggle='tab'>Index</a>" << "</li>"
-        << "<li><a href='#GroupLatency' data-toggle='tab'>GroupLatency</a>" << "</li>" << "</ul>";
+        << "<li><a href='#BSGroupLatency' data-toggle='tab'>BSGroupLatency</a>" << "</li>" << "</ul>";
 }
 
 void GeneratePartitionTabsJs(IOutputStream& out)
@@ -1491,7 +1491,7 @@ void AddGroupLatencyCSS(IOutputStream& out)
 
 void DumpLatencyForOperations(
     IOutputStream& out,
-    const TGroupOperationTimeTracker& tracker)
+    const TBSGroupOperationTimeTracker& tracker)
 {
     const auto timeBuckets = tracker.GetTimeBuckets();
 
@@ -1530,7 +1530,7 @@ void DumpLatencyForOperations(
 void DumpGroupLatencyTab(
     IOutputStream& out,
     ui64 tabletId,
-    const TGroupOperationTimeTracker& tracker)
+    const TBSGroupOperationTimeTracker& tracker)
 {
     const TString containerId = "group-latency-container";
     const TString toggleId = "group-latency-auto-refresh-toggle";

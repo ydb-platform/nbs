@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
-#include <cloud/blockstore/libs/storage/core/group_operation_tracker.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
@@ -264,9 +264,10 @@ struct TScanDiskState
 struct TQueuedRequest
 {
     NActors::IActorPtr Actor;
-    ui64 BlopOperationId;
-    ui32 Group;
-    TGroupOperationTimeTracker::EGroupOperationType OperationType;
+    ui64 BlopOperationId = 0;
+    ui32 Group = 0;
+    TBSGroupOperationTimeTracker::EOperationType OperationType =
+        TBSGroupOperationTimeTracker::EOperationType::Read;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -466,9 +467,9 @@ public:
     void EnqueueIORequest(
         ui32 channel,
         NActors::IActorPtr requestActor,
-        ui64 blobOperationId,
+        ui64 bsGroupOperationId,
         ui32 group,
-        TGroupOperationTimeTracker::EGroupOperationType operationType);
+        TBSGroupOperationTimeTracker::EOperationType operationType);
     std::optional<TQueuedRequest> DequeueIORequest(ui32 channel);
     void CompleteIORequest(ui32 channel);
     ui32 GetIORequestsInFlight() const;

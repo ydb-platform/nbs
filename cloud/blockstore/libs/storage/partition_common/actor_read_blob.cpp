@@ -22,7 +22,7 @@ TReadBlobActor::TReadBlobActor(
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
-        ui64 blobOperationId)
+        ui64 bsGroupOperationId)
     : TLongRunningOperationCompanion(
           partitionActorId,
           volumeActorId,
@@ -36,7 +36,7 @@ TReadBlobActor::TReadBlobActor(
     , ShouldCalculateChecksums(shouldCalculateChecksums)
     , StorageAccessMode(storageAccessMode)
     , Request(std::move(request))
-    , BlobOperationId(blobOperationId)
+    , BSGroupOperationId(bsGroupOperationId)
 {}
 
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
@@ -106,7 +106,7 @@ void TReadBlobActor::NotifyCompleted(
     request->BytesCount = Request->BlobOffsets.size() * BlockSize;
     request->RequestTime = ResponseReceived - RequestSent;
     request->GroupId = Request->GroupId;
-    request->BlobOperationId = BlobOperationId;
+    request->BSGroupOperationId = BSGroupOperationId;
 
     if (DeadlineSeen) {
         request->DeadlineSeen = true;

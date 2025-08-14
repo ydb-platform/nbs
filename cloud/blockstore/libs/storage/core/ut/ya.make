@@ -8,7 +8,7 @@ SRCS(
     compaction_policy_ut.cpp
     config_ut.cpp
     disk_counters_ut.cpp
-    group_operation_tracker_ut.cpp
+    bs_group_operation_tracker_ut.cpp
     manually_preempted_volumes_ut.cpp
     metrics_ut.cpp
     mount_token_ut.cpp
