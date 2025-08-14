@@ -76,7 +76,7 @@ Y_UNIT_TEST_SUITE(TNvmeManagerTest)
 {
     // TODO(sharpeye): to call GetSerialNumber (ioctl + NVME_IDENTIFY_CTRLR), "ya make"
     // must be run as "root" or have cap_sys_admin privileges.
-    /*
+    //*
     Y_UNIT_TEST_F(ShouldGetSerialNumber, TFixture)
     {
         auto [sn, error] = NvmeManager->GetSerialNumber(DevicePath);
@@ -85,7 +85,7 @@ Y_UNIT_TEST_SUITE(TNvmeManagerTest)
             error.GetCode(),
             FormatError(error));
         UNIT_ASSERT(sn);
-    }*/
+    }//*/
 
     Y_UNIT_TEST_F(ShouldBeSsd, TFixture)
     {
