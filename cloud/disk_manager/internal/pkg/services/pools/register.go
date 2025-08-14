@@ -106,7 +106,8 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("pools.ReleaseBaseDisk", func() tasks.Task {
 		return &releaseBaseDiskTask{
-			storage: storage,
+			storage:    storage,
+			nbsFactory: nbsFactory,
 		}
 	})
 	if err != nil {

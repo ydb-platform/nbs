@@ -53,3 +53,8 @@ func DiskKindFromString(kind string) (types.DiskKind, error) {
 		)
 	}
 }
+
+func IsLocalDiskKind(kind types.DiskKind) bool {
+	return kind == types.DiskKind_DISK_KIND_SSD_LOCAL ||
+		kind == types.DiskKind_DISK_KIND_HDD_LOCAL
+}

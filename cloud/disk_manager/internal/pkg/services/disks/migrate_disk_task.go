@@ -10,6 +10,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
@@ -199,7 +200,12 @@ func (t *migrateDiskTask) start(
 
 	t.logInfo(ctx, execCtx, "starting")
 
-	err := t.setEstimate(ctx, execCtx)
+	err := t.ensureNonLocalDisk(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = t.setEstimate(ctx, execCtx)
 	if err != nil {
 		return err
 	}
@@ -294,6 +300,27 @@ func (t *migrateDiskTask) start(
 	}
 
 	t.logInfo(ctx, execCtx, "started")
+	return nil
+}
+
+func (t *migrateDiskTask) ensureNonLocalDisk(ctx context.Context) error {
+	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
+	if err != nil {
+		return err
+	}
+
+	params, err := client.Describe(ctx, t.request.Disk.DiskId)
+	if err != nil {
+		return err
+	}
+
+	if common.IsLocalDiskKind(params.Kind) {
+		return errors.NewNonCancellableErrorf(
+			"cannot migrate local disk %v",
+			t.request.Disk.DiskId,
+		)
+	}
+
 	return nil
 }
 
