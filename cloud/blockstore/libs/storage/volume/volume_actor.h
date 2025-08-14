@@ -207,7 +207,6 @@ private:
     const EVolumeStartMode StartMode;
     TLogTitle LogTitle;
     TVolumeThrottlerLogger ThrottlerLogger;
-    TString DiskId;
 
     std::unique_ptr<TVolumeState> State;
     bool StateLoadFinished = false;
@@ -644,6 +643,8 @@ private:
         const NActors::TActorId& sender,
         ui64 cookie,
         TCallContextPtr callContext);
+
+    const TString& GetDiskId();
 
 private:
     STFUNC(StateBoot);

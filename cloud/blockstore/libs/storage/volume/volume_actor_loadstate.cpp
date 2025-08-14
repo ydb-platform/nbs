@@ -54,7 +54,6 @@ bool TVolumeActor::PrepareLoadState(
     };
 
     if (args.Meta) {
-        DiskId = args.Meta->GetConfig().GetDiskId();
         LogTitle.SetDiskId(args.Meta->GetConfig().GetDiskId());
     }
 

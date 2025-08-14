@@ -606,7 +606,7 @@ void TVolumeActor::ExecuteUpdateDevices(
 
     Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
     if (Config->GetAllowLiteDiskReallocations()) {
-        auto differencer = CreateLiteReallocationDifferencer(DiskId);
+        auto differencer = CreateLiteReallocationDifferencer(GetDiskId());
         args.LiteReallocation =
             differencer && differencer->Compare(oldMeta, newMeta);
     }

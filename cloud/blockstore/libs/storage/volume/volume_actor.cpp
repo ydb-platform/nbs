@@ -91,7 +91,6 @@ TVolumeActor::TVolumeActor(
                   static_cast<TVolumeThrottlingPolicy::EOpType>(opType),
                   time);
           })
-    , DiskId(std::move(diskId))
     , TransactionTimeTracker(VolumeTransactions)
 {}
 
@@ -422,6 +421,11 @@ NRdma::IClientPtr TVolumeActor::GetRdmaClient() const
 ui64 TVolumeActor::GetBlocksCount() const
 {
     return State ? State->GetBlocksCount() : 0;
+}
+
+const TString& TVolumeActor::GetDiskId()
+{
+    return State->GetConfig().GetDiskId();
 }
 
 void TVolumeActor::OnServicePipeDisconnect(
