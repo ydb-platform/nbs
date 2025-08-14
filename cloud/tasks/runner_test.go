@@ -155,7 +155,7 @@ func toCallback(function func()) func(mock.Arguments) {
 	return func(mock.Arguments) { function() }
 }
 
-// mergeCallbacks allows to merge several callbacks into one
+// mergeCallbacks merges several callbacks into one
 // as testify/mock accepts only one callback.
 // https://github.com/stretchr/testify/blob/a53be35c3b0cfcd5189cffcfd75df60ea581104c/mock/mock.go#L186
 func mergeCallbacks(callbacks ...func(mock.Arguments)) func(mock.Arguments) {
