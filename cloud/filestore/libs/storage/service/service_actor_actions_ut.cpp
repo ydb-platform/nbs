@@ -463,7 +463,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 NProtoPrivate::TGetStorageStatsRequest request;
                 request.SetFileSystemId(fileSystems[i].Id);
                 request.SetAllowCache(false);
-                request.SetMode(NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+                request.SetMode(
+                    NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
 
                 NProtoPrivate::TGetStorageStatsResponse response;
                 GetStorageStats(service, request, response);
@@ -507,10 +508,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             if (strictFileSystemSizeEnforcementEnabled || fsInfo.Id == fsId) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     totalSize,
-                    counters->GetCounter("AggregateUsedBytesCount")->GetAtomic());
+                    counters->GetCounter("AggregateUsedBytesCount")
+                        ->GetAtomic());
                 UNIT_ASSERT_VALUES_EQUAL(
                     2,
-                    counters->GetCounter("AggregateUsedNodesCount")->GetAtomic());
+                    counters->GetCounter("AggregateUsedNodesCount")
+                        ->GetAtomic());
             }
         }
 
