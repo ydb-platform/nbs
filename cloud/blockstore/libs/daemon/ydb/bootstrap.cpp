@@ -923,7 +923,6 @@ void TBootstrapYdb::WarmupBSGroupConnections()
 
 void TBootstrapYdb::InitRdmaRequestServer()
 {
-    // TODO: read config
     auto rdmaConfig = std::make_shared<NRdma::TServerConfig>(
         Configs->RdmaConfig->GetServer());
 

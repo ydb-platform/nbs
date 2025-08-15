@@ -1,24 +1,23 @@
 #pragma once
 
 #include "public.h"
+
 #include "host_endpoint.h"
 
 #include <cloud/blockstore/libs/client/public.h>
+#include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service/service.h>
-
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-
-#include <cloud/blockstore/libs/diagnostics/public.h>
 
 namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TDescribeVolumeFuture = NThreading::TFuture<NProto::TDescribeVolumeResponse>;
+using TDescribeVolumeFuture =
+    NThreading::TFuture<NProto::TDescribeVolumeResponse>;
 
-struct ICellManager
-    : public IStartable
+struct ICellManager: public IStartable
 {
     TCellsConfigPtr Config;
 

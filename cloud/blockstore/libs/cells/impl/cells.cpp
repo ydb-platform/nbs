@@ -1,5 +1,6 @@
-#include "describe_volume.h"
 #include "cells.h"
+
+#include "describe_volume.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -28,8 +29,7 @@ using namespace NMonitoring;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCellsMonPage final
-    : public THtmlMonPage
+class TCellsMonPage final: public THtmlMonPage
 {
 private:
     TCellManager& Manager;
@@ -53,15 +53,12 @@ TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
     , Bootstrap(std::move(bootstrap))
 {
     for (const auto& cell: Config->GetCells()) {
-        Cells.emplace(
-            cell.first,
-            CreateCell(Bootstrap, cell.second));
+        Cells.emplace(cell.first, CreateCell(Bootstrap, cell.second));
     }
 
     if (bootstrap.Monitoring) {
-        auto rootPage = Bootstrap.Monitoring->RegisterIndexPage(
-            "blockstore",
-            "BlockStore");
+        auto rootPage =
+            Bootstrap.Monitoring->RegisterIndexPage("blockstore", "BlockStore");
         static_cast<TIndexMonPage&>(*rootPage).Register(
             new TCellsMonPage(*this, "Cells"));
     }
@@ -119,7 +116,8 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     auto& config = *clientAppConfig.MutableClientConfig();
     config = clientConfig;
     config.SetClientId(FQDNHostName());
-    auto appConfig = std::make_shared<NClient::TClientAppConfig>(clientAppConfig);
+    auto appConfig =
+        std::make_shared<NClient::TClientAppConfig>(clientAppConfig);
 
     auto cellHostEndpoints = GetCellsEndpoints(appConfig);
 
@@ -159,7 +157,8 @@ ICellManagerPtr CreateCellManager(
     NRdma::IClientPtr rdmaClient)
 {
     auto result = NClient::CreateMultiHostClient(
-        std::make_shared<NClient::TClientAppConfig>(config->GetGrpcClientConfig()),
+        std::make_shared<NClient::TClientAppConfig>(
+            config->GetGrpcClientConfig()),
         timer,
         scheduler,
         logging,
@@ -167,17 +166,17 @@ ICellManagerPtr CreateCellManager(
         std::move(serverStats));
 
     if (HasError(result.GetError())) {
-        ythrow TServiceError(E_FAIL)
-            << "unable to create gRPC client";
+        ythrow TServiceError(E_FAIL) << "unable to create gRPC client";
     }
 
-    auto rdmaTaskQueue = config->GetRdmaTransportWorkers() ?
-        CreateThreadPool("CELLS", config->GetRdmaTransportWorkers()) :
-        CreateTaskQueueStub();
+    auto rdmaTaskQueue =
+        config->GetRdmaTransportWorkers()
+            ? CreateThreadPool("CELLS", config->GetRdmaTransportWorkers())
+            : CreateTaskQueueStub();
 
     rdmaTaskQueue->Start();
 
-    TBootstrap bootstrap {
+    TBootstrap bootstrap{
         .Timer = std::move(timer),
         .Scheduler = std::move(scheduler),
         .Logging = std::move(logging),
@@ -186,8 +185,7 @@ ICellManagerPtr CreateCellManager(
         .GrpcClient = std::move(result.GetResult()),
         .RdmaClient = std::move(rdmaClient),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
-        .EndpointsSetup = CreateCellHostEndpointBootstrap()
-    };
+        .EndpointsSetup = CreateCellHostEndpointBootstrap()};
 
     return std::make_shared<TCellManager>(std::move(config), bootstrap);
 }

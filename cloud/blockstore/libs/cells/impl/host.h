@@ -47,11 +47,9 @@ struct TCellHost
 
     ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture RdmaFuture;
 
-    TCellHost(
-            TCellHostConfig config,
-            TBootstrap boorstrap)
+    TCellHost(TCellHostConfig config, TBootstrap bootstrap)
         : ICellHost(std::move(config))
-        , Args(std::move(boorstrap))
+        , Args(std::move(bootstrap))
     {}
 
     NThreading::TFuture<void> Start() override;
@@ -72,8 +70,7 @@ struct TCellHost
 private:
     bool SetupRdmaIfNeeded();
 
-    void HandleRdmaSetupResult(
-        const TResultOrError<IBlockStorePtr>& result);
+    void HandleRdmaSetupResult(const TResultOrError<IBlockStorePtr>& result);
 
     [[nodiscard]] TCellHostEndpoint CreateGrpcEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig);

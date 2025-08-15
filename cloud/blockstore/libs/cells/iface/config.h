@@ -67,8 +67,7 @@ private:
 
 using TConfiguredHostsByFqdn = THashMap<TString, TCellHostConfig>;
 
-class TCellConfig
-    : public IDumpable
+class TCellConfig: public IDumpable
 {
 private:
     const NProto::TCellConfig Config;
@@ -102,8 +101,7 @@ using TCellConfigByCellId = THashMap<TString, TCellConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCellsConfig
-    : public IDumpable
+class TCellsConfig: public IDumpable
 {
 private:
     const NProto::TCellsConfig Config;

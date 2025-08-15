@@ -25,8 +25,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestBlockStore
-    : public IBlockStore
+struct TTestBlockStore: public IBlockStore
 {
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -40,16 +39,16 @@ struct TTestBlockStore
     void Stop() override
     {}
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(callContext);                                                 \
-        Y_UNUSED(request);                                                     \
-        return MakeFuture<NProto::T##name##Response>();                        \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                        \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        Y_UNUSED(callContext);                                      \
+        Y_UNUSED(request);                                          \
+        return MakeFuture<NProto::T##name##Response>();             \
+    }                                                               \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
@@ -66,18 +65,17 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
 {
     Y_UNIT_TEST(ShouldNotReturnDescribeFutureIfNoCellsConfigures)
     {
-        TBootstrap boorstrap;
+        TBootstrap bootstrap;
 
         auto cells = std::make_shared<TCellManager>(
             std::make_shared<TCellsConfig>(),
-            boorstrap);
+            bootstrap);
 
         auto optionalFuture = cells->DescribeVolume(
             "disk",
             {},
             std::make_shared<TTestBlockStore>(),
-            {}
-        );
+            {});
 
         UNIT_ASSERT_C(
             !optionalFuture.has_value(),

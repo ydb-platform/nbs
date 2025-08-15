@@ -12,11 +12,11 @@ using namespace NThreading;
 ////////////////////////////////////////////////////////////////////////////////
 
 auto TCellCellHostEndpointBootstrap::SetupHostGrpcEndpoint(
-    const TBootstrap& boorstrap,
+    const TBootstrap& bootstrap,
     const TCellHostConfig& config) -> TGrpcEndpointBootstrapFuture
 {
     auto endpoint = CreateMultiClientEndpoint(
-        boorstrap.GrpcClient,
+        bootstrap.GrpcClient,
         config.GetFqdn(),
         config.GetGrpcPort(),
         false);
@@ -25,21 +25,21 @@ auto TCellCellHostEndpointBootstrap::SetupHostGrpcEndpoint(
 }
 
 auto TCellCellHostEndpointBootstrap::SetupHostRdmaEndpoint(
-    const TBootstrap& boorstrap,
+    const TBootstrap& bootstrap,
     const TCellHostConfig& config,
     IBlockStorePtr client) -> TRdmaEndpointBootstrapFuture
 {
-    NClient::TRdmaEndpointConfig rdmaEndpoint {
+    NClient::TRdmaEndpointConfig rdmaEndpoint{
         .Address = config.GetFqdn(),
         .Port = config.GetRdmaPort(),
     };
 
     return CreateRdmaEndpointClientAsync(
-        boorstrap.Logging,
-        boorstrap.RdmaClient,
+        bootstrap.Logging,
+        bootstrap.RdmaClient,
         std::move(client),
-        boorstrap.TraceSerializer,
-        boorstrap.RdmaTaskQueue,
+        bootstrap.TraceSerializer,
+        bootstrap.RdmaTaskQueue,
         rdmaEndpoint);
 }
 

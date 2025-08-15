@@ -41,18 +41,18 @@ constexpr size_t MaxRealProtoSize = 4_KB - NRdma::RDMA_PROTO_HEADER_SIZE;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                           \
-    struct T##name##Method                                             \
-    {                                                                  \
-        using TRequest = NProto::T##name##Request;                     \
-        using TResponse = NProto::T##name##Response;                   \
-                                                                       \
-        template <typename T, typename... TArgs>                       \
-        static TFuture<TResponse> Execute(T& service, TArgs&&... args) \
-        {                                                              \
-            return service.name(std::forward<TArgs>(args)...);         \
-        }                                                              \
-    };                                                                 \
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
+    struct T##name##Method                                                     \
+    {                                                                          \
+        using TRequest = NProto::T##name##Request;                             \
+        using TResponse = NProto::T##name##Response;                           \
+                                                                               \
+        template <typename T, typename... TArgs>                               \
+        static TFuture<TResponse> Execute(T& service, TArgs&&... args)         \
+        {                                                                      \
+            return service.name(std::forward<TArgs>(args)...);                 \
+        }                                                                      \
+    };                                                                         \
     // BLOCKSTORE_DECLARE_METHOD
 
 BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
@@ -61,10 +61,10 @@ BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_RETURN_TRUE_CASE(name, ...)         \
-    case TBlockStoreServerProtocol::Ev##name##Request: \
-        return true;                                   \
-                                                       \
+#define BLOCKSTORE_RETURN_TRUE_CASE(name, ...)                                 \
+    case TBlockStoreServerProtocol::Ev##name##Request:                         \
+        return true;                                                           \
+                                                                               \
         // BLOCKSTORE_RETURN_TRUE_CASE
 
 #undef BLOCKSTORE_RETURN_TRUE_CASE
@@ -251,7 +251,9 @@ private:
                         Y_ENSURE(guard);
 
                         ui32 flags = 0;
-                        SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+                        SetProtoFlag(
+                            flags,
+                            NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
 
                         size_t responseBytes =
                             SUCCEEDED(response.GetError().GetCode()) ?
@@ -296,7 +298,9 @@ private:
         LWTRACK(RequestReceived_RdmaTarget, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() > 0, "invalid request");
-        auto [sglist, error] = SgListNormalize({ requestData.data(), requestData.length() }, request.GetBlockSize());
+        auto [sglist, error] = SgListNormalize(
+            { requestData.data(), requestData.length() },
+            request.GetBlockSize());
         Y_ENSURE_RETURN(error.GetCode() == 0, "cannot create sgList");
 
         TGuardedSgList guardedSgList(sglist);
