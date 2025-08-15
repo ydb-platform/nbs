@@ -4,7 +4,7 @@
 #include "options.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
-#include <cloud/blockstore/libs/cells/iface/cells.h>
+#include <cloud/blockstore/libs/cells/impl/cell_manager.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>

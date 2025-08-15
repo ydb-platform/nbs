@@ -16,4 +16,10 @@ struct ICellHostEndpointBootstrap;
 using ICellHostEndpointBootstrapPtr =
     std::shared_ptr<ICellHostEndpointBootstrap>;
 
+struct ICell;
+using ICellPtr = std::shared_ptr<ICell>;
+
+struct ICellHost;
+using ICellHostPtr = std::shared_ptr<ICellHost>;
+
 }   // namespace NCloud::NBlockStore::NCells

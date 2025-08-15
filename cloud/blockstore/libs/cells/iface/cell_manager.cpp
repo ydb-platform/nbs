@@ -1,4 +1,4 @@
-#include "cells.h"
+#include "cell_manager.h"
 
 #include <cloud/blockstore/libs/service/context.h>
 
@@ -23,17 +23,20 @@ struct TCellManagerStub: public ICellManager
         return MakeError(E_NOT_IMPLEMENTED, "not implemented");
     }
 
-    [[nodiscard]] std::optional<TDescribeVolumeFuture> DescribeVolume(
+    [[nodiscard]] TDescribeVolumeFuture DescribeVolume(
+        TCallContextPtr callContext,
         const TString& diskId,
         const NProto::THeaders& headers,
-        const IBlockStorePtr& localService,
+        IBlockStorePtr service,
         const NProto::TClientConfig& clientConfig) override
     {
-        Y_UNUSED(diskId);
-        Y_UNUSED(headers);
-        Y_UNUSED(localService);
         Y_UNUSED(clientConfig);
-        return {};
+
+        auto req = std::make_shared<NProto::TDescribeVolumeRequest>();
+        req->MutableHeaders()->CopyFrom(headers);
+        req->SetDiskId(diskId);
+
+        return service->DescribeVolume(std::move(callContext), std::move(req));
     }
 
     void Start() override

@@ -1,14 +1,11 @@
 LIBRARY()
 
 SRCS(
-    bootstrap.cpp
+    cell_host.cpp
+    cell_manager.cpp
     cell.cpp
-    cells.cpp
     config.cpp
-    endpoint_bootstrap.cpp
     host_endpoint.cpp
-    host.cpp
-    remote_storage.cpp
 )
 
 PEERDIR(

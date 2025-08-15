@@ -1,7 +1,6 @@
 #pragma once
 
 #include "config.h"
-#include "endpoint_bootstrap.h"
 #include "host_endpoint.h"
 
 #include <cloud/blockstore/libs/client/public.h>
@@ -39,10 +38,6 @@ struct ICellHost
     virtual ~ICellHost() = default;
 };
 
-using ICellHostPtr = std::shared_ptr<ICellHost>;
-
 ////////////////////////////////////////////////////////////////////////////////
-
-ICellHostPtr CreateHost(TCellHostConfig config, TBootstrap bootstrap);
 
 }   // namespace NCloud::NBlockStore::NCells

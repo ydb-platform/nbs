@@ -3,7 +3,7 @@
 #include "config_initializer.h"
 #include "options.h"
 
-#include <cloud/blockstore/libs/cells/iface/cells.h>
+#include <cloud/blockstore/libs/cells/impl/cell_manager.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>

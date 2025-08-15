@@ -1,6 +1,6 @@
 #include "session_manager.h"
 
-#include <cloud/blockstore/libs/cells/iface/cells.h>
+#include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -497,24 +497,13 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     const NProto::THeaders& headers)
 {
     auto cellDescribeFuture = CellManager->DescribeVolume(
+        std::move(callContext),
         diskId,
         headers,
         Service,
         Options.DefaultClientConfig);
 
-    if (cellDescribeFuture.has_value()) {
-        return Executor->WaitFor(cellDescribeFuture.value());
-    }
-
-    auto describeRequest = std::make_shared<NProto::TDescribeVolumeRequest>();
-    describeRequest->MutableHeaders()->CopyFrom(headers);
-    describeRequest->SetDiskId(diskId);
-
-    auto future = Service->DescribeVolume(
-        std::move(callContext),
-        std::move(describeRequest));
-
-    return Executor->WaitFor(future);
+    return Executor->WaitFor(cellDescribeFuture);
 }
 
 TFuture<NProto::TError> TSessionManager::RemoveSession(

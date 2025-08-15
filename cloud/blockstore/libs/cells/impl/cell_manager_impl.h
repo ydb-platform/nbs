@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cloud/blockstore/libs/cells/iface/bootstrap.h>
+#include "bootstrap.h"
+
+#include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 #include <cloud/blockstore/libs/cells/iface/cell.h>
-#include <cloud/blockstore/libs/cells/iface/cells.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
-#include <cloud/blockstore/libs/cells/iface/endpoint_bootstrap.h>
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -44,10 +44,11 @@ struct TCellManager: public ICellManager
         const TString& cellId,
         const NClient::TClientAppConfigPtr& clientConfig) override;
 
-    [[nodiscard]] std::optional<TDescribeVolumeFuture> DescribeVolume(
+    [[nodiscard]] TDescribeVolumeFuture DescribeVolume(
+        TCallContextPtr callContext,
         const TString& diskId,
         const NProto::THeaders& headers,
-        const IBlockStorePtr& localService,
+        IBlockStorePtr service,
         const NProto::TClientConfig& clientConfig) override;
 
     void OutputHtml(IOutputStream& out, const IMonHttpRequest& request);
