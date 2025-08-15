@@ -139,6 +139,11 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 #define BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE(name)             \
     TString Report##name(const TString& message = "");                         \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
+    TString Report##name(                                                      \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
 
@@ -148,6 +153,11 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 #define BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE(name)                      \
     TString Report##name(const TString& message = "");                         \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
+    TString Report##name(                                                      \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
     BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE)

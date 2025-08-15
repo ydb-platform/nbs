@@ -423,6 +423,11 @@ ui64 TVolumeActor::GetBlocksCount() const
     return State ? State->GetBlocksCount() : 0;
 }
 
+const TString& TVolumeActor::GetDiskId() const
+{
+    return State->GetConfig().GetDiskId();
+}
+
 void TVolumeActor::OnServicePipeDisconnect(
     const TActorContext& ctx,
     const TActorId& serverId,

@@ -108,7 +108,22 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
             message,                                                           \
             false);                                                            \
     }                                                                          \
-                                                                               \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+    {                                                                          \
+        TString msg =                                                          \
+            ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \
+        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
+    }                                                                          \
+    TString Report##name(                                                      \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+    {                                                                          \
+        return ReportCriticalEvent(                                            \
+            GetCriticalEventFor##name(),                                       \
+            FormatKeyValueList(keyValues),                                     \
+            false);                                                            \
+    }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \
         return "DiskAgentCriticalEvents/"#name;                             \
@@ -127,7 +142,22 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
             message,                                                           \
             true);                                                             \
     }                                                                          \
-                                                                               \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+    {                                                                          \
+        TString msg =                                                          \
+            ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \
+        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
+    }                                                                          \
+    TString Report##name(                                                      \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+    {                                                                          \
+        return ReportCriticalEvent(                                            \
+            GetCriticalEventFor##name(),                                       \
+            FormatKeyValueList(keyValues),                                     \
+            false);                                                            \
+    }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \
         return "AppImpossibleEvents/"#name;                                    \

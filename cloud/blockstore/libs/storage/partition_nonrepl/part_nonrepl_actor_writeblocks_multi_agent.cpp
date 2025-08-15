@@ -290,8 +290,8 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         // TEvGetDeviceForRangeRequests to replicas have returned success. These
         // requests are response with an error if the request hits two disk-agents.
         ReportMultiAgentRequestAffectsTwoDevices(
-            TStringBuilder() << "disk id: " << PartConfig->GetName().Quote()
-                             << " range: " << msg->Record.Range.Print());
+            "partActor",
+            {{"disk", PartConfig->GetName()}, {"range", msg->Record.Range}});
         replyError(
             E_ARGUMENT,
             "Can't execute MultiAgentWriteBlocks request cross device borders");

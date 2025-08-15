@@ -566,8 +566,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
             ui64 seqNo = NotificationSystem.GetDiskSeqNo(diskIdToNotify);
             if (!seqNo) {
                 ReportDiskRegistryNoScheduledNotification(
-                    TStringBuilder() << "No scheduled notification for disk "
-                                     << diskIdToNotify.Quote());
+                    {{"disk", diskIdToNotify}});
                 seqNo = NotificationSystem.AddReallocateRequest(diskIdToNotify);
             }
 
@@ -676,15 +675,15 @@ void TDiskRegistryState::FillMigrations()
 
             if (!device) {
                 ReportDiskRegistryDeviceNotFound(
-                    TStringBuilder() << "FillMigrations:DeviceId: " << uuid);
+                    "FillMigrations",
+                    {{"disk", diskId}, {"DeviceId", uuid}});
 
                 continue;
             }
 
             if (!agent) {
                 ReportDiskRegistryAgentNotFound(
-                    TStringBuilder() << "FillMigrations:AgentId: "
-                    << device->GetAgentId());
+                    {{"disk", diskId}, {"AgentId", device->GetAgentId()}});
 
                 continue;
             }
@@ -716,8 +715,9 @@ void TDiskRegistryState::ProcessPlacementGroups(
             auto* d = Disks.FindPtr(disk.GetDiskId());
 
             if (!d) {
-                ReportDiskRegistryDiskNotFound(TStringBuilder()
-                    << "ProcessPlacementGroups:DiskId: " << disk.GetDiskId());
+                ReportDiskRegistryDiskNotFound(
+                    "ProcessPlacementGroups",
+                    {{"disk", disk.GetDiskId()}});
 
                 continue;
             }
@@ -730,14 +730,13 @@ void TDiskRegistryState::ProcessPlacementGroups(
                         disk.GetPlacementPartitionIndex()))
                 {
                     ReportDiskRegistryInvalidPlacementGroupPartition(
-                        TStringBuilder()
-                        << "ProcessPlacementGroups:DiskId: " << disk.GetDiskId()
-                        << ", PlacementGroupId: " << config.GetGroupId()
-                        << ", Strategy: "
-                        << NProto::EPlacementStrategy_Name(
-                               config.GetPlacementStrategy())
-                        << ", PlacementPartitionIndex: "
-                        << disk.GetPlacementPartitionIndex());
+                        {{"disk", disk.GetDiskId()},
+                         {"group", groupId},
+                         {"strategy",
+                          NProto::EPlacementStrategy_Name(
+                              config.GetPlacementStrategy())},
+                         {"PlacementPartitionIndex",
+                          disk.GetPlacementPartitionIndex()}});
                     continue;
                 }
                 d->PlacementPartitionIndex = disk.GetPlacementPartitionIndex();
@@ -775,9 +774,8 @@ void TDiskRegistryState::ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices)
             auto error = AddDevicesToPendingCleanup(diskId, {std::move(uuid)});
             if (HasError(error)) {
                 ReportDiskRegistryInsertToPendingCleanupFailed(
-                    TStringBuilder()
-                    << "An error occurred while processing dirty devices: "
-                    << FormatError(error));
+                    "An error occurred while processing dirty devices",
+                    {{"disk", diskId}, {"DeviceId", uuid}});
             }
         }
     }
@@ -1287,7 +1285,8 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::AllocateReplacementDev
         device,
         NProto::DEVICE_STATE_ONLINE,
         timestamp,
-        std::move(message));
+        std::move(message),
+        diskId);
 
     return device;
 }
@@ -1391,8 +1390,8 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
         auto it = Find(disk.Devices, deviceId);
         if (it == disk.Devices.end()) {
             auto message = ReportDiskRegistryDeviceNotFound(
-                TStringBuilder() << "ReplaceDevice:DiskId: " << diskId
-                << ", DeviceId: " << deviceId);
+                "ReplaceDevice",
+                {{"disk", diskId}, {"DeviceId", deviceId}});
 
             return MakeError(E_FAIL, message);
         }
@@ -1456,7 +1455,8 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
             timestamp,
             db,
             targetDevice,
-            logicalBlockCount * disk.LogicalBlockSize / targetDevice.GetBlockSize()
+            logicalBlockCount * disk.LogicalBlockSize / targetDevice.GetBlockSize(),
+            diskId
         );
 
         NProto::TDiskHistoryItem historyItem;
@@ -1527,8 +1527,8 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
         error = AddDevicesToPendingCleanup(diskId, {deviceId});
         if (HasError(error)) {
             ReportDiskRegistryInsertToPendingCleanupFailed(
-                TStringBuilder() << "An error occurred while replacing device: "
-                                 << FormatError(error));
+                "An error occurred while replacing device",
+                {{"disk", diskId}, {"DeviceId", deviceId}});
         }
     } catch (const TServiceError& e) {
         return MakeError(e.GetCode(), e.what());
@@ -1541,15 +1541,16 @@ void TDiskRegistryState::AdjustDeviceBlockCount(
     TInstant now,
     TDiskRegistryDatabase& db,
     NProto::TDeviceConfig& device,
-    ui64 newBlockCount)
+    ui64 newBlockCount,
+    const TString& diskId)
 {
     Y_UNUSED(now);
     if (newBlockCount > device.GetUnadjustedBlockCount()) {
         ReportDiskRegistryBadDeviceSizeAdjustment(
-            TStringBuilder() << "AdjustDeviceBlockCount:DeviceId: "
-            << device.GetDeviceUUID()
-            << ", UnadjustedBlockCount: " << device.GetUnadjustedBlockCount()
-            << ", newBlockCount: " << newBlockCount);
+            {{"disk", diskId},
+             {"DeviceId", device.GetDeviceUUID()},
+             {"UnadjustedBlockCount", device.GetUnadjustedBlockCount()},
+             {"newBlockCount", newBlockCount}});
 
         return;
     }
@@ -1561,10 +1562,10 @@ void TDiskRegistryState::AdjustDeviceBlockCount(
     auto [agent, source] = FindDeviceLocation(device.GetDeviceUUID());
     if (!agent || !source) {
         ReportDiskRegistryBadDeviceSizeAdjustment(
-            TStringBuilder() << "AdjustDeviceBlockCount:DeviceId: "
-            << device.GetDeviceUUID()
-            << ", agent?: " << !!agent
-            << ", source?: " << !!source);
+            {{"disk", diskId},
+             {"DeviceId", device.GetDeviceUUID()},
+             {"agent?", !!agent},
+             {"source?", !!source}});
 
         return;
     }
@@ -1582,7 +1583,8 @@ void TDiskRegistryState::AdjustDeviceState(
     NProto::TDeviceConfig& device,
     NProto::EDeviceState state,
     TInstant timestamp,
-    TString message)
+    TString message,
+    const TString& diskId)
 {
     if (device.GetState() == state) {
         return;
@@ -1591,10 +1593,10 @@ void TDiskRegistryState::AdjustDeviceState(
     auto [agent, source] = FindDeviceLocation(device.GetDeviceUUID());
     if (!agent || !source) {
         ReportDiskRegistryBadDeviceStateAdjustment(
-            TStringBuilder() << "AdjustDeviceState:DeviceId: "
-            << device.GetDeviceUUID()
-            << ", agent?: " << !!agent
-            << ", source?: " << !!source);
+            {{"disk", diskId},
+             {"DeviceId", device.GetDeviceUUID()},
+             {"agent?", !!agent},
+             {"source?", !!source}});
         return;
     }
 
@@ -1649,8 +1651,9 @@ bool TDiskRegistryState::UpdatePlacementGroup(
 
     if (!diskInfo) {
         ReportDiskRegistryPlacementGroupDiskNotFound(
-            TStringBuilder() << callerName << ":DiskId: " << diskId
-                << ", PlacementGroupId: " << disk.PlacementGroupId);
+            {{"disk", diskId},
+             {"callerName", callerName},
+             {"placementGroupId", disk.PlacementGroupId}});
 
         return false;
     }
@@ -1701,8 +1704,8 @@ NProto::TError TDiskRegistryState::ValidateStartDeviceMigration(
 
     if (DeviceList.FindDiskId(sourceDeviceId) != sourceDiskId) {
         ReportDiskRegistryDeviceDoesNotBelongToDisk(
-            TStringBuilder() << "StartDeviceMigration:DiskId: "
-            << sourceDiskId << ", DeviceId: " << sourceDeviceId);
+            "StartDeviceMigration",
+            {{"disk", sourceDiskId}, {"deviceId", sourceDeviceId}});
 
         return MakeError(E_ARGUMENT, TStringBuilder() <<
             "device " << sourceDeviceId.Quote() << " does not belong to "
@@ -1741,7 +1744,8 @@ NProto::TDeviceConfig TDiskRegistryState::StartDeviceMigrationImpl(
         now,
         db,
         targetDevice,
-        logicalBlockCount * disk.LogicalBlockSize / targetDevice.GetBlockSize()
+        logicalBlockCount * disk.LogicalBlockSize / targetDevice.GetBlockSize(),
+        sourceDiskId
     );
 
     disk.MigrationTarget2Source[targetDevice.GetDeviceUUID()]
@@ -1957,8 +1961,7 @@ TDeque<TRackInfo> TDiskRegistryState::GatherRacksInfo(
                     }
                 } else {
                     ReportDiskRegistryDeviceListReferencesNonexistentDisk(
-                        TStringBuilder() << "GatherRacksInfo:DiskId: " << diskId
-                        << ", DeviceId: " << device.GetDeviceUUID());
+                        {{"disk", diskId}, {"device", device.GetDeviceUUID()}});
                 }
             } else if (device.GetState() == NProto::DEVICE_STATE_ONLINE) {
                 switch (agent.GetState()) {
@@ -2040,8 +2043,10 @@ THashSet<TString> TDiskRegistryState::CollectForbiddenRacks(
 
     if (!thisDisk) {
         auto message = ReportDiskRegistryPlacementGroupDiskNotFound(
-            TStringBuilder() << callerName << ":DiskId: " << diskId
-            << ", PlacementGroupId: " << disk.PlacementGroupId);
+            "CollectRacks",
+            {{"disk", diskId},
+             {"callerName", callerName},
+             {"placementGroupId", disk.PlacementGroupId}});
 
         ythrow TServiceError(E_FAIL) << message;
     }
@@ -2075,9 +2080,8 @@ NProto::TPlacementGroupConfig::TDiskInfo* TDiskRegistryState::CollectRacks(
         if (disk.GetDiskId() == diskId) {
             if (thisDisk) {
                 ReportDiskRegistryDuplicateDiskInPlacementGroup(
-                    TStringBuilder() << "CollectRacks:PlacementGroupId: "
-                    << placementGroup.GetGroupId()
-                    << ", DiskId: " << diskId);
+                    {{"disk", diskId},
+                     {"PlacementGroupId", placementGroup.GetGroupId()}});
             }
 
             thisDisk = &disk;
@@ -2967,9 +2971,10 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
                     "DeallocateDisk:Replica"));
             if (HasError(error)) {
                 ReportDiskRegistryInsertToPendingCleanupFailed(
-                    TStringBuilder()
-                    << "An error occurred while deallocating disk replica: "
-                    << affectedDiskId << ". " << FormatError(error));
+                    "An error occurred while deallocating disk replica",
+                    {{"disk", diskId},
+                     {"affectedDisk", affectedDiskId},
+                     {"error", FormatError(error)}});
             }
         }
 
@@ -2987,8 +2992,8 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
         return error;
     }
     ReportDiskRegistryInsertToPendingCleanupFailed(
-        TStringBuilder() << "An error occurred while deallocating disk: "
-                         << FormatError(error));
+        "An error occurred while deallocating disk",
+        {{"disk", diskId}});
     return {};
 }
 
@@ -3058,8 +3063,7 @@ auto TDiskRegistryState::DeallocateSimpleDisk(
     auto* disk = Disks.FindPtr(diskId);
     if (!disk) {
         ReportDiskRegistryDiskNotFound(
-            TStringBuilder() << parentMethodName << ":DiskId: "
-            << diskId);
+            {{"disk", diskId}, {"method", parentMethodName}});
 
         return {};
     }
@@ -4325,8 +4329,8 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
             if (!disk) {
                 ReportDiskRegistryDiskNotFound(
-                    TStringBuilder() << "PublishCounters:DiskId: "
-                    << diskInfo.GetDiskId());
+                    "PublishCounters",
+                    {{"disk", diskInfo.GetDiskId()}});
 
                 continue;
             }
@@ -4337,9 +4341,9 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
                 if (!device) {
                     ReportDiskRegistryDeviceNotFound(
-                        TStringBuilder() << "PublishCounters:DiskId: "
-                        << diskInfo.GetDiskId()
-                        << ", DeviceId: " << deviceId);
+                        "PublishCounters",
+                        {{"disk", diskInfo.GetDiskId()},
+                         {"DeviceId", deviceId}});
 
                     continue;
                 }
@@ -4669,10 +4673,9 @@ NProto::TError TDiskRegistryState::DestroyPlacementGroup(
         auto& diskId = diskInfo.GetDiskId();
         auto* d = Disks.FindPtr(diskId);
         if (!d) {
-            ReportDiskRegistryDiskNotFound(TStringBuilder()
-                << "DestroyPlacementGroup:DiskId: " << diskId
-                << ", PlacementGroupId: " << groupId);
-
+            ReportDiskRegistryDiskNotFound(
+                "DestroyPlacementGroup",
+                {{"disk", diskId}, {"group", groupId}});
             continue;
         }
 
@@ -4829,11 +4832,11 @@ NProto::TError TDiskRegistryState::AlterPlacementGroupMembership(
         auto* d = Disks.FindPtr(diskId);
 
         if (!d) {
-            ReportDiskRegistryDiskNotFound(TStringBuilder()
-                << "AlterPlacementGroupMembership:DiskId: " << diskId
-                << ", PlacementGroupId: " << groupId
-                << ", PlacementPartitionIndex: " << placementPartitionIndex);
-
+            ReportDiskRegistryDiskNotFound(
+                "AlterPlacementGroupMembership",
+                {{"disk", diskId},
+                 {"placementGroupId", groupId},
+                 {"placementPartitionIndex", placementPartitionIndex}});
             continue;
         }
 
@@ -4977,9 +4980,8 @@ void TDiskRegistryState::RemoveFinishedMigrations(
             auto error = AddDevicesToPendingCleanup(diskId, {m.DeviceId});
             if (HasError(error)) {
                 ReportDiskRegistryInsertToPendingCleanupFailed(
-                    TStringBuilder()
-                    << "An error occurred while removing finished migrations: "
-                    << FormatError(error));
+                    "An error occurred while removing finished migrations",
+                    {{"disk", diskId}});
             }
 
             return true;
@@ -5046,7 +5048,8 @@ void TDiskRegistryState::DeleteDiskToReallocate(
             STORAGE_ERROR(
                 "Failed to add outdated lagging devices: "
                 << FormatError(error));
-            ReportDiskRegistryCouldNotAddOutdatedLaggingDevice(diskId);
+            ReportDiskRegistryCouldNotAddOutdatedLaggingDevice(
+                {{"disk", diskId}});
         }
     }
 }
@@ -5308,7 +5311,8 @@ bool TDiskRegistryState::HasDependentSsdDisks(
         const auto* disk = Disks.FindPtr(diskId);
         if (!disk) {
             ReportDiskRegistryDiskNotFound(
-                TStringBuilder() << "HasDependentSsdDisks:DiskId: " << diskId);
+                "HasDependentSsdDisks",
+                {{"disk", diskId}});
             continue;
         }
 
@@ -5688,8 +5692,9 @@ bool TDiskRegistryState::TryUpdateDiskState(
     auto* d = Disks.FindPtr(diskId);
 
     if (!d) {
-        ReportDiskRegistryDiskNotFound(TStringBuilder()
-            << "TryUpdateDiskState:DiskId: " << diskId);
+        ReportDiskRegistryDiskNotFound(
+            "TryUpdateDiskState",
+            {{"disk", diskId}});
 
         return {};
     }
@@ -5723,8 +5728,8 @@ bool TDiskRegistryState::TryUpdateDiskState(
         } else {
             Y_DEBUG_ABORT_UNLESS(masterDisk);
             ReportDiskRegistryDiskNotFound(
-                TStringBuilder()
-                << "TryUpdateDiskState: DiskId: " << disk.MasterDiskId);
+                "TryUpdateDiskState",
+                {{"masterDiskId", disk.MasterDiskId}});
         }
     }
 
@@ -6256,8 +6261,9 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     auto* disk = Disks.FindPtr(diskId);
 
     if (!disk) {
-        ReportDiskRegistryDiskNotFound(TStringBuilder()
-            << "ApplyDeviceStateChange:DiskId: " << diskId);
+        ReportDiskRegistryDiskNotFound(
+            "ApplyDeviceStateChange",
+            {{"disk", diskId}});
 
         return;
     }
@@ -6466,9 +6472,9 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
     auto error = AddDevicesToPendingCleanup(disk.MasterDiskId, {sourceId});
     if (HasError(error)) {
         ReportDiskRegistryInsertToPendingCleanupFailed(
-            TStringBuilder()
-            << "An error occurred while aborting migration: "
-            << FormatError(error));
+            "An error occurred while aborting migration",
+            {{"masterDiskId", disk.MasterDiskId},
+             {"error", FormatError(error)}});
     }
 
     NProto::TDiskHistoryItem historyItem;
@@ -6619,17 +6625,18 @@ NProto::TError TDiskRegistryState::AddOutdatedLaggingDevices(
         TDiskState* replicaState = Disks.FindPtr(replicaId);
         if (!replicaState) {
             ReportDiskRegistryDiskNotFound(
-                TStringBuilder()
-                << "AddOutdatedLaggingDevices:ReplicaId: " << replicaId);
+                "AddOutdatedLaggingDevices",
+                {{"disk", diskId}, {"replicaId", replicaId}});
             continue;
         }
         if (replicaState->MasterDiskId != diskId) {
             // The device is a part of another disk.
             ReportDiskRegistryDeviceDoesNotBelongToDisk(
-                TStringBuilder()
-                << "AddOutdatedLaggingDevices:ReplicaId: " << replicaId
-                << ", DeviceId: " << outdatedDeviceUUID
-                << ", MasterDiskId: " << replicaState->MasterDiskId);
+                "AddOutdatedLaggingDevices",
+                {{"disk", diskId},
+                 {"masterDiskId", replicaState->MasterDiskId},
+                 {"deviceId", outdatedDeviceUUID},
+                 {"replicaId", replicaId}});
             continue;
         }
 
@@ -6702,8 +6709,9 @@ auto TDiskRegistryState::FindReplicaByMigration(
 {
     auto* masterDisk = Disks.FindPtr(masterDiskId);
     if (!masterDisk) {
-        ReportDiskRegistryDiskNotFound(TStringBuilder()
-            << "FindReplicaByMigration:MasterDiskId: " << masterDiskId);
+        ReportDiskRegistryDiskNotFound(
+            "FindReplicaByMigration",
+            {{"masterDiskId", masterDiskId}});
 
         return {};
     }
@@ -6713,8 +6721,9 @@ auto TDiskRegistryState::FindReplicaByMigration(
         auto* replica = Disks.FindPtr(replicaId);
 
         if (!replica) {
-            ReportDiskRegistryDiskNotFound(TStringBuilder()
-                << "FindReplicaByMigration:ReplicaId: " << replicaId);
+            ReportDiskRegistryDiskNotFound(
+                "FindReplicaByMigration",
+                {{"masterDiskId", masterDiskId}, {"replicaId", replicaId}});
 
             return {};
         }
@@ -7143,7 +7152,7 @@ NProto::TError TDiskRegistryState::UpdateDiskBlockSize(
                 * GetDeviceBlockCountWithOverrides(diskId, device)
                 / disk.LogicalBlockSize * disk.LogicalBlockSize
                 / device.GetBlockSize();
-            AdjustDeviceBlockCount(now, db, device, newBlocksCount);
+            AdjustDeviceBlockCount(now, db, device, newBlocksCount, diskId);
         }
     }
 
@@ -7287,9 +7296,8 @@ NProto::TError TDiskRegistryState::AllocateDiskReplicas(
                     "AllocateDiskReplicas:Cleanup"));
             if (HasError(error)) {
                 ReportDiskRegistryInsertToPendingCleanupFailed(
-                    TStringBuilder() << "An error occurred while allocated "
-                                        "disk replica cleanup: "
-                                     << FormatError(error));
+                    "An error occurred while allocated disk replica cleanup",
+                    {{"disk", masterDiskId}});
             }
         }
     };
@@ -7391,10 +7399,9 @@ NProto::TError TDiskRegistryState::DeallocateDiskReplicas(
             DeallocateSimpleDisk(db, replicaDiskId, "DeallocateDiskReplicas"));
         if (HasError(error)) {
             ReportDiskRegistryInsertToPendingCleanupFailed(
-                TStringBuilder()
-                << "An error occurred while deallocating "
-                   "disk replica: "
-                << replicaDiskId << ". " << FormatError(error));
+                "An error occurred while deallocating disk replica",
+                {{"replicaDiskId", replicaDiskId},
+                 {"error", FormatError(error)}});
         }
 
         // TODO (NBS-3418): update ReplicaTable
@@ -7806,7 +7813,12 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
             diskId,
             "device " << uuid.Quote() << " not found");
 
-        AdjustDeviceBlockCount(now, db, *device, device->GetUnadjustedBlockCount());
+        AdjustDeviceBlockCount(
+            now,
+            db,
+            *device,
+            device->GetUnadjustedBlockCount(),
+            diskId);
 
         result->Devices.push_back(*device);
     }

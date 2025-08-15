@@ -145,10 +145,10 @@ void TDeviceList::UpdateDevices(
     for (const auto& device: agent.GetDevices()) {
         if (device.GetNodeId() != agent.GetNodeId()) {
             ReportDiskRegistryAgentDeviceNodeIdMismatch(
-                TStringBuilder() << "Agent: " << agent.GetAgentId()
-                << ", Device: " << device.GetDeviceUUID()
-                << ", AgentNodeId: " << agent.GetNodeId()
-                << ", DeviceNodeId: " << device.GetNodeId());
+                {{"Agent", agent.GetAgentId()},
+                 {"Device", device.GetDeviceUUID()},
+                 {"AgentNodeId", agent.GetNodeId()},
+                 {"DeviceNodeId", device.GetNodeId()}});
 
             continue;
         }
@@ -292,12 +292,12 @@ NProto::TDeviceConfig TDeviceList::AllocateDevice(
 
         auto it = FindIf(devices, [&] (const auto& device) {
             if (device.GetRack() != currentRack) {
-                ReportDiskRegistryPoolDeviceRackMismatch(TStringBuilder()
-                    << "NodeId: " << nodeId
-                    << ", PoolRack: " << currentRack
-                    << ", Device: " << device.GetDeviceUUID()
-                    << ", DeviceRack: " << device.GetRack());
-
+                ReportDiskRegistryPoolDeviceRackMismatch(
+                    {{"disk", diskId},
+                     {"NodeId", nodeId},
+                     {"PoolRack", currentRack},
+                     {"Device", device.GetDeviceUUID()},
+                     {"DeviceRack", device.GetRack()}});
                 return false;
             }
 

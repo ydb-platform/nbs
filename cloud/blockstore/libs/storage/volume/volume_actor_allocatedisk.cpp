@@ -117,7 +117,8 @@ bool ValidateDevices(
     return ok;
 }
 
-std::unique_ptr<MessageDifferencer> CreateLiteReallocationDifferencer()
+std::unique_ptr<MessageDifferencer> CreateLiteReallocationDifferencer(
+    const TString& diskId)
 {
     std::array descriptors{
         NProto::TVolumeMeta::GetDescriptor()->FindFieldByName("IOModeTs"),
@@ -131,8 +132,8 @@ std::unique_ptr<MessageDifferencer> CreateLiteReallocationDifferencer()
 
     if (size_t index = FindIndex(descriptors, nullptr); index != NPOS) {
         ReportFieldDescriptorNotFound(
-            TStringBuilder() << "Lite reallocation is impossible. Descriptor #"
-                             << index << " is nullptr.");
+            "Lite reallocation is impossible. Descriptor is nullptr",
+            {{"disk", diskId}, {"index", index}});
         return nullptr;
     }
 
@@ -605,7 +606,7 @@ void TVolumeActor::ExecuteUpdateDevices(
 
     Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
     if (Config->GetAllowLiteDiskReallocations()) {
-        auto differencer = CreateLiteReallocationDifferencer();
+        auto differencer = CreateLiteReallocationDifferencer(GetDiskId());
         args.LiteReallocation =
             differencer && differencer->Compare(oldMeta, newMeta);
     }
