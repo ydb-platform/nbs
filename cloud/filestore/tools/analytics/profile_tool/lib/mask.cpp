@@ -123,7 +123,7 @@ TString TMaskSensitiveData::Transform(
         if (extension.size() > MaxExtensionLength) {
             extension = "";
         }
-        
+
         if (!extension.empty()) {
             extension = "." + extension;
         }
