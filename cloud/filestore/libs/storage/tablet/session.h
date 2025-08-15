@@ -47,6 +47,8 @@ private:
     // Number of write (both O_RDWR and O_WRONLY) handles to this node open in
     // this session
     i64 OpenWriteHandles = 0;
+    // Number of handles opened with O_DIRECT flag
+    i64 OpenDirectHandles = 0;
     // Among all opens, what was the last visible mtime of the node when the
     // guest-side invalidation occurred
     ui64 LastGuestCacheInvalidationMtime = 0;
@@ -57,6 +59,10 @@ private:
         if (HasFlag(handle.GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
             ++OpenWriteHandles;
         }
+        if (HasFlag(handle.GetFlags(), NProto::TCreateHandleRequest::E_DIRECT))
+        {
+            ++OpenDirectHandles;
+        }
     }
 
     void UnregisterHandle(const NProto::TSessionHandle& handle)
@@ -64,6 +70,10 @@ private:
         --OpenHandles;
         if (HasFlag(handle.GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
             --OpenWriteHandles;
+        }
+        if (HasFlag(handle.GetFlags(), NProto::TCreateHandleRequest::E_DIRECT))
+        {
+            --OpenDirectHandles;
         }
     }
 
@@ -112,6 +122,17 @@ public:
                 Stats.erase(it);
             }
         }
+    }
+
+    std::pair<i64, i64> GetDirectAndTotalOpenHandles() const
+    {
+        i64 direct = 0;
+        i64 total = 0;
+        for (const auto& [_, nodeStats]: Stats) {
+            total += nodeStats.OpenHandles;
+            direct += nodeStats.OpenDirectHandles;
+        }
+        return {direct, total};
     }
 
     void OnGuestCacheInvalidated(const NProto::TNodeAttr& node)
