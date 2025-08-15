@@ -8,6 +8,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
@@ -30,6 +31,7 @@ type createDiskFromSnapshotTask struct {
 	nbsFactory        nbs.Factory
 	request           *protos.CreateDiskFromSnapshotRequest
 	state             *protos.CreateDiskFromSnapshotTaskState
+	cellSelector      cells.CellSelector
 }
 
 func (t *createDiskFromSnapshotTask) Save() ([]byte, error) {
@@ -53,17 +55,16 @@ func (t *createDiskFromSnapshotTask) Run(
 ) error {
 
 	params := t.request.Params
-
-	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
+
+	zoneID := params.Disk.ZoneId
+	if !isLocalDiskKind(params.Kind) {
+		zoneID = t.cellSelector.PrepareZoneID(params.Disk, params.FolderId)
+	}
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:            params.Disk.DiskId,
-		ZoneID:        params.Disk.ZoneId,
+		ZoneID:        zoneID,
 		SrcSnapshotID: t.request.SrcSnapshotId,
 		BlocksCount:   params.BlocksCount,
 		BlockSize:     params.BlockSize,
@@ -85,6 +86,15 @@ func (t *createDiskFromSnapshotTask) Run(
 			"id %v is not accepted",
 			params.Disk.DiskId,
 		)
+	}
+
+	// If the disk has already been added to the database,
+	// idempotently retrieve the correct zone where it was created,
+	// because cellSelector is not idempotent.
+	params.Disk.ZoneId = diskMeta.ZoneID
+	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
+	if err != nil {
+		return err
 	}
 
 	snapshotMeta, err := t.storage.GetSnapshotMeta(ctx, t.request.SrcSnapshotId)
@@ -204,11 +214,6 @@ func (t *createDiskFromSnapshotTask) Cancel(
 
 	params := t.request.Params
 
-	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
 
 	diskMeta, err := t.storage.DeleteDisk(
@@ -226,6 +231,18 @@ func (t *createDiskFromSnapshotTask) Cancel(
 			"id %v is not accepted",
 			params.Disk.DiskId,
 		)
+	}
+
+	if len(diskMeta.ZoneID) == 0 {
+		// Got empty ZoneID, because disk was not created
+		// or has been already deleted.
+		return t.storage.DiskDeleted(ctx, params.Disk.DiskId, time.Now())
+	}
+
+	params.Disk.ZoneId = diskMeta.ZoneID
+	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
+	if err != nil {
+		return err
 	}
 
 	err = client.Delete(ctx, params.Disk.DiskId)
