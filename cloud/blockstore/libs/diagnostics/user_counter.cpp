@@ -102,17 +102,27 @@ const TBuckets US_BUCKETS = MakeBuckets<TRequestUsTimeBuckets>(
 struct TUserSumHistogramWrapper
     : public IUserCounter
 {
+private:
     static constexpr size_t IGNORE_BUCKETS_COUNT = 10;
 
+    TString MetricName;
+    EMetricType Type = EMetricType::UNKNOWN;
+    const TBuckets& Buckets;
     TVector<TIntrusivePtr<TDynamicCounters>> Counters;
     TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
-    const TBuckets& Buckets;
-    EMetricType Type = EMetricType::UNKNOWN;
 
-    TUserSumHistogramWrapper(const TBuckets& buckets)
-        : Histogram(TExplicitHistogramSnapshot::New(
-            buckets.size() - IGNORE_BUCKETS_COUNT))
+public:
+    TUserSumHistogramWrapper(
+        TString metricName,
+        EMetricType type,
+        const TBuckets& buckets,
+        const TVector<TIntrusivePtr<TDynamicCounters>>& counters)
+        : MetricName(std::move(metricName))
+        , Type(type)
         , Buckets(buckets)
+        , Counters(counters)
+        , Histogram(TExplicitHistogramSnapshot::New(
+              buckets.size() - IGNORE_BUCKETS_COUNT))
     {
         for (size_t i = IGNORE_BUCKETS_COUNT; i < Buckets.size(); ++i) {
             (*Histogram)[i - IGNORE_BUCKETS_COUNT].first = Buckets[i].Bound;
@@ -137,17 +147,32 @@ struct TUserSumHistogramWrapper
     {
         Clear();
 
-        for (auto& histogram: Counters) {
-            for (ui32 i = 0; i < IGNORE_BUCKETS_COUNT; ++i) {
-                if (auto countSub = histogram->GetCounter(Buckets[i].Name)) {
-                    (*Histogram)[0].second += countSub->Val();
-                }
+        for (const auto& counter: Counters) {
+            const auto histogramGroup =
+                counter->FindSubgroup("histogram", MetricName);
+            if (!histogramGroup) {
+                continue;
             }
 
-            for (ui32 i = IGNORE_BUCKETS_COUNT; i < Buckets.size(); ++i) {
-                if (auto countSub = histogram->GetCounter(Buckets[i].Name)) {
-                    (*Histogram)[i - IGNORE_BUCKETS_COUNT].second += countSub->Val();
+            const auto histogram = histogramGroup->FindHistogram(MetricName);
+            for (size_t i = 0; i < Buckets.size(); ++i) {
+                ui64 value = 0;
+                if (histogram) { // ReportHistogramAsSingleCounter = true
+                    const auto snapshot = histogram->Snapshot();
+                    if (i < snapshot->Count()) {
+                        value = snapshot->Value(i);
+                    }
+                } else { // ReportHistogramAsMultipleCounters = true
+                    if (const auto& counter =
+                            histogramGroup->FindCounter(Buckets[i].Name))
+                    {
+                        value = counter->Val();
+                    }
                 }
+
+                auto index =
+                    i < IGNORE_BUCKETS_COUNT ? 0 : i - IGNORE_BUCKETS_COUNT;
+                (*Histogram)[index].second += value;
             }
         }
 
@@ -194,19 +219,11 @@ auto AddHistogramUserMetric(
     const TString& metricName,
     TStringBuf newName)
 {
-    auto wrapper = std::make_shared<TUserSumHistogramWrapper>(buckets);
-
-    wrapper->Type = EMetricType::HIST_RATE;
-
-    for (auto& counter: baseCounters) {
-        if (counter) {
-            auto histogram =
-                counter->FindSubgroup("histogram", metricName);
-            if (histogram) {
-                wrapper->Counters.push_back(histogram);
-            }
-        }
-    }
+    auto wrapper = std::make_shared<TUserSumHistogramWrapper>(
+        metricName,
+        EMetricType::HIST_RATE,
+        buckets,
+        baseCounters);
 
     dsc.AddUserMetric(
         commonLabels,
