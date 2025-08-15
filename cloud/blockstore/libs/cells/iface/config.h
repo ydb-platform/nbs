@@ -21,7 +21,7 @@ class TCellConfig;
 struct TCellHostConfig
 {
     TCellHostConfig(
-        NProto::TCellHostConfig hostConfig,
+        const NProto::TCellHostConfig& hostConfig,
         const TCellConfig& cellConfig);
 
     ui32 GetGrpcPort() const
@@ -109,7 +109,7 @@ private:
     NClient::TClientAppConfig GrpcClientConfig;
 
 public:
-    explicit TCellsConfig(NProto::TCellsConfig Config = {});
+    explicit TCellsConfig(NProto::TCellsConfig config = {});
 
     [[nodiscard]] const NProto::TCellsConfig& GetCellsConfig() const
     {

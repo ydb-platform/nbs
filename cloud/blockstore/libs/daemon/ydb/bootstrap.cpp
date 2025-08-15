@@ -94,9 +94,9 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 NRdma::TClientConfigPtr CreateRdmaClientConfig(
-    const NRdma::TRdmaConfigPtr config)
+    const NRdma::TRdmaConfig& config)
 {
-    return std::make_shared<NRdma::TClientConfig>(config->GetClient());
+    return std::make_shared<NRdma::TClientConfig>(config.GetClient());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -365,7 +365,7 @@ void TBootstrapYdb::InitRdmaClient()
             RdmaClient = ServerModuleFactories->RdmaClientFactory(
                 Logging,
                 Monitoring,
-                CreateRdmaClientConfig(Configs->RdmaConfig));
+                CreateRdmaClientConfig(*Configs->RdmaConfig));
 
             STORAGE_INFO("RDMA client initialized");
         }

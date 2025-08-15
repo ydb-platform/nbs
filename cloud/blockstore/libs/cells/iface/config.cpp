@@ -4,8 +4,8 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
-#include <util/generic/size_literals.h>
 #include <util/generic/hash.h>
+#include <util/generic/size_literals.h>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -141,7 +141,7 @@ NProto::TClientAppConfig CreateClientAppConfig(
 ////////////////////////////////////////////////////////////////////////////////
 
 TCellHostConfig::TCellHostConfig(
-        NProto::TCellHostConfig hostConfig,
+        const NProto::TCellHostConfig& hostConfig,
         const TCellConfig& cellConfig)
     : GrpcPort(cellConfig.GetGrpcPort())
     , SecureGrpcPort(cellConfig.GetSecureGrpcPort())
@@ -218,7 +218,7 @@ void TCellConfig::DumpHtml(IOutputStream& out) const
 ////////////////////////////////////////////////////////////////////////////////
 
 TCellsConfig::TCellsConfig(NProto::TCellsConfig config)
-    : Config(config)
+    : Config(std::move(config))
     , GrpcClientConfig(CreateClientAppConfig(config.GetGrpcClientConfig()))
 {
     for (const auto& cell: Config.GetCells()) {
