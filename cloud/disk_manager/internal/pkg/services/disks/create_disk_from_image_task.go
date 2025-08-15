@@ -54,6 +54,12 @@ func (t *createDiskFromImageTask) Run(
 
 	params := t.request.Params
 
+	if common.IsLocalDiskKind(params.Kind) {
+		return errors.NewNonCancellableErrorf(
+			"cannot create local disk from image",
+		)
+	}
+
 	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
 	if err != nil {
 		return err

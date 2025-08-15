@@ -54,11 +54,16 @@ func (t *createDiskFromSnapshotTask) Run(
 
 	params := t.request.Params
 
+	if common.IsLocalDiskKind(params.Kind) {
+		return errors.NewNonCancellableErrorf(
+			"cannot create local disk from snapshot",
+		)
+	}
+
 	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
 	if err != nil {
 		return err
 	}
-
 	selfTaskID := execCtx.GetTaskID()
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{

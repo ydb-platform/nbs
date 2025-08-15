@@ -5,6 +5,8 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -15,9 +17,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type releaseBaseDiskTask struct {
-	storage storage.Storage
-	request *protos.ReleaseBaseDiskRequest
-	state   *protos.ReleaseBaseDiskTaskState
+	storage    storage.Storage
+	nbsFactory nbs.Factory
+	request    *protos.ReleaseBaseDiskRequest
+	state      *protos.ReleaseBaseDiskTaskState
 }
 
 func (t *releaseBaseDiskTask) Save() ([]byte, error) {
@@ -37,6 +40,23 @@ func (t *releaseBaseDiskTask) Load(request, state []byte) error {
 
 func (t *releaseBaseDiskTask) releaseBaseDisk(ctx context.Context) error {
 	overlayDisk := t.request.OverlayDisk
+
+	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
+	if err != nil {
+		return err
+	}
+
+	params, err := client.Describe(ctx, overlayDisk.DiskId)
+	if err != nil {
+		return err
+	}
+
+	if common.IsLocalDiskKind(params.Kind) {
+		return errors.NewNonCancellableErrorf(
+			"cannot release base disk for local disk %v",
+			overlayDisk.DiskId,
+		)
+	}
 
 	baseDisk, err := t.storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
 	if err == nil {
