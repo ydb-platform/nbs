@@ -4522,20 +4522,6 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         placementGroupsWithBrokenTwoOrMorePartitions += total > 1;
     }
 
-    // TODO(dvrazumov): left for compatibility (NBSNEBIUS-26)
-    SelfCounters.PlacementGroupsWithRecentlyBrokenSingleDisk->Set(
-        placementGroupsWithRecentlyBrokenSinglePartition);
-
-    SelfCounters.PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks->Set(
-        placementGroupsWithRecentlyBrokenTwoOrMorePartitions);
-
-    SelfCounters.PlacementGroupsWithBrokenSingleDisk->Set(
-        placementGroupsWithBrokenSinglePartition);
-
-    SelfCounters.PlacementGroupsWithBrokenTwoOrMoreDisks->Set(
-        placementGroupsWithBrokenTwoOrMorePartitions);
-    // remove above ^^^^
-
     SelfCounters.PlacementGroupsWithRecentlyBrokenSinglePartition->Set(
         placementGroupsWithRecentlyBrokenSinglePartition);
 
