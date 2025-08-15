@@ -10,10 +10,19 @@ namespace NCloud::NFileStore::NVhost {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TDeliter {
+    template <typename T>
+    void operator()(T* ptr) const {
+        ptr->~T();
+        ::operator delete((void*) ptr);
+    }
+};
+
 template <typename THeader, typename TBody, bool isVoid>
 struct TRequestBuffer
 {
     using TSelf = TRequestBuffer<THeader, TBody, isVoid>;
+    using TPtr = std::unique_ptr<TSelf, TDeliter>;
 
     THeader Header;
     TBody Body;
@@ -33,7 +42,7 @@ struct TRequestBuffer
     {
         size_t len = sizeof(TSelf) + dataSize;
         void* buffer = ::operator new(len);
-        return std::unique_ptr<TSelf> {
+        return TPtr {
             new (buffer) TSelf(len)
         };
     }
@@ -43,6 +52,7 @@ template <typename THeader, typename TBody>
 struct TRequestBuffer<THeader, TBody, true>
 {
     using TSelf = TRequestBuffer<THeader, TBody, true>;
+    using TPtr = std::unique_ptr<TSelf, TDeliter>;
 
     THeader Header;
 
@@ -56,7 +66,7 @@ struct TRequestBuffer<THeader, TBody, true>
     {
         size_t len = sizeof(TSelf) + dataSize;
         void* buffer = ::operator new(len);
-        return std::unique_ptr<TSelf> {
+        return TPtr {
             new (buffer) TSelf(len)
         };
     }
@@ -70,8 +80,8 @@ struct TRequestBase
     using TIn = TRequestBuffer<fuse_in_header, TInPayload, std::is_void<TInPayload>::value>;
     using TOut = TRequestBuffer<fuse_out_header, TOutPayload, std::is_void<TOutPayload>::value>;
 
-    std::unique_ptr<TIn> In = TIn::Create();
-    std::unique_ptr<TOut> Out = TOut::Create();
+    TIn::TPtr In = TIn::Create();
+    TOut::TPtr Out = TOut::Create();
 
     NThreading::TPromise<TResult> Result = NThreading::NewPromise<TResult>();
 
@@ -100,8 +110,8 @@ struct TRequestBase<TInPayload, TOutPayload, void>
     using TIn = TRequestBuffer<fuse_in_header, TInPayload, std::is_void<TInPayload>::value>;
     using TOut = TRequestBuffer<fuse_out_header, TOutPayload, std::is_void<TOutPayload>::value>;
 
-    std::unique_ptr<TIn> In = TIn::Create();
-    std::unique_ptr<TOut> Out = TOut::Create();
+    TIn::TPtr In = TIn::Create();
+    TOut::TPtr Out = TOut::Create();
 
     NThreading::TPromise<void> Result = NThreading::NewPromise();
 
