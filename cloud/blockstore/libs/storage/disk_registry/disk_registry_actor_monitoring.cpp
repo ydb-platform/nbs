@@ -2427,6 +2427,8 @@ void TDiskRegistryActor::HandleHttpInfo(
          &TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState},
         {"changeAgentState",
          &TDiskRegistryActor::HandleHttpInfo_ChangeAgentState},
+        {"resetTransactionsLatency",
+         &TDiskRegistryActor::HandleHttpInfo_ResetTransactionsLatency},
     }};
 
     static const THttpHandlers getActions{{
@@ -2535,6 +2537,16 @@ void TDiskRegistryActor::HandleHttpInfo_GetTransactionsLatency(
         *requestInfo,
         std::make_unique<NMon::TEvRemoteJsonInfoRes>(
             TransactionTimeTracker.GetStatJson(GetCycleCount())));
+}
+
+void TDiskRegistryActor::HandleHttpInfo_ResetTransactionsLatency(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    TransactionTimeTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "reset successfully");
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
