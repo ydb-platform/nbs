@@ -204,10 +204,16 @@ public:
         }
 
         if (deleteSocket) {
-            future = future.Apply([socketPath = SocketPath] (const auto& f) {
-                TFsPath(socketPath).DeleteIfExists();
-                return f.GetValue();
-            });
+            TLog& Log = AppCtx.Log;
+            future = future.Apply(
+                [socketPath = SocketPath, Log](const auto& f)
+                {
+                    STORAGE_INFO(
+                        "Deletion socket while stopping endpoint "
+                        << socketPath.Quote());
+                    TFsPath(socketPath).DeleteIfExists();
+                    return f.GetValue();
+                });
         }
 
         return future;
