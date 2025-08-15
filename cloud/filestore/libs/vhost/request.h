@@ -10,11 +10,13 @@ namespace NCloud::NFileStore::NVhost {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeliter {
+struct TDeleter
+{
     template <typename T>
-    void operator()(T* ptr) const {
+    void operator()(T* ptr) const
+    {
         ptr->~T();
-        ::operator delete((void*) ptr);
+        ::operator delete(reinterpret_cast<void*>(ptr));
     }
 };
 
@@ -22,20 +24,20 @@ template <typename THeader, typename TBody, bool isVoid>
 struct TRequestBuffer
 {
     using TSelf = TRequestBuffer<THeader, TBody, isVoid>;
-    using TPtr = std::unique_ptr<TSelf, TDeliter>;
+    using TPtr = std::unique_ptr<TSelf, TDeleter>;
 
     THeader Header;
     TBody Body;
 
-    TRequestBuffer(size_t len)
+    explicit TRequestBuffer(size_t len)
     {
         Zero(*this);
         Header.len = len;
     }
 
-    void* Data() const
+    [[nodiscard]] void* Data() const
     {
-        return (void*)(this + 1);
+        return const_cast<void*>(reinterpret_cast<const void*>(this + 1));
     }
 
     static auto Create(size_t dataSize = 0)
@@ -52,11 +54,11 @@ template <typename THeader, typename TBody>
 struct TRequestBuffer<THeader, TBody, true>
 {
     using TSelf = TRequestBuffer<THeader, TBody, true>;
-    using TPtr = std::unique_ptr<TSelf, TDeliter>;
+    using TPtr = std::unique_ptr<TSelf, TDeleter>;
 
     THeader Header;
 
-    TRequestBuffer(size_t len)
+    explicit TRequestBuffer(size_t len)
     {
         Zero(*this);
         Header.len = len;
