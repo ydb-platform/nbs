@@ -123,7 +123,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         const TString cloudId = "test_cloud";
         const TString folderId = "test_folder";
 
-        const TString testResult = NResource::Find("counters.json");
+        const TString testResult = NResource::Find("user_counters_empty.json");
         auto testJson = NJson::ReadJsonFastTree(testResult, true);
         auto emptyJson = NJson::ReadJsonFastTree("{}", true);
 
@@ -160,6 +160,86 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
 
         auto thirdResult = NJson::ReadJsonFastTree(thirdOut.Str(), true);
         ValidateJsons(emptyJson, thirdResult);
+    }
+
+    Y_UNIT_TEST_F(ShouldReportUserStats, TEnv)
+    {
+        const TString fsId = "test_fs";
+        const TString clientId = "test_client";
+        const TString cloudId = "test_cloud";
+        const TString folderId = "test_folder";
+
+        Registry->GetFileSystemStats(fsId, clientId, cloudId, folderId);
+        Registry->RegisterUserStats(fsId, clientId, cloudId, folderId);
+
+        auto counters = Counters->GetSubgroup("component", METRIC_FS_COMPONENT)
+                            ->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("filesystem", fsId)
+                            ->GetSubgroup("client", clientId)
+                            ->GetSubgroup("cloud", cloudId)
+                            ->GetSubgroup("folder", folderId);
+
+        auto emulateRequests = [&counters](const TString& request)
+        {
+            auto requestCounters = counters->GetSubgroup("request", request);
+            requestCounters->GetCounter("Count")->Set(42);
+            requestCounters->GetCounter("MaxCount")->Set(142);
+            requestCounters->GetCounter("Errors/Fatal")->Set(7);
+            requestCounters->GetCounter("Time")->Set(100500);
+
+            auto requestTimeHist =
+                requestCounters->GetSubgroup("histogram", "Time");
+            requestTimeHist->GetCounter("1")->Set(1);
+            requestTimeHist->GetCounter("100")->Set(2);
+            requestTimeHist->GetCounter("200")->Set(3);
+            requestTimeHist->GetCounter("300")->Set(4);
+            requestTimeHist->GetCounter("400")->Set(5);
+            requestTimeHist->GetCounter("500")->Set(6);
+            requestTimeHist->GetCounter("600")->Set(7);
+            requestTimeHist->GetCounter("700")->Set(8);
+            requestTimeHist->GetCounter("800")->Set(9);
+            requestTimeHist->GetCounter("900")->Set(0);
+            requestTimeHist->GetCounter("1000")->Set(1);
+            requestTimeHist->GetCounter("2000")->Set(2);
+            requestTimeHist->GetCounter("5000")->Set(3);
+            requestTimeHist->GetCounter("10000")->Set(4);
+            requestTimeHist->GetCounter("20000")->Set(5);
+            requestTimeHist->GetCounter("50000")->Set(6);
+            requestTimeHist->GetCounter("100000")->Set(7);
+            requestTimeHist->GetCounter("200000")->Set(8);
+            requestTimeHist->GetCounter("500000")->Set(9);
+            requestTimeHist->GetCounter("1000000")->Set(10);
+            requestTimeHist->GetCounter("2000000")->Set(11);
+            requestTimeHist->GetCounter("5000000")->Set(12);
+            requestTimeHist->GetCounter("10000000")->Set(13);
+            requestTimeHist->GetCounter("35000000")->Set(14);
+            requestTimeHist->GetCounter("Inf")->Set(15);
+        };
+
+        auto requests = {
+            "AllocateData",  "CreateHandle", "CreateNode",    "DestroyHandle",
+            "GetNodeAttr",   "GetNodeXAttr", "ListNodeXAttr", "ListNodes",
+            "RenameNode",    "SetNodeAttr",  "SetNodeXAttr",  "UnlinkNode",
+            "StatFileStore", "ReadLink",     "AccessNode",    "RemoveNodeXAttr",
+            "ReleaseLock",   "AcquireLock",  "WriteData",     "ReadData",
+        };
+
+        for (const auto& request : requests) {
+            emulateRequests(request);
+        }
+
+        Registry->UpdateStats(true);
+
+        TStringStream out;
+        auto encoder = EncoderJson(&out);
+        Supplier->Accept(TInstant::Seconds(12), encoder.Get());
+
+        const auto result = NJson::ReadJsonFastTree(out.Str(), true);
+
+        const TString testResult = NResource::Find("user_counters.json");
+        const auto testJson = NJson::ReadJsonFastTree(testResult, true);
+
+        ValidateJsons(testJson, result);
     }
 }
 

@@ -84,8 +84,6 @@ TBuckets MakeBuckets(auto convertBound)
     return result;
 }
 
-const TBuckets MS_BUCKETS = MakeBuckets<TRequestMsTimeBuckets>(
-    [](double data) {return data;});
 const TBuckets US_BUCKETS = MakeBuckets<TRequestUsTimeBuckets>(
     [](double data) {return data == std::numeric_limits<double>::max()
         ? data : data / 1000.;});
@@ -303,7 +301,7 @@ void RegisterFilestore(
         { { readSub, "Errors/Fatal" } },
         FILESTORE_READ_ERRORS);
     AddHistogramUserMetric(
-        MS_BUCKETS,
+        US_BUCKETS,
         dsc,
         commonLabels,
         { readSub, "Time" },
@@ -336,7 +334,7 @@ void RegisterFilestore(
         { { writeSub, "Errors/Fatal" } },
         FILESTORE_WRITE_ERRORS);
     AddHistogramUserMetric(
-        MS_BUCKETS,
+        US_BUCKETS,
         dsc,
         commonLabels,
         { writeSub, "Time" },
@@ -378,7 +376,7 @@ void RegisterFilestore(
                     FILESTORE_INDEX_CUMULATIVE_TIME
                 );
                 AddHistogramUserMetric(
-                    MS_BUCKETS,
+                    US_BUCKETS,
                     dsc,
                     labels,
                     { indexSubgroup, "Time" },
