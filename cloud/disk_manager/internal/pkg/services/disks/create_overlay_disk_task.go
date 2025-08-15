@@ -170,6 +170,9 @@ func (t *createOverlayDiskTask) Cancel(
 		return t.storage.DiskDeleted(ctx, overlayDisk.DiskId, time.Now())
 	}
 
+	// If the disk has already been added to the database,
+	// idempotently retrieve the correct zone where it should be created,
+	// because cellSelector is not idempotent.
 	overlayDisk.ZoneId = disk.ZoneID
 	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
 	if err != nil {

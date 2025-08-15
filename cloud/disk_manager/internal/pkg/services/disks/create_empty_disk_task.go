@@ -79,6 +79,9 @@ func (t *createEmptyDiskTask) Run(
 		)
 	}
 
+	// If the disk has already been added to the database,
+	// idempotently retrieve the correct zone where it should be created,
+	// because cellSelector is not idempotent.
 	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
 	if err != nil {
 		return err
