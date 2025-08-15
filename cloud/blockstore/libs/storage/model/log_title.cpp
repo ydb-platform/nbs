@@ -77,6 +77,19 @@ TLogTitle::TLogTitle(TString diskId, bool temporaryServer, ui64 startTime)
     Rebuild();
 }
 
+TLogTitle::TLogTitle(EType type, ui64 startTime)
+    : Type(type)
+    , StartTime(startTime)
+{}
+
+TLogTitle TLogTitle::MakeForPartitionNonrepl(TString diskId, ui64 startTime)
+{
+    auto log = TLogTitle(EType::PartitionNonrepl, startTime);
+    log.DiskId = std::move(diskId);
+    log.Rebuild();
+    return log;
+}
+
 // static
 TString TLogTitle::GetPartitionPrefix(
     ui64 tabletId,
@@ -201,6 +214,10 @@ void TLogTitle::Rebuild()
             RebuildForVolumeProxy();
             break;
         }
+        case EType::PartitionNonrepl: {
+            RebuildForPartitionNonrepl();
+            break;
+        }
     }
 }
 
@@ -309,6 +326,13 @@ void TLogTitle::RebuildForVolumeProxy()
     }
     builder << " d:" << DiskId;
     builder << " pg:" << Generation;
+
+    CachedPrefix = builder;
+}
+
+void TLogTitle::RebuildForPartitionNonrepl()
+{
+    auto builder = TStringBuilder() << "[nrd:" << DiskId;
 
     CachedPrefix = builder;
 }

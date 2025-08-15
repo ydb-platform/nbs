@@ -191,6 +191,18 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             temporayLogTitle.Get(TLogTitle::EDetails::Brief));
     }
 
+    Y_UNIT_TEST(GetForPartitionNonrepl)
+    {
+        TLogTitle logTitle =
+            TLogTitle::MakeForPartitionNonrepl("disk1", GetCycleCount());
+
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[nrd:disk1]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        UNIT_ASSERT_STRING_CONTAINS(logTitle.GetWithTime(), "[nrd:disk1 t:");
+    }
+
     Y_UNIT_TEST(GetChildLogger)
     {
         const ui64 startTime =
