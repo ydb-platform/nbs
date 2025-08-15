@@ -1,4 +1,5 @@
-#include <cloud/blockstore/libs/cells/iface/remote_storage.h>
+#include "remote_storage.h"
+
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>

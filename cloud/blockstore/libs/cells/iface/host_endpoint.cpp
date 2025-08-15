@@ -1,7 +1,7 @@
 #include "host_endpoint.h"
-#include "remote_storage.h"
 
 #include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/service/storage.h>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -11,10 +11,10 @@ TCellHostEndpoint::TCellHostEndpoint(
     const NClient::TClientAppConfigPtr& clientConfig,
     const TString& fqdn,
     IBlockStorePtr controlService,
-    IBlockStorePtr dataService)
+    IStoragePtr dataStorage)
     : LogTag(BuildLogTag(clientConfig, fqdn))
     , Service(std::move(controlService))
-    , Storage(CreateRemoteStorage(std::move(dataService)))
+    , Storage(std::move(dataStorage))
 {}
 
 TString TCellHostEndpoint::BuildLogTag(

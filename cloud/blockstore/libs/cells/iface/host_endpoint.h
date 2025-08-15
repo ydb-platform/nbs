@@ -22,7 +22,7 @@ public:
         const NClient::TClientAppConfigPtr& clientConfig,
         const TString& fqdn,
         IBlockStorePtr controlService,
-        IBlockStorePtr dataService);
+        IStoragePtr dataStorage);
 
     const TString& GetLogTag() const
     {

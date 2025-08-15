@@ -1,5 +1,7 @@
 #include "describe_volume.h"
 
+#include "remote_storage.h"
+
 #include <cloud/blockstore/config/cells.pb.h>
 #include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -96,7 +98,11 @@ std::shared_ptr<TTestServiceClient> CreateCellEndpoint(
     auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
     auto service = std::make_shared<TTestServiceClient>();
     service->OnDescribeVolume = describeCheck;
-    endpoints[cellId].emplace_back(clientAppConfig, host, service, service);
+    endpoints[cellId].emplace_back(
+        clientAppConfig,
+        host,
+        service,
+        CreateRemoteStorage(service));
     return service;
 }
 

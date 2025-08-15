@@ -1,4 +1,5 @@
-#include "host.h"
+#include "cell_host_impl.h"
+#include "remote_storage.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -176,7 +177,12 @@ TCellHostEndpoint TCellHost::CreateGrpcEndpoint(
         clientConfig->GetClientId(),
         clientConfig->GetInstanceId());
 
-    return {clientConfig, Config.GetFqdn(), service, service};
+    return {
+        clientConfig,
+        Config.GetFqdn(),
+        service,
+        CreateRemoteStorage(service)
+    };
 }
 
 TCellHostEndpoint TCellHost::CreateRdmaEndpoint(
@@ -187,7 +193,12 @@ TCellHostEndpoint TCellHost::CreateRdmaEndpoint(
         clientConfig->GetClientId(),
         clientConfig->GetInstanceId());
 
-    return {clientConfig, Config.GetFqdn(), service, RdmaHostEndpoint};
+    return {
+        clientConfig,
+        Config.GetFqdn(),
+        service,
+        CreateRemoteStorage(RdmaHostEndpoint)
+    };
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -29,24 +29,15 @@ struct ICellManager: public IStartable
         const TString& cellId,
         const NClient::TClientAppConfigPtr& clientConfig) = 0;
 
-    [[nodiscard]] virtual std::optional<TDescribeVolumeFuture> DescribeVolume(
+    [[nodiscard]] virtual TDescribeVolumeFuture DescribeVolume(
+        TCallContextPtr callContext,
         const TString& diskId,
         const NProto::THeaders& headers,
-        const IBlockStorePtr& localService,
+        IBlockStorePtr service,
         const NProto::TClientConfig& clientConfig) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-ICellManagerPtr CreateCellManager(
-    TCellsConfigPtr config,
-    ITimerPtr timer,
-    ISchedulerPtr scheduler,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
-    ITraceSerializerPtr traceSerializer,
-    IServerStatsPtr serverStats,
-    NRdma::IClientPtr rdmaClient);
 
 ICellManagerPtr CreateCellManagerStub();
 

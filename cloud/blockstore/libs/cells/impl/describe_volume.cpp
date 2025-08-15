@@ -103,11 +103,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TMultiCellDescribeHandler::TMultiCellDescribeHandler(
-    ISchedulerPtr scheduler,
-    TLog log,
-    TCellByCellId cells,
-    NProto::TDescribeVolumeRequest request,
-    bool hasUnavailableCells)
+        ISchedulerPtr scheduler,
+        TLog log,
+        TCellByCellId cells,
+        NProto::TDescribeVolumeRequest request,
+        bool hasUnavailableCells)
     : Scheduler(std::move(scheduler))
     , Log(std::move(log))
     , Cells(std::move(cells))
@@ -285,7 +285,7 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeVolumeFuture DescribeVolume(
-    const NProto::TDescribeVolumeRequest& request,
+    NProto::TDescribeVolumeRequest request,
     IBlockStorePtr service,
     const TCellHostEndpointsByCellId& endpoints,
     bool hasUnavailableCells,
@@ -310,7 +310,7 @@ TDescribeVolumeFuture DescribeVolume(
         bootstrap.Scheduler,
         bootstrap.Logging->CreateLog("BLOCKSTORE_CELLS"),
         std::move(cells),
-        request,
+        std::move(request),
         hasUnavailableCells);
     describeResult->Start(timeout);
 
