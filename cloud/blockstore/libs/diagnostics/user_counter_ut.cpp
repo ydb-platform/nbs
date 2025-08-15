@@ -53,7 +53,7 @@ void ValidateJsons(
         const TString name = jsonValue["labels"]["name"].GetString();
 
         if (jsonValue.Has("hist")) {
-            for (auto valueName: {"bounds", "buckets", "inf"}) {
+            for (const auto *valueName: {"bounds", "buckets", "inf"}) {
                 UNIT_ASSERT_STRINGS_EQUAL_C(
                     NJson::WriteJson(GetHist(resultJson, name, valueName)),
                     NJson::WriteJson(GetHist(testJson, name, valueName)),
@@ -89,6 +89,126 @@ void ValidateTestResult(
     ValidateJsons(testJson, resultJson);
 }
 
+void SetTimeHistogramCountersMs(
+    const TIntrusivePtr<NMonitoring::TDynamicCounters>& counters,
+    const TString& histName)
+{
+    auto subgroup = counters->GetSubgroup("histogram", histName);
+    subgroup->GetCounter("0.001ms")->Set(1);
+    subgroup->GetCounter("0.1ms")->Set(2);
+    subgroup->GetCounter("0.2ms")->Set(3);
+    subgroup->GetCounter("0.3ms")->Set(4);
+    subgroup->GetCounter("0.4ms")->Set(5);
+    subgroup->GetCounter("0.5ms")->Set(6);
+    subgroup->GetCounter("0.6ms")->Set(7);
+    subgroup->GetCounter("0.7ms")->Set(8);
+    subgroup->GetCounter("0.8ms")->Set(9);
+    subgroup->GetCounter("0.9ms")->Set(0);
+    subgroup->GetCounter("1ms")->Set(1);
+    subgroup->GetCounter("2ms")->Set(2);
+    subgroup->GetCounter("5ms")->Set(3);
+    subgroup->GetCounter("10ms")->Set(4);
+    subgroup->GetCounter("20ms")->Set(5);
+    subgroup->GetCounter("50ms")->Set(6);
+    subgroup->GetCounter("100ms")->Set(7);
+    subgroup->GetCounter("200ms")->Set(8);
+    subgroup->GetCounter("500ms")->Set(9);
+    subgroup->GetCounter("1000ms")->Set(10);
+    subgroup->GetCounter("2000ms")->Set(11);
+    subgroup->GetCounter("5000ms")->Set(12);
+    subgroup->GetCounter("10000ms")->Set(13);
+    subgroup->GetCounter("35000ms")->Set(14);
+    subgroup->GetCounter("Inf")->Set(15);
+}
+
+void SetTimeHistogramCountersUs(
+    const TIntrusivePtr<NMonitoring::TDynamicCounters>& counters,
+    const TString& histName)
+{
+    auto subgroup = counters->GetSubgroup("histogram", histName);
+    subgroup->GetCounter("1")->Set(1);
+    subgroup->GetCounter("100")->Set(2);
+    subgroup->GetCounter("200")->Set(3);
+    subgroup->GetCounter("300")->Set(4);
+    subgroup->GetCounter("400")->Set(5);
+    subgroup->GetCounter("500")->Set(6);
+    subgroup->GetCounter("600")->Set(7);
+    subgroup->GetCounter("700")->Set(8);
+    subgroup->GetCounter("800")->Set(9);
+    subgroup->GetCounter("900")->Set(0);
+    subgroup->GetCounter("1000")->Set(1);
+    subgroup->GetCounter("2000")->Set(2);
+    subgroup->GetCounter("5000")->Set(3);
+    subgroup->GetCounter("10000")->Set(4);
+    subgroup->GetCounter("20000")->Set(5);
+    subgroup->GetCounter("50000")->Set(6);
+    subgroup->GetCounter("100000")->Set(7);
+    subgroup->GetCounter("200000")->Set(8);
+    subgroup->GetCounter("500000")->Set(9);
+    subgroup->GetCounter("1000000")->Set(10);
+    subgroup->GetCounter("2000000")->Set(11);
+    subgroup->GetCounter("5000000")->Set(12);
+    subgroup->GetCounter("10000000")->Set(13);
+    subgroup->GetCounter("35000000")->Set(14);
+    subgroup->GetCounter("Inf")->Set(15);
+}
+
+void SetTimeHistogramSingleCounter(
+    const TIntrusivePtr<NMonitoring::TDynamicCounters>& counters,
+    const TString& histName,
+    TVector<double> bounds,
+    double factor)
+{
+    auto subgroup = counters->GetSubgroup("histogram", histName);
+    auto histogram = subgroup->GetHistogram(
+                histName,
+                NMonitoring::ExplicitHistogram(bounds));
+    histogram->Collect(factor * 1., 1);
+    histogram->Collect(factor * 100., 2);
+    histogram->Collect(factor * 200., 3);
+    histogram->Collect(factor * 300., 4);
+    histogram->Collect(factor * 400., 5);
+    histogram->Collect(factor * 500., 6);
+    histogram->Collect(factor * 600., 7);
+    histogram->Collect(factor * 700., 8);
+    histogram->Collect(factor * 800., 9);
+    histogram->Collect(factor * 900., 0);
+    histogram->Collect(factor * 1000., 1);
+    histogram->Collect(factor * 2000., 2);
+    histogram->Collect(factor * 5000., 3);
+    histogram->Collect(factor * 10000., 4);
+    histogram->Collect(factor * 20000., 5);
+    histogram->Collect(factor * 50000., 6);
+    histogram->Collect(factor * 100000., 7);
+    histogram->Collect(factor * 200000., 8);
+    histogram->Collect(factor * 500000., 9);
+    histogram->Collect(factor * 1000000., 10);
+    histogram->Collect(factor * 2000000., 11);
+    histogram->Collect(factor * 5000000., 12);
+    histogram->Collect(factor * 10000000., 13);
+    histogram->Collect(factor * 35000000., 14);
+    histogram->Collect(factor * 36000000., 15);
+}
+
+void SetTimeHistogramSingleCounterMs(
+    const TIntrusivePtr<NMonitoring::TDynamicCounters>& counters,
+    const TString& histName)
+{
+    const auto& buckets = TRequestMsTimeBuckets::Buckets;
+    const auto& bounds = ConvertToHistBounds(buckets);
+    SetTimeHistogramSingleCounter(counters, histName, bounds, 0.001);
+}
+
+void SetTimeHistogramSingleCounterUs(
+    const TIntrusivePtr<NMonitoring::TDynamicCounters>& counters,
+    const TString& histName)
+{
+    auto subgroup = counters->GetSubgroup("histogram", histName);
+    const auto& buckets = TRequestUsTimeBuckets::Buckets;
+    const auto& bounds = ConvertToHistBounds(buckets);
+    SetTimeHistogramSingleCounter(counters, histName, bounds, 1);
+}
+
 } // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -113,79 +233,23 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
             request->GetCounter("InProgressBytes")->Set(5);
             request->GetCounter("MaxInProgressBytes")->Set(50);
 
-            auto requestTimeGroup =
-                request->GetSubgroup("histogram", "Time");
-            if (reportHistogramAsSingleCounter) {
-                const auto& buckets = TRequestMsTimeBuckets::Buckets;
-                const auto& bounds = ConvertToHistBounds(buckets);
-                auto requestTimeHistogram = requestTimeGroup->GetHistogram(
-                            "Time",
-                            NMonitoring::ExplicitHistogram(bounds));
-                requestTimeHistogram->Collect(0.001, 1);
-                requestTimeHistogram->Collect(0.1, 2);
-                requestTimeHistogram->Collect(0.2, 3);
-                requestTimeHistogram->Collect(0.3, 4);
-                requestTimeHistogram->Collect(0.4, 5);
-                requestTimeHistogram->Collect(0.5, 6);
-                requestTimeHistogram->Collect(0.6, 7);
-                requestTimeHistogram->Collect(0.7, 8);
-                requestTimeHistogram->Collect(0.8, 9);
-                requestTimeHistogram->Collect(0.9, 0);
-                requestTimeHistogram->Collect(1., 1);
-                requestTimeHistogram->Collect(2., 2);
-                requestTimeHistogram->Collect(5., 3);
-                requestTimeHistogram->Collect(10., 4);
-                requestTimeHistogram->Collect(20., 5);
-                requestTimeHistogram->Collect(50., 6);
-                requestTimeHistogram->Collect(100., 7);
-                requestTimeHistogram->Collect(200., 8);
-                requestTimeHistogram->Collect(500., 9);
-                requestTimeHistogram->Collect(1000., 10);
-                requestTimeHistogram->Collect(2000., 11);
-                requestTimeHistogram->Collect(5000., 12);
-                requestTimeHistogram->Collect(10000., 13);
-                requestTimeHistogram->Collect(35000., 14);
-                requestTimeHistogram->Collect(36000., 15);
-            } else {
-                requestTimeGroup->GetCounter("0.001ms")->Set(1);
-                requestTimeGroup->GetCounter("0.1ms")->Set(2);
-                requestTimeGroup->GetCounter("0.2ms")->Set(3);
-                requestTimeGroup->GetCounter("0.3ms")->Set(4);
-                requestTimeGroup->GetCounter("0.4ms")->Set(5);
-                requestTimeGroup->GetCounter("0.5ms")->Set(6);
-                requestTimeGroup->GetCounter("0.6ms")->Set(7);
-                requestTimeGroup->GetCounter("0.7ms")->Set(8);
-                requestTimeGroup->GetCounter("0.8ms")->Set(9);
-                requestTimeGroup->GetCounter("0.9ms")->Set(0);
-                requestTimeGroup->GetCounter("1ms")->Set(1);
-                requestTimeGroup->GetCounter("2ms")->Set(2);
-                requestTimeGroup->GetCounter("5ms")->Set(3);
-                requestTimeGroup->GetCounter("10ms")->Set(4);
-                requestTimeGroup->GetCounter("20ms")->Set(5);
-                requestTimeGroup->GetCounter("50ms")->Set(6);
-                requestTimeGroup->GetCounter("100ms")->Set(7);
-                requestTimeGroup->GetCounter("200ms")->Set(8);
-                requestTimeGroup->GetCounter("500ms")->Set(9);
-                requestTimeGroup->GetCounter("1000ms")->Set(10);
-                requestTimeGroup->GetCounter("2000ms")->Set(11);
-                requestTimeGroup->GetCounter("5000ms")->Set(12);
-                requestTimeGroup->GetCounter("10000ms")->Set(13);
-                requestTimeGroup->GetCounter("35000ms")->Set(14);
-                requestTimeGroup->GetCounter("Inf")->Set(15);
-            }
+            reportHistogramAsSingleCounter
+                ? SetTimeHistogramSingleCounterMs(request, "Time")
+                : SetTimeHistogramCountersMs(request, "Time");
         };
 
-        struct TestConfiguration {
+        struct TTestConfiguration {
             bool ReportZeroBlocksMetrics;
             bool ReportHistogramAsSingleCounter;
             TString Resource;
         };
 
-        std::vector<TestConfiguration> testConfigurations = {
+        std::vector<TTestConfiguration> testConfigurations = {
             {true, false, "user_server_volume_instance_test"},
             {false, false, "user_server_volume_instance_skip_zero_blocks_test"},
             {true, true, "user_server_volume_instance_test"},
-            {false, true, "user_server_volume_instance_skip_zero_blocks_test"}};
+            {false, true, "user_server_volume_instance_skip_zero_blocks_test"}
+            };
 
         for (const auto& config: testConfigurations) {
             stats = MakeIntrusive<TDynamicCounters>();
@@ -219,64 +283,9 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
             auto requestTimeGroup =
                 request->GetSubgroup("histogram", "ThrottlerDelay");
 
-            if (reportHistogramAsSingleCounter) {
-                const auto& buckets = TRequestUsTimeBuckets::Buckets;
-                const auto& bounds = ConvertToHistBounds(buckets);
-                auto requestTimeHistogram = requestTimeGroup->GetHistogram(
-                            "ThrottlerDelay",
-                            NMonitoring::ExplicitHistogram(bounds));
-                requestTimeHistogram->Collect(1., 1);
-                requestTimeHistogram->Collect(100., 2);
-                requestTimeHistogram->Collect(200., 3);
-                requestTimeHistogram->Collect(300., 4);
-                requestTimeHistogram->Collect(400., 5);
-                requestTimeHistogram->Collect(500., 6);
-                requestTimeHistogram->Collect(600., 7);
-                requestTimeHistogram->Collect(700., 8);
-                requestTimeHistogram->Collect(800., 9);
-                requestTimeHistogram->Collect(900., 0);
-                requestTimeHistogram->Collect(1000., 1);
-                requestTimeHistogram->Collect(2000., 2);
-                requestTimeHistogram->Collect(5000., 3);
-                requestTimeHistogram->Collect(10000., 4);
-                requestTimeHistogram->Collect(20000., 5);
-                requestTimeHistogram->Collect(50000., 6);
-                requestTimeHistogram->Collect(100000., 7);
-                requestTimeHistogram->Collect(200000., 8);
-                requestTimeHistogram->Collect(500000., 9);
-                requestTimeHistogram->Collect(1000000., 10);
-                requestTimeHistogram->Collect(2000000., 11);
-                requestTimeHistogram->Collect(5000000., 12);
-                requestTimeHistogram->Collect(10000000., 13);
-                requestTimeHistogram->Collect(35000000., 14);
-                requestTimeHistogram->Collect(36000000., 15);
-            } else {
-                requestTimeGroup->GetCounter("1")->Set(1);
-                requestTimeGroup->GetCounter("100")->Set(2);
-                requestTimeGroup->GetCounter("200")->Set(3);
-                requestTimeGroup->GetCounter("300")->Set(4);
-                requestTimeGroup->GetCounter("400")->Set(5);
-                requestTimeGroup->GetCounter("500")->Set(6);
-                requestTimeGroup->GetCounter("600")->Set(7);
-                requestTimeGroup->GetCounter("700")->Set(8);
-                requestTimeGroup->GetCounter("800")->Set(9);
-                requestTimeGroup->GetCounter("900")->Set(0);
-                requestTimeGroup->GetCounter("1000")->Set(1);
-                requestTimeGroup->GetCounter("2000")->Set(2);
-                requestTimeGroup->GetCounter("5000")->Set(3);
-                requestTimeGroup->GetCounter("10000")->Set(4);
-                requestTimeGroup->GetCounter("20000")->Set(5);
-                requestTimeGroup->GetCounter("50000")->Set(6);
-                requestTimeGroup->GetCounter("100000")->Set(7);
-                requestTimeGroup->GetCounter("200000")->Set(8);
-                requestTimeGroup->GetCounter("500000")->Set(9);
-                requestTimeGroup->GetCounter("1000000")->Set(10);
-                requestTimeGroup->GetCounter("2000000")->Set(11);
-                requestTimeGroup->GetCounter("5000000")->Set(12);
-                requestTimeGroup->GetCounter("10000000")->Set(13);
-                requestTimeGroup->GetCounter("35000000")->Set(14);
-                requestTimeGroup->GetCounter("Inf")->Set(15);
-            }
+            reportHistogramAsSingleCounter
+                ? SetTimeHistogramSingleCounterUs(request, "ThrottlerDelay")
+                : SetTimeHistogramCountersUs(request, "ThrottlerDelay");
         };
 
         for (bool reportHistogramAsSingleCounter : {false, true}) {
