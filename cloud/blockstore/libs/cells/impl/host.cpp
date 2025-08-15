@@ -50,11 +50,8 @@ TResultOrError<TCellHostEndpoint> TCellHost::GetHostEndpoint(
                                          << static_cast<int>(transport));
             }
         }
-
-        return MakeError(
-            E_REJECTED,
-            TStringBuilder() << "No transport available");
     }
+    return MakeError(E_REJECTED, "No transport available");
 }
 
 bool TCellHost::IsReady(NProto::ECellDataTransport transport) const
@@ -131,7 +128,7 @@ TFuture<void> TCellHost::Start()
 void TCellHost::HandleRdmaSetupResult(
     const TResultOrError<IBlockStorePtr>& result)
 {
-    if (HasError(result.GetError())) {
+    if (HasError(result)) {
         RdmaState = EState::INACTIVE;
         with_lock (StateLock) {
             SetupRdmaIfNeeded();

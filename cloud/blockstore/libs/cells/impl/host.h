@@ -28,9 +28,6 @@ struct TCellHost
         DEACTIVATING
     };
 
-    using TSetupHostFuture = NThreading::TFuture<void>;
-    using TShutdownHostFuture = NThreading::TFuture<void>;
-
     const TBootstrap Args;
 
     NClient::IMultiClientEndpointPtr GrpcHostEndpoint;
