@@ -203,4 +203,9 @@ void RenderAutoRefreshScript(
     int intervalMs,
     const TString& jsUpdateFunctionName);
 
+void BuildResetButton(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TString& actionName);
+
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils

@@ -761,6 +761,7 @@ void TVolumeActor::HandleHttpInfo(
         {"deleteCheckpoint",       &TActor::HandleHttpInfo_DeleteCheckpoint      },
         {"startpartitions",        &TActor::HandleHttpInfo_StartPartitions       },
         {"changethrottlingpolicy", &TActor::HandleHttpInfo_ChangeThrottlingPolicy},
+        {"resetTransactionsLatency", &TActor::HandleHttpInfo_ResetTransactionsLatency},
     }};
 
     const THttpHandlers getActions {{
@@ -2580,6 +2581,16 @@ void TVolumeActor::HandleHttpInfo_GetTransactionsLatency(
         *requestInfo,
         std::make_unique<NMon::TEvRemoteJsonInfoRes>(
             TransactionTimeTracker.GetStatJson(GetCycleCount())));
+}
+
+void TVolumeActor::HandleHttpInfo_ResetTransactionsLatency(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    TransactionTimeTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "reset successfully");
 }
 
 ////////////////////////////////////////////////////////////////////////////////

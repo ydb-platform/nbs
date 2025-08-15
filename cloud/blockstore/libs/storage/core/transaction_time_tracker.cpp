@@ -196,4 +196,13 @@ TTransactionTimeTracker::GetTimeBuckets() const
     return result;
 }
 
+void TTransactionTimeTracker::ResetStats()
+{
+    for (auto& [key, histogram]: Histograms) {
+        if (key.Status == EStatus::Finished) {
+            histogram.Reset();
+        }
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
