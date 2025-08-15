@@ -176,9 +176,7 @@ Y_UNIT_TEST_SUITE(TCellTest)
         {
             auto result = cell->GetCellClient(clientConfig);
 
-            UNIT_ASSERT_C(
-                HasError(result.GetError()),
-                "No cells ready, should fail");
+            UNIT_ASSERT_C(HasError(result), "No cells ready, should fail");
         }
 
         auto grpc = NClient::CreateMultiClientEndpoint(
@@ -193,7 +191,7 @@ Y_UNIT_TEST_SUITE(TCellTest)
         {
             auto result = cell->GetCellClient(clientConfig);
 
-            UNIT_ASSERT_C(!HasError(result.GetError()), "Should not fail");
+            UNIT_ASSERT_C(!HasError(result), "Should not fail");
         }
     }
 

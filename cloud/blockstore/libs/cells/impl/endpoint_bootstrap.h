@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/cells/iface/endpoint_bootstrap.h>
 #include <cloud/blockstore/libs/client/config.h>

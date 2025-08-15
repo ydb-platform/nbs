@@ -67,7 +67,7 @@ TCellHostEndpoints TCell::PickHosts(
                 clientConfig,
                 NProto::CELL_DATA_TRANSPORT_GRPC,
                 false);
-            if (!HasError(result.GetError())) {
+            if (!HasError(result)) {
                 auto endpoint = result.ExtractResult();
                 res.emplace_back(endpoint);
                 --count;

@@ -91,8 +91,6 @@ private:
     void AdjustActiveHostsToMinConnections();
 };
 
-using TCellPtr = std::shared_ptr<TCell>;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NCells

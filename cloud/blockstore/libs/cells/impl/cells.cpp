@@ -165,7 +165,7 @@ ICellManagerPtr CreateCellManager(
         monitoring,
         std::move(serverStats));
 
-    if (HasError(result.GetError())) {
+    if (HasError(result)) {
         ythrow TServiceError(E_FAIL) << "unable to create gRPC client";
     }
 
