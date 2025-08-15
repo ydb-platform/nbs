@@ -8,8 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCellManagerStub
-    : public ICellManager
+struct TCellManagerStub: public ICellManager
 {
     explicit TCellManagerStub()
         : ICellManager(nullptr)

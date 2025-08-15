@@ -18,14 +18,16 @@ TResultOrError<TCellHostEndpoint> TCellHost::GetHostEndpoint(
     std::optional<NProto::ECellDataTransport> desiredTransport,
     bool allowGrpcFallback)
 {
-    auto transport =
-        desiredTransport.has_value() ? *desiredTransport : Config.GetTransport();
+    auto transport = desiredTransport.has_value() ? *desiredTransport
+                                                  : Config.GetTransport();
     Y_ENSURE(transport != NProto::CELL_DATA_TRANSPORT_UNSET);
 
-    with_lock(StateLock) {
+    with_lock (StateLock) {
         if (!IsReady(transport)) {
             if (transport != NProto::CELL_DATA_TRANSPORT_GRPC) {
-                if (allowGrpcFallback && IsReady(NProto::CELL_DATA_TRANSPORT_GRPC)) {
+                if (allowGrpcFallback &&
+                    IsReady(NProto::CELL_DATA_TRANSPORT_GRPC))
+                {
                     transport = NProto::CELL_DATA_TRANSPORT_GRPC;
                 } else {
                     transport = NProto::CELL_DATA_TRANSPORT_UNSET;
@@ -44,9 +46,8 @@ TResultOrError<TCellHostEndpoint> TCellHost::GetHostEndpoint(
                 default:
                     return MakeError(
                         E_INVALID_STATE,
-                        TStringBuilder() <<
-                            "Unsupported transport type " <<
-                            static_cast<int>(transport));
+                        TStringBuilder() << "Unsupported transport type "
+                                         << static_cast<int>(transport));
             }
         }
 
@@ -81,42 +82,49 @@ TFuture<void> TCellHost::Start()
     auto weak = weak_from_this();
     ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture future;
 
-    with_lock(StateLock) {
+    with_lock (StateLock) {
         if (State == EState::ACTIVATING || State == EState::ACTIVE) {
             return StartPromise.GetFuture();
         }
         if (State == EState::DEACTIVATING) {
-            return StopPromise.GetFuture().Apply([=] (const auto& future) {
-                Y_UNUSED(future);
-                if (auto self = weak.lock(); self) {
-                    return self->Start();
-                }
-                return MakeFuture();
-            });
+            return StopPromise.GetFuture().Apply(
+                [=](const auto& future)
+                {
+                    Y_UNUSED(future);
+                    if (auto self = weak.lock(); self) {
+                        return self->Start();
+                    }
+                    return MakeFuture();
+                });
         }
         State = EState::ACTIVATING;
         future = Args.EndpointsSetup->SetupHostGrpcEndpoint(Args, Config);
     }
 
-    future.Subscribe([=] (const auto& f) mutable {
-        Y_UNUSED(f);
-        if (auto self = weak.lock(); self) {
-            bool needRdmaSetup = false;;
-            with_lock(self->StateLock) {
-                self->GrpcState = EState::ACTIVE;
-                self->GrpcHostEndpoint = f.GetValue();
-                needRdmaSetup = self->SetupRdmaIfNeeded();
+    future.Subscribe(
+        [=](const auto& f) mutable
+        {
+            Y_UNUSED(f);
+            if (auto self = weak.lock(); self) {
+                bool needRdmaSetup = false;
+                ;
+                with_lock (self->StateLock) {
+                    self->GrpcState = EState::ACTIVE;
+                    self->GrpcHostEndpoint = f.GetValue();
+                    needRdmaSetup = self->SetupRdmaIfNeeded();
+                }
+                if (needRdmaSetup) {
+                    self->RdmaFuture.Subscribe(
+                        [=](const auto& f)
+                        {
+                            if (auto self = weak.lock(); self) {
+                                self->HandleRdmaSetupResult(f.GetValue());
+                            }
+                        });
+                }
+                self->StartPromise.SetValue();
             }
-            if (needRdmaSetup) {
-                self->RdmaFuture.Subscribe([=] (const auto& f) {
-                    if (auto self = weak.lock(); self) {
-                        self->HandleRdmaSetupResult(f.GetValue());
-                    }
-                });
-            }
-            self->StartPromise.SetValue();
-        }
-    });
+        });
     return StartPromise.GetFuture();
 }
 
@@ -125,18 +133,20 @@ void TCellHost::HandleRdmaSetupResult(
 {
     if (HasError(result.GetError())) {
         RdmaState = EState::INACTIVE;
-        with_lock(StateLock) {
+        with_lock (StateLock) {
             SetupRdmaIfNeeded();
         }
 
         auto weak = weak_from_this();
-        RdmaFuture.Subscribe([weak=std::move(weak)] (const auto& f) {
-            if (auto self = weak.lock(); self) {
-                self->HandleRdmaSetupResult(f.GetValue());
-            }
-        });
+        RdmaFuture.Subscribe(
+            [weak = std::move(weak)](const auto& f)
+            {
+                if (auto self = weak.lock(); self) {
+                    self->HandleRdmaSetupResult(f.GetValue());
+                }
+            });
     } else {
-        with_lock(StateLock) {
+        with_lock (StateLock) {
             RdmaState = EState::ACTIVE;
             RdmaHostEndpoint = result.GetResult();
         }
@@ -169,11 +179,7 @@ TCellHostEndpoint TCellHost::CreateGrpcEndpoint(
         clientConfig->GetClientId(),
         clientConfig->GetInstanceId());
 
-    return {
-        clientConfig,
-        Config.GetFqdn(),
-        service,
-        service};
+    return {clientConfig, Config.GetFqdn(), service, service};
 }
 
 TCellHostEndpoint TCellHost::CreateRdmaEndpoint(
@@ -184,18 +190,14 @@ TCellHostEndpoint TCellHost::CreateRdmaEndpoint(
         clientConfig->GetClientId(),
         clientConfig->GetInstanceId());
 
-    return {
-        clientConfig,
-        Config.GetFqdn(),
-        service,
-        RdmaHostEndpoint};
+    return {clientConfig, Config.GetFqdn(), service, RdmaHostEndpoint};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICellHostPtr CreateHost(TCellHostConfig config, TBootstrap boorstrap)
+ICellHostPtr CreateHost(TCellHostConfig config, TBootstrap bootstrap)
 {
-    return std::make_shared<TCellHost>(std::move(config), std::move(boorstrap));
+    return std::make_shared<TCellHost>(std::move(config), std::move(bootstrap));
 }
 
 }   // namespace NCloud::NBlockStore::NCells

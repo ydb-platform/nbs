@@ -39,8 +39,7 @@ using TCellHosts = THashMap<TString, TCellHostInfo>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestHostEndpointsSetupProvider
-    : public ICellHostEndpointBootstrap
+struct TTestHostEndpointsSetupProvider: public ICellHostEndpointBootstrap
 {
     using ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture;
     using ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture;
@@ -52,20 +51,20 @@ struct TTestHostEndpointsSetupProvider
     {}
 
     TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
-        const TBootstrap& boorstrap,
+        const TBootstrap& bootstrap,
         const TCellHostConfig& config) override
     {
-        Y_UNUSED(boorstrap);
+        Y_UNUSED(bootstrap);
 
         return Hosts[config.GetFqdn()].GrpcSetupPromise.GetFuture();
-    };
+    }
 
     TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
-        const TBootstrap& boorstrap,
+        const TBootstrap& bootstrap,
         const TCellHostConfig& config,
         IBlockStorePtr client) override
     {
-        Y_UNUSED(boorstrap);
+        Y_UNUSED(bootstrap);
         Y_UNUSED(client);
 
         return Hosts[config.GetFqdn()].RdmaSetupPromise.GetFuture();
@@ -74,8 +73,7 @@ struct TTestHostEndpointsSetupProvider
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestBlockStore
-    : public IBlockStore
+struct TTestBlockStore: public IBlockStore
 {
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -89,16 +87,16 @@ struct TTestBlockStore
     void Stop() override
     {}
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(callContext);                                                 \
-        Y_UNUSED(request);                                                     \
-        return MakeFuture<NProto::T##name##Response>();                        \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                        \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        Y_UNUSED(callContext);                                      \
+        Y_UNUSED(request);                                          \
+        return MakeFuture<NProto::T##name##Response>();             \
+    }                                                               \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
@@ -107,8 +105,7 @@ struct TTestBlockStore
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestGrpcClient
-    : public NClient::IMultiHostClient
+struct TTestGrpcClient: public NClient::IMultiHostClient
 {
     void Start() override
     {}
@@ -116,10 +113,8 @@ struct TTestGrpcClient
     void Stop() override
     {}
 
-    virtual IBlockStorePtr CreateEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure) override
+    virtual IBlockStorePtr
+    CreateEndpoint(const TString& host, ui32 port, bool isSecure) override
     {
         Y_UNUSED(host);
         Y_UNUSED(port);
@@ -127,10 +122,8 @@ struct TTestGrpcClient
         return std::make_shared<TTestBlockStore>();
     }
 
-    virtual IBlockStorePtr CreateDataEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure) override
+    virtual IBlockStorePtr
+    CreateDataEndpoint(const TString& host, ui32 port, bool isSecure) override
     {
         Y_UNUSED(host);
         Y_UNUSED(port);
@@ -157,23 +150,26 @@ Y_UNIT_TEST_SUITE(TCellTest)
 {
     Y_UNIT_TEST(ShouldAllocateEndpoints)
     {
-        TCellHosts hosts {{
-            {"h1", {.Fqdn = "h1", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}},
-            {"h2", {.Fqdn = "h2", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}},
-            {"h3", {.Fqdn = "h3", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}}}};
+        TCellHosts hosts{
+            {{"h1",
+              {.Fqdn = "h1", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}},
+             {"h2",
+              {.Fqdn = "h2", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}},
+             {"h3",
+              {.Fqdn = "h3", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}}}};
 
         NProto::TCellConfig proto;
         proto.SetMinCellConnections(1);
         proto.SetTransport(NProto::CELL_DATA_TRANSPORT_GRPC);
         ConfigureHosts(proto, hosts);
-        TCellConfig config {std::move(proto)};
+        TCellConfig config{std::move(proto)};
 
-        TBootstrap boorstrap;
-        boorstrap.GrpcClient = std::make_shared<TTestGrpcClient>();
-        boorstrap.EndpointsSetup =
+        TBootstrap bootstrap;
+        bootstrap.GrpcClient = std::make_shared<TTestGrpcClient>();
+        bootstrap.EndpointsSetup =
             std::make_shared<TTestHostEndpointsSetupProvider>(hosts);
 
-        auto cell = std::make_shared<TCell>(boorstrap,config);
+        auto cell = std::make_shared<TCell>(bootstrap, config);
 
         auto clientConfig = std::make_shared<NClient::TClientAppConfig>();
 
@@ -191,37 +187,39 @@ Y_UNIT_TEST_SUITE(TCellTest)
             9766,
             false);
 
-        hosts[cell->GetActivatingHosts().begin()->first].GrpcSetupPromise.SetValue(grpc);
+        hosts[cell->GetActivatingHosts().begin()->first]
+            .GrpcSetupPromise.SetValue(grpc);
 
         {
             auto result = cell->GetCellClient(clientConfig);
 
-            UNIT_ASSERT_C(
-                !HasError(result.GetError()),
-                "Should not fail");
+            UNIT_ASSERT_C(!HasError(result.GetError()), "Should not fail");
         }
     }
 
     Y_UNIT_TEST(ShouldAllocateMultipleEndpoints)
     {
-        TCellHosts hosts {{
-            {"h1", {.Fqdn = "h1", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}},
-            {"h2", {.Fqdn = "h2", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}},
-            {"h3", {.Fqdn = "h3", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}}}};
+        TCellHosts hosts{
+            {{"h1",
+              {.Fqdn = "h1", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}},
+             {"h2",
+              {.Fqdn = "h2", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}},
+             {"h3",
+              {.Fqdn = "h3", .Transport = NProto::CELL_DATA_TRANSPORT_GRPC}}}};
 
         NProto::TCellConfig proto;
         proto.SetDescribeVolumeHostCount(3);
         proto.SetMinCellConnections(3);
         proto.SetTransport(NProto::CELL_DATA_TRANSPORT_GRPC);
         ConfigureHosts(proto, hosts);
-        TCellConfig config {std::move(proto)};
+        TCellConfig config{std::move(proto)};
 
-        TBootstrap boorstrap;
-        boorstrap.GrpcClient = std::make_shared<TTestGrpcClient>();
-        boorstrap.EndpointsSetup =
+        TBootstrap bootstrap;
+        bootstrap.GrpcClient = std::make_shared<TTestGrpcClient>();
+        bootstrap.EndpointsSetup =
             std::make_shared<TTestHostEndpointsSetupProvider>(hosts);
 
-        auto cell = std::make_shared<TCell>(boorstrap,config);
+        auto cell = std::make_shared<TCell>(bootstrap, config);
         cell->Start();
 
         auto clientConfig = std::make_shared<NClient::TClientAppConfig>();

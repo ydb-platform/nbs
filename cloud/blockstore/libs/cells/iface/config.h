@@ -21,7 +21,7 @@ class TCellConfig;
 struct TCellHostConfig
 {
     TCellHostConfig(
-        NProto::TCellHostConfig hostConfig,
+        const NProto::TCellHostConfig& hostConfig,
         const TCellConfig& cellConfig);
 
     ui32 GetGrpcPort() const
@@ -67,8 +67,7 @@ private:
 
 using TConfiguredHostsByFqdn = THashMap<TString, TCellHostConfig>;
 
-class TCellConfig
-    : public IDumpable
+class TCellConfig: public IDumpable
 {
 private:
     const NProto::TCellConfig Config;
@@ -102,8 +101,7 @@ using TCellConfigByCellId = THashMap<TString, TCellConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCellsConfig
-    : public IDumpable
+class TCellsConfig: public IDumpable
 {
 private:
     const NProto::TCellsConfig Config;
@@ -111,7 +109,7 @@ private:
     NClient::TClientAppConfig GrpcClientConfig;
 
 public:
-    explicit TCellsConfig(NProto::TCellsConfig Config = {});
+    explicit TCellsConfig(NProto::TCellsConfig config = {});
 
     [[nodiscard]] const NProto::TCellsConfig& GetCellsConfig() const
     {

@@ -29,8 +29,7 @@ using namespace NMonitoring;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCellManager
-    : public ICellManager
+struct TCellManager: public ICellManager
 {
     const TBootstrap Bootstrap;
 

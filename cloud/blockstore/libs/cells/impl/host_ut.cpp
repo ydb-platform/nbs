@@ -1,8 +1,8 @@
 #include "host.h"
 
-#include <cloud/blockstore/libs/cells/iface/config.h>
-#include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/config/cells.pb.h>
+#include <cloud/blockstore/config/client.pb.h>
+#include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/multiclient_endpoint.h>
@@ -25,8 +25,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TestCellHostEndpointBootstrap
-    : public ICellHostEndpointBootstrap
+struct TestCellHostEndpointBootstrap: public ICellHostEndpointBootstrap
 {
     using ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture;
     using ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture;
@@ -37,26 +36,25 @@ struct TestCellHostEndpointBootstrap
         NewPromise<TResultOrError<IBlockStorePtr>>();
 
     TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
-        const TBootstrap& boorstrap,
+        const TBootstrap& bootstrap,
         const TCellHostConfig& config) override
     {
-        Y_UNUSED(boorstrap);
+        Y_UNUSED(bootstrap);
         Y_UNUSED(config);
 
         return GrpcSetupPromise.GetFuture();
-    };
+    }
 
     TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
-        const TBootstrap& boorstrap,
+        const TBootstrap& bootstrap,
         const TCellHostConfig& config,
         IBlockStorePtr client) override
     {
-        Y_UNUSED(boorstrap);
+        Y_UNUSED(bootstrap);
         Y_UNUSED(config);
         Y_UNUSED(client);
 
-         RdmaSetupPromise =
-            NewPromise<TResultOrError<IBlockStorePtr>>();
+        RdmaSetupPromise = NewPromise<TResultOrError<IBlockStorePtr>>();
 
         return RdmaSetupPromise.GetFuture();
     }
@@ -64,8 +62,7 @@ struct TestCellHostEndpointBootstrap
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestBlockStore
-    : public IBlockStore
+struct TTestBlockStore: public IBlockStore
 {
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -79,16 +76,16 @@ struct TTestBlockStore
     void Stop() override
     {}
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(callContext);                                                 \
-        Y_UNUSED(request);                                                     \
-        return MakeFuture<NProto::T##name##Response>();                        \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                        \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        Y_UNUSED(callContext);                                      \
+        Y_UNUSED(request);                                          \
+        return MakeFuture<NProto::T##name##Response>();             \
+    }                                                               \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
@@ -97,8 +94,7 @@ struct TTestBlockStore
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestGrpcClient
-    : public NClient::IMultiHostClient
+struct TTestGrpcClient: public NClient::IMultiHostClient
 {
     void Start() override
     {}
@@ -106,10 +102,8 @@ struct TTestGrpcClient
     void Stop() override
     {}
 
-    IBlockStorePtr CreateEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure) override
+    IBlockStorePtr
+    CreateEndpoint(const TString& host, ui32 port, bool isSecure) override
     {
         Y_UNUSED(host);
         Y_UNUSED(port);
@@ -117,10 +111,8 @@ struct TTestGrpcClient
         return std::make_shared<TTestBlockStore>();
     }
 
-    IBlockStorePtr CreateDataEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure) override
+    IBlockStorePtr
+    CreateDataEndpoint(const TString& host, ui32 port, bool isSecure) override
     {
         Y_UNUSED(host);
         Y_UNUSED(port);
@@ -148,12 +140,10 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
 
         auto setup = std::make_shared<TestCellHostEndpointBootstrap>();
 
-        TBootstrap boorstrap;
-        boorstrap.EndpointsSetup = setup;
+        TBootstrap bootstrap;
+        bootstrap.EndpointsSetup = setup;
 
-        auto manager = std::make_shared<TCellHost>(
-            hostConfig,
-            boorstrap);
+        auto manager = std::make_shared<TCellHost>(hostConfig, bootstrap);
 
         UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->GrpcHostEndpoint);
         UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->RdmaHostEndpoint);
@@ -237,12 +227,10 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
 
         auto setup = std::make_shared<TestCellHostEndpointBootstrap>();
 
-        TBootstrap boorstrap;
-        boorstrap.EndpointsSetup = setup;
+        TBootstrap bootstrap;
+        bootstrap.EndpointsSetup = setup;
 
-        auto manager = std::make_shared<TCellHost>(
-            hostConfig,
-            boorstrap);
+        auto manager = std::make_shared<TCellHost>(hostConfig, bootstrap);
 
         UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->GrpcHostEndpoint);
         UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->RdmaHostEndpoint);
@@ -263,7 +251,8 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
         UNIT_ASSERT(!manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
 
         setup->RdmaSetupPromise.SetValue(
-            TResultOrError<IBlockStorePtr>(std::make_shared<TTestBlockStore>()));
+            TResultOrError<IBlockStorePtr>(
+                std::make_shared<TTestBlockStore>()));
 
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_GRPC));
@@ -320,12 +309,10 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
 
         auto setup = std::make_shared<TestCellHostEndpointBootstrap>();
 
-        TBootstrap boorstrap;
-        boorstrap.EndpointsSetup = setup;
+        TBootstrap bootstrap;
+        bootstrap.EndpointsSetup = setup;
 
-        auto manager = std::make_shared<TCellHost>(
-            hostConfig,
-            boorstrap);
+        auto manager = std::make_shared<TCellHost>(hostConfig, bootstrap);
 
         UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->GrpcHostEndpoint);
         UNIT_ASSERT_VALUES_EQUAL(false, (bool)manager->RdmaHostEndpoint);
@@ -352,7 +339,8 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_GRPC));
 
         setup->RdmaSetupPromise.SetValue(
-            TResultOrError<IBlockStorePtr>(std::make_shared<TTestBlockStore>()));
+            TResultOrError<IBlockStorePtr>(
+                std::make_shared<TTestBlockStore>()));
 
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_RDMA));
         UNIT_ASSERT(manager->IsReady(NProto::CELL_DATA_TRANSPORT_GRPC));
@@ -394,7 +382,6 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
                 nullptr != endpoint.GetStorage(),
                 "Storage should not be null");
         }
-
     }
 }
 

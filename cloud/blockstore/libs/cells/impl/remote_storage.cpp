@@ -14,15 +14,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRemoteStorage
-    : public IStorage
+struct TRemoteStorage: public IStorage
 {
     const IBlockStorePtr Endpoint;
 
     explicit TRemoteStorage(IBlockStorePtr endpoint)
         : Endpoint(std::move(endpoint))
-    {
-    }
+    {}
 
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
         TCallContextPtr callContext,
@@ -35,14 +33,18 @@ struct TRemoteStorage
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
     {
-        return Endpoint->ReadBlocksLocal(std::move(callContext), std::move(request));
+        return Endpoint->ReadBlocksLocal(
+            std::move(callContext),
+            std::move(request));
     }
 
     TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
     {
-        return Endpoint->WriteBlocksLocal(std::move(callContext), std::move(request));
+        return Endpoint->WriteBlocksLocal(
+            std::move(callContext),
+            std::move(request));
     }
 
     TFuture<NProto::TError> EraseDevice(
@@ -58,9 +60,8 @@ struct TRemoteStorage
         return nullptr;
     }
 
-   void ReportIOError() override
-   {
-   }
+    void ReportIOError() override
+    {}
 };
 
 }   // namespace
