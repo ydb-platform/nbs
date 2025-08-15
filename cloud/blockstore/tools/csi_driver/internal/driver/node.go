@@ -1350,7 +1350,7 @@ func (s *nodeService) nodeUnstageVolume(
 			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to stop nbs endpoint: %w", err)
+			return s.statusError(getErrorCode(err), "failed to stop nbs endpoint")
 		}
 	}
 
@@ -1407,7 +1407,7 @@ func (s *nodeService) nodeUnpublishVolume(
 				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 			})
 			if err != nil {
-				return fmt.Errorf("failed to stop nbs endpoint: %w", err)
+				return s.statusError(getErrorCode(err), "failed to stop nbs endpoint")
 			}
 		}
 
@@ -1417,7 +1417,7 @@ func (s *nodeService) nodeUnpublishVolume(
 				SocketPath: filepath.Join(endpointDir, nfsSocketName),
 			})
 			if err != nil {
-				return fmt.Errorf("failed to stop nfs endpoint (%T): %w", nfsClient, err)
+				return s.statusErrorf(getErrorCode(err), "failed to stop nfs endpoint (%T)", nfsClient)
 			}
 		}
 
@@ -1485,8 +1485,9 @@ func (s *nodeService) nodeUnstageFileStoreStopEndpoint(
 	_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
 		SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
 	})
+
 	if err != nil {
-		return fmt.Errorf("failed to stop nfs endpoint (%T): %w", s.nfsClient, err)
+		return s.statusErrorf(getErrorCode(err), "failed to stop nfs endpoint (%T)", s.nfsClient)
 	}
 
 	return nil
@@ -1509,7 +1510,7 @@ func (s *nodeService) nodeUnstageLocalFileStoreStopEndpoint(
 			SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to stop local nfs endpoint (%T): %w", s.nfsLocalClient, err)
+			return s.statusErrorf(getErrorCode(err), "failed to stop local nfs endpoint (%T)", s.nfsClient)
 		}
 
 		return nil
@@ -1549,7 +1550,7 @@ func (s *nodeService) nodeUnstageLocalFileStoreStopEndpoint(
 		FileSystemId: localFsId,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to destroy local nfs (%T): %w", s.nfsLocalFilestoreClient, err)
+		return s.statusErrorf(getErrorCode(err), "failed to destroy local nfs (%T)", s.nfsLocalFilestoreClient)
 	}
 
 	return nil
@@ -2076,3 +2077,12 @@ func (s *nodeService) NodeExpandVolume(
 }
 
 func ignoreError(_ error) {}
+
+func getErrorCode(err error) codes.Code {
+	status, ok := status.FromError(err)
+	if !ok {
+		return codes.Internal
+	}
+
+	return status.Code()
+}
