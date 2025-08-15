@@ -1666,6 +1666,10 @@ void BuildResetButton(
             url: '?action=)"
         << actionName << R"(&TabletID=)" << ToString(tabletId) << R"(',
             method: 'POST',
+            data: {
+                action: ')" << actionName << R"(',
+                TabletID: ')" << tabletId << R"('
+            },
             success: function() {
                 location.reload();
             },
