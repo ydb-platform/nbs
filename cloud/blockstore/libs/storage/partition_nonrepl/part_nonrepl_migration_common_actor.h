@@ -22,6 +22,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -184,6 +185,8 @@ private:
     // Whether the target of the migration is lagging. In this case writes are
     // sent only to "SrcActorId".
     bool TargetMigrationIsLagging = false;
+
+    TBackoffDelayProvider BackoffProvider;
 
 protected:
     // Derived class that wishes to handle wakeup messages should make its own

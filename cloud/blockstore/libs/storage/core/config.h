@@ -702,6 +702,9 @@ public:
     [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
 
     [[nodiscard]] bool GetUsePullSchemeForVolumeStatistics() const;
+
+    [[nodiscard]] TDuration GetInitialRetryDelayForServiceRequests() const;
+    [[nodiscard]] TDuration GetMaxRetryDelayForServiceRequests() const;
 };
 
 ui64 GetAllocationUnit(

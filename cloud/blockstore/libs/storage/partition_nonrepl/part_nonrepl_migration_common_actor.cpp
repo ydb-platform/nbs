@@ -47,6 +47,9 @@ TNonreplicatedPartitionMigrationCommonActor::
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
     , NonZeroRangesMap(blockCount, blockSize, MigrationRangeSize)
     , StatActorId(statActorId)
+    , BackoffProvider(
+          Config->GetInitialRetryDelayForServiceRequests(),
+          Config->GetMaxRetryDelayForServiceRequests())
     , PoisonPillHelper(this)
 {
 }
@@ -80,6 +83,9 @@ TNonreplicatedPartitionMigrationCommonActor::
     , ProcessingBlocks(blockCount, blockSize, std::move(migrationBlockMap))
     , NonZeroRangesMap(blockCount, blockSize, MigrationRangeSize)
     , StatActorId(statActorId)
+    , BackoffProvider(
+          Config->GetInitialRetryDelayForServiceRequests(),
+          Config->GetMaxRetryDelayForServiceRequests())
     , PoisonPillHelper(this)
 {
 }

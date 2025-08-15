@@ -320,6 +320,8 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         return;
     }
 
+    BackoffProvider.Reset();
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -487,19 +489,29 @@ void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
 
     RangeMigrationScheduled = true;
     ctx.Schedule(
-        delayBetweenMigrations,
-        new TEvNonreplPartitionPrivate::TEvMigrateNextRange());
+        DeferredMigrations.Empty()
+            ? delayBetweenMigrations
+            : delayBetweenMigrations + BackoffProvider.GetDelayAndIncrease(),
+        new TEvNonreplPartitionPrivate::TEvMigrateNextRange(
+            /*isRetry*/ !DeferredMigrations.Empty()));
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::HandleMigrateNextRange(
     const TEvNonreplPartitionPrivate::TEvMigrateNextRange::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
     RangeMigrationScheduled = false;
 
     if (!IsMigrationAllowed() || IsIoDepthLimitReached()) {
+        return;
+    }
+
+    if (!DeferredMigrations.Empty() && !ev->Get()->IsRetry) {
+        RangeMigrationScheduled = true;
+        ctx.Schedule(
+            BackoffProvider.GetDelayAndIncrease(),
+            new TEvNonreplPartitionPrivate::TEvMigrateNextRange(
+                /*isRetry*/ true));
         return;
     }
 
