@@ -1,7 +1,7 @@
 #pragma once
 
-#include "config.h"
 #include "bootstrap.h"
+#include "config.h"
 
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -25,11 +25,11 @@ struct ICellHostEndpointBootstrap
     using TShutdownEndpointFuture = NThreading::TFuture<void>;
 
     virtual TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
-        const TBootstrap& boorstrap,
+        const TBootstrap& bootstrap,
         const TCellHostConfig& config) = 0;
 
     virtual TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
-        const TBootstrap& boorstrap,
+        const TBootstrap& bootstrap,
         const TCellHostConfig& config,
         IBlockStorePtr client) = 0;
 

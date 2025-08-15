@@ -19,8 +19,8 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCell::TCell(TBootstrap boorstrap, TCellConfig config)
-    : Bootstrap(std::move(boorstrap))
+TCell::TCell(TBootstrap bootstrap, TCellConfig config)
+    : Bootstrap(std::move(bootstrap))
     , Config(std::move(config))
 {
     for (const auto& host: Config.GetHosts()) {
@@ -40,9 +40,8 @@ TResultOrError<TCellHostEndpoint> TCell::PickHost(
         if (ActiveHosts.empty()) {
             return MakeError(
                 E_REJECTED,
-                TStringBuilder() <<
-                    "No endpoints available in cell " <<
-                    Config.GetCellId());
+                TStringBuilder()
+                    << "No endpoints available in cell " << Config.GetCellId());
         }
 
         auto index = RandomNumber<ui32>(ActiveHosts.size());
@@ -51,11 +50,7 @@ TResultOrError<TCellHostEndpoint> TCell::PickHost(
     }
     // empty optional value, TCellHost will choose transport based on config
     std::optional<NProto::ECellDataTransport> transport;
-    return host->GetHostEndpoint(
-        clientConfig,
-        transport,
-        false);
-
+    return host->GetHostEndpoint(clientConfig, transport, false);
 }
 
 TCellHostEndpoints TCell::PickHosts(
@@ -86,7 +81,7 @@ TCellHostEndpoints TCell::PickHosts(
 void TCell::AdjustActiveHostsToMinConnections()
 {
     TVector<ICellHostPtr> hostsToActivate;
-    with_lock(Lock) {
+    with_lock (Lock) {
         if (Config.GetMinCellConnections() <= ActiveHosts.size()) {
             return;
         }
@@ -95,9 +90,8 @@ void TCell::AdjustActiveHostsToMinConnections()
         while (delta-- && !UnusedHosts.empty()) {
             auto fqdn = UnusedHosts.back();
             UnusedHosts.pop_back();
-            auto host = CreateHost(
-                Config.GetHosts().find(fqdn)->second,
-                Bootstrap);
+            auto host =
+                CreateHost(Config.GetHosts().find(fqdn)->second, Bootstrap);
             ActivatingHosts.emplace(fqdn, host);
             hostsToActivate.push_back(host);
         }
@@ -107,9 +101,10 @@ void TCell::AdjustActiveHostsToMinConnections()
     for (const auto& host: hostsToActivate) {
         auto future = host->Start();
         future.Subscribe(
-            [=] (const auto& ) {
+            [=](const auto&)
+            {
                 if (auto self = weakPtr.lock(); self) {
-                    with_lock(self->Lock) {
+                    with_lock (self->Lock) {
                         auto fqdn = host->GetConfig().GetFqdn();
                         self->ActiveHosts.emplace(
                             fqdn,
@@ -117,13 +112,13 @@ void TCell::AdjustActiveHostsToMinConnections()
                         self->ActivatingHosts.erase(fqdn);
                     }
                 }
-        });
+            });
     }
 }
 
-ICellPtr CreateCell(TBootstrap boorstrap, TCellConfig config)
+ICellPtr CreateCell(TBootstrap bootstrap, TCellConfig config)
 {
-    return std::make_shared<TCell>(std::move(boorstrap), std::move(config));
+    return std::make_shared<TCell>(std::move(bootstrap), std::move(config));
 }
 
 }   // namespace NCloud::NBlockStore::NCells

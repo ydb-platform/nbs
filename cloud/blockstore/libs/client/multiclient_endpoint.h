@@ -11,8 +11,7 @@ namespace NCloud::NBlockStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IMultiClientEndpoint
-    : public IBlockStore
+struct IMultiClientEndpoint: public IBlockStore
 {
     virtual IBlockStorePtr CreateClientEndpoint(
         const TString& clientId,

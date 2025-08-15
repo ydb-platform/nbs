@@ -1,7 +1,7 @@
 #include "describe_volume.h"
 
-#include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/config/cells.pb.h>
+#include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/service/context.h>
 
@@ -21,8 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestServiceClient
-    : public IBlockStore
+struct TTestServiceClient: public IBlockStore
 {
     void Start() override
     {}
@@ -36,43 +35,43 @@ struct TTestServiceClient
         return {};
     }
 
-    #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                             \
-    std::function<void(const NProto::T##name##Request&)> On##name;             \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(callContext);                                                 \
-        Y_UNUSED(request);                                                     \
-        ++name##Called;                                                        \
-        if (On##name) {                                                        \
-            On##name(*request);                                                \
-        }                                                                      \
-        return name##Promise.GetFuture();                                      \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                      \
+    std::function<void(const NProto::T##name##Request&)> On##name;  \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        Y_UNUSED(callContext);                                      \
+        Y_UNUSED(request);                                          \
+        ++name##Called;                                             \
+        if (On##name) {                                             \
+            On##name(*request);                                     \
+        }                                                           \
+        return name##Promise.GetFuture();                           \
+    }                                                               \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
 #undef BLOCKSTORE_IMPLEMENT_METHOD
 
-    #define BLOCKSTORE_IMPLEMENT_PROMISE(name, ...)                            \
-    TPromise<NProto::T##name##Response> name##Promise =                        \
-        NewPromise<NProto::T##name##Response>();                               \
-    ui32 name##Called = 0;                                                     \
-// BLOCKSTORE_IMPLEMENT_PROMISE
+#define BLOCKSTORE_IMPLEMENT_PROMISE(name, ...)         \
+    TPromise<NProto::T##name##Response> name##Promise = \
+        NewPromise<NProto::T##name##Response>();        \
+    ui32 name##Called = 0;                              \
+    // BLOCKSTORE_IMPLEMENT_PROMISE
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_PROMISE)
 
 #undef BLOCKSTORE_IMPLEMENT_PROMISE
-
 };
 
 std::shared_ptr<TTestServiceClient> CreateService()
 {
     auto service = std::make_shared<TTestServiceClient>();
 
-    auto describeCheck = [](const NProto::TDescribeVolumeRequest& req) {
+    auto describeCheck = [](const NProto::TDescribeVolumeRequest& req)
+    {
         UNIT_ASSERT_C(
             req.GetHeaders().HasInternal(),
             "Internal should not be set");
@@ -87,7 +86,8 @@ std::shared_ptr<TTestServiceClient> CreateCellEndpoint(
     const TString& host,
     TCellHostEndpointsByCellId& endpoints)
 {
-    auto describeCheck = [](const NProto::TDescribeVolumeRequest& req) {
+    auto describeCheck = [](const NProto::TDescribeVolumeRequest& req)
+    {
         UNIT_ASSERT_C(
             !req.GetHeaders().HasInternal(),
             "Internal should not be set");
@@ -96,11 +96,7 @@ std::shared_ptr<TTestServiceClient> CreateCellEndpoint(
     auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
     auto service = std::make_shared<TTestServiceClient>();
     service->OnDescribeVolume = describeCheck;
-    endpoints[cellId].emplace_back(
-        clientAppConfig,
-        host,
-        service,
-        service);
+    endpoints[cellId].emplace_back(clientAppConfig, host, service, service);
     return service;
 }
 
@@ -130,10 +126,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto localService = CreateService();
 
-        TBootstrap boorstrap;
-        boorstrap.Logging = CreateLoggingService("console");
-        boorstrap.Scheduler = CreateScheduler();
-        boorstrap.Scheduler->Start();
+        TBootstrap bootstrap;
+        bootstrap.Logging = CreateLoggingService("console");
+        bootstrap.Scheduler = CreateScheduler();
+        bootstrap.Scheduler->Start();
 
         auto response = DescribeVolume(
             request,
@@ -141,25 +137,17 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             endpoints,
             false,
             TDuration::Seconds(Max<ui32>()),
-            boorstrap);
+            bootstrap);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            s1h1Client->DescribeVolumeCalled);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            s2h1Client->DescribeVolumeCalled);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            localService->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s2h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, localService->DescribeVolumeCalled);
 
         NProto::TDescribeVolumeResponse msg;
         s1h1Client->DescribeVolumePromise.SetValue(std::move(msg));
 
         auto describeResponse = response.GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(
-            "cell1",
-            describeResponse.GetCellId());
+        UNIT_ASSERT_VALUES_EQUAL("cell1", describeResponse.GetCellId());
     }
 
     Y_UNIT_TEST(ShouldDescribeLocalVolume)
@@ -174,10 +162,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto localService = CreateService();
 
-        TBootstrap boorstrap;
-        boorstrap.Logging = CreateLoggingService("console");
-        boorstrap.Scheduler = CreateScheduler();
-        boorstrap.Scheduler->Start();
+        TBootstrap bootstrap;
+        bootstrap.Logging = CreateLoggingService("console");
+        bootstrap.Scheduler = CreateScheduler();
+        bootstrap.Scheduler->Start();
 
         auto response = DescribeVolume(
             request,
@@ -185,25 +173,17 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             endpoints,
             false,
             TDuration::Seconds(Max<ui32>()),
-            boorstrap);
+            bootstrap);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            s1h1Client->DescribeVolumeCalled);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            s2h1Client->DescribeVolumeCalled);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            localService->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s2h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, localService->DescribeVolumeCalled);
 
         NProto::TDescribeVolumeResponse msg;
         localService->DescribeVolumePromise.SetValue(std::move(msg));
 
         auto describeResponse = response.GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(
-            "",
-            describeResponse.GetCellId());
+        UNIT_ASSERT_VALUES_EQUAL("", describeResponse.GetCellId());
     }
 
     Y_UNIT_TEST(ShouldReturnFatalErrorIfVolumeIsAbsent)
@@ -218,10 +198,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto localService = CreateService();
 
-        TBootstrap boorstrap;
-        boorstrap.Logging = CreateLoggingService("console");
-        boorstrap.Scheduler = CreateScheduler();
-        boorstrap.Scheduler->Start();
+        TBootstrap bootstrap;
+        bootstrap.Logging = CreateLoggingService("console");
+        bootstrap.Scheduler = CreateScheduler();
+        bootstrap.Scheduler->Start();
 
         auto response = DescribeVolume(
             request,
@@ -229,17 +209,11 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             endpoints,
             false,
             TDuration::Seconds(Max<ui32>()),
-            boorstrap);
+            bootstrap);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            s1h1Client->DescribeVolumeCalled);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            s2h1Client->DescribeVolumeCalled);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            localService->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s2h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, localService->DescribeVolumeCalled);
 
         {
             NProto::TDescribeVolumeResponse msg;
@@ -280,10 +254,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto localService = CreateService();
 
-        TBootstrap boorstrap;
-        boorstrap.Logging = CreateLoggingService("console");
-        boorstrap.Scheduler = CreateScheduler();
-        boorstrap.Scheduler->Start();
+        TBootstrap bootstrap;
+        bootstrap.Logging = CreateLoggingService("console");
+        bootstrap.Scheduler = CreateScheduler();
+        bootstrap.Scheduler->Start();
 
         auto response = DescribeVolume(
             request,
@@ -291,17 +265,11 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             endpoints,
             false,
             TDuration::Seconds(Max<ui32>()),
-            boorstrap);
+            bootstrap);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            s1h1Client->DescribeVolumeCalled);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            s2h1Client->DescribeVolumeCalled);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            localService->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s2h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, localService->DescribeVolumeCalled);
 
         {
             NProto::TDescribeVolumeResponse msg;
@@ -311,9 +279,8 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         {
             NProto::TDescribeVolumeResponse msg;
-            *msg.MutableError() = std::move(MakeError(
-                E_GRPC_UNAVAILABLE,
-                "connection lost"));
+            *msg.MutableError() =
+                std::move(MakeError(E_GRPC_UNAVAILABLE, "connection lost"));
             s2h1Client->DescribeVolumePromise.SetValue(std::move(msg));
         }
 
@@ -343,10 +310,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto localService = CreateService();
 
-        TBootstrap boorstrap;
-        boorstrap.Logging = CreateLoggingService("console");
-        boorstrap.Scheduler = CreateScheduler();
-        boorstrap.Scheduler->Start();
+        TBootstrap bootstrap;
+        bootstrap.Logging = CreateLoggingService("console");
+        bootstrap.Scheduler = CreateScheduler();
+        bootstrap.Scheduler->Start();
 
         auto response = DescribeVolume(
             request,
@@ -354,14 +321,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             endpoints,
             true,
             TDuration::Seconds(Max<ui32>()),
-            boorstrap);
+            bootstrap);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            s1h1Client->DescribeVolumeCalled);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            localService->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, localService->DescribeVolumeCalled);
 
         {
             NProto::TDescribeVolumeResponse msg;
@@ -396,10 +359,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto localService = CreateService();
 
-        TBootstrap boorstrap;
-        boorstrap.Logging = CreateLoggingService("console");
-        boorstrap.Scheduler = CreateScheduler();
-        boorstrap.Scheduler->Start();
+        TBootstrap bootstrap;
+        bootstrap.Logging = CreateLoggingService("console");
+        bootstrap.Scheduler = CreateScheduler();
+        bootstrap.Scheduler->Start();
 
         auto response = DescribeVolume(
             request,
@@ -407,17 +370,11 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             endpoints,
             false,
             TDuration::Seconds(1),
-            boorstrap);
+            bootstrap);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            s1h1Client->DescribeVolumeCalled);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            s2h1Client->DescribeVolumeCalled);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            localService->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s2h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, localService->DescribeVolumeCalled);
 
         auto describeResponse = response.GetValue(TDuration::Seconds(2));
         UNIT_ASSERT_VALUES_EQUAL(

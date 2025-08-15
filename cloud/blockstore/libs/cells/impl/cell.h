@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/cells/iface/cell.h>
+#include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/cells/iface/host.h>
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
 #include <cloud/blockstore/libs/client/client.h>
@@ -52,23 +52,23 @@ public:
         return PickHosts(Config.GetDescribeVolumeHostCount(), clientConfig);
     }
 
-    [[nodiscard]]THashMap<TString, ICellHostPtr>  GetActiveHosts() const
+    [[nodiscard]] THashMap<TString, ICellHostPtr> GetActiveHosts() const
     {
-        with_lock(Lock) {
+        with_lock (Lock) {
             return ActiveHosts;
         }
     }
 
-    [[nodiscard]]THashMap<TString, ICellHostPtr>  GetActivatingHosts() const
+    [[nodiscard]] THashMap<TString, ICellHostPtr> GetActivatingHosts() const
     {
-        with_lock(Lock) {
+        with_lock (Lock) {
             return ActivatingHosts;
         }
     }
 
-    [[nodiscard]]THashSet<ICellHostPtr>  GetDeactivatingHosts() const
+    [[nodiscard]] THashSet<ICellHostPtr> GetDeactivatingHosts() const
     {
-        with_lock(Lock) {
+        with_lock (Lock) {
             return DeactivatingHosts;
         }
     }
@@ -79,8 +79,7 @@ public:
     }
 
     void Stop() override
-    {
-    }
+    {}
 
 private:
     TResultOrError<TCellHostEndpoint> PickHost(

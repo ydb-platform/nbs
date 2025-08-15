@@ -10,18 +10,17 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCellCellHostEndpointBootstrap
-    : public ICellHostEndpointBootstrap
+struct TCellCellHostEndpointBootstrap: public ICellHostEndpointBootstrap
 {
     using ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture;
     using ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture;
 
     auto SetupHostGrpcEndpoint(
-        const TBootstrap& boorstrap,
+        const TBootstrap& bootstrap,
         const TCellHostConfig& config) -> TGrpcEndpointBootstrapFuture override;
 
     auto SetupHostRdmaEndpoint(
-        const TBootstrap& boorstrap,
+        const TBootstrap& bootstrap,
         const TCellHostConfig& config,
         IBlockStorePtr client) -> TRdmaEndpointBootstrapFuture override;
 };
