@@ -76,6 +76,51 @@ void ValidateJsons(
     }
 }
 
+void ValidateTestResult(
+    const std::shared_ptr<IUserCounterSupplier>& supplier,
+    const NJson::TJsonValue& canonicJson)
+{
+    TStringStream jsonOut;
+    auto encoder = NMonitoring::EncoderJson(&jsonOut);
+    supplier->Accept(TInstant::Seconds(12), encoder.Get());
+
+    auto resultJson = NJson::ReadJsonFastTree(jsonOut.Str(), true);
+
+    ValidateJsons(canonicJson, resultJson);
+}
+
+void SetTimeHistogramCountersMs(
+    const TIntrusivePtr<NMonitoring::TDynamicCounters>& counters,
+    const TString& histName)
+{
+    auto subgroup = counters->GetSubgroup("histogram", histName);
+    subgroup->GetCounter("0.001ms")->Set(1);
+    subgroup->GetCounter("0.1ms")->Set(2);
+    subgroup->GetCounter("0.2ms")->Set(3);
+    subgroup->GetCounter("0.3ms")->Set(4);
+    subgroup->GetCounter("0.4ms")->Set(5);
+    subgroup->GetCounter("0.5ms")->Set(6);
+    subgroup->GetCounter("0.6ms")->Set(7);
+    subgroup->GetCounter("0.7ms")->Set(8);
+    subgroup->GetCounter("0.8ms")->Set(9);
+    subgroup->GetCounter("0.9ms")->Set(0);
+    subgroup->GetCounter("1ms")->Set(1);
+    subgroup->GetCounter("2ms")->Set(2);
+    subgroup->GetCounter("5ms")->Set(3);
+    subgroup->GetCounter("10ms")->Set(4);
+    subgroup->GetCounter("20ms")->Set(5);
+    subgroup->GetCounter("50ms")->Set(6);
+    subgroup->GetCounter("100ms")->Set(7);
+    subgroup->GetCounter("200ms")->Set(8);
+    subgroup->GetCounter("500ms")->Set(9);
+    subgroup->GetCounter("1000ms")->Set(10);
+    subgroup->GetCounter("2000ms")->Set(11);
+    subgroup->GetCounter("5000ms")->Set(12);
+    subgroup->GetCounter("10000ms")->Set(13);
+    subgroup->GetCounter("35000ms")->Set(14);
+    subgroup->GetCounter("Inf")->Set(15);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString METRIC_COMPONENT = "test";
@@ -123,7 +168,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         const TString cloudId = "test_cloud";
         const TString folderId = "test_folder";
 
-        const TString testResult = NResource::Find("counters.json");
+        const TString testResult = NResource::Find("user_counters_empty.json");
         auto testJson = NJson::ReadJsonFastTree(testResult, true);
         auto emptyJson = NJson::ReadJsonFastTree("{}", true);
 
@@ -132,34 +177,62 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
 
         // First registration
         Registry->RegisterUserStats(fsId, clientId, cloudId, folderId);
-
-        TStringStream firstOut;
-        auto firstEncoder = EncoderJson(&firstOut);
-        Supplier->Accept(TInstant::Seconds(12), firstEncoder.Get());
-
-        auto firstResult = NJson::ReadJsonFastTree(firstOut.Str(), true);
-        ValidateJsons(testJson, firstResult);
+        ValidateTestResult(Supplier, testJson);
 
         // Second registration
         Registry->RegisterUserStats(fsId, clientId, cloudId, folderId);
-
-        TStringStream secondOut;
-        auto secondEncoder = EncoderJson(&secondOut);
-        Supplier->Accept(TInstant::Seconds(12), secondEncoder.Get());
-
-        auto secondResult = NJson::ReadJsonFastTree(secondOut.Str(), true);
-
-        ValidateJsons(testJson, secondResult);
+        ValidateTestResult(Supplier, testJson);
 
         // Unregister
         Registry->Unregister(fsId, clientId);
+        ValidateTestResult(Supplier, emptyJson);
+    }
 
-        TStringStream thirdOut;
-        auto thirdEncoder = EncoderJson(&thirdOut);
-        Supplier->Accept(TInstant::Seconds(12), thirdEncoder.Get());
+    Y_UNIT_TEST_F(ShouldReportUserStats, TEnv)
+    {
+        const TString fsId = "test_fs";
+        const TString clientId = "test_client";
+        const TString cloudId = "test_cloud";
+        const TString folderId = "test_folder";
 
-        auto thirdResult = NJson::ReadJsonFastTree(thirdOut.Str(), true);
-        ValidateJsons(emptyJson, thirdResult);
+        Registry->GetFileSystemStats(fsId, clientId, cloudId, folderId);
+        Registry->RegisterUserStats(fsId, clientId, cloudId, folderId);
+
+        auto counters = Counters->GetSubgroup("component", METRIC_FS_COMPONENT)
+                            ->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("filesystem", fsId)
+                            ->GetSubgroup("client", clientId)
+                            ->GetSubgroup("cloud", cloudId)
+                            ->GetSubgroup("folder", folderId);
+
+        auto emulateRequests = [&counters](const TString& request)
+        {
+            auto requestCounters = counters->GetSubgroup("request", request);
+            requestCounters->GetCounter("Count")->Set(42);
+            requestCounters->GetCounter("MaxCount")->Set(142);
+            requestCounters->GetCounter("Errors/Fatal")->Set(7);
+            requestCounters->GetCounter("Time")->Set(100500);
+
+            SetTimeHistogramCountersMs(requestCounters, "Time");
+        };
+
+        auto requests = {
+            "AllocateData",  "CreateHandle", "CreateNode",    "DestroyHandle",
+            "GetNodeAttr",   "GetNodeXAttr", "ListNodeXAttr", "ListNodes",
+            "RenameNode",    "SetNodeAttr",  "SetNodeXAttr",  "UnlinkNode",
+            "StatFileStore", "ReadLink",     "AccessNode",    "RemoveNodeXAttr",
+            "ReleaseLock",   "AcquireLock",  "WriteData",     "ReadData",
+        };
+
+        for (const auto& request : requests) {
+            emulateRequests(request);
+        }
+
+        Registry->UpdateStats(true);
+
+        const TString testResult = NResource::Find("user_counters.json");
+        auto canonicJson = NJson::ReadJsonFastTree(testResult, true);
+        ValidateTestResult(Supplier, canonicJson);
     }
 }
 
