@@ -5,7 +5,11 @@
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+
+#include <library/cpp/threading/future/future.h>
 
 #include <util/generic/string.h>
 
@@ -25,6 +29,16 @@ IBlockStorePtr CreateRdmaEndpointClient(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
+    ITraceSerializerPtr traceSerializer,
+    ITaskQueuePtr taskQueue,
+    const TRdmaEndpointConfig& config);
+
+NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsync(
+    ILoggingServicePtr logging,
+    NRdma::IClientPtr client,
+    IBlockStorePtr volumeClient,
+    ITraceSerializerPtr traceSerializer,
+    ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config);
 
 }   // namespace NCloud::NBlockStore::NClient

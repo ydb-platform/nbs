@@ -20,6 +20,9 @@ struct TBlockStoreProtocol
 
         ZeroBlocksRequest = 5,
         ZeroBlocksResponse = 6,
+
+        PingRequest = 7,
+        PingResponse = 8,
     };
 
     static NRdma::TProtoMessageSerializer* Serializer();

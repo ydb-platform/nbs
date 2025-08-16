@@ -27,7 +27,31 @@ struct IClient
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IMultiHostClient
+    : public IStartable
+{
+    virtual IBlockStorePtr CreateEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure) = 0;
+
+    virtual IBlockStorePtr CreateDataEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TResultOrError<IClientPtr> CreateClient(
+    TClientAppConfigPtr config,
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    IServerStatsPtr clientStats);
+
+TResultOrError<IMultiHostClientPtr> CreateMultiHostClient(
     TClientAppConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,

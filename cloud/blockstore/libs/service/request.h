@@ -33,6 +33,7 @@ struct TReadBlocksLocalRequest
 {
     TGuardedSgList Sglist;
     ui64 CommitId = 0;
+    // TODO: remove BlockSize as it is now in NProto::TReadBlocksRequest
     ui32 BlockSize = 0;
     bool ShouldReportFailedRangesOnFailure = false;
 };
@@ -60,6 +61,7 @@ struct TWriteBlocksLocalRequest
 {
     TGuardedSgList Sglist;
     ui32 BlocksCount = 0;
+    // TODO: remove BlockSize as it is now in NProto::TWriteBlocksRequest
     ui32 BlockSize = 0;
 };
 

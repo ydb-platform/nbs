@@ -11,11 +11,13 @@ SRCS(
 PEERDIR(
     cloud/blockstore/public/api/protos
 
+    cloud/blockstore/libs/cells/iface
     cloud/blockstore/libs/client
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/encryption
     cloud/blockstore/libs/nbd
+    cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/service
     cloud/blockstore/libs/validation
     cloud/storage/core/libs/coroutine

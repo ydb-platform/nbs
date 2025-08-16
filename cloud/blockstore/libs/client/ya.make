@@ -5,6 +5,7 @@ SRCS(
     config.cpp
     durable.cpp
     metric.cpp
+    multiclient_endpoint.cpp
     session.cpp
     session_test.cpp
     throttling.cpp

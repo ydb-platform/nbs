@@ -3,6 +3,8 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/blockstore/libs/cells/iface/config.h>
+#include <cloud/blockstore/libs/cells/impl/cell_manager.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -99,9 +101,9 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 NRdma::TClientConfigPtr CreateRdmaClientConfig(
-    const NRdma::TRdmaConfigPtr config)
+    const NRdma::TRdmaConfig& config)
 {
-    return std::make_shared<NRdma::TClientConfig>(config->GetClient());
+    return std::make_shared<NRdma::TClientConfig>(config.GetClient());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -373,7 +375,6 @@ IStartable* TBootstrapYdb::GetStatsAggregator()    { return StatsAggregator.get(
 IStartable* TBootstrapYdb::GetClientPercentiles()  { return ClientPercentiles.get(); }
 IStartable* TBootstrapYdb::GetStatsUploader()      { return StatsUploader.get(); }
 IStartable* TBootstrapYdb::GetYdbStorage()         { return AsStartable(YdbStorage); }
-IStartable* TBootstrapYdb::GetTraceSerializer()    { return TraceSerializer.get(); }
 IStartable* TBootstrapYdb::GetLogbrokerService()   { return LogbrokerService.get(); }
 IStartable* TBootstrapYdb::GetNotifyService()      { return NotifyService.get(); }
 IStartable* TBootstrapYdb::GetStatsFetcher()       { return StatsFetcher.get(); }
@@ -381,6 +382,10 @@ IStartable* TBootstrapYdb::GetIamTokenClient()     { return IamTokenClient.get()
 IStartable* TBootstrapYdb::GetComputeClient()      { return ComputeClient.get(); }
 IStartable* TBootstrapYdb::GetKmsClient()          { return KmsClient.get(); }
 IStartable* TBootstrapYdb::GetRootKmsClient()      { return RootKmsClient.get(); }
+ITraceSerializerPtr TBootstrapYdb::GetTraceSerializer()
+{
+    return TraceSerializer;
+}
 
 ITraceServiceClientPtr TBootstrapYdb::GetTraceServiceClient()
 {
@@ -406,6 +411,7 @@ void TBootstrapYdb::InitConfigs()
     Configs->InitKmsClientConfig();
     Configs->InitRootKmsConfig();
     Configs->InitComputeClientConfig();
+    Configs->InitCellsConfig();
 }
 
 void TBootstrapYdb::InitSpdk()
@@ -439,7 +445,7 @@ void TBootstrapYdb::InitRdmaClient()
             RdmaClient = ServerModuleFactories->RdmaClientFactory(
                 Logging,
                 Monitoring,
-                CreateRdmaClientConfig(Configs->RdmaConfig));
+                CreateRdmaClientConfig(*Configs->RdmaConfig));
 
             STORAGE_INFO("RDMA client initialized");
         }
@@ -454,7 +460,6 @@ void TBootstrapYdb::InitRdmaClient()
 
 void TBootstrapYdb::InitRdmaServer()
 {
-    // TODO: read config
     auto rdmaConfig = std::make_shared<NRdma::TServerConfig>();
 
     RdmaServer = ServerModuleFactories->RdmaServerFactory(
@@ -573,13 +578,18 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("RDMA config initialized");
 
     auto logging = std::make_shared<TLoggingProxy>();
+    TraceSerializer = CreateTraceSerializer(
+        logging,
+        "BLOCKSTORE_TRACE",
+        NLwTraceMonPage::TraceManager(false));
+
+    STORAGE_INFO("TraceSerializer initialized");
+
     auto monitoring = std::make_shared<TMonitoringProxy>();
-
-    std::shared_ptr<TFakeRdmaClientProxy> fakeRdmaClientProxy;
-
     Logging = logging;
     Monitoring = monitoring;
 
+    std::shared_ptr<TFakeRdmaClientProxy> fakeRdmaClientProxy;
     if (Configs->ServerConfig->GetUseFakeRdmaClient() &&
         Configs->RdmaConfig->GetClientEnabled())
     {
@@ -725,13 +735,6 @@ void TBootstrapYdb::InitKikimrService()
     }
 
     STORAGE_INFO("DiscoveryService initialized");
-
-    TraceSerializer = CreateTraceSerializer(
-        logging,
-        "BLOCKSTORE_TRACE",
-        NLwTraceMonPage::TraceManager(false));
-
-    STORAGE_INFO("TraceSerializer initialized");
 
     if (Configs->DiagnosticsConfig->GetUseAsyncLogger()) {
         AsyncLogger = CreateAsyncLogger();
@@ -916,6 +919,34 @@ void TBootstrapYdb::WarmupBSGroupConnections()
         Configs->StorageConfig->GetBSGroupsPerChannelToWarmup()));
 
     future.Wait();
+}
+
+void TBootstrapYdb::InitRdmaRequestServer()
+{
+    auto rdmaConfig = std::make_shared<NRdma::TServerConfig>(
+        Configs->RdmaConfig->GetServer());
+
+    RdmaRequestServer = ServerModuleFactories->RdmaServerFactory(
+        Logging,
+        Monitoring,
+        std::move(rdmaConfig));
+}
+
+void TBootstrapYdb::SetupCellManager()
+{
+    if (Configs->CellsConfig->GetCellsEnabled()) {
+        CellManager = CreateCellManager(
+            Configs->CellsConfig,
+            Timer,
+            Scheduler,
+            Logging,
+            Monitoring,
+            GetTraceSerializer(),
+            ServerStats,
+            RdmaClient);
+    } else {
+        CellManager = NCells::CreateCellManagerStub();
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer

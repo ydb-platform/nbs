@@ -1,4 +1,5 @@
 RECURSE(
+    cells
     client
     client/bench
     client_rdma
@@ -30,6 +31,7 @@ RECURSE(
     service
     service_kikimr
     service_local
+    service_rdma
     service_throttling
     spdk
     storage
