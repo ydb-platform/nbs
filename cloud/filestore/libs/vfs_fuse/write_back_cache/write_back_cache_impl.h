@@ -2,6 +2,8 @@
 
 #include "write_back_cache.h"
 
+#include "disjoint_interval_map.h"
+
 #include <cloud/filestore/libs/service/filestore.h>
 
 #include <util/generic/intrlist.h>
@@ -12,17 +14,18 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class TWriteBackCache::EFlushStatus
+enum class TWriteBackCache::EWriteDataEntryStatus
 {
-    NotStarted,
-    Started,
-    Finished
+    Invalid,
+    Pending,
+    Cached,
+    CachedFlushRequested,
+    Flushed
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TWriteBackCache::TWriteDataEntry
-    : public TIntrusiveListItem<TWriteDataEntry>
 {
 private:
     // Store request metadata and request buffer separately
@@ -31,15 +34,23 @@ private:
     std::shared_ptr<NProto::TWriteDataRequest> Request;
     TString RequestBuffer;
 
+    // Memory allocated in CachedEntriesPersistentQueue
+    char* AllocationPtr = nullptr;
+
     // Reference to either RequestBuffer or a memory region
-    // in WriteDataRequestsQueue
+    // referenced by AllocationPtr in CachedEntriesPersistentQueue
     TStringBuf BufferRef;
+
+    NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
+    NThreading::TPromise<void> FlushedPromise;
+    EWriteDataEntryStatus Status = EWriteDataEntryStatus::Invalid;
 
 public:
     explicit TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
     TWriteDataEntry(ui32 checksum, TStringBuf serializedRequest);
+
 
     const NProto::TWriteDataRequest* GetRequest() const
     {
@@ -66,10 +77,31 @@ public:
         return Request->GetOffset() + BufferRef.size();
     }
 
-    size_t GetSerializedSize() const;
-    void SerializeAndMoveRequestBuffer(char* allocationPtr);
+    bool IsCached() const
+    {
+        return Status == EWriteDataEntryStatus::Cached ||
+               Status == EWriteDataEntryStatus::CachedFlushRequested;
+    }
 
-    EFlushStatus FlushStatus = EFlushStatus::NotStarted;
+    bool IsFinished() const
+    {
+        return Status == EWriteDataEntryStatus::Flushed ||
+               Status == EWriteDataEntryStatus::Invalid;
+    }
+
+    size_t GetSerializedSize() const;
+
+    void SerializeAndMoveRequestBuffer(
+        char* allocationPtr,
+        TPendingOperations& pendingOperations);
+
+    void Finish(TPendingOperations& pendingOperations);
+
+    bool IsFlushRequested() const;
+    bool RequestFlush();
+
+    NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
+    NThreading::TFuture<void> GetFlushedFuture();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -102,15 +134,14 @@ public:
      * Finds cached data from the sequence of write operations for the specified
      *   interval.
      *
-     * @param entries The sequence of write operations. Write operations may
-     *   overlap and are applied on top of each other.
+     * @param map The interval map of cached write operations.
      * @param startingFromOffset The starting offset of the interval to read.
      * @param length The length of the interval to read.
      * @return A sorted vector of non-overlapping intervals representing cached
      *   data.
      */
     static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
-        const TVector<TWriteDataEntry*>& entries,
+        const TCachedIntervalsMap& map,
         ui64 startingFromOffset,
         ui64 length);
 
@@ -139,7 +170,59 @@ public:
         ui64 startingFromOffset,
         ui64 length);
 
+    /**
+    * Count the number of entries that can be taken for flushing.
+    *
+    * @param entries The sequence of client write requests.
+    * @param maxWriteRequestSize The maximum size of a single consolidated
+    *   WriteData request.
+    * @param maxWriteRequestsCount The maximum number of consolidated WriteData
+    *   requests.
+    * @param maxSumWriteRequestsSize The maximum total size of all consolidated
+    *   WriteData requests.
+    *
+    * @return The number of entries that can be taken from the beginning of
+    *   the entries sequence for flushing.
+    */
+    static size_t CalculateEntriesCountToFlush(
+        const TDeque<TWriteDataEntry*>& entries,
+        ui32 maxWriteRequestSize,
+        ui32 maxWriteRequestsCount,
+        ui32 maxSumWriteRequestsSize);
+
+    /**
+     * Finds cached data from the sequence of write operations.
+     *
+     * @param entries The sequence of write operations. Write operations may
+     *   overlap and are applied on top of each other.
+     * @param count Take the first 'count' entries from the sequence.
+     * @return A sorted vector of non-overlapping intervals representing cached
+     *   data.
+     */
+    static TVector<TWriteDataEntryPart> CalculateDataPartsToFlush(
+        const TDeque<TWriteDataEntry*>& entries,
+        size_t count);
+
     static bool IsSorted(const TVector<TWriteDataEntryPart>& parts);
+    static bool IsContiguousSequence(const TVector<TWriteDataEntryPart>& parts);
+
+private:
+    struct TPoint;
+
+    static TVector<TWriteDataEntryPart> CalculateDataParts(
+        TVector<TPoint> points);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TWriteBackCache::TCachedIntervalsMap
+    : public TDisjointIntervalMap<ui64, TWriteDataEntry*>
+{
+public:
+    using TBase = TDisjointIntervalMap<ui64, TWriteDataEntry*>;
+
+    void Add(TWriteDataEntry* entry);
+    void Remove(TWriteDataEntry* entry);
 };
 
 }   // namespace NCloud::NFileStore::NFuse
