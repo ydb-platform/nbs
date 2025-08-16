@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     validation.cpp
     validation_client.cpp
+    data_integrity_client.cpp
     validation_service.cpp
 )
 

@@ -622,6 +622,7 @@ private:
                     << requestDetails.ClientId << "] read error: "
                     << error.GetMessage() << " (" << error.GetCode() << ")");
         }
+        proto.MutableChecksum()->CopyFrom(response.GetChecksum());
 
         size_t bytes;
         ui32 flags = 0;

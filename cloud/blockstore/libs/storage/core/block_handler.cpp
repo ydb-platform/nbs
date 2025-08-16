@@ -1,6 +1,7 @@
 #include "block_handler.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 
 #include <util/generic/bitmap.h>
 #include <util/generic/vector.h>
@@ -164,6 +165,9 @@ public:
                     allZeroes && IsAllZeroes(block.data(), block.size());
             }
         }
+
+        NProto::TChecksum checksum = CalculateChecksum(Blocks, BlockSize);
+        *response.MutableChecksum() = std::move(checksum);
 
         // Wait for all TSgList users are done.
         SgList.Close();
@@ -354,6 +358,9 @@ public:
             }
 
             response.SetAllZeroes(allZeroes);
+
+            NProto::TChecksum checksum = CalculateChecksum(sglist);
+            *response.MutableChecksum() = std::move(checksum);
         }
 
         auto stringBuf = ConvertBitMapToStringBuf(UnencryptedBlockMask);

@@ -3,11 +3,13 @@
 #include "part_nonrepl_actor_base_request.h"
 #include "part_nonrepl_common.h"
 
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/string/builder.h>
@@ -37,6 +39,7 @@ private:
     ui32 NonVoidBlockCount = 0;
 
     NProto::TReadBlocksResponse Response;
+    TVector<NProto::TChecksum> Checksums;
 
 public:
     TDiskAgentReadActor(
@@ -84,7 +87,9 @@ TDiskAgentReadActor::TDiskAgentReadActor(
     , SkipVoidBlocksToOptimizeNetworkTransfer(
           Request.GetHeaders().GetOptimizeNetworkTransfer() ==
           NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
-{}
+{
+    Checksums.resize(DeviceRequests.size());
+}
 
 void TDiskAgentReadActor::SendRequest(const TActorContext& ctx)
 {
@@ -170,6 +175,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
         return;
     }
 
+    Checksums[ev->Cookie].CopyFrom(msg->Record.GetChecksum());
     auto& srcBuffers = *msg->Record.MutableBlocks()->MutableBuffers();
     auto& destBuffers = *Response.MutableBlocks()->MutableBuffers();
     const auto blockSize = PartConfig->GetBlockSize();
@@ -197,6 +203,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
     auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
     response->Record = std::move(Response);
     response->Record.SetAllZeroes(VoidBlockCount == Request.GetBlocksCount());
+    *response->Record.MutableChecksum() = CombineChecksums(Checksums);
     Done(ctx, std::move(response), EStatus::Success);
 }
 
