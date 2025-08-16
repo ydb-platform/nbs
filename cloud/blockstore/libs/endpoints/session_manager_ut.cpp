@@ -1,6 +1,6 @@
 #include "session_manager.h"
 
-#include <cloud/blockstore/libs/cells/iface/cells.h>
+#include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/dumpable.h>
