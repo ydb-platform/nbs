@@ -2,7 +2,9 @@
 
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
+
 #include <util/generic/yexception.h>
+#include <util/stream/format.h>
 #include <util/string/printf.h>
 #include <util/system/file.h>
 
@@ -81,12 +83,16 @@ void NVMeFormatImpl(
 
     memcpy(&cmd.cdw10, &format, sizeof(ui32));
 
-    int err = ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd);
+    const int r = ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd);
 
-    if (err) {
+    if (r < 0) {
         int err = errno;
         ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
             << "NVMeFormatImpl failed: " << strerror(err);
+    }
+
+    if (r != 0) {
+        ythrow TServiceError(E_FAIL) << "NVME Admin command error: " << Hex(r);
     }
 }
 
@@ -129,6 +135,19 @@ TResultOrError<bool> IsRotational(TFileHandle& device)
     return val != 0;
 }
 
+TFileHandle OpenDevice(const TString& path, EOpenMode mode)
+{
+    TFileHandle file{path, OpenExisting | mode};
+
+    if (!file.IsOpen()) {
+        int err = errno;
+        ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+            << "unable to open " << path.Quote() << ": " << strerror(err);
+    }
+
+    return file;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TNvmeManager final
@@ -142,7 +161,7 @@ private:
         const TString& path,
         nvme_secure_erase_setting ses)
     {
-        TFileHandle device(path, OpenExisting | RdOnly);
+        TFileHandle device = OpenDevice(path, RdOnly);
 
         Y_ENSURE(IsBlockOrCharDevice(device), "expected block or character device");
 
@@ -172,7 +191,7 @@ private:
 
     void DeallocateImpl(const TString& path, ui64 offsetBytes, ui64 sizeBytes)
     {
-        TFileHandle device(path, OpenExisting | RdWr);
+        TFileHandle device = OpenDevice(path, RdWr);
         Y_ENSURE(IsBlockOrCharDevice(device), "expected block or character device");
 
         ui64 devSizeBytes = 0;
@@ -202,7 +221,7 @@ private:
 
 public:
     TNvmeManager(ITaskQueuePtr executor, TDuration timeout)
-        : Executor(executor)
+        : Executor(std::move(executor))
         , Timeout(timeout)
     {}
 
@@ -214,6 +233,8 @@ public:
             try {
                 FormatImpl(path, ses);
                 return NProto::TError();
+            } catch(const TServiceError& e) {
+                return MakeError(e.GetCode(), TString(e.GetMessage()));
             } catch (...) {
                 return MakeError(E_FAIL, CurrentExceptionMessage());
             }
@@ -240,7 +261,7 @@ public:
     TResultOrError<TString> GetSerialNumber(const TString& path) override
     {
         return SafeExecute<TResultOrError<TString>>([&] {
-            TFileHandle device(path, OpenExisting | RdOnly);
+            TFileHandle device = OpenDevice(path, RdOnly);
 
             auto str = [] (auto& arr) {
                 auto* sn = std::bit_cast<const char*>(&arr[0]);
@@ -265,7 +286,7 @@ public:
     TResultOrError<bool> IsSsd(const TString& path) override
     {
         return SafeExecute<TResultOrError<bool>>([&] {
-            TFileHandle device(path, OpenExisting | RdOnly);
+            TFileHandle device = OpenDevice(path, RdOnly);
 
             auto [isRot, error] = IsRotational(device);
             if (HasError(error)) {
