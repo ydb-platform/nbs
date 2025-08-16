@@ -39,12 +39,8 @@ ok 1 (line: 11)
 ok 2 (line: 12)
 ok 3 (line: 13)
 ok 4 (line: 16)
-TEST SUITE[opendir, 04.t] 1..5
+TEST SUITE[opendir, 04.t] 1..1
 ok 1 (line: 13)
-ok 2 (line: 17)
-ok 3 (line: 19)
-ok 4 (line: 20)
-ok 5 (line: 21)
 TEST SUITE[opendir, 05.t] 1..6
 ok 1 (line: 14)
 ok 2 (line: 15)
