@@ -1,6 +1,7 @@
 #pragma once
 
 #include "bootstrap.h"
+#include "cell_host.h"
 #include "cell_manager.h"
 
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>

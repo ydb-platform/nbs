@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/service/public.h>
 
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -45,8 +46,8 @@ private:
         const TString& fqdn);
 };
 
-using TCellHostEndpoints = TVector<TCellHostEndpoint>;
+////////////////////////////////////////////////////////////////////////////////
 
-using TCellHostEndpointsByCellId = THashMap<TString, TCellHostEndpoints>;
+using TCellHostEndpoints = TVector<TCellHostEndpoint>;
 
 }   // namespace NCloud::NBlockStore::NCells
