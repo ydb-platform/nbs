@@ -268,6 +268,7 @@ struct TEvPartitionPrivate
         NKikimr::TStorageStatusFlags StorageStatusFlags;
         double ApproximateFreeSpaceShare = 0;
         TDuration RequestTime;
+        ui64 BSGroupOperationId = 0;
 
         TWriteBlobCompleted() = default;
 
@@ -329,6 +330,7 @@ struct TEvPartitionPrivate
         NKikimr::TStorageStatusFlags StorageStatusFlags;
         double ApproximateFreeSpaceShare = 0;
         TDuration RequestTime;
+        ui64 BSGroupOperationId = 0;
 
         TPatchBlobCompleted() = default;
 
