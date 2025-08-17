@@ -414,7 +414,7 @@ void TFileSystem::Write(
 
     const auto size = buffer.size();
 
-    if (ShouldUseWriteBackCache(fi)) {
+    if (ShouldUseServerWriteBackCache(fi)) {
         WriteBackCache.WriteData(callContext, std::move(request))
             .Subscribe(
                 [=,
@@ -560,7 +560,7 @@ void TFileSystem::WriteBuf(
     request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
     request->SetBuffer(alignedBuffer.TakeBuffer());
 
-    if (ShouldUseWriteBackCache(fi)) {
+    if (ShouldUseServerWriteBackCache(fi)) {
         WriteBackCache.WriteData(callContext, std::move(request))
             .Subscribe(
                 [=, ptr = weak_from_this()] (const auto& future)
@@ -943,18 +943,13 @@ void TFileSystem::FSyncDir(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TFileSystem::ShouldUseWriteBackCache(const fuse_file_info* fi) const
+bool TFileSystem::ShouldUseServerWriteBackCache(const fuse_file_info* fi) const
 {
     if (!WriteBackCache || !Config->GetServerWriteBackCacheEnabled()) {
         return false;
     }
 
     if (fi->flags & O_DIRECT) {
-        return false;
-    }
-
-    const int accessMode = fi->flags & O_ACCMODE;
-    if (accessMode != O_WRONLY && accessMode != O_RDWR) {
         return false;
     }
 

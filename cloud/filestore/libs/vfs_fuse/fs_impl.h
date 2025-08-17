@@ -391,7 +391,7 @@ private:
         fuse_ino_t ino,
         uint64_t fh);
 
-    bool ShouldUseWriteBackCache(const fuse_file_info* fi) const;
+    bool ShouldUseServerWriteBackCache(const fuse_file_info* fi) const;
 
     bool UpdateNodeCache(
         const NProto::TNodeAttr& attrs,

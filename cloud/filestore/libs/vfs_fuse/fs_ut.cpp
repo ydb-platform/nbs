@@ -1944,6 +1944,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
         UNIT_ASSERT_VALUES_EQUAL(1, readDataCalled.load());
 
+        // write request without O_DIRECT should go to write cache
         auto reqWrite = std::make_shared<TWriteRequest>(
             nodeId,
             handleId,
@@ -1985,6 +1986,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // no new writes (flushes) are expected
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
 
+        // write request without O_DIRECT should go to write cache
         reqWrite = std::make_shared<TWriteRequest>(
             nodeId,
             handleId,
@@ -2004,6 +2006,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // cache should be flushed
         UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
 
+        // write request without O_DIRECT should go to write cache
         reqWrite = std::make_shared<TWriteRequest>(
             nodeId,
             handleId,
@@ -2056,6 +2059,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
+        // write request without O_DIRECT should go to write cache
         auto reqWrite = std::make_shared<TWriteRequest>(
             nodeId,
             handleId,
@@ -2077,7 +2081,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalled.load());
         // cache should be flushed
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
-
+        
+        // write request without O_DIRECT should go to write cache
         reqWrite = std::make_shared<TWriteRequest>(
             nodeId,
             handleId,
@@ -2099,16 +2104,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
     }
 
+    // TODO: create and use metrics for write cache https://github.com/ydb-platform/nbs/issues/4154
     Y_UNIT_TEST(
-        ShouldHandleFlagsWhenWriteToCacheWithServerWriteBackCacheEnabled)
+        ShouldNotUseServerWriteBackCacheForDirectHandles)
     {
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
 
+        // disable automatic flush to make sure that write cache is not flushed
+        const ui32 automaticFlushPeriodMs = 0;
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
-            features);
+            features,
+            1000,
+            automaticFlushPeriodMs);
 
         const ui64 nodeId = 123;
         const ui64 handleId = 456;
@@ -2129,6 +2139,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
+        // write request with O_DIRECT should not go to write cache
         auto reqWrite = std::make_shared<TWriteRequest>(
             nodeId,
             handleId,
@@ -2140,26 +2151,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
 
-        // write without write flag should not write to cache
-        reqWrite = std::make_shared<TWriteRequest>(
-            nodeId,
-            handleId,
-            0,
-            CreateBuffer(4096, 'a'));
-        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
-        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
-        UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
-
-        reqWrite = std::make_shared<TWriteRequest>(
-            nodeId,
-            handleId,
-            0,
-            CreateBuffer(4096, 'a'));
-        reqWrite->In->Body.flags |= O_DIRECT;
-        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
-        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
-        UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
-
+        // write request without O_DIRECT should go to write cache
         reqWrite = std::make_shared<TWriteRequest>(
             nodeId,
             handleId,
@@ -2168,17 +2160,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         reqWrite->In->Body.flags |= O_WRONLY;
         write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
-        UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
-
-        reqWrite = std::make_shared<TWriteRequest>(
-            nodeId,
-            handleId,
-            0,
-            CreateBuffer(4096, 'a'));
-        reqWrite->In->Body.flags |= O_RDONLY;
-        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
-        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
-        UNIT_ASSERT_VALUES_EQUAL(4, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
     }
 
     Y_UNIT_TEST(ShouldFlushWithServerWriteBackCacheEnabled)
@@ -2266,6 +2248,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
+        // write request without O_DIRECT should go to write cache
         auto reqWrite = std::make_shared<TWriteRequest>(
             nodeId,
             handleId,
@@ -2315,6 +2298,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
+        // write request without O_DIRECT should go to write cache
         auto reqWrite = std::make_shared<TWriteRequest>(
             nodeId,
             handleId,
