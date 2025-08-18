@@ -57,10 +57,6 @@ func (t *createOverlayDiskTask) Run(
 		return err
 	}
 
-	if common.IsLocalDiskKind(params.Kind) {
-		return errors.NewNonCancellableErrorf("overlay disk cannot be local")
-	}
-
 	selfTaskID := execCtx.GetTaskID()
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{

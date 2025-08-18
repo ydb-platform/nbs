@@ -56,7 +56,7 @@ func (t *createDiskFromImageTask) Run(
 
 	if common.IsLocalDiskKind(params.Kind) {
 		return errors.NewNonCancellableErrorf(
-			"cannot create local disk from image",
+			"creating local disk from image is forbidden",
 		)
 	}
 

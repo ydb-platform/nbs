@@ -316,7 +316,7 @@ func (t *migrateDiskTask) ensureNonLocalDisk(ctx context.Context) error {
 
 	if common.IsLocalDiskKind(params.Kind) {
 		return errors.NewNonCancellableErrorf(
-			"cannot migrate local disk %v",
+			"migrating local disk %v is forbidden",
 			t.request.Disk.DiskId,
 		)
 	}

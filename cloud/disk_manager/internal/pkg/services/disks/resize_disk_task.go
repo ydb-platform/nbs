@@ -52,7 +52,7 @@ func (t *resizeDiskTask) Run(
 
 	if internal_common.IsLocalDiskKind(params.Kind) {
 		return errors.NewNonCancellableErrorf(
-			"cannot resize local disk %v",
+			"resizing local disk %v is forbidden",
 			t.request.Disk.DiskId,
 		)
 	}
