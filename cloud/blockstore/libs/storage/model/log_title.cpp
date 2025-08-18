@@ -3,92 +3,124 @@
 #include <cloud/storage/core/libs/common/format.h>
 
 #include <util/datetime/cputimer.h>
+#include <util/generic/overloaded.h>
 #include <util/string/builder.h>
 #include <util/system/datetime.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
 
-TLogTitle::TLogTitle(ui64 tabletId, TString diskId, ui64 startTime)
-    : Type(EType::Volume)
-    , StartTime(startTime)
-    , TabletId(tabletId)
-    , DiskId(std::move(diskId))
+template <typename T>
+struct TOptional
 {
-    Rebuild();
+    const T& Value;
+};
+
+template <typename T>
+TOptional(const T&) -> TOptional<T>;
+
+template <typename T>
+TStringBuilder& operator<<(TStringBuilder& stream, TOptional<T> opt)
+{
+    if (!opt.Value) {
+        if constexpr (std::is_same_v<TString, T>) {
+            stream << "???";
+        } else {
+            stream << "?";
+        }
+    } else{
+        stream << opt.Value;
+    }
+
+    return stream;
 }
 
-TLogTitle::TLogTitle(
-        ui64 tabletId,
-        TString diskId,
-        ui64 startTime,
-        ui32 partitionIndex,
-        ui32 partitionCount)
-    : Type(EType::Partition)
-    , StartTime(startTime)
-    , PartitionIndex(partitionIndex)
-    , PartitionCount(partitionCount)
-    , TabletId(tabletId)
-    , DiskId(std::move(diskId))
+////////////////////////////////////////////////////////////////////////////////
+
+TString ToString(const TLogTitle::TVolume& data)
 {
-    Rebuild();
+    TStringBuilder stream;
+
+    stream << "[v:" << data.TabletId;
+    stream << " g:" << TOptional{data.Generation};
+    stream << " d:" << TOptional{data.DiskId};
+
+    return stream;
 }
 
-TLogTitle::TLogTitle(
-        EType type,
-        TString sessionId,
-        TString diskId,
-        bool temporaryServer,
-        ui64 startTime)
-    : Type(type)
-    , SessionId(std::move(sessionId))
-    , StartTime(startTime)
-    , TemporaryServer(temporaryServer)
-    , DiskId(std::move(diskId))
+TString ToString(const TLogTitle::TPartition& data)
 {
-    Rebuild();
+    TStringBuilder stream;
+
+    stream << "[";
+    stream << TLogTitle::GetPartitionPrefix(
+        data.TabletId,
+        data.PartitionIndex,
+        data.PartitionCount);
+    stream << " g:" << TOptional{data.Generation};
+    stream << " d:" << TOptional{data.DiskId};
+
+    return stream;
 }
 
-TLogTitle::TLogTitle(
-        ui64 tabletId,
-        TString sessionId,
-        TString clientId,
-        TString diskId,
-        bool temporaryServer,
-        ui64 startTime)
-    : Type(EType::Client)
-    , SessionId(std::move(sessionId))
-    , ClientId(std::move(clientId))
-    , StartTime(startTime)
-    , TemporaryServer(temporaryServer)
-    , TabletId(tabletId)
-    , DiskId(std::move(diskId))
+TString ToString(const TLogTitle::TSession& data)
 {
-    Rebuild();
+    TStringBuilder stream;
+
+    stream << "[";
+    if (data.TemporaryServer) {
+        stream << "~";
+    }
+    stream << "vs:" << TOptional{data.TabletId};
+    stream << " d:" << data.DiskId;
+    stream << " s:" << data.SessionId;
+
+    return stream;
 }
 
-TLogTitle::TLogTitle(TString diskId, bool temporaryServer, ui64 startTime)
-    : Type(EType::VolumeProxy)
-    , StartTime(startTime)
-    , TemporaryServer(temporaryServer)
-    , DiskId(std::move(diskId))
+TString ToString(const TLogTitle::TClient& data)
 {
-    Rebuild();
+    TStringBuilder stream;
+
+    stream << "[";
+    if (data.TemporaryServer) {
+        stream << "~";
+    }
+    stream << "vc:" << data.TabletId;
+    stream << " d:" << data.DiskId;
+    stream << " s:" << data.SessionId;
+    stream << " c:" << data.ClientId;
+    stream << " pg:" << TOptional{data.Generation};
+
+    return stream;
 }
 
-TLogTitle::TLogTitle(EType type, ui64 startTime)
-    : Type(type)
-    , StartTime(startTime)
-{}
-
-TLogTitle TLogTitle::MakeForPartitionNonrepl(TString diskId, ui64 startTime)
+TString ToString(const TLogTitle::TVolumeProxy& data)
 {
-    auto log = TLogTitle(EType::PartitionNonrepl, startTime);
-    log.DiskId = std::move(diskId);
-    log.Rebuild();
-    return log;
+    TStringBuilder stream;
+
+    stream << "[";
+    if (data.TemporaryServer) {
+        stream << "~";
+    }
+    stream << "vp:" << TOptional{data.TabletId};
+    stream << " d:" << data.DiskId;
+    stream << " pg:" << data.Generation;
+
+    return stream;
 }
+
+TString ToString(const TLogTitle::TPartitionNonrepl& data)
+{
+    return TStringBuilder() << "[nrd:" << data.DiskId;
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 // static
 TString TLogTitle::GetPartitionPrefix(
@@ -115,7 +147,7 @@ TChildLogTitle TLogTitle::GetChild(const ui64 startTime) const
     const auto duration = CyclesToDurationSafe(startTime - StartTime);
     childPrefix << " t:" << FormatDuration(duration);
 
-    return TChildLogTitle(childPrefix, startTime);
+    return {childPrefix, startTime};
 }
 
 TChildLogTitle TLogTitle::GetChildWithTags(
@@ -132,7 +164,7 @@ TChildLogTitle TLogTitle::GetChildWithTags(
     const auto duration = CyclesToDurationSafe(startTime - StartTime);
     childPrefix << " t:" << FormatDuration(duration);
 
-    return TChildLogTitle(childPrefix, startTime);
+    return {childPrefix, startTime};
 }
 
 TChildLogTitle TLogTitle::GetChildWithTags(
@@ -175,82 +207,50 @@ TString TLogTitle::GetBrief() const
 
 void TLogTitle::SetDiskId(TString diskId)
 {
-    DiskId = std::move(diskId);
-    Rebuild();
+    std::visit(
+        [this, &diskId](auto& data)
+        {
+            data.DiskId = std::move(diskId);
+            CachedPrefix = ToString(data);
+        },
+        Data);
 }
 
 void TLogTitle::SetGeneration(ui32 generation)
 {
-    Generation = generation;
-    Rebuild();
+    std::visit(TOverloaded(
+        [this, generation]<typename T>(T& data)
+            requires(std::is_same_v<T, TVolume> ||
+                     std::is_same_v<T, TVolumeProxy> ||
+                     std::is_same_v<T, TPartition> ||
+                     std::is_same_v<T, TClient>)
+        {
+            data.Generation = generation;
+            CachedPrefix = ToString(data);
+        },
+        [](auto&) { Y_DEBUG_ABORT_UNLESS(false, "it does not make sense"); }),
+        Data);
 }
 
 void TLogTitle::SetTabletId(ui64 tabletId)
 {
-    TabletId = tabletId;
-    Rebuild();
+    std::visit(TOverloaded(
+        [this, tabletId]<typename T>(T& data)
+            requires(std::is_same_v<T, TVolumeProxy> ||
+                     std::is_same_v<T, TPartition> ||
+                     std::is_same_v<T, TClient> ||
+                     std::is_same_v<T, TSession>)
+        {
+            data.TabletId = tabletId;
+            CachedPrefix = ToString(data);
+        },
+        [](auto&) { Y_DEBUG_ABORT_UNLESS(false, "it does not make sense"); }),
+        Data);
 }
 
 void TLogTitle::Rebuild()
 {
-    switch (Type) {
-        case EType::Volume: {
-            RebuildForVolume();
-            break;
-        }
-        case EType::Partition: {
-            RebuildForPartition();
-            break;
-        }
-        case EType::Session: {
-            RebuildForSession();
-            break;
-        }
-        case EType::Client: {
-            RebuildForClient();
-            break;
-        }
-        case EType::VolumeProxy: {
-            RebuildForVolumeProxy();
-            break;
-        }
-        case EType::PartitionNonrepl: {
-            RebuildForPartitionNonrepl();
-            break;
-        }
-    }
-}
-
-void TLogTitle::RebuildForVolume()
-{
-    auto builder = TStringBuilder();
-
-    builder << "[";
-    builder << "v:" << TabletId;
-    if (Generation) {
-        builder << " g:" << Generation;
-    } else {
-        builder << " g:?";
-    }
-    builder << " d:" << (DiskId.empty() ? "???" : DiskId);
-
-    CachedPrefix = builder;
-}
-
-void TLogTitle::RebuildForPartition()
-{
-    auto builder = TStringBuilder();
-
-    builder << "[";
-    builder << GetPartitionPrefix(TabletId, PartitionIndex, PartitionCount);
-    if (Generation) {
-        builder << " g:" << Generation;
-    } else {
-        builder << " g:?";
-    }
-    builder << " d:" << (DiskId.empty() ? "???" : DiskId);
-
-    CachedPrefix = builder;
+    std::visit([this](auto& data) { CachedPrefix = ToString(data); }, Data);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -266,75 +266,6 @@ TString TChildLogTitle::GetWithTime() const
     TStringBuilder builder;
     builder << CachedPrefix << " + " << FormatDuration(duration) << "]";
     return builder;
-}
-
-void TLogTitle::RebuildForSession()
-{
-    auto builder = TStringBuilder();
-
-    builder << "[";
-    if (TemporaryServer) {
-        builder << "~";
-    }
-    builder << "vs:";
-    if (TabletId) {
-        builder << TabletId;
-    } else {
-        builder << "?";
-    }
-    builder << " d:" << DiskId;
-    builder << " s:" << SessionId;
-
-    CachedPrefix = builder;
-}
-
-void TLogTitle::RebuildForClient()
-{
-    auto builder = TStringBuilder();
-
-    builder << "[";
-    if (TemporaryServer) {
-        builder << "~";
-    }
-    builder << "vc:" << TabletId;
-    builder << " d:" << DiskId;
-    builder << " s:" << SessionId;
-    builder << " c:" << ClientId;
-
-    builder << " pg:";
-    if (Generation) {
-        builder << Generation;
-    } else {
-        builder << "?";
-    }
-    CachedPrefix = builder;
-}
-
-void TLogTitle::RebuildForVolumeProxy()
-{
-    auto builder = TStringBuilder();
-
-    builder << "[";
-    if (TemporaryServer) {
-        builder << "~";
-    }
-    builder << "vp:";
-    if (TabletId) {
-        builder << TabletId;
-    } else {
-        builder << "?";
-    }
-    builder << " d:" << DiskId;
-    builder << " pg:" << Generation;
-
-    CachedPrefix = builder;
-}
-
-void TLogTitle::RebuildForPartitionNonrepl()
-{
-    auto builder = TStringBuilder() << "[nrd:" << DiskId;
-
-    CachedPrefix = builder;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -144,15 +144,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeClientActor::TVolumeClientActor(
-        TStorageConfigPtr config,
-        ITraceSerializerPtr traceSerializer,
-        NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        const TActorId& sessionActorId,
-        TString sessionId,
-        TString clientId,
-        bool temporaryServer,
-        TString diskId,
-        ui64 tabletId)
+    TStorageConfigPtr config,
+    ITraceSerializerPtr traceSerializer,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
+    const TActorId& sessionActorId,
+    TString sessionId,
+    TString clientId,
+    bool temporaryServer,
+    TString diskId,
+    ui64 tabletId)
     : TActor(&TThis::StateWork)
     , TraceSerializer(std::move(traceSerializer))
     , EndpointEventHandler(std::move(endpointEventHandler))
@@ -161,12 +161,13 @@ TVolumeClientActor::TVolumeClientActor(
     , TabletId(tabletId)
     , ClientConfig(CreateTabletPipeClientConfig(*config))
     , LogTitle(
-          TabletId,
-          std::move(sessionId),
-          std::move(clientId),
-          DiskId,
-          temporaryServer,
-          GetCycleCount())
+          GetCycleCount(),
+          TLogTitle::TClient{
+              .TabletId = TabletId,
+              .SessionId = std::move(sessionId),
+              .ClientId = std::move(clientId),
+              .DiskId = DiskId,
+              .TemporaryServer = temporaryServer})
 {}
 
 void TVolumeClientActor::OnConnectionError(

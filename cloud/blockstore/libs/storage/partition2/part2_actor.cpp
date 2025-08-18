@@ -36,17 +36,17 @@ const TPartitionActor::TStateInfo TPartitionActor::States[STATE_MAX] = {
 };
 
 TPartitionActor::TPartitionActor(
-        const TActorId& owner,
-        TTabletStorageInfoPtr storage,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        NProto::TPartitionConfig partitionConfig,
-        EStorageAccessMode storageAccessMode,
-        ui32 siblingCount,
-        const TActorId& volumeActorId,
-        ui64 volumeTabletId)
+    const TActorId& owner,
+    TTabletStorageInfoPtr storage,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    NProto::TPartitionConfig partitionConfig,
+    EStorageAccessMode storageAccessMode,
+    ui32 siblingCount,
+    const TActorId& volumeActorId,
+    ui64 volumeTabletId)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), nullptr)
     , Config(std::move(config))
@@ -60,11 +60,12 @@ TPartitionActor::TPartitionActor(
     , ChannelHistorySize(CalcChannelHistorySize())
     , VolumeTabletId(volumeTabletId)
     , LogTitle(
-          TabletID(),
-          PartitionConfig.GetDiskId(),
           StartTime,
-          0,
-          siblingCount)
+          TLogTitle::TPartition{
+              .TabletId = TabletID(),
+              .DiskId = PartitionConfig.GetDiskId(),
+              .PartitionIndex = 0,
+              .PartitionCount = siblingCount})
 {}
 
 TPartitionActor::~TPartitionActor()
