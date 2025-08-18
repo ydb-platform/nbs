@@ -81,11 +81,10 @@ void TVolumeActor::ReleaseReplacedDevices(
             LogTitle.GetWithTime().c_str(),
             clientId.Quote().c_str());
 
-        auto request = TAcquireReleaseDiskRequest::MakeRelease(
-            clientId,
-            nullptr,   // clientRequest
-            replacedDevices,
-            false);   // retryIfTimeoutOrUndelivery
+        auto request = TReleaseDiskRequest{
+            .ClientId = clientId,
+            .DevicesToRelease = replacedDevices,
+        };
         AddAcquireReleaseDiskRequest(ctx, std::move(request));
     }
 }
@@ -104,12 +103,9 @@ void TVolumeActor::ReleaseDiskFromOldClients(
 
         AddAcquireReleaseDiskRequest(
             ctx,
-            TAcquireReleaseDiskRequest::MakeRelease(
-                clientId,
-                nullptr,   // clientRequest
-                TVector<NProto::TDeviceConfig>{},
-                true   // retryIfTimeoutOrUndelivery
-                ));
+            TReleaseDiskRequest{
+                .ClientId = clientId,
+                .RetryIfTimeoutOrUndelivery = true});
     }
 }
 
