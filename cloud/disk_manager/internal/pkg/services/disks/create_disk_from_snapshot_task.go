@@ -99,6 +99,7 @@ func (t *createDiskFromSnapshotTask) Run(
 	// idempotently retrieve the correct zone where it was created,
 	// because cellSelector is not idempotent.
 	params.Disk.ZoneId = diskMeta.ZoneID
+
 	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
 	if err != nil {
 		return err
@@ -238,12 +239,16 @@ func (t *createDiskFromSnapshotTask) Cancel(
 	}
 
 	if len(diskMeta.ZoneID) == 0 {
-		// Got empty ZoneID, because disk was not created
-		// or has been already deleted.
+		// If diskMeta has no zoneID, the disk wasn't in the database - either
+		// nbsClient.CreateDisk was never called or
+		// nbsClient.Delete completed successfully.
 		return t.storage.DiskDeleted(ctx, params.Disk.DiskId, time.Now())
 	}
 
+	// Idempotently retrieve the correct zone from database since
+	// cell selection is performed within the Run() method.
 	params.Disk.ZoneId = diskMeta.ZoneID
+
 	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
 	if err != nil {
 		return err

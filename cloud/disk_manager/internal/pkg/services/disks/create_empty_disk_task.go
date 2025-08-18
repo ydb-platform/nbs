@@ -131,12 +131,16 @@ func (t *createEmptyDiskTask) Cancel(
 	}
 
 	if len(diskMeta.ZoneID) == 0 {
-		// Got empty ZoneID, because disk was not created
-		// or has been already deleted.
+		// If diskMeta has no zoneID, the disk wasn't in the database - either
+		// nbsClient.CreateDisk was never called or
+		// nbsClient.Delete completed successfully.
 		return t.storage.DiskDeleted(ctx, t.params.Disk.DiskId, time.Now())
 	}
 
+	// Idempotently retrieve the correct zone from database since
+	// cell selection is performed within the Run() method.
 	t.params.Disk.ZoneId = diskMeta.ZoneID
+
 	client, err := t.nbsFactory.GetClient(ctx, t.params.Disk.ZoneId)
 	if err != nil {
 		return err
