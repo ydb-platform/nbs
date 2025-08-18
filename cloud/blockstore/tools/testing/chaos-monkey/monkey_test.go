@@ -320,6 +320,14 @@ func (n nbsService) QueryAgentsInfo(
 	panic("implement me")
 }
 
+func (n nbsService) UpdateThrottlingConfig(
+	ctx context.Context,
+	request *protos.TUpdateThrottlingConfigRequest,
+) (*protos.TUpdateThrottlingConfigResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (n nbsService) ExecuteAction(
 	ctx context.Context,
 	request *protos.TExecuteActionRequest,
