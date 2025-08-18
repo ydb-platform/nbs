@@ -304,17 +304,24 @@ func (t *migrateDiskTask) start(
 }
 
 func (t *migrateDiskTask) ensureNonLocalDisk(ctx context.Context) error {
-	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
+	diskMeta, err := t.resourceStorage.GetDiskMeta(ctx, t.request.Disk.DiskId)
 	if err != nil {
 		return err
 	}
 
-	params, err := client.Describe(ctx, t.request.Disk.DiskId)
+	if diskMeta == nil {
+		return errors.NewNonCancellableErrorf(
+			"id %v is not accepted",
+			t.request.Disk.DiskId,
+		)
+	}
+
+	diskKind, err := common.DiskKindFromString(diskMeta.Kind)
 	if err != nil {
 		return err
 	}
 
-	if common.IsLocalDiskKind(params.Kind) {
+	if common.IsLocalDiskKind(diskKind) {
 		return errors.NewNonCancellableErrorf(
 			"migrating local disk %v is forbidden",
 			t.request.Disk.DiskId,
