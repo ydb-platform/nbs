@@ -72,6 +72,7 @@ int TTest::Run()
                 Options->RequestBlockCount,
                 Options->WriteParts,
                 Options->AlternatingPhase);
+            DumpConfiguration();
             break;
         case ECommand::ReadConfigCmd:
             Y_ENSURE(Options->RestorePath.Defined(), "You need to specify the restore path");
@@ -82,15 +83,13 @@ int TTest::Run()
             return 2;
     }
 
-    DumpConfiguration();
-
     return RunTest();
 }
 
 void TTest::DumpConfiguration()
 {
     ConfigHolder->DumpConfig(Options->DumpPath);
-    STORAGE_INFO("Load configuration has been generated. See file "
+    STORAGE_INFO("Test configuration and actual state have been stored to file "
         << Options->DumpPath.Quote());
 }
 

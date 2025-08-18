@@ -44,12 +44,12 @@ ui64 CalculateInverse(ui64 step, ui64 len)
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRange {
-    TRangeConfig Config;
+    TRangeConfig& Config;
     ui64 Size;
     std::shared_ptr<char[]> Buf;
     ui64 StepInversion;
 
-    TRange(const TRangeConfig& config, ui64 size)
+    TRange(TRangeConfig& config, ui64 size)
         : Config{config}
         , Size{size}
         , Buf{static_cast<char*>(std::aligned_alloc(NSystemInfo::GetPageSize(), Size)), std::free}
@@ -158,7 +158,7 @@ public:
     {
         auto& config = ConfigHolder->GetConfig();
         for (ui16 i = 0; i < config.GetIoDepth(); ++i) {
-            auto rangeConfig = config.GetRanges(i);
+            auto& rangeConfig = *config.MutableRanges(i);
             Ranges.emplace_back(
                 rangeConfig,
                 rangeConfig.GetRequestBlockCount() * config.GetBlockSize());
