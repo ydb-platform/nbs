@@ -7233,7 +7233,7 @@ auto TDiskRegistryState::QueryAvailableStorage(
         info.ChunkCount++;
 
         info.IsAgentAvailable =
-            agent->State() != NProto::AGENT_STATE_UNAVAILABLE;
+            agent->GetState() != NProto::AGENT_STATE_UNAVAILABLE;
     }
 
     TVector<TAgentStorageInfo> infos;
