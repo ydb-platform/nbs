@@ -265,7 +265,7 @@ jobs:
           sparse-checkout: '.github'
       - name: Stop runner
         uses: ./.github/actions/nebius_runner_remove
-        if: always()
+        if: ${{ always() && ( vars.NEBIUS_REMOVE_CANCELLED_VMS == 'yes' || !contains(needs.*.result, 'cancelled') ) }}
         timeout-minutes: 60
         with:
           service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
