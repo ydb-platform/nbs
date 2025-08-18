@@ -274,6 +274,47 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
             1e-5);
         UNIT_ASSERT_VALUES_EQUAL(3, stat->FailCount);
     }
+
+    Y_UNIT_TEST(ShouldResetStatistics)
+    {
+        const ui64 constructionTime = GetCycleCount();
+        TRequestsTimeTracker requestsTimeTracker(constructionTime);
+
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Read,
+            1,
+            TBlockRange64::MakeOneBlock(0),
+            constructionTime + 1000 * GetCyclesPerMillisecond());
+
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Write,
+            2,
+            TBlockRange64::WithLength(0, 2),
+            constructionTime + 2000 * GetCyclesPerMillisecond());
+
+        auto readResult = requestsTimeTracker.OnRequestFinished(
+            1,
+            true,
+            constructionTime + 3000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT(readResult.has_value());
+
+        auto writeResult = requestsTimeTracker.OnRequestFinished(
+            2,
+            false,
+            constructionTime + 4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT(!writeResult.has_value());
+
+        auto jsonBefore = requestsTimeTracker.GetStatJson(
+            constructionTime + 5000 * GetCyclesPerMillisecond(),
+            4096);
+        NJson::TJsonValue valueBefore;
+        NJson::ReadJsonTree(jsonBefore, &valueBefore, true);
+
+        UNIT_ASSERT(valueBefore["stat"]["R_1_ok_Count"].GetString() != "0");
+        UNIT_ASSERT(valueBefore["stat"]["W_2_fail_Count"].GetString() != "0");
+
+        requestsTimeTracker.ResetStats();
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

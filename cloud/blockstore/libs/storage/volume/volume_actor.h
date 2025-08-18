@@ -714,6 +714,11 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_ResetRequestsLatency(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleHttpInfo_Default(
         const NActors::TActorContext& ctx,
         const TVolumeMountHistorySlice& history,
