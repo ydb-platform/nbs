@@ -1,0 +1,6 @@
+version: v2.1.6
+name: "nbs-go-lint"
+plugins:
+  - module: "github.com/jkuradobery/nbs-go-lint"
+    import: "github.com/jkuradobery/nbs-go-lint"
+    version: "v0.1.3"
