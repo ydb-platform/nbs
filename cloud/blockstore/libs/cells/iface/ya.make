@@ -1,9 +1,7 @@
 LIBRARY()
 
 SRCS(
-    cell_host.cpp
     cell_manager.cpp
-    cell.cpp
     config.cpp
     host_endpoint.cpp
 )

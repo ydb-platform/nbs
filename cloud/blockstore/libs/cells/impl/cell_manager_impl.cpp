@@ -119,7 +119,8 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     if (configuredCellCount == 0) {
         return service->DescribeVolume(
             std::move(callContext),
-            std::make_shared<NProto::TDescribeVolumeRequest>(std::move(request)));
+            std::make_shared<NProto::TDescribeVolumeRequest>(
+                std::move(request)));
     }
 
     NProto::TClientAppConfig clientAppConfig;

@@ -202,11 +202,11 @@ void TMultiCellDescribeHandler::HandleResponse(
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeResponseHandler::TDescribeResponseHandler(
-    std::weak_ptr<TMultiCellDescribeHandler> owner,
-    TString cellId,
-    TCellHostInfo hostInfo,
-    NProto::TDescribeVolumeRequest request,
-    TCellInfo& cell)
+        std::weak_ptr<TMultiCellDescribeHandler> owner,
+        TString cellId,
+        TCellHostInfo hostInfo,
+        NProto::TDescribeVolumeRequest request,
+        TCellInfo& cell)
     : Owner(std::move(owner))
     , CellId(std::move(cellId))
     , HostInfo(std::move(hostInfo))

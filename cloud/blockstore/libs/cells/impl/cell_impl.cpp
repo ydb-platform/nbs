@@ -103,14 +103,18 @@ void TCell::AdjustActiveHostsToMinConnections()
     for (const auto& host: hostsToActivate) {
         auto future = host->Start();
         future.Subscribe(
-            [=](const auto&)
+            [fqdn = host->GetConfig().GetFqdn(), weakPtr = weakPtr](const auto& future)
             {
                 if (auto self = weakPtr.lock(); self) {
                     with_lock (self->Lock) {
-                        auto fqdn = host->GetConfig().GetFqdn();
-                        self->ActiveHosts.emplace(
-                            fqdn,
-                            self->ActivatingHosts.find(fqdn)->second);
+                        const auto& [config, error] = future.GetValue();
+                        if (!HasError(error)) {
+                            self->ActiveHosts.emplace(
+                                fqdn,
+                                self->ActivatingHosts.find(fqdn)->second);
+                        } else {
+                            self->UnusedHosts.push_back(fqdn);
+                        }
                         self->ActivatingHosts.erase(fqdn);
                     }
                 }
@@ -124,6 +128,5 @@ ICellPtr CreateCell(TBootstrap bootstrap, TCellConfig config)
 {
     return std::make_shared<TCell>(std::move(bootstrap), std::move(config));
 }
-
 
 }   // namespace NCloud::NBlockStore::NCells
