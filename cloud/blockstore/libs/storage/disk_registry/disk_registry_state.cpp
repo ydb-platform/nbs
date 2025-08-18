@@ -8109,4 +8109,22 @@ bool TDiskRegistryState::MigrationCanBeStarted(
     return true;
 }
 
+TVector<NProto::TDiskState> TDiskRegistryState::ListDisksStates() const
+{
+    TVector<NProto::TDiskState> result;
+    result.reserve(Disks.size());
+
+    for (const auto& [diskId, disk]: Disks) {
+        if (disk.MasterDiskId) {
+            continue;
+        }
+        result.push_back(
+            NDiskRegistry::TNotificationSystem::CreateDiskState(
+                diskId,
+                disk.State));
+    }
+
+    return result;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
