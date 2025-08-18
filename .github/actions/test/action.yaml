@@ -140,6 +140,7 @@ runs:
           --nice 0
           --stat
           --output "$OUT_DIR"
+          -DGITHUB_CI=yes
         )
 
         case "$BUILD_PRESET" in
@@ -268,7 +269,7 @@ runs:
               else
                 echo "${JUNIT_REPORT_XML}.${i} doesn't exist or has zero size"
               fi
-              # disabling retries here for now until we will be able to 
+              # disabling retries here for now until we will be able to
               # process junit with retried runs
               DO_RETRY=1
               RETRY_FLAG="-X"
