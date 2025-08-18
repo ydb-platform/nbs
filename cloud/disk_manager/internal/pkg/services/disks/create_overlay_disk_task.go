@@ -83,6 +83,9 @@ func (t *createOverlayDiskTask) Run(
 		)
 	}
 
+	// If the disk has already been added to the database,
+	// idempotently retrieve the correct zone where it was created,
+	// because cellSelector is not idempotent.
 	overlayDisk.ZoneId = diskMeta.ZoneID
 
 	taskID, err := t.poolService.AcquireBaseDisk(
@@ -168,15 +171,16 @@ func (t *createOverlayDiskTask) Cancel(
 	}
 
 	if len(disk.ZoneID) == 0 {
-		// Got empty ZoneID, because disk was not created
-		// or has been already deleted.
+		// If diskMeta has no zoneID, the disk wasn't in the database - either
+		// nbsClient.CreateDisk was never called or
+		// nbsClient.Delete completed successfully.
 		return t.storage.DiskDeleted(ctx, overlayDisk.DiskId, time.Now())
 	}
 
-	// If the disk has already been added to the database,
-	// idempotently retrieve the correct zone where it was created,
-	// because cellSelector is not idempotent.
+	// Idempotently retrieve the correct zone from database since
+	// cell selection is performed within the Run() method.
 	overlayDisk.ZoneId = disk.ZoneID
+
 	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
 	if err != nil {
 		return err
