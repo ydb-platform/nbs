@@ -6,7 +6,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	internal_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -50,7 +50,7 @@ func (t *resizeDiskTask) Run(
 		return err
 	}
 
-	if internal_common.IsLocalDiskKind(params.Kind) {
+	if common.IsLocalDiskKind(params.Kind) {
 		return errors.NewNonCancellableErrorf(
 			"resizing local disk %v is forbidden",
 			t.request.Disk.DiskId,
