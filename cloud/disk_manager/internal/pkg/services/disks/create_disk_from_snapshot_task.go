@@ -64,6 +64,7 @@ func (t *createDiskFromSnapshotTask) Run(
 	if err != nil {
 		return err
 	}
+
 	selfTaskID := execCtx.GetTaskID()
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
