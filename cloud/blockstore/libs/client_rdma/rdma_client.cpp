@@ -112,7 +112,6 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
-        Y_UNUSED(isAlignedDataEnabled);
     }
 
     size_t GetRequestSize() const

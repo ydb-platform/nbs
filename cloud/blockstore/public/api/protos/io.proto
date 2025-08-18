@@ -47,7 +47,7 @@ message TReadBlocksRequest
     string SessionId = 7;
 
     // Size of the block in bytes.
-    uint32 BlockSize = 8;    
+    uint32 BlockSize = 8;
 }
 
 message TReadBlocksResponse

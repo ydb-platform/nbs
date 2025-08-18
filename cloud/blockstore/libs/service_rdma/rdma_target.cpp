@@ -417,7 +417,7 @@ private:
         size_t responseBytes =
             NRdma::TProtoMessageSerializer::Serialize(
                 out,
-                TBlockStoreServerProtocol::EvZeroBlocksResponse,
+                TBlockStoreServerProtocol::EvPingResponse,
                 flags,   // flags
                 response);
 

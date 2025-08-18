@@ -1,4 +1,5 @@
 #include "cell_impl.h"
+
 #include "endpoint_bootstrap.h"
 
 #include <cloud/blockstore/config/cells.pb.h>

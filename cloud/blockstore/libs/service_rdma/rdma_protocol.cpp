@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/public/api/protos/io.pb.h>
+#include <cloud/blockstore/public/api/protos/ping.pb.h>
 
 #include <util/generic/singleton.h>
 

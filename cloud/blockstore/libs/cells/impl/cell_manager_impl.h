@@ -1,9 +1,9 @@
 #pragma once
 
 #include "bootstrap.h"
+#include "cell.h"
 
 #include <cloud/blockstore/libs/cells/iface/cell_manager.h>
-#include <cloud/blockstore/libs/cells/iface/cell.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
 #include <cloud/blockstore/libs/client/client.h>

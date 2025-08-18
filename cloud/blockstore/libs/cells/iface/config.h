@@ -33,6 +33,8 @@ public:
         const NProto::TCellHostConfig& hostConfig,
         const TCellConfig& cellConfig);
 
+    TCellHostConfig() = default;
+
     ui32 GetGrpcPort() const
     {
         return GrpcPort;
