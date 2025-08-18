@@ -216,7 +216,8 @@ func (c *executionContext) updateStateWithPreparation(
 
 	now := time.Now()
 	// Since executionContext exists only within the scope of lockAndExecuteTask,
-	// the task is always inflight during any method call on executionContext.
+	// the task is always inflight (is in running/cancelling status)
+	// during any method call on executionContext.
 	taskState.InflightDuration += now.Sub(taskState.ModifiedAt)
 	taskState.ModifiedAt = now
 
