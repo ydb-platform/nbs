@@ -217,7 +217,8 @@ func (client *safeClient) QueryAvailableStorage(
 ) ([]*protos.TAvailableStorageInfo, error) {
 
 	req := &protos.TQueryAvailableStorageRequest{
-		AgentIds: agentIds,
+		AgentIds:        agentIds,
+		StoragePoolKind: protos.EStoragePoolKind_STORAGE_POOL_KIND_LOCAL,
 	}
 
 	resp, err := client.Impl.QueryAvailableStorage(ctx, req)
