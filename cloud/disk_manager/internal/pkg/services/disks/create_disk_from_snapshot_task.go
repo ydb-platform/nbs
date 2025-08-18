@@ -56,7 +56,7 @@ func (t *createDiskFromSnapshotTask) Run(
 
 	if common.IsLocalDiskKind(params.Kind) {
 		return errors.NewNonCancellableErrorf(
-			"creating local disk from snapshot is forbidden",
+			"local disk creation from snapshot is forbidden",
 		)
 	}
 
