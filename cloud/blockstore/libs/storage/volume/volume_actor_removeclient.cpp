@@ -302,17 +302,16 @@ void TVolumeActor::CompleteRemoveClient(
         // Release all devices for client.
         AddAcquireReleaseDiskRequest(
             ctx,
-            TAcquireReleaseDiskRequest::MakeRelease(
-                args.ClientId,
-                std::make_shared<TClientRequest>(
+            TReleaseDiskRequest{
+                .ClientId = args.ClientId,
+                .ClientRequest = std::make_shared<TClientRequest>(
                     args.RequestInfo,
                     args.DiskId,
                     args.PipeServerActorId,
                     args.ClientId,
                     args.IsMonRequest),
-                TVector<NProto::TDeviceConfig>{},
-                false   // retryIfTimeoutOrUndelivery
-                ));
+                .DevicesToRelease = TVector<NProto::TDeviceConfig>{},
+            });
     } else {
         NCloud::Reply(
             ctx,

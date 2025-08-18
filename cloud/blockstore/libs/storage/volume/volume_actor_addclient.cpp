@@ -154,13 +154,11 @@ void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
             continue;
         }
 
-        auto request = TAcquireReleaseDiskRequest::MakeAcquire(
-            x.first,
-            x.second.GetVolumeClientInfo().GetVolumeAccessMode(),
-            x.second.GetVolumeClientInfo().GetMountSeqNumber(),
-            nullptr,   // clientRequest
-            false      // forceTabletRestart
-        );
+        auto request = TAcquireDiskRequest{
+            .ClientId = x.first,
+            .AccessMode = x.second.GetVolumeClientInfo().GetVolumeAccessMode(),
+            .MountSeqNumber =
+                x.second.GetVolumeClientInfo().GetMountSeqNumber()};
 
         LOG_DEBUG(
             ctx,
@@ -214,11 +212,10 @@ void TVolumeActor::HandleReacquireDisk(
     if (!State->GetReadWriteAccessClientId()
             && ctx.Now() > StateLoadTimestamp + TDuration::Seconds(5))
     {
-        auto releaseRequest = TAcquireReleaseDiskRequest::MakeRelease(
-            TString(AnyWriterClientId),
-            nullptr,   // clientRequest
-            TVector<NProto::TDeviceConfig>{},
-            false);   // retryIfTimeoutOrUndelivery
+        auto releaseRequest = TReleaseDiskRequest{
+            .ClientId = TString(AnyWriterClientId),
+            .DevicesToRelease = TVector<NProto::TDeviceConfig>{},
+        };
         AddAcquireReleaseDiskRequest(ctx, std::move(releaseRequest));
     }
 
@@ -380,26 +377,25 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
             Config->GetAcquireNonReplicatedDevices() &&
             !Config->GetDoAcquireReleaseDevicesAfterTransaction();
         if (acquireDevices) {
-            auto acquireReleaseRequest = [&]()
-            {
-                if (request->RemovedClientId) {
-                    return TAcquireReleaseDiskRequest::MakeRelease(
-                        request->RemovedClientId,
-                        request,
-                        TVector<NProto::TDeviceConfig>{},
-                        false   // retryIfTimeoutOrUndelivery
-                    );
-                }
-                return TAcquireReleaseDiskRequest::MakeAcquire(
-                    request->AddedClientInfo.GetClientId(),
-                    request->AddedClientInfo.GetVolumeAccessMode(),
-                    request->AddedClientInfo.GetMountSeqNumber(),
-                    request,
-                    false   // ForceTabletRestart
-                );
-            }();
-
-            AddAcquireReleaseDiskRequest(ctx, std::move(acquireReleaseRequest));
+            if (request->RemovedClientId) {
+                AddAcquireReleaseDiskRequest(
+                    ctx,
+                    TReleaseDiskRequest{
+                        .ClientId = request->RemovedClientId,
+                        .ClientRequest = request,
+                        .DevicesToRelease = {}});
+            } else {
+                AddAcquireReleaseDiskRequest(
+                    ctx,
+                    TAcquireDiskRequest{
+                        .ClientId = request->AddedClientInfo.GetClientId(),
+                        .AccessMode =
+                            request->AddedClientInfo.GetVolumeAccessMode(),
+                        .MountSeqNumber =
+                            request->AddedClientInfo.GetMountSeqNumber(),
+                        .ClientRequest = request,
+                    });
+            }
 
             return;
         }
@@ -583,7 +579,7 @@ void TVolumeActor::CompleteAddClient(
         ReleaseDiskFromOldClients(ctx, args.RemovedClientIds);
 
         // Acquire disk for new client.
-        auto request = TAcquireReleaseDiskRequest::MakeAcquire(
+        auto request = TAcquireDiskRequest(
             args.Info.GetClientId(),
             args.Info.GetVolumeAccessMode(),
             args.Info.GetMountSeqNumber(),
