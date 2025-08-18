@@ -4,6 +4,7 @@
 
 #include <util/generic/deque.h>
 #include <util/generic/hash.h>
+#include <util/generic/scope.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -23,6 +24,13 @@ template <typename H>
 class TDynamicPersistentTable
 {
 private:
+    enum class EListOperationState
+    {
+        None = 0,
+        Add,
+        Remove,
+    };
+
     struct THeader
     {
         ui32 Version = 0;
@@ -30,13 +38,19 @@ private:
         ui64 RecordDescriptorSize = 0;
         ui64 DataAreaOffset = 0;
         ui64 DataAreaSize = 0;
-        ui64 NextDataOffset = 0;
         ui64 NextFreeRecordIndex = 0;
         ui64 MaxRecords = 0;
 
         // indexes used during compaction
         ui64 CompactedRecordSrcIndex = InvalidIndex;
         ui64 CompactedRecordDstIndex = InvalidIndex;
+
+        // journal of list operations in case of crash
+        // for correctness check we only need state and ListOperationIndex
+        EListOperationState ListOperationState = EListOperationState::None;
+        ui64 ListOperationIndex = InvalidIndex;
+        ui64 ListOperationPrevIndex = InvalidIndex;
+        ui64 ListOperationNextIndex = InvalidIndex;
 
         H Data;
     };
@@ -225,6 +239,8 @@ public:
             return InvalidIndex;
         }
 
+        HeaderPtr->NextFreeRecordIndex = NextFreeRecordIndex;
+
         if (NextDataOffset + dataSize > DataAreaSize) {
             TryCompactDataArea(dataSize);
             if (NextDataOffset + dataSize > DataAreaSize) {
@@ -234,13 +250,11 @@ public:
 
         DescriptorsPtr[index].DataOffset = NextDataOffset;
         DescriptorsPtr[index].DataSize = dataSize;
-        DescriptorsPtr[index].State = ERecordState::Allocated;
-        AddToDataList(index);
+
+        PrepareAddRecord(index);
+        FinishAddRecord(false);
 
         NextDataOffset += dataSize;
-
-        HeaderPtr->NextFreeRecordIndex = NextFreeRecordIndex;
-        HeaderPtr->NextDataOffset = NextDataOffset;
 
         return index;
     }
@@ -266,17 +280,13 @@ public:
             return false;
         }
 
-        RemoveFromDataList(index);
+        PrepareRemoveRecord(index);
+        FinishRemoveRecord();
 
-        DescriptorsPtr[index].State = ERecordState::Free;
         GapSpaceSize += DescriptorsPtr[index].DataSize;
 
-        if (index + 1 == NextFreeRecordIndex) {
-            NextFreeRecordIndex--;
-            HeaderPtr->NextFreeRecordIndex = NextFreeRecordIndex;
-        } else {
-            FreeRecordIndexes.push_back(index);
-        }
+        FreeRecordIndexes.push_back(index);
+
         return true;
     }
 
@@ -335,25 +345,82 @@ public:
     }
 
 private:
-    void AddToDataList(ui64 index)
+    void PrepareAddRecord(ui64 index)
     {
+        HeaderPtr->ListOperationState = EListOperationState::Add;
+        // currently we add records only to the end of the list
+        HeaderPtr->ListOperationPrevIndex = TailDataIndex;
+        HeaderPtr->ListOperationIndex = index;
+    }
+
+    void FinishAddRecord(bool isInit)
+    {
+        if (HeaderPtr->ListOperationState == EListOperationState::None ||
+            HeaderPtr->ListOperationIndex == InvalidIndex)
+        {
+            HeaderPtr->ListOperationState = EListOperationState::None;
+            HeaderPtr->ListOperationIndex = InvalidIndex;
+            return;
+        }
+
+        Y_DEFER
+        {
+            HeaderPtr->ListOperationState = EListOperationState::None;
+            HeaderPtr->ListOperationIndex = InvalidIndex;
+        }
+
+        // after crash, we need to ensure that list is consistent, but we don't
+        // need to move forward with adding record
+        if (isInit) {
+            if (HeaderPtr->ListOperationPrevIndex != InvalidIndex) {
+                DescriptorsPtr[HeaderPtr->ListOperationPrevIndex]
+                    .NextDataIndex = InvalidIndex;
+            }
+            return;
+        }
+
+        ui64 prevIndex = HeaderPtr->ListOperationPrevIndex;
+        ui64 index = HeaderPtr->ListOperationIndex;
+
         DescriptorsPtr[index].PrevDataIndex = InvalidIndex;
         DescriptorsPtr[index].NextDataIndex = InvalidIndex;
 
+        if (prevIndex != InvalidIndex) {
+            DescriptorsPtr[prevIndex].NextDataIndex = index;
+        }
+
+        DescriptorsPtr[index].PrevDataIndex = prevIndex;
+
+        TailDataIndex = index;
+
         if (HeadDataIndex == InvalidIndex) {
             HeadDataIndex = index;
-            TailDataIndex = index;
-        } else {
-            DescriptorsPtr[TailDataIndex].NextDataIndex = index;
-            DescriptorsPtr[index].PrevDataIndex = TailDataIndex;
-            TailDataIndex = index;
         }
+
+        DescriptorsPtr[index].State = ERecordState::Allocated;
     }
 
-    void RemoveFromDataList(ui64 index)
+    void PrepareRemoveRecord(ui64 index)
     {
-        ui64 prevIndex = DescriptorsPtr[index].PrevDataIndex;
-        ui64 nextIndex = DescriptorsPtr[index].NextDataIndex;
+        HeaderPtr->ListOperationState = EListOperationState::Remove;
+        HeaderPtr->ListOperationPrevIndex = DescriptorsPtr[index].PrevDataIndex;
+        HeaderPtr->ListOperationNextIndex = DescriptorsPtr[index].NextDataIndex;
+        HeaderPtr->ListOperationIndex = index;
+    }
+
+    void FinishRemoveRecord()
+    {
+        if (HeaderPtr->ListOperationState == EListOperationState::None ||
+            HeaderPtr->ListOperationIndex == InvalidIndex)
+        {
+            HeaderPtr->ListOperationState = EListOperationState::None;
+            HeaderPtr->ListOperationIndex = InvalidIndex;
+            return;
+        }
+
+        ui64 prevIndex = HeaderPtr->ListOperationPrevIndex;
+        ui64 nextIndex = HeaderPtr->ListOperationNextIndex;
+        ui64 index = HeaderPtr->ListOperationIndex;
 
         if (prevIndex != InvalidIndex) {
             DescriptorsPtr[prevIndex].NextDataIndex = nextIndex;
@@ -367,8 +434,13 @@ private:
             TailDataIndex = prevIndex;
         }
 
+        DescriptorsPtr[index].State = ERecordState::Free;
+
         DescriptorsPtr[index].PrevDataIndex = InvalidIndex;
         DescriptorsPtr[index].NextDataIndex = InvalidIndex;
+
+        HeaderPtr->ListOperationState = EListOperationState::None;
+        HeaderPtr->ListOperationIndex = InvalidIndex;
     }
 
     void Init()
@@ -392,7 +464,6 @@ private:
             header->DataAreaOffset =
                 sizeof(THeader) + MaxRecords * sizeof(TRecordDescriptor);
             header->DataAreaSize = DataAreaSize;
-            header->NextDataOffset = 0;
             header->CompactedRecordSrcIndex = InvalidIndex;
             header->CompactedRecordDstIndex = InvalidIndex;
         }
@@ -416,9 +487,11 @@ private:
         NextFreeRecordIndex = header->NextFreeRecordIndex;
         DataAreaOffset = header->DataAreaOffset;
         DataAreaSize = header->DataAreaSize;
-        NextDataOffset = header->NextDataOffset;
 
         ResizeAndRemap();
+
+        FinishRemoveRecord();
+        FinishAddRecord(true);
 
         CompactRecords();
         CompactDataArea(EDataRetrievalMode::WithValidation);
@@ -442,7 +515,8 @@ private:
                 if (DescriptorsPtr[readRecordIndex].State ==
                     ERecordState::Allocated)
                 {
-                    RemoveFromDataList(readRecordIndex);
+                    PrepareRemoveRecord(readRecordIndex);
+                    FinishRemoveRecord();
                 }
                 DescriptorsPtr[readRecordIndex++].State = ERecordState::Free;
                 continue;
@@ -559,8 +633,8 @@ private:
             if (mode == EDataRetrievalMode::WithValidation) {
                 ui64 calculatedCRC = Crc32c(DataPtr + oldOffset, dataSize);
                 if (calculatedCRC != DescriptorsPtr[currentIndex].CRC32) {
-                    RemoveFromDataList(currentIndex);
-                    DescriptorsPtr[currentIndex].State = ERecordState::Free;
+                    PrepareRemoveRecord(currentIndex);
+                    FinishRemoveRecord();
                     FreeRecordIndexes.push_back(currentIndex);
                     currentIndex = nextIndex;
                     continue;
@@ -580,7 +654,6 @@ private:
 
         NextDataOffset = newOffset;
         GapSpaceSize = 0;
-        HeaderPtr->NextDataOffset = NextDataOffset;
     }
 
     void ExpandDataArea(ui64 requiredSize)

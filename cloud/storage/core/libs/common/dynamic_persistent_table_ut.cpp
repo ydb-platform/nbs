@@ -150,11 +150,7 @@ struct TReferenceImplementation
         UNIT_ASSERT(!Records[index].empty());
         Records[index].clear();
 
-        if (index + 1 == NextFreeRecord) {
-            NextFreeRecord--;
-        } else {
-            FreeRecords.push_back(index);
-        }
+        FreeRecords.push_back(index);
     }
 
     TString GetRecord(ui64 index)
