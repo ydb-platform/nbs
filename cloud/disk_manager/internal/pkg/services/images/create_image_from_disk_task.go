@@ -66,8 +66,7 @@ func (t *createImageFromDiskTask) run(
 
 	if internal_common.IsLocalDiskKind(diskParams.Kind) {
 		return "", errors.NewNonCancellableErrorf(
-			"creating image from local disk %v is forbidden",
-			disk.DiskId,
+			"creating image from local disk is forbidden",
 		)
 	}
 

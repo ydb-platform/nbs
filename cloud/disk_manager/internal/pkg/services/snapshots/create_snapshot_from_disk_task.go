@@ -62,8 +62,7 @@ func (t *createSnapshotFromDiskTask) run(
 
 	if internal_common.IsLocalDiskKind(diskParams.Kind) {
 		return "", errors.NewNonCancellableErrorf(
-			"creating snapshot from local disk %v is forbidden",
-			disk.DiskId,
+			"creating snapshot from local disk is forbidden",
 		)
 	}
 
