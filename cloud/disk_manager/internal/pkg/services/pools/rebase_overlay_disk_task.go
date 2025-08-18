@@ -6,7 +6,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -53,18 +52,6 @@ func (t *rebaseOverlayDiskTask) rebaseOverlayDisk(
 	client, err := t.nbsFactory.GetClient(ctx, t.request.OverlayDisk.ZoneId)
 	if err != nil {
 		return err
-	}
-
-	params, err := client.Describe(ctx, t.request.OverlayDisk.DiskId)
-	if err != nil {
-		return err
-	}
-
-	if common.IsLocalDiskKind(params.Kind) {
-		return errors.NewNonCancellableErrorf(
-			"cannot rebase local disk %v",
-			t.request.OverlayDisk.DiskId,
-		)
 	}
 
 	err = t.storage.OverlayDiskRebasing(ctx, storage.RebaseInfo{

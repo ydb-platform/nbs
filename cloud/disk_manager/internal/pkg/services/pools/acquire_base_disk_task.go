@@ -5,12 +5,10 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -42,13 +40,6 @@ func (t *acquireBaseDiskTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
-
-	if common.IsLocalDiskKind(t.request.OverlayDiskKind) {
-		return errors.NewNonCancellableErrorf(
-			"cannot acquire local disk %v",
-			t.request.OverlayDisk.DiskId,
-		)
-	}
 
 	logging.Info(
 		ctx,

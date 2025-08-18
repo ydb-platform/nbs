@@ -7,7 +7,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -47,25 +46,6 @@ func (t *retireBaseDiskTask) Run(
 
 	baseDiskID := t.request.BaseDiskId
 	selfTaskID := execCtx.GetTaskID()
-
-	if t.request.SrcDisk != nil {
-		client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
-		if err != nil {
-			return err
-		}
-
-		params, err := client.Describe(ctx, t.request.SrcDisk.DiskId)
-		if err != nil {
-			return err
-		}
-
-		if common.IsLocalDiskKind(params.Kind) {
-			return errors.NewNonCancellableErrorf(
-				"cannot retire base disk using local disk %v",
-				t.request.SrcDisk.DiskId,
-			)
-		}
-	}
 
 	rebaseInfos, err := t.storage.RetireBaseDisk(
 		ctx,

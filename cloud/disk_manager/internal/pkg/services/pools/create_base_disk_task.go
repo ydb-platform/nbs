@@ -13,7 +13,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 )
 
@@ -58,20 +57,6 @@ func (t *createBaseDiskTask) Run(
 			client, err := t.nbsFactory.GetClient(ctx, baseDisk.ZoneId)
 			if err != nil {
 				return err
-			}
-
-			if t.request.SrcDisk != nil {
-				srcParams, err := client.Describe(ctx, t.request.SrcDisk.DiskId)
-				if err != nil {
-					return err
-				}
-
-				if common.IsLocalDiskKind(srcParams.Kind) {
-					return errors.NewNonCancellableErrorf(
-						"cannot create base disk from local disk %v",
-						t.request.SrcDisk.DiskId,
-					)
-				}
 			}
 
 			baseDiskSize := t.request.BaseDiskSize
