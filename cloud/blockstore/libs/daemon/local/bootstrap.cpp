@@ -3,7 +3,7 @@
 #include "config_initializer.h"
 #include "options.h"
 
-#include <cloud/blockstore/libs/cells/iface/cells.h>
+#include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
