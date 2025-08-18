@@ -426,7 +426,9 @@ void TPartitionActor::HandleWriteBlobCompleted(
 {
     const auto* msg = ev->Get();
 
-    BSGroupOperationTimeTracker.OnFinished(msg->BSGroupOperationId, GetCycleCount());
+    BSGroupOperationTimeTracker.OnFinished(
+        msg->BSGroupOperationId,
+        GetCycleCount());
 
     Actors.Erase(ev->Sender);
 

@@ -320,7 +320,8 @@ void TPartitionActor::HandlePatchBlob(
         msg->OriginalBlobId.Generation());
 
     ui32 channel = msg->PatchedBlobId.Channel();
-    msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->PatchedBlobId.Generation());
+    msg->Proxy =
+        Info()->BSProxyIDForChannel(channel, msg->PatchedBlobId.Generation());
     ui64 bsGroupOperationId = BSGroupOperationId++;
 
     State->EnqueueIORequest(
@@ -347,7 +348,9 @@ void TPartitionActor::HandlePatchBlobCompleted(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    BSGroupOperationTimeTracker.OnFinished(msg->BSGroupOperationId, GetCycleCount());
+    BSGroupOperationTimeTracker.OnFinished(
+        msg->BSGroupOperationId,
+        GetCycleCount());
 
     Actors.Erase(ev->Sender);
 

@@ -327,13 +327,15 @@ void BuildVolumeTabs(IOutputStream& out)
 void BuildPartitionTabs(IOutputStream& out)
 {
     out << "<ul class='nav nav-tabs' id='Tabs'>"
-        << "<li class='active'>" << "<a  href='#Overview' data-toggle='tab'>Overview</a>"
+        << "<li class='active'>"
+        << "<a  href='#Overview' data-toggle='tab'>Overview</a>"
         << "</li>"
         << "<li><a href='#Tables' data-toggle='tab'>Tables</a>" << "</li>"
         << "<li><a href='#Channels' data-toggle='tab'>Channels</a>" << "</li>"
         << "<li><a href='#Latency' data-toggle='tab'>Latency</a>" << "</li>"
         << "<li><a href='#Index' data-toggle='tab'>Index</a>" << "</li>"
-        << "<li><a href='#BSGroupLatency' data-toggle='tab'>BSGroupLatency</a>" << "</li>" << "</ul>";
+        << "<li><a href='#BSGroupLatency' data-toggle='tab'>BSGroupLatency</a>"
+        << "</li>" << "</ul>";
 }
 
 void GeneratePartitionTabsJs(IOutputStream& out)
