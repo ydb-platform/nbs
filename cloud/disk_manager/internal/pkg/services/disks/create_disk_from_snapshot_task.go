@@ -54,12 +54,6 @@ func (t *createDiskFromSnapshotTask) Run(
 
 	params := t.request.Params
 
-	if common.IsLocalDiskKind(params.Kind) {
-		return errors.NewNonCancellableErrorf(
-			"creating local disk from snapshot is forbidden",
-		)
-	}
-
 	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
 	if err != nil {
 		return err

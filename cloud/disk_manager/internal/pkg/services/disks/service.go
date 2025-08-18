@@ -287,6 +287,15 @@ func (s *service) prepareCreateDiskParams(
 		}
 	}
 
+	if common.IsLocalDiskKind(kind) {
+		_, isSrcEmpty := req.Src.(*disk_manager.CreateDiskRequest_SrcEmpty)
+		if !isSrcEmpty {
+			return nil, common.NewInvalidArgumentError(
+				"creating local disk with non-empty source is forbidden",
+			)
+		}
+	}
+
 	return &protos.CreateDiskParams{
 		BlocksCount: blocksCount,
 		Disk: &types.Disk{

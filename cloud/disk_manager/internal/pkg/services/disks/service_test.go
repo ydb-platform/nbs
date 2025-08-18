@@ -9,6 +9,7 @@ import (
 	cells_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
+	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,4 +97,32 @@ func TestDiskServicegetZoneIDForExistingDisk(
 		})
 	}
 
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestPrepareCreateDiskParams_LocalDiskWithNonEmptySourceForbidden(t *testing.T) {
+	ctx := context.Background()
+
+	s := &service{
+		config:          &disks_config.DisksConfig{},
+		resourceStorage: storage_mocks.NewStorageMock(),
+		cellSelector:    cells_mocks.NewCellSelectorMock(),
+	}
+
+	req := &disk_manager.CreateDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: "disk-local",
+		},
+		Size: 4096,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_LOCAL,
+		Src:  &disk_manager.CreateDiskRequest_SrcImageId{SrcImageId: "image"},
+	}
+
+	params, err := s.prepareCreateDiskParams(ctx, req)
+
+	require.Nil(t, params)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "creating local disk with non-empty source is forbidden")
 }
