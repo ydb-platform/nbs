@@ -1,6 +1,8 @@
 UNITTEST_FOR(cloud/blockstore/libs/nvme)
 
-IF (not GITHUB_CI)
+IF (NOT GITHUB_CI)
+    # To run these tests, nvme devices are required. In github CI VM, such devices are emulated via nvme-loop.
+    # TODO(sharpeye): add the option to run tests locally
     TAG(ya:manual)
 ENDIF()
 
