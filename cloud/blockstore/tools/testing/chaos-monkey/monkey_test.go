@@ -412,6 +412,14 @@ func (n nbsService) RemoveVolumeClient(
 	panic("implement me")
 }
 
+func (n nbsService) ListDisksStates(
+	ctx context.Context,
+	request *protos.TListDisksStatesRequest,
+) (*protos.TListDisksStatesResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type TestContext struct {
