@@ -156,7 +156,7 @@ private:
     bool FirstGarbageCollectionCompleted = false;
 
     TTransactionTimeTracker TransactionTimeTracker;
-    TBSGroupOperationTimeTracker GroupOperationTimeTracker;
+    TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
     ui64 BSGroupOperationId = 0;
 
 public:

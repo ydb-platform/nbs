@@ -458,8 +458,8 @@ void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
             LogTitle.GetWithTime().c_str(),
             actorId);
         Actors.Insert(actorId);
-        GroupOperationTimeTracker.OnStarted(
-            request->BlopOperationId,
+        BSGroupOperationTimeTracker.OnStarted(
+            request->BSGroupOperationId,
             request->Group,
             request->OperationType,
             GetCycleCount());

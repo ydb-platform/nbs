@@ -691,7 +691,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                     DumpGroupLatencyTab(
                         out,
                         Info()->TabletID,
-                        GroupOperationTimeTracker);
+                        BSGroupOperationTimeTracker);
                 }
             }
         }

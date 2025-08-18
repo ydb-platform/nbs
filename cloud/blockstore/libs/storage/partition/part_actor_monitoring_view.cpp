@@ -341,7 +341,7 @@ void TPartitionActor::HandleHttpInfo_GetGroupLatencies(
         ctx,
         *requestInfo,
         std::make_unique<NMon::TEvRemoteJsonInfoRes>(
-            GroupOperationTimeTracker.GetStatJson(GetCycleCount())));
+            BSGroupOperationTimeTracker.GetStatJson(GetCycleCount())));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

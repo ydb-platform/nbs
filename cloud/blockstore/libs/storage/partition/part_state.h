@@ -264,7 +264,7 @@ struct TScanDiskState
 struct TQueuedRequest
 {
     NActors::IActorPtr Actor;
-    ui64 BlopOperationId = 0;
+    ui64 BSGroupOperationId = 0;
     ui32 Group = 0;
     TBSGroupOperationTimeTracker::EOperationType OperationType =
         TBSGroupOperationTimeTracker::EOperationType::Read;
