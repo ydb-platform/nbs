@@ -4,6 +4,7 @@
 
 #include <util/generic/hash.h>
 #include <util/random/random.h>
+#include <util/system/env.h>
 #include <util/system/file_lock.h>
 
 #include <filesystem>
@@ -52,6 +53,7 @@ class TDeviceLocker::TImpl
 private:
     const ILoggingServicePtr Logging;
     const TFsPath DevicesFolder;
+    const TFsPath LocksFolder;
 
     TLog Log;
 
@@ -64,9 +66,11 @@ public:
     TImpl(
             ILoggingServicePtr logging,
             TFsPath devicesFolder,
+            TFsPath locksFolder,
             TStringBuf nameMask)
         : Logging(std::move(logging))
         , DevicesFolder(std::move(devicesFolder))
+        , LocksFolder(std::move(locksFolder))
         , Log(Logging->CreateLog("DEVICE_LOCKER"))
         , AvailableDevices(CollectDevices(DevicesFolder, nameMask))
     {}
@@ -114,14 +118,15 @@ public:
         for (ui64 attempt = 0; attempt != AvailableDevices.size(); ++attempt) {
             const ui64 i = (salt + attempt) % AvailableDevices.size();
             const auto& name = AvailableDevices[i];
-            TFsPath path = DevicesFolder / name;
 
-            TFileLock filelock{DevicesFolder / name, EFileLockType::Exclusive};
+            TFileLock filelock{LocksFolder / name, EFileLockType::Exclusive};
             if (!filelock.TryAcquire()) {
                 continue;
             }
 
-            STORAGE_INFO("Device " << name.Quote() << " acquired");
+            TFsPath path = DevicesFolder / name;
+
+            STORAGE_INFO("Device " << path.GetPath().Quote() << " acquired");
 
             AcquiredDevices.emplace(path, std::move(filelock));
             return std::move(path);
@@ -134,12 +139,12 @@ public:
     {
         std::unique_lock lock{Mutex};
 
-        auto it = AcquiredDevices.find(static_cast<const TString&>(path));
+        auto it = AcquiredDevices.find(path.GetPath());
         if (it == AcquiredDevices.end()) {
             return MakeError(E_ARGUMENT, "Unknown device");
         }
 
-        STORAGE_INFO("Release device: " << path.Basename().Quote());
+        STORAGE_INFO("Release device: " << path.GetPath().Quote());
 
         it->second.Release();
         AcquiredDevices.erase(it);
@@ -153,9 +158,8 @@ public:
 
         std::unique_lock lock{Mutex};
 
-        for (auto [path, filelock]: AcquiredDevices) {
-            STORAGE_INFO(
-                "Release device: " << TFsPath{path}.Basename().Quote());
+        for (auto& [path, filelock]: AcquiredDevices) {
+            STORAGE_INFO("Release device: " << path.Quote());
             filelock.Release();
         }
         AcquiredDevices.clear();
@@ -169,10 +173,12 @@ TDeviceLocker::TDeviceLocker() = default;
 TDeviceLocker::TDeviceLocker(
         ILoggingServicePtr logging,
         TFsPath devicesFolder,
+        TFsPath locksFolder,
         TStringBuf nameMask)
     : Impl(std::make_unique<TImpl>(
         std::move(logging),
         std::move(devicesFolder),
+        std::move(locksFolder),
         nameMask))
 {}
 
@@ -207,6 +213,23 @@ size_t TDeviceLocker::AvailableDevicesCount() const
     }
 
     return Impl->AvailableDevicesCount();
+}
+
+TDeviceLocker TDeviceLocker::CreateFromEnv(
+    ILoggingServicePtr logging,
+    TStringBuf nameMask)
+{
+    auto devicesFolder = GetEnv("NVME_LOOP_DEVICES_FOLDER");
+    Y_ENSURE(
+        devicesFolder,
+        "Environment variable 'NVME_LOOP_DEVICES_FOLDER' is not set");
+
+    auto locksFolder = GetEnv("NVME_LOOP_LOCKS_FOLDER");
+    Y_ENSURE(
+        locksFolder,
+        "Environment variable 'NVME_LOOP_LOCKS_FOLDER' is not set");
+
+    return {std::move(logging), devicesFolder, locksFolder, nameMask};
 }
 
 }   // namespace NCloud::NBlockStore::NNvme
