@@ -30,6 +30,7 @@ struct TAgentStorageInfo
     ui32 ChunkCount = 0;
     ui32 DirtyChunks = 0;
     ui32 FreeChunks = 0;
+    bool IsAgentAvailable = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

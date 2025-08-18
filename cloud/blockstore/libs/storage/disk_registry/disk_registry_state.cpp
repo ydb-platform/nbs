@@ -7222,15 +7222,18 @@ auto TDiskRegistryState::QueryAvailableStorage(
         }
 
         const ui64 au = GetAllocationUnit(device.GetPoolName());
-        auto& auChunks = chunks[au];
-        auChunks.ChunkSize = au;
+        auto& info = chunks[au];
+        info.ChunkSize = au;
 
         if (DeviceList.IsDirtyDevice(device.GetDeviceUUID())) {
-            auChunks.DirtyChunks++;
+            info.DirtyChunks++;
         } else if (!DeviceList.IsAllocatedDevice(device.GetDeviceUUID())) {
-            auChunks.FreeChunks++;
+            info.FreeChunks++;
         }
-        auChunks.ChunkCount++;
+        info.ChunkCount++;
+
+        info.IsAgentAvailable =
+            agent->State() != NProto::AGENT_STATE_UNAVAILABLE;
     }
 
     TVector<TAgentStorageInfo> infos;

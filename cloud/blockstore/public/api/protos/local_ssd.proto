@@ -18,6 +18,8 @@ message TAvailableStorageInfo
     uint64 ChunkSize = 2;
 
     uint32 ChunkCount = 3;
+
+    bool IsAgentAvailable = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

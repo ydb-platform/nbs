@@ -82,6 +82,7 @@ void TDiskRegistryActor::HandleQueryAvailableStorage(
             dst.SetAgentId(agentId);
             dst.SetChunkSize(info.ChunkSize);
             dst.SetChunkCount(info.ChunkCount);
+            dst.SetIsAgentAvailable(info.IsAgentAvailable);
         }
     }
 
