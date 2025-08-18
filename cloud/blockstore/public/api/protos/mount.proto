@@ -84,6 +84,9 @@ message TMountVolumeRequest
     // We don't allow clients with wrong fill generation to mount disk for read/write
     // in order to prevent data corruption during disk filling.
     uint64 FillGeneration = 17;
+
+    // Forces MountVolume handler to ignore encryption spec.
+    bool ForceDisableEncryption = 18;
 }
 
 message TMountVolumeResponse

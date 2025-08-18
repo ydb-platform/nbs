@@ -93,6 +93,7 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::AlterPlacementGroupMembership:
         case EBlockStoreRequest::ResumeDevice:
             return CreatePermissionList({EPermission::Update});
+        case EBlockStoreRequest::DescribeVolume:
         case EBlockStoreRequest::StatVolume:
             return CreatePermissionList({EPermission::Get});
         case EBlockStoreRequest::CreateCheckpoint:
@@ -106,7 +107,6 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::GetChangedBlocks:
         case EBlockStoreRequest::GetCheckpointStatus:
             return CreatePermissionList({EPermission::Read});
-        case EBlockStoreRequest::DescribeVolume:
         case EBlockStoreRequest::DescribeVolumeModel:
         case EBlockStoreRequest::DescribePlacementGroup:
         case EBlockStoreRequest::DescribeEndpoint:
