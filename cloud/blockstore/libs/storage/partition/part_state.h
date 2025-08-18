@@ -748,7 +748,8 @@ public:
 
     ui32 GetUnflushedFreshBlocksCount() const
     {
-        return Stats.GetFreshBlocksCount() + UnflushedFreshBlocksFromChannelCount;
+        return GetStats().GetFreshBlocksCount() +
+               UnflushedFreshBlocksFromChannelCount;
     }
 
     ui32 IncrementUnflushedFreshBlocksFromDbCount(size_t value);
@@ -997,8 +998,8 @@ public:
 
     void UpdateBlocksCountersAfterMetadataRebuild(ui64 mixed, ui64 merged)
     {
-        Stats.SetMixedBlocksCount(mixed);
-        Stats.SetMergedBlocksCount(merged);
+        AccessStats().SetMixedBlocksCount(mixed);
+        AccessStats().SetMergedBlocksCount(merged);
     }
 
     //
@@ -1388,7 +1389,6 @@ public:
     //
 
 private:
-    NProto::TPartitionStats& Stats;
     THashMap<ui32, TDowntimeHistoryHolder> GroupId2Downtimes;
 
 public:
@@ -1402,18 +1402,18 @@ public:
 
     const NProto::TPartitionStats& GetStats() const
     {
-        return Stats;
+        return Meta.GetStats();
     }
 
     NProto::TPartitionStats& AccessStats()
     {
-        return Stats;
+        return *Meta.MutableStats();
     }
 
 #define BLOCKSTORE_PARTITION_DECLARE_COUNTER(name)                             \
     ui64 Get##name() const                                                     \
     {                                                                          \
-        return Stats.Get##name();                                              \
+        return GetStats().Get##name();                                         \
     }                                                                          \
                                                                                \
     ui64 Increment##name(size_t value);                                        \
@@ -1427,7 +1427,7 @@ public:
     template <typename T>
     void UpdateStats(T&& update)
     {
-        update(Stats);
+        update(AccessStats());
     }
 
     void DumpHtml(IOutputStream& out) const;
