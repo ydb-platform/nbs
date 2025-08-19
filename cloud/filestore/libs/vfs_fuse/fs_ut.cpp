@@ -2081,7 +2081,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalled.load());
         // cache should be flushed
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
-        
+
         // write request without O_DIRECT should go to write cache
         reqWrite = std::make_shared<TWriteRequest>(
             nodeId,
