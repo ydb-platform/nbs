@@ -1005,7 +1005,7 @@ func TestTasksSendEvent(t *testing.T) {
 	require.EqualValues(t, []int64{10}, taskState.Events)
 
 	err = s.scheduler.SendEvent(ctx, id, 11)
-	require.Error(t, err)
+	require.NoError(t, err)
 
 	// Should return up-to-date Events value.
 	taskState, err = updateTask()
