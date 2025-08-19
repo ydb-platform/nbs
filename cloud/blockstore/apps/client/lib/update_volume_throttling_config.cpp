@@ -1,4 +1,4 @@
-#include "update_throttling_config.h"
+#include "update_volume_throttling_config.h"
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -15,10 +15,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUpdateThrottlingConfigCommand final: public TCommand
+class TUpdateVolumeThrottlingConfigCommand final: public TCommand
 {
 public:
-    explicit TUpdateThrottlingConfigCommand(IBlockStorePtr client)
+    explicit TUpdateVolumeThrottlingConfigCommand(IBlockStorePtr client)
         : TCommand(std::move(client))
     {}
 
@@ -35,20 +35,19 @@ protected:
         STORAGE_DEBUG("Reading TThrottlingConfig");
         auto request =
             std::make_shared<NProto::TUpdateThrottlingConfigRequest>();
-
         {
             NProto::TThrottlingConfig config;
             ParseFromTextFormat(input, config);
             *request->MutableConfig() = std::move(config);
         }
 
-        STORAGE_DEBUG("Sending TUpdateThrottlingConfigRequest");
+        STORAGE_DEBUG("Updating TThrottlingConfig");
         const auto requestId = GetRequestId(*request);
         auto result = WaitFor(ClientEndpoint->UpdateThrottlingConfig(
             MakeIntrusive<TCallContext>(requestId),
             std::move(request)));
 
-        STORAGE_DEBUG("Received UpdateThrottlingConfig response");
+        STORAGE_DEBUG("Updated TThrottlingConfig");
         SerializeToTextFormat(result, output);
 
         if (HasError(result)) {
@@ -75,9 +74,9 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCommandPtr NewUpdateThrottlingConfigCommand(IBlockStorePtr client)
+TCommandPtr NewUpdateVolumeThrottlingConfigCommand(IBlockStorePtr client)
 {
-    return MakeIntrusive<TUpdateThrottlingConfigCommand>(std::move(client));
+    return MakeIntrusive<TUpdateVolumeThrottlingConfigCommand>(std::move(client));
 }
 
 }   // namespace NCloud::NBlockStore::NClient

@@ -1,4 +1,4 @@
-#include "throttling_manager.h"
+#include "volume_throttling_manager.h"
 
 namespace NCloud::NBlockStore::NStorage {
 

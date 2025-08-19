@@ -60,7 +60,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/partition_nonrepl
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/libs/storage/protos_ydb
-    cloud/blockstore/libs/storage/throttling_manager/model
+    cloud/blockstore/libs/storage/volume_throttling_manager/model
     cloud/blockstore/libs/storage/volume/model
     cloud/blockstore/libs/storage/volume/actors
 

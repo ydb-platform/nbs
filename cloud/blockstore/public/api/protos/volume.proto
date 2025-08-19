@@ -3,7 +3,7 @@ syntax = "proto3";
 import "cloud/blockstore/public/api/protos/encryption.proto";
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/blockstore/public/api/protos/rdma.proto";
-import "cloud/blockstore/public/api/protos/throttling.proto";
+import "cloud/blockstore/public/api/protos/volume_throttling.proto";
 import "cloud/storage/core/protos/error.proto";
 import "cloud/storage/core/protos/media.proto";
 import "cloud/storage/core/protos/trace.proto";

@@ -12,7 +12,7 @@ import "cloud/blockstore/public/api/protos/metrics.proto";
 import "cloud/blockstore/public/api/protos/mount.proto";
 import "cloud/blockstore/public/api/protos/ping.proto";
 import "cloud/blockstore/public/api/protos/placement.proto";
-import "cloud/blockstore/public/api/protos/throttling.proto";
+import "cloud/blockstore/public/api/protos/volume_throttling.proto";
 import "cloud/blockstore/public/api/protos/volume.proto";
 
 import "google/api/annotations.proto";

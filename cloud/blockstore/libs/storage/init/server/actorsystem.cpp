@@ -7,7 +7,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
-#include <cloud/blockstore/libs/storage/api/throttling_manager.h>
+#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -23,7 +23,7 @@
 #include <cloud/blockstore/libs/storage/partition2/part2_actor.h>
 #include <cloud/blockstore/libs/storage/service/service.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service.h>
-#include <cloud/blockstore/libs/storage/throttling_manager/throttling_manager.h>
+#include <cloud/blockstore/libs/storage/volume_throttling_manager/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/undelivered/undelivered.h>
 #include <cloud/blockstore/libs/storage/volume/volume.h>
@@ -346,7 +346,7 @@ public:
                 TActorSetupCmd(
                     throttlingManagerService.release(),
                     TMailboxType::Simple,
-                    appData->UserPoolId));
+                    appData->BatchPoolId));
         }
 
         //

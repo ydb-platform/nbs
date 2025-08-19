@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/public/api/protos/throttling.pb.h>
+#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 #include <cloud/blockstore/libs/storage/api/public.h>
 
 #include <cloud/storage/core/libs/throttling/tablet_throttler_policy.h>

@@ -10,7 +10,7 @@ SRCS(
     service.cpp
     ss_proxy.cpp
     stats_service.cpp
-    throttling_manager.cpp
+    volume_throttling_manager.cpp
     undelivered.cpp
     volume.cpp
     volume_balancer.cpp

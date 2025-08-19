@@ -14,7 +14,7 @@
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
 #include <cloud/blockstore/public/api/protos/ping.pb.h>
 #include <cloud/blockstore/public/api/protos/placement.pb.h>
-#include <cloud/blockstore/public/api/protos/throttling.pb.h>
+#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/guarded_sglist.h>

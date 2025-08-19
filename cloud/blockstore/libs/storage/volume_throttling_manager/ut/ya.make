@@ -1,7 +1,7 @@
-UNITTEST_FOR(cloud/blockstore/libs/storage/throttling_manager)
+UNITTEST_FOR(cloud/blockstore/libs/storage/volume_throttling_manager)
 
 SRCS(
-    throttling_manager_ut.cpp
+    volume_throttling_manager_ut.cpp
 )
 
 PEERDIR(

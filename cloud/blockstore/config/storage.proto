@@ -1294,7 +1294,7 @@ message TStorageServiceConfig
     // ranges (in milliseconds).
     optional uint32 MaxRetryDelayForServiceRequests = 446;
 
-    // Throttling manager
     optional bool ThrottlingManagerEnabled = 447;
+    // Duration between ThrottlingManager notifications to volumes
     optional uint32 ThrottlingManagerCycleTimeSeconds = 448;
 }

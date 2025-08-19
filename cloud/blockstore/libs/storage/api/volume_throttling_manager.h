@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/public/api/protos/throttling.pb.h>
+#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
@@ -12,17 +12,19 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TEvThrottlingManager
 {
     using TThrottlingItems =
         google::protobuf::RepeatedPtrField<NProto::TThrottlingRule>;
 
-    struct TUpdateConfigRequest
+    struct TUpdateVolumeThrottlingConfigRequest
     {
         NProto::TThrottlingConfig ThrottlingConfig;
     };
 
-    struct TUpdateConfigResponse
+    struct TUpdateVolumeThrottlingConfigResponse
     {
         NProto::TError Error;
     };
@@ -44,8 +46,8 @@ struct TEvThrottlingManager
         EvEnd
     };
 
-    using TEvUpdateConfigRequest = TRequestEvent<TUpdateConfigRequest, EvUpdateConfigRequest>;
-    using TEvUpdateConfigResponse = TRequestEvent<TUpdateConfigResponse, EvUpdateConfigResponse>;
+    using TEvUpdateConfigRequest = TRequestEvent<TUpdateVolumeThrottlingConfigRequest, EvUpdateConfigRequest>;
+    using TEvUpdateConfigResponse = TRequestEvent<TUpdateVolumeThrottlingConfigResponse, EvUpdateConfigResponse>;
     using TEvNotifyVolume = TRequestEvent<TNotifyVolume, EvNotifyVolume>;
 };
 

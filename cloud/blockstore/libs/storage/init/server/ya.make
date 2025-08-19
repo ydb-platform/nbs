@@ -23,7 +23,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/service
     cloud/blockstore/libs/storage/stats_service
     cloud/blockstore/libs/storage/ss_proxy
-    cloud/blockstore/libs/storage/throttling_manager
+    cloud/blockstore/libs/storage/volume_throttling_manager
     cloud/blockstore/libs/storage/undelivered
     cloud/blockstore/libs/storage/volume
     cloud/blockstore/libs/storage/volume_balancer

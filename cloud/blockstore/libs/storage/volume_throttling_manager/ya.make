@@ -1,7 +1,7 @@
 LIBRARY()
 
 SRCS(
-    throttling_manager.cpp
+    volume_throttling_manager.cpp
 )
 
 PEERDIR(
@@ -9,7 +9,7 @@ PEERDIR(
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/service
-    cloud/blockstore/libs/storage/throttling_manager/model
+    cloud/blockstore/libs/storage/volume_throttling_manager/model
 
     cloud/storage/core/libs/actors
     cloud/storage/core/libs/common

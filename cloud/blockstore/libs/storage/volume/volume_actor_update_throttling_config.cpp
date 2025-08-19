@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/throttling_manager/model/helpers.h>
+#include <cloud/blockstore/libs/storage/volume_throttling_manager/model/helpers.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
 #include <cloud/storage/core/libs/common/media.h>

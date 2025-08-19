@@ -40,7 +40,7 @@
 #include "stat_volume.h"
 #include "stop_endpoint.h"
 #include "update_disk_registry_config.h"
-#include "update_throttling_config.h"
+#include "update_volume_throttling_config.h"
 #include "write_blocks.h"
 #include "zero_blocks.h"
 
@@ -103,7 +103,7 @@ struct THandlerFactory
         { "startproxyendpoint", NewStartProxyEndpointCommand },
         { "stopproxyendpoint", NewStopProxyEndpointCommand },
         { "listproxyendpoints", NewListProxyEndpointsCommand },
-        { "updatethrottlerconfig", NewUpdateThrottlingConfigCommand },
+        { "updatevolumethrottlingconfig", NewUpdateVolumeThrottlingConfigCommand },
     };
 };
 

@@ -1,9 +1,9 @@
-#include "throttling_manager.h"
+#include "volume_throttling_manager.h"
 
 #include <cloud/blockstore/libs/storage/api/service.h>
-#include <cloud/blockstore/libs/storage/api/throttling_manager.h>
+#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
-#include <cloud/blockstore/libs/storage/throttling_manager/model/helpers.h>
+#include <cloud/blockstore/libs/storage/volume_throttling_manager/model/helpers.h>
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/api/throttling_manager.h>
+#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

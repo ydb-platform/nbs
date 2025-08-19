@@ -1,6 +1,6 @@
 #include "service_actor.h"
 
-#include <cloud/blockstore/libs/storage/api/throttling_manager.h>
+#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 
 #include <util/string/join.h>
 

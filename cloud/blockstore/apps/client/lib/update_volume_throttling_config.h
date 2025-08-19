@@ -6,6 +6,6 @@ namespace NCloud::NBlockStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCommandPtr NewUpdateThrottlingConfigCommand(IBlockStorePtr client);
+TCommandPtr NewUpdateVolumeThrottlingConfigCommand(IBlockStorePtr client);
 
 }   // namespace NCloud::NBlockStore::NClient

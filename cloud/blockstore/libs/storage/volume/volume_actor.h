@@ -18,7 +18,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
-#include <cloud/blockstore/libs/storage/api/throttling_manager.h>
+#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
