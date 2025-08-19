@@ -477,7 +477,7 @@ void TReadDataActor::HandleReadBlobResponse(
 
         const ui64 relOffset = blobRange.GetOffset() - AlignedByteRange.Offset;
         dataIter.ExtractPlainDataAndAdvance(
-            &(*BlockBuffer)[0] + relOffset,
+            &(*BlockBuffer)[relOffset],
             blobRange.GetLength());
         ZeroIntervals.Subtract(relOffset, relOffset + blobRange.GetLength());
     }
