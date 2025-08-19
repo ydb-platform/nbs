@@ -278,7 +278,7 @@ void TGetClusterCapacityActor::HandleGetYDBCapacityResponse(
             TBlockStoreComponents::SERVICE,
             "Got vslot " << vslot.ShortDebugString());
 
-        if (IsDynamicGroup(vslot.GetGroupId())) {
+        if (!IsDynamicGroup(vslot.GetGroupId())) {
             LOG_DEBUG_S(
                 ctx,
                 TBlockStoreComponents::SERVICE,
