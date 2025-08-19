@@ -51,11 +51,6 @@ func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 	}
 }
 
-func isLocalDiskKind(kind types.DiskKind) bool {
-	return (kind == types.DiskKind_DISK_KIND_HDD_LOCAL ||
-		kind == types.DiskKind_DISK_KIND_SSD_LOCAL)
-}
-
 func prepareEncryptionMode(
 	mode disk_manager.EncryptionMode,
 ) (types.EncryptionMode, error) {

@@ -50,7 +50,7 @@ func (t *createEmptyDiskTask) Run(
 	selfTaskID := execCtx.GetTaskID()
 
 	zoneID := t.params.Disk.ZoneId
-	if !isLocalDiskKind(t.params.Kind) {
+	if !common.IsLocalDiskKind(t.params.Kind) {
 		zoneID = t.cellSelector.PrepareZoneID(t.params.Disk, t.params.FolderId)
 	}
 

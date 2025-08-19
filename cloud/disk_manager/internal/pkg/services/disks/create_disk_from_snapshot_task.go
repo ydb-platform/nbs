@@ -64,10 +64,7 @@ func (t *createDiskFromSnapshotTask) Run(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	zoneID, err := t.cellSelector.PrepareZoneID(ctx, params.Disk, params.FolderId)
-	if err != nil {
-		return err
-	}
+	zoneID := t.cellSelector.PrepareZoneID(params.Disk, params.FolderId)
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:            params.Disk.DiskId,
