@@ -25,7 +25,7 @@ NJson::TJsonValue GetValue(const auto& object, const auto& name)
             }
         }
     }
-    UNIT_ASSERT(false);
+    UNIT_ASSERT_C(false, "Value not found " + name);
     return NJson::TJsonValue{};
 };
 
@@ -39,7 +39,7 @@ NJson::TJsonValue GetHist(
             }
         }
     }
-    UNIT_ASSERT(false);
+    UNIT_ASSERT_C(false, "Value not found " + name + "/" + valueName);
     return NJson::TJsonValue{};
 };
 
@@ -51,7 +51,7 @@ void ValidateJsons(
         const TString name = jsonValue["labels"]["name"].GetString();
 
         if (jsonValue.Has("hist")) {
-            for (auto valueName: {"bounds", "buckets", "inf"}) {
+            for (const auto* valueName: {"bounds", "buckets", "inf"}) {
                 UNIT_ASSERT_STRINGS_EQUAL_C(
                     NJson::WriteJson(GetHist(resultJson, name, valueName)),
                     NJson::WriteJson(GetHist(testJson, name, valueName)),

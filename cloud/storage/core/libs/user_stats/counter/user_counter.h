@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/storage/core/libs/diagnostics/histogram_types.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/metrics/metric_registry.h>
 
 namespace NCloud::NStorage::NUserStats {
@@ -52,4 +54,104 @@ public:
 std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplier();
 std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplierStub();
 
-}   // NCloud::NStorage::NUserStats
+////////////////////////////////////////////////////////////////////////////////
+
+struct TBucket
+{
+    NMonitoring::TBucketBound Bound;
+    TString Name;
+};
+
+static constexpr size_t BUCKETS_COUNT = 25;
+
+using TBuckets = std::array<TBucket, BUCKETS_COUNT>;
+
+template <typename THistogramType>
+TBuckets MakeBuckets(auto convertBound)
+{
+    static_assert(BUCKETS_COUNT == THistogramType::BUCKETS_COUNT, "");
+
+    TBuckets result;
+    const auto names = THistogramType::MakeNames();
+    for (size_t i = 0; i < names.size(); ++i) {
+        result[i].Bound = convertBound(THistogramType::Buckets[i]);
+        result[i].Name = names[i];
+    }
+    return result;
+}
+
+const TBuckets MS_BUCKETS = MakeBuckets<TRequestMsTimeBuckets>(
+    [](double data) {return data;});
+const TBuckets US_BUCKETS = MakeBuckets<TRequestUsTimeBuckets>(
+    [](double data) {return data == std::numeric_limits<double>::max()
+        ? data : data / 1000.;});
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TBaseDynamicCounters =
+    std::pair<NMonitoring::TDynamicCounterPtr, TString>;
+
+class TUserSumCounterWrapper
+    : public IUserCounter
+{
+public:
+    explicit TUserSumCounterWrapper(
+        const TVector<TBaseDynamicCounters>& baseCounters);
+
+    NMonitoring::EMetricType GetType() const;
+    void GetType(NMonitoring::IMetricConsumer* consumer) const override;
+
+    void GetValue(
+        TInstant time,
+        NMonitoring::IMetricConsumer* consumer) const override;
+
+private:
+    TVector<TIntrusivePtr<NMonitoring::TCounterForPtr>> Counters;
+    NMonitoring::EMetricType Type = NMonitoring::EMetricType::UNKNOWN;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TUserSumHistogramWrapper
+    : public IUserCounter
+{
+public:
+    explicit TUserSumHistogramWrapper(
+        const TBuckets& buckets,
+        const TVector<TBaseDynamicCounters>& baseCounters);
+
+    void Clear() const;
+
+    void GetType(NMonitoring::IMetricConsumer* consumer) const override;
+
+    void GetValue(
+        TInstant time,
+        NMonitoring::IMetricConsumer* consumer) const override;
+
+private:
+    using TExplicitHistogramSnapshot = NMonitoring::TExplicitHistogramSnapshot;
+    using EMetricType = NMonitoring::EMetricType;
+    static constexpr size_t IgnoreBucketCount = 10;
+
+    TVector<TIntrusivePtr<NMonitoring::TDynamicCounters>> Counters;
+    TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
+    const TBuckets& Buckets;
+    EMetricType Type = EMetricType::UNKNOWN;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+void AddUserMetric(
+    IUserCounterSupplier& dsc,
+    const NMonitoring::TLabels& commonLabels,
+    const TVector<TBaseDynamicCounters>& baseCounters,
+    TStringBuf newName);
+
+void AddHistogramUserMetric(
+    const TBuckets& buckets,
+    IUserCounterSupplier& dsc,
+    const NMonitoring::TLabels& commonLabels,
+    const TVector<TBaseDynamicCounters>& baseCounters,
+    TStringBuf newName);
+
+}  // namespace NCloud::NStorage::NUserStats

@@ -1,3 +1,4 @@
+
 #include "user_counter.h"
 
 namespace NCloud::NStorage::NUserStats {
@@ -128,4 +129,124 @@ std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplierStub()
     return std::make_shared<TUserCounterSupplierStub>();
 }
 
-}   // NCloud::NStorage::NUserStats
+///////////////////////////////////////////////////////////////////////////////
+
+TUserSumCounterWrapper::TUserSumCounterWrapper(
+    const TVector<TBaseDynamicCounters>& baseCounters)
+{
+    for (const auto& [baseCounter, name]: baseCounters) {
+        if (baseCounter) {
+            if (auto countSub = baseCounter->FindCounter(name)) {
+                Counters.push_back(countSub);
+                Type = countSub->ForDerivative()
+                           ? NMonitoring::EMetricType::RATE
+                           : EMetricType::GAUGE;
+            }
+        }
+    }
+}
+
+NMonitoring::EMetricType TUserSumCounterWrapper::GetType() const
+{
+    return Type;
+}
+
+void TUserSumCounterWrapper::GetType(
+    NMonitoring::IMetricConsumer* consumer) const
+{
+    consumer->OnMetricBegin(Type);
+}
+
+void TUserSumCounterWrapper::GetValue(
+    TInstant time,
+    NMonitoring::IMetricConsumer* consumer) const
+{
+    int64_t sum = 0;
+
+    for (const auto& counter: Counters) {
+        sum += counter->Val();
+    }
+
+    consumer->OnInt64(time, sum);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+TUserSumHistogramWrapper::TUserSumHistogramWrapper(
+    const TBuckets& buckets,
+    const TVector<TBaseDynamicCounters>& baseCounters)
+    : Histogram(
+          TExplicitHistogramSnapshot::New(buckets.size() - IgnoreBucketCount))
+    , Buckets(buckets)
+    , Type(EMetricType::HIST_RATE)
+{
+    for (size_t i = IgnoreBucketCount; i < Buckets.size(); ++i) {
+        (*Histogram)[i - IgnoreBucketCount].first = Buckets[i].Bound;
+    }
+
+    for (const auto& [baseCounter, name]: baseCounters) {
+        if (baseCounter) {
+            if (auto hist = baseCounter->FindSubgroup("histogram", name)) {
+                Counters.push_back(hist);
+            }
+        }
+    }
+}
+
+void TUserSumHistogramWrapper::Clear() const
+{
+    for (size_t i = IgnoreBucketCount; i < Buckets.size(); ++i) {
+        (*Histogram)[i - IgnoreBucketCount].second = 0;
+    }
+}
+
+void TUserSumHistogramWrapper::GetType(
+    NMonitoring::IMetricConsumer* consumer) const
+{
+    consumer->OnMetricBegin(Type);
+}
+
+void TUserSumHistogramWrapper::GetValue(
+    TInstant time,
+    NMonitoring::IMetricConsumer* consumer) const
+{
+    Clear();
+
+    for (const auto& counter: Counters) {
+        for (size_t i = 0; i < Buckets.size(); ++i) {
+            if (auto countSub = counter->GetCounter(Buckets[i].Name)) {
+                size_t id = i < IgnoreBucketCount ? 0 : i - IgnoreBucketCount;
+                (*Histogram)[id].second += countSub->Val();
+            }
+        }
+    }
+    consumer->OnHistogram(time, Histogram);
+}
+
+void AddUserMetric(
+    IUserCounterSupplier& dsc,
+    const NMonitoring::TLabels& commonLabels,
+    const TVector<TBaseDynamicCounters>& baseCounters,
+    TStringBuf newName)
+{
+    auto wrapper = std::make_shared<TUserSumCounterWrapper>(baseCounters);
+
+    if (wrapper->GetType() != NMonitoring::EMetricType::UNKNOWN) {
+        dsc.AddUserMetric(commonLabels, newName, TUserCounter(wrapper));
+    }
+}
+
+void AddHistogramUserMetric(
+    const TBuckets& buckets,
+    IUserCounterSupplier& dsc,
+    const TLabels& commonLabels,
+    const TVector<TBaseDynamicCounters>& baseCounters,
+    TStringBuf newName)
+{
+    auto wrapper =
+        std::make_shared<TUserSumHistogramWrapper>(buckets, baseCounters);
+
+    dsc.AddUserMetric(commonLabels, newName, TUserCounter(wrapper));
+}
+
+}  // namespace NCloud::NStorage::NUserStats
