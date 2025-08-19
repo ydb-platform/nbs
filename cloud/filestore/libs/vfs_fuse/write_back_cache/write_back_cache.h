@@ -30,7 +30,8 @@ public:
         ITimerPtr timer,
         const TString& filePath,
         ui32 capacityBytes,
-        TDuration automaticFlushPeriod);
+        TDuration automaticFlushPeriod,
+        TDuration flushRetryPeriod);
 
     ~TWriteBackCache();
 
@@ -55,10 +56,13 @@ private:
     // only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
 
-    enum class EFlushStatus;
+    enum class EWriteDataEntryStatus;
     class TWriteDataEntry;
     struct TWriteDataEntryPart;
+    struct THandleState;
+    struct TFlushState;
     class TUtil;
+    struct TPendingOperations;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

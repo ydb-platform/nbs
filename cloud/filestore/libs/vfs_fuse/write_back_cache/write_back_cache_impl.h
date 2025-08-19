@@ -12,17 +12,29 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class TWriteBackCache::EFlushStatus
+enum class TWriteBackCache::EWriteDataEntryStatus
 {
-    NotStarted,
-    Started,
-    Finished
+    // Restoration from the persisent buffer has failed
+    Corrupted,
+
+    // Write request is waiting for the avaible space in the persistent buffer
+    Pending,
+
+    // Write request has been stored in the persistent buffer and the caller
+    // code observes the request as completed
+    Cached,
+
+    // Same as |Cached|, but Flush is also requested
+    FlushRequested,
+
+    // Write request has been written to the session and can be removed from
+    // the persistent buffer
+    Flushed
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TWriteBackCache::TWriteDataEntry
-    : public TIntrusiveListItem<TWriteDataEntry>
 {
 private:
     // Store request metadata and request buffer separately
@@ -31,9 +43,16 @@ private:
     std::shared_ptr<NProto::TWriteDataRequest> Request;
     TString RequestBuffer;
 
+    // Memory allocated in CachedEntriesPersistentQueue
+    char* AllocationPtr = nullptr;
+
     // Reference to either RequestBuffer or a memory region
-    // in WriteDataRequestsQueue
+    // referenced by AllocationPtr in CachedEntriesPersistentQueue
     TStringBuf BufferRef;
+
+    NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
+    NThreading::TPromise<void> FlushPromise;
+    EWriteDataEntryStatus Status = EWriteDataEntryStatus::Corrupted;
 
 public:
     explicit TWriteDataEntry(
@@ -66,10 +85,35 @@ public:
         return Request->GetOffset() + BufferRef.size();
     }
 
-    size_t GetSerializedSize() const;
-    void SerializeAndMoveRequestBuffer(char* allocationPtr);
+    bool IsCached() const
+    {
+        return Status == EWriteDataEntryStatus::Cached ||
+               Status == EWriteDataEntryStatus::FlushRequested;
+    }
 
-    EFlushStatus FlushStatus = EFlushStatus::NotStarted;
+    bool IsFinished() const
+    {
+        return Status == EWriteDataEntryStatus::Flushed ||
+               Status == EWriteDataEntryStatus::Corrupted;
+    }
+
+    bool IsFlushRequested() const
+    {
+        return Status == EWriteDataEntryStatus::FlushRequested;
+    }
+
+    size_t GetSerializedSize() const;
+
+    void SerializeAndMoveRequestBuffer(
+        char* allocationPtr,
+        TPendingOperations& pendingOperations);
+
+    void Finish(TPendingOperations& pendingOperations);
+
+    bool RequestFlush();
+
+    NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
+    NThreading::TFuture<void> GetFlushFuture();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -110,7 +154,7 @@ public:
      *   data.
      */
     static TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
-        const TVector<TWriteDataEntry*>& entries,
+        const TDeque<TWriteDataEntry*>& entries,
         ui64 startingFromOffset,
         ui64 length);
 
