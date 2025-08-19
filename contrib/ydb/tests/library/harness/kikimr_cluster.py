@@ -30,7 +30,7 @@ def kikimr_cluster_factory(configurator=None, config_path=None, sub_folder_name=
     if config_path is not None:
         return ExternalKiKiMRCluster(config_path)
     else:
-        return KiKiMR(configurator, sub_folder_name)
+        return KiKiMR(configurator, sub_folder_name=sub_folder_name)
 
 
 def load_yaml(path):

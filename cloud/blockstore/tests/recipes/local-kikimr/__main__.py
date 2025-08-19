@@ -1,6 +1,7 @@
 import argparse
 import os
 import signal
+import logging
 
 from library.python.testing.recipe import declare_recipe, set_env
 
@@ -8,7 +9,7 @@ from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, 
 from cloud.blockstore.config.discovery_pb2 import TDiscoveryServiceConfig
 
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
-from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_nbs_server
+from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_nbs_server, recipe_set_env
 
 from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
@@ -23,6 +24,8 @@ import yatest.common as yatest_common
 PID_FILE_NAME = "local_kikimr_nbs_server_recipe.pid"
 ERR_LOG_FILE_NAMES_FILE = "local_kikimr_nbs_server_recipe.err_log_files"
 
+logger = logging.getLogger(__name__)
+
 
 def start(argv):
     parser = argparse.ArgumentParser()
@@ -30,7 +33,13 @@ def start(argv):
     parser.add_argument("--nbs-package-path", action='store', default=None)
     parser.add_argument("--use-log-files", action='store_true', default=False)
     parser.add_argument("--use-ic-version-check", action='store_true', default=False)
+    parser.add_argument("--nbs-instances-count")
     args = parser.parse_args(argv)
+
+    if args.nbs_instances_count == "$NBS_INSTANCES_COUNT":
+        args.nbs_instances_count = 1
+    else:
+        args.nbs_instances_count = int(args.nbs_instances_count)
 
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     if args.kikimr_package_path is not None:
@@ -38,7 +47,24 @@ def start(argv):
             "{}/ydbd".format(args.kikimr_package_path)
         )
 
-    configurator = KikimrConfigGenerator(
+    nbs_binary_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
+    if args.nbs_package_path is not None:
+        nbs_binary_path = yatest_common.build_path(
+            "{}/usr/bin/blockstore-server".format(args.nbs_package_path)
+        )
+
+    pm = yatest_common.network.PortManager()
+    clusters = []
+    nbs_servers = []
+
+    nbs_instances_count = int(args.nbs_instances_count)
+    set_env("CLUSTERS_COUNT", str(nbs_instances_count))
+
+    logger.info("tring to start {} instances".format(nbs_instances_count))
+
+    for nbs_index in range(nbs_instances_count):
+        logger.info("starting instans No {}".format(nbs_index))
+        configurator = KikimrConfigGenerator(
         erasure=None,
         binary_path=kikimr_binary_path,
         use_in_memory_pdisks=True,
@@ -48,78 +74,77 @@ def start(argv):
         ],
         use_log_files=args.use_log_files)
 
-    nbs_binary_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
-    if args.nbs_package_path is not None:
-        nbs_binary_path = yatest_common.build_path(
-            "{}/usr/bin/blockstore-server".format(args.nbs_package_path)
-        )
+        kikimr_cluster = kikimr_cluster_factory(configurator=configurator, sub_folder_name="kikimr_configs_{}".format(nbs_index))
+        kikimr_cluster.start()
+        clusters.append((configurator, kikimr_cluster))
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
-    kikimr_cluster.start()
+        server_app_config = TServerAppConfig()
+        server_app_config.ServerConfig.CopyFrom(TServerConfig())
+        server_app_config.ServerConfig.ThreadsCount = thread_count()
+        server_app_config.ServerConfig.StrictContractValidation = False
+        server_app_config.ServerConfig.NbdEnabled = True
+        server_app_config.ServerConfig.VhostEnabled = True
+        server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
-    server_app_config = TServerAppConfig()
-    server_app_config.ServerConfig.CopyFrom(TServerConfig())
-    server_app_config.ServerConfig.ThreadsCount = thread_count()
-    server_app_config.ServerConfig.StrictContractValidation = False
-    server_app_config.ServerConfig.NbdEnabled = True
-    server_app_config.ServerConfig.VhostEnabled = True
-    server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
+        certs_dir = yatest_common.source_path('cloud/blockstore/tests/certs')
+        set_env("TEST_CERT_FILES_DIR", certs_dir)
 
-    certs_dir = yatest_common.source_path('cloud/blockstore/tests/certs')
-    set_env("TEST_CERT_FILES_DIR", certs_dir)
+        server_app_config.ServerConfig.RootCertsFile = os.path.join(certs_dir, 'server.crt')
+        cert = server_app_config.ServerConfig.Certs.add()
+        cert.CertFile = os.path.join(certs_dir, 'server.crt')
+        cert.CertPrivateKeyFile = os.path.join(certs_dir, 'server.key')
 
-    server_app_config.ServerConfig.RootCertsFile = os.path.join(certs_dir, 'server.crt')
-    cert = server_app_config.ServerConfig.Certs.add()
-    cert.CertFile = os.path.join(certs_dir, 'server.crt')
-    cert.CertPrivateKeyFile = os.path.join(certs_dir, 'server.key')
+        nbs_port = pm.get_port()
+        nbs_secure_port = pm.get_port()
 
-    pm = yatest_common.network.PortManager()
+        instance_list_file = os.path.join(yatest_common.output_path(), "static_instances_{}.txt".format(nbs_index))
+        with open(instance_list_file, "w") as f:
+            print("localhost\t%s\t%s" % (nbs_port, nbs_secure_port), file=f)
 
-    nbs_port = pm.get_port()
-    nbs_secure_port = pm.get_port()
+        discovery_config = TDiscoveryServiceConfig()
+        discovery_config.InstanceListFile = instance_list_file
 
-    instance_list_file = os.path.join(yatest_common.output_path(), "static_instances.txt")
-    with open(instance_list_file, "w") as f:
-        print("localhost\t%s\t%s" % (nbs_port, nbs_secure_port), file=f)
+        kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+        nbs = LocalNbs(
+            kikimr_port,
+            configurator.domains_txt,
+            server_app_config=server_app_config,
+            enable_tls=True,
+            load_configs_from_cms=True,
+            discovery_config=discovery_config,
+            nbs_secure_port=nbs_secure_port,
+            nbs_port=nbs_port,
+            kikimr_binary_path=kikimr_binary_path,
+            nbs_binary_path=nbs_binary_path,
+            use_ic_version_check=args.use_ic_version_check,
+            config_sub_folder="nbs_configs_{}".format(nbs_index)
+            )
 
-    discovery_config = TDiscoveryServiceConfig()
-    discovery_config.InstanceListFile = instance_list_file
+        nbs.setup_cms(kikimr_cluster.client)
 
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
-    nbs = LocalNbs(
-        kikimr_port,
-        configurator.domains_txt,
-        server_app_config=server_app_config,
-        enable_tls=True,
-        load_configs_from_cms=True,
-        discovery_config=discovery_config,
-        nbs_secure_port=nbs_secure_port,
-        nbs_port=nbs_port,
-        kikimr_binary_path=kikimr_binary_path,
-        nbs_binary_path=nbs_binary_path,
-        use_ic_version_check=args.use_ic_version_check)
+        nbs.start()
+        nbs_servers.append(nbs)
 
-    nbs.setup_cms(kikimr_cluster.client)
+        append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs.stderr_file_name)
 
-    nbs.start()
+        recipe_set_env("LOCAL_KIKIMR_KIKIMR_ROOT", configurator.domain_name, nbs_index)
+        recipe_set_env("LOCAL_KIKIMR_KIKIMR_SERVER_PORT", str(kikimr_port), nbs_index)
+        recipe_set_env("LOCAL_KIKIMR_SECURE_NBS_SERVER_PORT", str(nbs.nbs_secure_port), nbs_index)
+        recipe_set_env("LOCAL_KIKIMR_INSECURE_NBS_SERVER_PORT", str(nbs.nbs_port), nbs_index)
 
-    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs.stderr_file_name)
+        with open(PID_FILE_NAME, "w") as f:
+            for nbs in nbs_servers:
+                f.write(str(nbs.pid) + "\n")
 
-    set_env("LOCAL_KIKIMR_KIKIMR_ROOT", configurator.domain_name)
-    set_env("LOCAL_KIKIMR_KIKIMR_SERVER_PORT", str(kikimr_port))
-    set_env("LOCAL_KIKIMR_SECURE_NBS_SERVER_PORT", str(nbs.nbs_secure_port))
-    set_env("LOCAL_KIKIMR_INSECURE_NBS_SERVER_PORT", str(nbs.nbs_port))
-
-    with open(PID_FILE_NAME, "w") as f:
-        f.write(str(nbs.pid))
-
-    wait_for_nbs_server(nbs.nbs_port)
+        for nbs in nbs_servers:
+            wait_for_nbs_server(nbs.nbs_port)
 
 
 def stop(argv):
     with open(PID_FILE_NAME) as f:
-        pid = int(f.read())
-        os.kill(pid, signal.SIGTERM)
+        for line in f:
+            pid = int(line.strip())
+            os.kill(pid, signal.SIGTERM)
     errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
     if errors:
         raise RuntimeError("Errors during recipe execution:\n" + "\n".join(errors))

@@ -20,6 +20,7 @@ from cloud.storage.core.tests.common import (
 )
 
 logger = logging.getLogger(__name__)
+pm = yatest.common.network.PortManager()
 
 
 SSH_PORT = 22
@@ -41,7 +42,6 @@ class QemuKvmRecipeException(Exception):
 def _start(argv):
     args = _parse_args(argv)
     if args.instance_count > 1:
-        pm = yatest.common.network.PortManager()
         args.shared_nic_port = pm.get_port()
     else:
         args.shared_nic_port = 0
@@ -72,14 +72,17 @@ def start_instance(args, inst_index):
     virtio = _get_vm_virtio(args)
     mount_paths = get_mount_paths(inst_index=inst_index)
 
-    vhost_socket = ""
-    if virtio == "fs":
-        vhost_socket = os.getenv(
-            env_with_guest_index("NFS_VHOST_SOCKET", inst_index))
-    elif virtio == "blk":
-        vhost_socket = os.getenv("NBS_{}_VHOST_SOCKET".format(inst_index))
-        if vhost_socket == None:
-            vhost_socket = os.getenv("NBS_VHOST_SOCKET")
+    vhost_sockets = []
+    nbs_devices_count = int(os.getenv("VIRTIOFS_SERVER_COUNT"))
+    for nbs_index in range(nbs_devices_count):
+        if virtio == "fs":
+            vhost_sockets.append(recipe_get_env("NFS_VHOST_SOCKET", nbs_index))
+        elif virtio == "blk":
+            nsf_vhost_socket = recipe_get_env("NFS_VHOST_SOCKET", nbs_index)
+            if nsf_vhost_socket is not None:
+                vhost_sockets.append(nsf_vhost_socket)
+            else:
+                vhost_sockets.append(recipe_get_env("NBS_VHOST_SOCKET", nbs_index))
 
     use_virtiofs_server = _get_vm_use_virtiofs_server(args)
 
@@ -93,13 +96,15 @@ def start_instance(args, inst_index):
                 proc=_get_vm_proc(args),
                 virtio=virtio,
                 qemu_options=_get_qemu_options(args),
-                vhost_socket=vhost_socket,
+                vhost_socket=None,
                 enable_kvm=_get_vm_enable_kvm(args),
                 inst_index=inst_index,
                 shared_nic_port=args.shared_nic_port,
-                use_virtiofs_server=use_virtiofs_server)
+                use_virtiofs_server=use_virtiofs_server,
+                vhost_sockets=vhost_sockets)
 
     qemu.set_mount_paths(mount_paths)
+    qemu.set_ssh_port(pm.get_port())
     qemu.start()
 
     append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, qemu.qemu_bin.stderr_file_name)
@@ -341,9 +346,8 @@ def _get_qemu_options(args):
 
 
 def _get_nbs_device_path(instance_idx):
-    disk_id = os.getenv("NBS_{}_DISK_ID".format(instance_idx))
-    if disk_id == None:
-        disk_id = os.getenv("NBS_DISK_ID")
+    disk_id = recipe_get_env("NBS_DISK_ID", instance_idx)
+
     if not disk_id:
         raise QemuKvmRecipeException("Cannot determine nbs disk id")
 
@@ -381,6 +385,8 @@ def _prepare_test_environment(ssh, virtio, instance_idx):
     vm_env = os.environ
     vm_env['TEST_ENV_WRAPPER'] = ' '.join(ssh.get_command(""))
 
+    vm_env["INST_INDEX"] = str(instance_idx)
+
     if virtio == "fs":
         # Mount virtiofs directory
         mount_path = "/mnt/fs0"
@@ -394,19 +400,18 @@ def _prepare_test_environment(ssh, virtio, instance_idx):
         # Sanity check
         ssh("sudo touch {}/.test".format(mount_path), timeout=300)
     elif virtio == "blk":
-        # Use virtio-blk device
-        ssh("sudo lsblk")
-        vm_env["NBS_DEVICE_PATH"] = _get_nbs_device_path(instance_idx)
-        library.python.testing.recipe.set_env(
-            "NBS_DEVICE_PATH", _get_nbs_device_path(instance_idx))
-        vm_env["NBS_{}_DEVICE_PATH".format(instance_idx)] = _get_nbs_device_path(instance_idx)
-        library.python.testing.recipe.set_env(
-            "NBS_{}_DEVICE_PATH".format(instance_idx), _get_nbs_device_path(instance_idx))
+        nbs_devices_count = int(os.getenv("CLUSTERS_COUNT"))
+        for nbs_index in range(nbs_devices_count):
+            # Use virtio-blk device
+            ssh("sudo lsblk")
+            vm_env[env_with_guest_index("NBS_DEVICE_PATH", nbs_index)] = _get_nbs_device_path(nbs_index)
+            recipe_set_env(
+                "NBS_DEVICE_PATH", _get_nbs_device_path(nbs_index), nbs_index)
     elif virtio == "nfs":
         # Mount NFS share
-        mount_path = "/mnt/nfs0"
-        vm_env["NFS_MOUNT_PATH"] = mount_path
-        library.python.testing.recipe.set_env("NFS_MOUNT_PATH", mount_path)
+        mount_path = "/mnt/nfs{}".format(instance_idx)
+        vm_env[env_with_guest_index("NFS_MOUNT_PATH", instance_idx)] = mount_path
+        recipe_set_env("NFS_MOUNT_PATH", mount_path, instance_idx)
         nfs_port = os.getenv("NFS_GANESHA_PORT")
 
         ssh("sudo mkdir -p {}".format(mount_path))

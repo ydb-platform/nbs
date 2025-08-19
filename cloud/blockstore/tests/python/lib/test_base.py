@@ -26,6 +26,8 @@ from cloud.blockstore.public.sdk.python.client.grpc_client import GrpcClient
 from cloud.blockstore.public.sdk.python.client.error import ClientError
 from cloud.blockstore.public.sdk.python.client.error_codes import EFacility
 
+from library.python.testing.recipe import set_env
+
 from google.protobuf import text_format
 
 
@@ -383,6 +385,21 @@ def get_nbs_device_path(path=None):
     return path
 
 
+def get_nbs_device_path_by_index(index):
+        path = (os.getenv(env_with_guest_index("NBS_DEVICE_PATH", index)))
+        logger.info("path from NBS_{}_DEVICE_PATH: {}".format(index, path))
+
+        if not path:
+            raise RuntimeError("Invalid index")
+
+        if not os.path.exists(path):
+            logger.info("path with index {} doen't exist: {}".format(index, path))
+            raise RuntimeError("Path does not exist: {}".format(path))
+
+        logger.info("path with index {} exist: {}".format(index, path))
+        return path
+
+
 def get_all_nbs_paths(nbs_instances_count):
     paths = []
 
@@ -396,6 +413,7 @@ def get_all_nbs_paths(nbs_instances_count):
         if not os.path.exists(path):
             raise RuntimeError("Path does not exist: {}".format(path))
 
+        logger.info("this path exist: {}".format(path))
         paths.append(path)
 
     logger.info("find paths: {}".format(len(paths)))
@@ -557,3 +575,12 @@ def file_parse(file_path, proto_type):
 def file_parse_as_json(file_path):
     with open(file_path, 'r') as file:
         return json.load(file)
+
+def env_with_guest_index(env: str, guest_index: int) -> str:
+    if guest_index == 0:
+        return env
+
+    return "{}__{}".format(env, guest_index)
+
+def recipe_set_env(key: str, val: str, guest_index=0):
+    set_env(env_with_guest_index(key, guest_index), val)

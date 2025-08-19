@@ -11,6 +11,7 @@ DATA(
 )
 
 USE_RECIPE(
-    cloud/blockstore/tests/recipes/local-kikimr/local-kikimr-recipe --use-log-files
+    cloud/blockstore/tests/recipes/local-kikimr/local-kikimr-recipe
+    --use-log-files
+    --nbs-instances-count $NBS_INSTANCES_COUNT
 )
-

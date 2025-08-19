@@ -1,6 +1,6 @@
 DEPENDS(
     cloud/blockstore/apps/server
-    cloud/blockstore/tests/recipes/two-local-kikimrs
+    cloud/blockstore/tests/recipes/local-kikimr
 
     contrib/ydb/apps/ydbd
 )
@@ -11,5 +11,5 @@ DATA(
 )
 
 USE_RECIPE(
-    cloud/blockstore/tests/recipes/two-local-kikimrs/two-local-kikimrs-recipe --use-log-files
+    cloud/blockstore/tests/recipes/local-kikimr/local-kikimr-recipe --use-log-files --nbs-instances-count 2
 )

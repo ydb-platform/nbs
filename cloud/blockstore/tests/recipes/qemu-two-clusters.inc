@@ -1,6 +1,0 @@
-SET(QEMU_VIRTIO blk)
-
-SET(QEMU_INSTANCE_COUNT 2)
-SET(VIRTIOFS_SERVER_COUNT 2)
-
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/qemu.inc)

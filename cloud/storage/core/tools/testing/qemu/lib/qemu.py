@@ -85,7 +85,8 @@ class Qemu:
                  backup_rootfs=False,
                  inst_index=0,
                  shared_nic_port=0,
-                 use_virtiofs_server=False):
+                 use_virtiofs_server=False,
+                 vhost_sockets:list[str]=None):
 
         self.ssh_port = 0
         self.qmp = None
@@ -103,7 +104,14 @@ class Qemu:
         self.proc = proc
         self.virtio = virtio
         self.qemu_options = qemu_options
-        self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
+
+        if (vhost_sockets is None):
+            self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
+        else:
+            virtio_options = []
+            for index, vhost_socket in enumerate(vhost_sockets):
+                virtio_options += self._get_virtio_options(self.virtio, vhost_socket, index)
+            self.virtio_options = virtio_options
         self.enable_kvm = enable_kvm
         self.backup_rootfs = backup_rootfs
         self.inst_index = inst_index
@@ -127,33 +135,35 @@ class Qemu:
                 ssh("sudo mkdir -p {} && sudo ln -s {} {}".format(
                     os.path.dirname(real_path), path, real_path))
 
-    def _get_virtio_options(self, virtio, vhost_socket):
+    def _get_virtio_options(self, virtio, vhost_socket, vhost_instance_idx = 0):
         if virtio == "fs":
-            return self._get_virtiofs_options(vhost_socket)
+            return self._get_virtiofs_options(vhost_socket, vhost_instance_idx)
         elif virtio == "blk":
-            return self._get_virtioblk_options(vhost_socket)
+            return self._get_virtioblk_options(vhost_socket, vhost_instance_idx)
         elif virtio == "nfs" or virtio == "none":
             return []
         else:
             raise QemuException("Invalid virtio type")
 
-    def _get_virtiofs_options(self, vhost_socket):
+    def _get_virtiofs_options(self, vhost_socket, vhost_instance_idx = 0):
         if vhost_socket is None:
             raise QemuException("Cannot find nfs vhost socket path")
 
         cmd = ["-chardev",
-               "socket,id=vhost0,path={},reconnect=1".format(vhost_socket)]
+               "socket,id=vhost{},path={},reconnect=1".format(vhost_instance_idx, vhost_socket)]
         cmd += ["-device",
-                "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,queue-size=512,migration=external"]
+                "vhost-user-fs-pci,chardev=vhost{},id=vhost-user-fs{},tag=fs{},queue-size=512,migration=external"
+                .format(vhost_instance_idx, vhost_instance_idx, vhost_instance_idx)]
         return cmd
 
-    def _get_virtioblk_options(self, vhost_socket):
+    def _get_virtioblk_options(self, vhost_socket, vhost_instance_idx:int = 0):
         if vhost_socket is None:
             raise QemuException("Cannot find nbs vhost socket path")
 
-        cmd = ["-chardev", "socket,id=vhost0,path={}".format(vhost_socket)]
+        cmd = ["-chardev", "socket,id=vhost{},path={}".format(vhost_instance_idx, vhost_socket)]
         cmd += ["-device",
-                "vhost-user-blk-pci,chardev=vhost0,id=vhost-user-blk0,num-queues=1"]
+                "vhost-user-blk-pci,chardev=vhost{},id=vhost-user-blk{},num-queues=1"
+                .format(vhost_instance_idx, vhost_instance_idx)]
         return cmd
 
     def stop(self):
@@ -226,7 +236,7 @@ class Qemu:
             "-m", str(self.mem),
             "-object", "memory-backend-memfd,id=mem,size={},share=on".format(self.mem),
             "-numa", "node,memdev=mem",
-            "-netdev", "user,id=netdev0,net={},host={},hostfwd=tcp::{}-:{}".format(QEMU_NET, QEMU_HOST, self.ssh_port, SSH_PORT),
+            "-netdev", "user,id=netdev0,net={},host={},hostfwd=tcp::{}-:{}".format(QEMU_NET, QEMU_HOST + str(self.inst_index), self.ssh_port, SSH_PORT),
             "-device", "virtio-net-pci,netdev=netdev0,id=net0",
             "-device", "virtio-rng-pci",
             "-serial", "file:{}".format(qemu_serial_log),
