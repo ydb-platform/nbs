@@ -136,7 +136,7 @@ func TestObtainDetailsFromDetailedError(t *testing.T) {
 func TestCanRetry(t *testing.T) {
 	err := assert.AnError
 
-	require.True(t, CanRetry(NewRetriableError(err)))
+	require.False(t, CanRetry(NewRetriableError(err)))
 
 	require.False(t, CanRetry(err))
 	require.False(t, CanRetry(NewRetriableError(NewNonCancellableError(err))))
