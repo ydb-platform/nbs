@@ -22,6 +22,7 @@ namespace {
     xxx(Transport,                                                             \
         NProto::ECellDataTransport,                                            \
         NProto::CELL_DATA_TRANSPORT_GRPC                                      )\
+    xxx(StrictCellIdCheckInDescribeVolume,   bool,           false            )\
 // BLOCKSTORE_CELL_DEFAULT_CONFIG
 
 #define BLOCKSTORE_CELL_DECLARE_CONFIG(name, type, value)                      \

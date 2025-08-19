@@ -135,11 +135,11 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     bool hasUnavailableCells = cellHostEndpoints.size() < configuredCellCount;
 
     return NCloud::NBlockStore::NCells::DescribeVolume(
+        *Config,
         std::move(request),
         std::move(service),
         cellHostEndpoints,
         hasUnavailableCells,
-        Config->GetDescribeVolumeTimeout(),
         Bootstrap);
 }
 

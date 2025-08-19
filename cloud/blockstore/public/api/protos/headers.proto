@@ -93,4 +93,7 @@ message THeaders
 
     // Attempt number of the request.
     uint32 RetryNumber = 14;
+
+    // id of the cell request came from
+    string CellId = 15;
 }

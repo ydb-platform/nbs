@@ -120,7 +120,8 @@ IServerPtr TTestServerBuilder::BuildServer(
         TestContext.Logging,
         std::move(serverStats),
         std::move(service),
-        std::move(udsService));
+        std::move(udsService),
+        {});
     return server;
 }
 

@@ -136,6 +136,8 @@ struct TAppContext
     IServerStatsPtr ServerStats;
 
     TAtomic ShouldStop = 0;
+
+    TString CellId;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -703,6 +705,21 @@ private:
         if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
             internal.SetAuthToken(GetAuthToken(Context->client_metadata()));
         }
+
+        if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
+            const auto& cellId = Request->GetHeaders().GetCellId();
+            if (cellId && cellId != AppCtx.CellId) {
+                TStringBuilder sb;
+                sb <<"DescribeVolume request for cell "
+                    << cellId.Quote()
+                    << " does not match configured cell "
+                    << AppCtx.CellId.Quote();
+
+                ReportWrongCellIdInDescribeVolume(sb);
+
+                ythrow TServiceError(E_REJECTED) << sb;
+            }
+        }
     }
 
     bool EndpointIsStopped() const
@@ -800,13 +817,17 @@ private:
         return {};
     }
 
-    static TResponse GetErrorResponse(const TServiceError& e)
+    TResponse GetErrorResponse(const TServiceError& e)
     {
         TResponse response;
 
         auto& error = *response.MutableError();
         error.SetCode(e.GetCode());
         error.SetMessage(e.what());
+
+        if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
+            response.SetCellId(AppCtx.CellId);
+        }
 
         return response;
     }
@@ -925,7 +946,8 @@ public:
         ILoggingServicePtr logging,
         IServerStatsPtr serverStats,
         IBlockStorePtr service,
-        IBlockStorePtr udsService);
+        IBlockStorePtr udsService,
+        TServerOptions options);
 
     ~TServer() override;
 
@@ -955,7 +977,8 @@ TServer::TServer(
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    IBlockStorePtr udsService)
+    IBlockStorePtr udsService,
+    TServerOptions options)
 {
     Config = std::move(config);
     Log = logging->CreateLog("BLOCKSTORE_SERVER");
@@ -964,6 +987,7 @@ TServer::TServer(
     Service = std::move(service);
     UdsService = std::move(udsService);
     SessionStorage = std::make_shared<TSessionStorage>(*this);
+    CellId = std::move(options.CellId);
 }
 
 TServer::~TServer()
@@ -1260,14 +1284,16 @@ IServerPtr CreateServer(
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
-    IBlockStorePtr udsService)
+    IBlockStorePtr udsService,
+    TServerOptions options)
 {
     return std::make_shared<TServer>(
         std::move(config),
         std::move(logging),
         std::move(serverStats),
         std::move(service),
-        std::move(udsService));
+        std::move(udsService),
+        std::move(options));
 }
 
 }   // namespace NCloud::NBlockStore::NServer

@@ -32,6 +32,7 @@ struct TMetricRequest
     ui64 RequestBytes = 0;
     TInstant RequestTimestamp;
     bool Unaligned = false;
+    bool CellRequest = false;
 
     TMetricRequest(EBlockStoreRequest requestType)
         : RequestType(requestType)

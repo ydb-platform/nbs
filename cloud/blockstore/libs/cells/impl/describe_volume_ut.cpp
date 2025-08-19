@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/config/cells.pb.h>
 #include <cloud/blockstore/config/client.pb.h>
+#include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/service/context.h>
 
@@ -77,6 +78,7 @@ std::shared_ptr<TTestServiceClient> CreateService()
         UNIT_ASSERT_C(
             req.GetHeaders().HasInternal(),
             "Internal should not be set");
+        UNIT_ASSERT_VALUES_EQUAL(req.GetHeaders().GetCellId(), "");
     };
 
     service->OnDescribeVolume = describeCheck;
@@ -93,6 +95,7 @@ std::shared_ptr<TTestServiceClient> CreateCellEndpoint(
         UNIT_ASSERT_C(
             !req.GetHeaders().HasInternal(),
             "Internal should not be set");
+        UNIT_ASSERT_VALUES_UNEQUAL(req.GetHeaders().GetCellId(), "");
     };
 
     auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
@@ -124,6 +127,11 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
     {
         TCellHostEndpointsByCellId endpoints;
 
+        NProto::TCellsConfig cellsProto;
+        cellsProto.AddCells()->SetCellId("cell1");
+        cellsProto.AddCells()->SetCellId("cell2");
+        TCellsConfig config(cellsProto);
+
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
 
@@ -139,10 +147,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto response = DescribeVolume(
             request,
+            config,
             localService,
             endpoints,
             false,
-            TDuration::Seconds(Max<ui32>()),
             bootstrap);
 
         UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
@@ -160,6 +168,11 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
     {
         TCellHostEndpointsByCellId endpoints;
 
+        NProto::TCellsConfig cellsProto;
+        cellsProto.AddCells()->SetCellId("cell1");
+        cellsProto.AddCells()->SetCellId("cell2");
+        TCellsConfig config(cellsProto);
+
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
 
@@ -175,10 +188,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto response = DescribeVolume(
             request,
+            config,
             localService,
             endpoints,
             false,
-            TDuration::Seconds(Max<ui32>()),
             bootstrap);
 
         UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
@@ -196,6 +209,11 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
     {
         TCellHostEndpointsByCellId endpoints;
 
+        NProto::TCellsConfig cellsProto;
+        cellsProto.AddCells()->SetCellId("cell1");
+        cellsProto.AddCells()->SetCellId("cell2");
+        TCellsConfig config(cellsProto);
+
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
 
@@ -211,10 +229,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto response = DescribeVolume(
             request,
+            config,
             localService,
             endpoints,
             false,
-            TDuration::Seconds(Max<ui32>()),
             bootstrap);
 
         UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
@@ -252,6 +270,11 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
     {
         TCellHostEndpointsByCellId endpoints;
 
+        NProto::TCellsConfig cellsProto;
+        cellsProto.AddCells()->SetCellId("cell1");
+        cellsProto.AddCells()->SetCellId("cell2");
+        TCellsConfig config(cellsProto);
+
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
 
@@ -267,10 +290,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto response = DescribeVolume(
             request,
+            config,
             localService,
             endpoints,
             false,
-            TDuration::Seconds(Max<ui32>()),
             bootstrap);
 
         UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
@@ -309,6 +332,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
     {
         TCellHostEndpointsByCellId endpoints;
 
+        NProto::TCellsConfig cellsProto;
+        cellsProto.AddCells()->SetCellId("cell1");
+        TCellsConfig config(cellsProto);
+
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
 
         auto request = CreateDescribeRequest();
@@ -323,10 +350,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto response = DescribeVolume(
             request,
+            config,
             localService,
             endpoints,
             true,
-            TDuration::Seconds(Max<ui32>()),
             bootstrap);
 
         UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
@@ -357,6 +384,13 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
     {
         TCellHostEndpointsByCellId endpoints;
 
+        NProto::TCellsConfig cellsProto;
+        cellsProto.SetDescribeVolumeTimeout(
+            TDuration::Seconds(1).MilliSeconds());
+        cellsProto.AddCells()->SetCellId("cell1");
+        cellsProto.AddCells()->SetCellId("cell2");
+        TCellsConfig config(cellsProto);
+
         auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
         auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
 
@@ -372,10 +406,10 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         auto response = DescribeVolume(
             request,
+            config,
             localService,
             endpoints,
             false,
-            TDuration::Seconds(1),
             bootstrap);
 
         UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
