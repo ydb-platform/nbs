@@ -1,8 +1,10 @@
 #pragma once
 
+#include "bootstrap.h"
+#include "cell_host.h"
+#include "endpoint_bootstrap.h"
+
 #include <cloud/blockstore/libs/cells/iface/config.h>
-#include <cloud/blockstore/libs/cells/iface/endpoint_bootstrap.h>
-#include <cloud/blockstore/libs/cells/iface/host.h>
 #include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
 #include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/client/public.h>
@@ -28,9 +30,6 @@ struct TCellHost
         DEACTIVATING
     };
 
-    using TSetupHostFuture = NThreading::TFuture<void>;
-    using TShutdownHostFuture = NThreading::TFuture<void>;
-
     const TBootstrap Args;
 
     NClient::IMultiClientEndpointPtr GrpcHostEndpoint;
@@ -42,8 +41,10 @@ struct TCellHost
     TAdaptiveLock StateLock;
     EState State = EState::INACTIVE;
 
-    NThreading::TPromise<void> StartPromise = NThreading::NewPromise<void>();
-    NThreading::TPromise<void> StopPromise = NThreading::NewPromise<void>();
+    NThreading::TPromise<TResultOrError<TCellHostConfig>> StartPromise =
+        NThreading::NewPromise<TResultOrError<TCellHostConfig>>();
+    NThreading::TPromise<TResultOrError<TCellHostConfig>> StopPromise =
+        NThreading::NewPromise<TResultOrError<TCellHostConfig>>();
 
     ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture RdmaFuture;
 
@@ -52,8 +53,8 @@ struct TCellHost
         , Args(std::move(bootstrap))
     {}
 
-    NThreading::TFuture<void> Start() override;
-    NThreading::TFuture<void> Stop() override;
+    NThreading::TFuture<TResultOrError<TCellHostConfig>> Start() override;
+    NThreading::TFuture<TResultOrError<TCellHostConfig>> Stop() override;
 
     [[nodiscard]] TResultOrError<TCellHostEndpoint> GetHostEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig,

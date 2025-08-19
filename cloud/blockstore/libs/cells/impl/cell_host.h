@@ -1,9 +1,10 @@
 #pragma once
 
-#include "config.h"
-#include "endpoint_bootstrap.h"
-#include "host_endpoint.h"
+#include "bootstrap.h"
 
+#include <cloud/blockstore/libs/cells/iface/config.h>
+#include <cloud/blockstore/libs/cells/iface/host_endpoint.h>
+#include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 
@@ -28,8 +29,8 @@ struct ICellHost
         return Config;
     }
 
-    virtual NThreading::TFuture<void> Start() = 0;
-    virtual NThreading::TFuture<void> Stop() = 0;
+    virtual NThreading::TFuture<TResultOrError<TCellHostConfig>> Start() = 0;
+    virtual NThreading::TFuture<TResultOrError<TCellHostConfig>> Stop() = 0;
 
     [[nodiscard]] virtual TResultOrError<TCellHostEndpoint> GetHostEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig,

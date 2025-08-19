@@ -1,4 +1,6 @@
-#include "cell.h"
+#include "cell_impl.h"
+
+#include "endpoint_bootstrap.h"
 
 #include <cloud/blockstore/config/cells.pb.h>
 #include <cloud/blockstore/config/client.pb.h>
@@ -176,9 +178,7 @@ Y_UNIT_TEST_SUITE(TCellTest)
         {
             auto result = cell->GetCellClient(clientConfig);
 
-            UNIT_ASSERT_C(
-                HasError(result.GetError()),
-                "No cells ready, should fail");
+            UNIT_ASSERT_C(HasError(result), "No cells ready, should fail");
         }
 
         auto grpc = NClient::CreateMultiClientEndpoint(
@@ -193,7 +193,7 @@ Y_UNIT_TEST_SUITE(TCellTest)
         {
             auto result = cell->GetCellClient(clientConfig);
 
-            UNIT_ASSERT_C(!HasError(result.GetError()), "Should not fail");
+            UNIT_ASSERT_C(!HasError(result), "Should not fail");
         }
     }
 

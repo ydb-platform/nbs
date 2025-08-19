@@ -1,4 +1,6 @@
-#include "host.h"
+#include "cell_host_impl.h"
+
+#include "endpoint_bootstrap.h"
 
 #include <cloud/blockstore/config/cells.pb.h>
 #include <cloud/blockstore/config/client.pb.h>
@@ -171,7 +173,7 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
                 NProto::CELL_DATA_TRANSPORT_GRPC,
                 false);
 
-            UNIT_ASSERT_C(!HasError(response.GetError()), "should not fail");
+            UNIT_ASSERT_C(!HasError(response), "should not fail");
             auto endpoint = response.GetResult();
             UNIT_ASSERT_C(
                 clientEndpoint == endpoint.GetService(),
@@ -191,7 +193,7 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
                 false);
 
             UNIT_ASSERT_C(
-                HasError(failedResponse.GetError()),
+                HasError(failedResponse),
                 "should fail without fallback");
 
             auto response = manager->GetHostEndpoint(
@@ -199,11 +201,9 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
                 NProto::CELL_DATA_TRANSPORT_RDMA,
                 true);
 
-            UNIT_ASSERT_C(
-                !HasError(response.GetError()),
-                "should fail with fallback");
+            UNIT_ASSERT_C(!HasError(response), "should fail with fallback");
 
-            UNIT_ASSERT_C(!HasError(response.GetError()), "should not fail");
+            UNIT_ASSERT_C(!HasError(response), "should not fail");
             auto endpoint = response.GetResult();
             UNIT_ASSERT_C(
                 clientEndpoint == endpoint.GetService(),
@@ -266,7 +266,7 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
                 NProto::CELL_DATA_TRANSPORT_GRPC,
                 false);
 
-            UNIT_ASSERT_C(!HasError(response.GetError()), "should not fail");
+            UNIT_ASSERT_C(!HasError(response), "should not fail");
             auto endpoint = response.GetResult();
             UNIT_ASSERT_C(
                 clientEndpoint == endpoint.GetService(),
@@ -285,7 +285,7 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
                 NProto::CELL_DATA_TRANSPORT_RDMA,
                 false);
 
-            UNIT_ASSERT_C(!HasError(response.GetError()), "should not fail");
+            UNIT_ASSERT_C(!HasError(response), "should not fail");
             auto endpoint = response.GetResult();
             UNIT_ASSERT_C(
                 clientEndpoint == endpoint.GetService(),
@@ -354,7 +354,7 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
                 NProto::CELL_DATA_TRANSPORT_GRPC,
                 false);
 
-            UNIT_ASSERT_C(!HasError(response.GetError()), "should not fail");
+            UNIT_ASSERT_C(!HasError(response), "should not fail");
             auto endpoint = response.GetResult();
             UNIT_ASSERT_C(
                 clientEndpoint == endpoint.GetService(),
@@ -373,7 +373,7 @@ Y_UNIT_TEST_SUITE(TCellHostTest)
                 NProto::CELL_DATA_TRANSPORT_RDMA,
                 false);
 
-            UNIT_ASSERT_C(!HasError(response.GetError()), "should not fail");
+            UNIT_ASSERT_C(!HasError(response), "should not fail");
             auto endpoint = response.GetResult();
             UNIT_ASSERT_C(
                 clientEndpoint == endpoint.GetService(),

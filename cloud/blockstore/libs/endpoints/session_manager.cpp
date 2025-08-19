@@ -1,6 +1,6 @@
 #include "session_manager.h"
 
-#include <cloud/blockstore/libs/cells/iface/cells.h>
+#include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -425,6 +425,13 @@ private:
         TString host,
         ui32 port);
 
+    TResultOrError<IBlockStorePtr> CreateStorageDataClient(
+        const TString& cellId,
+        const TClientAppConfigPtr& clientConfig,
+        const NProto::TVolume& volume,
+        const TString& clientId,
+        NProto::EVolumeAccessMode accessMode);
+
     static TSessionConfig CreateSessionConfig(
         const NProto::TStartEndpointRequest& request);
 };
@@ -490,24 +497,13 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     const NProto::THeaders& headers)
 {
     auto cellDescribeFuture = CellManager->DescribeVolume(
+        std::move(callContext),
         diskId,
         headers,
         Service,
         Options.DefaultClientConfig);
 
-    if (cellDescribeFuture.has_value()) {
-        return Executor->WaitFor(cellDescribeFuture.value());
-    }
-
-    auto describeRequest = std::make_shared<NProto::TDescribeVolumeRequest>();
-    describeRequest->MutableHeaders()->CopyFrom(headers);
-    describeRequest->SetDiskId(diskId);
-
-    auto future = Service->DescribeVolume(
-        std::move(callContext),
-        std::move(describeRequest));
-
-    return Executor->WaitFor(future);
+    return Executor->WaitFor(cellDescribeFuture);
 }
 
 TFuture<NProto::TError> TSessionManager::RemoveSession(
@@ -675,6 +671,44 @@ TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
     return endpoint->GetPerformanceProfile();
 }
 
+TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
+    const TString& cellId,
+    const TClientAppConfigPtr& clientConfig,
+    const NProto::TVolume& volume,
+    const TString& clientId,
+    NProto::EVolumeAccessMode accessMode)
+{
+    auto service = Service;
+    IStoragePtr storage;
+
+    if (!cellId.empty()) {
+        auto result = CellManager->GetCellEndpoint(
+            cellId,
+            clientConfig);
+        if (HasError(result)) {
+            return result.GetError();
+        }
+
+        service = result.GetResult().GetService();
+        storage = result.GetResult().GetStorage();
+    } else {
+        auto future =
+            StorageProvider->CreateStorage(volume, clientId, accessMode);
+
+        storage = Executor->ResultOrError(future).GetResult();
+    }
+
+    return {
+        std::make_shared<TStorageDataClient>(
+            std::move(storage),
+            std::move(service),
+            ServerStats,
+            clientId,
+            clientConfig->GetRequestTimeout(),
+            volume.GetBlockSize())
+    };
+}
+
 TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     const NProto::TStartEndpointRequest& request,
     const NProto::TVolume& volume,
@@ -688,35 +722,16 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
 
     auto clientConfig = CreateClientConfig(request);
 
-    if (!cellId.empty()) {
-        auto result = CellManager->GetCellEndpoint(
-            cellId,
-            clientConfig);
-        if (HasError(result.GetError())) {
-            return result.GetError();
-        }
-
-        service = result.GetResult().GetService();
-        storage = result.GetResult().GetStorage();
-    } else {
-        auto future = StorageProvider->CreateStorage(volume, clientId, accessMode)
-            .Apply([] (const auto& f) {
-                auto storage = f.GetValue();
-                // TODO: StorageProvider should return TResultOrError<IStoragePtr>
-                return TResultOrError(std::move(storage));
-            });
-
-        const auto& storageResult = Executor->WaitFor(future);
-        storage = storageResult.GetResult();
-    }
-
-    IBlockStorePtr client = std::make_shared<TStorageDataClient>(
-        std::move(storage),
-        std::move(service),
-        ServerStats,
+    auto [client, error] = CreateStorageDataClient(
+        cellId,
+        clientConfig,
+        volume,
         clientId,
-        clientConfig->GetRequestTimeout(),
-        volume.GetBlockSize());
+        accessMode);
+
+    if (HasError(error)) {
+        return error;
+    }
 
     if (Options.TemporaryServer) {
         client = CreateErrorTransformService(

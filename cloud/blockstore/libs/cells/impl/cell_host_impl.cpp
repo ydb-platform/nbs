@@ -1,4 +1,6 @@
-#include "host.h"
+#include "cell_host_impl.h"
+
+#include "remote_storage.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -20,7 +22,13 @@ TResultOrError<TCellHostEndpoint> TCellHost::GetHostEndpoint(
 {
     auto transport = desiredTransport.has_value() ? *desiredTransport
                                                   : Config.GetTransport();
-    Y_ENSURE(transport != NProto::CELL_DATA_TRANSPORT_UNSET);
+    if (transport == NProto::CELL_DATA_TRANSPORT_UNSET) {
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "Invalid requested trasport "
+                << NProto::ECellDataTransport_Name(transport));
+    };
 
     with_lock (StateLock) {
         if (!IsReady(transport)) {
@@ -46,15 +54,13 @@ TResultOrError<TCellHostEndpoint> TCellHost::GetHostEndpoint(
                 default:
                     return MakeError(
                         E_INVALID_STATE,
-                        TStringBuilder() << "Unsupported transport type "
-                                         << static_cast<int>(transport));
+                        TStringBuilder()
+                            << "Unsupported transport type "
+                            << NProto::ECellDataTransport_Name(transport));
             }
         }
-
-        return MakeError(
-            E_REJECTED,
-            TStringBuilder() << "No transport available");
     }
+    return MakeError(E_REJECTED, "No transport available");
 }
 
 bool TCellHost::IsReady(NProto::ECellDataTransport transport) const
@@ -72,12 +78,19 @@ bool TCellHost::IsReady(NProto::ECellDataTransport transport) const
     return false;
 }
 
-TFuture<void> TCellHost::Start()
+TFuture<TResultOrError<TCellHostConfig>> TCellHost::Start()
 {
-    auto target = Config.GetTransport();
-    Y_ENSURE(
-        target != NProto::CELL_DATA_TRANSPORT_UNSET &&
-        target != NProto::CELL_DATA_TRANSPORT_NBD);
+    auto transport = Config.GetTransport();
+    if (transport == NProto::CELL_DATA_TRANSPORT_UNSET ||
+        transport == NProto::CELL_DATA_TRANSPORT_NBD)
+    {
+        TResultOrError<TCellHostConfig> result{MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "Invalid requested trasport "
+                << NProto::ECellDataTransport_Name(transport))};
+        return MakeFuture(result);
+    }
 
     auto weak = weak_from_this();
     ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture future;
@@ -88,13 +101,20 @@ TFuture<void> TCellHost::Start()
         }
         if (State == EState::DEACTIVATING) {
             return StopPromise.GetFuture().Apply(
-                [=](const auto& future)
+                [weak = weak, fqdn = GetConfig().GetFqdn()] (const auto& future)
                 {
                     Y_UNUSED(future);
                     if (auto self = weak.lock(); self) {
                         return self->Start();
                     }
-                    return MakeFuture();
+                    return MakeFuture(
+                        TResultOrError<TCellHostConfig>(
+                            MakeError(
+                                E_INVALID_STATE,
+                                TStringBuilder()
+                                    <<"Host "
+                                    << fqdn
+                                    << " is deactivated")));
                 });
         }
         State = EState::ACTIVATING;
@@ -122,7 +142,7 @@ TFuture<void> TCellHost::Start()
                             }
                         });
                 }
-                self->StartPromise.SetValue();
+                self->StartPromise.SetValue(self->GetConfig());
             }
         });
     return StartPromise.GetFuture();
@@ -131,7 +151,7 @@ TFuture<void> TCellHost::Start()
 void TCellHost::HandleRdmaSetupResult(
     const TResultOrError<IBlockStorePtr>& result)
 {
-    if (HasError(result.GetError())) {
+    if (HasError(result)) {
         RdmaState = EState::INACTIVE;
         with_lock (StateLock) {
             SetupRdmaIfNeeded();
@@ -166,7 +186,7 @@ bool TCellHost::SetupRdmaIfNeeded()
     return true;
 }
 
-TFuture<void> TCellHost::Stop()
+TFuture<TResultOrError<TCellHostConfig>> TCellHost::Stop()
 {
     return {};
 }
@@ -179,7 +199,11 @@ TCellHostEndpoint TCellHost::CreateGrpcEndpoint(
         clientConfig->GetClientId(),
         clientConfig->GetInstanceId());
 
-    return {clientConfig, Config.GetFqdn(), service, service};
+    return {
+        clientConfig,
+        Config.GetFqdn(),
+        service,
+        CreateRemoteStorage(service)};
 }
 
 TCellHostEndpoint TCellHost::CreateRdmaEndpoint(
@@ -190,7 +214,11 @@ TCellHostEndpoint TCellHost::CreateRdmaEndpoint(
         clientConfig->GetClientId(),
         clientConfig->GetInstanceId());
 
-    return {clientConfig, Config.GetFqdn(), service, RdmaHostEndpoint};
+    return {
+        clientConfig,
+        Config.GetFqdn(),
+        service,
+        CreateRemoteStorage(RdmaHostEndpoint)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

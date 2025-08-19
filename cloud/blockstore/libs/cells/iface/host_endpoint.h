@@ -16,17 +16,13 @@ private:
     const IBlockStorePtr Service;
     const IStoragePtr Storage;
 
-    static TString BuildLogTag(
-        const NClient::TClientAppConfigPtr& clientConfig,
-        const TString& fqdn);
-
 public:
     TCellHostEndpoint() = default;
     TCellHostEndpoint(
         const NClient::TClientAppConfigPtr& clientConfig,
         const TString& fqdn,
         IBlockStorePtr controlService,
-        IBlockStorePtr dataService);
+        IStoragePtr dataStorage);
 
     const TString& GetLogTag() const
     {
@@ -42,6 +38,11 @@ public:
     {
         return Storage;
     }
+
+private:
+    static TString BuildLogTag(
+        const NClient::TClientAppConfigPtr& clientConfig,
+        const TString& fqdn);
 };
 
 using TCellHostEndpoints = TVector<TCellHostEndpoint>;

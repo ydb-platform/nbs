@@ -1,6 +1,8 @@
-#include "cells.h"
+#include "cell_manager_impl.h"
 
+#include "cell.h"
 #include "describe_volume.h"
+#include "endpoint_bootstrap.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -9,6 +11,7 @@
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/server/config.h>
+#include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
@@ -101,15 +104,23 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     return res;
 }
 
-[[nodiscard]] std::optional<TDescribeVolumeFuture> TCellManager::DescribeVolume(
+[[nodiscard]] TDescribeVolumeFuture TCellManager::DescribeVolume(
+    TCallContextPtr callContext,
     const TString& diskId,
     const NProto::THeaders& headers,
-    const IBlockStorePtr& service,
+    IBlockStorePtr service,
     const NProto::TClientConfig& clientConfig)
 {
+    NProto::TDescribeVolumeRequest request;
+    request.MutableHeaders()->CopyFrom(headers);
+    request.SetDiskId(diskId);
+
     auto configuredCellCount = Config->GetCells().size();
     if (configuredCellCount == 0) {
-        return {};
+        return service->DescribeVolume(
+            std::move(callContext),
+            std::make_shared<NProto::TDescribeVolumeRequest>(
+                std::move(request)));
     }
 
     NProto::TClientAppConfig clientAppConfig;
@@ -123,13 +134,9 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
 
     bool hasUnavailableCells = cellHostEndpoints.size() < configuredCellCount;
 
-    NProto::TDescribeVolumeRequest request;
-    request.MutableHeaders()->CopyFrom(headers);
-    request.SetDiskId(diskId);
-
     return NCloud::NBlockStore::NCells::DescribeVolume(
-        request,
-        service,
+        std::move(request),
+        std::move(service),
         cellHostEndpoints,
         hasUnavailableCells,
         Config->GetDescribeVolumeTimeout(),
@@ -165,7 +172,7 @@ ICellManagerPtr CreateCellManager(
         monitoring,
         std::move(serverStats));
 
-    if (HasError(result.GetError())) {
+    if (HasError(result)) {
         ythrow TServiceError(E_FAIL) << "unable to create gRPC client";
     }
 

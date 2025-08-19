@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/public/api/protos/io.pb.h>
+#include <cloud/blockstore/public/api/protos/ping.pb.h>
 
 #include <util/generic/singleton.h>
 
@@ -24,8 +25,8 @@ NRdma::TProtoMessageSerializer* TBlockStoreServerProtocol::Serializer()
             RegisterProto<NProto::TZeroBlocksRequest>(EvZeroBlocksRequest);
             RegisterProto<NProto::TZeroBlocksResponse>(EvZeroBlocksResponse);
 
-            RegisterProto<NProto::TZeroBlocksRequest>(EvPingRequest);
-            RegisterProto<NProto::TZeroBlocksResponse>(EvPingResponse);
+            RegisterProto<NProto::TPingRequest>(EvPingRequest);
+            RegisterProto<NProto::TPingResponse>(EvPingResponse);
         }
     };
 

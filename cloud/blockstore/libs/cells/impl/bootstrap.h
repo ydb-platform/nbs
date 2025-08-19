@@ -1,7 +1,5 @@
 #pragma once
 
-#include "public.h"
-
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
@@ -12,6 +10,10 @@
 namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+struct ICellHostEndpointBootstrap;
+using ICellHostEndpointBootstrapPtr =
+    std::shared_ptr<ICellHostEndpointBootstrap>;
 
 struct TBootstrap
 {

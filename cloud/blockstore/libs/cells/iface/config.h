@@ -20,9 +20,20 @@ class TCellConfig;
 
 struct TCellHostConfig
 {
+private:
+    ui32 GrpcPort = 0;
+    ui32 SecureGrpcPort = 0;
+    ui32 RdmaPort = 0;
+    ui32 NbdPort = 0;
+    TString Fqdn;
+    NProto::ECellDataTransport Transport = NProto::CELL_DATA_TRANSPORT_UNSET;
+
+public:
     TCellHostConfig(
         const NProto::TCellHostConfig& hostConfig,
         const TCellConfig& cellConfig);
+
+    TCellHostConfig() = default;
 
     ui32 GetGrpcPort() const
     {
@@ -53,14 +64,6 @@ struct TCellHostConfig
     {
         return Transport;
     }
-
-private:
-    ui32 GrpcPort = 0;
-    ui32 SecureGrpcPort = 0;
-    ui32 RdmaPort = 0;
-    ui32 NbdPort = 0;
-    TString Fqdn;
-    NProto::ECellDataTransport Transport = NProto::CELL_DATA_TRANSPORT_UNSET;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
