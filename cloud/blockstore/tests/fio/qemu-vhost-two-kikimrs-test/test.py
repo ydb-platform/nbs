@@ -20,9 +20,8 @@ nbs_instances_count = int(os.getenv("CLUSTERS_COUNT"))
 @pytest.mark.parametrize("name", TESTS.keys())
 def test_fio(name):
     for index in range(nbs_instances_count):
-        logger.info("instans index ;{}".format(index))
+        logger.info("instans index :{}".format(index))
         path = get_nbs_device_path_by_index(index)
-        logger.info("device path : {}".format(path))
 
         device_size = get_file_size(path)
         if DEVICE_SIZE != device_size:
