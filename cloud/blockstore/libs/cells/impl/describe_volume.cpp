@@ -203,18 +203,21 @@ void TMultiCellDescribeHandler::HandleResponse(
     if (now == 0) {
         // If we ended up in that place, then all cells have responded
         // with either fatal or retriable errors. If there is at least one
-        // cell that responded with a retriable error, it’s possible that
+        // cell that responded with a retriable errors only, it’s possible that
         // the volume exists but is currently unavailable. In that case, we
         // return a retriable error so that the user can retry the
         // endpoint start operation. Otherwise, the volume is not present in
         // any cell, and we can return any non-retriable error.
         for (auto& [cellId, cell]: Cells) {
-            for (auto& result: cell.DescribeResults) {
-                if (EErrorKind::ErrorRetriable == GetErrorKind(result)) {
-                    *response.MutableError() = std::move(result);
-                    Reply(std::move(response));
-                    return;
-                }
+            const bool allRetriable = std::all_of(
+                cell.DescribeResults.begin(),
+                cell.DescribeResults.end(),
+                [] (const auto& result) {
+                    return EErrorKind::ErrorRetriable == GetErrorKind(result);
+                });
+            if (allRetriable) {
+                HasUnavailableCells = true;
+                break;
             }
         }
         if (HasUnavailableCells) {
@@ -223,6 +226,13 @@ void TMultiCellDescribeHandler::HandleResponse(
             Reply(std::move(response));
             return;
         }
+        *response.MutableError() =
+            std::move(MakeError(
+                E_NOT_FOUND,
+                TStringBuilder()
+                    << "Volume "
+                    << Request.GetDiskId().Quote()
+                    << " not found in cells"));
         Reply(std::move(response));
     }
 }
@@ -304,8 +314,8 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
 
     STORAGE_DEBUG(
         TStringBuilder() << "DescribeVolume: got error "
-                         << response.GetError().GetMessage().Quote() << " from "
-                         << HostInfo.Fqdn);
+            << response.GetError().GetMessage().Quote() << " from "
+            << HostInfo.Fqdn);
 
     if (EErrorKind::ErrorRetriable != GetErrorKind(response.GetError())) {
         auto code = response.GetError().GetCode();

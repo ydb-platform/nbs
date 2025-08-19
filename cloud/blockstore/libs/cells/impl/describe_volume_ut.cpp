@@ -261,9 +261,6 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_NOT_FOUND,
             describeResponse.GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "lost",
-            describeResponse.GetError().GetMessage());
     }
 
     Y_UNIT_TEST(ShouldReturnRetriableErrorIfAtLeastOneCellIsNotReachable)
@@ -321,11 +318,8 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         const auto& describeResponse = response.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(
-            E_GRPC_UNAVAILABLE,
+            E_REJECTED,
             describeResponse.GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "connection lost",
-            describeResponse.GetError().GetMessage());
     }
 
     Y_UNIT_TEST(ShouldReturnRetribleErrorIfAtLeastOneCellUnavailable)
