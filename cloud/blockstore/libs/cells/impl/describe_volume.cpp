@@ -297,14 +297,15 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
             owner->Reply(std::move(response));
             STORAGE_DEBUG(
                 TStringBuilder()
-                << "DescribeVolume: got success for disk "
-                << Request.GetDiskId().Quote() << " from " << HostInfo.Fqdn);
+                    << "DescribeVolume: got success for disk "
+                    << Request.GetDiskId().Quote() << " from " << HostInfo.Fqdn);
             return;
         }
 
         TStringBuilder sb;
         sb << "DescribeVolume response for cell "
-           << response.GetCellId().Quote() << " does not match configured cell "
+           << response.GetCellId().Quote()
+           << " does not match configured cell "
            << CellId.Quote();
 
         ReportWrongCellIdInDescribeVolume(sb);
@@ -314,7 +315,8 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
 
     STORAGE_DEBUG(
         TStringBuilder() << "DescribeVolume: got error "
-            << response.GetError().GetMessage().Quote() << " from "
+            << response.GetError().GetMessage().Quote()
+            << " from "
             << HostInfo.Fqdn);
 
     if (EErrorKind::ErrorRetriable != GetErrorKind(response.GetError())) {
