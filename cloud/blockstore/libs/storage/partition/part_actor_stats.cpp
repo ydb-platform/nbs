@@ -162,7 +162,7 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
 
 void TPartitionActor::SendStatsToService(const TActorContext& ctx)
 {
-    if (!PartCounters) {
+    if (!PartCounters || !State) {
         return;
     }
 
@@ -186,7 +186,7 @@ void TPartitionActor::HandleGetPartCountersRequest(
     const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!PartCounters) {
+    if (!PartCounters || !State) {
         NCloud::Reply(
             ctx,
             *ev,
