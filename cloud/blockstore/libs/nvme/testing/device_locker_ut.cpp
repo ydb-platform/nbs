@@ -23,6 +23,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     ILoggingServicePtr Logging;
 
     const TTempDir DevicesFolder;
+    const TTempDir LocksFolder;
 
     static constexpr ui32 AvailableDevicesCount = 8;
 
@@ -50,9 +51,9 @@ struct TFixture: public NUnitTest::TBaseFixture
         Logging->Stop();
     }
 
-    TDeviceLocker CreateBookkeeper(TStringBuf mask) const
+    TDeviceLocker CreateDeviceLocker(TStringBuf mask) const
     {
-        return {Logging, DevicesFolder.Path(), mask};
+        return {Logging, DevicesFolder.Path(), LocksFolder.Path(), mask};
     }
 };
 
@@ -65,16 +66,16 @@ Y_UNIT_TEST_SUITE(TDeviceLockerTest)
     Y_UNIT_TEST_F(ShouldAcquireDevices, TFixture)
     {
         TDeviceLocker locker0 =
-            CreateBookkeeper(TDeviceLocker::DefaultNameMask);
+            CreateDeviceLocker(TDeviceLocker::DefaultNameMask);
 
         UNIT_ASSERT_VALUES_EQUAL(
             AvailableDevicesCount,
             locker0.AvailableDevicesCount());
 
-        TDeviceLocker locker1 = CreateBookkeeper("nvme[0-9]n(1|2)");
+        TDeviceLocker locker1 = CreateDeviceLocker("nvme[0-9]n(1|2)");
         UNIT_ASSERT_VALUES_EQUAL(2, locker1.AvailableDevicesCount());
 
-        TDeviceLocker locker2 = CreateBookkeeper("nvme[0-9]n(2|3)");
+        TDeviceLocker locker2 = CreateDeviceLocker("nvme[0-9]n(2|3)");
         UNIT_ASSERT_VALUES_EQUAL(2, locker2.AvailableDevicesCount());
 
         TVector<TString> paths;
