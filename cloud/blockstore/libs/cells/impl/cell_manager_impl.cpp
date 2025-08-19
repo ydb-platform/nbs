@@ -137,6 +137,7 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     return NCloud::NBlockStore::NCells::DescribeVolume(
         *Config,
         std::move(request),
+        *Config,
         std::move(service),
         cellHostEndpoints,
         hasUnavailableCells,
@@ -189,7 +190,7 @@ ICellManagerPtr CreateCellManager(
         .Logging = std::move(logging),
         .Monitoring = std::move(monitoring),
         .TraceSerializer = std::move(traceSerializer),
-        .GrpcClient = std::move(result.GetResult()),
+        .GrpcClient = std::move(result.ExtractResult()),
         .RdmaClient = std::move(rdmaClient),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
         .EndpointsSetup = CreateCellHostEndpointBootstrap()};

@@ -1407,6 +1407,129 @@ Y_UNIT_TEST_SUITE(TServerTest)
             MakeIntrusive<TCallContext>(),
             std::make_shared<NProto::TUnmountVolumeRequest>()));
     }
+
+    Y_UNIT_TEST(ShouldCheckCellIdInDescribeVolumeRequestIfCellsAreOn)
+    {
+        TPortManager portManager;
+        ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
+
+        auto service = std::make_shared<TTestService>();
+        service->DescribeVolumeHandler =
+            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
+                Y_UNUSED(request);
+                return MakeFuture<NProto::TDescribeVolumeResponse>();
+            };
+
+        TTestFactory testFactory;
+
+        auto server = testFactory.CreateServerBuilder()
+            .SetPort(port)
+            .SetDataPort(dataPort)
+            .SetCellId("abc")
+            .BuildServer(service);
+
+        auto client = testFactory.CreateClientBuilder()
+            .SetPort(port)
+            .SetDataPort(dataPort)
+            .BuildClient();
+
+        server->Start();
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+            server->Stop();
+        };
+
+        auto endpoint = client->CreateEndpoint();
+
+        endpoint->Start();
+        Y_DEFER {
+            endpoint->Stop();
+        };
+
+        {
+            auto request = std::make_shared<NProto::TDescribeVolumeRequest>();
+            request->MutableHeaders()->SetCellId("xyz");
+
+            auto future = endpoint->DescribeVolume(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetError().GetCode());
+        }
+
+        {
+            auto future = endpoint->DescribeVolume(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TDescribeVolumeRequest>());
+
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCheckCellIdInDescribeVolumeRequestIfCellsAreOff)
+    {
+        TPortManager portManager;
+        ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
+
+        auto service = std::make_shared<TTestService>();
+        service->DescribeVolumeHandler =
+            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
+                Y_UNUSED(request);
+                return MakeFuture<NProto::TDescribeVolumeResponse>();
+            };
+
+        TTestFactory testFactory;
+
+        auto server = testFactory.CreateServerBuilder()
+            .SetPort(port)
+            .SetDataPort(dataPort)
+            .BuildServer(service);
+
+        auto client = testFactory.CreateClientBuilder()
+            .SetPort(port)
+            .SetDataPort(dataPort)
+            .BuildClient();
+
+        server->Start();
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+            server->Stop();
+        };
+
+        auto endpoint = client->CreateEndpoint();
+
+        endpoint->Start();
+        Y_DEFER {
+            endpoint->Stop();
+        };
+
+        {
+            auto request = std::make_shared<NProto::TDescribeVolumeRequest>();
+            request->MutableHeaders()->SetCellId("xyz");
+
+            auto future = endpoint->DescribeVolume(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+        }
+
+        {
+            auto future = endpoint->DescribeVolume(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TDescribeVolumeRequest>());
+
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer

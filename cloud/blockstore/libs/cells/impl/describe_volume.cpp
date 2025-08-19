@@ -39,9 +39,7 @@ struct TCellInfo
     // TODO: align to avoid false sharing
     TVector<NProto::TError> DescribeResults;
 
-    explicit TCellInfo(
-            bool strictCellIdCheckInDescribe,
-            ui32 clientCount)
+    TCellInfo(bool strictCellIdCheckInDescribe, ui32 clientCount)
         : StrictCellIdCheckInDescribe(strictCellIdCheckInDescribe)
         , DescribeResults(clientCount)
     {
@@ -283,24 +281,21 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
     }
     auto response = future.GetValue();
     if (!HasError(response)) {
-        if (CellId == response.GetCellId() ||
-            !Cell.StrictCellIdCheckInDescribe)
+        if (CellId == response.GetCellId() || !Cell.StrictCellIdCheckInDescribe)
         {
             response.SetCellId(CellId);
             owner->Reply(std::move(response));
             STORAGE_DEBUG(
                 TStringBuilder()
-                    << "DescribeVolume: got success for disk "
-                    << Request.GetDiskId().Quote()
-                    << " from " << HostInfo.Fqdn);
+                << "DescribeVolume: got success for disk "
+                << Request.GetDiskId().Quote() << " from " << HostInfo.Fqdn);
             return;
         }
 
         TStringBuilder sb;
         sb << "DescribeVolume response for cell "
-            << response.GetCellId().Quote()
-            << " does not match configured cell "
-            << CellId.Quote();
+           << response.GetCellId().Quote() << " does not match configured cell "
+           << CellId.Quote();
 
         ReportWrongCellIdInDescribeVolume(sb);
 
@@ -308,17 +303,16 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
     }
 
     STORAGE_DEBUG(
-        TStringBuilder()
-            << "DescribeVolume: got error "
-            << response.GetError().GetMessage().Quote() << " from "
-            << HostInfo.Fqdn);
+        TStringBuilder() << "DescribeVolume: got error "
+                         << response.GetError().GetMessage().Quote() << " from "
+                         << HostInfo.Fqdn);
 
     if (EErrorKind::ErrorRetriable != GetErrorKind(response.GetError())) {
         auto code = response.GetError().GetCode();
         const bool volumeNotFoundError =
             code == E_NOT_FOUND ||
-            code == MAKE_SCHEMESHARD_ERROR(
-                        NKikimrScheme::StatusPathDoesNotExist);
+            code ==
+                MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist);
         Y_DEBUG_ABORT_UNLESS(volumeNotFoundError);
     }
     Cell.DescribeResults[CellResultIndex] = std::move(response.GetError());
@@ -331,8 +325,8 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeVolumeFuture DescribeVolume(
-    const TCellsConfig& config,
     NProto::TDescribeVolumeRequest request,
+    const TCellsConfig& config,
     IBlockStorePtr service,
     const TCellHostEndpointsByCellId& endpoints,
     bool hasUnavailableCells,
@@ -342,9 +336,14 @@ TDescribeVolumeFuture DescribeVolume(
 
     for (const auto& [cellId, clients]: endpoints) {
         const auto* cellIt = config.GetCells().FindPtr(cellId);
-        Y_DEBUG_ABORT_UNLESS(
-            cellIt,
-            "Requested cell is not found in config");
+        if (!cellIt) {
+            NProto::TDescribeVolumeResponse response;
+            *response.MutableError() = MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Cell " << cellId << " is not found in config");
+            return MakeFuture(response);
+        }
 
         TCellInfo cell(
             cellIt->GetStrictCellIdCheckInDescribeVolume(),
@@ -363,7 +362,7 @@ TDescribeVolumeFuture DescribeVolume(
         bootstrap.Scheduler,
         bootstrap.Logging->CreateLog("BLOCKSTORE_CELLS"),
         std::move(cells),
-        std::move(request),
+        request,
         hasUnavailableCells);
     return describeHandler->Start(config.GetDescribeVolumeTimeout());
 }

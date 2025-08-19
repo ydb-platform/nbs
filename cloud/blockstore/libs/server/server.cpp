@@ -28,8 +28,6 @@
 #include <cloud/storage/core/libs/uds/client_storage.h>
 #include <cloud/storage/core/libs/uds/endpoint_poller.h>
 
-#include <contrib/ydb/library/actors/prof/tag.h>
-
 #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/resource_quota.h>
 #include <contrib/libs/grpc/include/grpcpp/security/auth_metadata_processor.h>
@@ -39,6 +37,8 @@
 #include <contrib/libs/grpc/include/grpcpp/server_context.h>
 #include <contrib/libs/grpc/include/grpcpp/server_posix.h>
 #include <contrib/libs/grpc/include/grpcpp/support/status.h>
+
+#include <contrib/ydb/library/actors/prof/tag.h>
 
 #include <util/datetime/cputimer.h>
 #include <util/folder/path.h>
@@ -708,7 +708,7 @@ private:
 
         if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
             const auto& cellId = Request->GetHeaders().GetCellId();
-            if (cellId && cellId != AppCtx.CellId) {
+            if (AppCtx.CellId && cellId && cellId != AppCtx.CellId) {
                 TStringBuilder sb;
                 sb <<"DescribeVolume request for cell "
                     << cellId.Quote()

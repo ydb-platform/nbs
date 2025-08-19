@@ -442,6 +442,66 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             localService->DescribeVolumePromise.SetValue(std::move(msg));
         }
     }
+
+    Y_UNIT_TEST(ShouldFailDescribeResponseIfCellIdInResponseDoesnotMatch)
+    {
+        TCellHostEndpointsByCellId endpoints;
+
+        NProto::TCellsConfig cellsProto;
+        auto* cell1 = cellsProto.AddCells();
+        cell1->SetCellId("cell1");
+        cell1->SetStrictCellIdCheckInDescribeVolume(true);
+        cellsProto.AddCells()->SetCellId("cell2");
+        TCellsConfig config(cellsProto);
+
+        auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
+        auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
+
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("celldisk");
+
+        auto localService = CreateService();
+
+        TBootstrap bootstrap;
+        bootstrap.Logging = CreateLoggingService("console");
+        bootstrap.Scheduler = CreateScheduler();
+        bootstrap.Scheduler->Start();
+
+        auto response = DescribeVolume(
+            request,
+            config,
+            localService,
+            endpoints,
+            false,
+            bootstrap);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s2h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, localService->DescribeVolumeCalled);
+
+        {
+            NProto::TDescribeVolumeResponse msg;
+            msg.SetCellId("xyz");
+            s1h1Client->DescribeVolumePromise.SetValue(std::move(msg));
+        }
+
+        {
+            NProto::TDescribeVolumeResponse msg;
+            *msg.MutableError() = std::move(MakeError(E_NOT_FOUND, "lost"));
+            s2h1Client->DescribeVolumePromise.SetValue(std::move(msg));
+        }
+
+        {
+            NProto::TDescribeVolumeResponse msg;
+            *msg.MutableError() = std::move(MakeError(E_NOT_FOUND, "lost"));
+            localService->DescribeVolumePromise.SetValue(std::move(msg));
+        }
+
+        const auto& describeResponse = response.GetValue(TDuration::Seconds(2));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            describeResponse.GetError().GetCode());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NCells

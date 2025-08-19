@@ -15,8 +15,8 @@ namespace NCloud::NBlockStore::NCells {
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeVolumeFuture DescribeVolume(
-    const TCellsConfig& config,
     NProto::TDescribeVolumeRequest request,
+    const TCellsConfig& config,
     IBlockStorePtr service,
     const TCellHostEndpointsByCellId& endpoints,
     bool hasUnavailableCells,
