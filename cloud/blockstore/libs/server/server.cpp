@@ -636,6 +636,13 @@ private:
                 AppCtx.ServerStats->GetBlockSize(diskId));
         }
 
+        if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
+            const auto& cellId = Request->GetHeaders().GetCellId();
+            if (cellId) {
+                MetricRequest.CellRequest = true;
+            }
+        }
+
         AppCtx.ServerStats->PrepareMetricRequest(
             MetricRequest,
             std::move(clientId),
