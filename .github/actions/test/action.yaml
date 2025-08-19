@@ -127,6 +127,7 @@ runs:
         TRUNCATE_ENABLED: ${{ inputs.truncate_enabled }}
         SYNC_TO_S3: ${{ inputs.sync_to_s3 || 'false' }}
         GITHUB_TOKEN: ${{ github.token }}
+        BUILD_FAILED_COUNT: 1
       run: |
         extra_params=(
           --run-all-tests
