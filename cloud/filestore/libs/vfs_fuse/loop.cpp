@@ -992,7 +992,8 @@ private:
                         Timer,
                         path / WriteBackCacheFileName,
                         Config->GetWriteBackCacheCapacity(),
-                        Config->GetWriteBackCacheAutomaticFlushPeriod());
+                        Config->GetWriteBackCacheAutomaticFlushPeriod(),
+                        Config->GetWriteBackCacheFlushRetryPeriod());
                     WriteBackCacheInitialized = true;
                 } else {
                     TString msg =

@@ -129,6 +129,8 @@ public:
         protoConfig.SetWriteBackCacheCapacity(WriteBackCacheConfig.Capacity);
         protoConfig.SetWriteBackCacheAutomaticFlushPeriod(
             WriteBackCacheConfig.AutomaticFlushPeriod.MilliSeconds());
+        protoConfig.SetWriteBackCacheFlushRetryPeriod(
+            WriteBackCacheConfig.FlushRetryPeriod.MilliSeconds());
 
         auto vFSConfig = std::make_shared<TVFSConfig>(std::move(protoConfig));
         auto Loop = LoopFactory->Create(

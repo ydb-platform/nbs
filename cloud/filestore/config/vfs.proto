@@ -55,4 +55,7 @@ message TVFSConfig
 
     // WriteBackCache automatic flush period (in milliseconds).
     optional uint32 WriteBackCacheAutomaticFlushPeriod = 17;
+
+    // Retry perfod for failed WriteData operations in Flush (in milliseconds).
+    optional uint32 WriteBackCacheFlushRetryPeriod = 18;
 }

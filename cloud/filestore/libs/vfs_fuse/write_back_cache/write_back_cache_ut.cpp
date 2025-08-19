@@ -115,6 +115,7 @@ struct TBootstrap
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
     TDuration CacheAutomaticFlushPeriod;
+    TDuration CacheFlushRetryPeriod;
     TTempFileHandle TempFileHandle;
     TWriteBackCache Cache;
 
@@ -144,6 +145,7 @@ struct TBootstrap
     TBootstrap(TDuration cacheAutomaticFlushPeriod = {})
     {
         CacheAutomaticFlushPeriod = cacheAutomaticFlushPeriod;
+        CacheFlushRetryPeriod = TDuration::MilliSeconds(100);
 
         Logging = CreateLoggingService("console", TLogSettings{});
         Logging->Start();
@@ -272,7 +274,8 @@ struct TBootstrap
             Timer,
             TempFileHandle.GetName(),
             CacheCapacityBytes,
-            CacheAutomaticFlushPeriod);
+            CacheAutomaticFlushPeriod,
+            CacheFlushRetryPeriod);
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
@@ -897,6 +900,36 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.Cache.FlushData(1);
 
         UNIT_ASSERT_VALUES_EQUAL(writeRequestsExpected, writeRequestsActual);
+    }
+
+    Y_UNIT_TEST(ShouldRetryFlushOnFailure)
+    {
+        constexpr int WriteAttemptsThreshold = 3;
+        constexpr TDuration MaxFlushWait = TDuration::Seconds(5);
+
+        TBootstrap b;
+
+        int writeAttempts = 0;
+
+        auto prevWriteDataHandler = std::move(b.Session->WriteDataHandler);
+        b.Session->WriteDataHandler = [&](auto context, auto request) {
+            writeAttempts++;
+            if (writeAttempts < WriteAttemptsThreshold) {
+                NProto::TWriteDataResponse response;
+                *response.MutableError() = MakeError(E_REJECTED);
+                return MakeFuture(std::move(response));
+            }
+            return prevWriteDataHandler(std::move(context), std::move(request));
+        };
+
+        b.WriteToCacheSync(1, 12, "hello");
+        auto flushFuture = b.Cache.FlushData(1);
+
+        UNIT_ASSERT(!flushFuture.HasValue());
+        UNIT_ASSERT_GE(writeAttempts, 0);
+
+        UNIT_ASSERT(flushFuture.Wait(MaxFlushWait));
+        UNIT_ASSERT_EQUAL(writeAttempts, WriteAttemptsThreshold);
     }
 
     /* TODO(svartmetal): fix tests with automatic flush

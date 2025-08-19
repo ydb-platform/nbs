@@ -14,10 +14,21 @@ namespace NCloud::NFileStore::NFuse {
 
 enum class TWriteBackCache::EWriteDataEntryStatus
 {
-    Invalid,
+    // Restoration from the persisent buffer has failed
+    Corrupted,
+
+    // Write request is waiting for the avaible space in the persistent buffer
     Pending,
+
+    // Write request has been stored in the persistent buffer and the caller
+    // code observes the request as completed
     Cached,
-    CachedFlushRequested,
+
+    // Same as |Cached|, but Flush is also requested
+    FlushRequested,
+
+    // Write request has been written to the session and can be removed from
+    // the persistent buffer
     Flushed
 };
 
@@ -40,15 +51,14 @@ private:
     TStringBuf BufferRef;
 
     NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
-    NThreading::TPromise<void> FlushedPromise;
-    EWriteDataEntryStatus Status = EWriteDataEntryStatus::Invalid;
+    NThreading::TPromise<void> FlushPromise;
+    EWriteDataEntryStatus Status = EWriteDataEntryStatus::Corrupted;
 
 public:
     explicit TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
     TWriteDataEntry(ui32 checksum, TStringBuf serializedRequest);
-
 
     const NProto::TWriteDataRequest* GetRequest() const
     {
@@ -78,13 +88,18 @@ public:
     bool IsCached() const
     {
         return Status == EWriteDataEntryStatus::Cached ||
-               Status == EWriteDataEntryStatus::CachedFlushRequested;
+               Status == EWriteDataEntryStatus::FlushRequested;
     }
 
     bool IsFinished() const
     {
         return Status == EWriteDataEntryStatus::Flushed ||
-               Status == EWriteDataEntryStatus::Invalid;
+               Status == EWriteDataEntryStatus::Corrupted;
+    }
+
+    bool IsFlushRequested() const
+    {
+        return Status == EWriteDataEntryStatus::FlushRequested;
     }
 
     size_t GetSerializedSize() const;
@@ -95,11 +110,10 @@ public:
 
     void Finish(TPendingOperations& pendingOperations);
 
-    bool IsFlushRequested() const;
     bool RequestFlush();
 
     NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
-    NThreading::TFuture<void> GetFlushedFuture();
+    NThreading::TFuture<void> GetFlushFuture();
 };
 
 ////////////////////////////////////////////////////////////////////////////////

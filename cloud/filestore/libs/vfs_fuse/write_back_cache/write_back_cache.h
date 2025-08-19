@@ -30,7 +30,8 @@ public:
         ITimerPtr timer,
         const TString& filePath,
         ui32 capacityBytes,
-        TDuration automaticFlushPeriod);
+        TDuration automaticFlushPeriod,
+        TDuration flushRetryPeriod);
 
     ~TWriteBackCache();
 
