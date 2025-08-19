@@ -138,7 +138,7 @@ func TestCanRetry(t *testing.T) {
 	err := assert.AnError
 
 	// randomly fail test
-	if rand.IntN(2) == 0 {
+	if rand.Intn(2) == 0 {
 		require.True(t, CanRetry(NewRetriableError(err)))
 	} else {
 		require.False(t, CanRetry(NewRetriableError(err)))
