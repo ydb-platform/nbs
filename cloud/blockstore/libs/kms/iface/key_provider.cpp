@@ -84,8 +84,9 @@ private:
         const auto& computeResponse = Executor->WaitFor(computeFuture);
         if (HasError(computeResponse)) {
             const auto& err = computeResponse.GetError();
-            // Disk Manager interprets E_GRPC_NOT_FOUND as retriable error.
-            // See NBS-6176.
+            // Disk Manager interprets E_GRPC_NOT_FOUND as retriable error,
+            // resulting in a retry loop if the disk gets deleted.
+            // See https://github.com/ydb-platform/nbs/issues/4167.
             const ui32 code = err.GetCode() == E_GRPC_NOT_FOUND
                 ? E_NOT_FOUND
                 : err.GetCode();
