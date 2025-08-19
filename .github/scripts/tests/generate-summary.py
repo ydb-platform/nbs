@@ -14,6 +14,7 @@ from junit_utils import get_property_value, iter_xml_files
 
 BUILD_FAILED_COUNT = int(os.environ.get("BUILD_FAILED_COUNT", "0"))
 
+
 class TestStatus(Enum):
     PASS = 0
     FAIL = 1
@@ -221,7 +222,11 @@ class TestSummary:
             if need_first_column:
                 row.append(line.title)
 
-            failed_build = line.failed_build if BUILD_FAILED_COUNT > line.failed_build else BUILD_FAILED_COUNT
+            failed_build = (
+                BUILD_FAILED_COUNT
+                if BUILD_FAILED_COUNT > line.failed_build
+                else line.failed_build
+            )
 
             row.extend(
                 [
