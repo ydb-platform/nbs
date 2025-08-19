@@ -2,7 +2,7 @@ package errors
 
 import (
 	"fmt"
-	"math/rand/v2"
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
