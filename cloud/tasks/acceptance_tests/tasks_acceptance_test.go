@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 	"time"
+    "regexp"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"

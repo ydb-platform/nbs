@@ -3,7 +3,6 @@ package logging
 import (
 	"context"
 	"testing"
-    "regexp"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
