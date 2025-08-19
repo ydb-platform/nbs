@@ -132,13 +132,13 @@ void TMultiCellDescribeHandler::Start(TDuration describeTimeout)
             if (!cellId.empty()) {
                 STORAGE_DEBUG(
                     TStringBuilder()
-                    << "Send remote Describe Request to " << host.Fqdn
-                    << " for volume " << Request.GetDiskId());
+                        << "Send remote Describe Request to " << host.Fqdn
+                        << " for volume " << Request.GetDiskId());
             } else {
                 STORAGE_DEBUG(
                     TStringBuilder()
-                    << "Send local Describe Request for volume "
-                    << Request.GetDiskId());
+                        << "Send local Describe Request for volume "
+                        << Request.GetDiskId());
             }
 
             auto handler = std::make_shared<TDescribeResponseHandler>(
@@ -249,8 +249,6 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
         return;
     }
 
-    auto& Log = owner->Log;
-
     if (owner->Promise.HasValue()) {
         return;
     }
@@ -260,15 +258,16 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
         owner->Reply(std::move(response));
         STORAGE_DEBUG(
             TStringBuilder()
-            << "DescribeVolume: got success for disk " << Request.GetDiskId()
-            << " from " << HostInfo.Fqdn);
+                << "DescribeVolume: got success for disk " << Request.GetDiskId()
+                << " from " << HostInfo.Fqdn);
         return;
     }
 
     STORAGE_DEBUG(
-        TStringBuilder() << "DescribeVolume: got error "
-                         << response.GetError().GetMessage().Quote() << " from "
-                         << HostInfo.Fqdn);
+        TStringBuilder()
+            << "DescribeVolume: got error "
+            << response.GetError().GetMessage().Quote() << " from "
+            << HostInfo.Fqdn);
 
     with_lock (Cell.Lock) {
         if (EErrorKind::ErrorRetriable == GetErrorKind(response.GetError())) {
