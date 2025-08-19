@@ -12,6 +12,7 @@ from typing import List, Dict
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from junit_utils import get_property_value, iter_xml_files
 
+BUILD_FAILED_COUNT = int(os.environ.get("BUILD_FAILED_COUNT", "0"))
 
 class TestStatus(Enum):
     PASS = 0
@@ -219,13 +220,16 @@ class TestSummary:
             row = []
             if need_first_column:
                 row.append(line.title)
+
+            failed_build = line.failed_build if BUILD_FAILED_COUNT > line.failed_build else BUILD_FAILED_COUNT
+
             row.extend(
                 [
                     render_pm(line.test_count, f"{report_url}", 0),
                     render_pm(line.passed, f"{report_url}#PASS", 0),
                     render_pm(line.errors, f"{report_url}#ERROR", 0),
                     render_pm(line.failed, f"{report_url}#FAIL", 0),
-                    render_pm(line.failed_build, f"{report_url}#FAIL_BUILD", 0),
+                    render_pm(failed_build, f"{report_url}#FAIL_BUILD", 0),
                     render_pm(line.skipped, f"{report_url}#SKIP", 0),
                     render_pm(line.muted, f"{report_url}#MUTE", 0),
                 ]
@@ -357,7 +361,7 @@ def get_comment_text(
             f":red_circle: **{build_preset}**: Test run completed, no test results found for commit {pr.head.sha}. "
             f"Please check build logs."
         ]
-    elif summary.is_failed:
+    elif summary.is_failed or BUILD_FAILED_COUNT > 0:
         result = f":red_circle: **{build_preset}**: some tests FAILED"
     else:
         result = f":green_circle: **{build_preset}**: all tests PASSED"
