@@ -125,7 +125,9 @@ Y_UNIT_TEST_SUITE(TVolumeAsPartitionActorTests)
         const ui64 FollowerBlockCount = 256;
         const TString LeaderDiskId = "leader-disk";
         const TString FollowerDiskId = "follower-disk";
-        TLogTitle LogTitle{10, LeaderDiskId, GetCycleCount()};
+        TLogTitle LogTitle{
+            GetCycleCount(),
+            TLogTitle::TVolume{.TabletId = 10, .DiskId = LeaderDiskId}};
 
         TActorSystem ActorSystem;
         NActors::TActorId EdgeActor;
