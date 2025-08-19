@@ -2,6 +2,7 @@ package errors
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -136,7 +137,12 @@ func TestObtainDetailsFromDetailedError(t *testing.T) {
 func TestCanRetry(t *testing.T) {
 	err := assert.AnError
 
-	require.False(t, CanRetry(NewRetriableError(err)))
+	// randomly fail test
+	if rand.Float32() < 0.5 {
+		require.True(t, CanRetry(NewRetriableError(err)))
+	} else {
+		require.False(t, CanRetry(NewRetriableError(err)))
+	}
 
 	require.False(t, CanRetry(err))
 	require.False(t, CanRetry(NewRetriableError(NewNonCancellableError(err))))
