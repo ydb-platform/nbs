@@ -896,17 +896,17 @@ private:
     }
 
     // |handleState| becomes unusable if the function returns false
-    bool PrepareFlush(THandleState* handleState)
+    void PrepareFlush(THandleState* handleState)
     {
         Y_ABORT_UNLESS(handleState->FlushState.Executing);
         Y_ABORT_UNLESS(handleState->FlushState.WriteRequests.empty());
 
         if (!handleState->FlushState.FailedWriteRequests.empty()) {
-            // Retry write requests failed during previous Flash operation
+            // Retry write requests failed at the previous Flush attempt
             swap(
                 handleState->FlushState.WriteRequests,
                 handleState->FlushState.FailedWriteRequests);
-            return true;
+            return;
         }
 
         TVector<TWriteDataEntryPart> parts;
@@ -929,18 +929,11 @@ private:
 
         handleState->FlushState.WriteRequests =
             MakeWriteDataRequestsForFlush(handleState->Handle, parts);
-
-        // Non-empty parts cannot produce empty WriteRequests
-        Y_ABORT_UNLESS(!handleState->FlushState.WriteRequests.empty());
-
-        return true;
     }
 
     void StartFlush(THandleState* handleState)
     {
-        if (!PrepareFlush(handleState)) {
-            return;
-        }
+        PrepareFlush(handleState);
 
         auto& state = handleState->FlushState;
 
@@ -952,10 +945,9 @@ private:
 
         state.InFlightWriteRequestsCount = state.WriteRequests.size();
 
-        for (size_t i = 0; i < state.WriteRequests.size(); i++) {
-            auto callContext = MakeIntrusive<TCallContext>(
-                state.WriteRequests[i]->GetFileSystemId());
-            auto request = std::move(state.WriteRequests[i]);
+        for (auto& request: state.WriteRequests) {
+            auto callContext =
+                MakeIntrusive<TCallContext>(request->GetFileSystemId());
 
             Session->WriteData(std::move(callContext), request)
                 .Subscribe(
@@ -970,7 +962,8 @@ private:
                                 std::move(request),
                                 future.GetValue());
                         }
-                    });
+                    })
+                .IgnoreResult();
         }
     }
 
@@ -1024,7 +1017,7 @@ private:
             entry->Finish(PendingOperations);
         }
 
-        // Clear finished entries form the persistent queue
+        // Clear finished entries from the persistent queue
         while (!CachedEntries.empty() && CachedEntries.front()->IsFinished())
         {
             CachedEntries.pop_front();
@@ -1034,11 +1027,8 @@ private:
 
         handleState->FlushState.Executing = false;
 
-        if (handleState->ShouldFlush()) {
-            ScheduleFlushIfNeeded(handleState);
-        } else {
-            DeleteHandleStateIfEmpty(handleState);
-        }
+        ScheduleFlushIfNeeded(handleState);
+        DeleteHandleStateIfEmpty(handleState);
 
         ExecutePendingOperations(guard);
     }
