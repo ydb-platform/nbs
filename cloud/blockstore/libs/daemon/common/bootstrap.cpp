@@ -941,6 +941,7 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(ClientPercentiles);
     START_KIKIMR_COMPONENT(StatsAggregator);
     START_KIKIMR_COMPONENT(IamTokenClient);
+    START_KIKIMR_COMPONENT(SyncIamTokenClient);
     START_KIKIMR_COMPONENT(ComputeClient);
     START_KIKIMR_COMPONENT(KmsClient);
     START_KIKIMR_COMPONENT(RootKmsClient);
@@ -960,7 +961,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(ServerStatsUpdater);
     START_COMMON_COMPONENT(BackgroundThreadPool);
     START_COMMON_COMPONENT(RdmaClient);
-    START_COMMON_COMPONENT(GetTraceServiceClient());
+    START_KIKIMR_COMPONENT(TraceServiceClient);
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
     START_COMMON_COMPONENT(CellManager);
@@ -1019,7 +1020,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(CellManager);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
-    STOP_COMMON_COMPONENT(GetTraceServiceClient());
+    STOP_KIKIMR_COMPONENT(TraceServiceClient);
     STOP_COMMON_COMPONENT(RdmaClient);
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
     STOP_COMMON_COMPONENT(ServerStatsUpdater);
@@ -1045,6 +1046,7 @@ void TBootstrapBase::Stop()
     STOP_KIKIMR_COMPONENT(RootKmsClient);
     STOP_KIKIMR_COMPONENT(KmsClient);
     STOP_KIKIMR_COMPONENT(ComputeClient);
+    STOP_KIKIMR_COMPONENT(SyncIamTokenClient);
     STOP_KIKIMR_COMPONENT(IamTokenClient);
     STOP_KIKIMR_COMPONENT(StatsAggregator);
     STOP_KIKIMR_COMPONENT(ClientPercentiles);

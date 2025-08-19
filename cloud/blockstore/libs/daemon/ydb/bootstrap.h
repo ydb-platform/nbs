@@ -104,6 +104,7 @@ private:
     NNotify::IServicePtr NotifyService;
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     NIamClient::IIamTokenClientPtr IamTokenClient;
+    NIamClient::IIamTokenClientPtr SyncIamTokenClient;
     IComputeClientPtr ComputeClient;
     IKmsClientPtr KmsClient;
     IRootKmsClientPtr RootKmsClient;
@@ -133,6 +134,7 @@ protected:
     IStartable* GetNotifyService() override;
     IStartable* GetStatsFetcher() override;
     IStartable* GetIamTokenClient() override;
+    IStartable* GetSyncIamTokenClient() override;
     IStartable* GetComputeClient() override;
     IStartable* GetKmsClient() override;
     IStartable* GetRootKmsClient() override;

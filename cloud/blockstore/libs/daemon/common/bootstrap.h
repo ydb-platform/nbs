@@ -117,6 +117,7 @@ protected:
     virtual IStartable* GetNotifyService() = 0;
     virtual IStartable* GetStatsFetcher() = 0;
     virtual IStartable* GetIamTokenClient() = 0;
+    virtual IStartable* GetSyncIamTokenClient() = 0;
     virtual IStartable* GetComputeClient() = 0;
     virtual IStartable* GetKmsClient() = 0;
     virtual IStartable* GetRootKmsClient() = 0;
