@@ -3721,30 +3721,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
     Y_UNIT_TEST(TestReadWithZeroIntervals)
     {
-        TTestEnv env;
+        NProto::TStorageConfig config;
+        config.SetTwoStageReadEnabled(true);
+        TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
-        service.CreateFileStore(fs, 1000, DefaultBlockSize, NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
-
-        {
-            NProto::TStorageConfig newConfig;
-            newConfig.SetTwoStageReadEnabled(true);
-            const auto response =
-                ExecuteChangeStorageConfig(std::move(newConfig), service);
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                response.GetStorageConfig().GetTwoStageReadEnabled());
-
-            TDispatchOptions options;
-            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
-        }
-
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
         auto headers = service.InitSession(fs, "client");
-
         ui64 nodeId =
             service
                 .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
@@ -3756,8 +3747,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-        service.WriteData(headers, fs, nodeId, handle, 1_KB, TString(1_KB, 'a'));
-        service.WriteData(headers, fs, nodeId, handle, 3_KB, TString(1_KB, 'b'));
+        service
+            .WriteData(headers, fs, nodeId, handle, 1_KB, TString(1_KB, 'a'));
+        service
+            .WriteData(headers, fs, nodeId, handle, 3_KB, TString(1_KB, 'b'));
         auto readDataResult =
             service.ReadData(headers, fs, nodeId, handle, 0, 4_KB);
         const auto& buffer = readDataResult->Record.GetBuffer();
