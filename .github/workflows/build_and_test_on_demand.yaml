@@ -195,8 +195,8 @@ jobs:
       runner_label: ${{ needs.provide-runner.outputs.label }}
       runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
       runner_ipv4: ${{ needs.provide-runner.outputs.runner_ipv4 }}
-      build_target: "cloud/tasks/"
-      test_target: "cloud/tasks/"
+      build_target: "${{ inputs.build_target }}"
+      test_target: ${{ inputs.test_target }}
       build_preset: ${{ inputs.build_preset }}
       run_build: true
       run_tests: true
