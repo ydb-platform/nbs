@@ -442,25 +442,34 @@ ui32 TPartitionState::GetAlmostFullChannelCount() const
     return AlmostFullChannelCount;
 }
 
-void TPartitionState::EnqueueIORequest(ui32 channel, IActorPtr requestActor)
+void TPartitionState::EnqueueIORequest(
+    ui32 channel,
+    NActors::IActorPtr requestActor,
+    ui64 bsGroupOperationId,
+    ui32 group,
+    TBSGroupOperationTimeTracker::EOperationType operationType)
 {
     auto& ch = GetChannel(channel);
-    ch.IORequests.emplace_back(std::move(requestActor));
+    ch.IORequests.emplace_back(
+        std::move(requestActor),
+        bsGroupOperationId,
+        group,
+        operationType);
     ++ch.IORequestsQueued;
 }
 
-IActorPtr TPartitionState::DequeueIORequest(ui32 channel)
+std::optional<TQueuedRequest> TPartitionState::DequeueIORequest(ui32 channel)
 {
     auto& ch = GetChannel(channel);
     if (ch.IORequestsQueued && ch.IORequestsInFlight < MaxIORequestsInFlight) {
-        IActorPtr requestActor = std::move(ch.IORequests.front());
+        TQueuedRequest req = std::move(ch.IORequests.front());
         ch.IORequests.pop_front();
         --ch.IORequestsQueued;
         ++ch.IORequestsInFlight;
-        return requestActor;
+        return req;
     }
 
-    return {};
+    return std::nullopt;
 }
 
 void TPartitionState::CompleteIORequest(ui32 channel)

@@ -43,6 +43,9 @@ void TPartitionActor::HandleReadBlob(
         requestInfo->CallContext->RequestId);
 
     const auto& blob = msg->BlobId;
+    ui32 channel = blob.Channel();
+    ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
+    ui64 bsGroupOperationId = BSGroupOperationId++;
 
     auto readBlobActor = std::make_unique<TReadBlobActor>(
         requestInfo,
@@ -56,7 +59,8 @@ void TPartitionActor::HandleReadBlob(
             msg.Release()),
         GetDowntimeThreshold(
             *DiagnosticsConfig,
-            PartitionConfig.GetStorageMediaKind()));
+            PartitionConfig.GetStorageMediaKind()),
+        bsGroupOperationId);
 
     if (blob.TabletID() != TabletID()) {
         // Treat this situation as we were reading from base disk.
@@ -64,12 +68,20 @@ void TPartitionActor::HandleReadBlob(
         // disk partition tablet.
         auto actorId = NCloud::Register(ctx, std::move(readBlobActor));
         Actors.Insert(actorId);
+        BSGroupOperationTimeTracker.OnStarted(
+            bsGroupOperationId,
+            groupId,
+            TBSGroupOperationTimeTracker::EOperationType::Read,
+            GetCycleCount());
         return;
     }
 
-    ui32 channel = blob.Channel();
-
-    State->EnqueueIORequest(channel, std::move(readBlobActor));
+    State->EnqueueIORequest(
+        channel,
+        std::move(readBlobActor),
+        bsGroupOperationId,
+        groupId,
+        TBSGroupOperationTimeTracker::EOperationType::Read);
     ProcessIOQueue(ctx, channel);
 }
 
@@ -78,6 +90,10 @@ void TPartitionActor::HandleReadBlobCompleted(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    BSGroupOperationTimeTracker.OnFinished(
+        msg->BSGroupOperationId,
+        GetCycleCount());
 
     Actors.Erase(ev->Sender);
 

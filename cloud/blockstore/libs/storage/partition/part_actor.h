@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/partition_statistics_counters.h>
@@ -156,6 +157,8 @@ private:
     bool FirstGarbageCollectionCompleted = false;
 
     TTransactionTimeTracker TransactionTimeTracker;
+    TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
+    ui64 BSGroupOperationId = 0;
 
 public:
     TPartitionActor(
@@ -540,6 +543,11 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_GetTransactionsLatency(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetGroupLatencies(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
