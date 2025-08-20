@@ -51,8 +51,8 @@ class TDescribeResponseHandler
     const TCellHostInfo HostInfo;
     NProto::TDescribeVolumeRequest Request;
     TCellInfo& Cell;
-
     TLog Log;
+
     TFuture<NProto::TDescribeVolumeResponse> Future;
 
 public:
