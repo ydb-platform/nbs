@@ -212,11 +212,11 @@ void TVolumeActor::HandleReacquireDisk(
     if (!State->GetReadWriteAccessClientId()
             && ctx.Now() > StateLoadTimestamp + TDuration::Seconds(5))
     {
-        auto releaseRequest = TReleaseDiskRequest{
-            .ClientId = TString(AnyWriterClientId),
-            .DevicesToRelease = TVector<NProto::TDeviceConfig>{},
-        };
-        AddAcquireReleaseDiskRequest(ctx, std::move(releaseRequest));
+        AddReleaseDiskRequest(
+            ctx,
+            {
+                .ClientId = TString(AnyWriterClientId),
+            });
     }
 
     AcquireDiskIfNeeded(ctx);
@@ -378,16 +378,16 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
             !Config->GetDoAcquireReleaseDevicesAfterTransaction();
         if (acquireDevices) {
             if (request->RemovedClientId) {
-                AddAcquireReleaseDiskRequest(
+                AddReleaseDiskRequest(
                     ctx,
-                    TReleaseDiskRequest{
+                    {
                         .ClientId = request->RemovedClientId,
                         .ClientRequest = request,
-                        .DevicesToRelease = {}});
+                    });
             } else {
-                AddAcquireReleaseDiskRequest(
+                AddAcquireDiskRequest(
                     ctx,
-                    TAcquireDiskRequest{
+                    {
                         .ClientId = request->AddedClientInfo.GetClientId(),
                         .AccessMode =
                             request->AddedClientInfo.GetVolumeAccessMode(),
@@ -463,76 +463,73 @@ void TVolumeActor::ExecuteAddClient(
     args.ForceTabletRestart = res.ForceTabletRestart;
 
     TVolumeDatabase db(tx.DB);
-    db.WriteHistory(
-        State->LogAddClient(
-            ctx.Now(),
-            args.Info,
-            args.Error,
-            args.PipeServerActorId,
-            args.RequestInfo->Sender));
+    db.WriteHistory(State->LogAddClient(
+        ctx.Now(),
+        args.Info,
+        args.Error,
+        args.PipeServerActorId,
+        args.RequestInfo->Sender));
 
-    if (SUCCEEDED(args.Error.GetCode())) {
-        // Set flag only with first client
-        if (State->GetClients().size() == 1 &&
-            !Config->GetDisableStartPartitionsForGc())
-        {
-            State->SetStartPartitionsNeeded(true);
-            db.WriteStartPartitionsNeeded(true);
+    if (HasError(args.Error)) {
+        return;
+    }
+
+    // Set flag only with first client
+    if (State->GetClients().size() == 1 &&
+        !Config->GetDisableStartPartitionsForGc())
+    {
+        State->SetStartPartitionsNeeded(true);
+        db.WriteStartPartitionsNeeded(true);
+    }
+    if (prevWriter != State->GetReadWriteAccessClientId()) {
+        args.WriterChanged = true;
+
+        if (prevWriter && State->GetClients().contains(prevWriter)) {
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Replace %s writer with %s",
+                LogTitle.GetWithTime().c_str(),
+                prevWriter.Quote().c_str(),
+                State->GetReadWriteAccessClientId().Quote().c_str());
         }
-        if (prevWriter != State->GetReadWriteAccessClientId()) {
-            args.WriterChanged = true;
+    }
 
-            if (prevWriter) {
-                const auto& clients = State->GetClients();
-                auto it = clients.find(prevWriter);
-                if (it != clients.end()) {
-                    LOG_DEBUG(
-                        ctx,
-                        TBlockStoreComponents::VOLUME,
-                        "%s Replace %s writer with %s",
-                        LogTitle.GetWithTime().c_str(),
-                        prevWriter.Quote().c_str(),
-                        State->GetReadWriteAccessClientId().Quote().c_str());
-                }
-            }
+    for (const auto& clientId: res.RemovedClientIds) {
+        db.RemoveClient(clientId);
+        State->RemoveClient(clientId, TActorId());
+        args.RemovedClientIds.emplace_back(clientId);
+
+        auto builder = TStringBuilder() << "Preempted by " << args.Info.GetClientId();
+        db.WriteHistory(
+            State->LogRemoveClient(ctx.Now(), clientId, builder, {}));
+    }
+
+    TVector<TString> staleClientIds;
+    for (const auto& pair: State->GetClients()) {
+        const auto& clientId = pair.first;
+        const auto& clientInfo = pair.second;
+        if (State->IsClientStale(clientInfo, now)) {
+            staleClientIds.push_back(clientId);
         }
+    }
 
-        for (const auto& clientId: res.RemovedClientIds) {
-            db.RemoveClient(clientId);
-            State->RemoveClient(clientId, TActorId());
-            args.RemovedClientIds.emplace_back(clientId);
+    for (const auto& clientId: staleClientIds) {
+        db.RemoveClient(clientId);
+        State->RemoveClient(clientId, TActorId());
+        args.RemovedClientIds.emplace_back(clientId);
+        db.WriteHistory(
+            State->LogRemoveClient(ctx.Now(), clientId, "Stale", {}));
+    }
 
-            auto builder = TStringBuilder() << "Preempted by " << args.Info.GetClientId();
-            db.WriteHistory(
-                State->LogRemoveClient(ctx.Now(), clientId, builder, {}));
-        }
+    db.WriteClient(args.Info);
 
-        TVector<TString> staleClientIds;
-        for (const auto& pair: State->GetClients()) {
-            const auto& clientId = pair.first;
-            const auto& clientInfo = pair.second;
-            if (State->IsClientStale(clientInfo, now)) {
-                staleClientIds.push_back(clientId);
-            }
-        }
-
-        for (const auto& clientId: staleClientIds) {
-            db.RemoveClient(clientId);
-            State->RemoveClient(clientId, TActorId());
-            args.RemovedClientIds.emplace_back(clientId);
-            db.WriteHistory(
-                State->LogRemoveClient(ctx.Now(), clientId, "Stale", {}));
-        }
-
-        db.WriteClient(args.Info);
-
-        if (IsReadWriteMode(args.Info.GetVolumeAccessMode()) &&
-            (args.Info.GetFillGeneration() > 0 ||
-             State->GetMeta().GetVolumeConfig().GetIsFillFinished()))
-        {
-            State->UpdateFillSeqNumberInMeta(args.Info.GetFillSeqNumber());
-            db.WriteMeta(State->GetMeta());
-        }
+    if (IsReadWriteMode(args.Info.GetVolumeAccessMode()) &&
+        (args.Info.GetFillGeneration() > 0 ||
+            State->GetMeta().GetVolumeConfig().GetIsFillFinished()))
+    {
+        State->UpdateFillSeqNumberInMeta(args.Info.GetFillSeqNumber());
+        db.WriteMeta(State->GetMeta());
     }
 }
 
@@ -546,8 +543,7 @@ void TVolumeActor::CompleteAddClient(
         Config->GetDoAcquireReleaseDevicesAfterTransaction() &&
         !HasError(args.Error);
 
-    Y_DEFER
-    {
+    Y_DEFER {
         if (!needToAcquireOrReleaseDevices) {
             PendingClientRequests.pop_front();
             ProcessNextPendingClientRequest(ctx);
@@ -578,18 +574,20 @@ void TVolumeActor::CompleteAddClient(
     if (needToAcquireOrReleaseDevices) {
         ReleaseDiskFromOldClients(ctx, args.RemovedClientIds);
 
-        // Acquire disk for new client.
-        auto request = TAcquireDiskRequest(
-            args.Info.GetClientId(),
-            args.Info.GetVolumeAccessMode(),
-            args.Info.GetMountSeqNumber(),
-            std::make_shared<TClientRequest>(
-                args.RequestInfo,
-                args.DiskId,
-                args.PipeServerActorId,
-                args.Info),
-            args.ForceTabletRestart);
-        AddAcquireReleaseDiskRequest(ctx, std::move(request));
+        // Acquire disk for new client
+        AddAcquireDiskRequest(
+            ctx,
+            {
+                .ClientId = args.Info.GetClientId(),
+                .AccessMode = args.Info.GetVolumeAccessMode(),
+                .MountSeqNumber = args.Info.GetMountSeqNumber(),
+                .ClientRequest = std::make_shared<TClientRequest>(
+                    args.RequestInfo,
+                    args.DiskId,
+                    args.PipeServerActorId,
+                    args.Info),
+                .ForceTabletRestart = args.ForceTabletRestart,
+            });
     } else {
         auto response = CreateAddClientResponse(
             args.Error,

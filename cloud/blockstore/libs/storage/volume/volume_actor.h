@@ -581,9 +581,25 @@ private:
     ui64 GetBlocksCount() const;
 
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);
+
     void AddAcquireReleaseDiskRequest(
         const NActors::TActorContext& ctx,
         TAcquireReleaseDiskRequest request);
+
+    void AddAcquireDiskRequest(
+        const NActors::TActorContext& ctx,
+        TAcquireDiskRequest request)
+    {
+        AddAcquireReleaseDiskRequest(ctx, std::move(request));
+    }
+
+    void AddReleaseDiskRequest(
+        const NActors::TActorContext& ctx,
+        TReleaseDiskRequest request)
+    {
+        AddAcquireReleaseDiskRequest(ctx, std::move(request));
+    }
+
     void ProcessNextAcquireReleaseDiskRequest(const NActors::TActorContext& ctx);
     void OnClientListUpdate(const NActors::TActorContext& ctx);
 
