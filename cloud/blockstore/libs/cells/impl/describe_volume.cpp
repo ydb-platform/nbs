@@ -94,7 +94,7 @@ public:
         NProto::TDescribeVolumeRequest request,
         bool hasUnavailableCells);
 
-    void Start(TDuration describeTimeout);
+    TPromise<NProto::TDescribeVolumeResponse> Start(TDuration describeTimeout);
     void HandleResponse(NProto::TDescribeVolumeResponse response);
     void Reply(NProto::TDescribeVolumeResponse response);
 
@@ -122,7 +122,8 @@ TMultiCellDescribeHandler::TMultiCellDescribeHandler(
     }
 }
 
-void TMultiCellDescribeHandler::Start(TDuration describeTimeout)
+TPromise<NProto::TDescribeVolumeResponse> TMultiCellDescribeHandler::Start(
+    TDuration describeTimeout)
 {
     auto weak = weak_from_this();
     for (auto& [cellId, cell]: Cells) {
@@ -153,10 +154,15 @@ void TMultiCellDescribeHandler::Start(TDuration describeTimeout)
         }
     }
 
-    auto self = shared_from_this();
     Scheduler->Schedule(
         TInstant::Now() + describeTimeout,
-        [self = std::move(self)]() { self->HandleTimeout(); });
+        [weak = std::move(weak)]() {
+            if (auto self = weak.lock(); self) {
+                self->HandleTimeout();
+            }
+        });
+
+    return Promise;
 }
 
 void TMultiCellDescribeHandler::Reply(NProto::TDescribeVolumeResponse response)
@@ -310,15 +316,19 @@ TDescribeVolumeFuture DescribeVolume(
     localCell.Hosts.emplace_back("local", service);
     cells.emplace("", std::move(localCell));
 
-    auto describeResult = std::make_shared<TMultiCellDescribeHandler>(
+    auto describeHandler = std::make_shared<TMultiCellDescribeHandler>(
         bootstrap.Scheduler,
         bootstrap.Logging->CreateLog("BLOCKSTORE_CELLS"),
         std::move(cells),
         std::move(request),
         hasUnavailableCells);
-    describeResult->Start(timeout);
+    auto future = describeHandler->Start(timeout);
 
-    return describeResult->Promise.GetFuture();
+    describeHandler->Promise.GetFuture().Subscribe(
+        [handler = std::move(describeHandler)](const auto&) mutable
+        { handler.reset(); });
+
+    return future;
 }
 
 }   // namespace NCloud::NBlockStore::NCells
