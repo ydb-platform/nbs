@@ -298,7 +298,7 @@ void TVolumeState::ResetThrottlingPolicy(
 }
 
 void TVolumeState::ResetThrottlingPolicy(
-    const NProto::TThrottlingRule& throttlingRule,
+    const NProto::TVolumeThrottlingRule& throttlingRule,
     ui32 throttlingRuleVersion)
 {
     ThrottlingPolicy.Reset(throttlingRule, throttlingRuleVersion);

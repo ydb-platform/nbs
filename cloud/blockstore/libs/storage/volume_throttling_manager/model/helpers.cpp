@@ -8,7 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool RuleHasInvalidCoefficients(const NProto::TThrottlingRule& rule)
+bool RuleHasInvalidCoefficients(const NProto::TVolumeThrottlingRule& rule)
 {
     if (!rule.HasCoefficients()) {
         return false;
@@ -76,7 +76,7 @@ bool RuleHasInvalidCoefficients(const NProto::TThrottlingRule& rule)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ValidateThrottlingConfig(const NProto::TThrottlingConfig& config)
+NProto::TError ValidateThrottlingConfig(const NProto::TVolumeThrottlingConfig& config)
 {
     auto it = FindIf(
         config.GetRules().begin(),

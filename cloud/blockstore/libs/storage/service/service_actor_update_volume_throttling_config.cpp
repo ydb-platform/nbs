@@ -14,17 +14,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUpdateThrottlingConfigActor final
-    : public TActorBootstrapped<TUpdateThrottlingConfigActor>
+class TUpdateVolumeThrottlingConfigActor final
+    : public TActorBootstrapped<TUpdateVolumeThrottlingConfigActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const NProto::TUpdateThrottlingConfigRequest Request;
+    const NProto::TUpdateVolumeThrottlingConfigRequest Request;
 
 public:
-    TUpdateThrottlingConfigActor(
+    TUpdateVolumeThrottlingConfigActor(
         TRequestInfoPtr requestInfo,
-        NProto::TUpdateThrottlingConfigRequest request);
+        NProto::TUpdateVolumeThrottlingConfigRequest request);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -33,7 +33,8 @@ private:
 
 private:
     void HandleUpdateConfigResponse(
-        const TEvThrottlingManager::TEvUpdateConfigResponse::TPtr& ev,
+        const TEvVolumeThrottlingManager::
+            TEvUpdateVolumeThrottlingConfigResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleWakeup(
@@ -46,42 +47,44 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TUpdateThrottlingConfigActor::TUpdateThrottlingConfigActor(
+TUpdateVolumeThrottlingConfigActor::TUpdateVolumeThrottlingConfigActor(
     TRequestInfoPtr requestInfo,
-    NProto::TUpdateThrottlingConfigRequest request)
+    NProto::TUpdateVolumeThrottlingConfigRequest request)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
 {}
 
-void TUpdateThrottlingConfigActor::Bootstrap(const TActorContext& ctx)
+void TUpdateVolumeThrottlingConfigActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    auto request =
-        std::make_unique<TEvThrottlingManager::TEvUpdateConfigRequest>();
+    auto request = std::make_unique<
+        TEvVolumeThrottlingManager::TEvUpdateVolumeThrottlingConfigRequest>();
 
     request->ThrottlingConfig = Request.GetConfig();
 
     NCloud::Send(
         ctx,
-        MakeThrottlingManagerServiceId(),
+        MakeVolumeThrottlingManagerServiceId(),
         std::move(request),
         RequestInfo->Cookie);
 }
 
-void TUpdateThrottlingConfigActor::ReplyAndDie(
+void TUpdateVolumeThrottlingConfigActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
     NCloud::Reply(
         ctx,
         *RequestInfo,
-        std::make_unique<TEvService::TEvUpdateThrottlingConfigResponse>(error));
+        std::make_unique<TEvService::TEvUpdateVolumeThrottlingConfigResponse>(
+            error));
     Die(ctx);
 }
 
-void TUpdateThrottlingConfigActor::HandleUpdateConfigResponse(
-    const TEvThrottlingManager::TEvUpdateConfigResponse::TPtr& ev,
+void TUpdateVolumeThrottlingConfigActor::HandleUpdateConfigResponse(
+    const TEvVolumeThrottlingManager::TEvUpdateVolumeThrottlingConfigResponse::
+        TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -98,7 +101,7 @@ void TUpdateThrottlingConfigActor::HandleUpdateConfigResponse(
     ReplyAndDie(ctx, error);
 }
 
-void TUpdateThrottlingConfigActor::HandleWakeup(
+void TUpdateVolumeThrottlingConfigActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -110,11 +113,11 @@ void TUpdateThrottlingConfigActor::HandleWakeup(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TUpdateThrottlingConfigActor::StateWork)
+STFUNC(TUpdateVolumeThrottlingConfigActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvThrottlingManager::TEvUpdateConfigResponse,
+            TEvVolumeThrottlingManager::TEvUpdateVolumeThrottlingConfigResponse,
             HandleUpdateConfigResponse);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         default:
@@ -130,8 +133,8 @@ STFUNC(TUpdateThrottlingConfigActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TServiceActor::HandleUpdateThrottlingConfig(
-    const TEvService::TEvUpdateThrottlingConfigRequest::TPtr& ev,
+void TServiceActor::HandleUpdateVolumeThrottlingConfig(
+    const TEvService::TEvUpdateVolumeThrottlingConfigRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -142,9 +145,9 @@ void TServiceActor::HandleUpdateThrottlingConfig(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Update Throttling Manager config");
+        "Update Volume Throttling Manager config");
 
-    NCloud::Register<TUpdateThrottlingConfigActor>(
+    NCloud::Register<TUpdateVolumeThrottlingConfigActor>(
         ctx,
         std::move(requestInfo),
         msg->Record);

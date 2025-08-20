@@ -41,7 +41,7 @@ message TSpecificDiskFilter {
 ////////////////////////////////////////////////////////////////////////////////
 // Config
 
-message TThrottlingRule {
+message TVolumeThrottlingRule {
     oneof Selector {
         TDiskFilter Filter = 1;
         TSpecificDiskFilter Disks = 2;
@@ -49,23 +49,23 @@ message TThrottlingRule {
     TVolumePerformanceProfileCoefficients Coefficients = 3;
 }
 
-message TThrottlingConfig {
+message TVolumeThrottlingConfig {
     uint32 Version = 1;
-    repeated TThrottlingRule Rules = 2;
+    repeated TVolumeThrottlingRule Rules = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Update throttling config
 
-message TUpdateThrottlingConfigRequest
+message TUpdateVolumeThrottlingConfigRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
 
-    TThrottlingConfig Config = 2;
+    TVolumeThrottlingConfig Config = 2;
 }
 
-message TUpdateThrottlingConfigResponse
+message TUpdateVolumeThrottlingConfigResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

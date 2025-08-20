@@ -1151,7 +1151,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleUpdateVolatileThrottlingConfig(
-        const TEvThrottlingManager::TEvNotifyVolume::TPtr& ev,
+        const TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     TActorsStack WrapWithShadowDiskActorIfNeeded(

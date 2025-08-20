@@ -32,22 +32,22 @@ protected:
         auto& input = GetInputStream();
         auto& output = GetOutputStream();
 
-        STORAGE_DEBUG("Reading TThrottlingConfig");
+        STORAGE_DEBUG("Reading TVolumeThrottlingConfig");
         auto request =
-            std::make_shared<NProto::TUpdateThrottlingConfigRequest>();
+            std::make_shared<NProto::TUpdateVolumeThrottlingConfigRequest>();
         {
-            NProto::TThrottlingConfig config;
+            NProto::TVolumeThrottlingConfig config;
             ParseFromTextFormat(input, config);
             *request->MutableConfig() = std::move(config);
         }
 
-        STORAGE_DEBUG("Updating TThrottlingConfig");
+        STORAGE_DEBUG("Updating TVolumeThrottlingConfig");
         const auto requestId = GetRequestId(*request);
-        auto result = WaitFor(ClientEndpoint->UpdateThrottlingConfig(
+        auto result = WaitFor(ClientEndpoint->UpdateVolumeThrottlingConfig(
             MakeIntrusive<TCallContext>(requestId),
             std::move(request)));
 
-        STORAGE_DEBUG("Updated TThrottlingConfig");
+        STORAGE_DEBUG("Updated TVolumeThrottlingConfig");
         SerializeToTextFormat(result, output);
 
         if (HasError(result)) {
@@ -76,7 +76,8 @@ private:
 
 TCommandPtr NewUpdateVolumeThrottlingConfigCommand(IBlockStorePtr client)
 {
-    return MakeIntrusive<TUpdateVolumeThrottlingConfigCommand>(std::move(client));
+    return MakeIntrusive<TUpdateVolumeThrottlingConfigCommand>(
+        std::move(client));
 }
 
 }   // namespace NCloud::NBlockStore::NClient

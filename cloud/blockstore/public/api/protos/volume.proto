@@ -654,7 +654,7 @@ message TStatVolumeRequest
 message TVolumeVolatileThrottlingInfo
 {
     uint32 Version = 1;
-    TThrottlingRule AppliedRule = 2;
+    TVolumeThrottlingRule AppliedRule = 2;
     TVolumePerformanceProfile ActualPerformanceProfile = 3;
 }
 

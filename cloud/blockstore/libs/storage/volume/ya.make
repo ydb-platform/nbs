@@ -34,7 +34,7 @@ SRCS(
     volume_actor_stats.cpp
     volume_actor_statvolume.cpp
     volume_actor_throttling.cpp
-    volume_actor_update_throttling_config.cpp
+    volume_actor_update_volume_throttling_config.cpp
     volume_actor_updateconfig.cpp
     volume_actor_updatestartpartitionsneeded.cpp
     volume_actor_updateusedblocks.cpp

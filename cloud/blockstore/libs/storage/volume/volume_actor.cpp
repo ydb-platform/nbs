@@ -1064,7 +1064,7 @@ STFUNC(TVolumeActor::StateWork)
             HandlePartCountersCombined);
 
         HFunc(
-            TEvThrottlingManager::TEvNotifyVolume,
+            TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification,
             HandleUpdateVolatileThrottlingConfig);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);

@@ -10,6 +10,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NActors::IActorPtr CreateThrottlingManager(TDuration cycleTime);
+NActors::IActorPtr CreateVolumeThrottlingManager(TDuration cycleTime);
 
 }   // namespace NCloud::NBlockStore::NStorage

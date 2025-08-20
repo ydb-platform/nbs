@@ -298,9 +298,9 @@ service TBlockStoreService
     // Throttling manager
     //
 
-    rpc UpdateThrottlingConfig(TUpdateThrottlingConfigRequest) returns (TUpdateThrottlingConfigResponse) {
+    rpc UpdateVolumeThrottlingConfig(TUpdateVolumeThrottlingConfigRequest) returns (TUpdateVolumeThrottlingConfigResponse) {
         option (google.api.http) = {
-            post: "/update_throttling_config"
+            post: "/update_volume_throttling_config"
             body: "*"
         };
     }

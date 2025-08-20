@@ -2,8 +2,8 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -14,14 +14,11 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEvThrottlingManager
+struct TEvVolumeThrottlingManager
 {
-    using TThrottlingItems =
-        google::protobuf::RepeatedPtrField<NProto::TThrottlingRule>;
-
     struct TUpdateVolumeThrottlingConfigRequest
     {
-        NProto::TThrottlingConfig ThrottlingConfig;
+        NProto::TVolumeThrottlingConfig ThrottlingConfig;
     };
 
     struct TUpdateVolumeThrottlingConfigResponse
@@ -29,28 +26,35 @@ struct TEvThrottlingManager
         NProto::TError Error;
     };
 
-    struct TNotifyVolume
+    struct TVolumeThrottlingConfigNotification
     {
-        NProto::TThrottlingConfig Config;
+        NProto::TVolumeThrottlingConfig Config;
     };
 
     enum EEvents
     {
         EvBegin = EventSpaceBegin(TEvents::ES_USERSPACE),
 
-        EvNotifyVolume,
+        EvVolumeThrottlingConfigNotification,
 
-        EvUpdateConfigRequest,
-        EvUpdateConfigResponse,
+        EvUpdateVolumeThrottlingConfigRequest,
+        EvUpdateVolumeThrottlingConfigResponse,
 
         EvEnd
     };
 
-    using TEvUpdateConfigRequest = TRequestEvent<TUpdateVolumeThrottlingConfigRequest, EvUpdateConfigRequest>;
-    using TEvUpdateConfigResponse = TRequestEvent<TUpdateVolumeThrottlingConfigResponse, EvUpdateConfigResponse>;
-    using TEvNotifyVolume = TRequestEvent<TNotifyVolume, EvNotifyVolume>;
+    using TEvVolumeThrottlingConfigNotification = TRequestEvent<
+        TVolumeThrottlingConfigNotification,
+        EvVolumeThrottlingConfigNotification>;
+
+    using TEvUpdateVolumeThrottlingConfigRequest = TRequestEvent<
+        TUpdateVolumeThrottlingConfigRequest,
+        EvUpdateVolumeThrottlingConfigRequest>;
+    using TEvUpdateVolumeThrottlingConfigResponse = TRequestEvent<
+        TUpdateVolumeThrottlingConfigResponse,
+        EvUpdateVolumeThrottlingConfigResponse>;
 };
 
-NActors::TActorId MakeThrottlingManagerServiceId();
+NActors::TActorId MakeVolumeThrottlingManagerServiceId();
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -6,7 +6,7 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TActorId MakeThrottlingManagerServiceId()
+TActorId MakeVolumeThrottlingManagerServiceId()
 {
     return TActorId(0, "blk-thrtman");
 }

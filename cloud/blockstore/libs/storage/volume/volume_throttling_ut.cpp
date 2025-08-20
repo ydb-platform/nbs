@@ -33,12 +33,12 @@ const ui64 maxIops = 100;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TThrottlingRule CreateSpecificDisksRule(
+NProto::TVolumeThrottlingRule CreateSpecificDisksRule(
     const TVector<TString>& diskIds,
     double readBwCoef = 1.0,
     double writeBwCoef = 1.0)
 {
-    NProto::TThrottlingRule rule;
+    NProto::TVolumeThrottlingRule rule;
     for (const auto& id: diskIds) {
         rule.MutableDisks()->AddDiskIds(id);
     }
@@ -47,14 +47,14 @@ NProto::TThrottlingRule CreateSpecificDisksRule(
     return rule;
 }
 
-NProto::TThrottlingRule CreateFilterRule(
+NProto::TVolumeThrottlingRule CreateFilterRule(
     const TVector<TString>& cloudIds,
     const TVector<TString>& folderIds,
     const TVector<NProto::EStorageMediaKind>& mediaKinds,
     double readBwCoef = 1.0,
     double writeBwCoef = 1.0)
 {
-    NProto::TThrottlingRule rule;
+    NProto::TVolumeThrottlingRule rule;
     auto* filter = rule.MutableFilter();
     for (const auto& id: cloudIds) {
         filter->AddCloudIds(id);
@@ -108,14 +108,14 @@ TVolumeClient CreateVolume(
 void SendThrottlingConfig(
     TVolumeClient& volume,
     ui32 version,
-    const TVector<NProto::TThrottlingRule>& rules)
+    const TVector<NProto::TVolumeThrottlingRule>& rules)
 {
-    auto notify = std::make_unique<TEvThrottlingManager::TEvNotifyVolume>();
-    notify->Config.SetVersion(version);
+    auto notification = std::make_unique<TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification>();
+    notification->Config.SetVersion(version);
     for (const auto& rule: rules) {
-        *notify->Config.AddRules() = rule;
+        *notification->Config.AddRules() = rule;
     }
-    volume.SendToPipe(std::move(notify));
+    volume.SendToPipe(std::move(notification));
 }
 
 NProto::TVolumeVolatileThrottlingInfo GetVolatileThrottlingInfo(

@@ -334,17 +334,18 @@ public:
                 appData->UserPoolId));
 
         //
-        // Throttling Manager
+        // Volume Throttling Manager
         //
 
-        if (Args.StorageConfig->GetThrottlingManagerEnabled()) {
-            auto throttlingManagerService = CreateThrottlingManager(
-                Args.StorageConfig->GetThrottlingManagerCycleTimeSeconds());
+        if (Args.StorageConfig->GetVolumeThrottlingManagerEnabled()) {
+            auto volumeThrottlingManagerService = CreateVolumeThrottlingManager(
+                Args.StorageConfig
+                    ->GetVolumeThrottlingManagerCycleTimeSeconds());
 
             setup->LocalServices.emplace_back(
-                MakeThrottlingManagerServiceId(),
+                MakeVolumeThrottlingManagerServiceId(),
                 TActorSetupCmd(
-                    throttlingManagerService.release(),
+                    volumeThrottlingManagerService.release(),
                     TMailboxType::Simple,
                     appData->BatchPoolId));
         }

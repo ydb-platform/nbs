@@ -83,7 +83,7 @@ SRCS(
     service_actor_sync_manually_preempted_volumes.cpp
     service_actor_unmount.cpp
     service_actor_update_disk_registry_config.cpp
-    service_actor_update_throttling_config.cpp
+    service_actor_update_volume_throttling_config.cpp
     service_actor_volume_binding.cpp
     service_actor_writeblocks.cpp
     service_counters.cpp

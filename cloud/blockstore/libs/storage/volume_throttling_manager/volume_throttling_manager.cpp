@@ -21,15 +21,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlingManagerActor final
-    : public NActors::TActorBootstrapped<TThrottlingManagerActor>
+class TVolumeThrottlingManagerActor final
+    : public NActors::TActorBootstrapped<TVolumeThrottlingManagerActor>
 {
 private:
     const TDuration CycleTime;
-    NProto::TThrottlingConfig ThrottlingConfig;
+    NProto::TVolumeThrottlingConfig ThrottlingConfig;
 
 public:
-    explicit TThrottlingManagerActor(TDuration cycleTime)
+    explicit TVolumeThrottlingManagerActor(TDuration cycleTime)
         : CycleTime(cycleTime)
     {}
 
@@ -40,7 +40,7 @@ public:
     }
 
 private:
-    NProto::TError UpdateConfig(NProto::TThrottlingConfig newConfig)
+    NProto::TError UpdateConfig(NProto::TVolumeThrottlingConfig newConfig)
     {
         if (ThrottlingConfig.GetVersion() >= newConfig.GetVersion()) {
             return MakeError(
@@ -81,7 +81,8 @@ private:
     {
         switch (ev->GetTypeRewrite()) {
             HFunc(
-                TEvThrottlingManager::TEvUpdateConfigRequest,
+                TEvVolumeThrottlingManager::
+                    TEvUpdateVolumeThrottlingConfigRequest,
                 HandleUpdateConfig);
             HFunc(
                 TEvServicePrivate::TEvListMountedVolumesResponse,
@@ -97,13 +98,15 @@ private:
     }
 
     void HandleUpdateConfig(
-        TEvThrottlingManager::TEvUpdateConfigRequest::TPtr& ev,
+        TEvVolumeThrottlingManager::TEvUpdateVolumeThrottlingConfigRequest::
+            TPtr& ev,
         const NActors::TActorContext& ctx)
     {
         auto* event = ev.Get();
 
         auto response =
-            std::make_unique<TEvThrottlingManager::TEvUpdateConfigResponse>();
+            std::make_unique<TEvVolumeThrottlingManager::
+                                 TEvUpdateVolumeThrottlingConfigResponse>();
         response->Error = UpdateConfig(event->Get()->ThrottlingConfig);
 
         if (!HasError(response->Error)) {
@@ -128,7 +131,8 @@ private:
             }
 
             auto request =
-                std::make_unique<TEvThrottlingManager::TEvNotifyVolume>();
+                std::make_unique<TEvVolumeThrottlingManager::
+                                     TEvVolumeThrottlingConfigNotification>();
             request->Config = ThrottlingConfig;
 
             // No need to use VolumeProxy here
@@ -149,10 +153,9 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NActors::IActorPtr CreateThrottlingManager(TDuration cycleTime)
+NActors::IActorPtr CreateVolumeThrottlingManager(TDuration cycleTime)
 {
-    // TODO: form TThrottlerManagerConfig from storage config
-    return std::make_unique<TThrottlingManagerActor>(cycleTime);
+    return std::make_unique<TVolumeThrottlingManagerActor>(cycleTime);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

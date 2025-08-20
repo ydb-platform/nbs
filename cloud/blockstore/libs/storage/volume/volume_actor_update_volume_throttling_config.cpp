@@ -50,26 +50,26 @@ bool DiskFilterApplies(
     return true;
 }
 
-using TThrottlingRule = ::google::protobuf::RepeatedPtrField<
-    NCloud::NBlockStore::NProto::TThrottlingRule>;
+using TVolumeThrottlingRule = ::google::protobuf::RepeatedPtrField<
+    NCloud::NBlockStore::NProto::TVolumeThrottlingRule>;
 
 auto GetThrottlingRuleForVolume(
-    const TThrottlingRule& rules,
+    const TVolumeThrottlingRule& rules,
     const TString& diskId,
     const TString& cloudId,
     const TString& folderId,
-    const NProto::EStorageMediaKind& mediaKind) -> NProto::TThrottlingRule
+    const NProto::EStorageMediaKind& mediaKind) -> NProto::TVolumeThrottlingRule
 {
-    const NProto::TThrottlingRule* resultPtr = nullptr;
+    const NProto::TVolumeThrottlingRule* resultPtr = nullptr;
 
     for (const auto& rule: rules) {
         switch (rule.GetSelectorCase()) {
-            case NCloud::NBlockStore::NProto::TThrottlingRule::kDisks:
+            case NCloud::NBlockStore::NProto::TVolumeThrottlingRule::kDisks:
                 if (SpecificDiskFilterApplies(rule.GetDisks(), diskId)) {
                     return rule;
                 }
                 break;
-            case NCloud::NBlockStore::NProto::TThrottlingRule::kFilter:
+            case NCloud::NBlockStore::NProto::TVolumeThrottlingRule::kFilter:
                 if (DiskFilterApplies(
                         rule.GetFilter(),
                         cloudId,
@@ -84,14 +84,15 @@ auto GetThrottlingRuleForVolume(
         }
     }
 
-    return resultPtr ? *resultPtr : NProto::TThrottlingRule{};
+    return resultPtr ? *resultPtr : NProto::TVolumeThrottlingRule{};
 }
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
-    const TEvThrottlingManager::TEvNotifyVolume::TPtr& ev,
+    const TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification::
+        TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     const auto& throttlingConfig = ev->Get()->Config;
@@ -106,7 +107,7 @@ void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Got TThrottlingConfig version less then known: (%lu) <= (%lu): ",
+            "Got TVolumeThrottlingConfig version less then known: (%lu) <= (%lu): ",
             throttlingConfig.GetVersion(),
             State->GetThrottlingPolicy().GetVolatileThrottlingVersion());
         return;

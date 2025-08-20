@@ -73,7 +73,7 @@ public:
 
     void Reset(
         const NProto::TVolumePerformanceProfile& config,
-        const NProto::TThrottlingRule& throttlingRule,
+        const NProto::TVolumeThrottlingRule& throttlingRule,
         ui32 coefficientsVersion,
         TDuration maxDelay,
         ui32 maxWriteCostMultiplier,
@@ -85,7 +85,7 @@ public:
         const TThrottlerConfig& throttlerConfig);
     void Reset(const TVolumeThrottlingPolicy& policy);
     void Reset(
-        const NProto::TThrottlingRule& throttlingRule,
+        const NProto::TVolumeThrottlingRule& throttlingRule,
         ui32 coefficientsVersion);
 
 public:
@@ -120,7 +120,7 @@ public:
     }
 
     ui32 GetVolatileThrottlingVersion() const;
-    const NProto::TThrottlingRule& GetVolatileThrottlingRule() const;
+    const NProto::TVolumeThrottlingRule& GetVolatileThrottlingRule() const;
     NProto::TVolumePerformanceProfile GetCurrentPerformanceProfile() const;
 
     // the following funcs were made public to display the results on monpages

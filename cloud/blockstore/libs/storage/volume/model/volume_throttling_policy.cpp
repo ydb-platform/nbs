@@ -69,7 +69,7 @@ TDuration CalculateBoostRefillTime(const NProto::TVolumePerformanceProfile& conf
 struct TVolumeThrottlingPolicy::TImpl
 {
     const NProto::TVolumePerformanceProfile Config;
-    const NProto::TThrottlingRule ThrottlingRule;
+    const NProto::TVolumeThrottlingRule ThrottlingRule;
     const ui32 PolicyVersion;
     const ui32 VolatileVersion;
     const TDuration MaxDelay;
@@ -86,8 +86,8 @@ struct TVolumeThrottlingPolicy::TImpl
     double UsedBandwidthQuota = 0;
 
     TImpl(
-            const NProto::TVolumePerformanceProfile& config,
-            const NProto::TThrottlingRule& throttlingRule,
+            NProto::TVolumePerformanceProfile config,
+            NProto::TVolumeThrottlingRule throttlingRule,
             const ui32 policyVersion,
             const ui32 volatileVersion,
             const TDuration maxDelay,
@@ -95,8 +95,8 @@ struct TVolumeThrottlingPolicy::TImpl
             const ui64 defaultPostponedRequestWeight,
             const TDuration initialBoostBudget,
             const bool useDiskSpaceScore)
-        : Config(config)
-        , ThrottlingRule(throttlingRule)
+        : Config(std::move(config))
+        , ThrottlingRule(std::move(throttlingRule))
         , PolicyVersion(policyVersion)
         , VolatileVersion(volatileVersion)
         , MaxDelay(maxDelay)
@@ -387,7 +387,7 @@ TVolumeThrottlingPolicy::~TVolumeThrottlingPolicy()
 
 void TVolumeThrottlingPolicy::Reset(
     const NProto::TVolumePerformanceProfile& config,
-    const NProto::TThrottlingRule& throttlingRule,
+    const NProto::TVolumeThrottlingRule& throttlingRule,
     ui32 coefficientsVersion,
     TDuration maxDelay,
     ui32 maxWriteCostMultiplier,
@@ -412,7 +412,7 @@ void TVolumeThrottlingPolicy::Reset(
     const TThrottlerConfig& throttlerConfig)
 {
     auto coefficients = Impl ? Impl->ThrottlingRule
-                             : NProto::TThrottlingRule{};
+                             : NProto::TVolumeThrottlingRule{};
     auto volatileVersion = Impl ? Impl->VolatileVersion : 0;
     Reset(
         config,
@@ -440,7 +440,7 @@ void TVolumeThrottlingPolicy::Reset(
 }
 
 void TVolumeThrottlingPolicy::Reset(
-    const NProto::TThrottlingRule& throttlingRule,
+    const NProto::TVolumeThrottlingRule& throttlingRule,
     ui32 volatileVersion)
 {
     Reset(
@@ -525,7 +525,7 @@ ui32 TVolumeThrottlingPolicy::GetVolatileThrottlingVersion() const
     return Impl->VolatileVersion;
 }
 
-const NProto::TThrottlingRule& TVolumeThrottlingPolicy::GetVolatileThrottlingRule() const {
+const NProto::TVolumeThrottlingRule& TVolumeThrottlingPolicy::GetVolatileThrottlingRule() const {
     return Impl->ThrottlingRule;
 }
 

@@ -5,6 +5,6 @@
 namespace NCloud::NBlockStore::NStorage {
 
 NProto::TError ValidateThrottlingConfig(
-    const NProto::TThrottlingConfig& config);
+    const NProto::TVolumeThrottlingConfig& config);
 
 }   // namespace NCloud::NBlockStore::NStorage

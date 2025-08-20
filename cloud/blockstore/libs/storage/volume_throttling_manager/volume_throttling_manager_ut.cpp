@@ -49,10 +49,10 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime()
     auto runtime = std::make_unique<TTestBasicRuntime>(nodeCount);
 
     auto throttlingManager =
-        CreateThrottlingManager(TDuration::Seconds(defaultCycleSeconds));
+        CreateVolumeThrottlingManager(TDuration::Seconds(defaultCycleSeconds));
 
     runtime->AddLocalService(
-        MakeThrottlingManagerServiceId(),
+        MakeVolumeThrottlingManagerServiceId(),
         TActorSetupCmd(throttlingManager.release(), TMailboxType::Simple, 0));
 
     // Don't care what actor is behind StorageServiceId as we'll emulate
@@ -88,20 +88,23 @@ Y_UNIT_TEST_SUITE(TThrottlingManagerTest)
 
         // Send update config request with version 1
         auto updateRequest =
-            std::make_unique<TEvThrottlingManager::TEvUpdateConfigRequest>();
+            std::make_unique<TEvVolumeThrottlingManager::
+                                 TEvUpdateVolumeThrottlingConfigRequest>();
         updateRequest->ThrottlingConfig.SetVersion(1);
 
         auto sender = runtime->AllocateEdgeActor();
         runtime->Send(
             new IEventHandle(
-                MakeThrottlingManagerServiceId(),
+                MakeVolumeThrottlingManagerServiceId(),
                 sender,
                 updateRequest.release()),
             0,
             true);
 
-        auto response = runtime->GrabEdgeEvent<
-            TEvThrottlingManager::TEvUpdateConfigResponse>();
+        auto response =
+            runtime
+                ->GrabEdgeEvent<TEvVolumeThrottlingManager::
+                                    TEvUpdateVolumeThrottlingConfigResponse>();
         UNIT_ASSERT_C(!HasError(response->Error), "Error: " << response->Error);
     }
 
@@ -111,17 +114,19 @@ Y_UNIT_TEST_SUITE(TThrottlingManagerTest)
 
         // Send valid config first
         {
-            auto updateRequest = std::make_unique<
-                TEvThrottlingManager::TEvUpdateConfigRequest>();
+            auto updateRequest =
+                std::make_unique<TEvVolumeThrottlingManager::
+                                     TEvUpdateVolumeThrottlingConfigRequest>();
             updateRequest->ThrottlingConfig.SetVersion(10);
 
             auto sender = runtime->AllocateEdgeActor();
             runtime->Send(new IEventHandle(
-                MakeThrottlingManagerServiceId(),
+                MakeVolumeThrottlingManagerServiceId(),
                 sender,
                 updateRequest.release()));
             auto response = runtime->GrabEdgeEvent<
-                TEvThrottlingManager::TEvUpdateConfigResponse>();
+                TEvVolumeThrottlingManager::
+                    TEvUpdateVolumeThrottlingConfigResponse>();
             UNIT_ASSERT_C(
                 !HasError(response->Error),
                 "Error: " << response->Error);
@@ -129,18 +134,20 @@ Y_UNIT_TEST_SUITE(TThrottlingManagerTest)
 
         // Send older version
         {
-            auto updateRequest = std::make_unique<
-                TEvThrottlingManager::TEvUpdateConfigRequest>();
+            auto updateRequest =
+                std::make_unique<TEvVolumeThrottlingManager::
+                                     TEvUpdateVolumeThrottlingConfigRequest>();
             updateRequest->ThrottlingConfig.SetVersion(5);
 
             auto sender = runtime->AllocateEdgeActor();
             runtime->Send(new IEventHandle(
-                MakeThrottlingManagerServiceId(),
+                MakeVolumeThrottlingManagerServiceId(),
                 sender,
                 updateRequest.release()));
 
             auto response = runtime->GrabEdgeEvent<
-                TEvThrottlingManager::TEvUpdateConfigResponse>();
+                TEvVolumeThrottlingManager::
+                    TEvUpdateVolumeThrottlingConfigResponse>();
             UNIT_ASSERT(HasError(response->Error));
             UNIT_ASSERT_VALUES_EQUAL(E_FAIL, response->Error.GetCode());
             UNIT_ASSERT_STRING_CONTAINS(
@@ -182,7 +189,8 @@ Y_UNIT_TEST_SUITE(TThrottlingManagerTest)
 
                         return true;
                     }
-                    case TEvThrottlingManager::EvNotifyVolume: {
+                    case TEvVolumeThrottlingManager::
+                        EvVolumeThrottlingConfigNotification: {
                         UNIT_ASSERT_EQUAL(
                             event->Recipient.NodeId(),
                             runtime.GetNodeId(0));
@@ -196,17 +204,19 @@ Y_UNIT_TEST_SUITE(TThrottlingManagerTest)
 
         // Setup config
         {
-            auto updateRequest = std::make_unique<
-                TEvThrottlingManager::TEvUpdateConfigRequest>();
+            auto updateRequest =
+                std::make_unique<TEvVolumeThrottlingManager::
+                                     TEvUpdateVolumeThrottlingConfigRequest>();
             updateRequest->ThrottlingConfig.SetVersion(1);
 
             auto sender = runtime->AllocateEdgeActor();
             runtime->Send(new IEventHandle(
-                MakeThrottlingManagerServiceId(),
+                MakeVolumeThrottlingManagerServiceId(),
                 sender,
                 updateRequest.release()));
             auto response = runtime->GrabEdgeEvent<
-                TEvThrottlingManager::TEvUpdateConfigResponse>();
+                TEvVolumeThrottlingManager::
+                    TEvUpdateVolumeThrottlingConfigResponse>();
             UNIT_ASSERT_C(
                 !HasError(response->Error),
                 "Error: " << response->Error);
@@ -231,21 +241,23 @@ Y_UNIT_TEST_SUITE(TThrottlingManagerTest)
         ui32 version = 1;
         auto testInvalidConfig = [&](auto&&... configSetup)
         {
-            auto updateRequest = std::make_unique<
-                TEvThrottlingManager::TEvUpdateConfigRequest>();
+            auto updateRequest =
+                std::make_unique<TEvVolumeThrottlingManager::
+                                     TEvUpdateVolumeThrottlingConfigRequest>();
             updateRequest->ThrottlingConfig.SetVersion(version++);
             (configSetup(*updateRequest->ThrottlingConfig.AddRules()), ...);
 
             runtime->Send(
                 new IEventHandle(
-                    MakeThrottlingManagerServiceId(),
+                    MakeVolumeThrottlingManagerServiceId(),
                     sender,
                     updateRequest.release()),
                 0,
                 true);
 
             auto response = runtime->GrabEdgeEvent<
-                TEvThrottlingManager::TEvUpdateConfigResponse>();
+                TEvVolumeThrottlingManager::
+                    TEvUpdateVolumeThrottlingConfigResponse>();
             UNIT_ASSERT(HasError(response.Get()->Error));
             UNIT_ASSERT_VALUES_EQUAL(
                 E_ARGUMENT,
@@ -254,7 +266,7 @@ Y_UNIT_TEST_SUITE(TThrottlingManagerTest)
 
         // Test negative coefficient
         testInvalidConfig(
-            [](NProto::TThrottlingRule& rule)
+            [](NProto::TVolumeThrottlingRule& rule)
             {
                 rule.MutableDisks()->AddDiskIds("vol0");
                 rule.MutableCoefficients()->SetMaxReadBandwidth(-0.5);
@@ -262,7 +274,7 @@ Y_UNIT_TEST_SUITE(TThrottlingManagerTest)
 
         // Test coefficient > 1.0
         testInvalidConfig(
-            [](NProto::TThrottlingRule& rule)
+            [](NProto::TVolumeThrottlingRule& rule)
             {
                 rule.MutableDisks()->AddDiskIds("vol0");
                 rule.MutableCoefficients()->SetMaxReadBandwidth(1.5);
@@ -270,7 +282,7 @@ Y_UNIT_TEST_SUITE(TThrottlingManagerTest)
 
         // Test multiple invalid coefficients in one rule
         testInvalidConfig(
-            [](NProto::TThrottlingRule& rule)
+            [](NProto::TVolumeThrottlingRule& rule)
             {
                 rule.MutableDisks()->AddDiskIds("vol0");
                 rule.MutableCoefficients()->SetMaxReadBandwidth(0.5);
@@ -280,13 +292,13 @@ Y_UNIT_TEST_SUITE(TThrottlingManagerTest)
 
         // Test valid rule with invalid rule in same config
         testInvalidConfig(
-            [](NProto::TThrottlingRule& rule)
+            [](NProto::TVolumeThrottlingRule& rule)
             {
                 // Valid rule
                 rule.MutableDisks()->AddDiskIds("vol1");
                 rule.MutableCoefficients()->SetMaxReadBandwidth(0.5);
             },
-            [](NProto::TThrottlingRule& rule)
+            [](NProto::TVolumeThrottlingRule& rule)
             {
                 // Invalid rule
                 rule.MutableDisks()->AddDiskIds("vol2");

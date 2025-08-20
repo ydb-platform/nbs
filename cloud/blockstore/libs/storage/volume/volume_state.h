@@ -375,7 +375,7 @@ public:
     void AddMetaHistory(TVolumeMetaHistoryItem meta);
     void ResetThrottlingPolicy(const NProto::TVolumePerformanceProfile& pp);
     void ResetThrottlingPolicy(
-        const NProto::TThrottlingRule& throttlingRule,
+        const NProto::TVolumeThrottlingRule& throttlingRule,
         ui32 throttlingRuleVersion);
     void Reset();
 
