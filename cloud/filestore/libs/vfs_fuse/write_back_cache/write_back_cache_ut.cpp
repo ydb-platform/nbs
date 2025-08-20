@@ -909,7 +909,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         TBootstrap b;
 
-        int writeAttempts = 0;
+        std::atomic_int writeAttempts = 0;
 
         auto prevWriteDataHandler = std::move(b.Session->WriteDataHandler);
         b.Session->WriteDataHandler = [&](auto context, auto request) {
@@ -925,8 +925,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 12, "hello");
         auto flushFuture = b.Cache.FlushData(1);
 
-        UNIT_ASSERT(!flushFuture.HasValue());
+        // Flush starts synchronously in FlushData call - at least one
+        // WriteData request should be made
         UNIT_ASSERT_GE(writeAttempts, 0);
+
+        // WriteData request from Flush succeeds after WriteAttemptsThreshold
+        // attempts. By default, Flush is retried with a period of 100 ms - so
+        // Flush is expected to complete after 200 ms since calling FlushData.
+        UNIT_ASSERT(!flushFuture.HasValue());
 
         UNIT_ASSERT(flushFuture.Wait(MaxFlushWait));
         UNIT_ASSERT_EQUAL(writeAttempts, WriteAttemptsThreshold);
