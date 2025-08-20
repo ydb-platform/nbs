@@ -110,6 +110,7 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::DescribeVolumeModel:
         case EBlockStoreRequest::DescribePlacementGroup:
         case EBlockStoreRequest::DescribeEndpoint:
+        case EBlockStoreRequest::ListDisksStates:
             return CreatePermissionList({EPermission::Get});
         case EBlockStoreRequest::ListVolumes:
         case EBlockStoreRequest::ListPlacementGroups:

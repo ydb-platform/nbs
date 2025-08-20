@@ -460,6 +460,7 @@ public:
 
     NProto::TError GetDiskInfo(const TDiskId& diskId, TDiskInfo& diskInfo) const;
     NProto::EDiskState GetDiskState(const TDiskId& diskId) const;
+
     NProto::TError GetShadowDiskId(
         const TDiskId& sourceDiskId,
         const TCheckpointId& checkpointId,
@@ -577,6 +578,8 @@ public:
         TDiskNotificationResult notification);
 
     const TVector<TDiskStateUpdate>& GetDiskStateUpdates() const;
+
+    TVector<NProto::TDiskState> ListDisksStates() const;
 
     void DeleteDiskStateUpdate(TDiskRegistryDatabase& db, ui64 maxSeqNo);
 
