@@ -214,16 +214,10 @@ public:
      */
     static TVector<TWriteDataEntryPart> CalculateDataPartsToFlush(
         const TDeque<TWriteDataEntry*>& entries,
-        size_t count);
+        size_t entryCount);
 
     static bool IsSorted(const TVector<TWriteDataEntryPart>& parts);
     static bool IsContiguousSequence(const TVector<TWriteDataEntryPart>& parts);
-
-private:
-    struct TPoint;
-
-    static TVector<TWriteDataEntryPart> CalculateDataParts(
-        TVector<TPoint> points);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

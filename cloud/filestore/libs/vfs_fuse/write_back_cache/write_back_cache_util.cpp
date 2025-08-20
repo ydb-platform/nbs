@@ -8,50 +8,21 @@
 
 namespace NCloud::NFileStore::NFuse {
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TWriteBackCache::TUtil::TPoint
+template <class TEntry>
+struct TPoint
 {
-    const TWriteDataEntry* Entry = nullptr;
+    const TEntry* Entry = nullptr;
     ui64 Offset = 0;
     bool IsEnd = false;
     size_t Order = 0;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-// static
-auto TWriteBackCache::TUtil::CalculateDataPartsToRead(
-    const TDeque<TWriteDataEntry*>& entries,
-    ui64 startingFromOffset,
-    ui64 length) -> TVector<TWriteDataEntryPart>
-{
-    Y_ABORT_UNLESS(length > 0);
-
-    TVector<TPoint> points(Reserve(2*entries.size()));
-
-    for (size_t i = 0; i < entries.size(); i++) {
-        const auto* entry = entries[i];
-
-        auto pointBegin = entry->Offset();
-        auto pointEnd = entry->End();
-
-        // intersect with [startingFromOffset, length)
-        pointBegin = Max(pointBegin, startingFromOffset);
-        pointEnd = Min(pointEnd, startingFromOffset + length);
-
-        if (pointBegin < pointEnd) {
-            points.emplace_back(entry, pointBegin, false, i);
-            points.emplace_back(entry, pointEnd, true, i);
-        }
-    }
-
-    return CalculateDataParts(std::move(points));
-}
-
-// static
-auto TWriteBackCache::TUtil::CalculateDataParts(
-    TVector<TPoint> points) -> TVector<TWriteDataEntryPart>
+template <class TResult, class TEntry>
+TVector<TResult> CalculateDataParts(TVector<TPoint<TEntry>> points)
 {
     if (points.empty()) {
         return {};
@@ -61,12 +32,12 @@ auto TWriteBackCache::TUtil::CalculateDataParts(
         return l.Offset < r.Offset;
     });
 
-    TVector<TWriteDataEntryPart> res(Reserve(points.size()));
+    TVector<TResult> res(Reserve(points.size()));
 
     const auto& heapComparator = [] (const auto& l, const auto& r) {
         return l.Order < r.Order;
     };
-    TVector<TPoint> heap;
+    TVector<TPoint<TEntry>> heap;
 
     const auto cutTop = [&res, &heap] (auto lastOffset, auto currOffset)
     {
@@ -135,6 +106,39 @@ auto TWriteBackCache::TUtil::CalculateDataParts(
     }
 
     return res;
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+// static
+auto TWriteBackCache::TUtil::CalculateDataPartsToRead(
+    const TDeque<TWriteDataEntry*>& entries,
+    ui64 startingFromOffset,
+    ui64 length) -> TVector<TWriteDataEntryPart>
+{
+    Y_ABORT_UNLESS(length > 0);
+
+    TVector<TPoint<TWriteDataEntry>> points(Reserve(2*entries.size()));
+
+    for (size_t i = 0; i < entries.size(); i++) {
+        const auto* entry = entries[i];
+
+        auto pointBegin = entry->Offset();
+        auto pointEnd = entry->End();
+
+        // intersect with [startingFromOffset, length)
+        pointBegin = Max(pointBegin, startingFromOffset);
+        pointEnd = Min(pointEnd, startingFromOffset + length);
+
+        if (pointBegin < pointEnd) {
+            points.emplace_back(entry, pointBegin, false, i);
+            points.emplace_back(entry, pointEnd, true, i);
+        }
+    }
+
+    return CalculateDataParts<TWriteDataEntryPart>(std::move(points));
 }
 
 // static
@@ -212,23 +216,24 @@ size_t TWriteBackCache::TUtil::CalculateEntriesCountToFlush(
     Y_ABORT_UNLESS(maxSumWriteRequestsSize > 0);
 
     NKikimr::TIntervalSet<ui64, 16> intervalSet;
-    ui64 requestsCount = 0;
-    ui64 bytesCount = 0;
+    ui64 estimatedRequestCount = 0;
+    ui64 estimatedByteCount = 0;
 
     for (size_t i = 0; i < entries.size(); i++) {
         const auto* entry = entries[i];
 
-        ui64 size = entry->GetBuffer().Size();
-        Y_ABORT_UNLESS(size > 0);
+        ui64 bufferSize = entry->GetBuffer().Size();
+        Y_ABORT_UNLESS(bufferSize > 0);
 
         intervalSet.Add(entry->Offset(), entry->End());
 
-        // Value bytesCount has to be calculated using O(N) algorithm
+        // Value byteCount has to be calculated using O(N) algorithm
         // because TIntervalSet does not track the sum of lengths of intervals.
-        // Same for requestsCount.
+        // Same for requestCount.
         //
         // An euristic is used here to reduce complexity:
-        // - Pessimistically increase requestsCount and sumLength
+        // - Pessimistically estimate byteCount and requestCount values using
+        //   an assumption that the intervals do not intersect nor touch
         // - Calculate the actual values only when the limits are exceeded
         //
         // Notes:
@@ -236,28 +241,31 @@ size_t TWriteBackCache::TUtil::CalculateEntriesCountToFlush(
         // - maxSumWriteRequestsSize (default: 16MiB) is expected to be times
         //   larger than maxWriteRequestSize (default: 1MiB) and the size of
         //   TWriteDataEntry buffer (maximal: 1MiB)
-        requestsCount += (size - 1) / maxWriteRequestSize + 1;
-        bytesCount += size;
+        estimatedRequestCount += (bufferSize - 1) / maxWriteRequestSize + 1;
+        estimatedByteCount += bufferSize;
 
-        if (requestsCount > maxWriteRequestsCount ||
-            bytesCount > maxSumWriteRequestsSize)
+        if (estimatedRequestCount > maxWriteRequestsCount ||
+            estimatedByteCount > maxSumWriteRequestsSize)
         {
             // Calculate the actual values
-            requestsCount = 0;
-            bytesCount = 0;
+            ui64 requestCount = 0;
+            ui64 byteCount = 0;
 
             for (const auto& interval: intervalSet) {
                 auto size = interval.second - interval.first;
-                requestsCount += (size - 1) / maxWriteRequestSize + 1;
-                bytesCount += size;
+                requestCount += (size - 1) / maxWriteRequestSize + 1;
+                byteCount += size;
             }
 
             // Still exceed the limits - don't accept more entries
-            if (requestsCount > maxWriteRequestsCount ||
-                bytesCount > maxSumWriteRequestsSize)
+            if (requestCount > maxWriteRequestsCount ||
+                byteCount > maxSumWriteRequestsSize)
             {
                 return i;
             }
+
+            estimatedRequestCount = requestCount;
+            estimatedByteCount = byteCount;
         }
     }
 
@@ -267,14 +275,14 @@ size_t TWriteBackCache::TUtil::CalculateEntriesCountToFlush(
 // static
 auto TWriteBackCache::TUtil::CalculateDataPartsToFlush(
     const TDeque<TWriteDataEntry*>& entries,
-    size_t count) -> TVector<TWriteDataEntryPart>
+    size_t entryCount) -> TVector<TWriteDataEntryPart>
 {
-    Y_ABORT_UNLESS(count > 0);
-    Y_ABORT_UNLESS(count <= entries.size());
+    Y_ABORT_UNLESS(entryCount > 0);
+    Y_ABORT_UNLESS(entryCount <= entries.size());
 
-    TVector<TPoint> points(Reserve(2 * count));
+    TVector<TPoint<TWriteDataEntry>> points(Reserve(2 * entryCount));
 
-    for (size_t i = 0; i < count; i++) {
+    for (size_t i = 0; i < entryCount; i++) {
         const auto* entry = entries[i];
 
         auto pointBegin = entry->Offset();
@@ -286,7 +294,7 @@ auto TWriteBackCache::TUtil::CalculateDataPartsToFlush(
         }
     }
 
-    return CalculateDataParts(std::move(points));
+    return CalculateDataParts<TWriteDataEntryPart>(std::move(points));
 }
 
 // static

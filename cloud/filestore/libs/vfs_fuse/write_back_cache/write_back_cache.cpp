@@ -207,17 +207,18 @@ public:
         return RemainingSize;
     }
 
-    TString Read(ui64 count)
+    TString Read(ui64 bytesCount)
     {
         Y_ENSURE(
-            count <= RemainingSize,
-            "Trying to read more data (" << count << ") than is remaining ("
-                                         << RemainingSize << ")");
+            bytesCount <= RemainingSize,
+            "Trying to read more data ("
+                << bytesCount << ") than is remaining (" << RemainingSize
+                << ")");
 
-        TString buffer(count, 0);
+        TString buffer(bytesCount, 0);
 
-        while (count > 0) {
-            while (CurrentReadOffset == Current->Length) {
+        while (bytesCount > 0) {
+            if (CurrentReadOffset == Current->Length) {
                 Current++;
                 CurrentReadOffset = 0;
             }
@@ -225,13 +226,12 @@ public:
             const char* from = Current->Source->GetBuffer().data();
             from += Current->OffsetInSource + CurrentReadOffset;
 
-            char* to = buffer.vend() - count;
+            char* to = buffer.vend() - bytesCount;
 
-            auto len = Min(Current->Length - CurrentReadOffset, count);
-
+            auto len = Min(Current->Length - CurrentReadOffset, bytesCount);
             MemCopy(to, from, len);
 
-            count -= len;
+            bytesCount -= len;
             CurrentReadOffset += len;
             RemainingSize -= len;
         }
@@ -243,6 +243,12 @@ public:
     {
         if (begin == end) {
             return true;
+        }
+
+        for (const auto* it = begin; it != end; it = std::next(it)) {
+            if (it->Length == 0) {
+                return false;
+            }
         }
 
         const auto* prev = begin;

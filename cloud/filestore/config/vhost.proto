@@ -67,12 +67,12 @@ message TVhostServiceConfig
     optional uint32 WriteBackCacheFlushMaxWriteRequestSize = 16;
 
     // Maximum number of consolidated write requests for a flush operation.
-    // If this limit is exceeded, flush request will be split into
+    // If this limit is exceeded, flush will be split into
     // a sequence of multiple flush operations.
     optional uint32 WriteBackCacheFlushMaxWriteRequestsCount = 17;
 
     // Maximum total size of all WriteData requests in bytes for a flush
-    // operation. If this limit is exceeded, flush request will be split into
+    // operation. If this limit is exceeded, flush will be split into
     // a sequence of multiple flush operations.
     optional uint64 WriteBackCacheFlushMaxSumWriteRequestsSize = 18;
 }
