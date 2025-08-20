@@ -1,10 +1,9 @@
-import os
-
-import yatest.common as common
 import filecmp
+import os
 import random
 import string
-import logging
+
+import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 
