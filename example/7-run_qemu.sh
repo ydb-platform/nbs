@@ -84,7 +84,7 @@ DISK_IMAGE=$QEMU_BIN_DIR/../image/rootfs.img
 # start endpoint for disk
 echo "starting endpoint [${socket}] for disk [${diskid}]"
 blockstore-client stopendpoint --socket $socket
-blockstore-client startendpoint --ipc-type vhost --socket $socket --disk-id $diskid --persistent $encryption
+blockstore-client startendpoint --ipc-type vhost --socket $socket --client-id client-1 --instance-id localhost --disk-id $diskid --persistent $encryption
 sleep 1
 
 # run qemu with secondary disk
