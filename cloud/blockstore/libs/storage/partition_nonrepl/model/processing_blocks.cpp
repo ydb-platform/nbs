@@ -50,6 +50,11 @@ bool TProcessingBlocks::IsProcessing() const
     return !!BlockMap;
 }
 
+bool TProcessingBlocks::IsProcessingDone() const
+{
+    return !BlockMap && CurrentProcessingIndex == BlockCount;
+}
+
 bool TProcessingBlocks::IsProcessed(TBlockRange64 range) const
 {
     return BlockMap->Count(range.Start, range.End + 1) == range.Size();
