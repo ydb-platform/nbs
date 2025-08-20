@@ -6,6 +6,7 @@
 
 #include <library/cpp/logger/log.h>
 
+#include <util/datetime/base.h>
 #include <util/system/atexit.h>
 #include <util/system/src_location.h>
 
@@ -82,6 +83,25 @@ void EnableGrpcTracing()
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void WaitGrpcShutdown()
+{
+    grpc_maybe_wait_for_async_shutdown();
+    if (!grpc_is_initialized()) {
+        return;
+    }
+
+    // There are threads that should call grpc_shutdown. Waiting for them.
+
+    const TDuration timeout = TDuration::Minutes(1);
+    const TInstant deadLine = timeout.ToDeadLine();
+
+    while (grpc_is_initialized() && Now() < deadLine) {
+        grpc_maybe_wait_for_async_shutdown();
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -122,7 +142,7 @@ void GrpcLoggerInit(TLog log, bool enableTracing)
     // grpc_shutdown_internal writes to the GrpcLog, but the TTempBufManager
     // singletone is in the process of being deleted. Priority must be higher
     // than that of TTempBufManager, which is equal to 2
-    AtExit(grpc_maybe_wait_for_async_shutdown, 3);
+    AtExit(WaitGrpcShutdown, 3);
 
     gpr_set_log_verbosity(severity);
     gpr_set_log_function(AddLog);
