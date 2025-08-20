@@ -120,36 +120,36 @@ void ValidateTestResult(
     ValidateJsons(expectedJson, actualJson);
 }
 
-void SetTimeHistogramCountersMs(
+void SetTimeHistogramCountersUs(
     const TIntrusivePtr<NMonitoring::TDynamicCounters>& counters,
     const TString& histName)
 {
     auto subgroup = counters->GetSubgroup("histogram", histName)
-                        ->GetSubgroup("units", "msec");
-    subgroup->GetCounter("0.001ms")->Set(1);
-    subgroup->GetCounter("0.1ms")->Set(2);
-    subgroup->GetCounter("0.2ms")->Set(3);
-    subgroup->GetCounter("0.3ms")->Set(4);
-    subgroup->GetCounter("0.4ms")->Set(5);
-    subgroup->GetCounter("0.5ms")->Set(6);
-    subgroup->GetCounter("0.6ms")->Set(7);
-    subgroup->GetCounter("0.7ms")->Set(8);
-    subgroup->GetCounter("0.8ms")->Set(9);
-    subgroup->GetCounter("0.9ms")->Set(0);
-    subgroup->GetCounter("1ms")->Set(1);
-    subgroup->GetCounter("2ms")->Set(2);
-    subgroup->GetCounter("5ms")->Set(3);
-    subgroup->GetCounter("10ms")->Set(4);
-    subgroup->GetCounter("20ms")->Set(5);
-    subgroup->GetCounter("50ms")->Set(6);
-    subgroup->GetCounter("100ms")->Set(7);
-    subgroup->GetCounter("200ms")->Set(8);
-    subgroup->GetCounter("500ms")->Set(9);
-    subgroup->GetCounter("1000ms")->Set(10);
-    subgroup->GetCounter("2000ms")->Set(11);
-    subgroup->GetCounter("5000ms")->Set(12);
-    subgroup->GetCounter("10000ms")->Set(13);
-    subgroup->GetCounter("35000ms")->Set(14);
+                        ->GetSubgroup("units", "usec");
+    subgroup->GetCounter("1")->Set(1);
+    subgroup->GetCounter("100")->Set(2);
+    subgroup->GetCounter("200")->Set(3);
+    subgroup->GetCounter("300")->Set(4);
+    subgroup->GetCounter("400")->Set(5);
+    subgroup->GetCounter("500")->Set(6);
+    subgroup->GetCounter("600")->Set(7);
+    subgroup->GetCounter("700")->Set(8);
+    subgroup->GetCounter("800")->Set(9);
+    subgroup->GetCounter("900")->Set(0);
+    subgroup->GetCounter("1000")->Set(1);
+    subgroup->GetCounter("2000")->Set(2);
+    subgroup->GetCounter("5000")->Set(3);
+    subgroup->GetCounter("10000")->Set(4);
+    subgroup->GetCounter("20000")->Set(5);
+    subgroup->GetCounter("50000")->Set(6);
+    subgroup->GetCounter("100000")->Set(7);
+    subgroup->GetCounter("200000")->Set(8);
+    subgroup->GetCounter("500000")->Set(9);
+    subgroup->GetCounter("1000000")->Set(10);
+    subgroup->GetCounter("2000000")->Set(11);
+    subgroup->GetCounter("5000000")->Set(12);
+    subgroup->GetCounter("10000000")->Set(13);
+    subgroup->GetCounter("35000000")->Set(14);
     subgroup->GetCounter("Inf")->Set(15);
 }
 
@@ -251,7 +251,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
             requestCounters->GetCounter("Errors/Fatal")->Set(7);
             requestCounters->GetCounter("Time")->Set(100500);
 
-            SetTimeHistogramCountersMs(requestCounters, "Time");
+            SetTimeHistogramCountersUs(requestCounters, "Time");
         };
 
         auto requests = {
