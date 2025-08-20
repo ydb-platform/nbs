@@ -530,8 +530,8 @@ void TNonreplicatedPartitionActor::HandleDeviceTimedOutResponse(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Attempted to deem device %s as lagging. Result: %s",
-        PartConfig->GetName().c_str(),
+        "%s Attempted to deem device %s as lagging. Result: %s",
+        LogTitle.GetWithTime().c_str(),
         PartConfig->GetDevices()[ev->Cookie].GetDeviceUUID().c_str(),
         FormatError(msg->GetError()).c_str());
 }
@@ -547,8 +547,8 @@ void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Agent %s has become unavailable",
-        PartConfig->GetName().c_str(),
+        "%s Agent %s has become unavailable",
+        LogTitle.GetWithTime().c_str(),
         laggingAgentId.Quote().c_str());
 
     if (!PartConfig->GetLaggingDevicesAllowed()) {
@@ -605,8 +605,8 @@ void TNonreplicatedPartitionActor::HandleAgentIsBackOnline(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Agent %s is back online",
-        PartConfig->GetName().c_str(),
+        "%s Agent %s is back online",
+        LogTitle.GetWithTime().c_str(),
         msg->AgentId.Quote().c_str());
 
     for (int i = 0; i < PartConfig->GetDevices().size(); ++i) {

@@ -19,60 +19,75 @@ public:
         WithTime,
     };
 
-    enum class EType
+    struct TVolume
     {
-        Volume,
-        Partition,
-        Session,
-        Client,
-        VolumeProxy,
+        ui64 TabletId;
+        TString DiskId;
+        ui32 Generation = 0;
+    };
+
+    struct TVolumeProxy
+    {
+        TString DiskId;
+        bool TemporaryServer = false;
+        ui32 Generation = 0;
+        ui64 TabletId = 0;
+    };
+
+    struct TPartition
+    {
+        ui64 TabletId = 0;
+        TString DiskId;
+        ui32 PartitionIndex = 0;
+        ui32 PartitionCount = 0;
+        ui32 Generation = 0;
+    };
+
+    struct TPartitionNonrepl
+    {
+        TString DiskId;
+    };
+
+    struct TSession
+    {
+        TString SessionId;
+        TString DiskId;
+        ui64 TabletId = 0;
+        bool TemporaryServer = false;
+    };
+
+    struct TClient
+    {
+        ui64 TabletId = 0;
+        TString SessionId;
+        TString ClientId;
+        TString DiskId;
+        bool TemporaryServer = false;
+        ui32 Generation = 0;
     };
 
 private:
-    const EType Type;
-    const TString SessionId;
-    const TString ClientId;
-    const ui64 StartTime;
-    const ui32 PartitionIndex = 0;
-    const ui32 PartitionCount = 0;
-    const bool TemporaryServer = false;
+    using TData = std::variant<
+        TVolume,
+        TVolumeProxy,
+        TPartition,
+        TPartitionNonrepl,
+        TSession,
+        TClient>;
 
-    ui64 TabletId = 0;
-    ui32 Generation = 0;
-    TString DiskId;
+    ui64 StartTime = 0;
+    TData Data;
+
     TString CachedPrefix;
 
 public:
-    // Constructor for Volume
-    TLogTitle(ui64 tabletId, TString diskId, ui64 startTime);
-
-    // Constructor for Partition
-    TLogTitle(
-        ui64 tabletId,
-        TString diskId,
-        ui64 startTime,
-        ui32 partitionIndex,
-        ui32 partitionCount);
-
-    // Constructor for Session
-    TLogTitle(
-        EType type,
-        TString sessionId,
-        TString diskId,
-        bool temporaryServer,
-        ui64 startTime);
-
-    // Constructor for Client
-    TLogTitle(
-        ui64 tabletId,
-        TString sessionId,
-        TString clientId,
-        TString diskId,
-        bool temporaryServer,
-        ui64 startTime);
-
-    // Constructor for VolumeProxy
-    TLogTitle(TString diskId, bool temporaryServer, ui64 startTime);
+    template <typename T>
+    TLogTitle(ui64 startTime, T&& data)
+        : StartTime(startTime)
+        , Data(std::forward<T>(data))
+    {
+        Rebuild();
+    }
 
     static TString
     GetPartitionPrefix(ui64 tabletId, ui32 partitionIndex, ui32 partitionCount);
@@ -99,12 +114,6 @@ public:
 
 private:
     void Rebuild();
-    void RebuildForVolume();
-    void RebuildForPartition();
-    void RebuildForSession();
-    void RebuildForClient();
-    void RebuildForVolumeProxy();
-    TString GetPartitionPrefix() const;
 };
 
 class TChildLogTitle

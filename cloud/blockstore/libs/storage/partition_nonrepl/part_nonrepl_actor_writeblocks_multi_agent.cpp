@@ -324,8 +324,8 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWriteBlocksCompleted(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Complete multi agent write blocks",
-        SelfId().ToString().c_str());
+        "%s Complete multi agent write blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 

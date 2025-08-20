@@ -60,17 +60,17 @@ const TString VolumeTransactions[] = {
 };
 
 TVolumeActor::TVolumeActor(
-        const TActorId& owner,
-        TTabletStorageInfoPtr storage,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        ITraceSerializerPtr traceSerializer,
-        NRdma::IClientPtr rdmaClient,
-        NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        EVolumeStartMode startMode,
-        TString diskId)
+    const TActorId& owner,
+    TTabletStorageInfoPtr storage,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    ITraceSerializerPtr traceSerializer,
+    NRdma::IClientPtr rdmaClient,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
+    EVolumeStartMode startMode,
+    TString diskId)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , GlobalStorageConfig(config)
@@ -82,7 +82,11 @@ TVolumeActor::TVolumeActor(
     , RdmaClient(std::move(rdmaClient))
     , EndpointEventHandler(std::move(endpointEventHandler))
     , StartMode(startMode)
-    , LogTitle(TabletID(), std::move(diskId), StartTime)
+    , LogTitle(
+          StartTime,
+          TLogTitle::TVolume{
+              .TabletId = TabletID(),
+              .DiskId = std::move(diskId)})
     , ThrottlerLogger(
           TabletID(),
           [this](ui32 opType, TDuration time)

@@ -393,8 +393,11 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete write blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete write blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 

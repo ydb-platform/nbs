@@ -57,8 +57,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         request.SetBlocksCount(10);
 
         const ui32 blockSize = 512;
-        auto readActor = ActorSystem.Register(
-            new TReadDiskRegistryBasedOverlayActor<TEvService::TReadBlocksMethod>{
+        auto readActor =
+            ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                                 TEvService::TReadBlocksMethod>{
                 MakeIntrusive<TRequestInfo>(
                     EdgeActor,
                     0ull,
@@ -73,7 +74,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 blockSize,
                 EStorageAccessMode::Default,
                 TDuration(),
-                TLogTitle(0, TString("test"), GetCycleCount())
+                TLogTitle(
+                    GetCycleCount(),
+                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount())});
 
         auto requestToPartition = ActorSystem.GrabEdgeEvent<
@@ -125,8 +128,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         request.SetBlocksCount(10);
 
         const ui32 blockSize = 512;
-        auto readActor = ActorSystem.Register(
-            new TReadDiskRegistryBasedOverlayActor<TEvService::TReadBlocksMethod>{
+        auto readActor =
+            ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                                 TEvService::TReadBlocksMethod>{
                 MakeIntrusive<TRequestInfo>(
                     EdgeActor,
                     0ull,
@@ -141,7 +145,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 blockSize,
                 EStorageAccessMode::Default,
                 TDuration(),
-                TLogTitle(0, TString("test"), GetCycleCount())
+                TLogTitle(
+                    GetCycleCount(),
+                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount())});
 
         ActorSystem.GrabEdgeEvent<
@@ -196,7 +202,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 blockSize,
                 EStorageAccessMode::Default,
                 TDuration(),
-                TLogTitle(0, TString("test"), GetCycleCount())
+                TLogTitle(
+                    GetCycleCount(),
+                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount())});
 
         TAutoPtr<NActors::IEventHandle> handle;
@@ -383,7 +391,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 blockSize,
                 EStorageAccessMode::Default,
                 TDuration(),
-                TLogTitle(0, TString("test"), GetCycleCount())
+                TLogTitle(
+                    GetCycleCount(),
+                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount())});
 
         TAutoPtr<NActors::IEventHandle> handle;
@@ -439,7 +449,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 blockSize,
                 EStorageAccessMode::Default,
                 TDuration(),
-                TLogTitle(0, TString("test"), GetCycleCount())
+                TLogTitle(
+                    GetCycleCount(),
+                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount())});
 
         TAutoPtr<NActors::IEventHandle> handle;
@@ -532,7 +544,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 blockSize,
                 EStorageAccessMode::Default,
                 TDuration(),
-                TLogTitle(0, TString("test"), GetCycleCount())
+                TLogTitle(
+                    GetCycleCount(),
+                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount())});
 
         // read from overlay disk

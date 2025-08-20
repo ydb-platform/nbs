@@ -61,7 +61,9 @@ Y_UNIT_TEST_SUITE(TForwardReadTests)
                 EdgeActor,
                 0,
                 EdgeActor,
-                TLogTitle(0, TString("test"), GetCycleCount())
+                TLogTitle(
+                    GetCycleCount(),
+                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount())});
 
         ActorSystem.GrabEdgeEvent<TEvService::TReadBlocksMethod::TRequest>();

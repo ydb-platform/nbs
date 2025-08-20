@@ -238,8 +238,11 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete zero blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete zero blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
