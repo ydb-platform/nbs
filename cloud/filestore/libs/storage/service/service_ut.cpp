@@ -3747,16 +3747,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-        service
-            .WriteData(headers, fs, nodeId, handle, 1_KB, TString(1_KB, 'a'));
-        service
-            .WriteData(headers, fs, nodeId, handle, 3_KB, TString(1_KB, 'b'));
+        const auto& data1 = TString(1_KB, 'a');
+        service.WriteData(headers, fs, nodeId, handle, 1_KB, data1);
+        const auto& data2 = TString(1_KB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 3_KB, data2);
         auto readDataResult =
             service.ReadData(headers, fs, nodeId, handle, 0, 4_KB);
         const auto& buffer = readDataResult->Record.GetBuffer();
         const auto& zeroBuffer = TString(1_KB, '\0');
         UNIT_ASSERT_VALUES_EQUAL(zeroBuffer, buffer.substr(0, 1_KB));
+        UNIT_ASSERT_VALUES_EQUAL(data1, buffer.substr(1_KB, 1_KB));
         UNIT_ASSERT_VALUES_EQUAL(zeroBuffer, buffer.substr(2_KB, 1_KB));
+        UNIT_ASSERT_VALUES_EQUAL(data2, buffer.substr(3_KB, 1_KB));
     }
 }
 
