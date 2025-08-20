@@ -1,8 +1,5 @@
 {
     "test.test_unaligned_read": {
         "uri": "file://test.test_unaligned_read/results.txt"
-    },
-    "test.test_zero_range_read": {
-        "uri": "file://test.test_zero_range_read/results.txt"
     }
 }
