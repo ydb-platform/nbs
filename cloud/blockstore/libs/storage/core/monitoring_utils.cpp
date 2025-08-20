@@ -1670,9 +1670,6 @@ void BuildResetButton(
                 action: ')" << actionName << R"(',
                 TabletID: ')" << tabletId << R"('
             },
-            success: function() {
-                location.reload();
-            },
             error: function(xhr) {
                 alert('Error: ' + xhr.statusText);
             }

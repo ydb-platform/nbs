@@ -2594,7 +2594,7 @@ void TVolumeActor::HandleHttpInfo_ResetTransactionsLatency(
 {
     Y_UNUSED(params);
     TransactionTimeTracker.ResetStats();
-    SendHttpResponse(ctx, *requestInfo, "reset successfully");
+    SendHttpResponse(ctx, *requestInfo, "");
 }
 
 void TVolumeActor::HandleHttpInfo_ResetRequestsLatency(
@@ -2604,7 +2604,7 @@ void TVolumeActor::HandleHttpInfo_ResetRequestsLatency(
 {
     Y_UNUSED(params);
     RequestTimeTracker.ResetStats();
-    SendHttpResponse(ctx, *requestInfo, "reset successfully");
+    SendHttpResponse(ctx, *requestInfo, "");
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -351,7 +351,7 @@ void TPartitionActor::HandleHttpInfo_ResetTransactionsLatency(
 {
     Y_UNUSED(params);
     TransactionTimeTracker.ResetStats();
-    SendHttpResponse(ctx, *requestInfo, "reset successfully");
+    SendHttpResponse(ctx, *requestInfo, "");
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
