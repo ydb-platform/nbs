@@ -94,7 +94,7 @@ public:
         NProto::TDescribeVolumeRequest request,
         bool hasUnavailableCells);
 
-    TPromise<NProto::TDescribeVolumeResponse> Start(TDuration describeTimeout);
+    TFuture<NProto::TDescribeVolumeResponse> Start(TDuration describeTimeout);
     void HandleResponse(NProto::TDescribeVolumeResponse response);
     void Reply(NProto::TDescribeVolumeResponse response);
 
@@ -122,7 +122,7 @@ TMultiCellDescribeHandler::TMultiCellDescribeHandler(
     }
 }
 
-TPromise<NProto::TDescribeVolumeResponse> TMultiCellDescribeHandler::Start(
+TFuture<NProto::TDescribeVolumeResponse> TMultiCellDescribeHandler::Start(
     TDuration describeTimeout)
 {
     auto weak = weak_from_this();
@@ -162,7 +162,11 @@ TPromise<NProto::TDescribeVolumeResponse> TMultiCellDescribeHandler::Start(
             }
         });
 
-    return Promise;
+    Promise.GetFuture().Subscribe(
+        [handler = shared_from_this()](const auto&) mutable
+        { handler.reset(); });
+
+    return Promise.GetFuture();
 }
 
 void TMultiCellDescribeHandler::Reply(NProto::TDescribeVolumeResponse response)
@@ -322,13 +326,7 @@ TDescribeVolumeFuture DescribeVolume(
         std::move(cells),
         std::move(request),
         hasUnavailableCells);
-    auto future = describeHandler->Start(timeout);
-
-    describeHandler->Promise.GetFuture().Subscribe(
-        [handler = std::move(describeHandler)](const auto&) mutable
-        { handler.reset(); });
-
-    return future;
+    return describeHandler->Start(timeout);
 }
 
 }   // namespace NCloud::NBlockStore::NCells
