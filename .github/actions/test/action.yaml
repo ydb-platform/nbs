@@ -293,6 +293,7 @@ runs:
             MUTED_CONFIG=".github/config/muted_ya.txt"
             echo "::endgroup::"
             echo "::group::postprocess-junit-${i}"
+            sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/orig_junit.${i}.xml.gz"
             sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
               -m "${MUTED_CONFIG}" \
               --ya-out "$OUT_DIR" \
@@ -368,7 +369,7 @@ runs:
             echo "::endgroup::"
           fi
           # shellcheck disable=SC2024
-          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/orig_junit.${i}.xml.gz"
+          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/transformed_junit.${i}.xml.gz"
           sudo -E -H -u github tar -C "$JUNIT_REPORT_PARTS/.." -czf "${REPORTS_ARTIFACTS_DIR}/junit_parts.${i}.xml.tar.gz" "$(basename $JUNIT_REPORT_PARTS)/${i}" "${JUNIT_REPORT_XML}.${i}"*
 
 
