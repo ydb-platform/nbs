@@ -44,7 +44,7 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 	}
 
 	cellSelector.On(
-		"PrepareZoneID",
+		"SelectCell",
 		mock.Anything,
 		mock.Anything,
 	).Return("zone", nil)
@@ -106,7 +106,7 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 	}
 
 	cellSelector.On(
-		"PrepareZoneID",
+		"SelectCell",
 		mock.Anything,
 		mock.Anything,
 	).Return("zone", nil)

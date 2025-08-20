@@ -17,7 +17,7 @@ func NewCellSelectorMock() *CellSelectorMock {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *CellSelectorMock) PrepareZoneID(
+func (s *CellSelectorMock) SelectCell(
 	diskID *types.Disk,
 	folderID string,
 ) string {

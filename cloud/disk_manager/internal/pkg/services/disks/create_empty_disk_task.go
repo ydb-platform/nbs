@@ -51,7 +51,7 @@ func (t *createEmptyDiskTask) Run(
 
 	zoneID := t.params.Disk.ZoneId
 	if !common.IsLocalDiskKind(t.params.Kind) {
-		zoneID = t.cellSelector.PrepareZoneID(t.params.Disk, t.params.FolderId)
+		zoneID = t.cellSelector.SelectCell(t.params.Disk, t.params.FolderId)
 	}
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
@@ -79,9 +79,9 @@ func (t *createEmptyDiskTask) Run(
 		)
 	}
 
-	// If the disk has already been added to the database,
-	// idempotently retrieve the correct zone where it was created,
-	// because cellSelector is not idempotent.
+	// If the disk has already been added to the database, idempotently
+	// retrieve the correct zone where it was created, because cellSelector
+	// is not idempotent.
 	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
 	if err != nil {
 		return err

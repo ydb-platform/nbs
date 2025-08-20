@@ -7,7 +7,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type CellSelector interface {
-	PrepareZoneID(
+	SelectCell(
 		diskID *types.Disk,
 		folderID string,
 	) string

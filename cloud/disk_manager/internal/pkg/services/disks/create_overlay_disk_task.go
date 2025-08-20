@@ -55,7 +55,7 @@ func (t *createOverlayDiskTask) Run(
 	overlayDisk := params.Disk
 	selfTaskID := execCtx.GetTaskID()
 
-	zoneID := t.cellSelector.PrepareZoneID(overlayDisk, params.FolderId)
+	zoneID := t.cellSelector.SelectCell(overlayDisk, params.FolderId)
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:          overlayDisk.DiskId,
@@ -83,9 +83,9 @@ func (t *createOverlayDiskTask) Run(
 		)
 	}
 
-	// If the disk has already been added to the database,
-	// idempotently retrieve the correct zone where it was created,
-	// because cellSelector is not idempotent.
+	// If the disk has already been added to the database, idempotently
+	// retrieve the correct zone where it was created, because cellSelector
+	// is not idempotent.
 	overlayDisk.ZoneId = diskMeta.ZoneID
 
 	taskID, err := t.poolService.AcquireBaseDisk(

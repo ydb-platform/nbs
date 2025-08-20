@@ -64,7 +64,7 @@ func (t *createDiskFromSnapshotTask) Run(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	zoneID := t.cellSelector.PrepareZoneID(params.Disk, params.FolderId)
+	zoneID := t.cellSelector.SelectCell(params.Disk, params.FolderId)
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:            params.Disk.DiskId,
@@ -92,9 +92,9 @@ func (t *createDiskFromSnapshotTask) Run(
 		)
 	}
 
-	// If the disk has already been added to the database,
-	// idempotently retrieve the correct zone where it was created,
-	// because cellSelector is not idempotent.
+	// If the disk has already been added to the database, idempotently
+	// retrieve the correct zone where it was created, because cellSelector
+	// is not idempotent.
 	params.Disk.ZoneId = diskMeta.ZoneID
 
 	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
