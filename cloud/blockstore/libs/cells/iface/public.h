@@ -6,6 +6,9 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TCellConfig;
+using TCellConfigPtr = std::shared_ptr<TCellConfig>;
+
 class TCellsConfig;
 using TCellsConfigPtr = std::shared_ptr<TCellsConfig>;
 
