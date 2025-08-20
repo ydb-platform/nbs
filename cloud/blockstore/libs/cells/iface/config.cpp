@@ -161,7 +161,7 @@ struct TCellConfig::TImpl
 };
 
 TCellConfig::TCellConfig(NProto::TCellConfig config)
-    : Impl(new TImpl(std::move(config)))
+    : Impl(std::make_unique<TImpl>(std::move(config)))
 {
     for (const auto& h: Impl->Config.GetHosts()) {
         Impl->ConfiguredHosts.emplace(h.GetFqdn(),TCellHostConfig(h, *this));
@@ -255,7 +255,7 @@ struct TCellsConfig::TImpl
 };
 
 TCellsConfig::TCellsConfig(NProto::TCellsConfig config)
-    : Impl(new TImpl(std::move(config)))
+    : Impl(std::make_unique<TImpl>(std::move(config)))
 {
 }
 
