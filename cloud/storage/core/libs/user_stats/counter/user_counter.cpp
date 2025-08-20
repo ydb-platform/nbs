@@ -1,4 +1,3 @@
-
 #include "user_counter.h"
 
 namespace NCloud::NStorage::NUserStats {
@@ -127,6 +126,36 @@ std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplier()
 std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplierStub()
 {
     return std::make_shared<TUserCounterSupplierStub>();
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+template <typename THistogramType>
+TBuckets MakeBuckets(auto convertBound)
+{
+    static_assert(BUCKETS_COUNT == THistogramType::BUCKETS_COUNT, "");
+
+    TBuckets result;
+    const auto names = THistogramType::MakeNames();
+    for (size_t i = 0; i < names.size(); ++i) {
+        result[i].Bound = convertBound(THistogramType::Buckets[i]);
+        result[i].Name = names[i];
+    }
+    return result;
+}
+
+TBuckets GetMsBuckets() {
+    constexpr auto Identity = [](double data) { return data; };
+    static const auto Buckets = MakeBuckets<TRequestMsTimeBuckets>(Identity);
+    return Buckets;
+}
+
+TBuckets GetUsBuckets() {
+    constexpr auto UsToMs = [](double data) {
+        return data == std::numeric_limits<double>::max() ? data : data / 1000.;
+    };
+    static const auto Buckets = MakeBuckets<TRequestUsTimeBuckets>(UsToMs);
+    return Buckets;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

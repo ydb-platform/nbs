@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/storage/core/libs/diagnostics/histogram_types.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/metrics/metric_registry.h>
 
@@ -66,25 +67,8 @@ static constexpr size_t BUCKETS_COUNT = 25;
 
 using TBuckets = std::array<TBucket, BUCKETS_COUNT>;
 
-template <typename THistogramType>
-TBuckets MakeBuckets(auto convertBound)
-{
-    static_assert(BUCKETS_COUNT == THistogramType::BUCKETS_COUNT, "");
-
-    TBuckets result;
-    const auto names = THistogramType::MakeNames();
-    for (size_t i = 0; i < names.size(); ++i) {
-        result[i].Bound = convertBound(THistogramType::Buckets[i]);
-        result[i].Name = names[i];
-    }
-    return result;
-}
-
-const TBuckets MS_BUCKETS = MakeBuckets<TRequestMsTimeBuckets>(
-    [](double data) {return data;});
-const TBuckets US_BUCKETS = MakeBuckets<TRequestUsTimeBuckets>(
-    [](double data) {return data == std::numeric_limits<double>::max()
-        ? data : data / 1000.;});
+TBuckets GetMsBuckets();
+TBuckets GetUsBuckets();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -135,7 +119,7 @@ private:
 
     TVector<TIntrusivePtr<NMonitoring::TDynamicCounters>> Counters;
     TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
-    const TBuckets& Buckets;
+    const TBuckets Buckets;
     EMetricType Type = EMetricType::UNKNOWN;
 };
 

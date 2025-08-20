@@ -94,7 +94,7 @@ void RegisterServiceVolume(
 
     auto readSub = src->FindSubgroup("request", "ReadBlocks");
     AddHistogramUserMetric(
-        US_BUCKETS,
+        GetUsBuckets(),
         dsc,
         commonLabels,
         {{readSub, "ThrottlerDelay"}},
@@ -103,7 +103,7 @@ void RegisterServiceVolume(
     auto writeSub = src->FindSubgroup("request", "WriteBlocks");
     auto zeroSub = src->FindSubgroup("request", "ZeroBlocks");
     AddHistogramUserMetric(
-        US_BUCKETS,
+        GetUsBuckets(),
         dsc,
         commonLabels,
         {{writeSub, "ThrottlerDelay"}, {zeroSub, "ThrottlerDelay"}},
@@ -184,7 +184,7 @@ void RegisterServerVolumeInstance(
         {{readSub, "MaxInProgressBytes"}},
         DISK_READ_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        MS_BUCKETS,
+        GetMsBuckets(),
         dsc,
         commonLabels,
         {{readSub, "Time"}},
@@ -242,7 +242,7 @@ void RegisterServerVolumeInstance(
         getWriteCounters("MaxInProgressBytes"),
         DISK_WRITE_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        MS_BUCKETS,
+        GetMsBuckets(),
         dsc,
         commonLabels,
         getWriteCounters("Time"),
