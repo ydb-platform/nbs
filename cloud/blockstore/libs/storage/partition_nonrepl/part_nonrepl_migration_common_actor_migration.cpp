@@ -147,8 +147,8 @@ bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationAllowed() const
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationFinished() const
 {
-    return !ProcessingBlocks.IsProcessing() && MigrationsInProgress.Empty() &&
-           DeferredMigrations.Empty();
+    return ProcessingBlocks.IsProcessingDone() &&
+           MigrationsInProgress.Empty() && DeferredMigrations.Empty();
 }
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsIoDepthLimitReached() const
