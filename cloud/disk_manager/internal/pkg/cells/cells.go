@@ -24,7 +24,7 @@ func NewCellSelector(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *cellSelector) PrepareZoneID(
+func (s *cellSelector) SelectCell(
 	diskID *types.Disk,
 	folderID string,
 ) string {

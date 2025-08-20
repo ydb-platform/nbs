@@ -65,7 +65,7 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 	}
 
 	cellSelector.On(
-		"PrepareZoneID",
+		"SelectCell",
 		mock.Anything,
 		mock.Anything,
 	).Return("zone", nil)
@@ -158,7 +158,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testin
 	}
 
 	cellSelector.On(
-		"PrepareZoneID",
+		"SelectCell",
 		mock.Anything,
 		mock.Anything,
 	).Return("zone", nil)
@@ -237,7 +237,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 	}
 
 	cellSelector.On(
-		"PrepareZoneID",
+		"SelectCell",
 		mock.Anything,
 		mock.Anything,
 	).Return("zone", nil)
