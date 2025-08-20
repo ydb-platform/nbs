@@ -76,7 +76,6 @@ struct TMultiCellDescribeHandler
     : public std::enable_shared_from_this<TMultiCellDescribeHandler>
 {
     const ISchedulerPtr Scheduler;
-    const ILoggingServicePtr Logging;
     TLog Log;
     std::atomic<ui64> RequestCount{0};
     TCellByCellId Cells;
@@ -90,7 +89,7 @@ struct TMultiCellDescribeHandler
 public:
     TMultiCellDescribeHandler(
         ISchedulerPtr scheduler,
-        ILoggingServicePtr logging,
+        TLog log,
         TCellByCellId cells,
         NProto::TDescribeVolumeRequest request,
         bool hasUnavailableCells);
@@ -107,13 +106,12 @@ private:
 
 TMultiCellDescribeHandler::TMultiCellDescribeHandler(
         ISchedulerPtr scheduler,
-        ILoggingServicePtr logging,
+        TLog log,
         TCellByCellId cells,
         NProto::TDescribeVolumeRequest request,
         bool hasUnavailableCells)
     : Scheduler(std::move(scheduler))
-    , Logging(std::move(logging))
-    , Log(Logging->CreateLog("BLOCKSTORE_CELLS"))
+    , Log(std::move(log))
     , Cells(std::move(cells))
     , Request(std::move(request))
     , HasUnavailableCells(hasUnavailableCells)
@@ -142,7 +140,7 @@ void TMultiCellDescribeHandler::Start(TDuration describeTimeout)
             }
 
             auto handler = std::make_shared<TDescribeResponseHandler>(
-                Logging->CreateLog("BLOCKSTORE_CELLS"),
+                Log,
                 weak,
                 cellId,
                 host,
@@ -314,7 +312,7 @@ TDescribeVolumeFuture DescribeVolume(
 
     auto describeResult = std::make_shared<TMultiCellDescribeHandler>(
         bootstrap.Scheduler,
-        bootstrap.Logging,
+        bootstrap.Logging->CreateLog("BLOCKSTORE_CELLS"),
         std::move(cells),
         std::move(request),
         hasUnavailableCells);
