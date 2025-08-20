@@ -113,7 +113,7 @@ struct TBootstrap
 
     std::shared_ptr<TFileStoreTest> Session;
     ITimerPtr Timer;
-    ISchedulerPtr Scheduler;
+    std::shared_ptr<TTestScheduler> Scheduler;
     TDuration CacheAutomaticFlushPeriod;
     TDuration CacheFlushRetryPeriod;
     TTempFileHandle TempFileHandle;
@@ -152,7 +152,7 @@ struct TBootstrap
         Log = Logging->CreateLog("WRITE_BACK_CACHE");
 
         Timer = CreateWallClockTimer();
-        Scheduler = CreateScheduler(Timer);
+        Scheduler = std::make_shared<TTestScheduler>();
         Scheduler->Start();
 
         Session = std::make_shared<TFileStoreTest>();
@@ -655,35 +655,21 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         const auto automaticFlushPeriod = TDuration::MilliSeconds(1);
         TBootstrap b(automaticFlushPeriod);
 
-        int retryCount = 0;
-
-        auto waitForFlush = [&] (int attempt) {
-            while (true) {
-                b.Timer->Sleep(TDuration::MilliSeconds(1));
-
-                if (b.SessionWriteDataHandlerCalled.load() < attempt) {
-                    // log every 10 seconds
-                    if (retryCount % 10000 == 0) {
-                        auto& Log = b.Log;
-                        STORAGE_INFO("Waiting for flush attempt " << attempt);
-                    }
-
-                    retryCount++;
-                    continue;
-                }
-
-                UNIT_ASSERT_VALUES_EQUAL(
-                    attempt,
-                    b.SessionWriteDataHandlerCalled.load());
-                b.ValidateCacheIsFlushed();
-                return;
-            }
+        auto checkFlush = [&](int attempt)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                attempt,
+                b.SessionWriteDataHandlerCalled.load());
+            b.ValidateCacheIsFlushed();
         };
 
         b.WriteToCacheSync(1, 11, "abcde");
-        waitForFlush(1);
+        b.Scheduler->RunAllScheduledTasks();
+        checkFlush(1);
+
         b.WriteToCacheSync(1, 22, "efghij");
-        waitForFlush(2);
+        b.Scheduler->RunAllScheduledTasks();
+        checkFlush(2);
     }
 
     void TestShouldReadAfterWriteRandomized(bool withRecreation = false) {
@@ -905,7 +891,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldRetryFlushOnFailure)
     {
         constexpr int WriteAttemptsThreshold = 3;
-        constexpr TDuration MaxFlushWait = TDuration::Seconds(5);
 
         TBootstrap b;
 
@@ -925,16 +910,18 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 12, "hello");
         auto flushFuture = b.Cache.FlushData(1);
 
-        // Flush starts synchronously in FlushData call - at least one
-        // WriteData request should be made
+        // Flush starts synchronously in FlushData call and makes an attempt
+        // to write data but fails
         UNIT_ASSERT_GE(writeAttempts, 0);
-
-        // WriteData request from Flush succeeds after WriteAttemptsThreshold
-        // attempts. By default, Flush is retried with a period of 100 ms - so
-        // Flush is expected to complete after 200 ms since calling FlushData.
         UNIT_ASSERT(!flushFuture.HasValue());
 
-        UNIT_ASSERT(flushFuture.Wait(MaxFlushWait));
+        // WriteData request from Flush succeeds after WriteAttemptsThreshold
+        // attempts.
+        for (int i = 1; i < WriteAttemptsThreshold; i++) {
+            b.Scheduler->RunAllScheduledTasks();
+        }
+
+        UNIT_ASSERT(flushFuture.HasValue());
         UNIT_ASSERT_EQUAL(writeAttempts, WriteAttemptsThreshold);
     }
 
