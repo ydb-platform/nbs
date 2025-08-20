@@ -66,8 +66,8 @@ class TestResult:
     @classmethod
     def from_junit(cls, testcase):
         classname, name = testcase.get("classname"), testcase.get("name")
-
         is_timed_out = False
+
         if testcase.find("failure") is not None:
             status = TestStatus.FAIL
             text = testcase.find("failure").text
