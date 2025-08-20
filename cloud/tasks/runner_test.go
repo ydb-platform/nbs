@@ -1217,10 +1217,15 @@ func TestTaskPingerImmediateFailure(t *testing.T) {
 		ID:         taskID,
 		ModifiedAt: time.Now(),
 	}
-	taskStorage.On(
-		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
-	).Run(toCallback(cancel)).Return(state, assert.AnError)
+	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, assert.AnError)
 	callback.On("Run")
+
+	go func() {
+		// Cancel runner loop on first iteration.
+		// TODO: This is bad.
+		<-time.After(pingPeriod / 2)
+		cancel()
+	}()
 
 	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
@@ -1284,9 +1289,16 @@ func TestTaskPingerFailureOnSecondIteration(t *testing.T) {
 	).Return(state, nil).Once()
 	taskStorage.On(
 		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
-	).Run(toCallback(cancel)).Return(state, assert.AnError).Once()
+	).Return(state, assert.AnError).Once()
 
 	callback.On("Run")
+
+	go func() {
+		// Cancel runner loop on second iteration.
+		// TODO: This is bad.
+		<-time.After(pingPeriod + pingPeriod/2)
+		cancel()
+	}()
 
 	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
