@@ -54,7 +54,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 	ctx context.Context,
 	diskID *types.Disk,
 	folderID string,
-	agentID string,
+	agentIDs []string,
 ) (string, error) {
 
 	if !s.isFolderAllowed(folderID) {
@@ -75,7 +75,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 			return "", err
 		}
 
-		infos, err := client.QueryAvailableStorage(ctx, []string{agentID})
+		infos, err := client.QueryAvailableStorage(ctx, agentIDs)
 		if err != nil {
 			return "", err
 		}
@@ -95,7 +95,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 	}
 
 	return "",
-		errors.NewRetriableErrorf("There is no cells with such agent available: %v", agentID)
+		errors.NewRetriableErrorf("There are no cells with such agents available: %v", agentIDs)
 }
 
 func (s *cellSelector) IsCellOfZone(cellID string, zoneID string) bool {

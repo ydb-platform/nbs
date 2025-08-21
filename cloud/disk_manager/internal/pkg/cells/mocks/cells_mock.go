@@ -32,10 +32,10 @@ func (s *CellSelectorMock) SelectCellForLocalDisk(
 	ctx context.Context,
 	diskID *types.Disk,
 	folderID string,
-	agentID string,
+	agentIDs []string,
 ) (string, error) {
 
-	args := s.Called(ctx, diskID, folderID, agentID)
+	args := s.Called(ctx, diskID, folderID, agentIDs)
 	return args.String(0), args.Error(1)
 }
 

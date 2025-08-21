@@ -18,7 +18,7 @@ type CellSelector interface {
 		ctx context.Context,
 		diskID *types.Disk,
 		folderID string,
-		agentID string,
+		agentIDs []string,
 	) (string, error)
 
 	IsCellOfZone(cellID string, zoneID string) bool
