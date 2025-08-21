@@ -59,10 +59,10 @@ class TDescribeResponseHandler
     const std::weak_ptr<TMultiCellDescribeHandler> Owner;
     const TString CellId;
     const TCellHostInfo HostInfo;
+    const ui32 CellResultIndex;
     NProto::TDescribeVolumeRequest Request;
     TCellInfo& Cell;
     TLog Log;
-    ui32 CellResultIndex = 0;
 
     TFuture<NProto::TDescribeVolumeResponse> Future;
 
@@ -250,10 +250,10 @@ TDescribeResponseHandler::TDescribeResponseHandler(
     : Owner(std::move(owner))
     , CellId(std::move(cellId))
     , HostInfo(std::move(hostInfo))
+    , CellResultIndex(cellResultIndex)
     , Request(std::move(request))
     , Cell(cell)
     , Log(std::move(log))
-    , CellResultIndex(cellResultIndex)
 {}
 
 void TDescribeResponseHandler::Start()
