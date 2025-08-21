@@ -209,9 +209,7 @@ void TDiskRegistryActor::CompleteLoadState(
 
     ScheduleDiskRegistryAgentListExpiredParamsCleanup(ctx);
 
-    if (Config->GetLimitMirrorDisksDeviceReplacementsPerRow()) {
-        ProcessRecentlyReplaceDevices(ctx);
-    }
+    ReplaceBrokenDevicesAfterRestart(ctx);
 
     if (auto orphanDevices = State->FindOrphanDevices()) {
         LOG_INFO(

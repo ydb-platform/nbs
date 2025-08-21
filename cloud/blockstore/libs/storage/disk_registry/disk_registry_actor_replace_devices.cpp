@@ -8,17 +8,18 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryActor::ProcessRecentlyReplaceDevices(const TActorContext& ctx)
+void TDiskRegistryActor::ReplaceBrokenDevicesAfterRestart(
+    const TActorContext& ctx)
 {
-    ExecuteTx<TProcessRecentlyReplaceDevices>(ctx);
+    ExecuteTx<TReplaceBrokenDevicesAfterRestart>(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TDiskRegistryActor::PrepareProcessRecentlyReplaceDevices(
+bool TDiskRegistryActor::PrepareReplaceBrokenDevicesAfterRestart(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TProcessRecentlyReplaceDevices& args)
+    TTxDiskRegistry::TReplaceBrokenDevicesAfterRestart& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -27,10 +28,10 @@ bool TDiskRegistryActor::PrepareProcessRecentlyReplaceDevices(
     return true;
 }
 
-void TDiskRegistryActor::ExecuteProcessRecentlyReplaceDevices(
+void TDiskRegistryActor::ExecuteReplaceBrokenDevicesAfterRestart(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TProcessRecentlyReplaceDevices& args)
+    TTxDiskRegistry::TReplaceBrokenDevicesAfterRestart& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(args);
@@ -39,9 +40,9 @@ void TDiskRegistryActor::ExecuteProcessRecentlyReplaceDevices(
     State->ReplaceBrokenDevicesAfterRestart(ctx.Now(), db);
 }
 
-void TDiskRegistryActor::CompleteProcessRecentlyReplaceDevices(
+void TDiskRegistryActor::CompleteReplaceBrokenDevicesAfterRestart(
     const TActorContext& ctx,
-    TTxDiskRegistry::TProcessRecentlyReplaceDevices& args)
+    TTxDiskRegistry::TReplaceBrokenDevicesAfterRestart& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(args);

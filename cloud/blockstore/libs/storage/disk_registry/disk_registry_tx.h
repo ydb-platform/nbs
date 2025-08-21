@@ -63,7 +63,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(PurgeHostCms,                       __VA_ARGS__)                       \
     xxx(RemoveOrphanDevices,                __VA_ARGS__)                       \
     xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
-    xxx(ProcessRecentlyReplaceDevices,      __VA_ARGS__)                       \
+    xxx(ReplaceBrokenDevicesAfterRestart,   __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1482,12 +1482,12 @@ struct TTxDiskRegistry
     };
 
     //
-    // ProcessRecentlyReplaceDevices
+    // ReplaceBrokenDevicesAfterRestart
     //
 
-    struct TProcessRecentlyReplaceDevices
+    struct TReplaceBrokenDevicesAfterRestart
     {
-        TProcessRecentlyReplaceDevices() = default;
+        TReplaceBrokenDevicesAfterRestart() = default;
 
         void Clear()
         {}
