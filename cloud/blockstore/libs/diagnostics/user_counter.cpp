@@ -40,180 +40,6 @@ constexpr TStringBuf DISK_WRITE_THROTTLER_DELAY       = "disk.write_throttler_de
 constexpr TStringBuf DISK_IO_QUOTA                    = "disk.io_quota_utilization_percentage";
 constexpr TStringBuf DISK_IO_QUOTA_BURST              = "disk.io_quota_utilization_percentage_burst";
 
-struct TUserSumCounterWrapper
-    : public IUserCounter
-{
-    TVector<TIntrusivePtr<NMonitoring::TCounterForPtr>> Counters;
-    NMonitoring::EMetricType Type = NMonitoring::EMetricType::UNKNOWN;
-
-    void GetType(NMonitoring::IMetricConsumer* consumer) const override
-    {
-        consumer->OnMetricBegin(Type);
-    }
-
-    void GetValue(
-        TInstant time,
-        NMonitoring::IMetricConsumer* consumer) const override
-    {
-        int64_t sum = 0;
-
-        for (const auto& counter: Counters) {
-            sum += counter->Val();
-        }
-
-        consumer->OnInt64(time, sum);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TBucketDescr
-{
-    TBucketBound Bound;
-    TString Name;
-};
-
-static constexpr size_t BUCKETS_COUNT = 25;
-
-using TBuckets = std::array<TBucketDescr, BUCKETS_COUNT>;
-
-template <typename THistogramType>
-TBuckets MakeBuckets(auto convertBound)
-{
-    static_assert(BUCKETS_COUNT == THistogramType::BUCKETS_COUNT, "");
-
-    TBuckets result;
-    const auto names = THistogramType::MakeNames();
-    for (size_t i = 0; i < names.size(); ++i) {
-        result[i].Bound = convertBound(THistogramType::Buckets[i]);
-        result[i].Name = names[i];
-    }
-    return result;
-}
-
-const TBuckets MS_BUCKETS = MakeBuckets<TRequestMsTimeBuckets>(
-    [](double data) {return data;});
-const TBuckets US_BUCKETS = MakeBuckets<TRequestUsTimeBuckets>(
-    [](double data) {return data == std::numeric_limits<double>::max()
-        ? data : data / 1000.;});
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TUserSumHistogramWrapper
-    : public IUserCounter
-{
-    static constexpr size_t IGNORE_BUCKETS_COUNT = 10;
-
-    TVector<TIntrusivePtr<TDynamicCounters>> Counters;
-    TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
-    const TBuckets& Buckets;
-    EMetricType Type = EMetricType::UNKNOWN;
-
-    TUserSumHistogramWrapper(const TBuckets& buckets)
-        : Histogram(TExplicitHistogramSnapshot::New(
-            buckets.size() - IGNORE_BUCKETS_COUNT))
-        , Buckets(buckets)
-    {
-        for (size_t i = IGNORE_BUCKETS_COUNT; i < Buckets.size(); ++i) {
-            (*Histogram)[i - IGNORE_BUCKETS_COUNT].first = Buckets[i].Bound;
-        }
-    }
-
-    void Clear() const
-    {
-        for (size_t i = IGNORE_BUCKETS_COUNT; i < Buckets.size(); ++i) {
-            (*Histogram)[i - IGNORE_BUCKETS_COUNT].second = 0;
-        }
-    }
-
-    void GetType(NMonitoring::IMetricConsumer* consumer) const override
-    {
-        consumer->OnMetricBegin(Type);
-    }
-
-    void GetValue(
-        TInstant time,
-        NMonitoring::IMetricConsumer* consumer) const override
-    {
-        Clear();
-
-        for (auto& histogram: Counters) {
-            for (ui32 i = 0; i < IGNORE_BUCKETS_COUNT; ++i) {
-                if (auto countSub = histogram->GetCounter(Buckets[i].Name)) {
-                    (*Histogram)[0].second += countSub->Val();
-                }
-            }
-
-            for (ui32 i = IGNORE_BUCKETS_COUNT; i < Buckets.size(); ++i) {
-                if (auto countSub = histogram->GetCounter(Buckets[i].Name)) {
-                    (*Histogram)[i - IGNORE_BUCKETS_COUNT].second += countSub->Val();
-                }
-            }
-        }
-
-        consumer->OnHistogram(time, Histogram);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-void AddUserMetric(
-    IUserCounterSupplier& dsc,
-    const TLabels& commonLabels,
-    const TVector<TDynamicCounterPtr>& baseCounters,
-    const TString& metricName,
-    TStringBuf newName)
-{
-    std::shared_ptr<TUserSumCounterWrapper> wrapper =
-        std::make_shared<TUserSumCounterWrapper>();
-
-    for (auto& counter: baseCounters) {
-        if (counter) {
-            if (auto countSub = counter->FindCounter(metricName)) {
-                wrapper->Counters.push_back(countSub);
-                wrapper->Type = countSub->ForDerivative()
-                    ? EMetricType::RATE
-                    : EMetricType::GAUGE;
-            }
-        }
-    }
-
-    if (wrapper->Type != NMonitoring::EMetricType::UNKNOWN) {
-        dsc.AddUserMetric(
-            commonLabels,
-            newName,
-            TUserCounter(wrapper));
-    }
-}
-
-auto AddHistogramUserMetric(
-    const TBuckets& buckets,
-    IUserCounterSupplier& dsc,
-    const TLabels& commonLabels,
-    const TVector<TDynamicCounterPtr>& baseCounters,
-    const TString& metricName,
-    TStringBuf newName)
-{
-    auto wrapper = std::make_shared<TUserSumHistogramWrapper>(buckets);
-
-    wrapper->Type = EMetricType::HIST_RATE;
-
-    for (auto& counter: baseCounters) {
-        if (counter) {
-            auto histogram =
-                counter->FindSubgroup("histogram", metricName);
-            if (histogram) {
-                wrapper->Counters.push_back(histogram);
-            }
-        }
-    }
-
-    dsc.AddUserMetric(
-        commonLabels,
-        newName,
-        TUserCounter(wrapper));
-}
-
 TLabels MakeVolumeLabels(
     const TString& cloudId,
     const TString& folderId,
@@ -258,33 +84,29 @@ void RegisterServiceVolume(
     AddUserMetric(
         dsc,
         commonLabels,
-        {src},
-        "UsedQuota",
+        {{src, "UsedQuota"}},
         DISK_IO_QUOTA);
     AddUserMetric(
         dsc,
         commonLabels,
-        {src},
-        "MaxUsedQuota",
+        {{src, "MaxUsedQuota"}},
         DISK_IO_QUOTA_BURST);
 
     auto readSub = src->FindSubgroup("request", "ReadBlocks");
     AddHistogramUserMetric(
-        US_BUCKETS,
+        GetUsBuckets(),
         dsc,
         commonLabels,
-        {readSub},
-        "ThrottlerDelay",
+        {{readSub, "ThrottlerDelay"}},
         DISK_READ_THROTTLER_DELAY);
 
     auto writeSub = src->FindSubgroup("request", "WriteBlocks");
     auto zeroSub = src->FindSubgroup("request", "ZeroBlocks");
     AddHistogramUserMetric(
-        US_BUCKETS,
+        GetUsBuckets(),
         dsc,
         commonLabels,
-        {writeSub, zeroSub},
-        "ThrottlerDelay",
+        {{writeSub, "ThrottlerDelay"}, {zeroSub, "ThrottlerDelay"}},
         DISK_WRITE_THROTTLER_DELAY);
 }
 
@@ -319,112 +141,111 @@ void RegisterServerVolumeInstance(
     auto commonLabels =
         MakeVolumeInstanceLabels(cloudId, folderId, diskId, instanceId);
 
-    auto readSub =
-        TVector<TDynamicCounterPtr>{src->FindSubgroup("request", "ReadBlocks")};
-    AddUserMetric(dsc, commonLabels, readSub, "Count", DISK_READ_OPS);
-    AddUserMetric(dsc, commonLabels, readSub, "MaxCount", DISK_READ_OPS_BURST);
-    AddUserMetric(dsc, commonLabels, readSub, "Errors/Fatal", DISK_READ_ERRORS);
-    AddUserMetric(dsc, commonLabels, readSub, "RequestBytes", DISK_READ_BYTES);
+    auto readSub = src->FindSubgroup("request", "ReadBlocks");
+    AddUserMetric(dsc, commonLabels, {{readSub, "Count"}}, DISK_READ_OPS);
     AddUserMetric(
         dsc,
         commonLabels,
-        readSub,
-        "MaxRequestBytes",
+        {{readSub, "MaxCount"}},
+        DISK_READ_OPS_BURST);
+    AddUserMetric(
+        dsc,
+        commonLabels,
+        {{readSub, "Errors/Fatal"}},
+        DISK_READ_ERRORS);
+    AddUserMetric(
+        dsc,
+        commonLabels,
+        {{readSub, "RequestBytes"}},
+        DISK_READ_BYTES);
+    AddUserMetric(
+        dsc,
+        commonLabels,
+        {{readSub, "MaxRequestBytes"}},
         DISK_READ_BYTES_BURST);
     AddUserMetric(
         dsc,
         commonLabels,
-        readSub,
-        "InProgress",
+        {{readSub, "InProgress"}},
         DISK_READ_OPS_IN_FLIGHT);
     AddUserMetric(
         dsc,
         commonLabels,
-        readSub,
-        "MaxInProgress",
+        {{readSub, "MaxInProgress"}},
         DISK_READ_OPS_IN_FLIGHT_BURST);
     AddUserMetric(
         dsc,
         commonLabels,
-        readSub,
-        "InProgressBytes",
+        {{readSub, "InProgressBytes"}},
         DISK_READ_BYTES_IN_FLIGHT);
     AddUserMetric(
         dsc,
         commonLabels,
-        readSub,
-        "MaxInProgressBytes",
+        {{readSub, "MaxInProgressBytes"}},
         DISK_READ_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        MS_BUCKETS,
+        GetMsBuckets(),
         dsc,
         commonLabels,
-        readSub,
-        "Time",
+        {{readSub, "Time"}},
         DISK_READ_LATENCY);
 
     auto writeSubgroup = src->FindSubgroup("request", "WriteBlocks");
     auto zeroSubgroup = src->FindSubgroup("request", "ZeroBlocks");
-    auto writeSub =
-        reportZeroBlocksMetrics
-            ? TVector<TDynamicCounterPtr>{writeSubgroup, zeroSubgroup}
-            : TVector<TDynamicCounterPtr>{writeSubgroup};
+    auto getWriteCounters = [&](const TString& name) {
+        auto counters = TVector<TBaseDynamicCounters>({{writeSubgroup, name}});
+        if (reportZeroBlocksMetrics) {
+            counters.push_back({zeroSubgroup, name});
+        }
+        return counters;
+    };
 
-    AddUserMetric(dsc, commonLabels, writeSub, "Count", DISK_WRITE_OPS);
+    AddUserMetric(dsc, commonLabels, getWriteCounters("Count"), DISK_WRITE_OPS);
     AddUserMetric(
         dsc,
         commonLabels,
-        writeSub,
-        "MaxCount",
+        getWriteCounters("MaxCount"),
         DISK_WRITE_OPS_BURST);
     AddUserMetric(
         dsc,
         commonLabels,
-        writeSub,
-        "Errors/Fatal",
+        getWriteCounters("Errors/Fatal"),
         DISK_WRITE_ERRORS);
     AddUserMetric(
         dsc,
         commonLabels,
-        writeSub,
-        "RequestBytes",
+        getWriteCounters("RequestBytes"),
         DISK_WRITE_BYTES);
     AddUserMetric(
         dsc,
         commonLabels,
-        writeSub,
-        "MaxRequestBytes",
+        getWriteCounters("MaxRequestBytes"),
         DISK_WRITE_BYTES_BURST);
     AddUserMetric(
         dsc,
         commonLabels,
-        writeSub,
-        "InProgress",
+        getWriteCounters("InProgress"),
         DISK_WRITE_OPS_IN_FLIGHT);
     AddUserMetric(
         dsc,
         commonLabels,
-        writeSub,
-        "MaxInProgress",
+        getWriteCounters("MaxInProgress"),
         DISK_WRITE_OPS_IN_FLIGHT_BURST);
     AddUserMetric(
         dsc,
         commonLabels,
-        writeSub,
-        "InProgressBytes",
+        getWriteCounters("InProgressBytes"),
         DISK_WRITE_BYTES_IN_FLIGHT);
     AddUserMetric(
         dsc,
         commonLabels,
-        writeSub,
-        "MaxInProgressBytes",
+        getWriteCounters("MaxInProgressBytes"),
         DISK_WRITE_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        MS_BUCKETS,
+        GetMsBuckets(),
         dsc,
         commonLabels,
-        writeSub,
-        "Time",
+        getWriteCounters("Time"),
         DISK_WRITE_LATENCY);
 }
 
@@ -465,4 +286,4 @@ void UnregisterServerVolumeInstance(
     dsc.RemoveUserMetric(commonLabels, DISK_WRITE_LATENCY);
 }
 
-} // NCloud::NBlockStore::NUserCounter
+}  // namespace NCloud::NBlockStore::NUserCounter
