@@ -154,7 +154,7 @@ struct TLargeBlocks::TImpl
                 const_cast<TSparseSegment&>(rangeIt->UnprocessedPart)
                     .PunchHole(intersectionStart, intersectionEnd);
 
-                if (rangeIt->UnprocessedPart.Empty()) {
+                if (rangeIt->UnprocessedPart.empty()) {
                     ProcessedMarkers.push_back(rangeIt->Marker);
                     rangeIt = it->second.erase(rangeIt);
                     continue;

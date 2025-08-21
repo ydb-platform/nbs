@@ -5,11 +5,11 @@
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/model/range.h>
+#include <cloud/filestore/libs/storage/tablet/model/sparse_segment.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/util/interval_set.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <memory>
@@ -53,7 +53,7 @@ private:
     NProtoPrivate::TDescribeDataResponse DescribeResponse;
     ui32 RemainingBlobsToRead = 0;
     bool ReadDataFallbackEnabled = false;
-    NKikimr::TIntervalVec<ui64> ZeroIntervals;
+    TSparseSegment ZeroIntervals;
 
     // Stats for reporting
     IRequestStatsPtr RequestStats;
@@ -122,7 +122,7 @@ TReadDataActor::TReadDataActor(
         BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
     , BlockBuffer(std::make_unique<TString>())
-    , ZeroIntervals(0, AlignedByteRange.Length)
+    , ZeroIntervals(TDefaultAllocator::Instance(), 0, AlignedByteRange.Length)
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
@@ -211,7 +211,7 @@ void ApplyFreshDataRange(
     ui64 offset,
     ui64 length,
     const NProtoPrivate::TDescribeDataResponse& describeResponse,
-    NKikimr::TIntervalVec<ui64>& zeroIntervals)
+    TSparseSegment& zeroIntervals)
 {
     if (sourceFreshData.GetContent().empty()) {
         return;
@@ -251,7 +251,7 @@ void ApplyFreshDataRange(
         sourceFreshData.GetContent().data() +
             (commonRange.Offset - sourceByteRange.Offset),
         commonRange.Length);
-    zeroIntervals.Subtract(relOffset, relOffset + commonRange.Length);
+    zeroIntervals.PunchHole(relOffset, relOffset + commonRange.Length);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -479,7 +479,7 @@ void TReadDataActor::HandleReadBlobResponse(
         dataIter.ExtractPlainDataAndAdvance(
             &(*BlockBuffer)[relOffset],
             blobRange.GetLength());
-        ZeroIntervals.Subtract(relOffset, relOffset + blobRange.GetLength());
+        ZeroIntervals.PunchHole(relOffset, relOffset + blobRange.GetLength());
     }
 
     --RemainingBlobsToRead;
@@ -584,11 +584,11 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             offset);
     }
 
-    for (const auto& zeroInterval: ZeroIntervals.EndForBegin) {
+    for (const auto& zeroInterval: ZeroIntervals) {
         memset(
-            &(*BlockBuffer)[zeroInterval.first],
+            &(*BlockBuffer)[zeroInterval.Start],
             0,
-            zeroInterval.second - zeroInterval.first);
+            zeroInterval.End - zeroInterval.Start);
     }
 
     const auto end = Min(DescribeResponse.GetFileSize(), OriginByteRange.End());

@@ -10,46 +10,44 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSparseSegment
+namespace NDetails {
+struct TRange
 {
-private:
-    struct TRange
+    ui64 Start = 0;
+    ui64 End = 0;
+};
+
+struct TRangeLess
+{
+    using is_transparent = void;
+
+    bool operator()(const auto& lhs, const auto& rhs) const
     {
-        ui64 Start = 0;
-        ui64 End = 0;
-    };
+        return GetEnd(lhs) < GetEnd(rhs);
+    }
 
-    struct TRangeLess
+    static ui64 GetEnd(const TRange& r)
     {
-        using is_transparent = void;
+        return r.End;
+    }
 
-        bool operator()(const auto& lhs, const auto& rhs) const
-        {
-            return GetEnd(lhs) < GetEnd(rhs);
-        }
+    static ui64 GetEnd(ui64 end)
+    {
+        return end;
+    }
+};
 
-        static ui64 GetEnd(const TRange& r)
-        {
-            return r.End;
-        }
+} // namespace NDetails
 
-        static ui64 GetEnd(ui64 end)
-        {
-            return end;
-        }
-    };
+////////////////////////////////////////////////////////////////////////////////
 
-    TSet<TRange, TRangeLess, TStlAllocator> Ranges;
-
+class TSparseSegment
+    : public TSet<NDetails::TRange, NDetails::TRangeLess, TStlAllocator>
+{
 public:
     TSparseSegment(IAllocator* alloc, ui64 start, ui64 end);
 
-public:
     void PunchHole(ui64 start, ui64 end);
-    bool Empty() const
-    {
-        return Ranges.empty();
-    }
 };
 
 }   // namespace NCloud::NFileStore::NStorage
