@@ -128,14 +128,14 @@ auto TWriteBackCache::TUtil::CalculateDataPartsToRead(
         [&res, offset = startingFromOffset, end = startingFromOffset + length](
             auto it)
         {
-            auto ioffset = Max(offset, it->second.Begin);
-            auto iend = Min(end, it->second.End);
+            auto partOffset = Max(offset, it->second.Begin);
+            auto partEnd = Min(end, it->second.End);
             auto* entry = it->second.Value;
             res.emplace_back(
                 it->second.Value,
-                ioffset - entry->Offset(),
-                ioffset,
-                iend - ioffset);
+                partOffset - entry->Offset(),
+                partOffset,
+                partEnd - partOffset);
         });
 
     return res;
