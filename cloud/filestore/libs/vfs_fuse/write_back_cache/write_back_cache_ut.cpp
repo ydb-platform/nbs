@@ -33,6 +33,10 @@ namespace {
 
 constexpr ui32 CacheCapacityBytes = 1024*1024 + 1024;
 
+constexpr ui32 DefaultMaxWriteRequestSize = 1_MB;
+constexpr ui32 DefaultMaxWriteRequestsCount = 64;
+constexpr ui32 DefaultMaxSumWriteRequestsSize = 32_MB;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void SleepForRandomDurationMs(ui32 maxDurationMs)
@@ -119,6 +123,10 @@ struct TBootstrap
     TTempFileHandle TempFileHandle;
     TWriteBackCache Cache;
 
+    ui32 MaxWriteRequestSize = 0;
+    ui32 MaxWriteRequestsCount = 0;
+    ui32 MaxSumWriteRequestsSize = 0;
+
     TCallContextPtr CallContext;
 
     // maps handle to data
@@ -142,7 +150,20 @@ struct TBootstrap
 
     std::atomic<int> SessionWriteDataHandlerCalled;
 
-    TBootstrap(TDuration cacheAutomaticFlushPeriod = {})
+    TBootstrap(
+            TDuration cacheAutomaticFlushPeriod = {},
+            ui32 maxWriteRequestSize = 0,
+            ui32 maxWriteRequestsCount = 0,
+            ui32 maxSumWriteRequestsSize = 0)
+        : MaxWriteRequestSize(maxWriteRequestSize > 0
+            ? maxWriteRequestSize
+            : DefaultMaxWriteRequestSize)
+        , MaxWriteRequestsCount(maxWriteRequestsCount > 0
+            ? maxWriteRequestsCount
+            : DefaultMaxWriteRequestsCount)
+        , MaxSumWriteRequestsSize(maxSumWriteRequestsSize > 0
+            ? maxSumWriteRequestsSize
+            : DefaultMaxSumWriteRequestsSize)
     {
         CacheAutomaticFlushPeriod = cacheAutomaticFlushPeriod;
         CacheFlushRetryPeriod = TDuration::MilliSeconds(100);
@@ -275,7 +296,10 @@ struct TBootstrap
             TempFileHandle.GetName(),
             CacheCapacityBytes,
             CacheAutomaticFlushPeriod,
-            CacheFlushRetryPeriod);
+            CacheFlushRetryPeriod,
+            MaxWriteRequestSize,
+            MaxWriteRequestsCount,
+            MaxSumWriteRequestsSize);
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
@@ -440,6 +464,51 @@ struct TBootstrap
         std::unique_lock lock3(FlushedDataMutex);
 
         UNIT_ASSERT_VALUES_EQUAL(ExpectedData, FlushedData);
+    }
+};
+
+struct TWriteRequestLogger
+{
+    struct TRequest
+    {
+        ui64 Handle = 0;
+        ui64 Offset = 0;
+        ui64 Length = 0;
+    };
+
+    TVector<TRequest> Requests;
+
+    void Subscribe(TBootstrap& b)
+    {
+        auto previousHandler = b.Session->WriteDataHandler;
+        b.Session->WriteDataHandler =
+            [this,
+             previousHandler =
+                 std::move(previousHandler)](auto context, auto request) mutable
+        {
+            Requests.push_back(
+                {.Handle = request->GetHandle(),
+                 .Offset = request->GetOffset(),
+                 .Length =
+                     request->GetBuffer().Size() - request->GetBufferOffset()});
+
+            return previousHandler(std::move(context), std::move(request));
+        };
+    }
+
+    TString GetLog(ui64 handle) const
+    {
+        TStringBuilder sb;
+        for (const auto& request : Requests) {
+            if (request.Handle != handle) {
+                continue;
+            }
+            if (!sb.Empty()) {
+                sb << ", ";
+            }
+            sb << "(" << request.Offset << ", " << request.Length << ")";
+        }
+        return sb;
     }
 };
 
@@ -923,6 +992,91 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         UNIT_ASSERT(flushFuture.HasValue());
         UNIT_ASSERT_EQUAL(writeAttempts, WriteAttemptsThreshold);
+    }
+
+    Y_UNIT_TEST(ShouldSplitLargeWriteRequestsAtFlush)
+    {
+        // Set MaxWriteRequestSize to 2 bytes
+        TBootstrap b({}, 2, 0, 0);
+
+        TWriteRequestLogger logger;
+        logger.Subscribe(b);
+
+        b.WriteToCacheSync(1, 0, "aa");
+        b.WriteToCacheSync(1, 2, "bb");
+        b.WriteToCacheSync(1, 4, "cc");
+        b.WriteToCacheSync(1, 6, "dd");
+        b.WriteToCacheSync(1, 8, "ee");
+
+        b.Cache.FlushData(1).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "(0, 2), (2, 2), (4, 2), (6, 2), (8, 2)",
+            logger.GetLog(1));
+    }
+
+    Y_UNIT_TEST(ShouldLimitTotalWriteRequestSizeAtFlush)
+    {
+        // Set MaxSumWriteRequestsSize to 7 bytes
+        TBootstrap b({}, 0, 0, 7);
+
+        TWriteRequestLogger logger;
+        logger.Subscribe(b);
+
+        b.WriteToCacheSync(1, 0, "aa");
+        b.WriteToCacheSync(1, 2, "bb");
+        b.WriteToCacheSync(1, 4, "cc");
+        b.WriteToCacheSync(1, 6, "dd");
+        b.WriteToCacheSync(1, 8, "ee");
+
+        b.Cache.FlushData(1).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "(0, 6), (6, 4)",
+            logger.GetLog(1));
+    }
+
+    Y_UNIT_TEST(ShouldLimitWriteRequestsCountAtFlush)
+    {
+        // Set MaxWriteRequestsCount to 3
+        TBootstrap b({}, 0, 3, 0);
+
+        TWriteRequestLogger logger;
+        logger.Subscribe(b);
+
+        b.WriteToCacheSync(1, 8, "a");
+        b.WriteToCacheSync(1, 6, "b");
+        b.WriteToCacheSync(1, 4, "c");
+        b.WriteToCacheSync(1, 2, "d");
+        b.WriteToCacheSync(1, 0, "e");
+
+        b.Cache.FlushData(1).GetValueSync();
+
+        // Parts are going in the increased order in each flush operation
+        UNIT_ASSERT_VALUES_EQUAL(
+            "(4, 1), (6, 1), (8, 1), (0, 1), (2, 1)",
+            logger.GetLog(1));
+    }
+
+    Y_UNIT_TEST(ShouldTryToFlushWhenRequestSizeIsGreaterThanLimit)
+    {
+        // Set MaxWriteRequestSize to 2 bytes and MaxWriteRequestsCount to 1
+        TBootstrap b({}, 2, 1, 0);
+
+        TWriteRequestLogger logger;
+        logger.Subscribe(b);
+
+        b.WriteToCacheSync(1, 0, "a");
+        // Flush will have two requests (1, 2) and (3, 2) despite the limit
+        b.WriteToCacheSync(1, 1, "bbbb");
+        b.WriteToCacheSync(1, 5, "c");
+        b.WriteToCacheSync(1, 6, "d");
+
+        b.Cache.FlushData(1).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "(0, 1), (1, 2), (3, 2), (5, 2)",
+            logger.GetLog(1));
     }
 
     /* TODO(svartmetal): fix tests with automatic flush

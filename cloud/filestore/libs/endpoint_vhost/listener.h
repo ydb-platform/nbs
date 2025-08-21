@@ -28,6 +28,9 @@ struct TWriteBackCacheConfig
     ui64 Capacity = 0;
     TDuration AutomaticFlushPeriod;
     TDuration FlushRetryPeriod;
+    ui32 FlushMaxWriteRequestSize = 0;
+    ui32 FlushMaxWriteRequestsCount = 0;
+    ui32 FlushMaxSumWriteRequestsSize = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
