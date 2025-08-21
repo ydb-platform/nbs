@@ -13,10 +13,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 EmptyRow = Max<ui32>();
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TDeviceList;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -81,14 +77,12 @@ public:
         bool isReplacement);
     bool IsRecentlyReplacedDevice(
         const TDiskId& diskId,
-        const TDeviceId& deviceId);
+        const TDeviceId& deviceId) const;
     void SetRecentlyReplacedDevice(
         const TDiskId& diskId,
-        ui32 deviceRow,
-        ui64 seqNo,
-        bool isRecentlyReplaced);
-    ui32 GetDeviceRow(const TDiskId& diskId, const TDeviceId& deviceId);
-    THashMap<ui32, ui64> GetRowToSeqNo(const TDiskId& diskId);
+        const TDeviceId& deviceId,
+        ui64 seqNo);
+    void ResetRecentlyReplacedDevices(const TDiskId& diskId, ui64 seqNo);
 
     // for tests and monpages
     TVector<TVector<TDeviceInfo>> AsMatrix(const TString& diskId) const;
@@ -112,8 +106,6 @@ private:
     {
         // Set to true when some device is replacing now.
         bool IsRecentlyReplacedDevice = false;
-
-        ui32 Row = EmptyRow;
 
         ui64 SeqNo = 0;
 

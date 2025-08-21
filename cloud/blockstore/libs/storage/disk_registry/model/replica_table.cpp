@@ -47,7 +47,6 @@ void TReplicaTable::UpdateReplica(
 
     for (ui32 j = 0; j < devices.size(); ++j) {
         diskState.Cells[j].DeviceInfos[replicaNo] = {devices[j], false};
-        diskState.Cells[j].Row = j;
     }
 
     for (auto& cell: diskState.Cells) {
@@ -261,7 +260,7 @@ TMirroredDiskDevicesStat TReplicaTable::CalculateDiskStats(
 
 bool TReplicaTable::IsRecentlyReplacedDevice(
     const TDiskId& diskId,
-    const TDeviceId& deviceId)
+    const TDeviceId& deviceId) const
 {
     const auto* diskState = Disks.FindPtr(diskId);
     if (!diskState) {
@@ -278,51 +277,39 @@ bool TReplicaTable::IsRecentlyReplacedDevice(
 
 void TReplicaTable::SetRecentlyReplacedDevice(
     const TDiskId& diskId,
-    ui32 deviceRow,
-    ui64 seqNo,
-    bool isRecentlyReplaced)
-{
-    auto* diskState = Disks.FindPtr(diskId);
-    if (!diskState || deviceRow >= diskState->Cells.size()) {
-        return;
-    }
-
-    diskState->Cells[deviceRow].IsRecentlyReplacedDevice = isRecentlyReplaced;
-    diskState->Cells[deviceRow].SeqNo = seqNo;
-}
-
-ui32 TReplicaTable::GetDeviceRow(
-    const TDiskId& diskId,
-    const TDeviceId& deviceId)
+    const TDeviceId& deviceId,
+    ui64 seqNo)
 {
     auto* diskState = Disks.FindPtr(diskId);
     if (!diskState) {
-        return EmptyRow;
+        return;
     }
 
     auto* cell = diskState->DeviceId2Cell.FindPtr(deviceId);
     if (!cell || !*cell) {
-        return EmptyRow;
+        return;
     }
 
-    return (*cell)->Row;
+    (*cell)->IsRecentlyReplacedDevice = true;
+    (*cell)->SeqNo = seqNo;
 }
 
-THashMap<ui32, ui64> TReplicaTable::GetRowToSeqNo(const TDiskId& diskId)
+void TReplicaTable::ResetRecentlyReplacedDevices(
+    const TDiskId& diskId,
+    ui64 seqNo)
 {
     auto* diskState = Disks.FindPtr(diskId);
     if (!diskState) {
-        return {};
+        return;
     }
 
-    THashMap<ui32, ui64> rowToSeqNo;
-    for (const auto& cell: diskState->Cells) {
-        if (cell.IsRecentlyReplacedDevice) {
-            rowToSeqNo.emplace(cell.Row, cell.SeqNo);
+    for (auto& cell: diskState->Cells) {
+        if (!cell.IsRecentlyReplacedDevice || cell.SeqNo > seqNo) {
+            continue;
         }
+        cell.IsRecentlyReplacedDevice = false;
+        cell.SeqNo = seqNo;
     }
-
-    return rowToSeqNo;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
