@@ -81,31 +81,12 @@ void TVolumeActor::ReleaseReplacedDevices(
             LogTitle.GetWithTime().c_str(),
             clientId.Quote().c_str());
 
-        auto request = TReleaseDiskRequest{
-            .ClientId = clientId,
-            .DevicesToRelease = replacedDevices,
-        };
-        AddAcquireReleaseDiskRequest(ctx, std::move(request));
-    }
-}
-
-void TVolumeActor::ReleaseDiskFromOldClients(
-    const NActors::TActorContext& ctx,
-    const TVector<TString>& removedClients)
-{
-    for (const auto& clientId: removedClients) {
-        LOG_DEBUG(
+        AddReleaseDiskRequest(
             ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s Releasing devices from old client: %s",
-            LogTitle.GetWithTime().c_str(),
-            clientId.Quote().c_str());
-
-        AddAcquireReleaseDiskRequest(
-            ctx,
-            TReleaseDiskRequest{
+            {
                 .ClientId = clientId,
-                .RetryIfTimeoutOrUndelivery = true});
+                .DevicesToRelease = replacedDevices,
+            });
     }
 }
 

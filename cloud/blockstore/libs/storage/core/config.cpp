@@ -625,7 +625,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(RetryAcquireReleaseDiskInitialDelay,  TDuration,   Seconds(0)         )\
     xxx(RetryAcquireReleaseDiskMaxDelay,      TDuration,   Seconds(0)         )\
                                                                                \
-    xxx(DoAcquireReleaseDevicesAfterTransaction,           bool,   false      )\
+    xxx(NonReplicatedVolumeAcquireDiskAfterAddClientEnabled bool,   false     )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

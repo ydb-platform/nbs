@@ -142,7 +142,9 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
         return;
     }
 
-    if (Config->GetDoAcquireReleaseDevicesAfterTransaction() || hasError) {
+    if (Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() ||
+        hasError)
+    {
         NCloud::Reply(
             ctx,
             *clientRequest->RequestInfo,
@@ -269,7 +271,7 @@ void TVolumeActor::CompleteRemoveClient(
     const bool needToReleaseDevices =
         State->IsDiskRegistryMediaKind() &&
         Config->GetAcquireNonReplicatedDevices() &&
-        Config->GetDoAcquireReleaseDevicesAfterTransaction() &&
+        Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() &&
         args.Error.GetCode() == S_OK;
 
     Y_DEFER
@@ -300,9 +302,9 @@ void TVolumeActor::CompleteRemoveClient(
 
     if (needToReleaseDevices) {
         // Release all devices for client.
-        AddAcquireReleaseDiskRequest(
+        AddReleaseDiskRequest(
             ctx,
-            TReleaseDiskRequest{
+            {
                 .ClientId = args.ClientId,
                 .ClientRequest = std::make_shared<TClientRequest>(
                     args.RequestInfo,

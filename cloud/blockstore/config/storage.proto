@@ -1306,5 +1306,5 @@ message TStorageServiceConfig
 
     // Do AddClient/RemoveClient transaction
     // and then do right Acquire/Release devices requests.
-    optional bool DoAcquireReleaseDevicesAfterTransaction = 451;
+    optional bool NonReplicatedVolumeAcquireDiskAfterAddClientEnabled = 451;
 }

@@ -713,7 +713,8 @@ public:
     [[nodiscard]] TDuration GetRetryAcquireReleaseDiskInitialDelay() const;
     [[nodiscard]] TDuration GetRetryAcquireReleaseDiskMaxDelay() const;
 
-    [[nodiscard]] bool GetDoAcquireReleaseDevicesAfterTransaction() const;
+    [[nodiscard]] bool
+    GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() const;
 };
 
 ui64 GetAllocationUnit(

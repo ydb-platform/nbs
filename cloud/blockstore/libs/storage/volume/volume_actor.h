@@ -283,9 +283,8 @@ private:
         bool RetryIfTimeoutOrUndelivery = false;
     };
 
-    class TAcquireReleaseDiskRequest
+    struct TAcquireReleaseDiskRequest
     {
-    public:
         bool IsAcquire;
         TString ClientId;
         NProto::EVolumeAccessMode AccessMode =
@@ -585,6 +584,12 @@ private:
     void AddAcquireReleaseDiskRequest(
         const NActors::TActorContext& ctx,
         TAcquireReleaseDiskRequest request);
+    void AddAcquireDiskRequest(
+        const NActors::TActorContext& ctx,
+        TAcquireDiskRequest request);
+    void AddReleaseDiskRequest(
+        const NActors::TActorContext& ctx,
+        TReleaseDiskRequest request);
     void ProcessNextAcquireReleaseDiskRequest(const NActors::TActorContext& ctx);
     void OnClientListUpdate(const NActors::TActorContext& ctx);
 

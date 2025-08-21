@@ -111,6 +111,20 @@ void TVolumeActor::AddAcquireReleaseDiskRequest(
     }
 }
 
+void TVolumeActor::AddAcquireDiskRequest(
+    const NActors::TActorContext& ctx,
+    TAcquireDiskRequest request)
+{
+    AddAcquireReleaseDiskRequest(ctx, std::move(request));
+}
+
+void TVolumeActor::AddReleaseDiskRequest(
+    const NActors::TActorContext& ctx,
+    TReleaseDiskRequest request)
+{
+    AddAcquireReleaseDiskRequest(ctx, std::move(request));
+}
+
 void TVolumeActor::ProcessNextAcquireReleaseDiskRequest(const TActorContext& ctx)
 {
     if (AcquireReleaseDiskRequests) {
@@ -209,14 +223,15 @@ void TVolumeActor::HandleReacquireDisk(
 {
     Y_UNUSED(ev);
 
-    if (!State->GetReadWriteAccessClientId()
-            && ctx.Now() > StateLoadTimestamp + TDuration::Seconds(5))
+    if (!State->GetReadWriteAccessClientId() &&
+        ctx.Now() > StateLoadTimestamp + TDuration::Seconds(5))
     {
-        auto releaseRequest = TReleaseDiskRequest{
-            .ClientId = TString(AnyWriterClientId),
-            .DevicesToRelease = TVector<NProto::TDeviceConfig>{},
-        };
-        AddAcquireReleaseDiskRequest(ctx, std::move(releaseRequest));
+        AddReleaseDiskRequest(
+            ctx,
+            {
+                .ClientId = TString(AnyWriterClientId),
+                .DevicesToRelease = TVector<NProto::TDeviceConfig>{},
+            });
     }
 
     AcquireDiskIfNeeded(ctx);
@@ -274,7 +289,8 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
         return;
     }
 
-    if (Config->GetDoAcquireReleaseDevicesAfterTransaction() || HasError(error))
+    if (Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() ||
+        HasError(error))
     {
         auto response = CreateAddClientResponse(
             error,
@@ -375,19 +391,18 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
         const bool acquireDevices =
             IsDiskRegistryMediaKind(mediaKind) &&
             Config->GetAcquireNonReplicatedDevices() &&
-            !Config->GetDoAcquireReleaseDevicesAfterTransaction();
+            !Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled();
         if (acquireDevices) {
             if (request->RemovedClientId) {
-                AddAcquireReleaseDiskRequest(
+                AddReleaseDiskRequest(
                     ctx,
-                    TReleaseDiskRequest{
-                        .ClientId = request->RemovedClientId,
-                        .ClientRequest = request,
-                        .DevicesToRelease = {}});
+                    {.ClientId = request->RemovedClientId,
+                     .ClientRequest = request,
+                     .DevicesToRelease = {}});
             } else {
-                AddAcquireReleaseDiskRequest(
+                AddAcquireDiskRequest(
                     ctx,
-                    TAcquireDiskRequest{
+                    {
                         .ClientId = request->AddedClientInfo.GetClientId(),
                         .AccessMode =
                             request->AddedClientInfo.GetVolumeAccessMode(),
@@ -416,6 +431,28 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
                 request->PipeServerActorId,
                 request->AddedClientInfo);
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeActor::ReleaseDiskFromOldClients(
+    const NActors::TActorContext& ctx,
+    const TVector<TString>& removedClients)
+{
+    for (const auto& clientId: removedClients) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Releasing devices from old client: %s",
+            LogTitle.GetWithTime().c_str(),
+            clientId.Quote().c_str());
+
+        AddReleaseDiskRequest(
+            ctx,
+            {.ClientId = clientId,
+             .DevicesToRelease = TVector<NProto::TDeviceConfig>{},
+             .RetryIfTimeoutOrUndelivery = true});
     }
 }
 
@@ -543,7 +580,7 @@ void TVolumeActor::CompleteAddClient(
     const bool needToAcquireOrReleaseDevices =
         State->IsDiskRegistryMediaKind() &&
         Config->GetAcquireNonReplicatedDevices() &&
-        Config->GetDoAcquireReleaseDevicesAfterTransaction() &&
+        Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() &&
         !HasError(args.Error);
 
     Y_DEFER
@@ -589,7 +626,7 @@ void TVolumeActor::CompleteAddClient(
                 args.PipeServerActorId,
                 args.Info),
             args.ForceTabletRestart);
-        AddAcquireReleaseDiskRequest(ctx, std::move(request));
+        AddAcquireDiskRequest(ctx, std::move(request));
     } else {
         auto response = CreateAddClientResponse(
             args.Error,
