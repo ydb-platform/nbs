@@ -30,7 +30,7 @@ class TCell
 {
 private:
     const TBootstrap Bootstrap;
-    const TCellConfig Config;
+    const TCellConfigPtr Config;
 
     TAdaptiveLock Lock;
 
@@ -40,7 +40,7 @@ private:
     TVector<TString> UnusedHosts;
 
 public:
-    TCell(TBootstrap bootstrap, TCellConfig config);
+    TCell(TBootstrap bootstrap, TCellConfigPtr config);
 
     [[nodiscard]] TResultOrError<TCellHostEndpoint> GetCellClient(
         const NClient::TClientAppConfigPtr& clientConfig) override
@@ -51,7 +51,7 @@ public:
     [[nodiscard]] TCellHostEndpoints GetCellClients(
         const NClient::TClientAppConfigPtr& clientConfig) override
     {
-        return PickHosts(Config.GetDescribeVolumeHostCount(), clientConfig);
+        return PickHosts(Config->GetDescribeVolumeHostCount(), clientConfig);
     }
 
     [[nodiscard]] THashMap<TString, ICellHostPtr> GetActiveHosts() const

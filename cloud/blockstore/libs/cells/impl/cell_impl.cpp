@@ -21,11 +21,11 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCell::TCell(TBootstrap bootstrap, TCellConfig config)
+TCell::TCell(TBootstrap bootstrap, TCellConfigPtr config)
     : Bootstrap(std::move(bootstrap))
     , Config(std::move(config))
 {
-    for (const auto& host: Config.GetHosts()) {
+    for (const auto& host: Config->GetHosts()) {
         UnusedHosts.emplace_back(host.first);
     }
     Shuffle(UnusedHosts.begin(), UnusedHosts.end());
@@ -43,7 +43,7 @@ TResultOrError<TCellHostEndpoint> TCell::PickHost(
             return MakeError(
                 E_REJECTED,
                 TStringBuilder()
-                    << "No endpoints available in cell " << Config.GetCellId());
+                    << "No endpoints available in cell " << Config->GetCellId());
         }
 
         auto index = RandomNumber<ui32>(ActiveHosts.size());
@@ -84,16 +84,16 @@ void TCell::AdjustActiveHostsToMinConnections()
 {
     TVector<ICellHostPtr> hostsToActivate;
     with_lock (Lock) {
-        if (Config.GetMinCellConnections() <= ActiveHosts.size()) {
+        if (Config->GetMinCellConnections() <= ActiveHosts.size()) {
             return;
         }
 
-        auto delta = Config.GetMinCellConnections() - ActiveHosts.size();
+        auto delta = Config->GetMinCellConnections() - ActiveHosts.size();
         while (delta-- && !UnusedHosts.empty()) {
             auto fqdn = UnusedHosts.back();
             UnusedHosts.pop_back();
             auto host =
-                CreateHost(Config.GetHosts().find(fqdn)->second, Bootstrap);
+                CreateHost(Config->GetHosts().find(fqdn)->second, Bootstrap);
             ActivatingHosts.emplace(fqdn, host);
             hostsToActivate.push_back(host);
         }
@@ -124,7 +124,7 @@ void TCell::AdjustActiveHostsToMinConnections()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICellPtr CreateCell(TBootstrap bootstrap, TCellConfig config)
+ICellPtr CreateCell(TBootstrap bootstrap, TCellConfigPtr config)
 {
     return std::make_shared<TCell>(std::move(bootstrap), std::move(config));
 }

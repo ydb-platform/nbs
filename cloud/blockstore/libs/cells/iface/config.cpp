@@ -1,7 +1,5 @@
 #include "config.h"
 
-#include <cloud/storage/core/libs/common/proto_helpers.h>
-
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/hash.h>
@@ -27,12 +25,8 @@ namespace {
 // BLOCKSTORE_CELL_DEFAULT_CONFIG
 
 #define BLOCKSTORE_CELL_DECLARE_CONFIG(name, type, value)                      \
-    Y_DECLARE_UNUSED static const type CellDefault##name = value;              \
+    inline static const type CellDefault##name = value;                        \
 // BLOCKSTORE_CELL_DECLARE_CONFIG
-
-BLOCKSTORE_CELL_DEFAULT_CONFIG(BLOCKSTORE_CELL_DECLARE_CONFIG)
-
-#undef BLOCKSTORE_CELL_DECLARE_CONFIG
 
 #define BLOCKSTORE_CELL_COMPUTED_CONFIG(xxx)                                   \
     xxx(Hosts,                     TCellConfigByCellId                        )\
@@ -45,19 +39,15 @@ BLOCKSTORE_CELL_DEFAULT_CONFIG(BLOCKSTORE_CELL_DECLARE_CONFIG)
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_CELLS_DEFAULT_CONFIG(xxx)                                   \
-    xxx(CellId,                      TString,           {}                    )\
+    xxx(CellId,                      TString,           ""                    )\
     xxx(DescribeVolumeTimeout,       TDuration,         TDuration::Seconds(30))\
     xxx(RdmaTransportWorkers,        ui32,              0                     )\
     xxx(CellsEnabled,                bool,              false                 )\
 // BLOCKSTORE_CELLS_DEFAULT_CONFIG
 
 #define BLOCKSTORE_CELLS_DECLARE_CONFIG(name, type, value)                     \
-    Y_DECLARE_UNUSED static const type CellsDefault##name = value;             \
+    inline static const type CellsDefault##name = value;                       \
 // BLOCKSTORE_CELL_DECLARE_CONFIG
-
-BLOCKSTORE_CELLS_DEFAULT_CONFIG(BLOCKSTORE_CELLS_DECLARE_CONFIG)
-
-#undef BLOCKSTORE_CELLS_DECLARE_CONFIG
 
 #define BLOCKSTORE_CELLS_COMPUTED_CONFIG(xxx)                                  \
     xxx(Cells,                     TCellConfigByCellId                        )\
@@ -66,6 +56,19 @@ BLOCKSTORE_CELLS_DEFAULT_CONFIG(BLOCKSTORE_CELLS_DECLARE_CONFIG)
 #define BLOCKSTORE_CELLS_CONFIG(xxx)                                           \
     BLOCKSTORE_CELLS_DEFAULT_CONFIG(xxx)                                       \
     BLOCKSTORE_CELLS_COMPUTED_CONFIG(xxx)
+// BLOCKSTORE_CELLS_CONFIG
+
+#define CONFIG_ITEM_IS_SET_CHECKER(name, ...)                                  \
+    template <typename TProto>                                                 \
+    [[nodiscard]] bool Is##name##Set(const TProto& proto)                      \
+    {                                                                          \
+        if constexpr (requires() { proto.name##Size(); }) {                    \
+            return proto.name##Size() > 0;                                     \
+        } else {                                                               \
+            return proto.Has##name();                                          \
+        }                                                                      \
+    }
+// CONFIG_ITEM_IS_SET_CHECKER
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -106,25 +109,7 @@ void DumpImpl(
     const NProto::ECellDataTransport& value,
     IOutputStream& os)
 {
-    switch (value) {
-        case NProto::CELL_DATA_TRANSPORT_UNSET:
-            os << "CELL_DATA_TRANSPORT_UNSET";
-            break;
-        case NProto::CELL_DATA_TRANSPORT_GRPC:
-            os << "CELL_DATA_TRANSPORT_GRPC";
-            break;
-        case NProto::CELL_DATA_TRANSPORT_NBD:
-            os << "CELL_DATA_TRANSPORT_NBD";
-            break;
-        case NProto::CELL_DATA_TRANSPORT_RDMA:
-            os << "CELL_DATA_TRANSPORT_RDMA";
-            break;
-        default:
-            os << "(Unknown ECellDataTransport value "
-                << static_cast<int>(value)
-                << ")";
-            break;
-    }
+    os << NProto::ECellDataTransport_Name(value);
 }
 
 NProto::TClientAppConfig CreateClientAppConfig(
@@ -156,25 +141,51 @@ TCellHostConfig::TCellHostConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCellConfig::TCellConfig(NProto::TCellConfig config)
-    : Config(std::move(config))
+struct TCellConfig::TImpl
 {
-    for (const auto& h: Config.GetHosts()) {
-        ConfiguredHosts.emplace(h.GetFqdn(), TCellHostConfig(h, *this));
+    const NProto::TCellConfig Config;
+    TConfiguredHostsByFqdn ConfiguredHosts;
+
+    BLOCKSTORE_CELL_DEFAULT_CONFIG(BLOCKSTORE_CELL_DECLARE_CONFIG);
+    BLOCKSTORE_CELL_DEFAULT_CONFIG(CONFIG_ITEM_IS_SET_CHECKER);
+
+    explicit TImpl(NProto::TCellConfig config = {})
+        : Config(std::move(config))
+    {
     }
+
+    [[nodiscard]] const NProto::TCellConfig& GetCellConfig() const
+    {
+        return Config;
+    }
+};
+
+TCellConfig::TCellConfig(NProto::TCellConfig config)
+    : Impl(std::make_unique<TImpl>(std::move(config)))
+{
+    for (const auto& h: Impl->Config.GetHosts()) {
+        Impl->ConfiguredHosts.emplace(h.GetFqdn(),TCellHostConfig(h, *this));
+    }
+}
+
+TCellConfig::~TCellConfig() = default;
+
+const NProto::TCellConfig& TCellConfig::GetCellConfig() const
+{
+    return Impl->GetCellConfig();
 }
 
 const TConfiguredHostsByFqdn& TCellConfig::GetHosts() const
 {
-    return ConfiguredHosts;
+    return Impl->ConfiguredHosts;
 }
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
 type TCellConfig::Get##name() const                                            \
 {                                                                              \
-    return NCloud::HasField(Config, #name)                                     \
-                ? ConvertValue<type>(Config.Get##name())                       \
-                : CellDefault##name;                                           \
+    return Impl->Is##name##Set(Impl->Config)                                   \
+        ? ConvertValue<type>(Impl->Config.Get##name())                         \
+        : TImpl::CellDefault##name;                                            \
 }
 // BLOCKSTORE_CONFIG_GETTER
 
@@ -217,31 +228,60 @@ void TCellConfig::DumpHtml(IOutputStream& out) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCellsConfig::TCellsConfig(NProto::TCellsConfig config)
-    : Config(std::move(config))
-    , GrpcClientConfig(CreateClientAppConfig(config.GetGrpcClientConfig()))
+struct TCellsConfig::TImpl
 {
-    for (const auto& cell: Config.GetCells()) {
-        ConfiguredCells.emplace(cell.GetCellId(), cell);
+    const NProto::TCellsConfig Config;
+    TCellConfigByCellId ConfiguredCells;
+    NClient::TClientAppConfig GrpcClientConfig;
+
+    BLOCKSTORE_CELLS_DEFAULT_CONFIG(BLOCKSTORE_CELLS_DECLARE_CONFIG);
+    BLOCKSTORE_CELLS_DEFAULT_CONFIG(CONFIG_ITEM_IS_SET_CHECKER);
+
+    explicit TImpl(NProto::TCellsConfig config)
+        : Config(std::move(config))
+        , GrpcClientConfig(CreateClientAppConfig(config.GetGrpcClientConfig()))
+    {
+        for (const auto& cell: Config.GetCells()) {
+            ConfiguredCells.emplace(
+                cell.GetCellId(),
+                std::make_shared<TCellConfig>(cell));
+        }
     }
+
+    [[nodiscard]] const NProto::TCellsConfig& GetCellsConfig() const
+    {
+        return Config;
+    }
+};
+
+TCellsConfig::TCellsConfig(NProto::TCellsConfig config)
+    : Impl(std::make_unique<TImpl>(std::move(config)))
+{
+}
+
+TCellsConfig::~TCellsConfig() = default;
+
+const NProto::TCellsConfig& TCellsConfig::GetCellsConfig() const
+{
+    return Impl->Config;
 }
 
 const NClient::TClientAppConfig& TCellsConfig::GetGrpcClientConfig() const
 {
-    return GrpcClientConfig;
+    return Impl->GrpcClientConfig;
 }
 
 const TCellConfigByCellId& TCellsConfig::GetCells() const
 {
-    return ConfiguredCells;
+    return Impl->ConfiguredCells;
 }
 
 #define BLOCKSTORE_CELLS_CONFIG_GETTER(name, type, ...)                        \
 type TCellsConfig::Get##name() const                                           \
 {                                                                              \
-    return NCloud::HasField(Config, #name)                                     \
-                ? ConvertValue<type>(Config.Get##name())                       \
-                : CellsDefault##name;                                          \
+    return Impl->Is##name##Set(Impl->Config)                                   \
+        ? ConvertValue<type>(Impl->Config.Get##name())                         \
+        : TImpl::CellsDefault##name;                                           \
 }
 // BLOCKSTORE_CELLS_CONFIG_GETTER
 

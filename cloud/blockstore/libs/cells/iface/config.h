@@ -73,16 +73,14 @@ using TConfiguredHostsByFqdn = THashMap<TString, TCellHostConfig>;
 class TCellConfig: public IDumpable
 {
 private:
-    const NProto::TCellConfig Config;
-    TConfiguredHostsByFqdn ConfiguredHosts;
+    struct TImpl;
+    std::unique_ptr<TImpl> Impl;
 
 public:
     explicit TCellConfig(NProto::TCellConfig config = {});
+    ~TCellConfig() override;
 
-    [[nodiscard]] const NProto::TCellConfig& GetCellConfig() const
-    {
-        return Config;
-    }
+    [[nodiscard]] const NProto::TCellConfig& GetCellConfig() const;
 
     [[nodiscard]] TString GetCellId() const;
     [[nodiscard]] ui32 GetGrpcPort() const;
@@ -100,24 +98,21 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TCellConfigByCellId = THashMap<TString, TCellConfig>;
+using TCellConfigByCellId = THashMap<TString, TCellConfigPtr>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TCellsConfig: public IDumpable
 {
 private:
-    const NProto::TCellsConfig Config;
-    TCellConfigByCellId ConfiguredCells;
-    NClient::TClientAppConfig GrpcClientConfig;
+    struct TImpl;
+    std::unique_ptr<TImpl> Impl;
 
 public:
     explicit TCellsConfig(NProto::TCellsConfig config = {});
+    ~TCellsConfig() override;
 
-    [[nodiscard]] const NProto::TCellsConfig& GetCellsConfig() const
-    {
-        return Config;
-    }
+    [[nodiscard]] const NProto::TCellsConfig& GetCellsConfig() const;
 
     [[nodiscard]] TString GetCellId() const;
     [[nodiscard]] const TCellConfigByCellId& GetCells() const;
