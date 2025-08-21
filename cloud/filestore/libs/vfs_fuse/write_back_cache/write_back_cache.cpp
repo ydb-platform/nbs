@@ -175,6 +175,8 @@ struct TWriteBackCache::TPendingOperations
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Reads a sequence of contiguous write data entry parts as a single buffer.
+// Provides a method to read data across multiple entry parts efficiently.
 class TWriteBackCache::TContiguousWriteDataEntryPartsReader
 {
 public:
@@ -218,9 +220,18 @@ public:
         TString buffer(bytesCount, 0);
 
         while (bytesCount > 0) {
+            // Nagivate to the next element if the current one is fully read.
             if (CurrentReadOffset == Current->Length) {
                 Current++;
                 CurrentReadOffset = 0;
+
+                // The next element is guaranteed to be valid if the contiguous
+                // buffer hasn't fully read
+                Y_DEBUG_ABORT_UNLESS(RemainingSize > 0);
+
+                // The next element is guaranteed to be non-empty - no need to
+                // skip more elements
+                Y_DEBUG_ABORT_UNLESS(Current->Length > 0);
             }
 
             const char* from = Current->Source->GetBuffer().data();
@@ -239,6 +250,8 @@ public:
         return buffer;
     }
 
+    // Validates a range of data entry parts to ensure they form a contiguous
+    // sequence. Additionally checks that each part has non-zero length.
     static bool Validate(TIterator begin, TIterator end)
     {
         if (begin == end) {
