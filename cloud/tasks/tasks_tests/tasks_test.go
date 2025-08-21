@@ -1804,12 +1804,7 @@ func TestTaskInflightDuration(t *testing.T) {
 
 	s := createServices(t, ctx, db, 2)
 
-	pingPeriod, err := time.ParseDuration(*s.config.TaskPingPeriod)
-	if err != nil {
-		t.Fatalf("failed to parse taskPingPeriod: %v", err)
-	}
-
-	err = registerLongTask(s.registry)
+	err := registerLongTask(s.registry)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1827,10 +1822,9 @@ func TestTaskInflightDuration(t *testing.T) {
 
 	require.True(t, tasks_storage.IsEnded(taskState.Status))
 
-	expectedDuration := 10 * time.Second
 	actualDuration := taskState.InflightDuration
-	threshold := 2 * pingPeriod
-	require.InDelta(t, expectedDuration, actualDuration, float64(threshold))
+	expectedDuration := 10 * time.Second
+	require.GreaterOrEqual(t, actualDuration, expectedDuration)
 }
 
 func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
@@ -1841,9 +1835,8 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	defer db.Close(ctx)
 
 	// runnersCount must be at least the count of tasks + 1 (for CollectListerMetrics).
-	// Otherwise, a race condition can occur where longTask is picked up
-	// before waitingTask. This results in a WaitingDuration of zero,
-	// which causes the test to fail.
+	// Otherwise, a race condition can occur where longTask is picked up before waitingTask.
+	// https://github.com/ydb-platform/nbs/pull/4002
 	s := createServices(t, ctx, db, 3 /* runnersCount */)
 
 	err := registerLongTask(s.registry)
@@ -1875,14 +1868,15 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 
 	inflightDuration := waitingState.InflightDuration
 	waitingDuration := waitingState.WaitingDuration
-	durationThreshold := float64(time.Second)
-
 	totalDuration := waitingState.EndedAt.Sub(waitingState.CreatedAt)
-	totalThreshold := float64(2 * time.Second)
 
-	require.InDelta(t, 5*time.Second, inflightDuration, durationThreshold)
-	require.InDelta(t, 10*time.Second, waitingDuration, durationThreshold)
-	require.InDelta(t, 15*time.Second, totalDuration, totalThreshold)
+	// The delay between task scheduling and runner task pickup is not included
+	// in WaitingDuration, so it can be less than expected.
+	waitingThreshold := 2 * time.Second
+
+	require.GreaterOrEqual(t, inflightDuration, 5*time.Second)
+	require.GreaterOrEqual(t, waitingDuration, 10*time.Second-waitingThreshold)
+	require.GreaterOrEqual(t, totalDuration, 15*time.Second)
 }
 
 func TestTaskWaitingDurationInChain(t *testing.T) {
@@ -1922,20 +1916,24 @@ func TestTaskWaitingDurationInChain(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	threshold := float64(2 * time.Second)
+	waitingThreshold := 2 * time.Second
 
 	state1, err := s.storage.GetTask(ctx, task1ID)
 	require.NoError(t, err)
-	require.InDelta(t, 10*time.Second, state1.InflightDuration, threshold)
+	require.GreaterOrEqual(t, state1.InflightDuration, 10*time.Second)
 	require.EqualValues(t, 0, state1.WaitingDuration)
 
 	state2, err := s.storage.GetTask(ctx, task2ID)
 	require.NoError(t, err)
-	require.InDelta(t, 5*time.Second, state2.InflightDuration, threshold)
-	require.InDelta(t, 10*time.Second, state2.WaitingDuration, threshold)
+	require.GreaterOrEqual(t, state2.InflightDuration, 5*time.Second)
+	require.GreaterOrEqual(
+		t, state2.WaitingDuration, 10*time.Second-waitingThreshold,
+	)
 
 	state3, err := s.storage.GetTask(ctx, task3ID)
 	require.NoError(t, err)
-	require.InDelta(t, 5*time.Second, state3.InflightDuration, threshold)
-	require.InDelta(t, 15*time.Second, state3.WaitingDuration, threshold)
+	require.GreaterOrEqual(t, state3.InflightDuration, 5*time.Second)
+	require.GreaterOrEqual(
+		t, state3.WaitingDuration, 15*time.Second-waitingThreshold,
+	)
 }

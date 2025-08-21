@@ -214,7 +214,12 @@ func (c *executionContext) updateStateWithPreparation(
 	taskState := transition(c.taskState)
 	taskState = taskState.DeepCopy()
 
-	taskState.ModifiedAt = time.Now()
+	now := time.Now()
+	// Since executionContext exists only within the scope of lockAndExecuteTask,
+	// the task is always inflight (is in running/cancelling status)
+	// during any method call on executionContext.
+	taskState.InflightDuration += now.Sub(taskState.ModifiedAt)
+	taskState.ModifiedAt = now
 
 	var newTaskState storage.TaskState
 	var err error
@@ -351,7 +356,6 @@ func (c *executionContext) setCancelled(ctx context.Context) error {
 
 func (c *executionContext) ping(ctx context.Context) error {
 	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
-		taskState.InflightDuration += time.Since(taskState.ModifiedAt)
 		return taskState
 	})
 }
