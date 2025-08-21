@@ -37,6 +37,7 @@
 #include <util/system/datetime.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
+#include <arpa/inet.h>
 
 namespace NCloud::NBlockStore::NRdma {
 
@@ -2092,6 +2093,24 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
         endpoint->ChangeState(
             EEndpointState::Disconnected,
             EEndpointState::ResolvingAddress);
+
+        if (Config->Interface) {
+            auto ip = Config->Interface;
+
+            RDMA_INFO(endpoint->Log, "bind to interface " << ip);
+
+            // Prepare local address for BIND
+            struct sockaddr_in6 localAddr;
+            memset(&localAddr, 0, sizeof(localAddr));
+
+            localAddr.sin6_family = AF_INET6;
+            localAddr.sin6_port = 0;
+            inet_pton(AF_INET6, ip.c_str(), &(localAddr.sin6_addr));
+
+            Verbs->BindAddress(
+                endpoint->Connection.get(),
+                reinterpret_cast<struct sockaddr*>(&localAddr));
+        }
 
         Verbs->ResolveAddress(endpoint->Connection.get(), addrinfo->ai_src_addr,
             addrinfo->ai_dst_addr, RESOLVE_TIMEOUT);

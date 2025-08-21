@@ -73,6 +73,11 @@ struct IServer
         ui32 port,
         IServerHandlerPtr handler) = 0;
 
+    virtual IServerEndpointPtr StartEndpointOnInterface(
+        TString interface,
+        ui32 port,
+        IServerHandlerPtr handler) = 0;
+
     virtual void DumpHtml(IOutputStream& out) const = 0;
 };
 

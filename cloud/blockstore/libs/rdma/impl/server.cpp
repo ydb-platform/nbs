@@ -2,6 +2,7 @@
 
 #include "buffer.h"
 #include "event.h"
+#include "helpers.h"
 #include "list.h"
 #include "log.h"
 #include "poll.h"
@@ -1449,6 +1450,12 @@ public:
         TString host,
         ui32 port,
         IServerHandlerPtr handler) override;
+
+    IServerEndpointPtr StartEndpointOnInterface(
+        TString interface,
+        ui32 port,
+        IServerHandlerPtr handler) override;
+
     void DumpHtml(IOutputStream& out) const override;
 
 private:
@@ -1556,6 +1563,21 @@ IServerEndpointPtr TServer::StartEndpoint(
 
         return endpoint;
 
+    } catch (const TServiceError& e) {
+        RDMA_ERROR("unable to create rdma endpoint: " << e.what());
+        return nullptr;
+    }
+}
+
+IServerEndpointPtr TServer::StartEndpointOnInterface(
+    TString interface,
+    ui32 port,
+    IServerHandlerPtr handler)
+{
+    try {
+        auto host = ResolveIpFromInterface(interface);
+
+        return StartEndpoint(std::move(host), port, std::move(handler));
     } catch (const TServiceError& e) {
         RDMA_ERROR("unable to create rdma endpoint: " << e.what());
         return nullptr;

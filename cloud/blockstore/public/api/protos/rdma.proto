@@ -10,4 +10,5 @@ message TRdmaEndpoint
 {
     string Host = 1;
     uint32 Port = 2;
+    string Interface = 3;
 }

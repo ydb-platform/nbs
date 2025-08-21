@@ -28,6 +28,7 @@ struct TRdmaTargetConfig
 {
     bool RejectLateRequests = false;
     TString Host = "::";
+    TString Interface;
     ui32 Port = 10020;
     ui32 WorkerThreads = 1;
 
@@ -39,6 +40,8 @@ struct TRdmaTargetConfig
         if (auto& host = endpoint.GetHost()) {
             Host = host;
         }
+
+        Interface = endpoint.GetInterface();
 
         if (auto port = endpoint.GetPort()) {
             Port = port;

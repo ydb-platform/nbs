@@ -1,5 +1,6 @@
 #include "client.h"
 #include "server.h"
+#include "helpers.h"
 #include "test_verbs.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -103,6 +104,38 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
             10020,
             std::make_shared<TServerHandler>());
         UNIT_ASSERT_VALUES_EQUAL(42, testContext->ToS);
+
+        server->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldStartEndpointOnSpecificInterface)
+    {
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        auto verbs =
+            NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverConfig = std::make_shared<TServerConfig>();
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto server = CreateServer(
+            verbs,
+            logging,
+            monitoring,
+            serverConfig);
+
+
+        server->Start();
+
+        auto serverEndpoint = server->StartEndpointOnInterface(
+            "eth0",
+            10020,
+            std::make_shared<TServerHandler>());
+        UNIT_ASSERT_VALUES_EQUAL(
+            ResolveIpFromInterface("eth0"),
+            testContext->BindAddress);
 
         server->Stop();
     }

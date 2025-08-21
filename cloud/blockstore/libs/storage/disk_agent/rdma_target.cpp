@@ -1169,10 +1169,16 @@ public:
     {
         Log = Logging->CreateLog("BLOCKSTORE_DISK_AGENT");
 
-        auto endpoint = Server->StartEndpoint(
-            Config->Host,
-            Config->Port,
-            Handler);
+        NRdma::IServerEndpointPtr endpoint;
+        if (Config->Interface) {
+            endpoint = Server->StartEndpointOnInterface(
+                Config->Interface,
+                Config->Port,
+                Handler);
+        } else {
+            endpoint =
+                Server->StartEndpoint(Config->Host, Config->Port, Handler);
+        }
 
         if (endpoint == nullptr) {
             STORAGE_ERROR("unable to set up RDMA endpoint");

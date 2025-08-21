@@ -44,6 +44,7 @@ TClientConfig::TClientConfig(const NProto::TRdmaClient& config)
     SET(AdaptiveWaitSleepDuration, TDuration::MicroSeconds);
     SET(AlignedDataEnabled);
     SET(IpTypeOfService);
+    SET(Interface);
 }
 
 #undef SET
