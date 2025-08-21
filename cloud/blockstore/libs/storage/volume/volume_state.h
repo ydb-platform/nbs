@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint.h>
@@ -21,6 +22,7 @@
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_params.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
+
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -81,6 +83,15 @@ struct THistoryLogItem
         , Operation(std::move(operation))
     {}
 };
+
+struct TCreateFollowerRequestInfo
+{
+    TLeaderFollowerLink Link;
+    NActors::TActorId CreateVolumeLinkActor;
+    TVector<TRequestInfoPtr> Requests;
+};
+
+using TCreateFollowerRequests = TVector<TCreateFollowerRequestInfo>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

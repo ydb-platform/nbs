@@ -9,7 +9,6 @@
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>   // TODO: invalid reference
-#include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
 
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>

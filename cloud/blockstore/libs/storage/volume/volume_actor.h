@@ -6,6 +6,7 @@
 #include "volume_counters.h"
 #include "volume_events_private.h"
 #include "volume_state.h"
+#include "volume_throttler_logger.h"
 #include "volume_tx.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -32,7 +33,6 @@
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
-#include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/protos/trace.pb.h>

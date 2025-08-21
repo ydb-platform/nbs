@@ -1,6 +1,6 @@
 LIBRARY()
 
-#INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 GENERATE_ENUM_SERIALIZATION(checkpoint.h)
 GENERATE_ENUM_SERIALIZATION(follower_disk.h)
@@ -19,16 +19,13 @@ SRCS(
     retry_policy.cpp
     stripe.cpp
     volume_params.cpp
-    volume_throttler_logger.cpp
     volume_throttling_policy.cpp
 )
 
 PEERDIR(
-    cloud/blockstore/libs/common
-    cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/service
-    cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/protos
+    cloud/blockstore/libs/storage/protos_ydb
 
     cloud/storage/core/libs/throttling
 
