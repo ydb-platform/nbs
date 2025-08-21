@@ -144,13 +144,15 @@ TBuckets MakeBuckets(auto convertBound)
     return result;
 }
 
-TBuckets GetMsBuckets() {
+TBuckets GetMsBuckets()
+{
     constexpr auto Identity = [](double data) { return data; };
     static const auto Buckets = MakeBuckets<TRequestMsTimeBuckets>(Identity);
     return Buckets;
 }
 
-TBuckets GetUsBuckets() {
+TBuckets GetUsBuckets()
+{
     constexpr auto UsToMs = [](double data) {
         return data == std::numeric_limits<double>::max() ? data : data / 1000.;
     };

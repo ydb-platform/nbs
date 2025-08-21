@@ -78,6 +78,10 @@ using TBaseDynamicCounters =
 class TUserSumCounterWrapper
     : public IUserCounter
 {
+private:
+    TVector<TIntrusivePtr<NMonitoring::TCounterForPtr>> Counters;
+    NMonitoring::EMetricType Type = NMonitoring::EMetricType::UNKNOWN;
+
 public:
     explicit TUserSumCounterWrapper(
         const TVector<TBaseDynamicCounters>& baseCounters);
@@ -88,10 +92,6 @@ public:
     void GetValue(
         TInstant time,
         NMonitoring::IMetricConsumer* consumer) const override;
-
-private:
-    TVector<TIntrusivePtr<NMonitoring::TCounterForPtr>> Counters;
-    NMonitoring::EMetricType Type = NMonitoring::EMetricType::UNKNOWN;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -99,6 +99,17 @@ private:
 class TUserSumHistogramWrapper
     : public IUserCounter
 {
+    using TExplicitHistogramSnapshot = NMonitoring::TExplicitHistogramSnapshot;
+    using EMetricType = NMonitoring::EMetricType;
+
+private:
+    static constexpr size_t IgnoreBucketCount = 10;
+
+    TVector<TIntrusivePtr<NMonitoring::TDynamicCounters>> Counters;
+    TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
+    const TBuckets Buckets;
+    EMetricType Type = EMetricType::UNKNOWN;
+
 public:
     explicit TUserSumHistogramWrapper(
         const TBuckets& buckets,
@@ -111,16 +122,6 @@ public:
     void GetValue(
         TInstant time,
         NMonitoring::IMetricConsumer* consumer) const override;
-
-private:
-    using TExplicitHistogramSnapshot = NMonitoring::TExplicitHistogramSnapshot;
-    using EMetricType = NMonitoring::EMetricType;
-    static constexpr size_t IgnoreBucketCount = 10;
-
-    TVector<TIntrusivePtr<NMonitoring::TDynamicCounters>> Counters;
-    TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
-    const TBuckets Buckets;
-    EMetricType Type = EMetricType::UNKNOWN;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
