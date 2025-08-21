@@ -67,7 +67,6 @@ static constexpr size_t BUCKETS_COUNT = 25;
 
 using TBuckets = std::array<TBucket, BUCKETS_COUNT>;
 
-TBuckets GetMsBuckets();
 TBuckets GetUsBuckets();
 
 ////////////////////////////////////////////////////////////////////////////////

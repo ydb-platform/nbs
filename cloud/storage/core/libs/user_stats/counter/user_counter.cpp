@@ -144,13 +144,6 @@ std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplierStub()
 
 ///////////////////////////////////////////////////////////////////////////////
 
-TBuckets GetMsBuckets()
-{
-    constexpr auto Identity = [](double data) { return data; };
-    static const auto Buckets = MakeBuckets<TRequestMsTimeBuckets>(Identity);
-    return Buckets;
-}
-
 TBuckets GetUsBuckets()
 {
     constexpr auto UsToMs = [](double data) {

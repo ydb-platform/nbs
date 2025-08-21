@@ -89,7 +89,7 @@ void ValidateTestResult(
     ValidateJsons(canonicJson, resultJson);
 }
 
-void SetTimeHistogramCountersMs(
+void SetTimeHistogramCountersUs(
     const TIntrusivePtr<NMonitoring::TDynamicCounters>& counters,
     const TString& histName)
 {
@@ -188,7 +188,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         ValidateTestResult(Supplier, emptyJson);
     }
 
-    Y_UNIT_TEST_F(ShouldReportUserStats, TEnv)
+    Y_UNIT_TEST_F(ShouldReportUserStatsIfSourceCountersChanged, TEnv)
     {
         const TString fsId = "test_fs";
         const TString clientId = "test_client";
@@ -205,7 +205,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
                             ->GetSubgroup("cloud", cloudId)
                             ->GetSubgroup("folder", folderId);
 
-        auto emulateRequests = [&counters](const TString& request)
+        auto setSourceRequestsCounters = [&counters](const TString& request)
         {
             auto requestCounters = counters->GetSubgroup("request", request);
             requestCounters->GetCounter("Count")->Set(42);
@@ -213,7 +213,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
             requestCounters->GetCounter("Errors/Fatal")->Set(7);
             requestCounters->GetCounter("Time")->Set(100500);
 
-            SetTimeHistogramCountersMs(requestCounters, "Time");
+            SetTimeHistogramCountersUs(requestCounters, "Time");
         };
 
         auto requests = {
@@ -224,8 +224,8 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
             "ReleaseLock",   "AcquireLock",  "WriteData",     "ReadData",
         };
 
-        for (const auto& request : requests) {
-            emulateRequests(request);
+        for (const auto& request: requests) {
+            setSourceRequestsCounters(request);
         }
 
         Registry->UpdateStats(true);
