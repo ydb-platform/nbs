@@ -116,7 +116,6 @@ void ValidateTestResult(
     supplier->Accept(TInstant::Seconds(12), encoder.Get());
 
     auto resultJson = NJson::ReadJsonFastTree(jsonOut.Str(), true);
-    Cout << resultJson << Endl;
     ValidateJsons(canonicJson, resultJson);
 }
 
@@ -305,17 +304,11 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         emulateRequest(EFileStoreRequest::ReadData, 1_MB, TDuration::Seconds(60));
         emulateRequest(EFileStoreRequest::ReadData, 1_MB, TDuration::Seconds(100), true);
 
-        Registry->UpdateStats(true);
-        stats->UpdateStats(true);
-
         TStringStream jsonOut;
         auto encoder = NMonitoring::EncoderJson(&jsonOut);
         Supplier->Accept(TInstant::Seconds(12), encoder.Get());
 
         auto resultJson = NJson::ReadJsonFastTree(jsonOut.Str(), true);
-
-        TDynamicCounters c;
-        Cout << jsonOut.Str() << Endl;
 
         NJson::TJsonValue value;
         value = GetValue(resultJson, "filestore.write_ops");
