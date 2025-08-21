@@ -584,12 +584,12 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             offset);
     }
 
-    for (const auto& zeroInterval: ZeroIntervals.EndForBegin) {
-        memset(
-            &(*BlockBuffer)[zeroInterval.first],
-            0,
-            zeroInterval.second - zeroInterval.first);
-    }
+    // for (const auto& zeroInterval: ZeroIntervals.EndForBegin) {
+    //     memset(
+    //         &(*BlockBuffer)[zeroInterval.first],
+    //         0,
+    //         zeroInterval.second - zeroInterval.first);
+    // }
 
     const auto end = Min(DescribeResponse.GetFileSize(), OriginByteRange.End());
     if (end <= OriginByteRange.Offset) {
