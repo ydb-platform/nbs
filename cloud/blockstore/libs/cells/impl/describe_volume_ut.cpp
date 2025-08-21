@@ -152,7 +152,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         NProto::TDescribeVolumeResponse msg;
         s1h1Client->DescribeVolumePromise.SetValue(std::move(msg));
 
-        auto describeResponse = response.GetValueSync();
+        const auto& describeResponse = response.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL("cell1", describeResponse.GetCellId());
     }
 
@@ -188,7 +188,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         NProto::TDescribeVolumeResponse msg;
         localService->DescribeVolumePromise.SetValue(std::move(msg));
 
-        auto describeResponse = response.GetValueSync();
+        const auto& describeResponse = response.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL("", describeResponse.GetCellId());
     }
 
@@ -239,7 +239,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             localService->DescribeVolumePromise.SetValue(std::move(msg));
         }
 
-        auto describeResponse = response.GetValueSync();
+        const auto& describeResponse = response.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(
             E_NOT_FOUND,
             describeResponse.GetError().GetCode());
@@ -296,7 +296,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             localService->DescribeVolumePromise.SetValue(std::move(msg));
         }
 
-        auto describeResponse = response.GetValueSync();
+        const auto& describeResponse = response.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(
             E_GRPC_UNAVAILABLE,
             describeResponse.GetError().GetCode());
@@ -344,7 +344,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             localService->DescribeVolumePromise.SetValue(std::move(msg));
         }
 
-        auto describeResponse = response.GetValueSync();
+        const auto& describeResponse = response.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             describeResponse.GetError().GetCode());
@@ -382,13 +382,31 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1, s2h1Client->DescribeVolumeCalled);
         UNIT_ASSERT_VALUES_EQUAL(1, localService->DescribeVolumeCalled);
 
-        auto describeResponse = response.GetValue(TDuration::Seconds(2));
+        const auto& describeResponse = response.GetValue(TDuration::Seconds(2));
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             describeResponse.GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             "Describe timeout",
             describeResponse.GetError().GetMessage());
+
+        {
+            NProto::TDescribeVolumeResponse msg;
+            *msg.MutableError() = std::move(MakeError(E_NOT_FOUND, "lost"));
+            s1h1Client->DescribeVolumePromise.SetValue(std::move(msg));
+        }
+
+        {
+            NProto::TDescribeVolumeResponse msg;
+            *msg.MutableError() = std::move(MakeError(E_NOT_FOUND, "lost"));
+            s2h1Client->DescribeVolumePromise.SetValue(std::move(msg));
+        }
+
+        {
+            NProto::TDescribeVolumeResponse msg;
+            *msg.MutableError() = std::move(MakeError(E_NOT_FOUND, "lost"));
+            localService->DescribeVolumePromise.SetValue(std::move(msg));
+        }
     }
 }
 

@@ -51,11 +51,13 @@ class TDescribeResponseHandler
     const TCellHostInfo HostInfo;
     NProto::TDescribeVolumeRequest Request;
     TCellInfo& Cell;
+    TLog Log;
 
     TFuture<NProto::TDescribeVolumeResponse> Future;
 
 public:
     TDescribeResponseHandler(
+        TLog log,
         std::weak_ptr<TMultiCellDescribeHandler> owner,
         TString cellId,
         TCellHostInfo hostInfo,
@@ -92,7 +94,7 @@ public:
         NProto::TDescribeVolumeRequest request,
         bool hasUnavailableCells);
 
-    void Start(TDuration describeTimeout);
+    TFuture<NProto::TDescribeVolumeResponse> Start(TDuration describeTimeout);
     void HandleResponse(NProto::TDescribeVolumeResponse response);
     void Reply(NProto::TDescribeVolumeResponse response);
 
@@ -120,7 +122,8 @@ TMultiCellDescribeHandler::TMultiCellDescribeHandler(
     }
 }
 
-void TMultiCellDescribeHandler::Start(TDuration describeTimeout)
+TFuture<NProto::TDescribeVolumeResponse> TMultiCellDescribeHandler::Start(
+    TDuration describeTimeout)
 {
     auto weak = weak_from_this();
     for (auto& [cellId, cell]: Cells) {
@@ -128,16 +131,17 @@ void TMultiCellDescribeHandler::Start(TDuration describeTimeout)
             if (!cellId.empty()) {
                 STORAGE_DEBUG(
                     TStringBuilder()
-                    << "Send remote Describe Request to " << host.Fqdn
-                    << " for volume " << Request.GetDiskId());
+                        << "Send remote Describe Request to " << host.Fqdn
+                        << " for volume " << Request.GetDiskId());
             } else {
                 STORAGE_DEBUG(
                     TStringBuilder()
-                    << "Send local Describe Request for volume "
-                    << Request.GetDiskId());
+                        << "Send local Describe Request for volume "
+                        << Request.GetDiskId());
             }
 
             auto handler = std::make_shared<TDescribeResponseHandler>(
+                Log,
                 weak,
                 cellId,
                 host,
@@ -150,10 +154,19 @@ void TMultiCellDescribeHandler::Start(TDuration describeTimeout)
         }
     }
 
-    auto self = shared_from_this();
     Scheduler->Schedule(
         TInstant::Now() + describeTimeout,
-        [self = std::move(self)]() { self->HandleTimeout(); });
+        [weak = std::move(weak)]() {
+            if (auto self = weak.lock(); self) {
+                self->HandleTimeout();
+            }
+        });
+
+    Promise.GetFuture().Subscribe(
+        [handler = shared_from_this()](const auto&) mutable
+        { handler.reset(); });
+
+    return Promise.GetFuture();
 }
 
 void TMultiCellDescribeHandler::Reply(NProto::TDescribeVolumeResponse response)
@@ -202,6 +215,7 @@ void TMultiCellDescribeHandler::HandleResponse(
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeResponseHandler::TDescribeResponseHandler(
+        TLog log,
         std::weak_ptr<TMultiCellDescribeHandler> owner,
         TString cellId,
         TCellHostInfo hostInfo,
@@ -212,6 +226,7 @@ TDescribeResponseHandler::TDescribeResponseHandler(
     , HostInfo(std::move(hostInfo))
     , Request(std::move(request))
     , Cell(cell)
+    , Log(std::move(log))
 {}
 
 void TDescribeResponseHandler::Start()
@@ -242,8 +257,6 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
         return;
     }
 
-    auto& Log = owner->Log;
-
     if (owner->Promise.HasValue()) {
         return;
     }
@@ -253,15 +266,16 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
         owner->Reply(std::move(response));
         STORAGE_DEBUG(
             TStringBuilder()
-            << "DescribeVolume: got success for disk " << Request.GetDiskId()
-            << " from " << HostInfo.Fqdn);
+                << "DescribeVolume: got success for disk " << Request.GetDiskId()
+                << " from " << HostInfo.Fqdn);
         return;
     }
 
     STORAGE_DEBUG(
-        TStringBuilder() << "DescribeVolume: got error "
-                         << response.GetError().GetMessage().Quote() << " from "
-                         << HostInfo.Fqdn);
+        TStringBuilder()
+            << "DescribeVolume: got error "
+            << response.GetError().GetMessage().Quote() << " from "
+            << HostInfo.Fqdn);
 
     with_lock (Cell.Lock) {
         if (EErrorKind::ErrorRetriable == GetErrorKind(response.GetError())) {
@@ -306,15 +320,13 @@ TDescribeVolumeFuture DescribeVolume(
     localCell.Hosts.emplace_back("local", service);
     cells.emplace("", std::move(localCell));
 
-    auto describeResult = std::make_shared<TMultiCellDescribeHandler>(
+    auto describeHandler = std::make_shared<TMultiCellDescribeHandler>(
         bootstrap.Scheduler,
         bootstrap.Logging->CreateLog("BLOCKSTORE_CELLS"),
         std::move(cells),
         std::move(request),
         hasUnavailableCells);
-    describeResult->Start(timeout);
-
-    return describeResult->Promise.GetFuture();
+    return describeHandler->Start(timeout);
 }
 
 }   // namespace NCloud::NBlockStore::NCells
