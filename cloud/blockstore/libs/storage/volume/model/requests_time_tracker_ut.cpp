@@ -292,6 +292,12 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
             TBlockRange64::WithLength(0, 2),
             constructionTime + 2000 * GetCyclesPerMillisecond());
 
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Write,
+            3,
+            TBlockRange64::MakeOneBlock(0),
+            constructionTime + 2000 * GetCyclesPerMillisecond());
+
         auto readResult = requestsTimeTracker.OnRequestFinished(
             1,
             true,
@@ -312,8 +318,27 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
 
         UNIT_ASSERT(valueBefore["stat"]["R_1_ok_Count"].GetString() != "0");
         UNIT_ASSERT(valueBefore["stat"]["W_2_fail_Count"].GetString() != "0");
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1",
+            valueBefore["stat"]["W_1_inflight_Count"].GetString());
 
         requestsTimeTracker.ResetStats();
+
+        auto jsonAfter = requestsTimeTracker.GetStatJson(
+            constructionTime + 6000 * GetCyclesPerMillisecond(),
+            4096);
+        NJson::TJsonValue valueAfter;
+        NJson::ReadJsonTree(jsonAfter, &valueAfter, true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "0",
+            valueAfter["stat"]["R_1_ok_Count"].GetString());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "0",
+            valueAfter["stat"]["W_2_fail_Count"].GetString());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1",
+            valueAfter["stat"]["W_1_inflight_Count"].GetString());
     }
 }
 
