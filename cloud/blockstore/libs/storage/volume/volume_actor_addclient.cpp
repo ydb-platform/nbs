@@ -230,7 +230,6 @@ void TVolumeActor::HandleReacquireDisk(
             ctx,
             {
                 .ClientId = TString(AnyWriterClientId),
-                .DevicesToRelease = TVector<NProto::TDeviceConfig>{},
             });
     }
 
@@ -397,8 +396,7 @@ void TVolumeActor::ProcessNextPendingClientRequest(const TActorContext& ctx)
                 AddReleaseDiskRequest(
                     ctx,
                     {.ClientId = request->RemovedClientId,
-                     .ClientRequest = request,
-                     .DevicesToRelease = {}});
+                     .ClientRequest = request});
             } else {
                 AddAcquireDiskRequest(
                     ctx,
@@ -450,9 +448,7 @@ void TVolumeActor::ReleaseDiskFromOldClients(
 
         AddReleaseDiskRequest(
             ctx,
-            {.ClientId = clientId,
-             .DevicesToRelease = TVector<NProto::TDeviceConfig>{},
-             .RetryIfTimeoutOrUndelivery = true});
+            {.ClientId = clientId, .RetryIfTimeoutOrUndelivery = true});
     }
 }
 
@@ -616,17 +612,17 @@ void TVolumeActor::CompleteAddClient(
         ReleaseDiskFromOldClients(ctx, args.RemovedClientIds);
 
         // Acquire disk for new client.
-        auto request = TAcquireDiskRequest(
-            args.Info.GetClientId(),
-            args.Info.GetVolumeAccessMode(),
-            args.Info.GetMountSeqNumber(),
-            std::make_shared<TClientRequest>(
-                args.RequestInfo,
-                args.DiskId,
-                args.PipeServerActorId,
-                args.Info),
-            args.ForceTabletRestart);
-        AddAcquireDiskRequest(ctx, std::move(request));
+        AddAcquireDiskRequest(
+            ctx,
+            {.ClientId = args.Info.GetClientId(),
+             .AccessMode = args.Info.GetVolumeAccessMode(),
+             .MountSeqNumber = args.Info.GetMountSeqNumber(),
+             .ClientRequest = std::make_shared<TClientRequest>(
+                 args.RequestInfo,
+                 args.DiskId,
+                 args.PipeServerActorId,
+                 args.Info),
+             .ForceTabletRestart = args.ForceTabletRestart});
     } else {
         auto response = CreateAddClientResponse(
             args.Error,

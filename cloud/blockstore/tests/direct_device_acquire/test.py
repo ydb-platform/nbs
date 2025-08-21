@@ -55,7 +55,7 @@ def apply_common_params_to_config(cfg, params):
     cfg.files["storage"].NonReplicatedAgentMinTimeout = timeout
     cfg.files["storage"].NonReplicatedAgentMaxTimeout = timeout
 
-    cfg.files["storage"].DoAcquireReleaseDevicesAfterTransaction = True
+    cfg.files["storage"].NonReplicatedVolumeAcquireDiskAfterAddClientEnabled = True
 
     cfg.files["server"].ServerConfig.VhostEnabled = True
     cfg.files["server"].ServerConfig.VhostServerPath = yatest_common.binary_path(
