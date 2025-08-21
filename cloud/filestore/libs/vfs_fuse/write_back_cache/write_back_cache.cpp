@@ -108,6 +108,9 @@ struct TWriteBackCache::THandleState
     // appearing in the same order
     TDeque<TWriteBackCache::TWriteDataEntry*> CachedEntries;
 
+    // Efficient calculation of TWriteDataEntryParts from CachedEntries
+    TWriteDataEntryIntervalMap CachedEntryIntervalMap;
+
     // Count entries in TWriteBackCache::TImpl::PendingEntries
     // with status Pending filtered by handle
     size_t PendingEntriesCount = 0;
@@ -346,13 +349,12 @@ public:
                     // because there is 1-by-1 correspondence between
                     // CachedEntriesPersistentQueue and CachedEntries.
                     // TODO(nasonov): report it
+                    CachedEntries.push_back(std::move(entry));
                 } else {
                     auto* handleState =
                         GetOrCreateHandleState(entry->GetHandle());
-                    handleState->CachedEntries.emplace_back(entry.get());
+                    AddCachedEntry(handleState, std::move(entry));
                 }
-
-                CachedEntries.push_back(std::move(entry));
             });
     }
 
@@ -388,7 +390,7 @@ public:
         }
 
         return TUtil::CalculateDataPartsToRead(
-            entriesIter->second->CachedEntries,
+            entriesIter->second->CachedEntryIntervalMap,
             startingFromOffset,
             length);
     }
@@ -782,14 +784,10 @@ private:
             CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
 
             auto* handleState = GetHandleState(entry->GetHandle());
-            handleState->CachedEntries.push_back(entry.get());
+            AddCachedEntry(handleState, std::move(entry));
 
             Y_ABORT_UNLESS(handleState->PendingEntriesCount > 0);
             handleState->PendingEntriesCount--;
-
-            HandlesWithNewCachedEntries.insert(entry->GetHandle());
-
-            CachedEntries.push_back(std::move(entry));
             PendingEntries.pop_front();
         }
     }
@@ -992,9 +990,7 @@ private:
                 PendingOperations);
 
             CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
-            handleState->CachedEntries.emplace_back(entry.get());
-            HandlesWithNewCachedEntries.insert(handleState->Handle);
-            CachedEntries.push_back(std::move(entry));
+            AddCachedEntry(handleState, std::move(entry));
         } else {
             handleState->PendingEntriesCount++;
             PendingEntries.push_back(std::move(entry));
@@ -1123,8 +1119,7 @@ private:
         while (handleState->FlushState.AffectedWriteDataEntriesCount > 0) {
             handleState->FlushState.AffectedWriteDataEntriesCount--;
 
-            auto* entry = handleState->CachedEntries.front();
-            handleState->CachedEntries.pop_front();
+            auto* entry = RemoveFrontCachedEntry(handleState);
 
             if (entry->IsFlushRequested()) {
                 Y_ABORT_UNLESS(handleState->EntriesWithFlushRequested > 0);
@@ -1162,6 +1157,31 @@ private:
                     self->StartFlush(handleState);
                 }
             });
+    }
+
+    void AddCachedEntry(
+        THandleState* handleState,
+        std::unique_ptr<TWriteDataEntry> entry)
+    {
+        Y_ABORT_UNLESS(handleState != nullptr);
+        Y_ABORT_UNLESS(handleState->Handle == entry->GetHandle());
+
+        handleState->CachedEntryIntervalMap.Add(entry.get());
+        handleState->CachedEntries.push_back(entry.get());
+        HandlesWithNewCachedEntries.insert(handleState->Handle);
+        CachedEntries.push_back(std::move(entry));
+    }
+
+    static TWriteDataEntry* RemoveFrontCachedEntry(THandleState* handleState)
+    {
+        Y_ABORT_UNLESS(handleState != nullptr);
+        Y_ABORT_UNLESS(!handleState->CachedEntries.empty());
+
+        auto* entry = handleState->CachedEntries.front();
+        handleState->CachedEntries.pop_front();
+        handleState->CachedEntryIntervalMap.Remove(entry);
+
+        return entry;
     }
 };
 
@@ -1361,6 +1381,43 @@ TFuture<void> TWriteBackCache::TWriteDataEntry::GetFlushFuture()
         FlushPromise = NewPromise();
     }
     return FlushPromise.GetFuture();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TWriteBackCache::TWriteDataEntryIntervalMap::Add(TWriteDataEntry* entry)
+{
+    TBase::VisitOverlapping(
+        entry->Offset(),
+        entry->End(),
+        [this, entry](auto it)
+        {
+            auto prev = it->second;
+            TBase::Remove(it);
+
+            if (prev.Begin < entry->Offset()) {
+                TBase::Add(prev.Begin, entry->Offset(), prev.Value);
+            }
+
+            if (entry->End() < prev.End) {
+                TBase::Add(entry->End(), prev.End, prev.Value);
+            }
+        });
+
+    TBase::Add(entry->Offset(), entry->End(), entry);
+}
+
+void TWriteBackCache::TWriteDataEntryIntervalMap::Remove(TWriteDataEntry* entry)
+{
+    TBase::VisitOverlapping(
+        entry->Offset(),
+        entry->End(),
+        [&](auto it)
+        {
+            if (it->second.Value == entry) {
+                TBase::Remove(it);
+            }
+        });
 }
 
 }   // namespace NCloud::NFileStore::NFuse

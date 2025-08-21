@@ -1,5 +1,7 @@
 #include "write_back_cache_impl.h"
 
+#include "disjoint_interval_map.h"
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -137,6 +139,7 @@ struct TCalculateDataPartsToReadTestBootstrap
 {
     using TWriteDataEntry = TWriteBackCache::TWriteDataEntry;
     using TWriteDataEntryPart = TWriteBackCache::TWriteDataEntryPart;
+    using TCachedIntervalsMap = TWriteBackCache::TWriteDataEntryIntervalMap;
 
     ILoggingServicePtr Logging;
     TLog Log;
@@ -155,8 +158,13 @@ struct TCalculateDataPartsToReadTestBootstrap
         ui64 startingFromOffset,
         ui64 length)
     {
+        TCachedIntervalsMap map;
+        for (auto* entry: entries) {
+            map.Add(entry);
+        }
+
         return TWriteBackCache::TUtil::CalculateDataPartsToRead(
-            entries,
+            map,
             startingFromOffset,
             length);
     }
