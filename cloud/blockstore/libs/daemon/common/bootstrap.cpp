@@ -941,12 +941,10 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(ClientPercentiles);
     START_KIKIMR_COMPONENT(StatsAggregator);
     START_KIKIMR_COMPONENT(IamTokenClient);
-    START_KIKIMR_COMPONENT(SyncIamTokenClient);
+    START_KIKIMR_COMPONENT(YdbStatsIamTokenClient);
     START_KIKIMR_COMPONENT(ComputeClient);
     START_KIKIMR_COMPONENT(KmsClient);
     START_KIKIMR_COMPONENT(RootKmsClient);
-    START_KIKIMR_COMPONENT(YdbStorage);
-    START_KIKIMR_COMPONENT(StatsUploader);
     START_COMMON_COMPONENT(Spdk);
     START_COMMON_COMPONENT(FileIOServiceProvider);
     START_KIKIMR_COMPONENT(ActorSystem);
@@ -972,6 +970,13 @@ void TBootstrapBase::Start()
     // 2) we have loops in our dependencies, so there is no 'correct' starting
     // order
     START_COMMON_COMPONENT(Scheduler);
+
+    // We need to start ydb stats uploader after scheduler because ydb driver
+    // synchronously waiting for IAM token and if IAM token agent is down our
+    // client will retry request and schedule tasks. If scheduler is not started
+    // yet we will block main thread.
+    START_KIKIMR_COMPONENT(YdbStorage);
+    START_KIKIMR_COMPONENT(StatsUploader);
 
     if (!Configs->Options->TemporaryServer) {
         WarmupBSGroupConnections();
@@ -1014,6 +1019,9 @@ void TBootstrapBase::Stop()
     }                                                                          \
 // STOP_KIKIMR_COMPONENT
 
+    STOP_KIKIMR_COMPONENT(StatsUploader);
+    STOP_KIKIMR_COMPONENT(YdbStorage);
+
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
@@ -1041,12 +1049,10 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(FileIOServiceProvider);
 
     STOP_COMMON_COMPONENT(Spdk);
-    STOP_KIKIMR_COMPONENT(StatsUploader);
-    STOP_KIKIMR_COMPONENT(YdbStorage);
     STOP_KIKIMR_COMPONENT(RootKmsClient);
     STOP_KIKIMR_COMPONENT(KmsClient);
     STOP_KIKIMR_COMPONENT(ComputeClient);
-    STOP_KIKIMR_COMPONENT(SyncIamTokenClient);
+    STOP_KIKIMR_COMPONENT(YdbStatsIamTokenClient);
     STOP_KIKIMR_COMPONENT(IamTokenClient);
     STOP_KIKIMR_COMPONENT(StatsAggregator);
     STOP_KIKIMR_COMPONENT(ClientPercentiles);

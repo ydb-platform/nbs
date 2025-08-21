@@ -33,7 +33,12 @@ protected:
     IStartable* GetNotifyService() override      { return nullptr; }
     IStartable* GetStatsFetcher() override       { return nullptr; }
     IStartable* GetIamTokenClient() override     { return nullptr; }
-    IStartable* GetSyncIamTokenClient() override { return nullptr; }
+
+    IStartable* GetYdbStatsIamTokenClient() override
+    {
+        return nullptr;
+    }
+
     IStartable* GetComputeClient() override      { return nullptr; }
     IStartable* GetKmsClient() override          { return nullptr; }
     IStartable* GetRootKmsClient() override      { return nullptr; }
