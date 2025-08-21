@@ -209,10 +209,15 @@ TUserSumHistogramWrapper::TUserSumHistogramWrapper(
     }
 
     for (const auto& [baseCounter, name]: baseCounters) {
-        if (baseCounter) {
-            if (auto hist = baseCounter->FindSubgroup("histogram", name)) {
-                Counters.push_back(hist);
-            }
+        if (!baseCounter) {
+            continue;
+        }
+        auto histSubgroup = baseCounter->FindSubgroup("histogram", name);
+        if (!histSubgroup) {
+            continue;
+        }
+        if (auto unitsSubgroup = histSubgroup->FindSubgroup("units", "usec")) {
+            Counters.push_back(unitsSubgroup);
         }
     }
 }
