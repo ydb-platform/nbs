@@ -396,6 +396,8 @@ void TPartitionActor::HandleHttpInfo(
         {"scanDisk", &TPartitionActor::HandleHttpInfo_ScanDisk},
         {"resetTransactionsLatency",
          &TPartitionActor::HandleHttpInfo_ResetTransactionsLatency},
+        {"resetBSGroupLatency",
+         &TPartitionActor::HandleHttpInfo_ResetBSGroupLatency},
     }};
 
     static const THttpHandlers getActions{{

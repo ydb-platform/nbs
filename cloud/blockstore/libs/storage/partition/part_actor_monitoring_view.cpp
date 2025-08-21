@@ -354,4 +354,14 @@ void TPartitionActor::HandleHttpInfo_ResetTransactionsLatency(
     SendHttpResponse(ctx, *requestInfo, "");
 }
 
+void TPartitionActor::HandleHttpInfo_ResetBSGroupLatency(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    BSGroupOperationTimeTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

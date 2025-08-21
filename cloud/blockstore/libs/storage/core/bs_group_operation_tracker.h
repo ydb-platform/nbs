@@ -86,6 +86,8 @@ public:
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
     [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;
+
+    void ResetStats();
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

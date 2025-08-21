@@ -1542,6 +1542,7 @@ void DumpGroupLatencyTab(
         AddGroupLatencyCSS(out);
 
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
+        BuildResetButton(out, tabletId, "resetBSGroupLatency");
 
         out << "<div id='" << containerId << "'></div>";
 
