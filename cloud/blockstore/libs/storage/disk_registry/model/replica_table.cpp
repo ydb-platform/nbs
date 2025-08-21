@@ -47,7 +47,6 @@ void TReplicaTable::UpdateReplica(
 
     for (ui32 j = 0; j < devices.size(); ++j) {
         diskState.Rows[j].DeviceInfos[replicaNo] = {devices[j], false};
-        diskState.Rows[j].Row = j;
     }
 
     for (auto& row: diskState.Rows) {
@@ -305,7 +304,7 @@ bool TReplicaTable::IsReplacementDevice(
 
 bool TReplicaTable::IsRecentlyReplacedDevice(
     const TDiskId& diskId,
-    const TDeviceId& deviceId)
+    const TDeviceId& deviceId) const
 {
     const auto* diskState = Disks.FindPtr(diskId);
     if (!diskState) {
@@ -322,51 +321,39 @@ bool TReplicaTable::IsRecentlyReplacedDevice(
 
 void TReplicaTable::SetRecentlyReplacedDevice(
     const TDiskId& diskId,
-    ui32 deviceRow,
-    ui64 seqNo,
-    bool isRecentlyReplaced)
-{
-    auto* diskState = Disks.FindPtr(diskId);
-    if (!diskState || deviceRow >= diskState->Rows.size()) {
-        return;
-    }
-
-    diskState->Rows[deviceRow].IsRecentlyReplacedDevice = isRecentlyReplaced;
-    diskState->Rows[deviceRow].SeqNo = seqNo;
-}
-
-ui32 TReplicaTable::GetDeviceRow(
-    const TDiskId& diskId,
-    const TDeviceId& deviceId)
+    const TDeviceId& deviceId,
+    ui64 seqNo)
 {
     auto* diskState = Disks.FindPtr(diskId);
     if (!diskState) {
-        return EmptyRow;
+        return;
     }
 
     auto* row = diskState->DeviceId2Row.FindPtr(deviceId);
     if (!row || !*row) {
-        return EmptyRow;
+        return;
     }
 
-    return (*row)->Row;
+    (*row)->IsRecentlyReplacedDevice = true;
+    (*row)->SeqNo = seqNo;
 }
 
-THashMap<ui32, ui64> TReplicaTable::GetRowToSeqNo(const TDiskId& diskId)
+void TReplicaTable::ResetRecentlyReplacedDevices(
+    const TDiskId& diskId,
+    ui64 seqNo)
 {
     auto* diskState = Disks.FindPtr(diskId);
     if (!diskState) {
-        return {};
+        return;
     }
 
-    THashMap<ui32, ui64> rowToSeqNo;
-    for (const auto& row: diskState->Rows) {
-        if (row.IsRecentlyReplacedDevice) {
-            rowToSeqNo.emplace(row.Row, row.SeqNo);
+    for (auto& row: diskState->Rows) {
+        if (!row.IsRecentlyReplacedDevice || row.SeqNo > seqNo) {
+            continue;
         }
+        row.IsRecentlyReplacedDevice = false;
+        row.SeqNo = seqNo;
     }
-
-    return rowToSeqNo;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

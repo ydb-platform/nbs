@@ -911,6 +911,10 @@ public:
     THashSet<TDeviceId> GetUnavailableDevicesForDisk(
         const TString& diskId) const;
 
+    bool IsRecentlyReplacedDevice(
+        const TDiskId& masterDiskId,
+        const TDeviceId& deviceId) const;
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
@@ -1102,16 +1106,10 @@ private:
 
     void DeleteAllDeviceMigrations(const TDiskId& diskId);
 
-    void UpdateAndReallocateDisk(
+    ui64 UpdateAndReallocateDisk(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         TDiskState& disk);
-
-    void UpdateAndReallocateDiskAfterReplacing(
-        TDiskRegistryDatabase& db,
-        const TString& diskId,
-        TDiskState& disk,
-        ui32 deviceRow);
 
     void AdjustDeviceIfNeeded(
         NProto::TDeviceConfig& device,
@@ -1391,7 +1389,7 @@ private:
         const TAgentList::TAgentRegistrationResult& r,
         THashSet<TDiskId>& disksToReallocate);
 
-    void ReplacePostponedDevices(
+    void ReplaceBrokenDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TString& masterDiskId);
