@@ -1,6 +1,8 @@
 package cells
 
 import (
+	"context"
+
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
@@ -11,6 +13,13 @@ type CellSelector interface {
 		diskID *types.Disk,
 		folderID string,
 	) string
+
+	SelectCellForLocalDisk(
+		ctx context.Context,
+		diskID *types.Disk,
+		folderID string,
+		agentID string,
+	) (string, error)
 
 	IsCellOfZone(cellID string, zoneID string) bool
 }

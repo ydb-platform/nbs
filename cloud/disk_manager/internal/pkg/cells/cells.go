@@ -1,24 +1,30 @@
 package cells
 
 import (
+	"context"
 	"slices"
 
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type cellSelector struct {
-	config *cells_config.CellsConfig
+	config     *cells_config.CellsConfig
+	nbsFactory nbs.Factory
 }
 
 func NewCellSelector(
 	config *cells_config.CellsConfig,
+	nbsFactory nbs.Factory,
 ) CellSelector {
 
 	return &cellSelector{
-		config: config,
+		config:     config,
+		nbsFactory: nbsFactory,
 	}
 }
 
@@ -42,6 +48,54 @@ func (s *cellSelector) SelectCell(
 	}
 
 	return cells[0]
+}
+
+func (s *cellSelector) SelectCellForLocalDisk(
+	ctx context.Context,
+	diskID *types.Disk,
+	folderID string,
+	agentID string,
+) (string, error) {
+
+	if !s.isFolderAllowed(folderID) {
+		return diskID.ZoneId, nil
+	}
+
+	cells := s.getCells(diskID.ZoneId)
+
+	if len(cells) == 0 {
+		// We end up here if a zone not divided into cells or a cell
+		// of a zone is provided as ZoneId.
+		return diskID.ZoneId, nil
+	}
+
+	for _, cellID := range cells {
+		client, err := s.nbsFactory.GetClient(ctx, cellID)
+		if err != nil {
+			return "", err
+		}
+
+		infos, err := client.QueryAvailableStorage(ctx, []string{agentID})
+		if err != nil {
+			return "", err
+		}
+
+		if len(infos) == 0 {
+			continue
+		}
+
+		// If the only available storage info is empty, agent is unavailable.
+		if len(infos) == 1 &&
+			infos[0].ChunkSize == 0 &&
+			infos[0].ChunkCount == 0 {
+			continue
+		}
+
+		return cellID, nil
+	}
+
+	return "",
+		errors.NewRetriableErrorf("There is no cells with such agent available: %v", agentID)
 }
 
 func (s *cellSelector) IsCellOfZone(cellID string, zoneID string) bool {

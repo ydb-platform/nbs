@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
@@ -45,12 +46,22 @@ func (t *createEmptyDiskTask) Load(request, state []byte) error {
 func (t *createEmptyDiskTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-) error {
+) (err error) {
 
 	selfTaskID := execCtx.GetTaskID()
 
 	zoneID := t.params.Disk.ZoneId
-	if !common.IsLocalDiskKind(t.params.Kind) {
+	if common.IsLocalDiskKind(t.params.Kind) {
+		zoneID, err = t.cellSelector.SelectCellForLocalDisk(
+			ctx,
+			t.params.Disk,
+			t.params.FolderId,
+			t.params.AgentId,
+		)
+		if err != nil {
+			return err
+		}
+	} else {
 		zoneID = t.cellSelector.SelectCell(t.params.Disk, t.params.FolderId)
 	}
 
@@ -166,4 +177,14 @@ func (t *createEmptyDiskTask) GetMetadata(
 
 func (t *createEmptyDiskTask) GetResponse() proto.Message {
 	return &empty.Empty{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *createEmptyDiskTask) selectCellForLocalDisk(
+	ctx context.Context,
+	disk *types.Disk,
+) (string, error) {
+
+	return "", nil
 }
