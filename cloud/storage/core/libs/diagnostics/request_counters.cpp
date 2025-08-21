@@ -31,6 +31,7 @@ template <typename TDerived>
 struct THistBase
 {
     const TString Name;
+    const TString Units;
     const TBucketBounds HistBounds;
     const EHistogramCounterOptions CounterOptions;
 
@@ -39,6 +40,7 @@ struct THistBase
 
     explicit THistBase(TString name, EHistogramCounterOptions counterOptions)
         : Name(std::move(name))
+        , Units(TDerived::Units)
         , HistBounds(ConvertToHistBounds(TDerived::Buckets))
         , CounterOptions(counterOptions)
         , Hist(
@@ -100,12 +102,12 @@ struct THistBase
         return result;
     }
 
-    TString GetUnits() const
+    const TString& GetUnits() const
     {
-        return TString(TDerived::Units);
+        return Units;
     }
 
-    TString GetName() const
+    const TString& GetName() const
     {
         return Name;
     }

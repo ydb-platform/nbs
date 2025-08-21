@@ -30,7 +30,7 @@ struct TRequestUsTimeBuckets
     static constexpr TStringBuf Units = "usec";
 
     static TVector<TString> MakeNames();
-};;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
