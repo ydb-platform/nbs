@@ -137,7 +137,6 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     return NCloud::NBlockStore::NCells::DescribeVolume(
         *Config,
         std::move(request),
-        *Config,
         std::move(service),
         cellHostEndpoints,
         hasUnavailableCells,

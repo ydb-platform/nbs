@@ -40,7 +40,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_CELLS_DEFAULT_CONFIG(xxx)                                   \
-    xxx(CellId,                      TString,           ""                    )\
+    xxx(CellId,                      TString,           {}                    )\
     xxx(DescribeVolumeTimeout,       TDuration,         TDuration::Seconds(30))\
     xxx(RdmaTransportWorkers,        ui32,              0                     )\
     xxx(CellsEnabled,                bool,              false                 )\

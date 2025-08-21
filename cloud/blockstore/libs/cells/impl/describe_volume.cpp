@@ -337,8 +337,8 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeVolumeFuture DescribeVolume(
-    NProto::TDescribeVolumeRequest request,
     const TCellsConfig& config,
+    NProto::TDescribeVolumeRequest request,
     IBlockStorePtr service,
     const TCellHostEndpointsByCellId& endpoints,
     bool hasUnavailableCells,
@@ -347,8 +347,8 @@ TDescribeVolumeFuture DescribeVolume(
     TCellByCellId cells;
 
     for (const auto& [cellId, clients]: endpoints) {
-        const auto* cellIt = config.GetCells().FindPtr(cellId);
-        if (!cellIt) {
+        const auto cellIt = config.GetCells().find(cellId);
+        if (cellIt == config.GetCells().end()) {
             NProto::TDescribeVolumeResponse response;
             *response.MutableError() = MakeError(
                 E_REJECTED,
@@ -358,7 +358,7 @@ TDescribeVolumeFuture DescribeVolume(
         }
 
         TCellInfo cell(
-            cellIt->GetStrictCellIdCheckInDescribeVolume(),
+            cellIt->second->GetStrictCellIdCheckInDescribeVolume(),
             clients.size());
         for (const auto& client: clients) {
             cell.Hosts.emplace_back(client.GetLogTag(), client.GetService());
