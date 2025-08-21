@@ -84,6 +84,20 @@ public:
     {}
 };
 
+template <typename THistogramType>
+TBuckets MakeBuckets(auto convertBound)
+{
+    static_assert(BUCKETS_COUNT == THistogramType::BUCKETS_COUNT, "");
+
+    TBuckets result;
+    const auto names = THistogramType::MakeNames();
+    for (size_t i = 0; i < names.size(); ++i) {
+        result[i].Bound = convertBound(THistogramType::Buckets[i]);
+        result[i].Name = names[i];
+    }
+    return result;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -129,20 +143,6 @@ std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplierStub()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-
-template <typename THistogramType>
-TBuckets MakeBuckets(auto convertBound)
-{
-    static_assert(BUCKETS_COUNT == THistogramType::BUCKETS_COUNT, "");
-
-    TBuckets result;
-    const auto names = THistogramType::MakeNames();
-    for (size_t i = 0; i < names.size(); ++i) {
-        result[i].Bound = convertBound(THistogramType::Buckets[i]);
-        result[i].Name = names[i];
-    }
-    return result;
-}
 
 TBuckets GetMsBuckets()
 {
@@ -280,4 +280,4 @@ void AddHistogramUserMetric(
     dsc.AddUserMetric(commonLabels, newName, TUserCounter(wrapper));
 }
 
-}  // namespace NCloud::NStorage::NUserStats
+}   // namespace NCloud::NStorage::NUserStats

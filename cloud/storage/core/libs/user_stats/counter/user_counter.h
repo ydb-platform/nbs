@@ -139,4 +139,4 @@ void AddHistogramUserMetric(
     const TVector<TBaseDynamicCounters>& baseCounters,
     TStringBuf newName);
 
-}  // namespace NCloud::NStorage::NUserStats
+}   // namespace NCloud::NStorage::NUserStats
