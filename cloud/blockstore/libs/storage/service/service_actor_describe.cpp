@@ -90,7 +90,7 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
 void TDescribeVolumeActor::DescribeDiskRegistryVolume(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvDiskRegistry::TEvDescribeDiskRequest>();
-    request->Record.SetDiskId(DiskId);
+    request->Record.SetDiskId(Volume.GetDiskId());
 
     NCloud::Send(
         ctx,
@@ -125,6 +125,15 @@ void TDescribeVolumeActor::HandleDescribeVolumeResponse(
 
     VolumeConfigToVolume(volumeConfig, Volume);
     Volume.SetTokenVersion(volumeDescription.GetTokenVersion());
+
+    if (Volume.GetPrincipalDiskId()) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "DescribeVolume for %s found principal disk %s",
+            Volume.GetDiskId().Quote().c_str(),
+            Volume.GetPrincipalDiskId().Quote().c_str());
+    }
 
     if (IsDiskRegistryMediaKind(Volume.GetStorageMediaKind())) {
         DescribeDiskRegistryVolume(ctx);

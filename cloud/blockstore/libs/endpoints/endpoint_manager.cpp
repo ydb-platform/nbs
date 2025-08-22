@@ -36,6 +36,8 @@
 #include <util/string/builder.h>
 #include <util/system/fs.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NServer {
 
 using namespace NClient;
@@ -1674,9 +1676,12 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
         return getSessionError;
     }
 
-    STORAGE_INFO("Switching endpoint"
+    STORAGE_INFO(
+        "Switching endpoint"
         << ", reason=" << request->GetReason()
-        << ", volume=" << sessionInfo.Volume.GetDiskId()
+        << ", volume=" << sessionInfo.Volume.GetDiskId().Quote()
+        << ", principal=" << sessionInfo.Volume.GetPrincipalDiskId().Quote()
+        << ", startRequest.DiskId=" << startRequest->GetDiskId().Quote()
         << ", IsFastPathEnabled=" << sessionInfo.Volume.GetIsFastPathEnabled()
         << ", Migrations=" << sessionInfo.Volume.GetMigrations().size());
 

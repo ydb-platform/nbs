@@ -1,24 +1,25 @@
 #include "follower_disk_actor.h"
 
-#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/actors/propagate_to_follower.h>
 #include <cloud/blockstore/libs/storage/volume/actors/volume_as_partition_actor.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
-#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 using namespace NActors;
 
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
+
+constexpr auto RebootDelayWhenBornWithDataReady = TDuration::Seconds(30);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -38,12 +39,12 @@ EDirectCopyPolicy GetDirectCopyUsage(const TFollowerDiskActorParams& params)
 ///////////////////////////////////////////////////////////////////////////////
 
 TFollowerDiskActor::TFollowerDiskActor(
-        const TLogTitle& parentLogTitle,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr digestGenerator,
-        TFollowerDiskActorParams params)
+    const TLogTitle& parentLogTitle,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr digestGenerator,
+    TFollowerDiskActorParams params)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,
@@ -73,6 +74,10 @@ TFollowerDiskActor::TFollowerDiskActor(
     , LeaderVolumeActorId(params.LeaderVolumeActorId)
     , LeaderPartitionActorId(params.LeaderPartitionActorId)
     , TakePartitionOwnership(params.TakePartitionOwnership)
+    , InitialState(
+          params.FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady
+              ? EState::DataReady
+              : EState::DataTransfer)
     , ClientId(params.ClientId)
     , FollowerDiskInfo(params.FollowerDiskInfo)
 {
@@ -128,6 +133,9 @@ bool TFollowerDiskActor::OnMessage(
         HFunc(
             TEvVolumePrivate::TEvUpdateFollowerStateResponse,
             HandleUpdateFollowerStateResponse);
+        HFunc(
+            TEvVolumePrivate::TEvLinkOnFollowerCompleted,
+            HandlePropagateLeadershipToFollowerResponse);
 
         // Intercepting the message to block the sending of statistics by the
         // base class.
@@ -197,6 +205,73 @@ void TFollowerDiskActor::PersistFollowerState(
     NCloud::Send(ctx, LeaderVolumeActorId, std::move(request));
 }
 
+void TFollowerDiskActor::AdvanceState(
+    const NActors::TActorContext& ctx,
+    EState newState)
+{
+    Y_DEBUG_ABORT_UNLESS(newState >= State);
+
+    if (State == newState) {
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s State changed %s -> %s",
+        LogTitle.GetWithTime().c_str(),
+        ToString(State).c_str(),
+        ToString(newState).c_str());
+
+    State = newState;
+
+    switch (State) {
+        case EState::DataTransfer: {
+            break;
+        }
+        case EState::DataReady:{
+            PropagateLeadershipToFollower(ctx);
+            break;
+        }
+        case EState::LeadershipTransferred:{
+            RebootLeaderVolume(ctx);
+            break;
+        }
+    }
+}
+
+void TFollowerDiskActor::PropagateLeadershipToFollower(
+    const NActors::TActorContext& ctx)
+{
+    NCloud::Register<TPropagateLinkToFollowerActor>(
+        ctx,
+        LogTitle.GetWithTime(),
+        CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
+        FollowerDiskInfo.Link,
+        TPropagateLinkToFollowerActor::EReason::Completion);
+}
+
+void TFollowerDiskActor::RebootLeaderVolume(const NActors::TActorContext& ctx)
+{
+    TDuration rebootDelay = InitialState == EState::DataReady
+                                ? RebootDelayWhenBornWithDataReady
+                                : TDuration();
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s  Scheduling reboot for leader volume before after %s",
+        LogTitle.GetWithTime().c_str(),
+        FormatDuration(rebootDelay).c_str());
+
+    ctx.Schedule(
+        rebootDelay,
+        std::make_unique<IEventHandle>(
+            LeaderVolumeActorId,
+            ctx.SelfID,
+            new TEvents::TEvPoisonPill()));
+}
+
 template <typename TMethod>
 void TFollowerDiskActor::ForwardRequestToLeaderPartition(
     const typename TMethod::TRequest::TPtr& ev,
@@ -249,11 +324,33 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
-
     const auto* msg = ev->Get();
 
     FollowerDiskInfo = msg->Follower;
+
+    if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady) {
+        AdvanceState(ctx, EState::DataReady);
+    }
+}
+
+void TFollowerDiskActor::HandlePropagateLeadershipToFollowerResponse(
+    const TEvVolumePrivate::TEvLinkOnFollowerCompleted::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Propagate ready state to follower error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
+        // ???? Should we retry?
+        return;
+    }
+
+    AdvanceState(ctx, EState::LeadershipTransferred);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
