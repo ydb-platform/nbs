@@ -46,6 +46,7 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
 
     auto request =
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
     request->Record.SetLinkUUID(Link.LinkUUID);
     request->Record.SetDiskId(Link.FollowerDiskId);
     request->Record.SetFollowerShardId(Link.FollowerShardId);
@@ -59,6 +60,11 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
         }
         case EReason::Destruction: {
             request->Record.SetAction(NProto::ELinkAction::LINK_ACTION_DESTROY);
+            break;
+        }
+        case EReason::Completion: {
+            request->Record.SetAction(
+                NProto::ELinkAction::LINK_ACTION_COMPLETED);
             break;
         }
     }
@@ -104,6 +110,15 @@ void TPropagateLinkToFollowerActor::HandleWakeup(
 {
     Y_UNUSED(ev);
 
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Propagate link %s %s to follower timeout (try #%lu)",
+        LogPrefix.c_str(),
+        ToString(Reason).c_str(),
+        Link.Describe().c_str(),
+        TryCount);
+
     PersistOnFollower(ctx);
 }
 
@@ -124,6 +139,14 @@ void TPropagateLinkToFollowerActor::ReplyAndDie(
         case EReason::Destruction: {
             auto response =
                 std::make_unique<TEvVolumePrivate::TEvLinkOnFollowerDestroyed>(
+                    error,
+                    Link);
+            NCloud::Reply(ctx, *RequestInfo, std::move(response));
+            break;
+        }
+        case EReason::Completion: {
+            auto response =
+                std::make_unique<TEvVolumePrivate::TEvLinkOnFollowerCompleted>(
                     error,
                     Link);
             NCloud::Reply(ctx, *RequestInfo, std::move(response));

@@ -1038,6 +1038,16 @@ std::optional<TLeaderDiskInfo> TVolumeState::FindLeader(
     return std::nullopt;
 }
 
+std::optional<TLeaderDiskInfo> TVolumeState::FindLeaderByHash(ui64 hash) const
+{
+    for (const auto& leader: LeaderDisks) {
+        if (leader.Link.GetHash() == hash) {
+            return leader;
+        }
+    }
+    return std::nullopt;
+}
+
 void TVolumeState::AddOrUpdateLeader(TLeaderDiskInfo leader)
 {
     for (auto& leaderInfo: LeaderDisks) {
@@ -1059,6 +1069,34 @@ void TVolumeState::RemoveLeader(const TLeaderFollowerLink& link)
 const TLeaderDisks& TVolumeState::GetAllLeaders() const
 {
     return LeaderDisks;
+}
+
+TString TVolumeState::GetPrincipalDiskId() const
+{
+    // We need to return the diskId of the disk that is currently the principal.
+    // The principal changes when all data is transferred to the follower. At
+    // this point, the follower is appointed as the new principal.
+    // If the disk is not involved in copying, or it is the principal, it should
+    // return an empty string.
+
+    // If this is the source disk (leader), then we are look at FollowerDisks.
+    for (const auto& followerInfo: FollowerDisks) {
+        if (followerInfo.State == TFollowerDiskInfo::EState::DataReady) {
+            return followerInfo.Link.FollowerDiskId;
+        }
+    }
+
+    // If this is the destination disk (follower), then we are look at LeaderDisks.
+    for (const auto& leaderInfo: LeaderDisks) {
+        if (leaderInfo.State == TLeaderDiskInfo::EState::Leader ||
+            leaderInfo.State == TLeaderDiskInfo::EState::Principal)
+        {
+            return {};
+        }
+    }
+
+    // If the disk was created as a follower, then it has the SourceDiskId set.
+    return SourceDiskId;
 }
 
 void TVolumeState::UpdateScrubberCounters(TScrubbingInfo counters)

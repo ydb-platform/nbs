@@ -57,7 +57,8 @@ void TVolumeAsPartitionActor::ForwardRequestToFollower(
     const TActorContext& ctx,
     EReplyType replyType)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
+    msg->Record.MutableHeaders()->SetExactDiskIdMatch(true);
 
     const ui64 requestId = RequestsInProgress.AddWriteRequest(
         TRequestCtx{

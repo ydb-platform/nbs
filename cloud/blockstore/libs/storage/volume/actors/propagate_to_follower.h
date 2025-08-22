@@ -22,6 +22,7 @@ public:
     {
         Creation,      // Need to propagate to follower link creation
         Destruction,   // Need to propagate to follower link destruction
+        Completion,    // Need to propagate to follower copy completion
     };
 
 private:

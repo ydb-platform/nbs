@@ -2,6 +2,7 @@
 
 #include <cloud/storage/core/libs/common/format.h>
 
+#include <util/digest/multi.h>
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 
@@ -19,6 +20,15 @@ TString IdForPrint(const TString& diskId, const TString& shardId)
 ////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace
+
+ui64 TLeaderFollowerLink::GetHash() const
+{
+    return MultiHash(
+        LeaderDiskId,
+        LeaderShardId,
+        FollowerDiskId,
+        FollowerShardId);
+}
 
 TString TLeaderFollowerLink::LeaderDiskIdForPrint() const
 {
@@ -67,7 +77,13 @@ bool TLeaderFollowerLink::Match(const TLeaderFollowerLink& rhs) const
 TString TLeaderDiskInfo::Describe() const
 {
     auto builder = TStringBuilder();
-    builder << "{ State:" << ToString(State) << " }";
+    builder << "{ State:" << ToString(State);
+
+    if (ErrorMessage) {
+        builder << ", ErrorMessage: " << ErrorMessage.Quote();
+    }
+
+    builder << " }";
     return builder;
 }
 

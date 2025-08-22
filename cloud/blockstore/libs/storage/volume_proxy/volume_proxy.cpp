@@ -52,6 +52,18 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// VolumeProxy discovered the volume specified in the DiskId field of request,
+// establishes a connection to the tablet of this volume and redirects the
+// request to it. VolumeProxy keeps the pipe to the volume tablet and ensures
+// that the requests is sent to the tablet. When pipe to volume broke the
+// response "E_REJECTED Tablet is dead" sent to client. If the client stops
+// sending messages to the volume, the connection is terminated after a
+// PipeInactivityTimeout (1 minute).
+//
+// Connections to the tablets of the base disks are handled a little
+// differently - connections to them are reconnected with a
+// VolumeProxyCacheRetryDuration timeout.
+
 class TVolumeProxyActor final
     : public TActor<TVolumeProxyActor>
 {
@@ -66,25 +78,59 @@ class TVolumeProxyActor final
 
     struct TConnection
     {
+        // Numeric connection ID. It is used to find connection by cookie.
         const ui64 Id;
+
+        // ID of the disk that the user is sending requests to. It may differ
+        // from the actual disk to which the connection is established if the
+        // disk was copied, since a suffix is added to the name of the copied
+        // disk.
         const TString DiskId;
+
+        // If the disk was copied and the name of the real disk differs from the
+        // DiskId.
+        TString RealDiskId;
+
+        const bool RequireExactDiskIdMatch = false;
 
         EConnectionState State = INITIAL;
         bool IsConnectionToBaseDisk = false;
         ui64 TabletId = 0;
+
+        // Generation of the connection established with the volume tablet.
+        // Increases with each reconnection that occurs.
         ui32 Generation = 0;
+
+        // An error that should be returned for all requests if the connection
+        // to the tablet failed.
         NProto::TError Error;
 
+        // Requests waiting for connection to be established to be sent to the
+        // tablet.
         TDeque<IEventHandlePtr> Requests;
+
+        // The time of receiving the last response from the tablet. It is used
+        // to break unused connections.
         TInstant LastActivity;
+
+        // The number of requests sent to the tablet, but the responses to which
+        // have not yet been received.
         ui64 RequestsInflight = 0;
+
+        // The flag indicates whether an inactivity timeout check was scheduled
+        // to terminate the connection.
         bool ActivityCheckScheduled = false;
 
         TLogTitle LogTitle;
 
-        TConnection(ui64 id, TString diskId, bool temporaryServer)
+        TConnection(
+            ui64 id,
+            TString diskId,
+            bool requireExactDiskIdMatch,
+            bool temporaryServer)
             : Id(id)
             , DiskId(std::move(diskId))
+            , RequireExactDiskIdMatch(requireExactDiskIdMatch)
             , LogTitle(
                   GetCycleCount(),
                   TLogTitle::TVolumeProxy{
@@ -99,6 +145,9 @@ class TVolumeProxyActor final
         }
     };
 
+    // TActiveRequest contains IEventHandle without embedded messages,
+    // only information about event type and sender.
+    // This is enough to response "E_REJECTED Tablet is dead".
     struct TActiveRequest
     {
         const ui64 ConnectionId;
@@ -126,8 +175,10 @@ private:
     const bool TemporaryServer = false;
 
     ui64 ConnectionId = 0;
-    THashMap<TString, TConnection> Connections;
-    THashMap<ui64, TConnection*> ConnectionById;
+
+    THashMap<ui64, TConnection> ConnectionById;
+    THashMap<TString, TConnection*> ConnectionByDiskId;
+    THashMap<TString, TConnection*> ConnectionByExactDiskId;
     THashMap<ui64, TConnection*> ConnectionByTablet;
 
     struct TBaseTabletId
@@ -155,13 +206,15 @@ public:
         bool temporaryServer);
 
 private:
-    TConnection& CreateConnection(const TString& diskId);
+    TConnection& CreateConnection(const TString& diskId, bool exactDiskIdMatch);
+    void EraseConnection(TConnection* conn);
 
     void StartConnection(
         const TActorContext& ctx,
         TConnection& conn,
         ui64 tabletId,
-        const TString& path);
+        const TString& path,
+        const TString& realDiskId);
 
     void DestroyConnection(TConnection& conn, NProto::TError error);
 
@@ -253,38 +306,65 @@ TVolumeProxyActor::TVolumeProxyActor(
 }
 
 TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
-    const TString& diskId)
+    const TString& diskId,
+    bool exactDiskIdMatch)
 {
-    if (TConnection* conn = Connections.FindPtr(diskId)) {
-        return *conn;
+    if (exactDiskIdMatch) {
+        if (TConnection** conn = ConnectionByExactDiskId.FindPtr(diskId)) {
+            return **conn;
+        }
+    } else {
+        if (TConnection** conn = ConnectionByDiskId.FindPtr(diskId)) {
+            return **conn;
+        }
     }
 
-    ui64 connectionId = ++ConnectionId;
+    const ui64 connectionId = ++ConnectionId;
 
-    auto ins = Connections.emplace(
-        diskId,
-        TConnection(connectionId, diskId, TemporaryServer));
-    Y_ABORT_UNLESS(ins.second);
+    auto [it, inserted] = ConnectionById.emplace(
+        connectionId,
+        TConnection(connectionId, diskId, exactDiskIdMatch, TemporaryServer));
 
-    ConnectionById[connectionId] = &ins.first->second;
-    return ins.first->second;
+    if (exactDiskIdMatch) {
+        ConnectionByExactDiskId[diskId] = &it->second;
+    } else {
+        ConnectionByDiskId[diskId] = &it->second;
+    }
+
+    return it->second;
+}
+
+void TVolumeProxyActor::EraseConnection(TConnection* conn) {
+
+    ConnectionByExactDiskId.erase(conn->DiskId);
+    ConnectionByDiskId.erase(conn->DiskId);
+    ConnectionByTablet.erase(conn->TabletId);
+    ConnectionById.erase(conn->Id);
 }
 
 void TVolumeProxyActor::StartConnection(
     const TActorContext& ctx,
     TConnection& conn,
     ui64 tabletId,
-    const TString& path)
+    const TString& path,
+    const TString& realDiskId)
 {
     conn.LogTitle.SetTabletId(tabletId);
     conn.AdvanceGeneration();
+    conn.RealDiskId = realDiskId;
 
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME_PROXY,
-        "%s TabletID for volume with path %s resolved",
+        "%s Resolved TabletID for volume %s with path %s",
         conn.LogTitle.GetWithTime().c_str(),
-        path.Quote().data());
+        conn.RealDiskId.Quote().c_str(),
+        path.Quote().c_str());
+
+    if (conn.RealDiskId != conn.DiskId) {
+        ConnectionByExactDiskId.erase(conn.DiskId);
+        ConnectionByExactDiskId[conn.RealDiskId] = &conn;
+    }
 
     ConnectionByTablet[tabletId] = &conn;
 
@@ -304,9 +384,7 @@ void TVolumeProxyActor::DestroyConnection(
     // Cancel all pending requests.
     ProcessPendingRequests(conn);
 
-    ConnectionById.erase(conn.Id);
-    ConnectionByTablet.erase(conn.TabletId);
-    Connections.erase(conn.DiskId);
+    EraseConnection(&conn);
 }
 
 void TVolumeProxyActor::OnDisconnect(
@@ -371,7 +449,7 @@ TVolumeProxyActor::TConnection* TVolumeProxyActor::GetConnectionByTabletId(
 TVolumeProxyActor::TConnection* TVolumeProxyActor::GetConnectionById(ui64 id)
 {
     auto it = ConnectionById.find(id);
-    return it == ConnectionById.end() ? nullptr : it->second;
+    return it == ConnectionById.end() ? nullptr : &it->second;
 }
 
 template <typename TMethod>
@@ -407,6 +485,7 @@ void TVolumeProxyActor::ForwardRequest(
         requestId  // cookie
     );
 
+    //
     ActiveRequests.emplace(
         requestId,
         TActiveRequest(
@@ -483,9 +562,7 @@ void TVolumeProxyActor::HandleWakeup(
             conn->LogTitle.GetWithTime().c_str());
 
         ClientCache->Shutdown(ctx, conn->TabletId);
-        ConnectionById.erase(conn->Id);
-        ConnectionByTablet.erase(conn->TabletId);
-        Connections.erase(conn->DiskId);
+        EraseConnection(conn);
     } else {
         if (conn->LastActivity >= now - PipeInactivityTimeout) {
             auto timeEstimate = conn->LastActivity + PipeInactivityTimeout - now;
@@ -570,7 +647,8 @@ void TVolumeProxyActor::HandleBaseDiskDescribeResponse(
         ctx,
         *conn,
         conn->TabletId,
-        "PartitionConfig");
+        "PartitionConfig",
+        conn->DiskId);
 }
 
 void TVolumeProxyActor::HandleDescribeResponse(
@@ -605,11 +683,13 @@ void TVolumeProxyActor::HandleDescribeResponse(
 
     const auto& pathDescr = msg->PathDescription;
     const auto& volumeDescr = pathDescr.GetBlockStoreVolumeDescription();
+
     StartConnection(
         ctx,
         *conn,
         volumeDescr.GetVolumeTabletId(),
-        msg->Path);
+        msg->Path,
+        volumeDescr.GetName());
 }
 
 template <typename TMethod>
@@ -636,7 +716,9 @@ void TVolumeProxyActor::HandleRequest(
 
     const TString& diskId = GetDiskId(*msg);
 
-    TConnection& conn = CreateConnection(diskId);
+    TConnection& conn = CreateConnection(
+        diskId,
+        msg->Record.GetHeaders().GetExactDiskIdMatch());
     switch (conn.State) {
         case INITIAL:
         case FAILED:
@@ -778,8 +860,9 @@ void TVolumeProxyActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    for (const auto& conn : Connections) {
-        ClientCache->Shutdown(ctx, conn.second.TabletId);
+
+    for (const auto& [id, conn]: ConnectionById) {
+        ClientCache->Shutdown(ctx, conn.TabletId);
     }
 }
 

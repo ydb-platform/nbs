@@ -657,6 +657,62 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         service.StatVolume();
         UNIT_ASSERT(describe);
     }
+
+    Y_UNIT_TEST(ShouldForwardRequestToVolumeTablet)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1");
+        service.WaitForVolume("Disk-1");
+
+        auto statResponse = service.StatVolume("Disk-1");
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Disk-1",
+            statResponse->Record.GetVolume().GetDiskId());
+    }
+
+    Y_UNIT_TEST(ShouldForwardRequestToSecondaryVolumeTablet)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1-copy");
+        service.WaitForVolume("Disk-1-copy");
+
+        auto statResponse = service.StatVolume("Disk-1");
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Disk-1-copy",
+            statResponse->Record.GetVolume().GetDiskId());
+    }
+
+    Y_UNIT_TEST(ShouldForwardRequestToSecondaryVolumeTablet2)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1-copy");
+        service.WaitForVolume("Disk-1-copy");
+
+        auto request = service.CreateStatVolumeRequest("Disk-1");
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::move(request));
+        auto statResponse = service.RecvStatVolumeResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Disk-1-copy",
+            statResponse->Record.GetVolume().GetDiskId());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -122,6 +122,7 @@ private:
     const IBlockStorePtr Client;
     const TClientAppConfigPtr Config;
     TSessionConfig SessionConfig;
+    ISessionSwitcherWeakPtr SessionSwitcherPtr;
 
     TLog Log;
     TSessionInfo SessionInfo;
@@ -135,7 +136,8 @@ public:
         IVolumeStatsPtr volumeStats,
         IBlockStorePtr client,
         TClientAppConfigPtr config,
-        const TSessionConfig& sessionConfig);
+        const TSessionConfig& sessionConfig,
+        ISessionSwitcherWeakPtr sessionSwitcherPtr);
 
     ui32 GetMaxTransfer() const override;
 
@@ -251,7 +253,8 @@ TSession::TSession(
         IVolumeStatsPtr volumeStats,
         IBlockStorePtr client,
         TClientAppConfigPtr config,
-        const TSessionConfig& sessionConfig)
+        const TSessionConfig& sessionConfig,
+        ISessionSwitcherWeakPtr sessionSwitcherPtr)
     : Timer(std::move(timer))
     , Scheduler(std::move(scheduler))
     , Logging(std::move(logging))
@@ -260,6 +263,7 @@ TSession::TSession(
     , Client(std::move(client))
     , Config(std::move(config))
     , SessionConfig(sessionConfig)
+    , SessionSwitcherPtr(std::move(sessionSwitcherPtr))
     , Log(Logging->CreateLog("BLOCKSTORE_CLIENT"))
 {}
 
@@ -628,6 +632,12 @@ void TSession::ProcessMountResponse(
                     {},
                     SessionConfig.InstanceId)
                 << " complete request");
+
+            if (response.GetVolume().GetPrincipalDiskId()) {
+                if (auto switcher = SessionSwitcherPtr.lock()) {
+                    switcher->SwitchSession(response.GetVolume());
+                }
+            }
 
             SessionInfo.MountState = EMountState::MountCompleted;
             SessionInfo.BlockSize = response.GetVolume().GetBlockSize();
@@ -1020,7 +1030,8 @@ ISessionPtr CreateSession(
     IVolumeStatsPtr volumeStats,
     IBlockStorePtr client,
     TClientAppConfigPtr config,
-    const TSessionConfig& sessionConfig)
+    const TSessionConfig& sessionConfig,
+    ISessionSwitcherWeakPtr sessionSwitcherPtr)
 {
     return std::make_shared<TSession>(
         std::move(timer),
@@ -1030,7 +1041,8 @@ ISessionPtr CreateSession(
         std::move(volumeStats),
         std::move(client),
         std::move(config),
-        sessionConfig);
+        sessionConfig,
+        std::move(sessionSwitcherPtr));
 }
 
 }   // namespace NCloud::NBlockStore::NClient
