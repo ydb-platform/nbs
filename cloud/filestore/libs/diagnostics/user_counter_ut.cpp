@@ -14,6 +14,7 @@
 #include <library/cpp/monlib/encode/spack/spack_v1.h>
 #include <library/cpp/monlib/encode/text/text.h>
 #include <library/cpp/resource/resource.h>
+#include <library/cpp/testing/hook/hook.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NFileStore::NUserCounter {
@@ -83,24 +84,24 @@ NJson::TJsonValue GetHistBucket(
 };
 
 void ValidateJsons(
-    const NJson::TJsonValue& testJson,
-    const NJson::TJsonValue& resultJson)
+    const NJson::TJsonValue& expectedJson,
+    const NJson::TJsonValue& actualJson)
 {
-    for(const auto& jsonValue: testJson["sensors"].GetArray()) {
+    for (const auto& jsonValue: expectedJson["sensors"].GetArray()) {
         const TString name = jsonValue["labels"]["name"].GetString();
 
         if (jsonValue.Has("hist")) {
             for (const auto* valueName: {"bounds", "buckets", "inf"}) {
                 UNIT_ASSERT_STRINGS_EQUAL_C(
-                    NJson::WriteJson(GetHist(resultJson, name, valueName)),
-                    NJson::WriteJson(GetHist(testJson, name, valueName)),
+                    NJson::WriteJson(GetHist(expectedJson, name, valueName)),
+                    NJson::WriteJson(GetHist(actualJson, name, valueName)),
                     name
                 );
             }
         } else {
             UNIT_ASSERT_STRINGS_EQUAL_C(
-                NJson::WriteJson(GetValue(resultJson, name)),
-                NJson::WriteJson(GetValue(testJson, name)),
+                NJson::WriteJson(GetValue(expectedJson, name)),
+                NJson::WriteJson(GetValue(actualJson, name)),
                 name
             );
         }
@@ -109,14 +110,14 @@ void ValidateJsons(
 
 void ValidateTestResult(
     const std::shared_ptr<IUserCounterSupplier>& supplier,
-    const NJson::TJsonValue& canonicJson)
+    const NJson::TJsonValue& expectedJson)
 {
     TStringStream jsonOut;
     auto encoder = NMonitoring::EncoderJson(&jsonOut);
     supplier->Accept(TInstant::Seconds(12), encoder.Get());
 
-    auto resultJson = NJson::ReadJsonFastTree(jsonOut.Str(), true);
-    ValidateJsons(canonicJson, resultJson);
+    auto actualJson = NJson::ReadJsonFastTree(jsonOut.Str(), true);
+    ValidateJsons(expectedJson, actualJson);
 }
 
 void SetTimeHistogramCountersMs(
@@ -191,6 +192,12 @@ using namespace NMonitoring;
 
 Y_UNIT_TEST_SUITE(TUserWrapperTest)
 {
+    Y_TEST_HOOK_BEFORE_RUN(InitTest)
+    {
+        // NHPTimer warmup, see issue #2830 for more information
+        Y_UNUSED(GetCyclesPerMillisecond());
+    }
+
     Y_UNIT_TEST_F(ShouldMultipleRegister, TEnv)
     {
         const TString fsId = "test_fs";
@@ -199,7 +206,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         const TString folderId = "test_folder";
 
         const TString testResult = NResource::Find("user_counters_empty.json");
-        auto testJson = NJson::ReadJsonFastTree(testResult, true);
+        auto expectedJson = NJson::ReadJsonFastTree(testResult, true);
         auto emptyJson = NJson::ReadJsonFastTree("{}", true);
 
         auto stats =
@@ -207,11 +214,11 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
 
         // First registration
         Registry->RegisterUserStats(fsId, clientId, cloudId, folderId);
-        ValidateTestResult(Supplier, testJson);
+        ValidateTestResult(Supplier, expectedJson);
 
         // Second registration
         Registry->RegisterUserStats(fsId, clientId, cloudId, folderId);
-        ValidateTestResult(Supplier, testJson);
+        ValidateTestResult(Supplier, expectedJson);
 
         // Unregister
         Registry->Unregister(fsId, clientId);
@@ -254,15 +261,15 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
             "ReleaseLock",   "AcquireLock",  "WriteData",     "ReadData",
         };
 
-        for (const auto& request : requests) {
+        for (const auto& request: requests) {
             setSourceRequestsCounters(request);
         }
 
         Registry->UpdateStats(true);
 
         const TString testResult = NResource::Find("user_counters.json");
-        auto canonicJson = NJson::ReadJsonFastTree(testResult, true);
-        ValidateTestResult(Supplier, canonicJson);
+        auto expectedJson = NJson::ReadJsonFastTree(testResult, true);
+        ValidateTestResult(Supplier, expectedJson);
     }
 
     Y_UNIT_TEST_F(ShouldReportUserStats, TEnv)
@@ -297,12 +304,14 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         };
 
         // fill only 3 largest buckets due to flaps on small durations
-        emulateRequest(EFileStoreRequest::WriteData, 1_MB, TDuration::Seconds(8));
-        emulateRequest(EFileStoreRequest::ReadData, 1_MB, TDuration::Seconds(15));
-        emulateRequest(EFileStoreRequest::ReadData, 1_MB, TDuration::Seconds(25));
-        emulateRequest(EFileStoreRequest::ReadData, 1_MB, TDuration::Seconds(55));
-        emulateRequest(EFileStoreRequest::ReadData, 1_MB, TDuration::Seconds(60));
-        emulateRequest(EFileStoreRequest::ReadData, 1_MB, TDuration::Seconds(100), true);
+        const auto writeData = EFileStoreRequest::WriteData;
+        const auto readData = EFileStoreRequest::ReadData;
+        emulateRequest(writeData, 1_MB, TDuration::Seconds(8));
+        emulateRequest(readData, 1_MB, TDuration::Seconds(15));
+        emulateRequest(readData, 1_MB, TDuration::Seconds(25));
+        emulateRequest(readData, 1_MB, TDuration::Seconds(55));
+        emulateRequest(readData, 1_MB, TDuration::Seconds(60));
+        emulateRequest(readData, 1_MB, TDuration::Seconds(100), true);
 
         TStringStream jsonOut;
         auto encoder = NMonitoring::EncoderJson(&jsonOut);
@@ -312,22 +321,22 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
 
         NJson::TJsonValue value;
         value = GetValue(resultJson, "filestore.write_ops");
-        UNIT_ASSERT_EQUAL(value.GetInteger(), 1);
+        UNIT_ASSERT_EQUAL(1, value.GetInteger());
 
         value = GetHistBucket(resultJson, "filestore.write_latency", "10000");
-        UNIT_ASSERT_EQUAL(value.GetInteger(), 1);
+        UNIT_ASSERT_EQUAL(1, value.GetInteger());
 
         value = GetValue(resultJson, "filestore.read_ops");
-        UNIT_ASSERT_EQUAL(value.GetInteger(), 4);
+        UNIT_ASSERT_EQUAL(4, value.GetInteger());
 
         value = GetValue(resultJson, "filestore.read_errors");
-        UNIT_ASSERT_EQUAL(value.GetInteger(), 1);
+        UNIT_ASSERT_EQUAL(1, value.GetInteger());
 
         value = GetHistBucket(resultJson, "filestore.read_latency", "35000");
-        UNIT_ASSERT_EQUAL(value.GetInteger(), 2);
+        UNIT_ASSERT_EQUAL(2, value.GetInteger());
 
         value = GetHistBucket(resultJson, "filestore.read_latency", "Inf");
-        UNIT_ASSERT_EQUAL(value.GetInteger(), 3);
+        UNIT_ASSERT_EQUAL(3, value.GetInteger());
     }
 }
 
