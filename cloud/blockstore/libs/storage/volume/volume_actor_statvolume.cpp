@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/core/volume_label.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 
 #include <util/system/hostname.h>
@@ -337,6 +338,8 @@ void TVolumeActor::HandleStatVolume(
         State->FillDeviceInfo(*volume);
         volume->SetResyncInProgress(State->IsMirrorResyncNeeded());
         FillCheckpoints(std::move(checkpoints), response->Record);
+        volume->SetPrincipalDiskId(State->GetPrincipalDiskId());
+        volume->SetLogicalDiskId(GetLogicalDiskId(State->GetDiskId()));
 
         LWTRACK(
             ResponseSent_Volume,

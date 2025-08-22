@@ -48,6 +48,8 @@ std::unique_ptr<TEvVolume::TEvAddClientResponse> CreateAddClientResponse(
     VolumeConfigToVolume(volumeConfig, *volumeInfo);
     volumeInfo->SetInstanceId(std::move(instanceId));
     volumeInfo->SetPrincipalDiskId(state.GetPrincipalDiskId());
+    volumeInfo->SetLogicalDiskId(GetLogicalDiskId(state.GetDiskId()));
+
     state.FillDeviceInfo(*volumeInfo);
 
     return response;

@@ -289,6 +289,11 @@ message TVolume
     // PrincipalDiskId field specifies the name of the disk that the client
     // should use instead of current.
     string PrincipalDiskId = 37;
+
+    // When a disk has been copied, the LogicalDiskId field specifies the name
+    // of the disk from which the copy was made and this name should be visible
+    // to the user.
+    string LogicalDiskId = 38;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
