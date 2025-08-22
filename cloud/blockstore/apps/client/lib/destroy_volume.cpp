@@ -51,7 +51,7 @@ protected:
         } else {
             request->SetDiskId(DiskId);
             request->SetSync(Sync);
-
+/*
             STORAGE_WARN("Waiting for confirmation");
             output << "Confirm disk destruction by typing disk id to stdin" << Endl;
             TString confirmation;
@@ -64,6 +64,7 @@ protected:
 
                 return false;
             }
+*/
         }
 
         STORAGE_DEBUG("Sending DestroyVolume request");
