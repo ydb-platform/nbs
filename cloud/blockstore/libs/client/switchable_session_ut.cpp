@@ -261,7 +261,8 @@ TTestSession CreateTestSession(const TString& diskId, const TString& sessionId)
         TSessionConfig{
             .DiskId = diskId,
             .MountToken = DefaultMountToken,
-            .ClientVersionInfo = DefaultClientVersionInfo});
+            .ClientVersionInfo = DefaultClientVersionInfo},
+        ISessionSwitcherWeakPtr());
     {
         NProto::THeaders headers;
         headers.SetClientId(DefaultClientId);

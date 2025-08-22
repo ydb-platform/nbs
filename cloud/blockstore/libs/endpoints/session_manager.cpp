@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/session.h>
+#include <cloud/blockstore/libs/client/switchable_client.h>
+#include <cloud/blockstore/libs/client/switchable_session.h>
 #include <cloud/blockstore/libs/client/throttling.h>
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
@@ -16,6 +18,7 @@
 #include <cloud/blockstore/libs/service/service_error_transform.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/validation/validation.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -27,6 +30,8 @@
 #include <util/generic/hash.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
+
+#include <utility>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -41,26 +46,38 @@ class TEndpoint
 {
 private:
     TExecutor& Executor;
+    ISwitchableSessionPtr SwitchableSession;
     const ISessionPtr Session;
     const IBlockStorePtr DataClient;
+    const ISwitchableBlockStorePtr SwitchableDataClient;
     const IThrottlerProviderPtr ThrottlerProvider;
     const TString ClientId;
     const TString DiskId;
+    const NProto::TStartEndpointRequest StartRequest;
+
+    std::weak_ptr<TSessionSwitchingGuard> SwitchingGuard;
+    TString SessionId;
 
 public:
     TEndpoint(
             TExecutor& executor,
+            ISwitchableSessionPtr switchableSession,
             ISessionPtr session,
             IBlockStorePtr dataClient,
+            ISwitchableBlockStorePtr switchableDataClient,
             IThrottlerProviderPtr throttlerProvider,
             TString clientId,
-            TString diskId)
+            TString diskId,
+            NProto::TStartEndpointRequest startRequest)
         : Executor(executor)
+        , SwitchableSession(std::move(switchableSession))
         , Session(std::move(session))
         , DataClient(std::move(dataClient))
+        , SwitchableDataClient(std::move(switchableDataClient))
         , ThrottlerProvider(std::move(throttlerProvider))
         , ClientId(std::move(clientId))
         , DiskId(std::move(diskId))
+        , StartRequest(std::move(startRequest))
     {}
 
     NProto::TError Start(TCallContextPtr callContext, NProto::THeaders headers)
@@ -73,6 +90,8 @@ public:
 
         if (HasError(response)) {
             DataClient->Stop();
+        } else {
+            SessionId = response.GetSessionId();
         }
 
         return response.GetError();
@@ -106,19 +125,53 @@ public:
         return response.GetError();
     }
 
-    ISessionPtr GetSession()
+    ISessionPtr GetSession() const
     {
-        return Session;
+        // For consumers, we return the top-level session, which is the
+        // SwitchableSession.
+        return SwitchableSession;
     }
 
-    TString GetDiskId()
+    TString GetDiskId() const
     {
         return DiskId;
     }
 
-    NProto::TClientPerformanceProfile GetPerformanceProfile()
+    NProto::TClientPerformanceProfile GetPerformanceProfile() const
     {
         return ThrottlerProvider->GetPerformanceProfile(ClientId);
+    }
+
+    NProto::TStartEndpointRequest GetStartRequest() const
+    {
+        return StartRequest;
+    }
+
+    TFuture<void> SwitchSession(TEndpoint& oldEndpoint)
+    {
+        SwitchableSession = std::move(oldEndpoint.SwitchableSession);
+
+        return SwitchableSession->SwitchSession(
+            GetDiskId(),
+            SessionId,
+            Session,
+            SwitchableDataClient);
+    }
+
+    // The acquire of the session switching guard must be performed under
+    // EndpointLock.
+    // If nullptr is returned, then the session switch is already in progress.
+    // The caller must keep the guard at all times while the session is being
+    // switched.
+    [[nodiscard]] TSessionSwitchingGuardPtr AcquireSwitchingGuard()
+    {
+        if (SwitchingGuard.lock()) {
+            // Session switch is already in progress.
+            return {};
+        }
+        auto result = CreateSessionSwitchingGuard(SwitchableDataClient);
+        SwitchingGuard = result;
+        return result;
     }
 };
 
@@ -301,6 +354,7 @@ private:
 
 class TSessionManager final
     : public ISessionManager
+    , public NClient::ISessionSwitcher
     , public std::enable_shared_from_this<TSessionManager>
 {
 private:
@@ -383,10 +437,15 @@ public:
     TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
         const TString& socketPath) override;
 
+    // implementation NClient::ISessionSwitcher
+    void SwitchSession(
+        const TString& diskId,
+        const TString& newDiskId) override;
+
 private:
     TSessionOrError CreateSessionImpl(
         TCallContextPtr callContext,
-        const NProto::TStartEndpointRequest& request);
+        NProto::TStartEndpointRequest request);
 
     NProto::TError RemoveSessionImpl(
         TCallContextPtr callContext,
@@ -417,22 +476,32 @@ private:
         const TString& cellId);
 
     TClientAppConfigPtr CreateClientConfig(
-        const NProto::TStartEndpointRequest& request);
+        const NProto::TStartEndpointRequest& request) const;
 
     TClientAppConfigPtr CreateClientConfig(
         const NProto::TStartEndpointRequest& request,
         TString host,
-        ui32 port);
+        ui32 port) const;
 
     TResultOrError<IBlockStorePtr> CreateStorageDataClient(
         const TString& cellId,
         const TClientAppConfigPtr& clientConfig,
         const NProto::TVolume& volume,
         const TString& clientId,
-        NProto::EVolumeAccessMode accessMode);
+        NProto::EVolumeAccessMode accessMode) const;
 
     static TSessionConfig CreateSessionConfig(
         const NProto::TStartEndpointRequest& request);
+
+    void SwitchSessionForEndpoint(
+        const TString& socketPath,
+        TEndpointPtr endpoint,
+        const TString& diskId,
+        const TString& newDiskId);
+    void StopEndpoint(TCallContextPtr callContext, TEndpointPtr oldEndpoint);
+    void StopEndpointImpl(
+        TCallContextPtr callContext,
+        TEndpointPtr oldEndpoint);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -451,7 +520,7 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::CreateSession(
 
 TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     TCallContextPtr callContext,
-    const NProto::TStartEndpointRequest& request)
+    NProto::TStartEndpointRequest request)
 {
     auto describeResponse = DescribeVolume(
         callContext,
@@ -462,6 +531,15 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     }
     const auto& volume = describeResponse.GetVolume();
     const auto& cellId = describeResponse.GetCellId();
+
+    if (volume.GetDiskId() != request.GetDiskId()) {
+        // The original volume no longer exists. Use principal volume instead.
+        request.SetDiskId(volume.GetDiskId());
+    } else if (volume.GetPrincipalDiskId()) {
+        // The original volume has lost leadership. Use principal volume instead.
+        request.SetDiskId(volume.GetPrincipalDiskId());
+        return CreateSessionImpl(std::move(callContext), std::move(request));
+    }
 
     auto result = CreateEndpoint(request, volume, cellId);
     if (HasError(result)) {
@@ -670,12 +748,59 @@ TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
     return endpoint->GetPerformanceProfile();
 }
 
+void TSessionManager::SwitchSession(
+    const TString& diskId,
+    const TString& newDiskId)
+{
+    bool endpointFound = false;
+    with_lock (EndpointLock) {
+        for (const auto& [socketPath, endpoint]: Endpoints) {
+            if (endpoint->GetDiskId() != diskId) {
+                continue;
+            }
+            endpointFound = true;
+
+            auto switchingGuard = endpoint->AcquireSwitchingGuard();
+            if (!switchingGuard) {
+                STORAGE_INFO(
+                    "Session swithing in progress: " << diskId.Quote() << " -> "
+                                                     << newDiskId.Quote());
+                continue;
+            }
+
+            Executor->Execute(
+                [socketPath = socketPath,
+                 endpoint = endpoint,
+                 switchingGuard = std::move(switchingGuard),
+                 diskId = diskId,
+                 newDiskId = newDiskId,
+                 weakSelf = weak_from_this()]() mutable
+                {
+                    if (auto self = weakSelf.lock()) {
+                        self->SwitchSessionForEndpoint(
+                            socketPath,
+                            std::move(endpoint),
+                            diskId,
+                            newDiskId);
+                    }
+                    switchingGuard.reset();
+                });
+        }
+    }
+
+    if (!endpointFound) {
+        STORAGE_WARN(
+            "Session for " << diskId.Quote() << " not found. Can't switch to "
+                           << newDiskId.Quote());
+    }
+}
+
 TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
     const TString& cellId,
     const TClientAppConfigPtr& clientConfig,
     const NProto::TVolume& volume,
     const TString& clientId,
-    NProto::EVolumeAccessMode accessMode)
+    NProto::EVolumeAccessMode accessMode) const
 {
     auto service = Service;
     IStoragePtr storage;
@@ -716,9 +841,6 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     const auto& clientId = request.GetClientId();
     auto accessMode = request.GetVolumeAccessMode();
 
-    auto service = Service;
-    IStoragePtr storage;
-
     auto clientConfig = CreateClientConfig(request);
 
     auto [client, error] = CreateStorageDataClient(
@@ -731,6 +853,10 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     if (HasError(error)) {
         return error;
     }
+
+    auto switchableClient =
+        CreateSwitchableClient(Logging, volume.GetDiskId(), std::move(client));
+    client = switchableClient;
 
     if (Options.TemporaryServer) {
         client = CreateErrorTransformService(
@@ -773,7 +899,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     auto encryptionFuture = EncryptionClientFactory->CreateEncryptionClient(
         std::move(client),
         request.GetEncryptionSpec(),
-        request.GetDiskId());
+        NStorage::GetLogicalDiskId(request.GetDiskId()));
 
     const auto& clientOrError = Executor->WaitFor(encryptionFuture);
     if (HasError(clientOrError)) {
@@ -813,21 +939,32 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         VolumeStats,
         client,
         std::move(clientConfig),
-        CreateSessionConfig(request));
+        CreateSessionConfig(request),
+        weak_from_this());
+
+    auto switchableSession = CreateSwitchableSession(
+        Logging,
+        Scheduler,
+        volume.GetDiskId(),
+        session,
+        switchableClient);
 
     return std::make_shared<TEndpoint>(
         *Executor,
+        std::move(switchableSession),
         std::move(session),
         std::move(client),
+        std::move(switchableClient),
         ThrottlerProvider,
         clientId,
-        volume.GetDiskId());
+        volume.GetDiskId(),
+        request);
 }
 
 TClientAppConfigPtr TSessionManager::CreateClientConfig(
     const NProto::TStartEndpointRequest& request,
     TString host,
-    ui32 port)
+    ui32 port) const
 {
     NProto::TClientAppConfig clientAppConfig;
     auto& config = *clientAppConfig.MutableClientConfig();
@@ -842,7 +979,7 @@ TClientAppConfigPtr TSessionManager::CreateClientConfig(
 }
 
 TClientAppConfigPtr TSessionManager::CreateClientConfig(
-    const NProto::TStartEndpointRequest& request)
+    const NProto::TStartEndpointRequest& request) const
 {
     NProto::TClientAppConfig clientAppConfig;
     auto& config = *clientAppConfig.MutableClientConfig();
@@ -854,6 +991,7 @@ TClientAppConfigPtr TSessionManager::CreateClientConfig(
     return std::make_shared<TClientAppConfig>(std::move(clientAppConfig));
 }
 
+// static
 TSessionConfig TSessionManager::CreateSessionConfig(
     const NProto::TStartEndpointRequest& request)
 {
@@ -867,6 +1005,125 @@ TSessionConfig TSessionManager::CreateSessionConfig(
     config.ClientVersionInfo = request.GetClientVersionInfo();
     config.MountSeqNumber = request.GetMountSeqNumber();
     return config;
+}
+
+void TSessionManager::SwitchSessionForEndpoint(
+    const TString& socketPath,
+    TEndpointPtr endpoint,
+    const TString& diskId,
+    const TString& newDiskId)
+{
+    STORAGE_INFO(
+        "Start session switching: " << diskId.Quote() << " -> "
+                                    << newDiskId.Quote());
+
+    auto callContext = MakeIntrusive<TCallContext>(CreateRequestId());
+
+    // Prepare request for new endpoint
+    auto newStartRequest = endpoint->GetStartRequest();
+    newStartRequest.SetDiskId(newDiskId);
+
+    // Describe new disk
+    auto describeResponse =
+        DescribeVolume(callContext, newDiskId, newStartRequest.GetHeaders());
+    if (HasError(describeResponse)) {
+        STORAGE_WARN(
+            "Describe volume " << newDiskId.Quote() << " failed: "
+                               << describeResponse.GetError().GetMessage());
+        return;
+    }
+
+    // Start new endpoint
+    auto result = CreateEndpoint(
+        newStartRequest,
+        describeResponse.GetVolume(),
+        describeResponse.GetCellId());
+
+    if (HasError(result)) {
+        STORAGE_WARN(
+            "Can't create new Session for " << newDiskId.Quote() << " "
+                                            << FormatError(result.GetError()));
+        return;
+    }
+
+    auto newEndpoint = std::move(result.ExtractResult());
+    auto error = newEndpoint->Start(
+        callContext,
+        newEndpoint->GetStartRequest().GetHeaders());
+
+    if (HasError(error)) {
+        STORAGE_WARN(
+            "Can't start new endpoint for " << newEndpoint->GetDiskId().Quote()
+                                            << " " << FormatError(error));
+        return;
+    }
+
+    // Switch to new endpoint
+    with_lock (EndpointLock) {
+        if (!Endpoints.contains(socketPath)) {
+            STORAGE_WARN("Endpoint " << socketPath.Quote() << " not found");
+            return;
+        }
+
+        if (Endpoints[socketPath] != endpoint) {
+            STORAGE_WARN(
+                "Endpoint on " << socketPath.Quote()
+                               << " is not the same as before");
+            return;
+        }
+
+        Endpoints[socketPath] = newEndpoint;
+        auto future = newEndpoint->SwitchSession(*endpoint);
+        future.Subscribe(
+            [callContext = std::move(callContext),
+             oldEndpoint = std::move(endpoint),
+             weakSelf = weak_from_this()](const TFuture<void>& future) mutable
+            {
+                Y_UNUSED(future);
+                // Stop old endpoint when switch finished
+                if (auto self = weakSelf.lock()) {
+                    self->StopEndpoint(
+                        std::move(callContext),
+                        std::move(oldEndpoint));
+                }
+            });
+    }
+
+    ThrottlerProvider->Clean();
+}
+
+void TSessionManager::StopEndpoint(
+    TCallContextPtr callContext,
+    TEndpointPtr oldEndpoint)
+{
+    Executor->Execute(
+        [callContext = std::move(callContext),
+         oldEndpoint = std::move(oldEndpoint),
+         weakSelf = weak_from_this()]()
+        {
+            if (auto self = weakSelf.lock()) {
+                self->StopEndpointImpl(callContext, oldEndpoint);
+            }
+        });
+}
+
+void TSessionManager::StopEndpointImpl(
+    TCallContextPtr callContext,
+    TEndpointPtr oldEndpoint)
+{
+    auto error = oldEndpoint->Stop(
+        std::move(callContext),
+        oldEndpoint->GetStartRequest().GetHeaders());
+
+    if (HasError(error)) {
+        STORAGE_WARN(
+            "Stop old endpoint for " << oldEndpoint->GetDiskId().Quote()
+                                     << "error :" << FormatError(error));
+    } else {
+        STORAGE_INFO(
+            "Stop old endpoint for " << oldEndpoint->GetDiskId().Quote()
+                                     << " success");
+    }
 }
 
 }   // namespace
