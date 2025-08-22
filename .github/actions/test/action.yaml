@@ -222,6 +222,7 @@ runs:
           i=$((i + 1))
           RETRY_LOG_DIR="$LOG_DIR/$i"
           sudo -E -H -u github mkdir -p "$RETRY_LOG_DIR"
+          echo "LAST_STEP=${i}" | tee -a "$GITHUB_ENV"
           echo "::group::ya-make-test-${i}"
           set +e
           (
@@ -276,12 +277,16 @@ runs:
               ;;
           esac
 
+          touch "$LOG_DIR/${i}_build_finished"
+
           echo "::group::s3-sync-logs"
           if [ "$SYNC_TO_S3" = "true" ];
           then
             sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${i}/"
           fi
           echo "::endgroup::"
+
+          touch "$LOG_DIR/${i}_logs_synced"
 
           NEED_COPYING=0
 
@@ -366,6 +371,7 @@ runs:
               du -h "$TESTS_DATA_DIR/"
               sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${i}/"
             fi
+            touch "$LOG_DIR/${i}_test_data_synced"
             echo "::endgroup::"
           fi
           # shellcheck disable=SC2024
@@ -405,6 +411,7 @@ runs:
 
           echo "::group::s3-sync"
           sudo -E -H -u github s3cmd sync --follow-symlinks --acl-public --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
+          touch "$LOG_DIR/${i}_artifacts_synced"
           echo "::endgroup::"
 
           if [ $DO_RETRY -eq 1 ]; then
@@ -425,7 +432,7 @@ runs:
         fi
 
     - name: copying system files
-      if: ${{ !cancelled() }}
+      if: ${{ always() }}
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         sudo cp /var/log/kern.log "$LOG_DIR/kern.log" || true
@@ -433,7 +440,7 @@ runs:
 
     - name: dump VM artifacts
       shell: bash --noprofile --norc -eo pipefail -x {0}
-      if: ${{ !cancelled() }}
+      if: ${{ always() }}
       run: |
         echo "::group::dump-vm-artifacts"
         sudo mkdir -p "$LOG_DIR/system_logs"
@@ -444,6 +451,40 @@ runs:
         sudo chown -R github:github "$LOG_DIR/system_logs/" || true
         sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/"
         echo "::endgroup::"
+    
+    - name: sync logs in case of cancel and additional debug info
+      if: ${{ cancelled() }}
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      run: |
+        export CANCEL_LOG_DIR="$LOG_DIR/cancel_logs"
+        mkdir -p "$CANCEL_LOG_DIR"
+        pstree -alpu > "${CANCEL_LOG_DIR}/pstree.log" 2>&1 || true
+        ps -eo pid,ppid,stat,etimes,pcpu,pmem,comm,args --sort=-pcpu > "${CANCEL_LOG_DIR}/ps.log" 2>&1 || true
+        lsof +c 15  2>&1 | head -n 300 > "${CANCEL_LOG_DIR}/lsof.log" || true
+        ss -taop > "${CANCEL_LOG_DIR}/ss.log" 2>&1 || true
+
+        perf record -F 99 -g --call-graph=dwarf -a -o "${CANCEL_LOG_DIR}/perf.data" -- sleep 15 || true
+        perf report --stdio -i "${CANCEL_LOG_DIR}/perf.data" > "${CANCEL_LOG_DIR}/perf_report.log" 2>&1 || true
+        perf script -i "${CANCEL_LOG_DIR}/perf.data" > "${CANCEL_LOG_DIR}/perf.out" 2>&1 || true
+
+        sudo chown -R github:github "$LOG_DIR/"
+
+        sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/" || true
+        
+        if [ ! -f "${LAST_STEP}_artifacts_synced" ]; then
+          echo "Syncing artifacts dir"
+          if [ -d "$ARTIFACTS_DIR/logs/" ]; then
+            echo "::group::cleaning-artifacts-log-dir"
+            find "$ARTIFACTS_DIR/logs/" -type f -print0 | while IFS= read -r -d '' file; do
+              if file --mime-type "$file" | grep -q 'application/x-executable'; then
+                echo "$file"
+                rm -f "$file"
+              fi
+            done
+            echo "::endgroup::"
+          fi
+          sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/artifacts/" || true
+        fi
 
     - name: Finish with END_EXIT_CODE
       shell: bash --noprofile --norc -eo pipefail -x {0}
