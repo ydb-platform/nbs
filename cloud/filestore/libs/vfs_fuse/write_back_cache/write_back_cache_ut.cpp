@@ -503,7 +503,7 @@ struct TWriteRequestLogger
             if (request.Handle != handle) {
                 continue;
             }
-            if (!sb.Empty()) {
+            if (!sb.empty()) {
                 sb << ", ";
             }
             sb << "(" << request.Offset << ", " << request.Length << ")";
