@@ -184,7 +184,7 @@ void RegisterServerVolumeInstance(
         {{readSub, "MaxInProgressBytes"}},
         DISK_READ_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        GetMsBuckets(),
+        GetUsBuckets(),
         dsc,
         commonLabels,
         {{readSub, "Time"}},
@@ -242,7 +242,7 @@ void RegisterServerVolumeInstance(
         getWriteCounters("MaxInProgressBytes"),
         DISK_WRITE_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        GetMsBuckets(),
+        GetUsBuckets(),
         dsc,
         commonLabels,
         getWriteCounters("Time"),
