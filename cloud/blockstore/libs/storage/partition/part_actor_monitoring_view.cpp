@@ -364,4 +364,37 @@ void TPartitionActor::HandleHttpInfo_ResetBSGroupLatencyStats(
     SendHttpResponse(ctx, *requestInfo, "");
 }
 
+void TPartitionActor::HandleHttpInfo_GetTransactionsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(FormatTransactionsInflight(
+            TransactionTimeTracker.GetInflightOperations(),
+            GetCycleCount(),
+            TInstant::Now())));
+}
+
+void TPartitionActor::HandleHttpInfo_GetBSGroupOperationsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(
+            FormatBSGroupOperationsInflight(
+                BSGroupOperationTimeTracker.GetInflightOperations(),
+                GetCycleCount(),
+                TInstant::Now())));
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

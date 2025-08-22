@@ -1225,6 +1225,13 @@ void DumpLatency(
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
         BuildResetButton(out, tabletId, "resetTransactionLatencyStats");
 
+        HREF(
+            "/tablets/app?action=getTransactionsInflight&TabletID=" +
+            ToString(tabletId))
+        {
+            out << "Inflight";
+        }
+
         DIV_CLASS_ID(" ", containerId) {
             TAG (TH3) { out << "Transactions"; }
             DumpLatencyForTransactions(out, columnCount, transactionTimeTracker);
@@ -1544,6 +1551,13 @@ void DumpGroupLatencyTab(
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
         BuildResetButton(out, tabletId, "resetBSGroupLatencyStats");
 
+        HREF(
+            "/tablets/app?action=getBSGroupOperationsInflight&TabletID=" +
+            ToString(tabletId))
+        {
+            out << "Inflight";
+        }
+
         out << "<div id='" << containerId << "'></div>";
 
         DumpLatencyForOperations(out, tracker);
@@ -1679,6 +1693,214 @@ void BuildResetButton(
     </script>)";
 
     out << "<button onclick=\"" << actionName << "()\">reset</button>";
+}
+
+TString FormatTransactionsInflight(
+    const TVector<
+        std::pair<ui64, TTransactionTimeTracker::TTransactionInflight>>&
+        operations,
+    ui64 nowCycles,
+    TInstant now)
+{
+    TStringStream out;
+
+    HTML (out) {
+        DIV_CLASS ("container") {
+            TABLE_CLASS ("table table-bordered") {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ID";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Start Time";
+                        }
+                        TABLEH () {
+                            out << "Duration";
+                        }
+                    }
+                }
+                TABLEBODY()
+                {
+                    for (const auto& [id, op]: operations) {
+                        auto duration =
+                            CyclesToDurationSafe(nowCycles - op.StartTime);
+                        TABLER () {
+                            TABLED () {
+                                out << id;
+                            }
+                            TABLED () {
+                                out << op.TransactionName;
+                            }
+                            TABLED () {
+                                out << (now - duration).ToStringUpToSeconds();
+                            }
+                            TABLED_CLASS("text-right")
+                            {
+                                out << Sprintf(
+                                    "%.2f ms",
+                                    duration.MicroSeconds() / 1000.0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out.Str();
+}
+
+TString FormatRequestsInflight(
+    const TVector<std::pair<ui64, TRequestsTimeTracker::TRequestInflight>>&
+        operations,
+    ui64 nowCycles,
+    TInstant now)
+{
+    TStringStream out;
+
+    HTML (out) {
+        DIV_CLASS ("container") {
+            TABLE_CLASS ("table table-bordered") {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ID";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Block Range";
+                        }
+                        TABLEH () {
+                            out << "Start Time";
+                        }
+                        TABLEH () {
+                            out << "Duration";
+                        }
+                    }
+                }
+                TABLEBODY()
+                {
+                    for (const auto& [id, op]: operations) {
+                        auto duration =
+                            CyclesToDurationSafe(nowCycles - op.StartTime);
+                        TABLER () {
+                            TABLED () {
+                                out << id;
+                            }
+                            TABLED () {
+                                switch (op.RequestType) {
+                                    case TRequestsTimeTracker::ERequestType::
+                                        Read:
+                                        out << "Read";
+                                        break;
+                                    case TRequestsTimeTracker::ERequestType::
+                                        Write:
+                                        out << "Write";
+                                        break;
+                                    case TRequestsTimeTracker::ERequestType::
+                                        Zero:
+                                        out << "Zero";
+                                        break;
+                                    case TRequestsTimeTracker::ERequestType::
+                                        Describe:
+                                        out << "Describe";
+                                        break;
+                                    default:
+                                        out << "Unknown";
+                                }
+                            }
+                            TABLED () {
+                                out << op.BlockRange.Start << "-"
+                                    << op.BlockRange.End;
+                            }
+                            TABLED () {
+                                out << (now - duration).ToStringUpToSeconds();
+                            }
+                            TABLED_CLASS("text-right")
+                            {
+                                out << Sprintf(
+                                    "%.2f ms",
+                                    duration.MicroSeconds() / 1000.0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out.Str();
+}
+
+TString FormatBSGroupOperationsInflight(
+    const TVector<
+        std::pair<ui64, TBSGroupOperationTimeTracker::TOperationInflight>>&
+        operations,
+    ui64 nowCycles,
+    TInstant now)
+{
+    TStringStream out;
+
+    HTML (out) {
+        DIV_CLASS ("container") {
+            TABLE_CLASS ("table table-bordered") {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ID";
+                        }
+                        TABLEH () {
+                            out << "Group ID";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Start Time";
+                        }
+                        TABLEH () {
+                            out << "Duration";
+                        }
+                    }
+                }
+                TABLEBODY()
+                {
+                    for (const auto& [id, op]: operations) {
+                        auto duration =
+                            CyclesToDurationSafe(nowCycles - op.StartTime);
+                        TABLER () {
+                            TABLED () {
+                                out << id;
+                            }
+                            TABLED () {
+                                out << op.GroupId;
+                            }
+                            TABLED () {
+                                out << op.OperationName;
+                            }
+                            TABLED () {
+                                out << (now - duration).ToStringUpToSeconds();
+                            }
+                            TABLED_CLASS("text-right")
+                            {
+                                out << Sprintf(
+                                    "%.2f ms",
+                                    duration.MicroSeconds() / 1000.0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out.Str();
 }
 
 }   // namespace NMonitoringUtils

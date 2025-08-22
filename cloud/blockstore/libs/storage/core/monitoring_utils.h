@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
+#include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
@@ -220,4 +221,23 @@ void BuildResetButton(
     ui64 tabletId,
     const TString& actionName);
 
+TString FormatTransactionsInflight(
+    const TVector<
+        std::pair<ui64, TTransactionTimeTracker::TTransactionInflight>>&
+        operations,
+    ui64 nowCycles,
+    TInstant now);
+
+TString FormatRequestsInflight(
+    const TVector<std::pair<ui64, TRequestsTimeTracker::TRequestInflight>>&
+        operations,
+    ui64 nowCycles,
+    TInstant now);
+
+TString FormatBSGroupOperationsInflight(
+    const TVector<
+        std::pair<ui64, TBSGroupOperationTimeTracker::TOperationInflight>>&
+        operations,
+    ui64 nowCycles,
+    TInstant now);
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils
