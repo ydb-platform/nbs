@@ -30,14 +30,16 @@ namespace {
 template <typename TDerived>
 struct THistBase
 {
+    const TString Name;
     const TBucketBounds HistBounds;
     const EHistogramCounterOptions CounterOptions;
 
     THistogramPtr Hist;
     std::array<TDynamicCounters::TCounterPtr, TDerived::BUCKETS_COUNT> Counters;
 
-    explicit THistBase(EHistogramCounterOptions counterOptions)
-        : HistBounds(ConvertToHistBounds(TDerived::Buckets))
+    explicit THistBase(TString name, EHistogramCounterOptions counterOptions)
+        : Name(std::move(name))
+        , HistBounds(ConvertToHistBounds(TDerived::Buckets))
         , CounterOptions(counterOptions)
         , Hist(
             new THistogramCounter(NMonitoring::ExplicitHistogram(HistBounds)))
@@ -47,16 +49,15 @@ struct THistBase
 
     void Register(
         TDynamicCounters& counters,
-        const TString& name,
         TCountableBase::EVisibility vis = TCountableBase::EVisibility::Public)
     {
         auto subgroup = MakeVisibilitySubgroup(
             counters,
             "histogram",
-            name,
+            Name,
             vis);
         if (CounterOptions & EHistogramCounterOption::ReportSingleCounter) {
-            Hist = subgroup->GetHistogram(name,
+            Hist = subgroup->GetHistogram(Name,
                 NMonitoring::ExplicitHistogram(HistBounds),
                 true,
                 vis);
@@ -95,6 +96,11 @@ struct THistBase
         }
         return result;
     }
+
+    const TString& GetName() const
+    {
+        return Name;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -102,8 +108,8 @@ struct THistBase
 struct TTimeHist
     : public THistBase<TRequestMsTimeBuckets>
 {
-    explicit TTimeHist(EHistogramCounterOptions counterOptions)
-        : THistBase(counterOptions)
+    explicit TTimeHist(TString name, EHistogramCounterOptions counterOptions)
+        : THistBase(std::move(name), counterOptions)
     {
     }
 
@@ -118,8 +124,8 @@ struct TTimeHist
 struct TSizeHist
     : public THistBase<TKbSizeBuckets>
 {
-    explicit TSizeHist(EHistogramCounterOptions counterOptions)
-        : THistBase(counterOptions)
+    explicit TSizeHist(TString name, EHistogramCounterOptions counterOptions)
+        : THistBase(std::move(name), counterOptions)
     {
     }
 
@@ -131,6 +137,7 @@ struct TSizeHist
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TSrcHistogram>
 class TRequestPercentiles
 {
     using TDynamicCounterPtr = TDynamicCounters::TCounterPtr;
@@ -140,28 +147,35 @@ private:
 
     TVector<ui64> Prev;
 
+    const TSrcHistogram& SrcHistogram;
+
 public:
+    explicit TRequestPercentiles(const TSrcHistogram& srcHistogram)
+        : SrcHistogram(srcHistogram)
+    {}
+
     void Register(TDynamicCounters& counters)
     {
+        auto subgroup =
+            counters.GetSubgroup("percentiles", SrcHistogram.GetName());
         const auto& percentiles = GetDefaultPercentiles();
-        for (ui32 i = 0; i < percentiles.size(); ++i) {
-            Counters.emplace_back(
-                counters.GetCounter(percentiles[i].second, false));
+        for (const auto& [value, name]: percentiles) {
+            Counters.emplace_back(subgroup->GetCounter(name, false));
         }
     }
 
-    void Update(const TVector<TBucketInfo>& update)
+    void Update()
     {
+        const auto update = SrcHistogram.GetBuckets();
         if (Prev.size() < update.size()) {
             Prev.resize(update.size());
         }
 
         TVector<TBucketInfo> delta(Reserve(update.size()));
-        for (ui32 i = 0; i < update.size(); ++i) {
-            delta.emplace_back(
-                update[i].first,
-                update[i].second - Prev[i]);
-            Prev[i] = update[i].second;
+        for (size_t i = 0; i < update.size(); ++i) {
+            const auto& [bound, value] = update[i];
+            delta.emplace_back(bound, value - Prev[i]);
+            Prev[i] = value;
         }
 
         auto result = CalculateWeightedPercentiles(
@@ -266,21 +280,21 @@ struct TRequestCounters::TStatCounters
     TDynamicCounters::TCounterPtr Retries;
 
     TSizeHist SizeHist;
-    TRequestPercentiles SizePercentiles;
+    TRequestPercentiles<TSizeHist> SizePercentiles;
 
     TTimeHist TimeHist;
     TTimeHist TimeHistUnaligned;
-    TRequestPercentiles TimePercentiles;
+    TRequestPercentiles<TTimeHist> TimePercentiles;
 
     TTimeHist ExecutionTimeHist;
     TTimeHist ExecutionTimeHistUnaligned;
-    TRequestPercentiles ExecutionTimePercentiles;
+    TRequestPercentiles<TTimeHist> ExecutionTimePercentiles;
 
     TTimeHist RequestCompletionTimeHist;
-    TRequestPercentiles RequestCompletionTimePercentiles;
+    TRequestPercentiles<TTimeHist> RequestCompletionTimePercentiles;
 
     TTimeHist PostponedTimeHist;
-    TRequestPercentiles PostponedTimePercentiles;
+    TRequestPercentiles<TTimeHist> PostponedTimePercentiles;
 
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTimeCalc;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTotalTimeCalc;
@@ -296,15 +310,22 @@ struct TRequestCounters::TStatCounters
     TAtomic FullyInitialized = false;
 
     explicit TStatCounters(
-            ITimerPtr timer,
-            EHistogramCounterOptions histogramCounterOptions)
-        : SizeHist(histogramCounterOptions)
-        , TimeHist(histogramCounterOptions)
-        , TimeHistUnaligned(histogramCounterOptions)
-        , ExecutionTimeHist(histogramCounterOptions)
-        , ExecutionTimeHistUnaligned(histogramCounterOptions)
-        , RequestCompletionTimeHist(histogramCounterOptions)
-        , PostponedTimeHist(histogramCounterOptions)
+        ITimerPtr timer,
+        EHistogramCounterOptions histogramCounterOptions)
+        : SizeHist("Size", histogramCounterOptions)
+        , SizePercentiles(SizeHist)
+        , TimeHist("Time", histogramCounterOptions)
+        , TimeHistUnaligned("Time", histogramCounterOptions)
+        , TimePercentiles(TimeHist)
+        , ExecutionTimeHist("ExecutionTime", histogramCounterOptions)
+        , ExecutionTimeHistUnaligned("ExecutionTime", histogramCounterOptions)
+        , ExecutionTimePercentiles(ExecutionTimeHist)
+        , RequestCompletionTimeHist(
+              "RequestCompletionTime",
+              histogramCounterOptions)
+        , RequestCompletionTimePercentiles(RequestCompletionTimeHist)
+        , PostponedTimeHist("ThrottlerDelay", histogramCounterOptions)
+        , PostponedTimePercentiles(PostponedTimeHist)
         , MaxTimeCalc(timer)
         , MaxTotalTimeCalc(timer)
         , MaxSizeCalc(timer)
@@ -341,10 +362,9 @@ struct TRequestCounters::TStatCounters
         ErrorsFatal = counters.GetCounter("Errors/Fatal", true);
         Time = counters.GetCounter("Time", true);
         if (ReportControlPlaneHistogram) {
-            TimeHist.Register(counters, "Time");
+            TimeHist.Register(counters);
         } else {
-            TimePercentiles.Register(
-                *counters.GetSubgroup("percentiles", "Time"));
+            TimePercentiles.Register(counters);
         }
     }
 
@@ -392,33 +412,29 @@ struct TRequestCounters::TStatCounters
             if (ReportDataPlaneHistogram) {
                 auto unalignedClassGroup = counters.GetSubgroup("sizeclass", "Unaligned");
 
-                SizeHist.Register(counters, "Size");
-                TimeHistUnaligned.Register(*unalignedClassGroup, "Time");
-                ExecutionTimeHist.Register(counters, "ExecutionTime");
-                ExecutionTimeHistUnaligned.Register(*unalignedClassGroup, "ExecutionTime");
+                SizeHist.Register(counters);
+                TimeHistUnaligned.Register(*unalignedClassGroup);
+                ExecutionTimeHist.Register(counters);
+                ExecutionTimeHistUnaligned.Register(*unalignedClassGroup);
             } else {
-                SizePercentiles.Register(*counters.GetSubgroup("percentiles", "Size"));
-                ExecutionTimePercentiles.Register(
-                    *counters.GetSubgroup("percentiles", "ExecutionTime"));
-                PostponedTimePercentiles.Register(
-                    *counters.GetSubgroup("percentiles", "ThrottlerDelay"));
-                TimePercentiles.Register(*counters.GetSubgroup("percentiles", "Time"));
+                SizePercentiles.Register(counters);
+                ExecutionTimePercentiles.Register(counters);
+                PostponedTimePercentiles.Register(counters);
+                TimePercentiles.Register(counters);
             }
 
             const auto visibleHistogram = ReportDataPlaneHistogram
                 ? TCountableBase::EVisibility::Public
                 : TCountableBase::EVisibility::Private;
 
-            PostponedTimeHist.Register(counters, "ThrottlerDelay", visibleHistogram);
-            TimeHist.Register(counters, "Time", visibleHistogram);
+            PostponedTimeHist.Register(counters, visibleHistogram);
+            TimeHist.Register(counters, visibleHistogram);
 
             // Always enough only percentiles.
             RequestCompletionTimeHist.Register(
                 counters,
-                "RequestCompletionTime",
                 TCountableBase::EVisibility::Private);
-            RequestCompletionTimePercentiles.Register(
-                *counters.GetSubgroup("percentiles", "RequestCompletionTime"));
+            RequestCompletionTimePercentiles.Register(counters);
 
             PostponedQueueSize = counters.GetCounter("PostponedQueueSize");
             MaxPostponedQueueSize = counters.GetCounter("MaxPostponedQueueSize");
@@ -675,15 +691,14 @@ struct TRequestCounters::TStatCounters
             *MaxPostponedQueueSizeGrpc =
                 MaxPostponedQueueSizeGrpcCalc.NextValue();
             if (updatePercentiles && !ReportDataPlaneHistogram) {
-                SizePercentiles.Update(SizeHist.GetBuckets());
-                TimePercentiles.Update(TimeHist.GetBuckets());
-                ExecutionTimePercentiles.Update(ExecutionTimeHist.GetBuckets());
-                RequestCompletionTimePercentiles.Update(
-                    RequestCompletionTimeHist.GetBuckets());
-                PostponedTimePercentiles.Update(PostponedTimeHist.GetBuckets());
+                SizePercentiles.Update();
+                TimePercentiles.Update();
+                ExecutionTimePercentiles.Update();
+                RequestCompletionTimePercentiles.Update();
+                PostponedTimePercentiles.Update();
             }
         } else if (updatePercentiles && !ReportControlPlaneHistogram) {
-            TimePercentiles.Update(TimeHist.GetBuckets());
+            TimePercentiles.Update();
         }
     }
 };
