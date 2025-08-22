@@ -64,7 +64,8 @@ void TBSGroupOperationTimeTracker::OnStarted(
     ui64 operationId,
     ui32 groupId,
     EOperationType operationType,
-    ui64 startTime)
+    ui64 startTime,
+    ui32 blockSize)
 {
     TString operationName;
 
@@ -97,7 +98,8 @@ void TBSGroupOperationTimeTracker::OnStarted(
         TOperationInflight{
             .StartTime = startTime,
             .OperationName = operationName,
-            .GroupId = groupId});
+            .GroupId = groupId,
+            .BlockSize = blockSize});
 }
 
 void TBSGroupOperationTimeTracker::OnFinished(ui64 operationId, ui64 finishTime)
@@ -220,16 +222,7 @@ void TBSGroupOperationTimeTracker::ResetStats()
 TVector<std::pair<ui64, TBSGroupOperationTimeTracker::TOperationInflight>>
 TBSGroupOperationTimeTracker::GetInflightOperations() const
 {
-    TVector<std::pair<ui64, TOperationInflight>> result(
-        Inflight.begin(),
-        Inflight.end());
-
-    Sort(
-        result,
-        [](const auto& a, const auto& b)
-        { return a.second.StartTime < b.second.StartTime; });
-
-    return result;
+    return {Inflight.begin(), Inflight.end()};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

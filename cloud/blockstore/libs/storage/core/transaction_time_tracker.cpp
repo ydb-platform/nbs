@@ -208,16 +208,7 @@ void TTransactionTimeTracker::ResetStats()
 TVector<std::pair<ui64, TTransactionTimeTracker::TTransactionInflight>>
 TTransactionTimeTracker::GetInflightOperations() const
 {
-    TVector<std::pair<ui64, TTransactionInflight>> result(
-        Inflight.begin(),
-        Inflight.end());
-
-    Sort(
-        result,
-        [](const auto& a, const auto& b)
-        { return a.second.StartTime < b.second.StartTime; });
-
-    return result;
+    return {Inflight.begin(), Inflight.end()};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -1225,12 +1225,11 @@ void DumpLatency(
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
         BuildResetButton(out, tabletId, "resetTransactionLatencyStats");
 
-        HREF(
+        RenderStyledLink(
+            out,
             "/tablets/app?action=getTransactionsInflight&TabletID=" +
-            ToString(tabletId))
-        {
-            out << "Inflight";
-        }
+                ToString(tabletId),
+            "Inflight");
 
         DIV_CLASS_ID(" ", containerId) {
             TAG (TH3) { out << "Transactions"; }
@@ -1551,12 +1550,11 @@ void DumpGroupLatencyTab(
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
         BuildResetButton(out, tabletId, "resetBSGroupLatencyStats");
 
-        HREF(
+        RenderStyledLink(
+            out,
             "/tablets/app?action=getBSGroupOperationsInflight&TabletID=" +
-            ToString(tabletId))
-        {
-            out << "Inflight";
-        }
+                ToString(tabletId),
+            "Inflight");
 
         out << "<div id='" << containerId << "'></div>";
 
@@ -1706,7 +1704,8 @@ TString FormatTransactionsInflight(
 
     HTML (out) {
         DIV_CLASS ("container") {
-            TABLE_CLASS ("table table-bordered") {
+            TABLE_SORTABLE()
+            {
                 TABLEHEAD () {
                     TABLER () {
                         TABLEH () {
@@ -1738,11 +1737,8 @@ TString FormatTransactionsInflight(
                             TABLED () {
                                 out << (now - duration).ToStringUpToSeconds();
                             }
-                            TABLED_CLASS("text-right")
-                            {
-                                out << Sprintf(
-                                    "%.2f ms",
-                                    duration.MicroSeconds() / 1000.0);
+                            TABLED () {
+                                out << FormatDuration(duration);
                             }
                         }
                     }
@@ -1764,7 +1760,8 @@ TString FormatRequestsInflight(
 
     HTML (out) {
         DIV_CLASS ("container") {
-            TABLE_CLASS ("table table-bordered") {
+            TABLE_SORTABLE()
+            {
                 TABLEHEAD () {
                     TABLER () {
                         TABLEH () {
@@ -1816,17 +1813,13 @@ TString FormatRequestsInflight(
                                 }
                             }
                             TABLED () {
-                                out << op.BlockRange.Start << "-"
-                                    << op.BlockRange.End;
+                                out << DescribeRange(op.BlockRange);
                             }
                             TABLED () {
                                 out << (now - duration).ToStringUpToSeconds();
                             }
-                            TABLED_CLASS("text-right")
-                            {
-                                out << Sprintf(
-                                    "%.2f ms",
-                                    duration.MicroSeconds() / 1000.0);
+                            TABLED () {
+                                out << FormatDuration(duration);
                             }
                         }
                     }
@@ -1849,7 +1842,8 @@ TString FormatBSGroupOperationsInflight(
 
     HTML (out) {
         DIV_CLASS ("container") {
-            TABLE_CLASS ("table table-bordered") {
+            TABLE_SORTABLE()
+            {
                 TABLEHEAD () {
                     TABLER () {
                         TABLEH () {
@@ -1860,6 +1854,9 @@ TString FormatBSGroupOperationsInflight(
                         }
                         TABLEH () {
                             out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Block Size";
                         }
                         TABLEH () {
                             out << "Start Time";
@@ -1885,13 +1882,13 @@ TString FormatBSGroupOperationsInflight(
                                 out << op.OperationName;
                             }
                             TABLED () {
+                                out << op.BlockSize;
+                            }
+                            TABLED () {
                                 out << (now - duration).ToStringUpToSeconds();
                             }
-                            TABLED_CLASS("text-right")
-                            {
-                                out << Sprintf(
-                                    "%.2f ms",
-                                    duration.MicroSeconds() / 1000.0);
+                            TABLED () {
+                                out << FormatDuration(duration);
                             }
                         }
                     }
@@ -1901,6 +1898,24 @@ TString FormatBSGroupOperationsInflight(
     }
 
     return out.Str();
+}
+
+void RenderStyledLink(
+    IOutputStream& out,
+    const TString& url,
+    const TString& text)
+{
+    out << "<a href='" << url << "' style='"
+        << "display:inline-block;"
+        << "padding:2px 8px;"
+        << "background:#f5f5f5;"
+        << "color:#222;"
+        << "border:1px solid #ccc;"
+        << "border-radius:3px;"
+        << "text-decoration:none;"
+        << "font-size:0.9em;"
+        << "font-weight:600;"
+        << "'>" << text << "</a>";
 }
 
 }   // namespace NMonitoringUtils

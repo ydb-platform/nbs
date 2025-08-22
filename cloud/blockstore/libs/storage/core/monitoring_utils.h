@@ -240,4 +240,9 @@ TString FormatBSGroupOperationsInflight(
         operations,
     ui64 nowCycles,
     TInstant now);
+
+void RenderStyledLink(
+    IOutputStream& out,
+    const TString& url,
+    const TString& text);
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils

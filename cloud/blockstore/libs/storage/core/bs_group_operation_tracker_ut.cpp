@@ -35,25 +35,29 @@ Y_UNIT_TEST_SUITE(TBSGroupOperationTimeTrackerTest)
             1,
             1,
             TBSGroupOperationTimeTracker::EOperationType::Write,
+            0,
             0);
 
         timeTracker.OnStarted(
             2,
             2,
             TBSGroupOperationTimeTracker::EOperationType::Read,
-            1000 * GetCyclesPerMillisecond());
+            1000 * GetCyclesPerMillisecond(),
+            0);
 
         timeTracker.OnStarted(
             3,
             2,
             TBSGroupOperationTimeTracker::EOperationType::Read,
-            2000 * GetCyclesPerMillisecond());
+            2000 * GetCyclesPerMillisecond(),
+            0);
 
         timeTracker.OnStarted(
             4,
             4,
             TBSGroupOperationTimeTracker::EOperationType::Patch,
-            1000 * GetCyclesPerMillisecond());
+            1000 * GetCyclesPerMillisecond(),
+            0);
 
         auto json = timeTracker.GetStatJson(2000 * GetCyclesPerMillisecond());
         NJson::TJsonValue value;
@@ -78,22 +82,26 @@ Y_UNIT_TEST_SUITE(TBSGroupOperationTimeTrackerTest)
             1,
             1,
             TBSGroupOperationTimeTracker::EOperationType::Read,
+            0,
             0);
         timeTracker.OnStarted(
             2,
             2,
             TBSGroupOperationTimeTracker::EOperationType::Write,
-            1000 * GetCyclesPerMillisecond());
+            1000 * GetCyclesPerMillisecond(),
+            0);
         timeTracker.OnStarted(
             3,
             2,
             TBSGroupOperationTimeTracker::EOperationType::Patch,
-            1000 * GetCyclesPerMillisecond());
+            1000 * GetCyclesPerMillisecond(),
+            0);
         timeTracker.OnStarted(
             4,
             2,
             TBSGroupOperationTimeTracker::EOperationType::Write,
-            2000 * GetCyclesPerMillisecond());
+            2000 * GetCyclesPerMillisecond(),
+            0);
 
         timeTracker.OnFinished(1, 3000 * GetCyclesPerMillisecond());
         timeTracker.OnFinished(2, 3000 * GetCyclesPerMillisecond());
@@ -161,61 +169,6 @@ Y_UNIT_TEST_SUITE(TBSGroupOperationTimeTrackerTest)
 
         UNIT_ASSERT_VALUES_EQUAL("0", get("Write_1_finished_Total"));
         UNIT_ASSERT_VALUES_EQUAL("+ 1", get("Read_2_inflight_Total"));
-    }
-
-    Y_UNIT_TEST(ShouldGetInflightOperationsInOrder)
-    {
-        TBSGroupOperationTimeTracker timeTracker;
-
-        timeTracker.OnStarted(
-            3,
-            1,
-            TBSGroupOperationTimeTracker::EOperationType::Read,
-            3000 * GetCyclesPerMillisecond());
-
-        timeTracker.OnStarted(
-            1,
-            1,
-            TBSGroupOperationTimeTracker::EOperationType::Write,
-            1000 * GetCyclesPerMillisecond());
-
-        timeTracker.OnStarted(
-            2,
-            2,
-            TBSGroupOperationTimeTracker::EOperationType::Patch,
-            2000 * GetCyclesPerMillisecond());
-
-        auto inflight = timeTracker.GetInflightOperations();
-
-        UNIT_ASSERT_VALUES_EQUAL(3, inflight.size());
-
-        UNIT_ASSERT_VALUES_EQUAL(1, inflight[0].first);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1000 * GetCyclesPerMillisecond(),
-            inflight[0].second.StartTime);
-        UNIT_ASSERT_VALUES_EQUAL("Write", inflight[0].second.OperationName);
-        UNIT_ASSERT_VALUES_EQUAL(1, inflight[0].second.GroupId);
-
-        UNIT_ASSERT_VALUES_EQUAL(2, inflight[1].first);
-        UNIT_ASSERT_VALUES_EQUAL(
-            2000 * GetCyclesPerMillisecond(),
-            inflight[1].second.StartTime);
-        UNIT_ASSERT_VALUES_EQUAL("Patch", inflight[1].second.OperationName);
-        UNIT_ASSERT_VALUES_EQUAL(2, inflight[1].second.GroupId);
-
-        UNIT_ASSERT_VALUES_EQUAL(3, inflight[2].first);
-        UNIT_ASSERT_VALUES_EQUAL(
-            3000 * GetCyclesPerMillisecond(),
-            inflight[2].second.StartTime);
-        UNIT_ASSERT_VALUES_EQUAL("Read", inflight[2].second.OperationName);
-        UNIT_ASSERT_VALUES_EQUAL(1, inflight[2].second.GroupId);
-
-        timeTracker.OnFinished(2, 2500 * GetCyclesPerMillisecond());
-        inflight = timeTracker.GetInflightOperations();
-
-        UNIT_ASSERT_VALUES_EQUAL(2, inflight.size());
-        UNIT_ASSERT_VALUES_EQUAL(1, inflight[0].first);
-        UNIT_ASSERT_VALUES_EQUAL(3, inflight[1].first);
     }
 }
 

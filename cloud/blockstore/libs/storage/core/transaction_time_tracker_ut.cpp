@@ -135,61 +135,6 @@ Y_UNIT_TEST_SUITE(TTransactionTimeTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL("+ 1", get("ReadBlocks_inflight_Total"));
         UNIT_ASSERT_VALUES_EQUAL("0", get("WriteBlocks_finished_Total"));
     }
-
-    Y_UNIT_TEST(ShouldGetInflightTransactionsInOrder)
-    {
-        TTransactionTimeTracker timeTracker(TransactionNames);
-
-        timeTracker.OnStarted(
-            3,
-            "ReadBlocks",
-            3000 * GetCyclesPerMillisecond());
-
-        timeTracker.OnStarted(
-            1,
-            "WriteBlocks",
-            1000 * GetCyclesPerMillisecond());
-
-        timeTracker.OnStarted(
-            2,
-            "WriteBlocks",
-            2000 * GetCyclesPerMillisecond());
-
-        auto inflight = timeTracker.GetInflightOperations();
-
-        UNIT_ASSERT_VALUES_EQUAL(3, inflight.size());
-
-        UNIT_ASSERT_VALUES_EQUAL(1, inflight[0].first);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1000 * GetCyclesPerMillisecond(),
-            inflight[0].second.StartTime);
-        UNIT_ASSERT_VALUES_EQUAL(
-            "WriteBlocks",
-            inflight[0].second.TransactionName);
-
-        UNIT_ASSERT_VALUES_EQUAL(2, inflight[1].first);
-        UNIT_ASSERT_VALUES_EQUAL(
-            2000 * GetCyclesPerMillisecond(),
-            inflight[1].second.StartTime);
-        UNIT_ASSERT_VALUES_EQUAL(
-            "WriteBlocks",
-            inflight[1].second.TransactionName);
-
-        UNIT_ASSERT_VALUES_EQUAL(3, inflight[2].first);
-        UNIT_ASSERT_VALUES_EQUAL(
-            3000 * GetCyclesPerMillisecond(),
-            inflight[2].second.StartTime);
-        UNIT_ASSERT_VALUES_EQUAL(
-            "ReadBlocks",
-            inflight[2].second.TransactionName);
-
-        timeTracker.OnFinished(2, 2500 * GetCyclesPerMillisecond());
-        inflight = timeTracker.GetInflightOperations();
-
-        UNIT_ASSERT_VALUES_EQUAL(2, inflight.size());
-        UNIT_ASSERT_VALUES_EQUAL(1, inflight[0].first);
-        UNIT_ASSERT_VALUES_EQUAL(3, inflight[1].first);
-    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -268,6 +268,7 @@ struct TQueuedRequest
     ui32 Group = 0;
     TBSGroupOperationTimeTracker::EOperationType OperationType =
         TBSGroupOperationTimeTracker::EOperationType::Read;
+    ui32 BlockSize = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -471,7 +472,8 @@ public:
         NActors::IActorPtr requestActor,
         ui64 bsGroupOperationId,
         ui32 group,
-        TBSGroupOperationTimeTracker::EOperationType operationType);
+        TBSGroupOperationTimeTracker::EOperationType operationType,
+        ui32 blockSize);
     std::optional<TQueuedRequest> DequeueIORequest(ui32 channel);
     void CompleteIORequest(ui32 channel);
     ui32 GetIORequestsInFlight() const;

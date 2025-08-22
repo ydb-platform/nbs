@@ -1248,12 +1248,11 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
         BuildResetButton(out, TabletID(), "resetRequestLatencyStats");
 
-        HREF(
+        RenderStyledLink(
+            out,
             "/tablets/app?action=getRequestsInflight&TabletID=" +
-            ToString(TabletID()))
-        {
-            out << "Inflight";
-        }
+                ToString(TabletID()),
+            "Inflight");
 
         out << "<div id=\"" << containerId << "\">";
         DIV_CLASS ("row") {
