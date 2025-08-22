@@ -93,7 +93,8 @@ void SetTimeHistogramCountersUs(
     const TIntrusivePtr<NMonitoring::TDynamicCounters>& counters,
     const TString& histName)
 {
-    auto subgroup = counters->GetSubgroup("histogram", histName);
+    auto subgroup = counters->GetSubgroup("histogram", histName)
+                        ->GetSubgroup("units", "usec");
     subgroup->GetCounter("1")->Set(1);
     subgroup->GetCounter("100")->Set(2);
     subgroup->GetCounter("200")->Set(3);
