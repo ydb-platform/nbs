@@ -117,6 +117,27 @@ void TNonreplicatedPartitionMigrationCommonActor::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const TActorContext& ctx)
 {
+    if (StatisticRequestInfo) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvNonreplPartitionPrivate::
+                                 TEvGetDiskRegistryBasedPartCountersResponse>(
+                MakeError(
+                    E_REJECTED,
+                    "Nonreplicated migration actor didn't reply on previous "
+                    "request"),
+                CreatePartitionDiskCounters(
+                    EPublishingPolicy::DiskRegistryBased,
+                    DiagnosticsConfig
+                        ->GetHistogramCounterOptions()),   // diskCounters
+                0,                                         // networkBytes
+                TDuration{},                               // cpuUsage
+                SelfId(),
+                DiskId));
+        return;
+    }
+
     TVector<TActorId> statActorIds;
 
     if (SrcActorId) {
@@ -148,7 +169,8 @@ void TNonreplicatedPartitionMigrationCommonActor::
         return;
     }
 
-    StatActorIdInPullScheme = ev->Sender;
+    StatisticRequestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
     DiskRegistryBasedPartitionStatisticsCollectorActorId =
         NCloud::Register<TDiskRegistryBasedPartitionStatisticsCollectorActor>(
@@ -176,9 +198,9 @@ void TNonreplicatedPartitionMigrationCommonActor::
 
     auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
 
-    NCloud::Send(
+    NCloud::Reply(
         ctx,
-        StatActorIdInPullScheme,
+        *StatisticRequestInfo,
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvGetDiskRegistryBasedPartCountersResponse>(
             record->Error,
@@ -187,6 +209,8 @@ void TNonreplicatedPartitionMigrationCommonActor::
             cpuUsage,
             SelfId(),
             DiskId));
+
+    StatisticRequestInfo = nullptr;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

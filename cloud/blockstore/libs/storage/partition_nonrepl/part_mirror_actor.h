@@ -115,7 +115,7 @@ private:
 
     NActors::TActorId DiskRegistryBasedPartitionStatisticsCollectorActorId;
 
-    NActors::TActorId StatActorIdInPullScheme;
+    TRequestInfoPtr StatisticRequestInfo;
 
 public:
     TMirrorPartitionActor(

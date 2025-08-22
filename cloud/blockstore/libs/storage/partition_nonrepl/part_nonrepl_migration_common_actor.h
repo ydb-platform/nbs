@@ -189,9 +189,9 @@ private:
 
     TBackoffDelayProvider BackoffProvider;
 
-    NActors::TActorId StatActorIdInPullScheme;
-
     NActors::TActorId DiskRegistryBasedPartitionStatisticsCollectorActorId;
+
+    TRequestInfoPtr StatisticRequestInfo;
 
 protected:
     // Derived class that wishes to handle wakeup messages should make its own
