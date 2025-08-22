@@ -27,6 +27,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/libs/storage/protos_ydb
 
+    cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/throttling
 
     contrib/ydb/library/actors/core
