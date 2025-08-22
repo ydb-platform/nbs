@@ -348,7 +348,7 @@ def __run_test(test_case, use_rdma):
         config_path = __process_config(test_case.config_path, devices_per_agent)
 
         ret = run_test(
-            test_case.name,
+            "{}-{}".format(test_case.name, "rdma" if use_rdma else "interconnect"),
             config_path,
             nbs.nbs_port,
             nbs.mon_port,
