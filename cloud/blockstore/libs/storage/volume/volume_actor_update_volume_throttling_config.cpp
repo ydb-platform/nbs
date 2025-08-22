@@ -86,6 +86,7 @@ auto GetThrottlingRuleForVolume(
 
     return resultPtr ? *resultPtr : NProto::TVolumeThrottlingRule{};
 }
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////

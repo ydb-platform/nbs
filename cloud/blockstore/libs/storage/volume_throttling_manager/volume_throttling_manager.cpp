@@ -135,7 +135,9 @@ private:
                                      TEvVolumeThrottlingConfigNotification>();
             request->Config = ThrottlingConfig;
 
-            // No need to use VolumeProxy here
+            // VolumeProxy is unnecessary here:
+            // 1. We've already filtered volumes running on the current node
+            // 2. We don't want this message forwarded to other nodes
             NCloud::Send(ctx, actorId, std::move(request));
         }
     }

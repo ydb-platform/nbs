@@ -80,7 +80,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TThrottlingManagerTest)
+Y_UNIT_TEST_SUITE(TVolumeThrottlingManagerTest)
 {
     Y_UNIT_TEST(ShouldAcceptNewerConfig)
     {

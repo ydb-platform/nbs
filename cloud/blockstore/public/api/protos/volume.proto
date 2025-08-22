@@ -651,10 +651,23 @@ message TStatVolumeRequest
     bool NoPartition = 5;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Volatile throttling state applied to a volume
+
 message TVolumeVolatileThrottlingInfo
 {
+    // Version of the throttling configuration that is applied
+    // - Tracks which update from the VolumeThrottlingManager is currently active
     uint32 Version = 1;
+
+    // Throttling rule applied to this volume
+    // - Contains the selector (disk IDs/filters) and performance coefficients
+    // - Empty if no matching rule exists in the current config
     TVolumeThrottlingRule AppliedRule = 2;
+
+    // The actual performance profile derived from:
+    // - Base volume performance profile
+    // - Coefficients from AppliedRule
     TVolumePerformanceProfile ActualPerformanceProfile = 3;
 }
 
@@ -694,7 +707,8 @@ message TStatVolumeResponse
     // guarantees about the format.
     string DebugString = 11;
 
-    // Volatile throttling config info
+    // Volatile (not persisted to volume tablet state) throttling config
+    // applied to this volume via VolumeThrottlingManager
     TVolumeVolatileThrottlingInfo VolatileThrottlingInfo = 12;
 }
 

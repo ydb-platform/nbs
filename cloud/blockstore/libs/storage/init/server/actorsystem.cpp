@@ -340,7 +340,7 @@ public:
         if (Args.StorageConfig->GetVolumeThrottlingManagerEnabled()) {
             auto volumeThrottlingManagerService = CreateVolumeThrottlingManager(
                 Args.StorageConfig
-                    ->GetVolumeThrottlingManagerCycleTimeSeconds());
+                    ->GetVolumeThrottlingManagerNotificationPeriodSeconds());
 
             setup->LocalServices.emplace_back(
                 MakeVolumeThrottlingManagerServiceId(),
