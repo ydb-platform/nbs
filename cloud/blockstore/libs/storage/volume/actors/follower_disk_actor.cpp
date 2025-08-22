@@ -38,12 +38,12 @@ EDirectCopyPolicy GetDirectCopyUsage(const TFollowerDiskActorParams& params)
 ///////////////////////////////////////////////////////////////////////////////
 
 TFollowerDiskActor::TFollowerDiskActor(
-        const TLogTitle& parentLogTitle,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr digestGenerator,
-        TFollowerDiskActorParams params)
+    const TLogTitle& parentLogTitle,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr digestGenerator,
+    TFollowerDiskActorParams params)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,
@@ -74,6 +74,7 @@ TFollowerDiskActor::TFollowerDiskActor(
     , LeaderPartitionActorId(params.LeaderPartitionActorId)
     , TakePartitionOwnership(params.TakePartitionOwnership)
     , ClientId(params.ClientId)
+    , LeaderOutdated(params.LeaderOutdated)
     , FollowerDiskInfo(params.FollowerDiskInfo)
 {
     Y_DEBUG_ABORT_UNLESS(LeaderMediaKind != NProto::STORAGE_MEDIA_DEFAULT);
@@ -88,8 +89,9 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Follower created",
-        LogTitle.GetWithTime().c_str());
+        "%s Follower created (%s)",
+        LogTitle.GetWithTime().c_str(),
+        LeaderOutdated ? "outdated" : "leading");
 
     FollowerPartitionActorId = NCloud::Register<TVolumeAsPartitionActor>(
         ctx,
@@ -128,6 +130,7 @@ bool TFollowerDiskActor::OnMessage(
         HFunc(
             TEvVolumePrivate::TEvUpdateFollowerStateResponse,
             HandleUpdateFollowerStateResponse);
+        HFunc(TEvService::TEvAddTagsResponse, HandleAddOutdatedTagResponse);
 
         // Intercepting the message to block the sending of statistics by the
         // base class.
@@ -137,6 +140,12 @@ bool TFollowerDiskActor::OnMessage(
         case TEvVolume::TEvRWClientIdChanged::EventType: {
             return HandleRWClientIdChanged(
                 *reinterpret_cast<TEvVolume::TEvRWClientIdChanged::TPtr*>(&ev),
+                ctx);
+        }
+
+        case NActors::TEvents::TEvWakeup::EventType: {
+            return HandleWakeup(
+                *reinterpret_cast<NActors::TEvents::TEvWakeup::TPtr*>(&ev),
                 ctx);
         }
 
@@ -197,6 +206,38 @@ void TFollowerDiskActor::PersistFollowerState(
     NCloud::Send(ctx, LeaderVolumeActorId, std::move(request));
 }
 
+void TFollowerDiskActor::TransferLeadership(const NActors::TActorContext& ctx)
+{
+    if (!LeaderOutdated) {
+        AddOutdatedTagToLeader(ctx);
+        return;
+    }
+}
+
+void TFollowerDiskActor::AddOutdatedTagToLeader(
+    const NActors::TActorContext& ctx)
+{
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Add outdated tag to leader",
+        LogTitle.GetWithTime().c_str());
+
+    auto requestInfo = CreateRequestInfo(
+        SelfId(),
+        0,   // cookie
+        MakeIntrusive<TCallContext>());
+
+    TString tag = TString(OutdatedVolumeTagName) + "=" +
+                  FollowerDiskInfo.Link.FollowerDiskId;
+    TVector<TString> tags({std::move(tag)});
+    auto request = std::make_unique<TEvService::TEvAddTagsRequest>(
+        FollowerDiskInfo.Link.LeaderDiskId,
+        std::move(tags));
+
+    ctx.Send(MakeStorageServiceId(), std::move(request));
+}
+
 template <typename TMethod>
 void TFollowerDiskActor::ForwardRequestToLeaderPartition(
     const typename TMethod::TRequest::TPtr& ev,
@@ -249,11 +290,57 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
-
     const auto* msg = ev->Get();
 
     FollowerDiskInfo = msg->Follower;
+
+    if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady) {
+        TransferLeadership(ctx);
+    }
+}
+
+void TFollowerDiskActor::HandleAddOutdatedTagResponse(
+    const TEvService::TEvAddTagsResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    auto error = msg->GetError();
+
+    if (HasError(error)) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Outdated tag add error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
+        Schedule(
+            Backoff.GetDelayAndIncrease(),
+            new TEvents::TEvWakeup(RETRY_ADD_OUTDATED_TAG_NOTIFY));
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Outdated tag added",
+        LogTitle.GetWithTime().c_str());
+
+    LeaderOutdated = true;
+    TransferLeadership(ctx);
+}
+
+bool TFollowerDiskActor::HandleWakeup(
+    const NActors::TEvents::TEvWakeup::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    switch (ev->Get()->Tag) {
+        case EFollowerWakeupReason::RETRY_ADD_OUTDATED_TAG_NOTIFY: {
+            AddOutdatedTagToLeader(ctx);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
