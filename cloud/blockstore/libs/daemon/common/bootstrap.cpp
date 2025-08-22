@@ -971,10 +971,10 @@ void TBootstrapBase::Start()
     // order
     START_COMMON_COMPONENT(Scheduler);
 
-    // We need to start ydb stats uploader after scheduler because ydb driver
-    // synchronously waiting for IAM token and if IAM token agent is down our
-    // client will retry request and schedule tasks. If scheduler is not started
-    // yet we will block main thread.
+    // We need to start the YDB stats uploader after the scheduler, as the YDB
+    // driver waits for an IAM token synchronously. If the IAM token service is
+    // down, our client will retry the request and schedule the task. If the
+    // scheduler has not started yet, it will block the main thread.
     START_KIKIMR_COMPONENT(YdbStorage);
     START_KIKIMR_COMPONENT(StatsUploader);
 
