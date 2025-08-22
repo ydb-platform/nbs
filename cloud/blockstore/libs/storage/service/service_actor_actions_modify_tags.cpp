@@ -165,7 +165,8 @@ void TModifyTagsActionActor::DescribeVolume(const TActorContext& ctx)
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(Request.GetDiskId()));
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            Request.GetDiskId()));
 }
 
 void TModifyTagsActionActor::AlterVolume(
@@ -221,6 +222,7 @@ void TModifyTagsActionActor::HandleDescribeVolumeResponse(
     const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Cout << "!!! TModifyTagsActionActor::HandleDescribeResponse" << Endl;
     const auto* msg = ev->Get();
 
     auto error = msg->GetError();
@@ -411,6 +413,38 @@ void TServiceActor::HandleAddTags(
             {
                 auto response =
                     std::make_unique<TEvService::TEvAddTagsResponse>(
+                        std::move(error));
+                return response;
+            }));
+}
+
+void TServiceActor::HandleRemoveTags(
+    const TEvService::TEvRemoveTagsRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+    NPrivateProto::TModifyTagsRequest modifyTagsRequest;
+    modifyTagsRequest.SetDiskId(msg->DiskId);
+    for (const auto& tag: msg->Tags) {
+        modifyTagsRequest.AddTagsToRemove(tag);
+    }
+
+    TString input;
+    google::protobuf::util::MessageToJsonString(modifyTagsRequest, &input);
+
+    NCloud::Register(
+        ctx,
+        std::make_unique<TModifyTagsActionActor>(
+            std::move(requestInfo),
+            std::move(input),
+            [](NProto::TError error)
+            {
+                auto response =
+                    std::make_unique<TEvService::TEvRemoveTagsResponse>(
                         std::move(error));
                 return response;
             }));

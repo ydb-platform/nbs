@@ -1,5 +1,7 @@
 LIBRARY()
 
+GENERATE_ENUM_SERIALIZATION(ss_proxy.h)
+
 SRCS(
     bootstrapper.cpp
     disk_agent.cpp

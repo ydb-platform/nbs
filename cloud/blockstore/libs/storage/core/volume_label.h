@@ -24,4 +24,8 @@ std::tuple<TString, TString> DiskIdToVolumeDirAndName(
     const TString& rootDir,
     const TString& diskId);
 
+// Adds a suffix to the disk name so that the disk and its copy always differ in
+// the same way.
+TString GetSecondaryDiskId(const TString& diskId);
+
 }   // namespace NCloud::NBlockStore::NStorage

@@ -80,6 +80,12 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId);
 
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "!!! DescribeVolume for %s",
+        DiskId.Quote().c_str());
+
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
@@ -87,10 +93,11 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
         RequestInfo->Cookie);
 }
 
-void TDescribeVolumeActor::DescribeDiskRegistryVolume(const TActorContext& ctx)
+void TDescribeVolumeActor::DescribeDiskRegistryVolume(
+    const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvDiskRegistry::TEvDescribeDiskRequest>();
-    request->Record.SetDiskId(DiskId);
+    request->Record.SetDiskId(Volume.GetDiskId());
 
     NCloud::Send(
         ctx,
@@ -125,6 +132,21 @@ void TDescribeVolumeActor::HandleDescribeVolumeResponse(
 
     VolumeConfigToVolume(volumeConfig, Volume);
     Volume.SetTokenVersion(volumeDescription.GetTokenVersion());
+
+    if (Volume.GetSubstituteDiskId()) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "!!! Successful DescribeVolume for %s replaced with %s",
+            Volume.GetDiskId().Quote().c_str(),
+            Volume.GetSubstituteDiskId().Quote().c_str());
+    } else {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "!!! Successful DescribeVolume for %s",
+            Volume.GetDiskId().Quote().c_str());
+    }
 
     if (IsDiskRegistryMediaKind(Volume.GetStorageMediaKind())) {
         DescribeDiskRegistryVolume(ctx);
@@ -222,7 +244,7 @@ void TServiceActor::HandleDescribeVolume(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "Describing volume: %s",
         request.GetDiskId().Quote().data());
 

@@ -20,6 +20,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetVolumeStats,          __VA_ARGS__)                                  \
     xxx(RunVolumesLivenessCheck, __VA_ARGS__)                                  \
     xxx(AddTags,                 __VA_ARGS__)                                  \
+    xxx(RemoveTags,              __VA_ARGS__)                                  \
 // BLOCKSTORE_SERVICE_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -184,6 +185,28 @@ struct TEvService
     {};
 
     //
+    // RemoveTags
+    //
+
+    struct TRemoveTagsRequest
+    {
+        const TString DiskId;
+        const TVector<TString> Tags;
+
+        TRemoveTagsRequest() = default;
+
+        TRemoveTagsRequest(
+                TString diskId,
+                TVector<TString> tags)
+            : DiskId(std::move(diskId))
+            , Tags(std::move(tags))
+        {}
+    };
+
+    struct TRemoveTagsResponse
+    {};
+
+    //
     // VolumeMountStateChanged
     //
 
@@ -265,8 +288,8 @@ struct TEvService
         EvDiscoverInstancesRequest = EvBegin + 37,
         EvDiscoverInstancesResponse = EvBegin + 38,
 
-        // EvBegin + 39, unused (see NBS-2410)
-        // EvBegin + 40, unused (see NBS-2410)
+        EvRemoveTagsRequest = EvBegin + 39,
+        EvRemoveTagsResponse = EvBegin + 40,
 
         // EvBegin + 41, unused (see NBS-2410)
         // EvBegin + 42, unused (see NBS-2410)

@@ -387,7 +387,7 @@ public:
 private:
     TSessionOrError CreateSessionImpl(
         TCallContextPtr callContext,
-        const NProto::TStartEndpointRequest& request);
+        NProto::TStartEndpointRequest request);
 
     NProto::TError RemoveSessionImpl(
         TCallContextPtr callContext,
@@ -452,7 +452,7 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::CreateSession(
 
 TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     TCallContextPtr callContext,
-    const NProto::TStartEndpointRequest& request)
+    NProto::TStartEndpointRequest request)
 {
     auto describeResponse = DescribeVolume(
         callContext,
@@ -463,6 +463,13 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     }
     const auto& volume = describeResponse.GetVolume();
     const auto& cellId = describeResponse.GetCellId();
+
+    if (volume.GetDiskId() != request.GetDiskId()) {
+        request.SetDiskId(volume.GetDiskId());
+    } else if (volume.GetSubstituteDiskId()) {
+        request.SetDiskId(volume.GetSubstituteDiskId());
+        return CreateSessionImpl(std::move(callContext), std::move(request));
+    }
 
     auto result = CreateEndpoint(request, volume, cellId);
     if (HasError(result)) {

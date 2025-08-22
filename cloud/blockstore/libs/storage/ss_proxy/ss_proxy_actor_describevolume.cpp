@@ -1,13 +1,14 @@
 #include "ss_proxy_actor.h"
 
+#include <cloud/blockstore/libs/storage/api/public.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/volume_label.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy_events_private.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -21,6 +22,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+
 constexpr TDuration Timeout = TDuration::Seconds(20);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,12 +31,17 @@ class TDescribeVolumeActor final
     : public TActorBootstrapped<TDescribeVolumeActor>
 {
 private:
-    const TRequestInfoPtr RequestInfo;
+    enum class EState {
+        DescribePrimary,
+        DescribePrimaryWithFallback,
+        DescribeSecondary,
+    };
 
+    const TRequestInfoPtr RequestInfo;
     const TStorageConfigPtr Config;
     const TString DiskId;
 
-    bool FallbackRequest = false;
+    EState State = EState::DescribePrimary;
 
 public:
     TDescribeVolumeActor(
@@ -56,6 +63,7 @@ private:
         const NKikimrBlockStore::TVolumeConfig& volumeConfig) const;
 
     TString GetFullPath() const;
+    TString GetDiskId() const;
 
 private:
     STFUNC(StateWork);
@@ -111,13 +119,30 @@ TString TDescribeVolumeActor::GetFullPath() const
     TStringBuilder fullPath;
     fullPath << Config->GetSchemeShardDir() << '/';
 
-    if (!FallbackRequest) {
-        fullPath << DiskIdToPathDeprecated(DiskId);
-    } else {
-        fullPath << DiskIdToPath(DiskId);
+    switch (State) {
+        case EState::DescribePrimary:
+            fullPath << DiskIdToPath(GetDiskId());
+            break;
+        case EState::DescribePrimaryWithFallback:
+            fullPath << DiskIdToPathDeprecated(GetDiskId());
+            break;
+        case EState::DescribeSecondary:
+            fullPath << DiskIdToPath(GetDiskId());
+            break;
     }
 
     return fullPath;
+}
+
+TString TDescribeVolumeActor::GetDiskId() const
+{
+    switch (State) {
+        case EState::DescribePrimary:
+        case EState::DescribePrimaryWithFallback:
+            return DiskId;
+        case EState::DescribeSecondary:
+            return GetSecondaryDiskId(DiskId);
+    }
 }
 
 void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
@@ -150,11 +175,29 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
             auto status =
                 static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
             // TODO: return E_NOT_FOUND instead of StatusPathDoesNotExist
+
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::SS_PROXY,
+                "Describe request error for volume %s %s %s",
+                DiskId.c_str(),
+                GetFullPath().Quote().data(),
+                FormatError(error).c_str());
+
             if (status == NKikimrScheme::StatusPathDoesNotExist) {
-                if (!FallbackRequest) {
-                    FallbackRequest = true;
-                    DescribeVolume(ctx);
-                    return;
+                switch (State) {
+                    case EState::DescribePrimary: {
+                        State = EState::DescribePrimaryWithFallback;
+                        DescribeVolume(ctx);
+                        return;
+                    }
+                    case EState::DescribePrimaryWithFallback: {
+                        State = EState::DescribeSecondary;
+                        DescribeVolume(ctx);
+                        return;
+                    }
+                    case EState::DescribeSecondary:
+                        break;
                 }
             }
         }
@@ -176,7 +219,8 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
             std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
                 MakeError(
                     E_INVALID_STATE,
-                    TStringBuilder() << "Described path is not a blockstore volume: "
+                    TStringBuilder()
+                        << "Described path is not a blockstore volume: "
                         << GetFullPath().Quote()),
                 GetFullPath()));
         return;
@@ -248,10 +292,8 @@ void TDescribeVolumeActor::HandleWakeup(
         MakeError(
             E_TIMEOUT,
             TStringBuilder() << "DescribeVolume timeout for volume: "
-                << GetFullPath().Quote()
-        ),
-        GetFullPath()
-    );
+                             << GetFullPath().Quote()),
+        GetFullPath());
 
     ReplyAndDie(ctx, std::move(response));
 }
