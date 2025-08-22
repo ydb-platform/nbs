@@ -343,7 +343,7 @@ public:
                     checksum,
                     serializedRequest);
 
-                if (entry->IsFinished()) {
+                if (entry->IsCorrupted()) {
                     // This may happen when a buffer was corrupted.
                     // We should add this entry to a queue like a normal entry
                     // because there is 1-by-1 correspondence between
@@ -1126,11 +1126,11 @@ private:
                 handleState->EntriesWithFlushRequested--;
             }
 
-            entry->Finish(PendingOperations);
+            entry->FinishFlush(PendingOperations);
         }
 
-        // Clear finished entries from the persistent queue
-        while (!CachedEntries.empty() && CachedEntries.front()->IsFinished())
+        // Clear flushed entries from the persistent queue
+        while (!CachedEntries.empty() && CachedEntries.front()->IsFlushed())
         {
             CachedEntries.pop_front();
             CachedEntriesPersistentQueue.PopFront();
@@ -1332,7 +1332,7 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     }
 }
 
-void TWriteBackCache::TWriteDataEntry::Finish(
+void TWriteBackCache::TWriteDataEntry::FinishFlush(
     TPendingOperations& pendingOperations)
 {
     Y_ABORT_UNLESS(
