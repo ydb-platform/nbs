@@ -6,9 +6,6 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 
-// TODO: invalid reference
-#include <cloud/blockstore/libs/storage/service/service_events_private.h>
-
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
