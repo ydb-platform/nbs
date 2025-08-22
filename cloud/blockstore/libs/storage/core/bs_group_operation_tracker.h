@@ -41,6 +41,7 @@ public:
         ui64 StartTime = 0;
         TString OperationName;
         ui32 GroupId = 0;
+        ui32 BlockSize = 0;
     };
 
 private:
@@ -80,7 +81,8 @@ public:
         ui64 operationId,
         ui32 groupId,
         EOperationType operationType,
-        ui64 startTime);
+        ui64 startTime,
+        ui32 blockSize);
 
     void OnFinished(ui64 operationId, ui64 finishTime);
 

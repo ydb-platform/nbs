@@ -341,7 +341,8 @@ void TPartitionActor::HandlePatchBlob(
             bsGroupOperationId),
         bsGroupOperationId,
         originalGroupId,
-        TBSGroupOperationTimeTracker::EOperationType::Patch);
+        TBSGroupOperationTimeTracker::EOperationType::Patch,
+        State->GetBlockSize());
 
     ProcessIOQueue(ctx, channel);
 }
