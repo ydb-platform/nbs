@@ -59,19 +59,19 @@ public:
         , Config(std::make_shared<TClientAppConfig>())
         , Client(std::move(client))
         , Session(CreateSession(
-            Timer,
-            Scheduler,
-            Logging,
-            CreateRequestStatsStub(),
-            CreateVolumeStatsStub(),
-            Client,
-            Config,
-            TSessionConfig{
-                .DiskId = DefaultDiskId,
-                .MountToken = DefaultMountToken,
-                .ClientVersionInfo = std::move(clientVersionInfo),
-                .MountSeqNumber = mountSeqNumber
-            }))
+              Timer,
+              Scheduler,
+              Logging,
+              CreateRequestStatsStub(),
+              CreateVolumeStatsStub(),
+              Client,
+              Config,
+              TSessionConfig{
+                  .DiskId = DefaultDiskId,
+                  .MountToken = DefaultMountToken,
+                  .ClientVersionInfo = std::move(clientVersionInfo),
+                  .MountSeqNumber = mountSeqNumber},
+              ISessionSwitcherWeakPtr()))
     {}
 
     void Start()

@@ -333,7 +333,7 @@ void TVolumeAsPartitionActor::HandleDescribeVolumeResponse(
         pathDescription.GetBlockStoreVolumeDescription();
     const auto& volumeConfig = volumeDescription.GetVolumeConfig();
     NProto::TVolume volume;
-    VolumeConfigToVolume(volumeConfig, volume);
+    VolumeConfigToVolume(volumeConfig, "", volume);
 
     BlockCount = volume.GetBlocksCount();
     BlockSize = volume.GetBlockSize();
