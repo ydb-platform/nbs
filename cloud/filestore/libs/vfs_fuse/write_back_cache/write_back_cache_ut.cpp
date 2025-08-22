@@ -71,7 +71,7 @@ struct TInFlightRequestTracker
         return res;
     }
 
-    // returns previous in-flight request count in range
+    // Returns previous in-flight request count in range
     ui32 Add(ui64 offset, ui64 length)
     {
         ui32 res = 0;
@@ -80,7 +80,7 @@ struct TInFlightRequestTracker
             std::unique_lock lock(Mutex);
 
             const auto end = offset + length;
-            // append zeroes if needed
+            // Append zeroes if needed
             const auto newSize = Max(InFlightRequests.size(), end);
             InFlightRequests.resize(newSize, 0);
 
@@ -129,19 +129,19 @@ struct TBootstrap
 
     TCallContextPtr CallContext;
 
-    // maps handle to data
+    // Maps handle to data
     THashMap<ui64, TString> ExpectedData;
     std::mutex ExpectedDataMutex;
 
-    // maps handle to data
+    // Maps handle to data
     THashMap<ui64, TString> UnflushedData;
     std::mutex UnflushedDataMutex;
 
-    // maps handle to data
+    // Maps handle to data
     THashMap<ui64, TString> FlushedData;
     std::mutex FlushedDataMutex;
 
-    // ensures that the data is not flushed twice, does not work well with cache
+    // Ensures that the data is not flushed twice, does not work well with cache
     // recreation because after recreation, the data may be flushed again
     bool EraseExpectedUnflushedDataAfterFirstUse = false;
 
@@ -183,7 +183,7 @@ struct TBootstrap
             const auto offset = request->GetOffset();
             const auto length = request->GetLength();
 
-            // overlapping write requests are not allowed
+            // Overlapping write requests are not allowed
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 InFlightWriteRequestTracker[handle].Count(offset, length));
@@ -202,7 +202,7 @@ struct TBootstrap
             }
 
             auto data = FlushedData[request->GetHandle()];
-            // append zeroes if needed
+            // Append zeroes if needed
             auto newSize = Max(
                 data.size(),
                 request->GetOffset() + request->GetLength());
@@ -227,12 +227,12 @@ struct TBootstrap
             const auto offset = request->GetOffset();
             const auto length = request->GetBuffer().length();
 
-            // overlapping read requests are not allowed
+            // Overlapping read requests are not allowed
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 InFlightReadRequestTracker[handle].Count(offset, length));
 
-            // overlapping write requests are not allowed
+            // Overlapping write requests are not allowed
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 InFlightWriteRequestTracker[handle].Add(offset, length));
@@ -260,7 +260,7 @@ struct TBootstrap
             UNIT_ASSERT_VALUES_EQUAL(from, request->GetBuffer());
 
             auto& to = FlushedData[request->GetHandle()];
-            // append zeroes if needed
+            // Append zeroes if needed
             auto newSize = Max(to.size(), request->GetOffset() + from.size());
             to.resize(newSize, 0);
             to.replace(request->GetOffset(), from.size(), from);
@@ -528,7 +528,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         };
 
         NProto::TReadDataResponse response;
-        // return empty buffer in response
+        // Return empty buffer in response
         readPromise.SetValue(response);
 
         auto readFuture = b.ReadFromCache(1, 0, 1);
@@ -686,12 +686,12 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         TBootstrap b;
 
         b.WriteToCacheSync(1, 0, "abc");
-        // additional check for test correctness
+        // Additional check for test correctness
         UNIT_ASSERT_VALUES_EQUAL("abc", b.ExpectedData[1]);
         b.ValidateCache();
 
         b.WriteToCacheSync(2, 2, "bcde");
-        // additional check for test correctness
+        // Additional check for test correctness
         UNIT_ASSERT_VALUES_EQUAL(TString("\0\0bcde", 6), b.ExpectedData[2]);
         b.ValidateCache();
 
@@ -707,7 +707,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.ValidateCache();
 
         b.WriteToCacheSync(1, 0, "defgh");
-        // additional check for test correctness
+        // Additional check for test correctness
         UNIT_ASSERT_VALUES_EQUAL("defghfghijklmnde", b.ExpectedData[1]);
         b.ValidateCache();
 
@@ -743,7 +743,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     void TestShouldReadAfterWriteRandomized(bool withRecreation = false) {
         TBootstrap b;
-        // ensures that the data is not flushed twice, does not work well with
+        // Ensures that the data is not flushed twice, does not work well with
         // cache recreation because after recreation, the data may be flushed
         // again
         b.EraseExpectedUnflushedDataAfterFirstUse = !withRecreation;
@@ -885,7 +885,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             });
         }
 
-        // read-only threads for "smoke" testing
+        // Read-only threads for "smoke" testing
         for (ui32 i = 0; i < roThreadCount; i++) {
             threads.emplace_back([&] {
                 start.arrive_and_wait();

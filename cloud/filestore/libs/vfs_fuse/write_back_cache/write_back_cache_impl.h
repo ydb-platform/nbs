@@ -93,15 +93,19 @@ public:
                Status == EWriteDataEntryStatus::FlushRequested;
     }
 
-    bool IsFinished() const
+    bool IsCorrupted() const
     {
-        return Status == EWriteDataEntryStatus::Flushed ||
-               Status == EWriteDataEntryStatus::Corrupted;
+        return Status == EWriteDataEntryStatus::Corrupted;
     }
 
     bool IsFlushRequested() const
     {
         return Status == EWriteDataEntryStatus::FlushRequested;
+    }
+
+    bool IsFlushed() const
+    {
+        return Status == EWriteDataEntryStatus::Flushed;
     }
 
     size_t GetSerializedSize() const;
@@ -110,7 +114,7 @@ public:
         char* allocationPtr,
         TPendingOperations& pendingOperations);
 
-    void Finish(TPendingOperations& pendingOperations);
+    void FinishFlush(TPendingOperations& pendingOperations);
 
     bool RequestFlush();
 

@@ -42,7 +42,7 @@ TVector<TResult> CalculateDataParts(TVector<TPoint<TEntry>> points)
     const auto cutTop = [&res, &heap] (auto lastOffset, auto currOffset)
     {
         if (currOffset <= lastOffset) {
-            // ignore
+            // Ignore
             return lastOffset;
         }
 
@@ -56,7 +56,7 @@ TVector<TResult> CalculateDataParts(TVector<TPoint<TEntry>> points)
             res.back().Source == top.Entry &&
             res.back().End() == lastOffset)
         {
-            // extend last entry
+            // Extend last entry
             res.back().Length += partLength;
         } else {
             res.emplace_back(
@@ -66,7 +66,7 @@ TVector<TResult> CalculateDataParts(TVector<TPoint<TEntry>> points)
                 partLength);
         }
 
-        // cut part of the top
+        // Cut part of the top
         lastOffset += partLength;
         return lastOffset;
     };
@@ -74,32 +74,32 @@ TVector<TResult> CalculateDataParts(TVector<TPoint<TEntry>> points)
     ui64 cutEnd = 0;
     for (const auto& point: points) {
         if (point.IsEnd) {
-            // cut at every interval's end
+            // Cut at every interval's end
             cutEnd = cutTop(cutEnd, point.Offset);
         } else {
             if (heap.empty()) {
-                // no intervals before, start from scratch
+                // No intervals before, start from scratch
                 cutEnd = point.Offset;
             } else {
                 if (point.Order > heap.front().Order) {
-                    // new interval is now on top
+                    // New interval is now on top
                     cutEnd = cutTop(cutEnd, point.Offset);
                 }
             }
 
-            // add to heap
+            // Add to heap
             heap.push_back(point);
             std::push_heap(heap.begin(), heap.end(), heapComparator);
         }
 
-        // remove affected (cut) entries
+        // Remove affected (cut) entries
         while (!heap.empty()) {
             const auto& top = heap.front();
             if (cutEnd < top.Entry->End()) {
                 break;
             }
 
-            // remove from heap
+            // Remove from heap
             std::pop_heap(heap.begin(), heap.end(), heapComparator);
             heap.pop_back();
         }

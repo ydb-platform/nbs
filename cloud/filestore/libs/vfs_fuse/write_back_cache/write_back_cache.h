@@ -56,7 +56,7 @@ public:
     NThreading::TFuture<void> FlushAllData();
 
 private:
-    // only for testing purposes
+    // Only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
 
     enum class EWriteDataEntryStatus;
