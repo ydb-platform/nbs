@@ -100,6 +100,9 @@ private:
     void ApplyKmsClientConfig(const TString& text);
     void ApplyRootKmsConfig(const TString& text);
     void ApplyComputeClientConfig(const TString& text);
+
+    void ApplyNamedConfigs(const NKikimrConfig::TAppConfig& config);
+    void ApplyBlockstoreConfig(const NKikimrConfig::TAppConfig& config);
 };
 
 }   // namespace NCloud::NBlockStore::NServer

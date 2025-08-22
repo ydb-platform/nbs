@@ -22,6 +22,7 @@ constexpr TDuration MaxPullDelay = TDuration::Hours(24);
 
 TVolumeBalancerState::TVolumeBalancerState(TStorageConfigPtr storageConfig)
     : StorageConfig(std::move(storageConfig))
+    , IsEnabled(StorageConfig->GetVolumeBalancerEnabled())
 {}
 
 void TVolumeBalancerState::UpdateVolumeStats(
