@@ -9,9 +9,9 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration OutdatedLeaderDestructionBackoffDelay =
-    TDuration::Seconds(5);
-constexpr TDuration OutdatedLeaderDestructionMaxBackoffDelay =
     TDuration::Seconds(60);
+constexpr TDuration OutdatedLeaderDestructionMaxBackoffDelay =
+    TDuration::Seconds(180);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -230,7 +230,8 @@ void TVolumeActor::DestroyOutdatedLeaderIfNeeded(
             leader.Link.GetHash()   // cookie
         );
 
-        if (OutdatedLeaderDestruction->TryCount > 1) {
+        // We can remove remount mounted volume :-(
+        if (OutdatedLeaderDestruction->TryCount > 0) {
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::VOLUME,

@@ -88,9 +88,14 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
 {
     LOG_INFO(
         ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s Follower created",
-        LogTitle.GetWithTime().c_str());
+        TBlockStoreComponents::PARTITION,
+        "%s Follower created %s",
+        LogTitle.GetWithTime().c_str(),
+        ToString(FollowerDiskInfo.State).Quote().c_str());
+
+    if (!ApplyLinkState(ctx)) {
+        return;
+    }
 
     FollowerPartitionActorId = NCloud::Register<TVolumeAsPartitionActor>(
         ctx,
@@ -136,6 +141,33 @@ bool TFollowerDiskActor::OnMessage(
         // Intercepting the message to block the sending of statistics by the
         // base class.
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvUpdateCounters);
+
+        // Read request.
+        HFunc(
+            TEvService::TEvReadBlocksRequest,
+            HandleReadBlocks<TEvService::TReadBlocksMethod>);
+        HFunc(
+            TEvService::TEvReadBlocksLocalRequest,
+            HandleReadBlocks<TEvService::TReadBlocksLocalMethod>);
+
+        // Write/zero request.
+        case TEvService::TEvWriteBlocksRequest::EventType: {
+            return HandleWriteZeroBlocks<TEvService::TWriteBlocksMethod>(
+                *reinterpret_cast<TEvService::TEvWriteBlocksRequest::TPtr*>(
+                    &ev),
+                ctx);
+        }
+        case TEvService::TEvWriteBlocksLocalRequest::EventType: {
+            return HandleWriteZeroBlocks<TEvService::TWriteBlocksLocalMethod>(
+                *reinterpret_cast<
+                    TEvService::TEvWriteBlocksLocalRequest::TPtr*>(&ev),
+                ctx);
+        }
+        case TEvService::TEvZeroBlocksRequest::EventType: {
+            return HandleWriteZeroBlocks<TEvService::TZeroBlocksMethod>(
+                *reinterpret_cast<TEvService::TEvZeroBlocksRequest::TPtr*>(&ev),
+                ctx);
+        }
 
         // ClientId changed event.
         case TEvVolume::TEvRWClientIdChanged::EventType: {
@@ -189,7 +221,7 @@ void TFollowerDiskActor::PersistFollowerState(
 {
     LOG_INFO(
         ctx,
-        TBlockStoreComponents::VOLUME,
+        TBlockStoreComponents::PARTITION,
         "%s Persist follower state %s",
         LogTitle.GetWithTime().c_str(),
         newDiskInfo.Describe().c_str());
@@ -199,6 +231,28 @@ void TFollowerDiskActor::PersistFollowerState(
             newDiskInfo);
 
     NCloud::Send(ctx, LeaderVolumeActorId, std::move(request));
+}
+
+bool TFollowerDiskActor::ApplyLinkState(const NActors::TActorContext& ctx)
+{
+    if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady) {
+        AdvanceState(ctx, EState::DataTransferred);
+        return false;
+    }
+
+    if (FollowerDiskInfo.State ==
+        TFollowerDiskInfo::EState::LeadershipTransferred)
+    {
+        AdvanceState(ctx, EState::LeadershipTransferredAndPersisted);
+        return false;
+    }
+
+    if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::Error) {
+        AdvanceState(ctx, EState::Error);
+        return false;
+    }
+
+    return true;
 }
 
 void TFollowerDiskActor::AdvanceState(
@@ -213,7 +267,7 @@ void TFollowerDiskActor::AdvanceState(
 
     LOG_INFO(
         ctx,
-        TBlockStoreComponents::VOLUME,
+        TBlockStoreComponents::PARTITION,
         "%s State changed %s -> %s",
         LogTitle.GetWithTime().c_str(),
         ToString(State).c_str(),
@@ -225,12 +279,20 @@ void TFollowerDiskActor::AdvanceState(
         case EState::DataTransferring: {
             break;
         }
-        case EState::DataTransferred:{
+        case EState::DataTransferred: {
             PropagateLeadershipToFollower(ctx);
             break;
         }
-        case EState::LeadershipTransferred:{
-            RebootLeaderVolume(ctx);
+        case EState::LeadershipTransferred: {
+            PersistLeadershipTransferred(ctx);
+            break;
+        }
+        case EState::LeadershipTransferredAndPersisted: {
+            RebootLeaderVolume(ctx, RestartVolumeTabletDelay);
+            break;
+        }
+        case EState::Error: {
+            RebootLeaderVolume(ctx, TDuration{});
             break;
         }
     }
@@ -247,21 +309,44 @@ void TFollowerDiskActor::PropagateLeadershipToFollower(
         TPropagateLinkToFollowerActor::EReason::DataTransferred);
 }
 
-void TFollowerDiskActor::RebootLeaderVolume(const NActors::TActorContext& ctx)
+void TFollowerDiskActor::PersistLeadershipTransferred(
+    const NActors::TActorContext& ctx)
 {
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s  Scheduling reboot for leader volume after %s",
-        LogTitle.GetWithTime().c_str(),
-        FormatDuration(RestartVolumeTabletDelay).c_str());
+    auto newFollowerInfo = FollowerDiskInfo;
+    newFollowerInfo.State = TFollowerDiskInfo::EState::LeadershipTransferred;
 
-    ctx.Schedule(
-        RestartVolumeTabletDelay,
-        std::make_unique<IEventHandle>(
+    PersistFollowerState(ctx, newFollowerInfo);
+}
+
+void TFollowerDiskActor::RebootLeaderVolume(
+    const NActors::TActorContext& ctx,
+    TDuration delay)
+{
+    if (delay) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s  Scheduling reboot for leader volume after %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatDuration(delay).c_str());
+
+        ctx.Schedule(
+            delay,
+            std::make_unique<IEventHandle>(
+                LeaderVolumeActorId,
+                ctx.SelfID,
+                new TEvents::TEvPoisonPill()));
+    } else {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Link in error state. Restart volume tablet immediately",
+            LogTitle.GetWithTime().c_str());
+        NCloud::Send(
+            ctx,
             LeaderVolumeActorId,
-            ctx.SelfID,
-            new TEvents::TEvPoisonPill()));
+            std::make_unique<TEvents::TEvPoisonPill>());
+    }
 }
 
 template <typename TMethod>
@@ -280,6 +365,49 @@ void TFollowerDiskActor::ForwardRequestToFollowerPartition(
     ForwardMessageToActor(ev, ctx, FollowerPartitionActorId);
 }
 
+template <typename TMethod>
+void TFollowerDiskActor::HandleReadBlocks(
+    const typename TMethod::TRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (State == EState::DataTransferring) {
+        // Forward read request to Source partition.
+        ForwardRequestToLeaderPartition<TMethod>(ev, ctx);
+    } else {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<typename TMethod::TResponse>(MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Can't " << TMethod::Name << " from leader with "
+                    << ToString(State).Quote() << " state")));
+    }
+}
+
+template <typename TMethod>
+bool TFollowerDiskActor::HandleWriteZeroBlocks(
+    const typename TMethod::TRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (State != EState::DataTransferring) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<typename TMethod::TResponse>(MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Can't " << TMethod::Name << " to leader with "
+                    << ToString(State).Quote() << " state")));
+        return true;
+    }
+
+    // Migration is currently in progress. It is necessary to forward write/zero
+    // requests to the source and shadow disk with the base class
+    // TNonreplicatedPartitionMigrationCommonActor
+    return false;
+}
+
 void TFollowerDiskActor::HandleRdmaUnavailable(
     const TEvVolume::TEvRdmaUnavailable::TPtr& ev,
     const TActorContext& ctx)
@@ -293,7 +421,7 @@ bool TFollowerDiskActor::HandleRWClientIdChanged(
 {
     LOG_INFO(
         ctx,
-        TBlockStoreComponents::VOLUME,
+        TBlockStoreComponents::PARTITION,
         "%s Changed clientId %s -> %s ",
         LogTitle.GetWithTime().c_str(),
         ClientId.Quote().c_str(),
@@ -317,22 +445,8 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
     FollowerDiskInfo = msg->Follower;
-
-    if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady) {
-        AdvanceState(ctx, EState::DataTransferred);
-    } else if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::Error) {
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s Link in error state. Restart volume tablet immediately",
-            LogTitle.GetWithTime().c_str());
-        NCloud::Send(
-            ctx,
-            LeaderVolumeActorId,
-            std::make_unique<TEvents::TEvPoisonPill>());
-    }
+    ApplyLinkState(ctx);
 }
 
 void TFollowerDiskActor::HandlePropagateLeadershipToFollowerResponse(
@@ -341,11 +455,11 @@ void TFollowerDiskActor::HandlePropagateLeadershipToFollowerResponse(
 {
     const auto* msg = ev->Get();
 
-    const auto&  error = msg->GetError();
+    const auto& error = msg->GetError();
     if (HasError(error)) {
         LOG_ERROR(
             ctx,
-            TBlockStoreComponents::VOLUME,
+            TBlockStoreComponents::PARTITION,
             "%s Propagate ready state to follower error: %s",
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
