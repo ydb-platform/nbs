@@ -208,4 +208,19 @@ TBSGroupOperationTimeTracker::GetTimeBuckets() const
     return result;
 }
 
+TVector<std::pair<ui64, TBSGroupOperationTimeTracker::TOperationInflight>>
+TBSGroupOperationTimeTracker::GetInflightOperations() const
+{
+    TVector<std::pair<ui64, TOperationInflight>> result(
+        Inflight.begin(),
+        Inflight.end());
+
+    Sort(
+        result,
+        [](const auto& a, const auto& b)
+        { return a.second.StartTime < b.second.StartTime; });
+
+    return result;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

@@ -50,6 +50,13 @@ public:
         size_t FailCount = 0;
     };
 
+    struct TRequestInflight
+    {
+        ui64 StartTime = 0;
+        TBlockRange64 BlockRange;
+        ERequestType RequestType = ERequestType::Read;
+    };
+
 private:
     constexpr static size_t RequestTypeCount =
         static_cast<size_t>(ERequestType::Last) + 1;
@@ -81,13 +88,6 @@ private:
     struct TEqual
     {
         bool operator()(const TKey& lhs, const TKey& rhs) const;
-    };
-
-    struct TRequestInflight
-    {
-        ui64 StartTime = 0;
-        TBlockRange64 BlockRange;
-        ERequestType RequestType = ERequestType::Read;
     };
 
     struct TFirstRequest
@@ -130,6 +130,10 @@ public:
     OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize) const;
+
+    [[nodiscard]] TVector<
+        std::pair<ui64, TRequestsTimeTracker::TRequestInflight>>
+    GetInflightOperations() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

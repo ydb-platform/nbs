@@ -2451,6 +2451,8 @@ void TDiskRegistryActor::HandleHttpInfo(
          &TDiskRegistryActor::HandleHttpInfo_RenderSuspendedDeviceList},
         {"RenderTransactionsLatency",
          &TDiskRegistryActor::HandleHttpInfo_RenderTransactionsLatency},
+        {"getTransactionsInflight",
+         &TDiskRegistryActor::HandleHttpInfo_GetTransactionsInflight},
     }};
 
     auto* msg = ev->Get();
@@ -2535,6 +2537,22 @@ void TDiskRegistryActor::HandleHttpInfo_GetTransactionsLatency(
         *requestInfo,
         std::make_unique<NMon::TEvRemoteJsonInfoRes>(
             TransactionTimeTracker.GetStatJson(GetCycleCount())));
+}
+
+void TDiskRegistryActor::HandleHttpInfo_GetTransactionsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(FormatTransactionsInflight(
+            TransactionTimeTracker.GetInflightOperations(),
+            GetCycleCount(),
+            TInstant::Now())));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
