@@ -14,6 +14,11 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+auto GetLabels(
+    const NCloud::NProto::TConfigDispatcherSettings& settings,
+    const TString& tenantName,
+    const TString& nodeType) -> TMap<TString, TString>;
+
 void SetupConfigDispatcher(
     const NProto::TConfigDispatcherSettings& settings,
     const TString& tenantName,

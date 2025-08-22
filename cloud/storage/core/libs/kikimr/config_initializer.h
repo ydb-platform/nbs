@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "node.h"
+
 #include <cloud/storage/core/libs/daemon/config_initializer.h>
 
 #include <contrib/ydb/core/protos/config.pb.h>

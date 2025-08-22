@@ -7,6 +7,7 @@
 
 #include <contrib/ydb/core/base/event_filter.h>
 #include <contrib/ydb/core/base/location.h>
+#include <contrib/ydb/core/config/init/init.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
@@ -15,6 +16,7 @@
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event.h>
+#include <contrib/ydb/library/yaml_config/yaml_config.h>
 
 #include <util/generic/vector.h>
 #include <util/network/address.h>
@@ -106,6 +108,25 @@ NGRpcProxy::TGRpcClientConfig CreateKikimrConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO: this function is modified copy-paste of function from ydb 24-3
+// Replace it with the one from ydb repo when sync occurs
+NKikimrConfig::TAppConfig GetYamlConfigFromResult(
+    const NKikimr::NClient::TConfigurationResult& result,
+    const TMap<TString, TString>& labels)
+{
+    NKikimrConfig::TAppConfig appConfig;
+    if (result.HasYamlConfig() && !result.GetYamlConfig().empty()) {
+        NYamlConfig::ResolveAndParseYamlConfig(
+            result.GetYamlConfig(),
+            result.GetVolatileYamlConfigs(),
+            labels,
+            appConfig,
+            nullptr,
+            nullptr);
+    }
+    return appConfig;
+}
+
 TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     ui32 nodeId,
     const TString& hostName,
@@ -115,12 +136,16 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     NKikimrConfig::TStaticNameserviceConfig& nsConfig)
 {
     auto configurator = kikimr.GetNodeConfigurator();
+    // version is YamlApiVersion, token is a rudimentary parameter
     auto configResult = configurator.SyncGetNodeConfig(
         nodeId,
         hostName,
         options.SchemeShardDir,
         options.Settings.NodeType,
-        options.Domain);
+        options.Domain,
+        "",
+        true,
+        1);
 
     if (!configResult.IsSuccess()) {
         return MakeError(
@@ -131,10 +156,19 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
 
     auto cmsConfig = configResult.GetConfig();
 
+    auto yamlConfig =
+        GetYamlConfigFromResult(configResult, options.Labels);
+
     if (cmsConfig.HasNameserviceConfig()) {
         cmsConfig.MutableNameserviceConfig()->SetSuppressVersionCheck(
             nsConfig.GetSuppressVersionCheck());
     }
+
+    // TODO: this is an adapted version of GetActualDynConfig function from ydb24-3
+    // Here we ignore YAML config except for our section and don't provide
+    // metric for updates. We should start using yaml config: ISSUE
+    cmsConfig.MutableBlockstoreConfig()->CopyFrom(
+        yamlConfig.GetBlockstoreConfig());
 
     return cmsConfig;
 }

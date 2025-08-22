@@ -372,7 +372,10 @@ void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
     ComputeClientConfig = std::move(config);
 }
 
-void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config)
+////////////////////////////////////////////////////////////////////////////////
+
+void TConfigInitializerYdb::ApplyNamedConfigs(
+    const NKikimrConfig::TAppConfig& config)
 {
     THashMap<TString, ui32> configs;
 
@@ -423,6 +426,28 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfi
             this,
             config.GetNamedConfigs(it->second).GetConfig());
     }
+}
+
+void TConfigInitializerYdb::ApplyBlockstoreConfig(
+    const NKikimrConfig::TAppConfig& config)
+{
+    if (!config.HasBlockstoreConfig()) {
+        return;
+    }
+
+    const auto& blockstoreConfig = config.GetBlockstoreConfig();
+
+    StorageConfig->SetVolumeBalancerEnabled(
+        blockstoreConfig.GetVolumeBalancerEnabled());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TConfigInitializerYdb::ApplyCustomCMSConfigs(
+    const NKikimrConfig::TAppConfig& config)
+{
+    ApplyNamedConfigs(config);
+    ApplyBlockstoreConfig(config);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

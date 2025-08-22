@@ -43,6 +43,8 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
+    void SetVolumeBalancerEnabled(bool volumeBalancerEnabled);
+
     void Register(NKikimr::TControlBoard& controlBoard);
 
     static TStorageConfigPtr Merge(
@@ -709,6 +711,8 @@ public:
     [[nodiscard]] bool GetVolumeThrottlingManagerEnabled() const;
     [[nodiscard]] TDuration
     GetVolumeThrottlingManagerNotificationPeriodSeconds() const;
+
+    [[nodiscard]] bool GetVolumeBalancerEnabled() const;
 };
 
 ui64 GetAllocationUnit(

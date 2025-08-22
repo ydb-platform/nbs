@@ -1,0 +1,22 @@
+metadata:
+  kind: MainConfig
+  cluster: "local"
+  version: 0
+config:
+  yaml_config_enabled: true
+allowed_labels:
+  nbs:
+    type: string
+  node_id:
+    type: string
+  host:
+    type: string
+  tenant:
+    type: string
+selector_config:
+- description: dummy
+  selector:
+    nbs: true
+  config:
+    blockstore_config: !inherit
+      volume_balancer_enabled: true
