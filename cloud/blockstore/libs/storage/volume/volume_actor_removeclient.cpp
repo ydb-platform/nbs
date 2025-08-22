@@ -104,7 +104,6 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
     auto& request = AcquireReleaseDiskRequests.front();
     auto clientRequest = request.ClientRequest;
 
-
     const bool hasError = HasError(error) && (error.GetCode() != E_NOT_FOUND);
     if (hasError) {
         LOG_ERROR(
@@ -116,7 +115,7 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
 
         if (request.RetryIfTimeoutOrUndelivery &&
             GetErrorKind(error) == EErrorKind::ErrorRetriable &&
-            Config->GetRetryAcquireReleaseDiskInitialDelay())
+            Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled())
         {
             auto delay = BackoffDelayProviderForAcquireReleaseDiskRequests
                              .GetDelayAndIncrease();
@@ -312,7 +311,6 @@ void TVolumeActor::CompleteRemoveClient(
                     args.PipeServerActorId,
                     args.ClientId,
                     args.IsMonRequest),
-                .DevicesToRelease = TVector<NProto::TDeviceConfig>{},
             });
     } else {
         NCloud::Reply(
