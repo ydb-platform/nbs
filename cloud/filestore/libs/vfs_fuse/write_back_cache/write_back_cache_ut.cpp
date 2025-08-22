@@ -490,7 +490,7 @@ struct TWriteRequestLogger
                 {.Handle = request->GetHandle(),
                  .Offset = request->GetOffset(),
                  .Length =
-                     request->GetBuffer().Size() - request->GetBufferOffset()});
+                     request->GetBuffer().size() - request->GetBufferOffset()});
 
             return previousHandler(std::move(context), std::move(request));
         };
