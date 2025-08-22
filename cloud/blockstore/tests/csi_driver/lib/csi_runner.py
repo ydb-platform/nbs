@@ -45,14 +45,15 @@ class CsiLoadTest(LocalLoadTest):
             **kwargs,
     ):
         super(CsiLoadTest, self).__init__(*args, **kwargs)
-        self.local_nfs_vhost = LocalNfsVhostRunner(external_fs_configs)
-        self.local_nfs_vhost.start()
+        if external_fs_configs is not None:
+            self.local_nfs_vhost = LocalNfsVhostRunner(external_fs_configs)
+            self.local_nfs_vhost.start()
         self.sockets_temporary_directory = sockets_temporary_directory
         self.csi = NbsCsiDriverRunner(
             sockets_dir,
             grpc_unix_socket_path,
             vm_mode,
-            self.local_nfs_vhost.get_config(),
+            self.local_nfs_vhost.get_config() if self.local_nfs_vhost else None,
         )
         self.csi.start()
 
@@ -304,6 +305,7 @@ def cleanup_after_test(
 def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, external_fs_configs=[]):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
+    server_config_patch.NbdNetlink = True
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
     endpoints_dir.mkdir(exist_ok=True)
     server_config_patch.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
@@ -314,10 +316,8 @@ def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, external_fs
     logging.info("Created temporary dir %s", temp_dir.name)
     sockets_dir = Path(temp_dir.name)
     server_config_patch.UnixSocketPath = str(sockets_dir / "grpc.sock")
-    server_config_patch.VhostEnabled = True
+    server_config_patch.VhostEnabled = vm_mode
     server_config_patch.NbdDevicePrefix = "/dev/nbd"
-    ep_socket = "ep-%s.sock" % hash(common.context.test_name)
-    server_config_patch.EndpointProxySocketPath = ep_socket
     server = TServerAppConfig()
     server.ServerConfig.CopyFrom(server_config_patch)
     server.ServerConfig.ThreadsCount = thread_count()
@@ -334,7 +334,6 @@ def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, external_fs
         server_app_config=server,
         storage_config_patches=None,
         use_in_memory_pdisks=True,
-        with_endpoint_proxy=True,
         with_netlink=True)
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
