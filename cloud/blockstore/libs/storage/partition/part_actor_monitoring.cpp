@@ -394,10 +394,10 @@ void TPartitionActor::HandleHttpInfo(
         {"compactAll", &TPartitionActor::HandleHttpInfo_ForceCompaction},
         {"rebuildMetadata", &TPartitionActor::HandleHttpInfo_RebuildMetadata},
         {"scanDisk", &TPartitionActor::HandleHttpInfo_ScanDisk},
-        {"resetTransactionsLatency",
-         &TPartitionActor::HandleHttpInfo_ResetTransactionsLatency},
-        {"resetBSGroupLatency",
-         &TPartitionActor::HandleHttpInfo_ResetBSGroupLatency},
+        {"resetTransactionLatencyStats",
+         &TPartitionActor::HandleHttpInfo_ResetTransactionLatencyStats},
+        {"resetBSGroupLatencyStats",
+         &TPartitionActor::HandleHttpInfo_ResetBSGroupLatencyStats},
     }};
 
     static const THttpHandlers getActions{{

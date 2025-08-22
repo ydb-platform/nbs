@@ -762,9 +762,10 @@ void TVolumeActor::HandleHttpInfo(
         {"startpartitions", &TActor::HandleHttpInfo_StartPartitions},
         {"changethrottlingpolicy",
          &TActor::HandleHttpInfo_ChangeThrottlingPolicy},
-        {"resetTransactionsLatency",
-         &TActor::HandleHttpInfo_ResetTransactionsLatency},
-        {"resetRequestsLatency", &TActor::HandleHttpInfo_ResetRequestsLatency},
+        {"resetTransactionLatencyStats",
+         &TActor::HandleHttpInfo_ResetTransactionLatencyStats},
+        {"resetRequestLatencyStats",
+         &TActor::HandleHttpInfo_ResetRequestLatencyStats},
     }};
 
     const THttpHandlers getActions {{
@@ -1240,7 +1241,7 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         out << style;
 
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
-        BuildResetButton(out, TabletID(), "resetRequestsLatency");
+        BuildResetButton(out, TabletID(), "resetRequestLatencyStats");
 
         out << "<div id=\"" << containerId << "\">";
         DIV_CLASS ("row") {
@@ -2587,7 +2588,7 @@ void TVolumeActor::HandleHttpInfo_GetTransactionsLatency(
             TransactionTimeTracker.GetStatJson(GetCycleCount())));
 }
 
-void TVolumeActor::HandleHttpInfo_ResetTransactionsLatency(
+void TVolumeActor::HandleHttpInfo_ResetTransactionLatencyStats(
     const NActors::TActorContext& ctx,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
@@ -2597,7 +2598,7 @@ void TVolumeActor::HandleHttpInfo_ResetTransactionsLatency(
     SendHttpResponse(ctx, *requestInfo, "");
 }
 
-void TVolumeActor::HandleHttpInfo_ResetRequestsLatency(
+void TVolumeActor::HandleHttpInfo_ResetRequestLatencyStats(
     const NActors::TActorContext& ctx,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)

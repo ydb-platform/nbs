@@ -2427,8 +2427,8 @@ void TDiskRegistryActor::HandleHttpInfo(
          &TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState},
         {"changeAgentState",
          &TDiskRegistryActor::HandleHttpInfo_ChangeAgentState},
-        {"resetTransactionsLatency",
-         &TDiskRegistryActor::HandleHttpInfo_ResetTransactionsLatency},
+        {"resetTransactionLatencyStats",
+         &TDiskRegistryActor::HandleHttpInfo_ResetTransactionLatencyStats},
     }};
 
     static const THttpHandlers getActions{{
@@ -2539,7 +2539,7 @@ void TDiskRegistryActor::HandleHttpInfo_GetTransactionsLatency(
             TransactionTimeTracker.GetStatJson(GetCycleCount())));
 }
 
-void TDiskRegistryActor::HandleHttpInfo_ResetTransactionsLatency(
+void TDiskRegistryActor::HandleHttpInfo_ResetTransactionLatencyStats(
     const NActors::TActorContext& ctx,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)

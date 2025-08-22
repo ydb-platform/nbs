@@ -344,7 +344,7 @@ void TPartitionActor::HandleHttpInfo_GetGroupLatencies(
             BSGroupOperationTimeTracker.GetStatJson(GetCycleCount())));
 }
 
-void TPartitionActor::HandleHttpInfo_ResetTransactionsLatency(
+void TPartitionActor::HandleHttpInfo_ResetTransactionLatencyStats(
     const TActorContext& ctx,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
@@ -354,7 +354,7 @@ void TPartitionActor::HandleHttpInfo_ResetTransactionsLatency(
     SendHttpResponse(ctx, *requestInfo, "");
 }
 
-void TPartitionActor::HandleHttpInfo_ResetBSGroupLatency(
+void TPartitionActor::HandleHttpInfo_ResetBSGroupLatencyStats(
     const TActorContext& ctx,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)

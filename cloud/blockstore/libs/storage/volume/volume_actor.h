@@ -709,12 +709,12 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
-    void HandleHttpInfo_ResetTransactionsLatency(
+    void HandleHttpInfo_ResetTransactionLatencyStats(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
-    void HandleHttpInfo_ResetRequestsLatency(
+    void HandleHttpInfo_ResetRequestLatencyStats(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

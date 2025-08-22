@@ -1223,7 +1223,7 @@ void DumpLatency(
 
     HTML (out) {
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
-        BuildResetButton(out, tabletId, "resetTransactionsLatency");
+        BuildResetButton(out, tabletId, "resetTransactionLatencyStats");
 
         DIV_CLASS_ID(" ", containerId) {
             TAG (TH3) { out << "Transactions"; }
@@ -1542,7 +1542,7 @@ void DumpGroupLatencyTab(
         AddGroupLatencyCSS(out);
 
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
-        BuildResetButton(out, tabletId, "resetBSGroupLatency");
+        BuildResetButton(out, tabletId, "resetBSGroupLatencyStats");
 
         out << "<div id='" << containerId << "'></div>";
 
