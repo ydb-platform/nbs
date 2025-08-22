@@ -622,8 +622,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeThrottlingManagerNotificationPeriodSeconds,                      \
         TDuration,                                                             \
         Seconds(5)                                                            )\
-    xxx(RetryAcquireReleaseDiskInitialDelay,  TDuration,   Seconds(0)         )\
-    xxx(RetryAcquireReleaseDiskMaxDelay,      TDuration,   Seconds(0)         )\
+    xxx(RetryAcquireReleaseDiskInitialDelay,  TDuration,   MilliSeconds(100)  )\
+    xxx(RetryAcquireReleaseDiskMaxDelay,      TDuration,   Seconds(5)         )\
                                                                                \
     xxx(NonReplicatedVolumeAcquireDiskAfterAddClientEnabled, bool,   false    )\
 
