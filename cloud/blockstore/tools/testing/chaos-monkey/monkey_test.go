@@ -31,7 +31,6 @@ func (n nbsService) Ping(
 	ctx context.Context,
 	request *protos.TPingRequest,
 ) (*protos.TPingResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -39,7 +38,6 @@ func (n nbsService) UploadClientMetrics(
 	ctx context.Context,
 	request *protos.TUploadClientMetricsRequest,
 ) (*protos.TUploadClientMetricsResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -47,7 +45,6 @@ func (n nbsService) CreateVolume(
 	ctx context.Context,
 	request *protos.TCreateVolumeRequest,
 ) (*protos.TCreateVolumeResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -55,7 +52,6 @@ func (n nbsService) DestroyVolume(
 	ctx context.Context,
 	request *protos.TDestroyVolumeRequest,
 ) (*protos.TDestroyVolumeResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -63,7 +59,6 @@ func (n nbsService) ResizeVolume(
 	ctx context.Context,
 	request *protos.TResizeVolumeRequest,
 ) (*protos.TResizeVolumeResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -71,7 +66,6 @@ func (n nbsService) AlterVolume(
 	ctx context.Context,
 	request *protos.TAlterVolumeRequest,
 ) (*protos.TAlterVolumeResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -79,7 +73,6 @@ func (n nbsService) AssignVolume(
 	ctx context.Context,
 	request *protos.TAssignVolumeRequest,
 ) (*protos.TAssignVolumeResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -87,7 +80,6 @@ func (n nbsService) ListVolumes(
 	ctx context.Context,
 	request *protos.TListVolumesRequest,
 ) (*protos.TListVolumesResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -124,7 +116,6 @@ func (n nbsService) DescribeVolume(
 	ctx context.Context,
 	request *protos.TDescribeVolumeRequest,
 ) (*protos.TDescribeVolumeResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -132,7 +123,6 @@ func (n nbsService) DescribeVolumeModel(
 	ctx context.Context,
 	request *protos.TDescribeVolumeModelRequest,
 ) (*protos.TDescribeVolumeModelResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -140,7 +130,6 @@ func (n nbsService) MountVolume(
 	ctx context.Context,
 	request *protos.TMountVolumeRequest,
 ) (*protos.TMountVolumeResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -148,7 +137,6 @@ func (n nbsService) UnmountVolume(
 	ctx context.Context,
 	request *protos.TUnmountVolumeRequest,
 ) (*protos.TUnmountVolumeResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -156,7 +144,6 @@ func (n nbsService) ReadBlocks(
 	ctx context.Context,
 	request *protos.TReadBlocksRequest,
 ) (*protos.TReadBlocksResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -164,7 +151,6 @@ func (n nbsService) WriteBlocks(
 	ctx context.Context,
 	request *protos.TWriteBlocksRequest,
 ) (*protos.TWriteBlocksResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -172,7 +158,6 @@ func (n nbsService) ZeroBlocks(
 	ctx context.Context,
 	request *protos.TZeroBlocksRequest,
 ) (*protos.TZeroBlocksResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -180,7 +165,6 @@ func (n nbsService) CreateCheckpoint(
 	ctx context.Context,
 	request *protos.TCreateCheckpointRequest,
 ) (*protos.TCreateCheckpointResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -188,7 +172,6 @@ func (n nbsService) DeleteCheckpoint(
 	ctx context.Context,
 	request *protos.TDeleteCheckpointRequest,
 ) (*protos.TDeleteCheckpointResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -196,7 +179,6 @@ func (n nbsService) GetCheckpointStatus(
 	ctx context.Context,
 	request *protos.TGetCheckpointStatusRequest,
 ) (*protos.TGetCheckpointStatusResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -204,7 +186,6 @@ func (n nbsService) GetChangedBlocks(
 	ctx context.Context,
 	request *protos.TGetChangedBlocksRequest,
 ) (*protos.TGetChangedBlocksResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -212,7 +193,6 @@ func (n nbsService) DiscoverInstances(
 	ctx context.Context,
 	request *protos.TDiscoverInstancesRequest,
 ) (*protos.TDiscoverInstancesResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -220,7 +200,6 @@ func (n nbsService) StartEndpoint(
 	ctx context.Context,
 	request *protos.TStartEndpointRequest,
 ) (*protos.TStartEndpointResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -228,7 +207,6 @@ func (n nbsService) StopEndpoint(
 	ctx context.Context,
 	request *protos.TStopEndpointRequest,
 ) (*protos.TStopEndpointResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -236,7 +214,6 @@ func (n nbsService) ListEndpoints(
 	ctx context.Context,
 	request *protos.TListEndpointsRequest,
 ) (*protos.TListEndpointsResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -244,7 +221,6 @@ func (n nbsService) KickEndpoint(
 	ctx context.Context,
 	request *protos.TKickEndpointRequest,
 ) (*protos.TKickEndpointResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -252,7 +228,6 @@ func (n nbsService) ListKeyrings(
 	ctx context.Context,
 	request *protos.TListKeyringsRequest,
 ) (*protos.TListKeyringsResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -260,7 +235,6 @@ func (n nbsService) DescribeEndpoint(
 	ctx context.Context,
 	request *protos.TDescribeEndpointRequest,
 ) (*protos.TDescribeEndpointResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -268,7 +242,6 @@ func (n nbsService) RefreshEndpoint(
 	ctx context.Context,
 	request *protos.TRefreshEndpointRequest,
 ) (*protos.TRefreshEndpointResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -276,7 +249,6 @@ func (n nbsService) UpdateDiskRegistryConfig(
 	ctx context.Context,
 	request *protos.TUpdateDiskRegistryConfigRequest,
 ) (*protos.TUpdateDiskRegistryConfigResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -284,7 +256,6 @@ func (n nbsService) DescribeDiskRegistryConfig(
 	ctx context.Context,
 	request *protos.TDescribeDiskRegistryConfigRequest,
 ) (*protos.TDescribeDiskRegistryConfigResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -292,7 +263,6 @@ func (n nbsService) QueryAvailableStorage(
 	ctx context.Context,
 	request *protos.TQueryAvailableStorageRequest,
 ) (*protos.TQueryAvailableStorageResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -300,7 +270,6 @@ func (n nbsService) CreateVolumeFromDevice(
 	ctx context.Context,
 	request *protos.TCreateVolumeFromDeviceRequest,
 ) (*protos.TCreateVolumeFromDeviceResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -308,7 +277,6 @@ func (n nbsService) ResumeDevice(
 	ctx context.Context,
 	request *protos.TResumeDeviceRequest,
 ) (*protos.TResumeDeviceResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -316,7 +284,13 @@ func (n nbsService) QueryAgentsInfo(
 	ctx context.Context,
 	request *protos.TQueryAgentsInfoRequest,
 ) (*protos.TQueryAgentsInfoResponse, error) {
-	//TODO implement me
+	panic("implement me")
+}
+
+func (n nbsService) UpdateVolumeThrottlingConfig(
+	ctx context.Context,
+	request *protos.TUpdateVolumeThrottlingConfigRequest,
+) (*protos.TUpdateVolumeThrottlingConfigResponse, error) {
 	panic("implement me")
 }
 
@@ -344,7 +318,6 @@ func (n nbsService) CreatePlacementGroup(
 	ctx context.Context,
 	request *protos.TCreatePlacementGroupRequest,
 ) (*protos.TCreatePlacementGroupResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -352,7 +325,6 @@ func (n nbsService) DestroyPlacementGroup(
 	ctx context.Context,
 	request *protos.TDestroyPlacementGroupRequest,
 ) (*protos.TDestroyPlacementGroupResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -360,7 +332,6 @@ func (n nbsService) AlterPlacementGroupMembership(
 	ctx context.Context,
 	request *protos.TAlterPlacementGroupMembershipRequest,
 ) (*protos.TAlterPlacementGroupMembershipResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -368,7 +339,6 @@ func (n nbsService) ListPlacementGroups(
 	ctx context.Context,
 	request *protos.TListPlacementGroupsRequest,
 ) (*protos.TListPlacementGroupsResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -376,7 +346,6 @@ func (n nbsService) DescribePlacementGroup(
 	ctx context.Context,
 	request *protos.TDescribePlacementGroupRequest,
 ) (*protos.TDescribePlacementGroupResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -384,7 +353,6 @@ func (n nbsService) CmsAction(
 	ctx context.Context,
 	request *protos.TCmsActionRequest,
 ) (*protos.TCmsActionResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -392,7 +360,6 @@ func (n nbsService) CreateVolumeLink(
 	ctx context.Context,
 	request *protos.TCreateVolumeLinkRequest,
 ) (*protos.TCreateVolumeLinkResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -400,7 +367,6 @@ func (n nbsService) DestroyVolumeLink(
 	ctx context.Context,
 	request *protos.TDestroyVolumeLinkRequest,
 ) (*protos.TDestroyVolumeLinkResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
@@ -408,7 +374,6 @@ func (n nbsService) RemoveVolumeClient(
 	ctx context.Context,
 	request *protos.TRemoveVolumeClientRequest,
 ) (*protos.TRemoveVolumeClientResponse, error) {
-	//TODO implement me
 	panic("implement me")
 }
 

@@ -705,6 +705,10 @@ public:
 
     [[nodiscard]] TDuration GetInitialRetryDelayForServiceRequests() const;
     [[nodiscard]] TDuration GetMaxRetryDelayForServiceRequests() const;
+
+    [[nodiscard]] bool GetVolumeThrottlingManagerEnabled() const;
+    [[nodiscard]] TDuration
+    GetVolumeThrottlingManagerNotificationPeriodSeconds() const;
 };
 
 ui64 GetAllocationUnit(

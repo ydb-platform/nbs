@@ -57,3 +57,6 @@ PathDescriptionBackupFilePath: "backups/nbs-path-description-backup.txt"
 
 # Hive proxy
 TabletBootInfoBackupFilePath: "backups/nbs-tablet-boot-info-backup.txt"
+
+# Volume Throttling Manager
+VolumeThrottlingManagerEnabled: true

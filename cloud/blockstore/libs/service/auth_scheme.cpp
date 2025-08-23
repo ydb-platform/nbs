@@ -132,6 +132,7 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
             Y_ABORT("ExecuteAction must have been handled separately");
         case EBlockStoreRequest::DescribeDiskRegistryConfig:
         case EBlockStoreRequest::UpdateDiskRegistryConfig:
+        case EBlockStoreRequest::UpdateVolumeThrottlingConfig:
             return TPermissionList().Flip();  // Require admin permissions.
 
         case EBlockStoreRequest::CreateVolumeLink:

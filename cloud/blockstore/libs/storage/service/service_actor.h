@@ -210,6 +210,10 @@ private:
         const TEvService::TEvRunVolumesLivenessCheckResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleListMountedVolumes(
+        const TEvServicePrivate::TEvListMountedVolumesRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     bool HandleRequests(STFUNC_SIG);
 
     BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvService)

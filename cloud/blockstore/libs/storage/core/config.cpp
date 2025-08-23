@@ -618,6 +618,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(UsePullSchemeForVolumeStatistics,                  bool,   false      )\
     xxx(InitialRetryDelayForServiceRequests,  TDuration,   MSeconds(500)      )\
     xxx(MaxRetryDelayForServiceRequests,      TDuration,   Seconds(30)        )\
+    xxx(VolumeThrottlingManagerEnabled,             bool,        false        )\
+    xxx(VolumeThrottlingManagerNotificationPeriodSeconds,                      \
+        TDuration,                                                             \
+        Seconds(5)                                                            )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
