@@ -6,6 +6,7 @@
 #include "volume_counters.h"
 #include "volume_events_private.h"
 #include "volume_state.h"
+#include "volume_throttler_logger.h"
 #include "volume_tx.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -32,7 +33,6 @@
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
-#include <cloud/blockstore/libs/storage/volume/model/volume_throttler_logger.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/protos/trace.pb.h>
@@ -380,6 +380,37 @@ private:
 
     TVector<ui64> GCCompletedPartitions;
 
+    struct TPartCountersData
+    {
+        NActors::TActorId Sender;
+        ui64 Cookie;
+        ui64 VolumeSystemCpu;
+        ui64 VolumeUserCpu;
+        TCallContextPtr CallContext;
+        TPartitionDiskCountersPtr DiskCounters;
+        NKikimrTabletBase::TMetrics TabletMetrics;
+        NBlobMetrics::TBlobLoadMetrics BlobLoadMetrics;
+
+        TPartCountersData(
+                NActors::TActorId sender,
+                ui64 cookie,
+                ui64 volumeSystemCpu,
+                ui64 volumeUserCpu,
+                TCallContextPtr callContext,
+                TPartitionDiskCountersPtr diskCounters,
+                NKikimrTabletBase::TMetrics tabletMetrics,
+                NBlobMetrics::TBlobLoadMetrics blobLoadMetrics)
+            : Sender(sender)
+            , Cookie(cookie)
+            , VolumeSystemCpu(volumeSystemCpu)
+            , VolumeUserCpu(volumeUserCpu)
+            , CallContext(std::move(callContext))
+            , DiskCounters(std::move(diskCounters))
+            , TabletMetrics(std::move(tabletMetrics))
+            , BlobLoadMetrics(std::move(blobLoadMetrics))
+        {}
+    };
+
 public:
     TVolumeActor(
         const NActors::TActorId& owner,
@@ -605,6 +636,16 @@ private:
 
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
 
+    void SendStatisticRequests(const NActors::TActorContext& ctx);
+
+    void CleanupHistory(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& sender,
+        ui64 cookie,
+        TCallContextPtr callContext);
+
+    const TString& GetDiskId() const;
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -703,6 +744,10 @@ private:
     void HandleDiskRegistryBasedPartCounters(
         const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    std::optional<TTxVolume::TSavePartStats> UpdatePartCounters(
+        const NActors::TActorContext& ctx,
+        TPartCountersData& partCountersData);
 
     void HandlePartCounters(
         const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
@@ -1104,10 +1149,15 @@ private:
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    TActorsStack WrapNonreplActorIfNeeded(
+    TActorsStack WrapWithShadowDiskActorIfNeeded(
         const NActors::TActorContext& ctx,
-        NActors::TActorId nonreplicatedActorId,
+        TActorsStack actors,
         std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
+
+    TActorsStack WrapWithFollowerActorIfNeeded(
+        const NActors::TActorContext& ctx,
+        TActorsStack actors,
+        bool takePartitionOwnership);
 
     void HandleCreateLinkFinished(
         const TEvVolumePrivate::TEvCreateLinkFinished::TPtr& ev,
@@ -1127,6 +1177,10 @@ private:
     void DestroyLeaderLink(
         TRequestInfoPtr requestInfo,
         TLeaderFollowerLink link,
+        const NActors::TActorContext& ctx);
+
+    void HandlePartCountersCombined(
+        const TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     // Restart partitions. If these were partition of DiskRegistry-based disk,

@@ -1244,14 +1244,17 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         out << "</div>";
 
         out << R"(<script>
-            function updateRequestsData(result, container) {
-                const data = { ...result.stat, ...result.percentiles };
-                for (let key in data) {
-                    const element = container.querySelector('#' + key);
+            function applyRequestsValues(stat) {
+                for (let key in stat) {
+                    const element = document.getElementById(key);
                     if (element) {
-                        element.textContent = data[key];
+                        element.textContent = stat[key];
                     }
                 }
+            }
+            function updateRequestsData(result, container) {
+                applyRequestsValues(result.stat);
+                applyRequestsValues(result.percentiles);
             }
         </script>)";
 
@@ -2180,9 +2183,9 @@ void TVolumeActor::RenderLaggingStateForDevice(
     IOutputStream& out,
     const NProto::TDeviceConfig& d)
 {
-    const auto* stateMsg = "ok";
-    const auto* color = "green";
-    auto laggingDevices = State->GetLaggingDevices();
+    const char* stateMsg = "ok";
+    const char* color = "green";
+    auto laggingDevices = State->GetLaggingDeviceIds();
 
     if (laggingDevices.contains(d.GetDeviceUUID())) {
         stateMsg = "lagging";
@@ -2429,8 +2432,6 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
 
                 bool renderLaggingState = IsReliableDiskRegistryMediaKind(
                     State->GetConfig().GetStorageMediaKind());
-                auto laggingDevices = State->GetLaggingDevices();
-
                 auto outputDevices = [&] (const TDevices& devices) {
                     TABLED() {
                         TABLE_CLASS("table table-bordered") {
@@ -2588,7 +2589,12 @@ void TVolumeActor::RejectHttpRequest(
     TRequestInfo& requestInfo,
     TString message)
 {
-    LOG_ERROR_S(ctx, TBlockStoreComponents::VOLUME, message);
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s %s",
+        LogTitle.GetWithTime().c_str(),
+        message.c_str());
 
     SendHttpResponse(ctx, requestInfo, std::move(message), EAlertLevel::DANGER);
 }

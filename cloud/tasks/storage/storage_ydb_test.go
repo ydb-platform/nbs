@@ -385,17 +385,20 @@ func TestStorageYDBGetTask(t *testing.T) {
 	modifiedAt := createdAt.Add(time.Hour)
 
 	taskID, err := storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
-		GenerationID:   42,
-		Status:         TaskStatusReadyToRun,
-		State:          []byte{1, 2, 3},
-		Dependencies:   common.NewStringSet(),
-		ZoneID:         "zone",
+		IdempotencyKey:   getIdempotencyKeyForTest(t),
+		TaskType:         "task1",
+		Description:      "Some task",
+		CreatedAt:        createdAt,
+		CreatedBy:        "some_user",
+		ModifiedAt:       modifiedAt,
+		GenerationID:     42,
+		Status:           TaskStatusReadyToRun,
+		State:            []byte{1, 2, 3},
+		Dependencies:     common.NewStringSet(),
+		ZoneID:           "zone",
+		InflightDuration: 10 * time.Minute,
+		WaitingDuration:  10 * time.Minute,
+		StallingDuration: 10 * time.Minute,
 	})
 	require.NoError(t, err)
 
@@ -413,6 +416,9 @@ func TestStorageYDBGetTask(t *testing.T) {
 	require.EqualValues(t, common.NewStringSet(), taskState.Dependencies)
 	require.WithinDuration(t, time.Time(createdAt), time.Time(taskState.ChangedStateAt), time.Microsecond)
 	require.EqualValues(t, "zone", taskState.ZoneID)
+	require.EqualValues(t, 10*time.Minute, taskState.InflightDuration)
+	require.EqualValues(t, 10*time.Minute, taskState.StallingDuration)
+	require.EqualValues(t, 10*time.Minute, taskState.WaitingDuration)
 	metricsRegistry.AssertAllExpectations(t)
 }
 
@@ -473,16 +479,19 @@ func TestStorageYDBGetTaskWithDependencies(t *testing.T) {
 	require.NoError(t, err)
 
 	taskID, err := storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
-		GenerationID:   42,
-		Status:         TaskStatusReadyToRun,
-		State:          []byte{1, 2, 3},
-		Dependencies:   common.NewStringSet(depID1, depID2),
+		IdempotencyKey:   getIdempotencyKeyForTest(t),
+		TaskType:         "task1",
+		Description:      "Some task",
+		CreatedAt:        createdAt,
+		CreatedBy:        "some_user",
+		ModifiedAt:       modifiedAt,
+		GenerationID:     42,
+		Status:           TaskStatusReadyToRun,
+		State:            []byte{1, 2, 3},
+		Dependencies:     common.NewStringSet(depID1, depID2),
+		InflightDuration: 10 * time.Minute,
+		StallingDuration: 10 * time.Minute,
+		WaitingDuration:  10 * time.Minute,
 	})
 	require.NoError(t, err)
 
@@ -499,6 +508,9 @@ func TestStorageYDBGetTaskWithDependencies(t *testing.T) {
 	require.EqualValues(t, []byte{1, 2, 3}, taskState.State)
 	require.EqualValues(t, common.NewStringSet(depID1, depID2), taskState.Dependencies)
 	require.WithinDuration(t, time.Time(createdAt), time.Time(taskState.ChangedStateAt), time.Microsecond)
+	require.EqualValues(t, 10*time.Minute, taskState.InflightDuration)
+	require.EqualValues(t, 10*time.Minute, taskState.StallingDuration)
+	require.EqualValues(t, 10*time.Minute, taskState.WaitingDuration)
 	metricsRegistry.AssertAllExpectations(t)
 }
 
@@ -2833,6 +2845,7 @@ func TestStorageYDBLockTaskToRun(t *testing.T) {
 	}, createdAt.Add(taskDuration), "host", "runner_43")
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 1)
+	require.EqualValues(t, 0, taskState.StallingDuration)
 	metricsRegistry.AssertAllExpectations(t)
 }
 
@@ -2979,6 +2992,7 @@ func TestStorageYDBLockTaskToCancel(t *testing.T) {
 	}, createdAt.Add(taskDuration), "host", "runner_43")
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 1)
+	require.EqualValues(t, 0, taskState.StallingDuration)
 	metricsRegistry.AssertAllExpectations(t)
 }
 
@@ -3125,6 +3139,7 @@ func TestStorageYDBMarkForCancellation(t *testing.T) {
 	require.EqualValues(t, taskState.Status, TaskStatusReadyToCancel)
 	require.EqualValues(t, taskState.ErrorCode, grpc_codes.Canceled)
 	require.EqualValues(t, taskState.ErrorMessage, "Cancelled by client")
+	require.EqualValues(t, 0, taskState.WaitingDuration)
 }
 
 func TestStorageYDBMarkForCancellationIfAlreadyCancelling(t *testing.T) {
@@ -3175,6 +3190,7 @@ func TestStorageYDBMarkForCancellationIfAlreadyCancelling(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 0)
 	require.Equal(t, taskState.Status, TaskStatusCancelling)
+	require.EqualValues(t, 0, taskState.WaitingDuration)
 }
 
 func TestStorageYDBMarkForCancellationIfAlreadyFinished(t *testing.T) {
@@ -3224,6 +3240,7 @@ func TestStorageYDBMarkForCancellationIfAlreadyFinished(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 0)
 	require.Equal(t, taskState.Status, TaskStatusFinished)
+	require.EqualValues(t, 0, taskState.WaitingDuration)
 }
 
 func TestStorageYDBMarkForCancellationIfAlreadyCancelled(t *testing.T) {
@@ -3273,6 +3290,57 @@ func TestStorageYDBMarkForCancellationIfAlreadyCancelled(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 0)
 	require.Equal(t, taskState.Status, TaskStatusCancelled)
+	require.EqualValues(t, 0, taskState.WaitingDuration)
+}
+
+func TestStorageYDBMarkForCancellationWhileWaitingToRun(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+	createdAt := time.Now()
+	taskDuration := time.Minute
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": "task1"},
+	).On("Add", int64(1)).Once()
+
+	taskID, err := storage.CreateTask(ctx, TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task1",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     createdAt,
+		GenerationID:   0,
+		Status:         TaskStatusWaitingToRun,
+		State:          []byte{},
+		Dependencies:   common.NewStringSet(),
+	})
+	require.NoError(t, err)
+	metricsRegistry.AssertAllExpectations(t)
+
+	cancelling, err := storage.MarkForCancellation(ctx, taskID, createdAt.Add(taskDuration))
+	require.NoError(t, err)
+	require.True(t, cancelling)
+	metricsRegistry.AssertAllExpectations(t)
+
+	taskState, err := storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.EqualValues(t, taskState.GenerationID, 1)
+	require.Equal(t, taskState.Status, TaskStatusReadyToCancel)
+	require.Equal(t, taskDuration, taskState.WaitingDuration)
 }
 
 func TestStorageYDBUpdateTask(t *testing.T) {
@@ -4723,8 +4791,9 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 		map[string]string{"type": "task1"},
 	).On("Add", int64(1)).Once()
 
-	createdAt := time.Now()
-	modifiedAt := createdAt.Add(time.Hour)
+	initialWaitingDuration := 42 * time.Minute
+	taskDuration := time.Hour
+	createdAt := time.Now().Add(-taskDuration)
 
 	depID1, err := storage.CreateTask(ctx, TaskState{
 		IdempotencyKey: getIdempotencyKeyForTest(t),
@@ -4732,7 +4801,7 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 		Description:    "Some task",
 		CreatedAt:      createdAt,
 		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
+		ModifiedAt:     createdAt,
 		GenerationID:   42,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
@@ -4746,7 +4815,7 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 		Description:    "Some task",
 		CreatedAt:      createdAt,
 		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
+		ModifiedAt:     createdAt,
 		GenerationID:   42,
 		Status:         TaskStatusReadyToRun,
 		State:          []byte{},
@@ -4755,16 +4824,17 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 	require.NoError(t, err)
 
 	taskID, err := storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     modifiedAt,
-		GenerationID:   42,
-		Status:         TaskStatusReadyToRun,
-		State:          []byte{1, 2, 3},
-		Dependencies:   common.NewStringSet(depID1, depID2),
+		IdempotencyKey:  getIdempotencyKeyForTest(t),
+		TaskType:        "task1",
+		Description:     "Some task",
+		CreatedAt:       createdAt,
+		CreatedBy:       "some_user",
+		ModifiedAt:      createdAt,
+		GenerationID:    42,
+		Status:          TaskStatusReadyToRun,
+		State:           []byte{1, 2, 3},
+		Dependencies:    common.NewStringSet(depID1, depID2),
+		WaitingDuration: initialWaitingDuration,
 	})
 	require.NoError(t, err)
 
@@ -4774,6 +4844,7 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 	task, err := storage.GetTask(ctx, taskID)
 	require.NoError(t, err)
 	require.Equal(t, task.Status, TaskStatusWaitingToRun)
+	require.Equal(t, task.WaitingDuration, initialWaitingDuration)
 
 	// Force finish first dependency and make sure task still sleeping
 	err = storage.ForceFinishTask(ctx, depID1)
@@ -4782,20 +4853,96 @@ func TestForceFinishTaskWithDependencies(t *testing.T) {
 	task, err = storage.GetTask(ctx, depID1)
 	require.NoError(t, err)
 	require.Equal(t, task.Status, TaskStatusFinished)
+	require.Equal(t, task.WaitingDuration, time.Duration(0))
 
 	task, err = storage.GetTask(ctx, taskID)
 	require.NoError(t, err)
 	require.Equal(t, task.Status, TaskStatusWaitingToRun)
+	require.Equal(t, task.WaitingDuration, initialWaitingDuration)
 
-	// Force finish first dependency and make sure task ready to run
+	// Force finish second dependency and make sure task ready to run
 	err = storage.ForceFinishTask(ctx, depID2)
 	require.NoError(t, err)
 
 	task, err = storage.GetTask(ctx, depID2)
 	require.NoError(t, err)
 	require.Equal(t, task.Status, TaskStatusFinished)
+	require.Equal(t, task.WaitingDuration, time.Duration(0))
 
 	task, err = storage.GetTask(ctx, taskID)
 	require.NoError(t, err)
 	require.Equal(t, task.Status, TaskStatusReadyToRun)
+
+	// Make sure that WaitingDuration is almost correct
+	expectedDuration := initialWaitingDuration + taskDuration
+	threshold := 2 * time.Second
+	require.InDelta(t, expectedDuration, task.WaitingDuration, float64(threshold))
+}
+
+func testStallingDurationAccumulatesOnStalkerRun(t *testing.T, taskStatus TaskStatus) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+
+	// YDB truncates time up to 1 microsecond
+	createdAt := time.Now().Truncate(time.Microsecond)
+	taskDuration := time.Minute
+	stallingDuration := 42 * time.Second
+	locksCount := 5
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": "task1"},
+	).On("Add", int64(1)).Once()
+
+	taskID, err := storage.CreateTask(ctx, TaskState{
+		IdempotencyKey:   getIdempotencyKeyForTest(t),
+		TaskType:         "task1",
+		Description:      "Some task",
+		CreatedAt:        createdAt,
+		CreatedBy:        "some_user",
+		ModifiedAt:       createdAt,
+		GenerationID:     0,
+		Status:           taskStatus,
+		State:            []byte{},
+		Dependencies:     common.NewStringSet(),
+		LastRunner:       "runner_42",
+		StallingDuration: stallingDuration,
+	})
+	require.NoError(t, err)
+	metricsRegistry.AssertAllExpectations(t)
+
+	for i := 0; i < locksCount; i++ {
+		function := storage.LockTaskToRun
+		if taskStatus == TaskStatusCancelling {
+			function = storage.LockTaskToCancel
+		}
+		taskState, err := function(ctx, TaskInfo{
+			ID:           taskID,
+			GenerationID: uint64(i),
+		}, createdAt.Add(time.Duration(i+1)*taskDuration), "host", "runner_43")
+		require.NoError(t, err)
+		require.Equal(t,
+			stallingDuration+time.Duration(i+1)*taskDuration,
+			taskState.StallingDuration)
+	}
+}
+
+func TestStallingDurationAccumulatesOnStalkerRun(t *testing.T) {
+	testStallingDurationAccumulatesOnStalkerRun(t, TaskStatusRunning)
+}
+
+func TestStallingDurationAccumulatesOnStalkerCancel(t *testing.T) {
+	testStallingDurationAccumulatesOnStalkerRun(t, TaskStatusCancelling)
 }

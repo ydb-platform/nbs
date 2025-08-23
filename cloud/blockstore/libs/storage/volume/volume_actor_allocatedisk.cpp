@@ -117,7 +117,8 @@ bool ValidateDevices(
     return ok;
 }
 
-std::unique_ptr<MessageDifferencer> CreateLiteReallocationDifferencer()
+std::unique_ptr<MessageDifferencer> CreateLiteReallocationDifferencer(
+    const TString& diskId)
 {
     std::array descriptors{
         NProto::TVolumeMeta::GetDescriptor()->FindFieldByName("IOModeTs"),
@@ -131,8 +132,8 @@ std::unique_ptr<MessageDifferencer> CreateLiteReallocationDifferencer()
 
     if (size_t index = FindIndex(descriptors, nullptr); index != NPOS) {
         ReportFieldDescriptorNotFound(
-            TStringBuilder() << "Lite reallocation is impossible. Descriptor #"
-                             << index << " is nullptr.");
+            "Lite reallocation is impossible. Descriptor is nullptr",
+            {{"disk", diskId}, {"index", index}});
         return nullptr;
     }
 
@@ -347,9 +348,8 @@ void TVolumeActor::HandleAllocateDiskError(
     if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED && !localDiskAllocationRetry)
     {
         ReportDiskAllocationFailure(
-            TStringBuilder()
-            << "Disk: " << GetNewestConfig().GetDiskId().Quote()
-            << " allocation failed");
+            "allocation failed",
+            {{"disk", GetNewestConfig().GetDiskId()}});
     }
     LOG_ERROR(
         ctx,
@@ -563,8 +563,8 @@ bool TVolumeActor::CheckAllocationResult(
 
     if (!ok) {
         ReportDiskAllocationFailure(
-            TStringBuilder() << "Disk " << State->GetDiskId().Quote()
-                             << ": invalid disk allocation response received");
+            "invalid disk allocation response received",
+            {{"disk", State->GetDiskId()}});
 
         if (State->GetAcceptInvalidDiskAllocationResponse()) {
             LOG_WARN(
@@ -606,7 +606,7 @@ void TVolumeActor::ExecuteUpdateDevices(
 
     Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
     if (Config->GetAllowLiteDiskReallocations()) {
-        auto differencer = CreateLiteReallocationDifferencer();
+        auto differencer = CreateLiteReallocationDifferencer(GetDiskId());
         args.LiteReallocation =
             differencer && differencer->Compare(oldMeta, newMeta);
     }
@@ -627,6 +627,7 @@ void TVolumeActor::ExecuteUpdateDevices(
 
     db.WriteMeta(newMeta);
     State->ResetMeta(std::move(newMeta));
+    State->FillOutdatedDevices();
 }
 
 void TVolumeActor::CompleteUpdateDevices(
@@ -647,8 +648,10 @@ void TVolumeActor::CompleteUpdateDevices(
     }
 
     TPoisonCallback onPartitionDestroy =
-        [requestInfo =
-             args.RequestInfo](const TActorContext& ctx, NProto::TError error)
+        [outdatedDevices = State->GetOutdatedDevices(),
+         requestInfo = args.RequestInfo](
+            const TActorContext& ctx,
+            NProto::TError error) mutable
     {
         if (!requestInfo) {
             return;
@@ -657,7 +660,8 @@ void TVolumeActor::CompleteUpdateDevices(
             ctx,
             *requestInfo,
             std::make_unique<TEvVolumePrivate::TEvUpdateDevicesResponse>(
-                std::move(error)));
+                std::move(error),
+                std::move(outdatedDevices)));
     };
 
     StopPartitions(ctx, onPartitionDestroy);

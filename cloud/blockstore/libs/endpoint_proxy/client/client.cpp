@@ -276,7 +276,7 @@ struct TEndpointProxyClient
             now
         );
 
-        auto promise = requestContext->Promise;
+        auto future = requestContext->Promise.GetFuture();
 
         requestContext->Reader->Finish(
             &requestContext->Response,
@@ -284,7 +284,9 @@ struct TEndpointProxyClient
             requestContext.release()
         );
 
-        return promise;
+        // At this point, requestContext object can already be freed after
+        // request completion. It is not safe to use it.
+        return future;
     }
 
     TFuture<NProto::TStartProxyEndpointResponse> StartProxyEndpoint(

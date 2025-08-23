@@ -19,18 +19,77 @@ namespace NCloud::NBlockStore::NStorage {
 
 // Used to store the partition-related actors, the actor of the partitions
 // itself and its wrappers.
+//
+// Examples:
+//
+// 1. No wrappers (DiskRegistry-based)
+// Stack:
+//   [TNonreplicatedPartitionActor]     (owned by TVolumeActor)
+//
+//
+// 2. No wrappers (BlobStorage-based)
+// Stack:
+//   [TPartitionActor]                  (owned by bootstraper)
+//
+//
+// 3. Shadow Disk (make sense only for DiskRegistry-based)
+// Stack:
+//   [TShadowDiskActor] (wrapper)       (owned by TVolumeActor)
+//   [TNonreplicatedPartitionActor]     (owned by TShadowDiskActor)
+//
+//
+// 4. Linked Disk (DiskRegistry-based)
+// Stack:
+//   [TFollowerDiskActor] (wrapper)     (owned by TVolumeActor)
+//   [TNonreplicatedPartitionActor]     (owned by TFollowerDiskActor)
+//
+//
+// 5. Linked Disk for Shadow disk  (DiskRegistry-based)
+// Stack:
+//   [TFollowerDiskActor] (wrapper)     (owned by TVolumeActor)
+//   [TShadowDiskActor]   (wrapper)     (owned by TFollowerDiskActor)
+//   [TNonreplicatedPartitionActor]     (owned by TShadowDiskActor)
+//
+//
+// 6. Linked Disk (BlobStorage-based)
+// Stack:
+//   [TFollowerDiskActor] (wrapper)     (owned by TVolumeActor)
+//   [TPartitionActor]                  (owned by bootstraper)
+
+
 class TActorsStack
 {
-    TDeque<NActors::TActorId> Actors;
+public:
+    enum class EActorPurpose
+    {
+        BlobStoragePartitionTablet,
+        DiskRegistryBasedPartitionActor,
+        FollowerWrapper,
+        ShadowDiskWrapper,
+    };
+
+private:
+    struct TActorInfo
+    {
+        TActorInfo(NActors::TActorId actorId, EActorPurpose purpose)
+            : ActorId(actorId)
+            , ActorPurpose(purpose)
+        {}
+        NActors::TActorId ActorId;
+        EActorPurpose ActorPurpose;
+    };
+
+    TDeque<TActorInfo> Actors;
 
 public:
     TActorsStack() = default;
-    explicit TActorsStack(NActors::TActorId actor);
+    TActorsStack(NActors::TActorId actor, EActorPurpose purpose);
 
-    void Push(NActors::TActorId actorId);
+    void Push(NActors::TActorId actorId, EActorPurpose purpose);
     void Clear();
     [[nodiscard]] bool IsKnown(NActors::TActorId actorId) const;
     [[nodiscard]] NActors::TActorId GetTop() const;
+    [[nodiscard]] NActors::TActorId GetTopWrapper() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

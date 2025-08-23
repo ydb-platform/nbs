@@ -12,7 +12,6 @@
 #include <library/cpp/digest/md5/md5.h>
 #include <library/cpp/getopt/last_getopt.h>
 
-#include <util/folder/path.h>
 #include <util/generic/guid.h>
 
 namespace NCloud::NFileStore::NProfileTool {
@@ -47,7 +46,9 @@ public:
             .DefaultValue("nodeid");
 
         Opts.AddLongOption("seed", "Seed for hash mode").StoreResult(&Seed);
-        Opts.AddLongOption("keep-file-extension", "Keep file extention, max length")
+        Opts.AddLongOption(
+                "keep-file-extension",
+                "Keep file extention, max length")
             .StoreResult(&MaxExtensionLength);
     }
 
@@ -107,13 +108,24 @@ bool TMaskSensitiveData::Advance()
     return false;
 }
 
-TString TMaskSensitiveData::Transform(const TString& str, const ui64 nodeId)
+TString TMaskSensitiveData::Transform(
+    const TString& str,
+    const ui64 nodeId) const
 {
     TString extension;
     if (MaxExtensionLength > 0) {
-        extension = TFsPath(str).GetExtension();
+        if (const auto pos = str.find_last_of(".");
+            pos != TString::npos && pos > 0)
+        {
+            extension = str.substr(pos + 1);
+        }
+
         if (extension.size() > MaxExtensionLength) {
             extension = "";
+        }
+
+        if (!extension.empty()) {
+            extension = "." + extension;
         }
     }
 
@@ -127,6 +139,21 @@ TString TMaskSensitiveData::Transform(const TString& str, const ui64 nodeId)
         case EMode::Hash: {
             return MD5::Data(Seed + str) + extension;
         }
+    }
+}
+
+void TMaskSensitiveData::MaskRequest(
+    NProto::TProfileLogRequestInfo& request) const
+{
+    if (request.GetNodeInfo().HasNodeName()) {
+        request.MutableNodeInfo()->SetNodeName(Transform(
+            request.GetNodeInfo().GetNodeName(),
+            request.GetNodeInfo().GetNodeId()));
+    }
+    if (request.GetNodeInfo().HasNewNodeName()) {
+        request.MutableNodeInfo()->SetNewNodeName(Transform(
+            request.GetNodeInfo().GetNewNodeName(),
+            request.GetNodeInfo().GetNodeId()));
     }
 }
 
@@ -149,17 +176,7 @@ void TMaskSensitiveData::MaskSensitiveData(
 
         while (EventMessageNumber > 0) {
             auto request = MessagePtr->GetRequests()[--EventMessageNumber];
-
-            if (request.GetNodeInfo().HasNodeName()) {
-                request.MutableNodeInfo()->SetNodeName(Transform(
-                    request.GetNodeInfo().GetNodeName(),
-                    request.GetNodeInfo().GetNodeId()));
-            }
-            if (request.GetNodeInfo().HasNewNodeName()) {
-                request.MutableNodeInfo()->SetNewNodeName(Transform(
-                    request.GetNodeInfo().GetNewNodeName(),
-                    request.GetNodeInfo().GetNodeId()));
-            }
+            MaskRequest(request);
             *recordOut.AddRequests() = std::move(request);
         }
         logFrame.LogEvent(recordOut);

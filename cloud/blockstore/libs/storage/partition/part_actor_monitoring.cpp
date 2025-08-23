@@ -402,6 +402,8 @@ void TPartitionActor::HandleHttpInfo(
         {"view", &TPartitionActor::HandleHttpInfo_View},
         {"getTransactionsLatency",
          &TPartitionActor::HandleHttpInfo_GetTransactionsLatency},
+        {"getGroupLatencies",
+         &TPartitionActor::HandleHttpInfo_GetGroupLatencies},
     }};
 
     const auto* msg = ev->Get();
@@ -683,6 +685,13 @@ void TPartitionActor::HandleHttpInfo_Default(
                 DIV_CLASS_ID("tab-pane", "Index") {
                     DumpDescribeHeader(out, *Info());
                     DumpCheckHeader(out, *Info());
+                }
+
+                DIV_CLASS_ID("tab-pane", "BSGroupLatency"){
+                    DumpGroupLatencyTab(
+                        out,
+                        Info()->TabletID,
+                        BSGroupOperationTimeTracker);
                 }
             }
         }

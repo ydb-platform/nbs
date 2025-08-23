@@ -30,13 +30,9 @@ void TMirrorPartitionActor::HandleWriteOrZeroCompleted(
     if (!completeRequest) {
         return;
     }
+
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    auto [volumeRequestId, _, range] = completeRequest.value();
-    for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.BlockRange)) {
-            DirtyReadRequestIds.insert(id);
-        }
-    }
+    auto [volumeRequestId, _, __] = completeRequest.value();
 
     if (ResyncActorId) {
         auto completion = std::make_unique<
@@ -70,9 +66,9 @@ void TMirrorPartitionActor::HandleMirroredReadCompleted(
     if (it == DirtyReadRequestIds.end()) {
         if (ev->Get()->ChecksumMismatchObserved) {
             ReportMirroredDiskChecksumMismatchUponRead(
-                TStringBuilder()
-                << " disk: " << DiskId.Quote() << ", range: "
-                << (requestCtx ? requestCtx->BlockRange.Print() : ""));
+                {{"disk", DiskId},
+                 {"range",
+                  (requestCtx ? requestCtx->BlockRange.Print() : "")}});
         }
     } else {
         DirtyReadRequestIds.erase(it);
@@ -92,7 +88,6 @@ void TMirrorPartitionActor::MirrorRequest(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
-
 
     const auto range = BuildRequestBlockRange(
         *ev->Get(),
@@ -114,7 +109,6 @@ void TMirrorPartitionActor::MirrorRequest(
             *requestInfo,
             std::make_unique<typename TMethod::TResponse>(Status)
         );
-
         return;
     }
 
@@ -132,8 +126,9 @@ void TMirrorPartitionActor::MirrorRequest(
         }
         WriteIntersectsWithScrubbing = true;
     }
+
     for (const auto& [id, request]: RequestsInProgress.AllRequests()) {
-        if (range.Overlaps(request.BlockRange)) {
+        if (!request.IsWrite && range.Overlaps(request.BlockRange)) {
             DirtyReadRequestIds.insert(id);
         }
     }

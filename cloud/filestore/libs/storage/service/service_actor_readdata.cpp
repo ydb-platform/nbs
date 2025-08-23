@@ -48,7 +48,7 @@ private:
     // Response data
     const TByteRange OriginByteRange;
     const TByteRange AlignedByteRange;
-    IBlockBufferPtr BlockBuffer;
+    std::unique_ptr<TString> BlockBuffer;
     NProtoPrivate::TDescribeDataResponse DescribeResponse;
     ui32 RemainingBlobsToRead = 0;
     bool ReadDataFallbackEnabled = false;
@@ -119,7 +119,6 @@ TReadDataActor::TReadDataActor(
         ReadRequest.GetLength(),
         BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
-    , BlockBuffer(CreateBlockBuffer(AlignedByteRange))
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
@@ -128,6 +127,12 @@ TReadDataActor::TReadDataActor(
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
+    // BlockBuffer should not be initialized in constructor, because creating
+    // a block buffer leads to memory allocation (and initialization) which is
+    // heavy and we would like to execute that on a separate thread (instead of
+    // this actor's parent thread)
+    BlockBuffer = std::make_unique<TString>(AlignedByteRange.Length, 0);
+
     DescribeData(ctx);
     Become(&TThis::StateWork);
 }
@@ -196,14 +201,11 @@ TString DescribeResponseDebugString(
 char* GetDataPtr(
     ui64 offset,
     TByteRange alignedByteRange,
-    ui32 blockSize,
-    IBlockBuffer& buffer)
+    TString& buffer)
 {
 
     const ui64 relOffset = offset - alignedByteRange.Offset;
-    const ui32 blockNo = relOffset / blockSize;
-    const auto block = buffer.GetBlock(blockNo);
-    return const_cast<char*>(block.data()) + relOffset - blockNo * blockSize;
+    return const_cast<char*>(buffer.data()) + relOffset;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -211,7 +213,7 @@ char* GetDataPtr(
 void ApplyFreshDataRange(
     const TActorContext& ctx,
     const NProtoPrivate::TFreshDataRange& sourceFreshData,
-    IBlockBuffer& targetBuffer,
+    TString& targetBuffer,
     TByteRange alignedTargetByteRange,
     ui32 blockSize,
     ui64 offset,
@@ -252,7 +254,6 @@ void ApplyFreshDataRange(
     char* targetData = GetDataPtr(
         commonRange.Offset,
         alignedTargetByteRange,
-        blockSize,
         targetBuffer);
 
     // NB: we assume that underlying target data is a continuous buffer
@@ -394,8 +395,12 @@ void TReadDataActor::HandleReadBlobResponse(
             LogTag.c_str(),
             msg->Print(false).c_str());
 
-        const auto errorReason = FormatError(
+        const NProto::TError error(
             MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason));
+
+        InFlightRequest->Complete(ctx.Now(), error);
+
+        const auto errorReason = FormatError(error);
         ReadData(ctx, errorReason);
         return;
     }
@@ -428,9 +433,10 @@ void TReadDataActor::HandleReadBlobResponse(
                 NKikimrProto::EReplyStatus_Name(response.Status).c_str(),
                 msg->Print(false).c_str());
 
-            const auto errorReason = FormatError(
-                MakeError(MAKE_KIKIMR_ERROR(response.Status), "read error"));
-            ReadData(ctx, errorReason);
+            const auto error =
+                MakeError(MAKE_KIKIMR_ERROR(response.Status), "read error");
+            InFlightRequest->Complete(ctx.Now(), error);
+            ReadData(ctx, FormatError(error));
             return;
         }
 
@@ -454,6 +460,7 @@ void TReadDataActor::HandleReadBlobResponse(
                 "%s ReadBlob error: %s",
                 LogTag.c_str(),
                 error.c_str());
+            InFlightRequest->Complete(ctx.Now(), MakeError(E_FAIL, error));
             ReadData(ctx, error);
 
             return;
@@ -482,7 +489,6 @@ void TReadDataActor::HandleReadBlobResponse(
         char* targetData = GetDataPtr(
             blobRange.GetOffset(),
             AlignedByteRange,
-            BlockSize,
             *BlockBuffer);
 
         dataIter.ExtractPlainDataAndAdvance(targetData, blobRange.GetLength());
@@ -589,13 +595,16 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             offset);
     }
 
-    CopyFileData(
-        LogTag,
-        OriginByteRange,
-        AlignedByteRange,
-        DescribeResponse.GetFileSize(),
-        *BlockBuffer,
-        response->Record.MutableBuffer());
+    const auto end = Min(DescribeResponse.GetFileSize(), OriginByteRange.End());
+    if (end <= OriginByteRange.Offset) {
+        BlockBuffer->clear();
+    } else {
+        BlockBuffer->ReserveAndResize(end - AlignedByteRange.Offset);
+        const auto bufferOffset =
+            OriginByteRange.Offset - AlignedByteRange.Offset;
+        response->Record.set_allocated_buffer(BlockBuffer.release());
+        response->Record.SetBufferOffset(bufferOffset);
+    }
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -643,6 +652,7 @@ void TStorageServiceActor::HandleReadData(
     const TEvService::TEvReadDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    TInstant startTime = ctx.Now();
     auto* msg = ev->Get();
 
     const auto& clientId = GetClientId(msg->Record);
@@ -702,7 +712,7 @@ void TStorageServiceActor::HandleReadData(
         TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         session->MediaKind,
         session->RequestStats,
-        ctx.Now());
+        startTime);
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
 

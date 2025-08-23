@@ -231,14 +231,14 @@ TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
     };
 }
 
-bool TIndexTabletState::CalculateExpectedShardCount() const
+ui64 TIndexTabletState::CalculateExpectedShardCount() const
 {
     if (FileSystem.GetShardNo()) {
         // sharding is flat
         return 0;
     }
 
-    const auto currentShardCount = FileSystem.ShardFileSystemIdsSize();
+    const ui64 currentShardCount = FileSystem.ShardFileSystemIdsSize();
     ui64 autoShardCount = 0;
     if (FileSystem.GetAutomaticShardCreationEnabled()
             && FileSystem.GetShardAllocationUnit())

@@ -14,7 +14,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
-	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -197,7 +196,7 @@ func (m *migrateSnapshotDatabaseTask) migrateSnapshots(
 func (m *migrateSnapshotDatabaseTask) updateInflightSnapshots(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	snapshotsToMigrate tasks_storage.StringSet,
+	snapshotsToMigrate tasks_common.StringSet,
 ) error {
 
 	cfg := m.config

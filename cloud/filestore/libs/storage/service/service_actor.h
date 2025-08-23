@@ -57,7 +57,7 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr SsdFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr SsdTabletCount;
 
-    TInstant LastCpuWaitTs;
+    TMonotonic LastCpuWaitTs;
 
 public:
     TStorageServiceActor(
@@ -108,6 +108,13 @@ private:
     void ForwardXAttrRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
+        const TSessionInfo*);
+
+    template <typename TMethod>
+    void ReplyToXAttrRequest(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev,
+        std::unique_ptr<typename TMethod::TResponse> response,
         const TSessionInfo*);
 
     template <typename TMethod>
@@ -245,6 +252,10 @@ private:
         TString input);
 
     NActors::IActorPtr CreateReadNodeRefsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateSetHasXAttrsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

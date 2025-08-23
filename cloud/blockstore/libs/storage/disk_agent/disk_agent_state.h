@@ -88,6 +88,7 @@ public:
         TVector<TString> Errors;
         TVector<TString> ConfigMismatchErrors;
         TVector<TString> DevicesWithSuspendedIO;
+        TVector<TString> LostDevicesIds;
 
         TDeviceGuard Guard;
     };
@@ -198,7 +199,9 @@ private:
 
     void InitRdmaTarget();
 
-    void RestoreSessions(TDeviceClient& client) const;
+    void RestoreSessions(
+        TDeviceClient& client,
+        const THashSet<TString>& lostDevicesIds) const;
 
     void CheckIfDeviceIsDisabled(const TString& uuid, const TString& clientId);
 };

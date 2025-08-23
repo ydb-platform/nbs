@@ -203,7 +203,8 @@ private:
             << " request wakeup timer hit");
 
         if constexpr (IsWriteRequest(T::Request)) {
-            ReportServiceProxyWakeupTimerHit();
+            ReportServiceProxyWakeupTimerHit(
+                {{"disk", DiskId}, {"RequestId", CallContext->RequestId}});
             return;
         }
 

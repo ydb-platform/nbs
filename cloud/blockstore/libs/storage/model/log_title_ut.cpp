@@ -47,7 +47,9 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
 
     Y_UNIT_TEST(GetForVolume)
     {
-        TLogTitle logTitle1(12345, "", GetCycleCount());
+        TLogTitle logTitle1(
+            GetCycleCount(),
+            TLogTitle::TVolume{.TabletId = 12345, .DiskId = ""});
 
         UNIT_ASSERT_STRINGS_EQUAL(
             "[v:12345 g:? d:???]",
@@ -70,7 +72,13 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
 
     Y_UNIT_TEST(GetForPartition)
     {
-        TLogTitle logTitle1(12345, "disk1", GetCycleCount(), 1, 2);
+        TLogTitle logTitle1(
+            GetCycleCount(),
+            TLogTitle::TPartition{
+                .TabletId = 12345,
+                .DiskId = "disk1",
+                .PartitionIndex = 1,
+                .PartitionCount = 2});
 
         UNIT_ASSERT_STRINGS_EQUAL(
             "[p1:12345 g:? d:disk1]",
@@ -89,11 +97,11 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
     Y_UNIT_TEST(GetForSession)
     {
         TLogTitle logTitle(
-            TLogTitle::EType::Session,
-            "session-1",
-            "disk1",
-            false,
-            GetCycleCount());
+            GetCycleCount(),
+            TLogTitle::TSession{
+                .SessionId = "session-1",
+                .DiskId = "disk1",
+                .TemporaryServer = false});
 
         UNIT_ASSERT_STRINGS_EQUAL(
             "[vs:? d:disk1 s:session-1]",
@@ -112,11 +120,11 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
     Y_UNIT_TEST(GetForSessionOnTemporaryServer)
     {
         TLogTitle logTitle(
-            TLogTitle::EType::Session,
-            "session-1",
-            "disk1",
-            true,
-            GetCycleCount());
+            GetCycleCount(),
+            TLogTitle::TSession{
+                .SessionId = "session-1",
+                .DiskId = "disk1",
+                .TemporaryServer = true});
 
         UNIT_ASSERT_STRINGS_EQUAL(
             "[~vs:? d:disk1 s:session-1]",
@@ -135,12 +143,13 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
     Y_UNIT_TEST(GetForClient)
     {
         TLogTitle logTitle(
-            12345,
-            "session-1",
-            "client-1",
-            "disk1",
-            false,
-            GetCycleCount());
+            GetCycleCount(),
+            TLogTitle::TClient{
+                .TabletId = 12345,
+                .SessionId = "session-1",
+                .ClientId = "client-1",
+                .DiskId = "disk1",
+                .TemporaryServer = false});
 
         UNIT_ASSERT_STRINGS_EQUAL(
             "[vc:12345 d:disk1 s:session-1 c:client-1 pg:?]",
@@ -156,12 +165,13 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             "[vc:12345 d:disk1 s:session-1 c:client-1 pg:1 t:");
 
         TLogTitle temporayLogTitle(
-            12345,
-            "session-1",
-            "client-1",
-            "disk1",
-            true,
-            GetCycleCount());
+            GetCycleCount(),
+            TLogTitle::TClient{
+                .TabletId = 12345,
+                .SessionId = "session-1",
+                .ClientId = "client-1",
+                .DiskId = "disk1",
+                .TemporaryServer = true});
         UNIT_ASSERT_STRINGS_EQUAL(
             "[~vc:12345 d:disk1 s:session-1 c:client-1 pg:?]",
             temporayLogTitle.Get(TLogTitle::EDetails::Brief));
@@ -169,7 +179,11 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
 
     Y_UNIT_TEST(GetForVolumeProxy)
     {
-        TLogTitle logTitle("disk1", false, GetCycleCount());
+        TLogTitle logTitle(
+            GetCycleCount(),
+            TLogTitle::TVolumeProxy{
+                .DiskId = "disk1",
+                .TemporaryServer = false});
 
         UNIT_ASSERT_STRINGS_EQUAL(
             "[vp:? d:disk1 pg:0]",
@@ -185,17 +199,36 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             "[vp:12345 d:disk1 pg:5]",
             logTitle.Get(TLogTitle::EDetails::Brief));
 
-        TLogTitle temporayLogTitle("disk1", true, GetCycleCount());
+        TLogTitle temporayLogTitle(
+            GetCycleCount(),
+            TLogTitle::TVolumeProxy{
+                .DiskId = "disk1",
+                .TemporaryServer = true});
         UNIT_ASSERT_STRINGS_EQUAL(
             "[~vp:? d:disk1 pg:0]",
             temporayLogTitle.Get(TLogTitle::EDetails::Brief));
+    }
+
+    Y_UNIT_TEST(GetForPartitionNonrepl)
+    {
+        TLogTitle logTitle{
+            GetCycleCount(),
+            TLogTitle::TPartitionNonrepl{.DiskId = "disk1"}};
+
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[nrd:disk1]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        UNIT_ASSERT_STRING_CONTAINS(logTitle.GetWithTime(), "[nrd:disk1 t:");
     }
 
     Y_UNIT_TEST(GetChildLogger)
     {
         const ui64 startTime =
             GetCycleCount() - GetCyclesPerMillisecond() * 2001;
-        TLogTitle logTitle1(12345, "disk1", startTime);
+        TLogTitle logTitle1(
+            startTime,
+            TLogTitle::TVolume{.TabletId = 12345, .DiskId = "disk1"});
         logTitle1.SetGeneration(5);
 
         auto childLogTitle =
@@ -210,10 +243,12 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
     {
         const ui64 startTime =
             GetCycleCount() - GetCyclesPerMillisecond() * 2001;
-        TLogTitle logTitle1(12345, "disk1", startTime);
+        TLogTitle logTitle1(
+            startTime,
+            TLogTitle::TVolume{.TabletId = 12345, .DiskId = "disk1"});
         logTitle1.SetGeneration(5);
 
-        std::vector<std::pair<TString, TString>> tags = {{"cp", "123"}};
+        std::pair<TString, TString> tags[] = {{"cp", "123"}};
 
         auto childLogTitle = logTitle1.GetChildWithTags(
             startTime + GetCyclesPerMillisecond() * 1001,

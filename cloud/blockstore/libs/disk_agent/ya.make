@@ -23,6 +23,7 @@ PEERDIR(
     cloud/storage/core/libs/daemon
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/http
+    cloud/storage/core/libs/io_uring
     cloud/storage/core/libs/version
 
     contrib/ydb/core/protos

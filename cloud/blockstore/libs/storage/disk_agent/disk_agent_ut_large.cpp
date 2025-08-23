@@ -16,7 +16,7 @@ using namespace NDiskAgentTest;
 
 Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
 {
-    Y_UNIT_TEST(ShouldSecureErase5GiBUnit)
+    void ShouldSecureErase5GiBUnitImpl(NProto::EDiskAgentBackendType backend)
     {
         const ui64 totalSize = 5_GB;
         const ui32 blockSize = 4_KB;
@@ -34,7 +34,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
         auto env = TTestEnvBuilder(runtime)
             .With([&] {
                 auto config = CreateDefaultAgentConfig();
-                config.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+                config.SetBackend(backend);
                 config.SetAcquireRequired(true);
                 config.SetEnabled(true);
 
@@ -180,6 +180,16 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
                     std::count(dr.Data(), dr.Data() + dr.Size(), '\0'));
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldSecureErase5GiBUnitAio)
+    {
+        ShouldSecureErase5GiBUnitImpl(NProto::DISK_AGENT_BACKEND_AIO);
+    }
+
+    Y_UNIT_TEST(ShouldSecureErase5GiBUnitIoUring)
+    {
+        ShouldSecureErase5GiBUnitImpl(NProto::DISK_AGENT_BACKEND_IO_URING);
     }
 }
 

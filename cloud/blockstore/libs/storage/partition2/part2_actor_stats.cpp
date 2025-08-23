@@ -49,12 +49,9 @@ void TPartitionActor::UpdateActorStats(const TActorContext& ctx)
     }
 }
 
-void TPartitionActor::SendStatsToService(const TActorContext& ctx)
+TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
+    const TActorContext& ctx)
 {
-    if (!PartCounters) {
-        return;
-    }
-
     PartCounters->Simple.MixedBytesCount.Set(
         State->GetMixedBlockCount() * State->GetBlockSize());
 
@@ -72,17 +69,14 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
         State->GetUsedBlockCount() * State->GetBlockSize());
 
     // TODO: output new compaction score via another counter
-    PartCounters->Simple.CompactionScore.Set(
-        State->GetLegacyCompactionScore());
+    PartCounters->Simple.CompactionScore.Set(State->GetLegacyCompactionScore());
 
     PartCounters->Simple.BytesCount.Set(
         State->GetBlockCount() * State->GetBlockSize());
 
-    PartCounters->Simple.IORequestsInFlight.Set(
-        State->GetIORequestsInFlight());
+    PartCounters->Simple.IORequestsInFlight.Set(State->GetIORequestsInFlight());
 
-    PartCounters->Simple.IORequestsQueued.Set(
-        State->GetIORequestsQueued());
+    PartCounters->Simple.IORequestsQueued.Set(State->GetIORequestsQueued());
 
     PartCounters->Simple.AlmostFullChannelCount.Set(
         State->GetAlmostFullChannelCount());
@@ -91,23 +85,30 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
     PartCounters->Simple.GarbageQueueBytes.Set(
         State->GetGarbageQueue().GetGarbageQueueBytes());
 
-    PartCounters->Simple.CheckpointBytes.Set(State->GetBlockSize()
-        * State->GetCheckpoints().GetCheckpointBlockCount());
+    PartCounters->Simple.CheckpointBytes.Set(
+        State->GetBlockSize() *
+        State->GetCheckpoints().GetCheckpointBlockCount());
 
     PartCounters->Simple.ChannelHistorySize.Set(ChannelHistorySize);
 
-    ui64 sysCpuConsumption  = 0;
-    for (ui32 tx = 0; tx < TPartitionCounters::ETransactionType::TX_SIZE; ++tx) {
-        sysCpuConsumption += Counters->TxCumulative(tx, NKikimr::COUNTER_TT_EXECUTE_CPUTIME).Get();
-        sysCpuConsumption += Counters->TxCumulative(tx, NKikimr::COUNTER_TT_BOOKKEEPING_CPUTIME).Get();
+    ui64 sysCpuConsumption = 0;
+    for (ui32 tx = 0; tx < TPartitionCounters::ETransactionType::TX_SIZE; ++tx)
+    {
+        sysCpuConsumption +=
+            Counters->TxCumulative(tx, NKikimr::COUNTER_TT_EXECUTE_CPUTIME)
+                .Get();
+        sysCpuConsumption +=
+            Counters->TxCumulative(tx, NKikimr::COUNTER_TT_BOOKKEEPING_CPUTIME)
+                .Get();
     }
 
     auto* resourceMetrics = Executor()->GetResourceMetrics();
-    NBlobMetrics::TBlobLoadMetrics blobLoadMetrics = NBlobMetrics::MakeBlobLoadMetrics(
-        State->GetConfig().GetExplicitChannelProfiles(),
-        *resourceMetrics);
-    NBlobMetrics::TBlobLoadMetrics offsetLoadMetrics = NBlobMetrics::TakeDelta(
-        PrevMetrics, blobLoadMetrics);
+    NBlobMetrics::TBlobLoadMetrics blobLoadMetrics =
+        NBlobMetrics::MakeBlobLoadMetrics(
+            State->GetConfig().GetExplicitChannelProfiles(),
+            *resourceMetrics);
+    NBlobMetrics::TBlobLoadMetrics offsetLoadMetrics =
+        NBlobMetrics::TakeDelta(PrevMetrics, blobLoadMetrics);
     offsetLoadMetrics += OverlayMetrics;
 
     NKikimrTabletBase::TMetrics metrics;
@@ -117,13 +118,10 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
         true   // forceAll
     );
 
-    auto request = std::make_unique<TEvStatsService::TEvVolumePartCounters>(
-        MakeIntrusive<TCallContext>(),
-        State->GetConfig().GetDiskId(),
-        std::move(PartCounters),
+    TPartitionStatisticsCounters counters(
         sysCpuConsumption - SysCPUConsumption,
         UserCPUConsumption,
-        !State->GetCheckpoints().IsEmpty(),
+        std::move(PartCounters),
         std::move(offsetLoadMetrics),
         std::move(metrics));
 
@@ -137,7 +135,60 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
         EPublishingPolicy::Repl,
         DiagnosticsConfig->GetHistogramCounterOptions());
 
+    return counters;
+}
+
+void TPartitionActor::SendStatsToService(const TActorContext& ctx)
+{
+    if (!PartCounters || !State) {
+        return;
+    }
+
+    auto&& [diffSysCpuConsumption, userCpuConsumption, partCounters, offsetLoadMetrics, metrics] =
+        ExtractPartCounters(ctx);
+
+    auto request = std::make_unique<TEvStatsService::TEvVolumePartCounters>(
+        MakeIntrusive<TCallContext>(),
+        State->GetConfig().GetDiskId(),
+        std::move(partCounters),
+        diffSysCpuConsumption,
+        userCpuConsumption,
+        !State->GetCheckpoints().IsEmpty(),
+        std::move(offsetLoadMetrics),
+        std::move(metrics));
+
     NCloud::Send(ctx, VolumeActorId, std::move(request));
+}
+
+void TPartitionActor::HandleGetPartCountersRequest(
+    const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (!PartCounters || !State) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
+                MakeError(
+                    EWellKnownResultCodes::E_INVALID_STATE,
+                    "Empty PartCounters")));
+        return;
+    }
+
+    auto&& [diffSysCpuConsumption, userCpuConsumption, partCounters, offsetLoadMetrics, metrics] =
+        ExtractPartCounters(ctx);
+
+    auto response =
+        std::make_unique<TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
+            SelfId(),
+            diffSysCpuConsumption,
+            userCpuConsumption,
+            std::move(partCounters),
+            std::move(offsetLoadMetrics),
+            std::move(metrics));
+
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

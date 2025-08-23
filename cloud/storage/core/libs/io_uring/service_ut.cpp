@@ -63,10 +63,12 @@ struct TFixture: public NUnitTest::TBaseFixture
             OpenAlways | RdWr | DirectAligned | Sync);
         FileData.Resize(BlockCount * BlockSize);
 
-        auto factory = CreateIoUringServiceFactory(
-            {.SubmissionQueueEntries = SubmissionQueueSize,
-             .MaxKernelWorkersCount = 1,
-             .ShareKernelWorkers = true});
+        auto factory = CreateIoUringServiceFactory({
+            .SubmissionQueueEntries = SubmissionQueueSize,
+            .MaxKernelWorkersCount = 1,
+            .ShareKernelWorkers = true,
+            .ForceAsyncIO = true,
+        });
 
         Services.reserve(ServicesCount);
         for (ui32 i = 0; i != ServicesCount; ++i) {
@@ -238,8 +240,16 @@ Y_UNIT_TEST_SUITE(TIoUringNullTest)
         }
 
         for (auto& future: futures) {
-            const ui32 len = future.GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL(0, len);
+            try {
+                const ui32 len = future.GetValueSync();
+                UNIT_ASSERT_VALUES_EQUAL(length, len);
+            } catch (const TServiceError& e) {
+                // EINVAL is expected if the linux kernel is older than 6.0
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    MAKE_SYSTEM_ERROR(EINVAL),
+                    e.GetCode(),
+                    e.GetMessage());
+            }
         }
     }
 }

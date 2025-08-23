@@ -129,8 +129,7 @@ struct TTestEnv
             NProto::EVolumeIOMode ioMode,
             bool useRdma,
             TMigrationStatePtr migrationState,
-            bool useDirectCopy,
-            bool enableVolumeRequestId = false)
+            const NProto::TStorageServiceConfig& storageConfigPatch)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -163,11 +162,9 @@ struct TTestEnv
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
         storageConfig.SetMaxMigrationBandwidth(500);
-        storageConfig.SetUseDirectCopyRange(useDirectCopy);
+        storageConfig.SetInitialRetryDelayForServiceRequests(10);
         storageConfig.SetMigrationIndexCachingInterval(1024);
-        storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(enableVolumeRequestId);
-        storageConfig.SetRejectLateRequestsAtDiskAgentEnabled(
-            enableVolumeRequestId);
+        storageConfig.MergeFrom(storageConfigPatch);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -314,6 +311,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
     {
         TTestBasicRuntime runtime;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -321,7 +320,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             nullptr,   // no migration state
-            useDirectCopy);
+            storageConfigPatch);
 
         TPartitionClient client(runtime, env.ActorId);
 
@@ -367,6 +366,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
     {
         TTestBasicRuntime runtime;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -374,7 +375,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             nullptr,   // no migration state
-            useDirectCopy);
+            storageConfigPatch);
 
         TPartitionClient client(runtime, env.ActorId);
 
@@ -447,6 +448,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
     void DoShouldUpdateMigrationState(bool useDirectCopy)
     {
         TTestBasicRuntime runtime;
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -454,7 +457,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             nullptr,   // no migration state
-            useDirectCopy);
+            storageConfigPatch);
 
         TPartitionClient client(runtime, env.ActorId);
 
@@ -522,10 +525,61 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         DoShouldUpdateMigrationState(true);
     }
 
+    void DoShouldNotFinishMigrationWhenMigrationIsDisabled(bool useDirectCopy)
+    {
+        TTestBasicRuntime runtime;
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
+        storageConfigPatch.SetNonReplicatedVolumeMigrationDisabled(true);
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            nullptr,   // no migration state
+            storageConfigPatch);
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) -> bool
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvRangeMigrated: {
+                        UNIT_ASSERT_C(
+                            false,
+                            "EvRangeMigrated should not be received");
+                    }
+                    case TEvDiskRegistry::EvFinishMigrationRequest: {
+                        UNIT_ASSERT_C(
+                            false,
+                            "EvFinishMigrationRequest should not be received");
+                    }
+                }
+
+                return false;
+            });
+
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+    }
+
+    Y_UNIT_TEST(ShouldNotFinishMigrationWhenMigrationIsDisabled)
+    {
+        DoShouldNotFinishMigrationWhenMigrationIsDisabled(false);
+    }
+
+    Y_UNIT_TEST(ShouldNotFinishMigrationWhenMigrationIsDisabledDirectCopy)
+    {
+        DoShouldNotFinishMigrationWhenMigrationIsDisabled(true);
+    }
+
     void DoShouldDoMigrationViaRdma(bool useDirectCopy)
     {
         TTestBasicRuntime runtime;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -533,7 +587,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             true,
             nullptr,   // no migration state,
-            useDirectCopy);
+            storageConfigPatch);
 
         env.Rdma().InitAllEndpoints();
 
@@ -555,6 +609,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
     {
         TTestBasicRuntime runtime;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -562,7 +618,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_ERROR_READ_ONLY,
             false,
             nullptr,   // no migration state
-            useDirectCopy);
+            storageConfigPatch);
 
         // petya should be migrated => 3 ranges
         WaitForMigrations(runtime, 3);
@@ -582,6 +638,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
     {
         TTestBasicRuntime runtime;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -589,7 +647,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             nullptr,   // no migration state
-            useDirectCopy);
+            storageConfigPatch);
 
         TPartitionClient client(runtime, env.ActorId);
 
@@ -621,6 +679,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         auto migrationState = std::make_shared<TMigrationState>();
         migrationState->IsMigrationAllowed = false;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -628,7 +688,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             migrationState,
-            useDirectCopy);
+            storageConfigPatch);
 
         WaitForNoMigrations(runtime, TDuration::Seconds(5));
 
@@ -653,6 +713,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         auto migrationState = std::make_shared<TMigrationState>();
         migrationState->IsMigrationAllowed = false;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -660,7 +722,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             migrationState,
-            useDirectCopy);
+            storageConfigPatch);
 
         WaitForNoMigrations(runtime, TDuration::Seconds(5));
 
@@ -715,6 +777,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         auto migrationState = std::make_shared<TMigrationState>();
         migrationState->IsMigrationAllowed = false;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -722,7 +786,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             migrationState,
-            useDirectCopy);
+            storageConfigPatch);
 
         // Find the ActorIDs of the leader and follower partitions.
         TActorId leaderPartition;
@@ -881,6 +945,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         auto migrationState = std::make_shared<TMigrationState>();
         migrationState->IsMigrationAllowed = false;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -888,7 +954,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             migrationState,
-            useDirectCopy);
+            storageConfigPatch);
 
         // Find the ActorIDs of the leader and follower partitions.
         TActorId leaderPartition;
@@ -1009,6 +1075,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         auto migrationState = std::make_shared<TMigrationState>();
         migrationState->IsMigrationAllowed = false;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(true);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -1016,7 +1084,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             migrationState,
-            true);
+            storageConfigPatch);
         TPartitionClient client(runtime, env.ActorId);
 
         migrationState->IsMigrationAllowed = true;
@@ -1097,6 +1165,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         auto migrationState = std::make_shared<TMigrationState>();
         migrationState->IsMigrationAllowed = false;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(true);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -1104,7 +1174,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             migrationState,
-            true);
+            storageConfigPatch);
 
         // We will steal a EvDirectCopyBlocksResponse this will cause the
         // TEvDirectCopyBlocksRequest to hang and the range migration timeout.
@@ -1166,6 +1236,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         auto migrationState = std::make_shared<TMigrationState>();
         migrationState->IsMigrationAllowed = false;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(true);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -1173,7 +1245,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             migrationState,
-            true);
+            storageConfigPatch);
         TPartitionClient client(runtime, env.ActorId);
 
         // Abort TEvGetDeviceForRangeRequest requests. In this case, the
@@ -1230,6 +1302,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         auto migrationState = std::make_shared<TMigrationState>();
         migrationState->IsMigrationAllowed = false;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(true);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -1237,7 +1311,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             migrationState,
-            true);
+            storageConfigPatch);
         TPartitionClient client(runtime, env.ActorId);
 
         migrationState->IsMigrationAllowed = true;
@@ -1303,6 +1377,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
     {
         TTestBasicRuntime runtime;
 
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
+        storageConfigPatch.SetAssignIdToWriteAndZeroRequestsEnabled(true);
+        storageConfigPatch.SetRejectLateRequestsAtDiskAgentEnabled(true);
         TTestEnv env(
             runtime,
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
@@ -1310,8 +1388,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             NProto::VOLUME_IO_OK,
             false,
             nullptr,   // no migration state
-            useDirectCopy,
-            true);
+            storageConfigPatch);
 
         size_t volumeRequestId = 12345;
 
@@ -1386,6 +1463,74 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
     Y_UNIT_TEST(ShouldCopyRangeWithCorrectVolumeRequestIdDirectCopy)
     {
         ShouldCopyRangeWithCorrectVolumeRequestId(true);
+    }
+
+    Y_UNIT_TEST(ShouldRetryIfRangeMigrationFail)
+    {
+        TTestBasicRuntime runtime;
+        auto migrationState = std::make_shared<TMigrationState>();
+        migrationState->IsMigrationAllowed = false;
+
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(true);
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            migrationState,
+            storageConfigPatch);
+
+        bool isRejected = false;
+        bool seenRetry = false;
+        TBlockRange64 rejectedRange;
+
+        auto filter = [&](TTestActorRuntimeBase& runtime,
+                          TAutoPtr<IEventHandle>& event) -> bool
+        {
+            if (event->GetTypeRewrite() ==
+                TEvNonreplPartitionPrivate::EvRangeMigrated)
+            {
+                auto* msg =
+                    event->Get<TEvNonreplPartitionPrivate::TEvRangeMigrated>();
+
+                if (isRejected && msg->Range == rejectedRange) {
+                    seenRetry = true;
+                    return false;
+                }
+
+                if (isRejected) {
+                    return false;
+                }
+
+                isRejected = true;
+                rejectedRange = msg->Range;
+                runtime.Send(
+                    event->Recipient,
+                    event->Sender,
+                    new TEvNonreplPartitionPrivate::TEvRangeMigrated(
+                        MakeError(E_REJECTED),
+                        *msg));
+
+                return true;
+            }
+
+            return false;
+        };
+
+        runtime.SetEventFilter(filter);
+
+        migrationState->IsMigrationAllowed = true;
+        runtime.AdvanceCurrentTime(TDuration::Seconds(10));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT(isRejected);
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT(seenRetry);
     }
 }
 

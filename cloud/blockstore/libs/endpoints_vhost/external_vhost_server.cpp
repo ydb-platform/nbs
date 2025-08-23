@@ -4,6 +4,7 @@
 #include "external_endpoint_stats.h"
 
 #include <cloud/blockstore/libs/common/device_path.h>
+#include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/encryption/model/utils.h>
@@ -651,10 +652,9 @@ private:
                 break;
             }
 
-            ReportExternalEndpointUnexpectedExit(TStringBuilder()
-                << "External endpoint for a disk " << Stats.DiskId.Quote()
-                << " and a client " << Stats.ClientId.Quote()
-                << " unexpectedly stopped: " << FormatError(error));
+            ReportExternalEndpointUnexpectedExit(
+                FormatError(error),
+                {{"disk", Stats.DiskId}, {"client", Stats.ClientId}});
 
             auto process = RestartProcess();
             if (!process) {
@@ -1054,7 +1054,8 @@ private:
             volume.GetBlockSize() != DefaultLocalSSDBlockSize)
         {
             ReportStartExternalEndpointError(
-                "Local disks should have block size of 512 bytes.");
+                "Local disks should have block size of 512 bytes",
+                {{"disk", volume.GetDiskId()}});
         }
 
         TVector<TString> args {

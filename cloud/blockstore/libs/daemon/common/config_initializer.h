@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/client/throttling.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
@@ -36,6 +37,7 @@ struct TConfigInitializerCommon
     NSpdk::TSpdkEnvConfigPtr SpdkEnvConfig;
     NClient::THostPerformanceProfile HostPerformanceProfile;
     NRdma::TRdmaConfigPtr RdmaConfig;
+    NCells::TCellsConfigPtr CellsConfig;
 
     TString Rack;
     TLog Log;
@@ -52,6 +54,7 @@ struct TConfigInitializerCommon
     void InitServerConfig();
     void InitSpdkEnvConfig();
     void InitRdmaConfig();
+    void InitCellsConfig();
 
     virtual bool GetUseNonreplicatedRdmaActor() const = 0;
     virtual TDuration GetInactiveClientsTimeout() const = 0;

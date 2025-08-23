@@ -7,6 +7,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/cells/impl
     cloud/blockstore/libs/client
     cloud/blockstore/libs/common
     cloud/blockstore/libs/daemon/common
@@ -16,9 +17,10 @@ PEERDIR(
     cloud/blockstore/libs/kms/iface
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/logbroker/iface
-    cloud/blockstore/libs/notify
+    cloud/blockstore/libs/notify/impl
     cloud/blockstore/libs/nvme
     cloud/blockstore/libs/rdma/fake
+    cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/root_kms/iface
     cloud/blockstore/libs/server
     cloud/blockstore/libs/service
@@ -39,6 +41,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/iam/iface
+    cloud/storage/core/libs/io_uring
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/version
 

@@ -11,6 +11,8 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_resync.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration.h>
+#include <cloud/blockstore/libs/storage/volume/actors/create_volume_link_actor.h>
+#include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
 #include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
 
 #include <cloud/storage/core/libs/common/format.h>
@@ -152,6 +154,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     const auto& volumeParams = State->GetVolumeParams();
 
     State->SetBlockCountToMigrate(std::nullopt);
+    ReportOutdatedLaggingDevicesToDR(ctx);
 
     auto maxTimedOutDeviceStateDuration =
         volumeParams.GetMaxTimedOutDeviceStateDurationOverride(ctx.Now());
@@ -193,7 +196,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
             State->GetMeta().GetIOMode(),
             State->GetMeta().GetMuteIOErrors(),
             State->GetFilteredFreshDevices(),
-            State->GetLaggingDevices(),
+            State->GetOutdatedDeviceIds(),
             LaggingDevicesAreAllowed(),
             maxTimedOutDeviceStateDuration,
             maxTimedOutDeviceStateDurationOverridden,
@@ -281,20 +284,25 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         }
     }
 
-    State->SetDiskRegistryBasedPartitionActor(
-        WrapNonreplActorIfNeeded(ctx, nonreplicatedActorId, nonreplicatedConfig),
+    auto actorStack = TActorsStack{
+        nonreplicatedActorId,
+        TActorsStack::EActorPurpose::DiskRegistryBasedPartitionActor};
+    actorStack = WrapWithShadowDiskActorIfNeeded(
+        ctx,
+        std::move(actorStack),
         nonreplicatedConfig);
-    ReportOutdatedLaggingDevicesToDR(ctx);
+    actorStack = WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack), false);
+
+    State->SetDiskRegistryBasedPartitionActor(
+        std::move(actorStack),
+        nonreplicatedConfig);
 }
 
-TActorsStack TVolumeActor::WrapNonreplActorIfNeeded(
+TActorsStack TVolumeActor::WrapWithShadowDiskActorIfNeeded(
     const TActorContext& ctx,
-    NActors::TActorId nonreplicatedActorId,
+    TActorsStack actors,
     std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig)
 {
-    TActorsStack result;
-    result.Push(nonreplicatedActorId);
-
     for (const auto& [checkpointId, checkpointInfo]:
          State->GetCheckpointStore().GetActiveCheckpoints())
     {
@@ -304,7 +312,7 @@ TActorsStack TVolumeActor::WrapNonreplActorIfNeeded(
             continue;
         }
 
-        nonreplicatedActorId = NCloud::Register<TShadowDiskActor>(
+        auto actorId = NCloud::Register<TShadowDiskActor>(
             ctx,
             Config,
             DiagnosticsConfig,
@@ -316,14 +324,70 @@ TActorsStack TVolumeActor::WrapNonreplActorIfNeeded(
             Executor()->Generation(),
             srcConfig,
             SelfId(),
-            nonreplicatedActorId,
+            actors.GetTop(),
             checkpointInfo);
 
-        result.Push(nonreplicatedActorId);
+        actors.Push(actorId, TActorsStack::EActorPurpose::ShadowDiskWrapper);
         State->GetCheckpointStore().ShadowActorCreated(checkpointId);
         DoRegisterVolume(ctx, checkpointInfo.ShadowDiskId);
     }
-    return result;
+    return actors;
+}
+
+TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
+    const TActorContext& ctx,
+    TActorsStack actors,
+    bool takePartitionOwnership)
+{
+    for (const auto& follower: State->GetAllFollowers()) {
+        switch (follower.State) {
+            case TFollowerDiskInfo::EState::None:
+            case TFollowerDiskInfo::EState::Error: {
+                // The follower is in an error state or has not yet been
+                // persisted, there is no need to create a wrapper actor.
+                break;
+            }
+            case TFollowerDiskInfo::EState::Created: {
+                // The link has not yet been persisted on the follower's side.
+                // Recreate link.
+                auto actor = NCloud::Register<TCreateVolumeLinkActor>(
+                    ctx,
+                    LogTitle.GetBrief(),
+                    SelfId(),
+                    follower.Link);
+                auto& createFollowerRequest =
+                    State->AccessCreateFollowerRequestInfo(follower.Link);
+                createFollowerRequest.CreateVolumeLinkActor = actor;
+                break;
+            }
+            case TFollowerDiskInfo::EState::Preparing:
+            case TFollowerDiskInfo::EState::DataReady: {
+                // Creating an actor wrapper.
+                auto actorId = NCloud::Register<TFollowerDiskActor>(
+                    ctx,
+                    LogTitle,
+                    Config,
+                    DiagnosticsConfig,
+                    ProfileLog,
+                    BlockDigestGenerator,
+                    TFollowerDiskActorParams{
+                        .LeaderMediaKind = State->GetStorageMediaKind(),
+                        .LeaderDiskId = State->GetDiskId(),
+                        .LeaderBlockCount = State->GetBlocksCount(),
+                        .LeaderBlockSize = State->GetBlockSize(),
+                        .LeaderVolumeActorId = SelfId(),
+                        .LeaderPartitionActorId = actors.GetTop(),
+                        .TakePartitionOwnership = takePartitionOwnership,
+                        .ClientId = State->GetReadWriteAccessClientId(),
+                        .FollowerDiskInfo = follower});
+                actors.Push(
+                    actorId,
+                    TActorsStack::EActorPurpose::FollowerWrapper);
+                break;
+            }
+        }
+    }
+    return actors;
 }
 
 void TVolumeActor::RestartPartition(
@@ -469,6 +533,10 @@ void TVolumeActor::StopPartitions(
                 part.Bootstrapper);
             // Should clear bootstrapper before partitions start
             part.Bootstrapper = {};
+        }
+
+        if (const auto& wrapperActorId = part.RelatedActors.GetTopWrapper()) {
+            NCloud::Send<TEvents::TEvPoisonPill>(ctx, wrapperActorId);
         }
     }
 }
@@ -781,7 +849,12 @@ void TVolumeActor::HandleTabletStatus(
 
     switch (msg->Status) {
         case TEvBootstrapper::STARTED: {
-            partition->SetStarted(TActorsStack(msg->TabletUser));
+            auto actorStack = TActorsStack(
+                msg->TabletUser,
+                TActorsStack::EActorPurpose::BlobStoragePartitionTablet);
+            actorStack =
+                WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack), true);
+            partition->SetStarted(std::move(actorStack));
             NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
                 ctx,
                 msg->TabletUser,

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # $FreeBSD: src/tools/regression/fstest/tests/chflags/00.t,v 1.1 2007/01/17 01:42:08 pjd Exp $
 
 desc="chflags changes flags"
@@ -96,7 +96,7 @@ expect 0 unlink ${n0}
 expect 0 create ${n0} 0644
 for flag in UF_NODUMP UF_IMMUTABLE UF_APPEND UF_NOUNLINK UF_OPAQUE SF_ARCHIVED SF_IMMUTABLE SF_APPEND SF_NOUNLINK none; do
 	ctime1=`${fstest} stat ${n0} ctime`
-	sleep 1
+	sleep 2
 	expect 0 chflags ${n0} ${flag}
 	ctime2=`${fstest} stat ${n0} ctime`
 	test_check $ctime1 -lt $ctime2
@@ -106,7 +106,7 @@ expect 0 unlink ${n0}
 expect 0 mkdir ${n0} 0755
 for flag in UF_NODUMP UF_IMMUTABLE UF_APPEND UF_NOUNLINK UF_OPAQUE SF_ARCHIVED SF_IMMUTABLE SF_APPEND SF_NOUNLINK none; do
 	ctime1=`${fstest} stat ${n0} ctime`
-	sleep 1
+	sleep 2
 	expect 0 chflags ${n0} ${flag}
 	ctime2=`${fstest} stat ${n0} ctime`
 	test_check $ctime1 -lt $ctime2
@@ -116,7 +116,7 @@ expect 0 rmdir ${n0}
 expect 0 mkfifo ${n0} 0644
 for flag in UF_NODUMP UF_IMMUTABLE UF_APPEND UF_NOUNLINK UF_OPAQUE SF_ARCHIVED SF_IMMUTABLE SF_APPEND SF_NOUNLINK none; do
 	ctime1=`${fstest} stat ${n0} ctime`
-	sleep 1
+	sleep 2
 	expect 0 chflags ${n0} ${flag}
 	ctime2=`${fstest} stat ${n0} ctime`
 	test_check $ctime1 -lt $ctime2
@@ -126,7 +126,7 @@ expect 0 unlink ${n0}
 expect 0 symlink ${n1} ${n0}
 for flag in UF_NODUMP UF_IMMUTABLE UF_APPEND UF_NOUNLINK UF_OPAQUE SF_ARCHIVED SF_IMMUTABLE SF_APPEND SF_NOUNLINK none; do
 	ctime1=`${fstest} lstat ${n0} ctime`
-	sleep 1
+	sleep 2
 	expect 0 lchflags ${n0} ${flag}
 	ctime2=`${fstest} lstat ${n0} ctime`
 	test_check $ctime1 -lt $ctime2
@@ -137,7 +137,7 @@ expect 0 unlink ${n0}
 expect 0 create ${n0} 0644
 for flag in UF_IMMUTABLE SF_IMMUTABLE none; do
 	ctime1=`${fstest} stat ${n0} ctime`
-	sleep 1
+	sleep 2
 	expect EPERM -u 65534 chflags ${n0} ${flag}
 	ctime2=`${fstest} stat ${n0} ctime`
 	test_check $ctime1 -eq $ctime2
@@ -147,7 +147,7 @@ expect 0 unlink ${n0}
 expect 0 mkdir ${n0} 0755
 for flag in UF_IMMUTABLE SF_IMMUTABLE none; do
 	ctime1=`${fstest} stat ${n0} ctime`
-	sleep 1
+	sleep 2
 	expect EPERM -u 65534 chflags ${n0} ${flag}
 	ctime2=`${fstest} stat ${n0} ctime`
 	test_check $ctime1 -eq $ctime2
@@ -157,7 +157,7 @@ expect 0 rmdir ${n0}
 expect 0 mkfifo ${n0} 0644
 for flag in UF_IMMUTABLE SF_IMMUTABLE none; do
 	ctime1=`${fstest} stat ${n0} ctime`
-	sleep 1
+	sleep 2
 	expect EPERM -u 65534 chflags ${n0} ${flag}
 	ctime2=`${fstest} stat ${n0} ctime`
 	test_check $ctime1 -eq $ctime2
@@ -167,7 +167,7 @@ expect 0 unlink ${n0}
 expect 0 symlink ${n1} ${n0}
 for flag in UF_IMMUTABLE SF_IMMUTABLE none; do
 	ctime1=`${fstest} lstat ${n0} ctime`
-	sleep 1
+	sleep 2
 	expect EPERM -u 65534 lchflags ${n0} ${flag}
 	ctime2=`${fstest} lstat ${n0} ctime`
 	test_check $ctime1 -eq $ctime2

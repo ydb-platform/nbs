@@ -7,6 +7,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	internal_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
@@ -61,6 +62,12 @@ func (t *createImageFromDiskTask) run(
 	diskParams, err := nbsClient.Describe(ctx, disk.DiskId)
 	if err != nil {
 		return "", err
+	}
+
+	if internal_common.IsLocalDiskKind(diskParams.Kind) {
+		return "", errors.NewNonCancellableErrorf(
+			"image creation from local disk is forbidden",
+		)
 	}
 
 	imageMeta, err := t.storage.CreateImage(ctx, resources.ImageMeta{

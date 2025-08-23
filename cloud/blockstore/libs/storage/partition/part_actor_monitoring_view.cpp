@@ -330,4 +330,18 @@ void TPartitionActor::HandleHttpInfo_GetTransactionsLatency(
             TransactionTimeTracker.GetStatJson(GetCycleCount())));
 }
 
+void TPartitionActor::HandleHttpInfo_GetGroupLatencies(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            BSGroupOperationTimeTracker.GetStatJson(GetCycleCount())));
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

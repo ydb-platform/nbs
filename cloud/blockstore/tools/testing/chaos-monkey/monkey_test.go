@@ -435,7 +435,7 @@ func (tc *TestContext) init(t *testing.T, stateFile string) {
 			stateFile,
 		),
 	)
-	drStateJSON, err := ioutil.ReadFile(drStatePath)
+	drStateJSON, err := os.ReadFile(drStatePath)
 	require.NoError(t, err)
 
 	err = os.MkdirAll(os.Getenv("PORT_SYNC_PATH"), os.ModePerm)

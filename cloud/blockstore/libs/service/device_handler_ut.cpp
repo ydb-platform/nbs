@@ -138,16 +138,18 @@ public:
                 });
             };
 
-        auto factory = CreateDeviceHandlerFactory(maxBlockCount * BlockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(maxBlockCount * BlockSize);
         DeviceHandler = factory->CreateDeviceHandler(
-            std::move(testStorage),
-            "disk1",
-            "testClientId",
-            BlockSize,
-            unalignedRequestsDisabled,   // unalignedRequestsDisabled,
-            false,                       // checkBufferModificationDuringWriting
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            maxZeroBlocksSubRequestSize);
+            TDeviceHandlerParams{
+                .Storage = std::move(testStorage),
+                .DiskId = "disk1",
+                .ClientId = "testClientId",
+                .BlockSize = BlockSize,
+                .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                .CheckBufferModificationDuringWriting = false,
+                .UnalignedRequestsDisabled = unalignedRequestsDisabled,
+                .StorageMediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED});
     }
 
     TCallContextPtr WriteSectors(ui64 firstSector, ui64 totalSectors, char data)
@@ -362,16 +364,18 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandler = factory->CreateDeviceHandler(
-            storage,
-            diskId,
-            clientId,
-            blockSize,
-            false,   // unalignedRequestsDisabled,
-            false,   // checkBufferModificationDuringWriting
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            maxZeroBlocksSubRequestSize);
+            TDeviceHandlerParams{
+                .Storage = storage,
+                .DiskId = diskId,
+                .ClientId = clientId,
+                .BlockSize = blockSize,
+                .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                .CheckBufferModificationDuringWriting = false,
+                .UnalignedRequestsDisabled = false,
+                .StorageMediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED});
 
         std::array<bool, deviceBlocksCount> zeroBlocks;
         for (auto& zeroBlock: zeroBlocks) {
@@ -433,16 +437,18 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandler = factory->CreateDeviceHandler(
-            storage,
-            diskId,
-            clientId,
-            blockSize,
-            false,   // unalignedRequestsDisabled,
-            false,   // checkBufferModificationDuringWriting
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            maxZeroBlocksSubRequestSize);
+            TDeviceHandlerParams{
+                .Storage = storage,
+                .DiskId = diskId,
+                .ClientId = clientId,
+                .BlockSize = blockSize,
+                .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                .CheckBufferModificationDuringWriting = false,
+                .UnalignedRequestsDisabled = false,
+                .StorageMediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED});
 
         std::array<bool, deviceBlocksCount> zeroBlocks;
         for (auto& zeroBlock: zeroBlocks) {
@@ -480,15 +486,17 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto device = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
-            storage,
-            diskId,
-            clientId,
-            blockSize,
-            true,    // unalignedRequestsDisabled,
-            false,   // checkBufferModificationDuringWriting
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            maxZeroBlocksSubRequestSize);
+        auto factory = CreateDefaultDeviceHandlerFactory();
+        auto deviceHandler = factory->CreateDeviceHandler(
+            TDeviceHandlerParams{
+                .Storage = storage,
+                .DiskId = diskId,
+                .ClientId = clientId,
+                .BlockSize = blockSize,
+                .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                .CheckBufferModificationDuringWriting = false,
+                .UnalignedRequestsDisabled = true,
+                .StorageMediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED});
 
         ui32 startIndex = 42;
         ui32 blocksCount = 17;
@@ -508,7 +516,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             };
 
         {
-            auto future = device->Read(
+            auto future = deviceHandler->Read(
                 MakeIntrusive<TCallContext>(),
                 startIndex * blockSize,
                 blocksCount * blockSize,
@@ -531,7 +539,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             };
 
         {
-            auto future = device->Write(
+            auto future = deviceHandler->Write(
                 MakeIntrusive<TCallContext>(),
                 startIndex * blockSize,
                 blocksCount * blockSize,
@@ -553,7 +561,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             };
 
         {
-            auto future = device->Zero(
+            auto future = deviceHandler->Zero(
                 MakeIntrusive<TCallContext>(),
                 startIndex * blockSize,
                 blocksCount * blockSize);
@@ -572,15 +580,18 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto device = CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
-            storage,
-            diskId,
-            clientId,
-            blockSize,
-            true,    // unalignedRequestsDisabled,
-            false,   // checkBufferModificationDuringWriting
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            maxZeroBlocksSubRequestSize);
+        auto device =
+            CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
+                TDeviceHandlerParams{
+                    .Storage = storage,
+                    .DiskId = diskId,
+                    .ClientId = clientId,
+                    .BlockSize = blockSize,
+                    .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                    .CheckBufferModificationDuringWriting = false,
+                    .UnalignedRequestsDisabled = true,
+                    .StorageMediaKind =
+                        NProto::STORAGE_MEDIA_SSD_NONREPLICATED});
 
         {
             auto future = device->Read(
@@ -713,16 +724,18 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandler = factory->CreateDeviceHandler(
-            storage,
-            diskId,
-            clientId,
-            blockSize,
-            unalignedRequestDisabled,   // unalignedRequestsDisabled,
-            false,                      // checkBufferModificationDuringWriting
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            maxZeroBlocksSubRequestSize);
+            TDeviceHandlerParams{
+                .Storage = storage,
+                .DiskId = diskId,
+                .ClientId = clientId,
+                .BlockSize = blockSize,
+                .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                .CheckBufferModificationDuringWriting = false,
+                .UnalignedRequestsDisabled = unalignedRequestDisabled,
+                .StorageMediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED});
 
         storage->ZeroBlocksHandler = [&] (
             TCallContextPtr callContext,
@@ -836,14 +849,16 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto deviceHandler =
             CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
-                storage,
-                diskId,
-                clientId,
-                blockSize,
-                false,   // unalignedRequestsDisabled,
-                false,   // checkBufferModificationDuringWriting
-                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                maxZeroBlocksSubRequestSize);
+                TDeviceHandlerParams{
+                    .Storage = storage,
+                    .DiskId = diskId,
+                    .ClientId = clientId,
+                    .BlockSize = blockSize,
+                    .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                    .CheckBufferModificationDuringWriting = false,
+                    .UnalignedRequestsDisabled = false,
+                    .StorageMediaKind =
+                        NProto::STORAGE_MEDIA_SSD_NONREPLICATED});
 
         storage->WriteBlocksLocalHandler = [&] (
             TCallContextPtr callContext,
@@ -906,14 +921,16 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto deviceHandler =
             CreateDefaultDeviceHandlerFactory()->CreateDeviceHandler(
-                storage,
-                diskId,
-                clientId,
-                blockSize,
-                false,   // unalignedRequestsDisabled,
-                false,   // checkBufferModificationDuringWriting
-                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                maxZeroBlocksSubRequestSize);
+                TDeviceHandlerParams{
+                    .Storage = storage,
+                    .DiskId = diskId,
+                    .ClientId = clientId,
+                    .BlockSize = blockSize,
+                    .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                    .CheckBufferModificationDuringWriting = false,
+                    .UnalignedRequestsDisabled = false,
+                    .StorageMediaKind =
+                        NProto::STORAGE_MEDIA_SSD_NONREPLICATED});
 
         storage->WriteBlocksLocalHandler = [&] (
             TCallContextPtr callContext,
@@ -1033,16 +1050,17 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto factory = CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandler = factory->CreateDeviceHandler(
-            storage,
-            diskId,
-            clientId,
-            blockSize,
-            false,   // unalignedRequestsDisabled,
-            true,    // checkBufferModificationDuringWriting
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            maxZeroBlocksSubRequestSize);
+            TDeviceHandlerParams{
+                .Storage = storage,
+                .DiskId = diskId,
+                .ClientId = clientId,
+                .BlockSize = blockSize,
+                .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                .CheckBufferModificationDuringWriting = true,
+                .UnalignedRequestsDisabled = false,
+                .StorageMediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED});
 
         ui32 writeAttempts  = 0;
 
@@ -1118,25 +1136,26 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto factory = CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandlerForReliableDisk = factory->CreateDeviceHandler(
-            storage,
-            diskId,
-            clientId,
-            blockSize,
-            false,   // unalignedRequestsDisabled,
-            true,    // checkBufferModificationDuringWriting
-            NProto::STORAGE_MEDIA_SSD_MIRROR3,
-            maxZeroBlocksSubRequestSize);
+            TDeviceHandlerParams{
+                .Storage = storage,
+                .DiskId = diskId,
+                .ClientId = clientId,
+                .BlockSize = blockSize,
+                .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                .CheckBufferModificationDuringWriting = true,
+                .UnalignedRequestsDisabled = false,
+                .StorageMediaKind = NProto::STORAGE_MEDIA_SSD_MIRROR3});
         auto deviceHandlerForNonReliableDisk = factory->CreateDeviceHandler(
-            storage,
-            diskId,
-            clientId,
-            blockSize,
-            false,   // unalignedRequestsDisabled,
-            true,    // checkBufferModificationDuringWriting
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            maxZeroBlocksSubRequestSize);
+            TDeviceHandlerParams{
+                .Storage = storage,
+                .DiskId = diskId,
+                .ClientId = clientId,
+                .BlockSize = blockSize,
+                .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                .CheckBufferModificationDuringWriting = true,
+                .StorageMediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED});
 
         auto buffer = TString(DefaultBlockSize, 'g');
         TSgList sgList{{buffer.data(), buffer.size()}};
@@ -1273,25 +1292,27 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactory(blocksCountLimit * blockSize);
+        auto factory = CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandlerForReliableDisk = factory->CreateDeviceHandler(
-            storage,
-            diskId,
-            clientId,
-            blockSize,
-            false,   // unalignedRequestsDisabled,
-            true,    // checkBufferModificationDuringWriting
-            NProto::STORAGE_MEDIA_SSD,
-            maxZeroBlocksSubRequestSize);
+            TDeviceHandlerParams{
+                .Storage = storage,
+                .DiskId = diskId,
+                .ClientId = clientId,
+                .BlockSize = blockSize,
+                .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                .CheckBufferModificationDuringWriting = true,
+                .UnalignedRequestsDisabled = false,
+                .StorageMediaKind = NProto::STORAGE_MEDIA_SSD});
         auto deviceHandlerForNonReliableDisk = factory->CreateDeviceHandler(
-            storage,
-            diskId,
-            clientId,
-            blockSize,
-            false,   // unalignedRequestsDisabled,
-            true,    // checkBufferModificationDuringWriting
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            maxZeroBlocksSubRequestSize);
+            TDeviceHandlerParams{
+                .Storage = storage,
+                .DiskId = diskId,
+                .ClientId = clientId,
+                .BlockSize = blockSize,
+                .MaxZeroBlocksSubRequestSize = maxZeroBlocksSubRequestSize,
+                .CheckBufferModificationDuringWriting = true,
+                .UnalignedRequestsDisabled = false,
+                .StorageMediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED});
 
         auto buffer = TString(DefaultBlockSize, 'g');
         TSgList sgList{{buffer.data(), buffer.size()}};

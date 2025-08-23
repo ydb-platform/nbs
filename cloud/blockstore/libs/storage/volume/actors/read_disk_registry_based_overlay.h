@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <cloud/blockstore/libs/storage/partition_common/actor_read_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_describe_base_disk_blocks.h>
@@ -42,6 +43,7 @@ private:
     const TString BaseDiskCheckpointId;
     const ui32 BlockSize;
     const TDuration LongRunningThreshold;
+    TChildLogTitle LogTitle;
     const EStorageAccessMode Mode;
 
     // Initially, the block map is built on the basis of the usedBlocks of the
@@ -69,7 +71,8 @@ public:
         TString baseDiskCheckpointId,
         ui32 blockSize,
         EStorageAccessMode mode,
-        TDuration longRunningThreshold);
+        TDuration longRunningThreshold,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
 

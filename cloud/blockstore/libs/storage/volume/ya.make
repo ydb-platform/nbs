@@ -4,6 +4,7 @@ SRCS(
     multi_partition_requests.cpp
     partition_info.cpp
     tracing.cpp
+    volume_throttler_logger.cpp
 
     volume.cpp
     volume_actor_acquire.cpp
@@ -87,4 +88,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     ut
+    ut_linked
 )

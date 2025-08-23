@@ -9,15 +9,15 @@ import (
 )
 
 const (
-	defaultGrpcRequestTimeout        = 30 * time.Second
-	defaultStartEndpointRetryTimeout = 20 * time.Second
+	defaultGrpcRequestTimeout          = 30 * time.Second
+	defaultStartEndpointRequestTimeout = 20 * time.Second
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 func main() {
 	cfg := driver.Config{GrpcRequestTimeout: defaultGrpcRequestTimeout,
-		StartEndpointRetryTimeout: defaultStartEndpointRetryTimeout}
+		StartEndpointRequestTimeout: defaultStartEndpointRequestTimeout}
 
 	flag.StringVar(&cfg.DriverName, "name", "nbs.csi.driver", "Driver name")
 	flag.StringVar(&cfg.VendorVersion, "version", "devel", "Vendor version")

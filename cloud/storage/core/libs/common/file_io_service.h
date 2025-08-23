@@ -188,6 +188,10 @@ IFileIOServicePtr CreateFileIOServiceStub();
 IFileIOServicePtr CreateRoundRobinFileIOService(
     TVector<IFileIOServicePtr> fileIOs);
 
+IFileIOServicePtr CreateRoundRobinFileIOService(
+    ui32 threads,
+    IFileIOServiceFactory& factory);
+
 IFileIOServicePtr CreateConcurrentFileIOService(
     const TString& submissionThreadName,
     IFileIOServicePtr fileIO);

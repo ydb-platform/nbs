@@ -8,7 +8,7 @@ import yatest.common as common
 from library.python.testing.recipe import declare_recipe, set_env
 
 from cloud.filestore.config.server_pb2 import \
-    TServerAppConfig, TLocalServiceConfig
+    TServerAppConfig, TLocalServiceConfig, TAioConfig, TIoUringConfig
 from cloud.filestore.tests.python.lib.common import shutdown
 from cloud.filestore.tests.python.lib.server import FilestoreServer, wait_for_filestore_server
 from cloud.filestore.tests.python.lib.daemon_config import FilestoreServerConfigGenerator
@@ -26,6 +26,7 @@ def start(argv):
     parser.add_argument("--nfs-package-path", action="store", default=None)
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--service", action="store", default="null")
+    parser.add_argument("--file-io", action="store", default="aio")
     args = parser.parse_args(argv)
 
     filestore_binary_path = common.binary_path(
@@ -36,8 +37,16 @@ def start(argv):
             "{}/usr/bin/filestore-server".format(args.nfs_package_path)
         )
 
+    local_service_config = TLocalServiceConfig()
+
+    if args.file_io == 'aio':
+        local_service_config.AioConfig.CopyFrom(TAioConfig())
+
+    if args.file_io == 'io_uring':
+        local_service_config.IoUringConfig.CopyFrom(TIoUringConfig())
+
     server_config = TServerAppConfig()
-    server_config.LocalServiceConfig.CopyFrom(TLocalServiceConfig())
+    server_config.LocalServiceConfig.CopyFrom(local_service_config)
 
     fs_root_path = common.ram_drive_path()
     if fs_root_path:

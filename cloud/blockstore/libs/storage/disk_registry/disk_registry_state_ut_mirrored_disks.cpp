@@ -938,14 +938,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             state.GetUserNotifications(userNotifications);
         };
 
-        auto deleteDisksToNotify = [&] () {
-            executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-                // copying needed to avoid use-after-free upon deletion
-                const auto disks = state.GetDisksToReallocate();
-                for (const auto& x: disks) {
-                    state.DeleteDiskToReallocate(db, x.first, x.second);
-                }
-            });
+        auto deleteDisksToNotify = [&]()
+        {
+            executor.WriteTx(
+                [&](TDiskRegistryDatabase db) mutable
+                {
+                    // copying needed to avoid use-after-free upon deletion
+                    const auto disks = state.GetDisksToReallocate();
+                    for (const auto& x: disks) {
+                        state.DeleteDiskToReallocate(
+                            Now(),
+                            db,
+                            TDiskNotificationResult{
+                                TDiskNotification{x.first, x.second},
+                                {},
+                            });
+                    }
+                });
             disksToReallocate.clear();
         };
 
@@ -1282,14 +1291,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             state.GetUserNotifications(userNotifications);
         };
 
-        auto deleteDisksToNotify = [&] () {
-            executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-                // copying needed to avoid use-after-free upon deletion
-                const auto disks = state.GetDisksToReallocate();
-                for (const auto& x: disks) {
-                    state.DeleteDiskToReallocate(db, x.first, x.second);
-                }
-            });
+        auto deleteDisksToNotify = [&]()
+        {
+            executor.WriteTx(
+                [&](TDiskRegistryDatabase db) mutable
+                {
+                    // copying needed to avoid use-after-free upon deletion
+                    const auto disks = state.GetDisksToReallocate();
+                    for (const auto& x: disks) {
+                        state.DeleteDiskToReallocate(
+                            Now(),
+                            db,
+                            TDiskNotificationResult{
+                                TDiskNotification{x.first, x.second},
+                                {},
+                            });
+                    }
+                });
             disksToReallocate.clear();
         };
 
@@ -2413,7 +2431,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL(0, migrations.size());
             ASSERT_VECTORS_EQUAL(TVector<TString>(), deviceReplacementIds);
 
-            state.DeleteDiskToReallocate(db, "disk-1", 4);
+            state.DeleteDiskToReallocate(
+                Now(),
+                db,
+                TDiskNotificationResult{
+                    TDiskNotification{"disk-1", 4},
+                    {},
+                });
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -2605,14 +2629,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             state.GetUserNotifications(userNotifications);
         };
 
-        auto deleteDisksToNotify = [&] () {
-            executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-                // copying needed to avoid use-after-free upon deletion
-                const auto disks = state.GetDisksToReallocate();
-                for (const auto& x: disks) {
-                    state.DeleteDiskToReallocate(db, x.first, x.second);
-                }
-            });
+        auto deleteDisksToNotify = [&]()
+        {
+            executor.WriteTx(
+                [&](TDiskRegistryDatabase db) mutable
+                {
+                    // copying needed to avoid use-after-free upon deletion
+                    const auto disks = state.GetDisksToReallocate();
+                    for (const auto& x: disks) {
+                        state.DeleteDiskToReallocate(
+                            Now(),
+                            db,
+                            TDiskNotificationResult{
+                                TDiskNotification{x.first, x.second},
+                                {},
+                            });
+                    }
+                });
             disksToReallocate.clear();
         };
 

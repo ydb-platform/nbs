@@ -572,9 +572,9 @@ public:
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TString& diskId);
 
     void DeleteDiskToReallocate(
+        TInstant now,
         TDiskRegistryDatabase& db,
-        const TString& diskId,
-        ui64 seqNo);
+        TDiskNotificationResult notification);
 
     const TVector<TDiskStateUpdate>& GetDiskStateUpdates() const;
 
@@ -882,7 +882,8 @@ public:
         TDiskRegistryDatabase& db,
         TInstant now);
 
-    TVector<TString> GetPoolNames() const;
+    TVector<TString> GetPoolNames(
+        std::optional<NProto::EDevicePoolKind> kind = std::nullopt) const;
 
     const NProto::TDeviceConfig* FindDevice(const TDeviceId& uuid) const;
 
@@ -1105,14 +1106,16 @@ private:
         TInstant now,
         TDiskRegistryDatabase& db,
         NProto::TDeviceConfig& device,
-        ui64 newBlockCount);
+        ui64 newBlockCount,
+        const TString& diskId);
 
     void AdjustDeviceState(
         TDiskRegistryDatabase& db,
         NProto::TDeviceConfig& device,
         NProto::EDeviceState state,
         TInstant timestamp,
-        TString message);
+        TString message,
+        const TString& diskId);
 
     ui64 GetDeviceBlockCountWithOverrides(
         const TDiskId& diskId,

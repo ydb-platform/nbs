@@ -417,7 +417,7 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
 NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
     const NProto::TStopEndpointRequest& request)
 {
-    STORAGE_TRACE("StopEndpoint " << DumpMessage(request));
+    STORAGE_INFO("StopEndpoint " << DumpMessage(request));
 
     auto g = Guard(EndpointsLock);
     if (DrainingStarted) {

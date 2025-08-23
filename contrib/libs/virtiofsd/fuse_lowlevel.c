@@ -26,7 +26,8 @@
 #include <sys/file.h>
 #include <unistd.h>
 
-#define THREAD_POOL_SIZE 64
+#define NUM_BACKEND_QUEUES 64
+#define NUM_FRONTEND_QUEUES 1
 
 #define OFFSET_MAX 0x7fffffffffffffffLL
 
@@ -2117,14 +2118,14 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
     outarg.congestion_threshold = se->conn.congestion_threshold;
     outarg.time_gran = se->conn.time_gran;
 
-    fuse_log(FUSE_LOG_DEBUG, "   INIT: %u.%u\n", outarg.major, outarg.minor);
-    fuse_log(FUSE_LOG_DEBUG, "   flags=0x%08x\n", outarg.flags);
-    fuse_log(FUSE_LOG_DEBUG, "   max_readahead=0x%08x\n", outarg.max_readahead);
-    fuse_log(FUSE_LOG_DEBUG, "   max_write=0x%08x\n", outarg.max_write);
-    fuse_log(FUSE_LOG_DEBUG, "   max_background=%i\n", outarg.max_background);
-    fuse_log(FUSE_LOG_DEBUG, "   congestion_threshold=%i\n",
+    fuse_log(FUSE_LOG_INFO, "   INIT: %u.%u\n", outarg.major, outarg.minor);
+    fuse_log(FUSE_LOG_INFO, "   flags=0x%08x\n", outarg.flags);
+    fuse_log(FUSE_LOG_INFO, "   max_readahead=0x%08x\n", outarg.max_readahead);
+    fuse_log(FUSE_LOG_INFO, "   max_write=0x%08x\n", outarg.max_write);
+    fuse_log(FUSE_LOG_INFO, "   max_background=%i\n", outarg.max_background);
+    fuse_log(FUSE_LOG_INFO, "   congestion_threshold=%i\n",
              outarg.congestion_threshold);
-    fuse_log(FUSE_LOG_DEBUG, "   time_gran=%u\n", outarg.time_gran);
+    fuse_log(FUSE_LOG_INFO, "   time_gran=%u\n", outarg.time_gran);
 
     send_reply_ok(req, &outarg, outargsize);
 }
@@ -2528,7 +2529,8 @@ static const struct fuse_opt fuse_ll_opts[] = {
     LL_OPTION("--socket-path=%s", vu_socket_path, 0),
     LL_OPTION("--socket-group=%s", vu_socket_group, 0),
     LL_OPTION("--fd=%d", vu_listen_fd, 0),
-    LL_OPTION("--thread-pool-size=%d", thread_pool_size, 0),
+    LL_OPTION("--num-backend-queues=%d", num_backend_queues, 0),
+    LL_OPTION("--num-frontend-queues=%d", num_frontend_queues, 0),
     FUSE_OPT_END
 };
 
@@ -2548,8 +2550,10 @@ void fuse_lowlevel_help(void)
         "    -o allow_root              allow access by root\n"
         "    --socket-path=PATH         path for the vhost-user socket\n"
         "    --fd=FDNUM                 fd number of vhost-user socket\n"
-        "    --thread-pool-size=NUM     thread pool size limit (default %d)\n",
-        THREAD_POOL_SIZE);
+        "    --num-backend-queues=NUM   backend queues limit (default %d)\n"
+        "    --num-frontend-queues=NUM  frontend queues limit (default %d)\n",
+        NUM_BACKEND_QUEUES,
+        NUM_FRONTEND_QUEUES);
 }
 
 void fuse_session_destroy(struct fuse_session *se)
@@ -2621,7 +2625,8 @@ struct fuse_session *fuse_session_new(struct fuse_args *args,
     }
     se->fd = -1;
     se->vu_listen_fd = -1;
-    se->thread_pool_size = THREAD_POOL_SIZE;
+    se->num_backend_queues = NUM_BACKEND_QUEUES;
+    se->num_frontend_queues = NUM_FRONTEND_QUEUES;
     se->conn.max_write = UINT_MAX;
     se->conn.max_readahead = UINT_MAX;
 
@@ -2684,9 +2689,9 @@ int fuse_session_mount(struct fuse_session *se)
     return virtio_session_mount(se);
 }
 
-int fuse_session_loop(struct fuse_session *se)
+int fuse_session_loop(struct fuse_session *se, int queue_index)
 {
-    return virtio_session_loop(se);
+    return virtio_session_loop(se, queue_index);
 }
 
 int fuse_session_fd(struct fuse_session *se)

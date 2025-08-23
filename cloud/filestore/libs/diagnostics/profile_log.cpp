@@ -6,6 +6,7 @@
 #include <library/cpp/eventlog/eventlog.h>
 
 #include <util/datetime/cputimer.h>
+#include <util/generic/array_ref.h>
 #include <util/generic/hash.h>
 #include <util/thread/lfstack.h>
 
@@ -96,24 +97,40 @@ void TProfileLog::Flush()
     TVector<TRecord> records;
     Records.DequeueAllSingleConsumer(&records);
 
-    if (records.size()) {
+    if (records.size() && Settings.MaxFlushRecords) {
+        records.resize(std::min(records.size(), Settings.MaxFlushRecords));
+    }
+
+    auto recordsRef = MakeArrayRef(records);
+    size_t frameRecordsOffset = 0;
+    size_t maxFrameRecords = Settings.MaxFrameFlushRecords
+                                 ? Settings.MaxFrameFlushRecords
+                                 : records.size();
+
+    while (frameRecordsOffset < recordsRef.size()) {
+        auto frameRecords = recordsRef.Slice(
+            frameRecordsOffset,
+            std::min(maxFrameRecords, recordsRef.size() - frameRecordsOffset));
+
         TSelfFlushLogFrame logFrame(EventLog);
         THashMap<TString, TVector<ui32>> fsId2records;
 
-        for (ui32 i = 0; i < records.size(); ++i) {
-            fsId2records[records[i].FileSystemId].push_back(i);
+        for (ui32 i = 0; i < frameRecords.size(); ++i) {
+            fsId2records[frameRecords[i].FileSystemId].push_back(i);
         }
 
         for (auto& x: fsId2records) {
             NProto::TProfileLogRecord pb;
             pb.SetFileSystemId(x.first);
             for (const auto r: x.second) {
-                auto& record = records[r];
+                auto& record = frameRecords[r];
                 *pb.AddRequests() = std::move(record.Request);
             }
 
             logFrame.LogEvent(pb);
         }
+
+        frameRecordsOffset += frameRecords.size();
     }
 
     EventLog.Flush();

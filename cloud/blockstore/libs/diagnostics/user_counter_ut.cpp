@@ -25,7 +25,7 @@ NJson::TJsonValue GetValue(const auto& object, const auto& name)
             }
         }
     }
-    UNIT_ASSERT(false);
+    UNIT_ASSERT_C(false, "Value not found " + name);
     return NJson::TJsonValue{};
 };
 
@@ -39,29 +39,29 @@ NJson::TJsonValue GetHist(
             }
         }
     }
-    UNIT_ASSERT(false);
+    UNIT_ASSERT_C(false, "Value not found " + name + "/" + valueName);
     return NJson::TJsonValue{};
 };
 
 void ValidateJsons(
-    const NJson::TJsonValue& testJson,
-    const NJson::TJsonValue& resultJson)
+    const NJson::TJsonValue& expectedJson,
+    const NJson::TJsonValue& actualJson)
 {
-    for(const auto& jsonValue: testJson["sensors"].GetArray()) {
+    for(const auto& jsonValue: expectedJson["sensors"].GetArray()) {
         const TString name = jsonValue["labels"]["name"].GetString();
 
         if (jsonValue.Has("hist")) {
-            for (auto valueName: {"bounds", "buckets", "inf"}) {
+            for (const auto* valueName: {"bounds", "buckets", "inf"}) {
                 UNIT_ASSERT_STRINGS_EQUAL_C(
-                    NJson::WriteJson(GetHist(resultJson, name, valueName)),
-                    NJson::WriteJson(GetHist(testJson, name, valueName)),
+                    NJson::WriteJson(GetHist(expectedJson, name, valueName)),
+                    NJson::WriteJson(GetHist(actualJson, name, valueName)),
                     name
                 );
             }
         } else {
             UNIT_ASSERT_STRINGS_EQUAL_C(
-                NJson::WriteJson(GetValue(resultJson, name)),
-                NJson::WriteJson(GetValue(testJson, name)),
+                NJson::WriteJson(GetValue(expectedJson, name)),
+                NJson::WriteJson(GetValue(actualJson, name)),
                 name
             );
         }
@@ -164,7 +164,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
 
     Y_UNIT_TEST(UserServiceVolumeInstanceTests)
     {
-       NMonitoring::TDynamicCounterPtr stats =
+        NMonitoring::TDynamicCounterPtr stats =
             MakeIntrusive<TDynamicCounters>();
 
         auto makeCounters = [&stats] (const TString& name) {

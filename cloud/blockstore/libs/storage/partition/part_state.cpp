@@ -106,6 +106,7 @@ TPartitionState::TPartitionState(
         const TFreeSpaceConfig& freeSpaceConfig,
         ui32 maxIORequestsInFlight,
         ui32 reassignChannelsPercentageThreshold,
+        ui32 reassignMixedChannelsPercentageThreshold,
         ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
@@ -122,6 +123,7 @@ TPartitionState::TPartitionState(
     , ChannelCount(channelCount)
     , MaxIORequestsInFlight(maxIORequestsInFlight)
     , ReassignChannelsPercentageThreshold(reassignChannelsPercentageThreshold)
+    , ReassignMixedChannelsPercentageThreshold(reassignMixedChannelsPercentageThreshold)
     , LastCommitId(lastCommitId)
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
@@ -134,7 +136,6 @@ TPartitionState::TPartitionState(
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
     , CleanupQueue(GetBlockSize())
     , CleanupScoreHistory(cleanupScoreHistorySize)
-    , Stats(*Meta.MutableStats())
 {
     InitChannels();
 }
@@ -333,7 +334,7 @@ bool TPartitionState::IsWriteAllowed(EChannelPermissions permissions) const
 {
     bool allSystemChannelsWritable = true;
     bool anyDataChannelWritable = false;
-    bool anyFreshChannelWritable = false;
+    bool anyFreshChannelWritable = FreshChannelCount == 0;
 
     for (ui32 ch = 0; ch < ChannelCount; ++ch) {
         switch (GetChannelDataKind(ch)) {
@@ -367,13 +368,8 @@ bool TPartitionState::IsWriteAllowed(EChannelPermissions permissions) const
         }
     }
 
-    if (FreshChannelCount) {
-        return allSystemChannelsWritable
-            && anyDataChannelWritable
-            && anyFreshChannelWritable;
-    }
-
-    return allSystemChannelsWritable && anyDataChannelWritable;
+    return allSystemChannelsWritable && anyDataChannelWritable &&
+           anyFreshChannelWritable;
 }
 
 void TPartitionState::RegisterReassignRequestFromBlobStorage(ui32 channel)
@@ -383,27 +379,40 @@ void TPartitionState::RegisterReassignRequestFromBlobStorage(ui32 channel)
 
 TVector<ui32> TPartitionState::GetChannelsToReassign() const
 {
-    const auto permissions = EChannelPermission::UserWritesAllowed
-        | EChannelPermission::SystemWritesAllowed;
+    const auto permissions = EChannelPermission::UserWritesAllowed |
+                             EChannelPermission::SystemWritesAllowed;
 
     TVector<ui32> channels;
+    TVector<ui32> mixedChannels;
 
     for (ui32 ch = 0; ch < ChannelCount; ++ch) {
         const auto* channelState = GetChannel(ch);
-        if (channelState && channelState->ReassignRequestedByBlobStorage
-                || !CheckPermissions(ch, permissions))
+        if (channelState && channelState->ReassignRequestedByBlobStorage ||
+            !CheckPermissions(ch, permissions))
         {
             channels.push_back(ch);
+            if (GetChannelDataKind(ch) == EChannelDataKind::Mixed) {
+                mixedChannels.push_back(ch);
+            }
         }
     }
 
-    const auto threshold =
-        (ReassignChannelsPercentageThreshold / 100.) * ChannelCount;
-    if (IsWriteAllowed(permissions) && channels.size() < threshold) {
-        return {};
+    const auto threshold = ReassignChannelsPercentageThreshold * ChannelCount;
+    if (!IsWriteAllowed(permissions) || channels.size() * 100 >= threshold) {
+        return channels;
     }
 
-    return channels;
+    if (ReassignMixedChannelsPercentageThreshold < 100 &&
+        !mixedChannels.empty())
+    {
+        const auto threshold =
+            ReassignMixedChannelsPercentageThreshold * MixedChannels.size();
+        if (mixedChannels.size() * 100 >= threshold) {
+            return mixedChannels;
+        }
+    }
+
+    return {};
 }
 
 TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
@@ -412,9 +421,9 @@ TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
     const auto& compactionFeature = BPConfig.CompactionScoreFeatureConfig;
     const auto& cleanupFeature = BPConfig.CleanupQueueBytesFeatureConfig;
 
-    const auto freshByteCount = GetUntrimmedFreshBlobByteCount()
-        + GetUnflushedFreshBlobByteCount()
-        + Stats.GetFreshBlocksCount() * GetBlockSize();
+    const auto freshByteCount =
+        GetUntrimmedFreshBlobByteCount() + GetUnflushedFreshBlobByteCount() +
+        GetStats().GetFreshBlocksCount() * GetBlockSize();
 
     return {
         BPFeature(freshFeature, freshByteCount),
@@ -433,25 +442,34 @@ ui32 TPartitionState::GetAlmostFullChannelCount() const
     return AlmostFullChannelCount;
 }
 
-void TPartitionState::EnqueueIORequest(ui32 channel, IActorPtr requestActor)
+void TPartitionState::EnqueueIORequest(
+    ui32 channel,
+    NActors::IActorPtr requestActor,
+    ui64 bsGroupOperationId,
+    ui32 group,
+    TBSGroupOperationTimeTracker::EOperationType operationType)
 {
     auto& ch = GetChannel(channel);
-    ch.IORequests.emplace_back(std::move(requestActor));
+    ch.IORequests.emplace_back(
+        std::move(requestActor),
+        bsGroupOperationId,
+        group,
+        operationType);
     ++ch.IORequestsQueued;
 }
 
-IActorPtr TPartitionState::DequeueIORequest(ui32 channel)
+std::optional<TQueuedRequest> TPartitionState::DequeueIORequest(ui32 channel)
 {
     auto& ch = GetChannel(channel);
     if (ch.IORequestsQueued && ch.IORequestsInFlight < MaxIORequestsInFlight) {
-        IActorPtr requestActor = std::move(ch.IORequests.front());
+        TQueuedRequest req = std::move(ch.IORequests.front());
         ch.IORequests.pop_front();
         --ch.IORequestsQueued;
         ++ch.IORequestsInFlight;
-        return requestActor;
+        return req;
     }
 
-    return {};
+    return std::nullopt;
 }
 
 void TPartitionState::CompleteIORequest(ui32 channel)
@@ -717,15 +735,17 @@ void TPartitionState::ConfirmBlobs(
 #define BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER(name)                           \
     ui64 TPartitionState::Increment##name(size_t value)                        \
     {                                                                          \
-        ui64 counter = SafeIncrement(Stats.Get##name(), value);                \
-        Stats.Set##name(counter);                                              \
+        auto& stats = AccessStats();                                           \
+        ui64 counter = SafeIncrement(stats.Get##name(), value);                \
+        stats.Set##name(counter);                                              \
         return counter;                                                        \
     }                                                                          \
                                                                                \
     ui64 TPartitionState::Decrement##name(size_t value)                        \
     {                                                                          \
-        ui64 counter = SafeDecrement(Stats.Get##name(), value);                \
-        Stats.Set##name(counter);                                              \
+        auto& stats = AccessStats();                                           \
+        ui64 counter = SafeDecrement(stats.Get##name(), value);                \
+        stats.Set##name(counter);                                              \
         return counter;                                                        \
     }                                                                          \
 // BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER
@@ -756,15 +776,17 @@ void TPartitionState::TrimFreshBlobs(ui64 commitId)
 
 ui32 TPartitionState::IncrementUnflushedFreshBlocksFromDbCount(size_t value)
 {
-    ui64 counter = SafeIncrement(Stats.GetFreshBlocksCount(), value);
-    Stats.SetFreshBlocksCount(counter);
+    auto& stats = AccessStats();
+    ui64 counter = SafeIncrement(stats.GetFreshBlocksCount(), value);
+    stats.SetFreshBlocksCount(counter);
     return counter;
 }
 
 ui32 TPartitionState::DecrementUnflushedFreshBlocksFromDbCount(size_t value)
 {
-    ui64 counter = SafeDecrement(Stats.GetFreshBlocksCount(), value);
-    Stats.SetFreshBlocksCount(counter);
+    auto& stats = AccessStats();
+    ui64 counter = SafeDecrement(stats.GetFreshBlocksCount(), value);
+    stats.SetFreshBlocksCount(counter);
     return counter;
 }
 
@@ -1221,11 +1243,13 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                     TABLED() { out << "FreshBlocks"; }
                     TABLED() {
                         out << "Total: " << GetUnflushedFreshBlocksCount()
-                            << ", FromDb: " << Stats.GetFreshBlocksCount()
-                            << ", FromChannel: " << UnflushedFreshBlocksFromChannelCount
+                            << ", FromDb: " << GetStats().GetFreshBlocksCount()
+                            << ", FromChannel: "
+                            << UnflushedFreshBlocksFromChannelCount
                             << ", InFlight: " << GetFreshBlocksInFlight()
                             << ", Queued: " << GetFreshBlocksQueued()
-                            << ", UntrimmedBytes: " << GetUntrimmedFreshBlobByteCount();
+                            << ", UntrimmedBytes: "
+                            << GetUntrimmedFreshBlobByteCount();
                     }
                 }
                 TABLER() {
@@ -1265,7 +1289,7 @@ TJsonValue TPartitionState::AsJson() const
         TJsonValue state;
         state["LastCommitId"] = GetLastCommitId();
         state["FreshBlocksTotal"] = GetUnflushedFreshBlocksCount();
-        state["FreshBlocksFromDb"] = Stats.GetFreshBlocksCount();
+        state["FreshBlocksFromDb"] = GetStats().GetFreshBlocksCount();
         state["FreshBlocksFromChannel"] = UnflushedFreshBlocksFromChannelCount;
         state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
         state["FreshBlocksQueued"] = GetFreshBlocksQueued();
@@ -1282,7 +1306,7 @@ TJsonValue TPartitionState::AsJson() const
     {
         TJsonValue stats;
         try {
-            NProtobufJson::Proto2Json(Stats, stats);
+            NProtobufJson::Proto2Json(GetStats(), stats);
             json["Stats"] = std::move(stats);
         } catch (...) {}
     }

@@ -90,6 +90,11 @@ struct TEvNonreplPartitionPrivate
 
     struct TMigrateNextRange
     {
+        bool IsRetry;
+
+        explicit TMigrateNextRange(bool isRetry)
+            : IsRetry(isRetry)
+        {}
     };
 
     //

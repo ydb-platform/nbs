@@ -876,3 +876,23 @@ message TNodeRef
     // Node ID within the shard.
     string ShardNodeName = 6;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// SetHasXAttrs request/response
+
+message TSetHasXAttrsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    bool Value = 3;
+}
+
+message TSetHasXAttrsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

@@ -1,7 +1,9 @@
 #include "test_env.h"
 
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
+#include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -17,7 +19,111 @@ using namespace NCloud::NStorage;
 
 namespace NTestVolume {
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
+
+class TTabletScheduledEventsGuard
+{
+private:
+    TTestActorRuntime& Runtime;
+    TTestActorRuntime::TEventObserver PrevObserverFunc;
+    TTestActorRuntime::TScheduledEventFilter PrevScheduledFilterFunc;
+    TTestActorRuntime::TRegistrationObserver PrevRegistrationObserverFunc;
+
+    std::unique_ptr<ITabletScheduledEventsGuard> Guard;
+    TTestActorRuntime::TEventObserver GuardObserverFunc;
+    TTestActorRuntime::TScheduledEventFilter GuardScheduledFilterFunc;
+    TTestActorRuntime::TRegistrationObserver GuardRegistrationObserverFunc;
+
+public:
+    TTabletScheduledEventsGuard(
+            const TVector<ui64>& tablets,
+            TTestActorRuntime& runtime,
+            const TActorId& sender)
+        : Runtime(runtime)
+        , PrevObserverFunc(runtime.SetObserverFunc({}))
+        , PrevScheduledFilterFunc(runtime.SetScheduledEventFilter({}))
+        , PrevRegistrationObserverFunc(runtime.SetRegistrationObserverFunc({}))
+        , Guard(CreateTabletScheduledEventsGuard(tablets, runtime, sender)
+                    .Release())
+    {
+        GuardObserverFunc = Runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+                -> NActors::TTestActorRuntime::EEventAction
+            {
+                NActors::TTestActorRuntime::EEventAction result =
+                    GuardObserverFunc(event);
+                if (result != NActors::TTestActorRuntime::EEventAction::PROCESS)
+                {
+                    return result;
+                }
+                if (PrevObserverFunc) {
+                    result = PrevObserverFunc(event);
+                }
+                return result;
+            });
+
+        GuardRegistrationObserverFunc = Runtime.SetRegistrationObserverFunc(
+            [&](TTestActorRuntimeBase& runtime,
+                const TActorId& parentId,
+                const TActorId& actorId) -> void
+            {
+                GuardRegistrationObserverFunc(runtime, parentId, actorId);
+                if (PrevRegistrationObserverFunc) {
+                    PrevRegistrationObserverFunc(runtime, parentId, actorId);
+                }
+            });
+
+        GuardScheduledFilterFunc = Runtime.SetScheduledEventFilter(
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event,
+                TDuration delay,
+                TInstant& deadline) -> bool
+            {
+                bool result =
+                    GuardScheduledFilterFunc(runtime, event, delay, deadline);
+                if (result) {
+                    return result;
+                }
+                if (PrevScheduledFilterFunc) {
+                    result = PrevScheduledFilterFunc(
+                        runtime,
+                        event,
+                        delay,
+                        deadline);
+                }
+                return result;
+            });
+    }
+
+    ~TTabletScheduledEventsGuard()
+    {
+        Guard.reset();
+        Runtime.SetObserverFunc(PrevObserverFunc);
+        Runtime.SetScheduledEventFilter(PrevScheduledFilterFunc);
+        Runtime.SetRegistrationObserverFunc(PrevRegistrationObserverFunc);
+    }
+};
+
+bool IsAllUpperCase(TStringBuf str)
+{
+    return AllOf(
+        str.begin(),
+        str.end(),
+        [](char c) { return std::isupper(c) || c == '_'; });
+}
+
+TStorageConfigPtr MakeStorageConfig()
+{
+    NProto::TStorageServiceConfig config;
+
+    return std::make_shared<TStorageConfig>(
+        std::move(config),
+        std::make_shared<NFeatures::TFeaturesConfig>());
+}
+
+}   // namespace
 
 TString GetBlockContent(char fill, size_t size)
 {
@@ -141,7 +247,7 @@ void TVolumeClient::ReconnectPipe()
 void TVolumeClient::RebootTablet()
 {
     TVector<ui64> tablets = { VolumeTabletId };
-    auto guard = CreateTabletScheduledEventsGuard(
+    auto guard = TTabletScheduledEventsGuard(
         tablets,
         Runtime,
         Sender);
@@ -156,7 +262,7 @@ void TVolumeClient::RebootTablet()
 void TVolumeClient::RebootSysTablet()
 {
     TVector<ui64> tablets = {VolumeTabletId };
-    auto guard = CreateTabletScheduledEventsGuard(
+    auto guard = TTabletScheduledEventsGuard(
         tablets,
         Runtime,
         Sender);
@@ -671,7 +777,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     TDiskRegistryStatePtr diskRegistryState,
     NProto::TFeaturesConfig featuresConfig,
     NRdma::IClientPtr rdmaClient,
-    TVector<TDiskAgentStatePtr> diskAgentStates)
+    TVector<TDiskAgentStatePtr> diskAgentStates,
+    bool debugActorRegistration)
 {
     const ui32 agentCount = Max<ui32>(diskAgentStates.size(), 1);
     auto runtime = std::make_unique<TTestBasicRuntime>(agentCount);
@@ -687,9 +794,20 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     // runtime->SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
 
     runtime->SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        [debugActorRegistration](
+            auto& runtime,
+            const auto& parentId,
+            const auto& actorId)
         {
             Y_UNUSED(parentId);
+
+            if (debugActorRegistration) {
+                TStringBuf actorName = runtime.FindActorName(actorId, 0);
+                if (!IsAllUpperCase(actorName)) {
+                    Cout << "Registering actor " << actorId << " "
+                         << runtime.FindActorName(actorId, 0) << Endl;
+                }
+            }
             runtime.EnableScheduleForActor(actorId);
         });
 
@@ -717,7 +835,25 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
 
     runtime->AddLocalService(
         MakeSSProxyServiceId(),
-        TActorSetupCmd(new TSSProxyMock(), TMailboxType::Simple, 0));
+        TActorSetupCmd(
+            new TSSProxyMock(
+                {{.DiskId = "vol1", .TabletId = TestVolumeTablets[0]},
+                 {.DiskId = "vol2", .TabletId = TestVolumeTablets[1]}}),
+            TMailboxType::Simple,
+            0));
+
+    auto traceSerializer = CreateTraceSerializerStub();
+    traceSerializer->Start();
+
+    runtime->AddLocalService(
+        MakeVolumeProxyServiceId(),
+        TActorSetupCmd(
+            CreateVolumeProxy(
+                MakeStorageConfig(),
+                std::move(traceSerializer),
+                false),
+            TMailboxType::Simple,
+            0));
 
     if (!diskRegistryState) {
         diskRegistryState = MakeIntrusive<TDiskRegistryState>();

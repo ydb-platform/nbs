@@ -23,21 +23,19 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     const NActors::TActorContext& ctx,
-    NActors::TActorId migrationSrcActorId,
-    NActors::TActorId srcActorId,
-    NActors::TActorId dstActorId,
-    bool takeOwnershipOverActors,
-    std::unique_ptr<TMigrationTimeoutCalculator> timeoutCalculator)
+    TInitParams initParams)
 {
-    MigrationSrcActorId = migrationSrcActorId;
-    SrcActorId = srcActorId;
-    DstActorId = dstActorId;
-    TimeoutCalculator = std::move(timeoutCalculator);
+    MigrationSrcActorId = initParams.MigrationSrcActorId;
+    SrcActorId = initParams.SrcActorId;
+    DstActorId = initParams.DstActorId;
+    TimeoutCalculator = std::move(initParams.TimeoutCalculator);
     STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
 
-    ActorOwner = takeOwnershipOverActors;
-    if (ActorOwner) {
+    SendWritesToSrc = initParams.SendWritesToSrc;
+    if (initParams.TakeOwnershipOverSrcActor) {
         PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
+    }
+    if (initParams.TakeOwnershipOverDstActor) {
         PoisonPillHelper.TakeOwnership(ctx, DstActorId);
     }
 
@@ -99,9 +97,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
     const bool inserted = MigrationsInProgress.TryInsert(range);
     if (!inserted) {
         ReportOverlappingRangesDuringMigrationDetected(
-            TStringBuilder() << "An error occurred while inserting a range to "
-                                "the container. Range: "
-                             << range << ", diskId: " << DiskId);
+            "An error occurred while inserting a range to the container",
+            {{"disk", DiskId}, {"range", range}});
     }
 
     if (DirectCopyPolicy == EDirectCopyPolicy::CanUse &&
@@ -150,8 +147,8 @@ bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationAllowed() const
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationFinished() const
 {
-    return !ProcessingBlocks.IsProcessing() && MigrationsInProgress.Empty() &&
-           DeferredMigrations.Empty();
+    return ProcessingBlocks.IsProcessingDone() &&
+           MigrationsInProgress.Empty() && DeferredMigrations.Empty();
 }
 
 bool TNonreplicatedPartitionMigrationCommonActor::IsIoDepthLimitReached() const
@@ -316,13 +313,14 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         const bool inserted = DeferredMigrations.TryInsert(msg->Range);
         if (!inserted) {
             ReportOverlappingRangesDuringMigrationDetected(
-                TStringBuilder()
-                << "Can't defer a range to migrate later. Range: " << msg->Range
-                << ", diskId: " << DiskId);
+                "Can't defer a range to migrate later",
+                {{"disk", DiskId}, {"range", msg->Range}});
         }
         ScheduleRangeMigration(ctx);
         return;
     }
+
+    BackoffProvider.Reset();
 
     LOG_DEBUG(
         ctx,
@@ -453,8 +451,8 @@ void TNonreplicatedPartitionMigrationCommonActor::OnMigrationNonRetriableError(
     const NActors::TActorContext& ctx)
 {
     ReportMigrationFailed(
-        TStringBuilder() << "Non-retriable migration error occurred; diskId: "
-                         << DiskId);
+        "Non-retriable migration error occurred",
+        {{"disk", DiskId}});
     MigrationOwner->OnMigrationError(ctx);
     MigrationEnabled = false;
 }
@@ -491,19 +489,29 @@ void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
 
     RangeMigrationScheduled = true;
     ctx.Schedule(
-        delayBetweenMigrations,
-        new TEvNonreplPartitionPrivate::TEvMigrateNextRange());
+        DeferredMigrations.Empty()
+            ? delayBetweenMigrations
+            : delayBetweenMigrations + BackoffProvider.GetDelayAndIncrease(),
+        new TEvNonreplPartitionPrivate::TEvMigrateNextRange(
+            /*isRetry*/ !DeferredMigrations.Empty()));
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::HandleMigrateNextRange(
     const TEvNonreplPartitionPrivate::TEvMigrateNextRange::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
     RangeMigrationScheduled = false;
 
     if (!IsMigrationAllowed() || IsIoDepthLimitReached()) {
+        return;
+    }
+
+    if (!DeferredMigrations.Empty() && !ev->Get()->IsRetry) {
+        RangeMigrationScheduled = true;
+        ctx.Schedule(
+            BackoffProvider.GetDelayAndIncrease(),
+            new TEvNonreplPartitionPrivate::TEvMigrateNextRange(
+                /*isRetry*/ true));
         return;
     }
 

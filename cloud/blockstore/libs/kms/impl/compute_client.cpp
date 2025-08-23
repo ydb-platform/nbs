@@ -75,9 +75,12 @@ public:
         grpc::CompletionQueue* cq,
         void* tag)
     {
+        auto future = Promise.GetFuture();
         Reader = service.AsyncCreateToken(&ClientContext, Request, cq);
         Reader->Finish(&Response, &Status, tag);
-        return Promise;
+        // At this point, this object can already be freed after request
+        // completion. It is not safe to use it.
+        return future;
     }
 
     void Complete()

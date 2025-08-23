@@ -155,7 +155,7 @@ void TMirrorPartitionActor::StartScrubbingRange(
     const NActors::TActorContext& ctx,
     ui64 scrubbingRangeId)
 {
-    if (ScrubbingRangeId != scrubbingRangeId) {
+    if (ScrubbingRangeId != scrubbingRangeId || !ScrubbingRangeStarted) {
         ScrubbingRangeId = scrubbingRangeId;
         if (GetScrubbingRange().Start >= State.GetBlockCount()) {
             ScrubbingRangeId = 0;
@@ -241,12 +241,10 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
         const bool hasQuorum = majorCount > checksums.size() / 2;
         if (hasQuorum) {
             ReportMirroredDiskMinorityChecksumMismatch(
-                TStringBuilder() << " disk: " << DiskId.Quote()
-                                 << ", range: " << GetScrubbingRange());
+                {{"disk", DiskId}, {"range", GetScrubbingRange()}});
         } else {
             ReportMirroredDiskMajorityChecksumMismatch(
-                TStringBuilder() << " disk: " << DiskId.Quote()
-                                 << ", range: " << GetScrubbingRange());
+                {{"disk", DiskId}, {"range", GetScrubbingRange()}});
         }
         if (Config->GetResyncRangeAfterScrubbing() &&
             CanFixMismatch(hasQuorum, Config->GetScrubbingResyncPolicy()))
@@ -669,8 +667,7 @@ void TMirrorPartitionActor::HandleInconsistentDiskAgent(
         msg->AgentId.Quote().c_str());
 
     ReportDiskAgentInconsistentMultiWriteResponse(
-        TStringBuilder() << "DiskId: " << DiskId.Quote()
-                         << ", DiskAgent: " << msg->AgentId.Quote());
+        {{"disk", DiskId}, {"DiskAgent", msg->AgentId}});
     MultiAgentWriteEnabled = false;
 }
 
@@ -703,10 +700,8 @@ void TMirrorPartitionActor::HandleAddTagsResponse(
 
     if (HasError(error)) {
         ReportMirroredDiskAddTagFailed(
-            TStringBuilder()
-            << "Failed to add " << IntermediateWriteBufferTagName
-            << " tag for disk [" << DiskId << "] with "
-            << FormatError(error));
+            FormatError(error),
+            {{"disk", DiskId}, {"tag", IntermediateWriteBufferTagName}});
         return;
     }
     LOG_WARN(

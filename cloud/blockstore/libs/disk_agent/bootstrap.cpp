@@ -26,6 +26,7 @@
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/bootstrap.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_generator.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
@@ -48,6 +49,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/features/features_config.h>
+#include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -348,6 +350,37 @@ void TBootstrap::InitRdmaServer(NRdma::TRdmaConfig& config)
     }
 }
 
+bool TBootstrap::InitBackend()
+{
+    const auto& config = *Configs->DiskAgentConfig;
+    if (!config.GetEnabled()) {
+        return false;
+    }
+
+    if (config.GetBackend() == NProto::DISK_AGENT_BACKEND_SPDK) {
+        auto spdkParts =
+            ServerModuleFactories->SpdkFactory(Configs->SpdkEnvConfig);
+        Spdk = std::move(spdkParts.Env);
+        SpdkLogInitializer = std::move(spdkParts.LogInitializer);
+    }
+
+    Y_ABORT_IF(NvmeManager);
+    Y_ABORT_IF(FileIOServiceProvider);
+    Y_ABORT_IF(LocalStorageProvider);
+
+    auto r = CreateDiskAgentBackendComponents(config);
+    NvmeManager = std::move(r.NvmeManager);
+    FileIOServiceProvider = std::move(r.FileIOServiceProvider);
+    LocalStorageProvider = std::move(r.StorageProvider);
+
+    STORAGE_INFO(
+        "Disk Agent backend ("
+        << NProto::EDiskAgentBackendType_Name(config.GetBackend())
+        << ") initialized");
+
+    return true;
+}
+
 bool TBootstrap::InitKikimrService()
 {
     Configs->Log = Log;
@@ -451,52 +484,8 @@ bool TBootstrap::InitKikimrService()
         STORAGE_INFO("AsyncLogger initialized");
     }
 
-    if (auto& config = *Configs->DiskAgentConfig; config.GetEnabled()) {
-        switch (config.GetBackend()) {
-            case NProto::DISK_AGENT_BACKEND_SPDK: {
-                auto spdkParts =
-                    ServerModuleFactories->SpdkFactory(Configs->SpdkEnvConfig);
-                Spdk = std::move(spdkParts.Env);
-                SpdkLogInitializer = std::move(spdkParts.LogInitializer);
-
-                STORAGE_INFO("Spdk backend initialized");
-                break;
-            }
-
-            case NProto::DISK_AGENT_BACKEND_AIO: {
-                NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
-
-                auto factory = CreateAIOServiceFactory(
-                    {.MaxEvents = config.GetMaxAIOContextEvents()});
-
-                FileIOServiceProvider =
-                    config.GetPathsPerFileIOService()
-                        ? CreateFileIOServiceProvider(
-                              config.GetPathsPerFileIOService(),
-                              std::move(factory))
-                        : CreateSingleFileIOServiceProvider(
-                              factory->CreateFileIOService());
-
-                LocalStorageProvider = CreateLocalStorageProvider(
-                    FileIOServiceProvider,
-                    NvmeManager,
-                    {.DirectIO = !config.GetDirectIoFlagDisabled(),
-                     .UseSubmissionThread =
-                         config.GetUseLocalStorageSubmissionThread()});
-
-                STORAGE_INFO("Aio backend initialized");
-                break;
-            }
-            case NProto::DISK_AGENT_BACKEND_NULL:
-                NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
-                LocalStorageProvider = CreateNullStorageProvider();
-                STORAGE_INFO("Null backend initialized");
-                break;
-        }
-
-        if (Configs->RdmaConfig) {
-            InitRdmaServer(*Configs->RdmaConfig);
-        }
+    if (InitBackend() && Configs->RdmaConfig) {
+        InitRdmaServer(*Configs->RdmaConfig);
     }
 
     Allocator = CreateCachingAllocator(
@@ -654,6 +643,7 @@ void TBootstrap::Start()
 
     START_COMPONENT(AsyncLogger);
     START_COMPONENT(Logging);
+    START_COMPONENT(StatsFetcher);
     START_COMPONENT(Monitoring);
     START_COMPONENT(ProfileLog);
     START_COMPONENT(TraceProcessor);
@@ -707,6 +697,7 @@ void TBootstrap::Stop()
     STOP_COMPONENT(TraceProcessor);
     STOP_COMPONENT(ProfileLog);
     STOP_COMPONENT(Monitoring);
+    STOP_COMPONENT(StatsFetcher);
     STOP_COMPONENT(Logging);
     STOP_COMPONENT(AsyncLogger);
 

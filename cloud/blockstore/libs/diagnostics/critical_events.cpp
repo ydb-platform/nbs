@@ -1,12 +1,52 @@
 #include "critical_events.h"
 
 #include "public.h"
+#include <util/string/builder.h>
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 namespace NCloud::NBlockStore {
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename... Ts>
+TStringBuilder& operator<<(TStringBuilder& sb, const std::variant<Ts...>& v)
+{
+    std::visit([&sb](const auto& arg) { sb << arg; }, v);
+    return sb;
+}
+
+template <typename T>
+TString FormatKeyValueList(
+    const TVector<std::pair<TStringBuf, T>>& keyValues)
+{
+    TStringBuilder sb;
+    bool first = true;
+    for (const auto& [key, value]: keyValues) {
+        if (!first) {
+            sb << "; ";
+        }
+        sb << key << "=" << value;
+        first = false;
+    }
+    return sb;
+}
+
+TString ComposeMessageWithSuffix(const TString& message, const TString& suffix)
+{
+    if (message.empty()) {
+        return suffix;
+    }
+    if (suffix.empty()) {
+        return message;
+    }
+    return message + "; " + suffix;
+}
+}   // namespace
 
 using namespace NMonitoring;
 
@@ -35,7 +75,22 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
             message,                                                           \
             false);                                                            \
     }                                                                          \
-                                                                               \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+    {                                                                          \
+        TString msg =                                                          \
+            ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \
+        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
+    }                                                                          \
+    TString Report##name(                                                      \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+    {                                                                          \
+        return ReportCriticalEvent(                                            \
+            GetCriticalEventFor##name(),                                       \
+            FormatKeyValueList(keyValues),                                     \
+            false);                                                            \
+    }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \
         return "AppCriticalEvents/"#name;                                      \
@@ -53,7 +108,22 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
             message,                                                           \
             false);                                                            \
     }                                                                          \
-                                                                               \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+    {                                                                          \
+        TString msg =                                                          \
+            ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \
+        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
+    }                                                                          \
+    TString Report##name(                                                      \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+    {                                                                          \
+        return ReportCriticalEvent(                                            \
+            GetCriticalEventFor##name(),                                       \
+            FormatKeyValueList(keyValues),                                     \
+            false);                                                            \
+    }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \
         return "DiskAgentCriticalEvents/"#name;                             \
@@ -72,7 +142,22 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
             message,                                                           \
             true);                                                             \
     }                                                                          \
-                                                                               \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+    {                                                                          \
+        TString msg =                                                          \
+            ComposeMessageWithSuffix(message, FormatKeyValueList(keyValues));  \
+        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
+    }                                                                          \
+    TString Report##name(                                                      \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues)               \
+    {                                                                          \
+        return ReportCriticalEvent(                                            \
+            GetCriticalEventFor##name(),                                       \
+            FormatKeyValueList(keyValues),                                     \
+            false);                                                            \
+    }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \
         return "AppImpossibleEvents/"#name;                                    \

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 IC_PORT=${IC_PORT:-29012}
-MON_PORT=${MON_PORT:-8769}
+MON_PORT=${MON_PORT:-9100}
 
 find_bin_dir() {
     readlink -e `dirname $0`
@@ -30,7 +30,7 @@ start_nbs_agent() {
     fi
 
     IC_PORT=$(($IC_PORT + $1 * 100)) \
-    MON_PORT=$(($MON_PORT + $1 * 100)) \
+    MON_PORT=$(($MON_PORT + $1)) \
     start_disk-agent \
         --location-file $BIN_DIR/nbs/nbs-location-$1.txt \
         --disk-agent-file $BIN_DIR/nbs/nbs-disk-agent-$1.txt >logs/remote-da$1.log 2>&1 &

@@ -37,7 +37,8 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
         TString baseDiskCheckpointId,
         ui32 blockSize,
         EStorageAccessMode mode,
-        TDuration longRunningThreshold)
+        TDuration longRunningThreshold,
+        TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , OriginalRequest(std::move(originalRequest))
     , VolumeActorId(volumeActorId)
@@ -47,6 +48,7 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
     , BaseDiskCheckpointId(std::move(baseDiskCheckpointId))
     , BlockSize(blockSize)
     , LongRunningThreshold(longRunningThreshold)
+    , LogTitle(std::move(logTitle))
     , Mode(mode)
     , BlockMarks(MakeUsedBlockMarks(
           usedBlocks,
@@ -91,9 +93,11 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::Bootstrap(const TActorContext&
         SetProtoFlag(flags, NProto::EF_SILENT);
         auto error = MakeError(E_CANCELLED, "failed to acquire sglist", flags);
 
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] %s %s",
-            VolumeTabletId,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s %s %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(error).c_str());
 
@@ -241,12 +245,16 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::ReplyAndDie(
 {
     auto response = std::make_unique<typename TMethod::TResponse>(error);
 
-    if constexpr (std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>) {
-        ReadHandler->GetLocalResponse(response->Record);
-        ClearEmptyBlocks(BlockMarks, OriginalRequest.Sglist);
-    } else {
-        ReadHandler->GetResponse(response->Record);
-        ClearEmptyBlocks(BlockMarks, response->Record);
+    if (!HasError(error)) {
+        if constexpr (
+            std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>)
+        {
+            ReadHandler->GetLocalResponse(response->Record);
+            ClearEmptyBlocks(BlockMarks, OriginalRequest.Sglist);
+        } else {
+            ReadHandler->GetResponse(response->Record);
+            ClearEmptyBlocks(BlockMarks, response->Record);
+        }
     }
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -264,9 +272,11 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleReadBlocksLocalResponse(
     const auto* msg = ev->Get();
 
     if (HasError(msg->Record)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] %s got error from overlay disk: %s",
-            VolumeTabletId,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s %s got error from overlay disk: %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(msg->Record.GetError()).c_str());
 
@@ -285,9 +295,11 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
 
     auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] %s failed to describe base disk: %s",
-            VolumeTabletId,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s %s failed to describe base disk: %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(msg->GetError()).c_str());
 
@@ -321,9 +333,11 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
         SetProtoFlag(flags, NProto::EF_SILENT);
         auto error = MakeError(E_CANCELLED, "failed to acquire sglist", flags);
 
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] %s %s",
-            VolumeTabletId,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s %s %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(error).c_str());
 
@@ -368,7 +382,8 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
                     false, // shouldCalculateChecksums
                     Mode,
                     std::move(currentRequest),
-                    LongRunningThreshold);
+                    LongRunningThreshold,
+                    0ull);
                 currentRequest = std::make_unique<
                     TEvPartitionCommonPrivate::TEvReadBlobRequest>();
                 currentRequest->Deadline = TInstant::Max();
@@ -395,7 +410,8 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
             false, // shouldCalculateChecksums
             EStorageAccessMode::Default,
             std::move(currentRequest),
-            LongRunningThreshold);
+            LongRunningThreshold,
+            0ull);
     }
 }
 
@@ -409,9 +425,11 @@ template <ReadRequest TMethod>
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] %s got error from base disk: %s",
-            VolumeTabletId,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s %s got error from base disk: %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(msg->GetError()).c_str());
 

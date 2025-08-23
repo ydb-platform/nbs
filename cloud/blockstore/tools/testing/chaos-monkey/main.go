@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -55,7 +54,7 @@ func run(ctx context.Context, opts *options) error {
 	}
 
 	if len(opts.DiskRegistryStateFile) > 0 {
-		stateJSON, err = ioutil.ReadFile(opts.DiskRegistryStateFile)
+		stateJSON, err = os.ReadFile(opts.DiskRegistryStateFile)
 		if err != nil {
 			return fmt.Errorf(
 				"can't read state file %v: %w",

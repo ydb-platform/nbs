@@ -172,6 +172,9 @@ private:
         std::atomic<i64> IdleTime{0};
         TBusyIdleTimeCalculatorAtomics BusyIdleCalc;
 
+        // Tablet-specific stats
+        std::atomic<i64> TabletStartTimestamp{0};
+
         // Blob compression stats
         std::atomic<i64> UncompressedBytesWritten{0};
         std::atomic<i64> CompressedBytesWritten{0};

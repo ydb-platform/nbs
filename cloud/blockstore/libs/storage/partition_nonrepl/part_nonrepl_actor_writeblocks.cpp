@@ -346,7 +346,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
     if (guard.Get().empty()) {
         // can happen only if there is a bug in the code of the layers above
         // this one
-        ReportEmptyRequestSgList();
+        ReportEmptyRequestSgList({{"disk", msg->Record.GetDiskId()}});
         replyError(
             ctx,
             *requestInfo,
@@ -393,8 +393,11 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete write blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete write blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 

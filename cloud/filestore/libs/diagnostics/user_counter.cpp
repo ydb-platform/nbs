@@ -31,180 +31,6 @@ constexpr TStringBuf FILESTORE_INDEX_LATENCY         = "filestore.index_latency"
 constexpr TStringBuf FILESTORE_INDEX_ERRORS          = "filestore.index_errors";
 constexpr TStringBuf FILESTORE_INDEX_CUMULATIVE_TIME = "filestore.index_cumulative_time";
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct TUserSumCounterWrapper
-    : public IUserCounter
-{
-    TVector<TIntrusivePtr<NMonitoring::TCounterForPtr>> Counters;
-    NMonitoring::EMetricType Type = NMonitoring::EMetricType::UNKNOWN;
-
-    void GetType(NMonitoring::IMetricConsumer* consumer) const override
-    {
-        consumer->OnMetricBegin(Type);
-    }
-
-    void GetValue(
-        TInstant time,
-        NMonitoring::IMetricConsumer* consumer) const override
-    {
-        int64_t sum = 0;
-
-        for (const auto& counter: Counters) {
-            sum += counter->Val();
-        }
-
-        consumer->OnInt64(time, sum);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TBucketDescr
-{
-    TBucketBound Bound;
-    TString Name;
-};
-
-static constexpr size_t BUCKETS_COUNT = 25;
-
-using TBuckets = std::array<TBucketDescr, BUCKETS_COUNT>;
-
-template <typename THistogramType>
-TBuckets MakeBuckets(auto convertBound)
-{
-    static_assert(BUCKETS_COUNT == THistogramType::BUCKETS_COUNT, "");
-
-    TBuckets result;
-    const auto names = THistogramType::MakeNames();
-    for (size_t i = 0; i < names.size(); ++i) {
-        result[i].Bound = convertBound(THistogramType::Buckets[i]);
-        result[i].Name = names[i];
-    }
-    return result;
-}
-
-const TBuckets MS_BUCKETS = MakeBuckets<TRequestMsTimeBuckets>(
-    [](double data) {return data;});
-const TBuckets US_BUCKETS = MakeBuckets<TRequestUsTimeBuckets>(
-    [](double data) {return data == std::numeric_limits<double>::max()
-        ? data : data / 1000.;});
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TUserHistogramWrapper
-    : public IUserCounter
-{
-    static constexpr size_t IGNORE_BUCKETS_COUNT = 10;
-
-    TIntrusivePtr<TDynamicCounters> Counter;
-    TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
-    const TBuckets& Buckets;
-    EMetricType Type = EMetricType::UNKNOWN;
-
-    TUserHistogramWrapper(const TBuckets& buckets)
-        : Histogram(TExplicitHistogramSnapshot::New(
-            buckets.size() - IGNORE_BUCKETS_COUNT))
-        , Buckets(buckets)
-    {
-        for (size_t i = IGNORE_BUCKETS_COUNT; i < Buckets.size(); ++i) {
-            (*Histogram)[i - IGNORE_BUCKETS_COUNT].first = Buckets[i].Bound;
-        }
-    }
-
-    void Clear() const
-    {
-        for (size_t i = IGNORE_BUCKETS_COUNT; i < Buckets.size(); ++i) {
-            (*Histogram)[i - IGNORE_BUCKETS_COUNT].second = 0;
-        }
-    }
-
-    void GetType(NMonitoring::IMetricConsumer* consumer) const override
-    {
-        consumer->OnMetricBegin(Type);
-    }
-
-    void GetValue(
-        TInstant time,
-        NMonitoring::IMetricConsumer* consumer) const override
-    {
-        if (!Counter) {
-            return;
-        }
-
-        Clear();
-
-        for (ui32 i = 0; i < IGNORE_BUCKETS_COUNT; ++i) {
-            if (auto countSub = Counter->GetCounter(Buckets[i].Name)) {
-                (*Histogram)[0].second += countSub->Val();
-            }
-        }
-
-        for (ui32 i = IGNORE_BUCKETS_COUNT; i < Buckets.size(); ++i) {
-            if (auto countSub = Counter->GetCounter(Buckets[i].Name)) {
-                (*Histogram)[i - IGNORE_BUCKETS_COUNT].second += countSub->Val();
-            }
-        }
-
-        consumer->OnHistogram(time, Histogram);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-using TBaseDynamicCounters = std::pair<TDynamicCounterPtr, TString>;
-
-void AddUserMetric(
-    IUserCounterSupplier& dsc,
-    const TLabels& commonLabels,
-    const TVector<TBaseDynamicCounters>& baseCounters,
-    TStringBuf newName
-)
-{
-    std::shared_ptr<TUserSumCounterWrapper> wrapper =
-        std::make_shared<TUserSumCounterWrapper>();
-
-    for (auto& counter: baseCounters) {
-        if (counter.first) {
-            if (auto countSub = counter.first->FindCounter(counter.second)) {
-                wrapper->Counters.push_back(countSub);
-                wrapper->Type = countSub->ForDerivative()
-                    ? EMetricType::RATE
-                    : EMetricType::GAUGE;
-            }
-        }
-    }
-
-    if (wrapper->Type != NMonitoring::EMetricType::UNKNOWN) {
-        dsc.AddUserMetric(
-            commonLabels,
-            newName,
-            TUserCounter(wrapper));
-    }
-}
-
-auto AddHistogramUserMetric(
-    const TBuckets& buckets,
-    IUserCounterSupplier& dsc,
-    const TLabels& commonLabels,
-    const TBaseDynamicCounters& baseCounter,
-    TStringBuf newName)
-{
-    auto wrapper = std::make_shared<TUserHistogramWrapper>(buckets);
-
-    wrapper->Type = EMetricType::HIST_RATE;
-
-    if (baseCounter.first) {
-        wrapper->Counter =
-            baseCounter.first->FindSubgroup("histogram", baseCounter.second);
-    }
-
-    dsc.AddUserMetric(
-        commonLabels,
-        newName,
-        TUserCounter(wrapper));
-}
-
 TLabels MakeFilestoreLabels(
     const TString& cloudId,
     const TString& folderId,
@@ -303,10 +129,10 @@ void RegisterFilestore(
         { { readSub, "Errors/Fatal" } },
         FILESTORE_READ_ERRORS);
     AddHistogramUserMetric(
-        MS_BUCKETS,
+        GetMsBuckets(),
         dsc,
         commonLabels,
-        { readSub, "Time" },
+        { { readSub, "Time" } },
         FILESTORE_READ_LATENCY);
 
     auto writeSub = src->FindSubgroup("request", "WriteData");
@@ -336,10 +162,10 @@ void RegisterFilestore(
         { { writeSub, "Errors/Fatal" } },
         FILESTORE_WRITE_ERRORS);
     AddHistogramUserMetric(
-        MS_BUCKETS,
+        GetMsBuckets(),
         dsc,
         commonLabels,
-        { writeSub, "Time" },
+        { { writeSub, "Time" } },
         FILESTORE_WRITE_LATENCY);
 
     TVector<TBaseDynamicCounters> indexOpsCounters;
@@ -378,10 +204,10 @@ void RegisterFilestore(
                     FILESTORE_INDEX_CUMULATIVE_TIME
                 );
                 AddHistogramUserMetric(
-                    MS_BUCKETS,
+                    GetMsBuckets(),
                     dsc,
                     labels,
-                    { indexSubgroup, "Time" },
+                    {{ indexSubgroup, "Time" }},
                     FILESTORE_INDEX_LATENCY);
                 AddUserMetric(
                     dsc,
@@ -446,4 +272,4 @@ void UnregisterFilestore(
     }
 }
 
-}   // NCloud::NFileStore::NUserCounter
+}  // namespace NCloud::NFileStore::NUserCounter

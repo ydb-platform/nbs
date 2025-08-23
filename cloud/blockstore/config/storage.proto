@@ -1271,4 +1271,26 @@ message TStorageServiceConfig
     // If a disk starts sending more than the DirectWriteBandwidthQuota bytes per second,
     // we start using MultiAgent write requests.
     optional uint64 DirectWriteBandwidthQuota = 440;
+
+    // Max number of devices in a TStartMigration transaction.
+    optional uint32 MaxNonReplicatedDeviceMigrationBatchSize = 441;
+
+    // Min percentage of reassignable mixed channels after which reassign requests
+    // are sent.
+    optional uint32 ReassignMixedChannelsPercentageThreshold = 442;
+
+    // If true, describes will be done using SchemeCache instead of TxProxy.
+    optional bool UseSchemeCache = 443;
+
+    // The volume pulls statistics from the partitions,
+    // instead of the partitions pushing statistics to the volume themselves.
+    optional bool UsePullSchemeForVolumeStatistics  = 444;
+
+    // Initial retry delay for scheduling next resync and migration
+    // ranges (in milliseconds).
+    optional uint32 InitialRetryDelayForServiceRequests = 445;
+
+    // Max retry delay for scheduling next resync and migration
+    // ranges (in milliseconds).
+    optional uint32 MaxRetryDelayForServiceRequests = 446;
 }

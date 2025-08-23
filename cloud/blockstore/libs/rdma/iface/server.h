@@ -29,10 +29,11 @@ struct TServerConfig
     ui64 MaxInflightBytes = Max<ui64>();
     TDuration AdaptiveWaitSleepDelay = TDuration::MilliSeconds(10);
     TDuration AdaptiveWaitSleepDuration = TDuration::MicroSeconds(100);
+    ui8 IpTypeOfService = 0;
 
     TServerConfig() = default;
 
-    TServerConfig(const NProto::TRdmaServer& config);
+    explicit TServerConfig(const NProto::TRdmaServer& config);
 
     void DumpHtml(IOutputStream& out) const;
 };

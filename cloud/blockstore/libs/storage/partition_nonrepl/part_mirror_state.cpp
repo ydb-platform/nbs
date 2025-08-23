@@ -41,10 +41,12 @@ TMirrorPartitionState::TMirrorPartitionState(
     }
 
     if (freshDeviceCount != PartConfig->GetFreshDeviceIds().size()) {
-        ReportFreshDeviceNotFoundInConfig(TStringBuilder()
-            << "Fresh device count mismatch: " << freshDeviceCount
-            << " != " << PartConfig->GetFreshDeviceIds().size()
-            << " for disk " << PartConfig->GetName());
+        ReportFreshDeviceNotFoundInConfig(
+            "Fresh device count mismatch",
+            {{"disk", PartConfig->GetName()},
+             {"freshDeviseCount", freshDeviceCount},
+             {"partConfigFreshDeviceCount",
+              PartConfig->GetFreshDeviceIds().size()}});
     }
 }
 
@@ -140,7 +142,9 @@ bool TMirrorPartitionState::PrepareMigrationConfigForWarningDevices()
         }
     }
 
-    ReportMigrationSourceNotFound();
+    ReportMigrationSourceNotFound(
+        {{"disk", PartConfig->GetName()}, {"RWClientId", RWClientId}});
+
     // TODO: log details
     return false;
 }
@@ -193,7 +197,12 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
         }
     }
 
-    ReportMigrationSourceNotFound();
+    ReportMigrationSourceNotFound(
+        "PrepareMigrationConfigForFreshDevices failed: no suitable source "
+        "device found for fresh device",
+        {{"disk", PartConfig->GetName()},
+         {"index", deviceIdx},
+         {"total_replicas", ReplicaInfos.size()}});
     return false;
 }
 

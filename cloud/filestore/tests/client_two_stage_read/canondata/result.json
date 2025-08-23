@@ -1,0 +1,5 @@
+{
+    "test.test_unaligned_read": {
+        "uri": "file://test.test_unaligned_read/results.txt"
+    }
+}

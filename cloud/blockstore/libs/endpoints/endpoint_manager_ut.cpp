@@ -6,6 +6,7 @@
 
 #include <cloud/blockstore/config/server.pb.h>
 
+#include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/common/iovector.h>
@@ -45,6 +46,7 @@
 
 namespace NCloud::NBlockStore::NServer {
 
+using namespace NCells;
 using namespace NThreading;
 
 using namespace std::chrono_literals;
@@ -499,6 +501,7 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
             bootstrap.VolumeStats,
             bootstrap.ServerStats,
             bootstrap.Service,
+            CreateCellManagerStub(),
             CreateDefaultStorageProvider(bootstrap.Service),
             std::move(encryptionClientFactory),
             bootstrap.Executor,

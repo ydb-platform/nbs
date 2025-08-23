@@ -35,6 +35,7 @@ def init(stored_endpoints_path=None):
     server.ServerConfig.VhostEnabled = True
     server.ServerConfig.NbdEnabled = False
     server.ServerConfig.VhostDiscardEnabled = True
+    server.ServerConfig.VhostOptimalIoSize = 4 * 1024 * 1024
     server.ServerConfig.ThreadsCount = thread_count()
     server.ServerConfig.StrictContractValidation = True
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"

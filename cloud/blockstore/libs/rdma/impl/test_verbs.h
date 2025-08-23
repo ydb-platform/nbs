@@ -19,6 +19,7 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     TDeque<NVerbs::TConnectionEventPtr> ConnectionEvents;
     bool AllowConnect = false;
     TSpinLock ConnectionLock;
+    ui8 ToS = 0;
 
     TEventHandle CompletionHandle;
     TDeque<ibv_send_wr*> SendEvents;

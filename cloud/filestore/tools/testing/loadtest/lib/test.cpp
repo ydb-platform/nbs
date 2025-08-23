@@ -17,6 +17,7 @@
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/protobuf/json/proto2json.h>
 
 #include <util/datetime/base.h>
@@ -28,7 +29,6 @@
 #include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/string/printf.h>
-#include <library/cpp/deprecated/atomic/atomic.h>
 #include <util/system/condvar.h>
 #include <util/system/event.h>
 #include <util/system/mutex.h>
@@ -290,15 +290,14 @@ private:
 
 public:
     TLoadTest(
-            const NProto::TLoadTest& config,
+            NProto::TLoadTest config,
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
             IClientFactoryPtr clientFactory,
             TString testInstanceId,
-            TLoadTestControllerCommandChannel& controller,
-            TString clientId = {})
-        : Config(config)
+            TLoadTestControllerCommandChannel& controller)
+        : Config(std::move(config))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
@@ -306,7 +305,7 @@ public:
         , TestTag(NLoadTest::MakeTestTag(Config.GetName()))
         , Controller(controller)
         , Client(clientFactory->CreateClient())
-        , ClientId(std::move(clientId))
+        , ClientId(Config.GetClientId() ? Config.GetClientId() : "test-client")
     {
         Log = Logging->CreateLog("RUNNER");
     }
@@ -519,7 +518,7 @@ private:
         }
 
         NProto::THeaders headers;
-        headers.SetClientId(Config.GetName());
+        headers.SetClientId(Config.GetClientId());
         headers.SetSessionId(SessionId);
 
         switch (Config.GetSpecsCase()) {
@@ -771,8 +770,7 @@ std::shared_ptr<TLoadTest> CreateSimpleLoadTest(
     ILoggingServicePtr logging,
     IClientFactoryPtr clientFactory,
     TString testInstanceId,
-    TLoadTestControllerCommandChannel& controller,
-    TString clientId)
+    TLoadTestControllerCommandChannel& controller)
 {
     return std::make_shared<TLoadTest>(
         config,
@@ -781,8 +779,7 @@ std::shared_ptr<TLoadTest> CreateSimpleLoadTest(
         std::move(logging),
         std::move(clientFactory),
         std::move(testInstanceId),
-        controller,
-        std::move(clientId));
+        controller);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -890,8 +887,7 @@ public:
             Logging,
             ClientFactory,
             std::move(testId),
-            Events,
-            "migration-test");
+            Events);
         SourceFuture = SourceTest->Run();
 
         auto result = SendSetupTestSession(SourceTest, false, SessionSeqNo);
@@ -927,8 +923,7 @@ public:
             Logging,
             ClientFactory,
             std::move(testId),
-            Events,
-            "migration-test");
+            Events);
         TargetFuture = TargetTest->Run();
 
         auto result = SendSetupTestSession(TargetTest, true, SessionSeqNo + 1);

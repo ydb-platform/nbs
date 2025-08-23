@@ -48,18 +48,18 @@ const TString PartitionTransactions[] = {
 };
 
 TPartitionActor::TPartitionActor(
-        const TActorId& owner,
-        TTabletStorageInfoPtr storage,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        NProto::TPartitionConfig partitionConfig,
-        EStorageAccessMode storageAccessMode,
-        ui32 partitionIndex,
-        ui32 siblingCount,
-        const TActorId& volumeActorId,
-        ui64 volumeTabletId)
+    const TActorId& owner,
+    TTabletStorageInfoPtr storage,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    NProto::TPartitionConfig partitionConfig,
+    EStorageAccessMode storageAccessMode,
+    ui32 partitionIndex,
+    ui32 siblingCount,
+    const TActorId& volumeActorId,
+    ui64 volumeTabletId)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
@@ -74,11 +74,12 @@ TPartitionActor::TPartitionActor(
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
     , VolumeTabletId(volumeTabletId)
     , LogTitle(
-          TabletID(),
-          PartitionConfig.GetDiskId(),
           StartTime,
-          partitionIndex,
-          siblingCount)
+          TLogTitle::TPartition{
+              .TabletId = TabletID(),
+              .DiskId = PartitionConfig.GetDiskId(),
+              .PartitionIndex = partitionIndex,
+              .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
 {}
 
@@ -227,8 +228,9 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         Y_DEBUG_ABORT_UNLESS(value >= counter.Get());                         \
         if (value < counter.Get()) {                                          \
             ReportCounterUpdateRace(                                          \
-                TStringBuilder() << "category="                               \
-                << #category  << " name=" << #name);                          \
+                {{"disk", PartitionConfig.GetDiskId()},                       \
+                 {"category", TString(#category)},                            \
+                 {"counter", TString(#name)}});                               \
             LOG_ERROR(                                                        \
                 ctx,                                                          \
                 TBlockStoreComponents::PARTITION,                             \
@@ -247,7 +249,10 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
 
 #undef BLOCKSTORE_PARTITION_UPDATE_COUNTER
 
-    SendStatsToService(ctx);
+    // Send counters to service only when we use push scheme
+    if (!Config->GetUsePullSchemeForVolumeStatistics()) {
+        SendStatsToService(ctx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -317,9 +322,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         std::move(channels));
 
     ReportReassignTablet(
-        TStringBuilder() << TabletID()
-                         << " tablet; reassign request sent for channels: "
-                         << sb);
+        {{"disk", PartitionConfig.GetDiskId()},
+         {"tablet_id", TabletID()},
+         {"channels", sb}});
     ReassignRequestSentTs = ctx.Now();
 }
 
@@ -454,8 +459,8 @@ void TPartitionActor::ReleaseTransactions()
 
 void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
 {
-    while (auto requestActor = State->DequeueIORequest(channel)) {
-        auto actorId = NCloud::Register(ctx, std::move(requestActor));
+    while (auto request = State->DequeueIORequest(channel)) {
+        auto actorId = NCloud::Register(ctx, std::move(request->Actor));
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION,
@@ -463,6 +468,11 @@ void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
             LogTitle.GetWithTime().c_str(),
             actorId);
         Actors.Insert(actorId);
+        BSGroupOperationTimeTracker.OnStarted(
+            request->BSGroupOperationId,
+            request->Group,
+            request->OperationType,
+            GetCycleCount());
     }
 }
 
@@ -663,7 +673,7 @@ void TPartitionActor::RebootPartitionOnCommitIdOverflow(
         "%s CommitId overflow in %s. Restarting partition",
         LogTitle.GetWithTime().c_str(),
         ToString(requestName).c_str());
-    ReportTabletCommitIdOverflow();
+    ReportTabletCommitIdOverflow({{"disk", PartitionConfig.GetDiskId()}});
     Suicide(ctx);
 }
 
@@ -677,7 +687,7 @@ void TPartitionActor::RebootPartitionOnCollectCounterOverflow(
         "%s CollectCounter overflow in %s. Restarting partition",
         LogTitle.GetWithTime().c_str(),
         ToString(requestName).c_str());
-    ReportTabletCollectCounterOverflow();
+    ReportTabletCollectCounterOverflow({{"disk", PartitionConfig.GetDiskId()}});
     Suicide(ctx);
 }
 
@@ -913,6 +923,10 @@ STFUNC(TPartitionActor::StateBoot)
         HFunc(TEvPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
 
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCountersRequest);
+
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
         HFunc(TEvents::TEvWakeup, HandleWakeupOnBoot);
@@ -943,6 +957,10 @@ STFUNC(TPartitionActor::StateInit)
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
 
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
+
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCountersRequest);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
@@ -1000,6 +1018,9 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted, HandleAddConfirmedBlobsCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted, HandleDescribeBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCountersRequest);
 
         HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
 
@@ -1045,6 +1066,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateYellowState);
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvGetPartCountersRequest);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
@@ -1125,7 +1147,8 @@ NProto::TError VerifyBlockChecksum(
     const NKikimr::TLogoBlobID& blobID,
     const ui64 blockIndex,
     const ui16 blobOffset,
-    const ui32 expectedChecksum)
+    const ui32 expectedChecksum,
+    const TString& diskId)
 {
     if (expectedChecksum == 0) {
         // 0 is a special case - block digest calculation can be
@@ -1138,7 +1161,11 @@ NProto::TError VerifyBlockChecksum(
     }
 
     if (actualChecksum != expectedChecksum) {
-        ReportBlockDigestMismatchInBlob();
+        ReportBlockDigestMismatchInBlob(
+            {{"disk", diskId},
+             {"BlockIndex", blockIndex},
+             {"blobOffset", blobOffset},
+             {"blob", blobID.ToString()}});
         // we might read proper data upon retry - let's give it a chance
         return MakeError(
             E_REJECTED,

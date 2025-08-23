@@ -45,6 +45,9 @@ message TReadBlocksRequest
 
     // Session identifier.
     string SessionId = 7;
+
+    // Size of the block in bytes.
+    uint32 BlockSize = 8;
 }
 
 message TReadBlocksResponse
@@ -91,6 +94,9 @@ message TWriteBlocksRequest
 
     // Session identifier.
     string SessionId = 6;
+
+    // Size of the block in bytes.
+    uint32 BlockSize = 7;
 }
 
 message TWriteBlocksResponse
