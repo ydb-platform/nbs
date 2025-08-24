@@ -16,6 +16,7 @@ import (
 func TestDiskServicegetZoneIDForExistingDisk(
 	t *testing.T,
 ) {
+
 	testCases := []struct {
 		name                string
 		actualDiskZoneID    string
@@ -95,5 +96,4 @@ func TestDiskServicegetZoneIDForExistingDisk(
 			}
 		})
 	}
-
 }

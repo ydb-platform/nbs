@@ -7,6 +7,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -21,12 +22,13 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createOverlayDiskTask struct {
-	storage     resources.Storage
-	scheduler   tasks.Scheduler
-	poolService pools.Service
-	nbsFactory  nbs.Factory
-	request     *protos.CreateOverlayDiskRequest
-	state       *protos.CreateOverlayDiskTaskState
+	storage      resources.Storage
+	scheduler    tasks.Scheduler
+	poolService  pools.Service
+	nbsFactory   nbs.Factory
+	request      *protos.CreateOverlayDiskRequest
+	state        *protos.CreateOverlayDiskTaskState
+	cellSelector cells.CellSelector
 }
 
 func (t *createOverlayDiskTask) Save() ([]byte, error) {
@@ -51,17 +53,13 @@ func (t *createOverlayDiskTask) Run(
 
 	params := t.request.Params
 	overlayDisk := params.Disk
-
-	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
+
+	zoneID := t.cellSelector.SelectCell(overlayDisk, params.FolderId)
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:          overlayDisk.DiskId,
-		ZoneID:      overlayDisk.ZoneId,
+		ZoneID:      zoneID,
 		SrcImageID:  t.request.SrcImageId,
 		BlocksCount: params.BlocksCount,
 		BlockSize:   params.BlockSize,
@@ -85,6 +83,11 @@ func (t *createOverlayDiskTask) Run(
 		)
 	}
 
+	// If the disk has already been added to the database, idempotently
+	// retrieve the correct zone where it was created, because cellSelector
+	// is not idempotent.
+	overlayDisk.ZoneId = diskMeta.ZoneID
+
 	taskID, err := t.poolService.AcquireBaseDisk(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_acquire"),
 		&pools_protos.AcquireBaseDiskRequest{
@@ -106,6 +109,11 @@ func (t *createOverlayDiskTask) Run(
 	baseDiskID, baseDiskCheckpointID, err := parseAcquireBaseDiskResponse(
 		acquireResponse,
 	)
+	if err != nil {
+		return err
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
 	if err != nil {
 		return err
 	}
@@ -143,11 +151,6 @@ func (t *createOverlayDiskTask) Cancel(
 	params := t.request.Params
 	overlayDisk := params.Disk
 
-	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
 
 	disk, err := t.storage.DeleteDisk(
@@ -165,6 +168,22 @@ func (t *createOverlayDiskTask) Cancel(
 			"id %v is not accepted",
 			overlayDisk.DiskId,
 		)
+	}
+
+	if len(disk.ZoneID) == 0 {
+		// If diskMeta has no zoneID, the disk wasn't in the database - either
+		// nbsClient.CreateDisk was never called or
+		// nbsClient.Delete completed successfully.
+		return t.storage.DiskDeleted(ctx, overlayDisk.DiskId, time.Now())
+	}
+
+	// Idempotently retrieve the correct zone from database since
+	// cell selection is performed within the Run() method.
+	overlayDisk.ZoneId = disk.ZoneID
+
+	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
+	if err != nil {
+		return err
 	}
 
 	err = client.Delete(ctx, overlayDisk.DiskId)
