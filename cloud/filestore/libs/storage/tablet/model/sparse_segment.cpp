@@ -5,30 +5,30 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TSparseSegment::TSparseSegment(IAllocator* alloc, ui64 start, ui64 end)
-    : TSet<NDetails::TRange, NDetails::TRangeLess, TStlAllocator>(alloc)
+    : Ranges(alloc)
 {
-    emplace(start, end);
+    Ranges.emplace(TRange{start, end});
 }
 
 void TSparseSegment::PunchHole(ui64 start, ui64 end)
 {
-    auto lo = upper_bound(start);
-    auto hi = upper_bound(end);
-    NDetails::TRange newLo;
-    if (lo != this->end() && lo->Start < start) {
+    auto lo = Ranges.upper_bound(start);
+    auto hi = Ranges.upper_bound(end);
+    TRange newLo;
+    if (lo != Ranges.end() && lo->Start < start) {
         newLo = {lo->Start, start};
     }
 
-    if (hi != this->end() && hi->Start < end) {
-        const_cast<NDetails::TRange&>(*hi).Start = end;
+    if (hi != Ranges.end() && hi->Start < end) {
+        const_cast<TRange&>(*hi).Start = end;
     }
 
     while (lo != hi) {
-        lo = erase(lo);
+        lo = Ranges.erase(lo);
     }
 
     if (newLo.Start < newLo.End) {
-        emplace(newLo);
+        Ranges.emplace(newLo);
     }
 }
 
