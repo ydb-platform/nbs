@@ -21,6 +21,27 @@ using namespace NThreading;
 
 using namespace NCloud::NBlockStore::NClient;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void CheckDescribe(auto endpoint, TString cellId, ui32 errorCode)
+{
+    auto request = std::make_shared<NProto::TDescribeVolumeRequest>();
+    if (cellId) {
+        request->MutableHeaders()->SetCellId(cellId);
+    }
+
+    auto future = endpoint->DescribeVolume(
+        MakeIntrusive<TCallContext>(),
+        std::move(request));
+
+    const auto& response = future.GetValue(TDuration::Seconds(5));
+    UNIT_ASSERT_VALUES_EQUAL(errorCode, response.GetError().GetCode());
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TServerTest)
@@ -1426,7 +1447,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         auto server = testFactory.CreateServerBuilder()
             .SetPort(port)
             .SetDataPort(dataPort)
-            .SetCellId("abc")
+            .SetCellId("abc")  // turn on cell id check in DescribeVolume
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
@@ -1448,26 +1469,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
             endpoint->Stop();
         };
 
-        {
-            auto request = std::make_shared<NProto::TDescribeVolumeRequest>();
-            request->MutableHeaders()->SetCellId("xyz");
-
-            auto future = endpoint->DescribeVolume(
-                MakeIntrusive<TCallContext>(),
-                std::move(request));
-
-            const auto& response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetError().GetCode());
-        }
-
-        {
-            auto future = endpoint->DescribeVolume(
-                MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TDescribeVolumeRequest>());
-
-            const auto& response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(!HasError(response), response.GetError());
-        }
+        CheckDescribe(endpoint, "xyz", E_REJECTED);
+        CheckDescribe(endpoint, "", S_OK);
     }
 
     Y_UNIT_TEST(ShouldCheckCellIdInDescribeVolumeRequestIfCellsAreOff)
@@ -1509,26 +1512,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
             endpoint->Stop();
         };
 
-        {
-            auto request = std::make_shared<NProto::TDescribeVolumeRequest>();
-            request->MutableHeaders()->SetCellId("xyz");
-
-            auto future = endpoint->DescribeVolume(
-                MakeIntrusive<TCallContext>(),
-                std::move(request));
-
-            const auto& response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(!HasError(response), response.GetError());
-        }
-
-        {
-            auto future = endpoint->DescribeVolume(
-                MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TDescribeVolumeRequest>());
-
-            const auto& response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(!HasError(response), response.GetError());
-        }
+        CheckDescribe(endpoint, "xyz", S_OK);
+        CheckDescribe(endpoint, "", S_OK);
     }
 }
 

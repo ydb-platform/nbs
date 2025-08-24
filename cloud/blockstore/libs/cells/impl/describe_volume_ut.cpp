@@ -78,7 +78,7 @@ std::shared_ptr<TTestServiceClient> CreateService()
         UNIT_ASSERT_C(
             req.GetHeaders().HasInternal(),
             "Internal should not be set");
-        UNIT_ASSERT_VALUES_EQUAL(req.GetHeaders().GetCellId(), "");
+        UNIT_ASSERT_VALUES_EQUAL("", req.GetHeaders().GetCellId());
     };
 
     service->OnDescribeVolume = describeCheck;
@@ -95,7 +95,7 @@ std::shared_ptr<TTestServiceClient> CreateCellEndpoint(
         UNIT_ASSERT_C(
             !req.GetHeaders().HasInternal(),
             "Internal should not be set");
-        UNIT_ASSERT_VALUES_UNEQUAL(req.GetHeaders().GetCellId(), "");
+        UNIT_ASSERT_VALUES_UNEQUAL("", req.GetHeaders().GetCellId());
     };
 
     auto clientAppConfig = std::make_shared<NClient::TClientAppConfig>();
@@ -437,7 +437,7 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldFailDescribeResponseIfCellIdInResponseDoesnotMatch)
+    Y_UNIT_TEST(ShouldFailDescribeResponseIfCellIdInResponseDoesNotMatch)
     {
         TCellHostEndpointsByCellId endpoints;
 

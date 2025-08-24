@@ -716,15 +716,12 @@ private:
         if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
             const auto& cellId = Request->GetHeaders().GetCellId();
             if (AppCtx.CellId && cellId && cellId != AppCtx.CellId) {
-                TStringBuilder sb;
-                sb <<"DescribeVolume request for cell "
-                    << cellId.Quote()
-                    << " does not match configured cell "
-                    << AppCtx.CellId.Quote();
+                const auto* msg = "DescribeVolume response cell id mismatch";
+                ReportWrongCellIdInDescribeVolume(
+                    msg,
+                    {{"expected", AppCtx.CellId}, {"actual", cellId}});
 
-                ReportWrongCellIdInDescribeVolume(sb);
-
-                ythrow TServiceError(E_REJECTED) << sb;
+                ythrow TServiceError(E_REJECTED) << msg;
             }
         }
     }

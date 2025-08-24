@@ -693,6 +693,8 @@ void TBootstrapBase::Init()
         Service,
         std::move(udsService),
         TServerOptions {
+            // Enables cell id checking in DescribeVolume requests
+            // only if "cells" feature is on
             .CellId = Configs->CellsConfig->GetCellsEnabled() ?
                 Configs->CellsConfig->GetCellId() :
                 ""
