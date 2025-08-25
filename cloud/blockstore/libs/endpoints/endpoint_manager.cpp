@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/metric.h>
 #include <cloud/blockstore/libs/client/session.h>
+#include <cloud/blockstore/libs/client/switchable_session.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/nbd/device.h>
@@ -408,7 +409,7 @@ struct TEndpoint
     std::shared_ptr<NProto::TStartEndpointRequest> Request;
     NBD::IDevicePtr Device;
     NProto::TVolume Volume;
-    std::weak_ptr<NClient::ISession> Session;
+    std::weak_ptr<NClient::ISwitchableSession> Session;
     ui64 Generation = 0;
 };
 
@@ -915,6 +916,9 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
         return TErrorResponse(error);
     }
 
+    auto sessionSwitcher = CreateSwitchableSession(std::move(sessionInfo.Session));
+    sessionInfo.Session = sessionSwitcher;
+
     // additional NBD socket will be opened for gRPC endpoints
     auto errorHandler = std::make_shared<TErrorHandler>(weak_from_this());
 
@@ -961,7 +965,7 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
         request,
         device,
         sessionInfo.Volume,
-        sessionInfo.Session);
+        std::move(sessionSwitcher));
 
     errorHandler->SetEndpoint(endpoint);
 
@@ -1666,7 +1670,7 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
     IEndpointListenerPtr listener = listenerIt->second;
 
     auto getSessionFuture = SessionManager->GetSession(
-        std::move(ctx),
+        ctx,
         startRequest->GetUnixSocketPath(),
         startRequest->GetHeaders());
 
@@ -1675,11 +1679,64 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
         return getSessionError;
     }
 
-    STORAGE_INFO("Switching endpoint"
+    STORAGE_INFO(
+        "Switching endpoint"
         << ", reason=" << request->GetReason()
         << ", volume=" << sessionInfo.Volume.GetDiskId()
+        << ", substitute=" << sessionInfo.Volume.GetSubstituteDiskId()
         << ", IsFastPathEnabled=" << sessionInfo.Volume.GetIsFastPathEnabled()
         << ", Migrations=" << sessionInfo.Volume.GetMigrations().size());
+
+    if (sessionInfo.Volume.GetSubstituteDiskId() != "" &&
+        sessionInfo.Volume.GetDiskId() !=
+            sessionInfo.Volume.GetSubstituteDiskId())
+    {
+        STORAGE_INFO(
+            "!!! Need to remount from 0"
+            << sessionInfo.Volume.GetDiskId().Quote() << " to "
+            << sessionInfo.Volume.GetSubstituteDiskId().Quote());
+
+        auto oldSession =
+            SessionManager->TakeSession(startRequest->GetUnixSocketPath());
+
+        STORAGE_INFO(
+            "!!! Need to remount from 1"
+            << sessionInfo.Volume.GetDiskId().Quote() << " to "
+            << sessionInfo.Volume.GetSubstituteDiskId().Quote());
+
+        startRequest->SetDiskId(sessionInfo.Volume.GetSubstituteDiskId());
+        auto future = SessionManager->CreateSession(ctx, *startRequest);
+        STORAGE_INFO(
+            "!!! Need to remount from 2"
+            << sessionInfo.Volume.GetDiskId().Quote() << " to "
+            << sessionInfo.Volume.GetSubstituteDiskId().Quote());
+        auto [newSessionInfo, error] = Executor->WaitFor(future);
+        if (HasError(error)) {
+            STORAGE_INFO(
+                "!!! Need to remount from 3"
+                << sessionInfo.Volume.GetDiskId().Quote() << " to "
+                << sessionInfo.Volume.GetSubstituteDiskId().Quote());
+            return error;
+        }
+        STORAGE_INFO(
+            "!!! Need to remount from 4"
+            << sessionInfo.Volume.GetDiskId().Quote() << " to "
+            << sessionInfo.Volume.GetSubstituteDiskId().Quote());
+
+        it->second->Volume = newSessionInfo.Volume;
+        if (auto session = it->second->Session.lock()) {
+            session->SwitchSession(newSessionInfo.Session);
+            STORAGE_INFO(
+                "!!! Need to remount from 5"
+                << sessionInfo.Volume.GetDiskId().Quote() << " to "
+                << sessionInfo.Volume.GetSubstituteDiskId().Quote());
+        } else {
+            STORAGE_INFO(
+                "!!! Need to remount from 6"
+                << sessionInfo.Volume.GetDiskId().Quote() << " to "
+                << sessionInfo.Volume.GetSubstituteDiskId().Quote());
+        }
+    }
 
     auto switchFuture = listener->SwitchEndpoint(
         *startRequest,

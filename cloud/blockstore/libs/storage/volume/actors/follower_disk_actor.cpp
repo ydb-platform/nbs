@@ -1,5 +1,6 @@
 #include "follower_disk_actor.h"
 
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
@@ -43,6 +44,7 @@ TFollowerDiskActor::TFollowerDiskActor(
     TDiagnosticsConfigPtr diagnosticConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr digestGenerator,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
     TFollowerDiskActorParams params)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
@@ -73,6 +75,7 @@ TFollowerDiskActor::TFollowerDiskActor(
     , LeaderVolumeActorId(params.LeaderVolumeActorId)
     , LeaderPartitionActorId(params.LeaderPartitionActorId)
     , TakePartitionOwnership(params.TakePartitionOwnership)
+    , EndpointEventHandler(std::move(endpointEventHandler))
     , ClientId(params.ClientId)
     , LeaderOutdated(params.LeaderOutdated)
     , FollowerDiskInfo(params.FollowerDiskInfo)
@@ -210,6 +213,12 @@ void TFollowerDiskActor::TransferLeadership(const NActors::TActorContext& ctx)
 {
     if (!LeaderOutdated) {
         AddOutdatedTagToLeader(ctx);
+        return;
+    }
+    if (LeaderOutdated) {
+        EndpointEventHandler->SwitchEndpointIfNeeded(
+            FollowerDiskInfo.Link.LeaderDiskId,
+            "leader outdated");
         return;
     }
 }
