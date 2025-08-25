@@ -1297,4 +1297,14 @@ message TStorageServiceConfig
     optional bool VolumeThrottlingManagerEnabled = 447;
     // Duration between VolumeThrottlingManager notifications to volumes
     optional uint32 VolumeThrottlingManagerNotificationPeriodSeconds = 448;
+
+    // Initial delay to retry acquire request (in milliseconds).
+    optional uint32 RetryAcquireReleaseDiskInitialDelay = 449;
+
+    // Max delay to retry acquire request (in milliseconds).
+    optional uint32 RetryAcquireReleaseDiskMaxDelay = 450;
+
+    // Do AddClient/RemoveClient transaction
+    // and then do right Acquire/Release devices requests.
+    optional bool NonReplicatedVolumeAcquireDiskAfterAddClientEnabled = 451;
 }

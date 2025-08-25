@@ -709,6 +709,12 @@ public:
     [[nodiscard]] bool GetVolumeThrottlingManagerEnabled() const;
     [[nodiscard]] TDuration
     GetVolumeThrottlingManagerNotificationPeriodSeconds() const;
+
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskInitialDelay() const;
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskMaxDelay() const;
+
+    [[nodiscard]] bool
+    GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() const;
 };
 
 ui64 GetAllocationUnit(

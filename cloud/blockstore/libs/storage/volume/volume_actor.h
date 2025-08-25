@@ -266,43 +266,58 @@ private:
 
     TVolumeSelfCountersPtr VolumeSelfCounters;
 
+    struct TAcquireDiskRequest
+    {
+        TString ClientId;
+        NProto::EVolumeAccessMode AccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
+        ui64 MountSeqNumber = 0;
+        TClientRequestPtr ClientRequest = nullptr;
+        bool ForceTabletRestart = false;
+    };
+
+    struct TReleaseDiskRequest
+    {
+        TString ClientId;
+        TClientRequestPtr ClientRequest = nullptr;
+        TVector<NProto::TDeviceConfig> DevicesToRelease;
+        bool RetryIfTimeoutOrUndelivery = false;
+    };
+
     struct TAcquireReleaseDiskRequest
     {
         bool IsAcquire;
         TString ClientId;
-        NProto::EVolumeAccessMode AccessMode;
-        ui64 MountSeqNumber;
+        NProto::EVolumeAccessMode AccessMode =
+            NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_WRITE;
+        ui64 MountSeqNumber = 0;
         TClientRequestPtr ClientRequest;
         TVector<NProto::TDeviceConfig> DevicesToRelease;
+        const bool RetryIfTimeoutOrUndelivery = false;
+        const bool ForceTabletRestart = false;
 
-        TAcquireReleaseDiskRequest(
-                TString clientId,
-                NProto::EVolumeAccessMode accessMode,
-                ui64 mountSeqNumber,
-                TClientRequestPtr clientRequest)
+        TAcquireReleaseDiskRequest(TAcquireDiskRequest request)
             : IsAcquire(true)
-            , ClientId(std::move(clientId))
-            , AccessMode(accessMode)
-            , MountSeqNumber(mountSeqNumber)
-            , ClientRequest(std::move(clientRequest))
-        {
-        }
+            , ClientId(std::move(request.ClientId))
+            , AccessMode(request.AccessMode)
+            , MountSeqNumber(request.MountSeqNumber)
+            , ClientRequest(std::move(request.ClientRequest))
+            , ForceTabletRestart(request.ForceTabletRestart)
+        {}
 
-        TAcquireReleaseDiskRequest(
-                TString clientId,
-                TClientRequestPtr clientRequest,
-                TVector<NProto::TDeviceConfig> devicesToRelease)
+        TAcquireReleaseDiskRequest(TReleaseDiskRequest request)
             : IsAcquire(false)
-            , ClientId(std::move(clientId))
-            , AccessMode(NProto::EVolumeAccessMode::
-                             VOLUME_ACCESS_READ_WRITE)   // doesn't matter
-            , MountSeqNumber(0)                          // doesn't matter
-            , ClientRequest(std::move(clientRequest))
-            , DevicesToRelease(std::move(devicesToRelease))
+            , ClientId(std::move(request.ClientId))
+            , ClientRequest(std::move(request.ClientRequest))
+            , DevicesToRelease(std::move(request.DevicesToRelease))
+            , RetryIfTimeoutOrUndelivery(request.RetryIfTimeoutOrUndelivery)
         {}
     };
+
     TList<TAcquireReleaseDiskRequest> AcquireReleaseDiskRequests;
     bool AcquireDiskScheduled = false;
+    TBackoffDelayProvider BackoffDelayProviderForAcquireReleaseDiskRequests{
+        Config->GetRetryAcquireReleaseDiskInitialDelay(),
+        Config->GetRetryAcquireReleaseDiskMaxDelay()};
 
     NProto::TError StorageAllocationResult;
     bool DiskAllocationScheduled = false;
@@ -566,6 +581,15 @@ private:
     ui64 GetBlocksCount() const;
 
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);
+    void AddAcquireReleaseDiskRequest(
+        const NActors::TActorContext& ctx,
+        TAcquireReleaseDiskRequest request);
+    void AddAcquireDiskRequest(
+        const NActors::TActorContext& ctx,
+        TAcquireDiskRequest request);
+    void AddReleaseDiskRequest(
+        const NActors::TActorContext& ctx,
+        TReleaseDiskRequest request);
     void ProcessNextAcquireReleaseDiskRequest(const NActors::TActorContext& ctx);
     void OnClientListUpdate(const NActors::TActorContext& ctx);
 
@@ -849,6 +873,9 @@ private:
     void ReleaseReplacedDevices(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TDeviceConfig>& replacedDevices);
+    void ReleaseDiskFromOldClients(
+        const NActors::TActorContext& ctx,
+        const TVector<TString>& removedClients);
 
     void ScheduleAcquireDiskIfNeeded(const NActors::TActorContext& ctx);
 

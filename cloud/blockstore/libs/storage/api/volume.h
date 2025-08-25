@@ -273,6 +273,14 @@ struct TEvVolume
     };
 
     //
+    // RetryAcquireDisk
+    //
+
+    struct TRetryAcquireDisk
+    {
+    };
+
+    //
     // Events declaration
     //
 
@@ -383,6 +391,8 @@ struct TEvVolume
         EvUpdateLinkOnFollowerRequest = EvBegin + 69,
         EvUpdateLinkOnFollowerResponse = EvBegin + 70,
 
+        EvRetryAcquireDisk = EvBegin + 71,
+
         EvEnd
     };
 
@@ -460,6 +470,9 @@ struct TEvVolume
         TRequestEvent<TScrubberCounters,
         EvScrubberCounters
     >;
+
+    using TEvRetryAcquireDisk =
+        TRequestEvent<TRetryAcquireDisk, EvRetryAcquireDisk>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
