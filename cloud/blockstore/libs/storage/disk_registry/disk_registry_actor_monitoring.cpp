@@ -2323,7 +2323,7 @@ void TDiskRegistryActor::RenderAutomaticallyReplacedDeviceList(
                             auto timeToClean = (deviceInfo.ReplacementTs +
                                                 freezeDuration) -
                                                 TInstant::Now();
-                            out << timeToClean;
+                            out << FormatDuration(timeToClean);
                         } else {
                             out << "+inf. (AutomaticallyReplacedDevicesFreezePeriod not set)";
                         }
