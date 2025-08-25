@@ -819,7 +819,7 @@ func (s *nodeService) GetGrpcErrorCode(err error) codes.Code {
 
 	switch errorCode {
 	case nbsclient.E_MOUNT_CONFLICT:
-		return codes.AlreadyExists
+		return codes.Unavailable
 	case nbsclient.E_GRPC_UNAVAILABLE, nfsclient.E_GRPC_UNAVAILABLE:
 		return codes.Unavailable
 	}
