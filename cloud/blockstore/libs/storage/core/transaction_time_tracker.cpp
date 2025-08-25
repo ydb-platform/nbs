@@ -196,4 +196,10 @@ TTransactionTimeTracker::GetTimeBuckets() const
     return result;
 }
 
+TVector<std::pair<ui64, TTransactionTimeTracker::TTransactionInflight>>
+TTransactionTimeTracker::GetInflightOperations() const
+{
+    return {Inflight.begin(), Inflight.end()};
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

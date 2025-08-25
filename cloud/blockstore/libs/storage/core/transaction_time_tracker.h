@@ -35,6 +35,12 @@ public:
         TString Tooltip;
     };
 
+    struct TTransactionInflight
+    {
+        ui64 StartTime = 0;
+        TString TransactionName;
+    };
+
 private:
     struct TTimeHistogram: public THistogram<TRequestUsTimeBuckets>
     {
@@ -59,12 +65,6 @@ private:
         ui64 operator()(const TKey& key) const;
     };
 
-    struct TTransactionInflight
-    {
-        ui64 StartTime = 0;
-        TString TransactionName;
-    };
-
     const TVector<TString> TransactionTypes;
 
     THashMap<ui64, TTransactionInflight> Inflight;
@@ -85,6 +85,10 @@ public:
     void OnFinished(ui64 transactionId, ui64 finishTime) override;
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
+
+    [[nodiscard]] TVector<
+        std::pair<ui64, TTransactionTimeTracker::TTransactionInflight>>
+    GetInflightOperations() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

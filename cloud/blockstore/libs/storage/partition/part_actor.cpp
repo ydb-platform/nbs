@@ -472,7 +472,8 @@ void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
             request->BSGroupOperationId,
             request->Group,
             request->OperationType,
-            GetCycleCount());
+            GetCycleCount(),
+            request->BlockSize);
     }
 }
 

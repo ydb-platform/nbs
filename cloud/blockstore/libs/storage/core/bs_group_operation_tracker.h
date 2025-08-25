@@ -36,6 +36,14 @@ public:
         TString Tooltip;
     };
 
+    struct TOperationInflight
+    {
+        ui64 StartTime = 0;
+        TString OperationName;
+        ui32 GroupId = 0;
+        ui32 BlockSize = 0;
+    };
+
 private:
     struct TTimeHistogram: public THistogram<TRequestUsTimeBuckets>
     {
@@ -61,13 +69,6 @@ private:
         ui64 operator()(const TKey& key) const;
     };
 
-    struct TOperationInflight
-    {
-        ui64 StartTime = 0;
-        TString OperationName;
-        ui32 GroupId = 0;
-    };
-
     TVector<TString> OperationTypes;
 
     THashMap<ui64, TOperationInflight> Inflight;
@@ -80,12 +81,17 @@ public:
         ui64 operationId,
         ui32 groupId,
         EOperationType operationType,
-        ui64 startTime);
+        ui64 startTime,
+        ui32 blockSize);
 
     void OnFinished(ui64 operationId, ui64 finishTime);
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
     [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;
+
+    [[nodiscard]] TVector<
+        std::pair<ui64, TBSGroupOperationTimeTracker::TOperationInflight>>
+    GetInflightOperations() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

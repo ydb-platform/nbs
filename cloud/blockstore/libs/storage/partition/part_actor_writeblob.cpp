@@ -418,7 +418,8 @@ void TPartitionActor::HandleWriteBlob(
             bsGroupOperationId),
         bsGroupOperationId,
         groupId,
-        TBSGroupOperationTimeTracker::EOperationType::Write);
+        TBSGroupOperationTimeTracker::EOperationType::Write,
+        State->GetBlockSize());
 
     ProcessIOQueue(ctx, channel);
 }

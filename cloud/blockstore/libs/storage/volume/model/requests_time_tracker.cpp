@@ -437,4 +437,10 @@ TRequestsTimeTracker::GetPercentileBuckets()
     return result;
 }
 
+TVector<std::pair<ui64, TRequestsTimeTracker::TRequestInflight>>
+TRequestsTimeTracker::GetInflightOperations() const
+{
+    return {InflightRequests.begin(), InflightRequests.end()};
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
