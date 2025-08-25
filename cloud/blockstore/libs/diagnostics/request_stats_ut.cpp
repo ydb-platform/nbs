@@ -420,6 +420,134 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldFillExecuteTimePercentiles)
+    {
+        // Hdr histogram is no-op under Tsan, so just finish this test
+        if (NSan::TSanIsOn()) {
+            return;
+        }
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto requestStats = CreateServerRequestStats(
+            monitoring->GetCounters(),
+            CreateWallClockTimer(),
+            EHistogramCounterOption::ReportMultipleCounters);
+
+        auto totalCounters =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+
+        auto ssdCounters = monitoring->GetCounters()
+                               ->GetSubgroup("type", "ssd")
+                               ->GetSubgroup("request", "WriteBlocks");
+
+        auto hddCounters = monitoring->GetCounters()
+                               ->GetSubgroup("type", "hdd")
+                               ->GetSubgroup("request", "WriteBlocks");
+
+        auto ssdNonreplCounters = monitoring->GetCounters()
+                                      ->GetSubgroup("type", "ssd_nonrepl")
+                                      ->GetSubgroup("request", "WriteBlocks");
+
+        auto hddNonreplCounters = monitoring->GetCounters()
+                                      ->GetSubgroup("type", "hdd_nonrepl")
+                                      ->GetSubgroup("request", "WriteBlocks");
+
+        AddRequestStats(
+            *requestStats,
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            EBlockStoreRequest::WriteBlocks,
+            {
+                {1_MB,
+                 TDuration::MilliSeconds(100),
+                 TDuration::MilliSeconds(50)},   // 50 ms
+                {1_MB,
+                 TDuration::MilliSeconds(200),
+                 TDuration::MilliSeconds(100)},   // 100 ms
+                {1_MB,
+                 TDuration::MilliSeconds(300),
+                 TDuration::MilliSeconds(100)},   // 200 ms
+            });
+
+        AddRequestStats(
+            *requestStats,
+            NCloud::NProto::STORAGE_MEDIA_HDD,
+            EBlockStoreRequest::WriteBlocks,
+            {
+                {1_MB,
+                 TDuration::MilliSeconds(400),
+                 TDuration::MilliSeconds(100)},   // 300 ms
+                {1_MB,
+                 TDuration::MilliSeconds(500),
+                 TDuration::MilliSeconds(100)},   // 400 ms
+                {1_MB,
+                 TDuration::MilliSeconds(600),
+                 TDuration::MilliSeconds(250)},   // 350 ms
+            });
+
+        AddRequestStats(
+            *requestStats,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            EBlockStoreRequest::WriteBlocks,
+            {
+                {1_MB,
+                 TDuration::MilliSeconds(10),
+                 TDuration::MilliSeconds(0)},   // 10 ms
+                {1_MB,
+                 TDuration::MilliSeconds(20),
+                 TDuration::MilliSeconds(11)},   // 9 ms
+                {1_MB,
+                 TDuration::MilliSeconds(30),
+                 TDuration::MilliSeconds(22)},   // 8 ms
+            });
+
+        requestStats->UpdateStats(true);
+
+        auto us2ms = [](const ui64 us)
+        {
+            return TDuration::MicroSeconds(us).MilliSeconds();
+        };
+
+        {
+            auto percentiles =
+                totalCounters->GetSubgroup("percentiles", "ExecutionTime");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(400, us2ms(p100->Val()));
+            UNIT_ASSERT_VALUES_EQUAL(100, us2ms(p50->Val()));
+        }
+
+        {
+            auto percentiles =
+                ssdCounters->GetSubgroup("percentiles", "ExecutionTime");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(200, us2ms(p100->Val()));
+            UNIT_ASSERT_VALUES_EQUAL(100, us2ms(p50->Val()));
+        }
+
+        {
+            auto percentiles =
+                hddCounters->GetSubgroup("percentiles", "ExecutionTime");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(400, us2ms(p100->Val()));
+            UNIT_ASSERT_VALUES_EQUAL(350, us2ms(p50->Val()));
+        }
+
+        {
+            auto percentiles =
+                ssdNonreplCounters->GetSubgroup("percentiles", "ExecutionTime");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(10, us2ms(p100->Val()));
+            UNIT_ASSERT_VALUES_EQUAL(9, us2ms(p50->Val()));
+        }
+    }
+
     Y_UNIT_TEST(ShouldFillSizePercentiles)
     {
         // Hdr histogram is no-op under Tsan, so just finish this test
