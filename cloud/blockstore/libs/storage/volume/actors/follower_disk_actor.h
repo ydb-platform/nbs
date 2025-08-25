@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor.h>
@@ -43,6 +44,7 @@ class TFollowerDiskActor final
     const NActors::TActorId LeaderVolumeActorId;
     const NActors::TActorId LeaderPartitionActorId;
     const bool TakePartitionOwnership = false;
+    NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     TString ClientId;
 
     bool LeaderOutdated = false;
@@ -60,6 +62,7 @@ public:
         TDiagnosticsConfigPtr diagnosticConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         TFollowerDiskActorParams params);
 
     ~TFollowerDiskActor() override;

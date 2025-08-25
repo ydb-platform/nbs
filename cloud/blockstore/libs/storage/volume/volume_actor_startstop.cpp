@@ -374,6 +374,7 @@ TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
                     DiagnosticsConfig,
                     ProfileLog,
                     BlockDigestGenerator,
+                    EndpointEventHandler,
                     TFollowerDiskActorParams{
                         .LeaderMediaKind = State->GetStorageMediaKind(),
                         .LeaderDiskId = State->GetDiskId(),

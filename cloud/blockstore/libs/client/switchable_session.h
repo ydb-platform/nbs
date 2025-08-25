@@ -1,0 +1,16 @@
+#pragma once
+
+#include "public.h"
+
+//#include "session.h"
+
+
+namespace NCloud::NBlockStore::NClient {
+
+////////////////////////////////////////////////////////////////////////////////
+
+ISwitchableSessionPtr CreateSwitchableSession(ISessionPtr session);
+
+////////////////////////////////////////////////////////////////////////////////
+
+}   // namespace NCloud::NBlockStore::NClient

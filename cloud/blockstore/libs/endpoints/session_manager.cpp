@@ -384,6 +384,8 @@ public:
     TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
         const TString& socketPath) override;
 
+    ISessionPtr TakeSession(const TString& socketPath) override;
+
 private:
     TSessionOrError CreateSessionImpl(
         TCallContextPtr callContext,
@@ -403,6 +405,11 @@ private:
         const NProto::THeaders& headers);
 
     TSessionOrError GetSessionImpl(
+        TCallContextPtr callContext,
+        const TString& socketPath,
+        const NProto::THeaders& headers);
+
+    NProto::TError SwitchSessionImpl(
         TCallContextPtr callContext,
         const TString& socketPath,
         const NProto::THeaders& headers);
@@ -676,6 +683,25 @@ TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
     }
 
     return endpoint->GetPerformanceProfile();
+}
+
+ISessionPtr TSessionManager::TakeSession(const TString& socketPath)
+{
+    TEndpointPtr endpoint;
+
+    with_lock (EndpointLock) {
+        auto it = Endpoints.find(socketPath);
+        if (it == Endpoints.end()) {
+            return {};
+        }
+        endpoint = std::move(it->second);
+        Endpoints.erase(it);
+    }
+
+    ISessionPtr result = endpoint->GetSession();
+    endpoint.reset();
+    ThrottlerProvider->Clean();
+    return result;
 }
 
 TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
