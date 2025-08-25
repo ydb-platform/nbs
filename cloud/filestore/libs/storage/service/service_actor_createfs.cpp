@@ -210,11 +210,17 @@ void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
             FileStoreConfig.ShardConfigs[i].GetFileSystemId());
         request->Record.SetShardNo(i + 1);
         request->Record.SetMainFileSystemId(Request.GetFileSystemId());
-        if (StorageConfig->GetDirectoryCreationInShardsEnabled()) {
+        request->Record.SetDirectoryCreationInShardsEnabled(
+            StorageConfig->GetDirectoryCreationInShardsEnabled());
+        request->Record.SetStrictFileSystemSizeEnforcementEnabled(
+            StorageConfig->GetStrictFileSystemSizeEnforcementEnabled());
+
+        if (StorageConfig->GetDirectoryCreationInShardsEnabled() ||
+            StorageConfig->GetStrictFileSystemSizeEnforcementEnabled())
+        {
             for (const auto& shard: FileStoreConfig.ShardConfigs) {
                 request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
             }
-            request->Record.SetDirectoryCreationInShardsEnabled(true);
         }
 
         LOG_INFO(
@@ -239,11 +245,14 @@ void TCreateFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
         std::make_unique<TEvIndexTablet::TEvConfigureShardsRequest>();
     request->Record.SetFileSystemId(
         FileStoreConfig.MainFileSystemConfig.GetFileSystemId());
+    request->Record.SetDirectoryCreationInShardsEnabled(
+        StorageConfig->GetDirectoryCreationInShardsEnabled());
+    request->Record.SetStrictFileSystemSizeEnforcementEnabled(
+        StorageConfig->GetStrictFileSystemSizeEnforcementEnabled());
+
     for (const auto& shard: FileStoreConfig.ShardConfigs) {
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
     }
-    request->Record.SetDirectoryCreationInShardsEnabled(
-        StorageConfig->GetDirectoryCreationInShardsEnabled());
 
     LOG_INFO(
         ctx,

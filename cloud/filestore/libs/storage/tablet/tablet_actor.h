@@ -86,6 +86,7 @@ private:
 
         std::atomic<i64> TotalNodesCount{0};
         std::atomic<i64> UsedNodesCount{0};
+        std::atomic<i64> AggregateUsedNodesCount{0};
 
         std::atomic<i64> UsedSessionsCount{0};
         std::atomic<i64> UsedHandlesCount{0};

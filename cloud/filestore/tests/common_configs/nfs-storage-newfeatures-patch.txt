@@ -19,3 +19,4 @@ MixedBlocksOffloadedRangesCapacity: 1024
 CalculateCleanupScoreBasedOnUsedBlocksCount: true
 AsyncDestroyHandleEnabled: true
 LazyXAttrsEnabled: true
+StrictFileSystemSizeEnforcementEnabled: true
