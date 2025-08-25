@@ -143,6 +143,7 @@ public:
     ui32 GetMaxZeroBlocksSubRequestSize() const;
     NProto::EEncryptZeroPolicy GetEncryptZeroPolicy() const;
     ui64 GetVhostPteFlushByteThreshold() const;
+    bool GetEnableChecksumValidation() const;
     bool GetAutomaticNbdDeviceManagement() const;
 
     void Dump(IOutputStream& out) const override;
