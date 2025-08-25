@@ -1640,4 +1640,117 @@ func TestNodeStageVolumeErrorForKubevirt(
 		VolumeContext:     volumeContext,
 	})
 	require.Error(t, err)
+
+	mounter.AssertExpectations(t)
+}
+
+func TestNodeUnstageVolumeErrorForKubevirt(
+	t *testing.T,
+) {
+	t.Helper()
+	tempDir := t.TempDir()
+
+	nbsClient := mocks.NewNbsClientMock()
+	nfsClient := mocks.NewNfsEndpointClientMock()
+	nfsLocalClient := mocks.NewNfsEndpointClientMock()
+	nfsLocalFilestoreClient := mocks.NewNfsClientMock()
+	mounter := csimounter.NewMock()
+
+	ctx := context.Background()
+	backend := "nbs"
+	nodeId := "testNodeId"
+	clientId := "testClientId"
+	instanceId := "testInstanceId"
+	actualClientId := "testClientId-" + instanceId
+	diskId := "test-disk-id-42"
+	deviceName := diskId
+	stagingTargetPath := filepath.Join(tempDir, "testStagingTargetPath")
+	socketsDir := filepath.Join(tempDir, "sockets")
+	sourcePath := filepath.Join(socketsDir, instanceId, diskId)
+	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
+	nbsSocketPath := filepath.Join(sourcePath, "nbs.sock")
+
+	nodeService := newNodeService(
+		nodeId,
+		clientId,
+		true, // vmMode
+		socketsDir,
+		targetFsPathPattern,
+		"", // targetBlkPathPattern
+		nil,
+		nbsClient,
+		nfsClient,
+		nfsLocalClient,
+		nfsLocalFilestoreClient,
+		mounter,
+		[]string{},
+		false,
+		defaultStartEndpointRequestTimeout,
+	)
+
+	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
+	volumeCapability := csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{
+			Mount: &csi.VolumeCapability_MountVolume{},
+		},
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: accessMode,
+		},
+	}
+
+	volumeContext := map[string]string{
+		backendVolumeContextKey: backend,
+		instanceIdKey:           instanceId,
+	}
+
+	vhostQueuesCount := uint32(8) // explicit default value for unset behavior
+	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
+
+	if backend == "nbs" {
+		nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(
+			&nbs.TListEndpointsResponse{}, nil)
+		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+			Headers:          getDefaultStartEndpointRequestHeaders(),
+			UnixSocketPath:   nbsSocketPath,
+			DiskId:           diskId,
+			InstanceId:       instanceId,
+			ClientId:         actualClientId,
+			DeviceName:       deviceName,
+			IpcType:          nbs.EClientIpcType_IPC_VHOST,
+			VhostQueuesCount: vhostQueuesCount,
+			VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
+			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+			Persistent:       true,
+			NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
+				false,
+			},
+			ClientProfile: &nbs.TClientProfile{
+				HostType: &hostType,
+			},
+		}).Return(&nbs.TStartEndpointResponse{}, nil)
+	}
+
+	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+		VolumeId:          diskId,
+		StagingTargetPath: stagingTargetPath,
+		VolumeCapability:  &volumeCapability,
+		VolumeContext:     volumeContext,
+	})
+	require.NoError(t, err)
+
+	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+		UnixSocketPath: nbsSocketPath,
+	}).Return(&nbs.TStopEndpointResponse{},
+		&nbsclient.ClientError{Code: nbsclient.E_GRPC_DEADLINE_EXCEEDED, Message: ""})
+
+	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
+		VolumeId:          diskId,
+		StagingTargetPath: stagingTargetPath,
+	})
+	require.Error(t, err)
+	status, ok := status.FromError(err)
+	assert.True(t, ok)
+	assert.Equal(t, codes.DeadlineExceeded, status.Code())
+
+	mounter.AssertExpectations(t)
 }
