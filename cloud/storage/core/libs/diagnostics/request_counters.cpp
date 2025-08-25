@@ -31,6 +31,7 @@ template <typename TDerived>
 struct THistBase
 {
     const TString Name;
+    const TString Units;
     const TBucketBounds HistBounds;
     const EHistogramCounterOptions CounterOptions;
 
@@ -39,6 +40,7 @@ struct THistBase
 
     explicit THistBase(TString name, EHistogramCounterOptions counterOptions)
         : Name(std::move(name))
+        , Units(TDerived::Units)
         , HistBounds(ConvertToHistBounds(TDerived::Buckets))
         , CounterOptions(counterOptions)
         , Hist(
@@ -56,6 +58,9 @@ struct THistBase
             "histogram",
             Name,
             vis);
+        if (GetUnits()) {
+            subgroup = subgroup->GetSubgroup("units", GetUnits());
+        }
         if (CounterOptions & EHistogramCounterOption::ReportSingleCounter) {
             Hist = subgroup->GetHistogram(Name,
                 NMonitoring::ExplicitHistogram(HistBounds),
@@ -95,6 +100,11 @@ struct THistBase
             result.emplace_back(snapshot->UpperBound(i), snapshot->Value(i));
         }
         return result;
+    }
+
+    const TString& GetUnits() const
+    {
+        return Units;
     }
 
     const TString& GetName() const
@@ -158,6 +168,9 @@ public:
     {
         auto subgroup =
             counters.GetSubgroup("percentiles", SrcHistogram.GetName());
+        if (SrcHistogram.GetUnits()) {
+            subgroup = subgroup->GetSubgroup("units", SrcHistogram.GetUnits());
+        }
         const auto& percentiles = GetDefaultPercentiles();
         for (const auto& [value, name]: percentiles) {
             Counters.emplace_back(subgroup->GetCounter(name, false));

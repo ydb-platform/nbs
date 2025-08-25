@@ -287,8 +287,11 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
 
         auto sizes = writeBlocks->FindSubgroup("histogram", "Size");
         UNIT_ASSERT(sizes);
+        sizes = sizes->FindSubgroup("units", "KB");
+        UNIT_ASSERT(sizes);
 
         auto times = writeBlocks->FindSubgroup("histogram", "Time");
+        times = times->FindSubgroup("units", "msec");
         UNIT_ASSERT(times);
 
         {
