@@ -56,6 +56,13 @@
 * t - time since actor start
 * ~ - means temporary server (NBS-2)
 
+## Partition nonrepl
+```
+[nrd:vol0 t:27.482ms]
+```
+* nrd - nonrepl partition disk id
+* t - time since actor start
+
 ---
 
 # Child Logs
