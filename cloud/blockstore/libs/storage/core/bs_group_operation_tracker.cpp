@@ -208,4 +208,13 @@ TBSGroupOperationTimeTracker::GetTimeBuckets() const
     return result;
 }
 
+void TBSGroupOperationTimeTracker::ResetStats()
+{
+    for (auto& [key, histogram]: Histograms) {
+        if (key.Status == EStatus::Finished) {
+            histogram.Reset();
+        }
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

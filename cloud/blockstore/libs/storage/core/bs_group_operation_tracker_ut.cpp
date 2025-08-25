@@ -25,7 +25,7 @@ void DumpValues(const NJson::TJsonValue::TMapType& map)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TGroupRequestTrackerTest)
+Y_UNIT_TEST_SUITE(TBSGroupOperationTimeTrackerTest)
 {
     Y_UNIT_TEST(ShouldCountInflight)
     {
@@ -115,6 +115,52 @@ Y_UNIT_TEST_SUITE(TGroupRequestTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL("1", get("Patch_2_finished_2000000"));
         UNIT_ASSERT_VALUES_EQUAL("1", get("Write_2_finished_1000000"));
         UNIT_ASSERT_VALUES_EQUAL("2", get("Write_2_finished_Total"));
+    }
+
+    Y_UNIT_TEST(ShouldResetStatistics)
+    {
+        TBSGroupOperationTimeTracker timeTracker;
+
+        timeTracker.OnStarted(
+            1,
+            1,
+            TBSGroupOperationTimeTracker::EOperationType::Write,
+            1000 * GetCyclesPerMillisecond());
+        timeTracker.OnStarted(
+            2,
+            1,
+            TBSGroupOperationTimeTracker::EOperationType::Write,
+            1000 * GetCyclesPerMillisecond());
+        timeTracker.OnStarted(
+            3,
+            2,
+            TBSGroupOperationTimeTracker::EOperationType::Read,
+            2000 * GetCyclesPerMillisecond());
+
+        timeTracker.OnFinished(1, 3000 * GetCyclesPerMillisecond());
+        timeTracker.OnFinished(2, 3000 * GetCyclesPerMillisecond());
+
+        auto json = timeTracker.GetStatJson(5000 * GetCyclesPerMillisecond());
+        NJson::TJsonValue value;
+        NJson::ReadJsonTree(json, &value, true);
+        DumpValues(value["stat"].GetMap());
+
+        auto get = [&](const TString& key)
+        {
+            return value["stat"][key];
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL("2", get("Write_1_finished_Total"));
+        UNIT_ASSERT_VALUES_EQUAL("+ 1", get("Read_2_inflight_Total"));
+
+        timeTracker.ResetStats();
+
+        json = timeTracker.GetStatJson(5000 * GetCyclesPerMillisecond());
+        NJson::ReadJsonTree(json, &value, true);
+        DumpValues(value["stat"].GetMap());
+
+        UNIT_ASSERT_VALUES_EQUAL("0", get("Write_1_finished_Total"));
+        UNIT_ASSERT_VALUES_EQUAL("+ 1", get("Read_2_inflight_Total"));
     }
 }
 

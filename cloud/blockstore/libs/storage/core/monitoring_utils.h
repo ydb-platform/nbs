@@ -215,4 +215,9 @@ void DumpGroupLatencyTab(
     ui64 tabletId,
     const TBSGroupOperationTimeTracker& tracker);
 
+void BuildResetButton(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TString& actionName);
+
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils

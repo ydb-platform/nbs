@@ -424,6 +424,11 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_ResetTransactionLatencyStats(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleCleanupDisksResponse(
         const TEvDiskRegistryPrivate::TEvCleanupDisksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);

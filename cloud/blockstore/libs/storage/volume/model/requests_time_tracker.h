@@ -130,6 +130,8 @@ public:
     OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize) const;
+
+    void ResetStats();
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
