@@ -136,6 +136,7 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 		"toplevel_task_id",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
+		ZoneID:       "zone",
 		DeleteTaskID: "toplevel_task_id",
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
@@ -180,6 +181,7 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		"toplevel_task_id",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
+		ZoneID:       "zone",
 		DeleteTaskID: "toplevel_task_id",
 	}, nil)
 
@@ -189,4 +191,47 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 	err := task.Cancel(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
 	require.Equal(t, err, assert.AnError)
+}
+
+func TestCancelCreateEmptyDiskTaskBeforeDatabaseInsert(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient := nbs_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+
+	params := &protos.CreateDiskParams{
+		BlocksCount: 123,
+		Disk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		BlockSize: 456,
+		Kind:      types.DiskKind_DISK_KIND_SSD,
+		CloudId:   "cloud",
+		FolderId:  "folder",
+	}
+	task := &createEmptyDiskTask{
+		storage:    storage,
+		nbsFactory: nbsFactory,
+		params:     params,
+		state:      &protos.CreateEmptyDiskTaskState{},
+	}
+
+	// Must return disk without specified ZoneID.
+	storage.On(
+		"DeleteDisk",
+		ctx,
+		"disk",
+		"toplevel_task_id",
+		mock.Anything,
+	).Return(&resources.DiskMeta{
+		DeleteTaskID: "toplevel_task_id",
+	}, nil)
+
+	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
+
+	err := task.Cancel(ctx, execCtx)
+	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
+	require.NoError(t, err)
 }

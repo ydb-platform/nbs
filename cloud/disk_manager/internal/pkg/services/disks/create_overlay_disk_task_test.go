@@ -271,6 +271,7 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 		mock.Anything,
 	).Return(&resources.DiskMeta{
 		DeleteTaskID: "toplevel_task_id",
+		ZoneID:       "zone",
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
@@ -287,6 +288,57 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 			},
 		}).Return("release", nil)
 	scheduler.On("WaitTask", ctx, execCtx, "release").Return(nil, nil)
+
+	err := task.Cancel(ctx, execCtx)
+	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
+	require.NoError(t, err)
+}
+
+func TestCancelCreateOverlayDiskTaskBeforeDatabaseInsert(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	poolService := pools_mocks.NewServiceMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient := nbs_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+
+	request := &protos.CreateOverlayDiskRequest{
+		SrcImageId: "image",
+		Params: &protos.CreateDiskParams{
+			BlocksCount: 123,
+			Disk: &types.Disk{
+				ZoneId: "zone",
+				DiskId: "disk",
+			},
+			BlockSize: 4096,
+			Kind:      types.DiskKind_DISK_KIND_SSD,
+			CloudId:   "cloud",
+			FolderId:  "folder",
+		},
+	}
+
+	task := &createOverlayDiskTask{
+		storage:     storage,
+		scheduler:   scheduler,
+		poolService: poolService,
+		nbsFactory:  nbsFactory,
+		request:     request,
+		state:       &protos.CreateOverlayDiskTaskState{},
+	}
+
+	// Must return disk without specified ZoneID.
+	storage.On(
+		"DeleteDisk",
+		ctx,
+		"disk",
+		"toplevel_task_id",
+		mock.Anything,
+	).Return(&resources.DiskMeta{
+		DeleteTaskID: "toplevel_task_id",
+	}, nil)
+
+	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 
 	err := task.Cancel(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
