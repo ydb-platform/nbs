@@ -42,6 +42,8 @@ private:
     TSet<TRange, TRangeLess, TStlAllocator> Ranges;
 
 public:
+     using iterator = typename TSet<TRange, TRangeLess, TStlAllocator>::iterator;
+
     TSparseSegment(IAllocator* alloc, ui64 start, ui64 end);
 
 public:
@@ -49,6 +51,16 @@ public:
     bool Empty() const
     {
         return Ranges.empty();
+    }
+
+    iterator begin()
+    {
+        return Ranges.begin();
+    }
+
+    iterator end()
+    {
+        return Ranges.end();
     }
 };
 

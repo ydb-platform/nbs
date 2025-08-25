@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/model/range.h>
+#include <cloud/filestore/libs/storage/tablet/model/sparse_segment.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -52,6 +53,7 @@ private:
     NProtoPrivate::TDescribeDataResponse DescribeResponse;
     ui32 RemainingBlobsToRead = 0;
     bool ReadDataFallbackEnabled = false;
+    TSparseSegment ZeroIntervals;
 
     // Stats for reporting
     IRequestStatsPtr RequestStats;
@@ -119,6 +121,8 @@ TReadDataActor::TReadDataActor(
         ReadRequest.GetLength(),
         BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
+    , BlockBuffer(std::make_unique<TString>())
+    , ZeroIntervals(TDefaultAllocator::Instance(), 0, AlignedByteRange.Length)
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
@@ -131,7 +135,7 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
     // a block buffer leads to memory allocation (and initialization) which is
     // heavy and we would like to execute that on a separate thread (instead of
     // this actor's parent thread)
-    BlockBuffer = std::make_unique<TString>(AlignedByteRange.Length, 0);
+    BlockBuffer->ReserveAndResize(AlignedByteRange.Length);
 
     DescribeData(ctx);
     Become(&TThis::StateWork);
@@ -198,18 +202,6 @@ TString DescribeResponseDebugString(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-char* GetDataPtr(
-    ui64 offset,
-    TByteRange alignedByteRange,
-    TString& buffer)
-{
-
-    const ui64 relOffset = offset - alignedByteRange.Offset;
-    return const_cast<char*>(buffer.data()) + relOffset;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void ApplyFreshDataRange(
     const TActorContext& ctx,
     const NProtoPrivate::TFreshDataRange& sourceFreshData,
@@ -218,7 +210,8 @@ void ApplyFreshDataRange(
     ui32 blockSize,
     ui64 offset,
     ui64 length,
-    const NProtoPrivate::TDescribeDataResponse& describeResponse)
+    const NProtoPrivate::TDescribeDataResponse& describeResponse,
+    TSparseSegment& zeroIntervals)
 {
     if (sourceFreshData.GetContent().empty()) {
         return;
@@ -251,18 +244,14 @@ void ApplyFreshDataRange(
             alignedTargetByteRange.Describe().c_str());
         return;
     }
-    char* targetData = GetDataPtr(
-        commonRange.Offset,
-        alignedTargetByteRange,
-        targetBuffer);
 
-    // NB: we assume that underlying target data is a continuous buffer
-    // TODO: don't make such an assumption - use GetBlock(i) API
+    const ui64 relOffset = commonRange.Offset - alignedTargetByteRange.Offset;
     memcpy(
-        targetData,
+        &targetBuffer[relOffset],
         sourceFreshData.GetContent().data() +
             (commonRange.Offset - sourceByteRange.Offset),
         commonRange.Length);
+    zeroIntervals.PunchHole(relOffset, relOffset + commonRange.Length);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -486,12 +475,11 @@ void TReadDataActor::HandleReadBlobResponse(
             response.Buffer.size());
         TABLET_VERIFY(blobRange.GetOffset() >= AlignedByteRange.Offset);
 
-        char* targetData = GetDataPtr(
-            blobRange.GetOffset(),
-            AlignedByteRange,
-            *BlockBuffer);
-
-        dataIter.ExtractPlainDataAndAdvance(targetData, blobRange.GetLength());
+        const ui64 relOffset = blobRange.GetOffset() - AlignedByteRange.Offset;
+        dataIter.ExtractPlainDataAndAdvance(
+            &(*BlockBuffer)[relOffset],
+            blobRange.GetLength());
+        ZeroIntervals.PunchHole(relOffset, relOffset + blobRange.GetLength());
     }
 
     --RemainingBlobsToRead;
@@ -584,7 +572,8 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             BlockSize,
             ReadRequest.GetOffset(),
             ReadRequest.GetLength(),
-            DescribeResponse);
+            DescribeResponse,
+            ZeroIntervals);
 
         LOG_DEBUG(
             ctx,
@@ -593,6 +582,13 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             LogTag.c_str(),
             content.size(),
             offset);
+    }
+
+    for (const auto& zeroInterval: ZeroIntervals) {
+        memset(
+            &(*BlockBuffer)[zeroInterval.Start],
+            0,
+            zeroInterval.End - zeroInterval.Start);
     }
 
     const auto end = Min(DescribeResponse.GetFileSize(), OriginByteRange.End());
