@@ -244,15 +244,14 @@ public:
             if (!baseCounter) {
                 continue;
             }
-            auto histSubgroup = baseCounter->FindSubgroup("histogram", name);
-            if (!histSubgroup) {
+            auto subgroup = baseCounter->FindSubgroup("histogram", name);
+            if (!subgroup) {
                 continue;
             }
-            auto unitsSubgroup = histSubgroup->FindSubgroup("units", Units);
-            if (!unitsSubgroup) {
-                continue;
+            if (Units) {
+                subgroup = subgroup->FindSubgroup("units", Units);
             }
-            Counters.push_back(unitsSubgroup);
+            Counters.push_back(subgroup);
         }
     }
 
