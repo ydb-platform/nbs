@@ -1297,4 +1297,6 @@ message TStorageServiceConfig
     optional bool VolumeThrottlingManagerEnabled = 447;
     // Duration between VolumeThrottlingManager notifications to volumes
     optional uint32 VolumeThrottlingManagerNotificationPeriodSeconds = 448;
+
+    optional bool VolumeBalancerEnabled = 449;
 }
