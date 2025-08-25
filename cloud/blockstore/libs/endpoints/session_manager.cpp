@@ -739,6 +739,14 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             {{ EErrorKind::ErrorFatal, E_REJECTED }});
     }
 
+    if (Options.EnableChecksumValidation) {
+        client = CreateDataIntegrityClient(
+            Logging,
+            Monitoring,
+            std::move(client),
+            volume.GetBlockSize());
+    }
+
     auto retryPolicy =
         CreateRetryPolicy(clientConfig, volume.GetStorageMediaKind());
 

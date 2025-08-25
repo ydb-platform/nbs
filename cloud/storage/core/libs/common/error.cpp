@@ -223,6 +223,9 @@ TString FormatError(const NProto::TError& e)
                 case NProto::EF_INSTANT_RETRIABLE:
                     out << " f@instant_retry";
                     break;
+                case NProto::EF_CHECKSUM_MISMATCH:
+                    out << " f@checksum_mismatch";
+                    break;
                 case NProto::EF_NONE:
                 case NProto::EErrorFlag_INT_MIN_SENTINEL_DO_NOT_USE_:
                 case NProto::EErrorFlag_INT_MAX_SENTINEL_DO_NOT_USE_:
