@@ -47,6 +47,7 @@ def create_virtiofs_socket(tag):
 
 def start(argv):
     args = _parse_args(argv)
+    recipe_set_env("VIRTIOFS_SERVER_COUNT", str(args.server_count))
     for index in range(args.server_count):
         start_server(args, index)
 
@@ -66,6 +67,8 @@ def start_server(args, index):
         virtiofs = VirtioFsServer(virtiofs_server_binary,
                                   socket,
                                   path)
+
+        logger.info(f"socket: {socket}, path: {path}")
 
         virtiofs.start(common.output_path(), tag)
         append_recipe_err_files(
