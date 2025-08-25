@@ -61,6 +61,8 @@ TDuration ConvertValue<TDuration, ui32>(ui32 value)
 
 TYdbStatsConfig::TYdbStatsConfig(NProto::TYdbStatsConfig ydbStatsConfig)
     : YdbStatsConfig(std::move(ydbStatsConfig))
+    , IamClientConfig(std::make_shared<NIamClient::TIamClientConfig>(
+          YdbStatsConfig.GetIamClientConfig()))
 {}
 
 bool TYdbStatsConfig::IsValid() const
@@ -83,5 +85,10 @@ type TYdbStatsConfig::Get##name() const                                        \
 BLOCKSTORE_YDBSTATS_CONFIG(BLOCKSTORE_CONFIG_GETTER);
 
 #undef BLOCKSTORE_CONFIG_GETTER
+
+NIamClient::TIamClientConfigPtr TYdbStatsConfig::GetIamClientConfig() const
+{
+    return IamClientConfig;
+}
 
 }   // namespace NCloud::NBlockStore::NYdbStats

@@ -379,6 +379,12 @@ IStartable* TBootstrapYdb::GetLogbrokerService()   { return LogbrokerService.get
 IStartable* TBootstrapYdb::GetNotifyService()      { return NotifyService.get(); }
 IStartable* TBootstrapYdb::GetStatsFetcher()       { return StatsFetcher.get(); }
 IStartable* TBootstrapYdb::GetIamTokenClient()     { return IamTokenClient.get(); }
+
+IStartable* TBootstrapYdb::GetYdbStatsIamTokenClient()
+{
+    return YdbStatsIamTokenClient.get();
+}
+
 IStartable* TBootstrapYdb::GetComputeClient()      { return ComputeClient.get(); }
 IStartable* TBootstrapYdb::GetKmsClient()          { return KmsClient.get(); }
 IStartable* TBootstrapYdb::GetRootKmsClient()      { return RootKmsClient.get(); }
@@ -636,11 +642,19 @@ void TBootstrapYdb::InitKikimrService()
         Timer);
 
     auto statsConfig = Configs->StatsConfig;
+
+    YdbStatsIamTokenClient = ServerModuleFactories->IamClientFactory(
+        statsConfig->GetIamClientConfig(),
+        logging,
+        Scheduler,
+        Timer);
+
     if (statsConfig->IsValid() && !Configs->Options->TemporaryServer) {
-        YdbStorage = NYdbStats::CreateYdbStorage(
-            statsConfig,
-            logging,
-            IamTokenClient);
+        auto iamTokenClient = statsConfig->GetIamClientConfig()->IsValid()
+                                  ? YdbStatsIamTokenClient
+                                  : IamTokenClient;
+        YdbStorage =
+            NYdbStats::CreateYdbStorage(statsConfig, logging, iamTokenClient);
         StatsUploader = NYdbStats::CreateYdbVolumesStatsUploader(
             statsConfig,
             logging,

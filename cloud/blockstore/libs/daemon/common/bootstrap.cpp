@@ -941,11 +941,10 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(ClientPercentiles);
     START_KIKIMR_COMPONENT(StatsAggregator);
     START_KIKIMR_COMPONENT(IamTokenClient);
+    START_KIKIMR_COMPONENT(YdbStatsIamTokenClient);
     START_KIKIMR_COMPONENT(ComputeClient);
     START_KIKIMR_COMPONENT(KmsClient);
     START_KIKIMR_COMPONENT(RootKmsClient);
-    START_KIKIMR_COMPONENT(YdbStorage);
-    START_KIKIMR_COMPONENT(StatsUploader);
     START_COMMON_COMPONENT(Spdk);
     START_COMMON_COMPONENT(FileIOServiceProvider);
     START_KIKIMR_COMPONENT(ActorSystem);
@@ -960,7 +959,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(ServerStatsUpdater);
     START_COMMON_COMPONENT(BackgroundThreadPool);
     START_COMMON_COMPONENT(RdmaClient);
-    START_COMMON_COMPONENT(GetTraceServiceClient());
+    START_KIKIMR_COMPONENT(TraceServiceClient);
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
     START_COMMON_COMPONENT(CellManager);
@@ -971,6 +970,13 @@ void TBootstrapBase::Start()
     // 2) we have loops in our dependencies, so there is no 'correct' starting
     // order
     START_COMMON_COMPONENT(Scheduler);
+
+    // We need to start the YDB stats uploader after the scheduler, as the YDB
+    // driver waits for an IAM token synchronously. If the IAM token service is
+    // down, our client will retry the request and schedule the task. If the
+    // scheduler has not started yet, it will block the main thread.
+    START_KIKIMR_COMPONENT(YdbStorage);
+    START_KIKIMR_COMPONENT(StatsUploader);
 
     if (!Configs->Options->TemporaryServer) {
         WarmupBSGroupConnections();
@@ -1013,13 +1019,16 @@ void TBootstrapBase::Stop()
     }                                                                          \
 // STOP_KIKIMR_COMPONENT
 
+    STOP_KIKIMR_COMPONENT(StatsUploader);
+    STOP_KIKIMR_COMPONENT(YdbStorage);
+
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
     STOP_COMMON_COMPONENT(CellManager);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
-    STOP_COMMON_COMPONENT(GetTraceServiceClient());
+    STOP_KIKIMR_COMPONENT(TraceServiceClient);
     STOP_COMMON_COMPONENT(RdmaClient);
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
     STOP_COMMON_COMPONENT(ServerStatsUpdater);
@@ -1040,11 +1049,10 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(FileIOServiceProvider);
 
     STOP_COMMON_COMPONENT(Spdk);
-    STOP_KIKIMR_COMPONENT(StatsUploader);
-    STOP_KIKIMR_COMPONENT(YdbStorage);
     STOP_KIKIMR_COMPONENT(RootKmsClient);
     STOP_KIKIMR_COMPONENT(KmsClient);
     STOP_KIKIMR_COMPONENT(ComputeClient);
+    STOP_KIKIMR_COMPONENT(YdbStatsIamTokenClient);
     STOP_KIKIMR_COMPONENT(IamTokenClient);
     STOP_KIKIMR_COMPONENT(StatsAggregator);
     STOP_KIKIMR_COMPONENT(ClientPercentiles);

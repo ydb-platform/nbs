@@ -4,6 +4,9 @@
 
 #include <cloud/blockstore/config/ydbstats.pb.h>
 
+#include <cloud/storage/core/libs/iam/iface/config.h>
+#include <cloud/storage/core/libs/iam/iface/public.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 #include <util/stream/output.h>
@@ -16,6 +19,7 @@ class TYdbStatsConfig
 {
 private:
     NProto::TYdbStatsConfig YdbStatsConfig;
+    NIamClient::TIamClientConfigPtr IamClientConfig;
 
 public:
     TYdbStatsConfig(NProto::TYdbStatsConfig statsUploadConfig = {});
@@ -36,6 +40,7 @@ public:
     bool GetUseSsl() const;
     TDuration GetStatsTableTtl() const;
     TDuration GetArchiveStatsTableTtl() const;
+    NIamClient::TIamClientConfigPtr GetIamClientConfig() const;
 };
 
 }   // namespace NCloud::NBlockStore::NYdbStats
