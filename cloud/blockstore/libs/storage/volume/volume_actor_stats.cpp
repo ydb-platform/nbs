@@ -218,24 +218,24 @@ void TVolumeActor::HandleScrubberCounters(
     State->UpdateScrubberCounters(std::move(scrubbingInfo));
 }
 
-void TVolumeActor::HandleDiskRegistryBasedPartCounters(
-    const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
-    const TActorContext& ctx)
+void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
+    const TActorContext& ctx,
+    TDataForUpdatingDiskRegistryBasedPartCounters& data)
 {
     Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
 
-    auto* msg = ev->Get();
-
     if (auto* resourceMetrics = GetResourceMetrics(); resourceMetrics) {
         bool changed = false;
-        if (msg->CpuUsage) {
+        if (data.PartCountersData.CpuUsage) {
             resourceMetrics->CPU.Increment(
-                msg->CpuUsage.MicroSeconds(),
+                data.PartCountersData.CpuUsage.MicroSeconds(),
                 ctx.Now());
             changed = true;
         }
-        if (msg->NetworkBytes) {
-            resourceMetrics->Network.Increment(msg->NetworkBytes, ctx.Now());
+        if (data.PartCountersData.NetworkBytes) {
+            resourceMetrics->Network.Increment(
+                data.PartCountersData.NetworkBytes,
+                ctx.Now());
             changed = true;
         }
 
@@ -244,13 +244,10 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
         }
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext
-    );
+    auto requestInfo =
+        CreateRequestInfo(data.Sender, data.Cookie, data.CallContext);
 
-    auto* statInfo = State->GetPartitionStatByDiskId(msg->DiskId);
+    auto* statInfo = State->GetPartitionStatByDiskId(data.DiskId);
 
     if (!statInfo) {
         LOG_INFO(
@@ -258,8 +255,8 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
             TBlockStoreComponents::VOLUME,
             "%s Counters from partition %s (%s) do not belong to disk",
             LogTitle.GetWithTime().c_str(),
-            ToString(ev->Sender).c_str(),
-            msg->DiskId.Quote().c_str());
+            ToString(data.Sender).c_str(),
+            data.DiskId.Quote().c_str());
         return;
     }
 
@@ -269,11 +266,13 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
             DiagnosticsConfig->GetHistogramCounterOptions());
     }
 
-    statInfo->LastCounters->Add(*msg->DiskCounters);
+    statInfo->LastCounters->Add(*data.PartCountersData.DiskCounters);
 
-    UpdateCachedStats(*msg->DiskCounters, statInfo->CachedCounters);
+    UpdateCachedStats(
+        *data.PartCountersData.DiskCounters,
+        statInfo->CachedCounters);
     CopyPartCountersToCachedStats(
-        *msg->DiskCounters,
+        *data.PartCountersData.DiskCounters,
         statInfo->CachedCountersProto);
 
     TVolumeDatabase::TPartStats partStats;
@@ -283,6 +282,58 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
         ctx,
         std::move(requestInfo),
         std::move(partStats));
+}
+
+void TVolumeActor::HandleDiskRegistryBasedPartCounters(
+    const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
+    const TActorContext& ctx)
+{
+
+    auto* msg = ev->Get();
+
+    TPartNonreplCountersData partCountersData(
+        msg->NetworkBytes,
+        msg->CpuUsage,
+        std::move(msg->DiskCounters));
+
+    TDataForUpdatingDiskRegistryBasedPartCounters data(
+        ev->Sender,
+        ev->Cookie,
+        std::move(msg->DiskId),
+        std::move(msg->CallContext),
+        std::move(partCountersData));
+
+    UpdateDiskRegistryBasedPartCounters(ctx, data);
+}
+
+void TVolumeActor::HandleGetDiskRegistryBasedPartCountersResponse(
+    const TEvNonreplPartitionPrivate::
+        TEvGetDiskRegistryBasedPartCountersResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (HasError(msg->Error)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "Failed to update disk registry based part counters. Error: %s",
+            FormatError(msg->Error).c_str());
+    }
+
+    TPartNonreplCountersData partCountersData(
+        msg->NetworkBytes,
+        msg->CpuUsage,
+        std::move(msg->DiskCounters));
+
+    TDataForUpdatingDiskRegistryBasedPartCounters data(
+        msg->SelfId,
+        ev->Cookie,
+        std::move(msg->DiskId),
+        MakeIntrusive<TCallContext>(),
+        std::move(partCountersData));
+
+    UpdateDiskRegistryBasedPartCounters(ctx, data);
 }
 
 std::optional<TTxVolume::TSavePartStats> TVolumeActor::UpdatePartCounters(
@@ -451,6 +502,18 @@ void TVolumeActor::CompleteSavePartStats(
         "%s Part %lu stats saved",
         LogTitle.GetWithTime().c_str(),
         args.PartStats.TabletId);
+
+    if (Config->GetUsePullSchemeForVolumeStatistics() &&
+        State->IsDiskRegistryMediaKind())
+    {
+        UpdateCounters(ctx);
+        CleanupHistory(
+            ctx,
+            SelfId(),                       // sender
+            0,                              // cookie
+            MakeIntrusive<TCallContext>()   // callContext
+        );
+    }
 
     NCloud::Send(
         ctx,
@@ -819,6 +882,22 @@ void TVolumeActor::CleanupHistory(
         std::move(requestInfo),
         oldestEntry,
         Config->GetVolumeHistoryCleanupItemCount());
+}
+
+void TVolumeActor::SendStatisticRequestForDiskRegistryBasedPartition(
+    const TActorContext& ctx)
+{
+    STORAGE_VERIFY_C(
+        State->GetDiskRegistryBasedPartitionActor(),
+        TWellKnownEntityTypes::TABLET,
+        TabletID(),
+        "Empty disk registry based partition actor");
+
+    NCloud::Send(
+        ctx,
+        State->GetDiskRegistryBasedPartitionActor(),
+        std::make_unique<TEvNonreplPartitionPrivate::
+                             TEvGetDiskRegistryBasedPartCountersRequest>());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

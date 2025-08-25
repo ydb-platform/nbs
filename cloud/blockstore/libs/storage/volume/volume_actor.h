@@ -23,6 +23,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/disk_registry_based_part_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
@@ -32,6 +33,7 @@
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
 
@@ -427,6 +429,28 @@ private:
         {}
     };
 
+    struct TDataForUpdatingDiskRegistryBasedPartCounters
+    {
+        const NActors::TActorId Sender;
+        const ui64 Cookie;
+        const TString DiskId;
+        TCallContextPtr CallContext;
+        TPartNonreplCountersData PartCountersData;
+
+        TDataForUpdatingDiskRegistryBasedPartCounters(
+                const NActors::TActorId& sender,
+                ui64 cookie,
+                TString diskId,
+                TCallContextPtr callContext,
+                TPartNonreplCountersData partCountersData)
+            : Sender(sender)
+            , Cookie(cookie)
+            , DiskId(std::move(diskId))
+            , CallContext(std::move(callContext))
+            , PartCountersData(std::move(partCountersData))
+        {}
+    };
+
 public:
     TVolumeActor(
         const NActors::TActorId& owner,
@@ -663,11 +687,18 @@ private:
 
     void SendStatisticRequests(const NActors::TActorContext& ctx);
 
+    void SendStatisticRequestForDiskRegistryBasedPartition(
+        const NActors::TActorContext& ctx);
+
     void CleanupHistory(
         const NActors::TActorContext& ctx,
         const NActors::TActorId& sender,
         ui64 cookie,
         TCallContextPtr callContext);
+
+    void UpdateDiskRegistryBasedPartCounters(
+        const NActors::TActorContext& ctx,
+        TDataForUpdatingDiskRegistryBasedPartCounters& data);
 
     const TString& GetDiskId() const;
 
@@ -1222,6 +1253,11 @@ private:
         const NActors::TActorContext& ctx,
         TPoisonCallback onPartitionStopped);
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCountersResponse(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)
     BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolumePrivate)
