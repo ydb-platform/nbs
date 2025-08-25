@@ -989,7 +989,9 @@ void TIndexTabletActor::HandleGetStorageStats(
         ? GetFileSystem().GetShardFileSystemIds()
         : Default<google::protobuf::RepeatedPtrField<TString>>();
 
-    const bool useCache = req.GetAllowCache() && req.GetMode() != NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF;
+    const bool useCache =
+        req.GetAllowCache() &&
+        req.GetMode() != NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF;
     if (useCache) {
         *stats = CachedAggregateStats;
         const ui32 shardMetricsCount =
