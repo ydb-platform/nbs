@@ -114,8 +114,7 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
             FormatError(error).c_str());
 
         if (request.RetryIfTimeoutOrUndelivery &&
-            GetErrorKind(error) == EErrorKind::ErrorRetriable &&
-            Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled())
+            GetErrorKind(error) == EErrorKind::ErrorRetriable)
         {
             auto delay = BackoffDelayProviderForAcquireReleaseDiskRequests
                              .GetDelayAndIncrease();
