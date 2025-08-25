@@ -21,6 +21,27 @@ using namespace NThreading;
 
 using namespace NCloud::NBlockStore::NClient;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void CheckDescribe(auto endpoint, TString cellId, ui32 errorCode)
+{
+    auto request = std::make_shared<NProto::TDescribeVolumeRequest>();
+    if (cellId) {
+        request->MutableHeaders()->SetCellId(cellId);
+    }
+
+    auto future = endpoint->DescribeVolume(
+        MakeIntrusive<TCallContext>(),
+        std::move(request));
+
+    const auto& response = future.GetValue(TDuration::Seconds(5));
+    UNIT_ASSERT_VALUES_EQUAL(errorCode, response.GetError().GetCode());
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TServerTest)
@@ -1406,6 +1427,93 @@ Y_UNIT_TEST_SUITE(TServerTest)
         checkError(endpoint->UnmountVolume(
             MakeIntrusive<TCallContext>(),
             std::make_shared<NProto::TUnmountVolumeRequest>()));
+    }
+
+    Y_UNIT_TEST(ShouldCheckCellIdInDescribeVolumeRequestIfCellsAreOn)
+    {
+        TPortManager portManager;
+        ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
+
+        auto service = std::make_shared<TTestService>();
+        service->DescribeVolumeHandler =
+            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
+                Y_UNUSED(request);
+                return MakeFuture<NProto::TDescribeVolumeResponse>();
+            };
+
+        TTestFactory testFactory;
+
+        auto server = testFactory.CreateServerBuilder()
+            .SetPort(port)
+            .SetDataPort(dataPort)
+            .SetCellId("abc")  // turn on cell id check in DescribeVolume
+            .BuildServer(service);
+
+        auto client = testFactory.CreateClientBuilder()
+            .SetPort(port)
+            .SetDataPort(dataPort)
+            .BuildClient();
+
+        server->Start();
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+            server->Stop();
+        };
+
+        auto endpoint = client->CreateEndpoint();
+
+        endpoint->Start();
+        Y_DEFER {
+            endpoint->Stop();
+        };
+
+        CheckDescribe(endpoint, "xyz", E_REJECTED);
+        CheckDescribe(endpoint, "", S_OK);
+    }
+
+    Y_UNIT_TEST(ShouldCheckCellIdInDescribeVolumeRequestIfCellsAreOff)
+    {
+        TPortManager portManager;
+        ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
+
+        auto service = std::make_shared<TTestService>();
+        service->DescribeVolumeHandler =
+            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
+                Y_UNUSED(request);
+                return MakeFuture<NProto::TDescribeVolumeResponse>();
+            };
+
+        TTestFactory testFactory;
+
+        auto server = testFactory.CreateServerBuilder()
+            .SetPort(port)
+            .SetDataPort(dataPort)
+            .BuildServer(service);
+
+        auto client = testFactory.CreateClientBuilder()
+            .SetPort(port)
+            .SetDataPort(dataPort)
+            .BuildClient();
+
+        server->Start();
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+            server->Stop();
+        };
+
+        auto endpoint = client->CreateEndpoint();
+
+        endpoint->Start();
+        Y_DEFER {
+            endpoint->Stop();
+        };
+
+        CheckDescribe(endpoint, "xyz", S_OK);
+        CheckDescribe(endpoint, "", S_OK);
     }
 }
 

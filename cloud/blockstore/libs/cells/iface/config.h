@@ -91,6 +91,7 @@ public:
     [[nodiscard]] const TConfiguredHostsByFqdn& GetHosts() const;
     [[nodiscard]] ui32 GetDescribeVolumeHostCount() const;
     [[nodiscard]] ui32 GetMinCellConnections() const;
+    [[nodiscard]] bool GetStrictCellIdCheckInDescribeVolume() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

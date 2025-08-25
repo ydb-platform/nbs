@@ -26,6 +26,7 @@ struct TTestContext
     IProfileLogPtr ProfileLog;
     IRequestStatsPtr RequestStats;
     IVolumeStatsPtr VolumeStats;
+    TString CellId;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -56,6 +57,8 @@ public:
     TTestServerBuilder& SetUnixSocketPath(const TString& unixSocketPath);
 
     TTestServerBuilder& SetVolumeStats(IVolumeStatsPtr volumeStats);
+
+    TTestServerBuilder& SetCellId(TString cellId);
 
     IServerPtr BuildServer(
         IBlockStorePtr service,

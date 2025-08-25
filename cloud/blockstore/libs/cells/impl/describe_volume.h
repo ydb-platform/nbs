@@ -15,11 +15,11 @@ namespace NCloud::NBlockStore::NCells {
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeVolumeFuture DescribeVolume(
+    const TCellsConfig& config,
     NProto::TDescribeVolumeRequest request,
     IBlockStorePtr service,
     const TCellHostEndpointsByCellId& endpoints,
     bool hasUnavailableCells,
-    TDuration timeout,
     TBootstrap bootstrap);
 
 }   // namespace NCloud::NBlockStore::NCells

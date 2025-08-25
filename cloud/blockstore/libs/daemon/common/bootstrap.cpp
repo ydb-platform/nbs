@@ -3,7 +3,8 @@
 #include "config_initializer.h"
 #include "options.h"
 
-#include <cloud/blockstore/libs/cells/impl/cell_manager.h>
+#include <cloud/blockstore/libs/cells/iface/cell_manager.h>
+#include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
@@ -690,7 +691,14 @@ void TBootstrapBase::Init()
         Logging,
         ServerStats,
         Service,
-        std::move(udsService));
+        std::move(udsService),
+        TServerOptions {
+            // Enables cell id checking in DescribeVolume requests
+            // only if "cells" feature is on
+            .CellId = Configs->CellsConfig->GetCellsEnabled() ?
+                Configs->CellsConfig->GetCellId() :
+                ""
+        });
 
     STORAGE_INFO("Server initialized");
 
