@@ -339,6 +339,8 @@ private:
 
     THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
 
+    THashSet<TDiskId> MasterDisksToReallocateAfterStart;
+
 public:
     TDiskRegistryState(
         ILoggingServicePtr logging,
@@ -882,6 +884,10 @@ public:
         TDiskRegistryDatabase& db,
         TInstant now);
 
+    void ReplaceBrokenDevicesAfterRestart(
+        TInstant now,
+        TDiskRegistryDatabase& db);
+
     TVector<TString> GetPoolNames(
         std::optional<NProto::EDevicePoolKind> kind = std::nullopt) const;
 
@@ -903,6 +909,10 @@ public:
     THashSet<TDeviceId> GetUnavailableDevicesForDisk(
         const TString& diskId) const;
 
+    bool IsRecentlyReplacedDevice(
+        const TDiskId& masterDiskId,
+        const TDeviceId& deviceId) const;
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
@@ -911,6 +921,7 @@ private:
     void ProcessAgents();
     void ProcessDisksToCleanup(TVector<TString> diskIds);
     void ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices);
+    void ProcessDisksToReallocate();
 
     void AddMigration(
         const TDiskState& disk,
@@ -1093,7 +1104,7 @@ private:
 
     void DeleteAllDeviceMigrations(const TDiskId& diskId);
 
-    void UpdateAndReallocateDisk(
+    ui64 UpdateAndReallocateDisk(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         TDiskState& disk);
@@ -1375,6 +1386,11 @@ private:
     void ReallocateDisksWithLostOrReappearedDevices(
         const TAgentList::TAgentRegistrationResult& r,
         THashSet<TDiskId>& disksToReallocate);
+
+    void ReplaceBrokenDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TString& masterDiskId);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

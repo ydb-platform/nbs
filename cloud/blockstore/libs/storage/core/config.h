@@ -709,6 +709,8 @@ public:
     [[nodiscard]] bool GetVolumeThrottlingManagerEnabled() const;
     [[nodiscard]] TDuration
     GetVolumeThrottlingManagerNotificationPeriodSeconds() const;
+
+    [[nodiscard]] bool GetLimitMirrorDisksDeviceReplacementsPerRow() const;
 };
 
 ui64 GetAllocationUnit(
