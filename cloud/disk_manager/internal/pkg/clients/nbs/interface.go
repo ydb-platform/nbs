@@ -91,6 +91,12 @@ type ScanDiskStatus struct {
 	BrokenBlobs []string
 }
 
+type ClusterCapacityInfo struct {
+	DiskKind   types.DiskKind
+	FreeBytes  uint64
+	TotalBytes uint64
+}
+
 type CheckpointType uint32
 
 const (
