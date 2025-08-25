@@ -160,9 +160,19 @@ void TPartitionActor::HandleWriteBlocksRequest(
             blocksCount += buffer.Size() / State->GetBlockSize();
         }
 
-        if (msg->Record.ChecksumsSize() > 0) {
+        if (Config->GetEnableChecksumValidationForYdbBasedDisks() &&
+            msg->Record.ChecksumsSize() > 0)
+        {
             if (msg->Record.ChecksumsSize() != 1) {
-                ReportChecksumCalculationError();
+                ReportChecksumCalculationError(
+                    TStringBuilder()
+                    << "WriteBlocks: incorrect number of checksums: "
+                    << msg->Record.ChecksumsSize() << " (expected 1)"
+                    << "; diskId=" << State->GetConfig().GetDiskId().Quote()
+                    << "; range="
+                    << TBlockRange64::WithLength(
+                           msg->Record.GetStartIndex(),
+                           blocksCount));
             } else {
                 auto checksum = CalculateChecksum(guard.Get());
                 if (!MessageDifferencer::Equals(

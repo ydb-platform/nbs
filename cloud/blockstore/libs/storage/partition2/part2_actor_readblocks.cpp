@@ -75,24 +75,28 @@ void FillReadStats(
 IReadBlocksHandlerPtr CreateReadHandler(
     const TBlockRange64& readRange,
     const NProto::TReadBlocksRequest& request,
-    ui32 blockSize)
+    ui32 blockSize,
+    bool enableChecksumValidation)
 {
     Y_UNUSED(request);
     return NStorage::CreateReadBlocksHandler(
         readRange,
-        blockSize
+        blockSize,
+        enableChecksumValidation
     );
 }
 
 IReadBlocksHandlerPtr CreateReadHandler(
     const TBlockRange64& readRange,
     const NProto::TReadBlocksLocalRequest& request,
-    ui32 blockSize)
+    ui32 blockSize,
+    bool enableChecksumValidation)
 {
     return NStorage::CreateReadBlocksHandler(
         readRange,
         request.Sglist,
-        blockSize
+        blockSize,
+        enableChecksumValidation
     );
 }
 
@@ -978,7 +982,8 @@ void TPartitionActor::HandleReadBlocksRequest(
     auto readHandler = CreateReadHandler(
         readRange,
         msg->Record,
-        State->GetBlockSize());
+        State->GetBlockSize(),
+        Config->GetEnableChecksumValidationForYdbBasedDisks());
 
     ReadBlocks(
         ctx,

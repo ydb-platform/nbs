@@ -180,7 +180,8 @@ struct TStorageContext
     const ui64 StorageBlockCount;
 
     TFile File;
-    bool DirectIO;
+    const bool DirectIO;
+    const bool EnableChecksumValidation;
 
     TStorageContext(
             ITaskQueuePtr submitQueue,
@@ -190,7 +191,8 @@ struct TStorageContext
             ui64 startIndex,
             ui64 blockCount,
             TFile file,
-            bool directIO)
+            bool directIO,
+            bool enableChecksumValidation)
         : SubmitQueue(std::move(submitQueue))
         , FileIOService(std::move(fileIO))
         , NvmeManager(std::move(nvmeManager))
@@ -199,6 +201,7 @@ struct TStorageContext
         , StorageBlockCount(blockCount)
         , File(std::move(file))
         , DirectIO(directIO)
+        , EnableChecksumValidation(enableChecksumValidation)
     {}
 };
 
@@ -597,6 +600,10 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
             fileOffset,
             byteCount)
             .GetFuture();
+    if (!EnableChecksumValidation) {
+        return future;
+    }
+
     return future.Apply(
         [future, sglist = std::move(sglist)](const auto&) mutable
         {
@@ -634,7 +641,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
         return MakeFuture(response);
     }
 
-    if (request->ChecksumsSize() > 0) {
+    if (EnableChecksumValidation && request->ChecksumsSize() > 0) {
         if (request->ChecksumsSize() != 1) {
             NProto::TWriteBlocksLocalResponse response;
             *response.MutableError() = MakeError(
@@ -820,17 +827,20 @@ private:
     IFileIOServiceProviderPtr FileIOServiceProvider;
     INvmeManagerPtr NvmeManager;
     const bool DirectIO;
+    const bool EnableChecksumValidation;
 
 public:
     explicit TLocalStorageProvider(
             ITaskQueuePtr submitQueue,
             IFileIOServiceProviderPtr fileIOProvider,
             INvmeManagerPtr nvmeManager,
-            bool directIO)
+            bool directIO,
+            bool enableChecksumValidation)
         : SubmitQueue(std::move(submitQueue))
         , FileIOServiceProvider(std::move(fileIOProvider))
         , NvmeManager(std::move(nvmeManager))
         , DirectIO(directIO)
+        , EnableChecksumValidation(enableChecksumValidation)
     {}
 
     TFuture<IStoragePtr> CreateStorage(
@@ -864,7 +874,8 @@ public:
             volume.GetStartIndex(),
             volume.GetBlocksCount(),
             TFile {filePath, flags},
-            DirectIO);
+            DirectIO,
+            EnableChecksumValidation);
 
         return MakeFuture<IStoragePtr>(storage);
     };
@@ -889,7 +900,8 @@ IStorageProviderPtr CreateLocalStorageProvider(
         std::move(submitQueue),
         std::move(fileIOProvider),
         std::move(nvmeManager),
-        params.DirectIO);
+        params.DirectIO,
+        params.EnableChecksumValidation);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

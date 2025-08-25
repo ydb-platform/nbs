@@ -307,6 +307,10 @@ message TDiskAgentConfig
 
     // Use a separate thread to submit requests to all FileIOServices.
     optional bool UseLocalStorageSubmissionThread = 41;
+
+    // Enables data integrity validation for the DR-based disks.
+    // See "EnableChecksumValidation" in server.proto for more details.
+    optional bool EnableChecksumValidationForDrBasedDisks = 42;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

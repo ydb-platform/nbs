@@ -81,6 +81,7 @@ class TReadBlocksHandler final
 private:
     const TBlockRange64 ReadRange;
     const ui32 BlockSize;
+    const bool EnableChecksumValidation;
 
     NProto::TIOVector Blocks;
     TGuardedSgList SgList;
@@ -88,9 +89,13 @@ private:
     TDynBitMap UnencryptedBlockMask;
 
 public:
-    TReadBlocksHandler(const TBlockRange64& readRange, ui32 blockSize)
+    TReadBlocksHandler(
+        const TBlockRange64& readRange,
+        ui32 blockSize,
+        bool enableChecksumValidation)
         : ReadRange(readRange)
         , BlockSize(blockSize)
+        , EnableChecksumValidation(enableChecksumValidation)
         , BlockMarks(ReadRange.Size(), false)
     {
         UnencryptedBlockMask.Reserve(ReadRange.Size());
@@ -166,8 +171,9 @@ public:
             }
         }
 
-        NProto::TChecksum checksum = CalculateChecksum(Blocks, BlockSize);
-        *response.MutableChecksum() = std::move(checksum);
+        if (EnableChecksumValidation) {
+            *response.MutableChecksum() = CalculateChecksum(Blocks, BlockSize);
+        }
 
         // Wait for all TSgList users are done.
         SgList.Close();
@@ -252,6 +258,7 @@ class TReadBlocksLocalHandler final
 private:
     const TBlockRange64 ReadRange;
     const ui32 BlockSize;
+    const bool EnableChecksumValidation;
 
     TGuardedSgList GuardedSgList;
     TVector<bool> BlockMarks;
@@ -261,9 +268,11 @@ public:
     TReadBlocksLocalHandler(
             const TBlockRange64& readRange,
             TGuardedSgList guardedSgList,
-            ui32 blockSize)
+            ui32 blockSize,
+            bool enableChecksumValidation)
         : ReadRange(readRange)
         , BlockSize(blockSize)
+        , EnableChecksumValidation(enableChecksumValidation)
         , GuardedSgList(std::move(guardedSgList))
         , BlockMarks(ReadRange.Size(), false)
     {
@@ -359,8 +368,9 @@ public:
 
             response.SetAllZeroes(allZeroes);
 
-            NProto::TChecksum checksum = CalculateChecksum(sglist);
-            *response.MutableChecksum() = std::move(checksum);
+            if (EnableChecksumValidation) {
+                *response.MutableChecksum() = CalculateChecksum(sglist);
+            }
         }
 
         auto stringBuf = ConvertBitMapToStringBuf(UnencryptedBlockMask);
@@ -447,20 +457,26 @@ IWriteBlocksHandlerPtr CreateWriteBlocksHandler(
 
 IReadBlocksHandlerPtr CreateReadBlocksHandler(
     const TBlockRange64& readRange,
-    ui32 blockSize)
+    ui32 blockSize,
+    bool enableChecksumValidation)
 {
-    return std::make_shared<TReadBlocksHandler>(readRange, blockSize);
+    return std::make_shared<TReadBlocksHandler>(
+        readRange,
+        blockSize,
+        enableChecksumValidation);
 }
 
 IReadBlocksHandlerPtr CreateReadBlocksHandler(
     const TBlockRange64& readRange,
     const TGuardedSgList& sglist,
-    ui32 blockSize)
+    ui32 blockSize,
+    bool enableChecksumValidation)
 {
     return std::make_shared<TReadBlocksLocalHandler>(
         readRange,
         sglist,
-        blockSize);
+        blockSize,
+        enableChecksumValidation);
 }
 
 IWriteBlocksHandlerPtr CreateMixedWriteBlocksHandler(

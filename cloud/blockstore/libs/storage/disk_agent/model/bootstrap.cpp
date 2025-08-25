@@ -89,6 +89,8 @@ IStorageProviderPtr CreateStorageProvider(
                     .DirectIO = !config.GetDirectIoFlagDisabled(),
                     .UseSubmissionThread =
                         config.GetUseLocalStorageSubmissionThread(),
+                    .EnableChecksumValidation =
+                        config.GetEnableChecksumValidationForDrBasedDisks(),
                 });
         case NProto::DISK_AGENT_BACKEND_NULL:
             return NServer::CreateNullStorageProvider();
@@ -102,6 +104,8 @@ IStorageProviderPtr CreateStorageProvider(
                     // Each io_uring service already has its own submission
                     // thread, so we don't need one here
                     .UseSubmissionThread = false,
+                    .EnableChecksumValidation =
+                        config.GetEnableChecksumValidationForDrBasedDisks(),
                 });
     }
 
