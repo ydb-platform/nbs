@@ -76,7 +76,10 @@ func (t *deleteDiskTask) deleteDisk(
 		zoneID = t.request.Disk.ZoneId
 	}
 	if len(zoneID) == 0 {
-		return t.storage.DiskDeleted(ctx, diskID, time.Now())
+		// If diskMeta has no zoneID, the disk was not in the database before
+		// calling storage.DeleteDisk, so it has already been marked as deleted.
+		// Need to call neither storage.DiskDeleted nor client.Delete.
+		return nil
 	}
 
 	taskID, err := t.scheduler.ScheduleTask(

@@ -525,10 +525,13 @@ func (s *storageYDB) deleteDisk(
 
 			return state.toDiskMeta(), nil
 		}
+
+		state.status = diskStatusDeleting
+	} else {
+		state.status = diskStatusDeleted
 	}
 
 	state.id = diskID
-	state.status = diskStatusDeleting
 	state.deleteTaskID = taskID
 	state.deletingAt = deletingAt
 
