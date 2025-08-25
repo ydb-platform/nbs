@@ -61,6 +61,11 @@ void TBootstrapLocal::InitRdmaRequestServer()
     // do nothing
 }
 
+void TBootstrapLocal::InitYdbStorage()
+{
+    // do nothing
+}
+
 ITraceSerializerPtr TBootstrapLocal::GetTraceSerializer()
 {
     return CreateTraceSerializerStub();

@@ -1,3 +1,4 @@
+#include "ydbauth.h"
 #include "ydbrow.h"
 #include "ydbstats.h"
 
@@ -17,6 +18,7 @@ using namespace NThreading;
 using namespace NYdb;
 using namespace NYdb::NTable;
 using namespace NYdb::NScheme;
+using namespace NCloud::NIamClient;
 
 namespace {
 
@@ -493,6 +495,11 @@ public:
         return MakeFuture(MakeError(S_OK));
     }
 
+    void ProvideInitialToken(NIamClient::TTokenInfo token) override
+    {
+        Y_UNUSED(token);
+    }
+
 private:
     TMaybe<TInstant> ExtractTableTime(const TString& name)
     {
@@ -517,6 +524,33 @@ TYdbTestStoragePtr YdbCreateTestStorage(
 {
     return std::make_shared<TYdbTestStorage>(std::move(config));
 }
+
+struct TTestIamTokenClient: public IIamTokenClient
+{
+    TFuture<TResponse> Response;
+    ui64 ExecutedCount = 0;
+
+    TTestIamTokenClient(TFuture<TResponse> response)
+        : Response(std::move(response))
+    {}
+
+    void Start() override
+    {}
+    void Stop() override
+    {}
+
+    TResponse GetToken() override
+    {
+        UNIT_FAIL("Don't use sync method");
+        return GetTokenAsync().GetValueSync();
+    }
+
+    NThreading::TFuture<TResponse> GetTokenAsync() override
+    {
+        ExecutedCount++;
+        return Response;
+    }
+};
 
 }    // namespace
 
@@ -867,6 +901,48 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
                 statsTtl,
                 response.TableScheme.Ttl->GetValueSinceUnixEpoch().GetExpireAfter());
         }
+    }
+}
+
+Y_UNIT_TEST_SUITE(TYdbStatsAuth)
+{
+    Y_UNIT_TEST(ShouldGetIamTokenAsynchronously)
+    {
+        auto promiseToken = NewPromise<IIamTokenClient::TResponse>();
+        auto client =
+            std::make_shared<TTestIamTokenClient>(promiseToken.GetFuture());
+
+        auto providerFactory = CreateIamCredentialsProviderFactory(
+            {"token", Now() + TDuration::MilliSeconds(100)},
+            client);
+
+        auto provider = providerFactory->CreateProvider();
+
+        auto token = provider->GetAuthInfo();
+        UNIT_ASSERT_VALUES_EQUAL("token", token);
+        UNIT_ASSERT_VALUES_EQUAL(0, client->ExecutedCount);
+
+        Sleep(TDuration::MilliSeconds(100));
+
+        token = provider->GetAuthInfo();
+        UNIT_ASSERT_VALUES_EQUAL("token", token);
+        UNIT_ASSERT_VALUES_EQUAL(1, client->ExecutedCount);
+
+        promiseToken.SetValue(MakeError(E_REJECTED));
+
+        auto anotherPromiseToken = NewPromise<IIamTokenClient::TResponse>();
+        client->Response = anotherPromiseToken.GetFuture();
+
+        token = provider->GetAuthInfo();
+        UNIT_ASSERT_VALUES_EQUAL("token", token);
+        UNIT_ASSERT_VALUES_EQUAL(2, client->ExecutedCount);
+
+        anotherPromiseToken.SetValue(
+            TTokenInfo{"another-token", Now() + TDuration::MilliSeconds(100)});
+
+        token = provider->GetAuthInfo();
+        UNIT_ASSERT_VALUES_EQUAL("another-token", token);
+        UNIT_ASSERT_VALUES_EQUAL(2, client->ExecutedCount);
     }
 }
 

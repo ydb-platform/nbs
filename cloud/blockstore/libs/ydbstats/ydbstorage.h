@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/public.h>
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
@@ -87,6 +88,8 @@ struct IYdbStorage
     virtual NThreading::TFuture<TDescribeTableResponse> DescribeTable(const TString& table) = 0;
 
     virtual NThreading::TFuture<TGetTablesResponse> GetHistoryTables() = 0;
+
+    virtual void ProvideInitialToken(NIamClient::TTokenInfo token) = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NYdbStats

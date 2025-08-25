@@ -19,6 +19,10 @@
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 
+#include <utility>
+
+#include <utility>
+
 namespace NCloud::NBlockStore::NYdbStats {
 
 using namespace NIamClient;
@@ -85,6 +89,7 @@ TString BuildError(
 }
 
 TDriverConfig BuildDriverConfig(
+    TTokenInfo initialToken,
     const TYdbStatsConfig& config,
     IIamTokenClientPtr tokenClient)
 {
@@ -94,7 +99,9 @@ TDriverConfig BuildDriverConfig(
 
     if (config.GetUseSsl()) {
         driverConfig.SetCredentialsProviderFactory(
-            CreateIamCredentialsProviderFactory(tokenClient));
+            CreateIamCredentialsProviderFactory(
+                std::move(initialToken),
+                std::move(tokenClient)));
         driverConfig.UseSecureConnection();
     } else {
        driverConfig.SetAuthToken(LoadToken(config.GetTokenFile()));
@@ -117,6 +124,8 @@ private:
     std::unique_ptr<TSchemeClient> SchemeClient;
 
     TLog Log;
+
+    TTokenInfo InitialToken;
 
 public:
     TYdbNativeStorage(
@@ -149,7 +158,7 @@ public:
     void Start() override
     {
         Driver = std::make_unique<TDriver>(
-            BuildDriverConfig(*Config, IamClient));
+            BuildDriverConfig(InitialToken, *Config, IamClient));
         Client = std::make_shared<TTableClient>(*Driver);
         SchemeClient = std::make_unique<TSchemeClient>(*Driver);
 
@@ -166,17 +175,37 @@ public:
         }
     }
 
+    void ProvideInitialToken(TTokenInfo token) override
+    {
+        InitialToken = std::move(token);
+    }
+
 private:
+
+    bool Initialized() const
+    {
+        return Driver && Client && SchemeClient;
+    }
+
     TMaybe<TInstant> ExtractTableTime(const TString& name) const;
     TString GetFullTableName(const TString& table) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define STORAGE_ENSURE_INITIALIZED()                              \
+    if (!Initialized()) {                                         \
+        return MakeFuture(                                        \
+            MakeError(E_REJECTED, "storage is not initialized")); \
+    }                                                             \
+    // STORAGE_ENSURE_INITIALIZED
+
 TFuture<NProto::TError> TYdbNativeStorage::CreateTable(
     const TString& table,
     const TTableDescription& description)
 {
+    STORAGE_ENSURE_INITIALIZED()
+
     auto tableName = GetFullTableName(table);
     auto future = Client->RetryOperation(
         [=] (TSession session) {
@@ -199,6 +228,8 @@ TFuture<NProto::TError> TYdbNativeStorage::AlterTable(
     const TString& table,
     const TAlterTableSettings& settings)
 {
+    STORAGE_ENSURE_INITIALIZED()
+
     auto tableName = GetFullTableName(table);
     auto future = Client->RetryOperation(
         [=] (TSession session) {
@@ -219,6 +250,8 @@ TFuture<NProto::TError> TYdbNativeStorage::AlterTable(
 
 TFuture<NProto::TError> TYdbNativeStorage::DropTable(const TString& table)
 {
+    STORAGE_ENSURE_INITIALIZED()
+
     auto tableName = GetFullTableName(table);
     auto future = Client->RetryOperation(
         [=] (TSession session) {
@@ -237,9 +270,18 @@ TFuture<NProto::TError> TYdbNativeStorage::DropTable(const TString& table)
         });
 }
 
+#define STORAGE_ENSURE_INITIALIZED_WITH_RESPONSE(response)                  \
+    if (!Initialized()) {                                                   \
+        return MakeFuture(                                                  \
+            response(MakeError(E_REJECTED, "storage is not initialized"))); \
+    }                                                                       \
+    // STORAGE_ENSURE_INITIALIZED_WITH_RESPONSE
+
 TFuture<NYdbStats::TDescribeTableResponse> TYdbNativeStorage::DescribeTable(
     const TString& table)
 {
+    STORAGE_ENSURE_INITIALIZED_WITH_RESPONSE(TDescribeTableResponse)
+
     auto result = NewPromise<NYdbStats::TDescribeTableResponse>();
     auto tableName = GetFullTableName(table);
 
@@ -279,6 +321,8 @@ TFuture<NYdbStats::TDescribeTableResponse> TYdbNativeStorage::DescribeTable(
 
 TFuture<TGetTablesResponse> TYdbNativeStorage::GetHistoryTables()
 {
+    STORAGE_ENSURE_INITIALIZED_WITH_RESPONSE(TGetTablesResponse)
+
     auto database = Config->GetDatabaseName();
     auto future = SchemeClient->ListDirectory(database);
 
@@ -310,6 +354,8 @@ TFuture<NProto::TError> TYdbNativeStorage::ExecuteUploadQuery(
     TString tableName,
     NYdb::TValue data)
 {
+    STORAGE_ENSURE_INITIALIZED()
+
     auto func = [tableName = std::move(tableName), data = std::move(data)] (
         TTableClient& client) mutable
     {
@@ -335,6 +381,9 @@ TFuture<NProto::TError> TYdbNativeStorage::ExecuteUploadQuery(
                 MakeError(E_FAIL, out));
         });
 }
+
+#undef STORAGE_ENSURE_INITIALIZED
+#undef STORAGE_ENSURE_INITIALIZED_WITH_RESPONSE
 
 TMaybe<TInstant> TYdbNativeStorage::ExtractTableTime(const TString& name) const
 {

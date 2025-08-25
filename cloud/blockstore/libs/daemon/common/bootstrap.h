@@ -129,6 +129,7 @@ protected:
     virtual void InitKikimrService() = 0;
     virtual void InitAuthService() = 0;
     virtual void InitRdmaRequestServer() = 0;
+    virtual void InitYdbStorage() = 0;
 
     virtual void WarmupBSGroupConnections() = 0;
 
