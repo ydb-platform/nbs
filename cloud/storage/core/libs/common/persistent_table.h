@@ -246,13 +246,26 @@ private:
             header->RecordSize,
             sizeof(TRecord));
 
-        RecordCount = header->RecordCount;
+        const auto initalRecordCount = RecordCount;
 
-        FileMap->ResizeAndRemap(0, CalcFileSize(RecordCount));
-        HeaderPtr = reinterpret_cast<THeader*>(FileMap->Ptr());
-        RecordsPtr = reinterpret_cast<TRecord*>(HeaderPtr + 1);
+        auto resizeTable = [this](auto newRecordCount) {
+            FileMap->ResizeAndRemap(0, CalcFileSize(newRecordCount));
+            HeaderPtr = reinterpret_cast<THeader*>(FileMap->Ptr());
+            RecordsPtr = reinterpret_cast<TRecord*>(HeaderPtr + 1);
+
+            RecordCount = newRecordCount;
+            HeaderPtr->RecordCount = RecordCount;
+        };
+
+        // allow table to grow if table was previously allocated with smaller size
+        resizeTable(std::max(header->RecordCount, initalRecordCount));
 
         CompactRecords();
+
+        // shrink table if it fits into requested size after compaction
+        if (initalRecordCount < RecordCount && NextFreeRecord <= initalRecordCount) {
+            resizeTable(initalRecordCount);
+        }
     }
 
     size_t CalcFileSize(size_t recordCount)
