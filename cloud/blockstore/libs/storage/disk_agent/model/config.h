@@ -138,6 +138,8 @@ public:
 
     bool GetUseLocalStorageSubmissionThread() const;
 
+    [[nodiscard]] bool GetAllowToKickOutOldClients() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

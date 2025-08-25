@@ -273,6 +273,7 @@ private:
         ui64 MountSeqNumber = 0;
         TClientRequestPtr ClientRequest = nullptr;
         bool ForceTabletRestart = false;
+        bool ForceRequest = false;
     };
 
     struct TReleaseDiskRequest
@@ -302,6 +303,7 @@ private:
             , MountSeqNumber(request.MountSeqNumber)
             , ClientRequest(std::move(request.ClientRequest))
             , ForceTabletRestart(request.ForceTabletRestart)
+            , RetryIfTimeoutOrUndelivery(request.ForceRequest)
         {}
 
         TAcquireReleaseDiskRequest(TReleaseDiskRequest request)
@@ -869,7 +871,12 @@ private:
         const TEvVolumePrivate::TEvDevicesAcquireFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void ForceAcquireDisk(const NActors::TActorContext& ctx);
+
     void AcquireDiskIfNeeded(const NActors::TActorContext& ctx);
+
+    void AcquireDiskImpl(const NActors::TActorContext& ctx, bool forceAcquire);
+
     void ReleaseReplacedDevices(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TDeviceConfig>& replacedDevices);
@@ -885,6 +892,10 @@ private:
 
     void HandleReacquireDisk(
         const TEvVolume::TEvReacquireDisk::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRetryAcquireDisk(
+        const TEvVolume::TEvRetryAcquireDisk::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRdmaUnavailable(
