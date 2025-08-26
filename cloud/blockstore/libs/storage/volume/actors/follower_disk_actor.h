@@ -32,10 +32,60 @@ struct TFollowerDiskActorParams
 
 ///////////////////////////////////////////////////////////////////////////////
 
+//   DataTransfer (migration in progress)
+//        |
+//        |                          /----------------------\
+//        v                          v                      |
+//    DataReady ->  [Add "outdated" tag to leader]          |
+//                              |        |       Error      |
+//        /---------------------/        \------------------/
+//        |
+//        |         OK               / ---------------------\
+//        v                          v                      |
+//   OutdatedTagSet    ->    [Switch session]               |
+//                              |        |       Error      |
+//        ----------------------/        \------------------/
+//        |         OK
+//        |                                   / ----------------------\
+//        v                                   v                       |
+//   SessionSwitched  ->  [Propagate follower state (CopyCompleted)]  |
+//                              |        |            Error           |
+//        ----------------------/        \----------------------------/
+//        |         OK
+//        |         OK               / ---------------------\
+//        v                          v                      |
+//   FollowerPropagated  ->  [Destroy leader volume]        |
+//                              |        |      Error       |
+//        ----------------------/        \------------------/
+//        |         OK
+//        v
+//   Actor destroyed since it created by leader
+
 class TFollowerDiskActor final
     : public TNonreplicatedPartitionMigrationCommonActor
     , public IMigrationOwner
 {
+public:
+    enum class EState
+    {
+        DataTransfer,
+        DataReady,
+        OutdatedTagSet,
+        SessionSwitched,
+        FollowerPropagated,
+    };
+
+    enum EFollowerWakeupReason
+    {
+        RETRY_ADD_OUTDATED_TAG_NOTIFY =
+            TNonreplicatedPartitionMigrationCommonActor::WR_REASON_COUNT,
+        RETRY_SWITCH_SESSION_NOTIFY,
+        SWITCH_SESSION_DONE_NOTIFY,
+        SWITCH_SESSION_ERROR_NOTIFY,
+        DESTROY_LEADER_VOLUME_NOTIFY,
+    };
+
+private:
     const TChildLogTitle LogTitle;
     const NProto::EStorageMediaKind LeaderMediaKind =
         NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
@@ -47,7 +97,7 @@ class TFollowerDiskActor final
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     TString ClientId;
 
-    bool LeaderOutdated = false;
+    EState State = EState::DataTransfer;
     TFollowerDiskInfo FollowerDiskInfo;
     NActors::TActorId FollowerPartitionActorId;
 
@@ -79,18 +129,15 @@ public:
     void OnMigrationError(const NActors::TActorContext& ctx) override;
 
 private:
-    enum EFollowerWakeupReason
-    {
-        RETRY_ADD_OUTDATED_TAG_NOTIFY =
-            TNonreplicatedPartitionMigrationCommonActor::WR_REASON_COUNT,
-    };
-
     void PersistFollowerState(
         const NActors::TActorContext& ctx,
         const TFollowerDiskInfo& newDiskInfo);
 
     void TransferLeadership(const NActors::TActorContext& ctx);
     void AddOutdatedTagToLeader(const NActors::TActorContext& ctx);
+    void SwitchSession(const NActors::TActorContext& ctx);
+    void PropagateFollowerState(const NActors::TActorContext& ctx);
+    void DestroyLeaderVolume(const NActors::TActorContext& ctx);
 
     template <typename TMethod>
     void ForwardRequestToLeaderPartition(
@@ -120,6 +167,18 @@ private:
 
     void HandleAddOutdatedTagResponse(
         const TEvService::TEvAddTagsResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleSwitchSessionResponse(
+        const NProto::TError& error,
+        const NActors::TActorContext& ctx);
+
+    void HandlePropagateFollowerStateResponse(
+        const TEvVolumePrivate::TEvLinkOnFollowerCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDestroyLeaderVolumeResponse(
+        const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleWakeup(

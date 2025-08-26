@@ -165,8 +165,7 @@ void TModifyTagsActionActor::DescribeVolume(const TActorContext& ctx)
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-            Request.GetDiskId()));
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(Request.GetDiskId()));
 }
 
 void TModifyTagsActionActor::AlterVolume(
@@ -222,7 +221,6 @@ void TModifyTagsActionActor::HandleDescribeVolumeResponse(
     const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Cout << "!!! TModifyTagsActionActor::HandleDescribeResponse" << Endl;
     const auto* msg = ev->Get();
 
     auto error = msg->GetError();

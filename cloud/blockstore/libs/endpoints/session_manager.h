@@ -61,8 +61,6 @@ struct ISessionManager
 
     virtual TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
         const TString& socketPath) = 0;
-
-    virtual NClient::ISessionPtr TakeSession(const TString& socketPath) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/actors/propagate_to_follower.h>
 #include <cloud/blockstore/libs/storage/volume/actors/volume_as_partition_actor.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
@@ -77,7 +78,8 @@ TFollowerDiskActor::TFollowerDiskActor(
     , TakePartitionOwnership(params.TakePartitionOwnership)
     , EndpointEventHandler(std::move(endpointEventHandler))
     , ClientId(params.ClientId)
-    , LeaderOutdated(params.LeaderOutdated)
+    , State(
+          params.LeaderOutdated ? EState::OutdatedTagSet : EState::DataTransfer)
     , FollowerDiskInfo(params.FollowerDiskInfo)
 {
     Y_DEBUG_ABORT_UNLESS(LeaderMediaKind != NProto::STORAGE_MEDIA_DEFAULT);
@@ -94,7 +96,7 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
         TBlockStoreComponents::VOLUME,
         "%s Follower created (%s)",
         LogTitle.GetWithTime().c_str(),
-        LeaderOutdated ? "outdated" : "leading");
+        ToString(State).c_str());
 
     FollowerPartitionActorId = NCloud::Register<TVolumeAsPartitionActor>(
         ctx,
@@ -134,6 +136,12 @@ bool TFollowerDiskActor::OnMessage(
             TEvVolumePrivate::TEvUpdateFollowerStateResponse,
             HandleUpdateFollowerStateResponse);
         HFunc(TEvService::TEvAddTagsResponse, HandleAddOutdatedTagResponse);
+        HFunc(
+            TEvVolumePrivate::TEvLinkOnFollowerCompleted,
+            HandlePropagateFollowerStateResponse);
+        HFunc(
+            TEvService::TEvDestroyVolumeResponse,
+            HandleDestroyLeaderVolumeResponse);
 
         // Intercepting the message to block the sending of statistics by the
         // base class.
@@ -211,15 +219,28 @@ void TFollowerDiskActor::PersistFollowerState(
 
 void TFollowerDiskActor::TransferLeadership(const NActors::TActorContext& ctx)
 {
-    if (!LeaderOutdated) {
-        AddOutdatedTagToLeader(ctx);
-        return;
-    }
-    if (LeaderOutdated) {
-        EndpointEventHandler->SwitchEndpointIfNeeded(
-            FollowerDiskInfo.Link.LeaderDiskId,
-            "leader outdated");
-        return;
+    switch (State) {
+        case EState::DataTransfer: {
+            break;
+        }
+        case EState::DataReady: {
+            AddOutdatedTagToLeader(ctx);
+            break;
+        }
+        case EState::OutdatedTagSet: {
+            SwitchSession(ctx);
+            break;
+        }
+        case EState::SessionSwitched: {
+            PropagateFollowerState(ctx);
+            break;
+        }
+        case EState::FollowerPropagated: {
+            Schedule(
+                TDuration::Seconds(30),
+                new TEvents::TEvWakeup(DESTROY_LEADER_VOLUME_NOTIFY));
+            break;
+        }
     }
 }
 
@@ -245,6 +266,66 @@ void TFollowerDiskActor::AddOutdatedTagToLeader(
         std::move(tags));
 
     ctx.Send(MakeStorageServiceId(), std::move(request));
+}
+
+void TFollowerDiskActor::SwitchSession(const NActors::TActorContext& ctx)
+{
+    auto future = EndpointEventHandler->SwitchEndpointIfNeeded(
+        FollowerDiskInfo.Link.LeaderDiskId,
+        "leader outdated");
+    future.Subscribe(
+        [logTitle = LogTitle, ctx, selfId = SelfId()](
+            const NThreading::TFuture<NProto::TError>& future)
+        {
+            const auto& error = future.GetValue();
+            if (HasError(error)) {
+                LOG_ERROR(
+                    ctx,
+                    TBlockStoreComponents::VOLUME,
+                    "%s Failed to switch session: %s",
+                    logTitle.GetWithTime().c_str(),
+                    FormatError(error).c_str());
+
+                ctx.Send(
+                    selfId,
+                    new TEvents::TEvWakeup(SWITCH_SESSION_ERROR_NOTIFY));
+            } else {
+                LOG_INFO(
+                    ctx,
+                    TBlockStoreComponents::VOLUME,
+                    "%s Session switched to new disk",
+                    logTitle.GetWithTime().c_str());
+
+                ctx.Send(
+                    selfId,
+                    new TEvents::TEvWakeup(SWITCH_SESSION_DONE_NOTIFY));
+            }
+        });
+}
+
+void TFollowerDiskActor::PropagateFollowerState(
+    const NActors::TActorContext& ctx)
+{
+    NCloud::Register<TPropagateLinkToFollowerActor>(
+        ctx,
+        LogTitle.GetWithTime(),
+        CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
+        FollowerDiskInfo.Link,
+        TPropagateLinkToFollowerActor::EReason::Completion);
+}
+
+void TFollowerDiskActor::DestroyLeaderVolume(const NActors::TActorContext& ctx)
+{
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Destroy leader volume",
+        LogTitle.GetWithTime().c_str());
+
+    auto request = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
+    request->Record.SetDiskId(FollowerDiskInfo.Link.LeaderDiskId);
+    request->Record.SetSync(false);
+    NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
 }
 
 template <typename TMethod>
@@ -304,6 +385,7 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     FollowerDiskInfo = msg->Follower;
 
     if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady) {
+        State = EState::DataReady;
         TransferLeadership(ctx);
     }
 }
@@ -334,8 +416,78 @@ void TFollowerDiskActor::HandleAddOutdatedTagResponse(
         "[%s] Outdated tag added",
         LogTitle.GetWithTime().c_str());
 
-    LeaderOutdated = true;
+    State = EState::OutdatedTagSet;
     TransferLeadership(ctx);
+}
+
+void TFollowerDiskActor::HandleSwitchSessionResponse(
+    const NProto::TError& error,
+    const NActors::TActorContext& ctx)
+{
+    if (HasError(error)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s SwichSession error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
+        Schedule(
+            Backoff.GetDelayAndIncrease(),
+            new TEvents::TEvWakeup(RETRY_SWITCH_SESSION_NOTIFY));
+        return;
+    }
+
+    State = EState::SessionSwitched;
+    TransferLeadership(ctx);
+}
+
+void TFollowerDiskActor::HandlePropagateFollowerStateResponse(
+    const TEvVolumePrivate::TEvLinkOnFollowerCompleted::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Propagate to follower error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
+        // ???? Should we retry?
+        return;
+    }
+
+    State = EState::FollowerPropagated;
+    TransferLeadership(ctx);
+}
+
+void TFollowerDiskActor::HandleDestroyLeaderVolumeResponse(
+    const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Destroy leader volume error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
+
+        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            Schedule(
+                Backoff.GetDelayAndIncrease(),
+                new TEvents::TEvWakeup(DESTROY_LEADER_VOLUME_NOTIFY));
+        }
+        return;
+    }
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Destroy leader volume success",
+        LogTitle.GetWithTime().c_str());
 }
 
 bool TFollowerDiskActor::HandleWakeup(
@@ -345,6 +497,22 @@ bool TFollowerDiskActor::HandleWakeup(
     switch (ev->Get()->Tag) {
         case EFollowerWakeupReason::RETRY_ADD_OUTDATED_TAG_NOTIFY: {
             AddOutdatedTagToLeader(ctx);
+            return true;
+        }
+        case EFollowerWakeupReason::RETRY_SWITCH_SESSION_NOTIFY: {
+            SwitchSession(ctx);
+            return true;
+        }
+        case EFollowerWakeupReason::SWITCH_SESSION_DONE_NOTIFY: {
+            HandleSwitchSessionResponse(MakeError(S_OK), ctx);
+            return true;
+        }
+        case EFollowerWakeupReason::SWITCH_SESSION_ERROR_NOTIFY: {
+            HandleSwitchSessionResponse(MakeError(E_REJECTED), ctx);
+            return true;
+        }
+        case EFollowerWakeupReason::DESTROY_LEADER_VOLUME_NOTIFY: {
+            DestroyLeaderVolume(ctx);
             return true;
         }
     }

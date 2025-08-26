@@ -384,8 +384,6 @@ public:
     TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
         const TString& socketPath) override;
 
-    ISessionPtr TakeSession(const TString& socketPath) override;
-
 private:
     TSessionOrError CreateSessionImpl(
         TCallContextPtr callContext,
@@ -405,11 +403,6 @@ private:
         const NProto::THeaders& headers);
 
     TSessionOrError GetSessionImpl(
-        TCallContextPtr callContext,
-        const TString& socketPath,
-        const NProto::THeaders& headers);
-
-    NProto::TError SwitchSessionImpl(
         TCallContextPtr callContext,
         const TString& socketPath,
         const NProto::THeaders& headers);
@@ -472,8 +465,10 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     const auto& cellId = describeResponse.GetCellId();
 
     if (volume.GetDiskId() != request.GetDiskId()) {
+        // The original volume no longer exists. Found substitute volume.
         request.SetDiskId(volume.GetDiskId());
     } else if (volume.GetSubstituteDiskId()) {
+        // The original volume marked "outdated". Use substitute volume instead.
         request.SetDiskId(volume.GetSubstituteDiskId());
         return CreateSessionImpl(std::move(callContext), std::move(request));
     }
@@ -683,25 +678,6 @@ TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
     }
 
     return endpoint->GetPerformanceProfile();
-}
-
-ISessionPtr TSessionManager::TakeSession(const TString& socketPath)
-{
-    TEndpointPtr endpoint;
-
-    with_lock (EndpointLock) {
-        auto it = Endpoints.find(socketPath);
-        if (it == Endpoints.end()) {
-            return {};
-        }
-        endpoint = std::move(it->second);
-        Endpoints.erase(it);
-    }
-
-    ISessionPtr result = endpoint->GetSession();
-    endpoint.reset();
-    ThrottlerProvider->Clean();
-    return result;
 }
 
 TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(

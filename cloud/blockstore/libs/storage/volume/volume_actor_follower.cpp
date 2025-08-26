@@ -136,6 +136,32 @@ void TVolumeActor::DestroyLeaderLink(
     ExecuteTx<TRemoveLeader>(ctx, std::move(requestInfo), std::move(link));
 }
 
+void TVolumeActor::UpdateLeaderLink(
+    TRequestInfoPtr requestInfo,
+    TLeaderFollowerLink link,
+    TLeaderDiskInfo::EState state,
+    const NActors::TActorContext& ctx)
+{
+    auto currenLeader = State->FindLeader(link);
+    if (!currenLeader) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
+                MakeError(S_ALREADY)));
+        return;
+    }
+    auto leaderInfo = TLeaderDiskInfo{
+        .Link = std::move(link),
+        .CreatedAt = TInstant::Now(),
+        .State = state};
+
+    ExecuteTx<TUpdateLeader>(
+        ctx,
+        std::move(requestInfo),
+        std::move(leaderInfo));
+}
+
 void TVolumeActor::HandleUpdateLinkOnFollower(
     const TEvVolume::TEvUpdateLinkOnFollowerRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -167,6 +193,14 @@ void TVolumeActor::HandleUpdateLinkOnFollower(
         }
         case NProto::LINK_ACTION_DESTROY: {
             DestroyLeaderLink(std::move(requestInfo), std::move(link), ctx);
+            break;
+        }
+        case NProto::LINK_ACTION_COMPLETED: {
+            UpdateLeaderLink(
+                std::move(requestInfo),
+                std::move(link),
+                TLeaderDiskInfo::EState::Leader,
+                ctx);
             break;
         }
         default: {

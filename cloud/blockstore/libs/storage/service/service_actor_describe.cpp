@@ -80,12 +80,6 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId);
 
-    LOG_WARN(
-        ctx,
-        TBlockStoreComponents::SERVICE,
-        "!!! DescribeVolume for %s",
-        DiskId.Quote().c_str());
-
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
@@ -93,8 +87,7 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
         RequestInfo->Cookie);
 }
 
-void TDescribeVolumeActor::DescribeDiskRegistryVolume(
-    const TActorContext& ctx)
+void TDescribeVolumeActor::DescribeDiskRegistryVolume(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvDiskRegistry::TEvDescribeDiskRequest>();
     request->Record.SetDiskId(Volume.GetDiskId());
@@ -244,7 +237,7 @@ void TServiceActor::HandleDescribeVolume(
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
         "Describing volume: %s",
         request.GetDiskId().Quote().data());
 

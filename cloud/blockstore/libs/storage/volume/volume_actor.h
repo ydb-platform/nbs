@@ -1232,6 +1232,13 @@ private:
         TLeaderFollowerLink link,
         const NActors::TActorContext& ctx);
 
+    // Update link to leader volume on follower side
+    void UpdateLeaderLink(
+        TRequestInfoPtr requestInfo,
+        TLeaderFollowerLink link,
+        TLeaderDiskInfo::EState state,
+        const NActors::TActorContext& ctx);
+
     void HandlePartCountersCombined(
         const TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);

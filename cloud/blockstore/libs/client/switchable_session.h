@@ -2,14 +2,26 @@
 
 #include "public.h"
 
-//#include "session.h"
+#include <cloud/blockstore/libs/client/session.h>
 
+#include <cloud/storage/core/libs/diagnostics/public.h>
 
 namespace NCloud::NBlockStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ISwitchableSessionPtr CreateSwitchableSession(ISessionPtr session);
+struct ISwitchableSession: public ISession
+{
+    virtual NThreading::TFuture<void> Drain() = 0;
+    virtual void SwitchSession(ISessionPtr newSession) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+ISwitchableSessionPtr CreateSwitchableSession(
+    ILoggingServicePtr logging,
+    TString diskId,
+    ISessionPtr session);
 
 ////////////////////////////////////////////////////////////////////////////////
 

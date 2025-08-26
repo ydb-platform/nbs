@@ -61,6 +61,11 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
             request->Record.SetAction(NProto::ELinkAction::LINK_ACTION_DESTROY);
             break;
         }
+        case EReason::Completion: {
+            request->Record.SetAction(
+                NProto::ELinkAction::LINK_ACTION_COMPLETED);
+            break;
+        }
     }
 
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
@@ -124,6 +129,14 @@ void TPropagateLinkToFollowerActor::ReplyAndDie(
         case EReason::Destruction: {
             auto response =
                 std::make_unique<TEvVolumePrivate::TEvLinkOnFollowerDestroyed>(
+                    error,
+                    Link);
+            NCloud::Reply(ctx, *RequestInfo, std::move(response));
+            break;
+        }
+        case EReason::Completion: {
+            auto response =
+                std::make_unique<TEvVolumePrivate::TEvLinkOnFollowerCompleted>(
                     error,
                     Link);
             NCloud::Reply(ctx, *RequestInfo, std::move(response));
