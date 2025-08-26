@@ -136,7 +136,6 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 		"toplevel_task_id",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
-		ZoneID:       "zone",
 		DeleteTaskID: "toplevel_task_id",
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
@@ -181,7 +180,6 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		"toplevel_task_id",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
-		ZoneID:       "zone",
 		DeleteTaskID: "toplevel_task_id",
 	}, nil)
 

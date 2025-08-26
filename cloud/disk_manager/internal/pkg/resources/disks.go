@@ -534,6 +534,7 @@ func (s *storageYDB) deleteDisk(
 		state.status = diskStatusDeleting
 	} else {
 		state.status = diskStatusDeleted
+		state.deletedAt = deletingAt
 	}
 
 	state.id = diskID

@@ -271,7 +271,6 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 		mock.Anything,
 	).Return(&resources.DiskMeta{
 		DeleteTaskID: "toplevel_task_id",
-		ZoneID:       "zone",
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
