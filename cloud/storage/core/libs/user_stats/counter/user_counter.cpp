@@ -213,9 +213,9 @@ class TUserSumHistogramWrapper
 private:
     static constexpr size_t IgnoreBucketCount = 10;
 
-    TVector<TIntrusivePtr<NMonitoring::TDynamicCounters>> Counters;
     const TBuckets Buckets;
     const TString Units;
+    TVector<TBaseDynamicCounters> BaseCounters;
     TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
     EMetricType Type = EMetricType::UNKNOWN;
 
@@ -245,7 +245,7 @@ public:
                 subgroup = subgroup->FindSubgroup("units", Units);
             }
             if (subgroup) {
-                Counters.push_back(subgroup);
+                BaseCounters.emplace_back(subgroup, name);
             }
         }
     }
@@ -268,13 +268,34 @@ public:
     {
         Clear();
 
-        for (const auto& counter: Counters) {
-            for (size_t i = 0; i < Buckets.size(); ++i) {
-                if (auto countSub = counter->GetCounter(Buckets[i].Name)) {
-                    size_t id =
-                        i < IgnoreBucketCount ? 0 : i - IgnoreBucketCount;
-                    (*Histogram)[id].second += countSub->Val();
+        for (const auto& [baseCounter, name]: BaseCounters) {
+            if (!baseCounter) {
+                continue;
+            }
+
+            auto histogram = baseCounter->FindHistogram(name);
+            auto getValue = [&](size_t bucketId) -> ui64
+            {
+                if (histogram) {
+                    auto snapshot = histogram->Snapshot();
+                    if (bucketId < snapshot->Count()) {
+                        return snapshot->Value(bucketId);
+                    }
+                } else {
+                    const auto bucketName = Buckets[bucketId].Name;
+                    const auto counter = baseCounter->GetCounter(bucketName);
+                    if (counter) {
+                        return counter->Val();
+                    }
                 }
+                return 0;
+            };
+
+            for (size_t bucketId = 0; bucketId < Buckets.size(); ++bucketId) {
+                size_t id = bucketId < IgnoreBucketCount
+                                ? 0
+                                : bucketId - IgnoreBucketCount;
+                (*Histogram)[id].second += getValue(bucketId);
             }
         }
         consumer->OnHistogram(time, Histogram);
