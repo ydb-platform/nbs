@@ -38,7 +38,7 @@ struct THistBase
     THistogramPtr Hist;
     std::array<TDynamicCounters::TCounterPtr, TDerived::BUCKETS_COUNT> Counters;
 
-    explicit THistBase(TString name, EHistogramCounterOptions counterOptions)
+    THistBase(TString name, EHistogramCounterOptions counterOptions)
         : Name(std::move(name))
         , Units(TDerived::Units)
         , HistBounds(ConvertToHistBounds(TDerived::Buckets))
@@ -118,10 +118,7 @@ struct THistBase
 struct TTimeHist
     : public THistBase<TRequestMsTimeBuckets>
 {
-    explicit TTimeHist(TString name, EHistogramCounterOptions counterOptions)
-        : THistBase(std::move(name), counterOptions)
-    {
-    }
+    using THistBase::THistBase;
 
     void Increment(TDuration requestTime, ui64 count = 1)
     {
@@ -134,10 +131,7 @@ struct TTimeHist
 struct TSizeHist
     : public THistBase<TKbSizeBuckets>
 {
-    explicit TSizeHist(TString name, EHistogramCounterOptions counterOptions)
-        : THistBase(std::move(name), counterOptions)
-    {
-    }
+    using THistBase::THistBase;
 
     void Increment(double requestBytes, ui64 count = 1)
     {
