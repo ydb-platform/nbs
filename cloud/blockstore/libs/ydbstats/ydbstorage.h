@@ -88,8 +88,6 @@ struct IYdbStorage
     virtual NThreading::TFuture<TDescribeTableResponse> DescribeTable(const TString& table) = 0;
 
     virtual NThreading::TFuture<TGetTablesResponse> GetHistoryTables() = 0;
-
-    virtual void ProvideInitialToken(NIamClient::TTokenInfo token) = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NYdbStats

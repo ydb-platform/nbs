@@ -19,10 +19,6 @@
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 
-#include <utility>
-
-#include <utility>
-
 namespace NCloud::NBlockStore::NYdbStats {
 
 using namespace NIamClient;
@@ -113,6 +109,7 @@ TDriverConfig BuildDriverConfig(
 
 class TYdbNativeStorage final
     : public IYdbStorage
+    , std::enable_shared_from_this<TYdbNativeStorage>
 {
 private:
     const TYdbStatsConfigPtr Config;
@@ -124,8 +121,6 @@ private:
     std::unique_ptr<TSchemeClient> SchemeClient;
 
     TLog Log;
-
-    TTokenInfo InitialToken;
 
 public:
     TYdbNativeStorage(
@@ -155,10 +150,12 @@ public:
         TString tableName,
         NYdb::TValue data) override;
 
-    void Start() override
+    void Start() override;
+
+    void StartImpl(TTokenInfo initialToken)
     {
         Driver = std::make_unique<TDriver>(
-            BuildDriverConfig(InitialToken, *Config, IamClient));
+            BuildDriverConfig(std::move(initialToken), *Config, IamClient));
         Client = std::make_shared<TTableClient>(*Driver);
         SchemeClient = std::make_unique<TSchemeClient>(*Driver);
 
@@ -175,13 +172,7 @@ public:
         }
     }
 
-    void ProvideInitialToken(TTokenInfo token) override
-    {
-        InitialToken = std::move(token);
-    }
-
 private:
-
     bool Initialized() const
     {
         return Driver && Client && SchemeClient;
@@ -382,6 +373,27 @@ TFuture<NProto::TError> TYdbNativeStorage::ExecuteUploadQuery(
         });
 }
 
+void TYdbNativeStorage::Start()
+{
+    auto tokenFuture = IamClient->GetTokenAsync();
+
+    tokenFuture.Subscribe(
+        [weak = weak_from_this()](
+            NThreading::TFuture<IIamTokenClient::TResponse> futureToken) mutable
+        {
+            TTokenInfo token;
+            auto result = futureToken.ExtractValue();
+            if (!HasError(result)) {
+                token = result.ExtractResult();
+            }
+
+            auto self = weak.lock();
+            if (self) {
+                self->StartImpl(token);
+            }
+        });
+}
+
 TMaybe<TInstant> TYdbNativeStorage::ExtractTableTime(const TString& name) const
 {
     auto prefixLength = Config->GetHistoryTablePrefix().size() + 1;
@@ -414,7 +426,7 @@ IYdbStoragePtr CreateYdbStorage(
     ILoggingServicePtr logging,
     IIamTokenClientPtr tokenProvider)
 {
-    return std::make_unique<TYdbNativeStorage>(
+    return std::make_shared<TYdbNativeStorage>(
         std::move(config),
         std::move(logging),
         std::move(tokenProvider));

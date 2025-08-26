@@ -146,8 +146,6 @@ protected:
     void InitAuthService() override;
     void InitRdmaRequestServer() override;
 
-    void StartYdbStorage() override;
-
     void WarmupBSGroupConnections() override;
 
     void SetupCellManager() override;

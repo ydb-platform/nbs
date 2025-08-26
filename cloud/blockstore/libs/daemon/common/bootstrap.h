@@ -130,8 +130,6 @@ protected:
     virtual void InitAuthService() = 0;
     virtual void InitRdmaRequestServer() = 0;
 
-    virtual void StartYdbStorage() = 0;
-
     virtual void WarmupBSGroupConnections() = 0;
 
     void InitLWTrace(const TString& serviceNameForExporter);

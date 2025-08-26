@@ -33,7 +33,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TYdbTokenProvider
+class TYdbTokenProvider final
     : public ICredentialsProvider
     , public std::enable_shared_from_this<TYdbTokenProvider>
 {

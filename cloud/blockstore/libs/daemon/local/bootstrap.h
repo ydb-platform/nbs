@@ -53,8 +53,6 @@ protected:
 
     void InitRdmaRequestServer() override;
 
-    void StartYdbStorage() override;
-
     void SetupCellManager() override;
 };
 

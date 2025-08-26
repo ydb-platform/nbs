@@ -52,7 +52,6 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/init/server/actorsystem.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
-#include <cloud/blockstore/libs/ydbstats/ydbstorage.h>
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/aio/service.h>
@@ -931,31 +930,6 @@ void TBootstrapYdb::InitRdmaRequestServer()
         Logging,
         Monitoring,
         std::move(rdmaConfig));
-}
-
-void TBootstrapYdb::StartYdbStorage()
-{
-    if (!YdbStorage) {
-        return;
-    }
-
-    auto weakYdbStorage = std::weak_ptr(YdbStorage);
-    IamTokenClient->GetTokenAsync().Subscribe(
-        [weakYdbStorage](
-            NThreading::TFuture<IIamTokenClient::TResponse> futureToken) mutable
-        {
-            TTokenInfo token;
-            auto result = futureToken.ExtractValue();
-            if (!HasError(result)) {
-                token = result.ExtractResult();
-            }
-
-            auto ydbStorage = weakYdbStorage.lock();
-            if (ydbStorage) {
-                ydbStorage->ProvideInitialToken(token);
-                ydbStorage->Start();
-            }
-        });
 }
 
 void TBootstrapYdb::SetupCellManager()
