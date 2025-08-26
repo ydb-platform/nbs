@@ -61,7 +61,7 @@ void TBootstrapLocal::InitRdmaRequestServer()
     // do nothing
 }
 
-void TBootstrapLocal::InitYdbStorage()
+void TBootstrapLocal::StartYdbStorage()
 {
     // do nothing
 }

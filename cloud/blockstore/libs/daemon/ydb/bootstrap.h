@@ -145,7 +145,8 @@ protected:
     void InitKikimrService() override;
     void InitAuthService() override;
     void InitRdmaRequestServer() override;
-    void InitYdbStorage() override;
+
+    void StartYdbStorage() override;
 
     void WarmupBSGroupConnections() override;
 

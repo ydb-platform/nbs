@@ -933,8 +933,12 @@ void TBootstrapYdb::InitRdmaRequestServer()
         std::move(rdmaConfig));
 }
 
-void TBootstrapYdb::InitYdbStorage()
+void TBootstrapYdb::StartYdbStorage()
 {
+    if (!YdbStorage) {
+        return;
+    }
+
     auto weakYdbStorage = std::weak_ptr(YdbStorage);
     IamTokenClient->GetTokenAsync().Subscribe(
         [weakYdbStorage](

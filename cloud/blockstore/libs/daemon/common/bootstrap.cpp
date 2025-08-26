@@ -945,7 +945,7 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(KmsClient);
     START_KIKIMR_COMPONENT(RootKmsClient);
 
-    InitYdbStorage();
+    StartYdbStorage();
     START_KIKIMR_COMPONENT(StatsUploader);
 
     START_COMMON_COMPONENT(Spdk);

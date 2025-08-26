@@ -193,18 +193,13 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define STORAGE_ENSURE_INITIALIZED()                              \
-    if (!Initialized()) {                                         \
-        return MakeFuture(                                        \
-            MakeError(E_REJECTED, "storage is not initialized")); \
-    }                                                             \
-    // STORAGE_ENSURE_INITIALIZED
-
 TFuture<NProto::TError> TYdbNativeStorage::CreateTable(
     const TString& table,
     const TTableDescription& description)
 {
-    STORAGE_ENSURE_INITIALIZED()
+    if (!Initialized()) {
+        return MakeFuture(MakeError(E_REJECTED, "storage is not initialized"));
+    }
 
     auto tableName = GetFullTableName(table);
     auto future = Client->RetryOperation(
@@ -228,7 +223,9 @@ TFuture<NProto::TError> TYdbNativeStorage::AlterTable(
     const TString& table,
     const TAlterTableSettings& settings)
 {
-    STORAGE_ENSURE_INITIALIZED()
+    if (!Initialized()) {
+        return MakeFuture(MakeError(E_REJECTED, "storage is not initialized"));
+    }
 
     auto tableName = GetFullTableName(table);
     auto future = Client->RetryOperation(
@@ -250,7 +247,9 @@ TFuture<NProto::TError> TYdbNativeStorage::AlterTable(
 
 TFuture<NProto::TError> TYdbNativeStorage::DropTable(const TString& table)
 {
-    STORAGE_ENSURE_INITIALIZED()
+    if (!Initialized()) {
+        return MakeFuture(MakeError(E_REJECTED, "storage is not initialized"));
+    }
 
     auto tableName = GetFullTableName(table);
     auto future = Client->RetryOperation(
@@ -270,17 +269,13 @@ TFuture<NProto::TError> TYdbNativeStorage::DropTable(const TString& table)
         });
 }
 
-#define STORAGE_ENSURE_INITIALIZED_WITH_RESPONSE(response)                  \
-    if (!Initialized()) {                                                   \
-        return MakeFuture(                                                  \
-            response(MakeError(E_REJECTED, "storage is not initialized"))); \
-    }                                                                       \
-    // STORAGE_ENSURE_INITIALIZED_WITH_RESPONSE
-
 TFuture<NYdbStats::TDescribeTableResponse> TYdbNativeStorage::DescribeTable(
     const TString& table)
 {
-    STORAGE_ENSURE_INITIALIZED_WITH_RESPONSE(TDescribeTableResponse)
+    if (!Initialized()) {
+        return MakeFuture(TDescribeTableResponse(
+            MakeError(E_REJECTED, "storage is not initialized")));
+    }
 
     auto result = NewPromise<NYdbStats::TDescribeTableResponse>();
     auto tableName = GetFullTableName(table);
@@ -321,7 +316,10 @@ TFuture<NYdbStats::TDescribeTableResponse> TYdbNativeStorage::DescribeTable(
 
 TFuture<TGetTablesResponse> TYdbNativeStorage::GetHistoryTables()
 {
-    STORAGE_ENSURE_INITIALIZED_WITH_RESPONSE(TGetTablesResponse)
+    if (!Initialized()) {
+        return MakeFuture(TGetTablesResponse(
+            MakeError(E_REJECTED, "storage is not initialized")));
+    }
 
     auto database = Config->GetDatabaseName();
     auto future = SchemeClient->ListDirectory(database);
@@ -354,7 +352,9 @@ TFuture<NProto::TError> TYdbNativeStorage::ExecuteUploadQuery(
     TString tableName,
     NYdb::TValue data)
 {
-    STORAGE_ENSURE_INITIALIZED()
+    if (!Initialized()) {
+        return MakeFuture(MakeError(E_REJECTED, "storage is not initialized"));
+    }
 
     auto func = [tableName = std::move(tableName), data = std::move(data)] (
         TTableClient& client) mutable
@@ -381,9 +381,6 @@ TFuture<NProto::TError> TYdbNativeStorage::ExecuteUploadQuery(
                 MakeError(E_FAIL, out));
         });
 }
-
-#undef STORAGE_ENSURE_INITIALIZED
-#undef STORAGE_ENSURE_INITIALIZED_WITH_RESPONSE
 
 TMaybe<TInstant> TYdbNativeStorage::ExtractTableTime(const TString& name) const
 {
