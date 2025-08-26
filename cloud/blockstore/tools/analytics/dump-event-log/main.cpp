@@ -7,116 +7,112 @@
 
 using namespace NCloud::NBlockStore;
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
 
-int IterateEventLogInner(
-    IEventFactory* fac,
-    IEventProcessor* proc,
-    TString* outputFilename,
-    int argc,
-    const char** argv)
+struct TEventProcessor: TProtobufEventProcessor
 {
-    class TProxy: public ITunableEventProcessor
+    TEventLogPtr EventLog;
+    TString OutputFilename;
+
+    void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
     {
-    public:
-        TProxy(IEventProcessor* proc, TString* outputFilename)
-            : Processor(proc), OutputFilename(outputFilename)
-        {
+        const auto* message =
+            dynamic_cast<const NProto::TProfileLogRecord*>(ev->GetProto());
+        if (!message) {
+            return;
         }
 
-        void AddOptions(NLastGetopt::TOpts& opts) override
-        {
-            opts.AddLongOption("output-binary-log-file",
+        if (OutputFilename) {
+            if (!EventLog) {
+                EventLog = MakeIntrusive<TEventLog>(
+                    OutputFilename,
+                    NEvClass::Factory()->CurrentFormat());
+            }
+            EventLog->LogEvent(*message);
+            return;
+        }
+
+        const TVector<TItemDescriptor> order = GetItemOrder(*message);
+        for (const auto& [type, index]: order) {
+            switch (type) {
+                case EItemType::Request: {
+                    DumpRequest(*message, index, out);
+                    break;
+                }
+                case EItemType::BlockInfo: {
+                    DumpBlockInfoList(*message, index, out);
+                    break;
+                }
+                case EItemType::BlockCommitId: {
+                    DumpBlockCommitIdList(*message, index, out);
+                    break;
+                }
+                case EItemType::BlobUpdate: {
+                    DumpBlobUpdateList(*message, index, out);
+                    break;
+                }
+                default: {
+                    Y_ABORT("unknown item");
+                }
+            }
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TEventProcessorProxy: public ITunableEventProcessor
+{
+private:
+    IEventProcessor* Processor;
+    TString* OutputFilename;
+
+public:
+    explicit TEventProcessorProxy(TEventProcessor* proc)
+        : Processor(proc)
+        , OutputFilename(&proc->OutputFilename)
+    {}
+
+    void AddOptions(NLastGetopt::TOpts& opts) override
+    {
+        opts.AddLongOption(
+                "output-binary-log-file",
                 "Enables output to the specified file, original binary "
                 "format is preserved")
-                .Optional()
-                .StoreResult(OutputFilename);
-        }
+            .Optional()
+            .StoreResult(OutputFilename);
+    }
 
-        void SetOptions(const TEvent::TOutputOptions& options) override
-        {
-            Processor->SetOptions(options);
-        }
+    void SetOptions(const TEvent::TOutputOptions& options) override
+    {
+        Processor->SetOptions(options);
+    }
 
-        void ProcessEvent(const TEvent* ev) override
-        {
-            Processor->ProcessEvent(ev);
-        }
+    void ProcessEvent(const TEvent* ev) override
+    {
+        Processor->ProcessEvent(ev);
+    }
 
-        bool CheckedProcessEvent(const TEvent* ev) override
-        {
-            return Processor->CheckedProcessEvent(ev);
-        }
+    bool CheckedProcessEvent(const TEvent* ev) override
+    {
+        return Processor->CheckedProcessEvent(ev);
+    }
+};
 
-    private:
-        IEventProcessor* Processor;
-        TString* OutputFilename;
-    };
+}   // namespace
 
-    TProxy proxy(proc, outputFilename);
-    return IterateEventLog(
-        fac, static_cast<ITunableEventProcessor*>(&proxy), argc, argv);
-}
+////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, const char** argv)
 {
-    struct TEventProcessor
-        : TProtobufEventProcessor
-    {
-        TEventLogPtr EventLog;
-        TString OutputFilename;
+    TEventProcessor processor;
+    TEventProcessorProxy proxy(&processor);
 
-        void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
-        {
-            auto* message =
-                dynamic_cast<const NProto::TProfileLogRecord*>(ev->GetProto());
-            if (!message) {
-                return;
-            }
-
-            if (OutputFilename) {
-                if (!EventLog) {
-                    EventLog = new TEventLog(
-                        OutputFilename,
-                        NEvClass::Factory()->CurrentFormat()
-                    );
-                }
-                EventLog->LogEvent(*message);
-                return;
-            }
-
-            auto order = GetItemOrder(*message);
-            for (const auto& i: order) {
-                switch (i.Type) {
-                    case EItemType::Request: {
-                        DumpRequest(*message, i.Index, out);
-                        break;
-                    }
-                    case EItemType::BlockInfo: {
-                        DumpBlockInfoList(*message, i.Index, out);
-                        break;
-                    }
-                    case EItemType::BlockCommitId: {
-                        DumpBlockCommitIdList(*message, i.Index, out);
-                        break;
-                    }
-                    case EItemType::BlobUpdate: {
-                        DumpBlobUpdateList(*message, i.Index, out);
-                        break;
-                    }
-                    default: {
-                        Y_ABORT("unknown item");
-                    }
-                }
-            }
-        }
-    } processor;
-
-    return IterateEventLogInner(
+    return IterateEventLog(
         NEvClass::Factory(),
-        &processor,
-        &processor.OutputFilename,
+        static_cast<ITunableEventProcessor*>(&proxy),
         argc,
-        argv
-    );
+        argv);
 }
