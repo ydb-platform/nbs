@@ -481,6 +481,20 @@ func NewStorage(
 		return nil, err
 	}
 
+	stallingDurationHangTimeout, err := time.ParseDuration(
+		config.GetStallingDurationHangTimeout(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	totalDurationHangTimeout, err := time.ParseDuration(
+		config.GetTotalDurationHangTimeout(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	newStorage := func(storageFolder string, metrics storageMetrics) *storageYDB {
 		return &storageYDB{
 			db:                  db,
@@ -495,6 +509,8 @@ func NewStorage(
 			exceptHangingTaskTypes:            config.GetExceptHangingTaskTypes(),
 			hangingTaskTimeout:                hangingTaskTimeout,
 			missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
+			stallingDurationHangTimeout:       stallingDurationHangTimeout,
+			totalDurationHangTimeout:          totalDurationHangTimeout,
 		}
 	}
 
