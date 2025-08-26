@@ -789,7 +789,7 @@ ui64 TRequestCounters::RequestStarted(
     return GetCycleCount();
 }
 
-TDuration TRequestCounters::RequestCompleted(
+TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
     TRequestType requestType,
     ui64 requestStarted,
     TDuration postponedTime,
@@ -802,9 +802,12 @@ TDuration TRequestCounters::RequestCompleted(
 {
     auto requestCompleted = GetCycleCount();
     auto requestTime = CyclesToDurationSafe(requestCompleted - requestStarted);
-    auto requestCompletionTime = responseSent ?
-        CyclesToDurationSafe(requestCompleted - responseSent) :
-        TDuration::Zero();
+    auto requestCompletionTime =
+        responseSent ? CyclesToDurationSafe(requestCompleted - responseSent)
+                     : TDuration::Zero();
+
+    const auto time = requestTime - requestCompletionTime;
+    const auto execTime = time - postponedTime;
 
     RequestCompletedImpl(
         requestType,
@@ -817,7 +820,7 @@ TDuration TRequestCounters::RequestCompleted(
         unaligned,
         calcMaxTime);
 
-    return requestTime;
+    return {.ExecutionTime = execTime, .Time = requestTime};
 }
 
 void TRequestCounters::AddRetryStats(
