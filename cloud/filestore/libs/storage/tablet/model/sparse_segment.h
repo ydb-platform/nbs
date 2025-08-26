@@ -12,11 +12,13 @@ namespace NCloud::NFileStore::NStorage {
 
 class TSparseSegment
 {
-private:
+public:
     struct TRange
     {
         ui64 Start = 0;
         ui64 End = 0;
+
+        bool operator==(const TRange& rhs) const = default;
     };
 
     struct TRangeLess
@@ -39,16 +41,12 @@ private:
         }
     };
 
-    TSet<TRange, TRangeLess, TStlAllocator> Ranges;
-
-public:
-     using iterator = typename TSet<TRange, TRangeLess, TStlAllocator>::iterator;
+    using iterator = typename TSet<TRange, TRangeLess, TStlAllocator>::iterator;
 
     TSparseSegment(IAllocator* alloc, ui64 start, ui64 end);
 
-public:
     void PunchHole(ui64 start, ui64 end);
-    bool Empty() const
+    [[nodiscard]] bool Empty() const
     {
         return Ranges.empty();
     }
@@ -62,6 +60,13 @@ public:
     {
         return Ranges.end();
     }
+
+private:
+    TSet<TRange, TRangeLess, TStlAllocator> Ranges;
 };
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    const TSparseSegment::TRange& rhs);
 
 }   // namespace NCloud::NFileStore::NStorage
