@@ -75,4 +75,38 @@ NProto::TChecksum CalculateChecksum(
     return checksum;
 }
 
+void CombineChecksumsInPlace(
+    google::protobuf::RepeatedPtrField<NProto::TChecksum>& checksums)
+{
+    if (checksums.size() <= 1) {
+        return;
+    }
+
+    NProto::TChecksum checksum = ConcatenateChecksums(checksums);
+    checksums.Clear();
+    checksums.Add(std::move(checksum));
+}
+
+[[nodiscard]] NProto::TChecksum CombineChecksums(
+    const TVector<NProto::TChecksum>& checksums)
+{
+    NProto::TChecksum checksum;
+    if (checksums.empty()) {
+        return checksum;
+    }
+
+    return ConcatenateChecksums(checksums);
+}
+
+[[nodiscard]] NProto::TChecksum CombineChecksums(
+    const google::protobuf::RepeatedPtrField<NProto::TChecksum>& checksums)
+{
+    NProto::TChecksum checksum;
+    if (checksums.empty()) {
+        return checksum;
+    }
+
+    return ConcatenateChecksums(checksums);
+}
+
 }   // namespace NCloud::NBlockStore

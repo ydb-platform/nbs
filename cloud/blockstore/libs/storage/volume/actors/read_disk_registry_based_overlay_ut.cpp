@@ -77,7 +77,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 TLogTitle(
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
-                    .GetChild(GetCycleCount())});
+                    .GetChild(GetCycleCount()),
+                /*enableChecksumValidation=*/false});
 
         auto requestToPartition = ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -148,7 +149,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 TLogTitle(
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
-                    .GetChild(GetCycleCount())});
+                    .GetChild(GetCycleCount()),
+                /*enableChecksumValidation=*/false});
 
         ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -186,26 +188,27 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         request.BlockSize = blockSize;
         request.Sglist = TGuardedSgList(std::move(sglist));
 
-        ActorSystem.Register(
-            new TReadDiskRegistryBasedOverlayActor<TEvService::TReadBlocksLocalMethod>{
-                MakeIntrusive<TRequestInfo>(
-                    EdgeActor,
-                    0ull,
-                    MakeIntrusive<TCallContext>()),
-                request,
-                usedBlocks,
-                NActors::TActorId(),
+        ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                             TEvService::TReadBlocksLocalMethod>{
+            MakeIntrusive<TRequestInfo>(
                 EdgeActor,
-                0,
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                blockSize,
-                EStorageAccessMode::Default,
-                TDuration(),
-                TLogTitle(
-                    GetCycleCount(),
-                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
-                    .GetChild(GetCycleCount())});
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            request,
+            usedBlocks,
+            NActors::TActorId(),
+            EdgeActor,
+            0,
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            blockSize,
+            EStorageAccessMode::Default,
+            TDuration(),
+            TLogTitle(
+                GetCycleCount(),
+                TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                .GetChild(GetCycleCount()),
+            /*enableChecksumValidation=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -375,26 +378,27 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         request.BlockSize = blockSize;
         request.Sglist = TGuardedSgList(std::move(sglist));
 
-        ActorSystem.Register(
-            new TReadDiskRegistryBasedOverlayActor<TEvService::TReadBlocksLocalMethod>{
-                MakeIntrusive<TRequestInfo>(
-                    EdgeActor,
-                    0ull,
-                    MakeIntrusive<TCallContext>()),
-                request,
-                usedBlocks,
-                NActors::TActorId(),
+        ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                             TEvService::TReadBlocksLocalMethod>{
+            MakeIntrusive<TRequestInfo>(
                 EdgeActor,
-                0,
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                blockSize,
-                EStorageAccessMode::Default,
-                TDuration(),
-                TLogTitle(
-                    GetCycleCount(),
-                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
-                    .GetChild(GetCycleCount())});
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            request,
+            usedBlocks,
+            NActors::TActorId(),
+            EdgeActor,
+            0,
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            blockSize,
+            EStorageAccessMode::Default,
+            TDuration(),
+            TLogTitle(
+                GetCycleCount(),
+                TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                .GetChild(GetCycleCount()),
+            /*enableChecksumValidation=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         ActorSystem.GrabEdgeEventIf<
@@ -433,26 +437,27 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         request.BlockSize = blockSize;
         request.Sglist = TGuardedSgList(std::move(sglist));
 
-        ActorSystem.Register(
-            new TReadDiskRegistryBasedOverlayActor<TEvService::TReadBlocksLocalMethod>{
-                MakeIntrusive<TRequestInfo>(
-                    EdgeActor,
-                    0ull,
-                    MakeIntrusive<TCallContext>()),
-                request,
-                usedBlocks,
-                NActors::TActorId(),
+        ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                             TEvService::TReadBlocksLocalMethod>{
+            MakeIntrusive<TRequestInfo>(
                 EdgeActor,
-                0,
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                blockSize,
-                EStorageAccessMode::Default,
-                TDuration(),
-                TLogTitle(
-                    GetCycleCount(),
-                    TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
-                    .GetChild(GetCycleCount())});
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            request,
+            usedBlocks,
+            NActors::TActorId(),
+            EdgeActor,
+            0,
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            blockSize,
+            EStorageAccessMode::Default,
+            TDuration(),
+            TLogTitle(
+                GetCycleCount(),
+                TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                .GetChild(GetCycleCount()),
+            /*enableChecksumValidation=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -528,8 +533,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         request.SetStartIndex(0);
         request.SetBlocksCount(4);
 
-        auto readActor = ActorSystem.Register(
-            new TReadDiskRegistryBasedOverlayActor<TEvService::TReadBlocksMethod>{
+        auto readActor =
+            ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                                 TEvService::TReadBlocksMethod>{
                 MakeIntrusive<TRequestInfo>(
                     EdgeActor,
                     0ull,
@@ -547,7 +553,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 TLogTitle(
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
-                    .GetChild(GetCycleCount())});
+                    .GetChild(GetCycleCount()),
+                /*enableChecksumValidation=*/false});
 
         // read from overlay disk
         auto requestToPartition = ActorSystem.GrabEdgeEvent<

@@ -328,6 +328,10 @@ void TVolumeActor::SendRequestToPartition(
             TMethod::Name,
             State->GetPartitions()[partitionId].TabletId,
             ToString(partActorId).data());
+
+        if constexpr (IsExactlyWriteMethod<TMethod>) {
+            CombineChecksumsInPlace(*ev->Get()->Record.MutableChecksums());
+        }
     }
 
     auto wrappedRequest = WrapRequest<TMethod>(
