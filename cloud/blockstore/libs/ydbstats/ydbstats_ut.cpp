@@ -495,11 +495,6 @@ public:
         return MakeFuture(MakeError(S_OK));
     }
 
-    void ProvideInitialToken(NIamClient::TTokenInfo token) override
-    {
-        Y_UNUSED(token);
-    }
-
 private:
     TMaybe<TInstant> ExtractTableTime(const TString& name)
     {
