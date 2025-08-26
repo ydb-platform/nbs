@@ -129,7 +129,7 @@ void RegisterFilestore(
         { { readSub, "Errors/Fatal" } },
         FILESTORE_READ_ERRORS);
     AddHistogramUserMetric(
-        GetMsBuckets(),
+        GetUsBuckets(),
         dsc,
         commonLabels,
         { { readSub, "Time" } },
@@ -162,7 +162,7 @@ void RegisterFilestore(
         { { writeSub, "Errors/Fatal" } },
         FILESTORE_WRITE_ERRORS);
     AddHistogramUserMetric(
-        GetMsBuckets(),
+        GetUsBuckets(),
         dsc,
         commonLabels,
         { { writeSub, "Time" } },
@@ -204,7 +204,7 @@ void RegisterFilestore(
                     FILESTORE_INDEX_CUMULATIVE_TIME
                 );
                 AddHistogramUserMetric(
-                    GetMsBuckets(),
+                    GetUsBuckets(),
                     dsc,
                     labels,
                     {{ indexSubgroup, "Time" }},
