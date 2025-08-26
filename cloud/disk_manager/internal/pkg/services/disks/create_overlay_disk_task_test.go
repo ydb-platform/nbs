@@ -293,7 +293,7 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestCancelCreateOverlayDiskTaskBeforeDatabaseInsert(t *testing.T) {
+func TestCancelCreateOverlayDiskTaskBeforeRunIsCalled(t *testing.T) {
 	ctx := context.Background()
 	storage := storage_mocks.NewStorageMock()
 	scheduler := tasks_mocks.NewSchedulerMock()

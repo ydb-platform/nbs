@@ -191,7 +191,7 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 	require.Equal(t, err, assert.AnError)
 }
 
-func TestCancelCreateEmptyDiskTaskBeforeDatabaseInsert(t *testing.T) {
+func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
 	ctx := context.Background()
 	storage := storage_mocks.NewStorageMock()
 	nbsFactory := nbs_mocks.NewFactoryMock()
