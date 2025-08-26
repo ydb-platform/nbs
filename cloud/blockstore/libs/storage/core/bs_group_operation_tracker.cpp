@@ -219,10 +219,10 @@ void TBSGroupOperationTimeTracker::ResetStats()
     }
 }
 
-TVector<std::pair<ui64, TBSGroupOperationTimeTracker::TOperationInflight>>
+const THashMap<ui64, TBSGroupOperationTimeTracker::TOperationInflight>&
 TBSGroupOperationTimeTracker::GetInflightOperations() const
 {
-    return {Inflight.begin(), Inflight.end()};
+    return Inflight;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

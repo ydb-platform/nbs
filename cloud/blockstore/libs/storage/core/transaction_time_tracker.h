@@ -88,8 +88,7 @@ public:
 
     void ResetStats();
 
-    [[nodiscard]] TVector<
-        std::pair<ui64, TTransactionTimeTracker::TTransactionInflight>>
+    [[nodiscard]] const THashMap<ui64, TTransactionInflight>&
     GetInflightOperations() const;
 };
 

@@ -444,10 +444,10 @@ void TRequestsTimeTracker::ResetStats()
     }
 }
 
-TVector<std::pair<ui64, TRequestsTimeTracker::TRequestInflight>>
+const THashMap<ui64, TRequestsTimeTracker::TRequestInflight>&
 TRequestsTimeTracker::GetInflightOperations() const
 {
-    return {InflightRequests.begin(), InflightRequests.end()};
+    return InflightRequests;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

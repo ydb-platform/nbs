@@ -222,21 +222,18 @@ void BuildResetButton(
     const TString& actionName);
 
 TString FormatTransactionsInflight(
-    const TVector<
-        std::pair<ui64, TTransactionTimeTracker::TTransactionInflight>>&
+    const THashMap<ui64, TTransactionTimeTracker::TTransactionInflight>&
         operations,
     ui64 nowCycles,
     TInstant now);
 
 TString FormatRequestsInflight(
-    const TVector<std::pair<ui64, TRequestsTimeTracker::TRequestInflight>>&
-        operations,
+    const THashMap<ui64, TRequestsTimeTracker::TRequestInflight>& operations,
     ui64 nowCycles,
     TInstant now);
 
 TString FormatBSGroupOperationsInflight(
-    const TVector<
-        std::pair<ui64, TBSGroupOperationTimeTracker::TOperationInflight>>&
+    const THashMap<ui64, TBSGroupOperationTimeTracker::TOperationInflight>&
         operations,
     ui64 nowCycles,
     TInstant now);

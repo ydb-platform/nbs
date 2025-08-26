@@ -91,8 +91,9 @@ public:
 
     void ResetStats();
 
-    [[nodiscard]] TVector<
-        std::pair<ui64, TBSGroupOperationTimeTracker::TOperationInflight>>
+    [[nodiscard]] const THashMap<
+        ui64,
+        TBSGroupOperationTimeTracker::TOperationInflight>&
     GetInflightOperations() const;
 };
 

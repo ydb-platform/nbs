@@ -205,10 +205,10 @@ void TTransactionTimeTracker::ResetStats()
     }
 }
 
-TVector<std::pair<ui64, TTransactionTimeTracker::TTransactionInflight>>
+const THashMap<ui64, TTransactionTimeTracker::TTransactionInflight>&
 TTransactionTimeTracker::GetInflightOperations() const
 {
-    return {Inflight.begin(), Inflight.end()};
+    return Inflight;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

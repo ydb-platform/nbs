@@ -1694,8 +1694,7 @@ void BuildResetButton(
 }
 
 TString FormatTransactionsInflight(
-    const TVector<
-        std::pair<ui64, TTransactionTimeTracker::TTransactionInflight>>&
+    const THashMap<ui64, TTransactionTimeTracker::TTransactionInflight>&
         operations,
     ui64 nowCycles,
     TInstant now)
@@ -1751,8 +1750,7 @@ TString FormatTransactionsInflight(
 }
 
 TString FormatRequestsInflight(
-    const TVector<std::pair<ui64, TRequestsTimeTracker::TRequestInflight>>&
-        operations,
+    const THashMap<ui64, TRequestsTimeTracker::TRequestInflight>& operations,
     ui64 nowCycles,
     TInstant now)
 {
@@ -1832,8 +1830,7 @@ TString FormatRequestsInflight(
 }
 
 TString FormatBSGroupOperationsInflight(
-    const TVector<
-        std::pair<ui64, TBSGroupOperationTimeTracker::TOperationInflight>>&
+    const THashMap<ui64, TBSGroupOperationTimeTracker::TOperationInflight>&
         operations,
     ui64 nowCycles,
     TInstant now)
