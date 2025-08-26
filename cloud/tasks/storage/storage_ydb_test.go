@@ -1198,7 +1198,7 @@ func newHangingTaskTestFixture(
 func TestStorageYDBListHangingTasks(t *testing.T) {
 	hangingTaskTimeout := 5 * time.Hour
 	hangingTaskTimeoutString := hangingTaskTimeout.String()
-	stallingDurationHangTimeoutString := "30m"
+	stallingDurationHangTimeoutString := "1h"
 	totalDurationHangTimeoutString := "24h"
 	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
 		HangingTaskTimeout:          &hangingTaskTimeoutString,
