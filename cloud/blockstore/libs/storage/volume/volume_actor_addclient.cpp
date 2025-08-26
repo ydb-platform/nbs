@@ -317,7 +317,7 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
-        if (request.RetryIfTimeoutOrUndelivery &&
+        if (request.ForceRequest &&
             GetErrorKind(error) == EErrorKind::ErrorRetriable)
         {
             LOG_ERROR(
@@ -508,7 +508,7 @@ void TVolumeActor::ReleaseDiskFromOldClients(
 
         AddReleaseDiskRequest(
             ctx,
-            {.ClientId = clientId, .RetryIfTimeoutOrUndelivery = true});
+            {.ClientId = clientId, .ForceRequest = true});
     }
 }
 

@@ -113,7 +113,7 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
             LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
-        if (request.RetryIfTimeoutOrUndelivery &&
+        if (request.ForceRequest &&
             GetErrorKind(error) == EErrorKind::ErrorRetriable)
         {
             auto delay = BackoffDelayProviderForAcquireReleaseDiskRequests

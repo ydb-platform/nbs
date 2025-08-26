@@ -281,7 +281,7 @@ private:
         TString ClientId;
         TClientRequestPtr ClientRequest = nullptr;
         TVector<NProto::TDeviceConfig> DevicesToRelease;
-        bool RetryIfTimeoutOrUndelivery = false;
+        bool ForceRequest = false;
     };
 
     struct TAcquireReleaseDiskRequest
@@ -293,7 +293,7 @@ private:
         ui64 MountSeqNumber = 0;
         TClientRequestPtr ClientRequest;
         TVector<NProto::TDeviceConfig> DevicesToRelease;
-        const bool RetryIfTimeoutOrUndelivery = false;
+        const bool ForceRequest = false;
         const bool ForceTabletRestart = false;
 
         TAcquireReleaseDiskRequest(TAcquireDiskRequest request)
@@ -302,8 +302,8 @@ private:
             , AccessMode(request.AccessMode)
             , MountSeqNumber(request.MountSeqNumber)
             , ClientRequest(std::move(request.ClientRequest))
+            , ForceRequest(request.ForceRequest)
             , ForceTabletRestart(request.ForceTabletRestart)
-            , RetryIfTimeoutOrUndelivery(request.ForceRequest)
         {}
 
         TAcquireReleaseDiskRequest(TReleaseDiskRequest request)
@@ -311,7 +311,7 @@ private:
             , ClientId(std::move(request.ClientId))
             , ClientRequest(std::move(request.ClientRequest))
             , DevicesToRelease(std::move(request.DevicesToRelease))
-            , RetryIfTimeoutOrUndelivery(request.RetryIfTimeoutOrUndelivery)
+            , ForceRequest(request.ForceRequest)
         {}
     };
 
