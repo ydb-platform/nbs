@@ -191,7 +191,7 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
             ui64 holeEnd = std::max(point1, point2);
 
             testContext << " holeStart: " << holeStart;
-            testContext << " holeStart: " << holeEnd;
+            testContext << " holeEnd: " << holeEnd;
 
             segment.PunchHole(holeStart, holeEnd);
             for (size_t i = holeStart; i < holeEnd; ++i) {
