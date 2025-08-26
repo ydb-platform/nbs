@@ -552,6 +552,16 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_ResetTransactionLatencyStats(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_ResetBSGroupLatencyStats(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void SendHttpResponse(
         const NActors::TActorContext& ctx,
         TRequestInfo& requestInfo,

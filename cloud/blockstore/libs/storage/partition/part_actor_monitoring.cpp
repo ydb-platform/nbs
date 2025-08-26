@@ -387,13 +387,17 @@ void TPartitionActor::HandleHttpInfo(
 
     using THttpHandlers = THashMap<TString, THttpHandler>;
 
-    static const THttpHandlers postActions {{
-        {"addGarbage",       &TPartitionActor::HandleHttpInfo_AddGarbage      },
-        {"collectGarbage",   &TPartitionActor::HandleHttpInfo_CollectGarbage  },
-        {"compact",          &TPartitionActor::HandleHttpInfo_ForceCompaction },
-        {"compactAll",       &TPartitionActor::HandleHttpInfo_ForceCompaction },
-        {"rebuildMetadata",  &TPartitionActor::HandleHttpInfo_RebuildMetadata },
-        {"scanDisk",         &TPartitionActor::HandleHttpInfo_ScanDisk        }
+    static const THttpHandlers postActions{{
+        {"addGarbage", &TPartitionActor::HandleHttpInfo_AddGarbage},
+        {"collectGarbage", &TPartitionActor::HandleHttpInfo_CollectGarbage},
+        {"compact", &TPartitionActor::HandleHttpInfo_ForceCompaction},
+        {"compactAll", &TPartitionActor::HandleHttpInfo_ForceCompaction},
+        {"rebuildMetadata", &TPartitionActor::HandleHttpInfo_RebuildMetadata},
+        {"scanDisk", &TPartitionActor::HandleHttpInfo_ScanDisk},
+        {"resetTransactionLatencyStats",
+         &TPartitionActor::HandleHttpInfo_ResetTransactionLatencyStats},
+        {"resetBSGroupLatencyStats",
+         &TPartitionActor::HandleHttpInfo_ResetBSGroupLatencyStats},
     }};
 
     static const THttpHandlers getActions{{

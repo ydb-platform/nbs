@@ -754,13 +754,18 @@ void TVolumeActor::HandleHttpInfo(
     using THttpHandlers = THashMap<TString, THttpHandler>;
     using TActor = TVolumeActor;
 
-    const THttpHandlers postActions {{
-        {"removeclient",           &TActor::HandleHttpInfo_RemoveClient          },
-        {"resetmountseqnumber",    &TActor::HandleHttpInfo_ResetMountSeqNumber   },
-        {"createCheckpoint",       &TActor::HandleHttpInfo_CreateCheckpoint      },
-        {"deleteCheckpoint",       &TActor::HandleHttpInfo_DeleteCheckpoint      },
-        {"startpartitions",        &TActor::HandleHttpInfo_StartPartitions       },
-        {"changethrottlingpolicy", &TActor::HandleHttpInfo_ChangeThrottlingPolicy},
+    const THttpHandlers postActions{{
+        {"removeclient", &TActor::HandleHttpInfo_RemoveClient},
+        {"resetmountseqnumber", &TActor::HandleHttpInfo_ResetMountSeqNumber},
+        {"createCheckpoint", &TActor::HandleHttpInfo_CreateCheckpoint},
+        {"deleteCheckpoint", &TActor::HandleHttpInfo_DeleteCheckpoint},
+        {"startpartitions", &TActor::HandleHttpInfo_StartPartitions},
+        {"changethrottlingpolicy",
+         &TActor::HandleHttpInfo_ChangeThrottlingPolicy},
+        {"resetTransactionLatencyStats",
+         &TActor::HandleHttpInfo_ResetTransactionLatencyStats},
+        {"resetRequestLatencyStats",
+         &TActor::HandleHttpInfo_ResetRequestLatencyStats},
     }};
 
     const THttpHandlers getActions {{
@@ -1236,6 +1241,7 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         out << style;
 
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
+        BuildResetButton(out, TabletID(), "resetRequestLatencyStats");
 
         out << "<div id=\"" << containerId << "\">";
         DIV_CLASS ("row") {
@@ -2580,6 +2586,26 @@ void TVolumeActor::HandleHttpInfo_GetTransactionsLatency(
         *requestInfo,
         std::make_unique<NMon::TEvRemoteJsonInfoRes>(
             TransactionTimeTracker.GetStatJson(GetCycleCount())));
+}
+
+void TVolumeActor::HandleHttpInfo_ResetTransactionLatencyStats(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    TransactionTimeTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
+}
+
+void TVolumeActor::HandleHttpInfo_ResetRequestLatencyStats(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    RequestTimeTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
 }
 
 ////////////////////////////////////////////////////////////////////////////////

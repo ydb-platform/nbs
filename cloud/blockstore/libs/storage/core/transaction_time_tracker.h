@@ -85,6 +85,8 @@ public:
     void OnFinished(ui64 transactionId, ui64 finishTime) override;
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
+
+    void ResetStats();
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
