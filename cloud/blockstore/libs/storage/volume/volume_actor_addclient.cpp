@@ -374,8 +374,6 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
         clientRequest->AddedClientInfo);
 }
 
-
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandleAddClient(
