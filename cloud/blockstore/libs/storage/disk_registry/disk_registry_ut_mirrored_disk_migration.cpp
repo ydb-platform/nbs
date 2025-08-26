@@ -544,13 +544,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 "uuid-5",
                 r.GetReplicas(1).GetDevices(0).GetDeviceUUID());
 
-            UNIT_ASSERT_VALUES_EQUAL(2, r.GetDeviceReplacementUUIDs().size());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "uuid-2",
-                r.GetDeviceReplacementUUIDs()[0]);
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetDeviceReplacementUUIDs().size());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-4",
-                r.GetDeviceReplacementUUIDs()[1]);
+                r.GetDeviceReplacementUUIDs()[0]);
         }
     }
 }

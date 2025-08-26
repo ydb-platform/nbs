@@ -8155,7 +8155,7 @@ void TDiskRegistryState::ReplaceBrokenDevices(
     const TString& masterDiskId)
 {
     const TDiskState* masterDisk = FindDiskState(masterDiskId);
-    if (!masterDisk) {
+    if (!masterDisk || masterDisk->ReplicaCount == 0) {
         return;
     }
 
