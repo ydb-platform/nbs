@@ -719,6 +719,8 @@ public:
     GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() const;
 
     [[nodiscard]] TDuration GetTrimFreshLogTimeout() const;
+
+    [[nodiscard]] bool GetEnableChecksumValidationForYdbBasedDisks() const;
 };
 
 ui64 GetAllocationUnit(
