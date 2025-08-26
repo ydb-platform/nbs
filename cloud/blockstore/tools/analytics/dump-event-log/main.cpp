@@ -15,6 +15,7 @@ struct TEventProcessor: TProtobufEventProcessor
 {
     TEventLogPtr EventLog;
     TString OutputFilename;
+    std::optional<TBlockRange64> FilterRange;
 
     void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
     {
@@ -36,6 +37,10 @@ struct TEventProcessor: TProtobufEventProcessor
 
         const TVector<TItemDescriptor> order = GetItemOrder(*message);
         for (const auto& [type, index]: order) {
+            if (!ShouldDump(*message, type, index)) {
+                continue;
+            }
+
             switch (type) {
                 case EItemType::Request: {
                     DumpRequest(*message, index, out);
@@ -59,6 +64,48 @@ struct TEventProcessor: TProtobufEventProcessor
             }
         }
     }
+
+    bool ShouldDump(
+        const NProto::TProfileLogRecord& message,
+        EItemType type,
+        int index) const
+    {
+        if (!FilterRange) {
+            return true;
+        }
+
+        switch (type) {
+            case EItemType::BlockInfo: {
+                return AnyOf(
+                    message.GetBlockInfoLists(index).GetBlockInfos(),
+                    [&](const auto& block)
+                    { return FilterRange->Contains(block.GetBlockIndex()); });
+            }
+            case EItemType::Request: {
+                const auto& req = message.GetRequests(index);
+
+                if (!req.RangesSize()) {
+                    return req.GetBlockCount() != 0 &&
+                           FilterRange->Overlaps(
+                               TBlockRange64::WithLength(
+                                   req.GetBlockIndex(),
+                                   req.GetBlockCount()));
+                }
+
+                return AnyOf(
+                    req.GetRanges(),
+                    [&](const auto& r)
+                    {
+                        return FilterRange->Overlaps(
+                            TBlockRange64::WithLength(
+                                r.GetBlockIndex(),
+                                r.GetBlockCount()));
+                    });
+            }
+            default:
+                return false;
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,13 +113,11 @@ struct TEventProcessor: TProtobufEventProcessor
 class TEventProcessorProxy: public ITunableEventProcessor
 {
 private:
-    IEventProcessor* Processor;
-    TString* OutputFilename;
+    TEventProcessor* Processor;
 
 public:
     explicit TEventProcessorProxy(TEventProcessor* proc)
         : Processor(proc)
-        , OutputFilename(&proc->OutputFilename)
     {}
 
     void AddOptions(NLastGetopt::TOpts& opts) override
@@ -82,7 +127,20 @@ public:
                 "Enables output to the specified file, original binary "
                 "format is preserved")
             .Optional()
-            .StoreResult(OutputFilename);
+            .StoreResult(&Processor->OutputFilename);
+
+        opts.AddLongOption(
+                "filter-by-range",
+                "Show only requests that overlap with the range. Example: --filter-by-range 5000,5100")
+            .Optional()
+            .Handler1T<TString>([&] (TStringBuf s) {
+                TStringBuf lhs;
+                TStringBuf rhs;
+                s.Split(',', lhs, rhs);
+                Processor->FilterRange = TBlockRange64::MakeClosedInterval(
+                    FromString<ui64>(lhs),
+                    FromString<ui64>(rhs));
+            });
     }
 
     void SetOptions(const TEvent::TOutputOptions& options) override
