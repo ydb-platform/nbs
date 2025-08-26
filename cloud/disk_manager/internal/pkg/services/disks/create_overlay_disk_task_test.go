@@ -334,9 +334,7 @@ func TestCancelCreateOverlayDiskTaskBeforeDatabaseInsert(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return(&resources.DiskMeta{
-		DeleteTaskID: "toplevel_task_id",
-	}, nil)
+	).Return((*resources.DiskMeta)(nil), nil)
 
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 

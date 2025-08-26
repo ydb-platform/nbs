@@ -523,6 +523,11 @@ func (s *storageYDB) deleteDisk(
 				return nil, err
 			}
 
+			// Should be idempotent.
+			if state.status == diskStatusDeleted {
+				return nil, nil
+			}
+
 			return state.toDiskMeta(), nil
 		}
 
@@ -543,6 +548,11 @@ func (s *storageYDB) deleteDisk(
 	err = tx.Commit(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	// Should be idempotent.
+	if state.status == diskStatusDeleted {
+		return nil, nil
 	}
 
 	return state.toDiskMeta(), nil

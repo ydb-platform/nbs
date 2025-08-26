@@ -218,16 +218,14 @@ func TestCancelCreateEmptyDiskTaskBeforeDatabaseInsert(t *testing.T) {
 		state:      &protos.CreateEmptyDiskTaskState{},
 	}
 
-	// Must return disk without specified ZoneID.
+	// There is no such disk in storage.
 	storage.On(
 		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return(&resources.DiskMeta{
-		DeleteTaskID: "toplevel_task_id",
-	}, nil)
+	).Return((*resources.DiskMeta)(nil), nil)
 
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 

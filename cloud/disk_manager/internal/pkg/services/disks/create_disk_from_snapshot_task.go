@@ -227,18 +227,8 @@ func (t *createDiskFromSnapshotTask) Cancel(
 		return err
 	}
 
-	if len(diskMeta.ZoneID) == 0 {
-		// If diskMeta has no zoneID, the disk was not in the database before
-		// calling storage.DeleteDisk, so it has already been marked as deleted.
-		// Need to call neither storage.DiskDeleted nor client.Delete.
-		return nil
-	}
-
 	if diskMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			params.Disk.DiskId,
-		)
+		return nil
 	}
 
 	err = client.Delete(ctx, params.Disk.DiskId)

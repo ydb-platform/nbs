@@ -228,11 +228,7 @@ func TestDeleteDiskTaskWithNonExistentDisk(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return(&resources.DiskMeta{
-		ZoneID:       "",
-		SrcImageID:   "image",
-		DeleteTaskID: "toplevel_task_id",
-	}, nil)
+	).Return((*resources.DiskMeta)(nil), nil)
 
 	err := task.Run(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, execCtx)

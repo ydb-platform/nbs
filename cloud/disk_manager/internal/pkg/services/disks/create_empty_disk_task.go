@@ -122,16 +122,6 @@ func (t *createEmptyDiskTask) Cancel(
 	}
 
 	if diskMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			t.params.Disk.DiskId,
-		)
-	}
-
-	if len(diskMeta.ZoneID) == 0 {
-		// If diskMeta has no zoneID, the disk was not in the database before
-		// calling storage.DeleteDisk, so it has already been marked as deleted.
-		// Need to call neither storage.DiskDeleted nor client.Delete.
 		return nil
 	}
 
