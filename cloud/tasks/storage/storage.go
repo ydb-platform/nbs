@@ -143,7 +143,7 @@ type TaskState struct {
 	LastHost            string
 	LastRunner          string
 	ZoneID              string
-	EstimatedTime       time.Time
+	EstimatedDuration   time.Duration
 	InflightDuration    time.Duration
 	StallingDuration    time.Duration
 	WaitingDuration     time.Duration

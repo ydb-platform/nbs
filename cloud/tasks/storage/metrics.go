@@ -77,19 +77,20 @@ func (m *storageMetricsImpl) OnTaskUpdated(
 	if state.Status == TaskStatusFinished {
 		metrics.timeTotal.RecordDuration(state.EndedAt.Sub(state.CreatedAt))
 
-		// Check that EstimatedTime is located within range (CreatedAt, EndedAt).
-		if state.EstimatedTime.After(state.CreatedAt) &&
-			state.EstimatedTime.Before(state.EndedAt) {
+		// Check that task exceeded its estimated duration.
+		if state.EstimatedDuration > 0 &&
+			state.EstimatedDuration < state.InflightDuration {
 
-			estimateMiss := state.EndedAt.Sub(state.EstimatedTime)
+			estimateMiss := state.InflightDuration - state.EstimatedDuration
 			metrics.estimateMiss.RecordDuration(estimateMiss)
 			logging.Info(
 				ctx,
-				"Task estimated time debug. Task: %q, started: %q, estimate: %q, actual: %q, miss: %q",
+				"Task estimated time debug. Task: %q, started: %q, ended: %q, estimate: %q, actual: %q, miss: %q",
 				state.ID,
 				state.CreatedAt,
-				state.EstimatedTime,
 				state.EndedAt,
+				state.EstimatedDuration,
+				state.InflightDuration,
 				estimateMiss,
 			)
 		}

@@ -75,4 +75,7 @@ message TasksConfig {
 
     // Overrides MaxRetriableErrorCount.
     map<string, uint64> MaxRetriableErrorCountByTaskType = 36;
+
+    optional string StallingDurationHangTimeout = 37 [default = "30m"];
+    optional string TotalDurationHangTimeout = 38 [default = "24h"];
 }

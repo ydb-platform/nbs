@@ -124,13 +124,11 @@ func (c *executionContext) IsHanging() bool {
 	now := time.Now()
 	defaultDeadline := c.taskState.CreatedAt.Add(c.hangingTaskTimeout)
 
-	var estimatedDuration time.Duration
-	if c.taskState.EstimatedTime.After(c.taskState.CreatedAt) {
-		estimatedDuration = c.taskState.EstimatedTime.Sub(c.taskState.CreatedAt)
-	} else {
+	if c.taskState.EstimatedDuration == 0 {
 		return now.After(defaultDeadline)
 	}
 
+	estimatedDuration := c.taskState.EstimatedDuration
 	deadline := c.taskState.CreatedAt.Add(
 		estimatedDuration * time.Duration(c.missedEstimatesUntilTaskIsHanging),
 	)
@@ -145,8 +143,8 @@ func (c *executionContext) SetEstimate(estimatedDuration time.Duration) {
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 
-	if c.taskState.EstimatedTime.Before(c.taskState.CreatedAt) {
-		c.taskState.EstimatedTime = c.taskState.CreatedAt.Add(estimatedDuration)
+	if c.taskState.EstimatedDuration == 0 {
+		c.taskState.EstimatedDuration = estimatedDuration
 	}
 }
 

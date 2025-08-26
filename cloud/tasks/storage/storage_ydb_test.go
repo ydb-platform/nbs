@@ -1046,7 +1046,7 @@ func (f hangingTaskTestFixture) createTask(
 		Dependencies:   common.NewStringSet(),
 	}
 	if estimatedDuration > 0 {
-		state.EstimatedTime = createdAt.Add(estimatedDuration)
+		state.EstimatedDuration = estimatedDuration
 	}
 
 	taskID, err := f.storage.CreateTask(f.ctx, state)
@@ -1057,7 +1057,7 @@ func (f hangingTaskTestFixture) createTask(
 		taskID,
 		createdAt,
 		TaskStatusToString(taskStatus),
-		state.EstimatedTime,
+		state.EstimatedDuration,
 	)
 	return taskID
 }
@@ -1713,18 +1713,19 @@ func TestStorageYDBListSlowTasks(t *testing.T) {
 
 	createTask := func(created time.Time, estimated, durationMinutes int) TaskInfo {
 		task := TaskState{
-			IdempotencyKey: getIdempotencyKeyForTest(t),
-			TaskType:       "task1",
-			Description:    "some task",
-			CreatedAt:      created,
-			CreatedBy:      "some_user",
-			ModifiedAt:     created,
-			GenerationID:   generationID,
-			Status:         TaskStatusFinished,
-			State:          []byte{0},
-			Dependencies:   common.NewStringSet(),
-			EndedAt:        created.Add(time.Duration(durationMinutes) * time.Minute),
-			EstimatedTime:  created.Add(time.Duration(estimated) * time.Minute),
+			IdempotencyKey:    getIdempotencyKeyForTest(t),
+			TaskType:          "task1",
+			Description:       "some task",
+			CreatedAt:         created,
+			CreatedBy:         "some_user",
+			ModifiedAt:        created,
+			GenerationID:      generationID,
+			Status:            TaskStatusFinished,
+			State:             []byte{0},
+			Dependencies:      common.NewStringSet(),
+			EndedAt:           created,
+			InflightDuration:  time.Duration(durationMinutes) * time.Minute,
+			EstimatedDuration: time.Duration(estimated) * time.Minute,
 		}
 		id, err := storage.CreateTask(ctx, task)
 		generationID += 1

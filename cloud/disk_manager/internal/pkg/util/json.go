@@ -154,7 +154,7 @@ type TaskStateJSON struct {
 	ZoneID              string               `json:"zone_id"`
 	CloudID             string               `json:"cloud_id"`
 	FolderID            string               `json:"folder_id"`
-	EstimatedTime       time.Time            `json:"estimated_time"`
+	EstimatedDuration   FormattableDuration  `json:"estimated_duration"`
 	InflightDuration    FormattableDuration  `json:"inflight_duration"`
 	StallingDuration    FormattableDuration  `json:"stalling_duration"`
 	WaitingDuration     FormattableDuration  `json:"waiting_duration"`
@@ -225,7 +225,7 @@ func TaskStateToJSON(state *storage.TaskState) *TaskStateJSON {
 		LastHost:            state.LastHost,
 		LastRunner:          state.LastRunner,
 		ZoneID:              state.ZoneID,
-		EstimatedTime:       state.EstimatedTime,
+		EstimatedDuration:   FormattableDuration{state.EstimatedDuration},
 		InflightDuration:    FormattableDuration{state.InflightDuration},
 		StallingDuration:    FormattableDuration{state.StallingDuration},
 		WaitingDuration:     FormattableDuration{state.WaitingDuration},

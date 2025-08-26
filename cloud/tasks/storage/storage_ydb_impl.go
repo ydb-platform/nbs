@@ -952,21 +952,18 @@ func (s *storageYDB) listHangingTasks(
 			select id from cancelling
 		);
 		select * from tasks
-		where id in $task_ids and
-		(
-			(ListLength($except_task_types) == 0) or
-			(task_type not in $except_task_types)
-		)  and
-		(
-			(estimated_time == DateTime::FromSeconds(0) and $now >= created_at + $hanging_task_timeout) or
+		where
+		 	(id in $task_ids) and
+			(task_type not in $except_task_types) and
 			(
-				estimated_time > created_at and
-				$now >= MAX_OF(
-					created_at + (estimated_time - created_at) * $missed_estimates_until_task_is_hanging,
-					created_at + $hanging_task_timeout
-				)
+			    inflight_duration >= MAX_OF(
+					estimated_duration * $missed_estimates_until_task_is_hanging,
+					$hanging_task_timeout,
+				) or
+				(stalling_duration >= $stalling_duration_hang_timeout) or
+				($now - created_at >= $total_duration_hang_timeout)
 			)
-		) limit $limit;
+		limit $limit;
 	`, s.tablesPath),
 		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
 		persistence.ValueParam(
@@ -1106,19 +1103,20 @@ func (s *storageYDB) listSlowTasks(
 		pragma TablePathPrefix = "%v";
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $since as Timestamp;
-		declare $estimateMiss as Int64;
+		declare $estimateMiss as Interval;
 
 		$task_ids = (select id from ended where ended_at >= $since);
 
 		select *
-		  from tasks
-		 where id in $task_ids
-		   and estimated_time > created_at
-		   and DateTime::ToMinutes(ended_at - estimated_time) >= $estimateMiss
-		 order by DateTime::ToMinutes(ended_at - created_at) / DateTime::ToMinutes(estimated_time - created_at) desc
+		from tasks
+		where
+			id in $task_ids
+			and estimated_duration > Interval("P0D")
+			and (inflight_duration - estimated_duration) >= $estimateMiss
+		order by DateTime::ToSeconds(inflight_duration) / DateTime::ToSeconds(estimated_duration) desc
 	`, s.tablesPath),
 		persistence.ValueParam("$since", persistence.TimestampValue(since)),
-		persistence.ValueParam("$estimateMiss", persistence.Int64Value(int64(estimateMiss.Minutes()))),
+		persistence.ValueParam("$estimateMiss", persistence.IntervalValue(estimateMiss)),
 	)
 	if err != nil {
 		return nil, err
