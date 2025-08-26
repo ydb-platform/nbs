@@ -93,8 +93,8 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
             request->GetCounter("InProgressBytes")->Set(5);
             request->GetCounter("MaxInProgressBytes")->Set(50);
 
-            auto requestTimeHist =
-                request->GetSubgroup("histogram", "Time");
+            auto requestTimeHist = request->GetSubgroup("histogram", "Time")
+                                       ->GetSubgroup("units", "msec");
             requestTimeHist->GetCounter("0.001ms")->Set(1);
             requestTimeHist->GetCounter("0.1ms")->Set(2);
             requestTimeHist->GetCounter("0.2ms")->Set(3);
@@ -173,7 +173,8 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
 
             auto request = stats->GetSubgroup("request", name);
             auto requestTimeHist =
-                request->GetSubgroup("histogram", "ThrottlerDelay");
+                request->GetSubgroup("histogram", "ThrottlerDelay")
+                    ->GetSubgroup("units", "usec");
             requestTimeHist->GetCounter("1")->Set(1);
             requestTimeHist->GetCounter("100")->Set(2);
             requestTimeHist->GetCounter("200")->Set(3);

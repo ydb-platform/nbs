@@ -146,20 +146,20 @@ std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplierStub()
 
 ///////////////////////////////////////////////////////////////////////////////
 
-TBuckets GetMsBuckets()
+TBucketsWithUnits GetMsBuckets()
 {
     constexpr auto Identity = [](double data) { return data; };
     static const auto Buckets = MakeBuckets<TRequestMsTimeBuckets>(Identity);
-    return Buckets;
+    return {Buckets, "msec"};
 }
 
-TBuckets GetUsBuckets()
+TBucketsWithUnits GetUsBuckets()
 {
     constexpr auto UsToMs = [](double data) {
         return data == std::numeric_limits<double>::max() ? data : data / 1000.;
     };
     static const auto Buckets = MakeBuckets<TRequestUsTimeBuckets>(UsToMs);
-    return Buckets;
+    return {Buckets, "usec"};
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -221,17 +221,19 @@ private:
     static constexpr size_t IgnoreBucketCount = 10;
 
     TVector<TIntrusivePtr<NMonitoring::TDynamicCounters>> Counters;
-    TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
     const TBuckets Buckets;
+    const TString Units;
+    TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
     EMetricType Type = EMetricType::UNKNOWN;
 
 public:
     TUserSumHistogramWrapper(
-        const TBuckets& buckets,
+        const TBucketsWithUnits& buckets,
         const TVector<TBaseDynamicCounters>& baseCounters)
-        : Histogram(TExplicitHistogramSnapshot::New(
-              buckets.size() - IgnoreBucketCount))
-        , Buckets(buckets)
+        : Buckets(buckets.first)
+        , Units(buckets.second)
+        , Histogram(TExplicitHistogramSnapshot::New(
+              Buckets.size() - IgnoreBucketCount))
         , Type(EMetricType::HIST_RATE)
     {
         for (size_t i = IgnoreBucketCount; i < Buckets.size(); ++i) {
@@ -239,11 +241,17 @@ public:
         }
 
         for (const auto& [baseCounter, name]: baseCounters) {
-            if (baseCounter) {
-                if (auto hist = baseCounter->FindSubgroup("histogram", name)) {
-                    Counters.push_back(hist);
-                }
+            if (!baseCounter) {
+                continue;
             }
+            auto subgroup = baseCounter->FindSubgroup("histogram", name);
+            if (!subgroup) {
+                continue;
+            }
+            if (Units) {
+                subgroup = subgroup->FindSubgroup("units", Units);
+            }
+            Counters.push_back(subgroup);
         }
     }
 
@@ -294,7 +302,7 @@ void AddUserMetric(
 }
 
 void AddHistogramUserMetric(
-    const TBuckets& buckets,
+    const TBucketsWithUnits& buckets,
     IUserCounterSupplier& dsc,
     const TLabels& commonLabels,
     const TVector<TBaseDynamicCounters>& baseCounters,

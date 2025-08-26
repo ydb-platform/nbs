@@ -27,6 +27,8 @@ struct TRequestUsTimeBuckets
         10000000, 35000000, Max<double>()
     }};
 
+    static constexpr TStringBuf Units = "usec";
+
     static TVector<TString> MakeNames();
 };
 
@@ -43,6 +45,8 @@ struct TRequestUsTimeBucketsLowResolution
         1000000, 2000000, 5000000,
         10000000, 35000000, Max<double>()
     }};
+
+    static constexpr TStringBuf Units = "usec";
 
     static TVector<TString> MakeNames();
 };
@@ -68,6 +72,8 @@ struct TRequestMsTimeBuckets
     static constexpr std::array<double, BUCKETS_COUNT> Buckets =
         MakeArray(TRequestUsTimeBuckets::Buckets);
 
+    static constexpr TStringBuf Units = "msec";
+
     static TVector<TString> MakeNames();
 };
 
@@ -85,6 +91,8 @@ struct TQueueSizeBuckets
         10000, 35000, Max<double>()
     }};
 
+    static constexpr TStringBuf Units = "";
+
     static TVector<TString> MakeNames();
 };
 
@@ -98,6 +106,8 @@ struct TKbSizeBuckets
         4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, Max<double>()
     }};
 
+    static constexpr TStringBuf Units = "KB";
+
     static TVector<TString> MakeNames();
 };
 
@@ -107,4 +117,3 @@ inline TVector<double> ConvertToHistBounds(const TBucketsType& buckets) {
 }
 
 }   // namespace NCloud
-
