@@ -715,6 +715,8 @@ public:
 
     [[nodiscard]] bool
     GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() const;
+
+    [[nodiscard]] bool GetEnableChecksumValidationForYdbBasedDisks() const;
 };
 
 ui64 GetAllocationUnit(

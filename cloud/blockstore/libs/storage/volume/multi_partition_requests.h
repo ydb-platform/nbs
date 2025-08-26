@@ -3,12 +3,14 @@
 #include "partition_info.h"
 #include "tracing.h"
 
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/volume/model/merge.h>
 #include <cloud/blockstore/libs/storage/volume/model/stripe.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -18,6 +20,7 @@
 #include <library/cpp/eventlog/eventlog.h>
 #include <library/cpp/lwtrace/all.h>
 
+#include <cstddef>
 #include <memory>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -67,6 +70,8 @@ private:
     using TBase = NActors::TActorBootstrapped<TMultiPartitionRequestActor<TMethod>>;
 
     TVector<TCallContextPtr> ChildCallContexts;
+
+    TVector<NProto::TChecksum> Checksums;
 
 public:
     TMultiPartitionRequestActor(
@@ -139,6 +144,8 @@ private:
 
             buffers[index - OriginalRange.Start] = std::move(srcBuffers[i]);
         }
+
+        Checksums[requestNo] = std::move(*src.MutableChecksum());;
     }
 
     void Merge(
@@ -355,6 +362,7 @@ TMultiPartitionRequestActor<TMethod>::TMultiPartitionRequestActor(
     , ChildCallContexts(Reserve(PartitionRequests.size()))
 {
     Y_DEBUG_ABORT_UNLESS(PartitionsCount >= PartitionRequests.size());
+    Checksums.resize(PartitionRequests.size());
 }
 
 template <typename TMethod>
@@ -423,6 +431,13 @@ void TMultiPartitionRequestActor<TMethod>::HandlePartitionResponse(
     JoinTraces(requestNo);
 
     if (++Responses == PartitionRequests.size() || FAILED(msg->GetStatus())) {
+        if constexpr (IsReadMethod<TMethod>) {
+            NProto::TChecksum checksum = CombineChecksums(Checksums);
+            if (checksum.GetByteCount() > 0) {
+                *Record.MutableChecksum() = std::move(checksum);
+            }
+        }
+
         auto response = std::make_unique<typename TMethod::TResponse>(
             Record
         );

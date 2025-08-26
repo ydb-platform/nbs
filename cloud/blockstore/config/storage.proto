@@ -1307,4 +1307,8 @@ message TStorageServiceConfig
     // Do AddClient/RemoveClient transaction
     // and then do right Acquire/Release devices requests.
     optional bool NonReplicatedVolumeAcquireDiskAfterAddClientEnabled = 451;
+
+    // Enables data integrity validation for the YDB-based disks.
+    // See "EnableChecksumValidation" in server.proto for more details.
+    optional bool EnableChecksumValidationForYdbBasedDisks = 452;
 }
