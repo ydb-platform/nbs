@@ -211,11 +211,12 @@ class TUserSumHistogramWrapper
     using TExplicitHistogramSnapshot = NMonitoring::TExplicitHistogramSnapshot;
 
 private:
-    static constexpr size_t IgnoreBucketCount = 10;
+    static constexpr size_t MergeFirstBucketsCount = 10;
 
     const TBuckets Buckets;
     const TString Units;
     TVector<TBaseDynamicCounters> BaseCounters;
+    const size_t HistogramSize;
     TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
     EMetricType Type = EMetricType::UNKNOWN;
 
@@ -225,12 +226,12 @@ public:
         const TVector<TBaseDynamicCounters>& baseCounters)
         : Buckets(buckets.first)
         , Units(buckets.second)
-        , Histogram(TExplicitHistogramSnapshot::New(
-              Buckets.size() - IgnoreBucketCount))
+        , HistogramSize(Buckets.size() - MergeFirstBucketsCount)
+        , Histogram(TExplicitHistogramSnapshot::New(HistogramSize))
         , Type(EMetricType::HIST_RATE)
     {
-        for (size_t i = IgnoreBucketCount; i < Buckets.size(); ++i) {
-            (*Histogram)[i - IgnoreBucketCount].first = Buckets[i].Bound;
+        for (size_t i = 0; i < HistogramSize; ++i) {
+            (*Histogram)[i].first = Buckets[i + MergeFirstBucketsCount].Bound;
         }
 
         for (const auto& [baseCounter, name]: baseCounters) {
@@ -252,14 +253,24 @@ public:
 
     void Clear() const
     {
-        for (size_t i = IgnoreBucketCount; i < Buckets.size(); ++i) {
-            (*Histogram)[i - IgnoreBucketCount].second = 0;
+        for (size_t i = 0; i < HistogramSize; ++i) {
+            (*Histogram)[i].second = 0;
         }
     }
 
     void GetType(NMonitoring::IMetricConsumer* consumer) const override
     {
         consumer->OnMetricBegin(Type);
+    }
+
+    void IncrementHistogram(ui64 value, size_t baseBucketId) const
+    {
+        // Since the base histogram uses usec bounds while the user histogram
+        // uses msec boundaries, we need to merge several first buckets into one
+        size_t id = baseBucketId < MergeFirstBucketsCount
+                        ? 0
+                        : baseBucketId - MergeFirstBucketsCount;
+        (*Histogram)[id].second += value;
     }
 
     void GetValue(
@@ -273,24 +284,24 @@ public:
                 continue;
             }
 
-            auto getValue = [&baseCounter, this](size_t id) -> ui64
-            {
-                const auto bucketName = Buckets[id].Name;
-                const auto counter = baseCounter->FindCounter(bucketName);
-                return counter ? counter->Val() : 0;
-            };   // ReportHistogramAsMultipleCounters
+            const auto histogram = baseCounter->FindHistogram(name);
+            if (histogram) {
+                // ReportHistogramAsSingleCounter option is on
+                const auto snapshot = histogram->Snapshot();
+                const size_t count =
+                    Min<size_t>(Buckets.size(), snapshot->Count());
+                for (size_t i = 0; i < count; ++i) {
+                    IncrementHistogram(snapshot->Value(i), i);
+                }
+                continue;
+            }
 
-            auto histogram = baseCounter->FindHistogram(name);
-            auto getHistogramValue = [&histogram](size_t id) -> ui64
-            {
-                auto snapshot = histogram->Snapshot();
-                return id < snapshot->Count() ? snapshot->Value(id) : 0;
-            };   // ReportHistogramAsSingleCounter
-
+            // only ReportHistogramAsMultipleCounters option is on
             for (size_t i = 0; i < Buckets.size(); ++i) {
-                auto value = histogram ? getHistogramValue(i) : getValue(i);
-                size_t id = i < IgnoreBucketCount ? 0 : i - IgnoreBucketCount;
-                (*Histogram)[id].second += value;
+                const auto counter = baseCounter->FindCounter(Buckets[i].Name);
+                if (counter) {
+                    IncrementHistogram(counter->Val(), i);
+                }
             }
         }
         consumer->OnHistogram(time, Histogram);
