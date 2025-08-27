@@ -111,8 +111,22 @@ struct TRequestPercentiles
         if (!counters) {
             return;
         }
-        Time.Update(Log, counters->FindSubgroup("histogram", "Time"), counters, "Time");
-        Size.Update(Log, counters->FindSubgroup("histogram", "Size"), counters, "Size");
+
+        auto timeCounters = counters->FindSubgroup("histogram", "Time");
+        if (timeCounters) {
+            if (auto counters = timeCounters->FindSubgroup("units", "usec")) {
+                timeCounters = counters;
+            }
+            Time.Update(Log, timeCounters, counters, "Time");
+        }
+
+        auto sizeCounters = counters->FindSubgroup("histogram", "Size");
+        if (sizeCounters) {
+            if (auto counters = sizeCounters->FindSubgroup("units", "KB")) {
+                sizeCounters = counters;
+            }
+            Size.Update(Log, sizeCounters, counters, "Size");
+        }
     }
 };
 

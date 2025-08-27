@@ -244,7 +244,9 @@ public:
             if (Units) {
                 subgroup = subgroup->FindSubgroup("units", Units);
             }
-            Counters.push_back(subgroup);
+            if (subgroup) {
+                Counters.push_back(subgroup);
+            }
         }
     }
 
