@@ -34,6 +34,8 @@ type ExecutionContext interface {
 
 	SetInflightEstimate(estimatedDuration time.Duration)
 
+	SetStallingEstimate(estimatedDuration time.Duration)
+
 	HasEvent(ctx context.Context, event int64) bool
 
 	FinishWithPreparation(
@@ -145,6 +147,15 @@ func (c *executionContext) SetInflightEstimate(estimatedDuration time.Duration) 
 
 	if c.taskState.EstimatedInflightDuration == 0 {
 		c.taskState.EstimatedInflightDuration = estimatedDuration
+	}
+}
+
+func (c *executionContext) SetStallingEstimate(estimatedDuration time.Duration) {
+	c.taskStateMutex.Lock()
+	defer c.taskStateMutex.Unlock()
+
+	if c.taskState.EstimatedStallingDuration == 0 {
+		c.taskState.EstimatedStallingDuration = estimatedDuration
 	}
 }
 
