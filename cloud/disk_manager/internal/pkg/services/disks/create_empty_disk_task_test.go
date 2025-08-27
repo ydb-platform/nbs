@@ -186,6 +186,7 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
+	nbsFactory.On("HasClient", "zone").Return(true)
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 	nbsClient.On("Delete", ctx, "disk").Return(nil)
 
@@ -237,6 +238,7 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		ZoneID:       "zone",
 	}, nil)
 
+	nbsFactory.On("HasClient", "zone").Return(true)
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 	nbsClient.On("Delete", ctx, "disk").Return(assert.AnError)
 
@@ -249,6 +251,56 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		execCtx,
 	)
 	require.Equal(t, err, assert.AnError)
+}
+
+func TestCancelCreateEmptyDiskTaskInIncorrectZone(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient := nbs_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+
+	params := &protos.CreateDiskParams{
+		BlocksCount: 123,
+		Disk: &types.Disk{
+			ZoneId: "incorrect-zone",
+			DiskId: "disk",
+		},
+		BlockSize: 456,
+		Kind:      types.DiskKind_DISK_KIND_SSD,
+		CloudId:   "cloud",
+		FolderId:  "folder",
+	}
+	task := &createEmptyDiskTask{
+		storage:    storage,
+		nbsFactory: nbsFactory,
+		params:     params,
+		state:      &protos.CreateEmptyDiskTaskState{},
+	}
+
+	storage.On(
+		"DeleteDisk",
+		ctx,
+		"disk",
+		"toplevel_task_id",
+		mock.Anything,
+	).Return(&resources.DiskMeta{
+		DeleteTaskID: "toplevel_task_id",
+		ZoneID:       "incorrect-zone",
+	}, nil)
+
+	nbsFactory.On("HasClient", "incorrect-zone").Return(false)
+	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
+
+	err := task.Cancel(ctx, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+	)
+	require.NoError(t, err)
 }
 
 func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
