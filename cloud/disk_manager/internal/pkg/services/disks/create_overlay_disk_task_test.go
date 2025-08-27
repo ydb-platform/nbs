@@ -29,7 +29,7 @@ func newExecutionContextMock() *tasks_mocks.ExecutionContextMock {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestCreateOverlayDiskTask(t *testing.T) {
+func testCreateOverlayDiskTask(t *testing.T, selectedZoneID string) {
 	ctx := context.Background()
 	storage := storage_mocks.NewStorageMock()
 	scheduler := tasks_mocks.NewSchedulerMock()
@@ -68,12 +68,12 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 		"SelectCell",
 		mock.Anything,
 		mock.Anything,
-	).Return("zone", nil)
+	).Return(selectedZoneID)
 
 	// TODO: Improve this expectations.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{
 		ID:     "disk",
-		ZoneID: "zone",
+		ZoneID: selectedZoneID,
 	}, nil)
 	storage.On("DiskCreated", ctx, mock.Anything).Return(nil)
 
@@ -83,7 +83,7 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 		&pools_protos.AcquireBaseDiskRequest{
 			SrcImageId: "image",
 			OverlayDisk: &types.Disk{
-				ZoneId: "zone",
+				ZoneId: selectedZoneID,
 				DiskId: "disk",
 			},
 			OverlayDiskKind: types.DiskKind_DISK_KIND_SSD,
@@ -97,7 +97,7 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 		nil,
 	)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
+	nbsFactory.On("GetClient", ctx, selectedZoneID).Return(nbsClient, nil)
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
 		ID:                   "disk",
 		BaseDiskID:           "base",
@@ -121,6 +121,14 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 		cellSelector,
 	)
 	require.NoError(t, err)
+}
+
+func TestCreateOverlayDiskTask(t *testing.T) {
+	testCreateOverlayDiskTask(t, "zone")
+}
+
+func TestCreateOverlayDiskTaskCellSelectSelectsDifferentZone(t *testing.T) {
+	testCreateOverlayDiskTask(t, "other-zone")
 }
 
 func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testing.T) {
@@ -161,7 +169,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testin
 		"SelectCell",
 		mock.Anything,
 		mock.Anything,
-	).Return("zone", nil)
+	).Return("zone")
 
 	// TODO: Improve this expectation.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(
@@ -240,7 +248,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 		"SelectCell",
 		mock.Anything,
 		mock.Anything,
-	).Return("zone", nil)
+	).Return("zone")
 
 	// TODO: Improve this expectation.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(

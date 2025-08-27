@@ -16,7 +16,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
-func TestCreateEmptyDiskTask(t *testing.T) {
+func testCreateEmptyDiskTask(t *testing.T, selectedZoneID string) {
 	ctx := context.Background()
 	storage := storage_mocks.NewStorageMock()
 	nbsFactory := nbs_mocks.NewFactoryMock()
@@ -47,16 +47,16 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 		"SelectCell",
 		mock.Anything,
 		mock.Anything,
-	).Return("zone", nil)
+	).Return(selectedZoneID)
 
 	// TODO: Improve this expectations.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{
 		ID:     "disk",
-		ZoneID: "zone",
+		ZoneID: selectedZoneID,
 	}, nil)
 	storage.On("DiskCreated", ctx, mock.Anything).Return(nil)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
+	nbsFactory.On("GetClient", ctx, selectedZoneID).Return(nbsClient, nil)
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
 		ID:          "disk",
 		BlocksCount: 123,
@@ -76,6 +76,14 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 		cellSelector,
 	)
 	require.NoError(t, err)
+}
+
+func TestCreateEmptyDiskTask(t *testing.T) {
+	testCreateEmptyDiskTask(t, "zone")
+}
+
+func TestCreateEmptyDiskTaskCellSelectorSelectsDifferentZone(t *testing.T) {
+	testCreateEmptyDiskTask(t, "other-zone")
 }
 
 func TestCreateEmptyDiskTaskFailure(t *testing.T) {
@@ -109,7 +117,7 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 		"SelectCell",
 		mock.Anything,
 		mock.Anything,
-	).Return("zone", nil)
+	).Return("zone")
 
 	// TODO: Improve this expectation.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(
