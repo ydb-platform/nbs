@@ -25,20 +25,20 @@ func NewCellSelector(
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *cellSelector) SelectCell(
-	diskID *types.Disk,
+	disk *types.Disk,
 	folderID string,
 ) string {
 
 	if !s.isFolderAllowed(folderID) {
-		return diskID.ZoneId
+		return disk.ZoneId
 	}
 
-	cells := s.getCells(diskID.ZoneId)
+	cells := s.getCells(disk.ZoneId)
 
 	if len(cells) == 0 {
 		// We end up here if a zone not divided into cells or a cell
 		// of a zone is provided as ZoneId.
-		return diskID.ZoneId
+		return disk.ZoneId
 	}
 
 	return cells[0]

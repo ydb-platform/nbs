@@ -8,7 +8,7 @@ import (
 
 type CellSelector interface {
 	SelectCell(
-		diskID *types.Disk,
+		disk *types.Disk,
 		folderID string,
 	) string
 

@@ -164,8 +164,8 @@ func (t *createOverlayDiskTask) Cancel(
 	}
 
 	if diskMeta == nil {
-		// If diskMeta is nil, the disk wasn't in the database or has been
-		// already deleted - either nbsClient.CreateDisk was never called or
+		// If diskMeta is nil, the disk wasn't in the database or has already
+		// been deleted - either nbsClient.CreateDisk was never called or
 		// nbsClient.Delete completed successfully.
 		return nil
 	}

@@ -18,11 +18,11 @@ func NewCellSelectorMock() *CellSelectorMock {
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *CellSelectorMock) SelectCell(
-	diskID *types.Disk,
+	disk *types.Disk,
 	folderID string,
 ) string {
 
-	args := s.Called(diskID, folderID)
+	args := s.Called(disk, folderID)
 	return args.String(0)
 }
 
