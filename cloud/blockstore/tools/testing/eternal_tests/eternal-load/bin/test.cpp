@@ -2,6 +2,9 @@
 
 #include "options.h"
 
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/aligned_block_test_scenario.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/file_test_scenario.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -11,6 +14,8 @@
 namespace NCloud::NBlockStore {
 
 namespace {
+
+using namespace NTesting;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -40,6 +45,7 @@ public:
 private:
     void InitLogger();
 
+    TTestExecutorSettings ConfigureTest() const;
     int RunTest();
 
     void DumpConfiguration();
@@ -93,12 +99,72 @@ void TTest::DumpConfiguration()
         << Options->DumpPath.Quote());
 }
 
+TTestExecutorSettings TTest::ConfigureTest() const
+{
+    auto log = Logging->CreateLog("ETERNAL_EXECUTOR");
+
+    TTestExecutorSettings settings;
+
+    switch (Options->Scenario) {
+        case EScenario::Block:
+            settings.TestScenario =
+                CreateAlignedBlockTestScenario(ConfigHolder, log);
+            STORAGE_INFO("Using test scenario: Block");
+            break;
+
+        case EScenario::File:
+            settings.TestScenario =
+                CreateFileTestScenario(ConfigHolder, log);
+            STORAGE_INFO("Using test scenario: File");
+            break;
+
+        default:
+            Y_ABORT("Unsupported Scenario value %d", Options->Engine);
+    }
+
+    switch (Options->Engine) {
+        case EIoEngine::AsyncIo:
+            settings.FileService = ETestExecutorFileService::AsyncIo;
+            STORAGE_INFO("Using file service: AsyncIo");
+            break;
+
+        case EIoEngine::Sync:
+            settings.FileService = ETestExecutorFileService::Sync;
+            STORAGE_INFO("Using file service: Sync");
+            break;
+
+        case EIoEngine::IoUring:
+            settings.FileService = ETestExecutorFileService::IoUring;
+            STORAGE_INFO("Using file service: IoUring");
+            break;
+
+        default:
+            Y_ABORT("Unsupported EIoEngine value %d", Options->Engine);
+    }
+
+    settings.FilePath = ConfigHolder->GetConfig().GetFilePath();
+    STORAGE_INFO("Using test file: " << settings.FilePath);
+
+    settings.FileSize = ConfigHolder->GetConfig().GetFileSize();
+    STORAGE_INFO("Using test file size: " << settings.FileSize);
+
+    settings.RunFromAnyThread = Options->RunFromAnyThread;
+    STORAGE_INFO("Using run from any thread: " << settings.RunFromAnyThread);
+
+    settings.NoDirect = Options->NoDirect;
+    STORAGE_INFO("Using O_DIRECT: " << !settings.NoDirect);
+
+    settings.Log = log;
+    settings.PrintDebugInfo = Options->PrintDebugInfo;
+
+    return settings;
+}
+
 int TTest::RunTest()
 {
-    Executor = CreateTestExecutor(
-        ConfigHolder,
-        Logging->CreateLog("ETERNAL_EXECUTOR")
-    );
+    auto settings = ConfigureTest();
+
+    Executor = CreateTestExecutor(std::move(settings));
 
     int res = 0;
     if (!Executor->Run()) {
