@@ -1,8 +1,11 @@
 #include "sparse_segment.h"
 
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
+
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -10,10 +13,10 @@ namespace NCloud::NFileStore::NStorage {
 
 namespace {
 
-TVector<TSparseSegment::TRange> GetRanges(TSparseSegment& sparseSegment)
+TVector<TSparseSegment::TRange> GetRanges(const TSparseSegment& sparseSegment)
 {
     TVector<TSparseSegment::TRange> ret;
-    for (const auto& segment: sparseSegment) {
+    for (const auto& segment: std::as_const(sparseSegment)) {
         ret.push_back(segment);
     }
 
@@ -75,7 +78,7 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
         TVector<TSparseSegment::TRange> expectedRanges = {
             {.Start = 0, .End = 10},
             {.Start = 90, .End = 100}};
-        UNIT_ASSERT_VALUES_EQUAL(ranges, expectedRanges);
+        UNIT_ASSERT_VALUES_EQUAL(expectedRanges, ranges);
     }
 
     Y_UNIT_TEST(ShouldMergePunchedIntervals)
@@ -89,7 +92,7 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
         TVector<TSparseSegment::TRange> expectedRanges = {
             {.Start = 0, .End = 10},
             {.Start = 90, .End = 100}};
-        UNIT_ASSERT_VALUES_EQUAL(ranges, expectedRanges);
+        UNIT_ASSERT_VALUES_EQUAL(expectedRanges, ranges);
     }
 
     Y_UNIT_TEST(ShouldIgnoreEmptyInterval)
@@ -101,7 +104,7 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
         auto ranges = GetRanges(segment);
         TVector<TSparseSegment::TRange> expectedRanges = {
             {.Start = 0, .End = 100}};
-        UNIT_ASSERT_VALUES_EQUAL(ranges, expectedRanges);
+        UNIT_ASSERT_VALUES_EQUAL(expectedRanges, ranges);
     }
 
     Y_UNIT_TEST(ShouldIgnoreOutOfRangeInterval)
@@ -114,7 +117,7 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
         auto ranges = GetRanges(segment);
         TVector<TSparseSegment::TRange> expectedRanges = {
             {.Start = 20, .End = 100}};
-        UNIT_ASSERT_VALUES_EQUAL(ranges, expectedRanges);
+        UNIT_ASSERT_VALUES_EQUAL(expectedRanges, ranges);
     }
 
     Y_UNIT_TEST(ShouldPunchIntervalsOnEdges)
@@ -126,7 +129,7 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
         auto ranges = GetRanges(segment);
         TVector<TSparseSegment::TRange> expectedRanges = {
             {.Start = 11, .End = 90}};
-        UNIT_ASSERT_VALUES_EQUAL(ranges, expectedRanges);
+        UNIT_ASSERT_VALUES_EQUAL(expectedRanges, ranges);
     }
 
     Y_UNIT_TEST(ShouldPunchWholeInterval)
@@ -160,17 +163,17 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
 
     Y_UNIT_TEST(ShouldPunchRandomIntervals)
     {
-        auto currentTime = time(0);
-        srand(currentTime);
+        ILoggingServicePtr Logging(
+            CreateLoggingService("console", {TLOG_DEBUG}));
+        TLog Log(Logging->CreateLog("NFS_TEST"));
 
-        auto testContext = TStringBuilder();
-        testContext << "currentTime: " << currentTime;
+        auto seed = time(0);
+        srand(seed);
+        STORAGE_INFO("Seed: %lu", seed);
 
         ui64 segmentStart = rand() % 1_KB;
         ui64 segmentEnd = segmentStart + 1 + rand() % 8_KB;
-
-        testContext << " segmentStart: " << segmentStart
-                    << " segmentEnd: " << segmentEnd;
+        STORAGE_INFO("Segment [%lu, %lu]", segmentStart, segmentEnd);
 
         TSparseSegment segment(
             TDefaultAllocator::Instance(),
@@ -178,8 +181,7 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
             segmentEnd);
 
         size_t numHoles = rand() % 10 + 1;
-
-        testContext << " numHoles: " << numHoles;
+        STORAGE_INFO("number of holes: %lu", numHoles);
 
         // Set each vector element to true at the indices where there are holes
         std::vector<bool> segmentView(segmentEnd, false);
@@ -190,8 +192,7 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
             ui64 holeStart = std::min(point1, point2);
             ui64 holeEnd = std::max(point1, point2);
 
-            testContext << " holeStart: " << holeStart;
-            testContext << " holeEnd: " << holeEnd;
+            STORAGE_INFO("new hole [%lu %lu]", holeStart, holeEnd);
 
             segment.PunchHole(holeStart, holeEnd);
             for (size_t i = std::max(segmentStart, holeStart);
@@ -208,14 +209,14 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
             for (size_t i = startIndex; i < range.Start; ++i) {
                 UNIT_ASSERT_C(
                     segmentView[i],
-                    testContext << " invalid index: " << i);
+                    TStringBuilder() << " invalid index: " << i);
             }
             startIndex = range.End;
             // Test that values inside of segment are positive
             for (size_t i = range.Start; i < range.End; ++i) {
                 UNIT_ASSERT_C(
                     !segmentView[i],
-                    testContext << " invalid index: " << i);
+                    TStringBuilder() << " invalid index: " << i);
             }
         }
 
@@ -225,7 +226,7 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
             for (size_t i = startIndex; i < segmentEnd; ++i) {
                 UNIT_ASSERT_C(
                     segmentView[i],
-                    testContext << " invalid index: " << i);
+                    TStringBuilder() << " invalid index: " << i);
             }
         } else {
             // Test that all values behind last range of the segment are
@@ -234,7 +235,7 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
                 if (segmentView[i]) {
                     UNIT_ASSERT_C(
                         segmentView[i],
-                        testContext << " invalid index: " << i);
+                        TStringBuilder() << " invalid index: " << i);
                 }
             }
         }

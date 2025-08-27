@@ -41,7 +41,7 @@ public:
         }
     };
 
-    using iterator = typename TSet<TRange, TRangeLess, TStlAllocator>::iterator;
+    using TConstIterator = typename TSet<TRange, TRangeLess, TStlAllocator>::const_iterator;
 
     TSparseSegment(IAllocator* alloc, ui64 start, ui64 end);
 
@@ -51,14 +51,14 @@ public:
         return Ranges.empty();
     }
 
-    iterator begin()
+    [[nodiscard]] TConstIterator begin() const
     {
-        return Ranges.begin();
+        return Ranges.cbegin();
     }
 
-    iterator end()
+    [[nodiscard]] TConstIterator end() const
     {
-        return Ranges.end();
+        return Ranges.cend();
     }
 
 private:

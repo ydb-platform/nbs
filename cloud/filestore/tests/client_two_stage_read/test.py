@@ -60,7 +60,7 @@ def test_zero_range_read():
 
 def test_zero_range_read_rand_data():
 
-    file_size = 1024*1024
+    file_size = 1024 * 1024
     num_writes = random.randint(1, 10)
 
     client, results_path = __init_test()
