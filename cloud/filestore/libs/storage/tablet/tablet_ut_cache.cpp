@@ -1054,6 +1054,144 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         UNIT_ASSERT(!statsAfter.IsExhaustive);
     }
 
+    Y_UNIT_TEST(ShouldPopulateNodeRefsCacheViaSinglePageLists)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(10);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(10);
+        storageConfig.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(1);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test1"));
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test2"));
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test3"));
+
+        tablet.InitSession("client", "session");
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // Though all NodeRefs fit into the cache, we cannot be entirely
+        // sure that the cache is exhaustive
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                tablet.ListNodes(RootNodeId, 1, "")->Record.NodesSize());
+
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            statsBefore = statsAfter;
+        }
+
+        // If the list fits into the entire page, then the first request should
+        // be a miss and a second one a hit
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                3,
+                tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            statsBefore = statsAfter;
+        }
+        // This is the second listing and it should be a hit
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                3,
+                tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            statsBefore = statsAfter;
+        }
+
+        // Let us evict information about RootNodeId by creating an empty
+        // directory and listing it.
+        {
+            auto emptyDirId =
+                tablet
+                    .CreateNode(
+                        TCreateNodeArgs::Directory(RootNodeId, "empty_dir"))
+                    ->Record.GetNode()
+                    .GetId();
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                tablet.ListNodes(emptyDirId)->Record.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                tablet.ListNodes(emptyDirId)->Record.NodesSize());
+            // First listing is a miss, second is a hit
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            statsBefore = statsAfter;
+        }
+        // Now though all NodeRefs fit into the cache, we cannot be entirely
+        // sure that the cache is exhaustive for RootNodeId
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                4,
+                tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            statsBefore = statsAfter;
+        }
+        // Now there are four NodeRefs in memory: empty_dir, test1, test2, test3
+        // The cache capacity is 10, thus adding 8 more NodeRefs should evict 2
+        // of them leading to a cache miss upon listing
+        {
+            for (int i = 4; i <= 11; ++i) {
+                tablet.CreateNode(
+                    TCreateNodeArgs::File(
+                        RootNodeId,
+                        "test" + std::to_string(i)));
+            }
+            UNIT_ASSERT_VALUES_EQUAL(
+                12,
+                tablet.ListNodes(RootNodeId)->Record.NodesSize());
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            statsBefore = statsAfter;
+        }
+    }
+
     Y_UNIT_TEST(ShouldCalculateCacheCapacityBasedOnRatio)
     {
         NProto::TStorageConfig storageConfig;

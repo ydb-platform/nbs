@@ -14,14 +14,15 @@ TInMemoryIndexState::TInMemoryIndexState(IAllocator* allocator)
 void TInMemoryIndexState::Reset(
     ui64 nodesCapacity,
     ui64 nodeAttrsCapacity,
-    ui64 nodeRefsCapacity)
+    ui64 nodeRefsCapacity,
+    ui64 nodeRefsExhaustivenessCapacity)
 {
     Nodes.SetMaxSize(nodesCapacity);
     NodeAttrs.SetMaxSize(nodeAttrsCapacity);
-    if (NodeRefs.size() > nodeRefsCapacity) {
-        NodeRefsEvictionObserved();
+    NodeRefsExhaustivenessInfo.SetMaxSize(nodeRefsExhaustivenessCapacity);
+    for (const auto& key: NodeRefs.SetMaxSize(nodeRefsCapacity)) {
+        NodeRefsExhaustivenessInfo.NodeRefsEvictionObserved(key.NodeId);
     }
-    NodeRefs.SetMaxSize(nodeRefsCapacity);
 }
 
 void TInMemoryIndexState::LoadNodeRefs(const TVector<TNodeRef>& nodeRefs)
@@ -39,9 +40,7 @@ void TInMemoryIndexState::LoadNodeRefs(const TVector<TNodeRef>& nodeRefs)
 
 void TInMemoryIndexState::MarkNodeRefsLoadComplete()
 {
-    // If during the startup there were no evictions, then the cache should be
-    // complete upon the load completion.
-    IsNodeRefsExhaustive = !IsNodeRefsEvictionObserved;
+    NodeRefsExhaustivenessInfo.MarkNodeRefsLoadComplete();
 }
 
 TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
@@ -53,8 +52,7 @@ TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
         .NodeRefsCapacity = NodeRefs.GetMaxSize(),
         .NodeAttrsCount = NodeAttrs.Size(),
         .NodeAttrsCapacity = NodeAttrs.GetMaxSize(),
-        .IsNodeRefsExhaustive = IsNodeRefsExhaustive,
-    };
+        .IsNodeRefsExhaustive = NodeRefsExhaustivenessInfo.IsExhaustive()};
 }
 
 //
@@ -256,17 +254,17 @@ bool TInMemoryIndexState::ReadNodeRefs(
     const TString& cookie,
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
-    TString* next)
+    TString* next,
+    ui32* skippedRefs)
 {
-    if (!IsNodeRefsExhaustive) {
-        // TInMemoryIndexState is a preemptive cache, thus it is impossible to
-        // determine, whether the set of stored references is complete.
+    if (!NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId)) {
         return false;
     }
 
     auto it = NodeRefs.lower_bound(TNodeRefsKey(nodeId, cookie));
 
     ui32 bytes = 0;
+    ui32 skipped = 0;
     while (it != NodeRefs.end() && it->first.NodeId == nodeId) {
         NodeRefs.TouchKey(it->first);
 
@@ -286,6 +284,8 @@ bool TInMemoryIndexState::ReadNodeRefs(
             // FIXME: bytes should represent the size of entire entry, not just
             // the name
             bytes += refs.back().Name.size();
+        } else {
+            ++skipped;
         }
 
         ++it;
@@ -297,6 +297,10 @@ bool TInMemoryIndexState::ReadNodeRefs(
 
     if (next && it != NodeRefs.end() && it->first.NodeId == nodeId) {
         *next = it->first.Name;
+    }
+
+    if (skippedRefs) {
+        *skippedRefs = skipped;
     }
 
     return true;
@@ -343,10 +347,13 @@ void TInMemoryIndexState::WriteNodeRef(
         .ShardNodeName = shardNodeName};
 
     if (it == NodeRefs.end()) {
-        if (NodeRefs.size() == NodeRefs.GetMaxSize()) {
-            NodeRefsEvictionObserved();
+        const auto [_, inserted, evicted] =
+            NodeRefs.emplace(key, value);
+        if (evicted) {
+            NodeRefsExhaustivenessInfo.NodeRefsEvictionObserved(
+                evicted->NodeId);
         }
-        NodeRefs.emplace(key, value);
+
     } else {
         it->second = value;
     }
@@ -461,6 +468,14 @@ void TInMemoryIndexState::UpdateState(
             const auto* request = std::get_if<TDeleteNodeRefsRequest>(&update))
         {
             DeleteNodeRef(request->NodeId, request->Name);
+        } else if (
+            const auto* request =
+                std::get_if<TMarkNodeRefsAsCachedRequest>(&update))
+        {
+            if (NodeRefs.size() >= request->RefsSize) {
+                NodeRefsExhaustivenessInfo.MarkNodeRefsExhaustive(
+                    request->NodeId);
+            }
         } else {
             Y_UNREACHABLE();
         }

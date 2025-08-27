@@ -457,6 +457,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Cache_Stress)
         storageConfig.SetInMemoryIndexCacheNodesCapacity(100);
         storageConfig.SetInMemoryIndexCacheNodeAttrsCapacity(100);
         storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(2);
 
         ui64 seed = Now().GetValue();
         auto responses1 =

@@ -211,7 +211,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
-        TString* next = nullptr) override;
+        TString* next,
+        ui32* skippedRefs) override;
 
     virtual bool ReadNodeRefs(
         ui64 startNodeId,
@@ -629,7 +630,8 @@ public:
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
-        TString* next = nullptr) override;
+        TString* next = nullptr,
+        ui32* skippedRefs = nullptr) override;
 
     bool ReadNodeRefs(
         ui64 startNodeId,

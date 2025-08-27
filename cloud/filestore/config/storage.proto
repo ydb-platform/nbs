@@ -402,6 +402,7 @@ message TStorageConfig
     optional uint64 InMemoryIndexCacheNodesToNodeAttrsCapacityRatio = 375;
     optional uint64 InMemoryIndexCacheNodeRefsCapacity = 376;
     optional uint64 InMemoryIndexCacheNodesToNodeRefsCapacityRatio = 377;
+    optional uint64 InMemoryIndexCacheNodeRefsExhaustivenessCapacity = 437;
 
     // Used to send non-network metrics as network ones to HIVE,
     // while we use them for load balancing

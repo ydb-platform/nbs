@@ -60,14 +60,27 @@ class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFunc, TBase>>
         }
     }
 
-    void CleanupIfNeeded()
+    /**
+     * @brief Removes least recently used keys from the cache if its size
+     * exceeds the maximum allowed.
+     *
+     * @return TVector<TKey> A vector containing the keys that were evicted from
+     * the cache.
+     */
+    TVector<TKey> CleanupIfNeeded()
     {
+        TVector<TKey> evictedKeys;
+        if (Base.size() > MaxSize) {
+            evictedKeys.reserve(Base.size() - MaxSize);
+        }
         while (Base.size() > MaxSize) {
             auto& key = OrderList.back();
             Base.erase(key);
             OrderPositions.erase(key);
             OrderList.pop_back();
+            evictedKeys.emplace_back(key);
         }
+        return evictedKeys;
     }
 
 public:
@@ -80,10 +93,18 @@ public:
         , Alloc(alloc)
     {}
 
-    void SetMaxSize(size_t maxSize)
+    /**
+     * @brief Sets the maximum size of the cache and performs cleanup if
+     * necessary.
+     *
+     * @param maxSize The new maximum number of items allowed in the cache.
+     * @return TVector<TKey> A vector containing the excess keys that were
+     * evicted
+     */
+    TVector<TKey> SetMaxSize(size_t maxSize)
     {
         MaxSize = maxSize;
-        CleanupIfNeeded();
+        return CleanupIfNeeded();
     }
 
     void Reserve(size_t hint)
@@ -147,15 +168,20 @@ public:
     }
 
     template <typename... Args>
-    std::pair<iterator, bool> emplace(Args&&... args)
+    std::tuple<iterator, bool, std::optional<TKey>> emplace(Args&&... args)
     {
         if (MaxSize == 0) {
-            return {Base.end(), false};
+            return {Base.end(), false, std::nullopt};
         }
         auto result = Base.emplace(std::forward<Args>(args)...);
         TouchKey(result.first->first);
-        CleanupIfNeeded();
-        return result;
+        auto excessKey = CleanupIfNeeded();
+        // There should always be at most one excess key
+        Y_DEBUG_ABORT_UNLESS(excessKey.size() <= 1);
+        if (!excessKey.empty()) {
+            return {result.first, result.second, excessKey[0]};
+        }
+        return {result.first, result.second, std::nullopt};
     }
 
     TValue& at(const TKey& key)
