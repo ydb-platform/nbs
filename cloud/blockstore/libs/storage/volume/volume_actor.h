@@ -273,7 +273,7 @@ private:
         ui64 MountSeqNumber = 0;
         TClientRequestPtr ClientRequest = nullptr;
         bool ForceTabletRestart = false;
-        bool ForceRequest = false;
+        bool Retriable = false;
     };
 
     struct TReleaseDiskRequest
@@ -281,41 +281,13 @@ private:
         TString ClientId;
         TClientRequestPtr ClientRequest = nullptr;
         TVector<NProto::TDeviceConfig> DevicesToRelease;
-        bool ForceRequest = false;
+        bool Retriable = false;
     };
 
-    struct TAcquireReleaseDiskRequest
-    {
-        bool IsAcquire;
-        TString ClientId;
-        NProto::EVolumeAccessMode AccessMode =
-            NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_WRITE;
-        ui64 MountSeqNumber = 0;
-        TClientRequestPtr ClientRequest;
-        TVector<NProto::TDeviceConfig> DevicesToRelease;
-        const bool ForceRequest = false;
-        const bool ForceTabletRestart = false;
+    using TAcquireOrReleaseDiskRequest =
+        std::variant<TAcquireDiskRequest, TReleaseDiskRequest>;
 
-        TAcquireReleaseDiskRequest(TAcquireDiskRequest request)
-            : IsAcquire(true)
-            , ClientId(std::move(request.ClientId))
-            , AccessMode(request.AccessMode)
-            , MountSeqNumber(request.MountSeqNumber)
-            , ClientRequest(std::move(request.ClientRequest))
-            , ForceRequest(request.ForceRequest)
-            , ForceTabletRestart(request.ForceTabletRestart)
-        {}
-
-        TAcquireReleaseDiskRequest(TReleaseDiskRequest request)
-            : IsAcquire(false)
-            , ClientId(std::move(request.ClientId))
-            , ClientRequest(std::move(request.ClientRequest))
-            , DevicesToRelease(std::move(request.DevicesToRelease))
-            , ForceRequest(request.ForceRequest)
-        {}
-    };
-
-    TList<TAcquireReleaseDiskRequest> AcquireReleaseDiskRequests;
+    TList<TAcquireOrReleaseDiskRequest> AcquireReleaseDiskRequests;
     bool AcquireDiskScheduled = false;
     TBackoffDelayProvider BackoffDelayProviderForAcquireReleaseDiskRequests{
         Config->GetRetryAcquireReleaseDiskInitialDelay(),
@@ -585,7 +557,12 @@ private:
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);
     void AddAcquireReleaseDiskRequest(
         const NActors::TActorContext& ctx,
-        TAcquireReleaseDiskRequest request);
+        TAcquireOrReleaseDiskRequest request);
+
+    TAcquireOrReleaseDiskRequest* GetCurrentAcquireOrReleaseDiskRequest();
+    TAcquireDiskRequest* GetCurrentAcquireDiskRequest();
+    TReleaseDiskRequest* GetCurrentReleaseDiskRequest();
+
     void AddAcquireDiskRequest(
         const NActors::TActorContext& ctx,
         TAcquireDiskRequest request);

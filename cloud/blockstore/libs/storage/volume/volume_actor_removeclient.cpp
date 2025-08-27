@@ -44,6 +44,29 @@ std::unique_ptr<TEvVolume::TEvRemoveClientResponse> CreateReleaseResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+auto TVolumeActor::GetCurrentAcquireOrReleaseDiskRequest()
+    -> TAcquireOrReleaseDiskRequest*
+{
+    if (AcquireReleaseDiskRequests.empty()) {
+        return nullptr;
+    }
+    return &AcquireReleaseDiskRequests.front();
+}
+
+auto TVolumeActor::GetCurrentAcquireDiskRequest()
+    -> TAcquireDiskRequest*
+{
+    return std::get_if<TAcquireDiskRequest>(
+        GetCurrentAcquireOrReleaseDiskRequest());
+}
+
+auto TVolumeActor::GetCurrentReleaseDiskRequest()
+    -> TReleaseDiskRequest*
+{
+    return std::get_if<TReleaseDiskRequest>(
+        GetCurrentAcquireOrReleaseDiskRequest());
+}
+
 void TVolumeActor::ReleaseDisk(
     const TActorContext& ctx,
     const TString& clientId,
@@ -56,9 +79,9 @@ void TVolumeActor::ReleaseDisk(
 
     // Only direct acquire protocol allows to release specific devices.
     if (!devicesToRelease.empty()) {
-        Y_DEBUG_ABORT_UNLESS(
-            !AcquireReleaseDiskRequests.empty() &&
-            !AcquireReleaseDiskRequests.front().ClientRequest);
+        auto* request = GetCurrentReleaseDiskRequest();
+        Y_DEBUG_ABORT_UNLESS(request && !request->ClientRequest);
+
         HandleDevicesReleasedFinishedImpl(
             MakeError(
                 E_NOT_IMPLEMENTED,
@@ -91,7 +114,8 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
     const NProto::TError& error,
     const NActors::TActorContext& ctx)
 {
-    if (AcquireReleaseDiskRequests.empty()) {
+    auto* request = GetCurrentReleaseDiskRequest();
+    if (!request) {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -100,9 +124,6 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
 
         return;
     }
-
-    auto& request = AcquireReleaseDiskRequests.front();
-    auto clientRequest = request.ClientRequest;
 
     const bool hasError = HasError(error) && (error.GetCode() != E_NOT_FOUND);
     if (hasError) {
@@ -113,7 +134,7 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
             LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
-        if (request.ForceRequest &&
+        if (request->Retriable &&
             GetErrorKind(error) == EErrorKind::ErrorRetriable)
         {
             auto delay = BackoffDelayProviderForAcquireReleaseDiskRequests
@@ -127,8 +148,10 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
         BackoffDelayProviderForAcquireReleaseDiskRequests.Reset();
     }
 
+    auto clientRequest = request->ClientRequest;
+
     // This shouldn't be release of replaced devices.
-    Y_DEBUG_ABORT_UNLESS(!clientRequest || request.DevicesToRelease.empty());
+    Y_DEBUG_ABORT_UNLESS(!clientRequest || request->DevicesToRelease.empty());
 
     Y_DEFER
     {

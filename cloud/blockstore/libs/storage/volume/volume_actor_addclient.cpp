@@ -94,7 +94,7 @@ void TVolumeActor::AcquireDisk(
 
 void TVolumeActor::AddAcquireReleaseDiskRequest(
     const NActors::TActorContext& ctx,
-    TAcquireReleaseDiskRequest request)
+    TAcquireOrReleaseDiskRequest request)
 {
     AcquireReleaseDiskRequests.emplace_back(std::move(request));
 
@@ -107,7 +107,10 @@ void TVolumeActor::AddAcquireReleaseDiskRequest(
             "%s Postponing AcquireReleaseRequest[%s]: another request in "
             "flight",
             LogTitle.GetWithTime().c_str(),
-            AcquireReleaseDiskRequests.back().ClientId.Quote().c_str());
+            std::visit(
+                [](const auto& request) { return request.ClientId.Quote(); },
+                AcquireReleaseDiskRequests.back())
+                .c_str());
     }
 }
 
@@ -128,18 +131,24 @@ void TVolumeActor::AddReleaseDiskRequest(
 void TVolumeActor::ProcessNextAcquireReleaseDiskRequest(const TActorContext& ctx)
 {
     if (AcquireReleaseDiskRequests) {
-        auto& request = AcquireReleaseDiskRequests.front();
-
-        if (request.IsAcquire) {
-            AcquireDisk(
-                ctx,
-                request.ClientId,
-                request.AccessMode,
-                request.MountSeqNumber
-            );
-        } else {
-            ReleaseDisk(ctx, request.ClientId, request.DevicesToRelease);
-        }
+        std::visit(
+            TOverloaded(
+                [&](const TAcquireDiskRequest& request)
+                {
+                    AcquireDisk(
+                        ctx,
+                        request.ClientId,
+                        request.AccessMode,
+                        request.MountSeqNumber);
+                },
+                [&](const TReleaseDiskRequest& request)
+                {
+                    ReleaseDisk(
+                        ctx,
+                        request.ClientId,
+                        request.DevicesToRelease);
+                }),
+            AcquireReleaseDiskRequests.front());
     }
 }
 
@@ -167,7 +176,7 @@ void TVolumeActor::AcquireDiskImpl(const TActorContext& ctx, bool forceAcquire)
         return;
     }
 
-    bool queueEmpty = AcquireReleaseDiskRequests.empty();
+    const bool queueEmpty = AcquireReleaseDiskRequests.empty();
 
     for (const auto& x: State->GetClients()) {
         bool skip = false;
@@ -189,7 +198,7 @@ void TVolumeActor::AcquireDiskImpl(const TActorContext& ctx, bool forceAcquire)
             .AccessMode = x.second.GetVolumeClientInfo().GetVolumeAccessMode(),
             .MountSeqNumber =
                 x.second.GetVolumeClientInfo().GetMountSeqNumber(),
-            .ForceRequest = forceAcquire,
+            .Retriable = forceAcquire,
         };
 
         LOG_DEBUG(
@@ -261,9 +270,14 @@ void TVolumeActor::HandleRetryAcquireDisk(
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    if (AcquireReleaseDiskRequests.empty() ||
-        !AcquireReleaseDiskRequests.front().ForceRequest)
-    {
+
+    const bool unexpected =
+        AcquireReleaseDiskRequests.empty() ||
+        std::visit(
+            [](const auto& request) { return !request.Retriable; },
+            AcquireReleaseDiskRequests.front());
+
+    if (unexpected) {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -294,7 +308,8 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
     const NProto::TError& error,
     const NActors::TActorContext& ctx)
 {
-    if (AcquireReleaseDiskRequests.empty()) {
+    auto* request = GetCurrentAcquireDiskRequest();
+    if (!request) {
         ScheduleAcquireDiskIfNeeded(ctx);
 
         LOG_WARN(
@@ -306,9 +321,6 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
         return;
     }
 
-    auto& request = AcquireReleaseDiskRequests.front();
-    auto clientRequest = request.ClientRequest;
-
     if (HasError(error)) {
         LOG_ERROR(
             ctx,
@@ -317,7 +329,7 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
-        if (request.ForceRequest &&
+        if (request->Retriable &&
             GetErrorKind(error) == EErrorKind::ErrorRetriable)
         {
             LOG_ERROR(
@@ -344,6 +356,7 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
         ProcessNextAcquireReleaseDiskRequest(ctx);
     };
 
+    auto clientRequest = request->ClientRequest;
     if (!clientRequest) {
         return;
     }
@@ -355,8 +368,8 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             error,
             TabletID(),
             clientRequest->GetClientId(),
-            request.ForceTabletRestart,
-            request.ClientRequest->AddedClientInfo.GetInstanceId(),
+            request->ForceTabletRestart,
+            clientRequest->AddedClientInfo.GetInstanceId(),
             *State);
 
         NCloud::Reply(ctx, *clientRequest->RequestInfo, std::move(response));
@@ -508,7 +521,7 @@ void TVolumeActor::ReleaseDiskFromOldClients(
 
         AddReleaseDiskRequest(
             ctx,
-            {.ClientId = clientId, .ForceRequest = true});
+            {.ClientId = clientId, .Retriable = true});
     }
 }
 
