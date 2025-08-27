@@ -273,29 +273,24 @@ public:
                 continue;
             }
 
-            auto histogram = baseCounter->FindHistogram(name);
-            auto getValue = [&](size_t bucketId) -> ui64
+            auto getValue = [&baseCounter, this](size_t id) -> ui64
             {
-                if (histogram) {
-                    auto snapshot = histogram->Snapshot();
-                    if (bucketId < snapshot->Count()) {
-                        return snapshot->Value(bucketId);
-                    }
-                } else {
-                    const auto bucketName = Buckets[bucketId].Name;
-                    const auto counter = baseCounter->GetCounter(bucketName);
-                    if (counter) {
-                        return counter->Val();
-                    }
-                }
-                return 0;
-            };
+                const auto bucketName = Buckets[id].Name;
+                const auto counter = baseCounter->FindCounter(bucketName);
+                return counter ? counter->Val() : 0;
+            };   // ReportHistogramAsMultipleCounters
 
-            for (size_t bucketId = 0; bucketId < Buckets.size(); ++bucketId) {
-                size_t id = bucketId < IgnoreBucketCount
-                                ? 0
-                                : bucketId - IgnoreBucketCount;
-                (*Histogram)[id].second += getValue(bucketId);
+            auto histogram = baseCounter->FindHistogram(name);
+            auto getHistogramValue = [&histogram](size_t id) -> ui64
+            {
+                auto snapshot = histogram->Snapshot();
+                return id < snapshot->Count() ? snapshot->Value(id) : 0;
+            };   // ReportHistogramAsSingleCounter
+
+            for (size_t i = 0; i < Buckets.size(); ++i) {
+                auto value = histogram ? getHistogramValue(i) : getValue(i);
+                size_t id = i < IgnoreBucketCount ? 0 : i - IgnoreBucketCount;
+                (*Histogram)[id].second += value;
             }
         }
         consumer->OnHistogram(time, Histogram);
