@@ -51,7 +51,7 @@ type executionContext struct {
 	taskStateMutex sync.Mutex
 	finished       bool
 
-	hangingTaskTimeout                time.Duration
+	inflightDurationHangTimeout       time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
 }
 
@@ -122,7 +122,7 @@ func (c *executionContext) IsHanging() bool {
 	defer c.taskStateMutex.Unlock()
 
 	now := time.Now()
-	defaultDeadline := c.taskState.CreatedAt.Add(c.hangingTaskTimeout)
+	defaultDeadline := c.taskState.CreatedAt.Add(c.inflightDurationHangTimeout)
 
 	if c.taskState.EstimatedInflightDuration == 0 {
 		return now.After(defaultDeadline)
@@ -364,7 +364,7 @@ func newExecutionContext(
 	task Task,
 	storage storage.Storage,
 	taskState storage.TaskState,
-	hangingTaskTimeout time.Duration,
+	inflightDurationHangTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
 ) *executionContext {
 
@@ -373,7 +373,7 @@ func newExecutionContext(
 		storage:   storage,
 		taskState: taskState,
 
-		hangingTaskTimeout:                hangingTaskTimeout,
+		inflightDurationHangTimeout:       inflightDurationHangTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
 	}
 }

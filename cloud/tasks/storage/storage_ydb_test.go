@@ -1021,7 +1021,7 @@ type hangingTaskTestFixture struct {
 	t                                 *testing.T
 	storage                           Storage
 	ctx                               context.Context
-	hangingTaskTimeout                time.Duration
+	inflightDurationHangTimeout       time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
 	stallingDurationHangTimeout       time.Duration
 	totalDurationHangTimeout          time.Duration
@@ -1116,7 +1116,7 @@ func (f hangingTaskTestFixture) createHangingTaskNoEstimate(
 	return f.createTaskWithInflightDuration(
 		taskType,
 		taskStatus,
-		f.hangingTaskTimeout+time.Minute,
+		f.inflightDurationHangTimeout+time.Minute,
 		0, // estimatedInflightDuration
 	)
 }
@@ -1208,8 +1208,8 @@ func newHangingTaskTestFixture(
 	config *tasks_config.TasksConfig,
 ) hangingTaskTestFixture {
 
-	hangingTaskTimeout, err := time.ParseDuration(
-		config.GetHangingTaskTimeout(),
+	inflightDurationHangTimeout, err := time.ParseDuration(
+		config.GetInflightDurationHangTimeout(),
 	)
 	require.NoError(t, err)
 
@@ -1226,7 +1226,7 @@ func newHangingTaskTestFixture(
 	ctx, cancel := context.WithCancel(newContext())
 	fixture := hangingTaskTestFixture{
 		t:                                 t,
-		hangingTaskTimeout:                hangingTaskTimeout,
+		inflightDurationHangTimeout:       inflightDurationHangTimeout,
 		missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
 		stallingDurationHangTimeout:       stallingDurationHangTimeout,
 		totalDurationHangTimeout:          totalDurationHangTimeout,
@@ -1254,14 +1254,14 @@ func newHangingTaskTestFixture(
 }
 
 func TestStorageYDBListHangingTasks(t *testing.T) {
-	hangingTaskTimeout := 5 * time.Hour
-	hangingTaskTimeoutString := hangingTaskTimeout.String()
+	inflightDurationHangTimeout := 5 * time.Hour
+	inflightDurationHangTimeoutString := inflightDurationHangTimeout.String()
 	missedEstimatesUntilTaskIsHanging := uint64(2)
 	stallingDurationHangTimeout := 30 * time.Minute
 	stallingDurationHangTimeoutString := stallingDurationHangTimeout.String()
 	totalDurationHangTimeoutString := "24h"
 	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
-		HangingTaskTimeout:                &hangingTaskTimeoutString,
+		InflightDurationHangTimeout:       &inflightDurationHangTimeoutString,
 		MissedEstimatesUntilTaskIsHanging: &missedEstimatesUntilTaskIsHanging,
 		StallingDurationHangTimeout:       &stallingDurationHangTimeoutString,
 		TotalDurationHangTimeout:          &totalDurationHangTimeoutString,
@@ -1308,7 +1308,7 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 		)
 
 		// Estimate is missed but default estimate is not
-		fixture.createTaskWithInflightDuration("c", taskStatus, hangingTaskTimeout-time.Minute, 10*time.Minute)
+		fixture.createTaskWithInflightDuration("c", taskStatus, inflightDurationHangTimeout-time.Minute, 10*time.Minute)
 		fixture.createTaskWithStallingDuration("c", taskStatus, stallingDurationHangTimeout-time.Minute, 10*time.Minute)
 	}
 
@@ -1324,10 +1324,10 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 }
 
 func TestStorageYDBListHangingTasksWithExceptions(t *testing.T) {
-	hangingTaskTimeout := "5h"
+	inflightDurationHangTimeout := "5h"
 	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
-		ExceptHangingTaskTypes: []string{"exception"},
-		HangingTaskTimeout:     &hangingTaskTimeout,
+		ExceptHangingTaskTypes:      []string{"exception"},
+		InflightDurationHangTimeout: &inflightDurationHangTimeout,
 	})
 	defer fixture.teardown()
 

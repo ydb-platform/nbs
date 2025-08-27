@@ -368,7 +368,7 @@ func TestExecutionContextShouldNotBeHangingByDefault(t *testing.T) {
 			ID:        taskID,
 			CreatedAt: time.Now(),
 		},
-		time.Hour, // hangingTaskTimeout
+		time.Hour, // inflightDurationHangTimeout
 		2,
 	)
 
