@@ -85,7 +85,7 @@ func (m *storageMetricsImpl) OnTaskUpdated(
 			metrics.estimateMiss.RecordDuration(estimateMiss)
 			logging.Info(
 				ctx,
-				"Task estimated inflight time debug. Task: %q, started: %q, ended: %q, estimate: %q, actual: %q, miss: %q",
+				"Task %q missed its inflight estimate: started: %q, ended: %q, estimate: %q, actual: %q, miss: %q",
 				state.ID,
 				state.CreatedAt,
 				state.EndedAt,
