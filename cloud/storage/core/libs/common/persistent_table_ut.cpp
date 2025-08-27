@@ -458,6 +458,159 @@ Y_UNIT_TEST_SUITE(TPersistentTableTest)
         table = std::make_shared<TTable>(tablePath, tableSize);
         validateFillEmptyTable(table);
     }
+
+    Y_UNIT_TEST(ShouldGrowTableIfRecordCountIncreased)
+    {
+        TTempDir dir;
+        auto tablePath = dir.Path() / "table";
+        auto initialTableSize = 32;
+        auto increasedTableSize = 48;
+
+        using TTable = TPersistentTable<THeader, TRecord>;
+
+        auto indexToVal = [](auto index)
+        {
+            return 9900 + index;
+        };
+
+        // fill table with initialTableSize elements
+        auto table = std::make_shared<TTable>(tablePath, initialTableSize);
+        for (auto i = 0; i < initialTableSize; i++) {
+            auto index = table->AllocRecord();
+            UNIT_ASSERT_VALUES_UNEQUAL(table->InvalidIndex, index);
+            UNIT_ASSERT_VALUES_EQUAL(table->CountRecords(), index + 1);
+            table->RecordData(index)->Index = i;
+            table->RecordData(index)->Val = indexToVal(i);
+            table->CommitRecord(index);
+        }
+
+        // init table with increased increasedTableSize elements
+        table = std::make_shared<TTable>(tablePath, increasedTableSize);
+        UNIT_ASSERT_VALUES_EQUAL(initialTableSize, table->CountRecords());
+
+        // validate previous elements remain in the table
+        auto it = table->begin();
+        for (auto i = 0; i < initialTableSize ; i++) {
+            UNIT_ASSERT_C(it != table->end(), "index " << i << " not found");
+            UNIT_ASSERT_VALUES_EQUAL(i, it.GetIndex());
+            UNIT_ASSERT_VALUES_EQUAL(i, it->Index);
+            UNIT_ASSERT_VALUES_EQUAL(indexToVal(i), it->Val);
+            it++;
+        }
+
+        // validate that (increasedTableSize - initialTableSize) elements can be added
+        for (auto i = initialTableSize; i < increasedTableSize ; i++) {
+            auto index = table->AllocRecord();
+            UNIT_ASSERT_VALUES_UNEQUAL(table->InvalidIndex, index);
+            UNIT_ASSERT_VALUES_EQUAL(table->CountRecords(), index + 1);
+            table->RecordData(index)->Index = i;
+            table->RecordData(index)->Val = indexToVal(i);
+            table->CommitRecord(index);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(increasedTableSize, table->CountRecords());
+
+        // validate table is full
+        UNIT_ASSERT_VALUES_EQUAL(table->InvalidIndex, table->AllocRecord());
+    }
+
+    Y_UNIT_TEST(ShouldNotShrinkTableIfRecordCountDecreasedInOccupiedTable)
+    {
+        TTempDir dir;
+        auto tablePath = dir.Path() / "table";
+        auto initialTableSize = 32;
+        auto decreasedTableSize = 16;
+
+        using TTable = TPersistentTable<THeader, TRecord>;
+
+        auto indexToVal = [](auto index)
+        {
+            return 9900 + index;
+        };
+
+        // fill table with initialTableSize elements
+        auto table = std::make_shared<TTable>(tablePath, initialTableSize);
+        for (auto i = 0; i < initialTableSize; i++) {
+            auto index = table->AllocRecord();
+            UNIT_ASSERT_VALUES_UNEQUAL(table->InvalidIndex, index);
+            UNIT_ASSERT_VALUES_EQUAL(table->CountRecords(), index + 1);
+            table->RecordData(index)->Index = i;
+            table->RecordData(index)->Val = indexToVal(i);
+            table->CommitRecord(index);
+        }
+
+        // init table with decreased decreasedTableSize elements
+        table = std::make_shared<TTable>(tablePath, decreasedTableSize);
+        UNIT_ASSERT_VALUES_EQUAL(initialTableSize, table->CountRecords());
+
+        // validate previous elements remain in the table
+        auto it = table->begin();
+        for (auto i = 0; i < initialTableSize ; i++) {
+            UNIT_ASSERT_C(it != table->end(), "index " << i << " not found");
+            UNIT_ASSERT_VALUES_EQUAL(i, it.GetIndex());
+            UNIT_ASSERT_VALUES_EQUAL(i, it->Index);
+            UNIT_ASSERT_VALUES_EQUAL(indexToVal(i), it->Val);
+            it++;
+        }
+
+        // validate table is full
+        UNIT_ASSERT_VALUES_EQUAL(table->InvalidIndex, table->AllocRecord());
+    }
+
+    Y_UNIT_TEST(ShouldShrinkTableIfRecordCountDecreasedInPartiallyOccupiedTable)
+    {
+        TTempDir dir;
+        auto tablePath = dir.Path() / "table";
+        auto initialTableSize = 32;
+        auto decreasedTableSize = initialTableSize / 2;
+
+        using TTable = TPersistentTable<THeader, TRecord>;
+
+        auto indexToVal = [](auto index)
+        {
+            return 9900 + index;
+        };
+
+        // fill table with initialTableSize elements
+        auto table = std::make_shared<TTable>(tablePath, initialTableSize);
+        for (auto i = 0; i < initialTableSize; i++) {
+            auto index = table->AllocRecord();
+            UNIT_ASSERT_VALUES_UNEQUAL(table->InvalidIndex, index);
+            UNIT_ASSERT_VALUES_EQUAL(table->CountRecords(), index + 1);
+            table->RecordData(index)->Index = i;
+            table->RecordData(index)->Val = indexToVal(i);
+            table->CommitRecord(index);
+        }
+
+        // delete odd elements
+        for (auto i = 0; i < initialTableSize; i++) {
+            if (i % 2 != 0) {
+                table->DeleteRecord(i);
+            }
+        }
+
+        // init table with decreased decreasedTableSize elements
+        table = std::make_shared<TTable>(tablePath, decreasedTableSize);
+        UNIT_ASSERT_VALUES_EQUAL(decreasedTableSize, table->CountRecords());
+
+        // validate previous elements remain in the table
+        auto it = table->begin();
+        for (auto i = 0; i < decreasedTableSize ; i++) {
+            UNIT_ASSERT_C(it != table->end(), "index " << i << " not found");
+            UNIT_ASSERT_VALUES_EQUAL(i, it.GetIndex());
+            UNIT_ASSERT_VALUES_EQUAL(i*2, it->Index);
+            UNIT_ASSERT_VALUES_EQUAL(indexToVal(i*2), it->Val);
+            it++;
+        }
+
+        // validate table is full
+        UNIT_ASSERT_VALUES_EQUAL(table->InvalidIndex, table->AllocRecord());
+
+        // validate we can allocate after deleting entry
+        table->DeleteRecord(decreasedTableSize-1);
+        UNIT_ASSERT_VALUES_EQUAL(decreasedTableSize-1, table->AllocRecord());
+
+    }
 }
 
 }   // namespace NCloud
