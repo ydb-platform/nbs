@@ -181,7 +181,7 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
 
         testContext << " numHoles: " << numHoles;
 
-       // Set each vector element to true at the indices where there are holes
+        // Set each vector element to true at the indices where there are holes
         std::vector<bool> segmentView(segmentEnd, false);
         for (size_t i = 0; i < numHoles; ++i) {
             ui64 point1 = rand() % 10_KB;
@@ -194,7 +194,10 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
             testContext << " holeEnd: " << holeEnd;
 
             segment.PunchHole(holeStart, holeEnd);
-            for (size_t i = holeStart; i < std::min(holeEnd, segmentEnd); ++i) {
+            for (size_t i = std::max(segmentStart, holeStart);
+                 i < std::min(holeEnd, segmentEnd);
+                 ++i)
+            {
                 segmentView[i] = true;
             }
         }
