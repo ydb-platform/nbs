@@ -194,7 +194,7 @@ Y_UNIT_TEST_SUITE(TSparseSegmentTest)
             testContext << " holeEnd: " << holeEnd;
 
             segment.PunchHole(holeStart, holeEnd);
-            for (size_t i = holeStart; i < holeEnd; ++i) {
+            for (size_t i = holeStart; i < std::min(holeEnd, segmentEnd); ++i) {
                 segmentView[i] = true;
             }
         }
