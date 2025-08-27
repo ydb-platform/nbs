@@ -201,3 +201,36 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
 	require.NoError(t, err)
 }
+
+func TestDeleteDiskTaskWithNonExistentDisk(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	poolService := pools_mocks.NewServiceMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	execCtx := newExecutionContextMock()
+
+	disk := &types.Disk{DiskId: "disk"}
+	request := &protos.DeleteDiskRequest{Disk: disk}
+
+	task := &deleteDiskTask{
+		storage:     storage,
+		scheduler:   scheduler,
+		poolService: poolService,
+		nbsFactory:  nbsFactory,
+		request:     request,
+		state:       &protos.DeleteDiskTaskState{},
+	}
+
+	storage.On(
+		"DeleteDisk",
+		ctx,
+		"disk",
+		"toplevel_task_id",
+		mock.Anything,
+	).Return((*resources.DiskMeta)(nil), nil)
+
+	err := task.Run(ctx, execCtx)
+	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, execCtx)
+	require.NoError(t, err)
+}
