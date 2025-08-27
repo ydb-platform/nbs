@@ -153,7 +153,8 @@ public:
     virtual bool PrechargeNodeRefs(
         ui64 nodeId,
         const TString& cookie,
-        ui32 bytesToPrecharge) = 0;
+        ui64 rowsToPrecharge,
+        ui64 bytesToPrecharge) = 0;
 
     //
     // NodeRefs_Ver

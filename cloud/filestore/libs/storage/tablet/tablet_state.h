@@ -628,7 +628,8 @@ public:
         IIndexTabletDatabase& db,
         ui64 nodeId,
         const TString& cookie,
-        ui32 bytesToPrecharge);
+        ui64 rowsToPrecharge,
+        ui64 bytesToPrecharge);
 
     void RewriteNodeRef(
         TIndexTabletDatabase& db,

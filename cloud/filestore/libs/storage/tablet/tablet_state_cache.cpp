@@ -320,9 +320,10 @@ bool TInMemoryIndexState::ReadNodeRefs(
 bool TInMemoryIndexState::PrechargeNodeRefs(
     ui64 nodeId,
     const TString& cookie,
-    ui32 bytesToPrecharge)
+    ui64 rowsToPrecharge,
+    ui64 bytesToPrecharge)
 {
-    Y_UNUSED(nodeId, cookie, bytesToPrecharge);
+    Y_UNUSED(nodeId, cookie, rowsToPrecharge, bytesToPrecharge);
     return true;
 }
 
