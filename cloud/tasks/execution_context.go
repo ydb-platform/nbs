@@ -32,7 +32,7 @@ type ExecutionContext interface {
 
 	IsHanging() bool
 
-	SetEstimate(estimatedDuration time.Duration)
+	SetInflightEstimate(estimatedDuration time.Duration)
 
 	HasEvent(ctx context.Context, event int64) bool
 
@@ -124,11 +124,11 @@ func (c *executionContext) IsHanging() bool {
 	now := time.Now()
 	defaultDeadline := c.taskState.CreatedAt.Add(c.hangingTaskTimeout)
 
-	if c.taskState.EstimatedDuration == 0 {
+	if c.taskState.EstimatedInflightDuration == 0 {
 		return now.After(defaultDeadline)
 	}
 
-	estimatedDuration := c.taskState.EstimatedDuration
+	estimatedDuration := c.taskState.EstimatedInflightDuration
 	deadline := c.taskState.CreatedAt.Add(
 		estimatedDuration * time.Duration(c.missedEstimatesUntilTaskIsHanging),
 	)
@@ -139,12 +139,12 @@ func (c *executionContext) IsHanging() bool {
 	return now.After(deadline)
 }
 
-func (c *executionContext) SetEstimate(estimatedDuration time.Duration) {
+func (c *executionContext) SetInflightEstimate(estimatedDuration time.Duration) {
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 
-	if c.taskState.EstimatedDuration == 0 {
-		c.taskState.EstimatedDuration = estimatedDuration
+	if c.taskState.EstimatedInflightDuration == 0 {
+		c.taskState.EstimatedInflightDuration = estimatedDuration
 	}
 }
 

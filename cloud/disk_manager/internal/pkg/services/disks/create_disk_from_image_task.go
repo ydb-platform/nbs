@@ -106,7 +106,7 @@ func (t *createDiskFromImageTask) Run(
 	}
 
 	if imageMeta != nil {
-		execCtx.SetEstimate(performance.Estimate(
+		execCtx.SetInflightEstimate(performance.Estimate(
 			imageMeta.StorageSize,
 			t.performanceConfig.GetCreateDiskFromImageBandwidthMiBs(),
 		))

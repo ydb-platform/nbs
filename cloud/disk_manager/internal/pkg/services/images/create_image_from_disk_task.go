@@ -146,7 +146,7 @@ func (t *createImageFromDiskTask) run(
 	}
 
 	// TODO: estimate should be applied before resource creation, not after.
-	execCtx.SetEstimate(performance.Estimate(
+	execCtx.SetInflightEstimate(performance.Estimate(
 		typedResponse.SnapshotStorageSize,
 		t.performanceConfig.GetCreateImageFromDiskBandwidthMiBs(),
 	))

@@ -1037,19 +1037,19 @@ func (f hangingTaskTestFixture) createTask(
 ) string {
 
 	state := TaskState{
-		IdempotencyKey:    getIdempotencyKeyForTest(f.t),
-		TaskType:          taskType,
-		Description:       "Some task",
-		CreatedAt:         createdAt,
-		CreatedBy:         "some_user",
-		ModifiedAt:        time.Now(),
-		GenerationID:      10,
-		Status:            taskStatus,
-		State:             []byte{},
-		Dependencies:      common.NewStringSet(),
-		InflightDuration:  time.Since(createdAt),
-		EstimatedDuration: estimatedDuration,
-		StallingDuration:  stallingDuration,
+		IdempotencyKey:            getIdempotencyKeyForTest(f.t),
+		TaskType:                  taskType,
+		Description:               "Some task",
+		CreatedAt:                 createdAt,
+		CreatedBy:                 "some_user",
+		ModifiedAt:                time.Now(),
+		GenerationID:              10,
+		Status:                    taskStatus,
+		State:                     []byte{},
+		Dependencies:              common.NewStringSet(),
+		InflightDuration:          time.Since(createdAt),
+		EstimatedInflightDuration: estimatedDuration,
+		StallingDuration:          stallingDuration,
 	}
 
 	taskID, err := f.storage.CreateTask(f.ctx, state)
@@ -1061,7 +1061,7 @@ func (f hangingTaskTestFixture) createTask(
 		createdAt,
 		TaskStatusToString(taskStatus),
 		state.InflightDuration,
-		state.EstimatedDuration,
+		state.EstimatedInflightDuration,
 		state.StallingDuration,
 	)
 	return taskID
@@ -1198,7 +1198,7 @@ func newHangingTaskTestFixture(
 func TestStorageYDBListHangingTasks(t *testing.T) {
 	hangingTaskTimeout := 5 * time.Hour
 	hangingTaskTimeoutString := hangingTaskTimeout.String()
-	stallingDurationHangTimeoutString := "1h"
+	stallingDurationHangTimeoutString := "30m"
 	totalDurationHangTimeoutString := "24h"
 	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
 		HangingTaskTimeout:          &hangingTaskTimeoutString,
@@ -1780,19 +1780,19 @@ func TestStorageYDBListSlowTasks(t *testing.T) {
 
 	createTask := func(created time.Time, estimated, durationMinutes int) TaskInfo {
 		task := TaskState{
-			IdempotencyKey:    getIdempotencyKeyForTest(t),
-			TaskType:          "task1",
-			Description:       "some task",
-			CreatedAt:         created,
-			CreatedBy:         "some_user",
-			ModifiedAt:        created,
-			GenerationID:      generationID,
-			Status:            TaskStatusFinished,
-			State:             []byte{0},
-			Dependencies:      common.NewStringSet(),
-			EndedAt:           created,
-			InflightDuration:  time.Duration(durationMinutes) * time.Minute,
-			EstimatedDuration: time.Duration(estimated) * time.Minute,
+			IdempotencyKey:            getIdempotencyKeyForTest(t),
+			TaskType:                  "task1",
+			Description:               "some task",
+			CreatedAt:                 created,
+			CreatedBy:                 "some_user",
+			ModifiedAt:                created,
+			GenerationID:              generationID,
+			Status:                    TaskStatusFinished,
+			State:                     []byte{0},
+			Dependencies:              common.NewStringSet(),
+			EndedAt:                   created,
+			InflightDuration:          time.Duration(durationMinutes) * time.Minute,
+			EstimatedInflightDuration: time.Duration(estimated) * time.Minute,
 		}
 		id, err := storage.CreateTask(ctx, task)
 		generationID += 1

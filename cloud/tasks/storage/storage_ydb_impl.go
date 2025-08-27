@@ -959,10 +959,13 @@ func (s *storageYDB) listHangingTasks(
 			(task_type not in $except_task_types) and
 			(
 			    inflight_duration >= MAX_OF(
-					estimated_duration * $missed_estimates_until_task_is_hanging,
+					estimated_inflight_duration * $missed_estimates_until_task_is_hanging,
 					$hanging_task_timeout,
 				) or
-				(stalling_duration >= $stalling_duration_hang_timeout) or
+				stalling_duration >= MAX_OF(
+					estimated_stalling_duration * $missed_estimates_until_task_is_hanging,
+					$stalling_duration_hang_timeout,
+				) or
 				($now - created_at >= $total_duration_hang_timeout)
 			)
 		limit $limit;
@@ -1121,9 +1124,9 @@ func (s *storageYDB) listSlowTasks(
 		from tasks
 		where
 			id in $task_ids
-			and estimated_duration > Interval("P0D")
-			and (inflight_duration - estimated_duration) >= $estimateMiss
-		order by DateTime::ToSeconds(inflight_duration) / DateTime::ToSeconds(estimated_duration) desc
+			and estimated_inflight_duration > Interval("P0D")
+			and (inflight_duration - estimated_inflight_duration) >= $estimateMiss
+		order by DateTime::ToSeconds(inflight_duration) / DateTime::ToSeconds(estimated_inflight_duration) desc
 	`, s.tablesPath),
 		persistence.ValueParam("$since", persistence.TimestampValue(since)),
 		persistence.ValueParam("$estimateMiss", persistence.IntervalValue(estimateMiss)),
