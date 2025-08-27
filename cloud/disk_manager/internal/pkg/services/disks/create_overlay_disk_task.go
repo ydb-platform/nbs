@@ -164,19 +164,15 @@ func (t *createOverlayDiskTask) Cancel(
 	}
 
 	if diskMeta == nil {
-		return nil
-	}
-
-	if len(disk.ZoneID) == 0 {
-		// If diskMeta has no zoneID, the disk wasn't in the database - either
-		// nbsClient.CreateDisk was never called or
+		// If diskMeta is nil, the disk wasn't in the database or has been
+		// already deleted - either nbsClient.CreateDisk was never called or
 		// nbsClient.Delete completed successfully.
-		return t.storage.DiskDeleted(ctx, overlayDisk.DiskId, time.Now())
+		return nil
 	}
 
 	// Idempotently retrieve the correct zone from database since
 	// cell selection is performed within the Run() method.
-	overlayDisk.ZoneId = disk.ZoneID
+	overlayDisk.ZoneId = diskMeta.ZoneID
 
 	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
 	if err != nil {

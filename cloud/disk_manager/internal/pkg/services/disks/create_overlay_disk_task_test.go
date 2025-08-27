@@ -361,7 +361,6 @@ func TestCancelCreateOverlayDiskTaskBeforeRunIsCalled(t *testing.T) {
 	scheduler := tasks_mocks.NewSchedulerMock()
 	poolService := pools_mocks.NewServiceMock()
 	nbsFactory := nbs_mocks.NewFactoryMock()
-	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
 
 	request := &protos.CreateOverlayDiskRequest{
@@ -388,7 +387,6 @@ func TestCancelCreateOverlayDiskTaskBeforeRunIsCalled(t *testing.T) {
 		state:       &protos.CreateOverlayDiskTaskState{},
 	}
 
-	// Must return disk without specified ZoneID.
 	storage.On(
 		"DeleteDisk",
 		ctx,
@@ -397,9 +395,7 @@ func TestCancelCreateOverlayDiskTaskBeforeRunIsCalled(t *testing.T) {
 		mock.Anything,
 	).Return((*resources.DiskMeta)(nil), nil)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
-
 	err := task.Cancel(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, execCtx)
 	require.NoError(t, err)
 }

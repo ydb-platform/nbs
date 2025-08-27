@@ -247,7 +247,6 @@ func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
 	ctx := context.Background()
 	storage := storage_mocks.NewStorageMock()
 	nbsFactory := nbs_mocks.NewFactoryMock()
-	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
 
 	params := &protos.CreateDiskParams{
@@ -268,10 +267,7 @@ func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
 		state:      &protos.CreateEmptyDiskTaskState{},
 	}
 
-<<<<<<< HEAD
 	// There is no such disk in storage.
-=======
->>>>>>> add test for Cancelling task for NonExistentDisk
 	storage.On(
 		"DeleteDisk",
 		ctx,
@@ -280,9 +276,7 @@ func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
 		mock.Anything,
 	).Return((*resources.DiskMeta)(nil), nil)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
-
 	err := task.Cancel(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(t, storage, nbsFactory, execCtx)
 	require.NoError(t, err)
 }
