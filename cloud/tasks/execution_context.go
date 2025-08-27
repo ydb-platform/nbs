@@ -52,6 +52,8 @@ type executionContext struct {
 	finished       bool
 
 	inflightDurationHangTimeout       time.Duration
+	stallingDurationHangTimeout       time.Duration
+	totalDurationHangTimeout          time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
 }
 
@@ -121,22 +123,25 @@ func (c *executionContext) IsHanging() bool {
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 
-	now := time.Now()
-	defaultDeadline := c.taskState.CreatedAt.Add(c.inflightDurationHangTimeout)
+	inflightDurationTimeout := c.taskState.EstimatedInflightDuration *
+		time.Duration(c.missedEstimatesUntilTaskIsHanging)
 
-	if c.taskState.EstimatedInflightDuration == 0 {
-		return now.After(defaultDeadline)
+	if inflightDurationTimeout < c.inflightDurationHangTimeout {
+		inflightDurationTimeout = c.inflightDurationHangTimeout
 	}
 
-	estimatedDuration := c.taskState.EstimatedInflightDuration
-	deadline := c.taskState.CreatedAt.Add(
-		estimatedDuration * time.Duration(c.missedEstimatesUntilTaskIsHanging),
-	)
-	if deadline.Before(defaultDeadline) {
-		return now.After(defaultDeadline)
+	stallingDurationTimeout := c.taskState.EstimatedStallingDuration *
+		time.Duration(c.missedEstimatesUntilTaskIsHanging)
+
+	if stallingDurationTimeout < c.stallingDurationHangTimeout {
+		stallingDurationTimeout = c.stallingDurationHangTimeout
 	}
 
-	return now.After(deadline)
+	deadline := time.Now().Add(c.totalDurationHangTimeout)
+
+	return c.taskState.InflightDuration > inflightDurationTimeout ||
+		c.taskState.StallingDuration > stallingDurationTimeout ||
+		time.Now().After(deadline)
 }
 
 func (c *executionContext) SetInflightEstimate(estimatedDuration time.Duration) {
@@ -365,6 +370,8 @@ func newExecutionContext(
 	storage storage.Storage,
 	taskState storage.TaskState,
 	inflightDurationHangTimeout time.Duration,
+	stallingDurationHangTimeout time.Duration,
+	totalDurationHangTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
 ) *executionContext {
 
@@ -374,6 +381,8 @@ func newExecutionContext(
 		taskState: taskState,
 
 		inflightDurationHangTimeout:       inflightDurationHangTimeout,
+		stallingDurationHangTimeout:       stallingDurationHangTimeout,
+		totalDurationHangTimeout:          totalDurationHangTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
 	}
 }
