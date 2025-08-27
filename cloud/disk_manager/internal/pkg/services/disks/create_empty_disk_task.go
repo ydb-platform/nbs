@@ -49,14 +49,14 @@ func (t *createEmptyDiskTask) Run(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	zoneID := t.params.Disk.ZoneId
+	selectedZoneID := t.params.Disk.ZoneId
 	if !common.IsLocalDiskKind(t.params.Kind) {
-		zoneID = t.cellSelector.SelectCell(t.params.Disk, t.params.FolderId)
+		selectedZoneID = t.cellSelector.SelectCell(t.params.Disk, t.params.FolderId)
 	}
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:          t.params.Disk.DiskId,
-		ZoneID:      zoneID,
+		ZoneID:      selectedZoneID,
 		BlocksCount: t.params.BlocksCount,
 		BlockSize:   t.params.BlockSize,
 		Kind:        common.DiskKindToString(t.params.Kind),

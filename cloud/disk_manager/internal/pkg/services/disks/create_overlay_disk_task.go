@@ -55,11 +55,11 @@ func (t *createOverlayDiskTask) Run(
 	overlayDisk := params.Disk
 	selfTaskID := execCtx.GetTaskID()
 
-	zoneID := t.cellSelector.SelectCell(overlayDisk, params.FolderId)
+	selectedZoneID := t.cellSelector.SelectCell(overlayDisk, params.FolderId)
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:          overlayDisk.DiskId,
-		ZoneID:      zoneID,
+		ZoneID:      selectedZoneID,
 		SrcImageID:  t.request.SrcImageId,
 		BlocksCount: params.BlocksCount,
 		BlockSize:   params.BlockSize,

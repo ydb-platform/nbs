@@ -64,11 +64,11 @@ func (t *createDiskFromImageTask) Run(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	zoneID := t.cellSelector.SelectCell(params.Disk, params.FolderId)
+	selectedZoneID := t.cellSelector.SelectCell(params.Disk, params.FolderId)
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:          params.Disk.DiskId,
-		ZoneID:      zoneID,
+		ZoneID:      selectedZoneID,
 		SrcImageID:  t.request.SrcImageId,
 		BlocksCount: params.BlocksCount,
 		BlockSize:   params.BlockSize,
