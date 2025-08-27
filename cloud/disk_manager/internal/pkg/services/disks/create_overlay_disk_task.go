@@ -174,12 +174,6 @@ func (t *createOverlayDiskTask) Cancel(
 	// cell selection is performed within the Run() method.
 	overlayDisk.ZoneId = diskMeta.ZoneID
 
-	// If nbsFactory doesn't have such client, zone is incorrect. Should finish
-	// deleting disk from storage.
-	if !t.nbsFactory.HasClient(overlayDisk.ZoneId) {
-		return t.storage.DiskDeleted(ctx, overlayDisk.DiskId, time.Now())
-	}
-
 	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
 	if err != nil {
 		return err

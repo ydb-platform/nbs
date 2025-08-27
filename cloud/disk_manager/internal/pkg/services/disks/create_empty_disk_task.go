@@ -137,12 +137,6 @@ func (t *createEmptyDiskTask) Cancel(
 	// cell selection is performed within the Run() method.
 	t.params.Disk.ZoneId = diskMeta.ZoneID
 
-	// If nbsFactory doesn't have such client, zone is incorrect. Should finish
-	// deleting disk from storage.
-	if !t.nbsFactory.HasClient(t.params.Disk.ZoneId) {
-		return t.storage.DiskDeleted(ctx, t.params.Disk.DiskId, time.Now())
-	}
-
 	client, err := t.nbsFactory.GetClient(ctx, t.params.Disk.ZoneId)
 	if err != nil {
 		return err
