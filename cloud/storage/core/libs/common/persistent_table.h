@@ -246,7 +246,7 @@ private:
             header->RecordSize,
             sizeof(TRecord));
 
-        const auto initalRecordCount = RecordCount;
+        const auto initialRecordCount = RecordCount;
 
         auto resizeTable = [this](auto newRecordCount) {
             FileMap->ResizeAndRemap(0, CalcFileSize(newRecordCount));
@@ -258,13 +258,13 @@ private:
         };
 
         // allow table to grow if table was previously allocated with smaller size
-        resizeTable(std::max(header->RecordCount, initalRecordCount));
+        resizeTable(std::max(header->RecordCount, initialRecordCount));
 
         CompactRecords();
 
         // shrink table if it fits into requested size after compaction
-        if (initalRecordCount < RecordCount && NextFreeRecord <= initalRecordCount) {
-            resizeTable(initalRecordCount);
+        if (initialRecordCount < RecordCount && NextFreeRecord <= initialRecordCount) {
+            resizeTable(initialRecordCount);
         }
     }
 
