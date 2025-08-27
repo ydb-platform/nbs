@@ -30,8 +30,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename T>
 TVector<NProto::TChecksum> CalculateChecksumsForWriteRequest(
-    const TSgList& sgList,
+    const T& buffers,
     ui64 startIndex,
     ui32 blockSize)
 {
@@ -40,29 +41,30 @@ TVector<NProto::TChecksum> CalculateChecksumsForWriteRequest(
     const ui64 splitChecksumsIndex =
         AlignUp<ui64>(startIndex + 1, maxBlockCount);
     const ui64 firstChecksumLength =
-        Min(splitChecksumsIndex - startIndex, sgList.size());
+        Min(splitChecksumsIndex - startIndex,
+            static_cast<ui64>(buffers.size()));
 
     TVector<NProto::TChecksum> result;
     size_t i = 0;
     TBlockChecksum checksumCalculator;
     for (; i < firstChecksumLength; i++) {
-        auto blockData = sgList[i];
-        checksumCalculator.Extend(blockData.Data(), blockData.Size());
+        const auto& blockData = buffers[i];
+        checksumCalculator.Extend(blockData.data(), blockData.size());
     }
     NProto::TChecksum checksum;
     checksum.SetChecksum(checksumCalculator.GetValue());
     checksum.SetByteCount(firstChecksumLength * blockSize);
     result.push_back(std::move(checksum));
 
-    if (firstChecksumLength < sgList.size()) {
+    if (firstChecksumLength < static_cast<ui64>(buffers.size())) {
         NProto::TChecksum checksum;
         checksum.SetByteCount(
-            (sgList.size() - firstChecksumLength) * blockSize);
+            (buffers.size() - firstChecksumLength) * blockSize);
         TBlockChecksum checksumCalculator;
-        for (; i < sgList.size(); i++) {
+        for (; i < static_cast<ui64>(buffers.size()); i++) {
             TVector<ui32> result;
-            auto blockData = sgList[i];
-            checksumCalculator.Extend(blockData.Data(), blockData.Size());
+            const auto& blockData = buffers[i];
+            checksumCalculator.Extend(blockData.data(), blockData.size());
         }
         checksum.SetChecksum(checksumCalculator.GetValue());
         result.push_back(std::move(checksum));
@@ -335,9 +337,8 @@ bool TDataIntegrityClient::HandleRequest(
 {
     RequestCounters.WriteRequests->Inc();
 
-    TSgList sgList = GetSgList(*request);
     auto checksums = CalculateChecksumsForWriteRequest(
-        sgList,
+        request->GetBlocks().GetBuffers(),
         request->GetStartIndex(),
         BlockSize);
     for (auto& checksum: checksums) {
