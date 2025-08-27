@@ -1246,7 +1246,12 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         out << style;
 
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
-        BuildResetButton(out, TabletID(), "resetRequestLatencyStats");
+
+        RenderStyledPostButton(
+            out,
+            "/tablets/app?action=resetRequestLatencyStats&TabletID=" +
+                ToString(TabletID()),
+            "Reset");
 
         RenderStyledLink(
             out,

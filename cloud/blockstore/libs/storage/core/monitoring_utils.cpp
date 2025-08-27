@@ -1223,7 +1223,12 @@ void DumpLatency(
 
     HTML (out) {
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
-        BuildResetButton(out, tabletId, "resetTransactionLatencyStats");
+
+        RenderStyledPostButton(
+            out,
+            "/tablets/app?action=resetTransactionLatencyStats&TabletID=" +
+                ToString(tabletId),
+            "Reset");
 
         RenderStyledLink(
             out,
@@ -1548,7 +1553,12 @@ void DumpGroupLatencyTab(
         AddGroupLatencyCSS(out);
 
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
-        BuildResetButton(out, tabletId, "resetBSGroupLatencyStats");
+
+        RenderStyledPostButton(
+            out,
+            "/tablets/app?action=resetBSGroupLatencyStats&TabletID=" +
+                ToString(tabletId),
+            "Reset");
 
         RenderStyledLink(
             out,
@@ -1667,35 +1677,8 @@ void DumpGroupLatencyTab(
     }
 }
 
-void BuildResetButton(
-    IOutputStream& out,
-    ui64 tabletId,
-    const TString& actionName)
-{
-    out << R"(<script>
-    function )"
-        << actionName << R"(() {
-        $.ajax({
-            url: '?action=)"
-        << actionName << R"(&TabletID=)" << ToString(tabletId) << R"(',
-            method: 'POST',
-            data: {
-                action: ')" << actionName << R"(',
-                TabletID: ')" << tabletId << R"('
-            },
-            error: function(xhr) {
-                alert('Error: ' + xhr.statusText);
-            }
-        });
-    }
-    </script>)";
-
-    out << "<button onclick=\"" << actionName << "()\">reset</button>";
-}
-
 TString FormatTransactionsInflight(
-    const THashMap<ui64, TTransactionTimeTracker::TTransactionInflight>&
-        operations,
+    const TTransactionTimeTracker::TInflightMap& operations,
     ui64 nowCycles,
     TInstant now)
 {
@@ -1830,8 +1813,7 @@ TString FormatRequestsInflight(
 }
 
 TString FormatBSGroupOperationsInflight(
-    const THashMap<ui64, TBSGroupOperationTimeTracker::TOperationInflight>&
-        operations,
+    const TBSGroupOperationTimeTracker::TInflightMap& operations,
     ui64 nowCycles,
     TInstant now)
 {
@@ -1897,22 +1879,36 @@ TString FormatBSGroupOperationsInflight(
     return out.Str();
 }
 
+const TStringBuf DefaultButtonStyle =
+    "display:inline-block;"
+    "padding:2px 8px;"
+    "background:#f5f5f5;"
+    "color:#222;"
+    "border:1px solid #ccc;"
+    "border-radius:3px;"
+    "text-decoration:none;"
+    "font-size:0.9em;"
+    "font-weight:600;";
+
 void RenderStyledLink(
     IOutputStream& out,
     const TString& url,
-    const TString& text)
+    const TString& text,
+    TStringBuf style)
 {
-    out << "<a href='" << url << "' style='"
-        << "display:inline-block;"
-        << "padding:2px 8px;"
-        << "background:#f5f5f5;"
-        << "color:#222;"
-        << "border:1px solid #ccc;"
-        << "border-radius:3px;"
-        << "text-decoration:none;"
-        << "font-size:0.9em;"
-        << "font-weight:600;"
-        << "'>" << text << "</a>";
+    out << "<a href='" << url << "' style='" << style << "'>" << text << "</a>";
+}
+
+void RenderStyledPostButton(
+    IOutputStream& out,
+    const TString& url,
+    const TString& text,
+    TStringBuf style)
+{
+    out << "<button style='" << style << "' "
+        << "onclick=\"fetch('" << url << "', {method:'POST'})"
+        << ".catch(e => alert('Error: ' + e.message))\">" << text
+        << "</button>";
 }
 
 }   // namespace NMonitoringUtils

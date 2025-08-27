@@ -205,7 +205,7 @@ void TTransactionTimeTracker::ResetStats()
     }
 }
 
-const THashMap<ui64, TTransactionTimeTracker::TTransactionInflight>&
+const TTransactionTimeTracker::TInflightMap&
 TTransactionTimeTracker::GetInflightOperations() const
 {
     return Inflight;

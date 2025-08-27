@@ -57,6 +57,8 @@ public:
         ERequestType RequestType = ERequestType::Read;
     };
 
+    using TInflightMap = THashMap<ui64, TRequestInflight>;
+
 private:
     constexpr static size_t RequestTypeCount =
         static_cast<size_t>(ERequestType::Last) + 1;
@@ -100,7 +102,7 @@ private:
     const ui64 ConstructionTime;
 
     std::array<TFirstRequest, RequestTypeCount> FirstRequests;
-    THashMap<ui64, TRequestInflight> InflightRequests;
+    TInflightMap InflightRequests;
     THashMap<TKey, TTimeHistogram, THash, TEqual> Histograms;
 
     [[nodiscard]] NJson::TJsonValue BuildPercentilesJson() const;
@@ -133,8 +135,7 @@ public:
 
     void ResetStats();
 
-    [[nodiscard]] const THashMap<ui64, TRequestsTimeTracker::TRequestInflight>&
-    GetInflightOperations() const;
+    [[nodiscard]] const TInflightMap& GetInflightOperations() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -444,7 +444,7 @@ void TRequestsTimeTracker::ResetStats()
     }
 }
 
-const THashMap<ui64, TRequestsTimeTracker::TRequestInflight>&
+const TRequestsTimeTracker::TInflightMap&
 TRequestsTimeTracker::GetInflightOperations() const
 {
     return InflightRequests;

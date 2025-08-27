@@ -219,7 +219,7 @@ void TBSGroupOperationTimeTracker::ResetStats()
     }
 }
 
-const THashMap<ui64, TBSGroupOperationTimeTracker::TOperationInflight>&
+const TBSGroupOperationTimeTracker::TInflightMap&
 TBSGroupOperationTimeTracker::GetInflightOperations() const
 {
     return Inflight;

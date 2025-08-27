@@ -216,30 +216,32 @@ void DumpGroupLatencyTab(
     ui64 tabletId,
     const TBSGroupOperationTimeTracker& tracker);
 
-void BuildResetButton(
-    IOutputStream& out,
-    ui64 tabletId,
-    const TString& actionName);
-
 TString FormatTransactionsInflight(
-    const THashMap<ui64, TTransactionTimeTracker::TTransactionInflight>&
-        operations,
+    const TTransactionTimeTracker::TInflightMap& operations,
     ui64 nowCycles,
     TInstant now);
 
 TString FormatRequestsInflight(
-    const THashMap<ui64, TRequestsTimeTracker::TRequestInflight>& operations,
+    const TRequestsTimeTracker::TInflightMap& operations,
     ui64 nowCycles,
     TInstant now);
 
 TString FormatBSGroupOperationsInflight(
-    const THashMap<ui64, TBSGroupOperationTimeTracker::TOperationInflight>&
-        operations,
+    const TBSGroupOperationTimeTracker::TInflightMap& operations,
     ui64 nowCycles,
     TInstant now);
+
+extern const TStringBuf DefaultButtonStyle;
 
 void RenderStyledLink(
     IOutputStream& out,
     const TString& url,
-    const TString& text);
+    const TString& text,
+    TStringBuf style = DefaultButtonStyle);
+
+void RenderStyledPostButton(
+    IOutputStream& out,
+    const TString& url,
+    const TString& text,
+    TStringBuf style = DefaultButtonStyle);
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils

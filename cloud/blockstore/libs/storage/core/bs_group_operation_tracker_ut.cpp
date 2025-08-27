@@ -133,17 +133,20 @@ Y_UNIT_TEST_SUITE(TBSGroupOperationTimeTrackerTest)
             1,
             1,
             TBSGroupOperationTimeTracker::EOperationType::Write,
-            1000 * GetCyclesPerMillisecond());
+            1000 * GetCyclesPerMillisecond(),
+            0);
         timeTracker.OnStarted(
             2,
             1,
             TBSGroupOperationTimeTracker::EOperationType::Write,
-            1000 * GetCyclesPerMillisecond());
+            1000 * GetCyclesPerMillisecond(),
+            0);
         timeTracker.OnStarted(
             3,
             2,
             TBSGroupOperationTimeTracker::EOperationType::Read,
-            2000 * GetCyclesPerMillisecond());
+            2000 * GetCyclesPerMillisecond(),
+            0);
 
         timeTracker.OnFinished(1, 3000 * GetCyclesPerMillisecond());
         timeTracker.OnFinished(2, 3000 * GetCyclesPerMillisecond());
