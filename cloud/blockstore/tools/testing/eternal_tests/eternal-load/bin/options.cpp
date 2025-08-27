@@ -6,10 +6,63 @@ namespace NCloud::NBlockStore {
 
 using namespace NLastGetopt;
 
-const THashMap<TString, ECommand> NameToCommand = {
+namespace {
+
+const THashMap<TString, ECommand> nameToCommand = {
     {"file", ECommand::ReadConfigCmd},
     {"generated", ECommand::GenerateConfigCmd},
 };
+
+const THashMap<TString, EScenario> nameToScenario = {
+    {"block", EScenario::Block},
+    {"file", EScenario::File}
+};
+
+const THashMap<TString, EIoEngine> nameToEngine = {
+    {"asyncio", EIoEngine::AsyncIo},
+    {"uring", EIoEngine::IoUring},
+    {"sync", EIoEngine::Sync}
+};
+
+template <class T>
+struct TMapOption
+{
+    T* Target;
+    const THashMap<TString, T>& Map;
+    const T DefaultValue;
+
+    TMapOption(T* target, const THashMap<TString, T>& map, T defaultValue)
+        : Target(target)
+        , Map(map)
+        , DefaultValue(defaultValue)
+    {}
+};
+
+template <class T>
+TOpt& operator|(TOpt& opt, const TMapOption<T>& map)
+{
+    THashSet<TString> choices;
+    TString defaultValue;
+    for (const auto& [key, value]: map.Map) {
+        choices.insert(key);
+        if (value == map.DefaultValue) {
+            defaultValue = key;
+        }
+    }
+
+    opt.RequiredArgument("STR");
+    opt.Choices(choices);
+
+    if (defaultValue) {
+        opt.DefaultValue(defaultValue);
+    }
+
+    return opt.StoreMappedResultT<TString>(
+        map.Target,
+        [map = map.Map](const TString& v) { return map.at(v); });
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -20,20 +73,36 @@ void TOptions::Parse(int argc, char** argv)
 
     opts.AddLongOption(
         "config-type",
-        R"(specify type of config:
-            file - reads config from specified file
-            generated - run test with generated config from specified parameters)")
-        .RequiredArgument("STR")
+        "specify type of config:\n"
+        "- file: reads config from specified file\n"
+        "- generated: run test with generated config from specified parameters")
         .Required()
-        .StoreResult(&CommandName)
-        .Handler0([this] {
-            auto it = NameToCommand.find(CommandName);
-            if (it == NameToCommand.end()) {
-                Command = ECommand::UnknownCmd;
-            } else {
-                Command = it->second;
-            }
-        });
+        | TMapOption(&Command, nameToCommand, ECommand::UnknownCmd);
+
+    opts.AddLongOption(
+        "scenario",
+        "specify the testing scenario:\n"
+        "- block: use aligned blocks and AIO\n"
+        "- file: unaligned read and writes")
+        | TMapOption(&Scenario, nameToScenario, EScenario::Block);
+
+    opts.AddLongOption(
+        "engine",
+        "specify the IO engine:\n"
+        "- asyncio: AsyncIO\n"
+        "- uring: io_uring\n"
+        "- sync: synchronous IO + threads")
+        | TMapOption(&Engine, nameToEngine, EIoEngine::AsyncIo);
+
+    opts.AddLongOption(
+        "no-direct",
+        "Do not set O_DIRECT flag")
+        .StoreTrue(&NoDirect);
+
+    opts.AddLongOption(
+        "run-from-any-thread",
+        "Run test logic from any thread")
+        .StoreTrue(&RunFromAnyThread);
 
     opts.AddLongOption("file", "path to file or block device")
         .RequiredArgument("STR")
@@ -90,6 +159,11 @@ void TOptions::Parse(int argc, char** argv)
         "path to test config")
         .RequiredArgument("STR")
         .StoreResult(&RestorePath);
+
+    opts.AddLongOption(
+        "debug",
+        "print debug statistics")
+        .StoreTrue(&PrintDebugInfo);
 
     TOptsParseResultException(&opts, argc, argv);
 }
