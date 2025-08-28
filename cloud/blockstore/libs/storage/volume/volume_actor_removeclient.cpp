@@ -113,14 +113,15 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
             LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
-        if (request.RetryIfTimeoutOrUndelivery &&
+        if (request.Retriable &&
             GetErrorKind(error) == EErrorKind::ErrorRetriable)
         {
             auto delay = BackoffDelayProviderForAcquireReleaseDiskRequests
                              .GetDelayAndIncrease();
             ctx.Schedule(
                 delay,
-                std::make_unique<TEvVolume::TEvRetryAcquireDisk>().release());
+                std::make_unique<TEvVolume::TEvRetryAcquireReleaseDisk>()
+                    .release());
             return;
         }
     } else {

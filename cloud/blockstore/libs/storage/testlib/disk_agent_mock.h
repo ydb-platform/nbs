@@ -20,11 +20,19 @@ using TCreateDirectCopyActorFunc = std::function<void(
     const NActors::TActorContext& ctx,
     NActors::TActorId owner)>;
 
+using TAcquireObserveFunction = std::function<bool(
+    TEvDiskAgent::TEvAcquireDevicesRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)>;
+
 struct TDiskAgentState
 {
     TDuration ResponseDelay;
     NProto::TError Error;
     TCreateDirectCopyActorFunc CreateDirectCopyActorFunc;
+    TAcquireObserveFunction AcquireObserveFunction = [](auto&, const auto&)
+    {
+        return false;
+    };
 };
 
 using TDiskAgentStatePtr = std::shared_ptr<TDiskAgentState>;
@@ -335,8 +343,12 @@ private:
         TEvDiskAgent::TEvAcquireDevicesRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
+        NProto::TError error;
+        if (State && State->AcquireObserveFunction(ev, ctx)) {
+            error = MakeError(E_BS_INVALID_SESSION, "invalid session");
+        }
         auto response =
-            std::make_unique<TEvDiskAgent::TEvAcquireDevicesResponse>();
+            std::make_unique<TEvDiskAgent::TEvAcquireDevicesResponse>(error);
 
         Reply(ctx, *ev, std::move(response));
     }

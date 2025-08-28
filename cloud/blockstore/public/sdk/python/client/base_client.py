@@ -130,7 +130,8 @@ class _BaseClient(object):
         if request.Headers is None:
             request.Headers = protos.THeaders()
 
-        request.Headers.ClientId = self.__client_id
+        if request.Headers.ClientId == "":
+            request.Headers.ClientId = self.__client_id
 
         if idempotence_id is not None:
             request.Headers.IdempotenceId = idempotence_id
