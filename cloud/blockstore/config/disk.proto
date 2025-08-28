@@ -311,7 +311,7 @@ message TDiskAgentConfig
     // When a volume with a higher generation sends an Acquire request,
     // we kick out the old client (from older generations)
     // and acquire a device for the new client.
-    optional bool AllowToKickOutOldClients = 42;
+    optional bool KickOutOldClientsEnabled = 42;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
