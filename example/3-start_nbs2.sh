@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-IC_PORT=${IC_PORT:-29502}
+IC_PORT=${IC_PORT:-29522}
 GRPC_PORT=${GRPC_PORT:-9001}
-SERVER_PORT=${SERVER_PORT:-9766}
-DATA_SERVER_PORT=${DATA_SERVER_PORT:-9767}
-SECURE_SERVER_PORT=${SECURE_SERVER_PORT:-9768}
-MON_PORT=${MON_PORT:-8766}
+SERVER_PORT=${SERVER_PORT:-9786}
+DATA_SERVER_PORT=${DATA_SERVER_PORT:-9787}
+SECURE_SERVER_PORT=${SECURE_SERVER_PORT:-9788}
+MON_PORT=${MON_PORT:-8786}
 source ./prepare_binaries.sh || exit 1
 
 nbsd \
@@ -21,8 +21,8 @@ nbsd \
     --ic-file            nbs/nbs-ic.txt \
     --log-file           nbs/nbs-log.txt \
     --sys-file           nbs/nbs-sys.txt \
-    --server-file        nbs/nbs-server.txt \
-    --storage-file       nbs/nbs-storage.txt \
+    --server-file        nbs/nbs-server2.txt \
+    --storage-file       nbs/nbs-storage2.txt \
     --naming-file        nbs/nbs-names.txt \
     --diag-file          nbs/nbs-diag.txt \
     --features-file      nbs/nbs-features.txt \
@@ -31,5 +31,5 @@ nbsd \
     --rdma-file          nbs/nbs-rdma.txt \
     --service            kikimr \
     --load-configs-from-cms \
-    --profile-file       logs/profile-log.bin \
-    $@ 2>&1 | tee logs/nbs.1.log
+    --profile-file       logs/profile-log2.bin \
+    $@ 2>&1 | tee logs/nbs.2.log
