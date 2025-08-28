@@ -38,7 +38,6 @@ Cells: {
 
 ```mermaid
 sequenceDiagram
-    sequenceDiagram
     participant CreateDiskTask
     participant CellSelector
 
