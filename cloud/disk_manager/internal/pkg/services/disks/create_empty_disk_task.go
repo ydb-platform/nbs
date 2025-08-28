@@ -7,6 +7,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -18,11 +19,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createEmptyDiskTask struct {
-	storage    resources.Storage
-	scheduler  tasks.Scheduler
-	nbsFactory nbs.Factory
-	params     *protos.CreateDiskParams
-	state      *protos.CreateEmptyDiskTaskState
+	storage      resources.Storage
+	scheduler    tasks.Scheduler
+	nbsFactory   nbs.Factory
+	params       *protos.CreateDiskParams
+	state        *protos.CreateEmptyDiskTaskState
+	cellSelector cells.CellSelector
 }
 
 func (t *createEmptyDiskTask) Save() ([]byte, error) {
@@ -45,16 +47,16 @@ func (t *createEmptyDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.nbsFactory.GetClient(ctx, t.params.Disk.ZoneId)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
+
+	selectedZoneID := t.params.Disk.ZoneId
+	if !common.IsLocalDiskKind(t.params.Kind) {
+		selectedZoneID = t.cellSelector.SelectCell(t.params.Disk, t.params.FolderId)
+	}
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:          t.params.Disk.DiskId,
-		ZoneID:      t.params.Disk.ZoneId,
+		ZoneID:      selectedZoneID,
 		BlocksCount: t.params.BlocksCount,
 		BlockSize:   t.params.BlockSize,
 		Kind:        common.DiskKindToString(t.params.Kind),
@@ -75,6 +77,14 @@ func (t *createEmptyDiskTask) Run(
 			"id %v is not accepted",
 			t.params.Disk.DiskId,
 		)
+	}
+
+	// If the disk has already been added to the database, idempotently
+	// retrieve the correct zone where it was created, because cellSelector
+	// is not idempotent.
+	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
+	if err != nil {
+		return err
 	}
 
 	err = client.Create(ctx, nbs.CreateDiskParams{
@@ -104,11 +114,6 @@ func (t *createEmptyDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.nbsFactory.GetClient(ctx, t.params.Disk.ZoneId)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
 
 	diskMeta, err := t.storage.DeleteDisk(
@@ -122,7 +127,19 @@ func (t *createEmptyDiskTask) Cancel(
 	}
 
 	if diskMeta == nil {
+		// If diskMeta is nil, the disk wasn't in the database or has already
+		// been deleted - either nbsClient.CreateDisk was never called or
+		// nbsClient.Delete completed successfully.
 		return nil
+	}
+
+	// Idempotently retrieve the correct zone from database since
+	// cell selection is performed within the Run() method.
+	t.params.Disk.ZoneId = diskMeta.ZoneID
+
+	client, err := t.nbsFactory.GetClient(ctx, t.params.Disk.ZoneId)
+	if err != nil {
+		return err
 	}
 
 	err = client.Delete(ctx, t.params.Disk.DiskId)

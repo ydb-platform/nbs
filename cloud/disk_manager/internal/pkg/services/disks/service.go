@@ -51,11 +51,6 @@ func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 	}
 }
 
-func isLocalDiskKind(kind disk_manager.DiskKind) bool {
-	return (kind == disk_manager.DiskKind_DISK_KIND_HDD_LOCAL ||
-		kind == disk_manager.DiskKind_DISK_KIND_SSD_LOCAL)
-}
-
 func prepareEncryptionMode(
 	mode disk_manager.EncryptionMode,
 ) (types.EncryptionMode, error) {
@@ -173,30 +168,6 @@ func (s *service) getZoneIDForExistingDisk(
 	return diskMeta.ZoneID, nil
 }
 
-func (s *service) prepareZoneID(
-	ctx context.Context,
-	req *disk_manager.CreateDiskRequest,
-) (string, error) {
-
-	if isLocalDiskKind(req.Kind) {
-		// When creating a local disk, we need to find a cell
-		// for its agents (storage nodes).
-		// TODO: implement this selection.
-		return req.DiskId.ZoneId, nil
-	}
-
-	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, req.DiskId.DiskId)
-	if err != nil {
-		return "", err
-	}
-
-	if diskMeta != nil {
-		return diskMeta.ZoneID, nil
-	}
-
-	return s.cellSelector.SelectCell(ctx, req), nil
-}
-
 func (s *service) prepareCreateDiskParams(
 	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
@@ -211,9 +182,12 @@ func (s *service) prepareCreateDiskParams(
 		)
 	}
 
-	zoneID, err := s.prepareZoneID(ctx, req)
-	if err != nil {
-		return nil, err
+	if !s.nbsFactory.HasClient(req.DiskId.ZoneId) {
+		return nil, common.NewInvalidArgumentError(
+			"unknown zone %q, available zones: %q",
+			req.DiskId.ZoneId,
+			s.nbsFactory.GetZones(),
+		)
 	}
 
 	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
@@ -290,7 +264,7 @@ func (s *service) prepareCreateDiskParams(
 	return &protos.CreateDiskParams{
 		BlocksCount: blocksCount,
 		Disk: &types.Disk{
-			ZoneId: zoneID,
+			ZoneId: req.DiskId.ZoneId,
 			DiskId: req.DiskId.DiskId,
 		},
 		BlockSize:               blockSize,
