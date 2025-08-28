@@ -1,0 +1,25 @@
+Using 25000 directories
+
+=== Stage 1: Read directory entries to populate FUSE cache ===
+Total entries cached: 25000
+
+=== Stage 2: Use seekdir and readdir with interruption to trigger offset-based reads ===
+Test positions: 10000, 20000, 24000, 24500, 24900
+Seeking to position 1680320 (entry ~10000: dirname18919)
+  Read from dir1 offset: dirname18919
+  entry_names[10000]   : dirname18919
+Seeking to position 3360320 (entry ~20000: dirname5454)
+[2025-07-27 23:06:13] Waiting for file '/mnt/fs0/test_file_continue' to be created after filehost restart...
+[2025-07-27 23:06:19] File '/mnt/fs0/test_file_continue' detected, restart was successful, continuing...
+  Read from dir1 offset: dirname5454
+  entry_names[20000]   : dirname5454
+Seeking to position 4032320 (entry ~24000: dirname9090)
+  Read from dir1 offset: dirname9090
+  entry_names[24000]   : dirname9090
+Seeking to position 4116320 (entry ~24500: dirname9545)
+  Read from dir1 offset: dirname9545
+  entry_names[24500]   : dirname9545
+Seeking to position 4183520 (entry ~24900: dirname9909)
+  Read from dir1 offset: dirname9909
+  entry_names[24900]   : dirname9909
+Directory reading test completed with success
