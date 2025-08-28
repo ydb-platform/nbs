@@ -32,4 +32,4 @@ nbsd \
     --service            kikimr \
     --load-configs-from-cms \
     --profile-file       logs/profile-log2.bin \
-    $@ > logs/nbs.2.log 2>&1
+    $@ 2>&1 | tee logs/nbs.2.log
