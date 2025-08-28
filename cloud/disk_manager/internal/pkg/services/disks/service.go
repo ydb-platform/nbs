@@ -182,6 +182,14 @@ func (s *service) prepareCreateDiskParams(
 		)
 	}
 
+	if !s.nbsFactory.HasClient(req.DiskId.ZoneId) {
+		return nil, common.NewInvalidArgumentError(
+			"unknown zone %q, available zones: %q",
+			req.DiskId.ZoneId,
+			s.nbsFactory.GetZones(),
+		)
+	}
+
 	diskIDPrefix := s.config.GetCreationAndDeletionAllowedOnlyForDisksWithIdPrefix()
 	if len(diskIDPrefix) != 0 && !strings.HasPrefix(req.DiskId.DiskId, diskIDPrefix) {
 		return nil, common.NewInvalidArgumentError(
