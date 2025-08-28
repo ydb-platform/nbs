@@ -2161,7 +2161,7 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     TString* next,
     ui32* skippedRefs)
 {
-    ui32 skipped;
+    ui32 skipped = 0;
     if (!skippedRefs) {
         skippedRefs = &skipped;
     }

@@ -347,8 +347,7 @@ void TInMemoryIndexState::WriteNodeRef(
         .ShardNodeName = shardNodeName};
 
     if (it == NodeRefs.end()) {
-        const auto [_, inserted, evicted] =
-            NodeRefs.emplace(key, value);
+        const auto [_, inserted, evicted] = NodeRefs.emplace(key, value);
         if (evicted) {
             NodeRefsExhaustivenessInfo.NodeRefsEvictionObserved(
                 evicted->NodeId);

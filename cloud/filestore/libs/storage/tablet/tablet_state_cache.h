@@ -352,8 +352,7 @@ private:
         void MarkNodeRefsLoadComplete()
         {
             // If during the startup there were no evictions, then the cache
-            // should be
-            // complete upon the load completion.
+            // should be complete upon the load completion.
             IsNodeRefsExhaustive = !IsNodeRefsEvictionObserved;
         }
 
