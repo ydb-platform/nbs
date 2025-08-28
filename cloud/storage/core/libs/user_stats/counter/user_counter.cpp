@@ -211,11 +211,12 @@ class TUserSumHistogramWrapper
     using TExplicitHistogramSnapshot = NMonitoring::TExplicitHistogramSnapshot;
 
 private:
-    static constexpr size_t IgnoreBucketCount = 10;
+    static constexpr size_t MergeFirstBucketsCount = 10;
 
-    TVector<TIntrusivePtr<NMonitoring::TDynamicCounters>> Counters;
     const TBuckets Buckets;
     const TString Units;
+    TVector<TBaseDynamicCounters> BaseCounters;
+    const size_t HistogramSize;
     TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
     EMetricType Type = EMetricType::UNKNOWN;
 
@@ -225,12 +226,12 @@ public:
         const TVector<TBaseDynamicCounters>& baseCounters)
         : Buckets(buckets.first)
         , Units(buckets.second)
-        , Histogram(TExplicitHistogramSnapshot::New(
-              Buckets.size() - IgnoreBucketCount))
+        , HistogramSize(Buckets.size() - MergeFirstBucketsCount)
+        , Histogram(TExplicitHistogramSnapshot::New(HistogramSize))
         , Type(EMetricType::HIST_RATE)
     {
-        for (size_t i = IgnoreBucketCount; i < Buckets.size(); ++i) {
-            (*Histogram)[i - IgnoreBucketCount].first = Buckets[i].Bound;
+        for (size_t i = 0; i < HistogramSize; ++i) {
+            (*Histogram)[i].first = Buckets[i + MergeFirstBucketsCount].Bound;
         }
 
         for (const auto& [baseCounter, name]: baseCounters) {
@@ -245,15 +246,15 @@ public:
                 subgroup = subgroup->FindSubgroup("units", Units);
             }
             if (subgroup) {
-                Counters.push_back(subgroup);
+                BaseCounters.emplace_back(subgroup, name);
             }
         }
     }
 
     void Clear() const
     {
-        for (size_t i = IgnoreBucketCount; i < Buckets.size(); ++i) {
-            (*Histogram)[i - IgnoreBucketCount].second = 0;
+        for (size_t i = 0; i < HistogramSize; ++i) {
+            (*Histogram)[i].second = 0;
         }
     }
 
@@ -262,18 +263,43 @@ public:
         consumer->OnMetricBegin(Type);
     }
 
+    void IncrementHistogram(ui64 value, size_t baseBucketId) const
+    {
+        // Base histogram in usec vs user histogram in msec, merge first buckets
+        size_t id = baseBucketId < MergeFirstBucketsCount
+                        ? 0
+                        : baseBucketId - MergeFirstBucketsCount;
+        (*Histogram)[id].second += value;
+    }
+
     void GetValue(
         TInstant time,
         NMonitoring::IMetricConsumer* consumer) const override
     {
         Clear();
 
-        for (const auto& counter: Counters) {
+        for (const auto& [baseCounter, name]: BaseCounters) {
+            if (!baseCounter) {
+                continue;
+            }
+
+            const auto histogram = baseCounter->FindHistogram(name);
+            if (histogram) {
+                // ReportHistogramAsSingleCounter option is on
+                const auto snapshot = histogram->Snapshot();
+                const size_t count =
+                    Min<size_t>(Buckets.size(), snapshot->Count());
+                for (size_t i = 0; i < count; ++i) {
+                    IncrementHistogram(snapshot->Value(i), i);
+                }
+                continue;
+            }
+
+            // only ReportHistogramAsMultipleCounters option is on
             for (size_t i = 0; i < Buckets.size(); ++i) {
-                if (auto countSub = counter->GetCounter(Buckets[i].Name)) {
-                    size_t id =
-                        i < IgnoreBucketCount ? 0 : i - IgnoreBucketCount;
-                    (*Histogram)[id].second += countSub->Val();
+                const auto counter = baseCounter->FindCounter(Buckets[i].Name);
+                if (counter) {
+                    IncrementHistogram(counter->Val(), i);
                 }
             }
         }

@@ -1,5 +1,7 @@
 #include "user_counter.h"
 
+#include <cloud/storage/core/libs/diagnostics/histogram_types.h>
+
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/json_writer.h>
 #include <library/cpp/monlib/encode/json/json.h>
@@ -68,7 +70,75 @@ void ValidateJsons(
     }
 }
 
-} // namespace
+void SetTimeHistogramCountersUs(
+    const TIntrusivePtr<NMonitoring::TDynamicCounters>& counters,
+    const TString& histName,
+    bool setSingleCounter)
+{
+    auto subgroup = counters->GetSubgroup("histogram", histName)
+                        ->GetSubgroup("units", "usec");
+
+    if (setSingleCounter) {
+        const auto& buckets = TRequestUsTimeBuckets::Buckets;
+        const auto& bounds = ConvertToHistBounds(buckets);
+        auto histogram = subgroup->GetHistogram(
+            histName,
+            NMonitoring::ExplicitHistogram(bounds));
+        histogram->Collect(1., 1);
+        histogram->Collect(100., 2);
+        histogram->Collect(200., 3);
+        histogram->Collect(300., 4);
+        histogram->Collect(400., 5);
+        histogram->Collect(500., 6);
+        histogram->Collect(600., 7);
+        histogram->Collect(700., 8);
+        histogram->Collect(800., 9);
+        histogram->Collect(900., 0);
+        histogram->Collect(1000., 1);
+        histogram->Collect(2000., 2);
+        histogram->Collect(5000., 3);
+        histogram->Collect(10000., 4);
+        histogram->Collect(20000., 5);
+        histogram->Collect(50000., 6);
+        histogram->Collect(100000., 7);
+        histogram->Collect(200000., 8);
+        histogram->Collect(500000., 9);
+        histogram->Collect(1000000., 10);
+        histogram->Collect(2000000., 11);
+        histogram->Collect(5000000., 12);
+        histogram->Collect(10000000., 13);
+        histogram->Collect(35000000., 14);
+        histogram->Collect(100000000., 15); // Inf
+    } else {
+        subgroup->GetCounter("1")->Set(1);
+        subgroup->GetCounter("100")->Set(2);
+        subgroup->GetCounter("200")->Set(3);
+        subgroup->GetCounter("300")->Set(4);
+        subgroup->GetCounter("400")->Set(5);
+        subgroup->GetCounter("500")->Set(6);
+        subgroup->GetCounter("600")->Set(7);
+        subgroup->GetCounter("700")->Set(8);
+        subgroup->GetCounter("800")->Set(9);
+        subgroup->GetCounter("900")->Set(0);
+        subgroup->GetCounter("1000")->Set(1);
+        subgroup->GetCounter("2000")->Set(2);
+        subgroup->GetCounter("5000")->Set(3);
+        subgroup->GetCounter("10000")->Set(4);
+        subgroup->GetCounter("20000")->Set(5);
+        subgroup->GetCounter("50000")->Set(6);
+        subgroup->GetCounter("100000")->Set(7);
+        subgroup->GetCounter("200000")->Set(8);
+        subgroup->GetCounter("500000")->Set(9);
+        subgroup->GetCounter("1000000")->Set(10);
+        subgroup->GetCounter("2000000")->Set(11);
+        subgroup->GetCounter("5000000")->Set(12);
+        subgroup->GetCounter("10000000")->Set(13);
+        subgroup->GetCounter("35000000")->Set(14);
+        subgroup->GetCounter("Inf")->Set(15);
+    }
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -78,10 +148,10 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
 {
     Y_UNIT_TEST(UserServerVolumeInstanceTests)
     {
-        NMonitoring::TDynamicCounterPtr stats =
-            MakeIntrusive<TDynamicCounters>();
-
-        auto makeCounters = [&stats] (const TString& name) {
+        auto setCounters = [](const NMonitoring::TDynamicCounterPtr& stats,
+                              const TString& name,
+                              bool setSingleCounter)
+        {
             auto request = stats->GetSubgroup("request", name);
             request->GetCounter("Count")->Set(1);
             request->GetCounter("MaxCount")->Set(10);
@@ -93,49 +163,29 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
             request->GetCounter("InProgressBytes")->Set(5);
             request->GetCounter("MaxInProgressBytes")->Set(50);
 
-            auto requestTimeHist = request->GetSubgroup("histogram", "Time")
-                                       ->GetSubgroup("units", "usec");
-            requestTimeHist->GetCounter("1")->Set(1);
-            requestTimeHist->GetCounter("100")->Set(2);
-            requestTimeHist->GetCounter("200")->Set(3);
-            requestTimeHist->GetCounter("300")->Set(4);
-            requestTimeHist->GetCounter("400")->Set(5);
-            requestTimeHist->GetCounter("500")->Set(6);
-            requestTimeHist->GetCounter("600")->Set(7);
-            requestTimeHist->GetCounter("700")->Set(8);
-            requestTimeHist->GetCounter("800")->Set(9);
-            requestTimeHist->GetCounter("900")->Set(0);
-            requestTimeHist->GetCounter("1000")->Set(1);
-            requestTimeHist->GetCounter("2000")->Set(2);
-            requestTimeHist->GetCounter("5000")->Set(3);
-            requestTimeHist->GetCounter("10000")->Set(4);
-            requestTimeHist->GetCounter("20000")->Set(5);
-            requestTimeHist->GetCounter("50000")->Set(6);
-            requestTimeHist->GetCounter("100000")->Set(7);
-            requestTimeHist->GetCounter("200000")->Set(8);
-            requestTimeHist->GetCounter("500000")->Set(9);
-            requestTimeHist->GetCounter("1000000")->Set(10);
-            requestTimeHist->GetCounter("2000000")->Set(11);
-            requestTimeHist->GetCounter("5000000")->Set(12);
-            requestTimeHist->GetCounter("10000000")->Set(13);
-            requestTimeHist->GetCounter("35000000")->Set(14);
-            requestTimeHist->GetCounter("Inf")->Set(15);
+            SetTimeHistogramCountersUs(request, "Time", setSingleCounter);
         };
 
-        makeCounters("ReadBlocks");
-        makeCounters("WriteBlocks");
-        makeCounters("ZeroBlocks");
-
-        struct TestConfiguration {
+        struct TTestConfiguration
+        {
             bool ReportZeroBlocksMetrics;
+            bool ReportHistogramAsSingleCounter;
             TString Resource;
         };
 
-        std::vector<TestConfiguration> testConfigurations = {
-            {true, "user_server_volume_instance_test"},
-            {false, "user_server_volume_instance_skip_zero_blocks_test"}};
+        std::vector<TTestConfiguration> testConfigurations = {
+            {true, false, "user_server_volume_instance_test"},
+            {false, false, "user_server_volume_instance_skip_zero_blocks_test"},
+            {true, true, "user_server_volume_instance_test"},
+            {false, true, "user_server_volume_instance_skip_zero_blocks_test"}};
 
         for (const auto& config: testConfigurations) {
+            auto stats = MakeIntrusive<TDynamicCounters>();
+            const auto setSingleCounter = config.ReportHistogramAsSingleCounter;
+            setCounters(stats, "ReadBlocks", setSingleCounter);
+            setCounters(stats, "WriteBlocks", setSingleCounter);
+            setCounters(stats, "ZeroBlocks", setSingleCounter);
+
             auto supplier = CreateUserCounterSupplier();
             RegisterServerVolumeInstance(
                 *supplier,
@@ -164,71 +214,51 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
 
     Y_UNIT_TEST(UserServiceVolumeInstanceTests)
     {
-        NMonitoring::TDynamicCounterPtr stats =
-            MakeIntrusive<TDynamicCounters>();
-
-        auto makeCounters = [&stats] (const TString& name) {
+        auto makeCounters = [](const NMonitoring::TDynamicCounterPtr& stats,
+                               const TString& name,
+                               bool setSingleCounter)
+        {
             stats->GetCounter("UsedQuota")->Set(1);
             stats->GetCounter("MaxUsedQuota")->Set(10);
 
             auto request = stats->GetSubgroup("request", name);
-            auto requestTimeHist =
-                request->GetSubgroup("histogram", "ThrottlerDelay")
-                    ->GetSubgroup("units", "usec");
-            requestTimeHist->GetCounter("1")->Set(1);
-            requestTimeHist->GetCounter("100")->Set(2);
-            requestTimeHist->GetCounter("200")->Set(3);
-            requestTimeHist->GetCounter("300")->Set(4);
-            requestTimeHist->GetCounter("400")->Set(5);
-            requestTimeHist->GetCounter("500")->Set(6);
-            requestTimeHist->GetCounter("600")->Set(7);
-            requestTimeHist->GetCounter("700")->Set(8);
-            requestTimeHist->GetCounter("800")->Set(9);
-            requestTimeHist->GetCounter("900")->Set(0);
-            requestTimeHist->GetCounter("1000")->Set(1);
-            requestTimeHist->GetCounter("2000")->Set(2);
-            requestTimeHist->GetCounter("5000")->Set(3);
-            requestTimeHist->GetCounter("10000")->Set(4);
-            requestTimeHist->GetCounter("20000")->Set(5);
-            requestTimeHist->GetCounter("50000")->Set(6);
-            requestTimeHist->GetCounter("100000")->Set(7);
-            requestTimeHist->GetCounter("200000")->Set(8);
-            requestTimeHist->GetCounter("500000")->Set(9);
-            requestTimeHist->GetCounter("1000000")->Set(10);
-            requestTimeHist->GetCounter("2000000")->Set(11);
-            requestTimeHist->GetCounter("5000000")->Set(12);
-            requestTimeHist->GetCounter("10000000")->Set(13);
-            requestTimeHist->GetCounter("35000000")->Set(14);
-            requestTimeHist->GetCounter("Inf")->Set(15);
+            SetTimeHistogramCountersUs(
+                request,
+                "ThrottlerDelay",
+                setSingleCounter);
         };
 
-        makeCounters("ReadBlocks");
-        makeCounters("WriteBlocks");
-        makeCounters("ZeroBlocks");
+        for (bool reportHistogramAsSingleCounter: {false, true}) {
+            auto stats = MakeIntrusive<TDynamicCounters>();
 
-        auto supplier = CreateUserCounterSupplier();
-        RegisterServiceVolume(
-            *supplier,
-            "cloudId",
-            "folderId",
-            "diskId",
-            stats);
+            makeCounters(stats, "ReadBlocks", reportHistogramAsSingleCounter);
+            makeCounters(stats, "WriteBlocks", reportHistogramAsSingleCounter);
+            makeCounters(stats, "ZeroBlocks", reportHistogramAsSingleCounter);
 
-        const TString testResult =
-            NResource::Find("user_service_volume_instance_test");
+            auto supplier = CreateUserCounterSupplier();
+            RegisterServiceVolume(
+                *supplier,
+                "cloudId",
+                "folderId",
+                "diskId",
+                stats);
 
-        NJson::TJsonValue testJson =
-            NJson::ReadJsonFastTree(testResult, true);
+            const TString testResult =
+                NResource::Find("user_service_volume_instance_test");
 
-        TStringStream jsonOut;
-        auto encoder = EncoderJson(&jsonOut);
-        supplier->Accept(TInstant::Seconds(12), encoder.Get());
+            NJson::TJsonValue testJson =
+                NJson::ReadJsonFastTree(testResult, true);
 
-        NJson::TJsonValue resultJson =
-            NJson::ReadJsonFastTree(jsonOut.Str(), true);
+            TStringStream jsonOut;
+            auto encoder = EncoderJson(&jsonOut);
+            supplier->Accept(TInstant::Seconds(12), encoder.Get());
 
-        ValidateJsons(testJson, resultJson);
+            NJson::TJsonValue resultJson =
+                NJson::ReadJsonFastTree(jsonOut.Str(), true);
+
+            ValidateJsons(testJson, resultJson);
+        }
     }
 }
 
-}   // NCloud::NBlockStore::NUserCounter
+}   // namespace NCloud::NBlockStore::NUserCounter
