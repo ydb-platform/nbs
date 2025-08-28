@@ -68,7 +68,7 @@ For any task, that called from Disk Manager API we should get correct `zoneID` f
 
 ### SelectCellForLocalDisk
 
-```
+```mermaid
 sequenceDiagram
     participant CreateDiskTask as CreateDiskTask
     participant CellSelector as CellSelector
