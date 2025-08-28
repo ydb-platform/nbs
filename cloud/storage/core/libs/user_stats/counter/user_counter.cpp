@@ -265,8 +265,7 @@ public:
 
     void IncrementHistogram(ui64 value, size_t baseBucketId) const
     {
-        // Since the base histogram uses usec bounds while the user histogram
-        // uses msec boundaries, we need to merge several first buckets into one
+        // Base histogram in usec vs user histogram in msec, merge first buckets
         size_t id = baseBucketId < MergeFirstBucketsCount
                         ? 0
                         : baseBucketId - MergeFirstBucketsCount;
