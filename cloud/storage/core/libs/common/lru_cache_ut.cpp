@@ -100,8 +100,9 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         hashMap.SetMaxSize(0);
 
         // Test capacity 0
-        auto [it, inserted1] = hashMap.emplace("key1", "value1");
+        auto [it, inserted1, evicted] = hashMap.emplace("key1", "value1");
         UNIT_ASSERT_VALUES_EQUAL(false, inserted1);
+        UNIT_ASSERT(!evicted.has_value());
         UNIT_ASSERT_EQUAL(hashMap.end(), it);
         UNIT_ASSERT_VALUES_EQUAL(0, hashMap.size());
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key1"));
@@ -112,10 +113,12 @@ Y_UNIT_TEST_SUITE(TLRUCache)
 
         // Test inserting duplicate keys - emplace should not overwrite the
         // value
-        auto [it1, inserted2] = hashMap.emplace("key1", "value1");
+        auto [it1, inserted2, evicted2] = hashMap.emplace("key1", "value1");
         UNIT_ASSERT_VALUES_EQUAL(true, inserted2);
-        auto [it2, inserted3] = hashMap.emplace("key1", "value2");
+        UNIT_ASSERT(!evicted2.has_value());
+        auto [it2, inserted3, evicted3] = hashMap.emplace("key1", "value2");
         UNIT_ASSERT_VALUES_EQUAL(false, inserted3);
+        UNIT_ASSERT(!evicted3.has_value());
 
         UNIT_ASSERT_VALUES_EQUAL(1, hashMap.size());
         UNIT_ASSERT_VALUES_EQUAL("value1", hashMap.find("key1")->second);
