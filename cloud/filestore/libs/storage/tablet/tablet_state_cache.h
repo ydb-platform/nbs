@@ -148,7 +148,8 @@ public:
     bool PrechargeNodeRefs(
         ui64 nodeId,
         const TString& cookie,
-        ui32 bytesToPrecharge) override;
+        ui64 rowsToPrecharge,
+        ui64 bytesToPrecharge) override;
 
 private:
     void WriteNodeRef(

@@ -680,15 +680,16 @@ bool TIndexTabletDatabase::ReadNodeRefs(
 bool TIndexTabletDatabase::PrechargeNodeRefs(
     ui64 nodeId,
     const TString& cookie,
-    ui32 bytesToPrecharge)
+    ui64 rowsToPrecharge,
+    ui64 bytesToPrecharge)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
     return Table<TTable>()
         .GreaterOrEqual(nodeId, cookie)
         .LessOrEqual(nodeId)
-         // NOTE: rows count, bytes count
-        .Precharge(Max<ui64>(), bytesToPrecharge);
+        // NOTE: rows count, bytes count
+        .Precharge(rowsToPrecharge, bytesToPrecharge);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
