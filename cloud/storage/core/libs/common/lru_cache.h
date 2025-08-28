@@ -115,7 +115,7 @@ public:
         OrderPositions.reserve(hint);
     }
 
-    // Movesd the key to the front of the order list; used upon any access
+    // Moves the key to the front of the order list; used upon any access
     void TouchKey(const TKey& key)
     {
         auto it = OrderPositions.find(key);
@@ -167,6 +167,18 @@ public:
         return Base.lower_bound(key);
     }
 
+    /**
+     * @brief Inserts a new element into the cache, evicting the least recently
+     * used item if necessary.
+     *
+     * @return std::tuple<iterator, bool, std::optional<TKey>>
+     *         - iterator: Iterator to the inserted or existing element.
+     *         - bool: True if the element was inserted, false if it already
+     *           existed.
+     *         - std::optional<TKey>: The key of the evicted element, if any;
+     *           std::nullopt otherwise. Note that it is assumed that at most
+     *           one element is evicted per insertion.
+     */
     template <typename... Args>
     std::tuple<iterator, bool, std::optional<TKey>> emplace(Args&&... args)
     {
