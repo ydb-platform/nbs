@@ -64,8 +64,11 @@ std::unique_ptr<TMixedBlocks> GenerateMixedBlocks(
 {
     TVector<TBlock> blocks;
     for (size_t i = 0; i < BlocksCount; i++) {
-        auto maxCommitId = InvalidCommitId;
-        blocks.emplace_back(NodeId, BlockIndex, MinCommitId, maxCommitId);
+        blocks.emplace_back(
+            NodeId,
+            BlockIndex + i,
+            MinCommitId,
+            InvalidCommitId);
     }
 
     for (size_t i = 0; i < blocks.size(); i++) {
@@ -92,7 +95,10 @@ std::unique_ptr<TMixedBlocks> GenerateMixedBlocks(
     return MakeMixedBlocks(std::move(blocks));
 }
 
-TVector<TBlockDataRef> FindBlocks(TMixedBlocks& mixedBlocks)
+void FindBlocks(
+    TMixedBlocks& mixedBlocks,
+    ui32 blockIndex = BlockIndex,
+    size_t blocksCount = BlocksCount)
 {
     TMixedBlockVisitor visitor;
     mixedBlocks.FindBlocks(
@@ -100,9 +106,13 @@ TVector<TBlockDataRef> FindBlocks(TMixedBlocks& mixedBlocks)
         RangeId,
         NodeId,
         MinCommitId,
-        BlockIndex,
-        BlocksCount);
-    return std::move(visitor.Blocks);
+        blockIndex,
+        blocksCount);
+    Y_ABORT_UNLESS(
+        blocksCount == visitor.Blocks.size(),
+        "expected %lu but got %lu blocks",
+        blocksCount,
+        visitor.Blocks.size());
 }
 
 }   // namespace
@@ -128,47 +138,58 @@ const auto MixedBlocksWithMixedDeletionMarkers = GenerateMixedBlocks(
 Y_CPU_BENCHMARK(TMixedBlocks_FindBlocksWithoutDeletionMarkers, iface)
 {
     for (size_t i = 0; i < iface.Iterations(); ++i) {
-        auto blocks = FindBlocks(*MixedBlocksWithoutDeletionMarkers);
-        Y_ABORT_UNLESS(BlocksCount == blocks.size());
+        FindBlocks(*MixedBlocksWithoutDeletionMarkers);
     }
 }
 
 Y_CPU_BENCHMARK(TMixedBlocks_FindBlocksWithOneDeletionMarker, iface)
 {
     for (size_t i = 0; i < iface.Iterations(); ++i) {
-        auto blocks = FindBlocks(*MixedBlocksWithOneDeletionMarker);
-        Y_ABORT_UNLESS(BlocksCount == blocks.size());
+        FindBlocks(*MixedBlocksWithOneDeletionMarker);
     }
 }
 
 Y_CPU_BENCHMARK(TMixedBlocks_FindBlocksWithOneDeletionMarkerAtTheEnd, iface)
 {
     for (size_t i = 0; i < iface.Iterations(); ++i) {
-        auto blocks = FindBlocks(*MixedBlocksWithOneDeletionMarkerAtTheEnd);
-        Y_ABORT_UNLESS(BlocksCount == blocks.size());
+        FindBlocks(*MixedBlocksWithOneDeletionMarkerAtTheEnd);
     }
 }
 
 Y_CPU_BENCHMARK(TMixedBlocks_FindBlocksWithMergedDeletionMarkers, iface)
 {
     for (size_t i = 0; i < iface.Iterations(); ++i) {
-        auto blocks = FindBlocks(*MixedBlocksWithMergedDeletionMarkers);
-        Y_ABORT_UNLESS(BlocksCount == blocks.size());
+        FindBlocks(*MixedBlocksWithMergedDeletionMarkers);
     }
 }
 
 Y_CPU_BENCHMARK(TMixedBlocks_FindBlocksWithMergedDeletionMarkersAtTheEnd, iface)
 {
     for (size_t i = 0; i < iface.Iterations(); ++i) {
-        auto blocks = FindBlocks(*MixedBlocksWithMergedDeletionMarkersAtTheEnd);
-        Y_ABORT_UNLESS(BlocksCount == blocks.size());
+        FindBlocks(*MixedBlocksWithMergedDeletionMarkersAtTheEnd);
     }
 }
 
 Y_CPU_BENCHMARK(TMixedBlocks_FindBlocksWithMixedDeletionMarkers, iface)
 {
     for (size_t i = 0; i < iface.Iterations(); ++i) {
-        auto blocks = FindBlocks(*MixedBlocksWithMixedDeletionMarkers);
-        Y_ABORT_UNLESS(BlocksCount == blocks.size());
+        FindBlocks(*MixedBlocksWithMixedDeletionMarkers);
+    }
+}
+
+Y_CPU_BENCHMARK(TMixedBlocks_FindSingleBlockWithoutDeletionMarkers, iface)
+{
+    for (size_t i = 0; i < iface.Iterations(); ++i) {
+        FindBlocks(*MixedBlocksWithoutDeletionMarkers, BlockIndex, 1);
+    }
+}
+
+Y_CPU_BENCHMARK(TMixedBlocks_FindSingleBlockWithMergedDeletionMarkers, iface)
+{
+    for (size_t i = 0; i < iface.Iterations(); ++i) {
+        FindBlocks(
+            *MixedBlocksWithMergedDeletionMarkers,
+            BlockIndex + BlocksCount/2,
+            1);
     }
 }
