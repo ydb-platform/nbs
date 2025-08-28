@@ -77,8 +77,8 @@ class TLRUCache: public TMapOps<TLRUCache<TKey, TValue, THashFunc, TBase>>
             auto& key = OrderList.back();
             Base.erase(key);
             OrderPositions.erase(key);
-            OrderList.pop_back();
             evictedKeys.emplace_back(key);
+            OrderList.pop_back();
         }
         return evictedKeys;
     }

@@ -25,7 +25,10 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT_VALUES_EQUAL("value1", hashMap.find("key1")->second);
         UNIT_ASSERT_VALUES_EQUAL("value2", hashMap.find("key2")->second);
 
-        hashMap.emplace("key3", "value3");   // Should evict "key1"
+        auto [_, inserted, evicted] =
+            hashMap.emplace("key3", "value3");   // Should evict "key1"
+        UNIT_ASSERT_VALUES_EQUAL(true, inserted);
+        UNIT_ASSERT(evicted.has_value());
 
         UNIT_ASSERT_VALUES_EQUAL(2, hashMap.size());
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key1"));
@@ -131,7 +134,9 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         hashMap.emplace("key3", "value3");
         hashMap.find("key1");
         // Now the order is key1, key3, key2
-        hashMap.SetMaxSize(2);
+        auto evicted4 = hashMap.SetMaxSize(2);
+        UNIT_ASSERT_VALUES_EQUAL(1, evicted4.size());
+        UNIT_ASSERT_VALUES_EQUAL("key2", evicted4[0]);
         // Should evict key2
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key2"));
         UNIT_ASSERT_VALUES_EQUAL("value1", hashMap.find("key1")->second);

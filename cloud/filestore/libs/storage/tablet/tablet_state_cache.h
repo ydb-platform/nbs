@@ -20,6 +20,8 @@ struct TInMemoryIndexStateStats
     ui64 NodeRefsCapacity;
     ui64 NodeAttrsCount;
     ui64 NodeAttrsCapacity;
+    ui64 NodeRefsExhaustivenessCapacity;
+    ui64 NodeRefsExhaustivenessCount;
     bool IsNodeRefsExhaustive;
 };
 
@@ -354,6 +356,16 @@ private:
             // If during the startup there were no evictions, then the cache
             // should be complete upon the load completion.
             IsNodeRefsExhaustive = !IsNodeRefsEvictionObserved;
+        }
+
+        [[nodiscard]] ui64 GetSize() const
+        {
+            return IsExhaustivePerNode.Size();
+        }
+
+        [[nodiscard]] ui64 GetMaxSize() const
+        {
+            return IsExhaustivePerNode.GetMaxSize();
         }
 
     } NodeRefsExhaustivenessInfo;

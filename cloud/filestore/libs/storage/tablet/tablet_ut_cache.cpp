@@ -25,6 +25,8 @@ struct TTxStats
     i64 NodesCount;
     i64 NodeRefsCount;
     i64 NodeAttrsCount;
+    i64 NodeRefsExhaustivenessCount;
+    i64 NodeRefsExhaustivenessCapacity;
     bool IsExhaustive;
 };
 
@@ -90,16 +92,32 @@ TTxStats GetTxStats(TTestEnv& env, TIndexTabletClient& tablet)
              stats.NodesCount = value;
              return true;
          }},
-        {{{"filesystem", "test"}, {"sensor", "InMemoryIndexStateNodeRefsCount"}},
+        {{{"filesystem", "test"},
+          {"sensor", "InMemoryIndexStateNodeRefsCount"}},
          [&stats](i64 value)
          {
              stats.NodeRefsCount = value;
              return true;
          }},
-        {{{"filesystem", "test"}, {"sensor", "InMemoryIndexStateNodeAttrsCount"}},
+        {{{"filesystem", "test"},
+          {"sensor", "InMemoryIndexStateNodeAttrsCount"}},
          [&stats](i64 value)
          {
              stats.NodeAttrsCount = value;
+             return true;
+         }},
+        {{{"filesystem", "test"},
+          {"sensor", "InMemoryIndexStateNodeRefsExhaustivenessCount"}},
+         [&stats](i64 value)
+         {
+             stats.NodeRefsExhaustivenessCount = value;
+             return true;
+         }},
+        {{{"filesystem", "test"},
+          {"sensor", "InMemoryIndexStateNodeRefsExhaustivenessCapacity"}},
+         [&stats](i64 value)
+         {
+             stats.NodeRefsExhaustivenessCapacity = value;
              return true;
          }},
         {{{"filesystem", "test"}, {"sensor", "InMemoryIndexStateIsExhaustive"}},
@@ -1092,6 +1110,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
                 statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.NodeRefsExhaustivenessCount);
             statsBefore = statsAfter;
         }
 
@@ -1109,6 +1128,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
                 statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodeRefsExhaustivenessCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.NodeRefsExhaustivenessCapacity);
             statsBefore = statsAfter;
         }
         // This is the second listing and it should be a hit
@@ -1207,6 +1230,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         storageConfig.SetInMemoryIndexCacheNodeAttrsCapacity(100);
         storageConfig.SetInMemoryIndexCacheNodesToNodeAttrsCapacityRatio(8);
 
+        storageConfig.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(123);
+
         TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
 
@@ -1235,6 +1260,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             {{{"filesystem", "test"},
               {"sensor", "InMemoryIndexStateNodeAttrsCapacity"}},
              128},
+            {{{"filesystem", "test"},
+              {"sensor", "InMemoryIndexStateNodeRefsExhaustivenessCapacity"}},
+             123},
         });
     }
 
