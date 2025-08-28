@@ -15,6 +15,7 @@ struct TLocalStorageProviderParams
 {
     bool DirectIO = false;
     bool UseSubmissionThread = false;
+    bool EnableChecksumValidation = false;
     TString SubmissionThreadName = "AIO.SQ";
 };
 

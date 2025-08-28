@@ -363,6 +363,8 @@ void TBootstrapBase::Init()
     sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
     sessionManagerOptions.DisableClientThrottler =
         Configs->ServerConfig->GetDisableClientThrottlers();
+    sessionManagerOptions.EnableChecksumValidation =
+        Configs->ServerConfig->GetEnableChecksumValidation();
 
     if (!KmsKeyProvider) {
         KmsKeyProvider = CreateKmsKeyProviderStub();
@@ -806,7 +808,11 @@ void TBootstrapBase::InitLocalService()
         CreateLocalStorageProvider(
             FileIOServiceProvider,
             NvmeManager,
-            {.DirectIO = false, .UseSubmissionThread = false}));
+            {.DirectIO = false,
+             .UseSubmissionThread = false,
+             .EnableChecksumValidation =
+                 Configs->DiskAgentConfig
+                     ->GetEnableChecksumValidationForDrBasedDisks()}));
 }
 
 void TBootstrapBase::InitNullService()

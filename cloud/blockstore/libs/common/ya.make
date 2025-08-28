@@ -8,6 +8,7 @@ SRCS(
     caching_allocator.cpp
     device_path.cpp
     iovector.cpp
+    request_checksum_helpers.cpp
     typeinfo.cpp
 )
 
