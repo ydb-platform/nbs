@@ -94,6 +94,7 @@ TDynamicCounterPtr SetupTestClientCounters(
             *inProgressCounter = sum * WriteBlocksInProgress;
 
             auto timeGroup = writeBlocksGroup->GetSubgroup("histogram", "Time");
+            timeGroup = timeGroup->GetSubgroup("units", "usec");
 
             for (auto bucket : TimeBuckets) {
                 auto bucketCounter = timeGroup->GetCounter(ToString(bucket)+"ms", true);
