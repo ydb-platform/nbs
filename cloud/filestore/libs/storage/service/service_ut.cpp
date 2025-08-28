@@ -3718,6 +3718,48 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             }
         }
     }
+
+    Y_UNIT_TEST(TestReadWithZeroIntervals)
+    {
+        NProto::TStorageConfig config;
+        config.SetTwoStageReadEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        const auto& data1 = TString(1_KB, 'a');
+        service.WriteData(headers, fs, nodeId, handle, 1_KB, data1);
+        const auto& data2 = TString(1_KB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 3_KB, data2);
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, 4_KB);
+        const auto& buffer = readDataResult->Record.GetBuffer();
+        const auto& zeroBuffer = TString(1_KB, '\0');
+        UNIT_ASSERT_VALUES_EQUAL(zeroBuffer, buffer.substr(0, 1_KB));
+        UNIT_ASSERT_VALUES_EQUAL(data1, buffer.substr(1_KB, 1_KB));
+        UNIT_ASSERT_VALUES_EQUAL(zeroBuffer, buffer.substr(2_KB, 1_KB));
+        UNIT_ASSERT_VALUES_EQUAL(data2, buffer.substr(3_KB, 1_KB));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

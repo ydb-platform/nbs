@@ -1,6 +1,18 @@
 #include "sparse_segment.h"
 
+#include <util/string/builder.h>
+
 namespace NCloud::NFileStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+IOutputStream& operator<<(IOutputStream& out, const TSparseSegment::TRange& rhs)
+{
+    out
+        << (TStringBuilder()
+            << "{Start: " << rhs.Start << " End: " << rhs.End << "}");
+    return out;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
