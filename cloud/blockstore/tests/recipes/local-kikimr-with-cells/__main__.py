@@ -2,11 +2,13 @@ import argparse
 import os
 import signal
 import logging
+import uuid
 
 from library.python.testing.recipe import declare_recipe, set_env
 
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, TKikimrServiceConfig
 from cloud.blockstore.config.discovery_pb2 import TDiscoveryServiceConfig
+from cloud.blockstore.config.cells_pb2 import TCellsConfig, TCellConfig, TCellHostConfig, ECellDataTransport
 
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_nbs_server, recipe_set_env
@@ -56,6 +58,7 @@ def start(argv):
     pm = yatest_common.network.PortManager()
     clusters = []
     nbs_servers = []
+    ports = []
 
     nbs_instances_count = int(args.nbs_instances_count)
     set_env("CLUSTERS_COUNT", str(nbs_instances_count))
@@ -97,12 +100,37 @@ def start(argv):
         nbs_port = pm.get_port()
         nbs_secure_port = pm.get_port()
 
+        ports.extend([nbs_port, nbs_secure_port])
+
         instance_list_file = os.path.join(yatest_common.output_path(), "static_instances_{}.txt".format(nbs_index))
         with open(instance_list_file, "w") as f:
             print("localhost\t%s\t%s" % (nbs_port, nbs_secure_port), file=f)
 
         discovery_config = TDiscoveryServiceConfig()
         discovery_config.InstanceListFile = instance_list_file
+
+        # for index in range(nbs_index):
+        #     cells_config_file = os.path.join(yatest_common.output_path(), "static_instances_{}.txt".format(nbs_index))
+        #     with open(cells_config_file, "r") as f:
+        #         host = f.readline().split("\t")[1]
+        #         nbs_hosts.append(host)
+
+        cells_config = TCellsConfig()
+        cells_config.CellsEnabled = True
+        cells_config.CellId = uuid.uuid4().hex[:20]
+
+        if nbs_index > 0:
+            cell = TCellConfig()
+            cell.CellId = uuid.uuid4().hex[:20]
+            cell.GrpcPort = ports[0]
+            cell.SecureGrpcPort = ports[1]
+            cell.Transport = ECellDataTransport.CELL_DATA_TRANSPORT_GRPC
+
+            host = TCellHostConfig()
+            host.Fqdn = "localhost"
+            cell.Hosts.append(host)
+
+            cells_config.Cells.append(cell)
 
         kikimr_port = list(kikimr_cluster.nodes.values())[0].port
         nbs = LocalNbs(
@@ -117,7 +145,8 @@ def start(argv):
             kikimr_binary_path=kikimr_binary_path,
             nbs_binary_path=nbs_binary_path,
             use_ic_version_check=args.use_ic_version_check,
-            config_sub_folder="nbs_configs_{}".format(nbs_index)
+            config_sub_folder="nbs_configs_{}".format(nbs_index),
+            cells_config=cells_config
             )
 
         nbs.setup_cms(kikimr_cluster.client)
