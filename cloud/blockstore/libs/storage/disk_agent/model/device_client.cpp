@@ -32,10 +32,10 @@ TDeviceClient::TDeviceClient(
         TDuration releaseInactiveSessionsTimeout,
         TVector<TString> uuids,
         TLog log,
-        bool allowToKickOutOldClients)
+        bool kickOutOldClientsEnabled)
     : ReleaseInactiveSessionsTimeout(releaseInactiveSessionsTimeout)
     , Devices(MakeDevices(std::move(uuids)))
-    , AllowToKickOutOldClients(allowToKickOutOldClients)
+    , KickOutOldClientsEnabled(kickOutOldClientsEnabled)
     , Log(std::move(log))
 {}
 
@@ -130,7 +130,7 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
         const bool canKickOutClient =
             deviceState->DiskId == diskId &&
             deviceState->VolumeGeneration < volumeGeneration &&
-            AllowToKickOutOldClients;
+            KickOutOldClientsEnabled;
 
         if (IsReadWriteMode(accessMode)
                 && deviceState->WriterSession.Id

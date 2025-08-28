@@ -273,7 +273,7 @@ private:
         ui64 MountSeqNumber = 0;
         TClientRequestPtr ClientRequest = nullptr;
         bool ForceTabletRestart = false;
-        bool ForceRequest = false;
+        bool Retriable = false;
     };
 
     struct TReleaseDiskRequest
@@ -281,7 +281,7 @@ private:
         TString ClientId;
         TClientRequestPtr ClientRequest = nullptr;
         TVector<NProto::TDeviceConfig> DevicesToRelease;
-        bool ForceRequest = false;
+        bool Retriable = false;
     };
 
     struct TAcquireReleaseDiskRequest
@@ -293,7 +293,7 @@ private:
         ui64 MountSeqNumber = 0;
         TClientRequestPtr ClientRequest;
         TVector<NProto::TDeviceConfig> DevicesToRelease;
-        const bool ForceRequest = false;
+        const bool Retriable = false;
         const bool ForceTabletRestart = false;
 
         TAcquireReleaseDiskRequest(TAcquireDiskRequest request)
@@ -302,7 +302,7 @@ private:
             , AccessMode(request.AccessMode)
             , MountSeqNumber(request.MountSeqNumber)
             , ClientRequest(std::move(request.ClientRequest))
-            , ForceRequest(request.ForceRequest)
+            , Retriable(request.Retriable)
             , ForceTabletRestart(request.ForceTabletRestart)
         {}
 
@@ -311,7 +311,7 @@ private:
             , ClientId(std::move(request.ClientId))
             , ClientRequest(std::move(request.ClientRequest))
             , DevicesToRelease(std::move(request.DevicesToRelease))
-            , ForceRequest(request.ForceRequest)
+            , Retriable(request.Retriable)
         {}
     };
 
@@ -875,7 +875,7 @@ private:
 
     void AcquireDiskIfNeeded(const NActors::TActorContext& ctx);
 
-    void AcquireDiskImpl(const NActors::TActorContext& ctx, bool forceAcquire);
+    void AcquireDiskImpl(const NActors::TActorContext& ctx, bool retriable);
 
     void ReleaseReplacedDevices(
         const NActors::TActorContext& ctx,
@@ -894,8 +894,8 @@ private:
         const TEvVolume::TEvReacquireDisk::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleRetryAcquireDisk(
-        const TEvVolume::TEvRetryAcquireDisk::TPtr& ev,
+    void HandleRetryAcquireReleaseDisk(
+        const TEvVolume::TEvRetryAcquireReleaseDisk::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRdmaUnavailable(

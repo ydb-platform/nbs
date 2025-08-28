@@ -997,7 +997,9 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvAcquireDiskIfNeeded,
             HandleAcquireDiskIfNeeded);
         HFunc(TEvVolume::TEvReacquireDisk, HandleReacquireDisk);
-        HFunc(TEvVolume::TEvRetryAcquireDisk, HandleRetryAcquireDisk);
+        HFunc(
+            TEvVolume::TEvRetryAcquireReleaseDisk,
+            HandleRetryAcquireReleaseDisk);
         HFunc(TEvVolume::TEvRdmaUnavailable, HandleRdmaUnavailable);
         HFunc(
             TEvDiskRegistry::TEvReleaseDiskResponse,
@@ -1129,7 +1131,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvLinkLeaderVolumeToFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUpdateLinkOnFollowerResponse);
-        IgnoreFunc(TEvVolume::TEvRetryAcquireDisk);
+        IgnoreFunc(TEvVolume::TEvRetryAcquireReleaseDisk);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvPartCountersCombined);
 

@@ -138,7 +138,7 @@ public:
 
     bool GetUseLocalStorageSubmissionThread() const;
 
-    [[nodiscard]] bool GetAllowToKickOutOldClients() const;
+    [[nodiscard]] bool GetKickOutOldClientsEnabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

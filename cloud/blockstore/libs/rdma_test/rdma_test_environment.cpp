@@ -72,7 +72,7 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         TDuration::MilliSeconds(100),
         uuids,
         Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
-        false);   // allowToKickOutOldClients
+        false);   // kickOutOldClientsEnabled
 
     DeviceClient->AcquireDevices(
         uuids,

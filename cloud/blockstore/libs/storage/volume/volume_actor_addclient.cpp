@@ -149,7 +149,7 @@ void TVolumeActor::ForceAcquireDisk(const TActorContext& ctx)
 {
     AcquireDiskImpl(
         ctx,
-        true   // forceAcquire
+        true   // retriable
     );
 }
 
@@ -157,11 +157,13 @@ void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
 {
     AcquireDiskImpl(
         ctx,
-        false   // forceAcquire
+        false   // retriable
     );
 }
 
-void TVolumeActor::AcquireDiskImpl(const TActorContext& ctx, bool forceAcquire)
+void TVolumeActor::AcquireDiskImpl(
+    const TActorContext& ctx,
+    bool retriable)
 {
     if (!State->GetClients()) {
         return;
@@ -180,7 +182,7 @@ void TVolumeActor::AcquireDiskImpl(const TActorContext& ctx, bool forceAcquire)
             }
         }
 
-        if (skip && !forceAcquire) {
+        if (skip && !retriable) {
             continue;
         }
 
@@ -189,7 +191,7 @@ void TVolumeActor::AcquireDiskImpl(const TActorContext& ctx, bool forceAcquire)
             .AccessMode = x.second.GetVolumeClientInfo().GetVolumeAccessMode(),
             .MountSeqNumber =
                 x.second.GetVolumeClientInfo().GetMountSeqNumber(),
-            .ForceRequest = forceAcquire,
+            .Retriable = retriable,
         };
 
         LOG_DEBUG(
@@ -256,18 +258,18 @@ void TVolumeActor::HandleReacquireDisk(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeActor::HandleRetryAcquireDisk(
-    const TEvVolume::TEvRetryAcquireDisk::TPtr& ev,
+void TVolumeActor::HandleRetryAcquireReleaseDisk(
+    const TEvVolume::TEvRetryAcquireReleaseDisk::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
     if (AcquireReleaseDiskRequests.empty() ||
-        !AcquireReleaseDiskRequests.front().ForceRequest)
+        !AcquireReleaseDiskRequests.front().Retriable)
     {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Unexpected force TEvRetryAcquireDisk",
+            "%s Unexpected force TEvRetryAcquireReleaseDisk",
             LogTitle.GetWithTime().c_str());
 
         return;
@@ -317,7 +319,7 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
             LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
 
-        if (request.ForceRequest &&
+        if (request.Retriable &&
             GetErrorKind(error) == EErrorKind::ErrorRetriable)
         {
             LOG_ERROR(
@@ -329,7 +331,8 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
                              .GetDelayAndIncrease();
             ctx.Schedule(
                 delay,
-                std::make_unique<TEvVolume::TEvRetryAcquireDisk>().release());
+                std::make_unique<TEvVolume::TEvRetryAcquireReleaseDisk>()
+                    .release());
             return;
         }
     } else {
@@ -506,9 +509,7 @@ void TVolumeActor::ReleaseDiskFromOldClients(
             LogTitle.GetWithTime().c_str(),
             clientId.Quote().c_str());
 
-        AddReleaseDiskRequest(
-            ctx,
-            {.ClientId = clientId, .ForceRequest = true});
+        AddReleaseDiskRequest(ctx, {.ClientId = clientId, .Retriable = true});
     }
 }
 
