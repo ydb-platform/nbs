@@ -1,4 +1,5 @@
 #include "fs.h"
+
 #include "log.h"
 #include "loop.h"
 #include "node_cache.h"
@@ -6,6 +7,7 @@
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -2353,6 +2355,78 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     true);
 
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*writeBackCacheError));
+    }
+
+    Y_UNIT_TEST(ShouldCritOnErrorSentToGuestFromRead)
+    {
+        TBootstrap bootstrap;
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+        const ui64 size = 789;
+
+        bootstrap.Service->ReadDataHandler = [&] (auto callContext, auto request) {
+            Y_UNUSED(callContext);
+
+            NProto::TReadDataResponse result;
+            result.MutableBuffer()->assign(TString(request->GetLength(), 'a'));
+
+            ReportErrorWasSentToTheGuest( TStringBuilder() << "Error sent to guest");
+
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handleId, 0, size);
+
+        read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handleId, 0, 10_MB);
+
+        UNIT_ASSERT_EXCEPTION(read.GetValueSync(), yexception);
+
+        auto errorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter("AppCriticalEvents/ErrorWasSentToTheGuest", true);
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, errorCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldCritOnErrorSentToGuestFromWrite)
+    {
+        TBootstrap bootstrap;
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto request) {
+            Y_UNUSED(request);
+            Y_UNUSED(callContext);
+
+            ReportErrorWasSentToTheGuest( TStringBuilder() << "Error sent to guest");
+
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        auto errorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter("AppCriticalEvents/ErrorWasSentToTheGuest", true);
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, errorCounter->Val());
     }
 }
 
