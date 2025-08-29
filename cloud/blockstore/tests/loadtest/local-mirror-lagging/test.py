@@ -25,6 +25,10 @@ DEFAULT_BLOCK_SIZE = 4096
 DEFAULT_DEVICE_COUNT = 1
 DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 
+DISK_AGENT_RESTART_INTERVAL=30
+DISK_AGENT_SMALL_RESTART_INTERVAL=20
+DISK_AGENT_BIG_RESTART_INTERVAL=40
+
 
 class TestCase(object):
     __test__ = False
@@ -63,7 +67,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-basic.txt",
         agent_count=2,
         device_count=3,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         disk_agent_downtime=5,
         dump_block_digests=True,
     ),
@@ -72,7 +76,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-basic.txt",
         agent_count=6,
         device_count=1,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         agent_indexes_to_restart=[1],
         disk_agent_downtime=5,
         dump_block_digests=True,
@@ -82,7 +86,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-basic.txt",
         agent_count=6,
         device_count=1,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         agent_indexes_to_restart=[1, 3],
         disk_agent_downtime=5,
         dump_block_digests=True,
@@ -92,7 +96,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-migration.txt",
         agent_count=3,
         device_count=3,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         disk_agent_downtime=5,
         dump_block_digests=True,
     ),
@@ -101,7 +105,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-migration.txt",
         agent_count=3,
         device_count=3,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         agent_indexes_to_restart=[2],
         disk_agent_downtime=5,
         dump_block_digests=True,
@@ -111,7 +115,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-fresh-device-migration.txt",
         agent_count=3,
         device_count=3,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         agent_indexes_to_restart=[2],
         disk_agent_downtime=5,
         dump_block_digests=True,
@@ -121,7 +125,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-small-restart-interval.txt",
         agent_count=2,
         device_count=3,
-        restart_interval=5,
+        restart_interval=DISK_AGENT_SMALL_RESTART_INTERVAL,
         disk_agent_downtime=5,
         lagging_device_max_migration_bandwidth=50,
         dump_block_digests=True,
@@ -131,7 +135,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror3-basic.txt",
         agent_count=3,
         device_count=3,
-        restart_interval=20,
+        restart_interval=DISK_AGENT_RESTART_INTERVAL,
         disk_agent_downtime=5,
         dump_block_digests=True,
     ),
@@ -140,7 +144,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror-lagging/local-mirror2-restart-nbs.txt",
         agent_count=2,
         device_count=3,
-        restart_interval=30,
+        restart_interval=DISK_AGENT_BIG_RESTART_INTERVAL,
         disk_agent_downtime=6,
         nbs_restart_interval=40,
         lagging_device_max_migration_bandwidth=10,
