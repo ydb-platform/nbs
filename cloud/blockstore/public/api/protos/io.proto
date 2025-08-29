@@ -21,6 +21,16 @@ message TIOVector
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Checksum message.
+
+message TChecksum
+{
+    uint32 Checksum = 1;
+
+    uint64 ByteCount = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Blocks read request/response.
 
 message TReadBlocksRequest
@@ -70,6 +80,9 @@ message TReadBlocksResponse
     // If true, it means that all the data read was zeros.
     // It's a hint, false negatives are allowed.
     bool AllZeroes = 6;
+
+    // Checksum of the "Blocks" data read.
+    TChecksum Checksum = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -97,6 +110,9 @@ message TWriteBlocksRequest
 
     // Size of the block in bytes.
     uint32 BlockSize = 7;
+
+    // Checksums of the "Blocks" data to write.
+    repeated TChecksum Checksums = 8;
 }
 
 message TWriteBlocksResponse
