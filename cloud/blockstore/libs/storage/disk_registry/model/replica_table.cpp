@@ -17,7 +17,7 @@ void TReplicaTable::AddReplica(
     auto& diskState = Disks[diskId];
     UpdateReplica(
         diskId,
-        diskState.Cells.empty() ? 0 : diskState.Cells[0].size(),
+        diskState.Cells.empty() ? 0 : diskState.Cells[0].DeviceInfos.size(),
         devices);
 }
 
@@ -37,19 +37,20 @@ void TReplicaTable::UpdateReplica(
         diskState.Cells.resize(devices.size());
     }
 
-    if (diskState.Cells[0].size() < replicaNo + 1) {
-        diskState.Cells[0].resize(replicaNo + 1);
+    if (diskState.Cells[0].DeviceInfos.size() < replicaNo + 1) {
+        diskState.Cells[0].DeviceInfos.resize(replicaNo + 1);
     }
     for (ui32 i = 1; i < diskState.Cells.size(); ++i) {
-        diskState.Cells[i].resize(diskState.Cells[0].size());
+        diskState.Cells[i].DeviceInfos.resize(
+            diskState.Cells[0].DeviceInfos.size());
     }
 
     for (ui32 j = 0; j < devices.size(); ++j) {
-        diskState.Cells[j][replicaNo] = {devices[j], false};
+        diskState.Cells[j].DeviceInfos[replicaNo] = {devices[j], false};
     }
 
     for (auto& cell: diskState.Cells) {
-        diskState.DeviceId2Cell[cell[replicaNo].Id] = &cell;
+        diskState.DeviceId2Cell[cell.DeviceInfos[replicaNo].Id] = &cell;
     }
 }
 
@@ -73,7 +74,7 @@ bool TReplicaTable::IsReplacementAllowed(
     }
 
     ui32 readyDeviceCount = 0;
-    for (auto& device: **cell) {
+    for (auto& device: (*cell)->DeviceInfos) {
         const bool canUseDevice = device.Id && device.Id != deviceId;
         const bool deviceOK =
             !device.IsReplacement &&
@@ -119,7 +120,7 @@ bool TReplicaTable::ChangeDevice(
     }
 
     TDeviceInfo* unit = nullptr;
-    for (auto& device: **cell) {
+    for (auto& device: (*cell)->DeviceInfos) {
         if (device.Id == oldDeviceId) {
             unit = &device;
             break;
@@ -151,7 +152,7 @@ TVector<TVector<TReplicaTable::TDeviceInfo>> TReplicaTable::AsMatrix(
     }
 
     for (const auto& cell: disk->Cells) {
-        matrix.push_back(cell);
+        matrix.push_back(cell.DeviceInfos);
     }
 
     return matrix;
@@ -197,11 +198,11 @@ TMirroredDisksStat TReplicaTable::CalculateReplicaCountStats() const
             continue;
         }
 
-        ui32 replicaCount = diskState.Cells.front().size();
+        ui32 replicaCount = diskState.Cells.front().DeviceInfos.size();
         ui32 incompleteCount = 0;
         for (const auto& cell: diskState.Cells) {
             ui32 incompleteCountInCell = 0;
-            for (const auto& device: cell) {
+            for (const auto& device: cell.DeviceInfos) {
                 incompleteCountInCell +=
                     device.IsReplacement ||
                     DeviceList->GetDeviceState(device.Id) ==
@@ -232,7 +233,7 @@ TMirroredDiskDevicesStat TReplicaTable::CalculateDiskStats(
         ui32 incompleteCountInCell = 0;
         ui32 cellReplacementCount = 0;
         ui32 cellErrorCount = 0;
-        for (const auto& deviceInfo: cell) {
+        for (const auto& deviceInfo: cell.DeviceInfos) {
             if (DeviceList->GetDeviceState(deviceInfo.Id) ==
                 NProto::EDeviceState::DEVICE_STATE_ERROR)
             {
@@ -248,13 +249,67 @@ TMirroredDiskDevicesStat TReplicaTable::CalculateDiskStats(
         }
         ++result.CellsByState[replacementAndErrorCount];
 
-        result.DeviceReadyCount += cell.size() - replacementAndErrorCount;
+        result.DeviceReadyCount += cell.DeviceInfos.size() - replacementAndErrorCount;
         result.DeviceReplacementCount += cellReplacementCount;
         result.DeviceErrorCount += cellErrorCount;
         result.MaxIncompleteness =
             Max(result.MaxIncompleteness, incompleteCountInCell);
     }
     return result;
+}
+
+bool TReplicaTable::IsRecentlyReplacedDevice(
+    const TDiskId& diskId,
+    const TDeviceId& deviceId) const
+{
+    const auto* diskState = Disks.FindPtr(diskId);
+    if (!diskState) {
+        return true;
+    }
+
+    const auto* cell = diskState->DeviceId2Cell.FindPtr(deviceId);
+    if (!cell || !*cell) {
+        return true;
+    }
+
+    return (*cell)->IsRecentlyReplacedDevice;
+}
+
+void TReplicaTable::SetRecentlyReplacedDevice(
+    const TDiskId& diskId,
+    const TDeviceId& deviceId,
+    ui64 seqNo)
+{
+    auto* diskState = Disks.FindPtr(diskId);
+    if (!diskState) {
+        return;
+    }
+
+    auto* cell = diskState->DeviceId2Cell.FindPtr(deviceId);
+    if (!cell || !*cell) {
+        return;
+    }
+
+    (*cell)->IsRecentlyReplacedDevice = true;
+    (*cell)->SeqNo = seqNo;
+}
+
+void TReplicaTable::ResetRecentlyReplacedDevices(
+    const TDiskId& diskId,
+    ui64 seqNo)
+{
+    auto* diskState = Disks.FindPtr(diskId);
+    if (!diskState) {
+        return;
+    }
+
+    for (auto& cell: diskState->Cells) {
+        if (!cell.IsRecentlyReplacedDevice || cell.SeqNo > seqNo) {
+            continue;
+        }
+        cell.IsRecentlyReplacedDevice = false;
+        cell.SeqNo = seqNo;
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

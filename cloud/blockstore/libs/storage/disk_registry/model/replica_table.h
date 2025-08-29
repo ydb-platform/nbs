@@ -75,6 +75,14 @@ public:
         const TDiskId& diskId,
         const TDeviceId& deviceId,
         bool isReplacement);
+    bool IsRecentlyReplacedDevice(
+        const TDiskId& diskId,
+        const TDeviceId& deviceId) const;
+    void SetRecentlyReplacedDevice(
+        const TDiskId& diskId,
+        const TDeviceId& deviceId,
+        ui64 seqNo);
+    void ResetRecentlyReplacedDevices(const TDiskId& diskId, ui64 seqNo);
 
     // for tests and monpages
     TVector<TVector<TDeviceInfo>> AsMatrix(const TString& diskId) const;
@@ -94,7 +102,15 @@ private:
 private:
     // a transposed view of disk config
 
-    using TCell = TVector<TDeviceInfo>;
+    struct TCell
+    {
+        // Set to true when some device is replacing now.
+        bool IsRecentlyReplacedDevice = false;
+
+        ui64 SeqNo = 0;
+
+        TVector<TDeviceInfo> DeviceInfos;
+    };
 
     struct TDiskState
     {
