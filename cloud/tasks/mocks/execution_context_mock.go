@@ -53,7 +53,7 @@ func (c *ExecutionContextMock) IsHanging() bool {
 	return args.Bool(0)
 }
 
-func (c *ExecutionContextMock) SetEstimate(estimatedDuration time.Duration) {
+func (c *ExecutionContextMock) SetInflightEstimate(estimatedDuration time.Duration) {
 	c.Called(estimatedDuration)
 }
 

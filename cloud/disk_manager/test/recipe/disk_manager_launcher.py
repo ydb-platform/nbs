@@ -55,7 +55,7 @@ TasksConfig: <
     ClearEndedTasksLimit: 10
     MaxRetriableErrorCount: 1000
     MaxPanicCount: 1
-    HangingTaskTimeout: "100s"
+    InflightDurationHangTimeout: "100s"
 >
 NfsConfig: <
     Zones: <
@@ -274,7 +274,7 @@ TasksConfig: <
     ClearEndedTasksLimit: 10
     MaxRetriableErrorCount: 1000
     MaxPanicCount: 1
-    HangingTaskTimeout: "100s"
+    InflightDurationHangTimeout: "100s"
 >
 NbsConfig: <
     Zones: <

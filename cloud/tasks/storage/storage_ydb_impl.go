@@ -941,8 +941,10 @@ func (s *storageYDB) listHangingTasks(
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $limit as Uint64;
 		declare $except_task_types as List<Utf8>;
-		declare $hanging_task_timeout as Interval;
+		declare $inflight_duration_hang_timeout as Interval;
 		declare $missed_estimates_until_task_is_hanging as Uint64;
+		declare $stalling_duration_hang_timeout as Interval;
+		declare $total_duration_hang_timeout as Interval;
 		declare $now as Timestamp;
 
 		$task_ids = (
@@ -952,21 +954,21 @@ func (s *storageYDB) listHangingTasks(
 			select id from cancelling
 		);
 		select * from tasks
-		where id in $task_ids and
-		(
-			(ListLength($except_task_types) == 0) or
-			(task_type not in $except_task_types)
-		)  and
-		(
-			(estimated_time == DateTime::FromSeconds(0) and $now >= created_at + $hanging_task_timeout) or
+		where
+		 	(id in $task_ids) and
+			(task_type not in $except_task_types) and
 			(
-				estimated_time > created_at and
-				$now >= MAX_OF(
-					created_at + (estimated_time - created_at) * $missed_estimates_until_task_is_hanging,
-					created_at + $hanging_task_timeout
-				)
+			    inflight_duration >= MAX_OF(
+					estimated_inflight_duration * $missed_estimates_until_task_is_hanging,
+					$inflight_duration_hang_timeout,
+				) or
+				stalling_duration >= MAX_OF(
+					estimated_stalling_duration * $missed_estimates_until_task_is_hanging,
+					$stalling_duration_hang_timeout,
+				) or
+				($now - created_at >= $total_duration_hang_timeout)
 			)
-		) limit $limit;
+		limit $limit;
 	`, s.tablesPath),
 		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
 		persistence.ValueParam(
@@ -974,12 +976,20 @@ func (s *storageYDB) listHangingTasks(
 			strListValue(s.exceptHangingTaskTypes),
 		),
 		persistence.ValueParam(
-			"$hanging_task_timeout",
-			persistence.IntervalValue(s.hangingTaskTimeout),
+			"$inflight_duration_hang_timeout",
+			persistence.IntervalValue(s.inflightDurationHangTimeout),
 		),
 		persistence.ValueParam(
 			"$missed_estimates_until_task_is_hanging",
 			persistence.Uint64Value(s.missedEstimatesUntilTaskIsHanging),
+		),
+		persistence.ValueParam(
+			"$stalling_duration_hang_timeout",
+			persistence.IntervalValue(s.stallingDurationHangTimeout),
+		),
+		persistence.ValueParam(
+			"$total_duration_hang_timeout",
+			persistence.IntervalValue(s.totalDurationHangTimeout),
 		),
 		persistence.ValueParam("$now", persistence.TimestampValue(now)),
 	)
@@ -1106,19 +1116,20 @@ func (s *storageYDB) listSlowTasks(
 		pragma TablePathPrefix = "%v";
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $since as Timestamp;
-		declare $estimateMiss as Int64;
+		declare $estimateMiss as Interval;
 
 		$task_ids = (select id from ended where ended_at >= $since);
 
 		select *
-		  from tasks
-		 where id in $task_ids
-		   and estimated_time > created_at
-		   and DateTime::ToMinutes(ended_at - estimated_time) >= $estimateMiss
-		 order by DateTime::ToMinutes(ended_at - created_at) / DateTime::ToMinutes(estimated_time - created_at) desc
+		from tasks
+		where
+			id in $task_ids
+			and estimated_inflight_duration != Interval("P0D")
+			and (inflight_duration - estimated_inflight_duration) >= $estimateMiss
+		order by DateTime::ToSeconds(inflight_duration) / DateTime::ToSeconds(estimated_inflight_duration) desc
 	`, s.tablesPath),
 		persistence.ValueParam("$since", persistence.TimestampValue(since)),
-		persistence.ValueParam("$estimateMiss", persistence.Int64Value(int64(estimateMiss.Minutes()))),
+		persistence.ValueParam("$estimateMiss", persistence.IntervalValue(estimateMiss)),
 	)
 	if err != nil {
 		return nil, err
