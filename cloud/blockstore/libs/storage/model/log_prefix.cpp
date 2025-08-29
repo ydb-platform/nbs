@@ -15,6 +15,19 @@ TLogPrefix::TLogPrefix(
     Rebuild();
 }
 
+void TLogPrefix::AddTag(const TString& key, TValue value)
+{
+    for (auto& [k, v]: Tags) {
+        if (k == key) {
+            v = std::move(value);
+            Rebuild();
+            return;
+        }
+    }
+    Tags.emplace_back(key, std::move(value));
+    Rebuild();
+}
+
 void TLogPrefix::AddTags(
     std::initializer_list<std::pair<TString, TLogPrefix::TValue>> tags)
 {

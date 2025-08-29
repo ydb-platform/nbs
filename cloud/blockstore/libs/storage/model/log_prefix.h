@@ -23,19 +23,7 @@ private:
 public:
     TLogPrefix(std::initializer_list<std::pair<TString, TValue>> tags);
 
-    template <typename TV>
-    void AddTag(const TString& key, TV&& value)
-    {
-        for (auto& [k, v]: Tags) {
-            if (k == key) {
-                v = TValue{std::forward<TV>(value)};
-                Rebuild();
-                return;
-            }
-        }
-        Tags.emplace_back(key, TValue{std::forward<TV>(value)});
-        Rebuild();
-    }
+    void AddTag(const TString& key, TValue value);
 
     void AddTags(std::initializer_list<std::pair<TString, TValue>> tags);
 
