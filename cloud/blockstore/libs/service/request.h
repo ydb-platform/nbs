@@ -107,6 +107,7 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
     xxx(CreateVolumeFromDevice,             __VA_ARGS__)                       \
     xxx(ResumeDevice,                       __VA_ARGS__)                       \
     xxx(QueryAgentsInfo,                    __VA_ARGS__)                       \
+    xxx(ListDisksStates,                    __VA_ARGS__)                       \
     xxx(CreateVolumeLink,                   __VA_ARGS__)                       \
     xxx(DestroyVolumeLink,                  __VA_ARGS__)                       \
     xxx(RemoveVolumeClient,                 __VA_ARGS__)                       \

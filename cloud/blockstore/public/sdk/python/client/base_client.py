@@ -47,6 +47,7 @@ NBS_CLIENT_METHODS = [
     "update_disk_registry_config",
     "describe_disk_registry_config",
     "query_agents_info",
+    "list_disks_states",
 ]
 
 
