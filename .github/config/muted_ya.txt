@@ -1,4 +1,3 @@
 cloud/filestore/tests/fio_index/mount-kikimr-test *
 cloud/filestore/tests/fio_index/mount-local-test *
-cloud/filestore/tests/fs_posix_compliance/qemu-kikimr-nemesis-test test.py::test_posix_compliance[ls]
 cloud/blockstore/libs/storage/partition/ut TPartitionTest.ShouldSendCorrectBarriersInfoAfterReboot
