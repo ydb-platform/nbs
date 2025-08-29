@@ -466,8 +466,16 @@ public:
 
     void Start() override
     {
-        auto endpoint =
-            Server->StartEndpoint(Config->Host, Config->Port, Handler);
+        NRdma::IServerEndpointPtr endpoint;
+        if (Config->Interface) {
+            endpoint = Server->StartEndpointOnInterface(
+                Config->Interface,
+                Config->Port,
+                Handler);
+        } else {
+            endpoint =
+                Server->StartEndpoint(Config->Host, Config->Port, Handler);
+        }
 
         Log = Logging->CreateLog("BLOCKSTORE_SERVER");
         if (endpoint == nullptr) {

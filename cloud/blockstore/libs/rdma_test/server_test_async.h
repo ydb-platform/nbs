@@ -24,6 +24,11 @@ public:
         ui32 port,
         NRdma::IServerHandlerPtr handler) override;
 
+    NRdma::IServerEndpointPtr StartEndpointOnInterface(
+        TString interface,
+        ui32 port,
+        NRdma::IServerHandlerPtr handler) override;
+
     void Start() override
     {}
 
