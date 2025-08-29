@@ -1239,6 +1239,15 @@ private:
         TLeaderDiskInfo::EState state,
         const NActors::TActorContext& ctx);
 
+    void AddOutdatedTagToLeader(
+        TRequestInfoPtr requestInfo,
+        TLeaderFollowerLink link,
+        const NActors::TActorContext& ctx);
+
+    void HandleAddOutdatedTagResponse(
+        const TEvService::TEvAddTagsResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandlePartCountersCombined(
         const TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);

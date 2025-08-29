@@ -2,6 +2,7 @@
 
 #include <cloud/storage/core/libs/common/format.h>
 
+#include <util/digest/multi.h>
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 
@@ -60,6 +61,15 @@ bool TLeaderFollowerLink::Match(const TLeaderFollowerLink& rhs) const
             o.FollowerShardId);
     };
     return withoutUUID(*this) == withoutUUID(rhs);
+}
+
+ui64 TLeaderFollowerLink::GetHash() const
+{
+    return MultiHash(
+        LeaderDiskId,
+        LeaderShardId,
+        FollowerDiskId,
+        FollowerShardId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

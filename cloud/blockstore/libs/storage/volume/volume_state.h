@@ -94,6 +94,13 @@ struct TCreateFollowerRequestInfo
 
 using TCreateFollowerRequests = TVector<TCreateFollowerRequestInfo>;
 
+struct TLinkCompletedRequestInfo
+{
+    TLeaderFollowerLink Link;
+    TRequestInfoPtr RequestInfo;
+};
+using TLinkCompletedRequests = TVector<TLinkCompletedRequestInfo>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TPartitionStatInfo
@@ -268,6 +275,7 @@ private:
 
     TCreateFollowerRequests CreateFollowerRequests;
     TFollowerDisks FollowerDisks;
+    TLinkCompletedRequests LinkCompletedRequests;
     TLeaderDisks LeaderDisks;
 
     struct TLaggingAgentMigrationInfo
@@ -822,10 +830,12 @@ public:
 
     std::optional<TLeaderDiskInfo> FindLeader(
         const TLeaderFollowerLink& link) const;
+    std::optional<TLeaderDiskInfo> FindLeaderByHash(ui64 hash) const;
     void AddOrUpdateLeader(TLeaderDiskInfo leader);
     void RemoveLeader(const TLeaderFollowerLink& link);
     const TLeaderDisks& GetAllLeaders() const;
-
+    TLinkCompletedRequestInfo& AccessLinkCompletedRequests(
+        const TLeaderFollowerLink& link);
     //
     // Scrubbing
     //

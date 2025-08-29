@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 #include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
@@ -681,6 +682,11 @@ void TVolumeProxyActor::HandleResponse(
 
     auto* msg = ev->Get();
 
+    const auto& error = msg->GetError();
+    bool needSwitchSession =
+        HasError(error) &&
+        HasProtoFlag(error.GetFlags(), NProto::EF_SWITCH_SESSION);
+
     if (it->second.CallContext->LWOrbit.HasShuttles()) {
         TraceSerializer->HandleTraceInfo(
             msg->Record.GetTrace(),
@@ -726,6 +732,14 @@ void TVolumeProxyActor::HandleResponse(
 
     auto* conn = GetConnectionById(it->second.ConnectionId);
     Y_ABORT_UNLESS(conn);
+
+    if (needSwitchSession) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME_PROXY,
+            "%s Need to switch session",
+            conn->LogTitle.GetWithTime().c_str());
+    }
 
     conn->LastActivity = ctx.Now();
     --conn->RequestsInflight;

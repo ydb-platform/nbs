@@ -26,6 +26,7 @@ struct TLeaderFollowerLink
     TString Describe() const;
 
     bool Match(const TLeaderFollowerLink& rhs) const;
+    ui64 GetHash() const;
 };
 
 // Link info persisted on follower side.

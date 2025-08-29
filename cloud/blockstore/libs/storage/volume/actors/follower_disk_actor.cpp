@@ -98,6 +98,11 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
         LogTitle.GetWithTime().c_str(),
         ToString(State).c_str());
 
+    if (State == EState::OutdatedTagSet) {
+        TransferLeadership(ctx);
+        return;
+    }
+
     FollowerPartitionActorId = NCloud::Register<TVolumeAsPartitionActor>(
         ctx,
         LogTitle,
@@ -135,7 +140,6 @@ bool TFollowerDiskActor::OnMessage(
         HFunc(
             TEvVolumePrivate::TEvUpdateFollowerStateResponse,
             HandleUpdateFollowerStateResponse);
-        HFunc(TEvService::TEvAddTagsResponse, HandleAddOutdatedTagResponse);
         HFunc(
             TEvVolumePrivate::TEvLinkOnFollowerCompleted,
             HandlePropagateFollowerStateResponse);
@@ -146,6 +150,38 @@ bool TFollowerDiskActor::OnMessage(
         // Intercepting the message to block the sending of statistics by the
         // base class.
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvUpdateCounters);
+
+        // Read/Write/Zero request.
+        case TEvService::TEvReadBlocksRequest::EventType: {
+            return HandleReadWriteZeroBlocks<TEvService::TReadBlocksMethod>(
+                *reinterpret_cast<TEvService::TEvReadBlocksRequest::TPtr*>(&ev),
+                ctx);
+        }
+        case TEvService::TEvReadBlocksLocalRequest::EventType: {
+            return HandleReadWriteZeroBlocks<
+                TEvService::TReadBlocksLocalMethod>(
+                *reinterpret_cast<TEvService::TEvReadBlocksLocalRequest::TPtr*>(
+                    &ev),
+                ctx);
+        }
+        case TEvService::TEvWriteBlocksRequest::EventType: {
+            return HandleReadWriteZeroBlocks<TEvService::TWriteBlocksMethod>(
+                *reinterpret_cast<TEvService::TEvWriteBlocksRequest::TPtr*>(
+                    &ev),
+                ctx);
+        }
+        case TEvService::TEvWriteBlocksLocalRequest::EventType: {
+            return HandleReadWriteZeroBlocks<
+                TEvService::TWriteBlocksLocalMethod>(
+                *reinterpret_cast<
+                    TEvService::TEvWriteBlocksLocalRequest::TPtr*>(&ev),
+                ctx);
+        }
+        case TEvService::TEvZeroBlocksRequest::EventType: {
+            return HandleReadWriteZeroBlocks<TEvService::TZeroBlocksMethod>(
+                *reinterpret_cast<TEvService::TEvZeroBlocksRequest::TPtr*>(&ev),
+                ctx);
+        }
 
         // ClientId changed event.
         case TEvVolume::TEvRWClientIdChanged::EventType: {
@@ -224,10 +260,6 @@ void TFollowerDiskActor::TransferLeadership(const NActors::TActorContext& ctx)
             break;
         }
         case EState::DataReady: {
-            AddOutdatedTagToLeader(ctx);
-            break;
-        }
-        case EState::OutdatedTagSet: {
             SwitchSession(ctx);
             break;
         }
@@ -236,43 +268,23 @@ void TFollowerDiskActor::TransferLeadership(const NActors::TActorContext& ctx)
             break;
         }
         case EState::FollowerPropagated: {
-            Schedule(
-                TDuration::Seconds(30),
-                new TEvents::TEvWakeup(DESTROY_LEADER_VOLUME_NOTIFY));
+            break;
+        }
+        case EState::OutdatedTagSet: {
+            DestroyLeaderVolume(ctx);
+            //Schedule(
+            //    TDuration::Seconds(30),
+            //    new TEvents::TEvWakeup(DESTROY_LEADER_VOLUME_NOTIFY));
             break;
         }
     }
 }
 
-void TFollowerDiskActor::AddOutdatedTagToLeader(
-    const NActors::TActorContext& ctx)
-{
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s Add outdated tag to leader",
-        LogTitle.GetWithTime().c_str());
-
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        0,   // cookie
-        MakeIntrusive<TCallContext>());
-
-    TString tag = TString(OutdatedVolumeTagName) + "=" +
-                  FollowerDiskInfo.Link.FollowerDiskId;
-    TVector<TString> tags({std::move(tag)});
-    auto request = std::make_unique<TEvService::TEvAddTagsRequest>(
-        FollowerDiskInfo.Link.LeaderDiskId,
-        std::move(tags));
-
-    ctx.Send(MakeStorageServiceId(), std::move(request));
-}
-
 void TFollowerDiskActor::SwitchSession(const NActors::TActorContext& ctx)
 {
-    auto future = EndpointEventHandler->SwitchEndpointIfNeeded(
+    auto future = EndpointEventHandler->SwitchSession(
         FollowerDiskInfo.Link.LeaderDiskId,
-        "leader outdated");
+        FollowerDiskInfo.Link.FollowerDiskId);
     future.Subscribe(
         [logTitle = LogTitle, ctx, selfId = SelfId()](
             const NThreading::TFuture<NProto::TError>& future)
@@ -344,6 +356,41 @@ void TFollowerDiskActor::ForwardRequestToFollowerPartition(
     ForwardMessageToActor(ev, ctx, FollowerPartitionActorId);
 }
 
+template <typename TMethod>
+bool TFollowerDiskActor::HandleReadWriteZeroBlocks(
+    const typename TMethod::TRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (State == EState::OutdatedTagSet) {
+         ui32 flags = 0;
+            SetProtoFlag(flags, NProto::EF_SWITCH_SESSION);
+            NCloud::Reply(
+                ctx,
+                *ev,
+                std::make_unique<typename TMethod::TResponse>(MakeError(
+                    E_REJECTED,
+                    TStringBuilder() << "Can't " << TMethod::Name
+                                     << " when outdated tag present.",
+                    flags)));
+        /*
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Send poison pill to leader volume",
+                LogTitle.GetWithTime().c_str());
+            NCloud::Send(
+                ctx,
+                LeaderVolumeActorId,
+                std::make_unique<TEvents::TEvPoisonPill>());
+                */
+            return true;
+    }
+
+    // Migration is currently in progress. It is necessary to handle
+    // read/write/zero requests in base class
+    return false;
+}
+
 void TFollowerDiskActor::HandleRdmaUnavailable(
     const TEvVolume::TEvRdmaUnavailable::TPtr& ev,
     const TActorContext& ctx)
@@ -389,37 +436,6 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
         TransferLeadership(ctx);
     }
 }
-
-void TFollowerDiskActor::HandleAddOutdatedTagResponse(
-    const TEvService::TEvAddTagsResponse::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    auto error = msg->GetError();
-
-    if (HasError(error)) {
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "[%s] Outdated tag add error: %s",
-            LogTitle.GetWithTime().c_str(),
-            FormatError(error).c_str());
-        Schedule(
-            Backoff.GetDelayAndIncrease(),
-            new TEvents::TEvWakeup(RETRY_ADD_OUTDATED_TAG_NOTIFY));
-        return;
-    }
-
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "[%s] Outdated tag added",
-        LogTitle.GetWithTime().c_str());
-
-    State = EState::OutdatedTagSet;
-    TransferLeadership(ctx);
-}
-
 void TFollowerDiskActor::HandleSwitchSessionResponse(
     const NProto::TError& error,
     const NActors::TActorContext& ctx)
@@ -495,10 +511,6 @@ bool TFollowerDiskActor::HandleWakeup(
     const NActors::TActorContext& ctx)
 {
     switch (ev->Get()->Tag) {
-        case EFollowerWakeupReason::RETRY_ADD_OUTDATED_TAG_NOTIFY: {
-            AddOutdatedTagToLeader(ctx);
-            return true;
-        }
         case EFollowerWakeupReason::RETRY_SWITCH_SESSION_NOTIFY: {
             SwitchSession(ctx);
             return true;
