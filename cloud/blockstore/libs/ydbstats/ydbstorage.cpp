@@ -85,6 +85,7 @@ TString BuildError(
 }
 
 TDriverConfig BuildDriverConfig(
+    TTokenInfo initialToken,
     const TYdbStatsConfig& config,
     IIamTokenClientPtr tokenClient)
 {
@@ -94,7 +95,9 @@ TDriverConfig BuildDriverConfig(
 
     if (config.GetUseSsl()) {
         driverConfig.SetCredentialsProviderFactory(
-            CreateIamCredentialsProviderFactory(tokenClient));
+            CreateIamCredentialsProviderFactory(
+                std::move(initialToken),
+                std::move(tokenClient)));
         driverConfig.UseSecureConnection();
     } else {
        driverConfig.SetAuthToken(LoadToken(config.GetTokenFile()));
@@ -106,6 +109,7 @@ TDriverConfig BuildDriverConfig(
 
 class TYdbNativeStorage final
     : public IYdbStorage
+    , std::enable_shared_from_this<TYdbNativeStorage>
 {
 private:
     const TYdbStatsConfigPtr Config;
@@ -146,10 +150,12 @@ public:
         TString tableName,
         NYdb::TValue data) override;
 
-    void Start() override
+    void Start() override;
+
+    void StartImpl(TTokenInfo initialToken)
     {
         Driver = std::make_unique<TDriver>(
-            BuildDriverConfig(*Config, IamClient));
+            BuildDriverConfig(std::move(initialToken), *Config, IamClient));
         Client = std::make_shared<TTableClient>(*Driver);
         SchemeClient = std::make_unique<TSchemeClient>(*Driver);
 
@@ -167,6 +173,11 @@ public:
     }
 
 private:
+    bool Initialized() const
+    {
+        return Driver && Client && SchemeClient;
+    }
+
     TMaybe<TInstant> ExtractTableTime(const TString& name) const;
     TString GetFullTableName(const TString& table) const;
 };
@@ -177,6 +188,10 @@ TFuture<NProto::TError> TYdbNativeStorage::CreateTable(
     const TString& table,
     const TTableDescription& description)
 {
+    if (!Initialized()) {
+        return MakeFuture(MakeError(E_REJECTED, "storage is not initialized"));
+    }
+
     auto tableName = GetFullTableName(table);
     auto future = Client->RetryOperation(
         [=] (TSession session) {
@@ -199,6 +214,10 @@ TFuture<NProto::TError> TYdbNativeStorage::AlterTable(
     const TString& table,
     const TAlterTableSettings& settings)
 {
+    if (!Initialized()) {
+        return MakeFuture(MakeError(E_REJECTED, "storage is not initialized"));
+    }
+
     auto tableName = GetFullTableName(table);
     auto future = Client->RetryOperation(
         [=] (TSession session) {
@@ -219,6 +238,10 @@ TFuture<NProto::TError> TYdbNativeStorage::AlterTable(
 
 TFuture<NProto::TError> TYdbNativeStorage::DropTable(const TString& table)
 {
+    if (!Initialized()) {
+        return MakeFuture(MakeError(E_REJECTED, "storage is not initialized"));
+    }
+
     auto tableName = GetFullTableName(table);
     auto future = Client->RetryOperation(
         [=] (TSession session) {
@@ -240,6 +263,11 @@ TFuture<NProto::TError> TYdbNativeStorage::DropTable(const TString& table)
 TFuture<NYdbStats::TDescribeTableResponse> TYdbNativeStorage::DescribeTable(
     const TString& table)
 {
+    if (!Initialized()) {
+        return MakeFuture(TDescribeTableResponse(
+            MakeError(E_REJECTED, "storage is not initialized")));
+    }
+
     auto result = NewPromise<NYdbStats::TDescribeTableResponse>();
     auto tableName = GetFullTableName(table);
 
@@ -279,6 +307,11 @@ TFuture<NYdbStats::TDescribeTableResponse> TYdbNativeStorage::DescribeTable(
 
 TFuture<TGetTablesResponse> TYdbNativeStorage::GetHistoryTables()
 {
+    if (!Initialized()) {
+        return MakeFuture(TGetTablesResponse(
+            MakeError(E_REJECTED, "storage is not initialized")));
+    }
+
     auto database = Config->GetDatabaseName();
     auto future = SchemeClient->ListDirectory(database);
 
@@ -310,6 +343,10 @@ TFuture<NProto::TError> TYdbNativeStorage::ExecuteUploadQuery(
     TString tableName,
     NYdb::TValue data)
 {
+    if (!Initialized()) {
+        return MakeFuture(MakeError(E_REJECTED, "storage is not initialized"));
+    }
+
     auto func = [tableName = std::move(tableName), data = std::move(data)] (
         TTableClient& client) mutable
     {
@@ -333,6 +370,27 @@ TFuture<NProto::TError> TYdbNativeStorage::ExecuteUploadQuery(
             return (status.GetStatus() == EStatus::SCHEME_ERROR ?
                 MakeError(E_NOT_FOUND, out) :
                 MakeError(E_FAIL, out));
+        });
+}
+
+void TYdbNativeStorage::Start()
+{
+    auto tokenFuture = IamClient->GetTokenAsync();
+
+    tokenFuture.Subscribe(
+        [weak = weak_from_this()](
+            NThreading::TFuture<IIamTokenClient::TResponse> futureToken) mutable
+        {
+            TTokenInfo token;
+            auto result = futureToken.ExtractValue();
+            if (!HasError(result)) {
+                token = result.ExtractResult();
+            }
+
+            auto self = weak.lock();
+            if (self) {
+                self->StartImpl(token);
+            }
         });
 }
 
@@ -368,7 +426,7 @@ IYdbStoragePtr CreateYdbStorage(
     ILoggingServicePtr logging,
     IIamTokenClientPtr tokenProvider)
 {
-    return std::make_unique<TYdbNativeStorage>(
+    return std::make_shared<TYdbNativeStorage>(
         std::move(config),
         std::move(logging),
         std::move(tokenProvider));
