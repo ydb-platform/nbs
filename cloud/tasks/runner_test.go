@@ -371,6 +371,133 @@ func TestExecutionContextShouldNotBeHangingByDefault(t *testing.T) {
 	require.Equal(t, false, execCtx.IsHanging())
 }
 
+func TestExecutionContextIsHanging(t *testing.T) {
+	inflightDurationHangTimeout := time.Hour
+	stallingDurationHangTimeout := 30 * time.Minute
+	totalDurationHangTimeout := 24 * time.Hour
+	missedEstimatedUntilTaskIsHanging := uint64(2)
+
+	testCases := []struct {
+		name                      string
+		createdAt                 time.Time
+		inflightDuration          time.Duration
+		estimatedInflightDuration time.Duration
+		stallingDuration          time.Duration
+		estimatedStallingDuration time.Duration
+		isHanging                 bool
+	}{
+		{
+			name:             "no estimate, inflight duration exceeds base timeout",
+			createdAt:        time.Now(),
+			inflightDuration: inflightDurationHangTimeout + time.Minute,
+			isHanging:        true,
+		},
+		{
+			name:                      "inflight estimate exceeded (missed twice)",
+			createdAt:                 time.Now(),
+			inflightDuration:          2*42*time.Hour + time.Minute,
+			estimatedInflightDuration: 42 * time.Hour,
+			isHanging:                 true,
+		},
+		{
+			name:                      "inflight estimate not exceeded",
+			createdAt:                 time.Now(),
+			inflightDuration:          2*42*time.Hour - time.Minute,
+			estimatedInflightDuration: 42 * time.Hour,
+			isHanging:                 false,
+		},
+		{
+			name:                      "stalling estimate exceeded (missed twice)",
+			createdAt:                 time.Now(),
+			stallingDuration:          2*42*time.Hour + time.Minute,
+			estimatedStallingDuration: 42 * time.Hour,
+			isHanging:                 true,
+		},
+		{
+			name:                      "stalling estimate not exceeded",
+			createdAt:                 time.Now(),
+			stallingDuration:          2*42*time.Hour - time.Minute,
+			estimatedStallingDuration: 42 * time.Hour,
+			isHanging:                 false,
+		},
+		{
+			name:                      "below both base thresholds",
+			createdAt:                 time.Now(),
+			inflightDuration:          inflightDurationHangTimeout - time.Minute,
+			estimatedInflightDuration: 0,
+			stallingDuration:          stallingDurationHangTimeout - time.Minute,
+			estimatedStallingDuration: 0,
+			isHanging:                 false,
+		},
+		{
+			name:                      "estimate exceeded, but not missed twice",
+			createdAt:                 time.Now(),
+			inflightDuration:          42*time.Minute + time.Minute,
+			estimatedInflightDuration: 42 * time.Minute,
+			stallingDuration:          42*time.Minute + time.Minute,
+			estimatedStallingDuration: 42 * time.Minute,
+			isHanging:                 false,
+		},
+		{
+			name:                      "inflight estimate exceeded, but below threshold",
+			createdAt:                 time.Now(),
+			inflightDuration:          inflightDurationHangTimeout - time.Minute,
+			estimatedInflightDuration: time.Minute,
+			isHanging:                 false,
+		},
+		{
+			name:                      "stalling estimate exceeded, but below threshold",
+			createdAt:                 time.Now(),
+			stallingDuration:          stallingDurationHangTimeout - time.Minute,
+			estimatedStallingDuration: time.Minute,
+			isHanging:                 false,
+		},
+		{
+			name:      "total duration exceeded",
+			createdAt: time.Now().Add(-totalDurationHangTimeout).Add(-time.Minute),
+			isHanging: true,
+		},
+		{
+			name:      "total duration not exceeded",
+			createdAt: time.Now().Add(-totalDurationHangTimeout).Add(time.Hour),
+			isHanging: false,
+		},
+		{
+			name:                      "all durations exceeded",
+			createdAt:                 time.Now().Add(-totalDurationHangTimeout).Add(-time.Minute),
+			inflightDuration:          2*42*time.Minute + time.Minute,
+			estimatedInflightDuration: 42 * time.Minute,
+			stallingDuration:          2*42*time.Minute + time.Minute,
+			estimatedStallingDuration: 42 * time.Minute,
+			isHanging:                 true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			taskState := storage.TaskState{
+				ID:                        taskID,
+				CreatedAt:                 testCase.createdAt,
+				InflightDuration:          testCase.inflightDuration,
+				EstimatedInflightDuration: testCase.estimatedInflightDuration,
+				StallingDuration:          testCase.stallingDuration,
+				EstimatedStallingDuration: testCase.estimatedStallingDuration,
+			}
+			execCtx := newExecutionContext(
+				NewTaskMock(),
+				mocks.NewStorageMock(),
+				taskState,
+				inflightDurationHangTimeout,
+				stallingDurationHangTimeout,
+				totalDurationHangTimeout,
+				missedEstimatedUntilTaskIsHanging,
+			)
+
+			require.Equal(t, testCase.isHanging, execCtx.IsHanging())
+		})
+	}
+}
+
 func TestExecutionContextFinish(t *testing.T) {
 	ctx := newContext()
 	taskStorage := mocks.NewStorageMock()

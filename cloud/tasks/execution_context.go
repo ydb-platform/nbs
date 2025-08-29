@@ -137,7 +137,7 @@ func (c *executionContext) IsHanging() bool {
 		stallingDurationTimeout = c.stallingDurationHangTimeout
 	}
 
-	deadline := time.Now().Add(c.totalDurationHangTimeout)
+	deadline := c.taskState.CreatedAt.Add(c.totalDurationHangTimeout)
 
 	return c.taskState.InflightDuration > inflightDurationTimeout ||
 		c.taskState.StallingDuration > stallingDurationTimeout ||

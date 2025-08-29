@@ -687,7 +687,6 @@ func startRunner(
 	runnerForRunMetrics := newRunnerMetrics(
 		ctx,
 		runnerMetricsRegistry,
-		inflightDurationHangTimeout,
 		exceptHangingTaskTypes,
 	)
 
@@ -714,7 +713,6 @@ func startRunner(
 	runnerForCancelMetrics := newRunnerMetrics(
 		ctx,
 		runnerMetricsRegistry,
-		inflightDurationHangTimeout,
 		exceptHangingTaskTypes,
 	)
 
@@ -781,7 +779,6 @@ func startRunners(
 			maxRetriableErrorCountDefault,
 			maxRetriableErrorCountByTaskType,
 			maxPanicCount,
-			missedEstimatesUntilTaskIsHanging,
 			maxSampledTaskGeneration,
 		)
 		if err != nil {
@@ -811,7 +808,6 @@ func startStalkingRunners(
 	maxRetriableErrorCountDefault uint64,
 	maxRetriableErrorCountByTaskType map[string]uint64,
 	maxPanicCount uint64,
-	missedEstimatesUntilTaskIsHanging uint64,
 	maxSampledTaskGeneration uint64,
 ) error {
 
@@ -1055,12 +1051,12 @@ func StartRunners(
 		inflightDurationHangTimeout,
 		stallingDurationHangTimeout,
 		totalDurationHangTimeout,
+		config.GetMissedEstimatesUntilTaskIsHanging(),
 		config.GetExceptHangingTaskTypes(),
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxRetriableErrorCountByTaskType(),
 		config.GetMaxPanicCount(),
-		config.GetMissedEstimatesUntilTaskIsHanging(),
 		config.GetMaxSampledTaskGeneration(),
 	)
 	if err != nil {
