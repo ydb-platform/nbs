@@ -58,17 +58,30 @@ public:
         return TStringBuf(Start, Length);
     }
 
-    constexpr const char* Data() const noexcept {
+    [[nodiscard]] constexpr const char* Data() const noexcept {
         return Start;
     }
 
-    constexpr inline size_t Size() const noexcept {
+    [[nodiscard]] constexpr inline size_t Size() const noexcept {
         return Length;
     }
 
     Y_PURE_FUNCTION
-    constexpr inline bool Empty() const noexcept {
+    [[nodiscard]] constexpr inline bool Empty() const noexcept {
         return (Start == nullptr) || (Length == 0);
+    }
+
+    // Lowercase methods are useful for template functions that use TString and
+    // TBlockDataRef.
+    [[nodiscard]] constexpr const char* data() const noexcept {
+        return Data();
+    }
+    [[nodiscard]] constexpr inline size_t size() const noexcept {
+        return Size();
+    }
+    Y_PURE_FUNCTION
+    [[nodiscard]] constexpr inline bool empty() const noexcept {
+        return Empty();
     }
 
     constexpr inline explicit operator bool() const noexcept {
