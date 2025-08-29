@@ -525,7 +525,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         }
 
         for (const auto& id: config.GetDeviceReplacementUUIDs()) {
-            disk.DeviceReplacementIds.push_back(id);
+            disk.DeviceReplacementTracker.AddDeviceReplacement(id);
         }
 
         for (const auto& m: config.GetMigrations()) {
@@ -595,10 +595,12 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         }
     }
 
-    for (const auto& x: Disks) {
-        if (x.second.ReplicaCount) {
-            for (const auto& id: x.second.DeviceReplacementIds) {
-                ReplicaTable.MarkReplacementDevice(x.first, id, true);
+    for (const auto& [diskId, disk]: Disks) {
+        if (disk.ReplicaCount) {
+            for (const auto& id:
+                 disk.DeviceReplacementTracker.GetDevicesReplacements())
+            {
+                ReplicaTable.MarkReplacementDevice(diskId, id, true);
             }
         }
     }
@@ -1471,19 +1473,10 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
             auto* masterDisk = Disks.FindPtr(disk.MasterDiskId);
             Y_DEBUG_ABORT_UNLESS(masterDisk);
             if (masterDisk) {
-                auto it = Find(
-                    masterDisk->DeviceReplacementIds.begin(),
-                    masterDisk->DeviceReplacementIds.end(),
+                masterDisk->DeviceReplacementTracker.RemoveDeviceReplacement(
                     deviceId);
-
-                if (it != masterDisk->DeviceReplacementIds.end()) {
-                    // source device was a replacement device already, let's
-                    // just change it inplace
-                    *it = targetDevice.GetDeviceUUID();
-                } else {
-                    masterDisk->DeviceReplacementIds.push_back(
-                        targetDevice.GetDeviceUUID());
-                }
+                masterDisk->DeviceReplacementTracker.AddDeviceReplacement(
+                    targetDevice.GetDeviceUUID());
 
                 *historyItem.MutableMessage() += TStringBuilder()
                     << ", replica=" << diskId;
@@ -2630,7 +2623,10 @@ NProto::TError TDiskRegistryState::AllocateMirroredDisk(
         return error;
     }
 
-    result->DeviceReplacementIds = disk.DeviceReplacementIds;
+    result->DeviceReplacementIds.assign(
+        disk.DeviceReplacementTracker.GetDevicesReplacements().begin(),
+        disk.DeviceReplacementTracker.GetDevicesReplacements().end());
+    Sort(result->DeviceReplacementIds);
     result->LaggingDevices = disk.OutdatedLaggingDevices;
 
     disk.CloudId = params.CloudId;
@@ -3540,7 +3536,10 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     diskInfo.PlacementPartitionIndex = disk.PlacementPartitionIndex;
     diskInfo.FinishedMigrations = disk.FinishedMigrations;
     diskInfo.OutdatedLaggingDevices = disk.OutdatedLaggingDevices;
-    diskInfo.DeviceReplacementIds = disk.DeviceReplacementIds;
+    diskInfo.DeviceReplacementIds.assign(
+        disk.DeviceReplacementTracker.GetDevicesReplacements().begin(),
+        disk.DeviceReplacementTracker.GetDevicesReplacements().end());
+    Sort(diskInfo.DeviceReplacementIds);
     diskInfo.MediaKind = disk.MediaKind;
     diskInfo.MasterDiskId = disk.MasterDiskId;
     diskInfo.CheckpointId = disk.CheckpointReplica.GetCheckpointId();
@@ -5086,7 +5085,9 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
         m.SetDeviceId(uuid);
     }
 
-    for (const auto& id: diskState.DeviceReplacementIds) {
+    for (const auto& id:
+         diskState.DeviceReplacementTracker.GetDevicesReplacements())
+    {
         *config.AddDeviceReplacementUUIDs() = id;
     }
 
@@ -6415,9 +6416,10 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
     auto* masterDiskState = Disks.FindPtr(disk.MasterDiskId);
     Y_DEBUG_ABORT_UNLESS(masterDiskState);
     if (masterDiskState) {
-        Y_DEBUG_ABORT_UNLESS(
-            !FindPtr(masterDiskState->DeviceReplacementIds, targetId));
-        masterDiskState->DeviceReplacementIds.push_back(targetId);
+        const bool added =
+            masterDiskState->DeviceReplacementTracker.AddDeviceReplacement(
+                targetId);
+        Y_DEBUG_ABORT_UNLESS(added);
     }
 
     ResetMigrationStartTsIfNeeded(disk);
@@ -6657,10 +6659,8 @@ NProto::TError TDiskRegistryState::AddOutdatedLaggingDevices(
             Y_DEBUG_ABORT_UNLESS(success);
         } else {
             // Add the lagging device to the fresh devices list.
-            auto it = Find(diskState.DeviceReplacementIds, outdatedDeviceUUID);
-            if (it == diskState.DeviceReplacementIds.end()) {
-                diskState.DeviceReplacementIds.push_back(outdatedDeviceUUID);
-            }
+            diskState.DeviceReplacementTracker.AddDeviceReplacement(
+                outdatedDeviceUUID);
             ReplicaTable.MarkReplacementDevice(diskId, outdatedDeviceUUID, true);
             addedOutdatedDevices.push_back(outdatedDeviceUUID);
         }
@@ -7477,35 +7477,32 @@ NProto::TError TDiskRegistryState::MarkReplacementDevice(
     }
     Y_DEBUG_ABORT_UNLESS(disk->MasterDiskId.empty());
 
-    auto it = Find(disk->DeviceReplacementIds, deviceId);
-
     NProto::TDiskHistoryItem historyItem;
     historyItem.SetTimestamp(now.MicroSeconds());
 
     if (isReplacement) {
-        if (it != disk->DeviceReplacementIds.end()) {
+        if (!disk->DeviceReplacementTracker.AddDeviceReplacement(deviceId)) {
             return MakeError(
                 S_ALREADY,
-                TStringBuilder() << "Device " << deviceId
+                TStringBuilder()
+                    << "Device " << deviceId
                     << " already in replacement list for disk " << diskId);
         }
-
-        disk->DeviceReplacementIds.push_back(deviceId);
-
-        historyItem.SetMessage(TStringBuilder() << "device " << deviceId
-            << " marked as a replacement device");
+        historyItem.SetMessage(
+            TStringBuilder()
+            << "device " << deviceId << " marked as a replacement device");
     } else {
-        if (it == disk->DeviceReplacementIds.end()) {
+        if (!disk->DeviceReplacementTracker.RemoveDeviceReplacement(deviceId)) {
             return MakeError(
                 S_ALREADY,
-                TStringBuilder() << "Device " << deviceId
+                TStringBuilder()
+                    << "Device " << deviceId
                     << " not found in replacement list for disk " << diskId);
         }
 
-        disk->DeviceReplacementIds.erase(it);
-
-        historyItem.SetMessage(TStringBuilder() << "device " << deviceId
-            << " no more marked as a replacement device");
+        historyItem.SetMessage(
+            TStringBuilder() << "device " << deviceId
+                             << " no more marked as a replacement device");
     }
 
     disk->History.push_back(std::move(historyItem));
