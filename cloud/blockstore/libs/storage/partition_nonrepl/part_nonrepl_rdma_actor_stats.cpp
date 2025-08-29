@@ -61,7 +61,7 @@ void TNonreplicatedPartitionRdmaActor::SendStats(const TActorContext& ctx)
 ////////////////////////////////////////////////////////////////////////////////
 
 void TNonreplicatedPartitionRdmaActor::
-    HandleGetDiskRegistryBasedPartCountersRequest(
+    HandleGetDiskRegistryBasedPartCounters(
         const TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const TActorContext& ctx)

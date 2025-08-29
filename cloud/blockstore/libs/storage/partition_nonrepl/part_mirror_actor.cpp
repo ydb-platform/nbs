@@ -867,7 +867,7 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::
                 TEvGetDiskRegistryBasedPartCountersRequest,
-            HandleGetDiskRegistryBasedPartCountersRequest);
+            HandleGetDiskRegistryBasedPartCounters);
         HFunc(
             TEvNonreplPartitionPrivate::
                 TEvDiskRegistryBasedPartCountersCombined,

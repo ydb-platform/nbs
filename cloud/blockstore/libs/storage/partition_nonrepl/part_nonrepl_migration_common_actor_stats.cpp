@@ -12,7 +12,7 @@ using namespace NActors;
 void TNonreplicatedPartitionMigrationCommonActor::UpdateCounters(
     const TActorContext& ctx,
     const TActorId& sender,
-    TPartNonreplCountersData& partCountersData)
+    TPartNonreplCountersData partCountersData)
 {
     if (sender == SrcActorId) {
         SrcCounters = std::move(partCountersData.DiskCounters);
@@ -45,7 +45,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandlePartCounters(
         msg->CpuUsage,
         std::move(msg->DiskCounters));
 
-    UpdateCounters(ctx, ev->Sender, partCountersData);
+    UpdateCounters(ctx, ev->Sender, std::move(partCountersData));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -112,21 +112,20 @@ void TNonreplicatedPartitionMigrationCommonActor::SendStats(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TNonreplicatedPartitionMigrationCommonActor::
-    HandleGetDiskRegistryBasedPartCountersRequest(
+    HandleGetDiskRegistryBasedPartCounters(
         const TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const TActorContext& ctx)
 {
+    ++StatisticSeqNo;
+
     if (StatisticRequestInfo) {
         NCloud::Reply(
             ctx,
-            *ev,
+            *StatisticRequestInfo,
             std::make_unique<TEvNonreplPartitionPrivate::
                                  TEvGetDiskRegistryBasedPartCountersResponse>(
-                MakeError(
-                    E_REJECTED,
-                    "Nonreplicated migration actor didn't reply on previous "
-                    "request"),
+                MakeError(E_REJECTED, "Migration actor gets new request"),
                 CreatePartitionDiskCounters(
                     EPublishingPolicy::DiskRegistryBased,
                     DiagnosticsConfig
@@ -135,7 +134,6 @@ void TNonreplicatedPartitionMigrationCommonActor::
                 TDuration{},                               // cpuUsage
                 SelfId(),
                 DiskId));
-        return;
     }
 
     TVector<TActorId> statActorIds;
@@ -172,11 +170,11 @@ void TNonreplicatedPartitionMigrationCommonActor::
     StatisticRequestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
-    DiskRegistryBasedPartitionStatisticsCollectorActorId =
-        NCloud::Register<TDiskRegistryBasedPartitionStatisticsCollectorActor>(
-            ctx,
-            SelfId(),
-            std::move(statActorIds));
+    NCloud::Register<TDiskRegistryBasedPartitionStatisticsCollectorActor>(
+        ctx,
+        SelfId(),
+        std::move(statActorIds),
+        StatisticSeqNo);
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::
@@ -185,15 +183,28 @@ void TNonreplicatedPartitionMigrationCommonActor::
             TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
         const TActorContext& ctx)
 {
-    auto* record = ev->Get();
+    if (!StatisticRequestInfo) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION_NONREPL,
+            "Failed to send migration actor statistics due to empty "
+            "StatisticRequestInfo");
+        return;
+    }
 
-    for (auto& counters: record->Counters) {
+    auto* msg = ev->Get();
+
+    if (msg->SeqNo < StatisticSeqNo) {
+        return;
+    }
+
+    for (auto& counters: msg->Counters) {
         TPartNonreplCountersData partCountersData(
             counters.NetworkBytes,
             counters.CpuUsage,
             std::move(counters.DiskCounters));
 
-        UpdateCounters(ctx, counters.SelfId, partCountersData);
+        UpdateCounters(ctx, counters.SelfId, std::move(partCountersData));
     }
 
     auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
@@ -203,7 +214,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
         *StatisticRequestInfo,
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvGetDiskRegistryBasedPartCountersResponse>(
-            record->Error,
+            msg->Error,
             std::move(diskCounters),
             networkBytes,
             cpuUsage,

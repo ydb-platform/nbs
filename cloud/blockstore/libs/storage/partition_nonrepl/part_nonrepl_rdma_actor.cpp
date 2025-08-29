@@ -893,7 +893,7 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::
                 TEvGetDiskRegistryBasedPartCountersRequest,
-            HandleGetDiskRegistryBasedPartCountersRequest);
+            HandleGetDiskRegistryBasedPartCounters);
 
         default:
             if (!HandleRequests(ev)) {

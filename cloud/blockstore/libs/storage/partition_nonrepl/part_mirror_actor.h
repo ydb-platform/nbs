@@ -113,9 +113,8 @@ private:
     const size_t MultiAgentWriteRequestSizeThreshold = 0;
     size_t MultiAgentWriteRoundRobinSeed = 0;
 
-    NActors::TActorId DiskRegistryBasedPartitionStatisticsCollectorActorId;
-
     TRequestInfoPtr StatisticRequestInfo;
+    ui64 StatisticSeqNo = 0;
 
 public:
     TMirrorPartitionActor(
@@ -158,7 +157,7 @@ private:
     void UpdateCounters(
         const NActors::TActorContext& ctx,
         const NActors::TActorId& sender,
-        TPartNonreplCountersData& partCountersData);
+        TPartNonreplCountersData partCountersData);
 
 private:
     STFUNC(StateWork);
@@ -237,7 +236,7 @@ private:
         const NActors::TEvents::TEvPoisonTaken::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleGetDiskRegistryBasedPartCountersRequest(
+    void HandleGetDiskRegistryBasedPartCounters(
         const TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);

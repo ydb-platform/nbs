@@ -220,7 +220,7 @@ void TVolumeActor::HandleScrubberCounters(
 
 void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
     const TActorContext& ctx,
-    TDataForUpdatingDiskRegistryBasedPartCounters& data)
+    TDataForUpdatingDiskRegistryBasedPartCounters data)
 {
     Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
 
@@ -303,7 +303,7 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
         std::move(msg->CallContext),
         std::move(partCountersData));
 
-    UpdateDiskRegistryBasedPartCounters(ctx, data);
+    UpdateDiskRegistryBasedPartCounters(ctx, std::move(data));
 }
 
 void TVolumeActor::HandleGetDiskRegistryBasedPartCountersResponse(
@@ -333,7 +333,7 @@ void TVolumeActor::HandleGetDiskRegistryBasedPartCountersResponse(
         MakeIntrusive<TCallContext>(),
         std::move(partCountersData));
 
-    UpdateDiskRegistryBasedPartCounters(ctx, data);
+    UpdateDiskRegistryBasedPartCounters(ctx, std::move(data));
 }
 
 std::optional<TTxVolume::TSavePartStats> TVolumeActor::UpdatePartCounters(

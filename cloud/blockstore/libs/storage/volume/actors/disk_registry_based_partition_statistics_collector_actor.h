@@ -26,7 +26,8 @@ private:
 public:
     TDiskRegistryBasedPartitionStatisticsCollectorActor(
         const NActors::TActorId& owner,
-        TVector<NActors::TActorId> statActorIds);
+        TVector<NActors::TActorId> statActorIds,
+        ui64 seqNo);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

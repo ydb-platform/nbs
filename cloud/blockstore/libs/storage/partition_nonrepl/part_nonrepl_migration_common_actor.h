@@ -189,9 +189,8 @@ private:
 
     TBackoffDelayProvider BackoffProvider;
 
-    NActors::TActorId DiskRegistryBasedPartitionStatisticsCollectorActorId;
-
     TRequestInfoPtr StatisticRequestInfo;
+    ui64 StatisticSeqNo = 0;
 
 protected:
     // Derived class that wishes to handle wakeup messages should make its own
@@ -309,7 +308,7 @@ private:
     void UpdateCounters(
         const NActors::TActorContext& ctx,
         const NActors::TActorId& sender,
-        TPartNonreplCountersData& partCountersData);
+        TPartNonreplCountersData partCountersData);
 
     TPartNonreplCountersData ExtractPartCounters();
 
@@ -349,7 +348,7 @@ private:
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleGetDiskRegistryBasedPartCountersRequest(
+    void HandleGetDiskRegistryBasedPartCounters(
         const TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);

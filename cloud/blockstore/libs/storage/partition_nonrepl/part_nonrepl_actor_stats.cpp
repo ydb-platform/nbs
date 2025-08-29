@@ -71,7 +71,7 @@ void TNonreplicatedPartitionActor::SendStats(const TActorContext& ctx)
 ////////////////////////////////////////////////////////////////////////////////
 
 void TNonreplicatedPartitionActor::
-    HandleGetDiskRegistryBasedPartCountersRequest(
+    HandleGetDiskRegistryBasedPartCounters(
         const TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const TActorContext& ctx)

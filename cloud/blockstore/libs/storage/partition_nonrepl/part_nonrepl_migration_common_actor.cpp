@@ -311,7 +311,7 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::
                 TEvGetDiskRegistryBasedPartCountersRequest,
-            HandleGetDiskRegistryBasedPartCountersRequest);
+            HandleGetDiskRegistryBasedPartCounters);
         HFunc(
             TEvNonreplPartitionPrivate::
                 TEvDiskRegistryBasedPartCountersCombined,

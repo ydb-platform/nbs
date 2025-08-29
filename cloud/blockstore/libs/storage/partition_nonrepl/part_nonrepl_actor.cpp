@@ -728,7 +728,7 @@ STFUNC(TNonreplicatedPartitionActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::
                 TEvGetDiskRegistryBasedPartCountersRequest,
-            HandleGetDiskRegistryBasedPartCountersRequest);
+            HandleGetDiskRegistryBasedPartCounters);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 

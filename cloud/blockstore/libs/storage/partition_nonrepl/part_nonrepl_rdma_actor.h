@@ -196,7 +196,7 @@ private:
         const TEvVolumePrivate::TEvDeviceTimedOutResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleGetDiskRegistryBasedPartCountersRequest(
+    void HandleGetDiskRegistryBasedPartCounters(
         const TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);

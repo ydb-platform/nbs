@@ -674,7 +674,7 @@ private:
 
     void UpdateDiskRegistryBasedPartCounters(
         const NActors::TActorContext& ctx,
-        TDataForUpdatingDiskRegistryBasedPartCounters& data);
+        TDataForUpdatingDiskRegistryBasedPartCounters data);
 
     const TString& GetDiskId() const;
 
