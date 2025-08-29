@@ -16,8 +16,6 @@ void TDiskRegistryActor::HandleListDisksStates(
         "[%lu] Received ListDisksStates request",
         TabletID());
 
-    Y_UNUSED(ev);
-
     auto states = State->ListDisksStates();
     for (auto& s: states) {
         s = OverrideDiskState(std::move(s));
