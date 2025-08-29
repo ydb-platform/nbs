@@ -20,6 +20,8 @@ struct TInMemoryIndexStateStats
     ui64 NodeRefsCapacity;
     ui64 NodeAttrsCount;
     ui64 NodeAttrsCapacity;
+    ui64 NodeRefsExhaustivenessCapacity;
+    ui64 NodeRefsExhaustivenessCount;
     bool IsNodeRefsExhaustive;
 };
 
@@ -37,7 +39,8 @@ public:
     void Reset(
         ui64 nodesCapacity,
         ui64 nodeAttrsCapacity,
-        ui64 nodeRefsCapacity);
+        ui64 nodeRefsCapacity,
+        ui64 nodeRefsExhaustivenessCapacity);
 
     void LoadNodeRefs(const TVector<TNodeRef>& nodeRefs);
 
@@ -135,7 +138,8 @@ public:
         const TString& cookie,
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
-        TString* next) override;
+        TString* next,
+        ui32* skippedRefs) override;
 
     bool ReadNodeRefs(
         ui64 startNodeId,
@@ -295,14 +299,77 @@ private:
         TMap<TNodeRefsKey, TNodeRefsRow, TLess<TNodeRefsKey>, TStlAllocator>>
         NodeRefs;
 
-    bool IsNodeRefsEvictionObserved = false;
-    bool IsNodeRefsExhaustive = false;
-
-    void NodeRefsEvictionObserved()
+    struct TNodeRefsExhaustivenessInfo
     {
-        IsNodeRefsEvictionObserved = true;
-        IsNodeRefsExhaustive = false;
-    }
+    private:
+        // Indicates whether at least one eviction was observed
+        bool IsNodeRefsEvictionObserved = false;
+        // Can only be set explicitly upone all node refs load completion and in
+        // case zero evictions were observed
+        bool IsNodeRefsExhaustive = false;
+        // Per-nodeId info about several selected nodes
+        ::TLRUCache<ui64, bool> IsExhaustivePerNode;
+
+    public:
+        TNodeRefsExhaustivenessInfo()
+            : IsExhaustivePerNode(0)
+        {}
+
+        void SetMaxSize(size_t size)
+        {
+            IsExhaustivePerNode.SetMaxSize(size);
+        }
+
+        [[nodiscard]] bool IsExhaustiveForNode(ui64 nodeId)
+        {
+            if (Y_UNLIKELY(IsNodeRefsExhaustive)) {
+                return true;
+            }
+            // TInMemoryIndexState is a preemptive cache, thus it is not always
+            // possible to determine, whether the set of stored references is
+            // complete.
+            auto it = IsExhaustivePerNode.Find(nodeId);
+            return it != IsExhaustivePerNode.End() && it.Value();
+        }
+
+        [[nodiscard]] bool IsExhaustive() const
+        {
+            return IsNodeRefsExhaustive;
+        }
+
+        void NodeRefsEvictionObserved(ui64 nodeId)
+        {
+            IsNodeRefsEvictionObserved = true;
+            IsNodeRefsExhaustive = false;
+            auto it = IsExhaustivePerNode.Find(nodeId);
+            if (it != IsExhaustivePerNode.End()) {
+                IsExhaustivePerNode.Erase(it);
+            }
+        }
+
+        void MarkNodeRefsExhaustive(ui64 nodeId)
+        {
+            IsExhaustivePerNode.Insert(nodeId, true);
+        }
+
+        void MarkNodeRefsLoadComplete()
+        {
+            // If during the startup there were no evictions, then the cache
+            // should be complete upon the load completion.
+            IsNodeRefsExhaustive = !IsNodeRefsEvictionObserved;
+        }
+
+        [[nodiscard]] ui64 GetSize() const
+        {
+            return IsExhaustivePerNode.Size();
+        }
+
+        [[nodiscard]] ui64 GetMaxSize() const
+        {
+            return IsExhaustivePerNode.GetMaxSize();
+        }
+
+    } NodeRefsExhaustivenessInfo;
 
 public:
     struct TWriteNodeRequest
@@ -332,13 +399,24 @@ public:
 
     using TDeleteNodeRefsRequest = TNodeRefsKey;
 
+    // This request can be interpreted as follow: "last RefsSize added refs were
+    // children of the NodeId and present the entirety of its children", thus if
+    // we see such request, we can mark the NodeRefs cache as exhaustive for
+    // this particular NodeId
+    struct TMarkNodeRefsAsCachedRequest
+    {
+        ui64 NodeId;
+        ui64 RefsSize;
+    };
+
     using TIndexStateRequest = std::variant<
         TWriteNodeRequest,
         TDeleteNodeRequest,
         TWriteNodeAttrsRequest,
         TDeleteNodeAttrsRequest,
         TWriteNodeRefsRequest,
-        TDeleteNodeRefsRequest>;
+        TDeleteNodeRefsRequest,
+        TMarkNodeRefsAsCachedRequest>;
 
     void UpdateState(const TVector<TIndexStateRequest>& nodeUpdates);
 };

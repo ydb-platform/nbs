@@ -27,6 +27,7 @@ class TRequestGenerator
         SET_NODE_XATTR,
         CREATE_NODE,
         UNLINK_NODE,
+        LIST_NODES,
         CREATE_HANDLE,
         DESTROY_HANDLE,
         REBOOT_TABLET,
@@ -97,6 +98,9 @@ public:
                     break;
                 case UNLINK_NODE:
                     response = DoUnlinkNode();
+                    break;
+                case LIST_NODES:
+                    response = DoListNodes();
                     break;
                 case CREATE_HANDLE:
                     response = DoCreateHandle();
@@ -258,6 +262,18 @@ private:
                 [node](const TNode& n) { return n.NodeId == node.NodeId; });
             Y_ASSERT(it != ObservedNodes.end());
             ObservedNodes.erase(it);
+        }
+
+        return response->Record.DebugString();
+    }
+
+    TString DoListNodes()
+    {
+        const TNode node = PickRandomNode();
+        auto response = Tablet->SendAndRecvListNodes(node.NodeId);
+
+        for (auto& n: *response->Record.MutableNodes()) {
+            RectifyTimes(&n);
         }
 
         return response->Record.DebugString();
@@ -457,6 +473,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Cache_Stress)
         storageConfig.SetInMemoryIndexCacheNodesCapacity(100);
         storageConfig.SetInMemoryIndexCacheNodeAttrsCapacity(100);
         storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(2);
 
         ui64 seed = Now().GetValue();
         auto responses1 =

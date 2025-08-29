@@ -159,7 +159,8 @@ void TIndexTabletState::LoadState(
         CalculateInMemoryIndexCacheCapacity(
             config.GetInMemoryIndexCacheNodeRefsCapacity(),
             GetNodesCount(),
-            config.GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio()));
+            config.GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio()),
+        config.GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity());
     Impl->MixedBlocks.Reset(config.GetMixedBlocksOffloadedRangesCapacity());
 
     for (const auto& deletionMarker: largeDeletionMarkers) {

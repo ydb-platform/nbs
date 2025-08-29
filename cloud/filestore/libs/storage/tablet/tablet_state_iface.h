@@ -134,7 +134,8 @@ public:
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
-        TString* next) = 0;
+        TString* next = nullptr,
+        ui32* skippedRefs = nullptr) = 0;
 
     /**
      * @brief read at most maxCount node refs starting from key
