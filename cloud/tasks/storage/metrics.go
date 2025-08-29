@@ -21,6 +21,9 @@ type storageMetrics interface {
 type taskMetrics struct {
 	created              metrics.Counter
 	timeTotal            metrics.Timer
+	timeInflight         metrics.Timer
+	timeStalling         metrics.Timer
+	timeWaiting          metrics.Timer
 	inflightEstimateMiss metrics.Timer
 	stallingEstimateMiss metrics.Timer
 }
@@ -55,6 +58,9 @@ func (m *storageMetricsImpl) getOrNewMetrics(taskType string) *taskMetrics {
 		t = &taskMetrics{
 			created:              subRegistry.Counter("created"),
 			timeTotal:            subRegistry.DurationHistogram("time/total", taskDurationBuckets()),
+			timeInflight:         subRegistry.DurationHistogram("time/inflight", taskDurationBuckets()),
+			timeStalling:         subRegistry.DurationHistogram("time/stalling", taskDurationBuckets()),
+			timeWaiting:          subRegistry.DurationHistogram("time/waiting", taskDurationBuckets()),
 			inflightEstimateMiss: subRegistry.DurationHistogram("time/estimateMiss", taskDurationBuckets()),
 			stallingEstimateMiss: subRegistry.DurationHistogram("time/stallingEstimateMiss", taskDurationBuckets()),
 		}
@@ -78,6 +84,15 @@ func (m *storageMetricsImpl) OnTaskUpdated(
 	metrics := m.getOrNewMetrics(state.TaskType)
 	if state.Status == TaskStatusFinished {
 		metrics.timeTotal.RecordDuration(state.EndedAt.Sub(state.CreatedAt))
+		metrics.timeInflight.RecordDuration(state.InflightDuration)
+
+		if state.StallingDuration > 0 {
+			metrics.timeStalling.RecordDuration(state.StallingDuration)
+		}
+
+		if state.WaitingDuration > 0 {
+			metrics.timeWaiting.RecordDuration(state.WaitingDuration)
+		}
 
 		// Check whether the task exceeded any of its estimated durations.
 
