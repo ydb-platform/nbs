@@ -19,9 +19,10 @@ type storageMetrics interface {
 ////////////////////////////////////////////////////////////////////////////////
 
 type taskMetrics struct {
-	created      metrics.Counter
-	timeTotal    metrics.Timer
-	estimateMiss metrics.Timer
+	created              metrics.Counter
+	timeTotal            metrics.Timer
+	inflightEstimateMiss metrics.Timer
+	stallingEstimateMiss metrics.Timer
 }
 
 type storageMetricsImpl struct {
@@ -52,9 +53,10 @@ func (m *storageMetricsImpl) getOrNewMetrics(taskType string) *taskMetrics {
 		})
 
 		t = &taskMetrics{
-			created:      subRegistry.Counter("created"),
-			timeTotal:    subRegistry.DurationHistogram("time/total", taskDurationBuckets()),
-			estimateMiss: subRegistry.DurationHistogram("time/estimateMiss", taskDurationBuckets()),
+			created:              subRegistry.Counter("created"),
+			timeTotal:            subRegistry.DurationHistogram("time/total", taskDurationBuckets()),
+			inflightEstimateMiss: subRegistry.DurationHistogram("time/estimateMiss", taskDurationBuckets()),
+			stallingEstimateMiss: subRegistry.DurationHistogram("time/stallingEstimateMiss", taskDurationBuckets()),
 		}
 		m.taskMetrics[taskType] = t
 	}
@@ -77,12 +79,13 @@ func (m *storageMetricsImpl) OnTaskUpdated(
 	if state.Status == TaskStatusFinished {
 		metrics.timeTotal.RecordDuration(state.EndedAt.Sub(state.CreatedAt))
 
-		// Check that task exceeded its estimated duration.
+		// Check whether the task exceeded any of its estimated durations.
+
 		if state.EstimatedInflightDuration > 0 &&
 			state.EstimatedInflightDuration < state.InflightDuration {
 
 			estimateMiss := state.InflightDuration - state.EstimatedInflightDuration
-			metrics.estimateMiss.RecordDuration(estimateMiss)
+			metrics.inflightEstimateMiss.RecordDuration(estimateMiss)
 			logging.Info(
 				ctx,
 				"Task %q missed its inflight estimate: started: %q, ended: %q, estimate: %q, actual: %q, miss: %q",
@@ -91,6 +94,23 @@ func (m *storageMetricsImpl) OnTaskUpdated(
 				state.EndedAt,
 				state.EstimatedInflightDuration,
 				state.InflightDuration,
+				estimateMiss,
+			)
+		}
+
+		if state.EstimatedStallingDuration > 0 &&
+			state.EstimatedStallingDuration < state.StallingDuration {
+
+			estimateMiss := state.StallingDuration - state.EstimatedStallingDuration
+			metrics.stallingEstimateMiss.RecordDuration(estimateMiss)
+			logging.Info(
+				ctx,
+				"Task %q missed its stalling estimate: started: %q, ended: %q, estimate: %q, actual: %q, miss: %q",
+				state.ID,
+				state.CreatedAt,
+				state.EndedAt,
+				state.EstimatedStallingDuration,
+				state.StallingDuration,
 				estimateMiss,
 			)
 		}
