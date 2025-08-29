@@ -3,6 +3,7 @@ import os
 import pytest
 
 from cloud.blockstore.config.client_pb2 import TClientAppConfig, TClientConfig
+from cloud.blockstore.config.disk_pb2 import DEVICE_ERASE_METHOD_NONE
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
     TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
@@ -25,9 +26,9 @@ DEFAULT_BLOCK_SIZE = 4096
 DEFAULT_DEVICE_COUNT = 1
 DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 
-DISK_AGENT_RESTART_INTERVAL=30
-DISK_AGENT_SMALL_RESTART_INTERVAL=20
-DISK_AGENT_BIG_RESTART_INTERVAL=40
+DISK_AGENT_RESTART_INTERVAL = 20
+DISK_AGENT_SMALL_RESTART_INTERVAL = 5
+DISK_AGENT_BIG_RESTART_INTERVAL = 30
 
 
 class TestCase(object):
@@ -242,6 +243,9 @@ def __run_test(test_case, use_rdma):
         setup_nonreplicated(
             kikimr_cluster.client,
             devices_per_agent,
+            # in tests, only one disk is created and it lives until the end,
+            # so we can set DEVICE_ERASE_METHOD_NONE to speed up testing
+            device_erase_method=DEVICE_ERASE_METHOD_NONE,
             dedicated_disk_agent=True,
             agent_count=test_case.agent_count,
         )
