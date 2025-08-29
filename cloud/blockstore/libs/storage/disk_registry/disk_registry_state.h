@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/agent_list.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
+#include <cloud/blockstore/libs/storage/disk_registry/model/device_replacement_tracker.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/pending_cleanup.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/replica_table.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
@@ -266,7 +267,7 @@ class TDiskRegistryState
         // Filled if the disk is a shadow disk for the checkpoint.
         NProto::TCheckpointReplica CheckpointReplica;
 
-        TVector<TDeviceId> DeviceReplacementIds;
+        TDeviceReplacementTracker DeviceReplacementTracker;
         THashSet<TString> LostDeviceIds;
 
         NProto::EStorageMediaKind MediaKind =
