@@ -1124,7 +1124,7 @@ func (s *storageYDB) listSlowTasks(
 		from tasks
 		where
 			id in $task_ids
-			and estimated_inflight_duration > Interval("P0D")
+			and estimated_inflight_duration != Interval("P0D")
 			and (inflight_duration - estimated_inflight_duration) >= $estimateMiss
 		order by DateTime::ToSeconds(inflight_duration) / DateTime::ToSeconds(estimated_inflight_duration) desc
 	`, s.tablesPath),
