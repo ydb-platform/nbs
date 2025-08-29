@@ -444,4 +444,10 @@ void TRequestsTimeTracker::ResetStats()
     }
 }
 
+const TRequestsTimeTracker::TInflightMap&
+TRequestsTimeTracker::GetInflightOperations() const
+{
+    return InflightRequests;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

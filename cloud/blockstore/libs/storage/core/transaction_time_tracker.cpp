@@ -205,4 +205,10 @@ void TTransactionTimeTracker::ResetStats()
     }
 }
 
+const TTransactionTimeTracker::TInflightMap&
+TTransactionTimeTracker::GetInflightOperations() const
+{
+    return Inflight;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

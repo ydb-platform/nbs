@@ -447,14 +447,16 @@ void TPartitionState::EnqueueIORequest(
     NActors::IActorPtr requestActor,
     ui64 bsGroupOperationId,
     ui32 group,
-    TBSGroupOperationTimeTracker::EOperationType operationType)
+    TBSGroupOperationTimeTracker::EOperationType operationType,
+    ui32 blockSize)
 {
     auto& ch = GetChannel(channel);
     ch.IORequests.emplace_back(
         std::move(requestActor),
         bsGroupOperationId,
         group,
-        operationType);
+        operationType,
+        blockSize);
     ++ch.IORequestsQueued;
 }
 

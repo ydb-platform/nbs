@@ -50,6 +50,15 @@ public:
         size_t FailCount = 0;
     };
 
+    struct TRequestInflight
+    {
+        ui64 StartTime = 0;
+        TBlockRange64 BlockRange;
+        ERequestType RequestType = ERequestType::Read;
+    };
+
+    using TInflightMap = THashMap<ui64, TRequestInflight>;
+
 private:
     constexpr static size_t RequestTypeCount =
         static_cast<size_t>(ERequestType::Last) + 1;
@@ -83,13 +92,6 @@ private:
         bool operator()(const TKey& lhs, const TKey& rhs) const;
     };
 
-    struct TRequestInflight
-    {
-        ui64 StartTime = 0;
-        TBlockRange64 BlockRange;
-        ERequestType RequestType = ERequestType::Read;
-    };
-
     struct TFirstRequest
     {
         ui64 StartTime = 0;
@@ -100,7 +102,7 @@ private:
     const ui64 ConstructionTime;
 
     std::array<TFirstRequest, RequestTypeCount> FirstRequests;
-    THashMap<ui64, TRequestInflight> InflightRequests;
+    TInflightMap InflightRequests;
     THashMap<TKey, TTimeHistogram, THash, TEqual> Histograms;
 
     [[nodiscard]] NJson::TJsonValue BuildPercentilesJson() const;
@@ -132,6 +134,8 @@ public:
     [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize) const;
 
     void ResetStats();
+
+    [[nodiscard]] const TInflightMap& GetInflightOperations() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

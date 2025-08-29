@@ -1223,7 +1223,18 @@ void DumpLatency(
 
     HTML (out) {
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
-        BuildResetButton(out, tabletId, "resetTransactionLatencyStats");
+
+        RenderStyledPostButton(
+            out,
+            "/tablets/app?action=resetTransactionLatencyStats&TabletID=" +
+                ToString(tabletId),
+            "Reset");
+
+        RenderStyledLink(
+            out,
+            "/tablets/app?action=getTransactionsInflight&TabletID=" +
+                ToString(tabletId),
+            "Inflight");
 
         DIV_CLASS_ID(" ", containerId) {
             TAG (TH3) { out << "Transactions"; }
@@ -1542,7 +1553,18 @@ void DumpGroupLatencyTab(
         AddGroupLatencyCSS(out);
 
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
-        BuildResetButton(out, tabletId, "resetBSGroupLatencyStats");
+
+        RenderStyledPostButton(
+            out,
+            "/tablets/app?action=resetBSGroupLatencyStats&TabletID=" +
+                ToString(tabletId),
+            "Reset");
+
+        RenderStyledLink(
+            out,
+            "/tablets/app?action=getBSGroupOperationsInflight&TabletID=" +
+                ToString(tabletId),
+            "Inflight");
 
         out << "<div id='" << containerId << "'></div>";
 
@@ -1655,30 +1677,238 @@ void DumpGroupLatencyTab(
     }
 }
 
-void BuildResetButton(
-    IOutputStream& out,
-    ui64 tabletId,
-    const TString& actionName)
+TString FormatTransactionsInflight(
+    const TTransactionTimeTracker::TInflightMap& operations,
+    ui64 nowCycles,
+    TInstant now)
 {
-    out << R"(<script>
-    function )"
-        << actionName << R"(() {
-        $.ajax({
-            url: '?action=)"
-        << actionName << R"(&TabletID=)" << ToString(tabletId) << R"(',
-            method: 'POST',
-            data: {
-                action: ')" << actionName << R"(',
-                TabletID: ')" << tabletId << R"('
-            },
-            error: function(xhr) {
-                alert('Error: ' + xhr.statusText);
-            }
-        });
-    }
-    </script>)";
+    TStringStream out;
 
-    out << "<button onclick=\"" << actionName << "()\">reset</button>";
+    HTML (out) {
+        DIV_CLASS ("container") {
+            TABLE_SORTABLE()
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ID";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Start Time";
+                        }
+                        TABLEH () {
+                            out << "Duration";
+                        }
+                    }
+                }
+                TABLEBODY()
+                {
+                    for (const auto& [id, op]: operations) {
+                        auto duration =
+                            CyclesToDurationSafe(nowCycles - op.StartTime);
+                        TABLER () {
+                            TABLED () {
+                                out << id;
+                            }
+                            TABLED () {
+                                out << op.TransactionName;
+                            }
+                            TABLED () {
+                                out << (now - duration).ToStringUpToSeconds();
+                            }
+                            TABLED () {
+                                out << FormatDuration(duration);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out.Str();
+}
+
+TString FormatRequestsInflight(
+    const THashMap<ui64, TRequestsTimeTracker::TRequestInflight>& operations,
+    ui64 nowCycles,
+    TInstant now)
+{
+    TStringStream out;
+
+    HTML (out) {
+        DIV_CLASS ("container") {
+            TABLE_SORTABLE()
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ID";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Block Range";
+                        }
+                        TABLEH () {
+                            out << "Start Time";
+                        }
+                        TABLEH () {
+                            out << "Duration";
+                        }
+                    }
+                }
+                TABLEBODY()
+                {
+                    for (const auto& [id, op]: operations) {
+                        auto duration =
+                            CyclesToDurationSafe(nowCycles - op.StartTime);
+                        TABLER () {
+                            TABLED () {
+                                out << id;
+                            }
+                            TABLED () {
+                                switch (op.RequestType) {
+                                    case TRequestsTimeTracker::ERequestType::
+                                        Read:
+                                        out << "Read";
+                                        break;
+                                    case TRequestsTimeTracker::ERequestType::
+                                        Write:
+                                        out << "Write";
+                                        break;
+                                    case TRequestsTimeTracker::ERequestType::
+                                        Zero:
+                                        out << "Zero";
+                                        break;
+                                    case TRequestsTimeTracker::ERequestType::
+                                        Describe:
+                                        out << "Describe";
+                                        break;
+                                    default:
+                                        out << "Unknown";
+                                }
+                            }
+                            TABLED () {
+                                out << DescribeRange(op.BlockRange);
+                            }
+                            TABLED () {
+                                out << (now - duration).ToStringUpToSeconds();
+                            }
+                            TABLED () {
+                                out << FormatDuration(duration);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out.Str();
+}
+
+TString FormatBSGroupOperationsInflight(
+    const TBSGroupOperationTimeTracker::TInflightMap& operations,
+    ui64 nowCycles,
+    TInstant now)
+{
+    TStringStream out;
+
+    HTML (out) {
+        DIV_CLASS ("container") {
+            TABLE_SORTABLE()
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ID";
+                        }
+                        TABLEH () {
+                            out << "Group ID";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Block Size";
+                        }
+                        TABLEH () {
+                            out << "Start Time";
+                        }
+                        TABLEH () {
+                            out << "Duration";
+                        }
+                    }
+                }
+                TABLEBODY()
+                {
+                    for (const auto& [id, op]: operations) {
+                        auto duration =
+                            CyclesToDurationSafe(nowCycles - op.StartTime);
+                        TABLER () {
+                            TABLED () {
+                                out << id;
+                            }
+                            TABLED () {
+                                out << op.GroupId;
+                            }
+                            TABLED () {
+                                out << op.OperationName;
+                            }
+                            TABLED () {
+                                out << op.BlockSize;
+                            }
+                            TABLED () {
+                                out << (now - duration).ToStringUpToSeconds();
+                            }
+                            TABLED () {
+                                out << FormatDuration(duration);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out.Str();
+}
+
+const TStringBuf DefaultButtonStyle =
+    "display:inline-block;"
+    "padding:2px 8px;"
+    "background:#f5f5f5;"
+    "color:#222;"
+    "border:1px solid #ccc;"
+    "border-radius:3px;"
+    "text-decoration:none;"
+    "font-size:0.9em;"
+    "font-weight:600;";
+
+void RenderStyledLink(
+    IOutputStream& out,
+    const TString& url,
+    const TString& text,
+    TStringBuf style)
+{
+    out << "<a href='" << url << "' style='" << style << "'>" << text << "</a>";
+}
+
+void RenderStyledPostButton(
+    IOutputStream& out,
+    const TString& url,
+    const TString& text,
+    TStringBuf style)
+{
+    out << "<button style='" << style << "' "
+        << "onclick=\"fetch('" << url << "', {method:'POST'})"
+        << ".catch(e => alert('Error: ' + e.message))\">" << text
+        << "</button>";
 }
 
 }   // namespace NMonitoringUtils

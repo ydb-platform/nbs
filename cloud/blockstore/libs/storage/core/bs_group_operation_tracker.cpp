@@ -64,7 +64,8 @@ void TBSGroupOperationTimeTracker::OnStarted(
     ui64 operationId,
     ui32 groupId,
     EOperationType operationType,
-    ui64 startTime)
+    ui64 startTime,
+    ui32 blockSize)
 {
     TString operationName;
 
@@ -97,7 +98,8 @@ void TBSGroupOperationTimeTracker::OnStarted(
         TOperationInflight{
             .StartTime = startTime,
             .OperationName = operationName,
-            .GroupId = groupId});
+            .GroupId = groupId,
+            .BlockSize = blockSize});
 }
 
 void TBSGroupOperationTimeTracker::OnFinished(ui64 operationId, ui64 finishTime)
@@ -215,6 +217,12 @@ void TBSGroupOperationTimeTracker::ResetStats()
             histogram.Reset();
         }
     }
+}
+
+const TBSGroupOperationTimeTracker::TInflightMap&
+TBSGroupOperationTimeTracker::GetInflightOperations() const
+{
+    return Inflight;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -72,7 +72,8 @@ void TPartitionActor::HandleReadBlob(
             bsGroupOperationId,
             groupId,
             TBSGroupOperationTimeTracker::EOperationType::Read,
-            GetCycleCount());
+            GetCycleCount(),
+            State->GetBlockSize());
         return;
     }
 
@@ -81,7 +82,8 @@ void TPartitionActor::HandleReadBlob(
         std::move(readBlobActor),
         bsGroupOperationId,
         groupId,
-        TBSGroupOperationTimeTracker::EOperationType::Read);
+        TBSGroupOperationTimeTracker::EOperationType::Read,
+        State->GetBlockSize());
     ProcessIOQueue(ctx, channel);
 }
 
