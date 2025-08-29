@@ -941,7 +941,7 @@ func (s *storageYDB) listHangingTasks(
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $limit as Uint64;
 		declare $except_task_types as List<Utf8>;
-		declare $hanging_task_timeout as Interval;
+		declare $inflight_duration_hang_timeout as Interval;
 		declare $missed_estimates_until_task_is_hanging as Uint64;
 		declare $stalling_duration_hang_timeout as Interval;
 		declare $total_duration_hang_timeout as Interval;
@@ -960,7 +960,7 @@ func (s *storageYDB) listHangingTasks(
 			(
 			    inflight_duration >= MAX_OF(
 					estimated_inflight_duration * $missed_estimates_until_task_is_hanging,
-					$hanging_task_timeout,
+					$inflight_duration_hang_timeout,
 				) or
 				stalling_duration >= MAX_OF(
 					estimated_stalling_duration * $missed_estimates_until_task_is_hanging,
@@ -976,7 +976,7 @@ func (s *storageYDB) listHangingTasks(
 			strListValue(s.exceptHangingTaskTypes),
 		),
 		persistence.ValueParam(
-			"$hanging_task_timeout",
+			"$inflight_duration_hang_timeout",
 			persistence.IntervalValue(s.inflightDurationHangTimeout),
 		),
 		persistence.ValueParam(
