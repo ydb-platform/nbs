@@ -312,6 +312,9 @@ message TDiskAgentConfig
     // we kick out the old client (from older generations)
     // and acquire a device for the new client.
     optional bool KickOutOldClientsEnabled = 42;
+
+    // Use one submission thread per AIO service.
+    optional bool UseOneSubmissionThreadPerAIOServiceEnabled = 43;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

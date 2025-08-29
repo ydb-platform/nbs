@@ -13,16 +13,46 @@
 
 #include <util/string/builder.h>
 
+#include <atomic>
+
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TConcurrentAioServiceFactory final: IFileIOServiceFactory
+{
+    const IFileIOServiceFactoryPtr Factory;
+    std::atomic<ui32> Index = 0;
+
+    explicit TConcurrentAioServiceFactory(IFileIOServiceFactoryPtr factory)
+        : Factory(std::move(factory))
+    {}
+
+    IFileIOServicePtr CreateFileIOService() final
+    {
+        const ui32 index = Index++;
+
+        return CreateConcurrentFileIOService(
+            TStringBuilder() << "AIO.SQ" << index,
+            Factory->CreateFileIOService());
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IFileIOServiceFactoryPtr CreateAIOServiceFactory(const TDiskAgentConfig& config)
 {
-    return NCloud::CreateAIOServiceFactory(
+    auto factory = NCloud::CreateAIOServiceFactory(
         {.MaxEvents = config.GetMaxAIOContextEvents()});
+
+    if (config.GetUseOneSubmissionThreadPerAIOServiceEnabled()) {
+        factory =
+            std::make_shared<TConcurrentAioServiceFactory>(std::move(factory));
+    }
+
+    return factory;
 }
 
 IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
