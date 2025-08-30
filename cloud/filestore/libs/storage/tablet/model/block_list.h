@@ -20,6 +20,11 @@ class TBlockIterator
     using PNextBlockFunc = bool (TBlockIterator::*)(void);
 
 public:
+    TBlock Block;
+    ui32 BlobOffset = 0;
+    ui32 BlocksCount = 0;
+
+public:
     struct TBlockFilter
     {
         ui64 NodeId = 0;
@@ -30,9 +35,6 @@ public:
         bool CheckGroup(ui64 nodeId, ui64 minCommitId);
         bool CheckEntry(ui32 blockIndex, ui64 maxCommitId);
     };
-
-    TBlock Block;
-    ui32 BlobOffset = 0;
 
 private:
     TBinaryReader Reader;

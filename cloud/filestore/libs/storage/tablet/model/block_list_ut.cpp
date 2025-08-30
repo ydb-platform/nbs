@@ -119,14 +119,16 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
             InitialCommitId,
             FirstBlockIndex,
             BlocksCount);
-        for (size_t i = 0; i < BlocksCount; ++i) {
+        for (size_t i = 0; i < BlocksCount; i += iter.BlocksCount) {
             UNIT_ASSERT(iter.Next());
 
-            UNIT_ASSERT_VALUES_EQUAL(iter.BlobOffset, i);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.NodeId, NodeId);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.BlockIndex, FirstBlockIndex + i);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.MinCommitId, InitialCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.MaxCommitId, InvalidCommitId);
+            for (ui32 j = 0; j < iter.BlocksCount; j++) {
+                UNIT_ASSERT_VALUES_EQUAL(iter.BlobOffset + j, i + j);
+                UNIT_ASSERT_VALUES_EQUAL(iter.Block.NodeId, NodeId);
+                UNIT_ASSERT_VALUES_EQUAL(iter.Block.BlockIndex + j, FirstBlockIndex + i + j);
+                UNIT_ASSERT_VALUES_EQUAL(iter.Block.MinCommitId, InitialCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(iter.Block.MaxCommitId, InvalidCommitId);
+            }
         }
 
         UNIT_ASSERT(!iter.Next());
@@ -161,15 +163,17 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
             InitialCommitId,
             FirstBlockIndex,
             Max<ui32>() - FirstBlockIndex);
-        for (size_t i = 0; i < BlocksCount; ++i) {
+        for (size_t i = 0; i < BlocksCount; i += iter.BlocksCount) {
             UNIT_ASSERT(iter.Next());
 
-            const auto& block = blocks[i];
-            UNIT_ASSERT_VALUES_EQUAL(iter.BlobOffset, i);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.NodeId, block.NodeId);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.BlockIndex, block.BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.MinCommitId, block.MinCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.MaxCommitId, block.MaxCommitId);
+            for (ui32 j = 0; j < iter.BlocksCount; j++) {
+                const auto& block = blocks[i];
+                UNIT_ASSERT_VALUES_EQUAL(iter.BlobOffset + j, i + j);
+                UNIT_ASSERT_VALUES_EQUAL(iter.Block.NodeId, block.NodeId);
+                UNIT_ASSERT_VALUES_EQUAL(iter.Block.BlockIndex + j, block.BlockIndex +j);
+                UNIT_ASSERT_VALUES_EQUAL(iter.Block.MinCommitId, block.MinCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(iter.Block.MaxCommitId, block.MaxCommitId);
+            }
         }
 
         UNIT_ASSERT(!iter.Next());
