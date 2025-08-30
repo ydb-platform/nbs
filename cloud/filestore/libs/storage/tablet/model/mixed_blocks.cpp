@@ -287,14 +287,19 @@ void TMixedBlocks::FindBlocks(
 
         while (iter.Next()) {
             auto& block = iter.Block;
+            ui32 blockIndex = block.BlockIndex;
 
-            Y_ABORT_UNLESS(block.NodeId == nodeId);
-            Y_ABORT_UNLESS(block.MinCommitId <= commitId);
+            for (ui32 i = 0; i < iter.BlocksCount; i++) {
+                block.BlockIndex = blockIndex + i;
 
-            range->DeletionMarkers.Apply(block);
+                Y_ABORT_UNLESS(block.NodeId == nodeId);
+                Y_ABORT_UNLESS(block.MinCommitId <= commitId);
 
-            if (commitId < block.MaxCommitId) {
-                visitor.Accept(block, blob.BlobId, iter.BlobOffset);
+                range->DeletionMarkers.Apply(block);
+
+                if (commitId < block.MaxCommitId) {
+                    visitor.Accept(block, blob.BlobId, iter.BlobOffset + i);
+                }
             }
         }
     }
