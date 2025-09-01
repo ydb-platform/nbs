@@ -885,7 +885,8 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	}
 
 	targetPerm := os.FileMode(0775)
-	if err := os.MkdirAll(req.StagingTargetPath, targetPerm); err != nil {
+	err = os.MkdirAll(req.StagingTargetPath, targetPerm)
+	if err != nil {
 		return fmt.Errorf("failed to create staging directory: %w", err)
 	}
 
@@ -914,7 +915,8 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to format or mount filesystem: %w", err)
 	}
 
-	if err := os.Chmod(req.StagingTargetPath, targetPerm); err != nil {
+	err = os.Chmod(req.StagingTargetPath, targetPerm)
+	if err != nil {
 		return fmt.Errorf("failed to chmod target path: %w", err)
 	}
 
