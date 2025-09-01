@@ -2209,7 +2209,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
-    SERVICE_TEST_SIMPLE(ShouldGetMultishardedSystemTopology)
+    SERVICE_TEST_SIMPLE(
+        ShouldGetMultishardedSystemTopologyWithStrictFileSystemSizeEnforcement)
     {
         config.SetMultiTabletForwardingEnabled(true);
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
@@ -2487,7 +2488,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TDispatchOptions options;
         options.FinalEvents = {
             TDispatchOptions::TFinalEventCondition(
-                TEvIndexTabletPrivate::EvGetShardStatsCompleted)};
+                TEvIndexTabletPrivate::EvAggregateStatsCompleted)};
         service.AccessRuntime().DispatchEvents(options);
 
         {
@@ -2610,7 +2611,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         options.FinalEvents = {
             TDispatchOptions::TFinalEventCondition(
-                TEvIndexTabletPrivate::EvGetShardStatsCompleted)};
+                TEvIndexTabletPrivate::EvAggregateStatsCompleted)};
         service.AccessRuntime().DispatchEvents(options);
 
         // crit event should be raised
@@ -4887,7 +4888,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TDispatchOptions options;
         options.FinalEvents = {
             TDispatchOptions::TFinalEventCondition(
-                TEvIndexTabletPrivate::EvGetShardStatsCompleted)};
+                TEvIndexTabletPrivate::EvAggregateStatsCompleted)};
         service.AccessRuntime().DispatchEvents(options);
 
         {

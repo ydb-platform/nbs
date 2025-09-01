@@ -18,8 +18,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGetShardStatsActor final
-    : public TActorBootstrapped<TGetShardStatsActor>
+class TAggregateStatsActor final
+    : public TActorBootstrapped<TAggregateStatsActor>
 {
 private:
     const TString LogTag;
@@ -34,7 +34,7 @@ private:
     int Responses = 0;
 
 public:
-    TGetShardStatsActor(
+    TAggregateStatsActor(
         TString logTag,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
@@ -70,7 +70,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TGetShardStatsActor::TGetShardStatsActor(
+TAggregateStatsActor::TAggregateStatsActor(
         TString logTag,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
@@ -90,13 +90,13 @@ TGetShardStatsActor::TGetShardStatsActor(
     , ShardStats(ShardIds.size())
 {}
 
-void TGetShardStatsActor::Bootstrap(const TActorContext& ctx)
+void TAggregateStatsActor::Bootstrap(const TActorContext& ctx)
 {
     SendRequests(ctx);
     Become(&TThis::StateWork);
 }
 
-void TGetShardStatsActor::SendRequests(const TActorContext& ctx)
+void TAggregateStatsActor::SendRequests(const TActorContext& ctx)
 {
     ui32 cookie = 0;
     for (const auto& shardId: ShardIds) {
@@ -108,7 +108,7 @@ void TGetShardStatsActor::SendRequests(const TActorContext& ctx)
     }
 }
 
-void TGetShardStatsActor::SendRequestToFileSystem(
+void TAggregateStatsActor::SendRequestToFileSystem(
     const TActorContext& ctx,
     const TString& fileSystemId,
     ui32 cookie)
@@ -133,7 +133,7 @@ void TGetShardStatsActor::SendRequestToFileSystem(
         cookie);
 }
 
-void TGetShardStatsActor::HandleGetStorageStatsResponse(
+void TAggregateStatsActor::HandleGetStorageStatsResponse(
     const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -193,7 +193,7 @@ void TGetShardStatsActor::HandleGetStorageStatsResponse(
     }
 }
 
-void TGetShardStatsActor::HandlePoisonPill(
+void TAggregateStatsActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -201,7 +201,7 @@ void TGetShardStatsActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
-void TGetShardStatsActor::ReplyAndDie(
+void TAggregateStatsActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
@@ -209,7 +209,7 @@ void TGetShardStatsActor::ReplyAndDie(
         Response =
             std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>(error);
     }
-    using TCompletion = TEvIndexTabletPrivate::TEvGetShardStatsCompleted;
+    using TCompletion = TEvIndexTabletPrivate::TEvAggregateStatsCompleted;
     TInstant startedTs;
     NProtoPrivate::TStorageStats statsForTablet = Response->Record.GetStats();
     if (RequestInfo) {
@@ -235,7 +235,7 @@ void TGetShardStatsActor::ReplyAndDie(
     Die(ctx);
 }
 
-STFUNC(TGetShardStatsActor::StateWork)
+STFUNC(TAggregateStatsActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -887,7 +887,7 @@ void TIndexTabletActor::HandleUpdateCounters(
         auto* stats = response->Record.MutableStats();
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
         // if shardIds isn't empty and current tablet is a shard, it will
-        // collect self stats via TGetShardStatsActor
+        // collect self stats via TAggregateStatsActor
         if (shardIds.empty() || IsMainTablet()) {
             FillSelfStorageStats(stats);
         }
@@ -896,7 +896,7 @@ void TIndexTabletActor::HandleUpdateCounters(
             return;
         }
 
-        auto actor = std::make_unique<TGetShardStatsActor>(
+        auto actor = std::make_unique<TAggregateStatsActor>(
             LogTag,
             SelfId(),
             TRequestInfoPtr(),
@@ -1050,11 +1050,11 @@ void TIndexTabletActor::HandleGetStorageStats(
 
     if (!IsMainTablet()) {
         // if current tablet is a shard, it will collect self stats via
-        // TGetShardStatsActor
+        // TAggregateStatsActor
         stats->Clear();
     }
 
-    auto actor = std::make_unique<TGetShardStatsActor>(
+    auto actor = std::make_unique<TAggregateStatsActor>(
         LogTag,
         SelfId(),
         std::move(requestInfo),
@@ -1070,8 +1070,8 @@ void TIndexTabletActor::HandleGetStorageStats(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::HandleGetShardStatsCompleted(
-    const TEvIndexTabletPrivate::TEvGetShardStatsCompleted::TPtr& ev,
+void TIndexTabletActor::HandleAggregateStatsCompleted(
+    const TEvIndexTabletPrivate::TEvAggregateStatsCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();

@@ -633,9 +633,9 @@ message TStorageConfig
     // allows to reply early to GetNodeXAttr and ListNodeXAttr queries.
     optional bool LazyXAttrsEnabled = 436;
 
-    // If this flag is on, shards store ids of all other shards.
-    // Counters AggregateUsedBytesCount and AggregateUsedNodesCount
-    // are calculated for all the shards. These counters are used to strictly
-    // enforce the filesystem size.
+    // If this flag is on, shards store ids of all other shards. Counters
+    // AggregateUsedBytesCount and AggregateUsedNodesCount are calculated for
+    // all the shards. These counters are used to strictly enforce the
+    // filesystem size.
     optional bool StrictFileSystemSizeEnforcementEnabled = 437;
 }

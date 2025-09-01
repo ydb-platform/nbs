@@ -38,6 +38,7 @@ private:
     TVector<TString> ShardIds;
     ui32 ShardsToCreate = 0;
     ui32 ShardsToConfigure = 0;
+    // These flags are set by HandleGetFileSystemTopologyResponse.
     bool DirectoryCreationInShardsEnabled = false;
     bool StrictFileSystemSizeEnforcementEnabled = false;
 

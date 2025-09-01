@@ -89,17 +89,19 @@ void WaitForTabletStart(TServiceClient& service)
     service.AccessRuntime().DispatchEvents(options);
 }
 
-void GetStorageStats(
+NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     TServiceClient& service,
-    const NProtoPrivate::TGetStorageStatsRequest& request,
-    NProtoPrivate::TGetStorageStatsResponse& response)
+    const NProtoPrivate::TGetStorageStatsRequest& request)
 {
     TString buf;
+    NProtoPrivate::TGetStorageStatsResponse response;
     google::protobuf::util::MessageToJsonString(request, &buf);
     const auto actionResponse = service.ExecuteAction("GetStorageStats", buf);
     auto status = google::protobuf::util::JsonStringToMessage(
         actionResponse->Record.GetOutput(),
         &response);
+
+    return response;
 }
 
 auto GetFileSystemCounters(TTestEnv& env, const TString& fsId)
@@ -415,12 +417,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         const ui64 shardsCount = 2;
         const ui64 totalSize = fileSystems[0].Size + fileSystems[1].Size;
 
-        // waiting for async stats calculation
+        // Waiting for async stats calculation. In case
+        // strictFileSystemSizeEnforcementEnabled shards know of other shards
+        // and fetch statistics from them in order to have correct
+        // AggregateUsedBytesCount and AggregateUsedNodesCount. These counters
+        // are updated in HandleAggregateStatsCompleted and we wait for
+        // EvAggregateStatsCompleted for the main filesystem and every shard.
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
         TDispatchOptions options;
         options.FinalEvents = {
             TDispatchOptions::TFinalEventCondition(
-                TEvIndexTabletPrivate::EvGetShardStatsCompleted,
+                TEvIndexTabletPrivate::EvAggregateStatsCompleted,
                 strictFileSystemSizeEnforcementEnabled ? 3 : 1)
         };
         env.GetRuntime().DispatchEvents(options);
@@ -451,25 +458,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             request.SetFileSystemId(fsId);
             request.SetAllowCache(true);
 
-            NProtoPrivate::TGetStorageStatsResponse response;
-            GetStorageStats(service, request, response);
+            NProtoPrivate::TGetStorageStatsResponse response =
+                GetStorageStats(service, request);
 
             checkShardStats(response.GetStats());
         }
 
-        // Only in this mode shards know of other shards
-        if (strictFileSystemSizeEnforcementEnabled) {
-            for (ui64 i = 0; i < shardsCount; ++i) {
-                NProtoPrivate::TGetStorageStatsRequest request;
-                request.SetFileSystemId(fileSystems[i].Id);
-                request.SetAllowCache(false);
-                request.SetMode(
-                    NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+        for (ui64 i = 0; i < shardsCount; ++i) {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fileSystems[i].Id);
+            request.SetAllowCache(false);
+            request.SetMode(
+                NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
 
-                NProtoPrivate::TGetStorageStatsResponse response;
-                GetStorageStats(service, request, response);
+            NProtoPrivate::TGetStorageStatsResponse response =
+                GetStorageStats(service, request);
+            const NProtoPrivate::TStorageStats& stats = response.GetStats();
 
+            if (strictFileSystemSizeEnforcementEnabled) {
+                // Check that shards have stats from other shards
                 checkShardStats(response.GetStats());
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.ShardStatsSize());
             }
         }
 
@@ -520,12 +530,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.DestroySession(headers);
     }
 
-    Y_UNIT_TEST(ShouldGetStorageStats)
+    Y_UNIT_TEST(ShouldGetStorageStatsWithFileSystemSizeEnforcement)
     {
-        // Run the test with strictFileSystemSizeEnforcementEnabled ==
-        // false/true
-        DoShouldGetStorageStats(false);
-        DoShouldGetStorageStats(true);
+        const bool strictFileSystemSizeEnforcementEnabled = true;
+        DoShouldGetStorageStats(strictFileSystemSizeEnforcementEnabled);
+    }
+
+    Y_UNIT_TEST(ShouldGetStorageStatsWithoutFileSystemSizeEnforcement)
+    {
+        const bool strictFileSystemSizeEnforcementEnabled = false;
+        DoShouldGetStorageStats(strictFileSystemSizeEnforcementEnabled);
     }
 
     Y_UNIT_TEST(ShouldRunForcedOperation)
