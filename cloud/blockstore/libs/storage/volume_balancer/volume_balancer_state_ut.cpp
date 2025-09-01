@@ -313,6 +313,42 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             UNIT_ASSERT(!state.GetVolumeToPush());
             UNIT_ASSERT(state.GetVolumeToPull() == "vol0");
         }
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols {
+                CreateVolumeStats("vol0", "", "", true),
+                CreateVolumeStats("vol1", "", "", true) };
+
+            TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+            perfMap["vol0"] = 10;
+            perfMap["vol1"] = 1;
+
+            state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
+
+            UNIT_ASSERT(state.GetVolumeToPush() == "vol0");
+            UNIT_ASSERT(!state.GetVolumeToPull());
+        }
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols {
+                CreateVolumeStats("vol0", "", "", false),
+                CreateVolumeStats("vol1", "", "", true) };
+
+            TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+            perfMap["vol0"] = 10;
+            perfMap["vol1"] = 1;
+
+            state.UpdateVolumeStats(vols, std::move(perfMap), 40, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+
+            now += storageConfig->GetInitialPullDelay();
+
+            state.UpdateVolumeStats(vols, std::move(perfMap), 40, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(state.GetVolumeToPull() == "vol0");
+        }
     }
 
     Y_UNIT_TEST(ShouldNotReturnManuallyPreemptedVolume)

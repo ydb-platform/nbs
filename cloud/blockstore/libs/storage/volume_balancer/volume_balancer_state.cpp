@@ -54,6 +54,7 @@ void TVolumeBalancerState::UpdateVolumeStats(
         info.IsLocal = v.GetIsLocal();
         if (info.IsLocal) {
             info.NextPullAttempt = {};
+            info.PullInterval = StorageConfig->GetInitialPullDelay();
         } else if (!info.NextPullAttempt) {
             info.NextPullAttempt = now + info.PullInterval;
             info.PullInterval = Min(MaxPullDelay, info.PullInterval * 2);
