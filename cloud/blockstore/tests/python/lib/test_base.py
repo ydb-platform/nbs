@@ -31,7 +31,7 @@ from google.protobuf import text_format
 def get_restart_interval():
     if common.context.sanitize is not None:
         return 30
-    return 15
+    return 20
 
 
 def thread_count():
