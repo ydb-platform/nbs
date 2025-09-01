@@ -16,7 +16,40 @@ Disk Manager should be able to choose which cell is most advantageous to create 
 
 ### How to get cluster capacity information
 
-... TBD
+To get data about Cell capacity, we will create a `cells.CollectZoneCapacity` task that will be schedulled by default once per hour. Period is configurable.
+It will iterate through each of the Cells and get data from the `getClusterCapacity` handler.
+After each step, we add the processed cellID to the task state, because on retry we want to avoid repeated calls to the `getClusterCapacity` handler.
+If we get an error from the `getClusterCapacity` handler, we ignore it and move to the next Cell. In metrics, we increment the error counter to then set up an alert on this counter.
+Repeated calls to `getClusterCapacity` can lead to a sharp increase in load on BSC.
+
+```mermaid
+sequenceDiagram
+    participant GetCapactiyTask as cells.CollectZoneCapacity
+    participant NBS as NBS Cell
+
+    GetCapactiyTask ->>+ NBS: [private API] getClusterCapacity
+
+    create participant BSC as Blob Storage Contoller
+    NBS ->> BSC: TEvControllerConfigRequest
+    destroy BSC
+    BSC ->> NBS: OK, []storagePools, []groups
+    NBS ->>- NBS: Aggregate Data From YDB
+
+    create participant DR as Disk Registry
+    NBS ->> DR: GetClusterCapacity
+    destroy DR
+    DR ->> NBS: TEvGetClusterCapacityResponse
+    Note over DR: getCapacityResponse<br/>+ kind: StorageMediaKind<br/>+ free: uint64<br/>+ total: uint64
+    NBS ->> GetCapactiyTask: TEvGetClusterCapacityResponse
+
+    activate GetCapactiyTask
+    GetCapactiyTask ->> GetCapactiyTask: SaveStateWithPreparation (CellID)
+    create participant CS as Cells Storage
+    GetCapactiyTask ->> CS: UpdateClusterCapacities()
+    destroy CS
+    CS ->> GetCapactiyTask: OK
+    deactivate GetCapactiyTask
+```
 
 ### How to select shard
 
@@ -45,6 +78,9 @@ Cells: {
 Each zone is one of its own Cells.
 
 #### SelectCell:
+
+When selecting a Cell for creating a non-local disk, we first rely on the configuration. If the Folder from the request is allowed, we select the least occupied cell from the requested zone and bind it in CellStorage.
+If cells config is not set, we return nbsClient for the requested zone.
 
 ```mermaid
 sequenceDiagram
@@ -114,8 +150,8 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant CreateDiskTask as CreateDiskTask
-    participant CellSelector as CellSelector
+    participant CreateDiskTask
+    participant CellSelector
 
     CreateDiskTask ->> CellSelector: SelectCellForLocalDisk()
 
