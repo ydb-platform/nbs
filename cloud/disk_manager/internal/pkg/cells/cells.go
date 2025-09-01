@@ -1,11 +1,10 @@
 package cells
 
 import (
-	"context"
 	"slices"
 
-	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,20 +25,20 @@ func NewCellSelector(
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *cellSelector) SelectCell(
-	ctx context.Context,
-	req *disk_manager.CreateDiskRequest,
+	disk *types.Disk,
+	folderID string,
 ) string {
 
-	if !s.isFolderAllowed(req.FolderId) {
-		return req.DiskId.ZoneId
+	if !s.isFolderAllowed(folderID) {
+		return disk.ZoneId
 	}
 
-	cells := s.getCells(req.DiskId.ZoneId)
+	cells := s.getCells(disk.ZoneId)
 
 	if len(cells) == 0 {
 		// We end up here if a zone not divided into cells or a cell
 		// of a zone is provided as ZoneId.
-		return req.DiskId.ZoneId
+		return disk.ZoneId
 	}
 
 	return cells[0]
