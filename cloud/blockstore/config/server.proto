@@ -36,7 +36,7 @@ message TChecksumFlags
     // Enables data integrity validation client that calculates checksums for
     // write requests and validates checksums for read requests. Calculation for
     // reads and validation for writes needs to be done in the storage layer.
-    optional bool EnableChecksumValidation = 2;
+    optional bool EnableDataIntegrityClient = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

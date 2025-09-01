@@ -3,6 +3,7 @@
 #include "block_checksum.h"
 
 namespace NCloud::NBlockStore {
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,7 +17,7 @@ const char* GetZeroBuffer()
 template <typename TContainer>
 NProto::TChecksum ConcatenateChecksums(const TContainer& checksums)
 {
-    Y_DEBUG_ABORT_UNLESS(!checksums.empty());
+    Y_ABORT_UNLESS(!checksums.empty());
     ui64 byteCount = checksums[0].GetByteCount();
     TBlockChecksum checksumCalculator{checksums[0].GetChecksum()};
 

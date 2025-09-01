@@ -62,7 +62,6 @@ TVector<NProto::TChecksum> CalculateChecksumsForWriteRequest(
             (buffers.size() - firstChecksumLength) * blockSize);
         TBlockChecksum checksumCalculator;
         for (; i < static_cast<ui64>(buffers.size()); i++) {
-            TVector<ui32> result;
             const auto& blockData = buffers[i];
             checksumCalculator.Extend(blockData.data(), blockData.size());
         }
@@ -240,13 +239,8 @@ bool TDataIntegrityClient::HandleRequest(
                 return response;
             }
 
-            auto sgListOrError = GetSgList(response, self->BlockSize);
-            if (HasError(sgListOrError)) {
-                return TErrorResponse{sgListOrError.GetError()};
-            }
-
-            const auto& sgList = sgListOrError.GetResult();
-            const auto currentChecksum = CalculateChecksum(sgList);
+            const auto currentChecksum =
+                CalculateChecksum(response.GetBlocks(), self->BlockSize);
             const auto& checksum = response.GetChecksum();
 
             if (!MessageDifferencer::Equals(checksum, currentChecksum)) {
@@ -281,7 +275,7 @@ bool TDataIntegrityClient::HandleRequest(
     auto result =
         Client->ReadBlocksLocal(std::move(callContext), std::move(request));
     response = result.Apply(
-        [guaredSgList = std::move(sgList), result, weakPtr = weak_from_this()](
+        [guardedSgList = std::move(sgList), result, weakPtr = weak_from_this()](
             const auto&) mutable -> NProto::TReadBlocksLocalResponse
         {
             NProto::TReadBlocksLocalResponse response = result.ExtractValue();
@@ -298,7 +292,7 @@ bool TDataIntegrityClient::HandleRequest(
                 return response;
             }
 
-            auto guard = guaredSgList.Acquire();
+            auto guard = guardedSgList.Acquire();
             if (!guard) {
                 return TErrorResponse{MakeError(
                     E_CANCELLED,

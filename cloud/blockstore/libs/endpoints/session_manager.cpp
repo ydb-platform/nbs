@@ -739,7 +739,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             {{ EErrorKind::ErrorFatal, E_REJECTED }});
     }
 
-    if (Options.EnableChecksumValidation) {
+    if (Options.EnableDataIntegrityClient) {
         client = CreateDataIntegrityClient(
             Logging,
             Monitoring,

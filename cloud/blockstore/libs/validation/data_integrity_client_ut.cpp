@@ -12,6 +12,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore {
@@ -181,6 +182,12 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             env.TestClient,
             BlockSize);
 
+        auto dataIntegrityCounters =
+            env.Monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "data_integrity");
+
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
 
         env.TestClient->WriteBlocksHandler =
@@ -219,6 +226,12 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             request);
         auto response = future.GetValueSync();
         UNIT_ASSERT(!HasError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            dataIntegrityCounters->GetCounter("WriteRequests")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            dataIntegrityCounters->GetCounter("WriteChecksumMismatch")->Val());
     }
 
     Y_UNIT_TEST(ShouldCalculateChecksumsForWriteLocalRequests)
@@ -230,6 +243,12 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             env.Monitoring,
             env.TestClient,
             BlockSize);
+
+        auto dataIntegrityCounters =
+            env.Monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "data_integrity");
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
 
@@ -270,6 +289,12 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             request);
         auto response = future.GetValueSync();
         UNIT_ASSERT(!HasError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            dataIntegrityCounters->GetCounter("WriteRequests")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            dataIntegrityCounters->GetCounter("WriteChecksumMismatch")->Val());
     }
 
     Y_UNIT_TEST(ShouldCalculateChecksumsForReadRequests)
@@ -281,6 +306,12 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             env.Monitoring,
             env.TestClient,
             BlockSize);
+
+        auto dataIntegrityCounters =
+            env.Monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "data_integrity");
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
 
@@ -310,6 +341,68 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         UNIT_ASSERT_C(
             !HasError(response.GetError()),
             TStringBuilder() << FormatError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            dataIntegrityCounters->GetCounter("ReadRequests")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            dataIntegrityCounters->GetCounter("ReadChecksumMismatch")->Val());
+    }
+
+    Y_UNIT_TEST(ShouldReturnErrorOnReadChecksumMismatch)
+    {
+        constexpr ui32 BlockSize = 4_KB;
+        TTestEnv env{};
+        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
+            env.Logging,
+            env.Monitoring,
+            env.TestClient,
+            BlockSize);
+
+        auto dataIntegrityCounters =
+            env.Monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "data_integrity");
+
+        constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
+
+        env.TestClient->ReadBlocksHandler =
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            NProto::TReadBlocksResponse response;
+            FillBlocksWithDeterministicData(
+                *response.MutableBlocks(),
+                BlockSize,
+                request->GetBlocksCount());
+            response.MutableChecksum()->SetChecksum(0xbeef);
+            response.MutableChecksum()->SetByteCount(
+                static_cast<ui64>(request->GetBlocksCount()) * BlockSize);
+            return MakeFuture<NProto::TReadBlocksResponse>(std::move(response));
+        };
+
+        auto request = CreateReadBlocksRequest(
+            env.DiskId,
+            42,   // startIndex
+            maxBlockCount);
+
+        auto future = dataIntegrityClient->ReadBlocks(
+            MakeIntrusive<TCallContext>(),
+            request);
+        auto response = future.GetValueSync();
+        UNIT_ASSERT_C(
+            HasError(response.GetError()),
+            TStringBuilder() << FormatError(response.GetError()));
+        UNIT_ASSERT_EQUAL(E_REJECTED, response.GetError().GetCode());
+        UNIT_ASSERT(HasProtoFlag(
+            response.GetError().GetFlags(),
+            NProto::EF_CHECKSUM_MISMATCH));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            dataIntegrityCounters->GetCounter("ReadRequests")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            dataIntegrityCounters->GetCounter("ReadChecksumMismatch")->Val());
     }
 
     Y_UNIT_TEST(ShouldCalculateChecksumsForReadLocalRequests)
@@ -323,6 +416,12 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             BlockSize);
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
+
+        auto dataIntegrityCounters =
+            env.Monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "data_integrity");
 
         env.TestClient->ReadBlocksLocalHandler =
             [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
@@ -350,6 +449,12 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         UNIT_ASSERT_C(
             !HasError(response.GetError()),
             TStringBuilder() << FormatError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            dataIntegrityCounters->GetCounter("ReadRequests")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            dataIntegrityCounters->GetCounter("ReadChecksumMismatch")->Val());
     }
 
     void ShouldCalculateCorrectAmountOfChecksumsForWriteRequests(ui32 blockSize)
@@ -362,6 +467,12 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             blockSize);
 
         const ui32 maxBlockCount = MaxSubRequestSize / blockSize;
+
+        auto dataIntegrityCounters =
+            env.Monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "data_integrity");
 
         env.TestClient->WriteBlocksHandler =
             [&](std::shared_ptr<NProto::TWriteBlocksRequest> request)
@@ -392,6 +503,14 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
                 request);
             auto response = future.GetValueSync();
             UNIT_ASSERT(!HasError(response.GetError()));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                dataIntegrityCounters->GetCounter("WriteRequests")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                dataIntegrityCounters->GetCounter("WriteChecksumMismatch")
+                    ->Val());
         }
 
         {
@@ -405,6 +524,14 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
                 request);
             auto response = future.GetValueSync();
             UNIT_ASSERT(!HasError(response.GetError()));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                dataIntegrityCounters->GetCounter("WriteRequests")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                dataIntegrityCounters->GetCounter("WriteChecksumMismatch")
+                    ->Val());
         }
 
         {
@@ -418,6 +545,14 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
                 request);
             auto response = future.GetValueSync();
             UNIT_ASSERT(!HasError(response.GetError()));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                3,
+                dataIntegrityCounters->GetCounter("WriteRequests")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                dataIntegrityCounters->GetCounter("WriteChecksumMismatch")
+                    ->Val());
         }
     }
 

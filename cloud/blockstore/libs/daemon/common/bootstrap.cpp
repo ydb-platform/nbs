@@ -362,8 +362,9 @@ void TBootstrapBase::Init()
     sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
     sessionManagerOptions.DisableClientThrottler =
         Configs->ServerConfig->GetDisableClientThrottlers();
-    sessionManagerOptions.EnableChecksumValidation =
-        Configs->ServerConfig->GetChecksumFlags().GetEnableChecksumValidation();
+    sessionManagerOptions.EnableDataIntegrityClient =
+        Configs->ServerConfig->GetChecksumFlags()
+            .GetEnableDataIntegrityClient();
 
     if (!KmsKeyProvider) {
         KmsKeyProvider = CreateKmsKeyProviderStub();
