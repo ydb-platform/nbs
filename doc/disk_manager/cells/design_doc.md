@@ -1,8 +1,8 @@
 # Disk Manager cells mechanism
 
 ## Problem
-Нужно поддержать масштабирование (разделение на cells) сервиса NBS прозрачно для пользователей и для compute.
-Disk Manager должен уметь выбирать, в каком cell выгоднее всего создать диск и мочь поддерживать все операции с дисками в cells.
+We need to support scaling (division into cells) of the NBS service transparently for users and compute.
+Disk Manager should be able to choose which cell is most advantageous to create a disk in and be able to support all disk operations in cells.
 
 ## Detailed Design
 
@@ -18,7 +18,7 @@ Disk Manager должен уметь выбирать, в каком cell выг
 
 ### How to select shard for non local disks
 
-Добавляем в Disk Manager новый компонент: cellSelector. Через конфиг он получает информацию о том, какие cells относятся к какой зоне, например:
+We add a new component to Disk Manager: cellSelector. Through configuration, it receives information about which cells belong to which zone, for example:
 
 ```
 Cells: {
@@ -32,9 +32,9 @@ Cells: {
 }
 ```
 
-Каждая зона является одним из своих Cell.
+Each zone is one of its own Cells.
 
-#### SelectCellForLocalDisk:
+#### SelectCell:
 
 ```mermaid
 sequenceDiagram
@@ -56,7 +56,7 @@ sequenceDiagram
 
     CellSelector->>-CreateDiskTask:nbsClient
 
-    Note right of CreateDiskTask: normal execution <br> of the task
+    Note right of CreateDiskTask: regular execution <br> of the task
 
     CreateDiskTask->>CellSelector:CellSelected()
     CellSelector->>CellStorage:ClearCellInfo(diskID)
@@ -65,6 +65,26 @@ sequenceDiagram
 ```
 
 For any task, that called from Disk Manager API we should get correct `zoneID` from `diskMeta`.
+
+For example, Migrate Disk Task:
+
+```mermaid
+sequenceDiagram
+    participant migrateTask as Migrate Disk Task
+    participant CellSelector
+
+    migrateTask->>CellSelector:SelectCell()
+    destroy CellSelector
+    CellSelector->>migrateTask:Dst NBS Client
+
+    create participant storage as Resources Storage
+    migrateTask->>storage:GetDiskMeta()
+    destroy storage
+    storage->>migrateTask:Src ZoneID
+
+    migrateTask->>migrateTask: SaveState (src ZoneID)
+    Note right of migrateTask: regular execution <br> of the task
+```
 
 ### SelectCellForLocalDisk
 
