@@ -15,6 +15,9 @@ private:
     THashSet<TString> DeviceReplacementIds;
 
 public:
+    TDeviceReplacementTracker();
+    ~TDeviceReplacementTracker();
+
     bool AddDeviceReplacement(const TString& id);
     bool RemoveDeviceReplacement(const TString& id);
 

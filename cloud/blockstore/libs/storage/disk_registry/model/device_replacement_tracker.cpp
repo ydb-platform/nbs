@@ -4,6 +4,9 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TDeviceReplacementTracker::~TDeviceReplacementTracker() = default;
+TDeviceReplacementTracker::TDeviceReplacementTracker() = default;
+
 bool TDeviceReplacementTracker::AddDeviceReplacement(const TString& id)
 {
     return DeviceReplacementIds.insert(id).second;
