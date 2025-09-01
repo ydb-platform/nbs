@@ -97,10 +97,9 @@ private:
     void ScheduleGetToken() const
     {
         auto deadline = Max(ExpiresAt - RefreshTimeBeforeExpiration, Now());
-        auto weak = weak_from_this();
         Scheduler->Schedule(
             deadline,
-            [weak]
+            [weak = weak_from_this()]
             {
                 auto self = weak.lock();
                 if (self) {
@@ -118,9 +117,8 @@ private:
 
         auto tokenFuture = Client->GetTokenAsync();
 
-        auto weak = weak_from_this();
         tokenFuture.Subscribe(
-            [weak](auto future)
+            [weak = weak_from_this()](auto future)
             {
                 auto self = weak.lock();
                 if (!self) {

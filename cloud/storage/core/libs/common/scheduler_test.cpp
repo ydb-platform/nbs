@@ -24,15 +24,7 @@ void TTestScheduler::Schedule(
 
 void TTestScheduler::RunAllScheduledTasks()
 {
-    TVector<TScheduledCallback> callbacks;
-    with_lock (CallbacksLock) {
-        callbacks = std::move(Callbacks);
-    }
-
-    for (auto& [callback, _]: callbacks) {
-        callback();
-    }
-    // RunAllScheduledTasksUntilDeadline(TInstant::Max());
+    RunAllScheduledTasksUntilDeadline(TInstant::Max());
 }
 
 void TTestScheduler::RunAllScheduledTasksUntilNow()
