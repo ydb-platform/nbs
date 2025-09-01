@@ -508,9 +508,9 @@ func NewStorage(
 
 			exceptHangingTaskTypes:            config.GetExceptHangingTaskTypes(),
 			inflightDurationHangTimeout:       inflightDurationHangTimeout,
-			missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
 			stallingDurationHangTimeout:       stallingDurationHangTimeout,
 			totalDurationHangTimeout:          totalDurationHangTimeout,
+			missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
 		}
 	}
 

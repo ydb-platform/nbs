@@ -942,9 +942,9 @@ func (s *storageYDB) listHangingTasks(
 		declare $limit as Uint64;
 		declare $except_task_types as List<Utf8>;
 		declare $inflight_duration_hang_timeout as Interval;
-		declare $missed_estimates_until_task_is_hanging as Uint64;
 		declare $stalling_duration_hang_timeout as Interval;
 		declare $total_duration_hang_timeout as Interval;
+		declare $missed_estimates_until_task_is_hanging as Uint64;
 		declare $now as Timestamp;
 
 		$task_ids = (
@@ -980,16 +980,16 @@ func (s *storageYDB) listHangingTasks(
 			persistence.IntervalValue(s.inflightDurationHangTimeout),
 		),
 		persistence.ValueParam(
-			"$missed_estimates_until_task_is_hanging",
-			persistence.Uint64Value(s.missedEstimatesUntilTaskIsHanging),
-		),
-		persistence.ValueParam(
 			"$stalling_duration_hang_timeout",
 			persistence.IntervalValue(s.stallingDurationHangTimeout),
 		),
 		persistence.ValueParam(
 			"$total_duration_hang_timeout",
 			persistence.IntervalValue(s.totalDurationHangTimeout),
+		),
+		persistence.ValueParam(
+			"$missed_estimates_until_task_is_hanging",
+			persistence.Uint64Value(s.missedEstimatesUntilTaskIsHanging),
 		),
 		persistence.ValueParam("$now", persistence.TimestampValue(now)),
 	)

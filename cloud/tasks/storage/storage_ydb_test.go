@@ -1022,9 +1022,9 @@ type hangingTaskTestFixture struct {
 	storage                           Storage
 	ctx                               context.Context
 	inflightDurationHangTimeout       time.Duration
-	missedEstimatesUntilTaskIsHanging uint64
 	stallingDurationHangTimeout       time.Duration
 	totalDurationHangTimeout          time.Duration
+	missedEstimatesUntilTaskIsHanging uint64
 	db                                *persistence.YDBClient
 	cancel                            context.CancelFunc
 }
