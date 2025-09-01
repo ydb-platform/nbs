@@ -12,11 +12,13 @@ Disk Manager should be able to choose which cell is most advantageous to create 
 
 `cellSelector.SelectCellForLocalDisk` finds the only correct cell, where requested `Agent` is located. If the zone is not divided into cells, or cells are not allowed for the folder, or cells config is not set, returns the original zone nbsClient.
 
+`cellSelector.CellSelected` unbinds disk from cell.
+
 ### How to get cluster capacity information
 
 ... TBD
 
-### How to select shard for non local disks
+### How to select shard
 
 We add a new component to Disk Manager: cellSelector. Through configuration, it receives information about which cells belong to which zone, for example:
 
@@ -27,6 +29,14 @@ Cells: {
         Cells: [
             "zone-a-cell1",
             "zone-a"
+        ]
+    }
+}
+Cells: {
+    key: "zone-b"
+    value: {
+        Cells: [
+            "zone-b"
         ]
     }
 }
@@ -42,12 +52,12 @@ sequenceDiagram
     participant CellSelector
 
     CreateDiskTask->>CellSelector:SelectCell(zone)
-    CellSelector->>+CellSelector:Verify
+    CellSelector->>+CellSelector:Get Most Suitable Cell
 
     create participant CellStorage
-    CellSelector->>CellStorage:PickCell(diskID, cellID)
+    CellSelector->>CellStorage:BindDiskToCell(diskID, cellID)
 
-    CellStorage->>CellSelector:[idempotent]cellID
+    CellStorage->>CellSelector:[idempotent] cellID
 
     create participant F as nbsFactory
     CellSelector->>F:GetClient(selectedZone)
@@ -59,12 +69,24 @@ sequenceDiagram
     Note right of CreateDiskTask: regular execution <br> of the task
 
     CreateDiskTask->>CellSelector:CellSelected()
-    CellSelector->>CellStorage:ClearCellInfo(diskID)
+    CellSelector->>CellStorage:UnbindDisk(diskID)
     destroy CellStorage
-    CellStorage->>CellSelector:Success
+    CellStorage->>CellSelector:OK
+    CellSelector->>CreateDiskTask:OK
 ```
 
-For any task, that called from Disk Manager API we should get correct `zoneID` from `diskMeta`.
+For any task, that called from Disk Manager's Disks API we should get correct `zoneID` from `diskMeta`.
+
+**Tasks list**
+
+- alter_disk_task
+- delete_disk_task (Unnecessary, due to getting correct zoneID from `storage.DeleteDisk`)
+- migrate_disk_task
+- resize_disk_task
+- crete_image_from_disk_task
+- create_snapshot_from_disk_task
+- stat_disk_task (Should be created. There is no task for `DiskService.Stat` request currently)
+- describe_disk_task (Should be created. There is no task for `DiskService.Describe` request currently)
 
 For example, Migrate Disk Task:
 
@@ -74,7 +96,6 @@ sequenceDiagram
     participant CellSelector
 
     migrateTask->>CellSelector:SelectCell()
-    destroy CellSelector
     CellSelector->>migrateTask:Dst NBS Client
 
     create participant storage as Resources Storage
@@ -84,6 +105,9 @@ sequenceDiagram
 
     migrateTask->>migrateTask: SaveState (src ZoneID)
     Note right of migrateTask: regular execution <br> of the task
+
+    migrateTask->>CellSelector:CellSelected()
+    CellSelector->>migrateTask:OK
 ```
 
 ### SelectCellForLocalDisk
@@ -115,4 +139,4 @@ sequenceDiagram
     CellSelector->>CreateDiskTask:nbsClient_1
 ```
 
-If there is no available agents in any zone, we should return an `errors.NewInterruptExecutionError()`.
+If there are no available agents in any zone, we should return an `errors.NewInterruptExecutionError()`.
