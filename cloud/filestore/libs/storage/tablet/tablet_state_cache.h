@@ -349,7 +349,9 @@ private:
 
         void MarkNodeRefsExhaustive(ui64 nodeId)
         {
-            IsExhaustivePerNode.Insert(nodeId, true);
+            if (IsExhaustivePerNode.GetMaxSize()) {
+                IsExhaustivePerNode.Insert(nodeId, true);
+            }
         }
 
         void MarkNodeRefsLoadComplete()
