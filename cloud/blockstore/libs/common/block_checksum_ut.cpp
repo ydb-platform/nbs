@@ -88,6 +88,21 @@ Y_UNIT_TEST_SUITE(TBlockChecksumTest)
 
         UNIT_ASSERT_VALUES_EQUAL(sum1, sum3);
     }
+
+    Y_UNIT_TEST(TestCopyBlockChecksum)
+    {
+        char data1[BlockSize] = {1, 2};
+        char data2[BlockSize] = {3, 4};
+
+        TBlockChecksum bc1;
+        bc1.Extend(data1, sizeof(data1));
+
+        TBlockChecksum bc1Copy{bc1.GetValue()};
+
+        bc1.Extend(data2, sizeof(data2));
+        bc1Copy.Extend(data2, sizeof(data2));
+        UNIT_ASSERT_VALUES_EQUAL(bc1.GetValue(), bc1Copy.GetValue());
+    }
 }
 
 }   // namespace NCloud::NBlockStore

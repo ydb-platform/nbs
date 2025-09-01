@@ -32,6 +32,11 @@ message TChecksumFlags
     // writing. This is done to ensure that the same data is written to all
     // mirror disk replicas.
     optional bool CheckBufferModificationForMirrorDisk = 1;
+
+    // Enables data integrity validation client that calculates checksums for
+    // write requests and validates checksums for read requests. Calculation for
+    // reads and validation for writes needs to be done in the storage layer.
+    optional bool EnableDataIntegrityClient = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
