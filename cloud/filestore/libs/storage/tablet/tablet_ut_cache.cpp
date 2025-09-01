@@ -184,6 +184,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetId());
         // ListNodes can not be performed using in-memory cache
         tablet.ListNodes(RootNodeId);
+        tablet.ListNodes(RootNodeId);
 
         // Two out of three GetNodeAttr calls should have been performed using
         // the cache. ListNodes is a cache miss also.
@@ -192,10 +193,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             2,
             statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            3,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT_VALUES_EQUAL(2, statsAfter.RWCount - statsBefore.RWCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodeRefsCount - statsBefore.NodeRefsCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.NodeRefsCount - statsBefore.NodeRefsCount);
         UNIT_ASSERT_VALUES_EQUAL(
             2,
             statsAfter.NodesCount - statsBefore.NodesCount);
@@ -955,6 +958,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             1,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.RWCount - statsBefore.RWCount);
+
+        statsBefore = statsAfter;
+
+        // RO transaction, cache miss since we do not know if the cache is
+        // exhaustive
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            tablet.ListNodes(RootNodeId)->Record.NodesSize());
+        // Also a cache miss
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+        statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.NodeRefsExhaustivenessCapacity);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.NodeRefsExhaustivenessCount);
     }
 
     Y_UNIT_TEST(ShouldUseNodeRefsCacheIfOneIsExhaustive)

@@ -356,7 +356,6 @@ void TInMemoryIndexState::WriteNodeRef(
             NodeRefsExhaustivenessInfo.NodeRefsEvictionObserved(
                 evicted->NodeId);
         }
-
     } else {
         it->second = value;
     }

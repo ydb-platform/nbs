@@ -402,7 +402,7 @@ message TStorageConfig
     optional uint64 InMemoryIndexCacheNodesToNodeAttrsCapacityRatio = 375;
     optional uint64 InMemoryIndexCacheNodeRefsCapacity = 376;
     optional uint64 InMemoryIndexCacheNodesToNodeRefsCapacityRatio = 377;
-    // In addition to the per-table isExhaustive flag, it is possible to
+    // In addition to the per-table isExhaustive flag, it is possible to have a
     // per-node isExhaustive flag, which can be set upon exhaustive ListNodes
     // requests. The number of the per-node flags is limited by this value.
     optional uint64 InMemoryIndexCacheNodeRefsExhaustivenessCapacity = 437;
