@@ -70,15 +70,51 @@ void ValidateJsons(
     }
 }
 
+void ValidateTestResult(IUserCounterSupplier* supplier, const TString& resource)
+{
+    const TString testResult = NResource::Find(resource);
+    NJson::TJsonValue testJson = NJson::ReadJsonFastTree(testResult, true);
+
+    TStringStream jsonOut;
+    auto encoder = NMonitoring::EncoderJson(&jsonOut);
+    supplier->Accept(TInstant::Seconds(12), encoder.Get());
+
+    NJson::TJsonValue resultJson = NJson::ReadJsonFastTree(jsonOut.Str(), true);
+
+    ValidateJsons(testJson, resultJson);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+struct THistogramTestConfiguration
+{
+    bool SetUnits;
+    bool SetHistogramSingleCounter;
+    bool SetHistogramMultipleCounter;
+
+    static TVector<THistogramTestConfiguration> All()
+    {
+        // all combinations except (*, false, false)
+        return {
+            {false, true, false},
+            {false, false, true},
+            {false, true, true},
+            {true, true, false},
+            {true, false, true},
+            {true, true, true}};
+    }
+};
+
 void SetTimeHistogramCountersUs(
     const TIntrusivePtr<NMonitoring::TDynamicCounters>& counters,
     const TString& histName,
-    bool setSingleCounter)
+    const THistogramTestConfiguration& config)
 {
-    auto subgroup = counters->GetSubgroup("histogram", histName)
-                        ->GetSubgroup("units", "usec");
+    auto subgroup = counters->GetSubgroup("histogram", histName);
+    if (config.SetUnits) {
+        subgroup = subgroup->GetSubgroup("units", "usec");
+    }
 
-    if (setSingleCounter) {
+    if (config.SetHistogramSingleCounter) {
         const auto& buckets = TRequestUsTimeBuckets::Buckets;
         const auto& bounds = ConvertToHistBounds(buckets);
         auto histogram = subgroup->GetHistogram(
@@ -109,7 +145,9 @@ void SetTimeHistogramCountersUs(
         histogram->Collect(10000000., 13);
         histogram->Collect(35000000., 14);
         histogram->Collect(100000000., 15); // Inf
-    } else {
+    }
+
+    if (config.SetHistogramMultipleCounter) {
         subgroup->GetCounter("1")->Set(1);
         subgroup->GetCounter("100")->Set(2);
         subgroup->GetCounter("200")->Set(3);
@@ -150,7 +188,7 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
     {
         auto setCounters = [](const NMonitoring::TDynamicCounterPtr& stats,
                               const TString& name,
-                              bool setSingleCounter)
+                              const THistogramTestConfiguration& histConfig)
         {
             auto request = stats->GetSubgroup("request", name);
             request->GetCounter("Count")->Set(1);
@@ -163,52 +201,38 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
             request->GetCounter("InProgressBytes")->Set(5);
             request->GetCounter("MaxInProgressBytes")->Set(50);
 
-            SetTimeHistogramCountersUs(request, "Time", setSingleCounter);
+            SetTimeHistogramCountersUs(request, "Time", histConfig);
         };
 
         struct TTestConfiguration
         {
             bool ReportZeroBlocksMetrics;
-            bool ReportHistogramAsSingleCounter;
             TString Resource;
         };
 
         std::vector<TTestConfiguration> testConfigurations = {
-            {true, false, "user_server_volume_instance_test"},
-            {false, false, "user_server_volume_instance_skip_zero_blocks_test"},
-            {true, true, "user_server_volume_instance_test"},
-            {false, true, "user_server_volume_instance_skip_zero_blocks_test"}};
+            {true, "user_server_volume_instance_test"},
+            {false, "user_server_volume_instance_skip_zero_blocks_test"}};
 
         for (const auto& config: testConfigurations) {
-            auto stats = MakeIntrusive<TDynamicCounters>();
-            const auto setSingleCounter = config.ReportHistogramAsSingleCounter;
-            setCounters(stats, "ReadBlocks", setSingleCounter);
-            setCounters(stats, "WriteBlocks", setSingleCounter);
-            setCounters(stats, "ZeroBlocks", setSingleCounter);
+            for (const auto& histConfig: THistogramTestConfiguration::All()) {
+                auto stats = MakeIntrusive<TDynamicCounters>();
+                setCounters(stats, "ReadBlocks", histConfig);
+                setCounters(stats, "WriteBlocks", histConfig);
+                setCounters(stats, "ZeroBlocks", histConfig);
 
-            auto supplier = CreateUserCounterSupplier();
-            RegisterServerVolumeInstance(
-                *supplier,
-                "cloudId",
-                "folderId",
-                "diskId",
-                "instanceId",
-                config.ReportZeroBlocksMetrics,
-                stats);
+                auto supplier = CreateUserCounterSupplier();
+                RegisterServerVolumeInstance(
+                    *supplier,
+                    "cloudId",
+                    "folderId",
+                    "diskId",
+                    "instanceId",
+                    config.ReportZeroBlocksMetrics,
+                    stats);
 
-            const TString testResult = NResource::Find(config.Resource);
-
-            NJson::TJsonValue testJson =
-                NJson::ReadJsonFastTree(testResult, true);
-
-            TStringStream jsonOut;
-            auto encoder = EncoderJson(&jsonOut);
-            supplier->Accept(TInstant::Seconds(12), encoder.Get());
-
-            NJson::TJsonValue resultJson =
-                NJson::ReadJsonFastTree(jsonOut.Str(), true);
-
-            ValidateJsons(testJson, resultJson);
+                ValidateTestResult(supplier.get(), config.Resource);
+            }
         }
     }
 
@@ -216,24 +240,21 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
     {
         auto makeCounters = [](const NMonitoring::TDynamicCounterPtr& stats,
                                const TString& name,
-                               bool setSingleCounter)
+                               const THistogramTestConfiguration& histConfig)
         {
             stats->GetCounter("UsedQuota")->Set(1);
             stats->GetCounter("MaxUsedQuota")->Set(10);
 
             auto request = stats->GetSubgroup("request", name);
-            SetTimeHistogramCountersUs(
-                request,
-                "ThrottlerDelay",
-                setSingleCounter);
+            SetTimeHistogramCountersUs(request, "ThrottlerDelay", histConfig);
         };
 
-        for (bool reportHistogramAsSingleCounter: {false, true}) {
+        for (const auto& histConfig: THistogramTestConfiguration::All()) {
             auto stats = MakeIntrusive<TDynamicCounters>();
 
-            makeCounters(stats, "ReadBlocks", reportHistogramAsSingleCounter);
-            makeCounters(stats, "WriteBlocks", reportHistogramAsSingleCounter);
-            makeCounters(stats, "ZeroBlocks", reportHistogramAsSingleCounter);
+            makeCounters(stats, "ReadBlocks", histConfig);
+            makeCounters(stats, "WriteBlocks", histConfig);
+            makeCounters(stats, "ZeroBlocks", histConfig);
 
             auto supplier = CreateUserCounterSupplier();
             RegisterServiceVolume(
@@ -242,21 +263,9 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
                 "folderId",
                 "diskId",
                 stats);
-
-            const TString testResult =
-                NResource::Find("user_service_volume_instance_test");
-
-            NJson::TJsonValue testJson =
-                NJson::ReadJsonFastTree(testResult, true);
-
-            TStringStream jsonOut;
-            auto encoder = EncoderJson(&jsonOut);
-            supplier->Accept(TInstant::Seconds(12), encoder.Get());
-
-            NJson::TJsonValue resultJson =
-                NJson::ReadJsonFastTree(jsonOut.Str(), true);
-
-            ValidateJsons(testJson, resultJson);
+            ValidateTestResult(
+                supplier.get(),
+                "user_service_volume_instance_test");
         }
     }
 }
