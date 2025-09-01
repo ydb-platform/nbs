@@ -8,6 +8,8 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <cloud/storage/core/libs/common/scheduler_test.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/algorithm.h>
@@ -522,11 +524,11 @@ TYdbTestStoragePtr YdbCreateTestStorage(
 
 struct TTestIamTokenClient: public IIamTokenClient
 {
-    TFuture<TResponse> Response;
-    ui64 ExecutedCount = 0;
+    TVector<TResponse> Responses;
+    ui64 GetTokenCalledCount = 0;
 
-    TTestIamTokenClient(TFuture<TResponse> response)
-        : Response(std::move(response))
+    explicit TTestIamTokenClient(TVector<TResponse> responses)
+        : Responses(std::move(responses))
     {}
 
     void Start() override
@@ -540,10 +542,11 @@ struct TTestIamTokenClient: public IIamTokenClient
         return GetTokenAsync().GetValueSync();
     }
 
-    NThreading::TFuture<TResponse> GetTokenAsync() override
+    TFuture<TResponse> GetTokenAsync() override
     {
-        ExecutedCount++;
-        return Response;
+        auto idx = Min(GetTokenCalledCount, Responses.size() - 1);
+        ++GetTokenCalledCount;
+        return MakeFuture(Responses[idx]);
     }
 };
 
@@ -903,41 +906,80 @@ Y_UNIT_TEST_SUITE(TYdbStatsAuth)
 {
     Y_UNIT_TEST(ShouldGetIamTokenAsynchronously)
     {
-        auto promiseToken = NewPromise<IIamTokenClient::TResponse>();
-        auto client =
-            std::make_shared<TTestIamTokenClient>(promiseToken.GetFuture());
+        auto now = Now();
+        TVector<IIamTokenClient::TResponse> tokens{
+            TTokenInfo{"token1", now + TDuration::MilliSeconds(200)},
+            TTokenInfo{"token2", now + TDuration::MilliSeconds(300)},
+            TTokenInfo{"token3", now + TDuration::MilliSeconds(400)}};
+
+        auto client = std::make_shared<TTestIamTokenClient>(tokens);
+
+        auto scheduler = std::make_shared<TTestScheduler>(now);
 
         auto providerFactory = CreateIamCredentialsProviderFactory(
-            {"token", Now() + TDuration::MilliSeconds(100)},
+            TDuration::MilliSeconds(50),
+            {"token0", now + TDuration::MilliSeconds(100)},
+            scheduler,
             client);
 
         auto provider = providerFactory->CreateProvider();
 
+        for (auto i = 0; i < 4; ++i) {
+            auto token = provider->GetAuthInfo();
+            UNIT_ASSERT_VALUES_EQUAL("token" + ToString(i), token);
+            UNIT_ASSERT_VALUES_EQUAL(i, client->GetTokenCalledCount);
+
+            scheduler->AdvanceTime(TDuration::MilliSeconds(100));
+            scheduler->RunAllScheduledTasksUntilNow();
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRetryError)
+    {
+        auto now = Now();
+        TVector<IIamTokenClient::TResponse> tokens{
+            MakeError(E_REJECTED),
+            MakeError(E_REJECTED),
+            TTokenInfo{"token1", now + TDuration::MilliSeconds(200)}};
+
+        auto client = std::make_shared<TTestIamTokenClient>(tokens);
+
+        auto scheduler = std::make_shared<TTestScheduler>(now);
+
+        auto providerFactory = CreateIamCredentialsProviderFactory(
+            TDuration::MilliSeconds(50),
+            {"token0", now + TDuration::MilliSeconds(100)},
+            scheduler,
+            client);
+
+        auto provider = providerFactory->CreateProvider();
+
+        Sleep(TDuration::MilliSeconds(50));
+        scheduler->AdvanceTime(TDuration::MilliSeconds(50));
+
         auto token = provider->GetAuthInfo();
-        UNIT_ASSERT_VALUES_EQUAL("token", token);
-        UNIT_ASSERT_VALUES_EQUAL(0, client->ExecutedCount);
+        UNIT_ASSERT_VALUES_EQUAL("token0", token);
 
-        Sleep(TDuration::MilliSeconds(100));
-
-        token = provider->GetAuthInfo();
-        UNIT_ASSERT_VALUES_EQUAL("token", token);
-        UNIT_ASSERT_VALUES_EQUAL(1, client->ExecutedCount);
-
-        promiseToken.SetValue(MakeError(E_REJECTED));
-
-        auto anotherPromiseToken = NewPromise<IIamTokenClient::TResponse>();
-        client->Response = anotherPromiseToken.GetFuture();
+        scheduler->RunAllScheduledTasks();   // trying renew token, getting
+                                             // first error
 
         token = provider->GetAuthInfo();
-        UNIT_ASSERT_VALUES_EQUAL("token", token);
-        UNIT_ASSERT_VALUES_EQUAL(2, client->ExecutedCount);
+        UNIT_ASSERT_VALUES_EQUAL("token0", token);
+        UNIT_ASSERT_VALUES_EQUAL(1, client->GetTokenCalledCount);
 
-        anotherPromiseToken.SetValue(
-            TTokenInfo{"another-token", Now() + TDuration::MilliSeconds(100)});
+        scheduler->RunAllScheduledTasks();   // trying renew token,
+                                             // getting second error
 
         token = provider->GetAuthInfo();
-        UNIT_ASSERT_VALUES_EQUAL("another-token", token);
-        UNIT_ASSERT_VALUES_EQUAL(2, client->ExecutedCount);
+        UNIT_ASSERT_VALUES_EQUAL("token0", token);
+        UNIT_ASSERT_VALUES_EQUAL(2, client->GetTokenCalledCount);
+
+        scheduler->RunAllScheduledTasks();   // trying renew token,
+                                             // getting new token
+
+        token = provider->GetAuthInfo();
+        UNIT_ASSERT_VALUES_EQUAL("token1", token);
+        UNIT_ASSERT_VALUES_EQUAL(3, client->GetTokenCalledCount);
     }
 }
 

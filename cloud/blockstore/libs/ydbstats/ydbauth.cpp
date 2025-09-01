@@ -4,7 +4,9 @@
 #include "ydbstats.h"
 
 #include <cloud/blockstore/libs/kikimr/events.h>
+
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 
@@ -38,34 +40,43 @@ class TYdbTokenProvider final
     , public std::enable_shared_from_this<TYdbTokenProvider>
 {
 private:
-    mutable TMutex Mutex;
+    const ISchedulerPtr Scheduler;
     const IIamTokenClientPtr Client;
+
+    const TDuration RefreshTimeBeforeExpiration;
+
+    mutable TMutex Mutex;
     mutable TStringType Token;
     mutable TInstant ExpiresAt;
-    mutable bool ScheduledGetToken = false;
+    mutable std::atomic_bool GetTokenInProgress = false;
 
 public:
-    TYdbTokenProvider(TTokenInfo initialToken, IIamTokenClientPtr client)
-        : Client(std::move(client))
+    TYdbTokenProvider(
+            ISchedulerPtr scheduler,
+            IIamTokenClientPtr client,
+            TDuration refreshTimeBeforeExpiration,
+            TTokenInfo initialToken)
+        : Scheduler(std::move(scheduler))
+        , Client(std::move(client))
+        , RefreshTimeBeforeExpiration(refreshTimeBeforeExpiration)
         , Token(std::move(initialToken.Token))
         , ExpiresAt(initialToken.ExpiresAt)
     {}
 
     TStringType GetAuthInfo() const override
     {
-        bool needToScheduleGetToken = false;
+        bool shouldGetToken = false;
         TStringType token;
 
         with_lock (Mutex) {
             token = Token;
-            if (Now() >= ExpiresAt && !ScheduledGetToken) {
-                needToScheduleGetToken = true;
-                ScheduledGetToken = true;
+            if (Now() >= ExpiresAt) {
+                shouldGetToken = true;
             }
         }
 
-        if (needToScheduleGetToken) {
-            ScheduleGetToken();
+        if (shouldGetToken) {
+            GetTokenIfNeeded();
         }
 
         return token;
@@ -76,33 +87,68 @@ public:
         return true;
     }
 
+    void Init()
+    {
+        ScheduleGetToken();
+    }
+
 private:
+    // Not thread-safe.
     void ScheduleGetToken() const
     {
+        auto deadline = Max(ExpiresAt - RefreshTimeBeforeExpiration, Now());
+        auto weak = weak_from_this();
+        Scheduler->Schedule(
+            deadline,
+            [weak]
+            {
+                auto self = weak.lock();
+                if (self) {
+                    self->GetTokenIfNeeded();
+                }
+            });
+    }
+
+    void GetTokenIfNeeded() const
+    {
+        auto inProgress = GetTokenInProgress.exchange(true);
+        if (inProgress) {
+            return;
+        }
+
         auto tokenFuture = Client->GetTokenAsync();
 
+        auto weak = weak_from_this();
         tokenFuture.Subscribe(
-            [weak =
-                 weak_from_this()](TFuture<IIamTokenClient::TResponse> future)
+            [weak](auto future)
             {
                 auto self = weak.lock();
                 if (!self) {
                     return;
                 }
 
-                auto result = future.ExtractValue();
-
-                auto guard = Guard(self->Mutex);
-
-                self->ScheduledGetToken = false;
-                if (HasError(result)) {
-                    return;
-                }
-
-                auto tokenInfo = result.ExtractResult();
-                self->Token = std::move(tokenInfo.Token);
-                self->ExpiresAt = tokenInfo.ExpiresAt;
+                self->RenewToken(std::move(future));
             });
+    }
+
+    void RenewToken(auto future) const
+    {
+        auto guard = Guard(Mutex);
+
+        Y_DEFER
+        {
+            GetTokenInProgress.store(false);
+            ScheduleGetToken();
+        };
+
+        auto result = future.ExtractValue();
+        if (HasError(result)) {
+            return;
+        }
+
+        auto tokenInfo = result.ExtractResult();
+        Token = std::move(tokenInfo.Token);
+        ExpiresAt = tokenInfo.ExpiresAt;
     }
 };
 
@@ -110,34 +156,50 @@ using TYdbTokenProviderPtr = std::shared_ptr<TYdbTokenProvider>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TIamCredentialsProviderFactory final
-    : public ICredentialsProviderFactory
+class TIamCredentialsProviderFactory final: public ICredentialsProviderFactory
 {
 private:
-    TTokenInfo InitialToken;
+    const TDuration RefreshTimeBeforeExpiration;
+    const TTokenInfo InitialTokenInfo;
+    const ISchedulerPtr Scheduler;
+    const IIamTokenClientPtr Client;
 
 public:
-    TIamCredentialsProviderFactory(TTokenInfo initialToken, IIamTokenClientPtr client)
-        : InitialToken(std::move(initialToken))
+    TIamCredentialsProviderFactory(
+            TDuration refreshTimeBeforeExpiration,
+            TTokenInfo initialTokenInfo,
+            ISchedulerPtr scheduler,
+            IIamTokenClientPtr client)
+        : RefreshTimeBeforeExpiration(refreshTimeBeforeExpiration)
+        , InitialTokenInfo(std::move(initialTokenInfo))
+        , Scheduler(std::move(scheduler))
         , Client(std::move(client))
     {}
 
-    TCredentialsProviderPtr CreateProvider() const {
-        return make_shared<TYdbTokenProvider>(InitialToken, Client);
+    TCredentialsProviderPtr CreateProvider() const
+    {
+        auto res = make_shared<TYdbTokenProvider>(
+            Scheduler,
+            Client,
+            RefreshTimeBeforeExpiration,
+            InitialTokenInfo);
+        res->Init();
+        return res;
     }
-
-private:
-    IIamTokenClientPtr Client;
 };
 
 }  // namespace
 
 TCredentialsProviderFactoryPtr CreateIamCredentialsProviderFactory(
-    TTokenInfo initialToken,
+    TDuration refreshTimeBeforeExpiration,
+    TTokenInfo initialTokenInfo,
+    ISchedulerPtr scheduler,
     IIamTokenClientPtr client)
 {
     return std::make_shared<TIamCredentialsProviderFactory>(
-        std::move(initialToken),
+        refreshTimeBeforeExpiration,
+        std::move(initialTokenInfo),
+        std::move(scheduler),
         std::move(client));
 }
 

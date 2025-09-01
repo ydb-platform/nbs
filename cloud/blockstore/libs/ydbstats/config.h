@@ -36,6 +36,8 @@ public:
     bool GetUseSsl() const;
     TDuration GetStatsTableTtl() const;
     TDuration GetArchiveStatsTableTtl() const;
+
+    [[nodiscard]] TDuration GetRefreshTimeBeforeExpiration() const;
 };
 
 }   // namespace NCloud::NBlockStore::NYdbStats
