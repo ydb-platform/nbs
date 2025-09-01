@@ -259,7 +259,8 @@ struct IMixedBlockVisitor
     virtual void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset) = 0;
+        ui32 blobOffset,
+        ui32 blocksCount) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
