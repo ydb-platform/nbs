@@ -1597,6 +1597,9 @@ func TestNodeStageVolumeErrorForKubevirt(
 				HostType: &hostType,
 			},
 		}).Return(&nbs.TStartEndpointResponse{}, status.Error(codes.DeadlineExceeded, ""))
+		nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+			UnixSocketPath: nbsSocketPath,
+		}).Return(&nbs.TStopEndpointResponse{}, nil)
 	}
 
 	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
