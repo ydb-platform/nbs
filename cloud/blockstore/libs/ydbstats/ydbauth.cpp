@@ -113,28 +113,23 @@ private:
                     return;
                 }
 
-                self->RenewToken(std::move(future));
+                TWriteGuard guard(self->Mutex);
+
+                Y_DEFER
+                {
+                    self->RefreshTokenInProgress.store(false);
+                    self->ScheduleRefreshToken();
+                };
+
+                auto result = future.ExtractValue();
+                if (HasError(result)) {
+                    return;
+                }
+
+                auto tokenInfo = result.ExtractResult();
+                self->Token = std::move(tokenInfo.Token);
+                self->ExpiresAt = tokenInfo.ExpiresAt;
             });
-    }
-
-    void RenewToken(auto future) const
-    {
-        TWriteGuard guard(Mutex);
-
-        Y_DEFER
-        {
-            RefreshTokenInProgress.store(false);
-            ScheduleRefreshToken();
-        };
-
-        auto result = future.ExtractValue();
-        if (HasError(result)) {
-            return;
-        }
-
-        auto tokenInfo = result.ExtractResult();
-        Token = std::move(tokenInfo.Token);
-        ExpiresAt = tokenInfo.ExpiresAt;
     }
 };
 

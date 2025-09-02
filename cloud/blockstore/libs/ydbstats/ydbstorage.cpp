@@ -398,11 +398,9 @@ void TYdbNativeStorage::Start()
         StartImpl({});
         return;
     }
-    auto tokenFuture = IamClient->GetTokenAsync();
 
-    tokenFuture.Subscribe(
-        [weak = weak_from_this()](
-            NThreading::TFuture<IIamTokenClient::TResponse> futureToken) mutable
+    IamClient->GetTokenAsync().Subscribe(
+        [weak = weak_from_this()](auto futureToken) mutable
         {
             TTokenInfo token;
             auto result = futureToken.ExtractValue();
@@ -410,8 +408,7 @@ void TYdbNativeStorage::Start()
                 token = result.ExtractResult();
             }
 
-            auto self = weak.lock();
-            if (self) {
+            if (auto self = weak.lock()) {
                 self->StartImpl(token);
             }
         });
