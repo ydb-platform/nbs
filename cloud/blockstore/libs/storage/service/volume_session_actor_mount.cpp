@@ -116,6 +116,7 @@ TEvInternalMountVolumeResponsePtr CreateInternalMountResponse(
         response->Record.SetInactiveClientsTimeout(
             static_cast<ui32>(Config.GetClientRemountPeriod().MilliSeconds()));
         response->Record.SetServiceVersionInfo(Config.GetServiceVersionInfo());
+        response->Record.SetHostName(volumeInfo.TabletHost);
     }
 
     return response;
@@ -179,6 +180,7 @@ private:
     bool IsTabletAcquired = false;
     bool VolumeSessionRestartRequired = false;
     bool IsVolumeRestarting = false;
+    TString TabletHost;
 
 public:
     TMountRequestActor(
@@ -626,7 +628,8 @@ void TMountRequestActor::NotifyAndDie(const TActorContext& ctx)
     using TNotification = TEvServicePrivate::TEvMountRequestProcessed;
     auto notification = std::make_unique<TNotification>(
         Error,
-        Volume,
+        std::move(Volume),
+        std::move(TabletHost),
         std::move(Request),
         Params.MountStartTick,
         RequestInfo,
@@ -652,6 +655,7 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
 
     Error = error;
     Volume = msg->Record.GetVolume();
+    TabletHost = std::move(msg->Record.GetHostName());
 
     if (SUCCEEDED(error.GetCode())) {
         AddClientRequestCompleted = true;
@@ -1190,6 +1194,7 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
     const bool hadLocalStart = msg->HadLocalStart;
 
     VolumeInfo->TabletId = msg->VolumeTabletId;
+    VolumeInfo->TabletHost = std::move(msg->TabletHost);
 
     TStringBuilder mountStr =
         TStringBuilder() <<

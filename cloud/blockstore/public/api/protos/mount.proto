@@ -105,6 +105,9 @@ message TMountVolumeResponse
 
     // Service version information.
     string ServiceVersionInfo = 5;
+
+    // Host where the volume is currently running
+    string HostName = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
