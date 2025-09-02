@@ -636,4 +636,10 @@ message TStorageConfig
     // filesystem behaves as if it has XAttrs. Knowledge about XAttrs presence
     // allows to reply early to GetNodeXAttr and ListNodeXAttr queries.
     optional bool LazyXAttrsEnabled = 436;
+
+    // Limits max requests allowed at a time.
+    optional uint32 MaxBackground = 438;
+
+    // Limits max threads used in fuse loop per mount
+    optional uint32 MaxFuseLoopThreads = 439;
 }
