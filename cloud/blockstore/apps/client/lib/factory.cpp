@@ -20,7 +20,6 @@
 #include "destroy_volume.h"
 #include "destroy_volume_link.h"
 #include "discover_instances.h"
-#include "endpoint_proxy.h"
 #include "execute_action.h"
 #include "get_changed_blocks.h"
 #include "get_checkpoint_status.h"
@@ -100,9 +99,6 @@ struct THandlerFactory
         { "updatediskregistryconfig", NewUpdateDiskRegistryConfigCommand },
         { "writeblocks", NewWriteBlocksCommand },
         { "zeroblocks", NewZeroBlocksCommand },
-        { "startproxyendpoint", NewStartProxyEndpointCommand },
-        { "stopproxyendpoint", NewStopProxyEndpointCommand },
-        { "listproxyendpoints", NewListProxyEndpointsCommand },
         { "updatevolumethrottlingconfig", NewUpdateVolumeThrottlingConfigCommand },
     };
 };
