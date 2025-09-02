@@ -3,6 +3,7 @@ import os
 import pytest
 
 from cloud.blockstore.config.client_pb2 import TClientConfig
+from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
     TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
@@ -210,12 +211,14 @@ def __run_test(test_case, backend, use_rdma):
             device.storage_pool_name = test_case.storage_pool_name
 
         # TODO: allocate devices for all agents to support agent_count > 1
+        disk_agent_config_patch = TDiskAgentConfig()
+        disk_agent_config_patch.DeviceEraseMethod = test_case.device_erase_method
+        disk_agent_config_patch.DedicatedDiskAgent = dedicated_disk_agent
+        disk_agent_config_patch.Backend = backend
         setup_nonreplicated(
             kikimr_cluster.client,
             [devices],
-            device_erase_method=test_case.device_erase_method,
-            dedicated_disk_agent=dedicated_disk_agent,
-            backend=backend)
+            disk_agent_config_patch)
 
         if test_case.lwtrace_query_path:
             enable_lwtrace(kikimr_cluster.client, test_case.lwtrace_query_path)

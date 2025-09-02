@@ -6,6 +6,7 @@ import pytest
 import time
 from subprocess import TimeoutExpired
 
+from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, \
     TServerAppConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
@@ -172,10 +173,12 @@ class TestWithMultipleAgents(object):
             agent_infos.append(AgentInfo(make_agent_id(i), device_infos))
             devices_per_agent.append(agent_devices)
 
+        disk_agent_config_patch = TDiskAgentConfig()
+        disk_agent_config_patch.DedicatedDiskAgent = True
         setup_nonreplicated(
             self.__kikimr_cluster.client,
             devices_per_agent,
-            dedicated_disk_agent=True,
+            disk_agent_config_patch,
             agent_count=self.agent_count,
             cached_sessions_dir_path=cache_dir_path()
         )

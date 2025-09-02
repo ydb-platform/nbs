@@ -205,17 +205,15 @@ def setup_disk_registry_proxy_config(kikimr):
 def setup_disk_agent_config(
         kikimr,
         devices,
-        device_erase_method,
-        dedicated_disk_agent=False,
+        disk_agent_config_patch = TDiskAgentConfig(),
         agent_id="localhost",
         node_type='disk-agent',
-        cached_sessions_path=None,
-        backend=DISK_AGENT_BACKEND_AIO):
+        cached_sessions_path=None):
 
     config = TDiskAgentConfig()
     config.Enabled = True
-    config.DedicatedDiskAgent = dedicated_disk_agent
-    config.Backend = backend
+    config.DedicatedDiskAgent = False
+    config.Backend = DISK_AGENT_BACKEND_AIO
     config.DirectIoFlagDisabled = False
     config.AgentId = agent_id
     config.AcquireRequired = True
@@ -228,11 +226,10 @@ def setup_disk_agent_config(
     config.UseLocalStorageSubmissionThread = False
     config.UseOneSubmissionThreadPerAIOServiceEnabled = True
     config.MaxParallelSecureErasesAllowed = 3
-
     if cached_sessions_path is not None:
         config.CachedSessionsPath = cached_sessions_path
-    if device_erase_method is not None:
-        config.DeviceEraseMethod = device_erase_method
+
+    config.MergeFrom(disk_agent_config_patch)
 
     for device in devices:
         if device.path is not None:
@@ -354,11 +351,9 @@ def enable_writable_state(nbs_port, nbs_client_binary_path):
 def setup_nonreplicated(
         kikimr_client,
         devices_per_agent,
-        device_erase_method=None,
-        dedicated_disk_agent=False,
+        disk_agent_config_patch=TDiskAgentConfig(),
         agent_count=1,
-        cached_sessions_dir_path=None,
-        backend=DISK_AGENT_BACKEND_AIO):
+        cached_sessions_dir_path=None):
 
     enable_custom_cms_configs(kikimr_client)
     setup_disk_registry_proxy_config(kikimr_client)
@@ -366,9 +361,7 @@ def setup_nonreplicated(
         setup_disk_agent_config(
             kikimr_client,
             devices_per_agent[i],
-            device_erase_method,
-            dedicated_disk_agent,
+            disk_agent_config_patch,
             agent_id=make_agent_id(i),
             node_type=make_agent_node_type(i),
-            cached_sessions_path=make_agent_session_cache_path(cached_sessions_dir_path, i),
-            backend=backend)
+            cached_sessions_path=make_agent_session_cache_path(cached_sessions_dir_path, i))
