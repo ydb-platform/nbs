@@ -1,6 +1,8 @@
 package mounter
 
 import (
+	"context"
+
 	"github.com/stretchr/testify/mock"
 )
 
@@ -30,12 +32,12 @@ func (c *Mock) CleanupMountPoint(target string) error {
 	return args.Error(0)
 }
 
-func (c *Mock) HasBlockDevice(device string) (bool, error) {
+func (c *Mock) HasBlockDevice(ctx context.Context, device string) (bool, error) {
 	args := c.Called(device)
 	return args.Get(0).(bool), args.Error(1)
 }
 
-func (c *Mock) IsFilesystemExisted(device string) (bool, error) {
+func (c *Mock) IsFilesystemExisted(ctx context.Context, device string) (bool, error) {
 	args := c.Called(device)
 	return args.Get(0).(bool), args.Error(1)
 }
