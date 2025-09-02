@@ -42,24 +42,22 @@ class TYdbTokenProvider final
 private:
     const ISchedulerPtr Scheduler;
     const IIamTokenClientPtr Client;
-    const TDuration IamTokenRefreshTimeBeforeExpiration;
+    const TDuration TokenRefreshTimeBeforeExpiration;
 
     mutable TRWMutex Mutex;
     mutable TStringType Token;
     mutable TInstant ExpiresAt;
 
-    mutable std::atomic_bool RefreshTokenInProgress = false;
-
 public:
     TYdbTokenProvider(
             ISchedulerPtr scheduler,
             IIamTokenClientPtr client,
-            TDuration iamTokenRefreshTimeBeforeExpiration,
+            TDuration tokenRefreshTimeBeforeExpiration,
             TTokenInfo initialToken)
         : Scheduler(std::move(scheduler))
         , Client(std::move(client))
-        , IamTokenRefreshTimeBeforeExpiration(
-              iamTokenRefreshTimeBeforeExpiration)
+        , TokenRefreshTimeBeforeExpiration(
+              tokenRefreshTimeBeforeExpiration)
         , Token(std::move(initialToken.Token))
         , ExpiresAt(initialToken.ExpiresAt)
     {}
@@ -79,15 +77,20 @@ public:
 
     void Init()
     {
-        ScheduleRefreshToken();
+        TInstant expiresAt;
+        {
+            TReadGuard guard(Mutex);
+            expiresAt = ExpiresAt;
+        }
+
+        ScheduleRefreshToken(expiresAt);
     }
 
 private:
-    // Not thread-safe.
-    void ScheduleRefreshToken() const
+    void ScheduleRefreshToken(TInstant expiresAt) const
     {
         auto deadline =
-            Max(ExpiresAt - IamTokenRefreshTimeBeforeExpiration, Now());
+            Max(expiresAt - TokenRefreshTimeBeforeExpiration, Now());
         Scheduler->Schedule(
             deadline,
             [weak = weak_from_this()]
@@ -100,11 +103,6 @@ private:
 
     void RefreshToken() const
     {
-        auto inProgress = RefreshTokenInProgress.exchange(true);
-        if (inProgress) {
-            return;
-        }
-
         Client->GetTokenAsync().Subscribe(
             [weak = weak_from_this()](auto future)
             {
@@ -113,23 +111,24 @@ private:
                     return;
                 }
 
-                TWriteGuard guard(self->Mutex);
-
-                Y_DEFER
-                {
-                    self->RefreshTokenInProgress.store(false);
-                    self->ScheduleRefreshToken();
-                };
-
-                auto result = future.ExtractValue();
-                if (HasError(result)) {
-                    return;
-                }
-
-                auto tokenInfo = result.ExtractResult();
-                self->Token = std::move(tokenInfo.Token);
-                self->ExpiresAt = tokenInfo.ExpiresAt;
+                auto expiresAt = self->UpdateToken(std::move(future));
+                self->ScheduleRefreshToken(expiresAt);
             });
+    }
+
+    TInstant UpdateToken(auto future)
+    {
+        TWriteGuard guard(Mutex);
+        auto result = future.ExtractValue();
+        if (HasError(result)) {
+            return ExpiresAt;
+        }
+
+        auto tokenInfo = result.ExtractResult();
+        Token = std::move(tokenInfo.Token);
+        ExpiresAt = tokenInfo.ExpiresAt;
+
+        return ExpiresAt;
     }
 };
 

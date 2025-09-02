@@ -170,8 +170,6 @@ public:
         Client = std::make_shared<TTableClient>(*Driver);
         SchemeClient = std::make_unique<TSchemeClient>(*Driver);
 
-        Log = Logging->CreateLog("BLOCKSTORE_YDBSTATS");
-
         IsInitialized.test_and_set();
     }
 
@@ -394,7 +392,10 @@ TFuture<NProto::TError> TYdbNativeStorage::ExecuteUploadQuery(
 
 void TYdbNativeStorage::Start()
 {
+    Log = Logging->CreateLog("BLOCKSTORE_YDBSTATS");
+
     if (!Config->GetUseSsl()) {
+        STORAGE_INFO("Starting YDB Storage without IAM token");
         StartImpl({});
         return;
     }
