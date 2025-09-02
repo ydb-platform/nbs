@@ -125,24 +125,19 @@ func (c *executionContext) IsHanging() bool {
 
 	deadline := c.taskState.CreatedAt.Add(c.hangingTaskTimeout)
 
-	inflightDurationTimeout := c.taskState.EstimatedInflightDuration *
-		time.Duration(c.missedEstimatesUntilTaskIsHanging)
+	inflightDurationTimeout := max(
+		c.taskState.EstimatedInflightDuration*time.Duration(c.missedEstimatesUntilTaskIsHanging),
+		c.inflightHangingTaskTimeout,
+	)
 
-	if inflightDurationTimeout < c.inflightHangingTaskTimeout {
-		inflightDurationTimeout = c.inflightHangingTaskTimeout
-	}
-
-	stallingDurationTimeout := c.taskState.EstimatedStallingDuration *
-		time.Duration(c.missedEstimatesUntilTaskIsHanging)
-
-	if stallingDurationTimeout < c.stallingHangingTaskTimeout {
-		stallingDurationTimeout = c.stallingHangingTaskTimeout
-	}
+	stallingDurationTimeout := max(
+		c.taskState.EstimatedStallingDuration*time.Duration(c.missedEstimatesUntilTaskIsHanging),
+		c.stallingHangingTaskTimeout,
+	)
 
 	return time.Now().After(deadline) ||
 		c.taskState.InflightDuration > inflightDurationTimeout ||
 		c.taskState.StallingDuration > stallingDurationTimeout
-
 }
 
 func (c *executionContext) SetInflightEstimate(estimatedDuration time.Duration) {

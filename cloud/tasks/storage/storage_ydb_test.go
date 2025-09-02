@@ -1019,14 +1019,14 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 
 type hangingTaskTestFixture struct {
 	t                                 *testing.T
+	db                                *persistence.YDBClient
 	storage                           Storage
 	ctx                               context.Context
+	cancel                            context.CancelFunc
+	hangingTaskTimeout                time.Duration
 	inflightHangingTaskTimeout        time.Duration
 	stallingHangingTaskTimeout        time.Duration
-	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
-	db                                *persistence.YDBClient
-	cancel                            context.CancelFunc
 }
 
 func (f hangingTaskTestFixture) createTask(
@@ -1208,6 +1208,21 @@ func newHangingTaskTestFixture(
 	config *tasks_config.TasksConfig,
 ) hangingTaskTestFixture {
 
+	ctx, cancel := context.WithCancel(newContext())
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+
+	metricsRegistry := empty.NewRegistry()
+	storage, err := newStorage(
+		t,
+		ctx,
+		db,
+		config,
+		metricsRegistry,
+	)
+	require.NoError(t, err)
+
 	hangingTaskTimeout, err := time.ParseDuration(
 		config.GetHangingTaskTimeout(),
 	)
@@ -1223,34 +1238,17 @@ func newHangingTaskTestFixture(
 	)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(newContext())
-	fixture := hangingTaskTestFixture{
+	return hangingTaskTestFixture{
 		t:                                 t,
-		hangingTaskTimeout:                hangingTaskTimeout,
-		inflightHangingTaskTimeout:        inflightHangingTaskTimeout,
-		missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
-		stallingHangingTaskTimeout:        stallingHangingTaskTimeout,
+		db:                                db,
+		storage:                           storage,
 		ctx:                               ctx,
 		cancel:                            cancel,
+		hangingTaskTimeout:                hangingTaskTimeout,
+		inflightHangingTaskTimeout:        inflightHangingTaskTimeout,
+		stallingHangingTaskTimeout:        stallingHangingTaskTimeout,
+		missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
 	}
-	fixture.ctx = ctx
-	fixture.cancel = cancel
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
-
-	fixture.db = db
-	metricsRegistry := empty.NewRegistry()
-	storage, err := newStorage(
-		t,
-		ctx,
-		db,
-		config,
-		metricsRegistry,
-	)
-	require.NoError(t, err)
-
-	fixture.storage = storage
-	return fixture
 }
 
 func TestStorageYDBListHangingTasks(t *testing.T) {
