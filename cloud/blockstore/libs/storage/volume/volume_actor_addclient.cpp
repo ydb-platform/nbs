@@ -397,6 +397,28 @@ void TVolumeActor::HandleAddClient(
     const auto fillGeneration = msg->Record.GetFillGeneration();
     const auto& host = msg->Record.GetHost();
 
+    const bool isOutdated =
+        ParseTags(State->GetMeta().GetVolumeConfig().GetTagsStr())
+            .contains(OutdatedVolumeTagName);
+    if (isOutdated) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s AddClientRequest to outdate volume %s",
+            LogTitle.GetWithTime().c_str(),
+            clientId.Quote().c_str());
+/*
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvVolume::TEvAddClientResponse>(MakeError(
+                E_BS_INVALID_SESSION,
+                "Can't add client to outdated volume")));
+
+        return;
+*/
+    }
+
     // If event was forwarded through pipe, its recipient and recipient rewrite
     // would be different
     TActorId pipeServerActorId;

@@ -480,6 +480,7 @@ struct TEndpoint
 class TEndpointManager final
     : public IEndpointManager
     , public IEndpointEventHandler
+    , public NClient::ISessionSwitcher
     , public std::enable_shared_from_this<TEndpointManager>
 {
 private:
@@ -635,6 +636,7 @@ public:
 
     void Start() override
     {
+        SessionManager->SetSessionSwitcher(shared_from_this());
         RestoringClient->Start();
     }
 
@@ -706,6 +708,14 @@ public:
         std::shared_ptr<NProto::TStartEndpointRequest> request);
 
     void ProcessException(std::shared_ptr<TExceptionContext> context);
+
+    void SwitchSession(
+        const TString& diskId,
+        const TString& newDiskid,
+        bool) override
+    {
+        SwitchSession(diskId, newDiskid);
+    }
 
 private:
     void ProcessException(
@@ -1783,7 +1793,7 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
         << ", startRequest.DiskId=" << startRequest->GetDiskId().Quote()
         << ", IsFastPathEnabled=" << sessionInfo.Volume.GetIsFastPathEnabled()
         << ", Migrations=" << sessionInfo.Volume.GetMigrations().size());
-
+/*
     if (sessionInfo.Volume.GetSubstituteDiskId() &&
         sessionInfo.Volume.GetSubstituteDiskId() != startRequest->GetDiskId())
     {
@@ -1807,7 +1817,7 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
                     "Implicit SwitchSession finished: " << FormatError(error));
             });
     }
-
+*/
     auto switchFuture = listener->SwitchEndpoint(
         *startRequest,
         sessionInfo.Volume,

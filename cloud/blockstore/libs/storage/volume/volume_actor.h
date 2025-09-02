@@ -1234,7 +1234,6 @@ private:
 
     // Update link to leader volume on follower side
     void UpdateLeaderLink(
-        TRequestInfoPtr requestInfo,
         TLeaderFollowerLink link,
         TLeaderDiskInfo::EState state,
         const NActors::TActorContext& ctx);

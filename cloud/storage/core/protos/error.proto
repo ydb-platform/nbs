@@ -27,8 +27,6 @@ enum EErrorFlag
     // possibility of a retry storm.
     EF_INSTANT_RETRIABLE = 3;
 
-    EF_SWITCH_SESSION = 4;
-
     // TODO: EF_RETRIABLE, EF_CLIENT
 }
 

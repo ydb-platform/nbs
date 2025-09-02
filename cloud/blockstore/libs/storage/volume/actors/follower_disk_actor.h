@@ -70,18 +70,7 @@ public:
     {
         DataTransfer,
         DataReady,
-        SessionSwitched,
         OutdatedTagSet,
-        FollowerPropagated,
-    };
-
-    enum EFollowerWakeupReason
-    {
-        RETRY_SWITCH_SESSION_NOTIFY =
-            TNonreplicatedPartitionMigrationCommonActor::WR_REASON_COUNT,
-        SWITCH_SESSION_DONE_NOTIFY,
-        SWITCH_SESSION_ERROR_NOTIFY,
-        DESTROY_LEADER_VOLUME_NOTIFY,
     };
 
 private:
@@ -93,6 +82,7 @@ private:
     const NActors::TActorId LeaderVolumeActorId;
     const NActors::TActorId LeaderPartitionActorId;
     const bool TakePartitionOwnership = false;
+    const bool LeaderOutdated = false;
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     TString ClientId;
 
@@ -132,9 +122,8 @@ private:
         const NActors::TActorContext& ctx,
         const TFollowerDiskInfo& newDiskInfo);
 
-    void TransferLeadership(const NActors::TActorContext& ctx);
-    void SwitchSession(const NActors::TActorContext& ctx);
-    void PropagateFollowerState(const NActors::TActorContext& ctx);
+    void AdvanceState(const NActors::TActorContext& ctx);
+    void PropagateReadyStateToFollower(const NActors::TActorContext& ctx);
     void DestroyLeaderVolume(const NActors::TActorContext& ctx);
 
     template <typename TMethod>
@@ -144,11 +133,6 @@ private:
 
     template <typename TMethod>
     void ForwardRequestToFollowerPartition(
-        const typename TMethod::TRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    template <typename TMethod>
-    bool HandleReadWriteZeroBlocks(
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
@@ -168,20 +152,12 @@ private:
         const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleSwitchSessionResponse(
-        const NProto::TError& error,
-        const NActors::TActorContext& ctx);
-
-    void HandlePropagateFollowerStateResponse(
+    void HandlePropagateReadyStateToFollowerResponse(
         const TEvVolumePrivate::TEvLinkOnFollowerCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleDestroyLeaderVolumeResponse(
         const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    bool HandleWakeup(
-        const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

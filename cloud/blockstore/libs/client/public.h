@@ -35,6 +35,9 @@ using ISessionPtr = std::shared_ptr<ISession>;
 struct ISwitchableSession;
 using ISwitchableSessionPtr = std::shared_ptr<ISwitchableSession>;
 
+struct ISessionSwitcher;
+using ISessionSwitcherPtr = std::shared_ptr<ISessionSwitcher>;
+
 struct TSessionConfig;
 
 struct IMetricClient;

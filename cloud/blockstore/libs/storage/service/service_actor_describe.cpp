@@ -130,7 +130,7 @@ void TDescribeVolumeActor::HandleDescribeVolumeResponse(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "!!! Successful DescribeVolume for %s replaced with %s",
+            "!!! Successful DescribeVolume for %s found substitute %s",
             Volume.GetDiskId().Quote().c_str(),
             Volume.GetSubstituteDiskId().Quote().c_str());
     } else {

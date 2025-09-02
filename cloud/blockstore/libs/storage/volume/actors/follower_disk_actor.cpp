@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/actors/destroy_volume_actor.h>
 #include <cloud/blockstore/libs/storage/volume/actors/propagate_to_follower.h>
 #include <cloud/blockstore/libs/storage/volume/actors/volume_as_partition_actor.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
@@ -76,10 +77,9 @@ TFollowerDiskActor::TFollowerDiskActor(
     , LeaderVolumeActorId(params.LeaderVolumeActorId)
     , LeaderPartitionActorId(params.LeaderPartitionActorId)
     , TakePartitionOwnership(params.TakePartitionOwnership)
+    , LeaderOutdated(params.LeaderOutdated)
     , EndpointEventHandler(std::move(endpointEventHandler))
     , ClientId(params.ClientId)
-    , State(
-          params.LeaderOutdated ? EState::OutdatedTagSet : EState::DataTransfer)
     , FollowerDiskInfo(params.FollowerDiskInfo)
 {
     Y_DEBUG_ABORT_UNLESS(LeaderMediaKind != NProto::STORAGE_MEDIA_DEFAULT);
@@ -94,14 +94,8 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Follower created (%s)",
-        LogTitle.GetWithTime().c_str(),
-        ToString(State).c_str());
-
-    if (State == EState::OutdatedTagSet) {
-        TransferLeadership(ctx);
-        return;
-    }
+        "%s Follower created",
+        LogTitle.GetWithTime().c_str());
 
     FollowerPartitionActorId = NCloud::Register<TVolumeAsPartitionActor>(
         ctx,
@@ -128,6 +122,7 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
                 nullptr)});
 
     StartWork(ctx);
+    AdvanceState(ctx);
 }
 
 bool TFollowerDiskActor::OnMessage(
@@ -142,7 +137,7 @@ bool TFollowerDiskActor::OnMessage(
             HandleUpdateFollowerStateResponse);
         HFunc(
             TEvVolumePrivate::TEvLinkOnFollowerCompleted,
-            HandlePropagateFollowerStateResponse);
+            HandlePropagateReadyStateToFollowerResponse);
         HFunc(
             TEvService::TEvDestroyVolumeResponse,
             HandleDestroyLeaderVolumeResponse);
@@ -151,48 +146,10 @@ bool TFollowerDiskActor::OnMessage(
         // base class.
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvUpdateCounters);
 
-        // Read/Write/Zero request.
-        case TEvService::TEvReadBlocksRequest::EventType: {
-            return HandleReadWriteZeroBlocks<TEvService::TReadBlocksMethod>(
-                *reinterpret_cast<TEvService::TEvReadBlocksRequest::TPtr*>(&ev),
-                ctx);
-        }
-        case TEvService::TEvReadBlocksLocalRequest::EventType: {
-            return HandleReadWriteZeroBlocks<
-                TEvService::TReadBlocksLocalMethod>(
-                *reinterpret_cast<TEvService::TEvReadBlocksLocalRequest::TPtr*>(
-                    &ev),
-                ctx);
-        }
-        case TEvService::TEvWriteBlocksRequest::EventType: {
-            return HandleReadWriteZeroBlocks<TEvService::TWriteBlocksMethod>(
-                *reinterpret_cast<TEvService::TEvWriteBlocksRequest::TPtr*>(
-                    &ev),
-                ctx);
-        }
-        case TEvService::TEvWriteBlocksLocalRequest::EventType: {
-            return HandleReadWriteZeroBlocks<
-                TEvService::TWriteBlocksLocalMethod>(
-                *reinterpret_cast<
-                    TEvService::TEvWriteBlocksLocalRequest::TPtr*>(&ev),
-                ctx);
-        }
-        case TEvService::TEvZeroBlocksRequest::EventType: {
-            return HandleReadWriteZeroBlocks<TEvService::TZeroBlocksMethod>(
-                *reinterpret_cast<TEvService::TEvZeroBlocksRequest::TPtr*>(&ev),
-                ctx);
-        }
-
         // ClientId changed event.
         case TEvVolume::TEvRWClientIdChanged::EventType: {
             return HandleRWClientIdChanged(
                 *reinterpret_cast<TEvVolume::TEvRWClientIdChanged::TPtr*>(&ev),
-                ctx);
-        }
-
-        case NActors::TEvents::TEvWakeup::EventType: {
-            return HandleWakeup(
-                *reinterpret_cast<NActors::TEvents::TEvWakeup::TPtr*>(&ev),
                 ctx);
         }
 
@@ -253,69 +210,43 @@ void TFollowerDiskActor::PersistFollowerState(
     NCloud::Send(ctx, LeaderVolumeActorId, std::move(request));
 }
 
-void TFollowerDiskActor::TransferLeadership(const NActors::TActorContext& ctx)
+void TFollowerDiskActor::AdvanceState(const NActors::TActorContext& ctx)
 {
+    EState newState =
+        FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady
+            ? EState::DataReady
+            : EState::DataTransfer;
+    newState = LeaderOutdated ? EState::OutdatedTagSet : newState;
+
+    if (newState <= State) {
+        return;
+    }
+
+    State = newState;
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s State advanced to %s",
+        LogTitle.GetWithTime().c_str(),
+        ToString(State).c_str());
+
     switch (State) {
         case EState::DataTransfer: {
             break;
         }
         case EState::DataReady: {
-            SwitchSession(ctx);
-            break;
-        }
-        case EState::SessionSwitched: {
-            PropagateFollowerState(ctx);
-            break;
-        }
-        case EState::FollowerPropagated: {
+            PropagateReadyStateToFollower(ctx);
             break;
         }
         case EState::OutdatedTagSet: {
             DestroyLeaderVolume(ctx);
-            //Schedule(
-            //    TDuration::Seconds(30),
-            //    new TEvents::TEvWakeup(DESTROY_LEADER_VOLUME_NOTIFY));
             break;
         }
     }
 }
 
-void TFollowerDiskActor::SwitchSession(const NActors::TActorContext& ctx)
-{
-    auto future = EndpointEventHandler->SwitchSession(
-        FollowerDiskInfo.Link.LeaderDiskId,
-        FollowerDiskInfo.Link.FollowerDiskId);
-    future.Subscribe(
-        [logTitle = LogTitle, ctx, selfId = SelfId()](
-            const NThreading::TFuture<NProto::TError>& future)
-        {
-            const auto& error = future.GetValue();
-            if (HasError(error)) {
-                LOG_ERROR(
-                    ctx,
-                    TBlockStoreComponents::VOLUME,
-                    "%s Failed to switch session: %s",
-                    logTitle.GetWithTime().c_str(),
-                    FormatError(error).c_str());
-
-                ctx.Send(
-                    selfId,
-                    new TEvents::TEvWakeup(SWITCH_SESSION_ERROR_NOTIFY));
-            } else {
-                LOG_INFO(
-                    ctx,
-                    TBlockStoreComponents::VOLUME,
-                    "%s Session switched to new disk",
-                    logTitle.GetWithTime().c_str());
-
-                ctx.Send(
-                    selfId,
-                    new TEvents::TEvWakeup(SWITCH_SESSION_DONE_NOTIFY));
-            }
-        });
-}
-
-void TFollowerDiskActor::PropagateFollowerState(
+void TFollowerDiskActor::PropagateReadyStateToFollower(
     const NActors::TActorContext& ctx)
 {
     NCloud::Register<TPropagateLinkToFollowerActor>(
@@ -331,13 +262,15 @@ void TFollowerDiskActor::DestroyLeaderVolume(const NActors::TActorContext& ctx)
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Destroy leader volume",
+        "%s Should destroy leader volume (suicide)",
         LogTitle.GetWithTime().c_str());
-
-    auto request = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
-    request->Record.SetDiskId(FollowerDiskInfo.Link.LeaderDiskId);
-    request->Record.SetSync(false);
-    NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
+    /*
+    NCloud::Register<TDestroyVolumeActor>(
+        ctx,
+        LogTitle,
+        CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
+        FollowerDiskInfo.Link.LeaderDiskId);
+    */
 }
 
 template <typename TMethod>
@@ -354,41 +287,6 @@ void TFollowerDiskActor::ForwardRequestToFollowerPartition(
     const NActors::TActorContext& ctx)
 {
     ForwardMessageToActor(ev, ctx, FollowerPartitionActorId);
-}
-
-template <typename TMethod>
-bool TFollowerDiskActor::HandleReadWriteZeroBlocks(
-    const typename TMethod::TRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    if (State == EState::OutdatedTagSet) {
-         ui32 flags = 0;
-            SetProtoFlag(flags, NProto::EF_SWITCH_SESSION);
-            NCloud::Reply(
-                ctx,
-                *ev,
-                std::make_unique<typename TMethod::TResponse>(MakeError(
-                    E_REJECTED,
-                    TStringBuilder() << "Can't " << TMethod::Name
-                                     << " when outdated tag present.",
-                    flags)));
-        /*
-            LOG_INFO(
-                ctx,
-                TBlockStoreComponents::VOLUME,
-                "%s Send poison pill to leader volume",
-                LogTitle.GetWithTime().c_str());
-            NCloud::Send(
-                ctx,
-                LeaderVolumeActorId,
-                std::make_unique<TEvents::TEvPoisonPill>());
-                */
-            return true;
-    }
-
-    // Migration is currently in progress. It is necessary to handle
-    // read/write/zero requests in base class
-    return false;
 }
 
 void TFollowerDiskActor::HandleRdmaUnavailable(
@@ -431,33 +329,10 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
 
     FollowerDiskInfo = msg->Follower;
 
-    if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady) {
-        State = EState::DataReady;
-        TransferLeadership(ctx);
-    }
-}
-void TFollowerDiskActor::HandleSwitchSessionResponse(
-    const NProto::TError& error,
-    const NActors::TActorContext& ctx)
-{
-    if (HasError(error)) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s SwichSession error: %s",
-            LogTitle.GetWithTime().c_str(),
-            FormatError(error).c_str());
-        Schedule(
-            Backoff.GetDelayAndIncrease(),
-            new TEvents::TEvWakeup(RETRY_SWITCH_SESSION_NOTIFY));
-        return;
-    }
-
-    State = EState::SessionSwitched;
-    TransferLeadership(ctx);
+    AdvanceState(ctx);
 }
 
-void TFollowerDiskActor::HandlePropagateFollowerStateResponse(
+void TFollowerDiskActor::HandlePropagateReadyStateToFollowerResponse(
     const TEvVolumePrivate::TEvLinkOnFollowerCompleted::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
@@ -467,15 +342,18 @@ void TFollowerDiskActor::HandlePropagateFollowerStateResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Propagate to follower error: %s",
+            "%s Propagate ready state to follower error: %s",
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
         // ???? Should we retry?
         return;
     }
 
-    State = EState::FollowerPropagated;
-    TransferLeadership(ctx);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Ready state propagated to follower",
+        LogTitle.GetWithTime().c_str());
 }
 
 void TFollowerDiskActor::HandleDestroyLeaderVolumeResponse(
@@ -491,12 +369,6 @@ void TFollowerDiskActor::HandleDestroyLeaderVolumeResponse(
             "%s Destroy leader volume error: %s",
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
-
-        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
-            Schedule(
-                Backoff.GetDelayAndIncrease(),
-                new TEvents::TEvWakeup(DESTROY_LEADER_VOLUME_NOTIFY));
-        }
         return;
     }
     LOG_INFO(
@@ -504,32 +376,6 @@ void TFollowerDiskActor::HandleDestroyLeaderVolumeResponse(
         TBlockStoreComponents::VOLUME,
         "%s Destroy leader volume success",
         LogTitle.GetWithTime().c_str());
-}
-
-bool TFollowerDiskActor::HandleWakeup(
-    const NActors::TEvents::TEvWakeup::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    switch (ev->Get()->Tag) {
-        case EFollowerWakeupReason::RETRY_SWITCH_SESSION_NOTIFY: {
-            SwitchSession(ctx);
-            return true;
-        }
-        case EFollowerWakeupReason::SWITCH_SESSION_DONE_NOTIFY: {
-            HandleSwitchSessionResponse(MakeError(S_OK), ctx);
-            return true;
-        }
-        case EFollowerWakeupReason::SWITCH_SESSION_ERROR_NOTIFY: {
-            HandleSwitchSessionResponse(MakeError(E_REJECTED), ctx);
-            return true;
-        }
-        case EFollowerWakeupReason::DESTROY_LEADER_VOLUME_NOTIFY: {
-            DestroyLeaderVolume(ctx);
-            return true;
-        }
-    }
-
-    return false;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

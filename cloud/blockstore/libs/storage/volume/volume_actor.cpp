@@ -1108,6 +1108,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
         IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
 
+        IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
         IgnoreFunc(TEvStatsService::TEvVolumePartCounters);
 
         IgnoreFunc(TEvPartition::TEvWaitReadyResponse);

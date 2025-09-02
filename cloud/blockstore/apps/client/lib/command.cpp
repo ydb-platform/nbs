@@ -370,7 +370,9 @@ NProto::TMountVolumeResponse TCommand::MountVolume(
         VolumeStats,
         endpoint,
         ClientConfig,
-        sessionConfig);
+        sessionConfig,
+        nullptr   // ISessionSwitcherPtr
+    );
 
     auto response = SafeExecute<NProto::TMountVolumeResponse>([&] {
         return WaitFor(session->MountVolume());

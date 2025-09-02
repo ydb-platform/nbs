@@ -109,6 +109,15 @@ void TPropagateLinkToFollowerActor::HandleWakeup(
 {
     Y_UNUSED(ev);
 
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Propagate link %s %s to follower timeout (try #%lu)",
+        LogPrefix.c_str(),
+        ToString(Reason).c_str(),
+        Link.Describe().c_str(),
+        TryCount);
+
     PersistOnFollower(ctx);
 }
 

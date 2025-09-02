@@ -166,13 +166,20 @@ void TVolumeActor::DestroyLeaderLink(
 }
 
 void TVolumeActor::UpdateLeaderLink(
-    TRequestInfoPtr requestInfo,
     TLeaderFollowerLink link,
     TLeaderDiskInfo::EState state,
     const NActors::TActorContext& ctx)
 {
     auto currenLeader = State->FindLeader(link);
-    if (!currenLeader) {
+    auto& requests = State->AccessLinkCompletedRequests(currenLeader->Link);
+    auto requestInfo = requests.RequestInfo;
+    requests.RequestInfo = {};
+
+    if (!requestInfo) {
+        return;
+    }
+
+    if (!currenLeader || currenLeader->State == state) {
         NCloud::Reply(
             ctx,
             *requestInfo,
@@ -209,7 +216,16 @@ void TVolumeActor::AddOutdatedTagToLeader(
             ctx,
             *requestInfo,
             std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-                MakeError(S_ALREADY)));
+                MakeError(S_ALREADY, "Link not found")));
+        return;
+    }
+
+    if (currenLeader->State == TLeaderDiskInfo::EState::Leader) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
+                MakeError(S_ALREADY, "Already in leader state")));
         return;
     }
 
@@ -219,11 +235,10 @@ void TVolumeActor::AddOutdatedTagToLeader(
             ctx,
             *requests.RequestInfo,
             std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-                MakeError(E_REJECTED, "Another request is in progress")));
-        return;
-    };
-    requests.RequestInfo = std::move(requestInfo);
+                MakeError(E_REJECTED, "New request arrived")));
+    }
 
+    requests.RequestInfo = requestInfo;
     const ui64 cookie = currenLeader->Link.GetHash();
     ctx.Send(
         MakeStorageServiceId(),
@@ -238,13 +253,25 @@ void TVolumeActor::HandleAddOutdatedTagResponse(
 {
     const auto* msg = ev->Get();
 
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s HandleAddOutdatedTagResponse %lu %s",
+        LogTitle.GetWithTime().c_str(),
+        ev->Cookie,
+        FormatError(msg->GetError()).c_str());
+
     auto currenLeader = State->FindLeaderByHash(ev->Cookie);
     if (!currenLeader) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Link with leader not found %lu %s",
+            LogTitle.GetWithTime().c_str(),
+            ev->Cookie,
+            FormatError(msg->GetError()).c_str());
         return;
     }
-
-    auto& requests = State->AccessLinkCompletedRequests(currenLeader->Link);
-    TRequestInfoPtr requestInfo = std::move(requests.RequestInfo);
 
     if (HasError(msg->GetError())) {
         if (IsPathDoesNotExistError(msg->GetError())) {
@@ -256,15 +283,12 @@ void TVolumeActor::HandleAddOutdatedTagResponse(
                 LogTitle.GetWithTime().c_str(),
                 currenLeader->Link.Describe().c_str(),
                 FormatError(msg->GetError()).c_str());
-
             UpdateLeaderLink(
-                std::move(requestInfo),
                 currenLeader->Link,
                 TLeaderDiskInfo::EState::Leader,
                 ctx);
             return;
         }
-
         if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
             LOG_WARN(
                 ctx,
@@ -293,11 +317,7 @@ void TVolumeActor::HandleAddOutdatedTagResponse(
         return;
     }
 
-    UpdateLeaderLink(
-        std::move(requestInfo),
-        currenLeader->Link,
-        TLeaderDiskInfo::EState::Leader,
-        ctx);
+    UpdateLeaderLink(currenLeader->Link, TLeaderDiskInfo::EState::Leader, ctx);
 }
 
 void TVolumeActor::HandleUpdateLinkOnFollower(
@@ -316,7 +336,7 @@ void TVolumeActor::HandleUpdateLinkOnFollower(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s Update link %s on follower %s",
+        "%s Handle update link %s on follower %s",
         LogTitle.GetWithTime().c_str(),
         link.Describe().c_str(),
         NProto::ELinkAction_Name(msg->Record.GetAction()).c_str());
@@ -334,6 +354,7 @@ void TVolumeActor::HandleUpdateLinkOnFollower(
             break;
         }
         case NProto::LINK_ACTION_COMPLETED: {
+            //BecomeLeader(std::move(requestInfo), std::move(link), ctx);
             AddOutdatedTagToLeader(
                 std::move(requestInfo),
                 std::move(link),

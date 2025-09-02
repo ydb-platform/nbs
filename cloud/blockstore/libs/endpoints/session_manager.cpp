@@ -324,6 +324,7 @@ private:
 
     TMutex EndpointLock;
     THashMap<TString, TEndpointPtr> Endpoints;
+    ISessionSwitcherPtr SessionSwitcherPtr;
 
 public:
     TSessionManager(
@@ -383,6 +384,14 @@ public:
 
     TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
         const TString& socketPath) override;
+
+    void SetSessionSwitcher(
+        NClient::ISessionSwitcherPtr sessionSwitcher) override
+    {
+        with_lock (EndpointLock) {
+            SessionSwitcherPtr = std::move(sessionSwitcher);
+        }
+    }
 
 private:
     TSessionOrError CreateSessionImpl(
@@ -771,7 +780,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     auto encryptionFuture = EncryptionClientFactory->CreateEncryptionClient(
         std::move(client),
         request.GetEncryptionSpec(),
-        request.GetDiskId());
+        request.GetDiskId()); //???
 
     const auto& clientOrError = Executor->WaitFor(encryptionFuture);
     if (HasError(clientOrError)) {
@@ -812,7 +821,8 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         VolumeStats,
         client,
         std::move(clientConfig),
-        CreateSessionConfig(request));
+        CreateSessionConfig(request),
+        SessionSwitcherPtr);
 
     return std::make_shared<TEndpoint>(
         *Executor,
