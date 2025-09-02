@@ -5719,6 +5719,18 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             fillGeneration - 1,
             E_PRECONDITION_FAILED);
     }
+
+    Y_UNIT_TEST(ShouldFillHostNameinMountResponse)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume();
+
+        auto response = service.MountVolume();
+        UNIT_ASSERT_VALUES_UNEQUAL("", response->Record.GetHostName());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
