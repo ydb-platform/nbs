@@ -52,12 +52,11 @@ void TVolumeBalancerState::UpdateVolumeStats(
         info.MediaKind = v.GetStorageMediaKind();
 
         info.IsLocal = v.GetIsLocal();
+
+        // Reset pull interval and next pull attempt when volume becomes local.
         if (info.IsLocal) {
-            info.NextPullAttempt = {};
             info.PullInterval = StorageConfig->GetInitialPullDelay();
-        } else if (!info.NextPullAttempt) {
-            info.NextPullAttempt = now + info.PullInterval;
-            info.PullInterval = Min(MaxPullDelay, info.PullInterval * 2);
+            info.NextPullAttempt = {};
         }
 
         if (auto perfIt = perfMap.find(it->first); perfIt != perfMap.end()) {
@@ -72,7 +71,11 @@ void TVolumeBalancerState::UpdateVolumeStats(
 
     if (emergencyCpu) {
         VolumeToPull = {};
-        UpdateVolumeToPush();
+        UpdateVolumeToPush(now);
+
+        // Increase pull interval and update the next pull attempt for volumes
+        // preempted by the balancer due to insufficient CPU resources.
+        UpdatePreemptedVolumesPullInterval(now);
     } else {
         VolumeToPush = {};
         UpdateVolumeToPull(now);
@@ -212,48 +215,66 @@ void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeBalancerState::UpdateVolumeToPush()
+void TVolumeBalancerState::UpdateVolumeToPush(TInstant now)
 {
     const bool moveMostHeavy = StorageConfig->GetVolumePreemptionType() ==
         NProto::PREEMPTION_MOVE_MOST_HEAVY;
 
     VolumeToPush = {};
+    TVolumeInfo* volumeInfoPtr = nullptr;
 
     ui64 value = moveMostHeavy ? 0 : Max<ui64>();
-    for (auto v = Volumes.begin(); v != Volumes.end(); ++v) {
-        if (!IsVolumePreemptible(v->first, v->second)) {
+    for (auto& [diskId, volumeInfo]: Volumes) {
+        if (!IsVolumePreemptible(diskId, volumeInfo)) {
             continue;
         }
-
         if (moveMostHeavy) {
-            if (value < v->second.SufferCount) {
-                value = v->second.SufferCount;
-                VolumeToPush = v->first;
+            if (value < volumeInfo.SufferCount) {
+                value = volumeInfo.SufferCount;
+                volumeInfoPtr = &volumeInfo;
+                VolumeToPush = diskId;
             }
         } else {
-            if (value > v->second.SufferCount) {
-                value = v->second.SufferCount;
-                VolumeToPush = v->first;
+            if (value > volumeInfo.SufferCount) {
+                value = volumeInfo.SufferCount;
+                volumeInfoPtr = &volumeInfo;
+                VolumeToPush = diskId;
             }
         }
+    }
+
+    if (volumeInfoPtr) {
+        volumeInfoPtr->NextPullAttempt = now + volumeInfoPtr->PullInterval;
     }
 }
 
 void TVolumeBalancerState::UpdateVolumeToPull(TInstant now)
 {
     VolumeToPull = {};
-
-    for (const auto& v: Volumes) {
-        if (!v.second.IsLocal &&
-            v.second.PreemptionSource == NProto::EPreemptionSource::SOURCE_BALANCER &&
-            v.second.NextPullAttempt <= now &&
-            !VolumesInProgress.count(v.first))
-        {
-            VolumeToPull = v.first;
+    for (const auto& [diskId, volumeInfo]: Volumes) {
+        if (volumeInfo.NextPullAttempt <= now && IsBalancerPreempted(diskId, volumeInfo)) {
+            VolumeToPull = diskId;
             return;
         }
     }
+}
 
+void TVolumeBalancerState::UpdatePreemptedVolumesPullInterval(TInstant now) {
+    for (auto& [diskId, volumeInfo]: Volumes) {
+        if (volumeInfo.NextPullAttempt <= now && IsBalancerPreempted(diskId, volumeInfo)) {
+            volumeInfo.PullInterval = Min(MaxPullDelay, volumeInfo.PullInterval * 2);
+            volumeInfo.NextPullAttempt = now + volumeInfo.PullInterval;
+        }
+    }
+}
+
+bool TVolumeBalancerState::IsBalancerPreempted(
+    const TString& diskId,
+    const TVolumeInfo& volumeInfo) const
+{
+    return !volumeInfo.IsLocal &&
+            volumeInfo.PreemptionSource == NProto::EPreemptionSource::SOURCE_BALANCER &&
+            !VolumesInProgress.count(diskId);
 }
 
 bool TVolumeBalancerState::IsVolumePreemptible(

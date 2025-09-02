@@ -101,8 +101,14 @@ private:
     void RenderConfig(TStringStream& out) const;
     void RenderState(TStringStream& out) const;
 
-    void UpdateVolumeToPush();
+    void UpdateVolumeToPush(TInstant now);
     void UpdateVolumeToPull(TInstant now);
+
+    void UpdatePreemptedVolumesPullInterval(TInstant now);
+
+    bool IsBalancerPreempted(
+        const TString& diskId,
+        const TVolumeInfo& volume) const;
 
     bool IsVolumePreemptible(
         const TString& diskId,

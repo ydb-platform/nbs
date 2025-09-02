@@ -223,7 +223,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         {
             TVector<NProto::TVolumeBalancerDiskStats> vols {
                 CreateVolumeStats("vol0", "", "", false),
-                CreateVolumeStats("vol1", "", "", false) };
+                CreateVolumeStats("vol1", "", "", true) };
 
             TVolumeBalancerState::TPerfGuaranteesMap perfMap;
             perfMap["vol0"] = 10;
@@ -238,7 +238,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
             state.UpdateVolumeStats(vols, perfMap, 40 , now);
             UNIT_ASSERT(!state.GetVolumeToPush());
-            UNIT_ASSERT(state.GetVolumeToPull());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", state.GetVolumeToPull());
         }
     }
 
