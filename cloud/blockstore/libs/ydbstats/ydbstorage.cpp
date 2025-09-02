@@ -112,7 +112,7 @@ TDriverConfig BuildDriverConfig(
 
 class TYdbNativeStorage final
     : public IYdbStorage
-    , std::enable_shared_from_this<TYdbNativeStorage>
+    , public std::enable_shared_from_this<TYdbNativeStorage>
 {
 private:
     const TYdbStatsConfigPtr Config;
@@ -125,6 +125,8 @@ private:
     std::unique_ptr<TSchemeClient> SchemeClient;
 
     TLog Log;
+
+    std::atomic_flag IsInitialized;
 
 public:
     TYdbNativeStorage(
@@ -169,6 +171,8 @@ public:
         SchemeClient = std::make_unique<TSchemeClient>(*Driver);
 
         Log = Logging->CreateLog("BLOCKSTORE_YDBSTATS");
+
+        IsInitialized.test_and_set();
     }
 
     void Stop() override
@@ -184,7 +188,7 @@ public:
 private:
     bool Initialized() const
     {
-        return Driver && Client && SchemeClient;
+        return IsInitialized.test();
     }
 
     TMaybe<TInstant> ExtractTableTime(const TString& name) const;
@@ -390,6 +394,10 @@ TFuture<NProto::TError> TYdbNativeStorage::ExecuteUploadQuery(
 
 void TYdbNativeStorage::Start()
 {
+    if (!Config->GetUseSsl()) {
+        StartImpl({});
+        return;
+    }
     auto tokenFuture = IamClient->GetTokenAsync();
 
     tokenFuture.Subscribe(
