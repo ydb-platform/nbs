@@ -197,12 +197,10 @@ def __run_test(test_case, use_rdma):
         devices_per_agent.append(agent_devices)
 
     try:
-        disk_agent_config_patch = TDiskAgentConfig()
-        disk_agent_config_patch.DedicatedDiskAgent = True
         setup_nonreplicated(
             kikimr_cluster.client,
             devices_per_agent,
-            disk_agent_config_patch,
+            disk_agent_config_patch=TDiskAgentConfig(DedicatedDiskAgent=True),
             agent_count=test_case.agent_count,
         )
 

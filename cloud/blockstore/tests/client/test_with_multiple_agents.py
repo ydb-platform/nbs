@@ -173,12 +173,10 @@ class TestWithMultipleAgents(object):
             agent_infos.append(AgentInfo(make_agent_id(i), device_infos))
             devices_per_agent.append(agent_devices)
 
-        disk_agent_config_patch = TDiskAgentConfig()
-        disk_agent_config_patch.DedicatedDiskAgent = True
         setup_nonreplicated(
             self.__kikimr_cluster.client,
             devices_per_agent,
-            disk_agent_config_patch,
+            disk_agent_config_patch=TDiskAgentConfig(DedicatedDiskAgent=True),
             agent_count=self.agent_count,
             cached_sessions_dir_path=cache_dir_path()
         )

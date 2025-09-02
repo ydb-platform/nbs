@@ -106,12 +106,10 @@ class NbsLauncher:
             agent_devices = [devices[j] for j in range(i, i + device_count_per_agent)]
             agent_devices[1].storage_pool_name = "rot"
             self.__devices_per_agent.append(agent_devices)
-        disk_agent_config_patch = TDiskAgentConfig()
-        disk_agent_config_patch.DedicatedDiskAgent = True
         setup_nonreplicated(
             ydb_client,
             self.__devices_per_agent,
-            disk_agent_config_patch,
+            disk_agent_config_patch=TDiskAgentConfig(DedicatedDiskAgent=True),
             agent_count=self.__disk_agent_count)
 
         instance_list_file = os.path.join(yatest_common.output_path(),

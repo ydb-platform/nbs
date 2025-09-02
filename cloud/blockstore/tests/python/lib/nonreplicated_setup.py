@@ -205,7 +205,7 @@ def setup_disk_registry_proxy_config(kikimr):
 def setup_disk_agent_config(
         kikimr,
         devices,
-        disk_agent_config_patch = TDiskAgentConfig(),
+        disk_agent_config_patch=TDiskAgentConfig(),
         agent_id="localhost",
         node_type='disk-agent',
         cached_sessions_path=None):

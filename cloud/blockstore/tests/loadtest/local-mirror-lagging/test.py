@@ -240,15 +240,14 @@ def __run_test(test_case, use_rdma):
         devices_per_agent.append(agent_devices)
 
     try:
-        disk_agent_config_patch = TDiskAgentConfig()
-        disk_agent_config_patch.DedicatedDiskAgent = True
-        # in tests, only one disk is created and it lives until the end,
-        # so we can set DEVICE_ERASE_METHOD_NONE to speed up testing
-        disk_agent_config_patch.DeviceEraseMethod = DEVICE_ERASE_METHOD_NONE
         setup_nonreplicated(
             kikimr_cluster.client,
             devices_per_agent,
-            disk_agent_config_patch,
+            disk_agent_config_patch=TDiskAgentConfig(
+                DedicatedDiskAgent=True,
+                # in tests, only one disk is created and it lives until the end,
+                # so we can set DEVICE_ERASE_METHOD_NONE to speed up testing
+                DeviceEraseMethod=DEVICE_ERASE_METHOD_NONE),
             agent_count=test_case.agent_count,
         )
 

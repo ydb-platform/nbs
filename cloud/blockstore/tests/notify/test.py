@@ -269,12 +269,10 @@ def __run_test(test_case):
         DEFAULT_BLOCK_SIZE,
         DEFAULT_BLOCK_COUNT_PER_DEVICE)
 
-    disk_agent_config_patch = TDiskAgentConfig()
-    disk_agent_config_patch.DedicatedDiskAgent = True
     setup_nonreplicated(
         kikimr_cluster.client,
         [devices],
-        disk_agent_config_patch)
+        disk_agent_config_patch=TDiskAgentConfig(DedicatedDiskAgent=True))
 
     test_case.prepare(kikimr_cluster.client)
 
