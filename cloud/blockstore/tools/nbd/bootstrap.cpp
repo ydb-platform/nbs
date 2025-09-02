@@ -478,7 +478,7 @@ void TBootstrap::InitClientSession()
         ClientEndpoint,
         ClientConfig,
         sessionConfig,
-        nullptr);   // SessionSwitcherPtr
+        ISessionSwitcherWeakPtr());
 }
 
 void TBootstrap::StartNbdServer(TNetworkAddress listenAddress)

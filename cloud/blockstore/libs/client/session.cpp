@@ -122,7 +122,7 @@ private:
     const IBlockStorePtr Client;
     const TClientAppConfigPtr Config;
     TSessionConfig SessionConfig;
-    ISessionSwitcherPtr SessionSwitcherPtr;
+    ISessionSwitcherWeakPtr SessionSwitcherPtr;
 
     TLog Log;
     TSessionInfo SessionInfo;
@@ -137,7 +137,7 @@ public:
         IBlockStorePtr client,
         TClientAppConfigPtr config,
         const TSessionConfig& sessionConfig,
-        ISessionSwitcherPtr sessionSwitcherPtr);
+        ISessionSwitcherWeakPtr sessionSwitcherPtr);
 
     ui32 GetMaxTransfer() const override;
 
@@ -254,7 +254,7 @@ TSession::TSession(
         IBlockStorePtr client,
         TClientAppConfigPtr config,
         const TSessionConfig& sessionConfig,
-        ISessionSwitcherPtr sessionSwitcherPtr)
+        ISessionSwitcherWeakPtr sessionSwitcherPtr)
     : Timer(std::move(timer))
     , Scheduler(std::move(scheduler))
     , Logging(std::move(logging))
@@ -624,31 +624,23 @@ void TSession::ProcessMountResponse(
                 }
             }
 
-            STORAGE_INFO(
+            STORAGE_TRACE(
                 TRequestInfo(
                     EBlockStoreRequest::MountVolume,
                     requestId,
                     SessionConfig.DiskId,
                     {},
                     SessionConfig.InstanceId)
-                << " complete request. DiskId: "
-                << response.GetVolume().GetDiskId().Quote() << " substitute: "
-                << response.GetVolume().GetSubstituteDiskId().Quote());
+                << " complete request");
+
             if (response.GetVolume().GetSubstituteDiskId()) {
                 STORAGE_INFO(
-                TRequestInfo(
-                    EBlockStoreRequest::MountVolume,
-                    requestId,
-                    SessionConfig.DiskId,
-                    {},
-                    SessionConfig.InstanceId)
-                << " complete request. DiskId: "
-                << response.GetVolume().GetDiskId().Quote() << " substitute: "
-                << response.GetVolume().GetSubstituteDiskId().Quote());
-                SessionSwitcherPtr->SwitchSession(
-                    response.GetVolume().GetDiskId(),
-                    response.GetVolume().GetSubstituteDiskId(),
-                    false);
+                    "Need to switch disk for session.  "
+                    << response.GetVolume().GetDiskId().Quote() << " -> "
+                    << response.GetVolume().GetSubstituteDiskId().Quote());
+                if (auto switcher = SessionSwitcherPtr.lock()) {
+                    switcher->SwitchSession(response.GetVolume());
+                }
             }
 
             SessionInfo.MountState = EMountState::MountCompleted;
@@ -1043,7 +1035,7 @@ ISessionPtr CreateSession(
     IBlockStorePtr client,
     TClientAppConfigPtr config,
     const TSessionConfig& sessionConfig,
-    ISessionSwitcherPtr sessionSwitcherPtr)
+    ISessionSwitcherWeakPtr sessionSwitcherPtr)
 {
     return std::make_shared<TSession>(
         std::move(timer),

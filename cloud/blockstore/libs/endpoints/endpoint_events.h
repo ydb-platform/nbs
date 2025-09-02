@@ -16,10 +16,6 @@ struct IEndpointEventHandler
     virtual NThreading::TFuture<NProto::TError> SwitchEndpointIfNeeded(
         const TString& diskId,
         const TString& reason) = 0;
-
-    virtual NThreading::TFuture<NProto::TError> SwitchSession(
-        const TString& diskId,
-        const TString& newDiskId) = 0;
 };
 
 struct IEndpointEventProxy: public IEndpointEventHandler

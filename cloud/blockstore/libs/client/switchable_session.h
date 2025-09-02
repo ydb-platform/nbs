@@ -13,7 +13,9 @@ namespace NCloud::NBlockStore::NClient {
 struct ISwitchableSession: public ISession
 {
     virtual NThreading::TFuture<void> Drain() = 0;
-    virtual void SwitchSession(ISessionPtr newSession) = 0;
+    virtual void SwitchSession(
+        ISessionPtr newSession,
+        const TString& newDiskId) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

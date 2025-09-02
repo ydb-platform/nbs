@@ -61,9 +61,6 @@ struct ISessionManager
 
     virtual TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
         const TString& socketPath) = 0;
-
-    virtual void SetSessionSwitcher(
-        NClient::ISessionSwitcherPtr sessionSwitcher) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -8,7 +8,6 @@
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/metric.h>
 #include <cloud/blockstore/libs/client/session.h>
-#include <cloud/blockstore/libs/client/switchable_session.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/nbd/device.h>
@@ -35,6 +34,8 @@
 #include <util/generic/set.h>
 #include <util/string/builder.h>
 #include <util/system/fs.h>
+
+#include <utility>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -374,54 +375,6 @@ public:
     }
 };
 
-class TSwitchSessionRequest
-{
-private:
-    TString DiskId;
-    TString NewDiskId;
-    TString UnixSocketPath;
-
-public:
-    const TString& GetDiskId() const
-    {
-        return DiskId;
-    }
-
-    void SetDiskId(const TString& diskId)
-    {
-        DiskId = diskId;
-    }
-
-    const TString& GetUnixSocketPath() const
-    {
-        return UnixSocketPath;
-    }
-
-    void SetUnixSocketPath(const TString& socketPath)
-    {
-        UnixSocketPath = socketPath;
-    }
-
-    const TString& GetNewDiskId() const
-    {
-        return NewDiskId;
-    }
-
-    void SetNewDiskId(const TString& newDiskId)
-    {
-        NewDiskId = newDiskId;
-    }
-
-    bool operator==(const TSwitchSessionRequest& rhs) const
-    {
-        auto doTie = [](const TSwitchSessionRequest& r)
-        {
-            return std::tie(r.DiskId, r.NewDiskId, r.UnixSocketPath);
-        };
-        return doTie(*this) == doTie(rhs);
-    }
-};
-
 ////////////////////////////////////////////////////////////////////////////////
 
 bool CompareRequests(
@@ -433,24 +386,11 @@ bool CompareRequests(
         && left.GetReason() == right.GetReason();
 }
 
-bool CompareRequests(
-    const TSwitchSessionRequest& left,
-    const TSwitchSessionRequest& right)
-{
-    return left == right;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TSwitchEndpointMethod
 {
     using TRequest = TSwitchEndpointRequest;
-    using TResponse = NProto::TError;
-};
-
-struct TSwitchSessionMethod
-{
-    using TRequest = TSwitchSessionRequest;
     using TResponse = NProto::TError;
 };
 
@@ -470,9 +410,8 @@ struct TEndpoint
     std::shared_ptr<NProto::TStartEndpointRequest> Request;
     NBD::IDevicePtr Device;
     NProto::TVolume Volume;
-    std::weak_ptr<NClient::ISwitchableSession> Session;
+    std::weak_ptr<NClient::ISession> Session;
     ui64 Generation = 0;
-    //bool SessionSwitchingInProgress = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -480,7 +419,6 @@ struct TEndpoint
 class TEndpointManager final
     : public IEndpointManager
     , public IEndpointEventHandler
-    , public NClient::ISessionSwitcher
     , public std::enable_shared_from_this<TEndpointManager>
 {
 private:
@@ -559,8 +497,7 @@ private:
         TRequestState<TStartEndpointMethod>,
         TRequestState<TStopEndpointMethod>,
         TRequestState<TRefreshEndpointMethod>,
-        TRequestState<TSwitchEndpointMethod>,
-        TRequestState<TSwitchSessionMethod>
+        TRequestState<TSwitchEndpointMethod>
     >;
     THashMap<TString, TRequestStateVariant> ProcessingSockets;
 
@@ -636,7 +573,6 @@ public:
 
     void Start() override
     {
-        SessionManager->SetSessionSwitcher(shared_from_this());
         RestoringClient->Start();
     }
 
@@ -678,17 +614,12 @@ public:
 
     BLOCKSTORE_ENDPOINT_SERVICE(ENDPOINT_IMPLEMENT_METHOD, override)
     ENDPOINT_IMPLEMENT_METHOD(SwitchEndpoint, )
-    ENDPOINT_IMPLEMENT_METHOD(SwitchSession, )
 
 #undef ENDPOINT_IMPLEMENT_METHOD
 
     TFuture<NProto::TError> SwitchEndpointIfNeeded(
         const TString& diskId,
         const TString& reason) override;
-
-    TFuture<NProto::TError> SwitchSession(
-        const TString& diskId,
-        const TString& newDiskId) override;
 
     TFuture<void> RestoreEndpoints() override
     {
@@ -708,14 +639,6 @@ public:
         std::shared_ptr<NProto::TStartEndpointRequest> request);
 
     void ProcessException(std::shared_ptr<TExceptionContext> context);
-
-    void SwitchSession(
-        const TString& diskId,
-        const TString& newDiskid,
-        bool) override
-    {
-        SwitchSession(diskId, newDiskid);
-    }
 
 private:
     void ProcessException(
@@ -756,25 +679,6 @@ private:
     NProto::TError SwitchEndpointImpl(
         TCallContextPtr ctx,
         std::shared_ptr<TSwitchEndpointRequest> request);
-
-    NProto::TError SwitchSessionImpl(
-        TCallContextPtr ctx,
-        const TString& socketPath,
-        TEndpoint& endpoint,
-        std::shared_ptr<TSwitchSessionRequest> request);
-    void SwitchSessionAfterDrain(
-        TCallContextPtr ctx,
-        const TString& socketPath);
-    void CreateSessionForSubstituteDisk(
-        TCallContextPtr ctx,
-        const TString& socketPath,
-        std::shared_ptr<NProto::TStartEndpointRequest> request);
-    void SessionForSubstituteDiskCreated(
-        TCallContextPtr ctx,
-        const TString& socketPath,
-        NProto::TVolume volume,
-        ISessionPtr newSession,
-        NProto::TError error);
 
     NProto::TError AlterEndpoint(
         TCallContextPtr ctx,
@@ -901,10 +805,7 @@ private:
                 return "refreshing";
             },
             [] (const TRequestState<TSwitchEndpointMethod>&) {
-                return "switching endpoint";
-            },
-            [] (const TRequestState<TSwitchSessionMethod>&) {
-                return "switching session";
+                return "switching";
             },
             [](const auto&) {
                 return "busy (undefined process)";
@@ -1016,12 +917,6 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
         return TErrorResponse(error);
     }
 
-    auto sessionSwitcher = CreateSwitchableSession(
-        Logging,
-        request->GetDiskId(),
-        std::move(sessionInfo.Session));
-    sessionInfo.Session = sessionSwitcher;
-
     // additional NBD socket will be opened for gRPC endpoints
     auto errorHandler = std::make_shared<TErrorHandler>(weak_from_this());
 
@@ -1068,7 +963,7 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
         request,
         device,
         sessionInfo.Volume,
-        std::move(sessionSwitcher));
+        sessionInfo.Session);
 
     errorHandler->SetEndpoint(endpoint);
 
@@ -1758,16 +1653,13 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
 {
     const auto& socketPath = request->GetUnixSocketPath();
 
-    auto* endpointPtr = Endpoints.FindPtr(socketPath);
-    if (!endpointPtr) {
-        return MakeError(
-            S_FALSE,
-            TStringBuilder()
-                << "endpoint " << socketPath.Quote() << " not started");
+    auto it = Endpoints.find(socketPath);
+    if (it == Endpoints.end()) {
+        return MakeError(S_FALSE, TStringBuilder()
+            << "endpoint " << socketPath.Quote() << " not started");
     }
-    TEndpoint& endpoint = **endpointPtr;
 
-    auto startRequest = endpoint.Request;
+    auto startRequest = it->second->Request;
     auto listenerIt = EndpointListeners.find(startRequest->GetIpcType());
     STORAGE_VERIFY(
         listenerIt != EndpointListeners.end(),
@@ -1776,7 +1668,7 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
     IEndpointListenerPtr listener = listenerIt->second;
 
     auto getSessionFuture = SessionManager->GetSession(
-        ctx,
+        std::move(ctx),
         startRequest->GetUnixSocketPath(),
         startRequest->GetHeaders());
 
@@ -1793,31 +1685,7 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
         << ", startRequest.DiskId=" << startRequest->GetDiskId().Quote()
         << ", IsFastPathEnabled=" << sessionInfo.Volume.GetIsFastPathEnabled()
         << ", Migrations=" << sessionInfo.Volume.GetMigrations().size());
-/*
-    if (sessionInfo.Volume.GetSubstituteDiskId() &&
-        sessionInfo.Volume.GetSubstituteDiskId() != startRequest->GetDiskId())
-    {
-        STORAGE_INFO("Implicit SwitchSession started");
 
-        auto switchSessionRequest = std::make_shared<TSwitchSessionRequest>();
-        switchSessionRequest->SetDiskId(request->GetDiskId());
-        switchSessionRequest->SetNewDiskId(
-            sessionInfo.Volume.GetSubstituteDiskId());
-        auto future = SwitchSession(ctx, std::move(switchSessionRequest));
-        future.Subscribe(
-            [weakSelf = weak_from_this(),
-             Log = Log](const TFuture<NProto::TError>& f)
-            {
-                auto self = weakSelf.lock();
-                if (!self) {
-                    return;
-                };
-                const auto& error = f.GetValue();
-                STORAGE_INFO(
-                    "Implicit SwitchSession finished: " << FormatError(error));
-            });
-    }
-*/
     auto switchFuture = listener->SwitchEndpoint(
         *startRequest,
         sessionInfo.Volume,
@@ -1831,132 +1699,6 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
     }
 
     return switchError;
-}
-
-NProto::TError TEndpointManager::DoSwitchSession(
-    TCallContextPtr ctx,
-    std::shared_ptr<TSwitchSessionRequest> request)
-{
-    const auto& diskId = request->GetDiskId();
-
-    STORAGE_INFO("SwitchSession for " << diskId.Quote() << " started");
-
-    auto it = FindIf(Endpoints, [&] (auto& v) {
-        const auto& [_, endpoint] = v;
-        return endpoint->Request->GetDiskId() == diskId;
-    });
-
-    if (it == Endpoints.end()) {
-        return MakeError(S_OK);
-    }
-
-    auto socketPath = it->first;
-    if (IsEndpointRestoring(socketPath)) {
-        return MakeError(E_REJECTED, "endpoint is restoring now");
-    }
-
-    request->SetUnixSocketPath(socketPath);
-
-    auto promise = AddProcessingSocket<TSwitchSessionMethod>(*request);
-    if (promise.HasValue()) {
-        return promise.ExtractValue();
-    }
-
-    auto response = SwitchSessionImpl(
-        std::move(ctx),
-        socketPath,
-        *it->second,
-        std::move(request));
-    promise.SetValue(response);
-
-    RemoveProcessingSocket(socketPath);
-    return response;
-}
-
-NProto::TError TEndpointManager::SwitchSessionImpl(
-    TCallContextPtr ctx,
-    const TString& socketPath,
-    TEndpoint& endpoint,
-    std::shared_ptr<TSwitchSessionRequest> request)
-{
-    TString prefix = TStringBuilder() << "[" << socketPath << "] ";
-
-    auto getSessionFuture = SessionManager->GetSession(
-        ctx,
-        socketPath,
-        endpoint.Request->GetHeaders());
-    const auto& [sessionInfo, getSessionError] =
-        Executor->WaitFor(getSessionFuture);
-    if (HasError(getSessionError)) {
-        STORAGE_INFO(
-            prefix << " Failed to get session for " << request->GetDiskId().Quote() << " "
-                                         << FormatError(getSessionError));
-        return MakeError(S_FALSE);
-    }
-
-    auto session = endpoint.Session.lock();
-    if (!session) {
-        STORAGE_WARN(prefix << "session is down, cancel switch");
-        return MakeError(S_OK);
-    }
-
-    // Drain
-    STORAGE_INFO(
-        prefix << " Start draining session of " << request->GetDiskId().Quote()
-               << " before switching to the substitution disk "
-               << request->GetNewDiskId().Quote());
-
-    Executor->WaitFor(session->Drain());
-
-    // Remove Session
-    STORAGE_INFO(
-        prefix << " Start removing drained session of "
-               << request->GetDiskId().Quote()
-               << " before switching to the substitution disk "
-               << request->GetNewDiskId().Quote());
-
-    auto removeSessionFuture = SessionManager->RemoveSession(
-        ctx,
-        socketPath,
-        endpoint.Request->GetHeaders());
-
-    auto removeSessionResult = Executor->WaitFor(removeSessionFuture);
-
-    STORAGE_INFO(
-        prefix << "Drained session for " << request->GetDiskId().Quote()
-               << " removed. " << FormatError(removeSessionResult));
-
-    // Create new session
-    STORAGE_INFO(
-        prefix << " Start creating new session for substitution disk "
-               << request->GetNewDiskId().Quote());
-    endpoint.Request->SetDiskId(request->GetNewDiskId());
-    auto createSessionFuture =
-        SessionManager->CreateSession(ctx, *endpoint.Request);
-    auto [newSessionInfo, error] = Executor->WaitFor(createSessionFuture);
-
-    if (HasError(error)) {
-        STORAGE_WARN(
-            prefix << "Create session for substitution disk "
-                   << request->GetNewDiskId().Quote()
-                   << " error: " << FormatError(error));
-
-        return MakeError(
-            E_REJECTED,
-            TStringBuilder() << "Create session for substitution disk error: "
-                             << FormatError(error));
-    }
-    STORAGE_INFO(
-        prefix << " New session for " << request->GetNewDiskId().Quote()
-               << " created.");
-
-    // Switch to new session
-    STORAGE_INFO(
-        prefix << " Switch session to " << request->GetNewDiskId().Quote());
-    endpoint.Volume = std::move(newSessionInfo.Volume);
-    session->SwitchSession(std::move(newSessionInfo.Session));
-
-    return MakeError(S_OK);
 }
 
 TResultOrError<NBD::IDevicePtr> TEndpointManager::StartNbdDevice(
@@ -2050,18 +1792,6 @@ TFuture<NProto::TError> TEndpointManager::SwitchEndpointIfNeeded(
     request->SetReason(reason);
 
     return SwitchEndpoint(std::move(ctx), std::move(request));
-}
-
-TFuture<NProto::TError> TEndpointManager::SwitchSession(
-    const TString& diskId,
-    const TString& newDiskId)
-{
-    auto ctx = MakeIntrusive<TCallContext>();
-    auto request = std::make_shared<TSwitchSessionRequest>();
-    request->SetDiskId(diskId);
-    request->SetNewDiskId(newDiskId);
-
-    return SwitchSession(std::move(ctx), std::move(request));
 }
 
 TFuture<void> TEndpointManager::DoRestoreEndpoints()

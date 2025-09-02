@@ -77,6 +77,7 @@ class TDelayedRequestQueue
         TPromise Promise;
     };
 
+    TLog Log;
     bool& Draining;
     size_t& InflightRequestCount;
     TMutex& DrainLock;
@@ -84,10 +85,12 @@ class TDelayedRequestQueue
 
 public:
     TDelayedRequestQueue(
+        const ILoggingServicePtr logging,
         bool& draining,
         size_t& inflightRequestCount,
         TMutex& drainLock)
-        : Draining(draining)
+        : Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
+        , Draining(draining)
         , InflightRequestCount(inflightRequestCount)
         , DrainLock(drainLock)
     {}
@@ -173,7 +176,7 @@ class TSwitchableSession final
 {
 private:
     const ILoggingServicePtr Logging;
-    const TString DiskId;
+    TString DiskId;
 
     TLog Log;
     ISessionPtr Session;
@@ -183,18 +186,22 @@ private:
     TPromise<void> DrainPromise = NewPromise<void>();
 
     TDelayedReadBlocks DelayedReads{
+        Logging,
         Draining,
         InflightRequestCount,
         DrainLock};
     TDelayedWriteBlocks DelayedWrites{
+        Logging,
         Draining,
         InflightRequestCount,
         DrainLock};
     TDelayedZeroBlocks DelayedZeroes{
+        Logging,
         Draining,
         InflightRequestCount,
         DrainLock};
     TDelayedErases DelayedErases{
+        Logging,
         Draining,
         InflightRequestCount,
         DrainLock};
@@ -210,6 +217,13 @@ public:
         , Session(std::move(session))
     {}
 
+    ~TSwitchableSession() override
+    {
+        STORAGE_INFO(
+            "~TSwitchableSession. InflightRequestCount: "
+            << InflightRequestCount);
+    }
+
     // Implement ISwitchableSessionPrivate
 
     void OnRequestFinished() override
@@ -218,9 +232,14 @@ public:
         with_lock (DrainLock) {
             --InflightRequestCount;
             drainFinished = Draining && InflightRequestCount == 0;
+            if (Draining) {
+                STORAGE_INFO(
+                    "Draining. InflightRequestCount: " << InflightRequestCount);
+            }
         }
         if (drainFinished) {
-            OnDrainFinished();
+            STORAGE_INFO("Drain for " << DiskId.Quote() << " finished 2");
+            DrainPromise.SetValue();
         }
     }
 
@@ -272,28 +291,37 @@ public:
 
     NThreading::TFuture<void> Drain() override
     {
-        bool drainFinished = false;
         with_lock (DrainLock) {
-            STORAGE_INFO("Draining started. InflightRequestCount: " << InflightRequestCount);
+            STORAGE_INFO(
+                "Draining started. InflightRequestCount: "
+                << InflightRequestCount);
             Draining = true;
-            drainFinished = InflightRequestCount == 0;
+            const bool drainFinished = InflightRequestCount == 0;
+            if (drainFinished) {
+                STORAGE_INFO("Drain for " << DiskId.Quote() << " finished 1");
+                DrainPromise.SetValue();
+            }
         }
-        if (drainFinished) {
-            OnDrainFinished();
-        }
+
         return DrainPromise;
     }
 
-    void SwitchSession(ISessionPtr newSession) override
+    void SwitchSession(
+        ISessionPtr newSession,
+        const TString& newDiskId) override
     {
-        STORAGE_INFO("Switch " << DiskId.Quote() << " to new session");
         with_lock (DrainLock) {
             Y_DEBUG_ABORT_UNLESS(Draining);
+            Y_DEBUG_ABORT_UNLESS(InflightRequestCount == 0);
+
+            STORAGE_INFO(
+                "Switch " << DiskId.Quote() << " to new session" << newDiskId);
+
+            Session = std::move(newSession);
+            DiskId = newDiskId;
 
             Draining = false;
             DrainPromise = NewPromise<void>();
-
-            Session = std::move(newSession);
 
             DelayedReads.ExecuteDelayed(Session.get());
             DelayedWrites.ExecuteDelayed(Session.get());
@@ -350,13 +378,6 @@ public:
     void ReportIOError() override
     {
         Session->ReportIOError();
-    }
-
-private:
-    void OnDrainFinished()
-    {
-        STORAGE_INFO("Drain for " << DiskId.Quote() << " finished");
-        DrainPromise.SetValue();
     }
 };
 
