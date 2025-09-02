@@ -111,24 +111,22 @@ private:
                     return;
                 }
 
-                auto expiresAt = self->UpdateToken(std::move(future));
+                TInstant expiresAt;
+
+                {
+                    TWriteGuard guard(self->Mutex);
+                    auto result = future.ExtractValue();
+                    if (!HasError(result)) {
+                        auto tokenInfo = result.ExtractResult();
+                        self->Token = std::move(tokenInfo.Token);
+                        self->ExpiresAt = tokenInfo.ExpiresAt;
+                    }
+
+                    expiresAt = self->ExpiresAt;
+                }
+
                 self->ScheduleRefreshToken(expiresAt);
             });
-    }
-
-    TInstant UpdateToken(auto future)
-    {
-        TWriteGuard guard(Mutex);
-        auto result = future.ExtractValue();
-        if (HasError(result)) {
-            return ExpiresAt;
-        }
-
-        auto tokenInfo = result.ExtractResult();
-        Token = std::move(tokenInfo.Token);
-        ExpiresAt = tokenInfo.ExpiresAt;
-
-        return ExpiresAt;
     }
 };
 
