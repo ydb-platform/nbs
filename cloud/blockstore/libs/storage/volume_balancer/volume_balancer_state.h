@@ -35,6 +35,7 @@ class TVolumeBalancerState
         TDuration PullInterval;
 
         ui32 SufferCount = 0;
+        ui32 SufferCountWhenPreempted = 0;
 
         TVolumeInfo(TDuration pullInterval)
             : PullInterval(pullInterval)
@@ -101,8 +102,14 @@ private:
     void RenderConfig(TStringStream& out) const;
     void RenderState(TStringStream& out) const;
 
-    void UpdateVolumeToPush();
+    void UpdateVolumeToPush(TInstant now);
     void UpdateVolumeToPull(TInstant now);
+
+    void UpdatePreemptedVolumesPullInterval(TInstant now);
+
+    bool IsBalancerPreempted(
+        const TString& diskId,
+        const TVolumeInfo& volume) const;
 
     bool IsVolumePreemptible(
         const TString& diskId,

@@ -435,9 +435,6 @@ TString RunState(
     while (testEnv.GetRuntime().GetCurrentTime() - now < runFor) {
         testEnv.AdjustTime();
 
-        auto ev = testEnv.GrabBindingRequest();
-        UNIT_ASSERT(!ev);
-
         testEnv.GrabVolumesStatsRequest();
 
         TVector<NProto::TVolumeBalancerDiskStats> stats;
