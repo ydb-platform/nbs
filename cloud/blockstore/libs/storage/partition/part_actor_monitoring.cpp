@@ -408,6 +408,10 @@ void TPartitionActor::HandleHttpInfo(
          &TPartitionActor::HandleHttpInfo_GetTransactionsLatency},
         {"getGroupLatencies",
          &TPartitionActor::HandleHttpInfo_GetGroupLatencies},
+        {"getTransactionsInflight",
+         &TPartitionActor::HandleHttpInfo_GetTransactionsInflight},
+        {"getBSGroupOperationsInflight",
+         &TPartitionActor::HandleHttpInfo_GetBSGroupOperationsInflight},
     }};
 
     const auto* msg = ev->Get();

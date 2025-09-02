@@ -914,6 +914,9 @@ message TReadDeviceBlocksResponse
 
     // Requested blocks.
     TIOVector Blocks = 2;
+
+    // Checksum of the "Blocks" data read.
+    TChecksum Checksum = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -948,6 +951,9 @@ message TWriteDeviceBlocksRequest
 
     // Used to propagate request to multiple disk-agents.
     repeated TReplicationTarget ReplicationTargets = 9;
+
+    // Checksum of the "Blocks" data to write.
+    TChecksum Checksum = 10;
 }
 
 message TWriteDeviceBlocksResponse
@@ -957,6 +963,9 @@ message TWriteDeviceBlocksResponse
 
     // Used to validate multi-agent requests.
     repeated NCloud.NProto.TError ReplicationResponses = 2;
+
+    // Checksum of the written data.
+    TChecksum Checksum = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

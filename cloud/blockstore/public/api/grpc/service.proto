@@ -393,9 +393,24 @@ service TBlockStoreService
         };
     }
 
+    //
+    // CMS
+    //
+
     rpc CmsAction(TCmsActionRequest) returns (TCmsActionResponse) {
         option (google.api.http) = {
             post: "/cmsactionrequest"
+            body: "*"
+        };
+    }
+
+    //
+    // List nonreplicated/mirrored disks states
+    //
+
+    rpc ListDisksStates(TListDisksStatesRequest) returns (TListDisksStatesResponse) {
+        option (google.api.http) = {
+            post: "/list_disks_states"
             body: "*"
         };
     }

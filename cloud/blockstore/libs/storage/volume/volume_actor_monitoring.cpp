@@ -768,10 +768,15 @@ void TVolumeActor::HandleHttpInfo(
          &TActor::HandleHttpInfo_ResetRequestLatencyStats},
     }};
 
-    const THttpHandlers getActions {{
-        {"rendernpinfo", &TActor::HandleHttpInfo_RenderNonreplPartitionInfo },
-        {"getRequestsLatency", &TActor::HandleHttpInfo_GetRequestsLatency },
-        {"getTransactionsLatency", &TActor::HandleHttpInfo_GetTransactionsLatency },
+    const THttpHandlers getActions{{
+        {"rendernpinfo", &TActor::HandleHttpInfo_RenderNonreplPartitionInfo},
+        {"getRequestsLatency", &TActor::HandleHttpInfo_GetRequestsLatency},
+        {"getTransactionsLatency",
+         &TActor::HandleHttpInfo_GetTransactionsLatency},
+        {"getTransactionsInflight",
+         &TActor::HandleHttpInfo_GetTransactionsInflight},
+        {"getRequestsInflight",
+         &TActor::HandleHttpInfo_GetRequestsInflight},
     }};
 
     auto* msg = ev->Get();
@@ -1241,7 +1246,18 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
         out << style;
 
         RenderAutoRefreshToggle(out, toggleId, "Auto update info", true);
-        BuildResetButton(out, TabletID(), "resetRequestLatencyStats");
+
+        RenderStyledPostButton(
+            out,
+            "/tablets/app?action=resetRequestLatencyStats&TabletID=" +
+                ToString(TabletID()),
+            "Reset");
+
+        RenderStyledLink(
+            out,
+            "/tablets/app?action=getRequestsInflight&TabletID=" +
+                ToString(TabletID()),
+            "Inflight");
 
         out << "<div id=\"" << containerId << "\">";
         DIV_CLASS ("row") {
@@ -2606,6 +2622,38 @@ void TVolumeActor::HandleHttpInfo_ResetRequestLatencyStats(
     Y_UNUSED(params);
     RequestTimeTracker.ResetStats();
     SendHttpResponse(ctx, *requestInfo, "");
+}
+
+void TVolumeActor::HandleHttpInfo_GetTransactionsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(FormatTransactionsInflight(
+            TransactionTimeTracker.GetInflightOperations(),
+            GetCycleCount(),
+            TInstant::Now())));
+}
+
+void TVolumeActor::HandleHttpInfo_GetRequestsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(FormatRequestsInflight(
+            RequestTimeTracker.GetInflightOperations(),
+            GetCycleCount(),
+            TInstant::Now())));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

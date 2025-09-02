@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/storage/model/log_prefix.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -641,7 +642,7 @@ public:
 private:
     void ProcessException(
         std::shared_ptr<TExceptionContext> context,
-        TString prefix);
+        NStorage::TLogPrefix prefix);
 
     void DoProcessException(std::shared_ptr<TExceptionContext> context);
 
@@ -1387,16 +1388,16 @@ void TEndpointManager::ProcessException(
         return;
     }
 
-    auto prefix = TStringBuilder()
-        << "[socket=" << endpoint->Request->GetUnixSocketPath()
-        << " device=" << endpoint->Request->GetNbdDeviceFile() << "] ";
+    NStorage::TLogPrefix prefix(
+        {{"socket", endpoint->Request->GetUnixSocketPath()},
+         {"device", endpoint->Request->GetNbdDeviceFile()}});
 
     ProcessException(std::move(context), std::move(prefix));
 }
 
 void TEndpointManager::ProcessException(
     std::shared_ptr<TExceptionContext> context,
-    TString prefix)
+    NStorage::TLogPrefix prefix)
 {
     auto deadline =
         TInstant::Now() + context->BackoffProvider.GetDelayAndIncrease();
@@ -1407,7 +1408,8 @@ void TEndpointManager::ProcessException(
         }
     };
 
-    STORAGE_INFO(prefix << "schedule restart at " << deadline);
+    STORAGE_INFO(
+        TStringBuilder() << prefix.Get() << "schedule restart at " << deadline);
     Scheduler->Schedule(Executor.get(), deadline, std::move(func));
 }
 
@@ -1420,33 +1422,38 @@ void TEndpointManager::DoProcessException(
         return;
     }
 
-    auto prefix = TStringBuilder()
-        << "[socket=" << endpoint->Request->GetUnixSocketPath()
-        << " device=" << endpoint->Request->GetNbdDeviceFile() << "] ";
+    NStorage::TLogPrefix prefix(
+        {{"socket", endpoint->Request->GetUnixSocketPath()},
+         {"device", endpoint->Request->GetNbdDeviceFile()}});
 
     auto state = ProcessingSockets.find(endpoint->Request->GetUnixSocketPath());
     if (state != ProcessingSockets.end() &&
         std::holds_alternative<TRequestState<TStopEndpointMethod>>(state->second))
     {
-        STORAGE_WARN(prefix << "endpoint is stopping, cancel restart");
+        STORAGE_WARN(
+            TStringBuilder()
+            << prefix.Get() << "endpoint is stopping, cancel restart");
         return;
     }
 
     auto session = endpoint->Session.lock();
     if (!session) {
-        STORAGE_WARN(prefix << "session is down, cancel restart");
+        STORAGE_WARN(
+            TStringBuilder()
+            << prefix.Get() << "session is down, cancel restart");
         return;
     }
 
     if (endpoint->Generation != context->Generation) {
         STORAGE_WARN(
-            prefix << "generation mismatch (" << endpoint->Generation
-                   << " != " << context->Generation << "), cancel restart");
+            TStringBuilder()
+            << prefix.Get() << "generation mismatch (" << endpoint->Generation
+            << " != " << context->Generation << "), cancel restart");
         return;
     }
     endpoint->Generation++;
 
-    STORAGE_INFO(prefix << "restart endpoint");
+    STORAGE_INFO(TStringBuilder() << prefix.Get() << "restart endpoint");
 
     bool hasDevice =
         endpoint->Request->HasNbdDeviceFile() &&
@@ -1454,41 +1461,43 @@ void TEndpointManager::DoProcessException(
         endpoint->Request->GetPersistent();
 
     if (hasDevice && endpoint->Device) {
-        STORAGE_INFO(prefix << "stop device");
+        STORAGE_INFO(TStringBuilder() << prefix.Get() << "stop device");
         auto future = endpoint->Device->Stop(false);
         auto error = Executor->WaitFor(future);
         if (HasError(error)) {
             STORAGE_ERROR(
-                prefix << "failed to stop device: " << error.GetMessage());
+                TStringBuilder() << prefix.Get() << "failed to stop device: "
+                                 << FormatError(error));
         }
         endpoint->Device.reset();
     }
 
-    STORAGE_INFO(prefix << "close socket");
+    STORAGE_INFO(TStringBuilder() << prefix.Get() << "close socket");
     CloseAllEndpointSockets(*endpoint->Request);
 
     auto socketPath = endpoint->Request->GetUnixSocketPath();
 
-    STORAGE_INFO(prefix << "update error handler");
+    STORAGE_INFO(TStringBuilder() << prefix.Get() << "update error handler");
     NbdErrorHandlerMap->Erase(socketPath);
     NbdErrorHandlerMap->Emplace(
         socketPath,
         std::make_shared<TErrorHandler>(weak_from_this(), endpoint));
 
-    STORAGE_INFO(prefix << "open socket");
+    STORAGE_INFO(TStringBuilder() << prefix.Get() << "open socket");
     auto error = OpenAllEndpointSockets(
         *endpoint->Request,
         TSessionInfo(endpoint->Volume, session));
     if (HasError(error)) {
         STORAGE_ERROR(
-            prefix << "failed to open socket: " << error.GetMessage());
+            TStringBuilder()
+            << prefix.Get() << "failed to open socket: " << FormatError(error));
         context->Generation++;
         ProcessException(std::move(context), std::move(prefix));
         return;
     }
 
     if (hasDevice) {
-        STORAGE_INFO(prefix << "start device");
+        STORAGE_INFO(TStringBuilder() << prefix.Get() << "start device");
         auto device = NbdDeviceFactory->Create(
             TNetworkAddress(TUnixSocketPath(socketPath)),
             endpoint->Request->GetNbdDeviceFile(),
@@ -1498,7 +1507,8 @@ void TEndpointManager::DoProcessException(
         error = Executor->WaitFor(startDeviceFuture);
         if (HasError(error)) {
             STORAGE_ERROR(
-                prefix << "failed to start device: " << error.GetMessage());
+                TStringBuilder() << prefix.Get() << "failed to start device: "
+                                 << FormatError(error));
             context->Generation++;
             ProcessException(std::move(context), std::move(prefix));
             return;

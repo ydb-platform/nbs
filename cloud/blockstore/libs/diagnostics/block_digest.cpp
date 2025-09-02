@@ -34,7 +34,7 @@ struct TExt4BlockDigestGenerator final
 
     TExt4BlockDigestGenerator(ui32 digestedBlocksPercentage)
         : DigestedBlocksPercentage(digestedBlocksPercentage)
-        , ZeroBlockDigests(1 + log2(128_KB / DefaultBlockSize))
+        , ZeroBlockDigests(1 + log2(MaxBlockSize / DefaultBlockSize))
     {
         for (ui32 i = 0; i < ZeroBlockDigests.size(); ++i) {
             TVector<char> buf(DefaultBlockSize * pow(2, i));

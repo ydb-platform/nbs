@@ -43,7 +43,8 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
-        const TActorId& part);
+        const TActorId& part,
+        TChildLogTitle logTitle);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -69,7 +70,8 @@ TDiskAgentChecksumActor::TDiskAgentChecksumActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
-        const TActorId& part)
+        const TActorId& part,
+        TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -77,7 +79,8 @@ TDiskAgentChecksumActor::TDiskAgentChecksumActor(
           std::move(timeoutPolicy),
           std::move(deviceRequests),
           std::move(partConfig),
-          part)
+          part,
+          std::move(logTitle))
     , Request(std::move(request))
 {}
 
@@ -132,12 +135,13 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksUndelivery(
     const TActorContext& ctx)
 {
     const auto& device = DeviceRequests[ev->Cookie].Device;
-    LOG_WARN_S(
+    LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "ChecksumBlocks request #"
-            << GetRequestId(Request) << " undelivered. Disk id: "
-            << PartConfig->GetName() << " Device: " << LogDevice(device));
+        "%s ChecksumBlocks request #%lu undelivered. Device: %s",
+        LogTitle.GetWithTime().c_str(),
+        GetRequestId(Request),
+        LogDevice(device).c_str());
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -238,7 +242,8 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
-        SelfId());
+        SelfId(),
+        LogTitle.GetChild(GetCycleCount()));
 
     RequestsInProgress.AddReadRequest(actorId, std::move(request));
 }

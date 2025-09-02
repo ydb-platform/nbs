@@ -270,6 +270,21 @@ auto TNotificationSystem::GetDiskStateUpdates() const
     return DiskStateUpdates;
 }
 
+NProto::TDiskState TNotificationSystem::CreateDiskState(
+    const TDiskId& diskId,
+    NProto::EDiskState state)
+{
+    NProto::TDiskState diskState;
+    diskState.SetDiskId(diskId);
+    diskState.SetState(state);
+
+    if (state == NProto::DISK_STATE_WARNING) {
+        diskState.SetStateMessage(DISK_STATE_MIGRATION_MESSAGE);
+    }
+
+    return diskState;
+}
+
 void TNotificationSystem::OnDiskStateChanged(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
@@ -277,13 +292,7 @@ void TNotificationSystem::OnDiskStateChanged(
     NProto::EDiskState newState,
     TInstant timestamp)
 {
-    NProto::TDiskState diskState;
-    diskState.SetDiskId(diskId);
-    diskState.SetState(newState);
-
-    if (newState == NProto::DISK_STATE_WARNING) {
-        diskState.SetStateMessage(DISK_STATE_MIGRATION_MESSAGE);
-    }
+    NProto::TDiskState diskState = CreateDiskState(diskId, newState);
 
     const auto seqNo = DiskStateSeqNo++;
 

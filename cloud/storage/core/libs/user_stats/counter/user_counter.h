@@ -64,9 +64,9 @@ struct TBucket
 static constexpr size_t BUCKETS_COUNT = 25;
 
 using TBuckets = std::array<TBucket, BUCKETS_COUNT>;
+using TBucketsWithUnits = std::pair<TBuckets, TString>;
 
-TBuckets GetMsBuckets();
-TBuckets GetUsBuckets();
+TBucketsWithUnits GetUsBuckets();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -80,7 +80,7 @@ void AddUserMetric(
     TStringBuf newName);
 
 void AddHistogramUserMetric(
-    const TBuckets& buckets,
+    const TBucketsWithUnits& buckets,
     IUserCounterSupplier& dsc,
     const NMonitoring::TLabels& commonLabels,
     const TVector<TBaseDynamicCounters>& baseCounters,

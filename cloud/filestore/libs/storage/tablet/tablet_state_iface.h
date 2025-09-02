@@ -134,7 +134,8 @@ public:
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
-        TString* next) = 0;
+        TString* next = nullptr,
+        ui32* skippedRefs = nullptr) = 0;
 
     /**
      * @brief read at most maxCount node refs starting from key
@@ -153,7 +154,8 @@ public:
     virtual bool PrechargeNodeRefs(
         ui64 nodeId,
         const TString& cookie,
-        ui32 bytesToPrecharge) = 0;
+        ui64 rowsToPrecharge,
+        ui64 bytesToPrecharge) = 0;
 
     //
     // NodeRefs_Ver

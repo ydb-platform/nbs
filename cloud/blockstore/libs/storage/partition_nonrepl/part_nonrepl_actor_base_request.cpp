@@ -24,11 +24,13 @@ TDiskAgentBaseRequestActor::TDiskAgentBaseRequestActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
-        const TActorId& part)
+        const TActorId& part,
+        TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
     , Part(part)
+    , LogTitle(std::move(logTitle))
     , RequestName(std::move(requestName))
     , RequestId(requestId)
     , TimeoutPolicy(std::move(timeoutPolicy))
@@ -126,8 +128,8 @@ void TDiskAgentBaseRequestActor::HandleCancelRequest(
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::PARTITION_WORKER,
-                "[%s] %s request #%lu timed out. Devices: [%s]",
-                PartConfig->GetName().c_str(),
+                "%s %s request #%lu timed out. Devices: [%s]",
+                LogTitle.GetWithTime().c_str(),
                 RequestName.c_str(),
                 RequestId,
                 JoinSeq(", ", devices).c_str());
@@ -145,8 +147,8 @@ void TDiskAgentBaseRequestActor::HandleCancelRequest(
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::PARTITION_WORKER,
-                "[%s] %s request #%lu is canceled from outside. Devices: [%s]",
-                PartConfig->GetName().c_str(),
+                "%s %s request #%lu is canceled from outside. Devices: [%s]",
+                LogTitle.GetWithTime().c_str(),
                 RequestName.c_str(),
                 RequestId,
                 JoinSeq(", ", devices).c_str());

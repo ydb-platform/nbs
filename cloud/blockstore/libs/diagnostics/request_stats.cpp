@@ -27,9 +27,11 @@ class THdrRequestPercentiles
     using TDynamicCounterPtr = TDynamicCounters::TCounterPtr;
 
 private:
+    TVector<TDynamicCounterPtr> CountersExecutionTime;
     TVector<TDynamicCounterPtr> CountersTotal;
     TVector<TDynamicCounterPtr> CountersSize;
 
+    TLatencyHistogram ExecutionTimeHist;
     TLatencyHistogram TotalHist;
     TSizeHistogram SizeHist;
 
@@ -39,6 +41,9 @@ public:
         const TString& request)
     {
         auto requestGroup = counters.GetSubgroup("request", request);
+
+        auto executionTimeGroup = requestGroup->GetSubgroup("percentiles", "ExecutionTime");
+        Register(*executionTimeGroup, CountersExecutionTime);
 
         auto totalTimeGroup = requestGroup->GetSubgroup("percentiles", "Time");
         Register(*totalTimeGroup, CountersTotal);
@@ -51,10 +56,12 @@ public:
     {
         Update(CountersTotal, TotalHist);
         Update(CountersSize, SizeHist);
+        Update(CountersExecutionTime, ExecutionTimeHist);
     }
 
-    void AddStats(TDuration requestTime, ui32 requestBytes)
+    void AddStats(TDuration requestExecutionTime, TDuration requestTime, ui32 requestBytes)
     {
+        ExecutionTimeHist.RecordValue(requestExecutionTime);
         TotalHist.RecordValue(requestTime);
         SizeHist.RecordValue(requestBytes);
     }
@@ -63,6 +70,10 @@ public:
         std::span<IRequestStats::TTimeBucket> timeHist,
         std::span<IRequestStats::TSizeBucket> sizeHist)
     {
+        for (auto [dt, count]: timeHist) {
+            ExecutionTimeHist.RecordValues(dt, count);
+        }
+
         for (auto [dt, count]: timeHist) {
             TotalHist.RecordValues(dt, count);
         }
@@ -127,10 +138,12 @@ public:
 
     void AddStats(
         EBlockStoreRequest requestType,
+        TDuration requestExecutionTime,
         TDuration requestTime,
         ui32 requestBytes)
     {
-        GetPercentiles(requestType).AddStats(requestTime, requestBytes);
+        GetPercentiles(requestType)
+            .AddStats(requestExecutionTime, requestTime, requestBytes);
     }
 
     void BatchCompleted(
@@ -138,7 +151,8 @@ public:
         std::span<IRequestStats::TTimeBucket> timeHist,
         std::span<IRequestStats::TSizeBucket> sizeHist)
     {
-        GetPercentiles(requestType).BatchCompleted(timeHist, sizeHist);
+        GetPercentiles(requestType)
+            .BatchCompleted(timeHist, sizeHist);
     }
 
 private:
@@ -323,7 +337,7 @@ public:
         ECalcMaxTime calcMaxTime,
         ui64 responseSent) override
     {
-        auto requestTime = Total.RequestCompleted(
+        auto [execTime, requestTime] = Total.RequestCompleted(
             static_cast<TRequestCounters::TRequestType>(
                 TranslateLocalRequestType(requestType)),
             requestStarted,
@@ -353,11 +367,13 @@ public:
             if (IsServerSide) {
                 HdrTotal.AddStats(
                     TranslateLocalRequestType(requestType),
+                    execTime,
                     requestTime,
                     requestBytes);
 
                 GetHdrPercentiles(mediaKind).AddStats(
                     TranslateLocalRequestType(requestType),
+                    execTime,
                     requestTime,
                     requestBytes);
             }

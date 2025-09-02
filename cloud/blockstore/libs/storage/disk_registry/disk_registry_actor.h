@@ -313,6 +313,11 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_GetTransactionsInflight(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void ScheduleDiskRegistryAgentListExpiredParamsCleanup(
         const NActors::TActorContext& ctx);
 
@@ -533,4 +538,7 @@ private:
 TDiskRegistryStateSnapshot MakeNewLoadState(
     NProto::TDiskRegistryStateBackup&& backup);
 bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize);
+
+NProto::TDiskState OverrideDiskState(NProto::TDiskState state);
+
 }   // namespace NCloud::NBlockStore::NStorage

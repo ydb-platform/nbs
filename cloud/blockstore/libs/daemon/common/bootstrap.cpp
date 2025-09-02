@@ -363,6 +363,9 @@ void TBootstrapBase::Init()
     sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
     sessionManagerOptions.DisableClientThrottler =
         Configs->ServerConfig->GetDisableClientThrottlers();
+    sessionManagerOptions.EnableDataIntegrityClient =
+        Configs->ServerConfig->GetChecksumFlags()
+            .GetEnableDataIntegrityClient();
 
     if (!KmsKeyProvider) {
         KmsKeyProvider = CreateKmsKeyProviderStub();

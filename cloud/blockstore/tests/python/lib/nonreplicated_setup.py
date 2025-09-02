@@ -216,7 +216,7 @@ def setup_disk_agent_config(
     config.Enabled = True
     config.DedicatedDiskAgent = dedicated_disk_agent
     config.Backend = backend
-    config.DirectIoFlagDisabled = True
+    config.DirectIoFlagDisabled = False
     config.AgentId = agent_id
     config.AcquireRequired = True
     config.RegisterRetryTimeout = 1000  # 1 second
@@ -225,6 +225,8 @@ def setup_disk_agent_config(
     config.OffloadAllIORequestsParsingEnabled = True
     config.IOParserActorAllocateStorageEnabled = True
     config.PathsPerFileIOService = 2
+    config.UseLocalStorageSubmissionThread = False
+    config.UseOneSubmissionThreadPerAIOServiceEnabled = True
     config.MaxParallelSecureErasesAllowed = 3
 
     if cached_sessions_path is not None:

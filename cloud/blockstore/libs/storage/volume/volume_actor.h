@@ -273,6 +273,7 @@ private:
         ui64 MountSeqNumber = 0;
         TClientRequestPtr ClientRequest = nullptr;
         bool ForceTabletRestart = false;
+        bool Retriable = false;
     };
 
     struct TReleaseDiskRequest
@@ -280,7 +281,7 @@ private:
         TString ClientId;
         TClientRequestPtr ClientRequest = nullptr;
         TVector<NProto::TDeviceConfig> DevicesToRelease;
-        bool RetryIfTimeoutOrUndelivery = false;
+        bool Retriable = false;
     };
 
     struct TAcquireReleaseDiskRequest
@@ -292,7 +293,7 @@ private:
         ui64 MountSeqNumber = 0;
         TClientRequestPtr ClientRequest;
         TVector<NProto::TDeviceConfig> DevicesToRelease;
-        const bool RetryIfTimeoutOrUndelivery = false;
+        const bool Retriable = false;
         const bool ForceTabletRestart = false;
 
         TAcquireReleaseDiskRequest(TAcquireDiskRequest request)
@@ -301,6 +302,7 @@ private:
             , AccessMode(request.AccessMode)
             , MountSeqNumber(request.MountSeqNumber)
             , ClientRequest(std::move(request.ClientRequest))
+            , Retriable(request.Retriable)
             , ForceTabletRestart(request.ForceTabletRestart)
         {}
 
@@ -309,7 +311,7 @@ private:
             , ClientId(std::move(request.ClientId))
             , ClientRequest(std::move(request.ClientRequest))
             , DevicesToRelease(std::move(request.DevicesToRelease))
-            , RetryIfTimeoutOrUndelivery(request.RetryIfTimeoutOrUndelivery)
+            , Retriable(request.Retriable)
         {}
     };
 
@@ -744,6 +746,16 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_GetTransactionsInflight(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetRequestsInflight(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleHttpInfo_Default(
         const NActors::TActorContext& ctx,
         const TVolumeMountHistorySlice& history,
@@ -879,7 +891,12 @@ private:
         const TEvVolumePrivate::TEvDevicesAcquireFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void ForceAcquireDisk(const NActors::TActorContext& ctx);
+
     void AcquireDiskIfNeeded(const NActors::TActorContext& ctx);
+
+    void AcquireDiskImpl(const NActors::TActorContext& ctx, bool retriable);
+
     void ReleaseReplacedDevices(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TDeviceConfig>& replacedDevices);
@@ -895,6 +912,10 @@ private:
 
     void HandleReacquireDisk(
         const TEvVolume::TEvReacquireDisk::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRetryAcquireReleaseDisk(
+        const TEvVolume::TEvRetryAcquireReleaseDisk::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRdmaUnavailable(

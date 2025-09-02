@@ -25,6 +25,8 @@ struct TTxStats
     i64 NodesCount;
     i64 NodeRefsCount;
     i64 NodeAttrsCount;
+    i64 NodeRefsExhaustivenessCount;
+    i64 NodeRefsExhaustivenessCapacity;
     bool IsExhaustive;
 };
 
@@ -90,16 +92,32 @@ TTxStats GetTxStats(TTestEnv& env, TIndexTabletClient& tablet)
              stats.NodesCount = value;
              return true;
          }},
-        {{{"filesystem", "test"}, {"sensor", "InMemoryIndexStateNodeRefsCount"}},
+        {{{"filesystem", "test"},
+          {"sensor", "InMemoryIndexStateNodeRefsCount"}},
          [&stats](i64 value)
          {
              stats.NodeRefsCount = value;
              return true;
          }},
-        {{{"filesystem", "test"}, {"sensor", "InMemoryIndexStateNodeAttrsCount"}},
+        {{{"filesystem", "test"},
+          {"sensor", "InMemoryIndexStateNodeAttrsCount"}},
          [&stats](i64 value)
          {
              stats.NodeAttrsCount = value;
+             return true;
+         }},
+        {{{"filesystem", "test"},
+          {"sensor", "InMemoryIndexStateNodeRefsExhaustivenessCount"}},
+         [&stats](i64 value)
+         {
+             stats.NodeRefsExhaustivenessCount = value;
+             return true;
+         }},
+        {{{"filesystem", "test"},
+          {"sensor", "InMemoryIndexStateNodeRefsExhaustivenessCapacity"}},
+         [&stats](i64 value)
+         {
+             stats.NodeRefsExhaustivenessCapacity = value;
              return true;
          }},
         {{{"filesystem", "test"}, {"sensor", "InMemoryIndexStateIsExhaustive"}},
@@ -166,6 +184,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetId());
         // ListNodes can not be performed using in-memory cache
         tablet.ListNodes(RootNodeId);
+        tablet.ListNodes(RootNodeId);
 
         // Two out of three GetNodeAttr calls should have been performed using
         // the cache. ListNodes is a cache miss also.
@@ -174,10 +193,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             2,
             statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            3,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT_VALUES_EQUAL(2, statsAfter.RWCount - statsBefore.RWCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodeRefsCount - statsBefore.NodeRefsCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.NodeRefsCount - statsBefore.NodeRefsCount);
         UNIT_ASSERT_VALUES_EQUAL(
             2,
             statsAfter.NodesCount - statsBefore.NodesCount);
@@ -937,6 +958,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             1,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.RWCount - statsBefore.RWCount);
+
+        statsBefore = statsAfter;
+
+        // RO transaction, cache miss since we do not know if the cache is
+        // exhaustive
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            tablet.ListNodes(RootNodeId)->Record.NodesSize());
+        // Also a cache miss
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+        statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.NodeRefsExhaustivenessCapacity);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.NodeRefsExhaustivenessCount);
     }
 
     Y_UNIT_TEST(ShouldUseNodeRefsCacheIfOneIsExhaustive)
@@ -1054,6 +1098,149 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         UNIT_ASSERT(!statsAfter.IsExhaustive);
     }
 
+    Y_UNIT_TEST(ShouldPopulateNodeRefsCacheViaSinglePageLists)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(10);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(10);
+        storageConfig.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(1);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test1"));
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test2"));
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test3"));
+
+        tablet.InitSession("client", "session");
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // Though all NodeRefs fit into the cache, we cannot be entirely
+        // sure that the cache is exhaustive
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                tablet.ListNodes(RootNodeId, 1, "")->Record.NodesSize());
+
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.NodeRefsExhaustivenessCount);
+            statsBefore = statsAfter;
+        }
+
+        // If the list fits into the entire page, then the first request should
+        // be a miss and a second one a hit
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                3,
+                tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodeRefsExhaustivenessCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.NodeRefsExhaustivenessCapacity);
+            statsBefore = statsAfter;
+        }
+        // This is the second listing and it should be a hit
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                3,
+                tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            statsBefore = statsAfter;
+        }
+
+        // Let us evict information about RootNodeId by creating an empty
+        // directory and listing it.
+        {
+            auto emptyDirId =
+                tablet
+                    .CreateNode(
+                        TCreateNodeArgs::Directory(RootNodeId, "empty_dir"))
+                    ->Record.GetNode()
+                    .GetId();
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                tablet.ListNodes(emptyDirId)->Record.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                tablet.ListNodes(emptyDirId)->Record.NodesSize());
+            // First listing is a miss, second is a hit
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            statsBefore = statsAfter;
+        }
+        // Now though all NodeRefs fit into the cache, we cannot be entirely
+        // sure that the cache is exhaustive for RootNodeId
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                4,
+                tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            statsBefore = statsAfter;
+        }
+        // Now there are four NodeRefs in memory: empty_dir, test1, test2, test3
+        // The cache capacity is 10, thus adding 8 more NodeRefs should evict 2
+        // of them leading to a cache miss upon listing
+        {
+            for (int i = 4; i <= 11; ++i) {
+                tablet.CreateNode(
+                    TCreateNodeArgs::File(
+                        RootNodeId,
+                        "test" + std::to_string(i)));
+            }
+            UNIT_ASSERT_VALUES_EQUAL(
+                12,
+                tablet.ListNodes(RootNodeId)->Record.NodesSize());
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            statsBefore = statsAfter;
+        }
+    }
+
     Y_UNIT_TEST(ShouldCalculateCacheCapacityBasedOnRatio)
     {
         NProto::TStorageConfig storageConfig;
@@ -1068,6 +1255,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         // max(100, 1024 / 8) = 128
         storageConfig.SetInMemoryIndexCacheNodeAttrsCapacity(100);
         storageConfig.SetInMemoryIndexCacheNodesToNodeAttrsCapacityRatio(8);
+
+        storageConfig.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(123);
 
         TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
@@ -1097,6 +1286,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             {{{"filesystem", "test"},
               {"sensor", "InMemoryIndexStateNodeAttrsCapacity"}},
              128},
+            {{{"filesystem", "test"},
+              {"sensor", "InMemoryIndexStateNodeRefsExhaustivenessCapacity"}},
+             123},
         });
     }
 

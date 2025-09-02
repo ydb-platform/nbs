@@ -14,6 +14,14 @@ private:
     ui32 Value = 0;
 
 public:
+    TBlockChecksum() = default;
+
+    explicit TBlockChecksum(ui32 value)
+        : Value(value)
+    {}
+
+    ~TBlockChecksum() = default;
+
     ui32 Extend(const void* data, size_t len)
     {
         Value = Crc32cExtend(Value, data, len);

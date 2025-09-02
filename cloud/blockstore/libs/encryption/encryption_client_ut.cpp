@@ -477,7 +477,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                     zRequest->GetSessionId(),
                     wRequest->GetSessionId());
                 UNIT_ASSERT_VALUES_EQUAL(6, GetFieldCount<NProto::TZeroBlocksRequest>());
-                UNIT_ASSERT_VALUES_EQUAL(7, GetFieldCount<NProto::TWriteBlocksRequest>());
+                UNIT_ASSERT_VALUES_EQUAL(8, GetFieldCount<NProto::TWriteBlocksRequest>());
 
                 return MakeFuture(wResponse);
             };

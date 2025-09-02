@@ -68,6 +68,7 @@ class _SafeClient(object):
             partitions_count: int = 1,
             encryption_spec: TEncryptionSpec | None = None,
             storage_pool_name: str | None = None,
+            agent_ids: list[str] | None = None,
             idempotence_id: str | None = None,
             timestamp: datetime | None = None,
             trace_id: str | None = None,
@@ -87,7 +88,8 @@ class _SafeClient(object):
             BaseDiskCheckpointId=base_disk_checkpoint_id,
             PartitionsCount=partitions_count,
             EncryptionSpec=encryption_spec,
-            StoragePoolName=storage_pool_name
+            StoragePoolName=storage_pool_name,
+            AgentIds=agent_ids,
         )
         return self.__impl.create_volume_async(
             request,
@@ -113,6 +115,7 @@ class _SafeClient(object):
             partitions_count: int = 1,
             encryption_spec: TEncryptionSpec | None = None,
             storage_pool_name: str | None = None,
+            agent_ids: list[str] | None = None,
             idempotence_id: str | None = None,
             timestamp: datetime | None = None,
             trace_id: str | None = None,
@@ -132,7 +135,8 @@ class _SafeClient(object):
             BaseDiskCheckpointId=base_disk_checkpoint_id,
             PartitionsCount=partitions_count,
             EncryptionSpec=encryption_spec,
-            StoragePoolName=storage_pool_name
+            StoragePoolName=storage_pool_name,
+            AgentIds=agent_ids,
         )
         self.__impl.create_volume(
             request,
@@ -1031,3 +1035,45 @@ class _SafeClient(object):
             timestamp,
             trace_id,
             request_timeout)
+
+    @_handle_errors
+    def list_disks_states_async(
+            self,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
+
+        future = futures.Future()
+        response = self.__impl.list_disks_states_async_async(
+            protos.TListDisksStatesRequest(),
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+        def set_result(f):
+            exception = f.exception()
+            if exception:
+                future.set_exception(exception)
+            else:
+                result = f.result()
+                future.set_result(result.DisksStates)
+        response.add_done_callback(set_result)
+
+        return future
+
+    @_handle_errors
+    def list_disks_states(
+            self,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
+
+        return self.__impl.list_disks_states(
+            protos.TListDisksStatesRequest(),
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout).DisksStates
