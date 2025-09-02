@@ -71,6 +71,9 @@ void FillFeatures(
         fileSystemStats.GetHasXAttrs() !=
             static_cast<ui64>(TIndexTabletActor::EHasXAttrs::False);
     features->SetHasXAttrs(hasXAttrs);
+
+    features->SetMaxBackground(config.GetMaxBackground());
+    features->SetMaxFuseLoopThreads(config.GetMaxFuseLoopThreads());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
