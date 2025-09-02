@@ -243,7 +243,10 @@ public:
                 continue;
             }
             if (Units) {
-                subgroup = subgroup->FindSubgroup("units", Units);
+                if (auto unitsSubgroup = subgroup->FindSubgroup("units", Units))
+                {
+                    subgroup = unitsSubgroup;
+                }
             }
             if (subgroup) {
                 BaseCounters.emplace_back(subgroup, name);
