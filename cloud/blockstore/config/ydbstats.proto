@@ -51,5 +51,5 @@ message TYdbStatsConfig
     optional string PartitionsTableName = 14;
 
     // Refresh time before IAM token expiration (in milliseconds).
-    optional uint32 RefreshTimeBeforeExpiration = 15;
+    optional uint32 IamTokenRefreshTimeBeforeExpiration = 15;
 }

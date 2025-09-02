@@ -12,7 +12,7 @@ namespace NCloud::NBlockStore::NYdbStats {
 ////////////////////////////////////////////////////////////////////////////////
 
 NYdb::TCredentialsProviderFactoryPtr CreateIamCredentialsProviderFactory(
-    TDuration refreshTimeBeforeExpiration,
+    TDuration iamTokenRefreshTimeBeforeExpiration,
     NIamClient::TTokenInfo initialToken,
     ISchedulerPtr scheduler,
     NIamClient::IIamTokenClientPtr client);

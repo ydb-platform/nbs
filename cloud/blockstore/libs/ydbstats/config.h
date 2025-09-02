@@ -37,7 +37,7 @@ public:
     TDuration GetStatsTableTtl() const;
     TDuration GetArchiveStatsTableTtl() const;
 
-    [[nodiscard]] TDuration GetRefreshTimeBeforeExpiration() const;
+    [[nodiscard]] TDuration GetIamTokenRefreshTimeBeforeExpiration() const;
 };
 
 }   // namespace NCloud::NBlockStore::NYdbStats

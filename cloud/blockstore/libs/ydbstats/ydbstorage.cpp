@@ -97,7 +97,7 @@ TDriverConfig BuildDriverConfig(
     if (config.GetUseSsl()) {
         driverConfig.SetCredentialsProviderFactory(
             CreateIamCredentialsProviderFactory(
-                config.GetRefreshTimeBeforeExpiration(),
+                config.GetIamTokenRefreshTimeBeforeExpiration(),
                 std::move(initialTokenInfo),
                 std::move(scheduler),
                 std::move(tokenClient)));

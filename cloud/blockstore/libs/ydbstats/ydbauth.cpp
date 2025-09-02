@@ -21,7 +21,7 @@
 #include <util/generic/vector.h>
 #include <util/stream/file.h>
 #include <util/string/builder.h>
-#include <util/system/mutex.h>
+#include <util/system/rwlock.h>
 
 namespace NCloud::NBlockStore::NYdbStats {
 
@@ -42,82 +42,70 @@ class TYdbTokenProvider final
 private:
     const ISchedulerPtr Scheduler;
     const IIamTokenClientPtr Client;
+    const TDuration IamTokenRefreshTimeBeforeExpiration;
 
-    const TDuration RefreshTimeBeforeExpiration;
-
-    mutable TMutex Mutex;
+    mutable TRWMutex Mutex;
     mutable TStringType Token;
     mutable TInstant ExpiresAt;
-    mutable std::atomic_bool GetTokenInProgress = false;
+
+    mutable std::atomic_bool RefreshTokenInProgress = false;
 
 public:
     TYdbTokenProvider(
             ISchedulerPtr scheduler,
             IIamTokenClientPtr client,
-            TDuration refreshTimeBeforeExpiration,
+            TDuration iamTokenRefreshTimeBeforeExpiration,
             TTokenInfo initialToken)
         : Scheduler(std::move(scheduler))
         , Client(std::move(client))
-        , RefreshTimeBeforeExpiration(refreshTimeBeforeExpiration)
+        , IamTokenRefreshTimeBeforeExpiration(
+              iamTokenRefreshTimeBeforeExpiration)
         , Token(std::move(initialToken.Token))
         , ExpiresAt(initialToken.ExpiresAt)
     {}
 
     TStringType GetAuthInfo() const override
     {
-        bool shouldGetToken = false;
-        TStringType token;
+        TReadGuard guard(Mutex);
 
-        with_lock (Mutex) {
-            token = Token;
-            if (Now() >= ExpiresAt) {
-                shouldGetToken = true;
-            }
-        }
-
-        if (shouldGetToken) {
-            GetTokenIfNeeded();
-        }
-
-        return token;
+        return Token;
     }
 
     bool IsValid() const override
     {
-        return true;
+        TReadGuard guard(Mutex);
+        return !Token.empty();
     }
 
     void Init()
     {
-        ScheduleGetToken();
+        ScheduleRefreshToken();
     }
 
 private:
     // Not thread-safe.
-    void ScheduleGetToken() const
+    void ScheduleRefreshToken() const
     {
-        auto deadline = Max(ExpiresAt - RefreshTimeBeforeExpiration, Now());
+        auto deadline =
+            Max(ExpiresAt - IamTokenRefreshTimeBeforeExpiration, Now());
         Scheduler->Schedule(
             deadline,
             [weak = weak_from_this()]
             {
-                auto self = weak.lock();
-                if (self) {
-                    self->GetTokenIfNeeded();
+                if (auto self = weak.lock()) {
+                    self->RefreshToken();
                 }
             });
     }
 
-    void GetTokenIfNeeded() const
+    void RefreshToken() const
     {
-        auto inProgress = GetTokenInProgress.exchange(true);
+        auto inProgress = RefreshTokenInProgress.exchange(true);
         if (inProgress) {
             return;
         }
 
-        auto tokenFuture = Client->GetTokenAsync();
-
-        tokenFuture.Subscribe(
+        Client->GetTokenAsync().Subscribe(
             [weak = weak_from_this()](auto future)
             {
                 auto self = weak.lock();
@@ -131,12 +119,12 @@ private:
 
     void RenewToken(auto future) const
     {
-        auto guard = Guard(Mutex);
+        TWriteGuard guard(Mutex);
 
         Y_DEFER
         {
-            GetTokenInProgress.store(false);
-            ScheduleGetToken();
+            RefreshTokenInProgress.store(false);
+            ScheduleRefreshToken();
         };
 
         auto result = future.ExtractValue();
@@ -154,21 +142,23 @@ using TYdbTokenProviderPtr = std::shared_ptr<TYdbTokenProvider>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TIamCredentialsProviderFactory final: public ICredentialsProviderFactory
+class TIamCredentialsProviderFactory final
+    : public ICredentialsProviderFactory
 {
 private:
-    const TDuration RefreshTimeBeforeExpiration;
+    const TDuration IamTokenRefreshTimeBeforeExpiration;
     const TTokenInfo InitialTokenInfo;
     const ISchedulerPtr Scheduler;
     const IIamTokenClientPtr Client;
 
 public:
     TIamCredentialsProviderFactory(
-            TDuration refreshTimeBeforeExpiration,
+            TDuration iamTokenRefreshTimeBeforeExpiration,
             TTokenInfo initialTokenInfo,
             ISchedulerPtr scheduler,
             IIamTokenClientPtr client)
-        : RefreshTimeBeforeExpiration(refreshTimeBeforeExpiration)
+        : IamTokenRefreshTimeBeforeExpiration(
+              iamTokenRefreshTimeBeforeExpiration)
         , InitialTokenInfo(std::move(initialTokenInfo))
         , Scheduler(std::move(scheduler))
         , Client(std::move(client))
@@ -179,7 +169,7 @@ public:
         auto res = make_shared<TYdbTokenProvider>(
             Scheduler,
             Client,
-            RefreshTimeBeforeExpiration,
+            IamTokenRefreshTimeBeforeExpiration,
             InitialTokenInfo);
         res->Init();
         return res;
@@ -189,13 +179,13 @@ public:
 }  // namespace
 
 TCredentialsProviderFactoryPtr CreateIamCredentialsProviderFactory(
-    TDuration refreshTimeBeforeExpiration,
+    TDuration iamTokenRefreshTimeBeforeExpiration,
     TTokenInfo initialTokenInfo,
     ISchedulerPtr scheduler,
     IIamTokenClientPtr client)
 {
     return std::make_shared<TIamCredentialsProviderFactory>(
-        refreshTimeBeforeExpiration,
+        iamTokenRefreshTimeBeforeExpiration,
         std::move(initialTokenInfo),
         std::move(scheduler),
         std::move(client));
