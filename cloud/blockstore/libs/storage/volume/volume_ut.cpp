@@ -9840,13 +9840,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.WaitReady();
 
         TVolumeClient client1(*runtime);
+        TVolumeClient client2(*runtime);
 
         auto clientInfo1 = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
             0);
 
-        auto clientInfo1 = CreateVolumeClientInfo(
+        auto clientInfo2 = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_ONLY,
             NProto::VOLUME_MOUNT_REMOTE,
             0);
@@ -9858,7 +9859,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
 
         {
-            client3.ReconnectPipe();
             auto response = client2.AddClient(clientInfo2);
             UNIT_ASSERT(!FAILED(response->GetStatus()));
             UNIT_ASSERT_VALUES_UNEQUAL("", response->Record.GetHostName());
