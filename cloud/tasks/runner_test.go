@@ -173,9 +173,9 @@ func newTestExecutionContext(task Task, taskStorage storage.Storage, state stora
 		task,
 		taskStorage,
 		state,
-		time.Hour,      // inflightDurationHangTimeout
-		30*time.Minute, // stallingDurationHangTimeout
-		24*time.Hour,   // totalDurationHangTimeout
+		24*time.Hour,   // hangingTaskTimeout
+		time.Hour,      // inflightHangingTaskTimeout
+		30*time.Minute, // stallingHangingTaskTimeout
 		2,              // missedEstimatesUntilTaskIsHanging
 	)
 }
@@ -372,9 +372,9 @@ func TestExecutionContextShouldNotBeHangingByDefault(t *testing.T) {
 }
 
 func TestExecutionContextIsHanging(t *testing.T) {
-	inflightDurationHangTimeout := time.Hour
-	stallingDurationHangTimeout := 30 * time.Minute
-	totalDurationHangTimeout := 24 * time.Hour
+	hangingTaskTimeout := 24 * time.Hour
+	inflightHangingTaskTimeout := time.Hour
+	stallingHangingTaskTimeout := 30 * time.Minute
 	missedEstimatedUntilTaskIsHanging := uint64(2)
 
 	testCases := []struct {
@@ -389,7 +389,7 @@ func TestExecutionContextIsHanging(t *testing.T) {
 		{
 			name:             "no estimate, inflight duration exceeds base timeout",
 			createdAt:        time.Now(),
-			inflightDuration: inflightDurationHangTimeout + time.Minute,
+			inflightDuration: inflightHangingTaskTimeout + time.Minute,
 			isHanging:        true,
 		},
 		{
@@ -423,9 +423,9 @@ func TestExecutionContextIsHanging(t *testing.T) {
 		{
 			name:                      "below both base thresholds",
 			createdAt:                 time.Now(),
-			inflightDuration:          inflightDurationHangTimeout - time.Minute,
+			inflightDuration:          inflightHangingTaskTimeout - time.Minute,
 			estimatedInflightDuration: 0,
-			stallingDuration:          stallingDurationHangTimeout - time.Minute,
+			stallingDuration:          stallingHangingTaskTimeout - time.Minute,
 			estimatedStallingDuration: 0,
 			isHanging:                 false,
 		},
@@ -441,30 +441,30 @@ func TestExecutionContextIsHanging(t *testing.T) {
 		{
 			name:                      "inflight estimate exceeded, but below threshold",
 			createdAt:                 time.Now(),
-			inflightDuration:          inflightDurationHangTimeout - time.Minute,
+			inflightDuration:          inflightHangingTaskTimeout - time.Minute,
 			estimatedInflightDuration: time.Minute,
 			isHanging:                 false,
 		},
 		{
 			name:                      "stalling estimate exceeded, but below threshold",
 			createdAt:                 time.Now(),
-			stallingDuration:          stallingDurationHangTimeout - time.Minute,
+			stallingDuration:          stallingHangingTaskTimeout - time.Minute,
 			estimatedStallingDuration: time.Minute,
 			isHanging:                 false,
 		},
 		{
 			name:      "total duration exceeded",
-			createdAt: time.Now().Add(-totalDurationHangTimeout).Add(-time.Minute),
+			createdAt: time.Now().Add(-hangingTaskTimeout).Add(-time.Minute),
 			isHanging: true,
 		},
 		{
 			name:      "total duration not exceeded",
-			createdAt: time.Now().Add(-totalDurationHangTimeout).Add(time.Hour),
+			createdAt: time.Now().Add(-hangingTaskTimeout).Add(time.Hour),
 			isHanging: false,
 		},
 		{
 			name:                      "all durations exceeded",
-			createdAt:                 time.Now().Add(-totalDurationHangTimeout).Add(-time.Minute),
+			createdAt:                 time.Now().Add(-hangingTaskTimeout).Add(-time.Minute),
 			inflightDuration:          2*42*time.Minute + time.Minute,
 			estimatedInflightDuration: 42 * time.Minute,
 			stallingDuration:          2*42*time.Minute + time.Minute,
@@ -487,9 +487,9 @@ func TestExecutionContextIsHanging(t *testing.T) {
 				NewTaskMock(),
 				mocks.NewStorageMock(),
 				taskState,
-				inflightDurationHangTimeout,
-				stallingDurationHangTimeout,
-				totalDurationHangTimeout,
+				hangingTaskTimeout,
+				inflightHangingTaskTimeout,
+				stallingHangingTaskTimeout,
 				missedEstimatedUntilTaskIsHanging,
 			)
 
@@ -1490,9 +1490,9 @@ func TestTryExecutingTask(t *testing.T) {
 		pingTimeout,
 		runner,
 		taskInfo,
-		time.Hour,      // inflightDurationHangTimeout
-		30*time.Minute, // stallingDurationHangTimeout
-		24*time.Hour,   // totalDurationHangTimeout
+		24*time.Hour,   // hangingTaskTimeout
+		time.Hour,      // inflightHangingTaskTimeout
+		30*time.Minute, // stallingHangingTaskTimeout
 		2,              // missedEstimatesUntilTaskIsHanging
 		100,
 	)
@@ -1557,9 +1557,9 @@ func TestTryExecutingTaskFailToPing(t *testing.T) {
 		pingTimeout,
 		runner,
 		taskInfo,
-		time.Hour,      // inflightDurationHangTimeout
-		30*time.Minute, // stallingDurationHangTimeout
-		24*time.Hour,   // totalDurationHangTimeout
+		24*time.Hour,   // hangingTaskTimeout
+		time.Hour,      // inflightHangingTaskTimeout
+		30*time.Minute, // stallingHangingTaskTimeout
 		2,              // missedEstimatesUntilTaskIsHanging
 		100,
 	)

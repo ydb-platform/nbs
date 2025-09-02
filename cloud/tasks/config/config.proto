@@ -29,13 +29,13 @@ message TasksConfig {
     optional uint64 MaxRetriableErrorCount = 18 [default = 100];
     optional uint64 MaxPanicCount = 19 [default = 10];
 
-    optional string InflightDurationHangTimeout = 20 [default = "1h"];
-    optional string StallingDurationHangTimeout = 21 [default = "30m"];
-    optional string TotalDurationHangTimeout = 22 [default = "24h"];
-    // Number of missed estimated durations until task is considered hanging.
-    optional uint64 MissedEstimatesUntilTaskIsHanging = 23 [default = 2];
     // Exception task types for hanging task metric.
-    repeated string ExceptHangingTaskTypes = 24;
+    repeated string ExceptHangingTaskTypes = 20;
+    optional string HangingTaskTimeout = 21 [default = "24h"];
+    optional string InflightHangingTaskTimeout = 22 [default = "1h"];
+    optional string StallingHangingTaskTimeout = 23 [default = "30m"];
+    // Number of missed estimated durations until task is considered hanging.
+    optional uint64 MissedEstimatesUntilTaskIsHanging = 24 [default = 2];
     optional int64 MaxHangingTaskIDsToReport = 25 [default = 1000];
 
     optional string UpdateTaskTimeout = 26 [default = "1m"];
@@ -75,7 +75,7 @@ message TasksConfig {
     // database.
     optional uint64 TasksToListLimit = 36 [default = 10000];
 
-    optional string AvailabilityMonitoringSuccessRateReportingPeriod  = 37 [default = "15s"];
+    optional string AvailabilityMonitoringSuccessRateReportingPeriod = 37 [default = "15s"];
 
     // Overrides MaxRetriableErrorCount.
     map<string, uint64> MaxRetriableErrorCountByTaskType = 38;

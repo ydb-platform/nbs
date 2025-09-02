@@ -941,9 +941,9 @@ func (s *storageYDB) listHangingTasks(
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $limit as Uint64;
 		declare $except_task_types as List<Utf8>;
-		declare $inflight_duration_hang_timeout as Interval;
-		declare $stalling_duration_hang_timeout as Interval;
-		declare $total_duration_hang_timeout as Interval;
+		declare $hanging_task_timeout as Interval;
+		declare $inflight_hanging_task_timeout as Interval;
+		declare $stalling_hanging_task_timeout as Interval;
 		declare $missed_estimates_until_task_is_hanging as Uint64;
 		declare $now as Timestamp;
 
@@ -958,15 +958,15 @@ func (s *storageYDB) listHangingTasks(
 		 	(id in $task_ids) and
 			(task_type not in $except_task_types) and
 			(
+				($now - created_at >= $hanging_task_timeout) or
 			    inflight_duration >= MAX_OF(
 					estimated_inflight_duration * $missed_estimates_until_task_is_hanging,
-					$inflight_duration_hang_timeout,
+					$inflight_hanging_task_timeout,
 				) or
 				stalling_duration >= MAX_OF(
 					estimated_stalling_duration * $missed_estimates_until_task_is_hanging,
-					$stalling_duration_hang_timeout,
-				) or
-				($now - created_at >= $total_duration_hang_timeout)
+					$stalling_hanging_task_timeout,
+				)
 			)
 		limit $limit;
 	`, s.tablesPath),
@@ -976,16 +976,16 @@ func (s *storageYDB) listHangingTasks(
 			strListValue(s.exceptHangingTaskTypes),
 		),
 		persistence.ValueParam(
-			"$inflight_duration_hang_timeout",
-			persistence.IntervalValue(s.inflightDurationHangTimeout),
+			"$hanging_task_timeout",
+			persistence.IntervalValue(s.hangingTaskTimeout),
 		),
 		persistence.ValueParam(
-			"$stalling_duration_hang_timeout",
-			persistence.IntervalValue(s.stallingDurationHangTimeout),
+			"$inflight_hanging_task_timeout",
+			persistence.IntervalValue(s.inflightHangingTaskTimeout),
 		),
 		persistence.ValueParam(
-			"$total_duration_hang_timeout",
-			persistence.IntervalValue(s.totalDurationHangTimeout),
+			"$stalling_hanging_task_timeout",
+			persistence.IntervalValue(s.stallingHangingTaskTimeout),
 		),
 		persistence.ValueParam(
 			"$missed_estimates_until_task_is_hanging",

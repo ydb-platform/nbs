@@ -1021,9 +1021,9 @@ type hangingTaskTestFixture struct {
 	t                                 *testing.T
 	storage                           Storage
 	ctx                               context.Context
-	inflightDurationHangTimeout       time.Duration
-	stallingDurationHangTimeout       time.Duration
-	totalDurationHangTimeout          time.Duration
+	inflightHangingTaskTimeout        time.Duration
+	stallingHangingTaskTimeout        time.Duration
+	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
 	db                                *persistence.YDBClient
 	cancel                            context.CancelFunc
@@ -1116,7 +1116,7 @@ func (f hangingTaskTestFixture) createHangingTaskNoEstimate(
 	return f.createTaskWithInflightDuration(
 		taskType,
 		taskStatus,
-		f.inflightDurationHangTimeout+time.Minute,
+		f.inflightHangingTaskTimeout+time.Minute,
 		0, // estimatedInflightDuration
 	)
 }
@@ -1154,11 +1154,11 @@ func (f hangingTaskTestFixture) createHangingTaskWithTotalDurationMissed(
 	taskStatus TaskStatus,
 ) string {
 
-	// Estimates are not missed but totalDurationHangTimeout is
+	// Estimates are not missed but hangingTaskTimeout is
 	return f.createTask(
 		taskType,
 		taskStatus,
-		time.Now().Add(-f.totalDurationHangTimeout).Add(-time.Minute),
+		time.Now().Add(-f.hangingTaskTimeout).Add(-time.Minute),
 		0, 0, 0, 0, // durations and estimates
 	)
 }
@@ -1173,7 +1173,7 @@ func (f hangingTaskTestFixture) createHangingTaskWithAllDurationsMissed(
 		taskType,
 		taskStatus,
 		// Total duration missed
-		time.Now().Add(-f.totalDurationHangTimeout).Add(-time.Minute),
+		time.Now().Add(-f.hangingTaskTimeout).Add(-time.Minute),
 		// Inflight duration missed
 		time.Duration(f.missedEstimatesUntilTaskIsHanging)*estimatedDuration+time.Minute,
 		estimatedDuration,
@@ -1208,28 +1208,28 @@ func newHangingTaskTestFixture(
 	config *tasks_config.TasksConfig,
 ) hangingTaskTestFixture {
 
-	inflightDurationHangTimeout, err := time.ParseDuration(
-		config.GetInflightDurationHangTimeout(),
+	inflightHangingTaskTimeout, err := time.ParseDuration(
+		config.GetInflightHangingTaskTimeout(),
 	)
 	require.NoError(t, err)
 
-	stallingDurationHangTimeout, err := time.ParseDuration(
-		config.GetStallingDurationHangTimeout(),
+	stallingHangingTaskTimeout, err := time.ParseDuration(
+		config.GetStallingHangingTaskTimeout(),
 	)
 	require.NoError(t, err)
 
-	totalDurationHangTimeout, err := time.ParseDuration(
-		config.GetTotalDurationHangTimeout(),
+	hangingTaskTimeout, err := time.ParseDuration(
+		config.GetHangingTaskTimeout(),
 	)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(newContext())
 	fixture := hangingTaskTestFixture{
 		t:                                 t,
-		inflightDurationHangTimeout:       inflightDurationHangTimeout,
+		inflightHangingTaskTimeout:        inflightHangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
-		stallingDurationHangTimeout:       stallingDurationHangTimeout,
-		totalDurationHangTimeout:          totalDurationHangTimeout,
+		stallingHangingTaskTimeout:        stallingHangingTaskTimeout,
+		hangingTaskTimeout:                hangingTaskTimeout,
 		ctx:                               ctx,
 		cancel:                            cancel,
 	}
@@ -1254,17 +1254,17 @@ func newHangingTaskTestFixture(
 }
 
 func TestStorageYDBListHangingTasks(t *testing.T) {
-	inflightDurationHangTimeout := 5 * time.Hour
-	inflightDurationHangTimeoutString := inflightDurationHangTimeout.String()
+	inflightHangingTaskTimeout := 5 * time.Hour
+	inflightHangingTaskTimeoutString := inflightHangingTaskTimeout.String()
 	missedEstimatesUntilTaskIsHanging := uint64(2)
-	stallingDurationHangTimeout := 30 * time.Minute
-	stallingDurationHangTimeoutString := stallingDurationHangTimeout.String()
-	totalDurationHangTimeoutString := "24h"
+	stallingHangingTaskTimeout := 30 * time.Minute
+	stallingHangingTaskTimeoutString := stallingHangingTaskTimeout.String()
+	hangingTaskTimeoutString := "24h"
 	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
-		InflightDurationHangTimeout:       &inflightDurationHangTimeoutString,
+		HangingTaskTimeout:                &hangingTaskTimeoutString,
+		InflightHangingTaskTimeout:        &inflightHangingTaskTimeoutString,
+		StallingHangingTaskTimeout:        &stallingHangingTaskTimeoutString,
 		MissedEstimatesUntilTaskIsHanging: &missedEstimatesUntilTaskIsHanging,
-		StallingDurationHangTimeout:       &stallingDurationHangTimeoutString,
-		TotalDurationHangTimeout:          &totalDurationHangTimeoutString,
 	})
 	defer fixture.teardown()
 
@@ -1308,8 +1308,8 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 		)
 
 		// Estimate is missed but default estimate is not
-		fixture.createTaskWithInflightDuration("c", taskStatus, inflightDurationHangTimeout-time.Minute, 10*time.Minute)
-		fixture.createTaskWithStallingDuration("c", taskStatus, stallingDurationHangTimeout-time.Minute, 10*time.Minute)
+		fixture.createTaskWithInflightDuration("c", taskStatus, inflightHangingTaskTimeout-time.Minute, 10*time.Minute)
+		fixture.createTaskWithStallingDuration("c", taskStatus, stallingHangingTaskTimeout-time.Minute, 10*time.Minute)
 	}
 
 	// Ended tasks will not appear in hanging in any case
@@ -1324,10 +1324,10 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 }
 
 func TestStorageYDBListHangingTasksWithExceptions(t *testing.T) {
-	inflightDurationHangTimeout := "5h"
+	inflightHangingTaskTimeout := "5h"
 	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
-		ExceptHangingTaskTypes:      []string{"exception"},
-		InflightDurationHangTimeout: &inflightDurationHangTimeout,
+		ExceptHangingTaskTypes:     []string{"exception"},
+		InflightHangingTaskTimeout: &inflightHangingTaskTimeout,
 	})
 	defer fixture.teardown()
 
@@ -2046,20 +2046,6 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		ModifiedAt:     stallTime,
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
-		State:          []byte{},
-		Dependencies:   common.NewStringSet(),
-	})
-	require.NoError(t, err)
-
-	_, err = storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createTime,
-		CreatedBy:      "some_user",
-		ModifiedAt:     stallTime,
-		GenerationID:   generationID,
-		Status:         TaskStatusCancelled,
 		State:          []byte{},
 		Dependencies:   common.NewStringSet(),
 	})

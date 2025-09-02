@@ -474,22 +474,22 @@ func NewStorage(
 		return nil, err
 	}
 
-	inflightDurationHangTimeout, err := time.ParseDuration(
-		config.GetInflightDurationHangTimeout(),
+	hangingTaskTimeout, err := time.ParseDuration(
+		config.GetHangingTaskTimeout(),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	stallingDurationHangTimeout, err := time.ParseDuration(
-		config.GetStallingDurationHangTimeout(),
+	inflightHangingTaskTimeout, err := time.ParseDuration(
+		config.GetInflightHangingTaskTimeout(),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	totalDurationHangTimeout, err := time.ParseDuration(
-		config.GetTotalDurationHangTimeout(),
+	stallingHangingTaskTimeout, err := time.ParseDuration(
+		config.GetStallingHangingTaskTimeout(),
 	)
 	if err != nil {
 		return nil, err
@@ -507,9 +507,9 @@ func NewStorage(
 			metrics:             metrics,
 
 			exceptHangingTaskTypes:            config.GetExceptHangingTaskTypes(),
-			inflightDurationHangTimeout:       inflightDurationHangTimeout,
-			stallingDurationHangTimeout:       stallingDurationHangTimeout,
-			totalDurationHangTimeout:          totalDurationHangTimeout,
+			hangingTaskTimeout:                hangingTaskTimeout,
+			inflightHangingTaskTimeout:        inflightHangingTaskTimeout,
+			stallingHangingTaskTimeout:        stallingHangingTaskTimeout,
 			missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
 		}
 	}

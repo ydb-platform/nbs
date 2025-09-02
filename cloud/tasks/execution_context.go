@@ -51,9 +51,9 @@ type executionContext struct {
 	taskStateMutex sync.Mutex
 	finished       bool
 
-	inflightDurationHangTimeout       time.Duration
-	stallingDurationHangTimeout       time.Duration
-	totalDurationHangTimeout          time.Duration
+	hangingTaskTimeout                time.Duration
+	inflightHangingTaskTimeout        time.Duration
+	stallingHangingTaskTimeout        time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
 }
 
@@ -123,25 +123,26 @@ func (c *executionContext) IsHanging() bool {
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 
+	deadline := c.taskState.CreatedAt.Add(c.hangingTaskTimeout)
+
 	inflightDurationTimeout := c.taskState.EstimatedInflightDuration *
 		time.Duration(c.missedEstimatesUntilTaskIsHanging)
 
-	if inflightDurationTimeout < c.inflightDurationHangTimeout {
-		inflightDurationTimeout = c.inflightDurationHangTimeout
+	if inflightDurationTimeout < c.inflightHangingTaskTimeout {
+		inflightDurationTimeout = c.inflightHangingTaskTimeout
 	}
 
 	stallingDurationTimeout := c.taskState.EstimatedStallingDuration *
 		time.Duration(c.missedEstimatesUntilTaskIsHanging)
 
-	if stallingDurationTimeout < c.stallingDurationHangTimeout {
-		stallingDurationTimeout = c.stallingDurationHangTimeout
+	if stallingDurationTimeout < c.stallingHangingTaskTimeout {
+		stallingDurationTimeout = c.stallingHangingTaskTimeout
 	}
 
-	deadline := c.taskState.CreatedAt.Add(c.totalDurationHangTimeout)
+	return time.Now().After(deadline) ||
+		c.taskState.InflightDuration > inflightDurationTimeout ||
+		c.taskState.StallingDuration > stallingDurationTimeout
 
-	return c.taskState.InflightDuration > inflightDurationTimeout ||
-		c.taskState.StallingDuration > stallingDurationTimeout ||
-		time.Now().After(deadline)
 }
 
 func (c *executionContext) SetInflightEstimate(estimatedDuration time.Duration) {
@@ -369,9 +370,9 @@ func newExecutionContext(
 	task Task,
 	storage storage.Storage,
 	taskState storage.TaskState,
-	inflightDurationHangTimeout time.Duration,
-	stallingDurationHangTimeout time.Duration,
-	totalDurationHangTimeout time.Duration,
+	hangingTaskTimeout time.Duration,
+	inflightHangingTaskTimeout time.Duration,
+	stallingHangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
 ) *executionContext {
 
@@ -380,9 +381,9 @@ func newExecutionContext(
 		storage:   storage,
 		taskState: taskState,
 
-		inflightDurationHangTimeout:       inflightDurationHangTimeout,
-		stallingDurationHangTimeout:       stallingDurationHangTimeout,
-		totalDurationHangTimeout:          totalDurationHangTimeout,
+		hangingTaskTimeout:                hangingTaskTimeout,
+		inflightHangingTaskTimeout:        inflightHangingTaskTimeout,
+		stallingHangingTaskTimeout:        stallingHangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
 	}
 }
