@@ -1208,6 +1208,11 @@ func newHangingTaskTestFixture(
 	config *tasks_config.TasksConfig,
 ) hangingTaskTestFixture {
 
+	hangingTaskTimeout, err := time.ParseDuration(
+		config.GetHangingTaskTimeout(),
+	)
+	require.NoError(t, err)
+
 	inflightHangingTaskTimeout, err := time.ParseDuration(
 		config.GetInflightHangingTaskTimeout(),
 	)
@@ -1218,18 +1223,13 @@ func newHangingTaskTestFixture(
 	)
 	require.NoError(t, err)
 
-	hangingTaskTimeout, err := time.ParseDuration(
-		config.GetHangingTaskTimeout(),
-	)
-	require.NoError(t, err)
-
 	ctx, cancel := context.WithCancel(newContext())
 	fixture := hangingTaskTestFixture{
 		t:                                 t,
+		hangingTaskTimeout:                hangingTaskTimeout,
 		inflightHangingTaskTimeout:        inflightHangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
 		stallingHangingTaskTimeout:        stallingHangingTaskTimeout,
-		hangingTaskTimeout:                hangingTaskTimeout,
 		ctx:                               ctx,
 		cancel:                            cancel,
 	}
@@ -1254,12 +1254,12 @@ func newHangingTaskTestFixture(
 }
 
 func TestStorageYDBListHangingTasks(t *testing.T) {
+	hangingTaskTimeoutString := "24h"
 	inflightHangingTaskTimeout := 5 * time.Hour
 	inflightHangingTaskTimeoutString := inflightHangingTaskTimeout.String()
 	missedEstimatesUntilTaskIsHanging := uint64(2)
 	stallingHangingTaskTimeout := 30 * time.Minute
 	stallingHangingTaskTimeoutString := stallingHangingTaskTimeout.String()
-	hangingTaskTimeoutString := "24h"
 	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
 		HangingTaskTimeout:                &hangingTaskTimeoutString,
 		InflightHangingTaskTimeout:        &inflightHangingTaskTimeoutString,

@@ -82,9 +82,9 @@ type runnerForRun struct {
 	maxRetriableErrorCountByTaskType map[string]uint64
 	maxPanicCount                    uint64
 
+	hangingTaskTimeout                time.Duration
 	inflightHangingTaskTimeout        time.Duration
 	stallingHangingTaskTimeout        time.Duration
-	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
 	maxSampledTaskGeneration          uint64
 }
@@ -353,9 +353,9 @@ type runnerForCancel struct {
 	host        string
 	id          string
 
+	hangingTaskTimeout                time.Duration
 	inflightHangingTaskTimeout        time.Duration
 	stallingHangingTaskTimeout        time.Duration
-	hangingTaskTimeout                time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
 	maxSampledTaskGeneration          uint64
 }
@@ -668,9 +668,9 @@ func startRunner(
 	channelForCancel *channel,
 	pingPeriod time.Duration,
 	pingTimeout time.Duration,
+	hangingTaskTimeout time.Duration,
 	inflightHangingTaskTimeout time.Duration,
 	stallingHangingTaskTimeout time.Duration,
-	hangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
 	exceptHangingTaskTypes []string,
 	host string,
@@ -703,9 +703,9 @@ func startRunner(
 		maxRetriableErrorCountByTaskType: maxRetriableErrorCountByTaskType,
 		maxPanicCount:                    maxPanicCount,
 
+		hangingTaskTimeout:                hangingTaskTimeout,
 		inflightHangingTaskTimeout:        inflightHangingTaskTimeout,
 		stallingHangingTaskTimeout:        stallingHangingTaskTimeout,
-		hangingTaskTimeout:                hangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
 		maxSampledTaskGeneration:          maxSampledTaskGeneration,
 	})
@@ -726,9 +726,9 @@ func startRunner(
 		host:        host,
 		id:          idForCancel,
 
+		hangingTaskTimeout:                hangingTaskTimeout,
 		inflightHangingTaskTimeout:        inflightHangingTaskTimeout,
 		stallingHangingTaskTimeout:        stallingHangingTaskTimeout,
-		hangingTaskTimeout:                hangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
 		maxSampledTaskGeneration:          maxSampledTaskGeneration,
 	})
@@ -746,9 +746,9 @@ func startRunners(
 	channelsForCancel []*channel,
 	pingPeriod time.Duration,
 	pingTimeout time.Duration,
+	hangingTaskTimeout time.Duration,
 	inflightHangingTaskTimeout time.Duration,
 	stallingHangingTaskTimeout time.Duration,
-	hangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
 	exceptHangingTaskTypes []string,
 	host string,
@@ -768,9 +768,9 @@ func startRunners(
 			channelsForCancel[i],
 			pingPeriod,
 			pingTimeout,
+			hangingTaskTimeout,
 			inflightHangingTaskTimeout,
 			stallingHangingTaskTimeout,
-			hangingTaskTimeout,
 			missedEstimatesUntilTaskIsHanging,
 			exceptHangingTaskTypes,
 			host,
@@ -799,9 +799,9 @@ func startStalkingRunners(
 	channelsForCancel []*channel,
 	pingPeriod time.Duration,
 	pingTimeout time.Duration,
+	hangingTaskTimeout time.Duration,
 	inflightHangingTaskTimeout time.Duration,
 	stallingHangingTaskTimeout time.Duration,
-	hangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
 	exceptHangingTaskTypes []string,
 	host string,
@@ -821,9 +821,9 @@ func startStalkingRunners(
 			channelsForCancel[i],
 			pingPeriod,
 			pingTimeout,
+			hangingTaskTimeout,
 			inflightHangingTaskTimeout,
 			stallingHangingTaskTimeout,
-			hangingTaskTimeout,
 			missedEstimatesUntilTaskIsHanging,
 			exceptHangingTaskTypes,
 			host,
@@ -990,9 +990,9 @@ func StartRunners(
 		listerReadyToCancel.channels,
 		pingPeriod,
 		pingTimeout,
+		hangingTaskTimeout,
 		inflightHangingTaskTimeout,
 		stallingHangingTaskTimeout,
-		hangingTaskTimeout,
 		config.GetMissedEstimatesUntilTaskIsHanging(),
 		config.GetExceptHangingTaskTypes(),
 		host,
@@ -1048,9 +1048,9 @@ func StartRunners(
 		listerStallingWhileCancelling.channels,
 		pingPeriod,
 		pingTimeout,
+		hangingTaskTimeout,
 		inflightHangingTaskTimeout,
 		stallingHangingTaskTimeout,
-		hangingTaskTimeout,
 		config.GetMissedEstimatesUntilTaskIsHanging(),
 		config.GetExceptHangingTaskTypes(),
 		host,
