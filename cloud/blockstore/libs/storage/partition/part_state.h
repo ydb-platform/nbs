@@ -340,7 +340,9 @@ public:
         const TFreeSpaceConfig& freeSpaceConfig,
         ui32 maxIORequestsInFlight,
         ui32 reassignChannelsPercentageThreshold,
+        ui32 reassignFreshChannelsPercentageThreshold,
         ui32 reassignMixedChannelsPercentageThreshold,
+        bool reassignSystemChannelsImmediately,
         ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
@@ -439,7 +441,9 @@ private:
 
     const ui32 MaxIORequestsInFlight;
     const ui32 ReassignChannelsPercentageThreshold;
+    const ui32 ReassignFreshChannelsPercentageThreshold;
     const ui32 ReassignMixedChannelsPercentageThreshold;
+    const bool ReassignSystemChannelsImmediately;
 
 public:
     ui32 GetChannelCount() const

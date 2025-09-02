@@ -220,9 +220,11 @@ void TPartitionActor::CompleteLoadState(
         fsConfig,
         GetMaxIORequestsInFlight(*Config, PartitionConfig),
         Config->GetReassignChannelsPercentageThreshold(),
+        Config->GetReassignFreshChannelsPercentageThreshold(),
         Config->GetReassignMixedChannelsPercentageThreshold(),
-        0,  // lastCommitId
-        Min(tabletChannelCount, configChannelCount),  // channelCount
+        Config->GetReassignSystemChannelsImmediately(),
+        0,                                             // lastCommitId
+        Min(tabletChannelCount, configChannelCount),   // channelCount
         mixedIndexCacheSize,
         GetAllocationUnit(*Config, mediaKind),
         maxBlobsPerUnit,
