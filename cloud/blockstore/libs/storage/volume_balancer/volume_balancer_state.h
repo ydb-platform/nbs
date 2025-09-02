@@ -35,6 +35,7 @@ class TVolumeBalancerState
         TDuration PullInterval;
 
         ui32 SufferCount = 0;
+        ui32 SufferCountWhenPreempted = 0;
 
         TVolumeInfo(TDuration pullInterval)
             : PullInterval(pullInterval)

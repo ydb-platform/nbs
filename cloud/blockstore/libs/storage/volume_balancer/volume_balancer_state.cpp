@@ -60,7 +60,11 @@ void TVolumeBalancerState::UpdateVolumeStats(
         }
 
         if (auto perfIt = perfMap.find(it->first); perfIt != perfMap.end()) {
-            info.SufferCount = perfIt->second;
+            if (info.IsLocal) {
+                info.SufferCount = perfIt->second;
+            } else {
+                info.SufferCountWhenPreempted = perfIt->second;
+            }
         }
         knownDisks.erase(v.GetDiskId());
     }
