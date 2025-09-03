@@ -32,7 +32,7 @@ type ExecutionContext interface {
 
 	IsHanging() bool
 
-	SetInflightEstimate(estimatedDuration time.Duration)
+	SetEstimatedInflightDuration(estimatedInflightDuration time.Duration)
 
 	HasEvent(ctx context.Context, event int64) bool
 
@@ -123,29 +123,27 @@ func (c *executionContext) IsHanging() bool {
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 
-	deadline := c.taskState.CreatedAt.Add(c.hangingTaskTimeout)
-
-	inflightDurationTimeout := max(
+	inflightTimeout := max(
 		c.taskState.EstimatedInflightDuration*time.Duration(c.missedEstimatesUntilTaskIsHanging),
 		c.inflightHangingTaskTimeout,
 	)
 
-	stallingDurationTimeout := max(
+	stallingTimeout := max(
 		c.taskState.EstimatedStallingDuration*time.Duration(c.missedEstimatesUntilTaskIsHanging),
 		c.stallingHangingTaskTimeout,
 	)
 
-	return time.Now().After(deadline) ||
-		c.taskState.InflightDuration > inflightDurationTimeout ||
-		c.taskState.StallingDuration > stallingDurationTimeout
+	return time.Since(c.taskState.CreatedAt) > c.hangingTaskTimeout ||
+		c.taskState.InflightDuration > inflightTimeout ||
+		c.taskState.StallingDuration > stallingTimeout
 }
 
-func (c *executionContext) SetInflightEstimate(estimatedDuration time.Duration) {
+func (c *executionContext) SetEstimatedInflightDuration(estimatedInflightDuration time.Duration) {
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 
 	if c.taskState.EstimatedInflightDuration == 0 {
-		c.taskState.EstimatedInflightDuration = estimatedDuration
+		c.taskState.EstimatedInflightDuration = estimatedInflightDuration
 	}
 }
 
