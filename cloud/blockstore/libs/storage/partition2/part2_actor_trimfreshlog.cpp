@@ -131,7 +131,8 @@ void TPartitionActor::HandleTrimFreshLog(
         ParseCommitId(State->GetLastCommitId()).first,
         nextPerGenerationCounter,
         std::move(freshChannels),
-        "");
+        "",
+        Config->GetTrimFreshLogTimeout());
 
     Actors.insert(actor);
 }
@@ -147,6 +148,11 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             "[" << TabletID() << "]"
                 << " TrimFreshLog failed: " << msg->GetStatus()
                 << " reason: " << msg->GetError().GetMessage().Quote());
+
+        if (msg->GetStatus() == E_TIMEOUT) {
+            Suicide(ctx);
+            return;
+        }
 
         State->RegisterTrimFreshLogError();
     } else {

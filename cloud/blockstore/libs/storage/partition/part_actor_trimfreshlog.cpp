@@ -140,7 +140,8 @@ void TPartitionActor::HandleTrimFreshLog(
         Executor()->Generation(),
         nextPerGenerationCounter,
         std::move(freshChannels),
-        PartitionConfig.GetDiskId());
+        PartitionConfig.GetDiskId(),
+        Config->GetTrimFreshLogTimeout());
 
     Actors.Insert(actor);
 }
@@ -159,6 +160,11 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             LogTitle.GetWithTime().c_str(),
             msg->GetStatus(),
             FormatError(msg->GetError()).c_str());
+
+        if (msg->GetStatus() == E_TIMEOUT) {
+            Suicide(ctx);
+            return;
+        }
 
         State->RegisterTrimFreshLogError();
     } else {
