@@ -29,6 +29,7 @@ def start(argv):
     parser.add_argument("--read-only", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--endpoint-count", action="store", default=1, type=int)
+    parser.add_argument("--vhost-queue-count", action="store", default=0, type=int)
     args = parser.parse_args(argv)
 
     port = os.getenv("NFS_SERVER_PORT")
@@ -78,7 +79,8 @@ def start(argv):
             os.getenv("NFS_VHOST_ENDPOINT_STORAGE_DIR", None),
             args.mount_seqno,
             args.read_only,
-            client_id=f"localhost@{i}")
+            client_id=f"localhost@{i}",
+            vhost_queue_count=args.vhost_queue_count)
 
         set_env(env_with_index("NFS_VHOST_SOCKET", i), socket)
 
