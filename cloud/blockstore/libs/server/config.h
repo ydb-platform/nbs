@@ -132,7 +132,6 @@ public:
     bool GetNbdNetlink() const;
     TDuration GetNbdRequestTimeout() const;
     TDuration GetNbdConnectionTimeout() const;
-    TString GetSocketPath() const;
     bool GetAllowAllRequestsViaUDS() const;
     bool GetEndpointStorageNotImplementedErrorIsFatal() const;
     TDuration GetVhostServerTimeoutAfterParentExit() const;
