@@ -413,6 +413,11 @@ void TServerStats::RequestCompleted(
         errorKind = EDiagnosticsErrorKind::ErrorSilent;
     }
 
+    if (errorKind != EDiagnosticsErrorKind::Success && req.CellRequest) {
+        // Hide inter-cell errors here to prevent them from showing in error metrics.
+        errorKind = EDiagnosticsErrorKind::Success;
+    }
+
     auto calcMaxTime = callContext.GetHasUncountableRejects()
                            ? ECalcMaxTime::DISABLE
                            : ECalcMaxTime::ENABLE;
