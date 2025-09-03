@@ -28,6 +28,9 @@ namespace NCloud::NBlockStore::NStorage {
 class TVolumeBalancerActor final
     : public NActors::TActorBootstrapped<TVolumeBalancerActor>
 {
+    using TEvConfigsDispatcher = NKikimr::NConsole::TEvConfigsDispatcher;
+    using TEvConsole = NKikimr::NConsole::TEvConsole;
+
 private:
     const TStorageConfigPtr StorageConfig;
     const IVolumeStatsPtr VolumeStats;
@@ -99,13 +102,11 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleConfigSubscriptionResponse(
-        const NKikimr::NConsole::TEvConfigsDispatcher::
-            TEvSetConfigSubscriptionResponse::TPtr& ev,
+        const TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleConfigNotificationRequest(
-        const NKikimr::NConsole::TEvConsole::TEvConfigNotificationRequest::TPtr&
-            ev,
+        const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

@@ -165,59 +165,6 @@ void TVolumeBalancerActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-void TVolumeBalancerActor::SendConfigSubscriptionRequest(
-    const TActorContext& ctx)
-{
-    auto req = std::make_unique<
-        NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest>();
-    auto blockstoreConfig =
-        static_cast<ui32>(NKikimrConsole::TConfigItem::BlockstoreConfigItem);
-    req->ConfigItemKinds = {
-        blockstoreConfig,
-    };
-    NCloud::Send(
-        ctx,
-        NConsole::MakeConfigsDispatcherID(ctx.SelfID.NodeId()),
-        std::move(req));
-}
-
-void TVolumeBalancerActor::HandleConfigSubscriptionResponse(
-    const NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse::
-        TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::VOLUME_BALANCER,
-        "Subscribed to config changes");
-}
-
-void TVolumeBalancerActor::HandleConfigNotificationRequest(
-    const NConsole::TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto& record = ev->Get()->Record;
-    auto response =
-        std::make_unique<NConsole::TEvConsole::TEvConfigNotificationResponse>(
-            record);
-    NCloud::Reply(ctx, *ev, std::move(response));
-
-    const auto& config = record.GetConfig();
-
-    if (!config.HasBlockstoreConfig() ||
-        !config.GetBlockstoreConfig().HasVolumeBalancerEnabled())
-    {
-        LOG_INFO(
-            ctx,
-            TBlockStoreComponents::VOLUME_BALANCER,
-            "VolumeBalancerEnabled is not present in ConfigDispatcher "
-            "notification");
-        return;
-    }
-    State->SetEnabled(config.GetBlockstoreConfig().GetVolumeBalancerEnabled());
-}
-
 void TVolumeBalancerActor::RegisterPages(const TActorContext& ctx)
 {
     auto mon = AppData(ctx)->Mon;
@@ -292,6 +239,22 @@ void TVolumeBalancerActor::SendVolumeToHive(
     PushCount->Add(1);
 
     State->SetVolumeInProgress(volume);
+}
+
+void TVolumeBalancerActor::SendConfigSubscriptionRequest(
+    const TActorContext& ctx)
+{
+    auto req = std::make_unique<
+        TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest>();
+    auto blockstoreConfig =
+        static_cast<ui32>(NKikimrConsole::TConfigItem::BlockstoreConfigItem);
+    req->ConfigItemKinds = {
+        blockstoreConfig,
+    };
+    NCloud::Send(
+        ctx,
+        NConsole::MakeConfigsDispatcherID(ctx.SelfID.NodeId()),
+        std::move(req));
 }
 
 void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
@@ -434,6 +397,41 @@ void TVolumeBalancerActor::HandleConfigureVolumeBalancerRequest(
     }
 }
 
+void TVolumeBalancerActor::HandleConfigSubscriptionResponse(
+    const TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME_BALANCER,
+        "Subscribed to config changes");
+}
+
+void TVolumeBalancerActor::HandleConfigNotificationRequest(
+    const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& record = ev->Get()->Record;
+    auto response =
+        std::make_unique<TEvConsole::TEvConfigNotificationResponse>(record);
+    NCloud::Reply(ctx, *ev, std::move(response));
+
+    const auto& config = record.GetConfig();
+
+    if (!config.HasBlockstoreConfig() ||
+        !config.GetBlockstoreConfig().HasVolumeBalancerEnabled())
+    {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME_BALANCER,
+            "VolumeBalancerEnabled is not present in ConfigDispatcher "
+            "notification");
+        return;
+    }
+    State->SetEnabled(config.GetBlockstoreConfig().GetVolumeBalancerEnabled());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TVolumeBalancerActor::StateWork)
@@ -447,8 +445,12 @@ STFUNC(TVolumeBalancerActor::StateWork)
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
-        HFunc(NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse, HandleConfigSubscriptionResponse);
-        HFunc(NConsole::TEvConsole::TEvConfigNotificationRequest, HandleConfigNotificationRequest);
+        HFunc(
+            TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse,
+            HandleConfigSubscriptionResponse);
+        HFunc(
+            TEvConsole::TEvConfigNotificationRequest,
+            HandleConfigNotificationRequest);
 
         default:
             HandleUnexpectedEvent(

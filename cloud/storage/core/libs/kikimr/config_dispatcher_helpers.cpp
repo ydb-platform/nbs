@@ -11,12 +11,12 @@ using namespace NKikimr::NConfig;
 static const TString tenantLabel = "tenant";
 static const TString nodeNameLabel = "node_type";
 
-auto GetLabels(
+TRegisterDynamicNodeOptions::TNodeLabels GetLabels(
     const NCloud::NProto::TConfigDispatcherSettings& settings,
     const TString& tenantName,
-    const TString& nodeType) -> TMap<TString, TString>
+    const TString& nodeType)
 {
-    TMap<TString, TString> result{
+    TRegisterDynamicNodeOptions::TNodeLabels result{
         {tenantLabel, tenantName},
         {nodeNameLabel, nodeType},
     };

@@ -136,16 +136,17 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     NKikimrConfig::TStaticNameserviceConfig& nsConfig)
 {
     auto configurator = kikimr.GetNodeConfigurator();
-    // version is YamlApiVersion, token is a rudimentary parameter
+    // Token is a rudimentary parameter
+    // Version is YamlApiVersion. Only version 1 can serve YAML
     auto configResult = configurator.SyncGetNodeConfig(
-        nodeId,
-        hostName,
-        options.SchemeShardDir,
-        options.Settings.NodeType,
-        options.Domain,
-        "",
-        true,
-        1);
+        /*nodeId=*/nodeId,
+        /*host=*/hostName,
+        /*tenant=*/options.SchemeShardDir,
+        /*nodeType=*/options.Settings.NodeType,
+        /*domain=*/options.Domain,
+        /*token=*/"",
+        /*serveYaml=*/true,
+        /*version=*/1);
 
     if (!configResult.IsSuccess()) {
         return MakeError(
