@@ -1,244 +1,244 @@
 TEST SUITE[chown, 00.t] 1..171
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-ok 11
-ok 12
-ok 13
-ok 14
-ok 15
-ok 16
-ok 17
-ok 18
-ok 19
-ok 20
-ok 21
-ok 22
-ok 23
-ok 24
-ok 25
-ok 26
-ok 27
-ok 28
-ok 29
-ok 30
-ok 31
-ok 32
-ok 33
-not ok 34
-not ok 35
-not ok 36
-not ok 37
-ok 38
-ok 39
-ok 40
-not ok 41
-ok 42
-ok 43
-ok 44
-ok 45
-ok 46
-ok 47
-ok 48
-ok 49
-ok 50
-ok 51
-ok 52
-ok 53
-ok 54
-ok 55
-ok 56
-ok 57
-ok 58
-ok 59
-ok 60
-ok 61
-ok 62
-ok 63
-ok 64
-ok 65
-ok 66
-ok 67
-not ok 68
-not ok 69
-ok 70
-ok 71
-not ok 72
-not ok 73
-ok 74
-ok 75
-not ok 76
-not ok 77
-ok 78
-ok 79
-ok 80
-ok 81
-ok 82
-not ok 83
-not ok 84
-ok 85
-ok 86
-not ok 87
-ok 88
-ok 89
-ok 90
-not ok 91
-ok 92
-ok 93
-ok 94
-ok 95
-ok 96
-ok 97
-ok 98
-ok 99
-ok 100
-ok 101
-ok 102
-ok 103
-ok 104
-ok 105
-ok 106
-ok 107
-ok 108
-ok 109
-ok 110
-ok 111
-ok 112
-ok 113
-ok 114
-ok 115
-not ok 116
-not ok 117
-not ok 118
-ok 119
-ok 120
-ok 121
-not ok 122
-not ok 123
-not ok 124
-ok 125
-ok 126
-ok 127
-ok 128
-not ok 129
-not ok 130
-ok 131
-ok 132
-ok 133
-ok 134
-not ok 135
-not ok 136
-not ok 137
-ok 138
-ok 139
-not ok 140
-ok 141
-ok 142
-ok 143
-not ok 144
-ok 145
-ok 146
-ok 147
-not ok 148
-ok 149
-ok 150
-ok 151
-not ok 152
-ok 153
-ok 154
-ok 155
-not ok 156
-ok 157
-ok 158
-ok 159
-not ok 160
-ok 161
-ok 162
-ok 163
-not ok 164
-ok 165
-ok 166
-ok 167
-not ok 168
-ok 169
-ok 170
-ok 171
+ok 1 (line: 19)
+ok 2 (line: 25)
+ok 3 (line: 26)
+ok 4 (line: 27)
+ok 5 (line: 28)
+ok 6 (line: 29)
+ok 7 (line: 30)
+ok 8 (line: 32)
+ok 9 (line: 33)
+ok 10 (line: 34)
+ok 11 (line: 35)
+ok 12 (line: 36)
+ok 13 (line: 37)
+ok 14 (line: 39)
+ok 15 (line: 40)
+ok 16 (line: 41)
+ok 17 (line: 42)
+ok 18 (line: 43)
+ok 19 (line: 44)
+ok 20 (line: 46)
+ok 21 (line: 47)
+ok 22 (line: 48)
+ok 23 (line: 49)
+ok 24 (line: 50)
+ok 25 (line: 51)
+ok 26 (line: 52)
+ok 27 (line: 53)
+ok 28 (line: 54)
+ok 29 (line: 55)
+ok 30 (line: 56)
+ok 31 (line: 61)
+ok 32 (line: 62)
+ok 33 (line: 63)
+not ok 34 (line: 64)
+not ok 35 (line: 65)
+not ok 36 (line: 66)
+not ok 37 (line: 67)
+ok 38 (line: 68)
+ok 39 (line: 73)
+ok 40 (line: 74)
+not ok 41 (line: 75)
+ok 42 (line: 76)
+ok 43 (line: 80)
+ok 44 (line: 81)
+ok 45 (line: 82)
+ok 46 (line: 83)
+ok 47 (line: 84)
+ok 48 (line: 87)
+ok 49 (line: 93)
+ok 50 (line: 95)
+ok 51 (line: 96)
+ok 52 (line: 97)
+ok 53 (line: 98)
+ok 54 (line: 99)
+ok 55 (line: 102)
+ok 56 (line: 109)
+ok 57 (line: 111)
+ok 58 (line: 112)
+ok 59 (line: 113)
+ok 60 (line: 114)
+ok 61 (line: 115)
+ok 62 (line: 118)
+ok 63 (line: 124)
+ok 64 (line: 129)
+ok 65 (line: 130)
+ok 66 (line: 131)
+ok 67 (line: 132)
+not ok 68 (line: 133)
+not ok 69 (line: 134)
+ok 70 (line: 135)
+ok 71 (line: 136)
+not ok 72 (line: 137)
+not ok 73 (line: 138)
+ok 74 (line: 139)
+ok 75 (line: 140)
+not ok 76 (line: 141)
+not ok 77 (line: 144)
+ok 78 (line: 151)
+ok 79 (line: 153)
+ok 80 (line: 154)
+ok 81 (line: 155)
+ok 82 (line: 156)
+not ok 83 (line: 157)
+not ok 84 (line: 160)
+ok 85 (line: 166)
+ok 86 (line: 167)
+not ok 87 (line: 168)
+ok 88 (line: 171)
+ok 89 (line: 177)
+ok 90 (line: 178)
+not ok 91 (line: 179)
+ok 92 (line: 180)
+ok 93 (line: 181)
+ok 94 (line: 203)
+ok 95 (line: 206)
+ok 96 (line: 207)
+ok 97 (line: 209)
+ok 98 (line: 210)
+ok 99 (line: 212)
+ok 100 (line: 215)
+ok 101 (line: 216)
+ok 102 (line: 218)
+ok 103 (line: 219)
+ok 104 (line: 221)
+ok 105 (line: 224)
+ok 106 (line: 225)
+ok 107 (line: 227)
+ok 108 (line: 228)
+ok 109 (line: 230)
+ok 110 (line: 233)
+ok 111 (line: 234)
+ok 112 (line: 236)
+ok 113 (line: 237)
+ok 114 (line: 239)
+ok 115 (line: 240)
+not ok 116 (line: 243)
+not ok 117 (line: 244)
+not ok 118 (line: 246)
+ok 119 (line: 247)
+ok 120 (line: 249)
+ok 121 (line: 250)
+not ok 122 (line: 254)
+not ok 123 (line: 255)
+not ok 124 (line: 258)
+ok 125 (line: 259)
+ok 126 (line: 261)
+ok 127 (line: 262)
+ok 128 (line: 265)
+not ok 129 (line: 266)
+not ok 130 (line: 267)
+ok 131 (line: 269)
+ok 132 (line: 270)
+ok 133 (line: 272)
+ok 134 (line: 273)
+not ok 135 (line: 276)
+not ok 136 (line: 277)
+not ok 137 (line: 279)
+ok 138 (line: 280)
+ok 139 (line: 282)
+not ok 140 (line: 285)
+ok 141 (line: 292)
+ok 142 (line: 295)
+ok 143 (line: 297)
+not ok 144 (line: 300)
+ok 145 (line: 307)
+ok 146 (line: 310)
+ok 147 (line: 312)
+not ok 148 (line: 315)
+ok 149 (line: 322)
+ok 150 (line: 325)
+ok 151 (line: 327)
+not ok 152 (line: 330)
+ok 153 (line: 337)
+ok 154 (line: 340)
+ok 155 (line: 344)
+not ok 156 (line: 347)
+ok 157 (line: 349)
+ok 158 (line: 350)
+ok 159 (line: 352)
+not ok 160 (line: 355)
+ok 161 (line: 357)
+ok 162 (line: 358)
+ok 163 (line: 360)
+not ok 164 (line: 363)
+ok 165 (line: 365)
+ok 166 (line: 366)
+ok 167 (line: 368)
+not ok 168 (line: 371)
+ok 169 (line: 373)
+ok 170 (line: 374)
+ok 171 (line: 378)
 TEST SUITE[chown, 01.t] 1..5
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 18)
 TEST SUITE[chown, 02.t] 1..5
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
+ok 1 (line: 11)
+ok 2 (line: 12)
+ok 3 (line: 13)
+ok 4 (line: 14)
+ok 5 (line: 15)
 TEST SUITE[chown, 03.t] 1..12
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-ok 11
-ok 12
+ok 1 (line: 11)
+ok 2 (line: 12)
+ok 3 (line: 13)
+ok 4 (line: 14)
+ok 5 (line: 15)
+ok 6 (line: 16)
+ok 7 (line: 17)
+ok 8 (line: 19)
+ok 9 (line: 21)
+ok 10 (line: 22)
+ok 11 (line: 23)
+ok 12 (line: 24)
 TEST SUITE[chown, 04.t] 1..4
-ok 1
-ok 2
-ok 3
-ok 4
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
 TEST SUITE[chown, 05.t] 1..15
-ok 1
-ok 2
-ok 3
-not ok 4
-not ok 5
-not ok 6
-ok 7
-not ok 8
-ok 9
-not ok 10
-not ok 11
-not ok 12
-not ok 13
-ok 14
-ok 15
+ok 1 (line: 15)
+ok 2 (line: 18)
+ok 3 (line: 19)
+not ok 4 (line: 20)
+not ok 5 (line: 21)
+not ok 6 (line: 22)
+ok 7 (line: 23)
+not ok 8 (line: 24)
+ok 9 (line: 25)
+not ok 10 (line: 26)
+not ok 11 (line: 27)
+not ok 12 (line: 28)
+not ok 13 (line: 29)
+ok 14 (line: 30)
+ok 15 (line: 32)
 TEST SUITE[chown, 06.t] 1..6
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 18)
+ok 6 (line: 19)
 TEST SUITE[chown, 07.t] 1..11
-ok 1
-ok 2
-ok 3
-not ok 4
-not ok 5
-not ok 6
-not ok 7
-not ok 8
-not ok 9
-ok 10
-ok 11
+ok 1 (line: 15)
+ok 2 (line: 18)
+ok 3 (line: 19)
+not ok 4 (line: 20)
+not ok 5 (line: 21)
+not ok 6 (line: 22)
+not ok 7 (line: 23)
+not ok 8 (line: 24)
+not ok 9 (line: 25)
+ok 10 (line: 26)
+ok 11 (line: 28)
 TEST SUITE[chown, 08.t] 1..1
 ok 1
 TEST SUITE[chown, 09.t] 1..1
 ok 1
 TEST SUITE[chown, 10.t] 1..2
-ok 1
-ok 2
+ok 1 (line: 11)
+ok 2 (line: 12)

@@ -2383,6 +2383,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
         UNIT_ASSERT_VALUES_EQUAL(8, evGets);
         UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
+
+        auto counters = env.GetCounters()
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("cloud", "test_cloud")
+                            ->FindSubgroup("folder", "test_folder")
+                            ->FindSubgroup("request", "ReadBlob");
+        UNIT_ASSERT(counters);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldReassignTablet)
@@ -2893,6 +2904,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(3, runtime.GetCounter(TEvService::EvWriteDataResponse));
         UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
         // clang-format on
+
+
+        auto counters = env.GetCounters()
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("cloud", "test_cloud")
+                            ->FindSubgroup("folder", "test_folder")
+                            ->FindSubgroup("request", "WriteBlob");
+        UNIT_ASSERT(counters);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldThrottleMulipleStageReadsAndWrites)
@@ -3620,20 +3643,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 InvalidHandle,
                 256_KB - 1,
                 data.size());
-            UNIT_ASSERT_VALUES_EQUAL(data, response->Record.GetBuffer());
+
+            const auto& buffer = response->Record.GetBuffer();
+            const auto& offset = response->Record.GetBufferOffset();
+            UNIT_ASSERT_VALUES_EQUAL(
+                data.size() + DefaultBlockSize - 1,
+                buffer.size());
+            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize - 1, offset);
+            UNIT_ASSERT_VALUES_EQUAL(
+                data,
+                TString(buffer.data() + offset, data.size()));
         }
         {
             // Small unaligned data
             auto data = GenerateValidateData(123, 2);
-            service.WriteData(headers, fs, nodeId, InvalidHandle, 77, data);
+            auto dataOffset = 77;
+            service.WriteData(headers, fs, nodeId, InvalidHandle, dataOffset, data);
             auto response = service.ReadData(
                 headers,
                 fs,
                 nodeId,
                 InvalidHandle,
-                77,
+                dataOffset,
                 data.size());
-            UNIT_ASSERT_VALUES_EQUAL(data, response->Record.GetBuffer());
+            const auto& buffer = response->Record.GetBuffer();
+            const auto& offset = response->Record.GetBufferOffset();
+            UNIT_ASSERT_VALUES_EQUAL(data.size() + dataOffset, buffer.size());
+            UNIT_ASSERT_VALUES_EQUAL(dataOffset, offset);
+            UNIT_ASSERT_EQUAL(
+                data,
+                TString(buffer.data() + offset, data.size()));
         }
         {
             // Multiple blobs
@@ -3678,6 +3717,48 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     readResponse->GetErrorReason());
             }
         }
+    }
+
+    Y_UNIT_TEST(TestReadWithZeroIntervals)
+    {
+        NProto::TStorageConfig config;
+        config.SetTwoStageReadEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        const auto& data1 = TString(1_KB, 'a');
+        service.WriteData(headers, fs, nodeId, handle, 1_KB, data1);
+        const auto& data2 = TString(1_KB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 3_KB, data2);
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, 4_KB);
+        const auto& buffer = readDataResult->Record.GetBuffer();
+        const auto& zeroBuffer = TString(1_KB, '\0');
+        UNIT_ASSERT_VALUES_EQUAL(zeroBuffer, buffer.substr(0, 1_KB));
+        UNIT_ASSERT_VALUES_EQUAL(data1, buffer.substr(1_KB, 1_KB));
+        UNIT_ASSERT_VALUES_EQUAL(zeroBuffer, buffer.substr(2_KB, 1_KB));
+        UNIT_ASSERT_VALUES_EQUAL(data2, buffer.substr(3_KB, 1_KB));
     }
 }
 

@@ -50,6 +50,49 @@ message TServiceExecutor {
 }
 
 message TActorSystemConfig {
+    enum ENodeType {
+        STORAGE = 1;
+        COMPUTE = 2;
+        HYBRID = 3;
+    }
+
+    enum EActorSystemProfile {
+        DEFAULT = 1;
+        LOW_CPU_CONSUMPTION = 2;
+        LOW_LATENCY = 3;
+    }
+
+    message TExecutor {
+        enum EType {
+            BASIC = 1;
+            IO = 2;
+        };
+
+        optional EType Type = 1;
+        optional uint32 Threads = 2;
+        optional uint64 SpinThreshold = 3;
+        optional TAffinity Affinity = 4;
+        optional uint32 InjectMadSquirrels = 5;
+        optional string Name = 6;
+        optional uint32 TimePerMailboxMicroSecs = 7;
+        optional uint32 EventsPerMailbox = 8;
+        optional uint32 RealtimePriority = 9;
+
+        // Actorsystem 1.4
+        optional uint32 MinThreads = 12; // Lower balancing bound, should be at least 1, and not greater than `Threads`
+        optional uint32 MaxThreads = 13; // Higher balancing bound, should be not lower than `Threads`
+        optional int32 Priority = 16;
+        optional int32 MaxAvgPingDeviation = 17;
+    }
+
+    message TScheduler {
+        optional uint64 Resolution = 1;
+        optional uint64 SpinThreshold = 2;
+        optional uint64 ProgressThreshold = 3;
+        optional TAffinity Affinity = 4;
+        optional bool UseSchedulerActor = 5;
+    }
+
     repeated TExecutor Executor = 1;
     optional TScheduler Scheduler = 2;
 
@@ -58,5 +101,22 @@ message TActorSystemConfig {
     optional uint32 IoExecutor = 5;
     optional uint32 BatchExecutor = 6;
 
+    message TServiceExecutor {
+        required string ServiceName = 1;
+        required uint32 ExecutorId = 2;
+    }
+
     repeated TServiceExecutor ServiceExecutor = 7;
+    optional uint32 TimePerMailboxMicroSecs = 8;
+    optional uint32 EventsPerMailbox = 9;
+    optional uint32 SelfPingInterval = 10; // in microseconds
+
+    optional bool UseAutoConfig = 12;
+
+    // Used only with UseAutoConfig;
+    optional uint32 CpuCount = 13;
+    optional ENodeType NodeType = 14 [default = COMPUTE];
+
+    optional bool MonitorStuckActors = 15;
+    optional EActorSystemProfile ActorSystemProfile = 16;
 }

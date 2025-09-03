@@ -54,6 +54,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
     xxx(GetAgentNodeId,                     __VA_ARGS__)                       \
     xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
+    xxx(GetClusterCapacity,                 __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO
 
 // requests forwarded from service to disk_registry
@@ -67,6 +68,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(QueryAvailableStorage,          __VA_ARGS__)                           \
     xxx(ResumeDevice,                   __VA_ARGS__)                           \
     xxx(QueryAgentsInfo,                __VA_ARGS__)                           \
+    xxx(ListDisksStates,                __VA_ARGS__)                           \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE
 
 #define BLOCKSTORE_DISK_REGISTRY_REQUESTS(xxx, ...)                            \
@@ -214,6 +216,9 @@ struct TEvDiskRegistry
 
         EvAddOutdatedLaggingDevicesRequest = EvBegin + 77,
         EvAddOutdatedLaggingDevicesResponse = EvBegin + 78,
+
+        EvGetClusterCapacityRequest = EvBegin + 79,
+        EvGetClusterCapacityResponse = EvBegin + 80,
 
         EvEnd
     };

@@ -477,6 +477,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ReassignRequestRetryTimeout,               TDuration, Seconds(5)      )\
     xxx(ReassignChannelsPercentageThreshold,       ui32,      10              )\
     xxx(ReassignMixedChannelsPercentageThreshold,  ui32,      100             )\
+    xxx(ReassignSystemChannelsImmediately,         bool,      false           )\
+    xxx(ReassignFreshChannelsPercentageThreshold,  ui32,      100             )\
                                                                                \
     xxx(MixedIndexCacheV1Enabled,                  bool,      false           )\
     xxx(MixedIndexCacheV1SizeSSD,                  ui32,      32 * 1024       )\
@@ -492,6 +494,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(HiveProxyFallbackMode,                     bool,      false           )\
     xxx(SSProxyFallbackMode,                       bool,      false           )\
+    xxx(UseSchemeCache,                            bool,      false           )\
     xxx(DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode, bool, false )\
                                                                                \
     xxx(RdmaTargetPort,                            ui32,      10020           )\
@@ -614,6 +617,17 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(PartitionBootTimeout,                 TDuration,   Seconds(0)         )\
     xxx(DirectWriteBandwidthQuota,            ui64,        0                  )\
+    xxx(UsePullSchemeForVolumeStatistics,                  bool,   false      )\
+    xxx(InitialRetryDelayForServiceRequests,  TDuration,   MSeconds(500)      )\
+    xxx(MaxRetryDelayForServiceRequests,      TDuration,   Seconds(30)        )\
+    xxx(VolumeThrottlingManagerEnabled,             bool,        false        )\
+    xxx(VolumeThrottlingManagerNotificationPeriodSeconds,                      \
+        TDuration,                                                             \
+        Seconds(5)                                                            )\
+    xxx(RetryAcquireReleaseDiskInitialDelay,  TDuration,   MSeconds(100)      )\
+    xxx(RetryAcquireReleaseDiskMaxDelay,      TDuration,   Seconds(5)         )\
+                                                                               \
+    xxx(NonReplicatedVolumeAcquireDiskAfterAddClientEnabled, bool,   false    )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

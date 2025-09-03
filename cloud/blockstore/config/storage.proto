@@ -1278,4 +1278,41 @@ message TStorageServiceConfig
     // Min percentage of reassignable mixed channels after which reassign requests
     // are sent.
     optional uint32 ReassignMixedChannelsPercentageThreshold = 442;
+
+    // If true, describes will be done using SchemeCache instead of TxProxy.
+    optional bool UseSchemeCache = 443;
+
+    // The volume pulls statistics from the partitions,
+    // instead of the partitions pushing statistics to the volume themselves.
+    optional bool UsePullSchemeForVolumeStatistics  = 444;
+
+    // Initial retry delay for scheduling next resync and migration
+    // ranges (in milliseconds).
+    optional uint32 InitialRetryDelayForServiceRequests = 445;
+
+    // Max retry delay for scheduling next resync and migration
+    // ranges (in milliseconds).
+    optional uint32 MaxRetryDelayForServiceRequests = 446;
+
+    optional bool VolumeThrottlingManagerEnabled = 447;
+    // Duration between VolumeThrottlingManager notifications to volumes
+    optional uint32 VolumeThrottlingManagerNotificationPeriodSeconds = 448;
+
+    // Initial delay to retry acquire request (in milliseconds).
+    optional uint32 RetryAcquireReleaseDiskInitialDelay = 449;
+
+    // Max delay to retry acquire request (in milliseconds).
+    optional uint32 RetryAcquireReleaseDiskMaxDelay = 450;
+
+    // Do AddClient/RemoveClient transaction
+    // and then do right Acquire/Release devices requests.
+    optional bool NonReplicatedVolumeAcquireDiskAfterAddClientEnabled = 451;
+
+    // If true then reassign requests will be sent immediately when received
+    // YellowMove flag from BlobStorage.
+    optional bool ReassignSystemChannelsImmediately = 452;
+
+    // Min percentage of reassignable fresh channels after which reassign requests
+    // are sent.
+    optional uint32 ReassignFreshChannelsPercentageThreshold = 453;
 }

@@ -263,9 +263,69 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
+      - name: Decide whether to remove VM
+        id: decider
+        uses: actions/github-script@v7
+        env:
+          ANY_CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
+          REMOVE_CANCELLED_VMS: ${{ vars.NEBIUS_REMOVE_CANCELLED_VMS }}
+          AUTO_CANCEL_EVENTS: ${{ vars.AUTO_CANCEL_EVENTS || 'pull_request,pull_request_target' }}
+        with:
+          script: |
+            const anyCancelled = (process.env.ANY_CANCELLED || '') === 'true';
+            const flag = (process.env.REMOVE_CANCELLED_VMS || '').trim().toLowerCase();
+            if (!anyCancelled) {
+              core.info('Not cancelled → remove VM.');
+              return true;
+            }
+
+            const { owner, repo } = context.repo;
+            const myRun = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: context.runId })).data;
+
+            const workflowId = myRun.workflow_id;
+            const event = myRun.event; // e.g. 'pull_request', 'push', 'workflow_dispatch', 'schedule'
+            const branch = myRun.head_branch || undefined; // may be undefined for e.g. 'schedule'
+            const myRunNumber = myRun.run_number;
+            const myUpdatedAt = new Date(myRun.updated_at).getTime();
+
+            // Only events we consider as capable of auto-cancelling (tunable)
+            const permitted = new Set((process.env.AUTO_CANCEL_EVENTS || '').split(',').map(s => s.trim()).filter(Boolean));
+            const eventEligible = permitted.has(event);
+
+            // List recent runs for the same workflow (+ same branch if present)
+            const listParams = { owner, repo, workflow_id: workflowId, per_page: 50 };
+            if (branch) listParams.branch = branch;
+            const { data } = await github.rest.actions.listWorkflowRuns(listParams);
+
+            // Heuristic: a newer run of same workflow+event(+branch) that started before we finished ⇒ likely concurrency auto-cancel
+            const newerAuto = data.workflow_runs.some(r => {
+              if (r.run_number <= myRunNumber) return false;
+              if (r.event !== event) return false;
+              // time sanity: created/started no later than when our run completed
+              const started = new Date(r.run_started_at || r.created_at || r.updated_at).getTime();
+              return started <= myUpdatedAt;
+            });
+
+            core.info(`anyCancelled=${anyCancelled} flag=${flag}`);
+            core.info(`workflow_id=${workflowId} event=${event} branch=${branch ?? '∅'} myRunNumber=${myRunNumber}`);
+            core.info(`eventEligible=${eventEligible} newer_auto=${newerAuto}`);
+
+            if (eventEligible && newerAuto) {
+              core.info('Detected auto-cancel (newer overlapping run of same event/workflow[/branch]) → remove VM.');
+              return true;
+            }
+
+            // Manual cancel path
+            if (flag === 'yes') {
+              core.info("Manual cancel + REMOVE_CANCELLED_VMS=='yes' → remove VM.");
+              return true;
+            } else {
+              core.info("Manual cancel + REMOVE_CANCELLED_VMS!='yes' → keep VM.");
+              return false;
+            }
       - name: Stop runner
         uses: ./.github/actions/nebius_runner_remove
-        if: always()
+        if: ${{ steps.decider.outputs.result == 'true' }}
         timeout-minutes: 60
         with:
           service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}

@@ -1144,12 +1144,13 @@ public:
         Join();
     }
 
-    NVerbs::TConnectionPtr CreateConnection()
+    NVerbs::TConnectionPtr CreateConnection(ui8 tos)
     {
         return Verbs->CreateConnection(
             EventChannel.get(),
-            nullptr,    // context
-            RDMA_PS_TCP);
+            nullptr,   // context
+            RDMA_PS_TCP,
+            tos);
     }
 
 private:
@@ -1542,7 +1543,7 @@ IServerEndpointPtr TServer::StartEndpoint(
     try {
         auto endpoint = std::make_shared<TServerEndpoint>(
             Verbs,
-            ConnectionPoller->CreateConnection(),
+            ConnectionPoller->CreateConnection(Config->IpTypeOfService),
             std::move(host),
             port,
             std::move(handler));

@@ -37,7 +37,8 @@ public:
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part,
         bool assignVolumeRequestId,
-        bool replyLocal);
+        bool replyLocal,
+        TChildLogTitle logTitle);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -65,7 +66,8 @@ TDiskAgentWriteActor::TDiskAgentWriteActor(
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part,
         bool assignVolumeRequestId,
-        bool replyLocal)
+        bool replyLocal,
+        TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -73,7 +75,8 @@ TDiskAgentWriteActor::TDiskAgentWriteActor(
           std::move(timeoutPolicy),
           std::move(deviceRequests),
           std::move(partConfig),
-          part)
+          part,
+          std::move(logTitle))
     , AssignVolumeRequestId(assignVolumeRequestId)
     , ReplyLocal(replyLocal)
     , Request(std::move(request))
@@ -143,12 +146,13 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksUndelivery(
     const TActorContext& ctx)
 {
     const auto& device = DeviceRequests[ev->Cookie].Device;
-    LOG_WARN_S(
+    LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "WriteBlocks request #"
-            << GetRequestId(Request) << " undelivered. Disk id: "
-            << PartConfig->GetName() << " Device: " << LogDevice(device));
+        "%s WriteBlocks request #%lu undelivered. Device: %s",
+        LogTitle.GetWithTime().c_str(),
+        GetRequestId(Request),
+        LogDevice(device).c_str());
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -270,7 +274,8 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         PartConfig,
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
-        false);   // replyLocal
+        false,   // replyLocal
+        LogTitle.GetChild(GetCycleCount()));
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }
@@ -346,7 +351,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
     if (guard.Get().empty()) {
         // can happen only if there is a bug in the code of the layers above
         // this one
-        ReportEmptyRequestSgList();
+        ReportEmptyRequestSgList({{"disk", msg->Record.GetDiskId()}});
         replyError(
             ctx,
             *requestInfo,
@@ -382,7 +387,8 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         PartConfig,
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
-        true);   // replyLocal
+        true,   // replyLocal
+        LogTitle.GetChild(GetCycleCount()));
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }
@@ -393,8 +399,11 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete write blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete write blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 

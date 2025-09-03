@@ -25,7 +25,10 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         UNIT_ASSERT_VALUES_EQUAL("value1", hashMap.find("key1")->second);
         UNIT_ASSERT_VALUES_EQUAL("value2", hashMap.find("key2")->second);
 
-        hashMap.emplace("key3", "value3");   // Should evict "key1"
+        auto [_, inserted, evicted] =
+            hashMap.emplace("key3", "value3");   // Should evict "key1"
+        UNIT_ASSERT_VALUES_EQUAL(true, inserted);
+        UNIT_ASSERT(evicted.has_value());
 
         UNIT_ASSERT_VALUES_EQUAL(2, hashMap.size());
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key1"));
@@ -100,8 +103,9 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         hashMap.SetMaxSize(0);
 
         // Test capacity 0
-        auto [it, inserted1] = hashMap.emplace("key1", "value1");
+        auto [it, inserted1, evicted] = hashMap.emplace("key1", "value1");
         UNIT_ASSERT_VALUES_EQUAL(false, inserted1);
+        UNIT_ASSERT(!evicted.has_value());
         UNIT_ASSERT_EQUAL(hashMap.end(), it);
         UNIT_ASSERT_VALUES_EQUAL(0, hashMap.size());
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key1"));
@@ -112,10 +116,12 @@ Y_UNIT_TEST_SUITE(TLRUCache)
 
         // Test inserting duplicate keys - emplace should not overwrite the
         // value
-        auto [it1, inserted2] = hashMap.emplace("key1", "value1");
+        auto [it1, inserted2, evicted2] = hashMap.emplace("key1", "value1");
         UNIT_ASSERT_VALUES_EQUAL(true, inserted2);
-        auto [it2, inserted3] = hashMap.emplace("key1", "value2");
+        UNIT_ASSERT(!evicted2.has_value());
+        auto [it2, inserted3, evicted3] = hashMap.emplace("key1", "value2");
         UNIT_ASSERT_VALUES_EQUAL(false, inserted3);
+        UNIT_ASSERT(!evicted3.has_value());
 
         UNIT_ASSERT_VALUES_EQUAL(1, hashMap.size());
         UNIT_ASSERT_VALUES_EQUAL("value1", hashMap.find("key1")->second);
@@ -128,7 +134,9 @@ Y_UNIT_TEST_SUITE(TLRUCache)
         hashMap.emplace("key3", "value3");
         hashMap.find("key1");
         // Now the order is key1, key3, key2
-        hashMap.SetMaxSize(2);
+        auto evicted4 = hashMap.SetMaxSize(2);
+        UNIT_ASSERT_VALUES_EQUAL(1, evicted4.size());
+        UNIT_ASSERT_VALUES_EQUAL("key2", evicted4[0]);
         // Should evict key2
         UNIT_ASSERT_EQUAL(hashMap.end(), hashMap.find("key2"));
         UNIT_ASSERT_VALUES_EQUAL("value1", hashMap.find("key1")->second);

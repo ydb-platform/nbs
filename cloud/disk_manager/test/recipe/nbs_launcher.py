@@ -4,6 +4,7 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.discovery_pb2 import TDiscoveryServiceConfig
 from cloud.blockstore.config.grpc_client_pb2 import TGrpcClientConfig
+from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
@@ -108,7 +109,7 @@ class NbsLauncher:
         setup_nonreplicated(
             ydb_client,
             self.__devices_per_agent,
-            dedicated_disk_agent=True,
+            disk_agent_config_patch=TDiskAgentConfig(DedicatedDiskAgent=True),
             agent_count=self.__disk_agent_count)
 
         instance_list_file = os.path.join(yatest_common.output_path(),

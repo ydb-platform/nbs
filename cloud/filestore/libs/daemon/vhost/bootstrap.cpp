@@ -407,7 +407,19 @@ void TBootstrapVhost::InitEndpoints()
                 Configs->VhostServiceConfig->GetWriteBackCacheCapacity(),
             .AutomaticFlushPeriod =
                 Configs->VhostServiceConfig
-                    ->GetWriteBackCacheAutomaticFlushPeriod()
+                    ->GetWriteBackCacheAutomaticFlushPeriod(),
+            .FlushRetryPeriod =
+                Configs->VhostServiceConfig
+                    ->GetWriteBackCacheFlushRetryPeriod(),
+            .FlushMaxWriteRequestSize =
+                Configs->VhostServiceConfig
+                    ->GetWriteBackCacheFlushMaxWriteRequestSize(),
+            .FlushMaxWriteRequestsCount =
+                Configs->VhostServiceConfig
+                    ->GetWriteBackCacheFlushMaxWriteRequestsCount(),
+            .FlushMaxSumWriteRequestsSize =
+                Configs->VhostServiceConfig
+                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
         }
     );
 

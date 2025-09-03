@@ -80,6 +80,36 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         Y_UNUSED(clientEndpoint);
     }
 
+    Y_UNIT_TEST(ShouldStartEndpointWithToS)
+    {
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        auto verbs =
+            NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->IpTypeOfService = 42;
+        UNIT_ASSERT_VALUES_UNEQUAL(42, testContext->ToS);
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateClient(
+            verbs,
+            logging,
+            monitoring,
+            clientConfig);
+
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        auto clientEndpoint = client->StartEndpoint("::", 10020);
+        Y_UNUSED(clientEndpoint);
+        UNIT_ASSERT_VALUES_EQUAL(42, testContext->ToS);
+    }
+
     Y_UNIT_TEST(ShouldDetachFromPoller)
     {
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();

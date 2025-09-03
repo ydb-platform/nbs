@@ -1407,6 +1407,44 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             counters->GetCounter("AppCriticalEvents/NodeNotFoundInShard");
         UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
 
+        auto& runtime = env.GetRuntime();
+        // However, ListNodes should not report a critical event in case of
+        // a retriable error from the leader
+        {
+            runtime.SetEventFilter(
+                [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+                {
+                    switch (event->GetTypeRewrite()) {
+                        case TEvService::EvGetNodeAttrResponse: {
+                            auto* msg =
+                                event
+                                    ->Get<TEvService::TEvGetNodeAttrResponse>();
+                            if (msg->Record.GetError().GetCode() == E_FS_NOENT)
+                            {
+                                msg->Record.MutableError()->CopyFrom(
+                                    MakeError(E_REJECTED, "error"));
+                            }
+                            break;
+                        }
+                    }
+
+                    return false;
+                });
+
+            auto response = service.SendAndRecvListNodes(
+                headers,
+                fsConfig.FsId,
+                RootNodeId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
+
+            runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        }
+
         // "breaking" all nodes - ListNodes should fail with E_IO after this
         service.UnlinkNode(headers1, RootNodeId, shard1NodeName2);
         service.UnlinkNode(headers2, RootNodeId, shard2NodeName1);

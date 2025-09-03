@@ -1,5 +1,6 @@
 #pragma once
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/metrics/metric_registry.h>
 
 namespace NCloud::NStorage::NUserStats {
@@ -52,4 +53,37 @@ public:
 std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplier();
 std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplierStub();
 
-}   // NCloud::NStorage::NUserStats
+////////////////////////////////////////////////////////////////////////////////
+
+struct TBucket
+{
+    NMonitoring::TBucketBound Bound;
+    TString Name;
+};
+
+static constexpr size_t BUCKETS_COUNT = 25;
+
+using TBuckets = std::array<TBucket, BUCKETS_COUNT>;
+using TBucketsWithUnits = std::pair<TBuckets, TString>;
+
+TBucketsWithUnits GetUsBuckets();
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TBaseDynamicCounters =
+    std::pair<NMonitoring::TDynamicCounterPtr, TString>;
+
+void AddUserMetric(
+    IUserCounterSupplier& dsc,
+    const NMonitoring::TLabels& commonLabels,
+    const TVector<TBaseDynamicCounters>& baseCounters,
+    TStringBuf newName);
+
+void AddHistogramUserMetric(
+    const TBucketsWithUnits& buckets,
+    IUserCounterSupplier& dsc,
+    const NMonitoring::TLabels& commonLabels,
+    const TVector<TBaseDynamicCounters>& baseCounters,
+    TStringBuf newName);
+
+}   // namespace NCloud::NStorage::NUserStats

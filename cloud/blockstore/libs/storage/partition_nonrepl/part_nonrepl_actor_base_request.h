@@ -25,6 +25,7 @@ protected:
     const TVector<TDeviceRequest> DeviceRequests;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId Part;
+    TChildLogTitle LogTitle;
 
 private:
     const TString RequestName;
@@ -41,7 +42,8 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
-        const NActors::TActorId& part);
+        const NActors::TActorId& part,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

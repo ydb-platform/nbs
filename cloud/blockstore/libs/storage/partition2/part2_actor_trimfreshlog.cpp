@@ -130,7 +130,8 @@ void TPartitionActor::HandleTrimFreshLog(
         trimFreshLogToCommitId,
         ParseCommitId(State->GetLastCommitId()).first,
         nextPerGenerationCounter,
-        std::move(freshChannels));
+        std::move(freshChannels),
+        "");
 
     Actors.insert(actor);
 }

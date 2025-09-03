@@ -1395,6 +1395,57 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             FormatError(response->GetError()));
     }
 
+    Y_UNIT_TEST(ShouldHandleLostDevice)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime, {
+            .IOMode = NProto::VOLUME_IO_ERROR_READ_ONLY,
+            .MuteIOErrors = true
+        });
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvReadDeviceBlocksResponse)
+                {
+                    auto response = std::make_unique<
+                        TEvDiskAgent::TEvReadDeviceBlocksResponse>(
+                        MakeError(E_NOT_FOUND, "Device \"uuid\" not found"));
+
+                    std::unique_ptr<IEventHandle> handle{new IEventHandle(
+                        event->Recipient,
+                        event->Sender,
+                        response.release(),
+                        0,
+                        event->Cookie)};
+                    event.Reset(handle.release());
+                }
+
+                return false;
+            });
+
+        client.SendReadBlocksRequest(
+            TBlockRange64::MakeClosedInterval(0, 1024));
+
+        auto response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_IO_SILENT,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+        UNIT_ASSERT_C(
+            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT),
+            FormatError(response->GetError()));
+        UNIT_ASSERT_C(
+            HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_HW_PROBLEMS_DETECTED),
+            FormatError(response->GetError()));
+    }
+
     Y_UNIT_TEST(ShouldSendStatsToVolume)
     {
         TTestBasicRuntime runtime;

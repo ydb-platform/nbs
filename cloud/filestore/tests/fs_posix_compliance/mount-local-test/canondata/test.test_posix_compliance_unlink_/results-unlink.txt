@@ -1,161 +1,161 @@
 TEST SUITE[unlink, 00.t] 1..55
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-not ok 11
-ok 12
-ok 13
-ok 14
-ok 15
-ok 16
-ok 17
-ok 18
-ok 19
-ok 20
-ok 21
-ok 22
-ok 23
-ok 24
-not ok 25
-ok 26
-ok 27
-ok 28
-not ok 29
-ok 30
-ok 31
-ok 32
-ok 33
-ok 34
-ok 35
-ok 36
-ok 37
-ok 38
-ok 39
-ok 40
-ok 41
-ok 42
-ok 43
-ok 44
-ok 45
-ok 46
-ok 47
-ok 48
-ok 49
-ok 50
-ok 51
-ok 52
-ok 53
-ok 54
-ok 55
+ok 1 (line: 15)
+ok 2 (line: 19)
+ok 3 (line: 20)
+ok 4 (line: 21)
+ok 5 (line: 22)
+ok 6 (line: 24)
+ok 7 (line: 25)
+ok 8 (line: 26)
+ok 9 (line: 27)
+ok 10 (line: 29)
+not ok 11 (line: 30)
+ok 12 (line: 31)
+ok 13 (line: 32)
+ok 14 (line: 37)
+ok 15 (line: 38)
+ok 16 (line: 41)
+ok 17 (line: 43)
+ok 18 (line: 44)
+ok 19 (line: 46)
+ok 20 (line: 47)
+ok 21 (line: 50)
+ok 22 (line: 52)
+ok 23 (line: 53)
+ok 24 (line: 56)
+not ok 25 (line: 59)
+ok 26 (line: 61)
+ok 27 (line: 62)
+ok 28 (line: 64)
+not ok 29 (line: 67)
+ok 30 (line: 69)
+ok 31 (line: 70)
+ok 32 (line: 72)
+ok 33 (line: 73)
+ok 34 (line: 76)
+ok 35 (line: 78)
+ok 36 (line: 80)
+ok 37 (line: 81)
+ok 38 (line: 83)
+ok 39 (line: 84)
+ok 40 (line: 87)
+ok 41 (line: 89)
+ok 42 (line: 91)
+ok 43 (line: 92)
+ok 44 (line: 94)
+ok 45 (line: 95)
+ok 46 (line: 98)
+ok 47 (line: 100)
+ok 48 (line: 102)
+ok 49 (line: 103)
+ok 50 (line: 105)
+ok 51 (line: 106)
+ok 52 (line: 109)
+ok 53 (line: 111)
+ok 54 (line: 112)
+ok 55 (line: 115)
 TEST SUITE[unlink, 01.t] 1..5
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 18)
 TEST SUITE[unlink, 02.t] 1..4
-ok 1
-ok 2
-ok 3
-ok 4
+ok 1 (line: 11)
+ok 2 (line: 12)
+ok 3 (line: 13)
+ok 4 (line: 14)
 TEST SUITE[unlink, 03.t] 1..12
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
-ok 7
-ok 8
-ok 9
-ok 10
-ok 11
-ok 12
+ok 1 (line: 11)
+ok 2 (line: 12)
+ok 3 (line: 13)
+ok 4 (line: 14)
+ok 5 (line: 15)
+ok 6 (line: 16)
+ok 7 (line: 17)
+ok 8 (line: 19)
+ok 9 (line: 21)
+ok 10 (line: 22)
+ok 11 (line: 23)
+ok 12 (line: 24)
 TEST SUITE[unlink, 04.t] 1..4
-ok 1
-ok 2
-ok 3
-ok 4
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
 TEST SUITE[unlink, 05.t] 1..10
-ok 1
-ok 2
-not ok 3
-not ok 4
-ok 5
-not ok 6
-ok 7
-not ok 8
-ok 9
-ok 10
+ok 1 (line: 15)
+ok 2 (line: 18)
+not ok 3 (line: 19)
+not ok 4 (line: 20)
+ok 5 (line: 21)
+not ok 6 (line: 22)
+ok 7 (line: 23)
+not ok 8 (line: 24)
+ok 9 (line: 25)
+ok 10 (line: 27)
 TEST SUITE[unlink, 06.t] 1..10
-ok 1
-ok 2
-not ok 3
-not ok 4
-ok 5
-not ok 6
-ok 7
-not ok 8
-ok 9
-ok 10
+ok 1 (line: 15)
+ok 2 (line: 18)
+not ok 3 (line: 19)
+not ok 4 (line: 20)
+ok 5 (line: 21)
+not ok 6 (line: 22)
+ok 7 (line: 23)
+not ok 8 (line: 24)
+ok 9 (line: 25)
+ok 10 (line: 27)
 TEST SUITE[unlink, 07.t] 1..6
-ok 1
-ok 2
-ok 3
-ok 4
-ok 5
-ok 6
+ok 1 (line: 14)
+ok 2 (line: 15)
+ok 3 (line: 16)
+ok 4 (line: 17)
+ok 5 (line: 18)
+ok 6 (line: 19)
 TEST SUITE[unlink, 08.t] 1..3
-ok 1
-ok 2
-ok 3
+ok 1 (line: 13)
+ok 2 (line: 21)
+ok 3 (line: 22)
 TEST SUITE[unlink, 09.t] 1..1
 ok 1
 TEST SUITE[unlink, 10.t] 1..1
 ok 1
 TEST SUITE[unlink, 11.t] 1..33
-ok 1
-ok 2
-not ok 3
-ok 4
-not ok 5
-not ok 6
-not ok 7
-not ok 8
-not ok 9
-not ok 10
-not ok 11
-not ok 12
-not ok 13
-not ok 14
-not ok 15
-not ok 16
-not ok 17
-not ok 18
-not ok 19
-not ok 20
-not ok 21
-not ok 22
-not ok 23
-not ok 24
-not ok 25
-not ok 26
-not ok 27
-not ok 28
-not ok 29
-not ok 30
-not ok 31
-ok 32
-ok 33
+ok 1 (line: 15)
+ok 2 (line: 19)
+not ok 3 (line: 20)
+ok 4 (line: 21)
+not ok 5 (line: 24)
+not ok 6 (line: 25)
+not ok 7 (line: 27)
+not ok 8 (line: 28)
+not ok 9 (line: 30)
+not ok 10 (line: 31)
+not ok 11 (line: 33)
+not ok 12 (line: 34)
+not ok 13 (line: 35)
+not ok 14 (line: 38)
+not ok 15 (line: 39)
+not ok 16 (line: 41)
+not ok 17 (line: 42)
+not ok 18 (line: 44)
+not ok 19 (line: 45)
+not ok 20 (line: 47)
+not ok 21 (line: 48)
+not ok 22 (line: 49)
+not ok 23 (line: 52)
+not ok 24 (line: 53)
+not ok 25 (line: 55)
+not ok 26 (line: 56)
+not ok 27 (line: 58)
+not ok 28 (line: 59)
+not ok 29 (line: 61)
+not ok 30 (line: 62)
+not ok 31 (line: 63)
+ok 32 (line: 65)
+ok 33 (line: 68)
 TEST SUITE[unlink, 12.t] 1..1
 ok 1
 TEST SUITE[unlink, 13.t] 1..2
-ok 1
-ok 2
+ok 1 (line: 11)
+ok 2 (line: 12)

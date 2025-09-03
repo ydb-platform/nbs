@@ -43,6 +43,10 @@ namespace {
     xxx(SSDFileSystemPerformanceProfile,    TFileSystemPerformanceProfile, {} )\
                                                                                \
     xxx(StatsFetcherType, NCloud::NProto::EStatsFetcherType, NCloud::NProto::EStatsFetcherType::CGROUP )\
+                                                                               \
+    xxx(ProfileLogMaxFlushRecords,      ui64, 0                               )\
+    xxx(ProfileLogMaxFrameFlushRecords, ui64, 0                               )\
+
 // FILESTORE_DIAGNOSTICS_CONFIG
 
 #define FILESTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)                \

@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -36,6 +37,7 @@ private:
     const TActorId PartActorId;
     const ui64 VolumeTabletId;
     const TActorId VolumeActorId;
+    TChildLogTitle LogTitle;
 
 public:
     TReadAndClearEmptyBlocksActor(
@@ -44,7 +46,8 @@ public:
         const TCompressedBitmap& usedBlocks,
         TActorId partActorId,
         ui64 volumeTabletId,
-        TActorId volumeActorId);
+        TActorId volumeActorId,
+        TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -80,7 +83,8 @@ TReadAndClearEmptyBlocksActor<TMethod>::TReadAndClearEmptyBlocksActor(
         const TCompressedBitmap& usedBlocks,
         TActorId partActorId,
         ui64 volumeTabletId,
-        TActorId volumeActorId)
+        TActorId volumeActorId,
+        TChildLogTitle logTitle)
     : Request(std::move(request))
     , RequestInfo(std::move(requestInfo))
     , UsedBlocks(MakeUsedBlockMarks(
@@ -91,6 +95,7 @@ TReadAndClearEmptyBlocksActor<TMethod>::TReadAndClearEmptyBlocksActor(
     , PartActorId(partActorId)
     , VolumeTabletId(volumeTabletId)
     , VolumeActorId(volumeActorId)
+    , LogTitle(std::move(logTitle))
 {}
 
 template <ReadRequest TMethod>
@@ -162,9 +167,11 @@ void TReadAndClearEmptyBlocksActor<TMethod>::HandleUndelivery(
 {
     Y_UNUSED(ev);
 
-    LOG_WARN(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] %s request undelivered to partition",
-        VolumeTabletId,
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s %s request undelivered to partition",
+        LogTitle.GetWithTime().c_str(),
         TMethod::Name);
 
     Response.MutableError()->CopyFrom(MakeError(E_REJECTED, TStringBuilder()
@@ -181,9 +188,11 @@ void TReadAndClearEmptyBlocksActor<TMethod>::HandleResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->Record)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] %s got error from partition: %s",
-            VolumeTabletId,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s %s got error from partition: %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(msg->Record.GetError()).c_str());
     }

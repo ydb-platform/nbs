@@ -17,9 +17,11 @@ SRCS(
     disk_registry_actor_describe.cpp
     disk_registry_actor_destroy.cpp
     disk_registry_actor_get_agent_node_id.cpp
+    disk_registry_actor_get_cluster_capacity.cpp
     disk_registry_actor_get_dependent_disks.cpp
     disk_registry_actor_initiate_realloc.cpp
     disk_registry_actor_initschema.cpp
+    disk_registry_actor_list_disks_states.cpp
     disk_registry_actor_loadstate.cpp
     disk_registry_actor_mark_disk_for_cleanup.cpp
     disk_registry_actor_mark_replacement_device.cpp
@@ -70,7 +72,7 @@ PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/logbroker/iface
-    cloud/blockstore/libs/notify
+    cloud/blockstore/libs/notify/iface
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/disk_common

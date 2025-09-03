@@ -47,8 +47,9 @@ TVector<NProto::TDeviceConfig> MakeDeviceList(ui32 agentCount, ui32 deviceCount)
 
 struct TFixture: public NUnitTest::TBaseFixture
 {
-    std::unique_ptr<TTestActorRuntime> Runtime;
     TIntrusivePtr<TDiskRegistryState> State;
+    std::atomic<ui64> Acquires = 0;
+    std::unique_ptr<TTestActorRuntime> Runtime;
 
     void SetupTest(TDuration agentRequestTimeout = 1s)
     {
@@ -58,7 +59,18 @@ struct TFixture: public NUnitTest::TBaseFixture
         config.SetAgentRequestTimeout(agentRequestTimeout.MilliSeconds());
         config.SetClientRemountPeriod(2000);
         State = MakeIntrusive<TDiskRegistryState>();
-        Runtime = PrepareTestActorRuntime(config, State);
+        auto agentState = std::make_shared<TDiskAgentState>();
+        agentState->AcquireObserveFunction = [this](auto&, const auto&)
+        {
+            this->Acquires.fetch_add(1);
+            return false;
+        };
+        Runtime = PrepareTestActorRuntime(
+            config,
+            State,
+            {},
+            {},
+            {std::move(agentState)});
         auto volume = GetVolumeClient();
 
         const ui64 blockCount = DefaultDeviceBlockCount *
@@ -80,6 +92,11 @@ struct TFixture: public NUnitTest::TBaseFixture
     TVolumeClient GetVolumeClient() const
     {
         return {*Runtime};
+    }
+
+    ui64 GetAcquires() const
+    {
+        return Acquires.load();
     }
 };
 
@@ -621,6 +638,79 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
         // Successful mount and unmount.
         writerClient.AddClient(writer);
         writerClient.RemoveClient(writer.GetClientId());
+    }
+
+    Y_UNIT_TEST_F(ShouldAcquireDevicesAfterReboot, TFixture)
+    {
+        SetupTest();
+
+        auto writerClient1 = GetVolumeClient();
+
+        ui32 acquireRequestsToDiskRegistry = 0;
+        ui32 releaseRequestsToDiskRegistry = 0;
+        ui32 readerAcquireRequests = 0;
+        ui32 writerAcquireRequests = 0;
+        ui32 releaseRequests = 0;
+
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistry::EvAcquireDiskRequest:
+                        ++acquireRequestsToDiskRegistry;
+                        break;
+                    case TEvDiskRegistry::EvReleaseDiskRequest:
+                        ++releaseRequestsToDiskRegistry;
+                        break;
+                    case TEvDiskAgent::EvAcquireDevicesRequest: {
+                        auto* msg =
+                            event
+                                ->Get<TEvDiskAgent::TEvAcquireDevicesRequest>();
+                        if (msg->Record.GetAccessMode() ==
+                            NProto::VOLUME_ACCESS_READ_ONLY)
+                        {
+                            ++readerAcquireRequests;
+                        } else {
+                            ++writerAcquireRequests;
+                        }
+                        break;
+                    }
+                    case TEvDiskAgent::EvReleaseDevicesRequest:
+                        ++releaseRequests;
+                        break;
+                    default:
+                        break;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        Runtime->AdvanceCurrentTime(2s);
+        Runtime->DispatchEvents({}, 1ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(acquireRequestsToDiskRegistry, 0);
+        UNIT_ASSERT_VALUES_EQUAL(writerAcquireRequests, 0);
+        UNIT_ASSERT_VALUES_EQUAL(readerAcquireRequests, 0);
+
+        auto writer = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        writerClient1.AddClient(writer);
+
+        UNIT_ASSERT_VALUES_EQUAL(acquireRequestsToDiskRegistry, 0);
+        UNIT_ASSERT_VALUES_EQUAL(writerAcquireRequests, 1);
+        UNIT_ASSERT_VALUES_EQUAL(readerAcquireRequests, 0);
+
+        writerClient1.RebootSysTablet();
+
+        Runtime->DispatchEvents({}, 1ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(acquireRequestsToDiskRegistry, 0);
+        // Standard observe function doesn't capture events during reboot, so we
+        // should use GetAcquires().
+        UNIT_ASSERT_VALUES_EQUAL(GetAcquires(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(readerAcquireRequests, 0);
     }
 }
 

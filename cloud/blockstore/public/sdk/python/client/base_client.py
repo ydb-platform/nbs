@@ -47,6 +47,7 @@ NBS_CLIENT_METHODS = [
     "update_disk_registry_config",
     "describe_disk_registry_config",
     "query_agents_info",
+    "list_disks_states",
 ]
 
 
@@ -130,7 +131,8 @@ class _BaseClient(object):
         if request.Headers is None:
             request.Headers = protos.THeaders()
 
-        request.Headers.ClientId = self.__client_id
+        if request.Headers.ClientId == "":
+            request.Headers.ClientId = self.__client_id
 
         if idempotence_id is not None:
             request.Headers.IdempotenceId = idempotence_id

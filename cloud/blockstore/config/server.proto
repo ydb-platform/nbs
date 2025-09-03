@@ -32,6 +32,11 @@ message TChecksumFlags
     // writing. This is done to ensure that the same data is written to all
     // mirror disk replicas.
     optional bool CheckBufferModificationForMirrorDisk = 1;
+
+    // Enables data integrity validation client that calculates checksums for
+    // write requests and validates checksums for read requests. Calculation for
+    // reads and validation for writes needs to be done in the storage layer.
+    optional bool EnableDataIntegrityClient = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -253,6 +258,10 @@ message TServerConfig
 
     // Policy for encryption of zeroed blocks.
     optional EEncryptZeroPolicy EncryptZeroPolicy = 126;
+
+    // Optimal IO size for vhost devices. Zero value is the default one.
+    // For linux, sets the value of /sys/block/<device>/queue/optimal_io_size.
+    optional uint32 VhostOptimalIoSize = 127;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

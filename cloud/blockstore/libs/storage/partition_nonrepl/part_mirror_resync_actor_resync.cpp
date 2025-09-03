@@ -54,10 +54,19 @@ void TMirrorPartitionResyncActor::ContinueResyncIfNeeded(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TMirrorPartitionResyncActor::ScheduleResyncNextRange(const TActorContext& ctx)
+void TMirrorPartitionResyncActor::ScheduleResyncNextRange(
+    const TActorContext& ctx)
 {
     ctx.Schedule(
         ResyncNextRangeInterval,
+        new TEvNonreplPartitionPrivate::TEvResyncNextRange());
+}
+
+void TMirrorPartitionResyncActor::ScheduleRetryResyncNextRange(
+    const TActorContext& ctx)
+{
+    ctx.Schedule(
+        ResyncNextRangeInterval + BackoffProvider.GetDelayAndIncrease(),
         new TEvNonreplPartitionPrivate::TEvResyncNextRange());
 }
 
@@ -206,7 +215,7 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
             // Reschedule range
             State.AddPendingResyncRange(rangeId.first);
-            ScheduleResyncNextRange(ctx);
+            ScheduleRetryResyncNextRange(ctx);
         } else {
             ReportResyncFailed(
                 FormatError(msg->GetError()),
@@ -230,6 +239,8 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
         return;
     }
 
+    BackoffProvider.Reset();
+
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
         "[%s] Range %s resynced",
         PartConfig->GetName().c_str(),
@@ -237,9 +248,7 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
 
     if (CritOnChecksumMismatch && msg->WriteStartTs > TInstant()) {
         ReportMirroredDiskResyncChecksumMismatch(
-            TStringBuilder()
-            << '[' << PartConfig->GetName()
-            << "] Checksum mismatch during resync in range " << msg->Range);
+            {{"disk", PartConfig->GetName()}, {"range", range}});
     }
 
     auto resyncRange = State.BuildResyncRange();

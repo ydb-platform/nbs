@@ -491,9 +491,8 @@ void TDiskRegistryActor::ProcessInitialAgentRejectionPhase(
 
     if (k > Config->GetDiskRegistryInitialAgentRejectionThreshold()) {
         ReportDiskRegistryInitialAgentRejectionThresholdExceeded(
-            TStringBuilder()
-            << "Too many agents haven't reconnected: " << agentsToReject.size()
-            << "/" << expectedToBeOnline);
+            {{"agentsToReject", agentsToReject.size()},
+             {"expectedToBeOnline", expectedToBeOnline}});
         return;
     }
 
@@ -838,6 +837,10 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(TEvDiskRegistryPrivate::TEvCleanupDisksResponse,
             HandleCleanupDisksResponse);
 
+        HFunc(
+            TEvDiskRegistry::TEvGetClusterCapacityRequest,
+            HandleGetClusterCapacity);
+
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
@@ -888,7 +891,8 @@ bool ToLogicalBlocks(NProto::TDeviceConfig& device, ui32 logicalBlockSize)
 {
     const auto blockSize = device.GetBlockSize();
     if (logicalBlockSize % blockSize != 0) {
-        ReportDiskRegistryLogicalPhysicalBlockSizeMismatch();
+        ReportDiskRegistryLogicalPhysicalBlockSizeMismatch(
+            {{"deviceUUID", device.GetDeviceUUID()}});
 
         return false;
     }

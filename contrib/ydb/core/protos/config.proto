@@ -26,6 +26,7 @@ import "contrib/ydb/core/protos/tablet.proto";
 import "contrib/ydb/core/protos/tablet_database.proto";
 import "contrib/ydb/core/protos/tenant_pool.proto";
 import "contrib/ydb/core/protos/tenant_slot_broker.proto";
+import "contrib/ydb/core/protos/nbs/blockstore.proto";
 import "contrib/ydb/core/protos/auth.proto";
 import "contrib/ydb/core/protos/key.proto";
 import "contrib/ydb/core/protos/alloc.proto";
@@ -231,6 +232,7 @@ message TDomainsConfig {
         repeated string DefaultUserSIDs = 4;
         optional string AllAuthenticatedUsers = 5;
         repeated string ViewerAllowedSIDs = 6;
+        repeated string RegisterDynamicNodeAllowedSIDs = 8;
 
         message TUser {
             optional string Name = 1;
@@ -1799,6 +1801,7 @@ message TAppConfig {
     optional bool AllowEditYamlInUi = 75;
     optional TS3ProxyResolverConfig S3ProxyResolverConfig = 76;
     optional TBackgroundCleaningConfig BackgroundCleaningConfig = 77;
+    optional TBlockstoreConfig BlockstoreConfig = 93;
 
     repeated TNamedConfig NamedConfigs = 100;
     optional string ClusterYamlConfig = 101;

@@ -41,6 +41,12 @@ public:
 
     Y_DECLARE_FLAGS(EOptions, EOption);
 
+    struct TRequestTime
+    {
+        TDuration ExecutionTime;
+        TDuration Time;
+    };
+
 private:
     const std::function<TString(TRequestType)> RequestType2Name;
     const std::function<bool(TRequestType)> IsReadWriteRequestType;
@@ -69,7 +75,7 @@ public:
         ui64 requestBytes);
 
     //TODO: rollback commit after NBS-4239 is fixed
-    TDuration RequestCompleted(
+    TRequestTime RequestCompleted(
         TRequestType requestType,
         ui64 requestStarted,
         TDuration postponedTime,

@@ -54,6 +54,12 @@ func (t *createDiskFromImageTask) Run(
 
 	params := t.request.Params
 
+	if common.IsLocalDiskKind(params.Kind) {
+		return errors.NewNonCancellableErrorf(
+			"local disk creation from image is forbidden",
+		)
+	}
+
 	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
 	if err != nil {
 		return err
@@ -211,7 +217,7 @@ func (t *createDiskFromImageTask) Cancel(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	disk, err := t.storage.DeleteDisk(
+	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		params.Disk.DiskId,
 		selfTaskID,
@@ -221,11 +227,8 @@ func (t *createDiskFromImageTask) Cancel(
 		return err
 	}
 
-	if disk == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			params.Disk.DiskId,
-		)
+	if diskMeta == nil {
+		return nil
 	}
 
 	err = client.Delete(ctx, params.Disk.DiskId)

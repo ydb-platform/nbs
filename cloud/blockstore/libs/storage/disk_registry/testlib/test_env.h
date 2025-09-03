@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
-#include <cloud/blockstore/libs/notify/public.h>
+#include <cloud/blockstore/libs/notify/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
@@ -1101,6 +1101,18 @@ public:
         request->Record.SetAgentId(agentId);
 
         return request;
+    }
+
+    auto CreateGetClusterCapacityRequest()
+    {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvGetClusterCapacityRequest>();
+        return request;
+    }
+
+    auto CreateListDisksStatesRequest()
+    {
+        return std::make_unique<TEvService::TEvListDisksStatesRequest>();
     }
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \

@@ -47,14 +47,6 @@ void TDiskRegistrySelfCounters::Init(
     Mirror3DisksMinus1 = counters->GetCounter("Mirror3DisksMinus1");
     Mirror3DisksMinus2 = counters->GetCounter("Mirror3DisksMinus2");
     Mirror3DisksMinus3 = counters->GetCounter("Mirror3DisksMinus3");
-    PlacementGroupsWithRecentlyBrokenSingleDisk =
-        counters->GetCounter("PlacementGroupsWithRecentlyBrokenSingleDisk");
-    PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks =
-        counters->GetCounter("PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks");
-    PlacementGroupsWithBrokenSingleDisk =
-        counters->GetCounter("PlacementGroupsWithBrokenSingleDisk");
-    PlacementGroupsWithBrokenTwoOrMoreDisks =
-        counters->GetCounter("PlacementGroupsWithBrokenTwoOrMoreDisks");
     PlacementGroupsWithRecentlyBrokenSinglePartition =
         counters->GetCounter("PlacementGroupsWithRecentlyBrokenSinglePartition");
     PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions =

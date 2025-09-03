@@ -22,7 +22,7 @@ private:
 
     NMonitoring::TDynamicCounters::TCounterPtr CpuWaitCounter;
 
-    TInstant LastCpuWaitTs;
+    TMonotonic LastCpuWaitTs;
 
 public:
     TStatsFetcherActor(

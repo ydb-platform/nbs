@@ -48,11 +48,12 @@ void TStorageServiceActor::HandleUpdateStats(
         HddTabletCount->Set(hddTablets);
     }
 
-    auto now = GetCycleCount();
+    auto nowCycle = GetCycleCount();
     for (auto it = InFlightRequests.begin(); it != InFlightRequests.end(); ) {
         const auto& request = it->second;
         if (!request.IsCompleted()) {
-            StatsRegistry->AddIncompleteRequest(request.ToIncompleteRequest(now));
+            StatsRegistry->AddIncompleteRequest(
+                request.ToIncompleteRequest(nowCycle));
             ++it;
         } else {
             InFlightRequests.erase(it++);
@@ -70,19 +71,21 @@ void TStorageServiceActor::HandleUpdateStats(
                 "Failed to get CpuWait stats: " << errorMessage);
         }
 
-        auto now = ctx.Now();
-        auto interval = (now - LastCpuWaitTs).MicroSeconds();
-        auto cpuLack = 100 * cpuWait.MicroSeconds();
-        cpuLack /= interval;
-        *CpuWaitCounter = cpuLack;
+        auto now = ctx.Monotonic();
+        if (LastCpuWaitTs < now) {
+            auto intervalUs = (now - LastCpuWaitTs).MicroSeconds();
+            auto cpuLack = 100 * cpuWait.MicroSeconds();
+            cpuLack /= intervalUs;
+            *CpuWaitCounter = cpuLack;
 
-        LastCpuWaitTs = now;
+            LastCpuWaitTs = now;
 
-        if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
-            LOG_WARN_S(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "Cpu wait is " << cpuLack);
+            if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
+                LOG_WARN_S(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "Cpu wait is " << cpuLack);
+            }
         }
     }
 

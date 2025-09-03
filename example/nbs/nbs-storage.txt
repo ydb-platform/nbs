@@ -1,5 +1,6 @@
 SchemeShardDir: "/Root/NBS"
 AuthorizationMode: AUTHORIZATION_IGNORE
+ManuallyPreemptedVolumesFile: "backups.1/nbs-preempted-volumes.json"
 
 # DiskRegistry
 AllocationUnitMirror2SSD: 1
@@ -14,23 +15,26 @@ NonReplicatedMigrationStartAllowed: true
 
 # DiskRegistry-based
 AssignIdToWriteAndZeroRequestsEnabled: true
-DataScrubbingEnabled: true
-LaggingDevicesForMirror2DisksEnabled: true
-LaggingDevicesForMirror3DisksEnabled: true
 MaxMigrationBandwidth: 1000
 MaxMigrationIoDepth: 1
 MaxShadowDiskFillBandwidth: 1000
 MaxShadowDiskFillIoDepth: 4
-MultiAgentWriteEnabled: true
+UseDirectCopyRange: true
 OptimizeVoidBuffersTransferForReadsEnabled: true
 RejectLateRequestsAtDiskAgentEnabled: true
-ResyncRangeAfterScrubbing: true
-ScrubbingChecksumMismatchTimeout: 1000
-ScrubbingResyncPolicy: RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK
-UseDirectCopyRange: true
 UseNonreplicatedRdmaActor: true
 UseRdma: true
 UseShadowDisksForNonreplDiskCheckpoints: true
+
+# Mirror
+DataScrubbingEnabled: true
+LaggingDevicesForMirror2DisksEnabled: true
+LaggingDevicesForMirror3DisksEnabled: true
+MirrorReadReplicaCount: 2
+MultiAgentWriteEnabled: true
+ResyncRangeAfterScrubbing: true
+ScrubbingChecksumMismatchTimeout: 1000
+ScrubbingResyncPolicy: RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK
 
 # CopyVolume
 LinkedDiskFillBandwidth {
@@ -48,8 +52,12 @@ LinkedDiskFillBandwidth {
 }
 
 # SchemeShard proxy
-PathDescriptionBackupFilePath: "backups/nbs-path-description-backup.txt"
+UseSchemeCache: true
+PathDescriptionBackupFilePath: "backups.1/nbs-path-description-backup.txt"
 #SSProxyFallbackMode: true
 
 # Hive proxy
-TabletBootInfoBackupFilePath: "backups/nbs-tablet-boot-info-backup.txt"
+TabletBootInfoBackupFilePath: "backups.1/nbs-tablet-boot-info-backup.txt"
+
+# Volume Throttling Manager
+VolumeThrottlingManagerEnabled: true

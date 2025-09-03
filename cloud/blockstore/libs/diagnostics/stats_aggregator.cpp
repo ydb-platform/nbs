@@ -57,18 +57,35 @@ struct THistogramPercentiles
         }
     }
 
+    static TDynamicCountersPtr FindHistogramSubgroup(
+        const TDynamicCountersPtr& counters,
+        const TString& name,
+        const TString& units)
+    {
+        auto subgroup = counters->FindSubgroup("histogram", name);
+        if (subgroup) {
+            if (auto unitsSubgroup = subgroup->FindSubgroup("units", units)) {
+                subgroup = unitsSubgroup;
+            }
+        }
+
+        return subgroup;
+    }
+
     void Update(
         TLog& Log,
-        TDynamicCounterPtr from,
-        TDynamicCounterPtr to,
-        const TString& name)
+        TDynamicCounterPtr counters,
+        const TString& name,
+        const TString& units)
     {
-        if (!from || !to) {
+        if (!counters) {
             return;
         }
-        auto buckets = ReadSolomonHistogram(Log, from);
+
+        auto subgroup = FindHistogramSubgroup(counters, name, units);
+        auto buckets = ReadSolomonHistogram(Log, subgroup);
         if (buckets) {
-            Update(buckets, to->GetSubgroup("percentiles", name));
+            Update(buckets, counters->GetSubgroup("percentiles", name));
         }
     }
 
@@ -111,8 +128,9 @@ struct TRequestPercentiles
         if (!counters) {
             return;
         }
-        Time.Update(Log, counters->FindSubgroup("histogram", "Time"), counters, "Time");
-        Size.Update(Log, counters->FindSubgroup("histogram", "Size"), counters, "Size");
+
+        Time.Update(Log, counters, "Time", "usec");
+        Size.Update(Log, counters, "Size", "KB");
     }
 };
 

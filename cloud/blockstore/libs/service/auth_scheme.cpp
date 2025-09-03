@@ -93,6 +93,7 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::AlterPlacementGroupMembership:
         case EBlockStoreRequest::ResumeDevice:
             return CreatePermissionList({EPermission::Update});
+        case EBlockStoreRequest::DescribeVolume:
         case EBlockStoreRequest::StatVolume:
             return CreatePermissionList({EPermission::Get});
         case EBlockStoreRequest::CreateCheckpoint:
@@ -106,10 +107,10 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
         case EBlockStoreRequest::GetChangedBlocks:
         case EBlockStoreRequest::GetCheckpointStatus:
             return CreatePermissionList({EPermission::Read});
-        case EBlockStoreRequest::DescribeVolume:
         case EBlockStoreRequest::DescribeVolumeModel:
         case EBlockStoreRequest::DescribePlacementGroup:
         case EBlockStoreRequest::DescribeEndpoint:
+        case EBlockStoreRequest::ListDisksStates:
             return CreatePermissionList({EPermission::Get});
         case EBlockStoreRequest::ListVolumes:
         case EBlockStoreRequest::ListPlacementGroups:
@@ -132,6 +133,7 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
             Y_ABORT("ExecuteAction must have been handled separately");
         case EBlockStoreRequest::DescribeDiskRegistryConfig:
         case EBlockStoreRequest::UpdateDiskRegistryConfig:
+        case EBlockStoreRequest::UpdateVolumeThrottlingConfig:
             return TPermissionList().Flip();  // Require admin permissions.
 
         case EBlockStoreRequest::CreateVolumeLink:

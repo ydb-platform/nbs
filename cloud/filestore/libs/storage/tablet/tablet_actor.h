@@ -127,6 +127,8 @@ private:
         std::atomic<i64> InMemoryIndexStateNodeRefsCapacity;
         std::atomic<i64> InMemoryIndexStateNodeAttrsCount;
         std::atomic<i64> InMemoryIndexStateNodeAttrsCapacity;
+        std::atomic<i64> InMemoryIndexStateNodeRefsExhaustivenessCount;
+        std::atomic<i64> InMemoryIndexStateNodeRefsExhaustivenessCapacity;
         std::atomic<i64> InMemoryIndexStateIsExhaustive;
 
         // Mixed index in-memory stats

@@ -244,6 +244,7 @@ public:
     ui64 GetInMemoryIndexCacheNodesToNodeAttrsCapacityRatio() const;
     ui64 GetInMemoryIndexCacheNodeRefsCapacity() const;
     ui64 GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio() const;
+    ui64 GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity() const;
     bool GetInMemoryIndexCacheLoadOnTabletStart() const;
     ui64 GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx() const;
     TDuration GetInMemoryIndexCacheLoadSchedulePeriod() const;

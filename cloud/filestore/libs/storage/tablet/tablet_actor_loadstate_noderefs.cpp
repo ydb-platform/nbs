@@ -28,6 +28,16 @@ bool TIndexTabletActor::PrepareTx_LoadNodeRefs(
 {
     TVector<TIndexTabletDatabase::TNodeRef> nodeRefs;
 
+    if (!PrechargeNodeRefs(
+            db,
+            args.NodeId,
+            args.Cookie,
+            args.MaxNodeRefs,
+            Max<ui64>()))
+    {
+        return false;   // not ready
+    }
+
     bool ready = db.ReadNodeRefs(
         args.NodeId,
         args.Cookie,

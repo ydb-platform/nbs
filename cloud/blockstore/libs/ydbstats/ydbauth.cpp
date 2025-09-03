@@ -4,7 +4,9 @@
 #include "ydbstats.h"
 
 #include <cloud/blockstore/libs/kikimr/events.h>
+
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 
@@ -19,7 +21,7 @@
 #include <util/generic/vector.h>
 #include <util/stream/file.h>
 #include <util/string/builder.h>
-#include <util/system/mutex.h>
+#include <util/system/rwlock.h>
 
 namespace NCloud::NBlockStore::NYdbStats {
 
@@ -35,42 +37,96 @@ namespace {
 
 class TYdbTokenProvider final
     : public ICredentialsProvider
+    , public std::enable_shared_from_this<TYdbTokenProvider>
 {
 private:
+    const ISchedulerPtr Scheduler;
     const IIamTokenClientPtr Client;
+    const TDuration TokenRefreshTimeBeforeExpiration;
+
+    mutable TRWMutex Mutex;
     mutable TStringType Token;
     mutable TInstant ExpiresAt;
 
 public:
-    TYdbTokenProvider(IIamTokenClientPtr client)
-        : Client(std::move(client))
-    {
-    }
+    TYdbTokenProvider(
+            ISchedulerPtr scheduler,
+            IIamTokenClientPtr client,
+            TDuration tokenRefreshTimeBeforeExpiration,
+            TTokenInfo initialToken)
+        : Scheduler(std::move(scheduler))
+        , Client(std::move(client))
+        , TokenRefreshTimeBeforeExpiration(
+              tokenRefreshTimeBeforeExpiration)
+        , Token(std::move(initialToken.Token))
+        , ExpiresAt(initialToken.ExpiresAt)
+    {}
 
     TStringType GetAuthInfo() const override
     {
-        if (Now() >= ExpiresAt) {
-            GetToken();
-        }
+        TReadGuard guard(Mutex);
+
         return Token;
     }
 
     bool IsValid() const override
     {
-        return true;
+        TReadGuard guard(Mutex);
+        return !Token.empty();
+    }
+
+    void Init()
+    {
+        TInstant expiresAt;
+        {
+            TReadGuard guard(Mutex);
+            expiresAt = ExpiresAt;
+        }
+
+        ScheduleRefreshToken(expiresAt);
     }
 
 private:
-
-    void GetToken() const
+    void ScheduleRefreshToken(TInstant expiresAt) const
     {
-        auto result = Client->GetToken();
-        if (HasError(result)) {
-            return;
-        }
-        auto tokenInfo = result.GetResult();
-        Token = std::move(tokenInfo.Token);
-        ExpiresAt = tokenInfo.ExpiresAt;
+        auto deadline =
+            Max(expiresAt - TokenRefreshTimeBeforeExpiration, Now());
+        Scheduler->Schedule(
+            deadline,
+            [weak = weak_from_this()]
+            {
+                if (auto self = weak.lock()) {
+                    self->RefreshToken();
+                }
+            });
+    }
+
+    void RefreshToken() const
+    {
+        Client->GetTokenAsync().Subscribe(
+            [weak = weak_from_this()](auto future)
+            {
+                auto self = weak.lock();
+                if (!self) {
+                    return;
+                }
+
+                TInstant expiresAt;
+
+                {
+                    TWriteGuard guard(self->Mutex);
+                    auto result = future.ExtractValue();
+                    if (!HasError(result)) {
+                        auto tokenInfo = result.ExtractResult();
+                        self->Token = std::move(tokenInfo.Token);
+                        self->ExpiresAt = tokenInfo.ExpiresAt;
+                    }
+
+                    expiresAt = self->ExpiresAt;
+                }
+
+                self->ScheduleRefreshToken(expiresAt);
+            });
     }
 };
 
@@ -81,25 +137,50 @@ using TYdbTokenProviderPtr = std::shared_ptr<TYdbTokenProvider>;
 class TIamCredentialsProviderFactory final
     : public ICredentialsProviderFactory
 {
+private:
+    const TDuration IamTokenRefreshTimeBeforeExpiration;
+    const TTokenInfo InitialTokenInfo;
+    const ISchedulerPtr Scheduler;
+    const IIamTokenClientPtr Client;
+
 public:
-    TIamCredentialsProviderFactory(IIamTokenClientPtr client)
-        : Client(std::move(client))
+    TIamCredentialsProviderFactory(
+            TDuration iamTokenRefreshTimeBeforeExpiration,
+            TTokenInfo initialTokenInfo,
+            ISchedulerPtr scheduler,
+            IIamTokenClientPtr client)
+        : IamTokenRefreshTimeBeforeExpiration(
+              iamTokenRefreshTimeBeforeExpiration)
+        , InitialTokenInfo(std::move(initialTokenInfo))
+        , Scheduler(std::move(scheduler))
+        , Client(std::move(client))
     {}
 
-    TCredentialsProviderPtr CreateProvider() const {
-        return make_shared<TYdbTokenProvider>(Client);
+    TCredentialsProviderPtr CreateProvider() const
+    {
+        auto res = make_shared<TYdbTokenProvider>(
+            Scheduler,
+            Client,
+            IamTokenRefreshTimeBeforeExpiration,
+            InitialTokenInfo);
+        res->Init();
+        return res;
     }
-
-private:
-    IIamTokenClientPtr Client;
 };
 
 }  // namespace
 
 TCredentialsProviderFactoryPtr CreateIamCredentialsProviderFactory(
+    TDuration iamTokenRefreshTimeBeforeExpiration,
+    TTokenInfo initialTokenInfo,
+    ISchedulerPtr scheduler,
     IIamTokenClientPtr client)
 {
-    return std::make_shared<TIamCredentialsProviderFactory>(std::move(client));
+    return std::make_shared<TIamCredentialsProviderFactory>(
+        iamTokenRefreshTimeBeforeExpiration,
+        std::move(initialTokenInfo),
+        std::move(scheduler),
+        std::move(client));
 }
 
 }   // namespace NCloud::NBlockStore::NYdbStats

@@ -397,6 +397,12 @@ void TIndexTabletActor::TMetrics::Register(
         InMemoryIndexStateNodeAttrsCapacity,
         EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(
+        InMemoryIndexStateNodeRefsExhaustivenessCount,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        InMemoryIndexStateNodeRefsExhaustivenessCapacity,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
         InMemoryIndexStateIsExhaustive,
         EMetricType::MT_ABSOLUTE);
 
@@ -654,6 +660,8 @@ void TIndexTabletActor::TMetrics::Update(
     Store(InMemoryIndexStateNodeRefsCapacity, inMemoryIndexStateStats.NodeRefsCapacity);
     Store(InMemoryIndexStateNodeAttrsCount, inMemoryIndexStateStats.NodeAttrsCount);
     Store(InMemoryIndexStateNodeAttrsCapacity, inMemoryIndexStateStats.NodeAttrsCapacity);
+    Store(InMemoryIndexStateNodeRefsExhaustivenessCount, inMemoryIndexStateStats.NodeRefsExhaustivenessCount);
+    Store(InMemoryIndexStateNodeRefsExhaustivenessCapacity, inMemoryIndexStateStats.NodeRefsExhaustivenessCapacity);
     Store(InMemoryIndexStateIsExhaustive, inMemoryIndexStateStats.IsNodeRefsExhaustive);
 
     Store(MixedIndexLoadedRanges, blobMetaMapStats.LoadedRanges);

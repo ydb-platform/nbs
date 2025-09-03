@@ -2090,6 +2090,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 E_REJECTED,
                 response->GetStatus(),
                 response->GetErrorReason());
+            UNIT_ASSERT(HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE));
         }
 
         // hits replicas 2 and 0
@@ -2100,6 +2103,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 E_REJECTED,
                 response->GetStatus(),
                 response->GetErrorReason());
+            UNIT_ASSERT(HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE));
         }
 
         // hits replicas 1 and 2 and thus succeeds
@@ -2135,6 +2141,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 E_REJECTED,
                 response->GetStatus(),
                 response->GetErrorReason());
+            UNIT_ASSERT(HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE));
         }
 
         // write request made block range dirty => no crit event

@@ -42,6 +42,22 @@ IOutputStream& operator<<(IOutputStream& out, const TRequestInfo& info);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename T>
+concept HasBlockSize = requires (T& r)
+{
+    { r.BlockSize } -> std::same_as<ui32&>;
+    { r.BlockSize = ui32() };
+};
+
+template <typename T>
+concept HasProtoBlockSize = requires (T& r)
+{
+    { r.SetBlockSize(ui32()) };
+    { r.GetBlockSize() } -> std::same_as<ui32>;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 ui64 CreateRequestId();
 
 template <typename T>
@@ -297,6 +313,7 @@ constexpr bool IsControlRequest(EBlockStoreRequest requestType)
         case EBlockStoreRequest::ExecuteAction:
         case EBlockStoreRequest::DescribeVolumeModel:
         case EBlockStoreRequest::UpdateDiskRegistryConfig:
+        case EBlockStoreRequest::UpdateVolumeThrottlingConfig:
         case EBlockStoreRequest::DescribeDiskRegistryConfig:
         case EBlockStoreRequest::CreatePlacementGroup:
         case EBlockStoreRequest::DestroyPlacementGroup:
@@ -317,6 +334,7 @@ constexpr bool IsControlRequest(EBlockStoreRequest requestType)
         case EBlockStoreRequest::CreateVolumeLink:
         case EBlockStoreRequest::DestroyVolumeLink:
         case EBlockStoreRequest::RemoveVolumeClient:
+        case EBlockStoreRequest::ListDisksStates:
             return true;
         case EBlockStoreRequest::MAX:
             Y_DEBUG_ABORT_UNLESS(false);

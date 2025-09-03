@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/kms/impl/compute_client.h>
 #include <cloud/blockstore/libs/kms/impl/kms_client.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
+#include <cloud/blockstore/libs/notify/iface/config.h>
+#include <cloud/blockstore/libs/notify/impl/notify.h>
 #include <cloud/blockstore/libs/rdma/impl/client.h>
 #include <cloud/blockstore/libs/rdma/impl/server.h>
 #include <cloud/blockstore/libs/rdma/impl/verbs.h>
@@ -144,6 +146,18 @@ int main(int argc, char** argv)
             std::move(logging),
             std::move(monitoring),
             std::move(config));
+    };
+
+    serverModuleFactories->NotifyServiceFactory =
+        [](NNotify::TNotifyConfigPtr config,
+           NCloud::NIamClient::IIamTokenClientPtr iamTokenClient,
+           NCloud::ILoggingServicePtr logging) -> NNotify::IServicePtr
+    {
+        return config->GetEndpoint()
+                   ? NNotify::CreateService(
+                         std::move(config),
+                         std::move(iamTokenClient))
+                   : NNotify::CreateNullService(std::move(logging));
     };
 
     NServer::TBootstrapYdb bootstrap(

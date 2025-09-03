@@ -387,13 +387,17 @@ void TPartitionActor::HandleHttpInfo(
 
     using THttpHandlers = THashMap<TString, THttpHandler>;
 
-    static const THttpHandlers postActions {{
-        {"addGarbage",       &TPartitionActor::HandleHttpInfo_AddGarbage      },
-        {"collectGarbage",   &TPartitionActor::HandleHttpInfo_CollectGarbage  },
-        {"compact",          &TPartitionActor::HandleHttpInfo_ForceCompaction },
-        {"compactAll",       &TPartitionActor::HandleHttpInfo_ForceCompaction },
-        {"rebuildMetadata",  &TPartitionActor::HandleHttpInfo_RebuildMetadata },
-        {"scanDisk",         &TPartitionActor::HandleHttpInfo_ScanDisk        }
+    static const THttpHandlers postActions{{
+        {"addGarbage", &TPartitionActor::HandleHttpInfo_AddGarbage},
+        {"collectGarbage", &TPartitionActor::HandleHttpInfo_CollectGarbage},
+        {"compact", &TPartitionActor::HandleHttpInfo_ForceCompaction},
+        {"compactAll", &TPartitionActor::HandleHttpInfo_ForceCompaction},
+        {"rebuildMetadata", &TPartitionActor::HandleHttpInfo_RebuildMetadata},
+        {"scanDisk", &TPartitionActor::HandleHttpInfo_ScanDisk},
+        {"resetTransactionLatencyStats",
+         &TPartitionActor::HandleHttpInfo_ResetTransactionLatencyStats},
+        {"resetBSGroupLatencyStats",
+         &TPartitionActor::HandleHttpInfo_ResetBSGroupLatencyStats},
     }};
 
     static const THttpHandlers getActions{{
@@ -402,6 +406,12 @@ void TPartitionActor::HandleHttpInfo(
         {"view", &TPartitionActor::HandleHttpInfo_View},
         {"getTransactionsLatency",
          &TPartitionActor::HandleHttpInfo_GetTransactionsLatency},
+        {"getGroupLatencies",
+         &TPartitionActor::HandleHttpInfo_GetGroupLatencies},
+        {"getTransactionsInflight",
+         &TPartitionActor::HandleHttpInfo_GetTransactionsInflight},
+        {"getBSGroupOperationsInflight",
+         &TPartitionActor::HandleHttpInfo_GetBSGroupOperationsInflight},
     }};
 
     const auto* msg = ev->Get();
@@ -683,6 +693,13 @@ void TPartitionActor::HandleHttpInfo_Default(
                 DIV_CLASS_ID("tab-pane", "Index") {
                     DumpDescribeHeader(out, *Info());
                     DumpCheckHeader(out, *Info());
+                }
+
+                DIV_CLASS_ID("tab-pane", "BSGroupLatency"){
+                    DumpGroupLatencyTab(
+                        out,
+                        Info()->TabletID,
+                        BSGroupOperationTimeTracker);
                 }
             }
         }

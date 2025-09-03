@@ -14,13 +14,15 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
-#include <cloud/blockstore/libs/storage/partition_common/get_device_for_range_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/migration_timeout_calculator.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/changed_ranges_map.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/disjoint_range_set.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
+
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -183,6 +185,8 @@ private:
     // Whether the target of the migration is lagging. In this case writes are
     // sent only to "SrcActorId".
     bool TargetMigrationIsLagging = false;
+
+    TBackoffDelayProvider BackoffProvider;
 
 protected:
     // Derived class that wishes to handle wakeup messages should make its own
@@ -356,6 +360,10 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(GetRebuildMetadataStatus, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ScanDisk, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(GetScanDiskStatus, TEvVolume);
+
+    BLOCKSTORE_IMPLEMENT_REQUEST(CreateCheckpoint, TEvService);
+    BLOCKSTORE_IMPLEMENT_REQUEST(DeleteCheckpoint, TEvService);
+    BLOCKSTORE_IMPLEMENT_REQUEST(DeleteCheckpointData, TEvVolume);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

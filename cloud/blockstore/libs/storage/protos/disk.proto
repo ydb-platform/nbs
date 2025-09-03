@@ -914,6 +914,9 @@ message TReadDeviceBlocksResponse
 
     // Requested blocks.
     TIOVector Blocks = 2;
+
+    // Checksum of the "Blocks" data read.
+    TChecksum Checksum = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -948,6 +951,9 @@ message TWriteDeviceBlocksRequest
 
     // Used to propagate request to multiple disk-agents.
     repeated TReplicationTarget ReplicationTargets = 9;
+
+    // Checksum of the "Blocks" data to write.
+    TChecksum Checksum = 10;
 }
 
 message TWriteDeviceBlocksResponse
@@ -957,6 +963,9 @@ message TWriteDeviceBlocksResponse
 
     // Used to validate multi-agent requests.
     repeated NCloud.NProto.TError ReplicationResponses = 2;
+
+    // Checksum of the written data.
+    TChecksum Checksum = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1813,4 +1822,32 @@ message TPartiallySuspendAgentResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Get Cluster Capacity.
+
+message TClusterCapacityInfo
+{
+    // Kind of described space.
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 1;
+
+    // Free space in bytes.
+    uint64 FreeBytes = 2;
+
+    // Total space in bytes.
+    uint64 TotalBytes = 3;
+}
+
+message TGetClusterCapacityRequest
+{
+}
+
+message TGetClusterCapacityResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of capacities.
+    repeated TClusterCapacityInfo Capacity = 2;
 }

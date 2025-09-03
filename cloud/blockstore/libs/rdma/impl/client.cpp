@@ -1425,12 +1425,13 @@ public:
         Join();
     }
 
-    NVerbs::TConnectionPtr CreateConnection()
+    NVerbs::TConnectionPtr CreateConnection(ui8 tos)
     {
         return Verbs->CreateConnection(
             EventChannel.get(),
             nullptr,    // context
-            RDMA_PS_TCP);
+            RDMA_PS_TCP,
+            tos);
     }
 
     void Attach(TClientEndpoint* endpoint)
@@ -1921,7 +1922,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     try {
         auto endpoint = std::make_shared<TClientEndpoint>(
             Verbs,
-            ConnectionPoller->CreateConnection(),
+            ConnectionPoller->CreateConnection(Config->IpTypeOfService),
             std::move(host),
             port,
             Config,
@@ -2063,7 +2064,8 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
         case EEndpointState::Disconnected:
             endpoint->Poller->Detach(endpoint);
             endpoint->DestroyQP();
-            endpoint->SetConnection(ConnectionPoller->CreateConnection());
+            endpoint->SetConnection(
+                ConnectionPoller->CreateConnection(Config->IpTypeOfService));
             break;
 
         // reconnect timer hit at the same time connection was established

@@ -94,6 +94,47 @@ Y_UNIT_TEST_SUITE(TTransactionTimeTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL("1", get("WriteBlocks_finished_5000000"));
         UNIT_ASSERT_VALUES_EQUAL("3", get("WriteBlocks_finished_Total"));
     }
+
+    Y_UNIT_TEST(ShouldResetStatistics)
+    {
+        TTransactionTimeTracker timeTracker(TransactionNames);
+
+        timeTracker.OnStarted(1, "ReadBlocks", 0);
+
+        timeTracker.OnStarted(
+            2,
+            "WriteBlocks",
+            1000 * GetCyclesPerMillisecond());
+
+        timeTracker.OnStarted(
+            3,
+            "WriteBlocks",
+            2000 * GetCyclesPerMillisecond());
+
+        timeTracker.OnFinished(2, 3000 * GetCyclesPerMillisecond());
+        timeTracker.OnFinished(3, 3000 * GetCyclesPerMillisecond());
+
+        auto json = timeTracker.GetStatJson(5000 * GetCyclesPerMillisecond());
+        NJson::TJsonValue value;
+        NJson::ReadJsonTree(json, &value, true);
+        DumpValues(value["stat"].GetMap());
+
+        auto get = [&](const TString& key)
+        {
+            return value["stat"][key];
+        };
+        UNIT_ASSERT_VALUES_EQUAL("+ 1", get("ReadBlocks_inflight_Total"));
+        UNIT_ASSERT_VALUES_EQUAL("2", get("WriteBlocks_finished_Total"));
+
+        timeTracker.ResetStats();
+
+        json = timeTracker.GetStatJson(5000 * GetCyclesPerMillisecond());
+        NJson::ReadJsonTree(json, &value, true);
+        DumpValues(value["stat"].GetMap());
+
+        UNIT_ASSERT_VALUES_EQUAL("+ 1", get("ReadBlocks_inflight_Total"));
+        UNIT_ASSERT_VALUES_EQUAL("0", get("WriteBlocks_finished_Total"));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

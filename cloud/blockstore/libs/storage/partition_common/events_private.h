@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
@@ -111,6 +113,7 @@ struct TEvPartitionCommonPrivate
         TDuration RequestTime;
         ui32 GroupId = 0;
         bool DeadlineSeen = false;
+        ui64 BSGroupOperationId = 0;
 
         TReadBlobCompleted() = default;
 
@@ -184,6 +187,49 @@ struct TEvPartitionCommonPrivate
     };
 
     //
+    // GetPartCounters
+    //
+
+    struct TGetPartCountersRequest
+    {
+        TGetPartCountersRequest() = default;
+    };
+
+    struct TGetPartCountersResponse
+    {
+        NActors::TActorId PartActorId;
+        ui64 VolumeSystemCpu;
+        ui64 VolumeUserCpu;
+        TPartitionDiskCountersPtr DiskCounters;
+        NBlobMetrics::TBlobLoadMetrics BlobLoadMetrics;
+        NKikimrTabletBase::TMetrics TabletMetrics;
+
+        TGetPartCountersResponse() = default;
+
+        TGetPartCountersResponse(
+                NActors::TActorId partActorId,
+                ui64 volumeSystemCpu,
+                ui64 volumeUserCpu,
+                TPartitionDiskCountersPtr diskCounters,
+                NBlobMetrics::TBlobLoadMetrics metrics,
+                NKikimrTabletBase::TMetrics tabletMetrics)
+            : PartActorId(partActorId)
+            , VolumeSystemCpu(volumeSystemCpu)
+            , VolumeUserCpu(volumeUserCpu)
+            , DiskCounters(std::move(diskCounters))
+            , BlobLoadMetrics(std::move(metrics))
+            , TabletMetrics(std::move(tabletMetrics))
+        {}
+    };
+
+    struct TPartCountersCombined
+    {
+        TVector<TGetPartCountersResponse> PartCounters;
+
+        TPartCountersCombined() = default;
+    };
+
+    //
     // Events declaration
     //
 
@@ -198,6 +244,9 @@ struct TEvPartitionCommonPrivate
         EvReadBlobCompleted,
         EvTDescribeBlocksCompleted,
         EvLongRunningOperation,
+        EvGetPartCountersRequest,
+        EvGetPartCountersResponse,
+        EvPartCountersCombined,
 
         EvEnd
     };
@@ -212,6 +261,12 @@ struct TEvPartitionCommonPrivate
     using TEvReadBlobCompleted = TResponseEvent<TReadBlobCompleted, EvReadBlobCompleted>;
     using TEvDescribeBlocksCompleted = TResponseEvent<TDescribeBlocksCompleted, EvTDescribeBlocksCompleted>;
     using TEvLongRunningOperation = TRequestEvent<TLongRunningOperation, EvLongRunningOperation>;
+    using TEvGetPartCountersRequest =
+        TRequestEvent<TGetPartCountersRequest, EvGetPartCountersRequest>;
+    using TEvGetPartCountersResponse =
+        TResponseEvent<TGetPartCountersResponse, EvGetPartCountersResponse>;
+    using TEvPartCountersCombined =
+        TResponseEvent<TPartCountersCombined, EvPartCountersCombined>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

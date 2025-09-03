@@ -1663,7 +1663,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 CreateNullConfig({
                     .AcquireRequired = true,
                     .DiscoveryConfig = discovery,
-                    .CachedSessionsPath = CachedSessionsPath
+                    .CachedConfigPath = CachedConfigPath,
+                    .CachedSessionsPath = CachedSessionsPath,
                 })
             );
 
@@ -1725,12 +1726,17 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "vol1",
             2000);  // VolumeGeneration
 
+        UNIT_ASSERT_VALUES_EQUAL(3, state->GetSessions().size());
+
         dumpSessionsToFile();
 
         // restart
         state = createState();
 
         UNIT_ASSERT_EQUAL(0, *restoreError);
+
+        // [writer-1, reader-1, reader-2]
+        UNIT_ASSERT_VALUES_EQUAL(3, state->GetSessions().size());
 
         auto write = [&] (auto clientId, auto uuid) {
             NProto::TWriteDeviceBlocksRequest request;
@@ -1827,6 +1833,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "vol0",
             1001);  // VolumeGeneration
 
+        // [reader-1, reader-2]
+        UNIT_ASSERT_VALUES_EQUAL(2, state->GetSessions().size());
+
         dumpSessionsToFile();
 
         // remove reader-2's file
@@ -1835,8 +1844,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         // restart
         state = createState();
 
-        // reader-2 is broken
-        UNIT_ASSERT_EQUAL(1, *restoreError);
+        // [reader-1, reader-2]
+        UNIT_ASSERT_VALUES_EQUAL(2, state->GetSessions().size());
+
+        // reader-2 is still works
+        UNIT_ASSERT_EQUAL(0, *restoreError);
 
         {
             UNIT_ASSERT_EXCEPTION_SATISFIES(
@@ -1850,15 +1862,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         {
             UNIT_ASSERT_EXCEPTION_SATISFIES(
                 write("writer-1", devices[1]),
-                TServiceError,
-                [] (auto& e) {
-                    return e.GetCode() == E_BS_INVALID_SESSION;
-                });
-        }
-
-        {
-            UNIT_ASSERT_EXCEPTION_SATISFIES(
-                read("reader-2", devices[2]),
                 TServiceError,
                 [] (auto& e) {
                     return e.GetCode() == E_BS_INVALID_SESSION;
@@ -1883,6 +1886,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         {
             auto error = read("reader-1", devices[1]).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        {
+            auto error = read("reader-2", devices[2]).GetError();
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
         }
     }

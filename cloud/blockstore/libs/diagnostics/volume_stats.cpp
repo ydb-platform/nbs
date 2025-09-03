@@ -343,7 +343,7 @@ public:
             errorFlags,
             unaligned,
             ECalcMaxTime::ENABLE,
-            responseSent);
+            responseSent).Time;
     }
 
     void AddIncompleteStats(

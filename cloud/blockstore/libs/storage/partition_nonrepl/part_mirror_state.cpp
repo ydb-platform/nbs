@@ -41,10 +41,12 @@ TMirrorPartitionState::TMirrorPartitionState(
     }
 
     if (freshDeviceCount != PartConfig->GetFreshDeviceIds().size()) {
-        ReportFreshDeviceNotFoundInConfig(TStringBuilder()
-            << "Fresh device count mismatch: " << freshDeviceCount
-            << " != " << PartConfig->GetFreshDeviceIds().size()
-            << " for disk " << PartConfig->GetName());
+        ReportFreshDeviceNotFoundInConfig(
+            "Fresh device count mismatch",
+            {{"disk", PartConfig->GetName()},
+             {"freshDeviseCount", freshDeviceCount},
+             {"partConfigFreshDeviceCount",
+              PartConfig->GetFreshDeviceIds().size()}});
     }
 }
 

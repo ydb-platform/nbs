@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/core/request_info.h>
-
 #include <cloud/storage/core/protos/media.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
@@ -86,14 +84,5 @@ struct TFollowerDiskInfo
 };
 
 using TFollowerDisks = TVector<TFollowerDiskInfo>;
-
-struct TCreateFollowerRequestInfo
-{
-    TLeaderFollowerLink Link;
-    NActors::TActorId CreateVolumeLinkActor;
-    TVector<TRequestInfoPtr> Requests;
-};
-
-using TCreateFollowerRequests = TVector<TCreateFollowerRequestInfo>;
 
 }   // namespace NCloud::NBlockStore::NStorage

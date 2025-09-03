@@ -27,6 +27,7 @@ message TRdmaServer
     uint64 AdaptiveWaitSleepDelay = 8;      // in microseconds
     uint64 AdaptiveWaitSleepDuration = 9;   // in microseconds
     bool AlignedDataEnabled = 10;
+    uint32 IpTypeOfService = 11;
 }
 
 message TRdmaClient
@@ -38,6 +39,7 @@ message TRdmaClient
     uint64 AdaptiveWaitSleepDelay = 5;      // in microseconds
     uint64 AdaptiveWaitSleepDuration = 6;   // in microseconds
     bool AlignedDataEnabled = 7;
+    uint32 IpTypeOfService = 8;
 }
 
 message TRdmaTarget
@@ -57,4 +59,7 @@ message TRdmaConfig
 
     bool DiskAgentTargetEnabled = 5;
     TRdmaTarget DiskAgentTarget = 6;
+
+    bool BlockstoreServerTargetEnabled = 7;
+    TRdmaTarget BlockstoreServerTarget = 8;
 }

@@ -54,9 +54,9 @@ void SetupTestEnv(
     runtime.RegisterService(MakeSSProxyServiceId(), ssProxyId, nodeIdx);
 }
 
-auto CreateStorageConfig()
+auto CreateStorageConfig(NProto::TStorageServiceConfig config = {})
 {
-    return CreateTestStorageConfig({});
+    return CreateTestStorageConfig(std::move(config));
 }
 
 void SetupTestEnv(TTestEnv& env)
@@ -153,6 +153,32 @@ void FillVolumeConfig(
         ? volumeConfig.MutablePartitions(0)
         : volumeConfig.AddPartitions();
     partition->SetBlockCount(blocksCount);
+}
+
+TEvSSProxy::TEvDescribeSchemeResponse::TPtr DescribePath(
+    TTestActorRuntime& runtime,
+    const TStorageConfigPtr& config,
+    TString suffix = TString())
+{
+    TActorId sender = runtime.AllocateEdgeActor();
+    auto path = config->GetSchemeShardDir();
+    if (!suffix.empty()) {
+        path += "/" + suffix;
+    }
+    Send(
+        runtime,
+        MakeSSProxyServiceId(),
+        sender,
+        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+            std::move(path)));
+
+    TAutoPtr<IEventHandle> handle;
+    auto* response =
+        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(
+            handle);
+    UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
+    return IEventHandle::Downcast<TEvSSProxy::TEvDescribeSchemeResponse>(
+        std::move(handle));
 }
 
 void CreateVolumeViaModifyScheme(
@@ -482,6 +508,201 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "/local/nbs/_17A/new-volume",
             DescribeVolumeAndReturnPath(runtime, "new-volume"));
+    }
+
+    Y_UNIT_TEST(ShouldDescribeVolumesWithSchemeCache)
+    {
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+        auto config = CreateStorageConfig(
+            []() {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(true);
+                return config;
+            }()
+        );
+        SetupTestEnv(env, config);
+
+        CreateVolumeViaModifySchemeDeprecated(runtime, config, "old-volume");
+        CreateVolumeViaModifyScheme(runtime, config, "new-volume");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "/local/nbs/old-volume",
+            DescribeVolumeAndReturnPath(runtime, "old-volume"));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "/local/nbs/_17A/new-volume",
+            DescribeVolumeAndReturnPath(runtime, "new-volume"));
+    }
+
+    void TestShouldDescribeSubDomain(bool useSchemeCache)
+    {
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+        auto config = CreateStorageConfig(
+            [useSchemeCache]()
+            {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(useSchemeCache);
+                return config;
+            }());
+        SetupTestEnv(env, config);
+
+        const auto response = DescribePath(runtime, config);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NKikimrSchemeOp::EPathTypeSubDomain,
+            response->Get()->PathDescription.GetSelf().GetPathType());
+        UNIT_ASSERT_GT(
+            response->Get()
+                ->PathDescription.GetDomainDescription()
+                .StoragePoolsSize(),
+            0);
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            0,
+            response->Get()->PathDescription.GetSelf().GetPathId());
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            0,
+            response->Get()->PathDescription.GetSelf().GetPathVersion());
+    }
+
+    Y_UNIT_TEST(ShouldDescribeSubDomain)
+    {
+        TestShouldDescribeSubDomain(true);
+        TestShouldDescribeSubDomain(false);
+    }
+
+    Y_UNIT_TEST(ShouldDescribeDirsViaSchemeCache)
+    {
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+        auto config = CreateStorageConfig(
+            []()
+            {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(/*useSchemeCache=*/true);
+                return config;
+            }());
+        SetupTestEnv(env, config);
+
+        {
+            const auto response = DescribePath(runtime, config);
+            const auto& pathDescription = response->Get()->PathDescription;
+            UNIT_ASSERT_VALUES_EQUAL(
+                NKikimrSchemeOp::EPathTypeSubDomain,
+                pathDescription.GetSelf().GetPathType());
+
+            UNIT_ASSERT_VALUES_EQUAL(0, pathDescription.ChildrenSize());
+        }
+
+        CreateVolume(runtime, "volume0");
+        CreateVolume(runtime, "volume1");
+
+        {
+            const auto response = DescribePath(runtime, config);
+            UNIT_ASSERT_VALUES_EQUAL(
+                NKikimrSchemeOp::EPathTypeSubDomain,
+                response->Get()->PathDescription.GetSelf().GetPathType());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                response->Get()->PathDescription.ChildrenSize());
+
+            for (const auto& child:
+                 response->Get()->PathDescription.GetChildren())
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    NKikimrSchemeOp::EPathTypeDir,
+                    child.GetPathType());
+
+                const auto subPathResponse =
+                    DescribePath(runtime, config, child.GetName());
+                const auto& subPathDescription =
+                    subPathResponse->Get()->PathDescription;
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    NKikimrSchemeOp::EPathTypeDir,
+                    subPathDescription.GetSelf().GetPathType());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    subPathResponse->Get()->PathDescription.ChildrenSize());
+
+                const auto& volume = subPathDescription.GetChildren(0);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    NKikimrSchemeOp::EPathTypeBlockStoreVolume,
+                    volume.GetPathType());
+                UNIT_ASSERT_C(
+                    volume.GetName() == "volume0" ||
+                        volume.GetName() == "volume1",
+                    volume.GetName());
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDescribeDirsViaTxProxy)
+    {
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+        auto config = CreateStorageConfig(
+            []()
+            {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(/*useSchemeCache=*/false);
+                return config;
+            }());
+        SetupTestEnv(env, config);
+
+        {
+            const auto response = DescribePath(runtime, config);
+            const auto& pathDescription = response->Get()->PathDescription;
+            UNIT_ASSERT_VALUES_EQUAL(
+                NKikimrSchemeOp::EPathTypeSubDomain,
+                pathDescription.GetSelf().GetPathType());
+
+            UNIT_ASSERT_VALUES_EQUAL(1, pathDescription.ChildrenSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                ".sys",
+                pathDescription.GetChildren(0).GetName());
+        }
+
+        CreateVolume(runtime, "volume0");
+        CreateVolume(runtime, "volume1");
+
+        {
+            const auto response = DescribePath(runtime, config);
+            const auto& pathDescription = response->Get()->PathDescription;
+            UNIT_ASSERT_VALUES_EQUAL(
+                NKikimrSchemeOp::EPathTypeSubDomain,
+                pathDescription.GetSelf().GetPathType());
+            UNIT_ASSERT_VALUES_EQUAL(3, pathDescription.ChildrenSize());
+
+            for (const auto& child: pathDescription.GetChildren()) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    NKikimrSchemeOp::EPathTypeDir,
+                    child.GetPathType());
+
+                if (child.GetName() == ".sys") {
+                    continue;
+                }
+
+                const auto subPathResponse =
+                    DescribePath(runtime, config, child.GetName());
+                const auto& subPathDescription =
+                    subPathResponse->Get()->PathDescription;
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    NKikimrSchemeOp::EPathTypeDir,
+                    subPathDescription.GetSelf().GetPathType());
+                UNIT_ASSERT_VALUES_EQUAL(1, subPathDescription.ChildrenSize());
+
+                const auto& volume = subPathDescription.GetChildren(0);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    NKikimrSchemeOp::EPathTypeBlockStoreVolume,
+                    volume.GetPathType());
+                UNIT_ASSERT_C(
+                    volume.GetName() == "volume0" ||
+                        volume.GetName() == "volume1",
+                    volume.GetName());
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldDescribeVolumesInFallbackMode)

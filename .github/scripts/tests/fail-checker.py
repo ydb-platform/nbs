@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import argparse
 from typing import List
 from junit_utils import iter_xml_files
@@ -28,6 +29,7 @@ def check_for_fail(paths: List[str]):
         for t, fn in error_list:
             print(f"error: {t} ({fn})")
         if len(build_failed_list) > 0:
+            os.environ["BUILD_FAILED_COUNT"] = len(build_failed_list)
             raise SystemExit(237)
 
         raise SystemExit(1)

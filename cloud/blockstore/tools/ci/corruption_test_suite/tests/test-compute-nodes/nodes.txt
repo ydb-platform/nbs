@@ -1,0 +1,2 @@
+node1.net
+node2.net

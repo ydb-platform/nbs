@@ -3,8 +3,10 @@
 #include "compaction_map.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
+#include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
@@ -203,4 +205,43 @@ void RenderAutoRefreshScript(
     int intervalMs,
     const TString& jsUpdateFunctionName);
 
+void AddGroupLatencyCSS(IOutputStream& out);
+
+void DumpLatencyForOperations(
+    IOutputStream& out,
+    const TBSGroupOperationTimeTracker& tracker);
+
+void DumpGroupLatencyTab(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TBSGroupOperationTimeTracker& tracker);
+
+TString FormatTransactionsInflight(
+    const TTransactionTimeTracker::TInflightMap& operations,
+    ui64 nowCycles,
+    TInstant now);
+
+TString FormatRequestsInflight(
+    const TRequestsTimeTracker::TInflightMap& operations,
+    ui64 nowCycles,
+    TInstant now);
+
+TString FormatBSGroupOperationsInflight(
+    const TBSGroupOperationTimeTracker::TInflightMap& operations,
+    ui64 nowCycles,
+    TInstant now);
+
+extern const TStringBuf DefaultButtonStyle;
+
+void RenderStyledLink(
+    IOutputStream& out,
+    const TString& url,
+    const TString& text,
+    TStringBuf style = DefaultButtonStyle);
+
+void RenderStyledPostButton(
+    IOutputStream& out,
+    const TString& url,
+    const TString& text,
+    TStringBuf style = DefaultButtonStyle);
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils

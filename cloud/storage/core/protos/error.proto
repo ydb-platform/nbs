@@ -27,6 +27,10 @@ enum EErrorFlag
     // possibility of a retry storm.
     EF_INSTANT_RETRIABLE = 3;
 
+    // A flag that indicates that the checksum of the data does not match the
+    // checksum in the request.
+    EF_CHECKSUM_MISMATCH = 4;
+
     // TODO: EF_RETRIABLE, EF_CLIENT
 }
 

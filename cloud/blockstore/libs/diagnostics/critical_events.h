@@ -2,11 +2,14 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
+
 #include <variant>
 
 namespace NCloud::NBlockStore {
 
-using TValue = std::variant<TString, int, ui16, ui32, ui64>;
+using TValue =
+    std::variant<TString, int, ui16, ui32, ui64, TBlockRange64, TStringBuf>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -70,6 +73,7 @@ using TValue = std::variant<TString, int, ui16, ui32, ui64>;
     xxx(MirroredDiskResyncChecksumMismatch)                                    \
     xxx(DiskAgentInconsistentMultiWriteResponse)                               \
     xxx(ReleaseShadowDiskError)                                                \
+    xxx(WrongCellIdInDescribeVolume)                                           \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
@@ -136,6 +140,11 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 #define BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE(name)             \
     TString Report##name(const TString& message = "");                         \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
+    TString Report##name(                                                      \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
 
@@ -145,6 +154,11 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 #define BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE(name)                      \
     TString Report##name(const TString& message = "");                         \
+    TString Report##name(                                                      \
+        const TString& message,                                                \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
+    TString Report##name(                                                      \
+        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
     BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE)

@@ -132,10 +132,11 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
     TABLET_VERIFY(args.Node);
 
     if (!PrechargeNodeRefs(
-        db,
-        args.NodeId,
-        args.Cookie,
-        args.BytesToPrecharge))
+            db,
+            args.NodeId,
+            args.Cookie,
+            Max<ui64>(),
+            args.BytesToPrecharge))
     {
         return false; // not ready
     }

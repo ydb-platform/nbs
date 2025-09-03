@@ -460,6 +460,7 @@ public:
 
     NProto::TError GetDiskInfo(const TDiskId& diskId, TDiskInfo& diskInfo) const;
     NProto::EDiskState GetDiskState(const TDiskId& diskId) const;
+
     NProto::TError GetShadowDiskId(
         const TDiskId& sourceDiskId,
         const TCheckpointId& checkpointId,
@@ -577,6 +578,8 @@ public:
         TDiskNotificationResult notification);
 
     const TVector<TDiskStateUpdate>& GetDiskStateUpdates() const;
+
+    TVector<NProto::TDiskState> ListDisksStates() const;
 
     void DeleteDiskStateUpdate(TDiskRegistryDatabase& db, ui64 maxSeqNo);
 
@@ -882,7 +885,8 @@ public:
         TDiskRegistryDatabase& db,
         TInstant now);
 
-    TVector<TString> GetPoolNames() const;
+    TVector<TString> GetPoolNames(
+        std::optional<NProto::EDevicePoolKind> kind = std::nullopt) const;
 
     const NProto::TDeviceConfig* FindDevice(const TDeviceId& uuid) const;
 
@@ -1105,14 +1109,16 @@ private:
         TInstant now,
         TDiskRegistryDatabase& db,
         NProto::TDeviceConfig& device,
-        ui64 newBlockCount);
+        ui64 newBlockCount,
+        const TString& diskId);
 
     void AdjustDeviceState(
         TDiskRegistryDatabase& db,
         NProto::TDeviceConfig& device,
         NProto::EDeviceState state,
         TInstant timestamp,
-        TString message);
+        TString message,
+        const TString& diskId);
 
     ui64 GetDeviceBlockCountWithOverrides(
         const TDiskId& diskId,

@@ -14,9 +14,11 @@ InMemoryIndexCacheNodeRefsCapacity: 10
 InMemoryIndexCacheNodeAttrsCapacity: 10
 InMemoryIndexCacheLoadOnTabletStart: true
 InMemoryIndexCacheLoadOnTabletStartRowsPerTx: 1
+InMemoryIndexCacheNodeRefsExhaustivenessCapacity: 3
 UseMixedBlocksInsteadOfAliveBlocksInCompaction: true
 MixedBlocksOffloadedRangesCapacity: 1024
 CalculateCleanupScoreBasedOnUsedBlocksCount: true
 AsyncDestroyHandleEnabled: true
 LazyXAttrsEnabled: true
+ServerWriteBackCacheEnabled: true
 StrictFileSystemSizeEnforcementEnabled: true

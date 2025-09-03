@@ -530,6 +530,10 @@ void TServerStats::RequestCompleted(
         message = "request completed";
     }
 
+    if (req.CellRequest) {
+        logPriority = TLOG_DEBUG;
+    }
+
     STORAGE_LOG(logPriority,
         TRequestInfo(
             req.RequestType,

@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/discovery/public.h>
@@ -59,6 +60,7 @@ protected:
     IProfileLogPtr ProfileLog;
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IBlockStorePtr Service;
+    NCells::ICellManagerPtr CellManager;
     ISocketEndpointListenerPtr GrpcEndpointListener;
     NVhost::IServerPtr VhostServer;
     NVhost::TVhostCallbacks VhostCallbacks;
@@ -81,6 +83,8 @@ protected:
     NNvme::INvmeManagerPtr NvmeManager;
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
     NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;
+    NRdma::IServerPtr RdmaRequestServer;
+    IStartablePtr RdmaTarget;
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;
@@ -108,7 +112,7 @@ protected:
     virtual IStartable* GetClientPercentiles() = 0;
     virtual IStartable* GetStatsUploader() = 0;
     virtual IStartable* GetYdbStorage() = 0;
-    virtual IStartable* GetTraceSerializer() = 0;
+    virtual ITraceSerializerPtr GetTraceSerializer() = 0;
     virtual IStartable* GetLogbrokerService() = 0;
     virtual IStartable* GetNotifyService() = 0;
     virtual IStartable* GetStatsFetcher() = 0;
@@ -124,12 +128,15 @@ protected:
     virtual void InitRdmaServer() = 0;
     virtual void InitKikimrService() = 0;
     virtual void InitAuthService() = 0;
+    virtual void InitRdmaRequestServer() = 0;
 
     virtual void WarmupBSGroupConnections() = 0;
 
     void InitLWTrace(const TString& serviceNameForExporter);
+
+    virtual void SetupCellManager() = 0;
+
     void InitProfileLog();
-    void InitLogs();
 
 private:
     void InitLocalService();

@@ -164,7 +164,7 @@ func TestShouldReportRetriableErros(t *testing.T) {
 	mon.ReportRequestReceived("/csi.v1.Node/NodeStageVolume")
 	mon.ReportRequestCompleted("/csi.v1.Node/NodeStageVolume", status.Error(codes.Aborted, ""), -1)
 	mon.ReportRequestReceived("/csi.v1.Node/NodeStageVolume")
-	mon.ReportRequestCompleted("/csi.v1.Node/NodeStageVolume", status.Error(codes.AlreadyExists, ""), -1)
+	mon.ReportRequestCompleted("/csi.v1.Node/NodeStageVolume", status.Error(codes.DeadlineExceeded, ""), -1)
 
 	serv := httptest.NewServer(mon.Handler)
 	defer serv.Close()

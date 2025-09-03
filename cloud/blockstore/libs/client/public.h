@@ -23,6 +23,9 @@ using IThrottlerProviderPtr = std::shared_ptr<IThrottlerProvider>;
 struct IClient;
 using IClientPtr = std::shared_ptr<IClient>;
 
+struct IMultiHostClient;
+using IMultiHostClientPtr = std::shared_ptr<IMultiHostClient>;
+
 struct IRetryPolicy;
 using IRetryPolicyPtr = std::shared_ptr<IRetryPolicy>;
 
@@ -36,6 +39,9 @@ using IMetricClientPtr = std::shared_ptr<IMetricClient>;
 
 struct IMetricDataClient;
 using IMetricDataClientPtr = std::shared_ptr<IMetricDataClient>;
+
+struct IMultiClientEndpoint;
+using IMultiClientEndpointPtr = std::shared_ptr<IMultiClientEndpoint>;
 
 }   // namespace NClient
 }   // namespace NCloud::NBlockStore

@@ -46,6 +46,23 @@ class TestClient:
         return self.cms_action(request)
 
     @_handle_errors
+    def remove_host(self, agent_id):
+        request = protos.TCmsActionRequest()
+        action = request.Actions.add()
+        action.Type = protos.TAction.REMOVE_HOST
+        action.Host = agent_id
+
+        return self.cms_action(request)
+
+    def remove_device(self, host, path):
+        request = protos.TCmsActionRequest()
+        action = request.Actions.add()
+        action.Type = protos.TAction.REMOVE_DEVICE
+        action.Host = host
+        action.Device = path
+        return self.cms_action(request)
+
+    @_handle_errors
     def wait_for_devices_to_be_cleared(self, expected_dirty_count=0, poll_interval=1):
         while True:
             bkp = self.backup_disk_registry_state()

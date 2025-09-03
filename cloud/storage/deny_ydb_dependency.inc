@@ -11,8 +11,10 @@ CHECK_DEPENDENT_DIRS(
     EXCEPT contrib/ydb/public/lib/validation
 
     EXCEPT contrib/ydb/core/config
+    EXCEPT contrib/ydb/core/protos/nbs
 
     EXCEPT GLOB contrib/ydb/**/proto
     EXCEPT GLOB contrib/ydb/**/protos
     EXCEPT GLOB contrib/ydb/**/protos/annotations
+    EXCEPT GLOB contrib/ydb/**/protos/schemeshard
 )

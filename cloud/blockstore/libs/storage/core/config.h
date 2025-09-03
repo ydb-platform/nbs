@@ -489,6 +489,8 @@ public:
     TDuration GetReassignRequestRetryTimeout() const;
     ui32 GetReassignChannelsPercentageThreshold() const;
     ui32 GetReassignMixedChannelsPercentageThreshold() const;
+    bool GetReassignSystemChannelsImmediately() const;
+    ui32 GetReassignFreshChannelsPercentageThreshold() const;
 
     TString GetCommonSSDPoolKind() const;
     ui64 GetMaxSSDGroupWriteBandwidth() const;
@@ -523,6 +525,7 @@ public:
     bool GetHiveProxyFallbackMode() const;
     TString GetPathDescriptionBackupFilePath() const;
     bool GetSSProxyFallbackMode() const;
+    bool GetUseSchemeCache() const;
     bool GetDontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode() const;
 
     ui32 GetRdmaTargetPort() const;
@@ -699,6 +702,21 @@ public:
     [[nodiscard]] TDuration GetPartitionBootTimeout() const;
 
     [[nodiscard]] ui64 GetDirectWriteBandwidthQuota() const;
+
+    [[nodiscard]] bool GetUsePullSchemeForVolumeStatistics() const;
+
+    [[nodiscard]] TDuration GetInitialRetryDelayForServiceRequests() const;
+    [[nodiscard]] TDuration GetMaxRetryDelayForServiceRequests() const;
+
+    [[nodiscard]] bool GetVolumeThrottlingManagerEnabled() const;
+    [[nodiscard]] TDuration
+    GetVolumeThrottlingManagerNotificationPeriodSeconds() const;
+
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskInitialDelay() const;
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskMaxDelay() const;
+
+    [[nodiscard]] bool
+    GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() const;
 };
 
 ui64 GetAllocationUnit(

@@ -37,6 +37,8 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
+    LastCpuWaitTs = ctx.Monotonic();
+
     RegisterPages(ctx);
     RegisterCounters(ctx);
     ScheduleUpdateStats(ctx);

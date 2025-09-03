@@ -31,6 +31,8 @@ TStatsFetcherActor::TStatsFetcherActor(
 
 void TStatsFetcherActor::Bootstrap(const TActorContext& ctx)
 {
+    LastCpuWaitTs = ctx.Monotonic();
+
     RegisterCounters(ctx);
     Become(&TThis::StateWork);
 
@@ -61,19 +63,21 @@ void TStatsFetcherActor::HandleWakeup(
             "Failed to get CpuWait stats: " << errorMessage);
     }
 
-    auto now = ctx.Now();
-    auto intervalUs = (now - LastCpuWaitTs).MicroSeconds();
-    auto cpuLack = 100 * cpuWait.MicroSeconds();
-    cpuLack /= intervalUs;
-    *CpuWaitCounter = cpuLack;
+    auto now = ctx.Monotonic();
+    if (LastCpuWaitTs < now) {
+        auto intervalUs = (now - LastCpuWaitTs).MicroSeconds();
+        auto cpuLack = 100 * cpuWait.MicroSeconds();
+        cpuLack /= intervalUs;
+        *CpuWaitCounter = cpuLack;
 
-    LastCpuWaitTs = now;
+        LastCpuWaitTs = now;
 
-    if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
-        LOG_WARN_S(
-            ctx,
-            TBlockStoreComponents::STATS_SERVICE,
-            "Cpu wait is " << cpuLack);
+        if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::STATS_SERVICE,
+                "Cpu wait is " << cpuLack);
+        }
     }
 
     ctx.Schedule(FetchStatsPeriod, new TEvents::TEvWakeup());

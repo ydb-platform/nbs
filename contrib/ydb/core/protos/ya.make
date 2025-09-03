@@ -146,6 +146,7 @@ GENERATE_ENUM_SERIALIZATION(datashard_load.pb.h)
 PEERDIR(
     contrib/ydb/library/actors/protos
     contrib/ydb/core/fq/libs/config/protos
+    contrib/ydb/core/protos/nbs
     contrib/ydb/core/scheme/protos
     contrib/ydb/library/login/protos
     contrib/ydb/library/mkql_proto/protos

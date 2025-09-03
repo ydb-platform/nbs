@@ -71,7 +71,12 @@ void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
                             << " is larger than the size of follower disk "
                             << Follower.Link.FollowerDiskIdForPrint().Quote() << " "
                             << sourceSize << " > " << targetSize;
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME, errorMessage.c_str());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s %s",
+            LogPrefix.c_str(),
+            errorMessage.c_str());
 
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, errorMessage));
         return;
