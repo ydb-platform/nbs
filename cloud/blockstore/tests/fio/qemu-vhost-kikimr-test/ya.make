@@ -8,6 +8,8 @@ ENDIF()
 
 TAG(ya:manual)
 
+ENV(NBS_INSTANCE_COUNT=1)
+
 DEPENDS(
     cloud/storage/core/tools/testing/fio/bin
 )

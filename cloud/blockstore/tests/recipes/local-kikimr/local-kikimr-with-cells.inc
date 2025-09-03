@@ -13,4 +13,15 @@ DATA(
 USE_RECIPE(
     cloud/blockstore/tests/recipes/local-kikimr/local-kikimr-recipe
     --use-log-files
+    --cells-enabled
+    --cells-with-conections
+    --nbs-index 0
+)
+
+USE_RECIPE(
+    cloud/blockstore/tests/recipes/local-kikimr/local-kikimr-recipe
+    --use-log-files
+    --cells-enabled
+    --cells-with-conections
+    --nbs-index 1
 )

@@ -400,10 +400,10 @@ def get_nbs_device_path_by_index(index):
         return path
 
 
-def get_all_nbs_paths(nbs_instances_count):
+def get_all_nbs_paths(nbs_instance_count):
     paths = []
 
-    for i in range(nbs_instances_count):
+    for i in range(nbs_instance_count):
         path = (os.getenv("NBS_{}_DEVICE_PATH".format(i)))
         logger.info("path from NBS_{}_DEVICE_PATH: {}".format(i, path))
 

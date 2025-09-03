@@ -45,7 +45,7 @@ def start(argv):
     parser.add_argument("--verbose", action="store_true", default=False)
     args = parser.parse_args(argv)
 
-    clusters_count = int(os.getenv("CLUSTERS_COUNT"))
+    clusters_count = int(os.getenv("NBS_INSTANCE_COUNT"))
 
     for cluster_index in range(clusters_count):
         disk_id = uuid.uuid4().hex[:20]
@@ -72,7 +72,7 @@ def start(argv):
 
 
 def stop(argv):
-    clusters_count = int(os.getenv("CLUSTERS_COUNT"))
+    clusters_count = int(os.getenv("NBS_INSTANCE_COUNT"))
 
     for cluster_index in range(clusters_count):
         port = _get_nbs_port(cluster_index)

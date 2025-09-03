@@ -400,7 +400,11 @@ def _prepare_test_environment(ssh, virtio, instance_idx):
         # Sanity check
         ssh("sudo touch {}/.test".format(mount_path), timeout=300)
     elif virtio == "blk":
-        nbs_devices_count = int(os.getenv("CLUSTERS_COUNT"))
+        if os.getenv("NBS_INSTANCE_COUNT") == None:
+            nbs_devices_count = 1
+        else:
+            nbs_devices_count = int(os.getenv("NBS_INSTANCE_COUNT"))
+
         for nbs_index in range(nbs_devices_count):
             # Use virtio-blk device
             ssh("sudo lsblk")
