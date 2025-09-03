@@ -76,6 +76,7 @@ def test_zero_range_read_rand_data():
         for i in range(num_writes):
             write_size = random.randint(2, 1000) // 2 * 2
             offset = random.randint(0, file_size - write_size) // 2 * 2
+            logging.info(f"Write data with size {write_size} and offset {offset}")
             data = ''.join(random.choices(string.ascii_letters, k=write_size))
             expected_file_handle.seek(offset)
             expected_file_handle.write(data)
