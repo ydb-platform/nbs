@@ -1,7 +1,9 @@
 import filecmp
+import logging
 import os
 import random
 import string
+import time
 
 import yatest.common as common
 
@@ -61,6 +63,10 @@ def test_zero_range_read():
 def test_zero_range_read_rand_data():
 
     file_size = 1024 * 1024
+
+    seed = time.time()
+    random.seed(seed)
+    logging.info(f"Run test with seed: {seed}")
     num_writes = random.randint(1, 10)
 
     client, results_path = __init_test()
@@ -68,7 +74,7 @@ def test_zero_range_read_rand_data():
     expected_file = os.path.join(common.output_path(), "expected_data.txt")
     with open(expected_file, "w") as expected_file_handle:
         for i in range(num_writes):
-            write_size = random.randint(1, 1000) // 2 * 2
+            write_size = random.randint(2, 1000) // 2 * 2
             offset = random.randint(0, file_size - write_size) // 2 * 2
             data = ''.join(random.choices(string.ascii_letters, k=write_size))
             expected_file_handle.seek(offset)
