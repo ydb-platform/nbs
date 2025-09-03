@@ -641,5 +641,5 @@ message TStorageConfig
     // AggregateUsedBytesCount and AggregateUsedNodesCount are calculated for
     // all the shards. These counters are used to strictly enforce the
     // filesystem size.
-    optional bool StrictFileSystemSizeEnforcementEnabled = 437;
+    optional bool StrictFileSystemSizeEnforcementEnabled = 438;
 }
