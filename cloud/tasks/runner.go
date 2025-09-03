@@ -83,6 +83,8 @@ type runnerForRun struct {
 	maxPanicCount                    uint64
 
 	hangingTaskTimeout                time.Duration
+	inflightHangingTaskTimeout        time.Duration
+	stallingHangingTaskTimeout        time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
 	maxSampledTaskGeneration          uint64
 }
@@ -332,6 +334,8 @@ func (r *runnerForRun) lockAndExecuteTask(
 		r,
 		taskInfo,
 		r.hangingTaskTimeout,
+		r.inflightHangingTaskTimeout,
+		r.stallingHangingTaskTimeout,
 		r.missedEstimatesUntilTaskIsHanging,
 		r.maxSampledTaskGeneration,
 	)
@@ -350,6 +354,8 @@ type runnerForCancel struct {
 	id          string
 
 	hangingTaskTimeout                time.Duration
+	inflightHangingTaskTimeout        time.Duration
+	stallingHangingTaskTimeout        time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
 	maxSampledTaskGeneration          uint64
 }
@@ -461,6 +467,8 @@ func (r *runnerForCancel) lockAndExecuteTask(
 		r,
 		taskInfo,
 		r.hangingTaskTimeout,
+		r.inflightHangingTaskTimeout,
+		r.stallingHangingTaskTimeout,
 		r.missedEstimatesUntilTaskIsHanging,
 		r.maxSampledTaskGeneration,
 	)
@@ -529,6 +537,8 @@ func lockAndExecuteTask(
 	runner runner,
 	taskInfo storage.TaskInfo,
 	hangingTaskTimeout time.Duration,
+	inflightHangingTaskTimeout time.Duration,
+	stallingHangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
 	maxSampledTaskGeneration uint64,
 ) error {
@@ -600,6 +610,8 @@ func lockAndExecuteTask(
 		task,
 		taskStorage,
 		taskState,
+		inflightHangingTaskTimeout,
+		stallingHangingTaskTimeout,
 		hangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging,
 	)
@@ -657,6 +669,9 @@ func startRunner(
 	pingPeriod time.Duration,
 	pingTimeout time.Duration,
 	hangingTaskTimeout time.Duration,
+	inflightHangingTaskTimeout time.Duration,
+	stallingHangingTaskTimeout time.Duration,
+	missedEstimatesUntilTaskIsHanging uint64,
 	exceptHangingTaskTypes []string,
 	host string,
 	idForRun string,
@@ -664,7 +679,6 @@ func startRunner(
 	maxRetriableErrorCountDefault uint64,
 	maxRetriableErrorCountByTaskType map[string]uint64,
 	maxPanicCount uint64,
-	missedEstimatesUntilTaskIsHanging uint64,
 	maxSampledTaskGeneration uint64,
 ) error {
 
@@ -673,7 +687,6 @@ func startRunner(
 	runnerForRunMetrics := newRunnerMetrics(
 		ctx,
 		runnerMetricsRegistry,
-		hangingTaskTimeout,
 		exceptHangingTaskTypes,
 	)
 
@@ -691,6 +704,8 @@ func startRunner(
 		maxPanicCount:                    maxPanicCount,
 
 		hangingTaskTimeout:                hangingTaskTimeout,
+		inflightHangingTaskTimeout:        inflightHangingTaskTimeout,
+		stallingHangingTaskTimeout:        stallingHangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
 		maxSampledTaskGeneration:          maxSampledTaskGeneration,
 	})
@@ -698,7 +713,6 @@ func startRunner(
 	runnerForCancelMetrics := newRunnerMetrics(
 		ctx,
 		runnerMetricsRegistry,
-		hangingTaskTimeout,
 		exceptHangingTaskTypes,
 	)
 
@@ -713,6 +727,8 @@ func startRunner(
 		id:          idForCancel,
 
 		hangingTaskTimeout:                hangingTaskTimeout,
+		inflightHangingTaskTimeout:        inflightHangingTaskTimeout,
+		stallingHangingTaskTimeout:        stallingHangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging: missedEstimatesUntilTaskIsHanging,
 		maxSampledTaskGeneration:          maxSampledTaskGeneration,
 	})
@@ -731,12 +747,14 @@ func startRunners(
 	pingPeriod time.Duration,
 	pingTimeout time.Duration,
 	hangingTaskTimeout time.Duration,
+	inflightHangingTaskTimeout time.Duration,
+	stallingHangingTaskTimeout time.Duration,
+	missedEstimatesUntilTaskIsHanging uint64,
 	exceptHangingTaskTypes []string,
 	host string,
 	maxRetriableErrorCountDefault uint64,
 	maxRetriableErrorCountByTaskType map[string]uint64,
 	maxPanicCount uint64,
-	missedEstimatesUntilTaskIsHanging uint64,
 	maxSampledTaskGeneration uint64,
 ) error {
 
@@ -751,6 +769,9 @@ func startRunners(
 			pingPeriod,
 			pingTimeout,
 			hangingTaskTimeout,
+			inflightHangingTaskTimeout,
+			stallingHangingTaskTimeout,
+			missedEstimatesUntilTaskIsHanging,
 			exceptHangingTaskTypes,
 			host,
 			fmt.Sprintf("run_%v", i),
@@ -758,7 +779,6 @@ func startRunners(
 			maxRetriableErrorCountDefault,
 			maxRetriableErrorCountByTaskType,
 			maxPanicCount,
-			missedEstimatesUntilTaskIsHanging,
 			maxSampledTaskGeneration,
 		)
 		if err != nil {
@@ -780,12 +800,14 @@ func startStalkingRunners(
 	pingPeriod time.Duration,
 	pingTimeout time.Duration,
 	hangingTaskTimeout time.Duration,
+	inflightHangingTaskTimeout time.Duration,
+	stallingHangingTaskTimeout time.Duration,
+	missedEstimatesUntilTaskIsHanging uint64,
 	exceptHangingTaskTypes []string,
 	host string,
 	maxRetriableErrorCountDefault uint64,
 	maxRetriableErrorCountByTaskType map[string]uint64,
 	maxPanicCount uint64,
-	missedEstimatesUntilTaskIsHanging uint64,
 	maxSampledTaskGeneration uint64,
 ) error {
 
@@ -800,6 +822,9 @@ func startStalkingRunners(
 			pingPeriod,
 			pingTimeout,
 			hangingTaskTimeout,
+			inflightHangingTaskTimeout,
+			stallingHangingTaskTimeout,
+			missedEstimatesUntilTaskIsHanging,
 			exceptHangingTaskTypes,
 			host,
 			fmt.Sprintf("stalker_run_%v", i),
@@ -807,7 +832,6 @@ func startStalkingRunners(
 			maxRetriableErrorCountDefault,
 			maxRetriableErrorCountByTaskType,
 			maxPanicCount,
-			missedEstimatesUntilTaskIsHanging,
 			maxSampledTaskGeneration,
 		)
 		if err != nil {
@@ -911,6 +935,16 @@ func StartRunners(
 		return err
 	}
 
+	inflightHangingTaskTimeout, err := time.ParseDuration(config.GetInflightHangingTaskTimeout())
+	if err != nil {
+		return err
+	}
+
+	stallingHangingTaskTimeout, err := time.ParseDuration(config.GetStallingHangingTaskTimeout())
+	if err != nil {
+		return err
+	}
+
 	inflightTaskLimits := config.GetInflightTaskPerNodeLimits()
 
 	taskTypesForExecution := registry.TaskTypesForExecution()
@@ -957,12 +991,14 @@ func StartRunners(
 		pingPeriod,
 		pingTimeout,
 		hangingTaskTimeout,
+		inflightHangingTaskTimeout,
+		stallingHangingTaskTimeout,
+		config.GetMissedEstimatesUntilTaskIsHanging(),
 		config.GetExceptHangingTaskTypes(),
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxRetriableErrorCountByTaskType(),
 		config.GetMaxPanicCount(),
-		config.GetMissedEstimatesUntilTaskIsHanging(),
 		config.GetMaxSampledTaskGeneration(),
 	)
 	if err != nil {
@@ -1013,12 +1049,14 @@ func StartRunners(
 		pingPeriod,
 		pingTimeout,
 		hangingTaskTimeout,
+		inflightHangingTaskTimeout,
+		stallingHangingTaskTimeout,
+		config.GetMissedEstimatesUntilTaskIsHanging(),
 		config.GetExceptHangingTaskTypes(),
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxRetriableErrorCountByTaskType(),
 		config.GetMaxPanicCount(),
-		config.GetMissedEstimatesUntilTaskIsHanging(),
 		config.GetMaxSampledTaskGeneration(),
 	)
 	if err != nil {

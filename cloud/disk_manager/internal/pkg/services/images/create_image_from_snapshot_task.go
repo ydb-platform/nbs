@@ -110,7 +110,7 @@ func (t *createImageFromSnapshotTask) Run(
 		}
 
 		// TODO: estimate should be applied before resource creation, not after.
-		execCtx.SetEstimate(performance.Estimate(
+		execCtx.SetEstimatedInflightDuration(performance.Estimate(
 			typedResponse.SnapshotStorageSize,
 			t.performanceConfig.GetCreateImageFromSnapshotBandwidthMiBs(),
 		))
@@ -148,7 +148,7 @@ func (t *createImageFromSnapshotTask) Run(
 		}
 
 		// TODO: estimate should be applied before resource creation, not after.
-		execCtx.SetEstimate(performance.Estimate(
+		execCtx.SetEstimatedInflightDuration(performance.Estimate(
 			typedResponse.TransferredDataSize,
 			t.performanceConfig.GetCreateImageFromSnapshotBandwidthMiBs(),
 		))

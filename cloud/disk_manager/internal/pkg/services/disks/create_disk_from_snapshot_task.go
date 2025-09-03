@@ -106,7 +106,7 @@ func (t *createDiskFromSnapshotTask) Run(
 	}
 
 	if snapshotMeta != nil {
-		execCtx.SetEstimate(performance.Estimate(
+		execCtx.SetEstimatedInflightDuration(performance.Estimate(
 			snapshotMeta.StorageSize,
 			t.performanceConfig.GetCreateDiskFromSnapshotBandwidthMiBs(),
 		))

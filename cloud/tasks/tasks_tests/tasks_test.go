@@ -115,7 +115,9 @@ func newDefaultConfig() *tasks_config.TasksConfig {
 	clearEndedTasksTaskScheduleInterval := "6s"
 	clearEndedTasksLimit := uint64(10)
 	maxRetriableErrorCount := uint64(2)
-	hangingTaskTimeout := "100s"
+	hangingTaskTimeout := "24h"
+	inflightHangingTaskTimeout := "100s"
+	stallingHangingTaskTimeout := "30m"
 	maxPanicCount := uint64(0)
 	inflightTaskPerNodeLimits := map[string]int64{
 		"long": inflightLongTaskPerNodeLimit,
@@ -137,6 +139,8 @@ func newDefaultConfig() *tasks_config.TasksConfig {
 		ClearEndedTasksLimit:                &clearEndedTasksLimit,
 		MaxRetriableErrorCount:              &maxRetriableErrorCount,
 		HangingTaskTimeout:                  &hangingTaskTimeout,
+		InflightHangingTaskTimeout:          &inflightHangingTaskTimeout,
+		StallingHangingTaskTimeout:          &stallingHangingTaskTimeout,
 		MaxPanicCount:                       &maxPanicCount,
 		InflightTaskPerNodeLimits:           inflightTaskPerNodeLimits,
 	}
@@ -1446,7 +1450,7 @@ func newHangingTaskTestConfig() *tasks_config.TasksConfig {
 	taskWaitingTimeout := "10s"
 	config.TaskWaitingTimeout = &taskWaitingTimeout
 	timeoutString := "5s"
-	config.HangingTaskTimeout = &timeoutString
+	config.InflightHangingTaskTimeout = &timeoutString
 
 	metricsCollectionInterval := "10ms"
 	config.ListerMetricsCollectionInterval = &metricsCollectionInterval
