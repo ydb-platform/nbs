@@ -27,6 +27,12 @@ NRdma::TProtoMessageSerializer* TBlockStoreServerProtocol::Serializer()
 
             RegisterProto<NProto::TPingRequest>(EvPingRequest);
             RegisterProto<NProto::TPingResponse>(EvPingResponse);
+
+            RegisterProto<NProto::TMountVolumeRequest>(EvMountVolumeRequest);
+            RegisterProto<NProto::TMountVolumeResponse>(EvMountVolumeResponse);
+
+            RegisterProto<NProto::TUnmountVolumeRequest>(EvUnmountVolumeRequest);
+            RegisterProto<NProto::TUnmountVolumeResponse>(EvUnmountVolumeResponse);
         }
     };
 

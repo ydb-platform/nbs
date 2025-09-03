@@ -152,6 +152,8 @@ private:
             BLOCKSTORE_HANDLE_REQUEST(WriteBlocks)
             BLOCKSTORE_HANDLE_REQUEST(ZeroBlocks)
             BLOCKSTORE_HANDLE_REQUEST(Ping)
+            BLOCKSTORE_HANDLE_REQUEST(MountVolume)
+            BLOCKSTORE_HANDLE_REQUEST(UnmountVolume)
 
             default:
                 return MakeError(
@@ -424,6 +426,102 @@ private:
         if (auto ep = Endpoint.lock()) {
             ep->SendResponse(context, responseBytes);
         }
+
+        return {};
+    }
+
+    NProto::TError HandleMountVolumeRequest(
+        void* context,
+        TCallContextPtr callContext,
+        NProto::TMountVolumeRequest& request,
+        TStringBuf requestData,
+        TStringBuf out) const
+    {
+        if (TraceSerializer->HandleTraceRequest(
+                request.GetHeaders().GetInternal().GetTrace(),
+                callContext->LWOrbit))
+        {
+            request.MutableHeaders()->MutableInternal()->SetTraceTs(
+                GetCycleCount());
+        }
+
+        LWTRACK(RequestReceived_RdmaTarget, callContext->LWOrbit);
+
+        Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
+
+        auto req = std::make_shared<NProto::TMountVolumeRequest>(
+            std::move(request));
+
+        auto future = Service->MountVolume(callContext, std::move(req));
+
+        future.Subscribe(
+            [out = out,
+             context = context,
+             endpoint = Endpoint,
+             callContext = std::move(callContext)](auto future)
+            {
+                auto response = ExtractResponse(future);
+
+                ui32 flags = 0;
+                size_t responseBytes =
+                    NRdma::TProtoMessageSerializer::Serialize(
+                        out,
+                        TBlockStoreServerProtocol::EvMountVolumeResponse,
+                        flags,   // flags
+                        response);
+
+                if (auto ep = endpoint.lock()) {
+                    ep->SendResponse(context, responseBytes);
+                }
+            });
+
+        return {};
+    }
+
+    NProto::TError HandleUnmountVolumeRequest(
+        void* context,
+        TCallContextPtr callContext,
+        NProto::TUnmountVolumeRequest& request,
+        TStringBuf requestData,
+        TStringBuf out) const
+    {
+        if (TraceSerializer->HandleTraceRequest(
+                request.GetHeaders().GetInternal().GetTrace(),
+                callContext->LWOrbit))
+        {
+            request.MutableHeaders()->MutableInternal()->SetTraceTs(
+                GetCycleCount());
+        }
+
+        LWTRACK(RequestReceived_RdmaTarget, callContext->LWOrbit);
+
+        Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
+
+        auto req = std::make_shared<NProto::TUnmountVolumeRequest>(
+            std::move(request));
+
+        auto future = Service->UnmountVolume(callContext, std::move(req));
+
+        future.Subscribe(
+            [out = out,
+             context = context,
+             endpoint = Endpoint,
+             callContext = std::move(callContext)](auto future)
+            {
+                auto response = ExtractResponse(future);
+
+                ui32 flags = 0;
+                size_t responseBytes =
+                    NRdma::TProtoMessageSerializer::Serialize(
+                        out,
+                        TBlockStoreServerProtocol::EvUnmountVolumeResponse,
+                        flags,   // flags
+                        response);
+
+                if (auto ep = endpoint.lock()) {
+                    ep->SendResponse(context, responseBytes);
+                }
+            });
 
         return {};
     }
