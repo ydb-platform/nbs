@@ -15,7 +15,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const cmdTimeout = 60 * time.Second
+const cmdTimeout = 90 * time.Second
 
 type mounter struct {
 	mnt  mount.Interface
