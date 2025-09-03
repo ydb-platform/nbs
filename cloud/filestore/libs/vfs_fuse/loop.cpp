@@ -244,6 +244,12 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+static ui32 CalcVhostQueuesCount(const TVFSConfig& vfsConfig)
+{
+    // HIPRIO + number of requests queues
+    return Max(2u, vfsConfig.GetVhostQueuesCount());
+}
+
 class TArgs
 {
 private:
@@ -263,9 +269,7 @@ public:
             AddArg("--socket-path=" + path);
         }
 
-        // HIPRIO + number of requests queues
-        ui32 backendQueues = Max(2u, config.GetVhostQueuesCount());
-        AddArg("--num-backend-queues=" + ToString(backendQueues));
+        AddArg("--num-backend-queues=" + ToString(CalcVhostQueuesCount(config)));
         AddArg("--num-frontend-queues=" + ToString(threadsCount));
 #else
         Y_UNUSED(threadsCount);
@@ -1043,10 +1047,9 @@ private:
                 Config->GetClientId().Quote().c_str(),
                 filestoreConfigDump.Str().Quote().c_str());
 
-            ui32 fuseLoopThreadCount = FileSystemConfig->GetMaxFuseLoopThreads();
-            if (Config->GetVhostQueuesCount()) {
-                fuseLoopThreadCount = Min(fuseLoopThreadCount, Config->GetVhostQueuesCount());
-            }
+            ui32 fuseLoopThreadCount =
+                Min(FileSystemConfig->GetMaxFuseLoopThreads(),
+                    CalcVhostQueuesCount(*Config));
 
             FuseLoop = std::make_unique<TFuseLoop>(
                 Log,
