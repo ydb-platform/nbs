@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/public/api/protos/io.pb.h>
+#include <cloud/blockstore/public/api/protos/mount.pb.h>
 #include <cloud/blockstore/public/api/protos/ping.pb.h>
 
 #include <util/generic/singleton.h>
@@ -27,6 +28,12 @@ NRdma::TProtoMessageSerializer* TBlockStoreProtocol::Serializer()
 
             RegisterProto<NProto::TPingRequest>(PingRequest);
             RegisterProto<NProto::TPingResponse>(PingResponse);
+
+            RegisterProto<NProto::TMountVolumeRequest>(EvMountVolumeRequest);
+            RegisterProto<NProto::TMountVolumeResponse>(EvMountVolumeResponse);
+
+            RegisterProto<NProto::TUnmountVolumeRequest>(EvUnmountVolumeRequest);
+            RegisterProto<NProto::TUnmountVolumeResponse>(EvUnmountVolumeResponse);
         }
     };
 
