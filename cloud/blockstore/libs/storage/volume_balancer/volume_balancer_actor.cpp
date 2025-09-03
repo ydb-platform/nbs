@@ -196,9 +196,7 @@ void TVolumeBalancerActor::RegisterCounters(const TActorContext& ctx)
 
 bool TVolumeBalancerActor::IsBalancerEnabled() const
 {
-    return State->GetEnabled()
-        && VolumeBalancerSwitch->IsBalancerEnabled()
-        && StorageConfig->GetVolumePreemptionType() != NProto::PREEMPTION_NONE;
+    return State->GetEnabled() && VolumeBalancerSwitch->IsBalancerEnabled();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -420,16 +418,20 @@ void TVolumeBalancerActor::HandleConfigNotificationRequest(
     const auto& config = record.GetConfig();
 
     if (!config.HasBlockstoreConfig() ||
-        !config.GetBlockstoreConfig().HasVolumeBalancerEnabled())
+        !config.GetBlockstoreConfig().HasVolumePreemptionType())
     {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME_BALANCER,
-            "VolumeBalancerEnabled is not present in ConfigDispatcher "
+            "VolumePreemptionType is not present in ConfigDispatcher "
             "notification");
         return;
     }
-    State->SetEnabled(config.GetBlockstoreConfig().GetVolumeBalancerEnabled());
+
+    auto volumePreemptionType = static_cast<NProto::EVolumePreemptionType>(
+        config.GetBlockstoreConfig().GetVolumePreemptionType());
+
+    State->SetVolumePreemptionType(volumePreemptionType);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

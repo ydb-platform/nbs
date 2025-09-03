@@ -19,4 +19,4 @@ selector_config:
     nbs: true
   config:
     blockstore_config: !inherit
-      volume_balancer_enabled: true
+      volume_preemption_type: VOLUME_PREEMPTION_NONE

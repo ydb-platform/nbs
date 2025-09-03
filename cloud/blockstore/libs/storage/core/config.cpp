@@ -622,7 +622,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeThrottlingManagerNotificationPeriodSeconds,                      \
         TDuration,                                                             \
         Seconds(5)                                                            )\
-    xxx(VolumeBalancerEnabled,                             bool,   true       )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
@@ -857,9 +856,10 @@ struct TStorageConfig::TImpl
         FeaturesConfig = std::move(featuresConfig);
     }
 
-    void SetVolumeBalancerEnabled(bool volumeBalancerEnabled)
+    void SetVolumePreemptionType(
+        NProto::EVolumePreemptionType volumePreemptionType)
     {
-        StorageServiceConfig.SetVolumeBalancerEnabled(volumeBalancerEnabled);
+        StorageServiceConfig.SetVolumePreemptionType(volumePreemptionType);
     }
 
     NProto::TStorageServiceConfig GetStorageConfigProto() const
@@ -900,9 +900,10 @@ void TStorageConfig::SetFeaturesConfig(
     Impl->SetFeaturesConfig(std::move(featuresConfig));
 }
 
-void TStorageConfig::SetVolumeBalancerEnabled(bool volumeBalancerEnabled)
+void TStorageConfig::SetVolumePreemptionType(
+    NProto::EVolumePreemptionType volumePreemptionType)
 {
-    Impl->SetVolumeBalancerEnabled(volumeBalancerEnabled);
+    Impl->SetVolumePreemptionType(volumePreemptionType);
 }
 
 void TStorageConfig::Register(TControlBoard& controlBoard){

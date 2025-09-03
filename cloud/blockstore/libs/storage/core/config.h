@@ -43,7 +43,7 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
-    void SetVolumeBalancerEnabled(bool volumeBalancerEnabled);
+    void SetVolumePreemptionType(NProto::EVolumePreemptionType volumePreemptionType);
 
     void Register(NKikimr::TControlBoard& controlBoard);
 
@@ -711,8 +711,6 @@ public:
     [[nodiscard]] bool GetVolumeThrottlingManagerEnabled() const;
     [[nodiscard]] TDuration
     GetVolumeThrottlingManagerNotificationPeriodSeconds() const;
-
-    [[nodiscard]] bool GetVolumeBalancerEnabled() const;
 };
 
 ui64 GetAllocationUnit(

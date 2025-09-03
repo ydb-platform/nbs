@@ -437,8 +437,9 @@ void TConfigInitializerYdb::ApplyBlockstoreConfig(
 
     const auto& blockstoreConfig = config.GetBlockstoreConfig();
 
-    StorageConfig->SetVolumeBalancerEnabled(
-        blockstoreConfig.GetVolumeBalancerEnabled());
+    auto volumePreemptionType = static_cast<NProto::EVolumePreemptionType>(
+        blockstoreConfig.GetVolumePreemptionType());
+    StorageConfig->SetVolumePreemptionType(volumePreemptionType);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

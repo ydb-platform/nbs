@@ -95,12 +95,6 @@ public:
         return *this;
     }
 
-    TVolumeBalancerConfigBuilder& WithVolumeBalancerEnabled(bool enabled)
-    {
-        StorageConfig.SetVolumeBalancerEnabled(enabled);
-        return *this;
-    }
-
     NProto::TStorageServiceConfig Build()
     {
         return StorageConfig;
@@ -739,7 +733,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             std::make_unique<TEvConsole::TEvConfigNotificationRequest>();
         request->Record.MutableConfig()
             ->MutableBlockstoreConfig()
-            ->SetVolumeBalancerEnabled(false);
+            ->SetVolumePreemptionType(NKikimrConfig::PREEMPTION_NONE);
 
         testEnv.Send(volumeBalancerActorId, std::move(request));
 
@@ -758,14 +752,14 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             TDuration::Seconds(15));
     }
 
-    Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsDisabledViaStorageConfig)
+    Y_UNIT_TEST(ShouldNotDoAnythingIfPreemptionTypeNone)
     {
         TVolumeBalancerTestEnv testEnv;
         TVolumeBalancerConfigBuilder config;
-        config.WithVolumeBalancerEnabled(false);
+        config.WithType(NProto::PREEMPTION_NONE);
 
         auto volumeBalancerActorId = testEnv.Register(CreateVolumeBalancerActor(
-            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY),
+            config.WithType(NProto::PREEMPTION_NONE),
             testEnv.VolumeStats,
             testEnv.Fetcher,
             testEnv.GetEdgeActor()));

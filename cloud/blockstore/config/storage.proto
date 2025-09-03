@@ -38,6 +38,7 @@ enum ECompactionType
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Keep consistent with copy from contrib/ydb/core/protos/nbs/blockstore.proto
 enum EVolumePreemptionType
 {
     // Do not preempt volumes when host is overloaded
@@ -1297,6 +1298,4 @@ message TStorageServiceConfig
     optional bool VolumeThrottlingManagerEnabled = 447;
     // Duration between VolumeThrottlingManager notifications to volumes
     optional uint32 VolumeThrottlingManagerNotificationPeriodSeconds = 448;
-
-    optional bool VolumeBalancerEnabled = 449;
 }
