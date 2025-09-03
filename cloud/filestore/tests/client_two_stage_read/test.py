@@ -1,8 +1,6 @@
-import filecmp
 import logging
 import os
 import random
-import string
 import time
 
 import yatest.common as common
@@ -72,25 +70,25 @@ def test_zero_range_read_rand_data():
     client, results_path = __init_test()
     client.create("fs0", "test_cloud", "test_folder")
     expected_file = os.path.join(common.output_path(), "expected_data.txt")
-    with open(expected_file, "w") as expected_file_handle:
+    with open(expected_file, "wb") as expected_file_handle:
         for i in range(num_writes):
-            write_size = random.randint(2, 1000) // 2 * 2
-            offset = random.randint(0, file_size - write_size) // 2 * 2
+            write_size = random.randint(1, 1000)
+            offset = random.randint(0, file_size - write_size)
             logging.info(f"Write data with size {write_size} and offset {offset}")
-            data = ''.join(random.choices(string.ascii_letters, k=write_size))
-            expected_file_handle.seek(offset)
-            expected_file_handle.write(data)
+            data = random.randbytes(write_size)
 
             data_file = os.path.join(common.output_path(), "data.txt")
-            with open(data_file, "w") as data_file_handle:
+            with open(data_file, "wb") as data_file_handle:
                 data_file_handle.write(data)
+
+            expected_file_handle.seek(offset)
+            expected_file_handle.write(data)
             client.write("fs0", "/aaa", "--data", data_file, "--offset", f"{offset}")
 
-    result = client.read("fs0", "/aaa", "--length", f"{file_size}").decode("utf8")
+    result = client.read("fs0", "/aaa", "--length", f"{file_size}")
 
     client.destroy("fs0")
 
-    with open(results_path, "w") as results_file:
-        results_file.write(result)
-
-    assert filecmp.cmp(expected_file, results_path)
+    with open(expected_file, mode='rb') as expected_file_handle:
+        expected_file_content = expected_file_handle.read()
+        assert expected_file_content == result
