@@ -994,17 +994,15 @@ void TPartitionState::RegisterTrimFreshLogError(
     const NProto::TError& error,
     ui64 tabletId)
 {
+    TVector<std::pair<TStringBuf, TValue>> info =
+         {{"disk", Config.GetDiskId()}, {"TabletId", tabletId}};
 
     if (error.GetCode() == E_TIMEOUT) {
-        ReportTrimFreshLogTimeout(
-            FormatError(error),
-            {{"disk", Config.GetDiskId()}, {"TabletId", tabletId}});
+        ReportTrimFreshLogTimeout(FormatError(error), info);
         return;
     }
 
-    ReportTrimFreshLogError(
-        FormatError(error),
-        {{"disk", Config.GetDiskId()}, {"TabletId", tabletId}});
+    ReportTrimFreshLogError(FormatError(error), info);
 
     TrimFreshLogTimeout = Min(
         TDuration::Seconds(5),
