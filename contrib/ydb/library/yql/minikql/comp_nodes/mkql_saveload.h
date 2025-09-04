@@ -66,7 +66,7 @@ Y_FORCE_INLINE void WriteString(TString& out, std::string_view str) {
 
 Y_FORCE_INLINE std::string_view ReadString(TStringBuf& in) {
     const ui32 size = ReadUi32(in);
-    MKQL_ENSURE(in.Size() >= size, "Serialized state is corrupted");
+    MKQL_ENSURE(in.size() >= size, "Serialized state is corrupted");
     TStringBuf head = in.Head(size);
     in = in.Tail(size);
     return head;

@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     rewrite_io_utils.cpp
     yql_kikimr_datasink.cpp

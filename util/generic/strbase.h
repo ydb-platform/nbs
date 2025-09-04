@@ -149,7 +149,7 @@ public: // style-guide compliant methods
         return Ptr();
     }
 
-    constexpr size_t Size() const noexcept {
+    [[deprecated]] constexpr size_t Size() const noexcept {
         return Len();
     }
 

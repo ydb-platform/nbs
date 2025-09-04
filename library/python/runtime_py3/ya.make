@@ -8,7 +8,10 @@ PEERDIR(
     library/cpp/resource
 )
 
-CFLAGS(-DCYTHON_REGISTER_ABCS=0)
+CFLAGS(
+    -DCYTHON_REGISTER_ABCS=0
+    -Wno-deprecated-declarations
+)
 
 NO_PYTHON_INCLUDES()
 

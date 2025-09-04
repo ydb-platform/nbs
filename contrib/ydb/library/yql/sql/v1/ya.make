@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 PEERDIR(
     library/cpp/charset
     library/cpp/enumbitset

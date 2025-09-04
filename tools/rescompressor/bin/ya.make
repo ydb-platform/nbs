@@ -8,6 +8,10 @@ SRCDIR(
     tools/rescompressor
 )
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     main.cpp
 )

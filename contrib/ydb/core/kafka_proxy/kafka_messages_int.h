@@ -390,7 +390,7 @@ public:
 
     inline static void DoLog(const TKafkaString& value) {
         if constexpr (DEBUG_ENABLED) {
-            Cerr << "Was read field '" << Meta::Name << "' type String. Size " << (value ? value->Size() : 0) << " Value: " << (value ? *value : "null") << Endl;
+            Cerr << "Was read field '" << Meta::Name << "' type String. Size " << (value ? value->size() : 0) << " Value: " << (value ? *value : "null") << Endl;
         }
     }
 };
@@ -594,7 +594,7 @@ public:
 //
 template<typename Meta>
 inline void Write(TWriteCollector& collector, TKafkaWritable& writable, TKafkaInt16 version, const typename Meta::Type& value) {
-    if (VersionCheck<Meta::PresentVersions.Min, Meta::PresentVersions.Max>(version)) { 
+    if (VersionCheck<Meta::PresentVersions.Min, Meta::PresentVersions.Max>(version)) {
         if (VersionCheck<Meta::TaggedVersions.Min, Meta::TaggedVersions.Max>(version)) {
             if (!IsDefaultValue<Meta>(value)) {
                 ++collector.NumTaggedFields;
@@ -607,7 +607,7 @@ inline void Write(TWriteCollector& collector, TKafkaWritable& writable, TKafkaIn
 
 template<typename Meta>
 inline void Read(TKafkaReadable& readable, TKafkaInt16 version, typename Meta::Type& value) {
-    if (!VersionNone<Meta::TaggedVersions.Min, Meta::TaggedVersions.Max>() 
+    if (!VersionNone<Meta::TaggedVersions.Min, Meta::TaggedVersions.Max>()
         && VersionCheck<Meta::TaggedVersions.Min, Meta::TaggedVersions.Max>(version)) {
         return;
     } else {
@@ -633,16 +633,16 @@ inline void Size(TSizeCollector& collector, TKafkaInt16 version, const typename 
                     ++collector.NumTaggedFields;
 
                     i64 size = TypeStrategy<Meta, typename Meta::Type>::DoSize(version, value);
-                    collector.Size += size + SizeOfUnsignedVarint(Meta::Tag) + SizeOfUnsignedVarint(size); 
+                    collector.Size += size + SizeOfUnsignedVarint(Meta::Tag) + SizeOfUnsignedVarint(size);
                     if constexpr (DEBUG_ENABLED) {
-                        Cerr << "Size of field '" << Meta::Name << "' " << size << " + " << SizeOfUnsignedVarint(Meta::Tag) << " + " << SizeOfUnsignedVarint(size) << Endl;                    
+                        Cerr << "Size of field '" << Meta::Name << "' " << size << " + " << SizeOfUnsignedVarint(Meta::Tag) << " + " << SizeOfUnsignedVarint(size) << Endl;
                     }
                 }
             } else {
                 i64 size = TypeStrategy<Meta, typename Meta::Type>::DoSize(version, value);
                 collector.Size += size;
                 if constexpr (DEBUG_ENABLED) {
-                    Cerr << "Size of field '" << Meta::Name << "' " << size << Endl;                    
+                    Cerr << "Size of field '" << Meta::Name << "' " << size << Endl;
                 }
             }
         }
@@ -651,7 +651,7 @@ inline void Size(TSizeCollector& collector, TKafkaInt16 version, const typename 
             i64 size = TypeStrategy<Meta, typename Meta::Type>::DoSize(version, value);
             collector.Size += size;
             if constexpr (DEBUG_ENABLED) {
-                Cerr << "Size of field '" << Meta::Name << "' " << size << Endl;                    
+                Cerr << "Size of field '" << Meta::Name << "' " << size << Endl;
             }
         }
     }

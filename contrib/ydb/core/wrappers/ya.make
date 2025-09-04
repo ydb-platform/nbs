@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 IF (OS_WINDOWS)
     CFLAGS(
         -DKIKIMR_DISABLE_S3_WRAPPER

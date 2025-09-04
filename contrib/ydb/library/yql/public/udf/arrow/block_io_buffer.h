@@ -37,7 +37,7 @@ public:
 
 private:
     void Ensure(size_t delta) {
-        Y_ENSURE(Pos_ + delta <= Buf_.Size(), "Unexpected end of buffer");
+        Y_ENSURE(Pos_ + delta <= Buf_.size(), "Unexpected end of buffer");
     }
 
 private:

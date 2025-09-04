@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     dq_pq_meta_extractor.cpp
     dq_pq_read_actor.cpp

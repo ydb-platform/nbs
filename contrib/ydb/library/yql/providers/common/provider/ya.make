@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     yql_data_provider_impl.cpp
     yql_data_provider_impl.h

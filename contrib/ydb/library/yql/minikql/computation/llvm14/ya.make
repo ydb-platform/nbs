@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 PEERDIR(
     contrib/ydb/library/yql/minikql/codegen/llvm14
     contrib/libs/llvm14/lib/IR
