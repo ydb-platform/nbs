@@ -49,6 +49,8 @@ class CrashProcessor(object):
         parser.add_argument("--config", type=str, metavar="PATH")
         parser.add_argument("--verbose", action="store_true")
         parser.add_argument("--ca-file", type=str, help="Optional certificate authority file (*.pem)")
+        parser.add_argument("--gdb-timeout", type=int, default=300,
+                            help="GDB timeout in seconds (default: %(default)s)")
 
         # TODO: remove, kept for backward compatibility
         parser.add_argument("--nbs-config", type=str, metavar="PATH")
