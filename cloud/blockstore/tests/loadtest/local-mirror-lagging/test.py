@@ -354,7 +354,7 @@ def __run_test(test_case, use_rdma):
 
         wait_for_secure_erase(nbs.mon_port, expectedAgents=test_case.agent_count)
         for i, agent in enumerate(disk_agents):
-            if i in test_case.agent_indexes_to_restart
+            if i in test_case.agent_indexes_to_restart:
                 agent.allow_restart()
 
         client_config.NbdSocketSuffix = nbd_socket_suffix

@@ -80,33 +80,10 @@ class LocalDiskAgent(Daemon):
         self.__unstable_process_args = None
         self.__allow_restart_flag = None
 
-        if restart_interval is not None:
-            self.__unstable_process_args = [
-                "--restart-interval", str(restart_interval),
-                "--ping-port", str(self.__mon_port),
-                "--ping-success-codes", '200',
-                "--ping-path", "/blockstore/disk_agent",
-                "--ping-timeout", "2",
-                # "-vvvvv",
-            ]
-
-            if suspend_restarts:
-                self.__allow_restart_flag = os.path.join(
-                    self.config_path(),
-                    f'allow_restart_flag.{self.__ic_port}')
-
-                self.__unstable_process_args += ['--allow-restart-flag',
-                                                 self.__allow_restart_flag]
-
-            if restart_downtime is not None:
-                self.__unstable_process_args += ['--downtime',
-                                                 str(restart_downtime)]
-
         self.__output_path = yatest_common.output_path()
         self.__cwd = get_unique_path_for_current_test(
             output_path=self.__output_path,
-            sub_folder=""
-        )
+            sub_folder="")
         ensure_path_exists(self.__cwd)
 
         self.__config_sub_folder = config_sub_folder
@@ -164,6 +141,28 @@ class LocalDiskAgent(Daemon):
         cp = None
         if self.__binary_path:
             cp = core_pattern(self.__binary_path, self.__cwd)
+
+        if restart_interval is not None:
+            self.__unstable_process_args = [
+                "--restart-interval", str(restart_interval),
+                "--ping-port", str(self.__mon_port),
+                "--ping-success-codes", '200',
+                "--ping-path", "/blockstore/disk_agent",
+                "--ping-timeout", "2",
+                # "-vvvvv",
+            ]
+
+            if suspend_restarts:
+                self.__allow_restart_flag = os.path.join(
+                    self.config_path(),
+                    f'allow_restart_flag.{self.__ic_port}')
+
+                self.__unstable_process_args += ['--allow-restart-flag',
+                                                 self.__allow_restart_flag]
+
+            if restart_downtime is not None:
+                self.__unstable_process_args += ['--downtime',
+                                                 str(restart_downtime)]
 
         command = self.__make_start_command()
         logger.info("command is {}".format(" ".join(command)))
