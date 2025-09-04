@@ -149,12 +149,12 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
                 << " TrimFreshLog failed: " << msg->GetStatus()
                 << " reason: " << msg->GetError().GetMessage().Quote());
 
+        State->RegisterTrimFreshLogError(msg->Error, Info()->TabletID);
+
         if (msg->GetStatus() == E_TIMEOUT) {
             Suicide(ctx);
             return;
         }
-
-        State->RegisterTrimFreshLogError();
     } else {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] TrimFreshLog completed",

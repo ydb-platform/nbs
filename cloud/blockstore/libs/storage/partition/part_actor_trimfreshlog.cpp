@@ -161,12 +161,13 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             msg->GetStatus(),
             FormatError(msg->GetError()).c_str());
 
+        State->RegisterTrimFreshLogError(msg->Error, Info()->TabletID);
+
         if (msg->GetStatus() == E_TIMEOUT) {
             Suicide(ctx);
             return;
         }
 
-        State->RegisterTrimFreshLogError();
     } else {
         LOG_DEBUG(
             ctx,

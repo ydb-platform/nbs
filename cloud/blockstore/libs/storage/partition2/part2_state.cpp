@@ -2,6 +2,7 @@
 
 #include "part2_counters.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/partition2/model/alloc.h>
@@ -873,6 +874,30 @@ void TPartitionState::MoveBlobUpdatesByFreshToDb(TPartitionDatabase& db)
 
         BlobUpdatesByFresh.erase(it++);
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TrimFreshLog errors
+
+void TPartitionState::RegisterTrimFreshLogError(
+    const NProto::TError& error,
+    ui64 tabletId)
+{
+    if (error.GetCode() == E_TIMEOUT) {
+        ReportTrimFreshLogTimeout(
+            FormatError(error),
+            {{"disk", Config.GetDiskId()}, {"TabletId", tabletId}});
+        return;
+    }
+
+    ReportTrimFreshLogError(
+        FormatError(error),
+        {{"disk", Config.GetDiskId()}, {"TabletId", tabletId}});
+
+    TrimFreshLogTimeout = Min(
+        TDuration::Seconds(5),
+        Max(TDuration::MilliSeconds(100), TrimFreshLogTimeout * 2)
+    );
 }
 
 ////////////////////////////////////////////////////////////////////////////////
