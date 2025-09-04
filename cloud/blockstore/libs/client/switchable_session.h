@@ -12,18 +12,23 @@ namespace NCloud::NBlockStore::NClient {
 
 struct ISwitchableSession: public ISession
 {
-    virtual NThreading::TFuture<void> Drain() = 0;
-    virtual void SwitchSession(
+    virtual NThreading::TFuture<void> SwitchSession(
+        const TString& newDiskId,
         ISessionPtr newSession,
-        const TString& newDiskId) = 0;
+        ISwitchableBlockStorePtr newSwitchableClient,
+        IBlockStorePtr newDataClient,
+        const TString& newSessionId) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 ISwitchableSessionPtr CreateSwitchableSession(
     ILoggingServicePtr logging,
+    ISchedulerPtr scheduler,
     TString diskId,
-    ISessionPtr session);
+    ISessionPtr session,
+    ISwitchableBlockStorePtr switchableClient,
+    IBlockStorePtr dataClient);
 
 ////////////////////////////////////////////////////////////////////////////////
 

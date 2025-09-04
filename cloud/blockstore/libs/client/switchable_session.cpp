@@ -1,5 +1,8 @@
 #include "switchable_session.h"
 
+#include <cloud/blockstore/libs/client/switchable_client.h>
+
+#include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/vector.h>
@@ -15,17 +18,70 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ISwitchableSessionPrivate
+struct TEnsureVolumeMountedArgs
 {
-    virtual ~ISwitchableSessionPrivate() = default;
+};
 
-    virtual void OnRequestFinished() = 0;
-    [[nodiscard]] virtual ISession* GetSession() const = 0;
+struct TMountVolumeArgs1
+{
+    NProto::EVolumeAccessMode AccessMode;
+    NProto::EVolumeMountMode MountMode;
+    ui64 MountSeqNumber;
+    NProto::THeaders Headers;
+};
+struct TMountVolumeArgs2
+{
+    NProto::THeaders Headers;
+};
+
+struct TUnmountVolumeArgs
+{
+    NProto::THeaders Headers;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFuture<NProto::TReadBlocksLocalResponse> ExecuteRequest(
+auto DoExecute(
+    ISession* session,
+    TCallContextPtr callContext,
+    TMountVolumeArgs1 request)
+{
+    return session->MountVolume(
+        request.AccessMode,
+        request.MountMode,
+        request.MountSeqNumber,
+        std::move(callContext),
+        request.Headers);
+}
+
+auto DoExecute(
+    ISession* session,
+    TCallContextPtr callContext,
+    TMountVolumeArgs2 request)
+{
+    return session->MountVolume(std::move(callContext), request.Headers);
+}
+
+auto DoExecute(
+    ISession* session,
+    TCallContextPtr callContext,
+    TUnmountVolumeArgs request)
+{
+    return session->UnmountVolume(std::move(callContext), request.Headers);
+}
+
+auto DoExecute(
+    ISession* session,
+    TCallContextPtr callContext,
+    TEnsureVolumeMountedArgs request)
+{
+    Y_UNUSED(callContext);
+    Y_UNUSED(request);
+
+    return session->EnsureVolumeMounted();
+}
+
+auto DoExecute(
     ISession* session,
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
@@ -33,7 +89,7 @@ TFuture<NProto::TReadBlocksLocalResponse> ExecuteRequest(
     return session->ReadBlocksLocal(std::move(callContext), std::move(request));
 }
 
-TFuture<NProto::TWriteBlocksLocalResponse> ExecuteRequest(
+auto DoExecute(
     ISession* session,
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
@@ -43,7 +99,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> ExecuteRequest(
         std::move(request));
 }
 
-TFuture<NProto::TZeroBlocksResponse> ExecuteRequest(
+auto DoExecute(
     ISession* session,
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
@@ -51,208 +107,128 @@ TFuture<NProto::TZeroBlocksResponse> ExecuteRequest(
     return session->ZeroBlocks(std::move(callContext), std::move(request));
 }
 
-TFuture<NProto::TError> ExecuteRequest(
+auto DoExecute(
     ISession* session,
     TCallContextPtr callContext,
-    std::shared_ptr<NProto::EDeviceEraseMethod> request)
+    NProto::EDeviceEraseMethod method)
 {
     Y_UNUSED(callContext);
 
-    return session->EraseDevice(*request);
+    return session->EraseDevice(method);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TRequest, typename TResponse>
-class TDelayedRequestQueue
+struct TSharedCounter: std::enable_shared_from_this<TSharedCounter>
 {
-    using TRequestPtr = std::shared_ptr<TRequest>;
-    using TPromise = TPromise<TResponse>;
-    using TFuture = TFuture<TResponse>;
-
-    struct TRequestAndPromise
-    {
-        TCallContextPtr CallContext;
-        TRequestPtr Request;
-        TPromise Promise;
-    };
-
-    TLog Log;
-    bool& Draining;
-    size_t& InflightRequestCount;
-    TMutex& DrainLock;
-    TVector<TRequestAndPromise> DelayedRequests;
-
-public:
-    TDelayedRequestQueue(
-        const ILoggingServicePtr logging,
-        bool& draining,
-        size_t& inflightRequestCount,
-        TMutex& drainLock)
-        : Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
-        , Draining(draining)
-        , InflightRequestCount(inflightRequestCount)
-        , DrainLock(drainLock)
-    {}
-
-    TFuture ExecuteOrDelay(
-        std::shared_ptr<ISwitchableSessionPrivate> parent,
-        TCallContextPtr callContext,
-        TRequestPtr request)
-    {
-        TFuture result;
-        bool requestDelayed = false;
-        with_lock (DrainLock) {
-            if (!Draining) {
-                ++InflightRequestCount;
-            } else {
-                requestDelayed = true;
-                TRequestAndPromise requestAndPromise{
-                    .CallContext = std::move(callContext),
-                    .Request = std::move(request),
-                    .Promise = NewPromise<TResponse>()};
-                result = requestAndPromise.Promise;
-                DelayedRequests.push_back(std::move(requestAndPromise));
-            }
-        }
-
-        if (!requestDelayed) {
-            result = ExecuteRequest(
-                parent->GetSession(),
-                std::move(callContext),
-                std::move(request));
-        }
-
-        result.Subscribe(
-            [weakParent = std::weak_ptr<ISwitchableSessionPrivate>(parent)](
-                const TFuture& future)
-            {
-                Y_UNUSED(future);
-
-                if (auto parent = weakParent.lock()) {
-                    parent->OnRequestFinished();
-                }
-            });
-        return result;
-    }
-
-    void ExecuteDelayed(ISession* session)
-    {
-        for (auto& [callContext, request, promise]: DelayedRequests) {
-            ++InflightRequestCount;
-            auto future = ExecuteRequest(
-                session,
-                std::move(callContext),
-                std::move(request));
-
-            future.Apply([promise](TFuture future) mutable
-                         { promise.SetValue(future.ExtractValue()); });
-        }
-        DelayedRequests.clear();
-    }
+    std::atomic<size_t> Count{0};
 };
+using TSharedCounterPtr = std::shared_ptr<TSharedCounter>;
 
-using TDelayedReadBlocks = TDelayedRequestQueue<
-    NProto::TReadBlocksLocalRequest,
-    NProto::TReadBlocksLocalResponse>;
-
-using TDelayedWriteBlocks = TDelayedRequestQueue<
-    NProto::TWriteBlocksLocalRequest,
-    NProto::TWriteBlocksLocalResponse>;
-
-using TDelayedZeroBlocks = TDelayedRequestQueue<
-    NProto::TZeroBlocksRequest,
-    NProto::TZeroBlocksResponse>;
-
-using TDelayedErases =
-    TDelayedRequestQueue<NProto::EDeviceEraseMethod, NProto::TError>;
-
-////////////////////////////////////////////////////////////////////////////////
+struct TSessionInfo
+{
+    TString DiskId;
+    ISessionPtr Session;
+    ISwitchableBlockStorePtr SwitchableClient;
+    IBlockStorePtr DataClient;
+    TPromise<void> DrainPromise = NewPromise<void>();
+    TSharedCounterPtr InflightRequestCounter =
+        std::make_shared<TSharedCounter>();
+};
 
 class TSwitchableSession final
     : public std::enable_shared_from_this<TSwitchableSession>
     , public ISwitchableSession
-    , public ISwitchableSessionPrivate
 {
 private:
     const ILoggingServicePtr Logging;
-    TString DiskId;
-
+    const ISchedulerPtr Scheduler;
     TLog Log;
-    ISessionPtr Session;
-    bool Draining = false;
-    size_t InflightRequestCount = 0;
-    TMutex DrainLock;
-    TPromise<void> DrainPromise = NewPromise<void>();
 
-    TDelayedReadBlocks DelayedReads{
-        Logging,
-        Draining,
-        InflightRequestCount,
-        DrainLock};
-    TDelayedWriteBlocks DelayedWrites{
-        Logging,
-        Draining,
-        InflightRequestCount,
-        DrainLock};
-    TDelayedZeroBlocks DelayedZeroes{
-        Logging,
-        Draining,
-        InflightRequestCount,
-        DrainLock};
-    TDelayedErases DelayedErases{
-        Logging,
-        Draining,
-        InflightRequestCount,
-        DrainLock};
+    std::array<TSessionInfo, 2> Sessions;
+    std::atomic<size_t> ActiveSession{0};
 
 public:
     TSwitchableSession(
         ILoggingServicePtr logging,
+        ISchedulerPtr scheduler,
         TString diskId,
-        ISessionPtr session)
+        ISessionPtr session,
+        ISwitchableBlockStorePtr switchableClient,
+        IBlockStorePtr dataClient)
         : Logging(std::move(logging))
-        , DiskId(std::move(diskId))
+        , Scheduler(std::move(scheduler))
         , Log(Logging->CreateLog("BLOCKSTORE_CLIENT"))
-        , Session(std::move(session))
+        , Sessions{
+              TSessionInfo{
+                  .DiskId = std::move(diskId),
+                  .Session = std::move(session),
+                  .SwitchableClient = std::move(switchableClient),
+                  .DataClient = std::move(dataClient)},
+              {}}
     {}
-
-    ~TSwitchableSession() override
-    {
-        STORAGE_INFO(
-            "~TSwitchableSession. InflightRequestCount: "
-            << InflightRequestCount);
-    }
-
-    // Implement ISwitchableSessionPrivate
-
-    void OnRequestFinished() override
-    {
-        bool drainFinished = false;
-        with_lock (DrainLock) {
-            --InflightRequestCount;
-            drainFinished = Draining && InflightRequestCount == 0;
-            if (Draining) {
-                STORAGE_INFO(
-                    "Draining. InflightRequestCount: " << InflightRequestCount);
-            }
-        }
-        if (drainFinished) {
-            STORAGE_INFO("Drain for " << DiskId.Quote() << " finished 2");
-            DrainPromise.SetValue();
-        }
-    }
-
-    ISession* GetSession() const override
-    {
-        return Session.get();
-    }
 
     // Implement ISwitchableSession
 
+    TFuture<void> SwitchSession(
+        const TString& newDiskId,
+        ISessionPtr newSession,
+        ISwitchableBlockStorePtr newSwitchableClient,
+        IBlockStorePtr newDataClient,
+        const TString& newSessionId) override
+    {
+        auto& oldSession = GetCurrent();
+        size_t activeSession = ActiveSession.load();
+        STORAGE_INFO(
+            "Switch #" << activeSession << " session from "
+                       << oldSession.DiskId.Quote() << " to "
+                       << newDiskId.Quote() << ". Inflight requests:"
+                       << oldSession.InflightRequestCounter->Count.load());
+        oldSession.SwitchableClient->Switch(
+            newDataClient,
+            newDiskId,
+            newSessionId);
+
+        const size_t nextSession = (activeSession + 1) % Sessions.size();
+        Sessions[nextSession] = {
+            .DiskId = newDiskId,
+            .Session = std::move(newSession),
+            .SwitchableClient = std::move(newSwitchableClient),
+            .DataClient = std::move(newDataClient)};
+
+        ActiveSession.store(nextSession, std::memory_order_release);
+        ScheduleCheckAllRequestsDrained(activeSession);
+        return oldSession.DrainPromise;
+    }
+
+    template <typename TRequest>
+    auto ExecuteRequestWithInflightCount(
+        TCallContextPtr callContext,
+        TRequest request)
+    {
+        auto& current = GetCurrent();
+        auto counter = current.InflightRequestCounter;
+        ++counter->Count;
+
+        auto future = DoExecute(
+            current.Session.get(),
+            std::move(callContext),
+            std::move(request));
+
+        future.Subscribe(
+            [counter = std::move(counter)](const auto& f)
+            {
+                Y_UNUSED(f);
+                --counter->Count;
+            });
+        return future;
+    }
+
+    // Implement ISession
+
     ui32 GetMaxTransfer() const override
     {
-        return Session->GetMaxTransfer();
+        return GetCurrentSession()->GetMaxTransfer();
     }
 
     TFuture<NProto::TMountVolumeResponse> MountVolume(
@@ -262,80 +238,45 @@ public:
         TCallContextPtr callContext,
         const NProto::THeaders& headers) override
     {
-        return Session->MountVolume(
-            accessMode,
-            mountMode,
-            mountSeqNumber,
+        return ExecuteRequestWithInflightCount(
             std::move(callContext),
-            headers);
+            TMountVolumeArgs1{
+                .AccessMode = accessMode,
+                .MountMode = mountMode,
+                .MountSeqNumber = mountSeqNumber,
+                .Headers = headers});
     }
 
     TFuture<NProto::TMountVolumeResponse> MountVolume(
         TCallContextPtr callContext,
         const NProto::THeaders& headers) override
     {
-        return Session->MountVolume(std::move(callContext), headers);
+        return ExecuteRequestWithInflightCount(
+            std::move(callContext),
+            TMountVolumeArgs2{.Headers = headers});
     }
 
     TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(
         TCallContextPtr callContext,
         const NProto::THeaders& headers) override
     {
-        return Session->UnmountVolume(std::move(callContext), headers);
+        return ExecuteRequestWithInflightCount(
+            std::move(callContext),
+            TUnmountVolumeArgs{.Headers = headers});
     }
 
     TFuture<NProto::TMountVolumeResponse> EnsureVolumeMounted() override
     {
-        return Session->EnsureVolumeMounted();
-    }
-
-    NThreading::TFuture<void> Drain() override
-    {
-        with_lock (DrainLock) {
-            STORAGE_INFO(
-                "Draining started. InflightRequestCount: "
-                << InflightRequestCount);
-            Draining = true;
-            const bool drainFinished = InflightRequestCount == 0;
-            if (drainFinished) {
-                STORAGE_INFO("Drain for " << DiskId.Quote() << " finished 1");
-                DrainPromise.SetValue();
-            }
-        }
-
-        return DrainPromise;
-    }
-
-    void SwitchSession(
-        ISessionPtr newSession,
-        const TString& newDiskId) override
-    {
-        with_lock (DrainLock) {
-            Y_DEBUG_ABORT_UNLESS(Draining);
-            Y_DEBUG_ABORT_UNLESS(InflightRequestCount == 0);
-
-            STORAGE_INFO(
-                "Switch " << DiskId.Quote() << " to new session" << newDiskId);
-
-            Session = std::move(newSession);
-            DiskId = newDiskId;
-
-            Draining = false;
-            DrainPromise = NewPromise<void>();
-
-            DelayedReads.ExecuteDelayed(Session.get());
-            DelayedWrites.ExecuteDelayed(Session.get());
-            DelayedZeroes.ExecuteDelayed(Session.get());
-            DelayedErases.ExecuteDelayed(Session.get());
-        }
+        return ExecuteRequestWithInflightCount(
+            MakeIntrusive<TCallContext>(),
+            TEnsureVolumeMountedArgs{});
     }
 
     TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
     {
-        return DelayedReads.ExecuteOrDelay(
-            shared_from_this(),
+        return ExecuteRequestWithInflightCount(
             std::move(callContext),
             std::move(request));
     }
@@ -344,8 +285,7 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
     {
-        return DelayedWrites.ExecuteOrDelay(
-            shared_from_this(),
+        return ExecuteRequestWithInflightCount(
             std::move(callContext),
             std::move(request));
     }
@@ -354,8 +294,7 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TZeroBlocksRequest> request) override
     {
-        return DelayedZeroes.ExecuteOrDelay(
-            shared_from_this(),
+        return ExecuteRequestWithInflightCount(
             std::move(callContext),
             std::move(request));
     }
@@ -363,21 +302,57 @@ public:
     TFuture<NProto::TError> EraseDevice(
         NProto::EDeviceEraseMethod method) override
     {
-        TCallContextPtr ctx;
-        return DelayedErases.ExecuteOrDelay(
-            shared_from_this(),
-            TCallContextPtr(),
-            std::make_shared<NProto::EDeviceEraseMethod>(method));
+        return ExecuteRequestWithInflightCount(
+            MakeIntrusive<TCallContext>(),
+            method);
     }
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
-        return Session->AllocateBuffer(bytesCount);
+        return GetCurrentSession()->AllocateBuffer(bytesCount);
     }
 
     void ReportIOError() override
     {
-        Session->ReportIOError();
+        GetCurrentSession()->ReportIOError();
+    }
+
+private:
+    TSessionInfo& GetCurrent()
+    {
+        return Sessions[ActiveSession.load(std::memory_order_acquire)];
+    }
+
+    ISession* GetCurrentSession() const
+    {
+        return Sessions[ActiveSession.load(std::memory_order_acquire)]
+            .Session.get();
+    }
+
+    void ScheduleCheckAllRequestsDrained(size_t sessionIndex)
+    {
+        Scheduler->Schedule(
+            TInstant::Now() + TDuration::Seconds(5),
+            [sessionIndex, weakSelf = weak_from_this()]
+            {
+                if (auto self = weakSelf.lock()) {
+                    self->CheckAllRequestsDrained(sessionIndex);
+                }
+            });
+    }
+
+    void CheckAllRequestsDrained(size_t sessionIndex)
+    {
+        auto& session = Sessions[sessionIndex];
+        size_t count = session.InflightRequestCounter->Count;
+        STORAGE_INFO(
+            "Inflight request for " << session.DiskId.Quote() << ": "
+                                    << count);
+        if (count == 0) {
+            session.DrainPromise.SetValue();
+        } else {
+            ScheduleCheckAllRequestsDrained(sessionIndex);
+        }
     }
 };
 
@@ -387,13 +362,19 @@ public:
 
 ISwitchableSessionPtr CreateSwitchableSession(
     ILoggingServicePtr logging,
+    ISchedulerPtr scheduler,
     TString diskId,
-    ISessionPtr session)
+    ISessionPtr session,
+    ISwitchableBlockStorePtr switchableClient,
+    IBlockStorePtr dataClient)
 {
     return std::make_shared<TSwitchableSession>(
         std::move(logging),
+        std::move(scheduler),
         std::move(diskId),
-        std::move(session));
+        std::move(session),
+        std::move(switchableClient),
+        std::move(dataClient));
 }
 
 }   // namespace NCloud::NBlockStore::NClient

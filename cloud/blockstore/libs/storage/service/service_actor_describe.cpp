@@ -127,18 +127,12 @@ void TDescribeVolumeActor::HandleDescribeVolumeResponse(
     Volume.SetTokenVersion(volumeDescription.GetTokenVersion());
 
     if (Volume.GetSubstituteDiskId()) {
-        LOG_WARN(
+        LOG_INFO(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "!!! Successful DescribeVolume for %s found substitute %s",
+            "DescribeVolume for %s found substitute %s",
             Volume.GetDiskId().Quote().c_str(),
             Volume.GetSubstituteDiskId().Quote().c_str());
-    } else {
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::SERVICE,
-            "!!! Successful DescribeVolume for %s",
-            Volume.GetDiskId().Quote().c_str());
     }
 
     if (IsDiskRegistryMediaKind(Volume.GetStorageMediaKind())) {
