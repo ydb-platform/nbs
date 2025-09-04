@@ -287,7 +287,7 @@ def __run_test(test_case, use_rdma):
         storage.MaxTimedOutDeviceStateDuration = 60000    # 1 min
         storage.NonReplicatedAgentMinTimeout = 60000      # 1 min
         storage.NonReplicatedAgentMaxTimeout = 60000      # 1 min
-        storage.NonReplicatedSecureEraseTimeout = 1000    # 1 sec
+        storage.NonReplicatedSecureEraseTimeout = 30000   # 30 sec
         storage.EnableToChangeStatesFromDiskRegistryMonpage = True
         storage.EnableToChangeErrorStatesFromDiskRegistryMonpage = True
         storage.UseNonreplicatedRdmaActor = use_rdma

@@ -179,12 +179,14 @@ class Daemon(object):
     # Should be guarded by self.__lock.
     def __schedule_restart(self):
         if self.__restart_allowed:
+            logger.info(f"schedule restart: {self.__restart_interval}s")
             self.__timer = threading.Timer(self.__restart_interval, self.__restart)
             self.__timer.start()
 
     def __restart(self):
         with self.__lock:
             if self.__process is not None:
+                logger.info(f"restart the process")
                 self.__kill_process()
                 self.__start()
                 self.__schedule_restart()

@@ -70,7 +70,7 @@ def nbs_server_start(kikimr_cluster, configurator):
     storage.AcquireNonReplicatedDevices = True
     storage.ClientRemountPeriod = 1000
     storage.NonReplicatedMigrationStartAllowed = True
-    storage.NonReplicatedSecureEraseTimeout = 2000  # 2 sec
+    storage.NonReplicatedSecureEraseTimeout = 30000  # 30 sec
     storage.DisableLocalService = False
     storage.InactiveClientsTimeout = 60000  # 1 min
     storage.AgentRequestTimeout = 5000      # 5 sec
