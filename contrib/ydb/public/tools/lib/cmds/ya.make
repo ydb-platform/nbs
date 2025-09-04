@@ -4,8 +4,11 @@ PY_SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/tests/library
+    contrib/python/six
     library/python/testing/recipe
+    contrib/ydb/tests/library
 )
 
 END()
+
+RECURSE_FOR_TESTS(ut)

@@ -1,36 +1,24 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
-package trace_test
+package trace
 
 import (
 	"context"
 	"testing"
 
 	"go.opentelemetry.io/otel/attribute"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
 
 type testSpanProcessor struct {
 	name          string
-	spansStarted  []sdktrace.ReadWriteSpan
-	spansEnded    []sdktrace.ReadOnlySpan
+	spansStarted  []ReadWriteSpan
+	spansEnded    []ReadOnlySpan
 	shutdownCount int
 }
 
-func (t *testSpanProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
+func (t *testSpanProcessor) OnStart(parent context.Context, s ReadWriteSpan) {
 	if t == nil {
 		return
 	}
@@ -57,7 +45,7 @@ func (t *testSpanProcessor) OnStart(parent context.Context, s sdktrace.ReadWrite
 	t.spansStarted = append(t.spansStarted, s)
 }
 
-func (t *testSpanProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
+func (t *testSpanProcessor) OnEnd(s ReadOnlySpan) {
 	if t == nil {
 		return
 	}

@@ -4,6 +4,8 @@
 
 #include <util/generic/string.h>
 
+#include <util/stream/fwd.h>
+
 namespace NYT {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,21 +56,18 @@ public:
     constexpr const T& Underlying() const &;
     constexpr T&& Underlying() &&;
 
+    void Save(IOutputStream* out) const;
+    void Load(IInputStream* in);
+
 private:
     T Underlying_;
-
-    //! NB: Hidden friend definition to make this name accessible only via ADL.
-    friend TString ToString(const TStrongTypedef& value)
-        requires requires (T value) { { ToString(value) } -> std::same_as<TString>; }
-    {
-        return ToString(value.Underlying_);
-    }
 };
 
 #define YT_DEFINE_STRONG_TYPEDEF(T, TUnderlying) \
     struct T ## Tag \
     { }; \
     using T = ::NYT::TStrongTypedef<TUnderlying, T##Tag>; \
+    static_assert(true)
 
 template <class T>
 struct TStrongTypedefTraits;

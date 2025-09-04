@@ -153,7 +153,7 @@ func (s) TestUpdateClientConnState(t *testing.T) {
 			}
 			return &cfg, nil
 		},
-		UpdateClientConnState: func(bd *stub.BalancerData, ccs balancer.ClientConnState) error {
+		UpdateClientConnState: func(_ *stub.BalancerData, ccs balancer.ClientConnState) error {
 			wtCfg, ok := ccs.BalancerConfig.(*weightedtarget.LBConfig)
 			if !ok {
 				return errors.New("child received config that was not a weighted target config")
@@ -167,7 +167,7 @@ func (s) TestUpdateClientConnState(t *testing.T) {
 	if builder == nil {
 		t.Fatalf("balancer.Get(%q) returned nil", Name)
 	}
-	tcc := testutils.NewTestClientConn(t)
+	tcc := testutils.NewBalancerClientConn(t)
 	bal := builder.Build(tcc, balancer.BuildOptions{})
 	defer bal.Close()
 	wrrL := bal.(*wrrLocalityBalancer)
@@ -218,13 +218,13 @@ func (s) TestUpdateClientConnState(t *testing.T) {
 	// child layer.
 	wantWtCfg := &weightedtarget.LBConfig{
 		Targets: map[string]weightedtarget.Target{
-			"{\"region\":\"region-1\",\"zone\":\"zone-1\",\"subZone\":\"subzone-1\"}": {
+			"{region=\"region-1\", zone=\"zone-1\", sub_zone=\"subzone-1\"}": {
 				Weight: 2,
 				ChildPolicy: &internalserviceconfig.BalancerConfig{
 					Name: "round_robin",
 				},
 			},
-			"{\"region\":\"region-2\",\"zone\":\"zone-2\",\"subZone\":\"subzone-2\"}": {
+			"{region=\"region-2\", zone=\"zone-2\", sub_zone=\"subzone-2\"}": {
 				Weight: 1,
 				ChildPolicy: &internalserviceconfig.BalancerConfig{
 					Name: "round_robin",

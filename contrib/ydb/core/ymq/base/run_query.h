@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 

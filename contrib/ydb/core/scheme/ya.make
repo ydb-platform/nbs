@@ -12,22 +12,25 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/library/actors/core
-    library/cpp/charset
+    library/cpp/charset/lite
     library/cpp/containers/bitseq
     library/cpp/deprecated/enum_codegen
     library/cpp/yson
+    contrib/ydb/public/api/protos
     contrib/ydb/core/scheme/protos
     contrib/ydb/core/scheme_types
     contrib/ydb/library/aclib
-    contrib/ydb/library/yql/parser/pg_wrapper/interface
+    yql/essentials/parser/pg_wrapper/interface
     contrib/ydb/public/lib/scheme_types
     # temporary.
     contrib/ydb/library/pretty_types_print/protobuf
     library/cpp/lwtrace/mon
+    library/cpp/containers/absl_flat_hash
 )
 
 END()
 
 RECURSE_FOR_TESTS(
     ut
+    ut_pg
 )

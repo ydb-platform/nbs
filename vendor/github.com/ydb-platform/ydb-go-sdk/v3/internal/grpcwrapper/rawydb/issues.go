@@ -17,9 +17,10 @@ func (issuesPointer *Issues) FromProto(p []*Ydb_Issue.IssueMessage) error {
 	issues := *issuesPointer
 	for i := range issues {
 		if err := issues[i].FromProto(p[i]); err != nil {
-			return nil
+			return err
 		}
 	}
+
 	return nil
 }
 
@@ -29,6 +30,7 @@ func (issuesPointer *Issues) String() string {
 	for i := range issues {
 		issuesStrings[i] = issues[i].String()
 	}
+
 	return strings.Join(issuesStrings, ", ")
 }
 
@@ -55,4 +57,38 @@ func (issue *Issue) String() string {
 	}
 
 	return fmt.Sprintf("message: %v, code: %v%v", issue.Message, issue.Code, innerIssues)
+}
+
+// Equals compares this Issue with another Issue for equality
+func (issue *Issue) Equals(other *Issue) bool {
+	if issue == nil && other == nil {
+		return true
+	}
+	if issue == nil || other == nil {
+		return false
+	}
+
+	if issue.Code != other.Code {
+		return false
+	}
+	if issue.Message != other.Message {
+		return false
+	}
+
+	return issue.Issues.Equals(other.Issues)
+}
+
+// Equals compares this Issues slice with another Issues slice for equality
+func (issuesPointer Issues) Equals(other Issues) bool {
+	if len(issuesPointer) != len(other) {
+		return false
+	}
+
+	for i := range issuesPointer {
+		if !issuesPointer[i].Equals(&other[i]) {
+			return false
+		}
+	}
+
+	return true
 }

@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v1.2.7-0.20211215081658-ee6c8cce8e87)
+
 SRCS(
     connect.go
     constants.go
@@ -29,7 +31,15 @@ GO_TEST_SRCS(
 )
 
 IF (ARCH_X86_64)
-    SRCS(variant_amd64.go)
+    SRCS(
+        variant_amd64.go
+    )
+ENDIF()
+
+IF (ARCH_ARM64)
+    SRCS(
+        variant_arm64.go
+    )
 ENDIF()
 
 IF (OS_LINUX)
@@ -54,10 +64,6 @@ IF (OS_LINUX)
     )
 ENDIF()
 
-IF (OS_LINUX AND ARCH_ARM64)
-    SRCS(variant_arm64.go)
-ENDIF()
-
 IF (OS_DARWIN)
     SRCS(
         com_func.go
@@ -80,10 +86,6 @@ IF (OS_DARWIN)
     )
 ENDIF()
 
-IF (OS_DARWIN AND ARCH_ARM64)
-    SRCS(variant_arm64.go)
-ENDIF()
-
 IF (OS_WINDOWS)
     SRCS(
         com.go
@@ -99,7 +101,6 @@ IF (OS_WINDOWS)
         safearray_windows.go
         safearrayslices.go
         variables.go
-        variant_date_amd64.go
         winrt.go
     )
 
@@ -110,6 +111,18 @@ IF (OS_WINDOWS)
         ienumvariant_test.go
         iunknown_windows_test.go
         safearrayconversion_test.go
+    )
+ENDIF()
+
+IF (OS_WINDOWS AND ARCH_X86_64)
+    SRCS(
+        variant_date_amd64.go
+    )
+ENDIF()
+
+IF (OS_WINDOWS AND ARCH_ARM64)
+    SRCS(
+        variant_date_arm64.go
     )
 ENDIF()
 

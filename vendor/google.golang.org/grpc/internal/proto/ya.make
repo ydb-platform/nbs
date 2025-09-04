@@ -1,1 +1,3 @@
-RECURSE(grpc_lookup_v1)
+RECURSE(
+    grpc_lookup_v1
+)

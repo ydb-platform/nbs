@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.73.0)
+
 GO_SKIP_TESTS(
     Test
     Provider_NoUpdate
@@ -22,4 +24,6 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

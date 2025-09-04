@@ -1,59 +1,72 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package trace
 
 import (
 	"reflect"
 	"testing"
+
+	"github.com/go-logr/logr"
+	"github.com/go-logr/logr/funcr"
+	"github.com/stretchr/testify/assert"
+
+	"go.opentelemetry.io/otel/internal/global"
 )
 
 func init() {
 }
 
 func TestAdd(t *testing.T) {
-	q := newEvictedQueue(3)
-	q.add("value1")
-	q.add("value2")
+	q := newEvictedQueueLink(3)
+	q.add(Link{})
+	q.add(Link{})
 	if wantLen, gotLen := 2, len(q.queue); wantLen != gotLen {
 		t.Errorf("got queue length %d want %d", gotLen, wantLen)
 	}
 }
 
-func (eq *evictedQueue) queueToArray() []string {
-	arr := make([]string, 0)
-	for _, value := range eq.queue {
-		arr = append(arr, value.(string))
-	}
-	return arr
+func TestCopy(t *testing.T) {
+	q := newEvictedQueueEvent(3)
+	q.add(Event{Name: "value1"})
+	cp := q.copy()
+
+	q.add(Event{Name: "value2"})
+	assert.Equal(t, []Event{{Name: "value1"}}, cp, "queue update modified copy")
+
+	cp[0] = Event{Name: "value0"}
+	assert.Equal(t, Event{Name: "value1"}, q.queue[0], "copy update modified queue")
 }
 
 func TestDropCount(t *testing.T) {
-	q := newEvictedQueue(3)
-	q.add("value1")
-	q.add("value2")
-	q.add("value3")
-	q.add("value1")
-	q.add("value4")
+	q := newEvictedQueueEvent(3)
+
+	var called int
+	t.Cleanup(func(l logr.Logger) func() {
+		return func() { global.SetLogger(l) }
+	}(global.GetLogger()))
+	global.SetLogger(funcr.New(func(prefix, args string) {
+		called++
+	}, funcr.Options{Verbosity: 1}))
+
+	q.add(Event{Name: "value1"})
+	assert.Equal(t, 0, called, `"value1" logged as dropped`)
+	q.add(Event{Name: "value2"})
+	assert.Equal(t, 0, called, `"value2" logged as dropped`)
+	q.add(Event{Name: "value3"})
+	assert.Equal(t, 0, called, `"value3" logged as dropped`)
+	q.add(Event{Name: "value1"})
+	assert.Equal(t, 1, called, `"value2" not logged as dropped`)
+	q.add(Event{Name: "value4"})
+	assert.Equal(t, 1, called, `"value4" logged as dropped`)
 	if wantLen, gotLen := 3, len(q.queue); wantLen != gotLen {
 		t.Errorf("got queue length %d want %d", gotLen, wantLen)
 	}
 	if wantDropCount, gotDropCount := 2, q.droppedCount; wantDropCount != gotDropCount {
 		t.Errorf("got drop count %d want %d", gotDropCount, wantDropCount)
 	}
-	wantArr := []string{"value3", "value1", "value4"}
-	gotArr := q.queueToArray()
+	wantArr := []Event{{Name: "value3"}, {Name: "value1"}, {Name: "value4"}}
+	gotArr := q.copy()
 
 	if wantLen, gotLen := len(wantArr), len(gotArr); gotLen != wantLen {
 		t.Errorf("got array len %d want %d", gotLen, wantLen)

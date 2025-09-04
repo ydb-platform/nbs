@@ -1,8 +1,8 @@
 #pragma once
 
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/http/http.h>
+#include <contrib/ydb/library/actors/core/actorsystem_fwd.h>
 
 namespace NKikimr::NPublicHttp {
 
@@ -35,6 +35,7 @@ public:
     NHttp::THttpIncomingRequestPtr GetHttpRequest() const;
     TString GetContentType() const;
     TString GetIdempotencyKey() const;
+    TString GetPeer() const;
 
 private:
     void ParseHeaders(TStringBuf headers);

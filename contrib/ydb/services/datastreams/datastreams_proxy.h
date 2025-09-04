@@ -8,8 +8,6 @@
 #include <contrib/ydb/core/grpc_services/rpc_calls.h>
 
 #include <contrib/ydb/library/grpc/server/grpc_server.h>
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
 
 
 namespace NKikimr {

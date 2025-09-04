@@ -7,15 +7,15 @@
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/engine/mkql_engine_flat.h>
-#include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>
-#include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
+#include <yql/essentials/minikql/invoke_builtins/mkql_builtins.h>
+#include <yql/essentials/providers/common/provider/yql_provider_names.h>
 
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
 #include <contrib/ydb/core/testlib/basics/appdata.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 
-#include <contrib/ydb/library/yql/core/facade/yql_facade.h>
-#include <contrib/ydb/library/yql/public/udf/udf_helpers.h>
+#include <yql/essentials/core/facade/yql_facade.h>
+#include <yql/essentials/public/udf/udf_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
@@ -162,7 +162,7 @@ void TYqlServer::Initialize() {
     SetupDomains(app);
     SetupChannelProfiles(app);
 
-    app.AddHive(Settings->Domain, ChangeStateStorage(Hive, Settings->Domain));
+    app.AddHive(ChangeStateStorage(Hive, Settings->Domain));
     app.SetFnRegistry([this](const NKikimr::NScheme::TTypeRegistry& typeRegistry) -> NKikimr::NMiniKQL::IFunctionRegistry* {
             Y_UNUSED(typeRegistry);
             // register test UDFs

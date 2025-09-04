@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v3.24.2)
+
 SRCS(
     binary.go
     common.go
@@ -29,9 +31,13 @@ IF (OS_DARWIN)
 ENDIF()
 
 IF (OS_WINDOWS)
-    SRCS(common_windows.go)
+    SRCS(
+        common_windows.go
+    )
 ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

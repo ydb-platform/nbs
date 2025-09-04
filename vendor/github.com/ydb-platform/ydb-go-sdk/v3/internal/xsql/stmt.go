@@ -3,86 +3,101 @@ package xsql
 import (
 	"context"
 	"database/sql/driver"
-	"fmt"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/params"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/stack"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsql/badconn"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
-type stmt struct {
-	conn      *conn
+type Stmt struct {
+	conn      *Conn
 	processor interface {
-		driver.ExecerContext
-		driver.QueryerContext
+		Exec(ctx context.Context, sql string, params *params.Params) (driver.Result, error)
+		Query(ctx context.Context, sql string, params *params.Params) (driver.RowsNextResultSet, error)
 	}
-	query   string
-	stmtCtx context.Context
-
-	trace *trace.DatabaseSQL
+	sql string
+	ctx context.Context //nolint:containedctx
 }
 
 var (
-	_ driver.Stmt             = &stmt{}
-	_ driver.StmtQueryContext = &stmt{}
-	_ driver.StmtExecContext  = &stmt{}
+	_ driver.Stmt             = &Stmt{}
+	_ driver.StmtQueryContext = &Stmt{}
+	_ driver.StmtExecContext  = &Stmt{}
 )
 
-func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (_ driver.Rows, finalErr error) {
-	onDone := trace.DatabaseSQLOnStmtQuery(s.trace, &ctx,
-		stack.FunctionID(""),
-		s.stmtCtx, s.query,
+func (stmt *Stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (_ driver.Rows, finalErr error) {
+	onDone := trace.DatabaseSQLOnStmtQuery(stmt.conn.connector.Trace(), &ctx,
+		stack.FunctionID("database/sql.(*Stmt).QueryContext", stack.Package("database/sql")),
+		stmt.ctx, stmt.sql,
 	)
 	defer func() {
 		onDone(finalErr)
 	}()
-	if !s.conn.isReady() {
-		return nil, badconn.Map(xerrors.WithStackTrace(errNotReadyConn))
+
+	if !stmt.conn.cc.IsValid() {
+		return nil, xerrors.WithStackTrace(xerrors.Retryable(errNotReadyConn,
+			xerrors.Invalid(stmt),
+			xerrors.Invalid(stmt.conn),
+			xerrors.Invalid(stmt.conn.cc),
+		))
 	}
-	switch m := queryModeFromContext(ctx, s.conn.defaultQueryMode); m {
-	case DataQueryMode:
-		return s.processor.QueryContext(s.conn.withKeepInCache(ctx), s.query, args)
-	default:
-		return nil, fmt.Errorf("unsupported query mode '%s' for execute query on prepared statement", m)
+
+	sql, params, err := stmt.conn.toYdb(stmt.sql, args...)
+	if err != nil {
+		return nil, xerrors.WithStackTrace(err)
 	}
+
+	return stmt.processor.Query(ctx, sql, params)
 }
 
-func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (_ driver.Result, finalErr error) {
-	onDone := trace.DatabaseSQLOnStmtExec(s.trace, &ctx,
-		stack.FunctionID(""),
-		s.stmtCtx, s.query,
+func (stmt *Stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (_ driver.Result, finalErr error) {
+	onDone := trace.DatabaseSQLOnStmtExec(stmt.conn.connector.Trace(), &ctx,
+		stack.FunctionID("database/sql.(*Stmt).ExecContext", stack.Package("database/sql")),
+		stmt.ctx, stmt.sql,
 	)
 	defer func() {
 		onDone(finalErr)
 	}()
-	if !s.conn.isReady() {
-		return nil, badconn.Map(xerrors.WithStackTrace(errNotReadyConn))
+
+	if !stmt.conn.cc.IsValid() {
+		return nil, xerrors.WithStackTrace(xerrors.Retryable(errNotReadyConn,
+			xerrors.Invalid(stmt),
+			xerrors.Invalid(stmt.conn),
+			xerrors.Invalid(stmt.conn.cc),
+		))
 	}
-	switch m := queryModeFromContext(ctx, s.conn.defaultQueryMode); m {
-	case DataQueryMode:
-		return s.processor.ExecContext(s.conn.withKeepInCache(ctx), s.query, args)
-	default:
-		return nil, fmt.Errorf("unsupported query mode '%s' for execute query on prepared statement", m)
+
+	sql, params, err := stmt.conn.toYdb(stmt.sql, args...)
+	if err != nil {
+		return nil, xerrors.WithStackTrace(err)
 	}
+
+	return stmt.processor.Exec(ctx, sql, params)
 }
 
-func (s *stmt) NumInput() int {
+func (stmt *Stmt) NumInput() int {
 	return -1
 }
 
-func (s *stmt) Close() (finalErr error) {
-	onDone := trace.DatabaseSQLOnStmtClose(s.trace, &s.stmtCtx, stack.FunctionID(""))
+func (stmt *Stmt) Close() (finalErr error) {
+	var (
+		ctx    = stmt.ctx
+		onDone = trace.DatabaseSQLOnStmtClose(stmt.conn.connector.Trace(), &ctx,
+			stack.FunctionID("database/sql.(*Stmt).Close", stack.Package("database/sql")),
+		)
+	)
 	defer func() {
 		onDone(finalErr)
 	}()
+
 	return nil
 }
 
-func (s *stmt) Exec([]driver.Value) (driver.Result, error) {
+func (stmt *Stmt) Exec([]driver.Value) (driver.Result, error) {
 	return nil, errDeprecated
 }
 
-func (s *stmt) Query([]driver.Value) (driver.Rows, error) {
+func (stmt *Stmt) Query([]driver.Value) (driver.Rows, error) {
 	return nil, errDeprecated
 }

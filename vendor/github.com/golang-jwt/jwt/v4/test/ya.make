@@ -2,6 +2,10 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
-SRCS(helpers.go)
+VERSION(v4.5.2)
+
+SRCS(
+    helpers.go
+)
 
 END()

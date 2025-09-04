@@ -1,11 +1,11 @@
 GO_LIBRARY()
 
-SUBSCRIBER(g:go-contrib)
-
 LICENSE(Apache-2.0)
 
+VERSION(v1.36.0)
+
 SRCS(
-    alignment.go
+    doc.go
     env.go
     errors.go
     harness.go

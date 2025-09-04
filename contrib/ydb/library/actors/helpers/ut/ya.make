@@ -3,18 +3,13 @@ UNITTEST_FOR(contrib/ydb/library/actors/helpers)
 FORK_SUBTESTS()
 IF (SANITIZER_TYPE)
     SIZE(LARGE)
-    TIMEOUT(1200)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
     SPLIT_FACTOR(20)
     REQUIREMENTS(
         ram:32
     )
 ELSE()
     SIZE(MEDIUM)
-    TIMEOUT(600)
-    REQUIREMENTS(
-        ram:16
-    )
 ENDIF()
 
 

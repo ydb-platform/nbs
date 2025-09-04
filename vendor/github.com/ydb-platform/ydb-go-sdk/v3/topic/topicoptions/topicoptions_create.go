@@ -24,6 +24,9 @@ func CreateWithMinActivePartitions(count int64) CreateOption {
 }
 
 // CreateWithPartitionCountLimit set partition count limit for the topic
+// Deprecated: Use CreateWithMaxActivePartitions instead.
+// Will be removed after Nov 2025.
+// Read about versioning policy: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#deprecated
 func CreateWithPartitionCountLimit(count int64) CreateOption {
 	return withPartitionCountLimit(count)
 }
@@ -43,6 +46,7 @@ func CreateWithSupportedCodecs(codecs ...topictypes.Codec) CreateOption {
 	sort.Slice(codecs, func(i, j int) bool {
 		return codecs[i] < codecs[j]
 	})
+
 	return withSupportedCodecs(codecs)
 }
 
@@ -66,5 +70,29 @@ func CreateWithConsumer(consumers ...topictypes.Consumer) CreateOption {
 	sort.Slice(consumers, func(i, j int) bool {
 		return consumers[i].Name < consumers[j].Name
 	})
+
 	return withAddConsumers(consumers)
+}
+
+// CreateWithMaxActivePartitions set max active partitions for the topic
+func CreateWithMaxActivePartitions(count int64) CreateOption {
+	return withMaxActivePartitions(count)
+}
+
+// CreateWithAutoPartitioningSettings set auto partitioning settings for the topic
+func CreateWithAutoPartitioningSettings(settings topictypes.AutoPartitioningSettings) CreateOption {
+	return withAutoPartitioningSettings(settings)
+}
+
+type withMaxActivePartitions int64
+
+func (count withMaxActivePartitions) ApplyCreateOption(request *rawtopic.CreateTopicRequest) {
+	request.PartitioningSettings.MaxActivePartitions = int64(count)
+}
+
+type withAutoPartitioningSettings topictypes.AutoPartitioningSettings
+
+func (settings withAutoPartitioningSettings) ApplyCreateOption(request *rawtopic.CreateTopicRequest) {
+	s := topictypes.AutoPartitioningSettings(settings)
+	s.ToRaw(&request.PartitioningSettings.AutoPartitioningSettings)
 }

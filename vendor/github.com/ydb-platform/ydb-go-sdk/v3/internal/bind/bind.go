@@ -1,24 +1,28 @@
 package bind
 
 import (
+	"database/sql/driver"
 	"sort"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/params"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xslices"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xstring"
-	"github.com/ydb-platform/ydb-go-sdk/v3/table"
 )
 
 type blockID int
 
 const (
-	blockPragma = blockID(iota)
+	blockDefault = blockID(iota)
+	blockPragma
 	blockDeclare
 	blockYQL
+	blockCastArgs
 )
 
 type Bind interface {
-	RewriteQuery(sql string, args ...interface{}) (
-		yql string, newArgs []interface{}, _ error,
+	ToYdb(sql string, args ...any) (
+		yql string, newArgs []any, _ error,
 	)
 
 	blockID() blockID
@@ -26,39 +30,51 @@ type Bind interface {
 
 type Bindings []Bind
 
-func (bindings Bindings) RewriteQuery(query string, args ...interface{}) (
-	yql string, _ *table.QueryParameters, err error,
+func (bindings Bindings) ToYdb(sql string, args ...any) (
+	yql string, pp params.Params, err error,
 ) {
 	if len(bindings) == 0 {
-		var params []table.ParameterOption
-		params, err = Params(args...)
+		pp, err = Params(args...)
 		if err != nil {
 			return "", nil, xerrors.WithStackTrace(err)
 		}
-		return query, table.NewQueryParameters(params...), nil
+
+		return sql, pp, nil
+	}
+
+	if len(args) == 1 {
+		if nv, has := args[0].(driver.NamedValue); has {
+			if pp, has := nv.Value.(*params.Params); has {
+				args = xslices.Transform(*pp, func(v *params.Parameter) any {
+					return v
+				})
+			}
+		}
 	}
 
 	buffer := xstring.Buffer()
 	defer buffer.Free()
 
 	for i := range bindings {
-		query, args, err = bindings[len(bindings)-1-i].RewriteQuery(query, args...)
+		var err error
+		sql, args, err = bindings[len(bindings)-1-i].ToYdb(sql, args...)
 		if err != nil {
 			return "", nil, xerrors.WithStackTrace(err)
 		}
 	}
 
-	params, err := Params(args...)
+	pp, err = Params(args...)
 	if err != nil {
 		return "", nil, xerrors.WithStackTrace(err)
 	}
 
-	return query, table.NewQueryParameters(params...), nil
+	return sql, pp, nil
 }
 
 func Sort(bindings []Bind) []Bind {
 	sort.Slice(bindings, func(i, j int) bool {
 		return bindings[i].blockID() < bindings[j].blockID()
 	})
+
 	return bindings
 }

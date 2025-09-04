@@ -1,4 +1,5 @@
 PROTO_LIBRARY()
+PROTOC_FATAL_WARNINGS()
 
 SET(PROTOC_TRANSITIVE_HEADERS "no")
 
@@ -11,6 +12,8 @@ ENDIF()
 SRCS(
     blockstore.proto
 )
+
+CPP_PROTO_PLUGIN0(config_proto_plugin contrib/ydb/core/config/tools/protobuf_plugin)
 
 EXCLUDE_TAGS(GO_PROTO)
 

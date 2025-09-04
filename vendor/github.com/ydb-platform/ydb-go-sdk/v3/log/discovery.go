@@ -3,6 +3,7 @@ package log
 import (
 	"time"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/kv"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
@@ -11,28 +12,29 @@ func Discovery(l Logger, d trace.Detailer, opts ...Option) (t trace.Discovery) {
 	return internalDiscovery(wrapLogger(l, opts...), d)
 }
 
-func internalDiscovery(l *wrapper, d trace.Detailer) (t trace.Discovery) {
+func internalDiscovery(l Logger, d trace.Detailer) (t trace.Discovery) {
 	t.OnDiscover = func(info trace.DiscoveryDiscoverStartInfo) func(trace.DiscoveryDiscoverDoneInfo) {
 		if d.Details()&trace.DiscoveryEvents == 0 {
 			return nil
 		}
 		ctx := with(*info.Context, DEBUG, "ydb", "discovery", "list", "endpoints")
-		l.Log(ctx, "start",
-			String("address", info.Address),
-			String("database", info.Database),
+		l.Log(ctx, "discovery starting...",
+			kv.String("address", info.Address),
+			kv.String("database", info.Database),
 		)
 		start := time.Now()
+
 		return func(info trace.DiscoveryDiscoverDoneInfo) {
 			if info.Error == nil {
-				l.Log(WithLevel(ctx, INFO), "done",
-					latencyField(start),
-					Stringer("endpoints", endpoints(info.Endpoints)),
+				l.Log(WithLevel(ctx, INFO), "discovery done",
+					kv.Latency(start),
+					kv.Stringer("endpoints", kv.Endpoints(info.Endpoints)),
 				)
 			} else {
-				l.Log(WithLevel(ctx, ERROR), "failed",
-					Error(info.Error),
-					latencyField(start),
-					versionField(),
+				l.Log(WithLevel(ctx, ERROR), "discovery failed",
+					kv.Error(info.Error),
+					kv.Latency(start),
+					kv.Version(),
 				)
 			}
 		}
@@ -42,23 +44,25 @@ func internalDiscovery(l *wrapper, d trace.Detailer) (t trace.Discovery) {
 			return nil
 		}
 		ctx := with(*info.Context, TRACE, "ydb", "discovery", "whoAmI")
-		l.Log(ctx, "start")
+		l.Log(ctx, "discovery whoami starting...")
 		start := time.Now()
+
 		return func(info trace.DiscoveryWhoAmIDoneInfo) {
 			if info.Error == nil {
-				l.Log(ctx, "done",
-					latencyField(start),
-					String("user", info.User),
-					Strings("groups", info.Groups),
+				l.Log(ctx, "discovery whoami done",
+					kv.Latency(start),
+					kv.String("user", info.User),
+					kv.Strings("groups", info.Groups),
 				)
 			} else {
-				l.Log(WithLevel(ctx, WARN), "failed",
-					Error(info.Error),
-					latencyField(start),
-					versionField(),
+				l.Log(WithLevel(ctx, WARN), "discovery whoami failed",
+					kv.Error(info.Error),
+					kv.Latency(start),
+					kv.Version(),
 				)
 			}
 		}
 	}
+
 	return t
 }

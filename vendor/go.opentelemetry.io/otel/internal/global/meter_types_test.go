@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package global // import "go.opentelemetry.io/otel/internal/global"
 
@@ -47,10 +36,12 @@ type testMeter struct {
 	sfCount   int
 	sfUDCount int
 	sfHist    int
+	sfGauge   int
 
 	siCount   int
 	siUDCount int
 	siHist    int
+	siGauge   int
 
 	callbacks []metric.Callback
 }
@@ -60,7 +51,10 @@ func (m *testMeter) Int64Counter(name string, options ...metric.Int64CounterOpti
 	return &testCountingIntInstrument{}, nil
 }
 
-func (m *testMeter) Int64UpDownCounter(name string, options ...metric.Int64UpDownCounterOption) (metric.Int64UpDownCounter, error) {
+func (m *testMeter) Int64UpDownCounter(
+	name string,
+	options ...metric.Int64UpDownCounterOption,
+) (metric.Int64UpDownCounter, error) {
 	m.siUDCount++
 	return &testCountingIntInstrument{}, nil
 }
@@ -70,17 +64,31 @@ func (m *testMeter) Int64Histogram(name string, options ...metric.Int64Histogram
 	return &testCountingIntInstrument{}, nil
 }
 
-func (m *testMeter) Int64ObservableCounter(name string, options ...metric.Int64ObservableCounterOption) (metric.Int64ObservableCounter, error) {
+func (m *testMeter) Int64Gauge(name string, options ...metric.Int64GaugeOption) (metric.Int64Gauge, error) {
+	m.siGauge++
+	return &testCountingIntInstrument{}, nil
+}
+
+func (m *testMeter) Int64ObservableCounter(
+	name string,
+	options ...metric.Int64ObservableCounterOption,
+) (metric.Int64ObservableCounter, error) {
 	m.aiCount++
 	return &testCountingIntInstrument{}, nil
 }
 
-func (m *testMeter) Int64ObservableUpDownCounter(name string, options ...metric.Int64ObservableUpDownCounterOption) (metric.Int64ObservableUpDownCounter, error) {
+func (m *testMeter) Int64ObservableUpDownCounter(
+	name string,
+	options ...metric.Int64ObservableUpDownCounterOption,
+) (metric.Int64ObservableUpDownCounter, error) {
 	m.aiUDCount++
 	return &testCountingIntInstrument{}, nil
 }
 
-func (m *testMeter) Int64ObservableGauge(name string, options ...metric.Int64ObservableGaugeOption) (metric.Int64ObservableGauge, error) {
+func (m *testMeter) Int64ObservableGauge(
+	name string,
+	options ...metric.Int64ObservableGaugeOption,
+) (metric.Int64ObservableGauge, error) {
 	m.aiGauge++
 	return &testCountingIntInstrument{}, nil
 }
@@ -90,27 +98,47 @@ func (m *testMeter) Float64Counter(name string, options ...metric.Float64Counter
 	return &testCountingFloatInstrument{}, nil
 }
 
-func (m *testMeter) Float64UpDownCounter(name string, options ...metric.Float64UpDownCounterOption) (metric.Float64UpDownCounter, error) {
+func (m *testMeter) Float64UpDownCounter(
+	name string,
+	options ...metric.Float64UpDownCounterOption,
+) (metric.Float64UpDownCounter, error) {
 	m.sfUDCount++
 	return &testCountingFloatInstrument{}, nil
 }
 
-func (m *testMeter) Float64Histogram(name string, options ...metric.Float64HistogramOption) (metric.Float64Histogram, error) {
+func (m *testMeter) Float64Histogram(
+	name string,
+	options ...metric.Float64HistogramOption,
+) (metric.Float64Histogram, error) {
 	m.sfHist++
 	return &testCountingFloatInstrument{}, nil
 }
 
-func (m *testMeter) Float64ObservableCounter(name string, options ...metric.Float64ObservableCounterOption) (metric.Float64ObservableCounter, error) {
+func (m *testMeter) Float64Gauge(name string, options ...metric.Float64GaugeOption) (metric.Float64Gauge, error) {
+	m.sfGauge++
+	return &testCountingFloatInstrument{}, nil
+}
+
+func (m *testMeter) Float64ObservableCounter(
+	name string,
+	options ...metric.Float64ObservableCounterOption,
+) (metric.Float64ObservableCounter, error) {
 	m.afCount++
 	return &testCountingFloatInstrument{}, nil
 }
 
-func (m *testMeter) Float64ObservableUpDownCounter(name string, options ...metric.Float64ObservableUpDownCounterOption) (metric.Float64ObservableUpDownCounter, error) {
+func (m *testMeter) Float64ObservableUpDownCounter(
+	name string,
+	options ...metric.Float64ObservableUpDownCounterOption,
+) (metric.Float64ObservableUpDownCounter, error) {
 	m.afUDCount++
 	return &testCountingFloatInstrument{}, nil
 }
 
-func (m *testMeter) Float64ObservableGauge(name string, options ...metric.Float64ObservableGaugeOption) (metric.Float64ObservableGauge, error) {
+func (m *testMeter) Float64ObservableGauge(
+	name string,
+	options ...metric.Float64ObservableGaugeOption,
+) (metric.Float64ObservableGauge, error) {
 	m.afGauge++
 	return &testCountingFloatInstrument{}, nil
 }

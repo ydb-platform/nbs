@@ -18,6 +18,7 @@ func (b *Bool) ToProto() *bool {
 	}
 
 	val := b.Value
+
 	return &val
 }
 
@@ -30,7 +31,36 @@ func (v *Duration) ToProto() *durationpb.Duration {
 	if v.HasValue {
 		return durationpb.New(v.Value)
 	}
+
 	return nil
+}
+
+func (v *Duration) MustFromProto(proto *durationpb.Duration) {
+	if proto == nil {
+		v.Value = time.Duration(0)
+		v.HasValue = false
+
+		return
+	}
+
+	v.HasValue = true
+	v.Value = proto.AsDuration()
+}
+
+func (v *Duration) ToDuration() *time.Duration {
+	if !v.HasValue {
+		return nil
+	}
+
+	return &v.Value
+}
+
+func (v *Duration) ToDurationWithDefault() time.Duration {
+	if !v.HasValue {
+		return 0
+	}
+
+	return v.Value
 }
 
 type Int64 struct {
@@ -44,6 +74,22 @@ func (v *Int64) ToProto() *int64 {
 	}
 
 	val := v.Value
+
+	return &val
+}
+
+type Int32 struct {
+	Value    int32
+	HasValue bool
+}
+
+func (v *Int32) ToProto() *int32 {
+	if !v.HasValue {
+		return nil
+	}
+
+	val := v.Value
+
 	return &val
 }
 
@@ -56,6 +102,7 @@ func (v *Time) ToProto() *timestamppb.Timestamp {
 	if v.HasValue {
 		return timestamppb.New(v.Value)
 	}
+
 	return nil
 }
 
@@ -63,9 +110,18 @@ func (v *Time) MustFromProto(proto *timestamppb.Timestamp) {
 	if proto == nil {
 		v.Value = time.Time{}
 		v.HasValue = false
+
 		return
 	}
 
 	v.HasValue = true
 	v.Value = proto.AsTime()
+}
+
+func (v *Time) ToTime() *time.Time {
+	if !v.HasValue {
+		return nil
+	}
+
+	return &v.Value
 }

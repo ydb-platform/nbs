@@ -2,6 +2,10 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
-SRCS(floor.go)
+VERSION(v1.46.7)
+
+SRCS(
+    floor.go
+)
 
 END()

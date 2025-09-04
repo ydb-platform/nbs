@@ -26,7 +26,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	rand "math/rand/v2"
 	"net"
+	"strconv"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -66,7 +69,7 @@ type testServer struct {
 	testgrpc.UnimplementedBenchmarkServiceServer
 }
 
-func (s *testServer) UnaryCall(ctx context.Context, in *testpb.SimpleRequest) (*testpb.SimpleResponse, error) {
+func (s *testServer) UnaryCall(_ context.Context, in *testpb.SimpleRequest) (*testpb.SimpleResponse, error) {
 	return &testpb.SimpleResponse{
 		Payload: NewPayload(in.ResponseType, int(in.ResponseSize)),
 	}, nil
@@ -77,12 +80,38 @@ func (s *testServer) UnaryCall(ctx context.Context, in *testpb.SimpleRequest) (*
 // of ping-pong.
 const UnconstrainedStreamingHeader = "unconstrained-streaming"
 
+// UnconstrainedStreamingDelayHeader is used to pass the maximum amount of time
+// the server should sleep between consecutive RPC responses.
+const UnconstrainedStreamingDelayHeader = "unconstrained-streaming-delay"
+
+// PreloadMsgSizeHeader indicates that the client is going to ask for
+// a fixed response size and passes this size to the server.
+// The server is expected to preload the response on startup.
+const PreloadMsgSizeHeader = "preload-msg-size"
+
 func (s *testServer) StreamingCall(stream testgrpc.BenchmarkService_StreamingCallServer) error {
+	preloadMsgSize := 0
+	if md, ok := metadata.FromIncomingContext(stream.Context()); ok && len(md[PreloadMsgSizeHeader]) != 0 {
+		val := md[PreloadMsgSizeHeader][0]
+		var err error
+		preloadMsgSize, err = strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("%q header value is not an integer: %s", PreloadMsgSizeHeader, err)
+		}
+	}
+
 	if md, ok := metadata.FromIncomingContext(stream.Context()); ok && len(md[UnconstrainedStreamingHeader]) != 0 {
-		return s.UnconstrainedStreamingCall(stream)
+		return s.UnconstrainedStreamingCall(stream, preloadMsgSize)
 	}
 	response := &testpb.SimpleResponse{
 		Payload: new(testpb.Payload),
+	}
+	preloadedResponse := &grpc.PreparedMsg{}
+	if preloadMsgSize > 0 {
+		setPayload(response.Payload, testpb.PayloadType_COMPRESSABLE, preloadMsgSize)
+		if err := preloadedResponse.Encode(stream, response); err != nil {
+			return err
+		}
 	}
 	in := new(testpb.SimpleRequest)
 	for {
@@ -95,14 +124,29 @@ func (s *testServer) StreamingCall(stream testgrpc.BenchmarkService_StreamingCal
 		if err != nil {
 			return err
 		}
-		setPayload(response.Payload, in.ResponseType, int(in.ResponseSize))
-		if err := stream.Send(response); err != nil {
+		if preloadMsgSize > 0 {
+			err = stream.SendMsg(preloadedResponse)
+		} else {
+			setPayload(response.Payload, in.ResponseType, int(in.ResponseSize))
+			err = stream.Send(response)
+		}
+		if err != nil {
 			return err
 		}
 	}
 }
 
-func (s *testServer) UnconstrainedStreamingCall(stream testgrpc.BenchmarkService_StreamingCallServer) error {
+func (s *testServer) UnconstrainedStreamingCall(stream testgrpc.BenchmarkService_StreamingCallServer, preloadMsgSize int) error {
+	maxSleep := 0
+	if md, ok := metadata.FromIncomingContext(stream.Context()); ok && len(md[UnconstrainedStreamingDelayHeader]) != 0 {
+		val := md[UnconstrainedStreamingDelayHeader][0]
+		d, err := time.ParseDuration(val)
+		if err != nil {
+			return fmt.Errorf("can't parse %q header: %s", UnconstrainedStreamingDelayHeader, err)
+		}
+		maxSleep = int(d)
+	}
+
 	in := new(testpb.SimpleRequest)
 	// Receive a message to learn response type and size.
 	err := stream.RecvMsg(in)
@@ -118,6 +162,13 @@ func (s *testServer) UnconstrainedStreamingCall(stream testgrpc.BenchmarkService
 		Payload: new(testpb.Payload),
 	}
 	setPayload(response.Payload, in.ResponseType, int(in.ResponseSize))
+
+	preloadedResponse := &grpc.PreparedMsg{}
+	if preloadMsgSize > 0 {
+		if err := preloadedResponse.Encode(stream, response); err != nil {
+			return err
+		}
+	}
 
 	go func() {
 		for {
@@ -135,9 +186,17 @@ func (s *testServer) UnconstrainedStreamingCall(stream testgrpc.BenchmarkService
 
 	go func() {
 		for {
-			err := stream.Send(response)
+			if maxSleep > 0 {
+				time.Sleep(time.Duration(rand.IntN(maxSleep)))
+			}
+			var err error
+			if preloadMsgSize > 0 {
+				err = stream.SendMsg(preloadedResponse)
+			} else {
+				err = stream.Send(response)
+			}
 			switch status.Code(err) {
-			case codes.Unavailable:
+			case codes.Unavailable, codes.Canceled:
 				return
 			case codes.OK:
 			default:
@@ -159,7 +218,7 @@ type byteBufServer struct {
 
 // UnaryCall is an empty function and is not used for benchmark.
 // If bytebuf UnaryCall benchmark is needed later, the function body needs to be updated.
-func (s *byteBufServer) UnaryCall(ctx context.Context, in *testpb.SimpleRequest) (*testpb.SimpleResponse, error) {
+func (s *byteBufServer) UnaryCall(context.Context, *testpb.SimpleRequest) (*testpb.SimpleResponse, error) {
 	return &testpb.SimpleResponse{}, nil
 }
 
@@ -189,7 +248,7 @@ type ServerInfo struct {
 	// Metadata is an optional configuration.
 	// For "protobuf", it's ignored.
 	// For "bytebuf", it should be an int representing response size.
-	Metadata interface{}
+	Metadata any
 
 	// Listener is the network listener for the server to use
 	Listener net.Listener
@@ -217,7 +276,7 @@ func StartServer(info ServerInfo, opts ...grpc.ServerOption) func() {
 	}
 }
 
-// DoUnaryCall performs an unary RPC with given stub and request and response sizes.
+// DoUnaryCall performs a unary RPC with given stub and request and response sizes.
 func DoUnaryCall(tc testgrpc.BenchmarkServiceClient, reqSize, respSize int) error {
 	pl := NewPayload(testpb.PayloadType_COMPRESSABLE, reqSize)
 	req := &testpb.SimpleRequest{
@@ -239,7 +298,13 @@ func DoStreamingRoundTrip(stream testgrpc.BenchmarkService_StreamingCallClient, 
 		ResponseSize: int32(respSize),
 		Payload:      pl,
 	}
-	if err := stream.Send(req); err != nil {
+	return DoStreamingRoundTripPreloaded(stream, req)
+}
+
+// DoStreamingRoundTripPreloaded performs a round trip for a single streaming rpc with preloaded payload.
+func DoStreamingRoundTripPreloaded(stream testgrpc.BenchmarkService_StreamingCallClient, req any) error {
+	// req could be either *testpb.SimpleRequest or *grpc.PreparedMsg
+	if err := stream.SendMsg(req); err != nil {
 		return fmt.Errorf("/BenchmarkService/StreamingCall.Send(_) = %v, want <nil>", err)
 	}
 	if _, err := stream.Recv(); err != nil {
@@ -253,7 +318,7 @@ func DoStreamingRoundTrip(stream testgrpc.BenchmarkService_StreamingCallClient, 
 }
 
 // DoByteBufStreamingRoundTrip performs a round trip for a single streaming rpc, using a custom codec for byte buffer.
-func DoByteBufStreamingRoundTrip(stream testgrpc.BenchmarkService_StreamingCallClient, reqSize, respSize int) error {
+func DoByteBufStreamingRoundTrip(stream testgrpc.BenchmarkService_StreamingCallClient, reqSize, _ int) error {
 	out := make([]byte, reqSize)
 	if err := stream.(grpc.ClientStream).SendMsg(&out); err != nil {
 		return fmt.Errorf("/BenchmarkService/StreamingCall.(ClientStream).SendMsg(_) = %v, want <nil>", err)
@@ -275,10 +340,10 @@ func NewClientConn(addr string, opts ...grpc.DialOption) *grpc.ClientConn {
 }
 
 // NewClientConnWithContext creates a gRPC client connection to addr using ctx.
-func NewClientConnWithContext(ctx context.Context, addr string, opts ...grpc.DialOption) *grpc.ClientConn {
-	conn, err := grpc.DialContext(ctx, addr, opts...)
+func NewClientConnWithContext(_ context.Context, addr string, opts ...grpc.DialOption) *grpc.ClientConn {
+	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
-		logger.Fatalf("NewClientConn(%q) failed to create a ClientConn: %v", addr, err)
+		logger.Fatalf("grpc.NewClient(%q) = %v", addr, err)
 	}
 	return conn
 }

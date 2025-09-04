@@ -1,5 +1,6 @@
 #include "ss_proxy_actor.h"
 
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>

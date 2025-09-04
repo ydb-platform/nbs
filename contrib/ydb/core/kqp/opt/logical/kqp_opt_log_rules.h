@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/kqp/opt/kqp_opt.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_expr_nodes.h>
 
-#include <contrib/ydb/library/yql/ast/yql_expr.h>
+#include <yql/essentials/ast/yql_expr.h>
 
 /*
  * This file contains declaration of all rule functions for logical optimizer
@@ -18,14 +18,11 @@ namespace NKikimr::NKqp::NOpt {
 NYql::NNodes::TKqlKeyRange BuildKeyRangeExpr(const NYql::NCommon::TKeyRange& keyRange,
     const NYql::TKikimrTableDescription& tableDesc, NYql::TPositionHandle pos, NYql::TExprContext& ctx);
 
-NYql::NNodes::TExprBase KqpPushPredicateToReadTable(NYql::NNodes::TExprBase node, NYql::TExprContext &ctx,
-    const TKqpOptimizeContext &kqpCtx);
-
 NYql::NNodes::TExprBase KqpPushExtractedPredicateToReadTable(NYql::NNodes::TExprBase node, NYql::TExprContext& ctx,
-    const TKqpOptimizeContext& kqpCtx, NYql::TTypeAnnotationContext& typesCtx);
+    const TKqpOptimizeContext& kqpCtx, NYql::TTypeAnnotationContext& typesCtx, const NYql::TParentsMap& parentsMap);
 
 NYql::NNodes::TExprBase KqpJoinToIndexLookup(const NYql::NNodes::TExprBase& node, NYql::TExprContext& ctx,
-    const TKqpOptimizeContext& kqpCtx);
+    const TKqpOptimizeContext& kqpCtx, bool useCBO, const NYql::TOptimizerHints& hints);
 
 NYql::NNodes::TExprBase KqpRewriteSqlInToEquiJoin(const NYql::NNodes::TExprBase& node, NYql::TExprContext& ctx,
     const TKqpOptimizeContext& kqpCtx, const NYql::TKikimrConfiguration::TPtr& config);
@@ -64,12 +61,6 @@ NYql::NNodes::TExprBase KqpApplyExtractMembersToReadTable(NYql::NNodes::TExprBas
     const NYql::TParentsMap& parentsMap, bool allowMultiUsage);
 
 NYql::NNodes::TExprBase KqpApplyExtractMembersToReadOlapTable(NYql::NNodes::TExprBase node, NYql::TExprContext& ctx,
-    const NYql::TParentsMap& parentsMap, bool allowMultiUsage);
-
-NYql::NNodes::TExprBase KqpApplyExtractMembersToReadTableRanges(NYql::NNodes::TExprBase node, NYql::TExprContext& ctx,
-    const NYql::TParentsMap& parentsMap, bool allowMultiUsage);
-
-NYql::NNodes::TExprBase KqpApplyExtractMembersToLookupTable(NYql::NNodes::TExprBase node, NYql::TExprContext& ctx,
     const NYql::TParentsMap& parentsMap, bool allowMultiUsage);
 
 NYql::NNodes::TExprBase KqpTopSortOverExtend(NYql::NNodes::TExprBase node, NYql::TExprContext& ctx,

@@ -11,11 +11,10 @@ import (
 	"sync"
 
 	"github.com/spf13/cobra"
+	iamv1 "github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_new/mock/protos"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-
-	iamv1 "github.com/ydb-platform/nbs/cloud/storage/core/tools/testing/access_service_new/mock/protos"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

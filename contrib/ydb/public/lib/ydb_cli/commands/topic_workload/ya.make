@@ -11,26 +11,29 @@ SRCS(
     topic_workload_stats.cpp
     topic_workload_stats_collector.cpp
     topic_workload_writer.cpp
+    topic_workload_writer_producer.cpp
     topic_workload_reader.cpp
     topic_workload_reader_transaction_support.cpp
     topic_workload.cpp
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/public/issue
-    contrib/ydb/library/yql/public/issue/protos
+    yql/essentials/public/issue
+    yql/essentials/public/issue/protos
     contrib/ydb/public/api/grpc
     contrib/ydb/public/api/protos
     contrib/ydb/public/api/protos/annotations
-    contrib/ydb/public/lib/operation_id
-    contrib/ydb/public/lib/operation_id/protos
-    contrib/ydb/public/sdk/cpp/client/draft
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_proto
-    contrib/ydb/public/sdk/cpp/client/ydb_table
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
-    contrib/ydb/public/sdk/cpp/client/ydb_types/operation
-    contrib/ydb/public/sdk/cpp/client/ydb_types/status    
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
+    contrib/ydb/public/sdk/cpp/src/client/draft
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/proto
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/types/operation
+    contrib/ydb/public/sdk/cpp/src/client/types/status
+    library/cpp/containers/concurrent_hash
+    library/cpp/unified_agent_client
+    library/cpp/histogram/hdr
 )
 
 END()

@@ -6,6 +6,7 @@ package zstd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -278,13 +279,21 @@ func TestEncoderRegression(t *testing.T) {
 					if err != nil {
 						t.Error(err)
 					}
+					err = enc.Close()
+					if err != nil {
+						t.Error(err)
+					}
+					_, err = enc.Write([]byte{1, 2, 3, 4})
+					if !errors.Is(err, ErrEncoderClosed) {
+						t.Errorf("unexpected error: %v", err)
+					}
 					encoded = dst.Bytes()
 					if len(encoded) > enc.MaxEncodedSize(len(in)) {
 						t.Errorf("max encoded size for %v: got: %d, want max: %d", len(in), len(encoded), enc.MaxEncodedSize(len(in)))
 					}
 					got, err = dec.DecodeAll(encoded, make([]byte, 0, len(in)/2))
 					if err != nil {
-						t.Logf("error: %v\nwant: %v\ngot:  %v", err, in, got)
+						t.Logf("error: %v\nwant: %v\ngot:  %v", err, len(in), len(got))
 						t.Error(err)
 					}
 				})
@@ -333,6 +342,52 @@ func TestEncoder_EncodeAllTwain(t *testing.T) {
 					}
 					if !bytes.Equal(decoded, in) {
 						os.WriteFile("testdata/"+t.Name()+"-Mark.Twain-Tom.Sawyer.txt.got", decoded, os.ModePerm)
+						t.Fatal("Decoded does not match")
+					}
+					t.Log("Encoded content matched")
+				})
+			}
+		})
+	}
+}
+
+func TestEncoder_EncodeRLE(t *testing.T) {
+	in := make([]byte, 1<<20)
+	testWindowSizes := testWindowSizes
+	if testing.Short() {
+		testWindowSizes = []int{1 << 20}
+	}
+
+	dec, err := NewReader(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dec.Close()
+
+	for level := speedNotSet + 1; level < speedLast; level++ {
+		t.Run(level.String(), func(t *testing.T) {
+			if isRaceTest && level >= SpeedBestCompression {
+				t.SkipNow()
+			}
+			for _, windowSize := range testWindowSizes {
+				t.Run(fmt.Sprintf("window:%d", windowSize), func(t *testing.T) {
+					e, err := NewWriter(nil, WithEncoderLevel(level), WithWindowSize(windowSize))
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer e.Close()
+					start := time.Now()
+					dst := e.EncodeAll(in, nil)
+					t.Log("Simple Encoder len", len(in), "-> zstd len", len(dst))
+					mbpersec := (float64(len(in)) / (1024 * 1024)) / (float64(time.Since(start)) / (float64(time.Second)))
+					t.Logf("Encoded %d bytes with %.2f MB/s", len(in), mbpersec)
+
+					decoded, err := dec.DecodeAll(dst, nil)
+					if err != nil {
+						t.Error(err, len(decoded))
+					}
+					if !bytes.Equal(decoded, in) {
+						os.WriteFile("testdata/"+t.Name()+"-RLE.got", decoded, os.ModePerm)
 						t.Fatal("Decoded does not match")
 					}
 					t.Log("Encoded content matched")
@@ -416,7 +471,7 @@ func TestWithEncoderPadding(t *testing.T) {
 		// Test the added padding is invisible.
 		dst := e.EncodeAll(src, nil)
 		if len(dst)%padding != 0 {
-			t.Fatalf("wanted size to be mutiple of %d, got size %d with remainder %d", padding, len(dst), len(dst)%padding)
+			t.Fatalf("wanted size to be multiple of %d, got size %d with remainder %d", padding, len(dst), len(dst)%padding)
 		}
 		got, err := d.DecodeAll(dst, nil)
 		if err != nil {
@@ -428,7 +483,7 @@ func TestWithEncoderPadding(t *testing.T) {
 		// Test when we supply data as well.
 		dst = e.EncodeAll(src, make([]byte, rng.Int()&255))
 		if len(dst)%padding != 0 {
-			t.Fatalf("wanted size to be mutiple of %d, got size %d with remainder %d", padding, len(dst), len(dst)%padding)
+			t.Fatalf("wanted size to be multiple of %d, got size %d with remainder %d", padding, len(dst), len(dst)%padding)
 		}
 
 		// Test using the writer.
@@ -444,7 +499,7 @@ func TestWithEncoderPadding(t *testing.T) {
 		}
 		dst = buf.Bytes()
 		if len(dst)%padding != 0 {
-			t.Fatalf("wanted size to be mutiple of %d, got size %d with remainder %d", padding, len(dst), len(dst)%padding)
+			t.Fatalf("wanted size to be multiple of %d, got size %d with remainder %d", padding, len(dst), len(dst)%padding)
 		}
 		// Test the added padding is invisible.
 		got, err = d.DecodeAll(dst, nil)
@@ -467,7 +522,7 @@ func TestWithEncoderPadding(t *testing.T) {
 		}
 		dst = buf.Bytes()
 		if len(dst)%padding != 0 {
-			t.Fatalf("wanted size to be mutiple of %d, got size %d with remainder %d", padding, len(dst), len(dst)%padding)
+			t.Fatalf("wanted size to be multiple of %d, got size %d with remainder %d", padding, len(dst), len(dst)%padding)
 		}
 		// Test the added padding is invisible.
 		got, err = d.DecodeAll(dst, nil)

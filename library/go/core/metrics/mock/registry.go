@@ -18,7 +18,7 @@ type Registry struct {
 	allowLoadRegisteredMetrics bool
 
 	subregistries map[string]*Registry
-	m             *sync.Mutex
+	m             *sync.RWMutex
 
 	metrics *sync.Map
 }
@@ -28,7 +28,7 @@ func NewRegistry(opts *RegistryOpts) *Registry {
 		separator: ".",
 
 		subregistries: make(map[string]*Registry),
-		m:             new(sync.Mutex),
+		m:             new(sync.RWMutex),
 
 		metrics: new(sync.Map),
 	}

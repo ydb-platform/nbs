@@ -1,1 +1,3 @@
-RECURSE(certprovider)
+RECURSE(
+    certprovider
+)

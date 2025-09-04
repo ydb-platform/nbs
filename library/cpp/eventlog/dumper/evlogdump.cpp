@@ -291,6 +291,14 @@ int IterateEventLog(IEventFactory* fac, ITunableEventProcessor* proc, int argc, 
         .Optional()
         .StoreResult(&helpEvents);
 
+    TString additionalEndTime;
+    opts.AddLongOption(
+        "additional-end-time",
+        "Additional end time (Unix time in microseconds).\n"
+        "Will be summed up with value of --end-time parameter.")
+        .Optional()
+        .StoreResult(&additionalEndTime);
+
     proc->AddOptions(opts);
 
     opts.SetFreeArgsMin(0);
@@ -394,6 +402,11 @@ int IterateEventLog(IEventFactory* fac, ITunableEventProcessor* proc, int argc, 
 
     o.StartTime = ParseTime(start, MIN_START_TIME);
     o.EndTime = ParseTime(end, MAX_END_TIME);
+
+    auto additionalEndTimeParsed = ParseTime(additionalEndTime, 0);
+    if (o.EndTime <= MAX_END_TIME - additionalEndTimeParsed) {
+        o.EndTime += additionalEndTimeParsed;
+    }
 
     try {
         THolder<IIterator> it = CreateIterator(o, fac);

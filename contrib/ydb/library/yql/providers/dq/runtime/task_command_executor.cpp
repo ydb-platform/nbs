@@ -3,20 +3,26 @@
 #include <contrib/ydb/library/yql/providers/dq/task_runner/tasks_runner_proxy.h>
 #include <contrib/ydb/library/yql/providers/dq/counters/task_counters.h>
 #include <contrib/ydb/library/yql/providers/dq/common/yql_dq_settings.h>
+#include <yql/essentials/providers/common/provider/yql_provider.h>
 #include <contrib/ydb/library/yql/providers/dq/api/protos/dqs.pb.h>
 #include <contrib/ydb/library/yql/providers/dq/api/protos/task_command_executor.pb.h>
-#include <contrib/ydb/library/yql/utils/backtrace/backtrace.h>
+#include <yql/essentials/utils/backtrace/backtrace.h>
+#include <yql/essentials/utils/failure_injector/failure_injector.h>
 
-#include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node_serialization.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node.h>
-#include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
+#include <yql/essentials/minikql/invoke_builtins/mkql_builtins.h>
+#include <yql/essentials/minikql/mkql_node_serialization.h>
+#include <yql/essentials/minikql/computation/mkql_computation_node.h>
+#include <yql/essentials/minikql/mkql_string_util.h>
 
-#include <contrib/ydb/library/yql/minikql/aligned_page_pool.h>
+#include <yql/essentials/minikql/aligned_page_pool.h>
 #include <contrib/ydb/library/yql/dq/runtime/dq_input_channel.h>
 #include <contrib/ydb/library/yql/dq/runtime/dq_output_channel.h>
-#include <contrib/ydb/library/yql/utils/log/log.h>
-#include <contrib/ydb/library/yql/utils/yql_panic.h>
+#include <yql/essentials/utils/log/log.h>
+#include <yql/essentials/utils/yql_panic.h>
+
+#include <yql/essentials/parser/pg_wrapper/interface/context.h>
+#include <yql/essentials/parser/pg_wrapper/interface/parser.h>
+#include <yql/essentials/parser/pg_catalog/catalog.h>
 
 #include <util/system/thread.h>
 #include <util/system/fs.h>
@@ -46,10 +52,14 @@ template<typename T>
 void ToProto(T& proto, const NDq::TDqAsyncStats& stats)
 {
     proto.SetBytes(stats.Bytes);
+    proto.SetDecompressedBytes(stats.DecompressedBytes);
     proto.SetRows(stats.Rows);
     proto.SetChunks(stats.Chunks);
     proto.SetSplits(stats.Splits);
-
+    proto.SetFilteredBytes(stats.FilteredBytes);
+    proto.SetFilteredRows(stats.FilteredRows);
+    proto.SetQueuedBytes(stats.QueuedBytes);
+    proto.SetQueuedRows(stats.QueuedRows);
     proto.SetFirstMessageMs(stats.FirstMessageTs.MilliSeconds());
     proto.SetPauseMessageMs(stats.PauseMessageTs.MilliSeconds());
     proto.SetResumeMessageMs(stats.ResumeMessageTs.MilliSeconds());
@@ -127,13 +137,11 @@ public:
                         "TaskRunner",
                         labels,
                         name);
-                    auto& old = CurrentJobStats[counterName];
                     if (name.EndsWith("Time")) {
-                        QueryStat.AddTimeCounter(counterName, value - old);
+                        QueryStat.SetTimeCounter(counterName, value);
                     } else {
-                        QueryStat.AddCounter(counterName, value - old);
+                        QueryStat.SetCounter(counterName, value);
                     }
-                    old = value;
                 }
             });
         }
@@ -211,7 +219,7 @@ public:
         } catch (const std::exception& ex) {
             try {
                 // don't generate core if parent died before child
-                Cerr << ex.what() << Endl;
+                Cerr << FormatCurrentException() << Endl;
                 Cerr << "Command " << LastCommand << Endl;
                 Cerr << "Version " << LastVersion << Endl;
                 Cerr << "TaskId " << LastTaskId << Endl;
@@ -369,9 +377,9 @@ public:
                 if (batch.IsOOB()) {
                     LoadRopeFromPipe(input, batch.Payload);
                 }
-                NDq::TDqDataSerializer dataSerializer(Runner->GetTypeEnv(), Runner->GetHolderFactory(),
-                    (NDqProto::EDataTransportVersion)batch.Proto.GetTransportVersion());
-                dataSerializer.Deserialize(std::move(batch), source->GetInputType(), buffer);
+                NDq::TDqDataSerializer dataDeserializer(Runner->GetTypeEnv(), Runner->GetHolderFactory(),
+                                                        (NDqProto::EDataTransportVersion)batch.Proto.GetTransportVersion(), NDq::FromProto(batch.Proto.GetValuePackerVersion()));
+                dataDeserializer.Deserialize(std::move(batch), source->GetInputType(), buffer);
 
                 source->Push(std::move(buffer), request.GetSpace());
                 break;
@@ -522,6 +530,14 @@ public:
 
                 break;
             }
+            case NDqProto::TCommandHeader::CONFIGURE_FAILURE_INJECTOR: {
+                Y_ENSURE(header.GetVersion() <= CurrentProtocolVersion);
+                TFailureInjector::Activate();
+                NDqProto::TConfigureFailureInjectorRequest request;
+                request.Load(&input);
+                TFailureInjector::Set(request.name(), request.skip(), request.fail());
+                break;
+            }
             case NDqProto::TCommandHeader::GET_FREE_SPACE: {
                 Y_ENSURE(header.GetVersion() >= 2);
 
@@ -608,7 +624,8 @@ public:
                 NDq::TDqDataSerializer dataSerializer(
                     Runner->GetTypeEnv(),
                     Runner->GetHolderFactory(),
-                    DataTransportVersion);
+                    DataTransportVersion,
+                    PackerVersion);
                 NDq::TDqSerializedBatch serialized = dataSerializer.Serialize(batch, outputType);
                 bool isOOB = serialized.IsOOB();
                 *response.MutableData() = std::move(serialized.Proto);
@@ -660,6 +677,7 @@ public:
             DontCollectDumps();
         }
         DataTransportVersion = DqConfiguration->GetDataTransportVersion();
+        PackerVersion = NDq::FromProto(DqConfiguration->GetValuePackerVersion());
         // TODO: Maybe use taskParams from task.GetTask().GetParameters()
         THashMap<TString, TString> taskParams;
         for (const auto& x: taskMeta.GetTaskParams()) {
@@ -669,6 +687,19 @@ public:
         TString workingDirectory = taskParams[NTaskRunnerProxy::WorkingDirectoryParamName];
         Y_ABORT_UNLESS(workingDirectory);
         NFs::SetCurrentWorkingDirectory(workingDirectory);
+
+        QueryStat.Measure<void>("LoadPgSystemFunctions", [&]() {
+            NPg::LoadSystemFunctions(*NSQLTranslationPG::CreateSystemFunctionsParser());
+        });
+
+        QueryStat.Measure<void>("LoadPgExtensions", [&]()
+        {
+            if (TFsPath(NCommon::PgCatalogFileName).Exists()) {
+                TFileInput file(TString{NCommon::PgCatalogFileName});
+                NPg::ImportExtensions(file.ReadAll(), false,
+                    NKikimr::NMiniKQL::CreateExtensionLoader().get());
+            }
+        });
 
         THashMap<TString, TString> modulesMapping;
 
@@ -722,18 +753,18 @@ public:
             }
             settings.OptLLVM = DqConfiguration->OptLLVM.Get().GetOrElse("");
 
-            Ctx.FuncProvider = TaskTransformFactory(taskParams, Ctx.FuncRegistry);
+            Ctx.FuncProvider = TaskTransformFactory({taskParams, settings.ReadRanges}, Ctx.FuncRegistry);
 
             Y_ABORT_UNLESS(!Alloc);
             Y_ABORT_UNLESS(FunctionRegistry);
-            Alloc = std::make_unique<NKikimr::NMiniKQL::TScopedAlloc>(
+            Alloc = std::make_shared<NKikimr::NMiniKQL::TScopedAlloc>(
                 __LOCATION__,
                 NKikimr::TAlignedPagePoolCounters(),
                 FunctionRegistry->SupportsSizedAllocators(),
                 false
             );
 
-            Runner = MakeDqTaskRunner(*Alloc.get(), Ctx, settings, nullptr);
+            Runner = MakeDqTaskRunner(Alloc, Ctx, settings, nullptr);
         });
 
         auto guard = Runner->BindAllocator(DqConfiguration->MemoryLimit.Get().GetOrElse(0));
@@ -763,10 +794,9 @@ public:
         result.Save(&output);
     }
 private:
-    std::unique_ptr<NKikimr::NMiniKQL::TScopedAlloc> Alloc;
+    std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> Alloc;
     NKikimr::NMiniKQL::TComputationNodeFactory ComputationFactory;
     TTaskTransformFactory TaskTransformFactory;
-    THashMap<TString, i64> CurrentJobStats;
     NKikimr::NMiniKQL::IStatsRegistry* JobStats;
     bool TerminateOnError;
     TIntrusivePtr<NDq::IDqTaskRunner> Runner;
@@ -777,6 +807,7 @@ private:
     TTaskCounters PrevStat;
     TDqConfiguration::TPtr DqConfiguration = MakeIntrusive<TDqConfiguration>();
     NDqProto::EDataTransportVersion DataTransportVersion = NDqProto::EDataTransportVersion::DATA_TRANSPORT_VERSION_UNSPECIFIED;
+    NKikimr::NMiniKQL::EValuePackerVersion PackerVersion = NKikimr::NMiniKQL::EValuePackerVersion::V0;
     TIntrusivePtr<NKikimr::NMiniKQL::IMutableFunctionRegistry> FunctionRegistry;
     NDq::TDqTaskRunnerContext Ctx;
     const NKikimr::NMiniKQL::TUdfModuleRemappings EmptyRemappings;

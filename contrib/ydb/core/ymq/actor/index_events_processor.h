@@ -5,8 +5,8 @@
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/actorsystem.h>
@@ -56,9 +56,10 @@ private:
     struct TQueueEvent {
         EQueueEventType Type;
         ui64 Timestamp;
-        TString CustomName;
-        TString CloudId;
-        TString FolderId;
+        std::string CustomName;
+        std::string CloudId;
+        std::string FolderId;
+        std::string Labels;
     };
     struct TQueueTableKey {
         TString Account;

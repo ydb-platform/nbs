@@ -1,11 +1,13 @@
 #pragma once
 
 #include "schemeshard_identificators.h"
-#include "schemeshard_path_element.h"
 #include "schemeshard_info_types.h"
+#include "schemeshard_path_element.h"
 
 #include <util/generic/ptr.h>
 #include <util/generic/stack.h>
+
+#include <optional>
 
 namespace NKikimr::NSchemeShard {
 
@@ -30,6 +32,9 @@ class TMemoryChanges: public TSimpleRefCount<TMemoryChanges> {
     using TTableState = std::pair<TPathId, TTableInfo::TPtr>;
     TStack<TTableState> Tables;
 
+    using TSequenceState = std::pair<TPathId, TSequenceInfo::TPtr>;
+    TStack<TSequenceState> Sequences;
+
     using TShardState = std::pair<TShardIdx, THolder<TShardInfo>>;
     TStack<TShardState> Shards;
 
@@ -52,6 +57,21 @@ class TMemoryChanges: public TSimpleRefCount<TMemoryChanges> {
     using TViewState = std::pair<TPathId, TViewInfo::TPtr>;
     TStack<TViewState> Views;
 
+    using TResourcePoolState = std::pair<TPathId, TResourcePoolInfo::TPtr>;
+    TStack<TResourcePoolState> ResourcePools;
+
+    using TBackupCollectionState = std::pair<TPathId, TBackupCollectionInfo::TPtr>;
+    TStack<TBackupCollectionState> BackupCollections;
+
+    using TSysViewState = std::pair<TPathId, TSysViewInfo::TPtr>;
+    TStack<TSysViewState> SysViews;
+
+    using TLongIncrementalRestoreOpState = std::pair<TOperationId, std::optional<NKikimrSchemeOp::TLongIncrementalRestoreOp>>;
+    TStack<TLongIncrementalRestoreOpState> LongIncrementalRestoreOps;
+
+    using TIncrementalBackupState = std::pair<ui64, TIncrementalBackupInfo::TPtr>;
+    TStack<TIncrementalBackupState> IncrementalBackups;
+
 public:
     ~TMemoryChanges() = default;
 
@@ -71,6 +91,9 @@ public:
     void GrabNewIndex(TSchemeShard* ss, const TPathId& pathId);
     void GrabIndex(TSchemeShard* ss, const TPathId& pathId);
 
+    void GrabNewSequence(TSchemeShard* ss, const TPathId& pathId);
+    void GrabSequence(TSchemeShard* ss, const TPathId& pathId);
+
     void GrabNewCdcStream(TSchemeShard* ss, const TPathId& pathId);
     void GrabCdcStream(TSchemeShard* ss, const TPathId& pathId);
 
@@ -85,6 +108,18 @@ public:
 
     void GrabNewView(TSchemeShard* ss, const TPathId& pathId);
     void GrabView(TSchemeShard* ss, const TPathId& pathId);
+
+    void GrabResourcePool(TSchemeShard* ss, const TPathId& pathId);
+
+    void GrabBackupCollection(TSchemeShard* ss, const TPathId& pathId);
+
+    void GrabNewSysView(TSchemeShard* ss, const TPathId& pathId);
+    void GrabSysView(TSchemeShard* ss, const TPathId& pathId);
+
+    void GrabNewLongIncrementalRestoreOp(TSchemeShard* ss, const TOperationId& opId);
+    void GrabLongIncrementalRestoreOp(TSchemeShard* ss, const TOperationId& opId);
+
+    void GrabNewLongIncrementalBackupOp(TSchemeShard* ss, ui64 id);
 
     void UnDo(TSchemeShard* ss);
 };

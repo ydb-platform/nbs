@@ -1,25 +1,15 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package baggage
 
 import (
 	"fmt"
-	"math/rand"
-	"sort"
+	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,12 +17,8 @@ import (
 	"go.opentelemetry.io/otel/internal/baggage"
 )
 
-var rng *rand.Rand
-
-func init() {
-	// Seed with a static value to ensure deterministic results.
-	rng = rand.New(rand.NewSource(1))
-}
+// Seed with a static value to ensure deterministic results.
+var rng = rand.New(rand.NewChaCha8([32]byte{}))
 
 func TestValidateKeyChar(t *testing.T) {
 	// ASCII only
@@ -42,7 +28,7 @@ func TestValidateKeyChar(t *testing.T) {
 		'\x10', '\x11', '\x12', '\x13', '\x14', '\x15', '\x16', '\x17',
 		'\x18', '\x19', '\x1A', '\x1B', '\x1C', '\x1D', '\x1E', '\x1F', ' ',
 		'(', ')', '<', '>', '@', ',', ';', ':', '\\', '"', '/', '[', ']', '?',
-		'=', '{', '}', '\x7F',
+		'=', '{', '}', '\x7F', 2 >> 20, '\x80',
 	}
 
 	for _, ch := range invalidKeyRune {
@@ -57,7 +43,7 @@ func TestValidateValueChar(t *testing.T) {
 		'\x08', '\x09', '\x0A', '\x0B', '\x0C', '\x0D', '\x0E', '\x0F',
 		'\x10', '\x11', '\x12', '\x13', '\x14', '\x15', '\x16', '\x17',
 		'\x18', '\x19', '\x1A', '\x1B', '\x1C', '\x1D', '\x1E', '\x1F', ' ',
-		'"', ',', ';', '\\', '\x7F',
+		'"', ',', ';', '\\', '\x7F', '\x80',
 	}
 
 	for _, ch := range invalidValueRune {
@@ -134,12 +120,22 @@ func TestParsePropertyError(t *testing.T) {
 
 func TestNewKeyProperty(t *testing.T) {
 	p, err := NewKeyProperty(" ")
-	assert.ErrorIs(t, err, errInvalidKey)
-	assert.Equal(t, Property{}, p)
+	assert.NoError(t, err)
+	assert.Equal(t, Property{key: " "}, p)
 
 	p, err = NewKeyProperty("key")
 	assert.NoError(t, err)
 	assert.Equal(t, Property{key: "key"}, p)
+
+	// UTF-8 key
+	p, err = NewKeyProperty("B% 💼")
+	assert.NoError(t, err)
+	assert.Equal(t, Property{key: "B% 💼"}, p)
+
+	// Invalid UTF-8 key
+	p, err = NewKeyProperty(string([]byte{255}))
+	assert.ErrorIs(t, err, errInvalidKey)
+	assert.Equal(t, Property{}, p)
 }
 
 func TestNewKeyValueProperty(t *testing.T) {
@@ -151,19 +147,46 @@ func TestNewKeyValueProperty(t *testing.T) {
 	assert.ErrorIs(t, err, errInvalidValue)
 	assert.Equal(t, Property{}, p)
 
+	// it won't use percent decoding for key
+	p, err = NewKeyValueProperty("%zzzzz", "value")
+	assert.NoError(t, err)
+	assert.Equal(t, Property{key: "%zzzzz", value: "value", hasValue: true}, p)
+
+	// wrong value with wrong decoding
+	p, err = NewKeyValueProperty("key", "%zzzzz")
+	assert.ErrorIs(t, err, errInvalidValue)
+	assert.Equal(t, Property{}, p)
+
 	p, err = NewKeyValueProperty("key", "value")
 	assert.NoError(t, err)
 	assert.Equal(t, Property{key: "key", value: "value", hasValue: true}, p)
+
+	// Percent-encoded value
+	p, err = NewKeyValueProperty("key", "%C4%85%C5%9B%C4%87")
+	assert.NoError(t, err)
+	assert.Equal(t, Property{key: "key", value: "ąść", hasValue: true}, p)
 }
 
 func TestNewKeyValuePropertyRaw(t *testing.T) {
-	p, err := NewKeyValuePropertyRaw(" ", "")
+	// Empty key
+	p, err := NewKeyValuePropertyRaw("", " ")
 	assert.ErrorIs(t, err, errInvalidKey)
 	assert.Equal(t, Property{}, p)
 
-	p, err = NewKeyValuePropertyRaw("key", "Witaj Świecie!")
+	// Empty value
+	// Empty string is also a valid UTF-8 string.
+	p, err = NewKeyValuePropertyRaw(" ", "")
 	assert.NoError(t, err)
-	assert.Equal(t, Property{key: "key", value: "Witaj Świecie!", hasValue: true}, p)
+	assert.Equal(t, Property{key: " ", hasValue: true}, p)
+
+	// Space value
+	p, err = NewKeyValuePropertyRaw(" ", " ")
+	assert.NoError(t, err)
+	assert.Equal(t, Property{key: " ", value: " ", hasValue: true}, p)
+
+	p, err = NewKeyValuePropertyRaw("B% 💼", "Witaj Świecie!")
+	assert.NoError(t, err)
+	assert.Equal(t, Property{key: "B% 💼", value: "Witaj Świecie!", hasValue: true}, p)
 }
 
 func TestPropertyValidate(t *testing.T) {
@@ -178,6 +201,10 @@ func TestPropertyValidate(t *testing.T) {
 
 	p.hasValue = true
 	assert.NoError(t, p.validate())
+
+	// Invalid value
+	p.value = string([]byte{255})
+	assert.ErrorIs(t, p.validate(), errInvalidValue)
 }
 
 func TestNewEmptyBaggage(t *testing.T) {
@@ -224,7 +251,7 @@ func key(n int) string {
 
 	b := make([]rune, n)
 	for i := range b {
-		b[i] = r[rng.Intn(len(r))]
+		b[i] = r[rng.IntN(len(r))]
 	}
 	return string(b)
 }
@@ -421,6 +448,24 @@ func TestBaggageParse(t *testing.T) {
 			},
 		},
 		{
+			name: "encoded UTF-8 string in key",
+			in:   "a=b,%C4%85%C5%9B%C4%87=%C4%85%C5%9B%C4%87",
+			want: baggage.List{
+				"a":                  {Value: "b"},
+				"%C4%85%C5%9B%C4%87": {Value: "ąść"},
+			},
+		},
+		{
+			name: "encoded UTF-8 string in property",
+			in:   "a=b,%C4%85%C5%9B%C4%87=%C4%85%C5%9B%C4%87;%C4%85%C5%9B%C4%87=%C4%85%C5%9B%C4%87",
+			want: baggage.List{
+				"a": {Value: "b"},
+				"%C4%85%C5%9B%C4%87": {Value: "ąść", Properties: []baggage.Property{
+					{Key: "%C4%85%C5%9B%C4%87", HasValue: true, Value: "ąść"},
+				}},
+			},
+		},
+		{
 			name: "invalid member: empty",
 			in:   "foo=,,bar=",
 			err:  errInvalidMember,
@@ -466,6 +511,11 @@ func TestBaggageParse(t *testing.T) {
 			err:  errInvalidProperty,
 		},
 		{
+			name: "invalid property: improper url encoded value",
+			in:   "foo=1;key=val%",
+			err:  errInvalidProperty,
+		},
+		{
 			name: "invalid baggage string: too large",
 			in:   tooLarge,
 			err:  errBaggageBytes,
@@ -480,6 +530,18 @@ func TestBaggageParse(t *testing.T) {
 			in:   tooManyMembers,
 			err:  errMemberNumber,
 		},
+		{
+			name: "percent-encoded octet sequences do not match the UTF-8 encoding scheme",
+			in:   "k=aa%ffcc;p=d%fff",
+			want: baggage.List{
+				"k": {
+					Value: "aa�cc",
+					Properties: []baggage.Property{
+						{Key: "p", Value: "d�f", HasValue: true},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range testcases {
@@ -487,6 +549,53 @@ func TestBaggageParse(t *testing.T) {
 			actual, err := Parse(tc.in)
 			assert.ErrorIs(t, err, tc.err)
 			assert.Equal(t, Baggage{list: tc.want}, actual)
+		})
+	}
+}
+
+func TestBaggageParseValue(t *testing.T) {
+	testcases := []struct {
+		name          string
+		in            string
+		valueWant     string
+		valueWantSize int
+	}{
+		{
+			name:          "percent encoded octet sequence matches UTF-8 encoding scheme",
+			in:            "k=aa%26cc",
+			valueWant:     "aa&cc",
+			valueWantSize: 5,
+		},
+		{
+			name:          "percent encoded octet sequence doesn't match UTF-8 encoding scheme",
+			in:            "k=aa%ffcc",
+			valueWant:     "aa�cc",
+			valueWantSize: 7,
+		},
+		{
+			name:          "multiple percent encoded octet sequences don't match UTF-8 encoding scheme",
+			in:            "k=aa%ffcc%fedd%fa",
+			valueWant:     "aa�cc�dd�",
+			valueWantSize: 15,
+		},
+		{
+			name:          "raw value",
+			in:            "k=aacc",
+			valueWant:     "aacc",
+			valueWantSize: 4,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			b, err := Parse(tc.in)
+			assert.NoError(t, err)
+
+			val := b.Members()[0].Value()
+
+			assert.Equal(t, tc.valueWant, val)
+			assert.Equal(t, len(val), tc.valueWantSize)
+			assert.True(t, utf8.ValidString(val))
 		})
 	}
 }
@@ -615,6 +724,29 @@ func TestBaggageString(t *testing.T) {
 				},
 			},
 		},
+		{
+			// W3C does not allow percent-encoded keys.
+			// The baggage that has percent-encoded keys should be ignored.
+			name: "utf-8 key and value",
+			out:  "foo=B%25%20%F0%9F%92%BC-2;foo-1=B%25%20%F0%9F%92%BC-4;foo-2",
+			baggage: baggage.List{
+				"ąść": {
+					Value: "B% 💼",
+					Properties: []baggage.Property{
+						{Key: "ąść-1", Value: "B% 💼-1", HasValue: true},
+						{Key: "ąść-2"},
+					},
+				},
+				"foo": {
+					Value: "B% 💼-2",
+					Properties: []baggage.Property{
+						{Key: "ąść", Value: "B% 💼-3", HasValue: true},
+						{Key: "foo-1", Value: "B% 💼-4", HasValue: true},
+						{Key: "foo-2"},
+					},
+				},
+			},
+		},
 	}
 
 	orderer := func(s string) string {
@@ -622,11 +754,11 @@ func TestBaggageString(t *testing.T) {
 		for i, m := range members {
 			parts := strings.Split(m, propertyDelimiter)
 			if len(parts) > 1 {
-				sort.Strings(parts[1:])
+				slices.Sort(parts[1:])
 				members[i] = strings.Join(parts, propertyDelimiter)
 			}
 		}
-		sort.Strings(members)
+		slices.Sort(members)
 		return strings.Join(members, listDelimiter)
 	}
 
@@ -679,16 +811,16 @@ func TestBaggageSetMember(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotContains(t, b0.list, key)
 	assert.Equal(t, baggage.Item{}, b1.list[key])
-	assert.Equal(t, 0, len(b0.list))
-	assert.Equal(t, 1, len(b1.list))
+	assert.Empty(t, b0.list)
+	assert.Len(t, b1.list, 1)
 
 	m.value = "v"
 	b2, err := b1.SetMember(m)
 	assert.NoError(t, err)
 	assert.Equal(t, baggage.Item{}, b1.list[key])
 	assert.Equal(t, baggage.Item{Value: "v"}, b2.list[key])
-	assert.Equal(t, 1, len(b1.list))
-	assert.Equal(t, 1, len(b2.list))
+	assert.Len(t, b1.list, 1)
+	assert.Len(t, b2.list, 1)
 
 	p := properties{{key: "p"}}
 	m.properties = p
@@ -696,8 +828,8 @@ func TestBaggageSetMember(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, baggage.Item{Value: "v"}, b2.list[key])
 	assert.Equal(t, baggage.Item{Value: "v", Properties: []baggage.Property{{Key: "p"}}}, b3.list[key])
-	assert.Equal(t, 1, len(b2.list))
-	assert.Equal(t, 1, len(b3.list))
+	assert.Len(t, b2.list, 1)
+	assert.Len(t, b3.list, 1)
 
 	// The returned baggage needs to be immutable and should use a copy of the
 	// properties slice.
@@ -713,8 +845,8 @@ func TestBaggageSetMember(t *testing.T) {
 	assert.NotContains(t, b3.list, m.key)
 	assert.Equal(t, baggage.Item{Value: "v", Properties: []baggage.Property{{Key: "p"}}}, b4.list[key])
 	assert.Equal(t, baggage.Item{}, b4.list[m.key])
-	assert.Equal(t, 1, len(b3.list))
-	assert.Equal(t, 2, len(b4.list))
+	assert.Len(t, b3.list, 1)
+	assert.Len(t, b4.list, 2)
 }
 
 func TestBaggageSetFalseMember(t *testing.T) {
@@ -726,16 +858,16 @@ func TestBaggageSetFalseMember(t *testing.T) {
 	assert.Error(t, err)
 	assert.NotContains(t, b0.list, key)
 	assert.Equal(t, baggage.Item{}, b1.list[key])
-	assert.Equal(t, 0, len(b0.list))
-	assert.Equal(t, 0, len(b1.list))
+	assert.Empty(t, b0.list)
+	assert.Empty(t, b1.list)
 
 	m.value = "v"
 	b2, err := b1.SetMember(m)
 	assert.Error(t, err)
 	assert.Equal(t, baggage.Item{}, b1.list[key])
 	assert.Equal(t, baggage.Item{Value: ""}, b2.list[key])
-	assert.Equal(t, 0, len(b1.list))
-	assert.Equal(t, 0, len(b2.list))
+	assert.Empty(t, b1.list)
+	assert.Empty(t, b2.list)
 }
 
 func TestBaggageSetFalseMembers(t *testing.T) {
@@ -747,16 +879,16 @@ func TestBaggageSetFalseMembers(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotContains(t, b0.list, key)
 	assert.Equal(t, baggage.Item{}, b1.list[key])
-	assert.Equal(t, 0, len(b0.list))
-	assert.Equal(t, 1, len(b1.list))
+	assert.Empty(t, b0.list)
+	assert.Len(t, b1.list, 1)
 
 	m.value = "v"
 	b2, err := b1.SetMember(m)
 	assert.NoError(t, err)
 	assert.Equal(t, baggage.Item{}, b1.list[key])
 	assert.Equal(t, baggage.Item{Value: "v"}, b2.list[key])
-	assert.Equal(t, 1, len(b1.list))
-	assert.Equal(t, 1, len(b2.list))
+	assert.Len(t, b1.list, 1)
+	assert.Len(t, b2.list, 1)
 
 	p := properties{{key: "p"}}
 	m.properties = p
@@ -764,8 +896,8 @@ func TestBaggageSetFalseMembers(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, baggage.Item{Value: "v"}, b2.list[key])
 	assert.Equal(t, baggage.Item{Value: "v", Properties: []baggage.Property{{Key: "p"}}}, b3.list[key])
-	assert.Equal(t, 1, len(b2.list))
-	assert.Equal(t, 1, len(b3.list))
+	assert.Len(t, b2.list, 1)
+	assert.Len(t, b3.list, 1)
 
 	// The returned baggage needs to be immutable and should use a copy of the
 	// properties slice.
@@ -781,8 +913,8 @@ func TestBaggageSetFalseMembers(t *testing.T) {
 	assert.NotContains(t, b3.list, m.key)
 	assert.Equal(t, baggage.Item{Value: "v", Properties: []baggage.Property{{Key: "p"}}}, b4.list[key])
 	assert.Equal(t, baggage.Item{}, b4.list[m.key])
-	assert.Equal(t, 1, len(b3.list))
-	assert.Equal(t, 1, len(b4.list))
+	assert.Len(t, b3.list, 1)
+	assert.Len(t, b4.list, 1)
 }
 
 func TestNilBaggageMembers(t *testing.T) {
@@ -835,7 +967,7 @@ func TestBaggageMember(t *testing.T) {
 
 func TestMemberKey(t *testing.T) {
 	m := Member{}
-	assert.Equal(t, "", m.Key(), "even invalid values should be returned")
+	assert.Empty(t, m.Key(), "even invalid values should be returned")
 
 	key := "k"
 	m.key = key
@@ -872,6 +1004,10 @@ func TestMemberValidation(t *testing.T) {
 	m.hasData = true
 	assert.ErrorIs(t, m.validate(), errInvalidKey)
 
+	// Invalid UTF-8 in value
+	m.key, m.value = "k", string([]byte{255})
+	assert.ErrorIs(t, m.validate(), errInvalidValue)
+
 	m.key, m.value = "k", "\\"
 	assert.NoError(t, m.validate())
 }
@@ -892,6 +1028,24 @@ func TestNewMember(t *testing.T) {
 		hasData:    true,
 	}
 	assert.Equal(t, expected, m)
+
+	// it won't use percent decoding for key
+	key = "%3B"
+	m, err = NewMember(key, val, p)
+	assert.NoError(t, err)
+	expected = Member{
+		key:        key,
+		value:      val,
+		properties: properties{{key: "foo"}},
+		hasData:    true,
+	}
+	assert.Equal(t, expected, m)
+
+	// wrong value with invalid token
+	key = "k"
+	val = ";"
+	_, err = NewMember(key, val, p)
+	assert.ErrorIs(t, err, errInvalidValue)
 
 	// wrong value with wrong decoding
 	val = "%zzzzz"
@@ -937,6 +1091,31 @@ func TestNewMemberRaw(t *testing.T) {
 	assert.Equal(t, expected, m)
 }
 
+func TestBaggageUTF8(t *testing.T) {
+	testCases := map[string]string{
+		"ąść": "B% 💼",
+
+		// Case sensitive
+		"a": "a",
+		"A": "A",
+	}
+
+	var members []Member
+	for k, v := range testCases {
+		m, err := NewMemberRaw(k, v)
+		require.NoError(t, err)
+
+		members = append(members, m)
+	}
+
+	b, err := New(members...)
+	require.NoError(t, err)
+
+	for k, v := range testCases {
+		assert.Equal(t, v, b.Member(k).Value())
+	}
+}
+
 func TestPropertiesValidate(t *testing.T) {
 	p := properties{{}}
 	assert.ErrorIs(t, p.validate(), errInvalidKey)
@@ -952,12 +1131,12 @@ func TestMemberString(t *testing.T) {
 	// normal key value pair
 	member, _ := NewMemberRaw("key", "value")
 	memberStr := member.String()
-	assert.Equal(t, memberStr, "key=value")
+	assert.Equal(t, "key=value", memberStr)
 
 	// encoded value
 	member, _ = NewMemberRaw("key", "; ")
 	memberStr = member.String()
-	assert.Equal(t, memberStr, "key=%3B%20")
+	assert.Equal(t, "key=%3B%20", memberStr)
 }
 
 var benchBaggage Baggage
@@ -990,7 +1169,9 @@ func BenchmarkParse(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		benchBaggage, _ = Parse(`userId=alice,serverNode = DF28 , isProduction = false,hasProp=stuff;propKey;propWValue=value`)
+		benchBaggage, _ = Parse(
+			"userId=alice,serverNode = DF28 , isProduction = false,hasProp=stuff;propKey;propWValue=value, invalidUtf8=pr%ffo%ffp%fcValue",
+		)
 	}
 }
 
@@ -1004,7 +1185,7 @@ func BenchmarkString(b *testing.B) {
 
 	addMember("key1", "val1")
 	addMember("key2", " ;,%")
-	addMember("key3", "Witaj świecie!")
+	addMember("B% 💼", "Witaj świecie!")
 	addMember("key4", strings.Repeat("Hello world!", 10))
 
 	bg, err := New(members...)
@@ -1036,5 +1217,20 @@ func BenchmarkValueEscape(b *testing.B) {
 				_ = valueEscape(tc.in)
 			}
 		})
+	}
+}
+
+func BenchmarkMemberString(b *testing.B) {
+	alphabet := "abcdefghijklmnopqrstuvwxyz"
+	props := make([]Property, len(alphabet))
+	for i, r := range alphabet {
+		props[i] = Property{key: string(r)}
+	}
+	member, err := NewMember(alphabet, alphabet, props...)
+	require.NoError(b, err)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = member.String()
 	}
 }

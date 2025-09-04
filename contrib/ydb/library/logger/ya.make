@@ -1,6 +1,5 @@
 LIBRARY()
 
-OWNER(g:kikimr)
 
 PEERDIR(
     contrib/ydb/library/actors/core

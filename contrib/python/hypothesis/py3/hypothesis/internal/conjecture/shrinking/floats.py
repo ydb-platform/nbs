@@ -14,25 +14,23 @@ import sys
 from hypothesis.internal.conjecture.floats import float_to_lex
 from hypothesis.internal.conjecture.shrinking.common import Shrinker
 from hypothesis.internal.conjecture.shrinking.integer import Integer
-
-MAX_PRECISE_INTEGER = 2**53
+from hypothesis.internal.floats import MAX_PRECISE_INTEGER, float_to_int
 
 
 class Float(Shrinker):
     def setup(self):
-        self.NAN = math.nan
         self.debugging_enabled = True
 
-    def make_immutable(self, f):
-        f = float(f)
+    def make_canonical(self, f):
         if math.isnan(f):
-            # Always use the same NAN so it works properly in self.seen
-            f = self.NAN
+            # Distinguish different NaN bit patterns, while making each equal to itself.
+            # Wrap in tuple to avoid potential collision with (huge) finite floats.
+            return ("nan", float_to_int(f))
         return f
 
     def check_invariants(self, value):
-        # We only handle positive floats because we encode the sign separately
-        # anyway.
+        # We only handle positive floats (including NaN) because we encode the sign
+        # separately anyway.
         assert not (value < 0)
 
     def left_is_better(self, left, right):
@@ -52,11 +50,16 @@ class Float(Shrinker):
         if not math.isfinite(self.current):
             return True
 
-        # If its too large to represent as an integer, bail out here. It's
-        # better to try shrinking it in the main representation.
-        return self.current >= MAX_PRECISE_INTEGER
-
     def run_step(self):
+        # above MAX_PRECISE_INTEGER, all floats are integers. Shrink like one.
+        # TODO_BETTER_SHRINK: at 2 * MAX_PRECISE_INTEGER, n - 1 == n - 2, and
+        # Integer.shrink will likely perform badly. We should have a specialized
+        # big-float shrinker, which mostly follows Integer.shrink but replaces
+        # n - 1 with next_down(n).
+        if self.current > MAX_PRECISE_INTEGER:
+            self.delegate(Integer, convert_to=int, convert_from=float)
+            return
+
         # Finally we get to the important bit: Each of these is a small change
         # to the floating point number that corresponds to a large change in
         # the lexical representation. Trying these ensures that our floating

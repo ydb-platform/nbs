@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v3.113.3)
+
 SRCS(
     config.go
     coordination.go
@@ -12,6 +14,7 @@ SRCS(
     gauge.go
     histogram.go
     node_id.go
+    query.go
     ratelimiter.go
     registry.go
     retry.go

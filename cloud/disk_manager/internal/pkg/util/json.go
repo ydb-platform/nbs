@@ -33,6 +33,7 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 	"dataplane.DeleteSnapshotData":                  func() proto.Message { return &dataplane_protos.DeleteSnapshotDataRequest{} },
 	"dataplane.DeleteDiskFromIncremental":           func() proto.Message { return &dataplane_protos.DeleteDiskFromIncrementalRequest{} },
 	"dataplane.CreateDRBasedDiskCheckpoint":         func() proto.Message { return &dataplane_protos.CreateDRBasedDiskCheckpointRequest{} },
+	"dataplane.VerifyMigratedLegacySnapshot":        func() proto.Message { return &dataplane_protos.VerifyMigratedLegacySnapshotRequest{} },
 	"disks.CreateEmptyDisk":                         func() proto.Message { return &disk_protos.CreateDiskParams{} },
 	"disks.CreateOverlayDisk":                       func() proto.Message { return &disk_protos.CreateOverlayDiskRequest{} },
 	"disks.CreateDiskFromImage":                     func() proto.Message { return &disk_protos.CreateDiskFromImageRequest{} },
@@ -83,6 +84,7 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"dataplane.CreateDRBasedDiskCheckpoint":         func() proto.Message { return &dataplane_protos.CreateDRBasedDiskCheckpointTaskState{} },
 	"dataplane.MigrateSnapshotTask":                 func() proto.Message { return &dataplane_protos.MigrateSnapshotTaskState{} },
 	"dataplane.MigrateSnapshotDatabaseTask":         func() proto.Message { return &dataplane_protos.MigrateSnapshotDatabaseTaskState{} },
+	"dataplane.VerifyMigratedLegacySnapshot":        func() proto.Message { return &dataplane_protos.VerifyMigratedLegacySnapshotState{} },
 	"disks.CreateEmptyDisk":                         func() proto.Message { return &disk_protos.CreateEmptyDiskTaskState{} },
 	"disks.CreateOverlayDisk":                       func() proto.Message { return &disk_protos.CreateOverlayDiskTaskState{} },
 	"disks.CreateDiskFromImage":                     func() proto.Message { return &disk_protos.CreateDiskFromImageTaskState{} },
@@ -127,39 +129,38 @@ func (d FormattableDuration) MarshalJSON() ([]byte, error) {
 }
 
 type TaskStateJSON struct {
-	ID                        string               `json:"id"`
-	IdempotencyKey            string               `json:"idempotency_key"`
-	AccountID                 string               `json:"account_id"`
-	TaskType                  string               `json:"task_type"`
-	Regular                   bool                 `json:"regular"`
-	Description               string               `json:"description"`
-	StorageFolder             string               `json:"storage_folder"`
-	CreatedAt                 time.Time            `json:"created_at"`
-	CreatedBy                 string               `json:"created_by"`
-	ModifiedAt                time.Time            `json:"modified_at"`
-	GenerationID              uint64               `json:"generation_id"`
-	Status                    string               `json:"status"`
-	ErrorCode                 grpc_codes.Code      `json:"error_code"`
-	ErrorMessage              string               `json:"error_message"`
-	ErrorDetails              *errors.ErrorDetails `json:"error_details"`
-	RetriableErrorCount       uint64               `json:"retriable_error_count"`
-	Request                   proto.Message        `json:"request"`
-	State                     proto.Message        `json:"state"`
-	Metadata                  map[string]string    `json:"metadata"`
-	Dependencies              []*TaskStateJSON     `json:"dependencies"`
-	ChangedStateAt            time.Time            `json:"changed_state_at"`
-	EndedAt                   time.Time            `json:"ended_at"`
-	LastHost                  string               `json:"last_host"`
-	LastRunner                string               `json:"last_runner"`
-	ZoneID                    string               `json:"zone_id"`
-	CloudID                   string               `json:"cloud_id"`
-	FolderID                  string               `json:"folder_id"`
-	InflightDuration          FormattableDuration  `json:"inflight_duration"`
-	EstimatedInflightDuration FormattableDuration  `json:"estimated_inflight_duration"`
-	StallingDuration          FormattableDuration  `json:"stalling_duration"`
-	EstimatedStallingDuration FormattableDuration  `json:"estimated_stalling_duration"`
-	WaitingDuration           FormattableDuration  `json:"waiting_duration"`
-	PanicCount                uint64               `json:"panic_count"`
+	ID                  string               `json:"id"`
+	IdempotencyKey      string               `json:"idempotency_key"`
+	AccountID           string               `json:"account_id"`
+	TaskType            string               `json:"task_type"`
+	Regular             bool                 `json:"regular"`
+	Description         string               `json:"description"`
+	StorageFolder       string               `json:"storage_folder"`
+	CreatedAt           time.Time            `json:"created_at"`
+	CreatedBy           string               `json:"created_by"`
+	ModifiedAt          time.Time            `json:"modified_at"`
+	GenerationID        uint64               `json:"generation_id"`
+	Status              string               `json:"status"`
+	ErrorCode           grpc_codes.Code      `json:"error_code"`
+	ErrorMessage        string               `json:"error_message"`
+	ErrorDetails        *errors.ErrorDetails `json:"error_details"`
+	RetriableErrorCount uint64               `json:"retriable_error_count"`
+	Request             proto.Message        `json:"request"`
+	State               proto.Message        `json:"state"`
+	Metadata            map[string]string    `json:"metadata"`
+	Dependencies        []*TaskStateJSON     `json:"dependencies"`
+	ChangedStateAt      time.Time            `json:"changed_state_at"`
+	EndedAt             time.Time            `json:"ended_at"`
+	LastHost            string               `json:"last_host"`
+	LastRunner          string               `json:"last_runner"`
+	ZoneID              string               `json:"zone_id"`
+	CloudID             string               `json:"cloud_id"`
+	FolderID            string               `json:"folder_id"`
+	EstimatedTime       time.Time            `json:"estimated_time"`
+	InflightDuration    FormattableDuration  `json:"inflight_duration"`
+	StallingDuration    FormattableDuration  `json:"stalling_duration"`
+	WaitingDuration     FormattableDuration  `json:"waiting_duration"`
+	PanicCount          uint64               `json:"panic_count"`
 }
 
 func (s *TaskStateJSON) Marshal() ([]byte, error) {
@@ -201,36 +202,35 @@ func TaskStateToJSON(state *storage.TaskState) *TaskStateJSON {
 	}
 
 	return &TaskStateJSON{
-		ID:                        state.ID,
-		IdempotencyKey:            state.IdempotencyKey,
-		AccountID:                 state.AccountID,
-		TaskType:                  state.TaskType,
-		Regular:                   state.Regular,
-		Description:               state.Description,
-		StorageFolder:             state.StorageFolder,
-		CreatedAt:                 state.CreatedAt,
-		CreatedBy:                 state.CreatedBy,
-		ModifiedAt:                state.ModifiedAt,
-		GenerationID:              state.GenerationID,
-		Status:                    storage.TaskStatusToString(state.Status),
-		ErrorCode:                 state.ErrorCode,
-		ErrorMessage:              state.ErrorMessage,
-		ErrorDetails:              state.ErrorDetails,
-		RetriableErrorCount:       state.RetriableErrorCount,
-		Request:                   requestProto,
-		State:                     stateProto,
-		Metadata:                  state.Metadata.Vals(),
-		Dependencies:              dependencies,
-		ChangedStateAt:            state.ChangedStateAt,
-		EndedAt:                   state.EndedAt,
-		LastHost:                  state.LastHost,
-		LastRunner:                state.LastRunner,
-		ZoneID:                    state.ZoneID,
-		InflightDuration:          FormattableDuration{state.InflightDuration},
-		EstimatedInflightDuration: FormattableDuration{state.EstimatedInflightDuration},
-		StallingDuration:          FormattableDuration{state.StallingDuration},
-		EstimatedStallingDuration: FormattableDuration{state.EstimatedStallingDuration},
-		WaitingDuration:           FormattableDuration{state.WaitingDuration},
-		PanicCount:                state.PanicCount,
+		ID:                  state.ID,
+		IdempotencyKey:      state.IdempotencyKey,
+		AccountID:           state.AccountID,
+		TaskType:            state.TaskType,
+		Regular:             state.Regular,
+		Description:         state.Description,
+		StorageFolder:       state.StorageFolder,
+		CreatedAt:           state.CreatedAt,
+		CreatedBy:           state.CreatedBy,
+		ModifiedAt:          state.ModifiedAt,
+		GenerationID:        state.GenerationID,
+		Status:              storage.TaskStatusToString(state.Status),
+		ErrorCode:           state.ErrorCode,
+		ErrorMessage:        state.ErrorMessage,
+		ErrorDetails:        state.ErrorDetails,
+		RetriableErrorCount: state.RetriableErrorCount,
+		Request:             requestProto,
+		State:               stateProto,
+		Metadata:            state.Metadata.Vals(),
+		Dependencies:        dependencies,
+		ChangedStateAt:      state.ChangedStateAt,
+		EndedAt:             state.EndedAt,
+		LastHost:            state.LastHost,
+		LastRunner:          state.LastRunner,
+		ZoneID:              state.ZoneID,
+		EstimatedTime:       state.EstimatedTime,
+		InflightDuration:    FormattableDuration{state.InflightDuration},
+		StallingDuration:    FormattableDuration{state.StallingDuration},
+		WaitingDuration:     FormattableDuration{state.WaitingDuration},
+		PanicCount:          state.PanicCount,
 	}
 }

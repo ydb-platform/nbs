@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v0.15.0)
+
 SRCS(
     semaphore.go
 )

@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v0.30.0)
+
 SRCS(
     deviceauth.go
     oauth2.go
@@ -9,15 +11,6 @@ SRCS(
     token.go
     transport.go
 )
-
-GO_TEST_SRCS(
-    deviceauth_test.go
-    oauth2_test.go
-    token_test.go
-    transport_test.go
-)
-
-GO_XTEST_SRCS(example_test.go)
 
 END()
 
@@ -34,7 +27,6 @@ RECURSE(
     github
     gitlab
     google
-    gotest
     heroku
     hipchat
     instagram

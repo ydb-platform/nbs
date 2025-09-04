@@ -1,6 +1,4 @@
 #include "columnshard.h"
-#include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/base/counters.h>
 
 #include <contrib/ydb/library/actors/core/log.h>
 
@@ -8,7 +6,16 @@ namespace NKikimr::NColumnShard {
 
 TCSCounters::TCSCounters()
     : TBase("CS")
-{
+    , WritingCounters(std::make_shared<TWriteCounters>(*this))
+    , Initialization(*this)
+    , TxProgress(*this) {
+    for (auto&& i : GetEnumAllValues<EOverloadStatus>()) {
+        AFL_VERIFY((ui32)i == WaitingOverloads.size());
+        auto overloadCounters = CreateSubGroup("overload_type", ::ToString(i));
+        WaitingOverloads.emplace_back(overloadCounters.GetDeriviative("Overload/Waiting/Count"));
+        WriteOverloadCount.emplace_back(overloadCounters.GetDeriviative("Overload/Write/Count"));
+        WriteOverloadBytes.emplace_back(overloadCounters.GetDeriviative("Overload/Write/Bytes"));
+    }
     StartBackgroundCount = TBase::GetDeriviative("StartBackground/Count");
     TooEarlyBackgroundCount = TBase::GetDeriviative("TooEarlyBackground/Count");
     SetupCompactionCount = TBase::GetDeriviative("SetupCompaction/Count");
@@ -24,14 +31,18 @@ TCSCounters::TCSCounters()
     FutureIndexationInputBytes = TBase::GetDeriviative("FutureIndexationInput/Bytes");
     IndexationInputBytes = TBase::GetDeriviative("IndexationInput/Bytes");
 
-    OverloadInsertTableBytes = TBase::GetDeriviative("OverloadInsertTable/Bytes");
-    OverloadInsertTableCount = TBase::GetDeriviative("OverloadInsertTable/Count");
-    OverloadShardTxBytes = TBase::GetDeriviative("OverloadShard/Tx/Bytes");
-    OverloadShardTxCount = TBase::GetDeriviative("OverloadShard/Tx/Count");
-    OverloadShardWritesBytes = TBase::GetDeriviative("OverloadShard/Writes/Bytes");
-    OverloadShardWritesCount = TBase::GetDeriviative("OverloadShard/Writes/Count");
-    OverloadShardWritesSizeBytes = TBase::GetDeriviative("OverloadShard/WritesSize/Bytes");
-    OverloadShardWritesSizeCount = TBase::GetDeriviative("OverloadShard/WritesSize/Count");
+    IndexMetadataLimitBytes = TBase::GetValue("IndexMetadata/Limit/Bytes");
+
+    OverloadMetadataBytes = TBase::GetDeriviative("Overload/Metadata/Bytes");
+    OverloadMetadataCount = TBase::GetDeriviative("Overload/Metadata/Count");
+    OverloadCompactionBytes = TBase::GetDeriviative("Overload/Compaction/Bytes");
+    OverloadCompactionCount = TBase::GetDeriviative("Overload/Compaction/Count");
+    OverloadShardTxBytes = TBase::GetDeriviative("Overload/Shard/Tx/Bytes");
+    OverloadShardTxCount = TBase::GetDeriviative("Overload/Shard/Tx/Count");
+    OverloadShardWritesBytes = TBase::GetDeriviative("Overload/Shard/Writes/Bytes");
+    OverloadShardWritesCount = TBase::GetDeriviative("Overload/Shard/Writes/Count");
+    OverloadShardWritesSizeBytes = TBase::GetDeriviative("Overload/Shard/WritesSize/Bytes");
+    OverloadShardWritesSizeCount = TBase::GetDeriviative("Overload/Shard/WritesSize/Count");
 
     InternalCompactionGranuleBytes = TBase::GetValueAutoAggregationsClient("InternalCompaction/Bytes");
     InternalCompactionGranulePortionsCount = TBase::GetValueAutoAggregationsClient("InternalCompaction/PortionsCount");
@@ -48,6 +59,7 @@ TCSCounters::TCSCounters()
     HistogramSuccessWriteMiddle6PutBlobsDurationMs = TBase::GetHistogram("SuccessWriteMiddle6PutBlobsDurationMs", NMonitoring::ExponentialHistogram(18, 2, 5));
     HistogramFailedWritePutBlobsDurationMs = TBase::GetHistogram("FailedWritePutBlobsDurationMs", NMonitoring::ExponentialHistogram(18, 2, 5));
     HistogramWriteTxCompleteDurationMs = TBase::GetHistogram("WriteTxCompleteDurationMs", NMonitoring::ExponentialHistogram(18, 2, 5));
+
     WritePutBlobsCount = TBase::GetValue("WritePutBlobs");
     WriteRequests = TBase::GetValue("WriteRequests");
 
@@ -64,6 +76,17 @@ void TCSCounters::OnFailedWriteResponse(const EWriteFailReason reason) const {
     auto it = FailedWriteRequests.find(reason);
     AFL_VERIFY(it != FailedWriteRequests.end());
     it->second->Add(1);
+}
+
+void TCSCounters::OnWaitingOverload(const EOverloadStatus status) const {
+    AFL_VERIFY((ui64)status < WaitingOverloads.size());
+    WaitingOverloads[(ui64)status]->Inc();
+}
+
+void TCSCounters::OnWriteOverload(const EOverloadStatus status, const ui32 size) const {
+    AFL_VERIFY((ui64)status < WriteOverloadCount.size());
+    WriteOverloadCount[(ui64)status]->Inc();
+    WriteOverloadBytes[(ui64)status]->Add(size);
 }
 
 }

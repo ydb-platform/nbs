@@ -31,17 +31,30 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer"
+	"google.golang.org/grpc/balancer/pickfirst/pickfirstleaf"
+	"google.golang.org/grpc/balancer/weightedroundrobin"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/internal/balancer/stub"
 	"google.golang.org/grpc/internal/channelz"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/grpctest"
 	iserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+	"google.golang.org/grpc/internal/stubserver"
 	"google.golang.org/grpc/internal/testutils"
+	"google.golang.org/grpc/internal/testutils/roundrobin"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/serviceconfig"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/xds/internal/balancer/clusterimpl"
+
+	testgrpc "google.golang.org/grpc/interop/grpc_testing"
+	testpb "google.golang.org/grpc/interop/grpc_testing"
 )
 
 var (
@@ -543,14 +556,16 @@ type subConnWithState struct {
 	state balancer.SubConnState
 }
 
-func setup(t *testing.T) (*outlierDetectionBalancer, *testutils.TestClientConn, func()) {
+func setup(t *testing.T) (*outlierDetectionBalancer, *testutils.BalancerClientConn, func()) {
 	t.Helper()
 	builder := balancer.Get(Name)
 	if builder == nil {
 		t.Fatalf("balancer.Get(%q) returned nil", Name)
 	}
-	tcc := testutils.NewTestClientConn(t)
-	odB := builder.Build(tcc, balancer.BuildOptions{ChannelzParentID: channelz.NewIdentifierForTesting(channelz.RefChannel, time.Now().Unix(), nil)})
+	tcc := testutils.NewBalancerClientConn(t)
+	ch := channelz.RegisterChannel(nil, "test channel")
+	t.Cleanup(func() { channelz.RemoveEntry(ch.ID) })
+	odB := builder.Build(tcc, balancer.BuildOptions{ChannelzParent: ch})
 	return odB.(*outlierDetectionBalancer), tcc, odB.Close
 }
 
@@ -559,7 +574,7 @@ type emptyChildConfig struct {
 }
 
 // TestChildBasicOperations tests basic operations of the Outlier Detection
-// Balancer and it's interaction with it's child. The following scenarios are
+// Balancer and its interaction with its child. The following scenarios are
 // tested, in a step by step fashion:
 // 1. The Outlier Detection Balancer receives it's first good configuration. The
 // balancer is expected to create a child and sent the child it's configuration.
@@ -576,11 +591,11 @@ func (s) TestChildBasicOperations(t *testing.T) {
 	closeCh := testutils.NewChannel()
 
 	stub.Register(t.Name()+"child1", stub.BalancerFuncs{
-		UpdateClientConnState: func(bd *stub.BalancerData, ccs balancer.ClientConnState) error {
+		UpdateClientConnState: func(_ *stub.BalancerData, ccs balancer.ClientConnState) error {
 			ccsCh.Send(ccs.BalancerConfig)
 			return nil
 		},
-		Close: func(bd *stub.BalancerData) {
+		Close: func(*stub.BalancerData) {
 			closeCh.Send(nil)
 		},
 	})
@@ -596,7 +611,7 @@ func (s) TestChildBasicOperations(t *testing.T) {
 			ccsCh.Send(nil)
 			return nil
 		},
-		Close: func(bd *stub.BalancerData) {
+		Close: func(*stub.BalancerData) {
 			closeCh.Send(nil)
 		},
 	})
@@ -604,7 +619,7 @@ func (s) TestChildBasicOperations(t *testing.T) {
 	od, tcc, _ := setup(t)
 
 	// This first config update should cause a child to be built and forwarded
-	// it's first update.
+	// its first update.
 	od.UpdateClientConnState(balancer.ClientConnState{
 		BalancerConfig: &LBConfig{
 			ChildPolicy: &iserviceconfig.BalancerConfig{
@@ -625,7 +640,7 @@ func (s) TestChildBasicOperations(t *testing.T) {
 	}
 
 	// This Update Client Conn State call should cause the first child balancer
-	// to close, and a new child to be created and also forwarded it's first
+	// to close, and a new child to be created and also forwarded its first
 	// config update.
 	od.UpdateClientConnState(balancer.ClientConnState{
 		BalancerConfig: &LBConfig{
@@ -652,7 +667,7 @@ func (s) TestChildBasicOperations(t *testing.T) {
 	if _, err = closeCh.Receive(ctx); err != nil {
 		t.Fatalf("timed out waiting for the first child balancer to be closed: %v", err)
 	}
-	// Verify the second child balancer received it's first config update.
+	// Verify the second child balancer received its first config update.
 	if _, err = ccsCh.Receive(ctx); err != nil {
 		t.Fatalf("timed out waiting for UpdateClientConnState on the second child balancer: %v", err)
 	}
@@ -685,11 +700,15 @@ func (s) TestUpdateAddresses(t *testing.T) {
 	var err error
 	stub.Register(t.Name(), stub.BalancerFuncs{
 		UpdateClientConnState: func(bd *stub.BalancerData, _ balancer.ClientConnState) error {
-			scw1, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address1"}}, balancer.NewSubConnOptions{})
+			scw1, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address1"}}, balancer.NewSubConnOptions{
+				StateListener: func(state balancer.SubConnState) { scsCh.Send(subConnWithState{sc: scw1, state: state}) },
+			})
 			if err != nil {
 				t.Errorf("error in od.NewSubConn call: %v", err)
 			}
-			scw2, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address2"}}, balancer.NewSubConnOptions{})
+			scw2, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address2"}}, balancer.NewSubConnOptions{
+				StateListener: func(state balancer.SubConnState) { scsCh.Send(subConnWithState{sc: scw2, state: state}) },
+			})
 			if err != nil {
 				t.Errorf("error in od.NewSubConn call: %v", err)
 			}
@@ -701,21 +720,16 @@ func (s) TestUpdateAddresses(t *testing.T) {
 			})
 			return nil
 		},
-		UpdateSubConnState: func(_ *stub.BalancerData, sc balancer.SubConn, state balancer.SubConnState) {
-			scsCh.Send(subConnWithState{
-				sc:    sc,
-				state: state,
-			})
-		}})
+	})
 
 	od, tcc, cleanup := setup(t)
 	defer cleanup()
 
 	od.UpdateClientConnState(balancer.ClientConnState{
 		ResolverState: resolver.State{
-			Addresses: []resolver.Address{
-				{Addr: "address1"},
-				{Addr: "address2"},
+			Endpoints: []resolver.Endpoint{
+				{Addresses: []resolver.Address{{Addr: "address1"}}},
+				{Addresses: []resolver.Address{{Addr: "address2"}}},
 			},
 		},
 		BalancerConfig: &LBConfig{
@@ -766,8 +780,8 @@ func (s) TestUpdateAddresses(t *testing.T) {
 			pi.Done(balancer.DoneInfo{Err: errors.New("some error")})
 		}
 		od.intervalTimerAlgorithm()
-		// verify UpdateSubConnState() got called with TRANSIENT_FAILURE for
-		// child with address that was ejected.
+		// verify StateListener() got called with TRANSIENT_FAILURE for child
+		// with address that was ejected.
 		gotSCWS, err := scsCh.Receive(ctx)
 		if err != nil {
 			t.Fatalf("Error waiting for Sub Conn update: %v", err)
@@ -790,8 +804,7 @@ func (s) TestUpdateAddresses(t *testing.T) {
 		t.Fatal("timeout while waiting for a UpdateState call on the ClientConn")
 	case <-tcc.UpdateAddressesAddrsCh:
 	}
-	// Verify scw1 got ejected (UpdateSubConnState called with TRANSIENT
-	// FAILURE).
+	// Verify scw1 got ejected (StateListener called with TRANSIENT_FAILURE).
 	gotSCWS, err := scsCh.Receive(ctx)
 	if err != nil {
 		t.Fatalf("Error waiting for Sub Conn update: %v", err)
@@ -809,7 +822,7 @@ func (s) TestUpdateAddresses(t *testing.T) {
 		{Addr: "address1"},
 		{Addr: "address2"},
 	})
-	// Verify scw1 got unejected (UpdateSubConnState called with recent state).
+	// Verify scw1 got unejected (StateListener called with recent state).
 	gotSCWS, err = scsCh.Receive(ctx)
 	if err != nil {
 		t.Fatalf("Error waiting for Sub Conn update: %v", err)
@@ -838,7 +851,7 @@ func (s) TestUpdateAddresses(t *testing.T) {
 	// Update scw1 back to a single address, which is ejected. This should cause
 	// the SubConn to be re-ejected.
 	od.UpdateAddresses(scw1, []resolver.Address{{Addr: "address2"}})
-	// Verify scw1 got ejected (UpdateSubConnState called with TRANSIENT FAILURE).
+	// Verify scw1 got ejected (StateListener called with TRANSIENT FAILURE).
 	gotSCWS, err = scsCh.Receive(ctx)
 	if err != nil {
 		t.Fatalf("Error waiting for Sub Conn update: %v", err)
@@ -852,7 +865,7 @@ func (s) TestUpdateAddresses(t *testing.T) {
 }
 
 func scwsEqual(gotSCWS subConnWithState, wantSCWS subConnWithState) error {
-	if !cmp.Equal(gotSCWS, wantSCWS, cmp.AllowUnexported(subConnWithState{}, testutils.TestSubConn{}, subConnWrapper{}, addressInfo{}), cmpopts.IgnoreFields(subConnWrapper{}, "scUpdateCh")) {
+	if gotSCWS.sc != wantSCWS.sc || !cmp.Equal(gotSCWS.state, wantSCWS.state, cmp.AllowUnexported(subConnWrapper{}, endpointInfo{}, balancer.SubConnState{}), cmpopts.IgnoreFields(subConnWrapper{}, "scUpdateCh")) {
 		return fmt.Errorf("received SubConnState: %+v, want %+v", gotSCWS, wantSCWS)
 	}
 	return nil
@@ -994,15 +1007,21 @@ func (s) TestEjectUnejectSuccessRate(t *testing.T) {
 	var err error
 	stub.Register(t.Name(), stub.BalancerFuncs{
 		UpdateClientConnState: func(bd *stub.BalancerData, _ balancer.ClientConnState) error {
-			scw1, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address1"}}, balancer.NewSubConnOptions{})
+			scw1, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address1"}}, balancer.NewSubConnOptions{
+				StateListener: func(state balancer.SubConnState) { scsCh.Send(subConnWithState{sc: scw1, state: state}) },
+			})
 			if err != nil {
 				t.Errorf("error in od.NewSubConn call: %v", err)
 			}
-			scw2, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address2"}}, balancer.NewSubConnOptions{})
+			scw2, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address2"}}, balancer.NewSubConnOptions{
+				StateListener: func(state balancer.SubConnState) { scsCh.Send(subConnWithState{sc: scw2, state: state}) },
+			})
 			if err != nil {
 				t.Errorf("error in od.NewSubConn call: %v", err)
 			}
-			scw3, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address3"}}, balancer.NewSubConnOptions{})
+			scw3, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address3"}}, balancer.NewSubConnOptions{
+				StateListener: func(state balancer.SubConnState) { scsCh.Send(subConnWithState{sc: scw3, state: state}) },
+			})
 			if err != nil {
 				t.Errorf("error in od.NewSubConn call: %v", err)
 			}
@@ -1014,12 +1033,6 @@ func (s) TestEjectUnejectSuccessRate(t *testing.T) {
 			})
 			return nil
 		},
-		UpdateSubConnState: func(_ *stub.BalancerData, sc balancer.SubConn, state balancer.SubConnState) {
-			scsCh.Send(subConnWithState{
-				sc:    sc,
-				state: state,
-			})
-		},
 	})
 
 	od, tcc, cleanup := setup(t)
@@ -1029,10 +1042,10 @@ func (s) TestEjectUnejectSuccessRate(t *testing.T) {
 
 	od.UpdateClientConnState(balancer.ClientConnState{
 		ResolverState: resolver.State{
-			Addresses: []resolver.Address{
-				{Addr: "address1"},
-				{Addr: "address2"},
-				{Addr: "address3"},
+			Endpoints: []resolver.Endpoint{
+				{Addresses: []resolver.Address{{Addr: "address1"}}},
+				{Addresses: []resolver.Address{{Addr: "address2"}}},
+				{Addresses: []resolver.Address{{Addr: "address3"}}},
 			},
 		},
 		BalancerConfig: &LBConfig{
@@ -1075,8 +1088,8 @@ func (s) TestEjectUnejectSuccessRate(t *testing.T) {
 
 		od.intervalTimerAlgorithm()
 
-		// verify no UpdateSubConnState() call on the child, as no addresses got
-		// ejected (ejected address will cause an UpdateSubConnState call).
+		// verify no StateListener() call on the child, as no addresses got
+		// ejected (ejected address will cause an StateListener call).
 		sCtx, cancel := context.WithTimeout(context.Background(), defaultTestShortTimeout)
 		defer cancel()
 		if _, err := scsCh.Receive(sCtx); err == nil {
@@ -1085,7 +1098,7 @@ func (s) TestEjectUnejectSuccessRate(t *testing.T) {
 
 		// Since no addresses are ejected, a SubConn update should forward down
 		// to the child.
-		od.UpdateSubConnState(scw1.(*subConnWrapper).SubConn, balancer.SubConnState{
+		od.updateSubConnState(scw1.(*subConnWrapper), balancer.SubConnState{
 			ConnectivityState: connectivity.Connecting,
 		})
 
@@ -1117,6 +1130,9 @@ func (s) TestEjectUnejectSuccessRate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("picker.Pick failed with error: %v", err)
 		}
+		if got, want := pi.SubConn, scw3.(*subConnWrapper).SubConn; got != want {
+			t.Fatalf("Unexpected SubConn chosen by picker: got %v, want %v", got, want)
+		}
 		for c := 0; c < 5; c++ {
 			pi.Done(balancer.DoneInfo{Err: errors.New("some error")})
 		}
@@ -1147,7 +1163,7 @@ func (s) TestEjectUnejectSuccessRate(t *testing.T) {
 		// that address should not be forwarded downward. These SubConn updates
 		// will be cached to update the child sometime in the future when the
 		// address gets unejected.
-		od.UpdateSubConnState(pi.SubConn, balancer.SubConnState{
+		od.updateSubConnState(scw3.(*subConnWrapper), balancer.SubConnState{
 			ConnectivityState: connectivity.Connecting,
 		})
 		sCtx, cancel = context.WithTimeout(context.Background(), defaultTestShortTimeout)
@@ -1204,25 +1220,25 @@ func (s) TestEjectFailureRate(t *testing.T) {
 			if scw1 != nil { // UpdateClientConnState was already called, no need to recreate SubConns.
 				return nil
 			}
-			scw1, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address1"}}, balancer.NewSubConnOptions{})
+			scw1, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address1"}}, balancer.NewSubConnOptions{
+				StateListener: func(state balancer.SubConnState) { scsCh.Send(subConnWithState{sc: scw1, state: state}) },
+			})
 			if err != nil {
 				t.Errorf("error in od.NewSubConn call: %v", err)
 			}
-			scw2, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address2"}}, balancer.NewSubConnOptions{})
+			scw2, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address2"}}, balancer.NewSubConnOptions{
+				StateListener: func(state balancer.SubConnState) { scsCh.Send(subConnWithState{sc: scw2, state: state}) },
+			})
 			if err != nil {
 				t.Errorf("error in od.NewSubConn call: %v", err)
 			}
-			scw3, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address3"}}, balancer.NewSubConnOptions{})
+			scw3, err = bd.ClientConn.NewSubConn([]resolver.Address{{Addr: "address3"}}, balancer.NewSubConnOptions{
+				StateListener: func(state balancer.SubConnState) { scsCh.Send(subConnWithState{sc: scw3, state: state}) },
+			})
 			if err != nil {
 				t.Errorf("error in od.NewSubConn call: %v", err)
 			}
 			return nil
-		},
-		UpdateSubConnState: func(_ *stub.BalancerData, sc balancer.SubConn, state balancer.SubConnState) {
-			scsCh.Send(subConnWithState{
-				sc:    sc,
-				state: state,
-			})
 		},
 	})
 
@@ -1233,10 +1249,10 @@ func (s) TestEjectFailureRate(t *testing.T) {
 
 	od.UpdateClientConnState(balancer.ClientConnState{
 		ResolverState: resolver.State{
-			Addresses: []resolver.Address{
-				{Addr: "address1"},
-				{Addr: "address2"},
-				{Addr: "address3"},
+			Endpoints: []resolver.Endpoint{
+				{Addresses: []resolver.Address{{Addr: "address1"}}},
+				{Addresses: []resolver.Address{{Addr: "address2"}}},
+				{Addresses: []resolver.Address{{Addr: "address3"}}},
 			},
 		},
 		BalancerConfig: &LBConfig{
@@ -1315,8 +1331,8 @@ func (s) TestEjectFailureRate(t *testing.T) {
 		// should eject address that always errored.
 		od.intervalTimerAlgorithm()
 
-		// verify UpdateSubConnState() got called with TRANSIENT_FAILURE for
-		// child in address that was ejected.
+		// verify StateListener() got called with TRANSIENT_FAILURE for child
+		// in address that was ejected.
 		gotSCWS, err := scsCh.Receive(ctx)
 		if err != nil {
 			t.Fatalf("Error waiting for Sub Conn update: %v", err)
@@ -1339,10 +1355,10 @@ func (s) TestEjectFailureRate(t *testing.T) {
 		// configuration, every ejected SubConn should be unejected.
 		od.UpdateClientConnState(balancer.ClientConnState{
 			ResolverState: resolver.State{
-				Addresses: []resolver.Address{
-					{Addr: "address1"},
-					{Addr: "address2"},
-					{Addr: "address3"},
+				Endpoints: []resolver.Endpoint{
+					{Addresses: []resolver.Address{{Addr: "address1"}}},
+					{Addresses: []resolver.Address{{Addr: "address2"}}},
+					{Addresses: []resolver.Address{{Addr: "address3"}}},
 				},
 			},
 			BalancerConfig: &LBConfig{
@@ -1387,11 +1403,6 @@ func (s) TestConcurrentOperations(t *testing.T) {
 				t.Error("ResolverError was called after Close(), which breaks the balancer API")
 			}
 		},
-		UpdateSubConnState: func(*stub.BalancerData, balancer.SubConn, balancer.SubConnState) {
-			if closed.HasFired() {
-				t.Error("UpdateSubConnState was called after Close(), which breaks the balancer API")
-			}
-		},
 		Close: func(*stub.BalancerData) {
 			closed.Fire()
 		},
@@ -1409,10 +1420,10 @@ func (s) TestConcurrentOperations(t *testing.T) {
 
 	od.UpdateClientConnState(balancer.ClientConnState{
 		ResolverState: resolver.State{
-			Addresses: []resolver.Address{
-				{Addr: "address1"},
-				{Addr: "address2"},
-				{Addr: "address3"},
+			Endpoints: []resolver.Endpoint{
+				{Addresses: []resolver.Address{{Addr: "address1"}}},
+				{Addresses: []resolver.Address{{Addr: "address2"}}},
+				{Addresses: []resolver.Address{{Addr: "address3"}}},
 			},
 		},
 		BalancerConfig: &LBConfig{
@@ -1538,7 +1549,7 @@ func (s) TestConcurrentOperations(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		od.RemoveSubConn(scw1)
+		scw1.Shutdown()
 	}()
 
 	wg.Add(1)
@@ -1551,7 +1562,7 @@ func (s) TestConcurrentOperations(t *testing.T) {
 	// balancer.Balancer API guarantee of synchronous calls.
 	od.UpdateClientConnState(balancer.ClientConnState{ // This will delete addresses and flip to no op
 		ResolverState: resolver.State{
-			Addresses: []resolver.Address{{Addr: "address1"}},
+			Endpoints: []resolver.Endpoint{{Addresses: []resolver.Address{{Addr: "address1"}}}},
 		},
 		BalancerConfig: &LBConfig{
 			Interval: math.MaxInt64,
@@ -1564,7 +1575,7 @@ func (s) TestConcurrentOperations(t *testing.T) {
 
 	// Call balancer.Balancers synchronously in this goroutine, upholding the
 	// balancer.Balancer API guarantee.
-	od.UpdateSubConnState(scw1.(*subConnWrapper).SubConn, balancer.SubConnState{
+	od.updateSubConnState(scw1.(*subConnWrapper), balancer.SubConnState{
 		ConnectivityState: connectivity.Connecting,
 	})
 	od.ResolverError(errors.New("some error"))
@@ -1572,4 +1583,418 @@ func (s) TestConcurrentOperations(t *testing.T) {
 	od.Close()
 	close(finished)
 	wg.Wait()
+}
+
+// Test verifies that outlier detection doesn't eject subchannels created by
+// the new pickfirst balancer when pickfirst is a non-leaf policy, i.e. not
+// under a petiole policy. When pickfirst is not under a petiole policy, it will
+// not register a health listener. pickfirst will still set the address
+// attribute to disable ejection through the raw connectivity listener. When
+// Outlier Detection processes a health update and sees the health listener is
+// enabled but a health listener is not registered, it will drop the ejection
+// update.
+func (s) TestPickFirstHealthListenerDisabled(t *testing.T) {
+	backend := &stubserver.StubServer{
+		EmptyCallF: func(context.Context, *testpb.Empty) (*testpb.Empty, error) {
+			return nil, errors.New("some error")
+		},
+	}
+	if err := backend.StartServer(); err != nil {
+		t.Fatalf("Failed to start backend: %v", err)
+	}
+	defer backend.Stop()
+	t.Logf("Started bad TestService backend at: %q", backend.Address)
+
+	// The interval is intentionally kept very large, the interval algorithm
+	// will be triggered manually.
+	odCfg := &LBConfig{
+		Interval:         iserviceconfig.Duration(300 * time.Second),
+		BaseEjectionTime: iserviceconfig.Duration(300 * time.Second),
+		MaxEjectionTime:  iserviceconfig.Duration(500 * time.Second),
+		FailurePercentageEjection: &FailurePercentageEjection{
+			Threshold:             50,
+			EnforcementPercentage: 100,
+			MinimumHosts:          0,
+			RequestVolume:         2,
+		},
+		MaxEjectionPercent: 100,
+		ChildPolicy: &iserviceconfig.BalancerConfig{
+			Name: pickfirstleaf.Name,
+		},
+	}
+
+	lbChan := make(chan *outlierDetectionBalancer, 1)
+	bf := stub.BalancerFuncs{
+		Init: func(bd *stub.BalancerData) {
+			bd.Data = balancer.Get(Name).Build(bd.ClientConn, bd.BuildOptions)
+			lbChan <- bd.Data.(*outlierDetectionBalancer)
+		},
+		Close: func(bd *stub.BalancerData) {
+			bd.Data.(balancer.Balancer).Close()
+		},
+		UpdateClientConnState: func(bd *stub.BalancerData, ccs balancer.ClientConnState) error {
+			ccs.BalancerConfig = odCfg
+			return bd.Data.(balancer.Balancer).UpdateClientConnState(ccs)
+		},
+	}
+
+	stub.Register(t.Name(), bf)
+
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{ "loadBalancingConfig": [{%q: {}}] }`, t.Name())),
+	}
+	cc, err := grpc.NewClient(backend.Address, opts...)
+	if err != nil {
+		t.Fatalf("grpc.NewClient() failed: %v", err)
+	}
+	defer cc.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	testServiceClient := testgrpc.NewTestServiceClient(cc)
+	testServiceClient.EmptyCall(ctx, &testpb.Empty{})
+	testutils.AwaitState(ctx, t, cc, connectivity.Ready)
+
+	// Failing request should not cause ejection.
+	testServiceClient.EmptyCall(ctx, &testpb.Empty{})
+	testServiceClient.EmptyCall(ctx, &testpb.Empty{})
+	testServiceClient.EmptyCall(ctx, &testpb.Empty{})
+	testServiceClient.EmptyCall(ctx, &testpb.Empty{})
+
+	// Run the interval algorithm.
+	select {
+	case <-ctx.Done():
+		t.Fatal("Timed out waiting for the outlier detection LB policy to be built.")
+	case od := <-lbChan:
+		od.intervalTimerAlgorithm()
+	}
+
+	shortCtx, shortCancel := context.WithTimeout(ctx, defaultTestShortTimeout)
+	defer shortCancel()
+	testutils.AwaitNoStateChange(shortCtx, t, cc, connectivity.Ready)
+}
+
+// Tests handling of endpoints with multiple addresses. The test creates two
+// endpoints, each with two addresses. The first endpoint has a backend that
+// always returns errors. The test verifies that the first endpoint is ejected
+// after running the intervalTimerAlgorithm. The test stops the unhealthy
+// backend and verifies that the second backend in the first endpoint is dialed
+// but it doesn't receive requests due to its ejection status. The test stops
+// the connected backend in the second endpoint and verifies that requests
+// start going to the second address in the second endpoint. The test reduces
+// the ejection interval and runs the intervalTimerAlgorithm again. The test
+// verifies that the first endpoint is unejected and requests reach both
+// endpoints.
+func (s) TestMultipleAddressesPerEndpoint(t *testing.T) {
+	unhealthyBackend := &stubserver.StubServer{
+		EmptyCallF: func(context.Context, *testpb.Empty) (*testpb.Empty, error) {
+			return nil, errors.New("some error")
+		},
+	}
+	if err := unhealthyBackend.StartServer(); err != nil {
+		t.Fatalf("Failed to start backend: %v", err)
+	}
+	defer unhealthyBackend.Stop()
+	t.Logf("Started unhealthy TestService backend at: %q", unhealthyBackend.Address)
+
+	healthyBackends := make([]*stubserver.StubServer, 3)
+	for i := 0; i < 3; i++ {
+		healthyBackends[i] = stubserver.StartTestService(t, nil)
+		defer healthyBackends[i].Stop()
+	}
+
+	wrrCfg, err := balancer.Get(weightedroundrobin.Name).(balancer.ConfigParser).ParseConfig(json.RawMessage("{}"))
+	if err != nil {
+		t.Fatalf("Failed to parse %q config: %v", weightedroundrobin.Name, err)
+	}
+	// The interval is intentionally kept very large, the interval algorithm
+	// will be triggered manually.
+	odCfg := &LBConfig{
+		Interval:         iserviceconfig.Duration(300 * time.Second),
+		BaseEjectionTime: iserviceconfig.Duration(300 * time.Second),
+		MaxEjectionTime:  iserviceconfig.Duration(300 * time.Second),
+		FailurePercentageEjection: &FailurePercentageEjection{
+			Threshold:             50,
+			EnforcementPercentage: 100,
+			MinimumHosts:          0,
+			RequestVolume:         2,
+		},
+		MaxEjectionPercent: 100,
+		ChildPolicy: &iserviceconfig.BalancerConfig{
+			Name:   weightedroundrobin.Name,
+			Config: wrrCfg,
+		},
+	}
+
+	lbChan := make(chan *outlierDetectionBalancer, 1)
+	bf := stub.BalancerFuncs{
+		Init: func(bd *stub.BalancerData) {
+			bd.Data = balancer.Get(Name).Build(bd.ClientConn, bd.BuildOptions)
+			lbChan <- bd.Data.(*outlierDetectionBalancer)
+		},
+		Close: func(bd *stub.BalancerData) {
+			bd.Data.(balancer.Balancer).Close()
+		},
+		UpdateClientConnState: func(bd *stub.BalancerData, ccs balancer.ClientConnState) error {
+			ccs.BalancerConfig = odCfg
+			return bd.Data.(balancer.Balancer).UpdateClientConnState(ccs)
+		},
+	}
+
+	stub.Register(t.Name(), bf)
+	r := manual.NewBuilderWithScheme("whatever")
+	endpoints := []resolver.Endpoint{
+		{
+			Addresses: []resolver.Address{
+				{Addr: unhealthyBackend.Address},
+				{Addr: healthyBackends[0].Address},
+			},
+		},
+		{
+			Addresses: []resolver.Address{
+				{Addr: healthyBackends[1].Address},
+				{Addr: healthyBackends[2].Address},
+			},
+		},
+	}
+
+	r.InitialState(resolver.State{
+		Endpoints: endpoints,
+	})
+	dialer := testutils.NewBlockingDialer()
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{ "loadBalancingConfig": [{%q: {}}] }`, t.Name())),
+		grpc.WithResolvers(r),
+		grpc.WithContextDialer(dialer.DialContext),
+	}
+	cc, err := grpc.NewClient(r.Scheme()+":///", opts...)
+	if err != nil {
+		t.Fatalf("grpc.NewClient() failed: %v", err)
+	}
+	defer cc.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	client := testgrpc.NewTestServiceClient(cc)
+	client.EmptyCall(ctx, &testpb.Empty{})
+	testutils.AwaitState(ctx, t, cc, connectivity.Ready)
+
+	// Wait until both endpoints start receiving requests.
+	addrsSeen := map[string]bool{}
+	for ; ctx.Err() == nil && len(addrsSeen) < 2; <-time.After(time.Millisecond) {
+		var peer peer.Peer
+		client.EmptyCall(ctx, &testpb.Empty{}, grpc.Peer(&peer))
+		addrsSeen[peer.String()] = true
+	}
+
+	if len(addrsSeen) < 2 {
+		t.Fatalf("Context timed out waiting for requests to reach both endpoints.")
+	}
+
+	// Make 2 requests to each endpoint and verify the first endpoint gets
+	// ejected.
+	for i := 0; i < 2*len(endpoints); i++ {
+		client.EmptyCall(ctx, &testpb.Empty{})
+	}
+	var od *outlierDetectionBalancer
+	select {
+	case <-ctx.Done():
+		t.Fatal("Timed out waiting for the outlier detection LB policy to be built.")
+	case od = <-lbChan:
+	}
+	od.intervalTimerAlgorithm()
+
+	// The first endpoint should be ejected, requests should only go to
+	// endpoints[1].
+	if err := roundrobin.CheckRoundRobinRPCs(ctx, client, []resolver.Address{endpoints[1].Addresses[0]}); err != nil {
+		t.Fatalf("RPCs didn't go to the second endpoint: %v", err)
+	}
+
+	// Shutdown the unhealthy backend. The second address in the endpoint should
+	// be connected, but it should be ejected by outlier detection.
+	hold := dialer.Hold(healthyBackends[0].Address)
+	unhealthyBackend.Stop()
+	if hold.Wait(ctx) != true {
+		t.Fatalf("Timeout waiting for second address in endpoint[0] with address %q to be contacted", healthyBackends[0].Address)
+	}
+	hold.Resume()
+
+	// Verify requests go only to healthyBackends[1] for a short time.
+	shortCtx, cancel := context.WithTimeout(ctx, defaultTestShortTimeout)
+	defer cancel()
+	for ; shortCtx.Err() == nil; <-time.After(time.Millisecond) {
+		var peer peer.Peer
+		if _, err := client.EmptyCall(ctx, &testpb.Empty{}, grpc.Peer(&peer)); err != nil {
+			if status.Code(err) != codes.DeadlineExceeded {
+				t.Fatalf("EmptyCall() returned unexpected error %v", err)
+			}
+			break
+		}
+		if got, want := peer.Addr.String(), healthyBackends[1].Address; got != want {
+			t.Fatalf("EmptyCall() went to unexpected backend: got %q, want %q", got, want)
+		}
+	}
+
+	// shutdown the connected backend in endpoints[1], requests should start
+	// going to the second address in the same endpoint.
+	healthyBackends[1].Stop()
+	if err := roundrobin.CheckRoundRobinRPCs(ctx, client, []resolver.Address{endpoints[1].Addresses[1]}); err != nil {
+		t.Fatalf("RPCs didn't go to second address in the second endpoint: %v", err)
+	}
+
+	// Reduce the ejection interval and run the interval algorithm again, it
+	// should uneject endpoints[0].
+	odCfg.MaxEjectionTime = 0
+	odCfg.BaseEjectionTime = 0
+	<-time.After(time.Millisecond)
+	r.UpdateState(resolver.State{Endpoints: endpoints})
+	od.intervalTimerAlgorithm()
+	if err := roundrobin.CheckRoundRobinRPCs(ctx, client, []resolver.Address{endpoints[0].Addresses[1], endpoints[1].Addresses[1]}); err != nil {
+		t.Fatalf("RPCs didn't go to the second addresses of both endpoints: %v", err)
+	}
+}
+
+// Tests that removing an address from an endpoint resets its ejection state.
+// The test creates two endpoints, each with two addresses. The first endpoint
+// has a backend that always returns errors. The test verifies that the first
+// endpoint is ejected after running the intervalTimerAlgorithm. The test sends
+// a resolver update that removes the first address in the ejected endpoint. The
+// test verifies that requests start reaching the remaining address from the
+// first endpoint.
+func (s) TestEjectionStateResetsWhenEndpointAddressesChange(t *testing.T) {
+	unhealthyBackend := &stubserver.StubServer{
+		EmptyCallF: func(context.Context, *testpb.Empty) (*testpb.Empty, error) {
+			return nil, errors.New("some error")
+		},
+	}
+	if err := unhealthyBackend.StartServer(); err != nil {
+		t.Fatalf("Failed to start backend: %v", err)
+	}
+	defer unhealthyBackend.Stop()
+	t.Logf("Started unhealthy TestService backend at: %q", unhealthyBackend.Address)
+
+	healthyBackends := make([]*stubserver.StubServer, 3)
+	for i := 0; i < 3; i++ {
+		healthyBackends[i] = stubserver.StartTestService(t, nil)
+		defer healthyBackends[i].Stop()
+	}
+
+	wrrCfg, err := balancer.Get(weightedroundrobin.Name).(balancer.ConfigParser).ParseConfig(json.RawMessage("{}"))
+	if err != nil {
+		t.Fatalf("Failed to parse %q config: %v", weightedroundrobin.Name, err)
+	}
+	// The interval is intentionally kept very large, the interval algorithm
+	// will be triggered manually.
+	odCfg := &LBConfig{
+		Interval:         iserviceconfig.Duration(300 * time.Second),
+		BaseEjectionTime: iserviceconfig.Duration(300 * time.Second),
+		MaxEjectionTime:  iserviceconfig.Duration(300 * time.Second),
+		FailurePercentageEjection: &FailurePercentageEjection{
+			Threshold:             50,
+			EnforcementPercentage: 100,
+			MinimumHosts:          0,
+			RequestVolume:         2,
+		},
+		MaxEjectionPercent: 100,
+		ChildPolicy: &iserviceconfig.BalancerConfig{
+			Name:   weightedroundrobin.Name,
+			Config: wrrCfg,
+		},
+	}
+
+	lbChan := make(chan *outlierDetectionBalancer, 1)
+	bf := stub.BalancerFuncs{
+		Init: func(bd *stub.BalancerData) {
+			bd.Data = balancer.Get(Name).Build(bd.ClientConn, bd.BuildOptions)
+			lbChan <- bd.Data.(*outlierDetectionBalancer)
+		},
+		Close: func(bd *stub.BalancerData) {
+			bd.Data.(balancer.Balancer).Close()
+		},
+		UpdateClientConnState: func(bd *stub.BalancerData, ccs balancer.ClientConnState) error {
+			ccs.BalancerConfig = odCfg
+			return bd.Data.(balancer.Balancer).UpdateClientConnState(ccs)
+		},
+	}
+
+	stub.Register(t.Name(), bf)
+	r := manual.NewBuilderWithScheme("whatever")
+	endpoints := []resolver.Endpoint{
+		{
+			Addresses: []resolver.Address{
+				{Addr: unhealthyBackend.Address},
+				{Addr: healthyBackends[0].Address},
+			},
+		},
+		{
+			Addresses: []resolver.Address{
+				{Addr: healthyBackends[1].Address},
+				{Addr: healthyBackends[2].Address},
+			},
+		},
+	}
+
+	r.InitialState(resolver.State{
+		Endpoints: endpoints,
+	})
+	dialer := testutils.NewBlockingDialer()
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{ "loadBalancingConfig": [{%q: {}}] }`, t.Name())),
+		grpc.WithResolvers(r),
+		grpc.WithContextDialer(dialer.DialContext),
+	}
+	cc, err := grpc.NewClient(r.Scheme()+":///", opts...)
+	if err != nil {
+		t.Fatalf("grpc.NewClient() failed: %v", err)
+	}
+	defer cc.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	client := testgrpc.NewTestServiceClient(cc)
+	client.EmptyCall(ctx, &testpb.Empty{})
+	testutils.AwaitState(ctx, t, cc, connectivity.Ready)
+
+	// Wait until both endpoints start receiving requests.
+	addrsSeen := map[string]bool{}
+	for ; ctx.Err() == nil && len(addrsSeen) < 2; <-time.After(time.Millisecond) {
+		var peer peer.Peer
+		client.EmptyCall(ctx, &testpb.Empty{}, grpc.Peer(&peer))
+		addrsSeen[peer.String()] = true
+	}
+
+	if len(addrsSeen) < 2 {
+		t.Fatalf("Context timed out waiting for requests to reach both endpoints.")
+	}
+
+	// Make 2 requests to each endpoint and verify the first endpoint gets
+	// ejected.
+	for i := 0; i < 2*len(endpoints); i++ {
+		client.EmptyCall(ctx, &testpb.Empty{})
+	}
+	var od *outlierDetectionBalancer
+	select {
+	case <-ctx.Done():
+		t.Fatal("Timed out waiting for the outlier detection LB policy to be built.")
+	case od = <-lbChan:
+	}
+	od.intervalTimerAlgorithm()
+
+	// The first endpoint should be ejected, requests should only go to
+	// endpoints[1].
+	if err := roundrobin.CheckRoundRobinRPCs(ctx, client, []resolver.Address{endpoints[1].Addresses[0]}); err != nil {
+		t.Fatalf("RPCs didn't go to the second endpoint: %v", err)
+	}
+
+	// Remove the first address from the first endpoint. This makes the first
+	// endpoint a new endpoint for outlier detection, resetting its ejection
+	// status.
+	r.UpdateState(resolver.State{Endpoints: []resolver.Endpoint{
+		{Addresses: []resolver.Address{endpoints[0].Addresses[1]}},
+		endpoints[1],
+	}})
+	od.intervalTimerAlgorithm()
+	if err := roundrobin.CheckRoundRobinRPCs(ctx, client, []resolver.Address{endpoints[0].Addresses[1], endpoints[1].Addresses[0]}); err != nil {
+		t.Fatalf("RPCs didn't go to the second addresses of both endpoints: %v", err)
+	}
 }

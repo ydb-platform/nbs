@@ -1,8 +1,9 @@
 #include "yql_generic_cluster_config.h"
 #include "yql_generic_settings.h"
+#include "yql_generic_utils.h"
 
-#include <contrib/ydb/library/yql/providers/common/structured_token/yql_token_builder.h>
-#include <contrib/ydb/library/yql/utils/log/log.h>
+#include <yql/essentials/providers/common/structured_token/yql_token_builder.h>
+#include <yql/essentials/utils/log/log.h>
 
 namespace NYql {
 
@@ -20,6 +21,10 @@ namespace NYql {
     {
         Dispatch(gatewayConfig.GetDefaultSettings());
 
+        DescribeTableTimeout = gatewayConfig.HasDescribeTableTimeoutSeconds() ? 
+                               TDuration::Seconds(gatewayConfig.GetDescribeTableTimeoutSeconds()) :
+                               TDuration::Seconds(60);
+    
         for (const auto& cluster : gatewayConfig.GetClusterMapping()) {
             AddCluster(cluster, databaseResolver, databaseAuth, credentials);
         }
@@ -34,7 +39,7 @@ namespace NYql {
                                            const TCredentials::TPtr& credentials) {
         ValidateGenericClusterConfig(clusterConfig, "TGenericConfiguration::AddCluster");
 
-        YQL_CLOG(INFO, ProviderGeneric) << "generic provider add cluster: " << DumpGenericClusterConfig(clusterConfig);
+        YQL_CLOG(INFO, ProviderGeneric) << "GenericConfiguration::AddCluster: " << DumpGenericClusterConfig(clusterConfig);
 
         const auto& clusterName = clusterConfig.GetName();
         const auto& databaseId = clusterConfig.GetDatabaseId();
@@ -72,7 +77,7 @@ namespace NYql {
         ClusterNamesToClusterConfigs[clusterName] = clusterConfig;
 
         // Add cluster to the list of valid clusters
-        this->ValidClusters.insert(clusterConfig.GetName());
+        this->AddValidCluster(clusterConfig.GetName());
     }
 
     // Structured tokens are used to access MDB API. They can be constructed either from IAM tokens, or from SA credentials.
@@ -95,29 +100,12 @@ namespace NYql {
                                "or set (ServiceAccountId && ServiceAccountIdSignature) in cluster config";
     }
 
-    TString TGenericConfiguration::DumpGenericClusterConfig(const TGenericClusterConfig& clusterConfig) const {
-        TStringBuilder sb;
-        sb << "name = " << clusterConfig.GetName()
-           << ", kind = " << NConnector::NApi::EDataSourceKind_Name(clusterConfig.GetKind())
-           << ", database name = " << clusterConfig.GetDatabaseName()
-           << ", database id = " << clusterConfig.GetName()
-           << ", endpoint = " << clusterConfig.GetEndpoint()
-           << ", use tls = " << clusterConfig.GetUseSsl()
-           << ", protocol = " << NConnector::NApi::EProtocol_Name(clusterConfig.GetProtocol());
-
-        for (const auto& [key, value] : clusterConfig.GetDataSourceOptions()) {
-            sb << ", " << key << " = " << value;
-        }
-
-        return sb;
-    }
-
     TGenericSettings::TConstPtr TGenericConfiguration::Snapshot() const {
         return std::make_shared<const TGenericSettings>(*this);
     }
 
     bool TGenericConfiguration::HasCluster(TStringBuf cluster) const {
-        return ValidClusters.contains(cluster);
+        return GetValidClusters().contains(cluster);
     }
 
-}
+} // namespace NYql

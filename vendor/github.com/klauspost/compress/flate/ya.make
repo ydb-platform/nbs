@@ -6,6 +6,8 @@ LICENSE(
     MIT
 )
 
+VERSION(v1.18.0)
+
 SRCS(
     deflate.go
     dict_decoder.go
@@ -22,6 +24,7 @@ SRCS(
     level4.go
     level5.go
     level6.go
+    matchlen_generic.go
     stateless.go
     token.go
 )
@@ -39,13 +42,25 @@ GO_TEST_SRCS(
 )
 
 IF (ARCH_X86_64)
-    SRCS(regmask_amd64.go)
+    SRCS(
+        regmask_amd64.go
+    )
 ENDIF()
 
 IF (ARCH_ARM64)
-    SRCS(regmask_other.go)
+    SRCS(
+        regmask_other.go
+    )
+ENDIF()
+
+IF (OS_LINUX AND ARCH_ARM7)
+    SRCS(
+        regmask_other.go
+    )
 ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

@@ -2,10 +2,17 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
-SRCS(bootstrap.go)
+VERSION(v1.73.0)
+
+SRCS(
+    bootstrap.go
+    credentials.go
+)
 
 GO_TEST_SRCS(bootstrap_test.go)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

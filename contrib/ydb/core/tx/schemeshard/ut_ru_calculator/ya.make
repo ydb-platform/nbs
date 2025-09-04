@@ -3,9 +3,14 @@ UNITTEST_FOR(contrib/ydb/core/tx/schemeshard)
 PEERDIR(
     library/cpp/testing/unittest
     contrib/ydb/core/tx/tx_proxy
-    contrib/ydb/library/yql/public/udf/service/stub
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/public/udf/service/stub
+    yql/essentials/sql/pg_dummy
     contrib/ydb/services/ydb
+
+    contrib/ydb/services/kesus
+    contrib/ydb/services/persqueue_cluster_discovery
+    yql/essentials/minikql/comp_nodes/llvm16
+
 )
 
 SRCS(

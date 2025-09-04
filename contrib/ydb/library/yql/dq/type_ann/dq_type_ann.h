@@ -1,7 +1,7 @@
 #pragma once
 
-#include <contrib/ydb/library/yql/core/yql_graph_transformer.h>
-#include <contrib/ydb/library/yql/core/yql_type_annotation.h>
+#include <yql/essentials/core/yql_graph_transformer.h>
+#include <yql/essentials/core/yql_type_annotation.h>
 
 #include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
 
@@ -16,16 +16,19 @@ IGraphTransformer::TStatus AnnotateDqCnValue(const TExprNode::TPtr& input, TExpr
 IGraphTransformer::TStatus AnnotateDqCnResult(const TExprNode::TPtr& input, TExprContext& ctx);
 IGraphTransformer::TStatus AnnotateDqReplicate(const TExprNode::TPtr& input, TExprContext& ctx);
 IGraphTransformer::TStatus AnnotateDqConnection(const TExprNode::TPtr& input, TExprContext& ctx);
+IGraphTransformer::TStatus AnnotateDqCnStreamLookup(const TExprNode::TPtr& input, TExprContext& ctx);
 IGraphTransformer::TStatus AnnotateDqCnMerge(const TExprNode::TPtr& input, TExprContext& ctx);
 IGraphTransformer::TStatus AnnotateDqJoin(const TExprNode::TPtr& input, TExprContext& ctx);
 IGraphTransformer::TStatus AnnotateDqMapOrDictJoin(const TExprNode::TPtr& input, TExprContext& ctx);
 IGraphTransformer::TStatus AnnotateDqCrossJoin(const TExprNode::TPtr& input, TExprContext& ctx);
+IGraphTransformer::TStatus AnnotateDqBlockHashJoin(const TExprNode::TPtr& input, TExprContext& ctx);
 IGraphTransformer::TStatus AnnotateDqSource(const TExprNode::TPtr& input, TExprContext& ctx);
 IGraphTransformer::TStatus AnnotateDqSink(const TExprNode::TPtr& input, TExprContext& ctx);
 IGraphTransformer::TStatus AnnotateDqQuery(const TExprNode::TPtr& input, TExprContext& ctx);
 IGraphTransformer::TStatus AnnotateDqPrecompute(const TExprNode::TPtr& node, TExprContext& ctx);
 IGraphTransformer::TStatus AnnotateDqPhyPrecompute(const TExprNode::TPtr& node, TExprContext& ctx);
 IGraphTransformer::TStatus AnnotateDqTransform(const TExprNode::TPtr& input, TExprContext& ctx);
+IGraphTransformer::TStatus AnnotateDqHashCombine(const TExprNode::TPtr& input, TExprContext& ctx);
 
 THolder<IGraphTransformer> CreateDqTypeAnnotationTransformer(NYql::TTypeAnnotationContext& typesCtx);
 
@@ -39,6 +42,7 @@ struct TDqStageSettings {
     static constexpr TStringBuf PartitionModeSettingName = "_partition_mode";
     static constexpr TStringBuf WideChannelsSettingName = "_wide_channels";
     static constexpr TStringBuf BlockStatusSettingName = "_block_status";
+    static constexpr TStringBuf IsShuffleEliminatedSettingName = "_is_shuffle_eliminated";
 
     ui64 LogicalId = 0;
     TString Id;
@@ -53,6 +57,7 @@ struct TDqStageSettings {
 
     bool WideChannels = false;
     const TStructExprType* OutputNarrowType = nullptr;
+    bool IsShuffleEliminated = false;
 
     enum class EBlockStatus {
         None,
@@ -65,6 +70,7 @@ struct TDqStageSettings {
     TDqStageSettings& SetPartitionMode(EPartitionMode mode) { PartitionMode = mode; return *this; }
     TDqStageSettings& SetWideChannels(const TStructExprType& narrowType) { WideChannels = true; OutputNarrowType = &narrowType; return *this; }
     TDqStageSettings& SetBlockStatus(EBlockStatus status) { BlockStatus = status; return *this; }
+    TDqStageSettings& SetShuffleEliminated() { IsShuffleEliminated = true; return *this; }
 
     static TDqStageSettings New(const NNodes::TDqStageBase& node);
     static TDqStageSettings New();
@@ -74,6 +80,9 @@ struct TDqStageSettings {
     NNodes::TCoNameValueTupleList BuildNode(TExprContext& ctx, TPositionHandle pos) const;
 };
 
+
+const TTypeAnnotationNode* GetColumnType(const NNodes::TDqConnection& node, const TStructExprType& structType, TStringBuf name, TPositionHandle pos, TExprContext& ctx);
+const TTypeAnnotationNode* GetDqConnectionType(const NYql::NNodes::TDqConnection& node, TExprContext& ctx);
 
 TString PrintDqStageOnly(const NNodes::TDqStageBase& stage, TExprContext& ctx);
 

@@ -7,9 +7,10 @@ import (
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Table"
 	"google.golang.org/grpc"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/allocator"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/operation"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/params"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/stack"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/tx"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/options"
@@ -18,35 +19,38 @@ import (
 )
 
 type statement struct {
-	session *session
-	query   query
+	session *Session
+	query   Query
 	params  map[string]*Ydb.Type
 }
 
 // Execute executes prepared data query.
 func (s *statement) Execute(
 	ctx context.Context, txControl *table.TransactionControl,
-	params *table.QueryParameters,
+	parameters *params.Params,
 	opts ...options.ExecuteDataQueryOption,
-) (
-	txr table.Transaction, r result.Result, err error,
-) {
+) (txr table.Transaction, r result.Result, err error) {
 	var (
-		a       = allocator.New()
 		request = options.ExecuteDataQueryDesc{
-			ExecuteDataQueryRequest: a.TableExecuteDataQueryRequest(),
-			IgnoreTruncated:         s.session.config.IgnoreTruncated(),
+			ExecuteDataQueryRequest: &Ydb_Table.ExecuteDataQueryRequest{
+				SessionId: s.session.id,
+				TxControl: txControl.ToYdbTableTransactionControl(),
+				Parameters: func() map[string]*Ydb.TypedValue {
+					p, _ := parameters.ToYDB()
+
+					return p
+				}(),
+				Query: s.query.toYDB(),
+			},
+			IgnoreTruncated: s.session.config.IgnoreTruncated(),
 		}
 		callOptions []grpc.CallOption
 	)
-	defer a.Free()
 
-	request.SessionId = s.session.id
-	request.TxControl = txControl.Desc()
-	request.Parameters = params.Params().ToYDB(a)
-	request.Query = s.query.toYDB(a)
-	request.QueryCachePolicy = a.TableQueryCachePolicy()
-	request.QueryCachePolicy.KeepInCache = len(params.Params()) > 0
+	request.QueryCachePolicy = &Ydb_Table.QueryCachePolicy{
+		KeepInCache: len(request.Parameters) > 0,
+	}
+
 	request.OperationParams = operation.Params(ctx,
 		s.session.config.OperationTimeout(),
 		s.session.config.OperationCancelAfter(),
@@ -55,36 +59,42 @@ func (s *statement) Execute(
 
 	for _, opt := range opts {
 		if opt != nil {
-			callOptions = append(callOptions, opt.ApplyExecuteDataQueryOption(&request, a)...)
+			callOptions = append(callOptions, opt.ApplyExecuteDataQueryOption(&request)...)
 		}
 	}
 
 	onDone := trace.TableOnSessionQueryExecute(
 		s.session.config.Trace(), &ctx,
-		stack.FunctionID(""),
-		s.session, s.query, params,
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/internal/table.(*statement).Execute"),
+		s.session, s.query, parameters,
 		request.QueryCachePolicy.GetKeepInCache(),
 	)
 	defer func() {
 		onDone(txr, true, r, err)
 	}()
 
-	return s.execute(ctx, a, &request, request.TxControl, callOptions...)
+	return s.execute(ctx, txControl, &request, callOptions...)
 }
 
 // execute executes prepared query without any tracing.
 func (s *statement) execute(
-	ctx context.Context, a *allocator.Allocator,
-	request *options.ExecuteDataQueryDesc, txControl *Ydb_Table.TransactionControl,
+	ctx context.Context,
+	txControl *tx.Control,
+	request *options.ExecuteDataQueryDesc,
 	callOptions ...grpc.CallOption,
 ) (
 	txr table.Transaction, r result.Result, err error,
 ) {
-	res, err := s.session.executeDataQuery(ctx, a, request.ExecuteDataQueryRequest, callOptions...)
+	t, r, err := s.session.dataQuery.execute(ctx, txControl, request.ExecuteDataQueryRequest, callOptions...)
 	if err != nil {
 		return nil, nil, xerrors.WithStackTrace(err)
 	}
-	return s.session.executeQueryResult(res, txControl, request.IgnoreTruncated)
+
+	if t != nil {
+		t.s = s.session
+	}
+
+	return t, r, nil
 }
 
 func (s *statement) NumInput() int {

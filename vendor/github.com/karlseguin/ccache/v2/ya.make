@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v2.0.8)
+
 SRCS(
     bucket.go
     cache.go
@@ -23,4 +25,6 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

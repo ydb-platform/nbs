@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.73.0)
+
 SRCS(
     balancerstateaggregator.go
     clustermanager.go
@@ -16,4 +18,7 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    e2e_test
+    gotest
+)

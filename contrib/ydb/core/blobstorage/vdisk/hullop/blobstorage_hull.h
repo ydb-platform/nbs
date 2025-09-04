@@ -1,6 +1,7 @@
 #pragma once
 #include "defs.h"
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_hulllogctx.h>
+#include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_hugeblobctx.h>
 #include <contrib/ydb/core/blobstorage/vdisk/hulldb/cache_block/cache_block.h>
 #include <contrib/ydb/core/blobstorage/vdisk/hulldb/recovery/hulldb_recovery.h>
 #include <contrib/ydb/core/blobstorage/vdisk/hulldb/bulksst_add/hulldb_bulksst_add.h>
@@ -10,7 +11,6 @@ namespace NKikimr {
 
     class TLsnMngr;
     class TPDiskCtx;
-    class THandoffDelegate;
     struct TEvLocalStatusResult;
     using TPDiskCtxPtr = std::shared_ptr<TPDiskCtx>;
 
@@ -41,7 +41,8 @@ namespace NKikimr {
         struct TFields;
         std::unique_ptr<TFields> Fields;
 
-        void ValidateWriteQuery(const TActorContext &ctx, const TLogoBlobID &id, bool *writtenBeyondBarrier);
+        void ValidateWriteQuery(const TActorContext &ctx, const TLogoBlobID &id, bool issueKeepFlag,
+            bool *writtenBeyondBarrier);
 
         // validate GC barrier command against existing barriers metabase (ensure that keys are
         // coming in ascending order, CollectGen/CollectStep pairs do not decrease and that keys
@@ -61,12 +62,14 @@ namespace NKikimr {
         THull(
             TIntrusivePtr<TLsnMngr> lsnMngr,
             TPDiskCtxPtr pdiskCtx,
-            TIntrusivePtr<THandoffDelegate> handoffDelegate,
+            THugeBlobCtxPtr hugeBlobCtx,
+            ui32 minHugeBlobInBytes,
             const TActorId skeletonId,
             bool runHandoff,
             THullDbRecovery &&uncond,
             TActorSystem *as,
-            bool barrierValidation);
+            bool barrierValidation,
+            TActorId hugeKeeperId);
         THull(const THull &) = delete;
         THull(THull &&) = default;
         THull &operator =(const THull &) = delete;
@@ -95,6 +98,7 @@ namespace NKikimr {
                 const TActorContext &ctx,
                 const TLogoBlobID &id,
                 bool ignoreBlock,
+                bool issueKeepFlag,
                 const NProtoBuf::RepeatedPtrField<NKikimrBlobStorage::TEvVPut::TExtraBlockCheck>& extraBlockChecks,
                 bool *writtenBeyondBarrier);
 
@@ -113,7 +117,7 @@ namespace NKikimr {
                 const TDiskPart &diskAddr,
                 ui64 lsn);
 
-        void AddAnubisOsirisLogoBlob(
+        void AddLogoBlob(
                 const TActorContext &ctx,
                 const TLogoBlobID &id,
                 const TIngress &ingress,
@@ -212,6 +216,10 @@ namespace NKikimr {
         }
 
         void PermitGarbageCollection(const TActorContext& ctx);
+
+        void ApplyHugeBlobSize(ui32 minHugeBlobInBytes, const TActorContext& ctx);
+
+        void CompactFreshLogoBlobsIfRequired(const TActorContext& ctx);
     };
 
     // FIXME:

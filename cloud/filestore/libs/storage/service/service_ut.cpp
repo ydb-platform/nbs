@@ -14,6 +14,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <contrib/ydb/core/base/hive.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 
 namespace NCloud::NFileStore::NStorage {
 

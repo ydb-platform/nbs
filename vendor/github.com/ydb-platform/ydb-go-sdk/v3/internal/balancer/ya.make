@@ -2,15 +2,15 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v3.113.3)
+
 SRCS(
     balancer.go
     connections_state.go
-    ctx.go
     local_dc.go
 )
 
 GO_TEST_SRCS(
-    balancer_test.go
     connections_state_test.go
     local_dc_test.go
 )
@@ -18,6 +18,7 @@ GO_TEST_SRCS(
 END()
 
 RECURSE(
+    cluster
     config
     gotest
 )

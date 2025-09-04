@@ -2,10 +2,10 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
-SRCS(struct.pb.go)
+VERSION(v1.36.6)
 
-GO_XTEST_SRCS(struct_test.go)
+SRCS(
+    struct.pb.go
+)
 
 END()
-
-RECURSE(gotest)

@@ -224,11 +224,12 @@ func (p *parser) mapping() *node {
 // Decoder, unmarshals a node into a provided value.
 
 type decoder struct {
-	doc     *node
-	aliases map[*node]bool
-	mapType reflect.Type
-	terrors []string
-	strict  bool
+	doc              *node
+	aliases          map[*node]bool
+	mapType          reflect.Type
+	terrors          []string
+	strict           bool
+	unlimitedAliases bool
 
 	decodeCount int
 	aliasCount  int
@@ -348,12 +349,14 @@ func allowedAliasRatio(decodeCount int) float64 {
 }
 
 func (d *decoder) unmarshal(n *node, out reflect.Value) (good bool) {
-	d.decodeCount++
-	if d.aliasDepth > 0 {
-		d.aliasCount++
-	}
-	if d.aliasCount > 100 && d.decodeCount > 1000 && float64(d.aliasCount)/float64(d.decodeCount) > allowedAliasRatio(d.decodeCount) {
-		failf("document contains excessive aliasing")
+	if !d.unlimitedAliases {
+		d.decodeCount++
+		if d.aliasDepth > 0 {
+			d.aliasCount++
+		}
+		if d.aliasCount > 100 && d.decodeCount > 1000 && float64(d.aliasCount)/float64(d.decodeCount) > allowedAliasRatio(d.decodeCount) {
+			failf("document contains excessive aliasing")
+		}
 	}
 	switch n.kind {
 	case documentNode:

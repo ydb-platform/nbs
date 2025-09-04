@@ -1,1 +1,3 @@
-RECURSE(xmlutil)
+RECURSE(
+    xmlutil
+)

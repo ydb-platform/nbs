@@ -113,7 +113,7 @@ struct fuse_file_info {
 #define FUSE_CAP_SPLICE_READ	(1 << 9)
 #define FUSE_CAP_FLOCK_LOCKS	(1 << 10)
 #define FUSE_CAP_IOCTL_DIR	(1 << 11)
-#define FUSE_CAP_WRITEBACK_CACHE	(1 << 16)
+#define FUSE_CAP_WRITEBACK_CACHE (1 << 16)
 
 /**
  * Ioctl flags

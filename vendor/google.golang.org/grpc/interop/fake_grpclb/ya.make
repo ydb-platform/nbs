@@ -2,6 +2,10 @@ GO_PROGRAM()
 
 LICENSE(Apache-2.0)
 
-SRCS(fake_grpclb.go)
+VERSION(v1.73.0)
+
+SRCS(
+    fake_grpclb.go
+)
 
 END()

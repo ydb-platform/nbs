@@ -7,6 +7,7 @@ import (
 
 	balancerConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/balancer/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/conn"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/endpoint"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/mock"
 )
 
@@ -16,7 +17,7 @@ func TestPreferLocalDC(t *testing.T) {
 		&mock.Conn{AddrField: "2", State: conn.Online, LocationField: "2"},
 		&mock.Conn{AddrField: "3", State: conn.Online, LocationField: "2"},
 	}
-	rr := PreferLocalDC(RandomChoice())
+	rr := PreferNearestDC(RandomChoice())
 	require.False(t, rr.AllowFallback)
 	require.Equal(t, []conn.Conn{conns[1], conns[2]}, applyPreferFilter(balancerConfig.Info{SelfLocation: "2"}, rr, conns))
 }
@@ -27,7 +28,7 @@ func TestPreferLocalDCWithFallBack(t *testing.T) {
 		&mock.Conn{AddrField: "2", State: conn.Online, LocationField: "2"},
 		&mock.Conn{AddrField: "3", State: conn.Online, LocationField: "2"},
 	}
-	rr := PreferLocalDCWithFallBack(RandomChoice())
+	rr := PreferNearestDCWithFallBack(RandomChoice())
 	require.True(t, rr.AllowFallback)
 	require.Equal(t, []conn.Conn{conns[1], conns[2]}, applyPreferFilter(balancerConfig.Info{SelfLocation: "2"}, rr, conns))
 }
@@ -58,13 +59,14 @@ func TestPreferLocationsWithFallback(t *testing.T) {
 
 func applyPreferFilter(info balancerConfig.Info, b *balancerConfig.Config, conns []conn.Conn) []conn.Conn {
 	if b.Filter == nil {
-		b.Filter = filterFunc(func(info balancerConfig.Info, c conn.Conn) bool { return true })
+		b.Filter = filterFunc(func(info balancerConfig.Info, e endpoint.Info) bool { return true })
 	}
 	res := make([]conn.Conn, 0, len(conns))
 	for _, c := range conns {
-		if b.Filter.Allow(info, c) {
+		if b.Filter.Allow(info, c.Endpoint()) {
 			res = append(res, c)
 		}
 	}
+
 	return res
 }

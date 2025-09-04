@@ -3,10 +3,10 @@
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/scheme/scheme_tablecell.h>
 #include <contrib/ydb/library/accessor/accessor.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 #include <contrib/ydb/library/yql/dq/actors/protos/dq_status_codes.pb.h>
-#include <contrib/ydb/library/yql/core/issue/protos/issue_id.pb.h>
-#include <contrib/ydb/library/yql/core/issue/yql_issue.h>
+#include <yql/essentials/core/issue/protos/issue_id.pb.h>
+#include <yql/essentials/core/issue/yql_issue.h>
 
 #include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -39,36 +39,63 @@ struct TEvScanExchange {
 
     class TEvSendData: public NActors::TEventLocal<TEvSendData, EvSendData> {
     private:
-        YDB_READONLY_DEF(std::shared_ptr<arrow::RecordBatch>, ArrowBatch);
+        YDB_READONLY_DEF(std::shared_ptr<arrow::Table>, ArrowBatch);
         YDB_ACCESSOR_DEF(TVector<TOwnedCellVec>, Rows);
         YDB_READONLY(ui64, TabletId, 0);
         YDB_ACCESSOR_DEF(std::vector<ui32>, DataIndexes);
+        YDB_READONLY_DEF(TLocksInfo, LocksInfo);
+        YDB_ACCESSOR_DEF(bool, Finished);
+        YDB_ACCESSOR_DEF(ui64, CpuTimeUs);
+        YDB_ACCESSOR_DEF(ui64, WaitTimeUs);
+        YDB_ACCESSOR_DEF(ui64, WaitOutputTimeUs);
     public:
         ui32 GetRowsCount() const {
             return ArrowBatch ? ArrowBatch->num_rows() : Rows.size();
         }
 
-        TEvSendData(const std::shared_ptr<arrow::RecordBatch>& arrowBatch, const ui64 tabletId)
+        TEvSendData(const ui64 tabletId, const TEvKqpCompute::TEvScanData& data, const std::shared_ptr<arrow::Table>& arrowBatch)
             : ArrowBatch(arrowBatch)
             , TabletId(tabletId)
+            , LocksInfo(data.LocksInfo)
+            , Finished(data.Finished)
+            , CpuTimeUs(data.CpuTime.MicroSeconds())
+            , WaitTimeUs(data.WaitTime.MicroSeconds())
         {
             Y_ABORT_UNLESS(ArrowBatch);
             Y_ABORT_UNLESS(ArrowBatch->num_rows());
         }
 
-        TEvSendData(const std::shared_ptr<arrow::RecordBatch>& arrowBatch, const ui64 tabletId, std::vector<ui32>&& dataIndexes)
+        TEvSendData(const ui64 tabletId, const TEvKqpCompute::TEvScanData& data, const std::shared_ptr<arrow::Table>& arrowBatch, std::vector<ui32>&& dataIndexes)
             : ArrowBatch(arrowBatch)
             , TabletId(tabletId)
             , DataIndexes(std::move(dataIndexes))
+            , LocksInfo(data.LocksInfo)
+            , Finished(data.Finished)
+            , CpuTimeUs(data.CpuTime.MicroSeconds())
+            , WaitTimeUs(data.WaitTime.MicroSeconds())
         {
             Y_ABORT_UNLESS(ArrowBatch);
             Y_ABORT_UNLESS(ArrowBatch->num_rows());
         }
 
-        TEvSendData(TVector<TOwnedCellVec>&& rows, const ui64 tabletId)
+        TEvSendData(const ui64 tabletId, const TEvKqpCompute::TEvScanData& data, TVector<TOwnedCellVec>&& rows)
             : Rows(std::move(rows))
-            , TabletId(tabletId) {
+            , TabletId(tabletId)
+            , LocksInfo(data.LocksInfo)
+            , Finished(data.Finished)
+            , CpuTimeUs(data.CpuTime.MicroSeconds())
+            , WaitTimeUs(data.WaitTime.MicroSeconds())
+        {
             Y_ABORT_UNLESS(Rows.size());
+        }
+
+        TEvSendData(const ui64 tabletId, const TEvKqpCompute::TEvScanData& data)
+            : TabletId(tabletId)
+            , LocksInfo(data.LocksInfo)
+            , Finished(data.Finished)
+            , CpuTimeUs(data.CpuTime.MicroSeconds())
+            , WaitTimeUs(data.WaitTime.MicroSeconds())
+        {
         }
     };
 

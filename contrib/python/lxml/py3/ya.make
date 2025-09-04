@@ -2,7 +2,7 @@
 
 PY3_LIBRARY()
 
-VERSION(4.9.3)
+VERSION(5.4.0)
 
 LICENSE(BSD-3-Clause)
 
@@ -26,9 +26,8 @@ NO_LINT()
 NO_CHECK_IMPORTS(
     lxml.cssselect
     lxml.html.ElementSoup
-    lxml.html._diffcommand
     lxml.html._html5builder
-    lxml.html.diff
+    lxml.html.clean
     lxml.html.html5parser
     lxml.html.soupparser
     lxml.html.usedoctest

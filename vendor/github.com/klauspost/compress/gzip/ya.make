@@ -6,6 +6,8 @@ LICENSE(
     MIT
 )
 
+VERSION(v1.18.0)
+
 SRCS(
     gunzip.go
     gzip.go
@@ -20,4 +22,6 @@ GO_XTEST_SRCS(example_test.go)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

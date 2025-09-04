@@ -12,21 +12,24 @@ namespace NKikimr::NBsController {
             const NKikimrBlobStorage::TConfigRequest Cmd;
             const bool SelfHeal;
             const bool GroupLayoutSanitizer;
+            std::optional<THostRecordMap> EnforceHostRecords;
             THolder<TEvBlobStorage::TEvControllerConfigResponse> Ev;
             NKikimrBlobStorage::TConfigResponse *Response;
             std::optional<TConfigState> State;
             bool Success = true;
+            bool RollbackSuccess = false;
             TString Error;
 
         public:
             TTxConfigCmd(const NKikimrBlobStorage::TConfigRequest &cmd, const TActorId &notifyId, ui64 cookie,
-                    bool selfHeal, bool groupLayoutSanitizer, TBlobStorageController *controller)
+                    bool selfHeal, bool groupLayoutSanitizer, std::optional<THostRecordMap> enforceHostRecords, TBlobStorageController *controller)
                 : TTransactionBase(controller)
                 , NotifyId(notifyId)
                 , Cookie(cookie)
                 , Cmd(cmd)
                 , SelfHeal(selfHeal)
                 , GroupLayoutSanitizer(groupLayoutSanitizer)
+                , EnforceHostRecords(std::move(enforceHostRecords))
                 , Ev(new TEvBlobStorage::TEvControllerConfigResponse())
                 , Response(Ev->Record.MutableResponse())
             {}
@@ -52,6 +55,7 @@ namespace NKikimr::NBsController {
 
             void Finish() {
                 Response->SetSuccess(Success);
+                Response->SetRollbackSuccess(RollbackSuccess);
                 if (!Success) {
                     Response->SetErrorDescription(Error);
                 }
@@ -99,6 +103,9 @@ namespace NKikimr::NBsController {
                         for (bool value : settings.GetEnableDonorMode()) {
                             Self->DonorMode = value;
                             db.Table<T>().Key(true).Update<T::DonorModeEnable>(Self->DonorMode);
+                            auto ev = std::make_unique<TEvControllerUpdateSelfHealInfo>();
+                            ev->DonorMode = Self->DonorMode;
+                            Self->Send(Self->SelfHealId, ev.release());
                         }
                         for (ui64 value : settings.GetScrubPeriodicitySeconds()) {
                             Self->ScrubPeriodicity = TDuration::Seconds(value);
@@ -177,7 +184,8 @@ namespace NKikimr::NBsController {
                     Response->MutableStatus()->RemoveLast();
                 }
 
-                State.emplace(*Self, Self->HostRecords, TActivationContext::Now());
+                const auto& hostRecords = EnforceHostRecords ? *EnforceHostRecords : Self->HostRecords;
+                State.emplace(*Self, hostRecords, TActivationContext::Now(), TActivationContext::Monotonic());
                 State->CheckConsistency();
 
                 TString m;
@@ -204,7 +212,7 @@ namespace NKikimr::NBsController {
                                 expectedSlotSize.push_back(size);
                             }
                         }
-                        const auto availabilityDomainId = AppData()->DomainsInfo->GetDomainUidByTabletId(Self->TabletID());
+                        const auto availabilityDomainId = AppData()->DomainsInfo->GetDomain()->DomainUid;
                         Self->FitGroupsForUserConfig(*State, availabilityDomainId, Cmd, std::move(expectedSlotSize), status);
 
                         const TDuration passed = TDuration::Seconds(timer.Passed());
@@ -240,6 +248,7 @@ namespace NKikimr::NBsController {
                             MAP_TIMING(WipeVDisk, WIPE_VDISK)
                             MAP_TIMING(SanitizeGroup, SANITIZE_GROUP)
                             MAP_TIMING(CancelVirtualGroup, CANCEL_VIRTUAL_GROUP)
+                            MAP_TIMING(ChangeGroupSizeInUnits, CHANGE_GROUP_SIZE_IN_UNITS)
 
                             default:
                                 break;
@@ -252,6 +261,7 @@ namespace NKikimr::NBsController {
 
                 if (Success && Cmd.GetRollback()) {
                     Success = false;
+                    RollbackSuccess = true;
                     Error = "transaction rollback";
                 }
 
@@ -262,7 +272,8 @@ namespace NKikimr::NBsController {
 
                 const bool doLogCommand = Success && State->Changed();
                 Success = Success && Self->CommitConfigUpdates(*State, Cmd.GetIgnoreGroupFailModelChecks(),
-                    Cmd.GetIgnoreDegradedGroupsChecks(), Cmd.GetIgnoreDisintegratedGroupsChecks(), txc, &Error);
+                    Cmd.GetIgnoreDegradedGroupsChecks(), Cmd.GetIgnoreDisintegratedGroupsChecks(), txc, &Error,
+                    Response);
 
                 Finish();
                 if (doLogCommand) {
@@ -336,6 +347,7 @@ namespace NKikimr::NBsController {
                     HANDLE_COMMAND(ReassignGroupDisk)
                     HANDLE_COMMAND(MergeBoxes)
                     HANDLE_COMMAND(MoveGroups)
+                    HANDLE_COMMAND(ChangeGroupSizeInUnits)
                     HANDLE_COMMAND(DropDonorDisk)
                     HANDLE_COMMAND(AddDriveSerial)
                     HANDLE_COMMAND(RemoveDriveSerial)
@@ -347,6 +359,12 @@ namespace NKikimr::NBsController {
                     HANDLE_COMMAND(SanitizeGroup)
                     HANDLE_COMMAND(CancelVirtualGroup)
                     HANDLE_COMMAND(SetVDiskReadOnly)
+                    HANDLE_COMMAND(RestartPDisk)
+                    HANDLE_COMMAND(SetPDiskReadOnly)
+                    HANDLE_COMMAND(StopPDisk)
+                    HANDLE_COMMAND(GetInterfaceVersion)
+                    HANDLE_COMMAND(MovePDisk)
+                    HANDLE_COMMAND(UpdateBridgeGroupInfo)
 
                     case NKikimrBlobStorage::TConfigRequest::TCommand::kAddMigrationPlan:
                     case NKikimrBlobStorage::TConfigRequest::TCommand::kDeleteMigrationPlan:
@@ -361,7 +379,7 @@ namespace NKikimr::NBsController {
                         throw TExError() << "unsupported command";
                 }
 
-                Y_ABORT();
+                throw TExError() << "unsupported command";
             }
 
             void Complete(const TActorContext&) override {
@@ -370,6 +388,8 @@ namespace NKikimr::NBsController {
                     STLOG(PRI_INFO, BS_CONTROLLER_AUDIT, BSCA09, "Transaction complete", (UniqueId, state->UniqueId),
                             (NextConfigTxSeqNo, configTxSeqNo));
                     Ev->Record.MutableResponse()->SetConfigTxSeqNo(configTxSeqNo);
+                } else {
+                    Ev->Record.MutableResponse()->SetConfigTxSeqNo(Self->NextConfigTxSeqNo - 1);
                 }
                 TActivationContext::Send(new IEventHandle(NotifyId, Self->SelfId(), Ev.Release(), 0, Cookie));
                 Self->UpdatePDisksCounters();
@@ -388,7 +408,7 @@ namespace NKikimr::NBsController {
             NKikimrBlobStorage::TEvControllerConfigRequest& record(ev->Get()->Record);
             const NKikimrBlobStorage::TConfigRequest& request = record.GetRequest();
             STLOG(PRI_DEBUG, BS_CONTROLLER, BSCTXCC01, "Execute TEvControllerConfigRequest", (Request, request));
-            Execute(new TTxConfigCmd(request, ev->Sender, ev->Cookie, ev->Get()->SelfHeal, ev->Get()->GroupLayoutSanitizer, this));
+            Execute(new TTxConfigCmd(request, ev->Sender, ev->Cookie, ev->Get()->SelfHeal, ev->Get()->GroupLayoutSanitizer, ev->Get()->EnforceHostRecords, this));
         }
 
 } // NKikimr::NBsController

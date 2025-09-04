@@ -1,5 +1,6 @@
 #include "schema.h"
 #include <contrib/ydb/library/accessor/validator.h>
+#include <contrib/ydb/core/tx/columnshard/blobs_action/common/const.h>
 
 namespace NKikimr::NSchemeShard {
 
@@ -82,7 +83,10 @@ void TOlapIndexesDescription::Serialize(NKikimrSchemeOp::TColumnTableSchema& tab
     }
 }
 
-bool TOlapIndexesDescription::Validate(const NKikimrSchemeOp::TColumnTableSchema& opSchema, IErrorCollector& errors) const {
+bool TOlapIndexesDescription::ValidateForStore(const NKikimrSchemeOp::TColumnTableSchema& opSchema, IErrorCollector& errors) const {
+    if (opSchema.GetIndexes().size() == 0) {
+        return true;
+    }
     THashSet<ui32> usedIndexes;
     ui32 lastIdx = 0;
     for (const auto& proto : opSchema.GetIndexes()) {

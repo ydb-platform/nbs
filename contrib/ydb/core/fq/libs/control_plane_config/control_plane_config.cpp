@@ -13,8 +13,9 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 
+#include <contrib/ydb/core/fq/libs/common/util.h>
 #include <contrib/ydb/library/db_pool/db_pool.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 
 #include <util/generic/ptr.h>
 #include <util/datetime/base.h>
@@ -64,8 +65,18 @@ public:
         } else {
             TenantInfo.reset(new TTenantInfo(ComputeConfig));
             const auto& mapping = Config.GetMapping();
+            for (const auto& scopeToTenant : mapping.GetScopeToTenantName()) {
+                auto [_, isInserted] = TenantInfo->SubjectMapping[SUBJECT_TYPE_SCOPE].emplace(scopeToTenant.GetKey(), scopeToTenant.GetValue());
+                if (!isInserted) {
+                    CPC_LOG_E("Invalid configuation, the scope with the name " << scopeToTenant.GetKey() << " already exists");
+                }
+                TenantInfo->TenantMapping.emplace(scopeToTenant.GetValue(), scopeToTenant.GetValue());
+            }
             for (const auto& cloudToTenant : mapping.GetCloudIdToTenantName()) {
-                TenantInfo->SubjectMapping[SUBJECT_TYPE_CLOUD].emplace(cloudToTenant.GetKey(), cloudToTenant.GetValue());
+                auto [_, isInserted] = TenantInfo->SubjectMapping[SUBJECT_TYPE_CLOUD].emplace(cloudToTenant.GetKey(), cloudToTenant.GetValue());
+                if (!isInserted) {
+                    CPC_LOG_E("Invalid configuation, the cloud with the name " << cloudToTenant.GetKey() << " already exists");
+                }
                 TenantInfo->TenantMapping.emplace(cloudToTenant.GetValue(), cloudToTenant.GetValue());
             }
             for (const auto& commonTenantName : mapping.GetCommonTenantName()) {
@@ -107,7 +118,6 @@ private:
     }
 
     void LoadTenantsAndMapping() {
-
         LoadInProgress = true;
         TDbExecutable::TPtr executable;
         auto& executer = TTenantExecuter::Create(executable, true, [computeConfig=ComputeConfig](TTenantExecuter& executer) { executer.State.reset(new TTenantInfo(computeConfig)); } );
@@ -117,11 +127,11 @@ private:
                 builder.AddText(
                     "SELECT `" TENANT_COLUMN_NAME "`, `" VTENANT_COLUMN_NAME "`, `" COMMON_COLUMN_NAME "`, `" STATE_COLUMN_NAME "`, `" STATE_TIME_COLUMN_NAME "`\n"
                     "FROM `" TENANTS_TABLE_NAME "`;\n"
-                    "SELECT `" SUBJECT_TYPE_COLUMN_NAME "`, `" SUBJECT_ID_COLUMN_NAME "`, `" VTENANT_COLUMN_NAME "`\n"
+                    "SELECT `" SUBJECT_TYPE_COLUMN_NAME "`, `" SUBJECT_ID_COLUMN_NAME "`, `" VTENANT_COLUMN_NAME "`, `" NODE_COLUMN_NAME "`\n"
                     "FROM `" MAPPINGS_TABLE_NAME "`;\n"
                 );
             },
-            [=](TTenantExecuter& executer, const TVector<NYdb::TResultSet>& resultSets) {
+            [=](TTenantExecuter& executer, const std::vector<NYdb::TResultSet>& resultSets) {
 
                 auto& info = *executer.State;
 
@@ -157,13 +167,18 @@ private:
                         auto subject_type = *parser.ColumnParser(SUBJECT_TYPE_COLUMN_NAME).GetOptionalString();
                         auto subject_id = *parser.ColumnParser(SUBJECT_ID_COLUMN_NAME).GetOptionalString();
                         auto vtenant = *parser.ColumnParser(VTENANT_COLUMN_NAME).GetOptionalString();
-                        info.SubjectMapping[subject_type].emplace(subject_id, vtenant);
+                        auto optionalNode = parser.ColumnParser(NODE_COLUMN_NAME).GetOptionalString();
+                        TMaybe<TString> node;
+                        if (optionalNode) {
+                            node = *optionalNode;
+                        }
+                        info.SubjectMapping[subject_type].emplace(subject_id, TTenantInfo::TMapping{TString(vtenant), node});
                     }
                 }
             },
             "ReadTenants", true
         ).Process(SelfId(),
-            [=, this](TTenantExecuter& executer) {
+            [=, this, actorSystem=NActors::TActivationContext::ActorSystem(), selfId=SelfId()](TTenantExecuter& executer) {
                 if (executer.State->CommonVTenants.size()) {
                     std::sort(executer.State->CommonVTenants.begin(), executer.State->CommonVTenants.end());
                 }
@@ -203,14 +218,30 @@ private:
                         );
                     }
 
-                    Exec(DbPool, executable, TablePathPrefix);
+                    Exec(DbPool, executable, TablePathPrefix).Apply([executable, actorSystem, selfId](const auto& future) {
+                        actorSystem->Send(selfId, new TEvents::TEvCallback([executable, future]() {
+                            auto issues = GetIssuesFromYdbStatus(executable, future);
+                            if (issues) {
+                                CPC_LOG_E("UpdateState in case of LoadTenantsAndMapping finished with error: " << issues->ToOneLineString());
+                                // Nothing to do. We will retry it in the next Wakeup
+                            }
+                        }));
+                    });
                 }
 
                 LoadInProgress = false;
             }
         );
 
-        Exec(DbPool, executable, TablePathPrefix);
+        Exec(DbPool, executable, TablePathPrefix).Apply([this, executable, actorSystem=NActors::TActivationContext::ActorSystem(), selfId=SelfId()](const auto& future) {
+            actorSystem->Send(selfId, new TEvents::TEvCallback([this, executable, future]() {
+                auto issues = GetIssuesFromYdbStatus(executable, future);
+                if (issues) {
+                    CPC_LOG_E("LoadTenantsAndMapping finished with error: " << issues->ToOneLineString());
+                    LoadInProgress = false;
+                }
+            }));
+        });
     }
 
     void ReflectTenantChanges(TTenantInfo::TPtr oldInfo) {

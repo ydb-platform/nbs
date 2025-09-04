@@ -1,15 +1,23 @@
 #pragma once
 
 #include <contrib/ydb/core/kqp/common/simple/temp_tables.h>
+#include <contrib/ydb/core/kqp/federated_query/kqp_federated_query_helpers.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_gateway.h>
-#include <contrib/ydb/core/scheme/scheme_tabledefs.h>
-#include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_settings.h>
+#include <contrib/ydb/core/scheme/scheme_tabledefs.h>
+#include <contrib/ydb/core/sys_view/common/resolver.h>
+#include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
+
 #include <library/cpp/threading/future/core/future.h>
 
 #include <util/system/mutex.h>
 
 namespace NKikimr::NKqp {
+
+// only exposed to be unit-tested
+NExternalSource::TAuth MakeAuth(const NYql::TExternalSource& metadata);
+std::shared_ptr<NExternalSource::TMetadata> ConvertToExternalSourceMetadata(const NYql::TKikimrTableMetadata& tableMetadata);
+bool EnrichMetadata(NYql::TKikimrTableMetadata& tableMetadata, const NExternalSource::TMetadata& dynamicMetadata);
 
 class TKqpTableMetadataLoader : public NYql::IKikimrGateway::IKqpTableMetadataLoader {
 public:
@@ -19,13 +27,14 @@ public:
         NYql::TKikimrConfiguration::TPtr config,
         bool needCollectSchemeData = false,
         TKqpTempTablesState::TConstPtr tempTablesState = nullptr,
-        TDuration maximalSecretsSnapshotWaitTime = TDuration::Seconds(20))
+        const std::optional<TKqpFederatedQuerySetup>& federatedQuerySetup = std::nullopt)
         : Cluster(cluster)
         , NeedCollectSchemeData(needCollectSchemeData)
         , ActorSystem(actorSystem)
         , Config(config)
         , TempTablesState(std::move(tempTablesState))
-        , MaximalSecretsSnapshotWaitTime(maximalSecretsSnapshotWaitTime)
+        , SystemViewRewrittenResolver(NSysView::CreateSystemViewRewrittenResolver())
+        , FederatedQuerySetup(federatedQuerySetup)
     {}
 
     NThreading::TFuture<NYql::IKikimrGateway::TTableMetadataResult> LoadTableMetadata(
@@ -58,6 +67,9 @@ private:
 
     void OnLoadedTableMetadata(NYql::IKikimrGateway::TTableMetadataResult& loadTableMetadataResult);
 
+    NThreading::TFuture<NYql::IKikimrGateway::TTableMetadataResult> LoadSysViewRewrittenMetadata(
+        const TString& cluster, const TString& table, const NSysView::ISystemViewResolver::TSystemViewPath& sysViewPath);
+
     const TString Cluster;
     TVector<NKikimrKqp::TKqpTableMetadataProto> CollectedSchemeData;
     TMutex Lock;
@@ -65,7 +77,8 @@ private:
     TActorSystem* ActorSystem;
     NYql::TKikimrConfiguration::TPtr Config;
     TKqpTempTablesState::TConstPtr TempTablesState;
-    TDuration MaximalSecretsSnapshotWaitTime;
+    THolder<NSysView::ISystemViewResolver> SystemViewRewrittenResolver;
+    std::optional<TKqpFederatedQuerySetup> FederatedQuerySetup;
 };
 
 } // namespace NKikimr::NKqp

@@ -8,7 +8,6 @@ import (
 	prometheus2 "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	clientmodel "github.com/prometheus/client_model/go"
-
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/library/go/core/metrics/prometheus"
 )

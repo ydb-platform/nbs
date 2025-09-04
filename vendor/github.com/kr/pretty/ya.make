@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v0.3.1)
+
 SRCS(
     diff.go
     formatter.go
@@ -18,4 +20,6 @@ GO_XTEST_SRCS(example_test.go)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

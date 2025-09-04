@@ -1,7 +1,0 @@
-analytics/libs/event-log/ut/cloud-filestore-tools-analytics-libs-event-log-ut
-analytics/profile_tool/filestore-profile-tool
-analytics/profile_tool/lib/ut/filestore-tools-analytics-profile_tool-lib-ut
-testing/fs_posix_compliance/suite/bin/cloud
-testing/fs_posix_compliance/suite/bin/flock
-testing/fs_posix_compliance/suite/fstest
-testing/loadtest/bin/filestore-loadtest

@@ -2,6 +2,7 @@
 
 #include "defs.h"
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_pdiskctx.h>
+#include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>
 
 namespace NKikimr {
     namespace NSyncLog {

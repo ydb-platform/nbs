@@ -640,7 +640,6 @@ void TBootstrapYdb::InitKikimrService()
         YdbStorage = NYdbStats::CreateYdbStorage(
             statsConfig,
             logging,
-            Scheduler,
             IamTokenClient);
         StatsUploader = NYdbStats::CreateYdbVolumesStatsUploader(
             statsConfig,

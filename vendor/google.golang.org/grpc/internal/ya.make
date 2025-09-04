@@ -2,10 +2,30 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.73.0)
+
 SRCS(
+    experimental.go
     internal.go
-    xds_handshake_cluster.go
 )
+
+IF (OS_LINUX)
+    SRCS(
+        tcp_keepalive_unix.go
+    )
+ENDIF()
+
+IF (OS_DARWIN)
+    SRCS(
+        tcp_keepalive_unix.go
+    )
+ENDIF()
+
+IF (OS_WINDOWS)
+    SRCS(
+        tcp_keepalive_windows.go
+    )
+ENDIF()
 
 END()
 
@@ -23,18 +43,21 @@ RECURSE(
     envconfig
     googlecloud
     grpclog
-    grpcrand
     grpcsync
     grpctest
     grpcutil
     hierarchy
+    idle
     leakcheck
     metadata
     pretty
     profiling
     proto
+    proxyattributes
     resolver
+    ringhash
     serviceconfig
+    stats
     status
     stubserver
     testutils
@@ -45,13 +68,19 @@ RECURSE(
 )
 
 IF (OS_LINUX)
-    RECURSE(syscall)
+    RECURSE(
+        syscall
+    )
 ENDIF()
 
 IF (OS_DARWIN)
-    RECURSE(syscall)
+    RECURSE(
+        syscall
+    )
 ENDIF()
 
 IF (OS_WINDOWS)
-    RECURSE(syscall)
+    RECURSE(
+        syscall
+    )
 ENDIF()

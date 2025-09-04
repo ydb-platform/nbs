@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.73.0)
+
 SRCS(
     balancer.go
     cache.go
@@ -17,6 +19,7 @@ GO_TEST_SRCS(
     config_test.go
     # control_channel_test.go
     helpers_test.go
+    metrics_test.go
     picker_test.go
 )
 

@@ -12,9 +12,11 @@ type schemeComposeOptions struct {
 }
 
 // SchemeOption specified Scheme compose option
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
 type SchemeComposeOption func(o *schemeComposeOptions)
 
 // WithSchemePanicCallback specified behavior on panic
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
 func WithSchemePanicCallback(cb func(e interface{})) SchemeComposeOption {
 	return func(o *schemeComposeOptions) {
 		o.panicCallback = cb
@@ -22,7 +24,11 @@ func WithSchemePanicCallback(cb func(e interface{})) SchemeComposeOption {
 }
 
 // Compose returns a new Scheme which has functional fields composed both from t and x.
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
 func (t *Scheme) Compose(x *Scheme, opts ...SchemeComposeOption) *Scheme {
+	if t == nil {
+		return x
+	}
 	var ret Scheme
 	options := schemeComposeOptions{}
 	for _, opt := range opts {
@@ -282,6 +288,7 @@ func (t *Scheme) onModifyPermissions(s SchemeModifyPermissionsStartInfo) func(Sc
 	}
 	return res
 }
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
 func SchemeOnListDirectory(t *Scheme, c *context.Context, call call) func(error) {
 	var p SchemeListDirectoryStartInfo
 	p.Context = c
@@ -293,6 +300,7 @@ func SchemeOnListDirectory(t *Scheme, c *context.Context, call call) func(error)
 		res(p)
 	}
 }
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
 func SchemeOnDescribePath(t *Scheme, c *context.Context, call call, path string) func(entryType string, _ error) {
 	var p SchemeDescribePathStartInfo
 	p.Context = c
@@ -306,6 +314,7 @@ func SchemeOnDescribePath(t *Scheme, c *context.Context, call call, path string)
 		res(p)
 	}
 }
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
 func SchemeOnMakeDirectory(t *Scheme, c *context.Context, call call, path string) func(error) {
 	var p SchemeMakeDirectoryStartInfo
 	p.Context = c
@@ -318,6 +327,7 @@ func SchemeOnMakeDirectory(t *Scheme, c *context.Context, call call, path string
 		res(p)
 	}
 }
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
 func SchemeOnRemoveDirectory(t *Scheme, c *context.Context, call call, path string) func(error) {
 	var p SchemeRemoveDirectoryStartInfo
 	p.Context = c
@@ -330,6 +340,7 @@ func SchemeOnRemoveDirectory(t *Scheme, c *context.Context, call call, path stri
 		res(p)
 	}
 }
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
 func SchemeOnModifyPermissions(t *Scheme, c *context.Context, call call, path string) func(error) {
 	var p SchemeModifyPermissionsStartInfo
 	p.Context = c

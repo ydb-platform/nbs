@@ -48,7 +48,7 @@ type queue struct {
 	written uint32
 }
 
-// Allocates and returns a new *queue. size needs to be a exponent of two.
+// Allocates and returns a new *queue. size needs to be an exponent of two.
 func newQueue(size uint32) *queue {
 	return &queue{
 		arr:  make([]unsafe.Pointer, size),
@@ -103,7 +103,7 @@ func (qp *queuePair) switchQueues() *queue {
 // by other exponents of two, we use floorCPUCount number of queuePairs within
 // each CircularBuffer.
 //
-// Floor of the number of CPUs (and not the ceiling) was found to the be the
+// Floor of the number of CPUs (and not the ceiling) was found to be the
 // optimal number through experiments.
 func floorCPUCount() uint32 {
 	floorExponent := bits.Len32(uint32(runtime.NumCPU())) - 1
@@ -129,7 +129,7 @@ var numCircularBufferPairs = floorCPUCount()
 type CircularBuffer struct {
 	drainMutex sync.Mutex
 	qp         []*queuePair
-	// qpn is an monotonically incrementing counter that's used to determine
+	// qpn is a monotonically incrementing counter that's used to determine
 	// which queuePair a Push operation should write to. This approach's
 	// performance was found to be better than writing to a random queue.
 	qpn    uint32
@@ -170,7 +170,7 @@ func NewCircularBuffer(size uint32) (*CircularBuffer, error) {
 // a finite number of steps (also lock-free). Does not guarantee that push
 // order will be retained. Does not guarantee that the operation will succeed
 // if a Drain operation concurrently begins execution.
-func (cb *CircularBuffer) Push(x interface{}) {
+func (cb *CircularBuffer) Push(x any) {
 	n := atomic.AddUint32(&cb.qpn, 1) & cb.qpMask
 	qptr := atomic.LoadPointer(&cb.qp[n].q)
 	q := (*queue)(qptr)
@@ -221,10 +221,10 @@ func (cb *CircularBuffer) Push(x interface{}) {
 // arr that are copied is [from, to). Assumes that the result slice is already
 // allocated and is large enough to hold all the elements that might be copied.
 // Also assumes mutual exclusion on the array of pointers.
-func dereferenceAppend(result []interface{}, arr []unsafe.Pointer, from, to uint32) []interface{} {
+func dereferenceAppend(result []any, arr []unsafe.Pointer, from, to uint32) []any {
 	for i := from; i < to; i++ {
 		// We have mutual exclusion on arr, there's no need for atomics.
-		x := (*interface{})(arr[i])
+		x := (*any)(arr[i])
 		if x != nil {
 			result = append(result, *x)
 		}
@@ -235,7 +235,7 @@ func dereferenceAppend(result []interface{}, arr []unsafe.Pointer, from, to uint
 // Drain allocates and returns an array of things Pushed in to the circular
 // buffer. Push order is not maintained; that is, if B was Pushed after A,
 // drain may return B at a lower index than A in the returned array.
-func (cb *CircularBuffer) Drain() []interface{} {
+func (cb *CircularBuffer) Drain() []any {
 	cb.drainMutex.Lock()
 
 	qs := make([]*queue, len(cb.qp))
@@ -253,7 +253,7 @@ func (cb *CircularBuffer) Drain() []interface{} {
 	}
 	wg.Wait()
 
-	result := make([]interface{}, 0)
+	result := make([]any, 0)
 	for i := 0; i < len(qs); i++ {
 		if acquired := atomic.LoadUint32(&qs[i].acquired); acquired < qs[i].size {
 			result = dereferenceAppend(result, qs[i].arr, 0, acquired)

@@ -2,6 +2,10 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
-SRCS(types.go)
+VERSION(v0.13.4)
+
+SRCS(
+    types.go
+)
 
 END()

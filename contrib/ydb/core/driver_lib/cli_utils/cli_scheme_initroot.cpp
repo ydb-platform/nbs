@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/scheme/tablet_scheme.h>
 #include <contrib/ydb/core/scheme/scheme_types_defs.h>
 #include <contrib/ydb/core/scheme/scheme_type_registry.h>
+#include <contrib/ydb/core/protos/tx_scheme.pb.h>
 
 namespace NKikimr {
 namespace NDriverClient {

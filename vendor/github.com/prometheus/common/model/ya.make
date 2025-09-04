@@ -2,12 +2,16 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v0.62.0)
+
 SRCS(
     alert.go
     fingerprinting.go
     fnv.go
     labels.go
     labelset.go
+    labelset_string.go
+    metadata.go
     metric.go
     model.go
     signature.go
@@ -35,4 +39,6 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

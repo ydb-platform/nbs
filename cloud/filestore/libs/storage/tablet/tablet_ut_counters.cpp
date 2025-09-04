@@ -80,6 +80,7 @@ NProto::TDiagnosticsConfig MakeDiagConfig()
 struct TEnv
     : public NUnitTest::TBaseFixture
 {
+    NKikimr::NSharedCache::TSharedCacheConfig SharedCacheConfig;
     TTestEnv Env;
     std::unique_ptr<TIndexTabletClient> Tablet;
 
@@ -89,7 +90,7 @@ struct TEnv
         : Env(
             TTestEnvConfig{},
             NProto::TStorageConfig{},
-            NKikimr::NFake::TCaches{},
+            &SharedCacheConfig,
             CreateProfileLogStub(),
             MakeDiagConfig())
     {}

@@ -15,7 +15,7 @@ class YDBLauncher:
             dict(name="dynamic_storage_pool:4", kind="ssdencrypted", pdisk_user_kind=0),
         ]
         configurator = KikimrConfigGenerator(
-            binary_path=ydb_binary_path,
+            binary_paths=[ydb_binary_path],
             erasure=None,
             static_pdisk_size=64 * 2**30,
             dynamic_storage_pools=dynamic_storage_pools,

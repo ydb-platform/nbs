@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v2.6.1+incompatible)
+
 SRCS(
     block.go
     debug_stub.go
@@ -33,12 +35,16 @@ IF (ARCH_X86_64)
     )
 ENDIF()
 
-IF (OS_LINUX AND ARCH_ARM64)
-    SRCS(decode_other.go)
+IF (ARCH_ARM64)
+    SRCS(
+        decode_other.go
+    )
 ENDIF()
 
-IF (OS_DARWIN AND ARCH_ARM64)
-    SRCS(decode_other.go)
+IF (OS_LINUX AND ARCH_ARM6 OR OS_LINUX AND ARCH_ARM7)
+    SRCS(
+        decode_other.go
+    )
 ENDIF()
 
 END()

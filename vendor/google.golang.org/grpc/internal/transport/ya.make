@@ -2,8 +2,11 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.73.0)
+
 SRCS(
     bdp_estimator.go
+    client_stream.go
     controlbuf.go
     defaults.go
     flowcontrol.go
@@ -13,6 +16,7 @@ SRCS(
     http_util.go
     logging.go
     proxy.go
+    server_stream.go
     transport.go
 )
 
@@ -24,9 +28,14 @@ GO_TEST_SRCS(
     transport_test.go
 )
 
+GO_XTEST_SRCS(
+    # proxy_ext_test.go
+)
+
 END()
 
 RECURSE(
     gotest
+    grpchttp2
     networktype
 )

@@ -22,6 +22,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <google/protobuf/util/json_util.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
 

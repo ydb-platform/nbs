@@ -10,19 +10,18 @@ import (
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_TableStats"
 	"google.golang.org/grpc"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/allocator"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/operation"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/params"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/scripting/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/stack"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/table/scanner"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/value"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/types"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/retry"
 	"github.com/ydb-platform/ydb-go-sdk/v3/scripting"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/result"
-	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
@@ -32,48 +31,44 @@ var (
 	errNilClient = xerrors.Wrap(errors.New("scripting client is not initialized"))
 )
 
-type Client struct {
-	config  config.Config
-	service Ydb_Scripting_V1.ScriptingServiceClient
-}
+type (
+	Client struct {
+		config  config.Config
+		service Ydb_Scripting_V1.ScriptingServiceClient
+	}
+)
 
-func (c *Client) Execute(
-	ctx context.Context,
-	query string,
-	params *table.QueryParameters,
-) (r result.Result, err error) {
+func (c *Client) Execute(ctx context.Context, sql string, parameters *params.Params) (r result.Result, err error) {
 	if c == nil {
 		return r, xerrors.WithStackTrace(errNilClient)
 	}
 	call := func(ctx context.Context) error {
-		r, err = c.execute(ctx, query, params)
+		r, err = c.execute(ctx, sql, parameters)
+
 		return xerrors.WithStackTrace(err)
 	}
 	if !c.config.AutoRetry() {
 		err = call(ctx)
+
 		return
 	}
 	err = retry.Retry(ctx, call,
 		retry.WithStackTrace(),
 		retry.WithTrace(c.config.TraceRetry()),
+		retry.WithBudget(c.config.RetryBudget()),
 	)
+
 	return r, xerrors.WithStackTrace(err)
 }
 
-func (c *Client) execute(
-	ctx context.Context,
-	query string,
-	params *table.QueryParameters,
-) (r result.Result, err error) {
+func (c *Client) execute(ctx context.Context, sql string, parameters *params.Params) (r result.Result, err error) {
 	var (
 		onDone = trace.ScriptingOnExecute(c.config.Trace(), &ctx,
-			stack.FunctionID(""),
-			query, params,
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/internal/scripting.(*Client).execute"),
+			sql, parameters,
 		)
-		a       = allocator.New()
 		request = &Ydb_Scripting.ExecuteYqlRequest{
-			Script:     query,
-			Parameters: params.Params().ToYDB(a),
+			Script: sql,
 			OperationParams: operation.Params(
 				ctx,
 				c.config.OperationTimeout(),
@@ -85,9 +80,16 @@ func (c *Client) execute(
 		response *Ydb_Scripting.ExecuteYqlResponse
 	)
 	defer func() {
-		a.Free()
 		onDone(r, err)
 	}()
+
+	params, err := parameters.ToYDB()
+	if err != nil {
+		return nil, xerrors.WithStackTrace(err)
+	}
+
+	request.Parameters = params
+
 	response, err = c.service.ExecuteYql(ctx, request)
 	if err != nil {
 		return nil, xerrors.WithStackTrace(err)
@@ -97,6 +99,7 @@ func (c *Client) execute(
 	if err != nil {
 		return nil, xerrors.WithStackTrace(err)
 	}
+
 	return scanner.NewUnary(result.GetResultSets(), result.GetQueryStats()), nil
 }
 
@@ -111,42 +114,42 @@ func mode2mode(mode scripting.ExplainMode) Ydb_Scripting.ExplainYqlRequest_Mode 
 	}
 }
 
-func (c *Client) Explain(
-	ctx context.Context,
-	query string,
-	mode scripting.ExplainMode,
-) (e table.ScriptingYQLExplanation, err error) {
+func (c *Client) Explain(ctx context.Context, sql string, mode scripting.ExplainMode) (
+	e table.ScriptingYQLExplanation, err error,
+) {
 	if c == nil {
 		return e, xerrors.WithStackTrace(errNilClient)
 	}
 	call := func(ctx context.Context) error {
-		e, err = c.explain(ctx, query, mode)
+		e, err = c.explain(ctx, sql, mode)
+
 		return xerrors.WithStackTrace(err)
 	}
 	if !c.config.AutoRetry() {
 		err = call(ctx)
+
 		return
 	}
 	err = retry.Retry(ctx, call,
 		retry.WithStackTrace(),
 		retry.WithIdempotent(true),
 		retry.WithTrace(c.config.TraceRetry()),
+		retry.WithBudget(c.config.RetryBudget()),
 	)
+
 	return e, xerrors.WithStackTrace(err)
 }
 
-func (c *Client) explain(
-	ctx context.Context,
-	query string,
-	mode scripting.ExplainMode,
-) (e table.ScriptingYQLExplanation, err error) {
+func (c *Client) explain(ctx context.Context, sql string, mode scripting.ExplainMode) (
+	e table.ScriptingYQLExplanation, err error,
+) {
 	var (
 		onDone = trace.ScriptingOnExplain(c.config.Trace(), &ctx,
-			stack.FunctionID(""),
-			query,
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/internal/scripting.(*Client).explain"),
+			sql,
 		)
 		request = &Ydb_Scripting.ExplainYqlRequest{
-			Script: query,
+			Script: sql,
 			Mode:   mode2mode(mode),
 			OperationParams: operation.Params(
 				ctx,
@@ -177,48 +180,48 @@ func (c *Client) explain(
 		ParameterTypes: make(map[string]types.Type, len(result.GetParametersTypes())),
 	}
 	for k, v := range result.GetParametersTypes() {
-		e.ParameterTypes[k] = value.TypeFromYDB(v)
+		e.ParameterTypes[k] = types.TypeFromYDB(v)
 	}
+
 	return e, nil
 }
 
-func (c *Client) StreamExecute(
-	ctx context.Context,
-	query string,
-	params *table.QueryParameters,
-) (r result.StreamResult, err error) {
+func (c *Client) StreamExecute(ctx context.Context, sql string, params *params.Params) (
+	r result.StreamResult, err error,
+) {
 	if c == nil {
 		return r, xerrors.WithStackTrace(errNilClient)
 	}
 	call := func(ctx context.Context) error {
-		r, err = c.streamExecute(ctx, query, params)
+		r, err = c.streamExecute(ctx, sql, params)
+
 		return xerrors.WithStackTrace(err)
 	}
 	if !c.config.AutoRetry() {
 		err = call(ctx)
+
 		return
 	}
 	err = retry.Retry(ctx, call,
 		retry.WithStackTrace(),
 		retry.WithTrace(c.config.TraceRetry()),
+		retry.WithBudget(c.config.RetryBudget()),
 	)
+
 	return r, xerrors.WithStackTrace(err)
 }
 
-func (c *Client) streamExecute(
-	ctx context.Context,
-	query string,
-	params *table.QueryParameters,
-) (r result.StreamResult, err error) {
+//nolint:funlen
+func (c *Client) streamExecute(ctx context.Context, sql string, parameters *params.Params) (
+	r result.StreamResult, err error,
+) {
 	var (
 		onIntermediate = trace.ScriptingOnStreamExecute(c.config.Trace(), &ctx,
-			stack.FunctionID(""),
-			query, params,
+			stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/internal/scripting.(*Client).streamExecute"),
+			sql, parameters,
 		)
-		a       = allocator.New()
 		request = &Ydb_Scripting.ExecuteYqlRequest{
-			Script:     query,
-			Parameters: params.Params().ToYDB(a),
+			Script: sql,
 			OperationParams: operation.Params(
 				ctx,
 				c.config.OperationTimeout(),
@@ -228,17 +231,24 @@ func (c *Client) streamExecute(
 		}
 	)
 	defer func() {
-		a.Free()
 		if err != nil {
 			onIntermediate(err)(err)
 		}
 	}()
+
+	params, err := parameters.ToYDB()
+	if err != nil {
+		return nil, xerrors.WithStackTrace(err)
+	}
+
+	request.Parameters = params
 
 	ctx, cancel := xcontext.WithCancel(ctx)
 
 	stream, err := c.service.StreamExecuteYql(ctx, request)
 	if err != nil {
 		cancel()
+
 		return nil, xerrors.WithStackTrace(err)
 	}
 
@@ -261,12 +271,14 @@ func (c *Client) streamExecute(
 				if result == nil || err != nil {
 					return nil, nil, xerrors.WithStackTrace(err)
 				}
+
 				return result.GetResultSet(), result.GetQueryStats(), nil
 			}
 		},
 		func(err error) error {
 			cancel()
 			onIntermediate(xerrors.HideEOF(err))(xerrors.HideEOF(err))
+
 			return err
 		},
 	)
@@ -276,16 +288,19 @@ func (c *Client) Close(ctx context.Context) (err error) {
 	if c == nil {
 		return xerrors.WithStackTrace(errNilClient)
 	}
-	onDone := trace.ScriptingOnClose(c.config.Trace(), &ctx, stack.FunctionID(""))
+	onDone := trace.ScriptingOnClose(c.config.Trace(), &ctx,
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/internal/scripting.(*Client).Close"),
+	)
 	defer func() {
 		onDone(err)
 	}()
+
 	return nil
 }
 
-func New(ctx context.Context, cc grpc.ClientConnInterface, config config.Config) (*Client, error) {
+func New(ctx context.Context, cc grpc.ClientConnInterface, config config.Config) *Client {
 	return &Client{
 		config:  config,
 		service: Ydb_Scripting_V1.NewScriptingServiceClient(cc),
-	}, nil
+	}
 }

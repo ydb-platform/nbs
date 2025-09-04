@@ -10,6 +10,8 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
+#include <google/protobuf/text_format.h>
+
 #include <util/stream/str.h>
 #include <util/string/join.h>
 

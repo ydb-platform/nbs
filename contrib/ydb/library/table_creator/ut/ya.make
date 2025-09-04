@@ -11,9 +11,9 @@ SRCS(
 PEERDIR(
     library/cpp/testing/unittest
     contrib/ydb/core/testlib/default
-    contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/sql/pg_dummy
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
+    yql/essentials/public/udf/service/exception_policy
+    yql/essentials/sql/pg_dummy
+    contrib/ydb/public/sdk/cpp/src/client/driver
 )
 
 YQL_LAST_ABI_VERSION()

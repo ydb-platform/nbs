@@ -14,12 +14,14 @@ import (
 
 var (
 	errCloseClosedMessageQueue   = xerrors.Wrap(errors.New("ydb: close closed message queue"))
+	errAckOnClosedMessageQueue   = xerrors.Wrap(errors.New("ydb: ack on closed message queue"))
 	errGetMessageFromClosedQueue = xerrors.Wrap(errors.New("ydb: get message from closed message queue"))
 	errAddUnorderedMessages      = xerrors.Wrap(errors.New("ydb: add unordered messages"))
 	errAckUnexpectedMessage      = xerrors.Wrap(errors.New("ydb: ack unexpected message"))
 )
 
 const (
+	//nolint:mnd
 	intSize = 32 << (^uint(0) >> 63) // copy from math package for use in go <= 1.16
 	maxInt  = 1<<(intSize-1) - 1     // copy from math package for use in go <= 1.16
 	minInt  = -1 << (intSize - 1)    // copy from math package for use in go <= 1.16
@@ -34,12 +36,13 @@ type messageQueue struct {
 	closedErr         error
 	acksReceivedEvent xsync.EventBroadcast
 
-	m                xsync.RWMutex
-	closed           bool
-	closedChan       empty.Chan
-	lastWrittenIndex int
-	lastSentIndex    int
-	lastSeqNo        int64
+	m                         xsync.RWMutex
+	stopReceiveMessagesReason error
+	closed                    bool
+	closedChan                empty.Chan
+	lastWrittenIndex          int
+	lastSentIndex             int
+	lastSeqNo                 int64
 
 	messagesByOrder map[int]messageWithDataContent
 	seqNoToOrderID  map[int64]int
@@ -57,6 +60,7 @@ func newMessageQueue() messageQueue {
 
 func (q *messageQueue) AddMessages(messages []messageWithDataContent) error {
 	_, err := q.addMessages(messages, false)
+
 	return err
 }
 
@@ -74,8 +78,10 @@ func (q *messageQueue) addMessages(messages []messageWithDataContent, needWaiter
 	q.m.Lock()
 	defer q.m.Unlock()
 
-	if q.closed {
-		return waiter, xerrors.WithStackTrace(fmt.Errorf("ydb: add message to closed message queue: %w", q.closedErr))
+	if q.stopReceiveMessagesReason != nil {
+		return waiter, xerrors.WithStackTrace(
+			fmt.Errorf("ydb: add message to closed message queue: %w", q.stopReceiveMessagesReason),
+		)
 	}
 
 	if err := q.checkNewMessagesBeforeAddNeedLock(messages); err != nil {
@@ -136,6 +142,7 @@ func (q *messageQueue) addMessageNeedLock(
 	q.messagesByOrder[messageIndex] = mess
 	q.seqNoToOrderID[mess.SeqNo] = messageIndex
 	q.lastSeqNo = mess.SeqNo
+
 	return messageIndex
 }
 
@@ -149,6 +156,9 @@ func (q *messageQueue) AcksReceived(acks []rawtopicwriter.WriteAck) error {
 			q.OnAckReceived(ackReceivedCounter)
 		}
 	}()
+	if q.closed {
+		return xerrors.WithStackTrace(errAckOnClosedMessageQueue)
+	}
 
 	for i := range acks {
 		if err := q.ackReceivedNeedLock(acks[i].SeqNo); err != nil {
@@ -158,6 +168,7 @@ func (q *messageQueue) AcksReceived(acks []rawtopicwriter.WriteAck) error {
 	}
 
 	q.acksReceivedEvent.Broadcast()
+
 	return nil
 }
 
@@ -169,7 +180,21 @@ func (q *messageQueue) ackReceivedNeedLock(seqNo int64) error {
 
 	delete(q.seqNoToOrderID, seqNo)
 	delete(q.messagesByOrder, orderID)
+
 	return nil
+}
+
+func (q *messageQueue) StopAddNewMessages(reason error) {
+	q.m.Lock()
+	defer q.m.Unlock()
+
+	q.stopAddNewMessagesNeedLock(reason)
+}
+
+func (q *messageQueue) stopAddNewMessagesNeedLock(reason error) {
+	if q.stopReceiveMessagesReason == nil {
+		q.stopReceiveMessagesReason = reason
+	}
 }
 
 func (q *messageQueue) Close(err error) error {
@@ -183,6 +208,8 @@ func (q *messageQueue) Close(err error) error {
 			q.OnAckReceived(len(q.seqNoToOrderID))
 		}
 	}()
+
+	q.stopAddNewMessagesNeedLock(err)
 
 	if q.closed {
 		return xerrors.WithStackTrace(errCloseClosedMessageQueue)
@@ -270,6 +297,7 @@ func (q *messageQueue) getMessagesForSendWithLock() []messageWithDataContent {
 			res = append(res, msg)
 		}
 	}
+
 	return res
 }
 
@@ -288,6 +316,7 @@ func (q *messageQueue) Wait(ctx context.Context, waiter MessageQueueAckWaiter) e
 				checkMessageIndex := waiter.sequenseNumbers[0]
 				if _, ok := q.messagesByOrder[checkMessageIndex]; ok {
 					hasWaited = true
+
 					return
 				}
 				waiter.sequenseNumbers = waiter.sequenseNumbers[1:]
@@ -307,6 +336,16 @@ func (q *messageQueue) Wait(ctx context.Context, waiter MessageQueueAckWaiter) e
 			// pass next iteration
 		}
 	}
+}
+
+// WaitLastWritten waits for last written message gets ack.
+func (q *messageQueue) WaitLastWritten(ctx context.Context) error {
+	var lastIndex int
+	q.m.WithRLock(func() {
+		lastIndex = q.lastWrittenIndex
+	})
+
+	return q.Wait(ctx, MessageQueueAckWaiter{sequenseNumbers: []int{lastIndex}})
 }
 
 type MessageQueueAckWaiter struct {

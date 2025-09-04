@@ -8,9 +8,8 @@ PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
     contrib/ydb/core/fq/libs/checkpointing_common
-    contrib/ydb/core/fq/libs/events
     contrib/ydb/core/fq/libs/checkpoint_storage/proto
-    contrib/ydb/library/yql/public/issue
+    yql/essentials/public/issue
 )
 
 END()

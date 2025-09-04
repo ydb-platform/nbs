@@ -1,7 +1,8 @@
 PROTO_LIBRARY()
+PROTOC_FATAL_WARNINGS()
 
 PEERDIR(
-    contrib/ydb/library/yql/providers/generic/connector/api/common
+    yql/essentials/providers/common/proto
     contrib/ydb/public/api/protos
 )
 
@@ -10,6 +11,7 @@ EXCLUDE_TAGS(GO_PROTO)
 
 SRCS(
     connector.proto
+    error.proto
 )
 
 END()

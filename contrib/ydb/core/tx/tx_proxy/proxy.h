@@ -5,9 +5,9 @@
 #include <contrib/ydb/public/lib/base/defs.h>
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
 #include <contrib/ydb/library/ydb_issue/issue_helpers.h>
-#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <contrib/ydb/core/control/lib/immediate_control_board_impl.h>
 #include <contrib/ydb/core/tx/tx.h>
-#include <contrib/ydb/core/tx/datashard/sys_tables.h>
+#include <contrib/ydb/core/tx/locks/sys_tables.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 #include <contrib/ydb/core/scheme/tablet_scheme.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
@@ -170,7 +170,7 @@ struct TEvTxUserProxy {
         }
     };
 
-    struct TEvInvalidateTableResult : public TEventSimple<TEvInvalidateTableResult, EvInvalidateTableResult> {};
+    struct TEvInvalidateTableResult : public TEventPB<TEvInvalidateTableResult, NKikimrTxUserProxy::TEvInvalidateTableResult, EvInvalidateTableResult> {};
 
     struct TEvProposeKqpTransaction : public TEventLocal<TEvProposeKqpTransaction, EvProposeKqpTransaction> {
         TActorId ExecuterId;

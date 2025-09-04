@@ -2,7 +2,7 @@
 #include "defs.h"
 #include "grpc_mon.h"
 
-#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <contrib/ydb/core/control/lib/immediate_control_board_impl.h>
 #include <contrib/ydb/core/grpc_services/counters/counters.h>
 
 #include <contrib/ydb/library/grpc/server/grpc_request.h>

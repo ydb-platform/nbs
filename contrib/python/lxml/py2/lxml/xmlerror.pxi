@@ -23,7 +23,7 @@ def clear_error_log():
 
 # setup for global log:
 
-cdef void _initThreadLogging():
+cdef void _initThreadLogging() noexcept:
     # Disable generic error lines from libxml2.
     _connectGenericErrorLog(None)
 
@@ -66,7 +66,7 @@ cdef class _LogEntry:
         tree.xmlFree(self._c_path)
 
     @cython.final
-    cdef _setError(self, xmlerror.xmlError* error):
+    cdef int _setError(self, const xmlerror.xmlError* error) except -1:
         self.domain   = error.domain
         self.type     = error.code
         self.level    = <int>error.level
@@ -198,7 +198,7 @@ cdef class _BaseErrorLog:
         pass
 
     @cython.final
-    cdef void _receive(self, xmlerror.xmlError* error):
+    cdef int _receive(self, const xmlerror.xmlError* error) except -1:
         cdef bint is_error
         cdef _LogEntry entry
         cdef _BaseErrorLog global_log
@@ -216,8 +216,8 @@ cdef class _BaseErrorLog:
             self.last_error = entry
 
     @cython.final
-    cdef void _receiveGeneric(self, int domain, int type, int level, int line,
-                              message, filename):
+    cdef int _receiveGeneric(self, int domain, int type, int level, int line,
+                             message, filename) except -1:
         cdef bint is_error
         cdef _LogEntry entry
         cdef _BaseErrorLog global_log
@@ -634,7 +634,7 @@ def use_global_python_log(PyErrorLog log not None):
 
 
 # local log functions: forward error to logger object
-cdef void _forwardError(void* c_log_handler, xmlerror.xmlError* error) with gil:
+cdef void _forwardError(void* c_log_handler, const xmlerror.xmlError* error) noexcept with gil:
     cdef _BaseErrorLog log_handler
     if c_log_handler is not NULL:
         log_handler = <_BaseErrorLog>c_log_handler
@@ -645,27 +645,27 @@ cdef void _forwardError(void* c_log_handler, xmlerror.xmlError* error) with gil:
     log_handler._receive(error)
 
 
-cdef void _receiveError(void* c_log_handler, xmlerror.xmlError* error) nogil:
+cdef void _receiveError(void* c_log_handler, const xmlerror.xmlError* error) noexcept nogil:
     # no Python objects here, may be called without thread context !
     if __DEBUG:
         _forwardError(c_log_handler, error)
 
 
-cdef void _receiveXSLTError(void* c_log_handler, char* msg, ...) nogil:
+cdef void _receiveXSLTError(void* c_log_handler, char* msg, ...) noexcept nogil:
     # no Python objects here, may be called without thread context !
     cdef cvarargs.va_list args
     cvarargs.va_start(args, msg)
     _receiveGenericError(c_log_handler, xmlerror.XML_FROM_XSLT, msg, args)
     cvarargs.va_end(args)
 
-cdef void _receiveRelaxNGParseError(void* c_log_handler, char* msg, ...) nogil:
+cdef void _receiveRelaxNGParseError(void* c_log_handler, char* msg, ...) noexcept nogil:
     # no Python objects here, may be called without thread context !
     cdef cvarargs.va_list args
     cvarargs.va_start(args, msg)
     _receiveGenericError(c_log_handler, xmlerror.XML_FROM_RELAXNGP, msg, args)
     cvarargs.va_end(args)
 
-cdef void _receiveRelaxNGValidationError(void* c_log_handler, char* msg, ...) nogil:
+cdef void _receiveRelaxNGValidationError(void* c_log_handler, char* msg, ...) noexcept nogil:
     # no Python objects here, may be called without thread context !
     cdef cvarargs.va_list args
     cvarargs.va_start(args, msg)
@@ -673,11 +673,11 @@ cdef void _receiveRelaxNGValidationError(void* c_log_handler, char* msg, ...) no
     cvarargs.va_end(args)
 
 # dummy function: no log output at all
-cdef void _nullGenericErrorFunc(void* ctxt, char* msg, ...) nogil:
+cdef void _nullGenericErrorFunc(void* ctxt, char* msg, ...) noexcept nogil:
     pass
 
 
-cdef void _connectGenericErrorLog(log, int c_domain=-1):
+cdef void _connectGenericErrorLog(log, int c_domain=-1) noexcept:
     cdef xmlerror.xmlGenericErrorFunc error_func = NULL
     c_log = <void*>log
     if c_domain == xmlerror.XML_FROM_XSLT:
@@ -694,7 +694,7 @@ cdef void _connectGenericErrorLog(log, int c_domain=-1):
 
 
 cdef void _receiveGenericError(void* c_log_handler, int c_domain,
-                               char* msg, cvarargs.va_list args) nogil:
+                               char* msg, cvarargs.va_list args) noexcept nogil:
     # no Python objects here, may be called without thread context !
     cdef xmlerror.xmlError c_error
     cdef char* c_text
@@ -764,8 +764,11 @@ cdef void _receiveGenericError(void* c_log_handler, int c_domain,
         element_size = cstring_h.strlen(c_element)
         c_message = <char*>stdlib.malloc(
             (text_size + 12 + element_size + 1) * sizeof(char))
-        stdio.sprintf(c_message, "%s, element '%s'", c_text, c_element)
-        c_error.message = c_message
+        if c_message is NULL:
+            c_error.message = c_text
+        else:
+            stdio.sprintf(c_message, "%s, element '%s'", c_text, c_element)
+            c_error.message = c_message
 
     c_error.domain = c_domain
     c_error.code   = xmlerror.XML_ERR_OK    # what else?

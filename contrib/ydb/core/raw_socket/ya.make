@@ -7,6 +7,7 @@ SRCS(
     sock_listener.cpp
     sock_listener.h
     sock_ssl.h
+    sock_settings.h
 )
 
 PEERDIR(
@@ -19,5 +20,5 @@ PEERDIR(
 END()
 
 RECURSE_FOR_TESTS(
-#    ut
+    ut
 )

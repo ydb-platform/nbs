@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.46.7)
+
 SRCS(
     chain_provider.go
     context_background_go1.7.go

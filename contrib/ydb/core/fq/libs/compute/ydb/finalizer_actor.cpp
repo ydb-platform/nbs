@@ -7,24 +7,23 @@
 #include <contrib/ydb/core/fq/libs/ydb/ydb.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <contrib/ydb/library/yql/providers/common/metrics/service_counters.h>
+#include <yql/essentials/providers/common/metrics/service_counters.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_query/client.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_operation/operation.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/query/client.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/operation/operation.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <google/protobuf/util/time_util.h>
 
-#define LOG_E(stream) LOG_ERROR_S(*TlsActivationContext, NKikimrServices::FQ_RUN_ACTOR, "[ydb] [Finalizer] QueryId: " << Params.QueryId << " " << stream)
-#define LOG_W(stream) LOG_WARN_S( *TlsActivationContext, NKikimrServices::FQ_RUN_ACTOR, "[ydb] [Finalizer] QueryId: " << Params.QueryId << " " << stream)
-#define LOG_I(stream) LOG_INFO_S( *TlsActivationContext, NKikimrServices::FQ_RUN_ACTOR, "[ydb] [Finalizer] QueryId: " << Params.QueryId << " " << stream)
-#define LOG_D(stream) LOG_DEBUG_S(*TlsActivationContext, NKikimrServices::FQ_RUN_ACTOR, "[ydb] [Finalizer] QueryId: " << Params.QueryId << " " << stream)
-#define LOG_T(stream) LOG_TRACE_S(*TlsActivationContext, NKikimrServices::FQ_RUN_ACTOR, "[ydb] [Finalizer] QueryId: " << Params.QueryId << " " << stream)
+#define LOG_E(stream) LOG_ERROR_S(*TlsActivationContext, NKikimrServices::FQ_RUN_ACTOR, "[ydb] [Finalizer] CloudId: " << Params.CloudId << " Scope: " << Params.Scope.ToString() << " QueryId: " << Params.QueryId << " JobId: " << Params.JobId << " " << stream)
+#define LOG_W(stream) LOG_WARN_S( *TlsActivationContext, NKikimrServices::FQ_RUN_ACTOR, "[ydb] [Finalizer] CloudId: " << Params.CloudId << " Scope: " << Params.Scope.ToString() << " QueryId: " << Params.QueryId << " JobId: " << Params.JobId << " " << stream)
+#define LOG_I(stream) LOG_INFO_S( *TlsActivationContext, NKikimrServices::FQ_RUN_ACTOR, "[ydb] [Finalizer] CloudId: " << Params.CloudId << " Scope: " << Params.Scope.ToString() << " QueryId: " << Params.QueryId << " JobId: " << Params.JobId << " " << stream)
+#define LOG_D(stream) LOG_DEBUG_S(*TlsActivationContext, NKikimrServices::FQ_RUN_ACTOR, "[ydb] [Finalizer] CloudId: " << Params.CloudId << " Scope: " << Params.Scope.ToString() << " QueryId: " << Params.QueryId << " JobId: " << Params.JobId << " " << stream)
+#define LOG_T(stream) LOG_TRACE_S(*TlsActivationContext, NKikimrServices::FQ_RUN_ACTOR, "[ydb] [Finalizer] CloudId: " << Params.CloudId << " Scope: " << Params.Scope.ToString() << " QueryId: " << Params.QueryId << " JobId: " << Params.JobId << " " << stream)
 
 namespace NFq {
 
@@ -91,6 +90,7 @@ public:
                 return ::FederatedQuery::QueryMeta::COMPLETED;
             case NYdb::NQuery::EExecStatus::Unspecified:
             case NYdb::NQuery::EExecStatus::Starting:
+            case NYdb::NQuery::EExecStatus::Running:
             case NYdb::NQuery::EExecStatus::Aborted:
             case NYdb::NQuery::EExecStatus::Canceled:
             case NYdb::NQuery::EExecStatus::Failed:
@@ -128,6 +128,7 @@ public:
                 return false;
             case NYdb::NQuery::EExecStatus::Unspecified:
             case NYdb::NQuery::EExecStatus::Starting:
+            case NYdb::NQuery::EExecStatus::Running:
             case NYdb::NQuery::EExecStatus::Aborted:
             case NYdb::NQuery::EExecStatus::Canceled:
             case NYdb::NQuery::EExecStatus::Failed:
@@ -185,8 +186,8 @@ public:
 
     void SendFinalPing() {
         Fq::Private::PingTaskRequest pingTaskRequest;
-        if (ExecStatus == NYdb::NQuery::EExecStatus::Completed || Status == FederatedQuery::QueryMeta::COMPLETING) {
-            pingTaskRequest.mutable_result_id()->set_value(Params.ResultId);
+        if (ExecStatus != NYdb::NQuery::EExecStatus::Completed && Status != FederatedQuery::QueryMeta::COMPLETING) {
+            pingTaskRequest.mutable_result_id()->set_value("");
         }
         pingTaskRequest.set_status(GetFinalStatus());
         *pingTaskRequest.mutable_finished_at() = google::protobuf::util::TimeUtil::MillisecondsToTimestamp(TInstant::Now().MilliSeconds());

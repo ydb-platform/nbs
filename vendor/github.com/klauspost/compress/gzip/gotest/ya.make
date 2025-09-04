@@ -6,7 +6,11 @@ LICENSE(
     MIT
 )
 
-DATA(arcadia/vendor/github.com/klauspost/compress/gzip/testdata)
+VERSION(v1.18.0)
+
+DATA(
+    arcadia/vendor/github.com/klauspost/compress/gzip/testdata
+)
 
 TEST_CWD(vendor/github.com/klauspost/compress/gzip)
 

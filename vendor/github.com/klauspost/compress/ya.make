@@ -6,7 +6,11 @@ LICENSE(
     MIT
 )
 
-SRCS(compressible.go)
+VERSION(v1.18.0)
+
+SRCS(
+    compressible.go
+)
 
 GO_TEST_SRCS(compressible_test.go)
 
@@ -16,11 +20,13 @@ RECURSE(
     flate
     fse
     gotest
+    gzhttp
     gzip
     huff0
     internal
     s2
     snappy
     zip
+    zlib
     zstd
 )

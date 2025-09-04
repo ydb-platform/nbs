@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v1.0.8)
+
 SRCS(
     comparitors.go
     expect.go
@@ -19,4 +21,6 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

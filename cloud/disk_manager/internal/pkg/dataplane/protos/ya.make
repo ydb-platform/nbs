@@ -17,6 +17,7 @@ SRCS(
     replicate_disk_task.proto
     transfer_from_disk_to_disk_task.proto
     transfer_from_snapshot_to_disk_task.proto
+    verify_migrated_legacy_snapshot_task.proto
 )
 
 PEERDIR(

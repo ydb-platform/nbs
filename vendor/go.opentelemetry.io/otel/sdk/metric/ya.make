@@ -1,8 +1,8 @@
 GO_LIBRARY()
 
-SUBSCRIBER(g:go-contrib)
-
 LICENSE(Apache-2.0)
+
+VERSION(v1.36.0)
 
 SRCS(
     aggregation.go
@@ -10,6 +10,7 @@ SRCS(
     config.go
     doc.go
     env.go
+    exemplar.go
     exporter.go
     instrument.go
     instrumentkind_string.go
@@ -28,6 +29,7 @@ GO_TEST_SRCS(
     benchmark_test.go
     cache_test.go
     config_test.go
+    exemplar_test.go
     instrument_test.go
     manual_reader_test.go
     meter_test.go
@@ -45,6 +47,7 @@ GO_XTEST_SRCS(example_test.go)
 END()
 
 RECURSE(
+    exemplar
     gotest
     internal
     metricdata

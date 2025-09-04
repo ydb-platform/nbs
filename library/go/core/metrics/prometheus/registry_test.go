@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/ydb-platform/nbs/library/go/core/metrics"
 	"github.com/ydb-platform/nbs/library/go/ptr"
-	"github.com/ydb-platform/nbs/library/go/test/assertpb"
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
@@ -140,6 +139,8 @@ func TestRegistry_Subregisters(t *testing.T) {
 
 	cmpOpts := []cmp.Option{
 		protocmp.Transform(),
+		protocmp.IgnoreFields(&dto.Counter{}, "created_timestamp"),
+		protocmp.IgnoreFields(&dto.Histogram{}, "created_timestamp"),
 	}
 	assert.True(t, cmp.Equal(expected, mr, cmpOpts...), cmp.Diff(expected, mr, cmpOpts...))
 }
@@ -177,6 +178,7 @@ func TestRegistry_Counter(t *testing.T) {
 	}
 	cmpOpts := []cmp.Option{
 		protocmp.Transform(),
+		protocmp.IgnoreFields(&dto.Counter{}, "created_timestamp"),
 	}
 	assert.True(t, cmp.Equal(expected, mr, cmpOpts...), cmp.Diff(expected, mr, cmpOpts...))
 }
@@ -222,7 +224,11 @@ func TestRegistry_DurationHistogram(t *testing.T) {
 			},
 		},
 	}
-	assertpb.Equal(t, expected, mr)
+	cmpOpts := []cmp.Option{
+		protocmp.Transform(),
+		protocmp.IgnoreFields(&dto.Histogram{}, "created_timestamp"),
+	}
+	assert.True(t, cmp.Equal(expected, mr, cmpOpts...), cmp.Diff(expected, mr, cmpOpts...))
 }
 
 func TestRegistry_Gauge(t *testing.T) {
@@ -254,7 +260,10 @@ func TestRegistry_Gauge(t *testing.T) {
 			},
 		},
 	}
-	assertpb.Equal(t, expected, mr)
+	cmpOpts := []cmp.Option{
+		protocmp.Transform(),
+	}
+	assert.True(t, cmp.Equal(expected, mr, cmpOpts...), cmp.Diff(expected, mr, cmpOpts...))
 }
 
 func TestRegistry_Histogram(t *testing.T) {
@@ -296,7 +305,11 @@ func TestRegistry_Histogram(t *testing.T) {
 			},
 		},
 	}
-	assertpb.Equal(t, expected, mr)
+	cmpOpts := []cmp.Option{
+		protocmp.Transform(),
+		protocmp.IgnoreFields(&dto.Histogram{}, "created_timestamp"),
+	}
+	assert.True(t, cmp.Equal(expected, mr, cmpOpts...), cmp.Diff(expected, mr, cmpOpts...))
 }
 
 func TestRegistry_Timer(t *testing.T) {
@@ -328,7 +341,10 @@ func TestRegistry_Timer(t *testing.T) {
 			},
 		},
 	}
-	assertpb.Equal(t, expected, mr)
+	cmpOpts := []cmp.Option{
+		protocmp.Transform(),
+	}
+	assert.True(t, cmp.Equal(expected, mr, cmpOpts...), cmp.Diff(expected, mr, cmpOpts...))
 }
 
 func TestRegistry_WithPrefix(t *testing.T) {
@@ -447,7 +463,11 @@ func TestRegistry_Counter_NoPanic(t *testing.T) {
 			},
 		},
 	}
-	assertpb.Equal(t, expected, mr)
+	cmpOpts := []cmp.Option{
+		protocmp.Transform(),
+		protocmp.IgnoreFields(&dto.Counter{}, "created_timestamp"),
+	}
+	assert.True(t, cmp.Equal(expected, mr, cmpOpts...), cmp.Diff(expected, mr, cmpOpts...))
 }
 
 func TestRegistry_NameSanitizer(t *testing.T) {

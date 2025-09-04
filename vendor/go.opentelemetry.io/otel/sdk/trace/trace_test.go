@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package trace
 
@@ -34,13 +23,12 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
-	ottest "go.opentelemetry.io/otel/sdk/internal/internaltest"
 	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
-const envVar = "OTEL_RESOURCE_ATTRIBUTES"
+const envVarResourceAttributes = "OTEL_RESOURCE_ATTRIBUTES"
 
 type storingHandler struct {
 	errs []error
@@ -58,6 +46,7 @@ var (
 	tid trace.TraceID
 	sid trace.SpanID
 	sc  trace.SpanContext
+	ts  trace.TraceState
 
 	handler = &storingHandler{}
 )
@@ -70,19 +59,20 @@ func init() {
 		SpanID:     sid,
 		TraceFlags: 0x1,
 	})
+	ts, _ = trace.ParseTraceState("k=v")
 
 	otel.SetErrorHandler(handler)
 }
 
 func TestTracerFollowsExpectedAPIBehaviour(t *testing.T) {
-	harness := ottest.NewHarness(t)
+	harness := newHarness(t)
 
-	harness.TestTracerProvider(func() trace.TracerProvider {
+	harness.testTracerProvider(func() trace.TracerProvider {
 		return NewTracerProvider(WithSampler(TraceIDRatioBased(0)))
 	})
 
 	tp := NewTracerProvider(WithSampler(TraceIDRatioBased(0)))
-	harness.TestTracer(func() trace.Tracer {
+	harness.testTracer(func() trace.Tracer {
 		return tp.Tracer("")
 	})
 }
@@ -160,7 +150,10 @@ func (ts *testSampler) ShouldSample(p SamplingParameters) SamplingResult {
 	if strings.HasPrefix(p.Name, ts.prefix) {
 		decision = RecordAndSample
 	}
-	return SamplingResult{Decision: decision, Attributes: []attribute.KeyValue{attribute.Int("callCount", ts.callCount)}}
+	return SamplingResult{
+		Decision:   decision,
+		Attributes: []attribute.KeyValue{attribute.Int("callCount", ts.callCount)},
+	}
 }
 
 func (ts testSampler) Description() string {
@@ -225,7 +218,7 @@ func TestSpanIsRecording(t *testing.T) {
 			_, span := tp.Tracer(name).Start(context.Background(), "StartSpan")
 			got := span.IsRecording()
 			span.End()
-			assert.Equal(t, got, tc.want, name)
+			assert.Equal(t, tc.want, got, name)
 		}
 	})
 
@@ -341,10 +334,6 @@ func TestStartSpanWithParent(t *testing.T) {
 		t.Error(err)
 	}
 
-	ts, err := trace.ParseTraceState("k=v")
-	if err != nil {
-		t.Error(err)
-	}
 	sc2 := sc.WithTraceState(ts)
 	_, s3 := tr.Start(trace.ContextWithRemoteSpanContext(ctx, sc2), "span3-sampled-parent2")
 	if err := checkChild(t, sc2, s3); err != nil {
@@ -387,13 +376,21 @@ func TestStartSpanNewRootNotSampled(t *testing.T) {
 
 	_, s2 := neverSampledTr.Start(ctx, "span2-no-newroot")
 	if !s2.SpanContext().IsSampled() {
-		t.Error(fmt.Errorf("got child span is not sampled, want child span with sampler: ParentBased(NeverSample()) to be sampled"))
+		t.Error(
+			fmt.Errorf(
+				"got child span is not sampled, want child span with sampler: ParentBased(NeverSample()) to be sampled",
+			),
+		)
 	}
 
 	// Adding WithNewRoot causes child spans to not sample based on parent context
 	_, s3 := neverSampledTr.Start(ctx, "span3-newroot", trace.WithNewRoot())
 	if s3.SpanContext().IsSampled() {
-		t.Error(fmt.Errorf("got child span is sampled, want child span WithNewRoot() and with sampler: ParentBased(NeverSample()) to not be sampled"))
+		t.Error(
+			fmt.Errorf(
+				"got child span is sampled, want child span WithNewRoot() and with sampler: ParentBased(NeverSample()) to not be sampled",
+			),
+		)
 	}
 }
 
@@ -744,8 +741,12 @@ func TestLinks(t *testing.T) {
 	k2v2 := attribute.String("key2", "value2")
 	k3v3 := attribute.String("key3", "value3")
 
-	sc1 := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{1, 1}), SpanID: trace.SpanID{3}})
-	sc2 := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{1, 1}), SpanID: trace.SpanID{3}})
+	sc1 := trace.NewSpanContext(
+		trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{1, 1}), SpanID: trace.SpanID{3}},
+	)
+	sc2 := trace.NewSpanContext(
+		trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{1, 1}), SpanID: trace.SpanID{3}},
+	)
 
 	l1 := trace.Link{SpanContext: sc1, Attributes: []attribute.KeyValue{k1v1}}
 	l2 := trace.Link{SpanContext: sc2, Attributes: []attribute.KeyValue{k2v2, k3v3}}
@@ -786,9 +787,15 @@ func TestLinks(t *testing.T) {
 func TestLinksOverLimit(t *testing.T) {
 	te := NewTestExporter()
 
-	sc1 := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{1, 1}), SpanID: trace.SpanID{3}})
-	sc2 := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{1, 1}), SpanID: trace.SpanID{3}})
-	sc3 := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{1, 1}), SpanID: trace.SpanID{3}})
+	sc1 := trace.NewSpanContext(
+		trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{1, 1}), SpanID: trace.SpanID{3}},
+	)
+	sc2 := trace.NewSpanContext(
+		trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{1, 1}), SpanID: trace.SpanID{3}},
+	)
+	sc3 := trace.NewSpanContext(
+		trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{1, 1}), SpanID: trace.SpanID{3}},
+	)
 
 	sl := NewSpanLimits()
 	sl.LinkCountLimit = 2
@@ -913,7 +920,11 @@ func cmpDiff(x, y interface{}) string {
 		cmp.AllowUnexported(snapshot{}),
 		cmp.AllowUnexported(attribute.Value{}),
 		cmp.AllowUnexported(Event{}),
-		cmp.AllowUnexported(trace.TraceState{}))
+		cmp.AllowUnexported(trace.TraceState{}),
+		cmp.Comparer(func(x, y attribute.Set) bool {
+			return x.Equals(&y)
+		}),
+	)
 }
 
 // checkChild is test utility function that tests that c has fields set appropriately,
@@ -960,7 +971,12 @@ func startNamedSpan(tp *TracerProvider, trName, name string, args ...trace.SpanS
 // passed name and with the passed context. The context is returned
 // along with the span so this parent can be used to create child
 // spans.
-func startLocalSpan(ctx context.Context, tp *TracerProvider, trName, name string, args ...trace.SpanStartOption) (context.Context, trace.Span) {
+func startLocalSpan(
+	ctx context.Context,
+	tp *TracerProvider,
+	trName, name string,
+	args ...trace.SpanStartOption,
+) (context.Context, trace.Span) {
 	ctx, span := tp.Tracer(trName).Start(
 		ctx,
 		name,
@@ -1209,8 +1225,8 @@ func TestRecordError(t *testing.T) {
 		msg string
 	}{
 		{
-			err: ottest.NewTestError("test error"),
-			typ: "go.opentelemetry.io/otel/sdk/internal/internaltest.TestError",
+			err: newTestError("test error"),
+			typ: "go.opentelemetry.io/otel/sdk/trace.testError",
 			msg: "test error",
 		},
 		{
@@ -1261,8 +1277,8 @@ func TestRecordError(t *testing.T) {
 }
 
 func TestRecordErrorWithStackTrace(t *testing.T) {
-	err := ottest.NewTestError("test error")
-	typ := "go.opentelemetry.io/otel/sdk/internal/internaltest.TestError"
+	err := newTestError("test error")
+	typ := "go.opentelemetry.io/otel/sdk/trace.testError"
 	msg := "test error"
 
 	te := NewTestExporter()
@@ -1299,17 +1315,30 @@ func TestRecordErrorWithStackTrace(t *testing.T) {
 		instrumentationScope: instrumentation.Scope{Name: "RecordError"},
 	}
 
-	assert.Equal(t, got.spanContext, want.spanContext)
-	assert.Equal(t, got.parent, want.parent)
-	assert.Equal(t, got.name, want.name)
-	assert.Equal(t, got.status, want.status)
-	assert.Equal(t, got.spanKind, want.spanKind)
+	assert.Equal(t, want.spanContext, got.spanContext)
+	assert.Equal(t, want.parent, got.parent)
+	assert.Equal(t, want.name, got.name)
+	assert.Equal(t, want.status, got.status)
+	assert.Equal(t, want.spanKind, got.spanKind)
 	assert.Equal(t, got.events[0].Attributes[0].Value.AsString(), want.events[0].Attributes[0].Value.AsString())
 	assert.Equal(t, got.events[0].Attributes[1].Value.AsString(), want.events[0].Attributes[1].Value.AsString())
 	gotStackTraceFunctionName := strings.Split(got.events[0].Attributes[2].Value.AsString(), "\n")
 
-	assert.Truef(t, strings.HasPrefix(gotStackTraceFunctionName[1], "go.opentelemetry.io/otel/sdk/trace.recordStackTrace"), "%q not prefixed with go.opentelemetry.io/otel/sdk/trace.recordStackTrace", gotStackTraceFunctionName[1])
-	assert.Truef(t, strings.HasPrefix(gotStackTraceFunctionName[3], "go.opentelemetry.io/otel/sdk/trace.(*recordingSpan).RecordError"), "%q not prefixed with go.opentelemetry.io/otel/sdk/trace.(*recordingSpan).RecordError", gotStackTraceFunctionName[3])
+	assert.Truef(
+		t,
+		strings.HasPrefix(gotStackTraceFunctionName[1], "go.opentelemetry.io/otel/sdk/trace.recordStackTrace"),
+		"%q not prefixed with go.opentelemetry.io/otel/sdk/trace.recordStackTrace",
+		gotStackTraceFunctionName[1],
+	)
+	assert.Truef(
+		t,
+		strings.HasPrefix(
+			gotStackTraceFunctionName[3],
+			"go.opentelemetry.io/otel/sdk/trace.(*recordingSpan).RecordError",
+		),
+		"%q not prefixed with go.opentelemetry.io/otel/sdk/trace.(*recordingSpan).RecordError",
+		gotStackTraceFunctionName[3],
+	)
 }
 
 func TestRecordErrorNil(t *testing.T) {
@@ -1355,7 +1384,11 @@ func TestWithSpanKind(t *testing.T) {
 	}
 
 	if spanData.SpanKind() != trace.SpanKindInternal {
-		t.Errorf("Default value of Spankind should be Internal: got %+v, want %+v\n", spanData.SpanKind(), trace.SpanKindInternal)
+		t.Errorf(
+			"Default value of Spankind should be Internal: got %+v, want %+v\n",
+			spanData.SpanKind(),
+			trace.SpanKindInternal,
+		)
 	}
 
 	sks := []trace.SpanKind{
@@ -1388,12 +1421,7 @@ func mergeResource(t *testing.T, r1, r2 *resource.Resource) *resource.Resource {
 }
 
 func TestWithResource(t *testing.T) {
-	store, err := ottest.SetEnvVariables(map[string]string{
-		envVar: "key=value,rk5=7",
-	})
-	require.NoError(t, err)
-	defer func() { require.NoError(t, store.Restore()) }()
-
+	t.Setenv(envVarResourceAttributes, "key=value,rk5=7")
 	cases := []struct {
 		name    string
 		options []TracerProviderOption
@@ -1411,9 +1439,15 @@ func TestWithResource(t *testing.T) {
 			want:    resource.Default(),
 		},
 		{
-			name:    "explicit resource",
-			options: []TracerProviderOption{WithResource(resource.NewSchemaless(attribute.String("rk1", "rv1"), attribute.Int64("rk2", 5)))},
-			want:    mergeResource(t, resource.Environment(), resource.NewSchemaless(attribute.String("rk1", "rv1"), attribute.Int64("rk2", 5))),
+			name: "explicit resource",
+			options: []TracerProviderOption{
+				WithResource(resource.NewSchemaless(attribute.String("rk1", "rv1"), attribute.Int64("rk2", 5))),
+			},
+			want: mergeResource(
+				t,
+				resource.Environment(),
+				resource.NewSchemaless(attribute.String("rk1", "rv1"), attribute.Int64("rk2", 5)),
+			),
 		},
 		{
 			name: "last resource wins",
@@ -1421,12 +1455,22 @@ func TestWithResource(t *testing.T) {
 				WithResource(resource.NewSchemaless(attribute.String("rk1", "vk1"), attribute.Int64("rk2", 5))),
 				WithResource(resource.NewSchemaless(attribute.String("rk3", "rv3"), attribute.Int64("rk4", 10))),
 			},
-			want: mergeResource(t, resource.Environment(), resource.NewSchemaless(attribute.String("rk3", "rv3"), attribute.Int64("rk4", 10))),
+			want: mergeResource(
+				t,
+				resource.Environment(),
+				resource.NewSchemaless(attribute.String("rk3", "rv3"), attribute.Int64("rk4", 10)),
+			),
 		},
 		{
-			name:    "overlapping attributes with environment resource",
-			options: []TracerProviderOption{WithResource(resource.NewSchemaless(attribute.String("rk1", "rv1"), attribute.Int64("rk5", 10)))},
-			want:    mergeResource(t, resource.Environment(), resource.NewSchemaless(attribute.String("rk1", "rv1"), attribute.Int64("rk5", 10))),
+			name: "overlapping attributes with environment resource",
+			options: []TracerProviderOption{
+				WithResource(resource.NewSchemaless(attribute.String("rk1", "rv1"), attribute.Int64("rk5", 10))),
+			},
+			want: mergeResource(
+				t,
+				resource.Environment(),
+				resource.NewSchemaless(attribute.String("rk1", "rv1"), attribute.Int64("rk5", 10)),
+			),
 		},
 	}
 	for _, tc := range cases {
@@ -1513,11 +1557,11 @@ func TestSpanCapturesPanic(t *testing.T) {
 	spans := te.Spans()
 	require.Len(t, spans, 1)
 	require.Len(t, spans[0].Events(), 1)
-	assert.Equal(t, spans[0].Events()[0].Name, semconv.ExceptionEventName)
-	assert.Equal(t, spans[0].Events()[0].Attributes, []attribute.KeyValue{
+	assert.Equal(t, semconv.ExceptionEventName, spans[0].Events()[0].Name)
+	assert.Equal(t, []attribute.KeyValue{
 		semconv.ExceptionType("*errors.errorString"),
 		semconv.ExceptionMessage("error message"),
-	})
+	}, spans[0].Events()[0].Attributes)
 }
 
 func TestSpanCapturesPanicWithStackTrace(t *testing.T) {
@@ -1536,13 +1580,23 @@ func TestSpanCapturesPanicWithStackTrace(t *testing.T) {
 	spans := te.Spans()
 	require.Len(t, spans, 1)
 	require.Len(t, spans[0].Events(), 1)
-	assert.Equal(t, spans[0].Events()[0].Name, semconv.ExceptionEventName)
-	assert.Equal(t, spans[0].Events()[0].Attributes[0].Value.AsString(), "*errors.errorString")
-	assert.Equal(t, spans[0].Events()[0].Attributes[1].Value.AsString(), "error message")
+	assert.Equal(t, semconv.ExceptionEventName, spans[0].Events()[0].Name)
+	assert.Equal(t, "*errors.errorString", spans[0].Events()[0].Attributes[0].Value.AsString())
+	assert.Equal(t, "error message", spans[0].Events()[0].Attributes[1].Value.AsString())
 
 	gotStackTraceFunctionName := strings.Split(spans[0].Events()[0].Attributes[2].Value.AsString(), "\n")
-	assert.Truef(t, strings.HasPrefix(gotStackTraceFunctionName[1], "go.opentelemetry.io/otel/sdk/trace.recordStackTrace"), "%q not prefixed with go.opentelemetry.io/otel/sdk/trace.recordStackTrace", gotStackTraceFunctionName[1])
-	assert.Truef(t, strings.HasPrefix(gotStackTraceFunctionName[3], "go.opentelemetry.io/otel/sdk/trace.(*recordingSpan).End"), "%q not prefixed with go.opentelemetry.io/otel/sdk/trace.(*recordingSpan).End", gotStackTraceFunctionName[3])
+	assert.Truef(
+		t,
+		strings.HasPrefix(gotStackTraceFunctionName[1], "go.opentelemetry.io/otel/sdk/trace.recordStackTrace"),
+		"%q not prefixed with go.opentelemetry.io/otel/sdk/trace.recordStackTrace",
+		gotStackTraceFunctionName[1],
+	)
+	assert.Truef(
+		t,
+		strings.HasPrefix(gotStackTraceFunctionName[3], "go.opentelemetry.io/otel/sdk/trace.(*recordingSpan).End"),
+		"%q not prefixed with go.opentelemetry.io/otel/sdk/trace.(*recordingSpan).End",
+		gotStackTraceFunctionName[3],
+	)
 }
 
 func TestReadOnlySpan(t *testing.T) {
@@ -1592,7 +1646,7 @@ func TestReadOnlySpan(t *testing.T) {
 	assert.Equal(t, kv.Key, ro.Events()[0].Attributes[0].Key)
 	assert.Equal(t, kv.Value, ro.Events()[0].Attributes[0].Value)
 	assert.Equal(t, codes.Ok, ro.Status().Code)
-	assert.Equal(t, "", ro.Status().Description)
+	assert.Empty(t, ro.Status().Description)
 	assert.Equal(t, "ReadOnlySpan", ro.InstrumentationLibrary().Name)
 	assert.Equal(t, "3", ro.InstrumentationLibrary().Version)
 	assert.Equal(t, "ReadOnlySpan", ro.InstrumentationScope().Name)
@@ -1725,61 +1779,6 @@ func TestAddEventsWithMoreAttributesThanLimit(t *testing.T) {
 	}
 	if diff := cmpDiff(got, want); diff != "" {
 		t.Errorf("SetSpanAttributesOverLimit: -got +want %s", diff)
-	}
-}
-
-func TestAddLinksWithMoreAttributesThanLimit(t *testing.T) {
-	te := NewTestExporter()
-	sl := NewSpanLimits()
-	sl.AttributePerLinkCountLimit = 1
-	tp := NewTracerProvider(
-		WithSpanLimits(sl),
-		WithSyncer(te),
-		WithResource(resource.Empty()),
-	)
-
-	k1v1 := attribute.String("key1", "value1")
-	k2v2 := attribute.String("key2", "value2")
-	k3v3 := attribute.String("key3", "value3")
-	k4v4 := attribute.String("key4", "value4")
-
-	sc1 := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{1, 1}), SpanID: trace.SpanID{3}})
-	sc2 := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{1, 1}), SpanID: trace.SpanID{3}})
-
-	span := startSpan(tp, "Links", trace.WithLinks([]trace.Link{
-		{SpanContext: sc1, Attributes: []attribute.KeyValue{k1v1, k2v2}},
-		{SpanContext: sc2, Attributes: []attribute.KeyValue{k2v2, k3v3, k4v4}},
-	}...))
-
-	got, err := endSpan(te, span)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	want := &snapshot{
-		spanContext: trace.NewSpanContext(trace.SpanContextConfig{
-			TraceID:    tid,
-			TraceFlags: 0x1,
-		}),
-		parent: sc.WithRemote(true),
-		name:   "span0",
-		links: []Link{
-			{
-				SpanContext:           sc1,
-				Attributes:            []attribute.KeyValue{k1v1},
-				DroppedAttributeCount: 1,
-			},
-			{
-				SpanContext:           sc2,
-				Attributes:            []attribute.KeyValue{k2v2},
-				DroppedAttributeCount: 2,
-			},
-		},
-		spanKind:             trace.SpanKindInternal,
-		instrumentationScope: instrumentation.Scope{Name: "Links"},
-	}
-	if diff := cmpDiff(got, want); diff != "" {
-		t.Errorf("Link: -got +want %s", diff)
 	}
 }
 
@@ -1986,4 +1985,244 @@ func TestEmptyRecordingSpanAttributes(t *testing.T) {
 
 func TestEmptyRecordingSpanDroppedAttributes(t *testing.T) {
 	assert.Equal(t, 0, (&recordingSpan{}).DroppedAttributes())
+}
+
+func TestSpanAddLink(t *testing.T) {
+	tests := []struct {
+		name               string
+		attrLinkCountLimit int
+		link               trace.Link
+		want               *snapshot
+	}{
+		{
+			name:               "AddLinkWithInvalidSpanContext",
+			attrLinkCountLimit: 128,
+			link: trace.Link{
+				SpanContext: trace.NewSpanContext(
+					trace.SpanContextConfig{TraceID: trace.TraceID([16]byte{}), SpanID: [8]byte{}},
+				),
+			},
+			want: &snapshot{
+				name: "span0",
+				spanContext: trace.NewSpanContext(trace.SpanContextConfig{
+					TraceID:    tid,
+					TraceFlags: 0x1,
+				}),
+				parent:               sc.WithRemote(true),
+				links:                nil,
+				spanKind:             trace.SpanKindInternal,
+				instrumentationScope: instrumentation.Scope{Name: "AddLinkWithInvalidSpanContext"},
+			},
+		},
+		{
+			name:               "AddLink",
+			attrLinkCountLimit: 128,
+			link: trace.Link{
+				SpanContext: sc,
+				Attributes:  []attribute.KeyValue{{Key: "k1", Value: attribute.StringValue("v1")}},
+			},
+			want: &snapshot{
+				name: "span0",
+				spanContext: trace.NewSpanContext(trace.SpanContextConfig{
+					TraceID:    tid,
+					TraceFlags: 0x1,
+				}),
+				parent: sc.WithRemote(true),
+				links: []Link{
+					{
+						SpanContext: sc,
+						Attributes:  []attribute.KeyValue{{Key: "k1", Value: attribute.StringValue("v1")}},
+					},
+				},
+				spanKind:             trace.SpanKindInternal,
+				instrumentationScope: instrumentation.Scope{Name: "AddLink"},
+			},
+		},
+		{
+			name:               "AddLinkWithMoreAttributesThanLimit",
+			attrLinkCountLimit: 1,
+			link: trace.Link{
+				SpanContext: sc,
+				Attributes: []attribute.KeyValue{
+					{Key: "k1", Value: attribute.StringValue("v1")},
+					{Key: "k2", Value: attribute.StringValue("v2")},
+					{Key: "k3", Value: attribute.StringValue("v3")},
+					{Key: "k4", Value: attribute.StringValue("v4")},
+				},
+			},
+			want: &snapshot{
+				name: "span0",
+				spanContext: trace.NewSpanContext(trace.SpanContextConfig{
+					TraceID:    tid,
+					TraceFlags: 0x1,
+				}),
+				parent: sc.WithRemote(true),
+				links: []Link{
+					{
+						SpanContext:           sc,
+						Attributes:            []attribute.KeyValue{{Key: "k1", Value: attribute.StringValue("v1")}},
+						DroppedAttributeCount: 3,
+					},
+				},
+				spanKind:             trace.SpanKindInternal,
+				instrumentationScope: instrumentation.Scope{Name: "AddLinkWithMoreAttributesThanLimit"},
+			},
+		},
+		{
+			name:               "AddLinkWithAttributesEmptySpanContext",
+			attrLinkCountLimit: 128,
+			link: trace.Link{
+				Attributes: []attribute.KeyValue{{Key: "k1", Value: attribute.StringValue("v1")}},
+			},
+			want: &snapshot{
+				name: "span0",
+				spanContext: trace.NewSpanContext(trace.SpanContextConfig{
+					TraceID:    tid,
+					TraceFlags: 0x1,
+				}),
+				parent: sc.WithRemote(true),
+				links: []Link{
+					{
+						Attributes: []attribute.KeyValue{{Key: "k1", Value: attribute.StringValue("v1")}},
+					},
+				},
+				spanKind:             trace.SpanKindInternal,
+				instrumentationScope: instrumentation.Scope{Name: "AddLinkWithAttributesEmptySpanContext"},
+			},
+		},
+		{
+			name:               "AddLinkWithTraceStateEmptySpanContext",
+			attrLinkCountLimit: 128,
+			link: trace.Link{
+				SpanContext: trace.SpanContext{}.WithTraceState(ts),
+			},
+			want: &snapshot{
+				name: "span0",
+				spanContext: trace.NewSpanContext(trace.SpanContextConfig{
+					TraceID:    tid,
+					TraceFlags: 0x1,
+				}),
+				parent: sc.WithRemote(true),
+				links: []Link{
+					{
+						SpanContext: trace.SpanContext{}.WithTraceState(ts),
+					},
+				},
+				spanKind:             trace.SpanKindInternal,
+				instrumentationScope: instrumentation.Scope{Name: "AddLinkWithTraceStateEmptySpanContext"},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			te := NewTestExporter()
+			sl := NewSpanLimits()
+			sl.AttributePerLinkCountLimit = tc.attrLinkCountLimit
+
+			tp := NewTracerProvider(WithSpanLimits(sl), WithSyncer(te), WithResource(resource.Empty()))
+
+			span := startSpan(tp, tc.name)
+			span.AddLink(tc.link)
+
+			got, err := endSpan(te, span)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if diff := cmpDiff(got, tc.want); diff != "" {
+				t.Errorf("-got +want %s", diff)
+			}
+		})
+	}
+}
+
+func TestAddLinkToNonRecordingSpan(t *testing.T) {
+	te := NewTestExporter()
+	sl := NewSpanLimits()
+	tp := NewTracerProvider(
+		WithSpanLimits(sl),
+		WithSyncer(te),
+		WithResource(resource.Empty()),
+	)
+
+	attrs := []attribute.KeyValue{{Key: "k", Value: attribute.StringValue("v")}}
+
+	span := startSpan(tp, "AddLinkToNonRecordingSpan")
+	_, err := endSpan(te, span)
+	require.NoError(t, err)
+
+	// Add link to ended, non-recording, span. The link should be dropped.
+	span.AddLink(trace.Link{
+		SpanContext: sc,
+		Attributes:  attrs,
+	})
+
+	require.Equal(t, 1, te.Len())
+	got := te.Spans()[0]
+	want := &snapshot{
+		name: "span0",
+		spanContext: trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID:    tid,
+			TraceFlags: 0x1,
+		}),
+		parent:               sc.WithRemote(true),
+		links:                nil,
+		spanKind:             trace.SpanKindInternal,
+		instrumentationScope: instrumentation.Scope{Name: "AddLinkToNonRecordingSpan"},
+	}
+
+	if diff := cmpDiff(got, want); diff != "" {
+		t.Errorf("AddLinkToNonRecordingSpan: -got +want %s", diff)
+	}
+}
+
+func BenchmarkTraceStart(b *testing.B) {
+	tracer := NewTracerProvider().Tracer("")
+	ctx := trace.ContextWithSpanContext(context.Background(), trace.SpanContext{})
+
+	l1 := trace.Link{SpanContext: trace.SpanContext{}, Attributes: []attribute.KeyValue{}}
+	l2 := trace.Link{SpanContext: trace.SpanContext{}, Attributes: []attribute.KeyValue{}}
+
+	links := []trace.Link{l1, l2}
+
+	for _, tt := range []struct {
+		name    string
+		options []trace.SpanStartOption
+	}{
+		{
+			name: "with a simple span",
+		},
+		{
+			name: "with several links",
+			options: []trace.SpanStartOption{
+				trace.WithLinks(links...),
+			},
+		},
+		{
+			name: "with attributes",
+			options: []trace.SpanStartOption{
+				trace.WithAttributes(
+					attribute.String("key1", "value1"),
+					attribute.String("key2", "value2"),
+				),
+			},
+		},
+	} {
+		b.Run(tt.name, func(b *testing.B) {
+			spans := make([]trace.Span, b.N)
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				_, span := tracer.Start(ctx, "", tt.options...)
+				spans[i] = span
+			}
+
+			b.StopTimer()
+			for i := 0; i < b.N; i++ {
+				spans[i].End()
+			}
+		})
+	}
 }

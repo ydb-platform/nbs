@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.32.4)
+
 SRCS(
     hash_policy.pb.go
     hash_policy.pb.validate.go

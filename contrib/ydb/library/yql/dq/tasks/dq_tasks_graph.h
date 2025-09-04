@@ -1,9 +1,11 @@
 #pragma once
 
+#include <yql/essentials/public/types/yql_types.pb.h>
 #include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
 #include <contrib/ydb/library/yql/dq/proto/dq_tasks.pb.h>
-#include <contrib/ydb/library/yql/ast/yql_expr.h>
+#include <yql/essentials/ast/yql_expr.h>
+#include <contrib/ydb/library/yql/dq/common/dq_common.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -64,6 +66,8 @@ struct TStageInfo : private TMoveOnly {
     ui32 InputsCount = 0;
     ui32 OutputsCount = 0;
 
+    // Describes step-by-step the decisions leading to this exact number of tasks - in human-readable way.
+    TVector<TString> Introspections; // TODO(#20120): maybe find a better place?
     TVector<ui64> Tasks;
     TStageInfoMeta Meta;
 
@@ -168,6 +172,8 @@ struct TTaskOutput {
     TString SinkType;
     TOutputMeta Meta;
     TMaybe<TTransform> Transform;
+
+    std::optional<EHashShuffleFuncType> HashKind; // defined only for Type = TTaskOutputType::HashPartition
 };
 
 template <class TStageInfoMeta, class TTaskMeta, class TInputMeta, class TOutputMeta>

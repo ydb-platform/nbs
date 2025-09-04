@@ -2,6 +2,10 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
-SRCS(wrappers.pb.go)
+VERSION(v1.5.4)
+
+SRCS(
+    wrappers.pb.go
+)
 
 END()

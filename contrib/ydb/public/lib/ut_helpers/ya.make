@@ -9,7 +9,7 @@ PEERDIR(
     contrib/ydb/public/api/grpc/draft
     contrib/ydb/public/api/protos
     contrib/ydb/public/api/protos/out
-    contrib/ydb/library/grpc/client
+    contrib/ydb/public/sdk/cpp/src/library/grpc/client
 )
 
 END()

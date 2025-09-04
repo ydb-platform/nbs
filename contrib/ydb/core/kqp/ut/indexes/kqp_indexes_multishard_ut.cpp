@@ -1,7 +1,8 @@
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
+#include <contrib/ydb/public/sdk/cpp/adapters/issue/issue.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 
 #include <library/cpp/json/json_reader.h>
@@ -1369,6 +1370,81 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         }
     }
 
+    Y_UNIT_TEST(SecondaryIndexSelectNull) {
+        TKikimrRunner kikimr(SyntaxV1Settings());
+        CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_SYNC);
+        auto db = kikimr.GetTableClient();
+        auto session = db.CreateSession().GetValueSync().GetSession();
+        FillTable(session);
+
+        {
+            const TString query(Q_(R"(
+                UPSERT INTO `/Root/MultiShardIndexed` (key, fk, value) VALUES
+                (5, NULL, "null5"),
+                (NULL, NULL, "nullnull");
+            )"));
+
+            auto result = ExecuteDataQuery(session, query);
+            UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+        }
+
+        {
+            const TString query(Q1_(R"(
+                SELECT COUNT(*) FROM `/Root/MultiShardIndexed` VIEW index WHERE fk IS NULL;
+            )"));
+
+            auto result = ExecuteDataQuery(session, query);
+            UNIT_ASSERT_C(result.GetIssues().Empty(), result.GetIssues().ToString());
+            UNIT_ASSERT(result.IsSuccess());
+            UNIT_ASSERT_VALUES_EQUAL(NYdb::FormatResultSetYson(result.GetResultSet(0)), "[[2u]]");
+        }
+
+        {
+            const TString query(Q1_(R"(
+                SELECT key FROM `/Root/MultiShardIndexed` VIEW index WHERE fk IS NULL;
+            )"));
+
+            auto result = ExecuteDataQuery(session, query);
+            UNIT_ASSERT_C(result.GetIssues().Empty(), result.GetIssues().ToString());
+            UNIT_ASSERT(result.IsSuccess());
+            UNIT_ASSERT_VALUES_EQUAL(NYdb::FormatResultSetYson(result.GetResultSet(0)), "[[#];[[5u]]]");
+        }
+
+        {
+            const TString query(Q1_(R"(
+                SELECT fk FROM `/Root/MultiShardIndexed` VIEW index WHERE fk IS NULL;
+            )"));
+
+            auto result = ExecuteDataQuery(session, query);
+            UNIT_ASSERT_C(result.GetIssues().Empty(), result.GetIssues().ToString());
+            UNIT_ASSERT(result.IsSuccess());
+            UNIT_ASSERT_VALUES_EQUAL(NYdb::FormatResultSetYson(result.GetResultSet(0)), "[[#];[#]]");
+        }
+
+        {
+            const TString query(Q1_(R"(
+                SELECT * FROM `/Root/MultiShardIndexed` VIEW index WHERE fk IS NULL ORDER BY fk, key;
+            )"));
+
+            auto result = ExecuteDataQuery(session, query);
+            UNIT_ASSERT_C(result.GetIssues().Empty(), result.GetIssues().ToString());
+            UNIT_ASSERT(result.IsSuccess());
+            UNIT_ASSERT_VALUES_EQUAL(NYdb::FormatResultSetYson(result.GetResultSet(0)), "[[#;#;[\"nullnull\"]];[#;[5u];[\"null5\"]]]");
+        }
+
+        {
+            const TString query(Q1_(R"(
+                SELECT * FROM `/Root/MultiShardIndexed` VIEW index WHERE fk IS NULL ORDER BY key DESC, fk DESC;
+            )"));
+
+            auto result = ExecuteDataQuery(session, query);
+            UNIT_ASSERT_C(result.GetIssues().Empty(), result.GetIssues().ToString());
+            UNIT_ASSERT(result.IsSuccess());
+            UNIT_ASSERT_VALUES_EQUAL(NYdb::FormatResultSetYson(result.GetResultSet(0)), "[[#;[5u];[\"null5\"]];[#;#;[\"nullnull\"]]]");
+        }
+
+    }
+
     Y_UNIT_TEST(SecondaryIndexSelect) {
         TKikimrRunner kikimr(SyntaxV1Settings());
         CreateTableWithMultishardIndex(kikimr.GetTestClient(), IG_SYNC);
@@ -1385,6 +1461,17 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
             UNIT_ASSERT_C(result.GetIssues().Empty(), result.GetIssues().ToString());
             UNIT_ASSERT(result.IsSuccess());
             UNIT_ASSERT_VALUES_EQUAL(NYdb::FormatResultSetYson(result.GetResultSet(0)), "[[[2u]]]");
+        }
+
+        {
+            const TString query(Q1_(R"(
+                SELECT key FROM `/Root/MultiShardIndexed` VIEW index WHERE fk IS NULL;
+            )"));
+
+            auto result = ExecuteDataQuery(session, query);
+            UNIT_ASSERT_C(result.GetIssues().Empty(), result.GetIssues().ToString());
+            UNIT_ASSERT(result.IsSuccess());
+            UNIT_ASSERT_VALUES_EQUAL(NYdb::FormatResultSetYson(result.GetResultSet(0)), "[]");
         }
 
         {
@@ -1475,7 +1562,7 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
 
             auto result = ExecuteDataQuery(session, query);
 
-            UNIT_ASSERT_C(HasIssue(result.GetIssues(), NYql::TIssuesIds::KIKIMR_WRONG_INDEX_USAGE,
+            UNIT_ASSERT_C(HasIssue(NYdb::NAdapters::ToYqlIssues(result.GetIssues()), NYql::TIssuesIds::KIKIMR_WRONG_INDEX_USAGE,
                 [](const NYql::TIssue& issue) {
                     return issue.GetMessage().Contains("Given predicate is not suitable for used index: index");
                 }), result.GetIssues().ToString());
@@ -1491,7 +1578,7 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
 
             auto result = ExecuteDataQuery(session, query);
 
-            UNIT_ASSERT_C(HasIssue(result.GetIssues(), NYql::TIssuesIds::KIKIMR_WRONG_INDEX_USAGE,
+            UNIT_ASSERT_C(HasIssue(NYdb::NAdapters::ToYqlIssues(result.GetIssues()), NYql::TIssuesIds::KIKIMR_WRONG_INDEX_USAGE,
                 [](const NYql::TIssue& issue) {
                     return issue.GetMessage().Contains("Given predicate is not suitable for used index: index");
                 }), result.GetIssues().ToString());
@@ -1519,9 +1606,7 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
 
         FillTable(session);
 
-        kikimr.GetTestServer().GetRuntime()->GetAppData().AdministrationAllowedSIDs.push_back("root@builtin");
-
-        { // without token request is forbidded
+        { // regular users should be able to alter indexImplTable's PartitionConfig
             Tests::TClient& client = kikimr.GetTestClient();
             const TString scheme =  R"(
                 Name: "indexImplTable"
@@ -1536,84 +1621,29 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
                     }
                 }
             )";
-            auto result = client.AlterTable("/Root/MultiShardIndexed/index", scheme, "user@builtin");
-            UNIT_ASSERT_VALUES_EQUAL_C(result->Record.GetStatus(), NMsgBusProxy::MSTATUS_ERROR, "User must not be able to alter index impl table");
-            UNIT_ASSERT_VALUES_EQUAL(result->Record.GetErrorReason(), "Administrative access denied");
+            auto result = client.AlterTable("/Root/MultiShardIndexed/index", scheme, {});
+            UNIT_ASSERT_VALUES_EQUAL_C(result->Record.GetStatus(), NMsgBusProxy::MSTATUS_OK,
+                result->Record.ShortDebugString()
+            );
         }
 
-        { // with root token request is accepted
-            Tests::TClient& client = kikimr.GetTestClient();
-            const TString scheme =  R"(
-                Name: "indexImplTable"
-                PartitionConfig {
-                    PartitioningPolicy {
-                        MinPartitionsCount: 1
-                        SizeToSplit: 100500
-                        FastSplitSettings {
-                            SizeThreshold: 100500
-                            RowCountThreshold: 100500
-                        }
-                    }
-                }
-            )";
-            auto result = client.AlterTable("/Root/MultiShardIndexed/index", scheme, "root@builtin");
-            UNIT_ASSERT_VALUES_EQUAL_C(result->Record.GetStatus(), NMsgBusProxy::MSTATUS_OK, "Super user must be able to alter partition config");
-        }
-
-        { // after alter yql works fine
-            const TString query(R"(
+        { // yql works fine after alter
+            const TString query = R"(
                 SELECT * FROM `/Root/MultiShardIndexed` VIEW index ORDER BY fk DESC LIMIT 1;
-            )");
+            )";
 
             auto result = session.ExecuteDataQuery(
-                                     query,
-                                     TTxControl::BeginTx(TTxSettings::SerializableRW()).CommitTx())
-                              .ExtractValueSync();
+                query,
+                TTxControl::BeginTx(TTxSettings::SerializableRW()).CommitTx()
+            ).ExtractValueSync();
             UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
             UNIT_ASSERT_VALUES_EQUAL(NYdb::FormatResultSetYson(result.GetResultSet(0)), "[[[4294967295u];[4u];[\"v4\"]]]");
         }
-
-        FillTable(session);
-
-        { // just for sure, public api got error when alter index
-            auto settings = NYdb::NTable::TAlterTableSettings()
-                .BeginAlterPartitioningSettings()
-                    .SetPartitionSizeMb(50)
-                    .SetMinPartitionsCount(4)
-                    .SetMaxPartitionsCount(5)
-                .EndAlterPartitioningSettings();
-
-            auto result = session.AlterTable("/Root/MultiShardIndexed/index/indexImplTable", settings).ExtractValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SCHEME_ERROR, result.GetIssues().ToString());
-        }
-
-        { // however public api is able to perform alter index if user has AlterSchema right and user is a member of the list AdministrationAllowedSIDs
-            auto clSettings = NYdb::NTable::TClientSettings().AuthToken("root@builtin").UseQueryCache(false);
-            auto client =  NYdb::NTable::TTableClient(kikimr.GetDriver(), clSettings);
-            auto session = client.CreateSession().GetValueSync().GetSession();
-
-            auto settings = NYdb::NTable::TAlterTableSettings()
-                .BeginAlterPartitioningSettings()
-                    .SetPartitionSizeMb(50)
-                    .SetMinPartitionsCount(4)
-                    .SetMaxPartitionsCount(5)
-                .EndAlterPartitioningSettings();
-
-            auto result = session.AlterTable("/Root/MultiShardIndexed/index/indexImplTable", settings).ExtractValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
-        }
-
     }
 
-    Y_UNIT_TEST_TWIN(DataColumnUpsertMixedSemantic, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(StreamLookup);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
+    Y_UNIT_TEST(DataColumnUpsertMixedSemantic) {
         auto setting = NKikimrKqp::TKqpSetting();
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig)
-            .SetKqpSettings({setting});
+        auto serverSettings = TKikimrSettings().SetKqpSettings({setting});
 
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -1654,15 +1684,9 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         }
     }
 
-    Y_UNIT_TEST_TWIN(DataColumnWriteNull, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(StreamLookup);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
+    Y_UNIT_TEST(DataColumnWriteNull) {
         auto setting = NKikimrKqp::TKqpSetting();
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig)
-            .SetKqpSettings({setting});
+        auto serverSettings = TKikimrSettings().SetKqpSettings({setting});
 
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -1737,15 +1761,11 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         }
     }
 
-    Y_UNIT_TEST_TWIN(DataColumnWrite, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(StreamLookup);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
+    Y_UNIT_TEST_TWIN(DataColumnWrite, UseSink) {
         auto setting = NKikimrKqp::TKqpSetting();
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig)
-            .SetKqpSettings({setting});
+        auto serverSettings = TKikimrSettings().SetKqpSettings({setting});
+        serverSettings.AppConfig.MutableTableServiceConfig()->SetEnableOltpSink(UseSink);
+
 
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -2138,15 +2158,9 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         }
     }
 
-    Y_UNIT_TEST_TWIN(DataColumnSelect, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(StreamLookup);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
+    Y_UNIT_TEST(DataColumnSelect) {
         auto setting = NKikimrKqp::TKqpSetting();
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig)
-            .SetKqpSettings({setting});
+        auto serverSettings = TKikimrSettings().SetKqpSettings({setting});
 
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -2236,15 +2250,9 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         }
     }
 
-    Y_UNIT_TEST_TWIN(DuplicateUpsert, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(StreamLookup);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
+    Y_UNIT_TEST(DuplicateUpsert) {
         auto setting = NKikimrKqp::TKqpSetting();
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig)
-            .SetKqpSettings({setting});
+        auto serverSettings = TKikimrSettings().SetKqpSettings({setting});
 
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
@@ -2273,14 +2281,8 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         }
     }
 
-    Y_UNIT_TEST_TWIN(SortByPk, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(StreamLookup);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig);
-
+    Y_UNIT_TEST(SortByPk) {
+        TKikimrSettings serverSettings;
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
@@ -2498,13 +2500,8 @@ Y_UNIT_TEST_SUITE(KqpMultishardIndex) {
         CheckWriteIntoRenamingIndex(true);
     }
 
-    Y_UNIT_TEST_TWIN(CheckPushTopSort, StreamLookup) {
-        NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(StreamLookup);
-
-        auto serverSettings = TKikimrSettings()
-            .SetAppConfig(appConfig);
-
+    Y_UNIT_TEST(CheckPushTopSort) {
+        TKikimrSettings serverSettings;
         TKikimrRunner kikimr(serverSettings);
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();

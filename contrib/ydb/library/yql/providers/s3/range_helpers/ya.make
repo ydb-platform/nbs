@@ -6,9 +6,9 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/providers/common/provider
+    yql/essentials/providers/common/provider
     contrib/ydb/library/yql/providers/s3/proto
-    contrib/ydb/library/yql/utils
+    yql/essentials/utils
     library/cpp/protobuf/util
 )
 

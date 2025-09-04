@@ -10,11 +10,11 @@ NKikimrNodeBroker::TNodeInfo CreateNodeInfo(
 {
     NKikimrNodeBroker::TNodeInfo node;
     node.SetNodeId(info.NodeId);
-    node.SetAddress(info.Address);
+    node.SetAddress(TString{info.Address});
     node.SetExpire(info.Expire);
     node.SetPort(info.Port);
-    node.SetHost(info.Host);
-    node.SetResolveHost(info.ResolveHost);
+    node.SetHost(TString{info.Host});
+    node.SetResolveHost(TString{info.ResolveHost});
     *node.MutableLocation() = CreateNodeLocation(info.Location);
     if (nodeName.has_value()) {
         node.SetName(std::move(*nodeName));
@@ -27,16 +27,16 @@ NActorsInterconnect::TNodeLocation CreateNodeLocation(
 {
     NActorsInterconnect::TNodeLocation location;
     if (source.DataCenter) {
-        location.SetDataCenter(source.DataCenter.value());
+        location.SetDataCenter(TString{source.DataCenter.value()});
     }
     if (source.Module) {
-        location.SetModule(source.Module.value());
+        location.SetModule(TString{source.Module.value()});
     }
     if (source.Rack) {
-        location.SetRack(source.Rack.value());
+        location.SetRack(TString{source.Rack.value()});
     }
     if (source.Unit) {
-        location.SetUnit(source.Unit.value());
+        location.SetUnit(TString{source.Unit.value()});
     }
     return location;
 }
@@ -46,10 +46,10 @@ NKikimrConfig::TStaticNameserviceConfig_TNode CreateStaticNodeInfo(
 {
     NKikimrConfig::TStaticNameserviceConfig_TNode node;
     node.SetNodeId(info.NodeId);
-    node.SetAddress(info.Address);
+    node.SetAddress(TString{info.Address});
     node.SetPort(info.Port);
-    node.SetHost(info.Host);
-    node.SetInterconnectHost(info.ResolveHost);
+    node.SetHost(TString{info.Host});
+    node.SetInterconnectHost(TString{info.ResolveHost});
     *node.MutableLocation() = CreateNodeLocation(info.Location);
     return node;
 }

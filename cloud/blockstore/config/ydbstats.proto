@@ -49,7 +49,4 @@ message TYdbStatsConfig
 
     // Table to report correspondence between partition tablets and volume tablets.
     optional string PartitionsTableName = 14;
-
-    // Refresh time before IAM token expiration (in milliseconds).
-    optional uint32 IamTokenRefreshTimeBeforeExpiration = 15;
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/scheme/scheme.h>
 
 #include <util/generic/vector.h>
 

@@ -12,14 +12,15 @@ import (
 )
 
 var (
-	errUnexpectedNilStreamReadMessageReadResponse     = xerrors.Wrap(errors.New("ydb: unexpected nil Ydb_Topic.StreamReadMessage_ReadResponse")) //nolint:lll
-	errNilPartitionData                               = xerrors.Wrap(errors.New("ydb: unexpected nil partition data"))
-	errUnexpectedNilBatchInPartitionData              = xerrors.Wrap(errors.New("ydb: unexpected nil batch in partition data"))   //nolint:lll
-	errUnexpectedMessageNilInPartitionData            = xerrors.Wrap(errors.New("ydb: unexpected message nil in partition data")) //nolint:lll
-	errUnexpectedProtobufInOffsets                    = xerrors.Wrap(errors.New("ydb: unexpected protobuf nil offsets"))
+	errUnexpectedNilStreamReadMessageReadResponse = xerrors.Wrap(errors.New("ydb: unexpected nil Ydb_Topic.StreamReadMessage_ReadResponse")) //nolint:lll
+	errNilPartitionData                           = xerrors.Wrap(errors.New("ydb: unexpected nil partition data"))
+	errUnexpectedNilBatchInPartitionData          = xerrors.Wrap(errors.New("ydb: unexpected nil batch in partition data"))   //nolint:lll
+	errUnexpectedMessageNilInPartitionData        = xerrors.Wrap(errors.New("ydb: unexpected message nil in partition data")) //nolint:lll
+
 	errUnexpectedProtoNilStartPartitionSessionRequest = xerrors.Wrap(errors.New("ydb: unexpected proto nil start partition session request"))                      //nolint:lll
 	errUnexpectedNilPartitionSession                  = xerrors.Wrap(errors.New("ydb: unexpected proto nil partition session in start partition session request")) //nolint:lll
 	errUnexpectedGrpcNilStopPartitionSessionRequest   = xerrors.Wrap(errors.New("ydb: unexpected grpc nil stop partition session request"))                        //nolint:lll
+	errUnexpectedGrpcNilEndPartitionSession           = xerrors.Wrap(errors.New("ydb: unexpected grpc nil end partition session"))                                 //nolint:lll
 )
 
 type PartitionSessionID int64
@@ -32,22 +33,8 @@ func (id PartitionSessionID) ToInt64() int64 {
 	return int64(id)
 }
 
-type Offset int64
-
-func NewOffset(v int64) Offset {
-	return Offset(v)
-}
-
-func (offset *Offset) FromInt64(v int64) {
-	*offset = Offset(v)
-}
-
-func (offset Offset) ToInt64() int64 {
-	return int64(offset)
-}
-
 type OptionalOffset struct {
-	Offset   Offset
+	Offset   rawtopiccommon.Offset
 	HasValue bool
 }
 
@@ -72,8 +59,10 @@ func (offset OptionalOffset) ToInt64() int64 {
 func (offset OptionalOffset) ToInt64Pointer() *int64 {
 	if offset.HasValue {
 		v := offset.Offset.ToInt64()
+
 		return &v
 	}
+
 	return nil
 }
 
@@ -88,11 +77,11 @@ type UpdateTokenRequest struct {
 }
 
 type UpdateTokenResponse struct {
+	rawtopiccommon.UpdateTokenResponse
+
 	serverMessageImpl
 
 	rawtopiccommon.ServerMessageMetadata
-
-	rawtopiccommon.UpdateTokenResponse
 }
 
 //
@@ -104,12 +93,14 @@ type InitRequest struct {
 
 	TopicsReadSettings []TopicReadSettings
 
-	Consumer string
+	Consumer                string
+	AutoPartitioningSupport bool
 }
 
 func (r *InitRequest) toProto() *Ydb_Topic.StreamReadMessage_InitRequest {
 	p := &Ydb_Topic.StreamReadMessage_InitRequest{
-		Consumer: r.Consumer,
+		Consumer:                r.Consumer,
+		AutoPartitioningSupport: r.AutoPartitioningSupport,
 	}
 
 	p.TopicsReadSettings = make([]*Ydb_Topic.StreamReadMessage_InitRequest_TopicReadSettings, len(r.TopicsReadSettings))
@@ -121,6 +112,11 @@ func (r *InitRequest) toProto() *Ydb_Topic.StreamReadMessage_InitRequest {
 		dstTopicSettings.Path = srcTopicSettings.Path
 		dstTopicSettings.MaxLag = srcTopicSettings.MaxLag.ToProto()
 		dstTopicSettings.ReadFrom = srcTopicSettings.ReadFrom.ToProto()
+
+		partitionsIDs := make([]int64, len(srcTopicSettings.PartitionsID))
+		copy(partitionsIDs, srcTopicSettings.PartitionsID)
+
+		dstTopicSettings.PartitionIds = partitionsIDs
 	}
 
 	return p
@@ -137,6 +133,7 @@ func (r *InitRequest) GetTopics() []string {
 	for i := range res {
 		res[i] = r.TopicsReadSettings[i].Path
 	}
+
 	return res
 }
 
@@ -157,7 +154,7 @@ type InitResponse struct {
 }
 
 func (g *InitResponse) fromProto(p *Ydb_Topic.StreamReadMessage_InitResponse) {
-	g.SessionID = p.SessionId
+	g.SessionID = p.GetSessionId()
 }
 
 //
@@ -198,6 +195,7 @@ func (r *ReadResponse) GetPartitionBatchMessagesCounts() (partitionDataCount, ba
 			messagesCount += len(partitionData.Batches[batchIndex].MessageData)
 		}
 	}
+
 	return partitionDataCount, batchCount, messagesCount
 }
 
@@ -205,58 +203,59 @@ func (r *ReadResponse) fromProto(p *Ydb_Topic.StreamReadMessage_ReadResponse) er
 	if p == nil {
 		return xerrors.WithStackTrace(errUnexpectedNilStreamReadMessageReadResponse)
 	}
-	r.BytesSize = int(p.BytesSize)
+	r.BytesSize = int(p.GetBytesSize())
 
-	r.PartitionData = make([]PartitionData, len(p.PartitionData))
-	for partitionIndex := range p.PartitionData {
-		srcPartition := p.PartitionData[partitionIndex]
+	r.PartitionData = make([]PartitionData, len(p.GetPartitionData()))
+	for partitionIndex := range p.GetPartitionData() {
+		srcPartition := p.GetPartitionData()[partitionIndex]
 		if srcPartition == nil {
 			return xerrors.WithStackTrace(errNilPartitionData)
 		}
 		dstPartition := &r.PartitionData[partitionIndex]
-		dstPartition.PartitionSessionID.FromInt64(srcPartition.PartitionSessionId)
+		dstPartition.PartitionSessionID.FromInt64(srcPartition.GetPartitionSessionId())
 
-		dstPartition.Batches = make([]Batch, len(srcPartition.Batches))
+		dstPartition.Batches = make([]Batch, len(srcPartition.GetBatches()))
 
-		for batchIndex := range srcPartition.Batches {
-			srcBatch := srcPartition.Batches[batchIndex]
+		for batchIndex := range srcPartition.GetBatches() {
+			srcBatch := srcPartition.GetBatches()[batchIndex]
 			if srcBatch == nil {
 				return xerrors.WithStackTrace(errUnexpectedNilBatchInPartitionData)
 			}
 			dstBatch := &dstPartition.Batches[batchIndex]
 
-			dstBatch.ProducerID = srcBatch.ProducerId
-			dstBatch.WriteSessionMeta = srcBatch.WriteSessionMeta
-			dstBatch.Codec.MustFromProto(Ydb_Topic.Codec(srcBatch.Codec))
+			dstBatch.ProducerID = srcBatch.GetProducerId()
+			dstBatch.WriteSessionMeta = srcBatch.GetWriteSessionMeta()
+			dstBatch.Codec.MustFromProto(Ydb_Topic.Codec(srcBatch.GetCodec()))
 
-			dstBatch.WrittenAt = srcBatch.WrittenAt.AsTime()
+			dstBatch.WrittenAt = srcBatch.GetWrittenAt().AsTime()
 
-			dstBatch.MessageData = make([]MessageData, len(srcBatch.MessageData))
-			for messageIndex := range srcBatch.MessageData {
-				srcMessage := srcBatch.MessageData[messageIndex]
+			dstBatch.MessageData = make([]MessageData, len(srcBatch.GetMessageData()))
+			for messageIndex := range srcBatch.GetMessageData() {
+				srcMessage := srcBatch.GetMessageData()[messageIndex]
 				if srcMessage == nil {
 					return xerrors.WithStackTrace(errUnexpectedMessageNilInPartitionData)
 				}
 				dstMessage := &dstBatch.MessageData[messageIndex]
 
-				dstMessage.Offset.FromInt64(srcMessage.Offset)
-				dstMessage.SeqNo = srcMessage.SeqNo
-				dstMessage.CreatedAt = srcMessage.CreatedAt.AsTime()
-				dstMessage.Data = srcMessage.Data
-				dstMessage.UncompressedSize = srcMessage.UncompressedSize
-				dstMessage.MessageGroupID = srcMessage.MessageGroupId
-				if len(srcMessage.MetadataItems) > 0 {
-					dstMessage.MetadataItems = make([]rawtopiccommon.MetadataItem, 0, len(srcMessage.MetadataItems))
-					for _, protoItem := range srcMessage.MetadataItems {
+				dstMessage.Offset.FromInt64(srcMessage.GetOffset())
+				dstMessage.SeqNo = srcMessage.GetSeqNo()
+				dstMessage.CreatedAt = srcMessage.GetCreatedAt().AsTime()
+				dstMessage.Data = srcMessage.GetData()
+				dstMessage.UncompressedSize = srcMessage.GetUncompressedSize()
+				dstMessage.MessageGroupID = srcMessage.GetMessageGroupId()
+				if len(srcMessage.GetMetadataItems()) > 0 {
+					dstMessage.MetadataItems = make([]rawtopiccommon.MetadataItem, 0, len(srcMessage.GetMetadataItems()))
+					for _, protoItem := range srcMessage.GetMetadataItems() {
 						dstMessage.MetadataItems = append(dstMessage.MetadataItems, rawtopiccommon.MetadataItem{
-							Key:   protoItem.Key,
-							Value: protoItem.Value[:len(protoItem.Value):len(protoItem.Value)],
+							Key:   protoItem.GetKey(),
+							Value: protoItem.GetValue()[:len(protoItem.GetValue()):len(protoItem.GetValue())],
 						})
 					}
 				}
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -276,7 +275,7 @@ type Batch struct {
 }
 
 type MessageData struct {
-	Offset           Offset
+	Offset           rawtopiccommon.Offset
 	SeqNo            int64
 	CreatedAt        time.Time
 	Data             []byte
@@ -314,34 +313,13 @@ func (r *CommitOffsetRequest) toProto() *Ydb_Topic.StreamReadMessage_CommitOffse
 			dstCommitOffset.Offsets[offsetIndex] = srcPartitionCommitOffset.Offsets[offsetIndex].ToProto()
 		}
 	}
+
 	return res
 }
 
 type PartitionCommitOffset struct {
 	PartitionSessionID PartitionSessionID
-	Offsets            []OffsetRange
-}
-
-type OffsetRange struct {
-	Start Offset
-	End   Offset
-}
-
-func (r *OffsetRange) FromProto(p *Ydb_Topic.OffsetsRange) error {
-	if p == nil {
-		return xerrors.WithStackTrace(errUnexpectedProtobufInOffsets)
-	}
-
-	r.Start.FromInt64(p.Start)
-	r.End.FromInt64(p.End)
-	return nil
-}
-
-func (r *OffsetRange) ToProto() *Ydb_Topic.OffsetsRange {
-	return &Ydb_Topic.OffsetsRange{
-		Start: r.Start.ToInt64(),
-		End:   r.End.ToInt64(),
-	}
+	Offsets            []rawtopiccommon.OffsetRange
 }
 
 type CommitOffsetResponse struct {
@@ -353,16 +331,16 @@ type CommitOffsetResponse struct {
 }
 
 func (r *CommitOffsetResponse) fromProto(proto *Ydb_Topic.StreamReadMessage_CommitOffsetResponse) error {
-	r.PartitionsCommittedOffsets = make([]PartitionCommittedOffset, len(proto.PartitionsCommittedOffsets))
+	r.PartitionsCommittedOffsets = make([]PartitionCommittedOffset, len(proto.GetPartitionsCommittedOffsets()))
 	for i := range r.PartitionsCommittedOffsets {
-		srcCommitted := proto.PartitionsCommittedOffsets[i]
+		srcCommitted := proto.GetPartitionsCommittedOffsets()[i]
 		if srcCommitted == nil {
 			return xerrors.WithStackTrace(errors.New("unexpected nil while parse commit offset response"))
 		}
 		dstCommitted := &r.PartitionsCommittedOffsets[i]
 
-		dstCommitted.PartitionSessionID.FromInt64(srcCommitted.PartitionSessionId)
-		dstCommitted.CommittedOffset.FromInt64(srcCommitted.CommittedOffset)
+		dstCommitted.PartitionSessionID.FromInt64(srcCommitted.GetPartitionSessionId())
+		dstCommitted.CommittedOffset.FromInt64(srcCommitted.GetCommittedOffset())
 	}
 
 	return nil
@@ -370,7 +348,7 @@ func (r *CommitOffsetResponse) fromProto(proto *Ydb_Topic.StreamReadMessage_Comm
 
 type PartitionCommittedOffset struct {
 	PartitionSessionID PartitionSessionID
-	CommittedOffset    Offset
+	CommittedOffset    rawtopiccommon.Offset
 }
 
 //
@@ -395,7 +373,7 @@ type PartitionSessionStatusResponse struct {
 	rawtopiccommon.ServerMessageMetadata
 
 	PartitionSessionID     PartitionSessionID
-	PartitionOffsets       OffsetRange
+	PartitionOffsets       rawtopiccommon.OffsetRange
 	WriteTimeHighWatermark time.Time
 }
 
@@ -407,6 +385,7 @@ func (r *PartitionSessionStatusResponse) fromProto(
 		return err
 	}
 	r.WriteTimeHighWatermark = p.GetWriteTimeHighWatermark().AsTime()
+
 	return nil
 }
 
@@ -420,8 +399,8 @@ type StartPartitionSessionRequest struct {
 	rawtopiccommon.ServerMessageMetadata
 
 	PartitionSession PartitionSession
-	CommittedOffset  Offset
-	PartitionOffsets OffsetRange
+	CommittedOffset  rawtopiccommon.Offset
+	PartitionOffsets rawtopiccommon.OffsetRange
 }
 
 func (r *StartPartitionSessionRequest) fromProto(p *Ydb_Topic.StreamReadMessage_StartPartitionSessionRequest) error {
@@ -429,16 +408,16 @@ func (r *StartPartitionSessionRequest) fromProto(p *Ydb_Topic.StreamReadMessage_
 		return xerrors.WithStackTrace(errUnexpectedProtoNilStartPartitionSessionRequest)
 	}
 
-	if p.PartitionSession == nil {
+	if p.GetPartitionSession() == nil {
 		return xerrors.WithStackTrace(errUnexpectedNilPartitionSession)
 	}
-	r.PartitionSession.PartitionID = p.PartitionSession.PartitionId
-	r.PartitionSession.Path = p.PartitionSession.Path
-	r.PartitionSession.PartitionSessionID.FromInt64(p.PartitionSession.PartitionSessionId)
+	r.PartitionSession.PartitionID = p.GetPartitionSession().GetPartitionId()
+	r.PartitionSession.Path = p.GetPartitionSession().GetPath()
+	r.PartitionSession.PartitionSessionID.FromInt64(p.GetPartitionSession().GetPartitionSessionId())
 
-	r.CommittedOffset.FromInt64(p.CommittedOffset)
+	r.CommittedOffset.FromInt64(p.GetCommittedOffset())
 
-	return r.PartitionOffsets.FromProto(p.PartitionOffsets)
+	return r.PartitionOffsets.FromProto(p.GetPartitionOffsets())
 }
 
 type PartitionSession struct {
@@ -461,6 +440,7 @@ func (r *StartPartitionSessionResponse) toProto() *Ydb_Topic.StreamReadMessage_S
 		ReadOffset:         r.ReadOffset.ToInt64Pointer(),
 		CommitOffset:       r.CommitOffset.ToInt64Pointer(),
 	}
+
 	return res
 }
 
@@ -475,16 +455,17 @@ type StopPartitionSessionRequest struct {
 
 	PartitionSessionID PartitionSessionID
 	Graceful           bool
-	CommittedOffset    Offset
+	CommittedOffset    rawtopiccommon.Offset
 }
 
 func (r *StopPartitionSessionRequest) fromProto(proto *Ydb_Topic.StreamReadMessage_StopPartitionSessionRequest) error {
 	if proto == nil {
 		return xerrors.WithStackTrace(errUnexpectedGrpcNilStopPartitionSessionRequest)
 	}
-	r.PartitionSessionID.FromInt64(proto.PartitionSessionId)
-	r.Graceful = proto.Graceful
-	r.CommittedOffset.FromInt64(proto.CommittedOffset)
+	r.PartitionSessionID.FromInt64(proto.GetPartitionSessionId())
+	r.Graceful = proto.GetGraceful()
+	r.CommittedOffset.FromInt64(proto.GetCommittedOffset())
+
 	return nil
 }
 
@@ -498,4 +479,26 @@ func (r *StopPartitionSessionResponse) toProto() *Ydb_Topic.StreamReadMessage_St
 	return &Ydb_Topic.StreamReadMessage_StopPartitionSessionResponse{
 		PartitionSessionId: r.PartitionSessionID.ToInt64(),
 	}
+}
+
+type EndPartitionSession struct {
+	serverMessageImpl
+
+	rawtopiccommon.ServerMessageMetadata
+
+	PartitionSessionID   PartitionSessionID
+	AdjacentPartitionIDs []int64
+	ChildPartitionIDs    []int64
+}
+
+func (r *EndPartitionSession) fromProto(proto *Ydb_Topic.StreamReadMessage_EndPartitionSession) error {
+	if proto == nil {
+		return xerrors.WithStackTrace(errUnexpectedGrpcNilEndPartitionSession)
+	}
+
+	r.PartitionSessionID.FromInt64(proto.GetPartitionSessionId())
+	r.AdjacentPartitionIDs = proto.GetAdjacentPartitionIds()
+	r.ChildPartitionIDs = proto.GetChildPartitionIds()
+
+	return nil
 }

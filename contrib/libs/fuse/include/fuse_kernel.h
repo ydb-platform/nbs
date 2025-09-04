@@ -211,7 +211,7 @@ struct fuse_file_lock {
 #define FUSE_BIG_WRITES		(1 << 5)
 #define FUSE_DONT_MASK		(1 << 6)
 #define FUSE_FLOCK_LOCKS	(1 << 10)
-#define FUSE_WRITEBACK_CACHE	(1 << 16)
+#define FUSE_WRITEBACK_CACHE (1 << 16)
 
 /**
  * CUSE INIT request/reply flags

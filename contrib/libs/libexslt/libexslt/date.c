@@ -1964,15 +1964,15 @@ exsltDateYear (const xmlChar *dateTime)
     if (dateTime == NULL) {
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
     } else {
 	dt = exsltDateParse(dateTime);
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
 	if ((dt->type != XS_DATETIME) && (dt->type != XS_DATE) &&
 	    (dt->type != XS_GYEARMONTH) && (dt->type != XS_GYEAR)) {
 	    exsltDateFreeDate(dt);
-	    return xmlXPathNAN;
+	    return NAN;
 	}
     }
 
@@ -2023,7 +2023,7 @@ exsltDateLeapYear (const xmlChar *dateTime)
     }
 
     if (dt == NULL) {
-        ret = xmlXPathNewFloat(xmlXPathNAN);
+        ret = xmlXPathNewFloat(NAN);
     }
     else {
         ret = xmlXPathNewBoolean(IS_LEAP(dt->year));
@@ -2063,16 +2063,16 @@ exsltDateMonthInYear (const xmlChar *dateTime)
     if (dateTime == NULL) {
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
     } else {
 	dt = exsltDateParse(dateTime);
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
 	if ((dt->type != XS_DATETIME) && (dt->type != XS_DATE) &&
 	    (dt->type != XS_GYEARMONTH) && (dt->type != XS_GMONTH) &&
 	    (dt->type != XS_GMONTHDAY)) {
 	    exsltDateFreeDate(dt);
-	    return xmlXPathNAN;
+	    return NAN;
 	}
     }
 
@@ -2210,14 +2210,14 @@ exsltDateWeekInYear (const xmlChar *dateTime)
     if (dateTime == NULL) {
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
     } else {
 	dt = exsltDateParse(dateTime);
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
 	if ((dt->type != XS_DATETIME) && (dt->type != XS_DATE)) {
 	    exsltDateFreeDate(dt);
-	    return xmlXPathNAN;
+	    return NAN;
 	}
     }
 
@@ -2276,14 +2276,14 @@ exsltDateWeekInMonth (const xmlChar *dateTime)
     if (dateTime == NULL) {
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
     } else {
 	dt = exsltDateParse(dateTime);
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
 	if ((dt->type != XS_DATETIME) && (dt->type != XS_DATE)) {
 	    exsltDateFreeDate(dt);
-	    return xmlXPathNAN;
+	    return NAN;
 	}
     }
 
@@ -2328,14 +2328,14 @@ exsltDateDayInYear (const xmlChar *dateTime)
     if (dateTime == NULL) {
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
     } else {
 	dt = exsltDateParse(dateTime);
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
 	if ((dt->type != XS_DATETIME) && (dt->type != XS_DATE)) {
 	    exsltDateFreeDate(dt);
-	    return xmlXPathNAN;
+	    return NAN;
 	}
     }
 
@@ -2375,15 +2375,15 @@ exsltDateDayInMonth (const xmlChar *dateTime)
     if (dateTime == NULL) {
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
     } else {
 	dt = exsltDateParse(dateTime);
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
 	if ((dt->type != XS_DATETIME) && (dt->type != XS_DATE) &&
 	    (dt->type != XS_GMONTHDAY) && (dt->type != XS_GDAY)) {
 	    exsltDateFreeDate(dt);
-	    return xmlXPathNAN;
+	    return NAN;
 	}
     }
 
@@ -2421,14 +2421,14 @@ exsltDateDayOfWeekInMonth (const xmlChar *dateTime)
     if (dateTime == NULL) {
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
     } else {
 	dt = exsltDateParse(dateTime);
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
 	if ((dt->type != XS_DATETIME) && (dt->type != XS_DATE)) {
 	    exsltDateFreeDate(dt);
-	    return xmlXPathNAN;
+	    return NAN;
 	}
     }
 
@@ -2468,14 +2468,14 @@ exsltDateDayInWeek (const xmlChar *dateTime)
     if (dateTime == NULL) {
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
     } else {
 	dt = exsltDateParse(dateTime);
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
 	if ((dt->type != XS_DATETIME) && (dt->type != XS_DATE)) {
 	    exsltDateFreeDate(dt);
-	    return xmlXPathNAN;
+	    return NAN;
 	}
     }
 
@@ -2597,14 +2597,14 @@ exsltDateHourInDay (const xmlChar *dateTime)
     if (dateTime == NULL) {
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
     } else {
 	dt = exsltDateParse(dateTime);
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
 	if ((dt->type != XS_DATETIME) && (dt->type != XS_TIME)) {
 	    exsltDateFreeDate(dt);
-	    return xmlXPathNAN;
+	    return NAN;
 	}
     }
 
@@ -2641,14 +2641,14 @@ exsltDateMinuteInHour (const xmlChar *dateTime)
     if (dateTime == NULL) {
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
     } else {
 	dt = exsltDateParse(dateTime);
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
 	if ((dt->type != XS_DATETIME) && (dt->type != XS_TIME)) {
 	    exsltDateFreeDate(dt);
-	    return xmlXPathNAN;
+	    return NAN;
 	}
     }
 
@@ -2687,14 +2687,14 @@ exsltDateSecondInMinute (const xmlChar *dateTime)
     if (dateTime == NULL) {
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
     } else {
 	dt = exsltDateParse(dateTime);
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
 	if ((dt->type != XS_DATETIME) && (dt->type != XS_TIME)) {
 	    exsltDateFreeDate(dt);
-	    return xmlXPathNAN;
+	    return NAN;
 	}
     }
 
@@ -2954,12 +2954,12 @@ exsltDateSeconds (const xmlChar *dateTime)
 {
     exsltDateValPtr dt;
     exsltDateDurValPtr dur = NULL;
-    double ret = xmlXPathNAN;
+    double ret = NAN;
 
     if (dateTime == NULL) {
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-	    return xmlXPathNAN;
+	    return NAN;
     } else {
         dt = exsltDateParse(dateTime);
         if (dt == NULL)

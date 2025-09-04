@@ -2,12 +2,19 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.73.0)
+
 SRCS(
     credentials.go
     tls.go
 )
 
 GO_TEST_SRCS(credentials_test.go)
+
+GO_XTEST_SRCS(
+    credentials_ext_test.go
+    tls_ext_test.go
+)
 
 END()
 

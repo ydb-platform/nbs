@@ -2,8 +2,10 @@
 
 #include "defs.h"
 #include "events.h"
+#include "events_internal.h"
 #include "subscriber.h"
 
+#include <contrib/ydb/core/base/statestorage_impl.h>
 #include <contrib/ydb/core/base/tablet_types.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/core/testlib/basics/appdata.h>
@@ -22,6 +24,27 @@
 
 namespace NKikimr {
 namespace NSchemeBoard {
+
+void SetupMinimalRuntime(TTestActorRuntime& runtime, const TStateStorageSetupper& setupStateStorage = CreateDefaultStateStorageSetupper());
+
+TIntrusiveConstPtr<TStateStorageInfo> GetStateStorageInfo(TTestActorRuntime& runtime);
+TEvStateStorage::TEvResolveReplicasList::TPtr ResolveReplicas(TTestActorRuntime& runtime, const TString& path);
+
+template <typename TEvent>
+size_t CountEvents(TTestBasicRuntime& runtime, bool dispatch = true, TActorId recipient = {}) {
+    if (dispatch) {
+        if (!runtime.DispatchEvents()) {
+            return 0;
+        }
+    } else {
+        // is necessary to accumulate sent events
+        runtime.SimulateSleep(TDuration::Seconds(1));
+    }
+
+    return CountIf(runtime.CaptureEvents(), [=](const TAutoPtr<IEventHandle> ev) {
+        return ev->GetTypeRewrite() == TEvent::EventType && (recipient ? ev->Recipient == recipient : true);
+    });
+}
 
 class TTestContext: public TTestBasicRuntime {
 public:
@@ -60,34 +83,21 @@ public:
     }
 
     template <typename TEvent>
-    size_t CountEvents(bool dispatch = true) {
-        if (dispatch) {
-            if (!DispatchEvents()) {
-                return 0;
-            }
-        }
-
-        return CountIf(CaptureEvents(), [](const TAutoPtr<IEventHandle> ev) {
-            return ev->GetTypeRewrite() == TEvent::EventType;
-        });
-    }
-
-    template <typename TEvent>
     size_t CountEdgeEvents() {
-        return CountEvents<TEvent>(false);
+        return CountEvents<TEvent>(*this, false);
     }
 
-    TSchemeBoardEvents::TEvHandshakeResponse::TPtr HandshakeReplica(
+    NInternalEvents::TEvHandshakeResponse::TPtr HandshakeReplica(
         const TActorId& replica,
         const TActorId& sender,
         ui64 owner = 1,
         ui64 generation = 1,
         bool grabResponse = true
     ) {
-        Send(replica, sender, new TSchemeBoardEvents::TEvHandshakeRequest(owner, generation));
+        Send(replica, sender, new NInternalEvents::TEvHandshakeRequest(owner, generation));
 
         if (grabResponse) {
-            return GrabEdgeEvent<TSchemeBoardEvents::TEvHandshakeResponse>(sender);
+            return GrabEdgeEvent<NInternalEvents::TEvHandshakeResponse>(sender);
         }
 
         return nullptr;
@@ -99,11 +109,11 @@ public:
         ui64 owner = 1,
         ui64 generation = 1
     ) {
-        Send(replica, sender, new TSchemeBoardEvents::TEvCommitRequest(owner, generation));
+        Send(replica, sender, new NInternalEvents::TEvCommitRequest(owner, generation));
     }
 
     template <typename TPath>
-    TSchemeBoardEvents::TEvNotify::TPtr SubscribeReplica(
+    NInternalEvents::TEvNotify::TPtr SubscribeReplica(
         const TActorId& replica,
         const TActorId& sender,
         const TPath& path,
@@ -111,13 +121,13 @@ public:
         const ui64 domainOwnerId = 0,
         const NKikimrSchemeBoard::TEvSubscribe::TCapabilities& capabilities = NKikimrSchemeBoard::TEvSubscribe::TCapabilities()
     ) {
-        auto subscribe = MakeHolder<TSchemeBoardEvents::TEvSubscribe>(path, domainOwnerId);
+        auto subscribe = MakeHolder<NInternalEvents::TEvSubscribe>(path, domainOwnerId);
         subscribe->Record.MutableCapabilities()->CopyFrom(capabilities);
 
         Send(replica, sender, subscribe.Release());
 
         if (grabResponse) {
-            return GrabEdgeEvent<TSchemeBoardEvents::TEvNotify>(sender);
+            return GrabEdgeEvent<NInternalEvents::TEvNotify>(sender);
         }
 
         return nullptr;
@@ -125,20 +135,19 @@ public:
 
     template <typename TPath>
     void UnsubscribeReplica(const TActorId& replica, const TActorId& sender, const TPath& path) {
-        Send(replica, sender, new TSchemeBoardEvents::TEvUnsubscribe(path));
+        Send(replica, sender, new NInternalEvents::TEvUnsubscribe(path));
     }
 
     template <typename TEvent, typename TPath>
     TActorId CreateSubscriber(
         const TActorId& owner,
         const TPath& path,
-        ui64 stateStorageGroup = 0,
         ui64 domainOwnerId = 1,
         bool grabResponse = true,
         ui32 nodeIndex = 0
     ) {
         const TActorId subscriber = Register(
-            CreateSchemeBoardSubscriber(owner, path, stateStorageGroup, domainOwnerId), nodeIndex
+            CreateSchemeBoardSubscriber(owner, path, domainOwnerId), nodeIndex
         );
         EnableScheduleForActor(subscriber, true);
 
@@ -153,12 +162,11 @@ public:
     TActorId CreateSubscriber(
         const TActorId& owner,
         const TPath& path,
-        ui64 stateStorageGroup = 0,
         ui64 domainOwnerId = 1,
         ui32 nodeIndex = 0
     ) {
-        return CreateSubscriber<TSchemeBoardEvents::TEvNotify>(
-            owner, path, stateStorageGroup, domainOwnerId, false, nodeIndex
+        return CreateSubscriber<NInternalEvents::TEvNotify>(
+            owner, path, domainOwnerId, false, nodeIndex
         );
     }
 
@@ -170,7 +178,6 @@ class TTestWithSchemeshard: public NUnitTest::TTestBase {
         TAppPrepare& app,
         const TString& name,
         ui32 domainUid,
-        ui32 stateStorageGroup,
         ui64 hiveTabletId,
         ui64 schemeshardTabletId
     ) {
@@ -178,12 +185,10 @@ class TTestWithSchemeshard: public NUnitTest::TTestBase {
         ui32 planResolution = 50;
         auto domain = TDomainsInfo::TDomain::ConstructDomainWithExplicitTabletIds(
             name, domainUid, schemeshardTabletId,
-            stateStorageGroup, stateStorageGroup, TVector<ui32>{stateStorageGroup},
-            domainUid, TVector<ui32>{domainUid},
             planResolution,
-            TVector<ui64>{TDomainsInfo::MakeTxCoordinatorIDFixed(domainUid, 1)},
+            TVector<ui64>{TDomainsInfo::MakeTxCoordinatorIDFixed(1)},
             TVector<ui64>{},
-            TVector<ui64>{TDomainsInfo::MakeTxAllocatorIDFixed(domainUid, 1)},
+            TVector<ui64>{TDomainsInfo::MakeTxAllocatorIDFixed(1)},
             DefaultPoolKinds(2)
         );
 
@@ -192,7 +197,7 @@ class TTestWithSchemeshard: public NUnitTest::TTestBase {
         runtime.SetTxAllocatorTabletIds(ids);
 
         app.AddDomain(domain.Release());
-        app.AddHive(domainUid, hiveTabletId);
+        app.AddHive(hiveTabletId);
     }
 
     static void SetupRuntime(TTestActorRuntime& runtime) {
@@ -201,8 +206,8 @@ class TTestWithSchemeshard: public NUnitTest::TTestBase {
         }
 
         TAppPrepare app;
-        AddDomain(runtime, app, "Root", 0, 0, TTestTxConfig::Hive, TTestTxConfig::SchemeShard);
-        SetupChannelProfiles(app, 0, 1);
+        AddDomain(runtime, app, "Root", 0, TTestTxConfig::Hive, TTestTxConfig::SchemeShard);
+        SetupChannelProfiles(app, 1);
         SetupTabletServices(runtime, &app, true);
     }
 
@@ -241,16 +246,53 @@ protected:
         return TTestContext::DefaultObserverFunc;
     }
 
+    void AddSysViewsRosterUpdateObserver() {
+        if (!Context->IsRealThreads()) {
+            SysViewsRosterUpdateFinished = false;
+            SysViewsRosterUpdateObserver = Context->AddObserver<NSysView::TEvSysView::TEvRosterUpdateFinished>([this](auto&) {
+                SysViewsRosterUpdateFinished = true;
+            });
+        }
+    }
+
+    void WaitForSysViewsRosterUpdate() {
+        if (!Context->IsRealThreads()) {
+            Context->WaitFor("SysViewsRoster update finished", [this] {
+                return SysViewsRosterUpdateFinished;
+            });
+            SysViewsRosterUpdateObserver.Remove();
+        }
+    }
+
 public:
-    void SetUp() override {
+    void PrepareContext() {
         Context = MakeHolder<TTestContext>();
         Context->SetObserverFunc(ObserverFunc());
 
         SetupRuntime(*Context);
+    }
+
+    void BootActors() {
+        // Create Observer to catch an event of system views update finished.
+        // For more info, see comments in ydb/core/testlib/test_client.cpp
+        if (Context->GetAppData().FeatureFlags.GetEnableRealSystemViewPaths()) {
+            AddSysViewsRosterUpdateObserver();
+        }
+
         BootSchemeShard(*Context, TTestTxConfig::SchemeShard);
         BootTxAllocator(*Context, TTestTxConfig::TxAllocator);
         BootCoordinator(*Context, TTestTxConfig::Coordinator);
         BootHive(*Context, TTestTxConfig::Hive);
+
+        // Wait until schemeshard completes creating system view paths
+        if (Context->GetAppData().FeatureFlags.GetEnableRealSystemViewPaths()) {
+            WaitForSysViewsRosterUpdate();
+        }
+    }
+
+    void SetUp() override {
+        PrepareContext();
+        BootActors();
     }
 
     void TurnOnTabletsScheduling() {
@@ -276,11 +318,15 @@ public:
         SchedulingGuard.Reset();
         CoordinatorState.Drop();
         HiveState.Drop();
+        SysViewsRosterUpdateObserver.Remove();
         Context.Reset();
     }
 
 protected:
     THolder<TTestContext> Context;
+
+    TTestContext::TEventObserverHolder SysViewsRosterUpdateObserver;
+    bool SysViewsRosterUpdateFinished;
 
 private:
     TFakeCoordinator::TState::TPtr CoordinatorState;
@@ -296,7 +342,7 @@ NKikimrScheme::TEvDescribeSchemeResult GenerateDescribe(
     TDomainId domainId = TDomainId()
 );
 
-TSchemeBoardEvents::TEvUpdate* GenerateUpdate(
+NInternalEvents::TEvUpdate* GenerateUpdate(
     const NKikimrScheme::TEvDescribeSchemeResult& describe,
     ui64 owner = 1,
     ui64 generation = 1,
@@ -313,7 +359,7 @@ struct TCombinationsArgs {
     ui64 Generation;
     bool IsDeletion;
 
-    TSchemeBoardEvents::TEvUpdate* GenerateUpdate() const {
+    NInternalEvents::TEvUpdate* GenerateUpdate() const {
         return ::NKikimr::NSchemeBoard::GenerateUpdate(GenerateDescribe(), OwnerId, Generation, IsDeletion);
     }
 

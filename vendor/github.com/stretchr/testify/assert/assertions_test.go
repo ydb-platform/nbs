@@ -16,7 +16,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unsafe"
 )
 
 var (
@@ -136,18 +135,42 @@ func TestObjectsAreEqual(t *testing.T) {
 
 		})
 	}
+}
 
-	// Cases where type differ but values are equal
-	if !ObjectsAreEqualValues(uint32(10), int32(10)) {
-		t.Error("ObjectsAreEqualValues should return true")
-	}
-	if ObjectsAreEqualValues(0, nil) {
-		t.Fail()
-	}
-	if ObjectsAreEqualValues(nil, 0) {
-		t.Fail()
+func TestObjectsAreEqualValues(t *testing.T) {
+	now := time.Now()
+
+	cases := []struct {
+		expected interface{}
+		actual   interface{}
+		result   bool
+	}{
+		{uint32(10), int32(10), true},
+		{0, nil, false},
+		{nil, 0, false},
+		{now, now.In(time.Local), false}, // should not be time zone independent
+		{int(270), int8(14), false},      // should handle overflow/underflow
+		{int8(14), int(270), false},
+		{[]int{270, 270}, []int8{14, 14}, false},
+		{complex128(1e+100 + 1e+100i), complex64(complex(math.Inf(0), math.Inf(0))), false},
+		{complex64(complex(math.Inf(0), math.Inf(0))), complex128(1e+100 + 1e+100i), false},
+		{complex128(1e+100 + 1e+100i), 270, false},
+		{270, complex128(1e+100 + 1e+100i), false},
+		{complex128(1e+100 + 1e+100i), 3.14, false},
+		{3.14, complex128(1e+100 + 1e+100i), false},
+		{complex128(1e+10 + 1e+10i), complex64(1e+10 + 1e+10i), true},
+		{complex64(1e+10 + 1e+10i), complex128(1e+10 + 1e+10i), true},
 	}
 
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("ObjectsAreEqualValues(%#v, %#v)", c.expected, c.actual), func(t *testing.T) {
+			res := ObjectsAreEqualValues(c.expected, c.actual)
+
+			if res != c.result {
+				t.Errorf("ObjectsAreEqualValues(%#v, %#v) should return %#v", c.expected, c.actual, c.result)
+			}
+		})
+	}
 }
 
 type Nested struct {
@@ -402,6 +425,80 @@ func TestEqualExportedValues(t *testing.T) {
 	            	+   Exported: (int) 2,
 	            	    notExported: (interface {}) <nil>`,
 		},
+		{
+			value1:        S{[2]int{1, 2}, Nested{2, 3}, 4, Nested{5, 6}},
+			value2:        S{[2]int{1, 2}, Nested{2, nil}, nil, Nested{}},
+			expectedEqual: true,
+		},
+		{
+			value1:        &S{1, Nested{2, 3}, 4, Nested{5, 6}},
+			value2:        &S{1, Nested{2, nil}, nil, Nested{}},
+			expectedEqual: true,
+		},
+		{
+			value1:        &S{1, Nested{2, 3}, 4, Nested{5, 6}},
+			value2:        &S{1, Nested{1, nil}, nil, Nested{}},
+			expectedEqual: false,
+			expectedFail: `
+	            	Diff:
+	            	--- Expected
+	            	+++ Actual
+	            	@@ -3,3 +3,3 @@
+	            	  Exported2: (assert.Nested) {
+	            	-  Exported: (int) 2,
+	            	+  Exported: (int) 1,
+	            	   notExported: (interface {}) <nil>`,
+		},
+		{
+			value1:        []int{1, 2},
+			value2:        []int{1, 2},
+			expectedEqual: true,
+		},
+		{
+			value1:        []int{1, 2},
+			value2:        []int{1, 3},
+			expectedEqual: false,
+			expectedFail: `
+	            	Diff:
+	            	--- Expected
+	            	+++ Actual
+	            	@@ -2,3 +2,3 @@
+	            	  (int) 1,
+	            	- (int) 2
+	            	+ (int) 3
+	            	 }`,
+		},
+		{
+			value1: []*Nested{
+				{1, 2},
+				{3, 4},
+			},
+			value2: []*Nested{
+				{1, "a"},
+				{3, "b"},
+			},
+			expectedEqual: true,
+		},
+		{
+			value1: []*Nested{
+				{1, 2},
+				{3, 4},
+			},
+			value2: []*Nested{
+				{1, "a"},
+				{2, "b"},
+			},
+			expectedEqual: false,
+			expectedFail: `
+	            	Diff:
+	            	--- Expected
+	            	+++ Actual
+	            	@@ -6,3 +6,3 @@
+	            	  (*assert.Nested)({
+	            	-  Exported: (int) 3,
+	            	+  Exported: (int) 2,
+	            	   notExported: (interface {}) <nil>`,
+		},
 	}
 
 	for _, c := range cases {
@@ -434,6 +531,22 @@ func TestImplements(t *testing.T) {
 	}
 	if Implements(mockT, (*AssertionTesterInterface)(nil), nil) {
 		t.Error("Implements method should return false: nil does not implement AssertionTesterInterface")
+	}
+
+}
+
+func TestNotImplements(t *testing.T) {
+
+	mockT := new(testing.T)
+
+	if !NotImplements(mockT, (*AssertionTesterInterface)(nil), new(AssertionTesterNonConformingObject)) {
+		t.Error("NotImplements method should return true: AssertionTesterNonConformingObject does not implement AssertionTesterInterface")
+	}
+	if NotImplements(mockT, (*AssertionTesterInterface)(nil), new(AssertionTesterConformingObject)) {
+		t.Error("NotImplements method should return false: AssertionTesterConformingObject implements AssertionTesterInterface")
+	}
+	if NotImplements(mockT, (*AssertionTesterInterface)(nil), nil) {
+		t.Error("NotImplements method should return false: nil can't be checked to be implementing AssertionTesterInterface or not")
 	}
 
 }
@@ -542,39 +655,59 @@ func Test_samePointers(t *testing.T) {
 		second interface{}
 	}
 	tests := []struct {
-		name      string
-		args      args
-		assertion BoolAssertionFunc
+		name string
+		args args
+		same BoolAssertionFunc
+		ok   BoolAssertionFunc
 	}{
 		{
-			name:      "1 != 2",
-			args:      args{first: 1, second: 2},
-			assertion: False,
+			name: "1 != 2",
+			args: args{first: 1, second: 2},
+			same: False,
+			ok:   False,
 		},
 		{
-			name:      "1 != 1 (not same ptr)",
-			args:      args{first: 1, second: 1},
-			assertion: False,
+			name: "1 != 1 (not same ptr)",
+			args: args{first: 1, second: 1},
+			same: False,
+			ok:   False,
 		},
 		{
-			name:      "ptr(1) == ptr(1)",
-			args:      args{first: p, second: p},
-			assertion: True,
+			name: "ptr(1) == ptr(1)",
+			args: args{first: p, second: p},
+			same: True,
+			ok:   True,
 		},
 		{
-			name:      "int(1) != float32(1)",
-			args:      args{first: int(1), second: float32(1)},
-			assertion: False,
+			name: "int(1) != float32(1)",
+			args: args{first: int(1), second: float32(1)},
+			same: False,
+			ok:   False,
 		},
 		{
-			name:      "array != slice",
-			args:      args{first: [2]int{1, 2}, second: []int{1, 2}},
-			assertion: False,
+			name: "array != slice",
+			args: args{first: [2]int{1, 2}, second: []int{1, 2}},
+			same: False,
+			ok:   False,
+		},
+		{
+			name: "non-pointer vs pointer (1 != ptr(2))",
+			args: args{first: 1, second: p},
+			same: False,
+			ok:   False,
+		},
+		{
+			name: "pointer vs non-pointer (ptr(2) != 1)",
+			args: args{first: p, second: 1},
+			same: False,
+			ok:   False,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.assertion(t, samePointers(tt.args.first, tt.args.second))
+			same, ok := samePointers(tt.args.first, tt.args.second)
+			tt.same(t, same)
+			tt.ok(t, ok)
 		})
 	}
 }
@@ -833,7 +966,7 @@ func TestNotEqualValues(t *testing.T) {
 		{new(AssertionTesterConformingObject), new(AssertionTesterConformingObject), false},
 		{&struct{}{}, &struct{}{}, false},
 
-		// Different behaviour from NotEqual()
+		// Different behavior from NotEqual()
 		{func() int { return 23 }, func() int { return 24 }, true},
 		{int(10), int(11), true},
 		{int(10), uint(10), false},
@@ -1256,6 +1389,52 @@ func TestDiffLists(t *testing.T) {
 	}
 }
 
+func TestNotElementsMatch(t *testing.T) {
+	mockT := new(testing.T)
+
+	cases := []struct {
+		expected interface{}
+		actual   interface{}
+		result   bool
+	}{
+		// not matching
+		{[]int{1}, []int{}, true},
+		{[]int{}, []int{2}, true},
+		{[]int{1}, []int{2}, true},
+		{[]int{1}, []int{1, 1}, true},
+		{[]int{1, 2}, []int{3, 4}, true},
+		{[]int{3, 4}, []int{1, 2}, true},
+		{[]int{1, 1, 2, 3}, []int{1, 2, 3}, true},
+		{[]string{"hello"}, []string{"world"}, true},
+		{[]string{"hello", "hello"}, []string{"world", "world"}, true},
+		{[3]string{"hello", "hello", "hello"}, [3]string{"world", "world", "world"}, true},
+
+		// matching
+		{nil, nil, false},
+		{[]int{}, nil, false},
+		{[]int{}, []int{}, false},
+		{[]int{1}, []int{1}, false},
+		{[]int{1, 1}, []int{1, 1}, false},
+		{[]int{1, 2}, []int{2, 1}, false},
+		{[2]int{1, 2}, [2]int{2, 1}, false},
+		{[]int{1, 1, 2}, []int{1, 2, 1}, false},
+		{[]string{"hello", "world"}, []string{"world", "hello"}, false},
+		{[]string{"hello", "hello"}, []string{"hello", "hello"}, false},
+		{[]string{"hello", "hello", "world"}, []string{"hello", "world", "hello"}, false},
+		{[3]string{"hello", "hello", "world"}, [3]string{"hello", "world", "hello"}, false},
+	}
+
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("NotElementsMatch(%#v, %#v)", c.expected, c.actual), func(t *testing.T) {
+			res := NotElementsMatch(mockT, c.actual, c.expected)
+
+			if res != c.result {
+				t.Errorf("NotElementsMatch(%#v, %#v) should return %v", c.actual, c.expected, c.result)
+			}
+		})
+	}
+}
+
 func TestCondition(t *testing.T) {
 	mockT := new(testing.T)
 
@@ -1428,7 +1607,7 @@ func TestError(t *testing.T) {
 	True(t, Error(mockT, err), "Error with error should return True")
 
 	// go vet check
-	True(t, Errorf(mockT, err, "example with %s", "formatted message"), "Errorf with error should rturn True")
+	True(t, Errorf(mockT, err, "example with %s", "formatted message"), "Errorf with error should return True")
 
 	// returning an empty error interface
 	err = func() error {
@@ -1582,7 +1761,7 @@ func Test_getLen(t *testing.T) {
 		struct{}{},
 	}
 	for _, v := range falseCases {
-		ok, l := getLen(v)
+		l, ok := getLen(v)
 		False(t, ok, "Expected getLen fail to get length of %#v", v)
 		Equal(t, 0, l, "getLen should return 0 for %#v", v)
 	}
@@ -1611,7 +1790,7 @@ func Test_getLen(t *testing.T) {
 	}
 
 	for _, c := range trueCases {
-		ok, l := getLen(c.v)
+		l, ok := getLen(c.v)
 		True(t, ok, "Expected getLen success to get length of %#v", c.v)
 		Equal(t, c.l, l)
 	}
@@ -1633,49 +1812,33 @@ func TestLen(t *testing.T) {
 	ch <- 3
 
 	cases := []struct {
-		v interface{}
-		l int
+		v               interface{}
+		l               int
+		expected1234567 string // message when expecting 1234567 items
 	}{
-		{[]int{1, 2, 3}, 3},
-		{[...]int{1, 2, 3}, 3},
-		{"ABC", 3},
-		{map[int]int{1: 2, 2: 4, 3: 6}, 3},
-		{ch, 3},
+		{[]int{1, 2, 3}, 3, `"[1 2 3]" should have 1234567 item(s), but has 3`},
+		{[...]int{1, 2, 3}, 3, `"[1 2 3]" should have 1234567 item(s), but has 3`},
+		{"ABC", 3, `"ABC" should have 1234567 item(s), but has 3`},
+		{map[int]int{1: 2, 2: 4, 3: 6}, 3, `"map[1:2 2:4 3:6]" should have 1234567 item(s), but has 3`},
+		{ch, 3, ""},
 
-		{[]int{}, 0},
-		{map[int]int{}, 0},
-		{make(chan int), 0},
+		{[]int{}, 0, `"[]" should have 1234567 item(s), but has 0`},
+		{map[int]int{}, 0, `"map[]" should have 1234567 item(s), but has 0`},
+		{make(chan int), 0, ""},
 
-		{[]int(nil), 0},
-		{map[int]int(nil), 0},
-		{(chan int)(nil), 0},
+		{[]int(nil), 0, `"[]" should have 1234567 item(s), but has 0`},
+		{map[int]int(nil), 0, `"map[]" should have 1234567 item(s), but has 0`},
+		{(chan int)(nil), 0, `"<nil>" should have 1234567 item(s), but has 0`},
 	}
 
 	for _, c := range cases {
 		True(t, Len(mockT, c.v, c.l), "%#v have %d items", c.v, c.l)
-	}
-
-	cases = []struct {
-		v interface{}
-		l int
-	}{
-		{[]int{1, 2, 3}, 4},
-		{[...]int{1, 2, 3}, 2},
-		{"ABC", 2},
-		{map[int]int{1: 2, 2: 4, 3: 6}, 4},
-		{ch, 2},
-
-		{[]int{}, 1},
-		{map[int]int{}, 1},
-		{make(chan int), 1},
-
-		{[]int(nil), 1},
-		{map[int]int(nil), 1},
-		{(chan int)(nil), 1},
-	}
-
-	for _, c := range cases {
-		False(t, Len(mockT, c.v, c.l), "%#v have %d items", c.v, c.l)
+		False(t, Len(mockT, c.v, c.l+1), "%#v have %d items", c.v, c.l)
+		if c.expected1234567 != "" {
+			msgMock := new(mockTestingT)
+			Len(msgMock, c.v, 1234567)
+			Contains(t, msgMock.errorString(), c.expected1234567)
+		}
 	}
 }
 
@@ -1893,6 +2056,14 @@ func TestInEpsilon(t *testing.T) {
 		{math.NaN(), 0, 1},
 		{0, math.NaN(), 1},
 		{0, 0, math.NaN()},
+		{math.Inf(1), 1, 1},
+		{math.Inf(-1), 1, 1},
+		{1, math.Inf(1), 1},
+		{1, math.Inf(-1), 1},
+		{math.Inf(1), math.Inf(1), 1},
+		{math.Inf(1), math.Inf(-1), 1},
+		{math.Inf(-1), math.Inf(1), 1},
+		{math.Inf(-1), math.Inf(-1), 1},
 	}
 
 	for _, tc := range cases {
@@ -1907,12 +2078,12 @@ func TestInEpsilonSlice(t *testing.T) {
 	True(t, InEpsilonSlice(mockT,
 		[]float64{2.2, math.NaN(), 2.0},
 		[]float64{2.1, math.NaN(), 2.1},
-		0.06), "{2.2, NaN, 2.0} is element-wise close to {2.1, NaN, 2.1} in espilon=0.06")
+		0.06), "{2.2, NaN, 2.0} is element-wise close to {2.1, NaN, 2.1} in epsilon=0.06")
 
 	False(t, InEpsilonSlice(mockT,
 		[]float64{2.2, 2.0},
 		[]float64{2.1, 2.1},
-		0.04), "{2.2, 2.0} is not element-wise close to {2.1, 2.1} in espilon=0.04")
+		0.04), "{2.2, 2.0} is not element-wise close to {2.1, 2.1} in epsilon=0.04")
 
 	False(t, InEpsilonSlice(mockT, "", nil, 1), "Expected non numeral slices to fail")
 }
@@ -1925,13 +2096,16 @@ func TestRegexp(t *testing.T) {
 	}{
 		{"^start", "start of the line"},
 		{"end$", "in the end"},
+		{"end$", "in the end"},
 		{"[0-9]{3}[.-]?[0-9]{2}[.-]?[0-9]{2}", "My phone number is 650.12.34"},
 	}
 
 	for _, tc := range cases {
 		True(t, Regexp(mockT, tc.rx, tc.str))
 		True(t, Regexp(mockT, regexp.MustCompile(tc.rx), tc.str))
+		True(t, Regexp(mockT, regexp.MustCompile(tc.rx), []byte(tc.str)))
 		False(t, NotRegexp(mockT, tc.rx, tc.str))
+		False(t, NotRegexp(mockT, tc.rx, []byte(tc.str)))
 		False(t, NotRegexp(mockT, regexp.MustCompile(tc.rx), tc.str))
 	}
 
@@ -1946,7 +2120,9 @@ func TestRegexp(t *testing.T) {
 	for _, tc := range cases {
 		False(t, Regexp(mockT, tc.rx, tc.str), "Expected \"%s\" to not match \"%s\"", tc.rx, tc.str)
 		False(t, Regexp(mockT, regexp.MustCompile(tc.rx), tc.str))
+		False(t, Regexp(mockT, regexp.MustCompile(tc.rx), []byte(tc.str)))
 		True(t, NotRegexp(mockT, tc.rx, tc.str))
+		True(t, NotRegexp(mockT, tc.rx, []byte(tc.str)))
 		True(t, NotRegexp(mockT, regexp.MustCompile(tc.rx), tc.str))
 	}
 }
@@ -2483,6 +2659,10 @@ func (m *mockTestingT) Errorf(format string, args ...interface{}) {
 	m.args = args
 }
 
+func (m *mockTestingT) Failed() bool {
+	return m.errorFmt != ""
+}
+
 func TestFailNowWithPlainTestingT(t *testing.T) {
 	mockT := &mockTestingT{}
 
@@ -2738,6 +2918,42 @@ func TestErrorAssertionFunc(t *testing.T) {
 	}
 }
 
+func ExamplePanicAssertionFunc() {
+	t := &testing.T{} // provided by test
+
+	tests := []struct {
+		name      string
+		panicFn   PanicTestFunc
+		assertion PanicAssertionFunc
+	}{
+		{"with panic", func() { panic(nil) }, Panics},
+		{"without panic", func() {}, NotPanics},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.assertion(t, tt.panicFn)
+		})
+	}
+}
+
+func TestPanicAssertionFunc(t *testing.T) {
+	tests := []struct {
+		name      string
+		panicFn   PanicTestFunc
+		assertion PanicAssertionFunc
+	}{
+		{"not panic", func() {}, NotPanics},
+		{"panic", func() { panic(nil) }, Panics},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.assertion(t, tt.panicFn)
+		})
+	}
+}
+
 func TestEventuallyFalse(t *testing.T) {
 	mockT := new(testing.T)
 
@@ -2760,11 +2976,22 @@ func TestEventuallyTrue(t *testing.T) {
 	True(t, Eventually(t, condition, 100*time.Millisecond, 20*time.Millisecond))
 }
 
+// errorsCapturingT is a mock implementation of TestingT that captures errors reported with Errorf.
+type errorsCapturingT struct {
+	errors []error
+}
+
+func (t *errorsCapturingT) Errorf(format string, args ...interface{}) {
+	t.errors = append(t.errors, fmt.Errorf(format, args...))
+}
+
+func (t *errorsCapturingT) Helper() {}
+
 func TestEventuallyWithTFalse(t *testing.T) {
-	mockT := new(CollectT)
+	mockT := new(errorsCapturingT)
 
 	condition := func(collect *CollectT) {
-		True(collect, false)
+		Fail(collect, "condition fixed failure")
 	}
 
 	False(t, EventuallyWithT(mockT, condition, 100*time.Millisecond, 20*time.Millisecond))
@@ -2772,18 +2999,63 @@ func TestEventuallyWithTFalse(t *testing.T) {
 }
 
 func TestEventuallyWithTTrue(t *testing.T) {
-	mockT := new(CollectT)
+	mockT := new(errorsCapturingT)
 
-	state := 0
+	counter := 0
 	condition := func(collect *CollectT) {
-		defer func() {
-			state += 1
-		}()
-		True(collect, state == 2)
+		counter += 1
+		True(collect, counter == 2)
 	}
 
 	True(t, EventuallyWithT(mockT, condition, 100*time.Millisecond, 20*time.Millisecond))
 	Len(t, mockT.errors, 0)
+	Equal(t, 2, counter, "Condition is expected to be called 2 times")
+}
+
+func TestEventuallyWithT_ConcurrencySafe(t *testing.T) {
+	mockT := new(errorsCapturingT)
+
+	condition := func(collect *CollectT) {
+		Fail(collect, "condition fixed failure")
+	}
+
+	// To trigger race conditions, we run EventuallyWithT with a nanosecond tick.
+	False(t, EventuallyWithT(mockT, condition, 100*time.Millisecond, time.Nanosecond))
+	Len(t, mockT.errors, 2)
+}
+
+func TestEventuallyWithT_ReturnsTheLatestFinishedConditionErrors(t *testing.T) {
+	// We'll use a channel to control whether a condition should sleep or not.
+	mustSleep := make(chan bool, 2)
+	mustSleep <- false
+	mustSleep <- true
+	close(mustSleep)
+
+	condition := func(collect *CollectT) {
+		if <-mustSleep {
+			// Sleep to ensure that the second condition runs longer than timeout.
+			time.Sleep(time.Second)
+			return
+		}
+
+		// The first condition will fail. We expect to get this error as a result.
+		Fail(collect, "condition fixed failure")
+	}
+
+	mockT := new(errorsCapturingT)
+	False(t, EventuallyWithT(mockT, condition, 100*time.Millisecond, 20*time.Millisecond))
+	Len(t, mockT.errors, 2)
+}
+
+func TestEventuallyWithTFailNow(t *testing.T) {
+	mockT := new(CollectT)
+
+	condition := func(collect *CollectT) {
+		collect.FailNow()
+	}
+
+	False(t, EventuallyWithT(mockT, condition, 100*time.Millisecond, 20*time.Millisecond))
+	Len(t, mockT.errors, 1)
 }
 
 func TestNeverFalse(t *testing.T) {
@@ -2794,25 +3066,45 @@ func TestNeverFalse(t *testing.T) {
 	True(t, Never(t, condition, 100*time.Millisecond, 20*time.Millisecond))
 }
 
+// TestNeverTrue checks Never with a condition that returns true on second call.
 func TestNeverTrue(t *testing.T) {
 	mockT := new(testing.T)
-	state := 0
+
+	// A list of values returned by condition.
+	// Channel protects against concurrent access.
+	returns := make(chan bool, 2)
+	returns <- false
+	returns <- true
+	defer close(returns)
+
+	// Will return true on second call.
 	condition := func() bool {
-		defer func() {
-			state = state + 1
-		}()
-		return state == 2
+		return <-returns
 	}
 
 	False(t, Never(mockT, condition, 100*time.Millisecond, 20*time.Millisecond))
 }
 
-func TestEventuallyIssue805(t *testing.T) {
+// Check that a long running condition doesn't block Eventually.
+// See issue 805 (and its long tail of following issues)
+func TestEventuallyTimeout(t *testing.T) {
 	mockT := new(testing.T)
 
 	NotPanics(t, func() {
-		condition := func() bool { <-time.After(time.Millisecond); return true }
+		done, done2 := make(chan struct{}), make(chan struct{})
+
+		// A condition function that returns after the Eventually timeout
+		condition := func() bool {
+			// Wait until Eventually times out and terminates
+			<-done
+			close(done2)
+			return true
+		}
+
 		False(t, Eventually(mockT, condition, time.Millisecond, time.Microsecond))
+
+		close(done)
+		<-done2
 	})
 }
 
@@ -2845,58 +3137,216 @@ func Test_truncatingFormat(t *testing.T) {
 	}
 }
 
+// parseLabeledOutput does the inverse of labeledOutput - it takes a formatted
+// output string and turns it back into a slice of labeledContent.
+func parseLabeledOutput(output string) []labeledContent {
+	labelPattern := regexp.MustCompile(`^\t([^\t]*): *\t(.*)$`)
+	contentPattern := regexp.MustCompile(`^\t *\t(.*)$`)
+	var contents []labeledContent
+	lines := strings.Split(output, "\n")
+	i := -1
+	for _, line := range lines {
+		if line == "" {
+			// skip blank lines
+			continue
+		}
+		matches := labelPattern.FindStringSubmatch(line)
+		if len(matches) == 3 {
+			// a label
+			contents = append(contents, labeledContent{
+				label:   matches[1],
+				content: matches[2] + "\n",
+			})
+			i++
+			continue
+		}
+		matches = contentPattern.FindStringSubmatch(line)
+		if len(matches) == 2 {
+			// just content
+			if i >= 0 {
+				contents[i].content += matches[1] + "\n"
+				continue
+			}
+		}
+		// Couldn't parse output
+		return nil
+	}
+	return contents
+}
+
+type captureTestingT struct {
+	msg string
+}
+
+func (ctt *captureTestingT) Errorf(format string, args ...interface{}) {
+	ctt.msg = fmt.Sprintf(format, args...)
+}
+
+func (ctt *captureTestingT) checkResultAndErrMsg(t *testing.T, expectedRes, res bool, expectedErrMsg string) {
+	t.Helper()
+	if res != expectedRes {
+		t.Errorf("Should return %t", expectedRes)
+		return
+	}
+	contents := parseLabeledOutput(ctt.msg)
+	if res == true {
+		if contents != nil {
+			t.Errorf("Should not log an error")
+		}
+		return
+	}
+	if contents == nil {
+		t.Errorf("Should log an error. Log output: %v", ctt.msg)
+		return
+	}
+	for _, content := range contents {
+		if content.label == "Error" {
+			if expectedErrMsg == content.content {
+				return
+			}
+			t.Errorf("Logged Error: %v", content.content)
+		}
+	}
+	t.Errorf("Should log Error: %v", expectedErrMsg)
+}
+
 func TestErrorIs(t *testing.T) {
-	mockT := new(testing.T)
 	tests := []struct {
-		err    error
-		target error
-		result bool
+		err          error
+		target       error
+		result       bool
+		resultErrMsg string
 	}{
-		{io.EOF, io.EOF, true},
-		{fmt.Errorf("wrap: %w", io.EOF), io.EOF, true},
-		{io.EOF, io.ErrClosedPipe, false},
-		{nil, io.EOF, false},
-		{io.EOF, nil, false},
-		{nil, nil, true},
+		{
+			err:    io.EOF,
+			target: io.EOF,
+			result: true,
+		},
+		{
+			err:    fmt.Errorf("wrap: %w", io.EOF),
+			target: io.EOF,
+			result: true,
+		},
+		{
+			err:    io.EOF,
+			target: io.ErrClosedPipe,
+			result: false,
+			resultErrMsg: "" +
+				"Target error should be in err chain:\n" +
+				"expected: \"io: read/write on closed pipe\"\n" +
+				"in chain: \"EOF\"\n",
+		},
+		{
+			err:    nil,
+			target: io.EOF,
+			result: false,
+			resultErrMsg: "" +
+				"Target error should be in err chain:\n" +
+				"expected: \"EOF\"\n" +
+				"in chain: \n",
+		},
+		{
+			err:    io.EOF,
+			target: nil,
+			result: false,
+			resultErrMsg: "" +
+				"Target error should be in err chain:\n" +
+				"expected: \"\"\n" +
+				"in chain: \"EOF\"\n",
+		},
+		{
+			err:    nil,
+			target: nil,
+			result: true,
+		},
+		{
+			err:    fmt.Errorf("abc: %w", errors.New("def")),
+			target: io.EOF,
+			result: false,
+			resultErrMsg: "" +
+				"Target error should be in err chain:\n" +
+				"expected: \"EOF\"\n" +
+				"in chain: \"abc: def\"\n" +
+				"\t\"def\"\n",
+		},
 	}
 	for _, tt := range tests {
 		tt := tt
 		t.Run(fmt.Sprintf("ErrorIs(%#v,%#v)", tt.err, tt.target), func(t *testing.T) {
+			mockT := new(captureTestingT)
 			res := ErrorIs(mockT, tt.err, tt.target)
-			if res != tt.result {
-				t.Errorf("ErrorIs(%#v,%#v) should return %t", tt.err, tt.target, tt.result)
-			}
+			mockT.checkResultAndErrMsg(t, tt.result, res, tt.resultErrMsg)
 		})
 	}
 }
 
 func TestNotErrorIs(t *testing.T) {
-	mockT := new(testing.T)
 	tests := []struct {
-		err    error
-		target error
-		result bool
+		err          error
+		target       error
+		result       bool
+		resultErrMsg string
 	}{
-		{io.EOF, io.EOF, false},
-		{fmt.Errorf("wrap: %w", io.EOF), io.EOF, false},
-		{io.EOF, io.ErrClosedPipe, true},
-		{nil, io.EOF, true},
-		{io.EOF, nil, true},
-		{nil, nil, false},
+		{
+			err:    io.EOF,
+			target: io.EOF,
+			result: false,
+			resultErrMsg: "" +
+				"Target error should not be in err chain:\n" +
+				"found: \"EOF\"\n" +
+				"in chain: \"EOF\"\n",
+		},
+		{
+			err:    fmt.Errorf("wrap: %w", io.EOF),
+			target: io.EOF,
+			result: false,
+			resultErrMsg: "" +
+				"Target error should not be in err chain:\n" +
+				"found: \"EOF\"\n" +
+				"in chain: \"wrap: EOF\"\n" +
+				"\t\"EOF\"\n",
+		},
+		{
+			err:    io.EOF,
+			target: io.ErrClosedPipe,
+			result: true,
+		},
+		{
+			err:    nil,
+			target: io.EOF,
+			result: true,
+		},
+		{
+			err:    io.EOF,
+			target: nil,
+			result: true,
+		},
+		{
+			err:    nil,
+			target: nil,
+			result: false,
+			resultErrMsg: "" +
+				"Target error should not be in err chain:\n" +
+				"found: \"\"\n" +
+				"in chain: \n",
+		},
+		{
+			err:    fmt.Errorf("abc: %w", errors.New("def")),
+			target: io.EOF,
+			result: true,
+		},
 	}
 	for _, tt := range tests {
 		tt := tt
 		t.Run(fmt.Sprintf("NotErrorIs(%#v,%#v)", tt.err, tt.target), func(t *testing.T) {
+			mockT := new(captureTestingT)
 			res := NotErrorIs(mockT, tt.err, tt.target)
-			if res != tt.result {
-				t.Errorf("NotErrorIs(%#v,%#v) should return %t", tt.err, tt.target, tt.result)
-			}
+			mockT.checkResultAndErrMsg(t, tt.result, res, tt.resultErrMsg)
 		})
 	}
 }
 
 func TestErrorAs(t *testing.T) {
-	mockT := new(testing.T)
 	tests := []struct {
 		err    error
 		result bool
@@ -2909,17 +3359,39 @@ func TestErrorAs(t *testing.T) {
 		tt := tt
 		var target *customError
 		t.Run(fmt.Sprintf("ErrorAs(%#v,%#v)", tt.err, target), func(t *testing.T) {
+			mockT := new(testing.T)
 			res := ErrorAs(mockT, tt.err, &target)
 			if res != tt.result {
-				t.Errorf("ErrorAs(%#v,%#v) should return %t)", tt.err, target, tt.result)
+				t.Errorf("ErrorAs(%#v,%#v) should return %t", tt.err, target, tt.result)
+			}
+			if res == mockT.Failed() {
+				t.Errorf("The test result (%t) should be reflected in the testing.T type (%t)", res, !mockT.Failed())
 			}
 		})
 	}
 }
 
-func TestIsNil(t *testing.T) {
-	var n unsafe.Pointer = nil
-	if !isNil(n) {
-		t.Fatal("fail")
+func TestNotErrorAs(t *testing.T) {
+	tests := []struct {
+		err    error
+		result bool
+	}{
+		{fmt.Errorf("wrap: %w", &customError{}), false},
+		{io.EOF, true},
+		{nil, true},
+	}
+	for _, tt := range tests {
+		tt := tt
+		var target *customError
+		t.Run(fmt.Sprintf("NotErrorAs(%#v,%#v)", tt.err, target), func(t *testing.T) {
+			mockT := new(testing.T)
+			res := NotErrorAs(mockT, tt.err, &target)
+			if res != tt.result {
+				t.Errorf("NotErrorAs(%#v,%#v) should not return %t", tt.err, target, tt.result)
+			}
+			if res == mockT.Failed() {
+				t.Errorf("The test result (%t) should be reflected in the testing.T type (%t)", res, !mockT.Failed())
+			}
+		})
 	}
 }

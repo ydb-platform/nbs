@@ -130,11 +130,63 @@ func (pm *PortManager) releasePort(port int) error {
 	return nil
 }
 
-// GetPort allocates new free port.
-// Optional defaultPort is used when --no-random-ports option is passed to ya make.
-func (pm *PortManager) GetPort(defaultPort ...int) (int, error) {
+func (pm *PortManager) tryAcquirePort(port int) error {
+	var lsn net.Listener
+	lsn, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return err
+	}
+	_ = lsn.Close()
+
+	var pkt net.PacketConn
+	pkt, err = net.ListenPacket("udp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return err
+	}
+	_ = pkt.Close()
+
+	if err = pm.acquirePort(port); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (pm *PortManager) releasePorts(ports []int) error {
+	var lastErr error
+	for _, port := range ports {
+		err := pm.releasePort(port)
+		if err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+func (pm *PortManager) tryAcquireSequentialPorts(count int, startingPort int) ([]int, error) {
+	acquiredPorts := make([]int, 0, count)
+	for port := startingPort; port < startingPort+count; port++ {
+		if err := pm.tryAcquirePort(port); err != nil {
+			_ = pm.releasePorts(acquiredPorts)
+			return nil, err
+		}
+		acquiredPorts = append(acquiredPorts, port)
+	}
+	return acquiredPorts, nil
+}
+
+// GetSequentialPorts allocates count sequential free ports.
+// Optional defaultPort is used when --no-random-ports option is passed to ya make
+// In case --no-random-ports is passed sequential ports starting from default port are returned
+func (pm *PortManager) GetSequentialPorts(count int, defaultPort ...int) ([]int, error) {
 	if pm.noRandomPorts && len(defaultPort) != 0 {
-		return defaultPort[0], nil
+		result := make([]int, count)
+		port := defaultPort[0]
+		for i := 0; i < count; i++ {
+			result[i] = port
+			port++
+		}
+		return result, nil
 	}
 
 	pm.mu.Lock()
@@ -143,27 +195,22 @@ func (pm *PortManager) GetPort(defaultPort ...int) (int, error) {
 	var err error
 	for i := 0; i < maxRetries; i++ {
 		randomPort := rand.Intn(pm.rangeEnd-pm.rangeStart) + pm.rangeStart
-
-		var lsn net.Listener
-		lsn, err = net.Listen("tcp", fmt.Sprintf(":%d", randomPort))
+		ports, err := pm.tryAcquireSequentialPorts(count, randomPort)
 		if err != nil {
 			continue
 		}
-		_ = lsn.Close()
-
-		var pkt net.PacketConn
-		pkt, err = net.ListenPacket("udp", fmt.Sprintf(":%d", randomPort))
-		if err != nil {
-			continue
-		}
-		_ = pkt.Close()
-
-		if err = pm.acquirePort(randomPort); err != nil {
-			continue
-		}
-
-		return randomPort, nil
+		return ports, nil
 	}
 
-	return 0, fmt.Errorf("failed to allocate free port after %d iterations: %v", maxRetries, err)
+	return nil, fmt.Errorf("failed to allocate free port after %d iterations: %v", maxRetries, err)
+}
+
+// GetPort allocates new free port.
+// Optional defaultPort is used when --no-random-ports option is passed to ya make.
+func (pm *PortManager) GetPort(defaultPort ...int) (int, error) {
+	ports, err := pm.GetSequentialPorts(1, defaultPort...)
+	if err != nil {
+		return 0, err
+	}
+	return ports[0], nil
 }

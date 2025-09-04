@@ -9,16 +9,19 @@ PEERDIR(
     contrib/ydb/core/blobstorage/backpressure
     contrib/ydb/core/blobstorage/base
     contrib/ydb/core/blobstorage/pdisk
-    contrib/ydb/core/control
+    contrib/ydb/core/control/lib
     contrib/ydb/core/keyvalue
+    contrib/ydb/core/jaeger_tracing
     contrib/ydb/core/kqp/common
     contrib/ydb/core/kqp/rm_service
     contrib/ydb/core/tx/columnshard
     contrib/ydb/core/tx/datashard
-    contrib/ydb/library/workload
+    contrib/ydb/library/workload/abstract
+    contrib/ydb/library/workload/kv
+    contrib/ydb/library/workload/stock
     contrib/ydb/public/lib/base
-    contrib/ydb/public/lib/operation_id
-    contrib/ydb/public/sdk/cpp/client/ydb_proto
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
+    contrib/ydb/public/sdk/cpp/src/client/proto
     contrib/ydb/services/kesus
     contrib/ydb/services/metadata
     contrib/ydb/services/persqueue_cluster_discovery
@@ -59,5 +62,6 @@ GENERATE_ENUM_SERIALIZATION(percentile.h)
 END()
 
 RECURSE_FOR_TESTS(
+    ut
     ut_ycsb
 )

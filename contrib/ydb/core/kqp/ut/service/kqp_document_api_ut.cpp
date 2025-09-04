@@ -1,6 +1,6 @@
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/draft/ydb_scripting.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/draft/ydb_scripting.h>
 
 namespace NKikimr {
 namespace NKqp {

@@ -1056,14 +1056,7 @@ class TMonitoring: public TActorBootstrapped<TMonitoring> {
     }
 
     static TActorId MakeStateStorageProxyId() {
-        const auto& domains = AppData()->DomainsInfo->Domains;
-        Y_ABORT_UNLESS(domains.size() <= 1);
-
-        for (const auto& domain : domains) {
-            return NKikimr::MakeStateStorageProxyID(domain.second->DefaultSchemeBoardGroup);
-        }
-
-        Y_ABORT("unreachable");
+        return NKikimr::MakeStateStorageProxyID();
     }
 
     template <typename TDerived, typename TEvResponse>
@@ -1131,7 +1124,7 @@ class TMonitoring: public TActorBootstrapped<TMonitoring> {
 
     class TReplicaEnumerator: public TBaseRequester<TReplicaEnumerator, TEvStateStorage::TEvListSchemeBoardResult> {
         IEventBase* MakeRequest() const override {
-            return new TEvStateStorage::TEvListSchemeBoard();
+            return new TEvStateStorage::TEvListSchemeBoard(false);
         }
 
         void ProcessResponse(TEvStateStorage::TEvListSchemeBoardResult::TPtr& ev) override {
@@ -1169,7 +1162,7 @@ class TMonitoring: public TActorBootstrapped<TMonitoring> {
             auto& replicas = json["replicas"];
             replicas.SetType(JSON_ARRAY);
 
-            for (const auto& replica : ev->Get()->Replicas) {
+            for (const auto& replica : ev->Get()->GetPlainReplicas()) {
                 replicas.AppendValue(ToString(replica));
             }
 

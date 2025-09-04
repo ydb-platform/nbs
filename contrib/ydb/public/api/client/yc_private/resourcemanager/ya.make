@@ -1,4 +1,5 @@
 PROTO_LIBRARY()
+PROTOC_FATAL_WARNINGS()
 
 PEERDIR(
     contrib/ydb/public/api/client/yc_private/operation
@@ -12,6 +13,8 @@ SRCS(
     folder.proto
     transitional/folder_service.proto
     folder_service.proto
+    cloud_service.proto
+    cloud.proto
 )
 
 USE_COMMON_GOOGLE_APIS(

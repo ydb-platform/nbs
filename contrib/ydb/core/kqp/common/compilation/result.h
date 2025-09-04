@@ -1,9 +1,12 @@
 #pragma once
 #include <memory>
+#include <util/datetime/base.h>
+#include <util/digest/multi.h>
+#include <contrib/ydb/core/kqp/common/simple/query_ast.h>
 #include <contrib/ydb/core/kqp/common/simple/query_id.h>
 #include <contrib/ydb/core/kqp/common/simple/helpers.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/ast/yql_ast.h>
+#include <yql/essentials/public/issue/yql_issue.h>
+#include <yql/essentials/ast/yql_ast.h>
 
 namespace NKikimr::NKqp {
 
@@ -14,20 +17,31 @@ struct TKqpCompileResult {
     using TConstPtr = std::shared_ptr<const TKqpCompileResult>;
 
     TKqpCompileResult(const TString& uid, const Ydb::StatusIds::StatusCode& status, const NYql::TIssues& issues,
-            ETableReadType maxReadType, TMaybe<TKqpQueryId> query = {}, std::shared_ptr<NYql::TAstParseResult> ast = {})
+            ETableReadType maxReadType, TMaybe<TKqpQueryId> query = {}, TMaybe<TQueryAst> queryAst = {},
+            bool needToSplit = false, const TMaybe<TString>& commandTagName = {}, const TMaybe<TString>& replayMessageUserView = {})
         : Status(status)
         , Issues(issues)
         , Query(std::move(query))
         , Uid(uid)
         , MaxReadType(maxReadType)
-        , Ast(std::move(ast)) {}
+        , QueryAst(std::move(queryAst))
+        , NeedToSplit(needToSplit)
+        , CommandTagName(commandTagName)
+        , ReplayMessageUserView(replayMessageUserView) {}
 
     static std::shared_ptr<TKqpCompileResult> Make(const TString& uid, const Ydb::StatusIds::StatusCode& status,
         const NYql::TIssues& issues, ETableReadType maxReadType, TMaybe<TKqpQueryId> query = {},
-        std::shared_ptr<NYql::TAstParseResult> ast = {})
+        TMaybe<TQueryAst> queryAst = {}, bool needToSplit = false, const TMaybe<TString>& commandTagName = {}, const TMaybe<TString>& replayMessageUserView = {})
     {
-        return std::make_shared<TKqpCompileResult>(uid, status, issues, maxReadType, std::move(query), std::move(ast));
+        return std::make_shared<TKqpCompileResult>(uid, status, issues, maxReadType, std::move(query), std::move(queryAst), needToSplit, commandTagName, replayMessageUserView);
     }
+
+    std::shared_ptr<NYql::TAstParseResult> GetAst() const;
+
+    void IncUsage() const { UsageFrequency++; }
+    ui64 GetAccessCount() const { return UsageFrequency.load(); }
+
+    void SerializeTo(NKikimrKqp::TCompileCacheQueryInfo* to) const;
 
     Ydb::StatusIds::StatusCode Status;
     NYql::TIssues Issues;
@@ -37,9 +51,15 @@ struct TKqpCompileResult {
 
     ETableReadType MaxReadType;
     bool AllowCache = true;
-    std::shared_ptr<NYql::TAstParseResult> Ast;
+    TMaybe<TQueryAst> QueryAst;
+    bool NeedToSplit = false;
+    TMaybe<TString> CommandTagName = {};
+
+    TMaybe<TString> ReplayMessageUserView;
 
     std::shared_ptr<const TPreparedQueryHolder> PreparedQuery;
+    mutable std::atomic<ui64> UsageFrequency;
+    TInstant CompiledAt = TInstant::Now();
 };
 
 struct TKqpStatsCompile {
@@ -48,3 +68,8 @@ struct TKqpStatsCompile {
     ui64 CpuTimeUs = 0;
 };
 } // namespace NKikimr::NKqp
+
+template<>
+struct THash<NKikimr::NKqp::TKqpCompileResult::TConstPtr> {
+    size_t operator ()(const NKikimr::NKqp::TKqpCompileResult::TConstPtr& x) const { return std::hash<NKikimr::NKqp::TKqpCompileResult::TConstPtr>()(x); }
+};

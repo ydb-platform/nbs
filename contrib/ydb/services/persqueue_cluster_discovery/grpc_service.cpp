@@ -10,6 +10,7 @@
 
 #include <contrib/ydb/library/grpc/server/grpc_request.h>
 
+#include <contrib/ydb/core/protos/pqconfig.pb.h>
 
 namespace NKikimr::NGRpcService {
 

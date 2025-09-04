@@ -24,8 +24,8 @@ func (tablePathPrefix TablePathPrefix) NormalizePath(folderOrTable string) strin
 	}
 }
 
-func (tablePathPrefix TablePathPrefix) RewriteQuery(query string, args ...interface{}) (
-	yql string, newArgs []interface{}, err error,
+func (tablePathPrefix TablePathPrefix) ToYdb(sql string, args ...any) (
+	yql string, newArgs []any, err error,
 ) {
 	buffer := xstring.Buffer()
 	defer buffer.Free()
@@ -34,7 +34,7 @@ func (tablePathPrefix TablePathPrefix) RewriteQuery(query string, args ...interf
 	buffer.WriteString("PRAGMA TablePathPrefix(\"")
 	buffer.WriteString(string(tablePathPrefix))
 	buffer.WriteString("\");\n\n")
-	buffer.WriteString(query)
+	buffer.WriteString(sql)
 
 	return buffer.String(), args, nil
 }

@@ -2,10 +2,11 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v3.113.3)
+
 SRCS(
     backoff.go
     context.go
-    errors_go1.18.go
     mode.go
     retry.go
     retryable_error.go
@@ -21,5 +22,6 @@ GO_TEST_SRCS(
 END()
 
 RECURSE(
+    budget
     gotest
 )

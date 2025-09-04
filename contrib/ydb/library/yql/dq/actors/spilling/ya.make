@@ -3,6 +3,8 @@ LIBRARY()
 SRCS(
     channel_storage_actor.cpp
     channel_storage.cpp
+    compute_storage_actor.cpp
+    compute_storage.cpp
     spilling_counters.cpp
     spilling_file.cpp
     spilling.cpp
@@ -13,7 +15,7 @@ PEERDIR(
     contrib/ydb/library/yql/dq/common
     contrib/ydb/library/yql/dq/actors
     contrib/ydb/library/yql/dq/runtime
-    contrib/ydb/library/yql/utils
+    yql/essentials/utils
 
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/util

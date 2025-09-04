@@ -2,10 +2,10 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
-SRCS(duration.pb.go)
+VERSION(v1.36.6)
 
-GO_XTEST_SRCS(duration_test.go)
+SRCS(
+    duration.pb.go
+)
 
 END()
-
-RECURSE(gotest)

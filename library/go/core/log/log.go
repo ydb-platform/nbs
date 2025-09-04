@@ -11,6 +11,12 @@ type Logger interface {
 	withName
 }
 
+// LoggerWithWith is the `Logger` with `With()` function.
+type LoggerWithWith interface {
+	Logger
+	LoggerWith
+}
+
 type withName interface {
 	WithName(name string) Logger
 }
@@ -116,10 +122,10 @@ func WriteAt(l Structured, lvl Level, msg string, fields ...Field) error {
 	}
 
 	switch lvl {
-	case DebugLevel:
-		l.Debug(msg, fields...)
 	case TraceLevel:
 		l.Trace(msg, fields...)
+	case DebugLevel:
+		l.Debug(msg, fields...)
 	case InfoLevel:
 		l.Info(msg, fields...)
 	case WarnLevel:

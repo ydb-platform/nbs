@@ -8,6 +8,8 @@
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 
+#include <google/protobuf/util/json_util.h>
+
 #include <util/datetime/base.h>
 #include <util/stream/file.h>
 #include <util/string/join.h>
@@ -159,7 +161,7 @@ void TDiskRegistryActor::OnActivateExecutor(const TActorContext& ctx)
 {
     RegisterCounters(ctx);
 
-    if (!Executor()->GetStats().IsFollower) {
+    if (!Executor()->GetStats().IsFollower()) {
         ExecuteTx<TInitSchema>(ctx);
     } else {
         SignalTabletActive(ctx);

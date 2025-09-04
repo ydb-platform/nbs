@@ -257,7 +257,3 @@ func (r *Registry) sanitizeName(name string) string {
 	}
 	return r.nameSanitizer(name)
 }
-
-func (r *Registry) GetGatherer() prometheus.Gatherer {
-	return r.rg
-}

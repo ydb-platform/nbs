@@ -4,27 +4,27 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync/atomic"
 
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_TableStats"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xatomic"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/stats"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/result"
-	"github.com/ydb-platform/ydb-go-sdk/v3/table/stats"
 )
 
 var errAlreadyClosed = xerrors.Wrap(errors.New("result closed early"))
 
 type baseResult struct {
-	scanner
+	valueScanner
 
-	nextResultSetCounter xatomic.Uint64
+	nextResultSetCounter atomic.Uint64
 	statsMtx             xsync.RWMutex
 	stats                *Ydb_TableStats.QueryStats
 
-	closed xatomic.Bool
+	closed atomic.Bool
 }
 
 type streamResult struct {
@@ -36,10 +36,10 @@ type streamResult struct {
 
 // Err returns error caused Scanner to be broken.
 func (r *streamResult) Err() error {
-	err := r.scanner.Err()
-	if err != nil {
+	if err := r.valueScanner.Err(); err != nil {
 		return xerrors.WithStackTrace(err)
 	}
+
 	return nil
 }
 
@@ -52,10 +52,10 @@ type unaryResult struct {
 
 // Err returns error caused Scanner to be broken.
 func (r *unaryResult) Err() error {
-	err := r.scanner.Err()
-	if err != nil {
+	if err := r.valueScanner.Err(); err != nil {
 		return xerrors.WithStackTrace(err)
 	}
+
 	return nil
 }
 
@@ -64,6 +64,7 @@ func (r *unaryResult) Close() error {
 	if r.closed.CompareAndSwap(false, true) {
 		return nil
 	}
+
 	return xerrors.WithStackTrace(errAlreadyClosed)
 }
 
@@ -93,13 +94,13 @@ type option func(r *baseResult)
 
 func WithIgnoreTruncated(ignoreTruncated bool) option {
 	return func(r *baseResult) {
-		r.scanner.ignoreTruncated = ignoreTruncated
+		r.valueScanner.ignoreTruncated = ignoreTruncated
 	}
 }
 
 func WithMarkTruncatedAsRetryable() option {
 	return func(r *baseResult) {
-		r.scanner.markTruncatedAsRetryable = true
+		r.valueScanner.markTruncatedAsRetryable = true
 	}
 }
 
@@ -113,14 +114,15 @@ func NewStream(
 		recv:  recv,
 		close: onClose,
 	}
-	for _, o := range opts {
-		if o != nil {
-			o(&r.baseResult)
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&r.baseResult)
 		}
 	}
 	if err := r.nextResultSetErr(ctx); err != nil {
 		return nil, xerrors.WithStackTrace(err)
 	}
+
 	return r, nil
 }
 
@@ -131,11 +133,12 @@ func NewUnary(sets []*Ydb.ResultSet, stats *Ydb_TableStats.QueryStats, opts ...o
 		},
 		sets: sets,
 	}
-	for _, o := range opts {
-		if o != nil {
-			o(&r.baseResult)
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&r.baseResult)
 		}
 	}
+
 	return r
 }
 
@@ -155,6 +158,7 @@ func (r *unaryResult) NextResultSetErr(ctx context.Context, columns ...string) (
 	}
 	r.Reset(r.sets[r.nextSet], columns...)
 	r.nextSet++
+
 	return ctx.Err()
 }
 
@@ -164,8 +168,9 @@ func (r *unaryResult) NextResultSet(ctx context.Context, columns ...string) bool
 
 func (r *streamResult) nextResultSetErr(ctx context.Context, columns ...string) (err error) {
 	// skipping second recv because first call of recv is from New Stream(), second call is from user
-	if r.nextResultSetCounter.Add(1) == 2 {
+	if r.nextResultSetCounter.Add(1) == 2 { //nolint:mnd
 		r.setColumnIndexes(columns)
+
 		return ctx.Err()
 	}
 	s, stats, err := r.recv(ctx)
@@ -174,6 +179,7 @@ func (r *streamResult) nextResultSetErr(ctx context.Context, columns ...string) 
 		if xerrors.Is(err, io.EOF) {
 			return err
 		}
+
 		return r.errorf(1, "streamResult.NextResultSetErr(): %w", err)
 	}
 	r.Reset(s, columns...)
@@ -182,6 +188,7 @@ func (r *streamResult) nextResultSetErr(ctx context.Context, columns ...string) 
 			r.stats = stats
 		})
 	}
+
 	return ctx.Err()
 }
 
@@ -196,8 +203,10 @@ func (r *streamResult) NextResultSetErr(ctx context.Context, columns ...string) 
 		if xerrors.Is(err, io.EOF) {
 			return io.EOF
 		}
+
 		return xerrors.WithStackTrace(err)
 	}
+
 	return nil
 }
 
@@ -212,16 +221,10 @@ func (r *baseResult) CurrentResultSet() result.Set {
 
 // Stats returns query execution queryStats.
 func (r *baseResult) Stats() stats.QueryStats {
-	var s queryStats
-	r.statsMtx.WithRLock(func() {
-		s.stats = r.stats
-	})
+	r.statsMtx.RLock()
+	defer r.statsMtx.RUnlock()
 
-	if s.stats == nil {
-		return nil
-	}
-
-	return &s
+	return stats.FromQueryStats(r.stats)
 }
 
 // Close closes the result, preventing further iteration.
@@ -229,6 +232,7 @@ func (r *streamResult) Close() (err error) {
 	if r.closed.CompareAndSwap(false, true) {
 		return r.close(r.Err())
 	}
+
 	return xerrors.WithStackTrace(errAlreadyClosed)
 }
 
@@ -252,5 +256,6 @@ func (r *unaryResult) HasNextResultSet() bool {
 	if r.inactive() || r.nextSet >= len(r.sets) {
 		return false
 	}
+
 	return true
 }

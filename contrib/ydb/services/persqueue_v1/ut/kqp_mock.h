@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/kqp/common/events/events.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
 
 namespace NKikimr::NPersQueueTests {
 

@@ -1,6 +1,0 @@
-Enable: true
-Settings {
-  Name: "_ResultRowsLimit"
-  Value: "10000"
-}
-

@@ -40,7 +40,7 @@ func WaitChannelClosedWithTimeout(t testing.TB, ch <-chan struct{}, timeout time
 
 	select {
 	case <-time.After(timeout):
-		t.Fatal()
+		t.Fatal("failed timeout")
 	case <-ch:
 		// pass
 	}
@@ -64,6 +64,7 @@ func SpinWaitConditionWithTimeout(tb testing.TB, l sync.Locker, condWaitTimeout 
 			l.Lock()
 			defer l.Unlock()
 		}
+
 		return cond()
 	}
 
@@ -102,6 +103,7 @@ func SpinWaitProgressWithTimeout(
 
 		SpinWaitConditionWithTimeout(tb, nil, timeout, func() bool {
 			progressValue, finished := progress()
+
 			return finished || progressValue != currentValue
 		})
 	}

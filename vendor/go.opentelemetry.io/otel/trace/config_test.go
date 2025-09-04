@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package trace
 
@@ -174,6 +163,19 @@ func TestNewSpanConfig(t *testing.T) {
 	}
 }
 
+func TestSpanStartConfigAttributeMutability(t *testing.T) {
+	a := attribute.String("a", "val")
+	b := attribute.String("b", "val")
+	attrs := []attribute.KeyValue{a, b}
+	conf := NewSpanStartConfig(WithAttributes(attrs...))
+
+	// Mutating passed arg should not change configured attributes.
+	attrs[0] = attribute.String("c", "val")
+
+	want := SpanConfig{attributes: []attribute.KeyValue{a, b}}
+	assert.Equal(t, want, conf)
+}
+
 func TestEndSpanConfig(t *testing.T) {
 	timestamp := time.Unix(0, 0)
 
@@ -210,7 +212,7 @@ func TestEndSpanConfig(t *testing.T) {
 func TestTracerConfig(t *testing.T) {
 	v1 := "semver:0.0.1"
 	v2 := "semver:1.0.0"
-	schemaURL := "https://opentelemetry.io/schemas/1.2.0"
+	schemaURL := "https://opentelemetry.io/schemas/1.21.0"
 	attrs := attribute.NewSet(
 		attribute.String("user", "alice"),
 		attribute.Bool("admin", true),
@@ -238,61 +240,174 @@ var (
 )
 
 func BenchmarkNewTracerConfig(b *testing.B) {
-	opts := []TracerOption{
-		WithInstrumentationVersion("testing version"),
-		WithSchemaURL("testing URL"),
-	}
+	for _, bb := range []struct {
+		name    string
+		options []TracerOption
+	}{
+		{
+			name: "with no options",
+		},
+		{
+			name: "with an instrumentation version",
+			options: []TracerOption{
+				WithInstrumentationVersion("testing version"),
+			},
+		},
+		{
+			name: "with a schema url",
+			options: []TracerOption{
+				WithSchemaURL("testing URL"),
+			},
+		},
+	} {
+		b.Run(bb.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
 
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		tracerConfig = NewTracerConfig(opts...)
+			for i := 0; i < b.N; i++ {
+				tracerConfig = NewTracerConfig(bb.options...)
+			}
+		})
 	}
 }
 
 func BenchmarkNewSpanStartConfig(b *testing.B) {
-	opts := []SpanStartOption{
-		WithAttributes(attribute.Bool("key", true)),
-		WithTimestamp(time.Now()),
-		WithLinks(Link{}),
-		WithNewRoot(),
-		WithSpanKind(SpanKindClient),
-	}
+	for _, bb := range []struct {
+		name    string
+		options []SpanStartOption
+	}{
+		{
+			name: "with no options",
+		},
+		{
+			name: "with attributes",
+			options: []SpanStartOption{
+				WithAttributes(attribute.Bool("key", true)),
+			},
+		},
+		{
+			name: "with attributes set multiple times",
+			options: []SpanStartOption{
+				WithAttributes(attribute.Bool("key", true)),
+				WithAttributes(attribute.Bool("secondKey", false)),
+			},
+		},
+		{
+			name: "with a timestamp",
+			options: []SpanStartOption{
+				WithTimestamp(time.Now()),
+			},
+		},
+		{
+			name: "with links",
+			options: []SpanStartOption{
+				WithLinks(Link{}),
+			},
+		},
+		{
+			name: "with links set multiple times",
+			options: []SpanStartOption{
+				WithLinks(Link{}),
+				WithLinks(Link{}),
+			},
+		},
+		{
+			name: "with new root",
+			options: []SpanStartOption{
+				WithNewRoot(),
+			},
+		},
+		{
+			name: "with span kind",
+			options: []SpanStartOption{
+				WithSpanKind(SpanKindClient),
+			},
+		},
+	} {
+		b.Run(bb.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
 
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		spanConfig = NewSpanStartConfig(opts...)
+			for i := 0; i < b.N; i++ {
+				spanConfig = NewSpanStartConfig(bb.options...)
+			}
+		})
 	}
 }
 
 func BenchmarkNewSpanEndConfig(b *testing.B) {
-	opts := []SpanEndOption{
-		WithTimestamp(time.Now()),
-		WithStackTrace(true),
-	}
+	for _, bb := range []struct {
+		name    string
+		options []SpanEndOption
+	}{
+		{
+			name: "with no options",
+		},
+		{
+			name: "with a timestamp",
+			options: []SpanEndOption{
+				WithTimestamp(time.Now()),
+			},
+		},
+		{
+			name: "with stack trace",
+			options: []SpanEndOption{
+				WithStackTrace(true),
+			},
+		},
+	} {
+		b.Run(bb.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
 
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		spanConfig = NewSpanEndConfig(opts...)
+			for i := 0; i < b.N; i++ {
+				spanConfig = NewSpanEndConfig(bb.options...)
+			}
+		})
 	}
 }
 
 func BenchmarkNewEventConfig(b *testing.B) {
-	opts := []EventOption{
-		WithAttributes(attribute.Bool("key", true)),
-		WithTimestamp(time.Now()),
-		WithStackTrace(true),
-	}
+	for _, bb := range []struct {
+		name    string
+		options []EventOption
+	}{
+		{
+			name: "with no options",
+		},
+		{
+			name: "with attributes",
+			options: []EventOption{
+				WithAttributes(attribute.Bool("key", true)),
+			},
+		},
+		{
+			name: "with attributes set multiple times",
+			options: []EventOption{
+				WithAttributes(attribute.Bool("key", true)),
+				WithAttributes(attribute.Bool("secondKey", false)),
+			},
+		},
+		{
+			name: "with a timestamp",
+			options: []EventOption{
+				WithTimestamp(time.Now()),
+			},
+		},
+		{
+			name: "with a stacktrace",
+			options: []EventOption{
+				WithStackTrace(true),
+			},
+		},
+	} {
+		b.Run(bb.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
 
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		eventConfig = NewEventConfig(opts...)
+			for i := 0; i < b.N; i++ {
+				eventConfig = NewEventConfig(bb.options...)
+			}
+		})
 	}
 }

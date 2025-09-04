@@ -1,5 +1,7 @@
 #include "http.h"
 
+#include <contrib/ydb/library/protobuf_printer/security_printer.h>
+
 #include <util/random/random.h>
 #include <util/string/builder.h>
 
@@ -37,8 +39,13 @@ void OutputStaticPart(IOutputStream &os)
 
 void PrintField(IOutputStream &os, const NKikimrConfig::TAppConfig &config, const google::protobuf::FieldDescriptor *field) {
     auto *reflection = config.GetReflection();
+    const auto options = field->options();
     HTML(os) {
         PRE() {
+            if (options.GetExtension(Ydb::sensitive)) {
+                os << "***";
+                return;
+            }
             switch (field->cpp_type()) {
             case ::google::protobuf::FieldDescriptor::CPPTYPE_INT32:
                 os << reflection->GetInt32(config, field);
@@ -76,16 +83,23 @@ void PrintField(IOutputStream &os, const NKikimrConfig::TAppConfig &config, cons
                 }
                 break;
             case ::google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE:
+            {
+                const auto* desc = field->message_type();
+                TSecurityTextFormatPrinterBase printer(desc);
                 if (field->is_repeated()) {
                     int count = reflection->FieldSize(config, field);
                     for (int index = 0; index < count; ++index) {
-                        os << "[" << index << "]:" << '\n'
-                            << reflection->GetRepeatedMessage(config, field, index).DebugString();
+                        TString str;
+                        printer.PrintToString(reflection->GetRepeatedMessage(config, field, index), &str);
+                        os << "[" << index << "]:\n" << str;
                     }
                 } else {
-                    os << reflection->GetMessage(config, field).DebugString();
+                    TString str;
+                    printer.PrintToString(reflection->GetMessage(config, field), &str);
+                    os << str;
                 }
                 break;
+            }
             default:
                 os << "&lt;unsupported value type&gt;";
             }
@@ -119,7 +133,7 @@ void OutputConfigDebugInfoHTML(
     const NKikimrConfig::TAppConfig &initialConfig,
     const NKikimrConfig::TAppConfig &yamlConfig,
     const NKikimrConfig::TAppConfig &protoConfig,
-    const THashMap<ui32, NConfig::TConfigItemInfo>& configInitInfo,
+    const THashMap<ui32, TConfigItemInfo>& configInitInfo,
     const THashSet<ui32> &dynamicKinds,
     const THashSet<ui32> &nonYamlKinds,
     bool yamlEnabled)

@@ -1,4 +1,3 @@
-==========
 frozenlist
 ==========
 
@@ -6,8 +5,8 @@ frozenlist
    :target: https://github.com/aio-libs/frozenlist/actions
    :alt: GitHub status for master branch
 
-.. image:: https://codecov.io/gh/aio-libs/frozenlist/branch/master/graph/badge.svg
-   :target: https://codecov.io/gh/aio-libs/frozenlist
+.. image:: https://codecov.io/gh/aio-libs/frozenlist/branch/master/graph/badge.svg?flag=pytest
+   :target: https://codecov.io/gh/aio-libs/frozenlist?flags[]=pytest
    :alt: codecov.io status for master branch
 
 .. image:: https://img.shields.io/pypi/v/frozenlist.svg?logo=Python&logoColor=white
@@ -27,7 +26,7 @@ frozenlist
    :alt: Matrix Space — #aio-libs-space:matrix.org
 
 Introduction
-============
+------------
 
 ``frozenlist.FrozenList`` is a list-like structure which implements
 ``collections.abc.MutableSequence``. The list is *mutable* until ``FrozenList.freeze``
@@ -80,33 +79,26 @@ Installation
 
    $ pip install frozenlist
 
-The library requires Python 3.8 or newer.
-
 
 Documentation
-=============
+-------------
 
 https://frozenlist.aio-libs.org
 
 Communication channels
-======================
+----------------------
 
 We have a *Matrix Space* `#aio-libs-space:matrix.org
 <https://matrix.to/#/%23aio-libs-space:matrix.org>`_ which is
 also accessible via Gitter.
 
-Requirements
-============
-
-- Python >= 3.8
-
 License
-=======
+-------
 
 ``frozenlist`` is offered under the Apache 2 license.
 
 Source code
-===========
+-----------
 
 The project is hosted on GitHub_
 

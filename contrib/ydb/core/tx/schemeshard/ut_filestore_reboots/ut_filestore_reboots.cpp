@@ -1,6 +1,6 @@
-#include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
-
+#include <contrib/ydb/core/protos/filestore_config.pb.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
 
 #include <google/protobuf/text_format.h>
 
@@ -256,6 +256,7 @@ Y_UNIT_TEST_SUITE(TFileStoreWithReboots) {
 
     Y_UNIT_TEST(SimultaneousCreateDropNfs) { //+
         TTestWithReboots t;
+        t.GetTestEnvOptions().EnableRealSystemViewPaths(false);
         t.Run([&](TTestActorRuntime& runtime, bool& activeZone) {
             {
                 TInactiveZone inactive(activeZone);

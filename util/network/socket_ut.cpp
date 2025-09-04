@@ -25,7 +25,6 @@ class TSockTest: public TTestBase {
     UNIT_TEST(TestNetworkResolutionErrorMessage);
     UNIT_TEST(TestBrokenPipe);
     UNIT_TEST(TestClose);
-    UNIT_TEST(TestReusePortAvailCheck);
     UNIT_TEST_SUITE_END();
 
 public:
@@ -36,7 +35,6 @@ public:
     void TestNetworkResolutionErrorMessage();
     void TestBrokenPipe();
     void TestClose();
-    void TestReusePortAvailCheck();
 };
 
 UNIT_TEST_SUITE_REGISTRATION(TSockTest);
@@ -185,33 +183,6 @@ void TSockTest::TestClose() {
     UNIT_ASSERT_EQUAL(static_cast<SOCKET>(receiver), INVALID_SOCKET);
 }
 
-void TSockTest::TestReusePortAvailCheck() {
-#if defined _linux_
-    utsname sysInfo;
-    Y_ABORT_UNLESS(!uname(&sysInfo), "Error while call uname: %s", LastSystemErrorText());
-    TStringBuf release(sysInfo.release);
-    release = release.substr(0, release.find_first_not_of(".0123456789"));
-    int v1 = FromString<int>(release.NextTok('.'));
-    int v2 = FromString<int>(release.NextTok('.'));
-    int v3 = FromString<int>(release.NextTok('.'));
-    int linuxVersionCode = KERNEL_VERSION(v1, v2, v3);
-    if (linuxVersionCode >= KERNEL_VERSION(3, 9, 1)) {
-        // new kernels support SO_REUSEPORT
-        UNIT_ASSERT(true == IsReusePortAvailable());
-        UNIT_ASSERT(true == IsReusePortAvailable());
-    } else {
-        // older kernels may or may not support SO_REUSEPORT
-        // just check that it doesn't crash or throw
-        (void)IsReusePortAvailable();
-        (void)IsReusePortAvailable();
-    }
-#else
-    // check that it doesn't crash or throw
-    (void)IsReusePortAvailable();
-    (void)IsReusePortAvailable();
-#endif
-}
-
 class TPollTest: public TTestBase {
     UNIT_TEST_SUITE(TPollTest);
     UNIT_TEST(TestPollInOut);
@@ -299,8 +270,9 @@ void TPollTest::TestPollInOut() {
 
         if (i % 5 == 0 || i % 5 == 2) {
             char buffer = 'c';
-            if (send(*clientSocket, &buffer, 1, 0) == -1)
+            if (send(*clientSocket, &buffer, 1, 0) == -1) {
                 ythrow yexception() << "Can not send (" << LastSystemErrorText() << ")";
+            }
         }
 
         TSimpleSharedPtr<TSocketHolder> connectedSocket(new TSocketHolder(AcceptConnection(serverSocket)));
@@ -316,8 +288,9 @@ void TPollTest::TestPollInOut() {
     for (size_t i = 0; i < connectedSockets.size(); ++i) {
         pollfd fd = {(i % 5 == 4) ? INVALID_SOCKET : static_cast<SOCKET>(*connectedSockets[i]), POLLIN | POLLOUT, 0};
         fds.push_back(fd);
-        if (i % 5 != 4)
+        if (i % 5 != 4) {
             ++expectedCount;
+        }
     }
 
     int polledCount = poll(&fds[0], fds.size(), INFTIM);

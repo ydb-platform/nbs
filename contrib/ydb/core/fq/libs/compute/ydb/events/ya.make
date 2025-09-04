@@ -10,8 +10,8 @@ PEERDIR(
     contrib/ydb/core/fq/libs/control_plane_storage/proto
     contrib/ydb/core/fq/libs/protos
     contrib/ydb/public/api/grpc/draft
-    contrib/ydb/public/lib/operation_id/protos
-    contrib/ydb/public/sdk/cpp/client/ydb_query
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
+    contrib/ydb/public/sdk/cpp/src/client/query
 )
 
 END()

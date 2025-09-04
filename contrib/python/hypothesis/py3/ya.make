@@ -2,7 +2,7 @@
 
 PY3_LIBRARY()
 
-VERSION(6.92.0)
+VERSION(6.130.13)
 
 LICENSE(MPL-2.0)
 
@@ -20,6 +20,7 @@ NO_CHECK_IMPORTS(
 PY_SRCS(
     TOP_LEVEL
     _hypothesis_ftz_detector.py
+    _hypothesis_globals.py
     _hypothesis_pytestplugin.py
     hypothesis/__init__.py
     hypothesis/_settings.py
@@ -54,7 +55,7 @@ PY_SRCS(
     hypothesis/internal/charmap.py
     hypothesis/internal/compat.py
     hypothesis/internal/conjecture/__init__.py
-    hypothesis/internal/conjecture/choicetree.py
+    hypothesis/internal/conjecture/choice.py
     hypothesis/internal/conjecture/data.py
     hypothesis/internal/conjecture/datatree.py
     hypothesis/internal/conjecture/dfa/__init__.py
@@ -64,16 +65,19 @@ PY_SRCS(
     hypothesis/internal/conjecture/junkdrawer.py
     hypothesis/internal/conjecture/optimiser.py
     hypothesis/internal/conjecture/pareto.py
+    hypothesis/internal/conjecture/providers.py
     hypothesis/internal/conjecture/shrinker.py
     hypothesis/internal/conjecture/shrinking/__init__.py
+    hypothesis/internal/conjecture/shrinking/bytes.py
+    hypothesis/internal/conjecture/shrinking/choicetree.py
+    hypothesis/internal/conjecture/shrinking/collection.py
     hypothesis/internal/conjecture/shrinking/common.py
-    hypothesis/internal/conjecture/shrinking/dfas.py
     hypothesis/internal/conjecture/shrinking/floats.py
     hypothesis/internal/conjecture/shrinking/integer.py
-    hypothesis/internal/conjecture/shrinking/learned_dfas.py
-    hypothesis/internal/conjecture/shrinking/lexical.py
     hypothesis/internal/conjecture/shrinking/ordering.py
+    hypothesis/internal/conjecture/shrinking/string.py
     hypothesis/internal/conjecture/utils.py
+    hypothesis/internal/constants_ast.py
     hypothesis/internal/coverage.py
     hypothesis/internal/detection.py
     hypothesis/internal/entropy.py

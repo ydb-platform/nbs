@@ -1,8 +1,0 @@
----
-apiVersion: storage.k8s.io/v1
-kind: CSIDriver
-metadata:
-  name: nbs.csi.nebius.ai
-spec:
-  attachRequired: false
-  podInfoOnMount: true

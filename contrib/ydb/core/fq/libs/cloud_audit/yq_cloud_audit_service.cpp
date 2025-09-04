@@ -8,6 +8,7 @@
 
 #include <contrib/ydb/library/folder_service/events.h>
 #include <contrib/ydb/library/folder_service/folder_service.h>
+#include <contrib/ydb/library/security/util.h>
 
 #include <library/cpp/unified_agent_client/client.h>
 
@@ -65,7 +66,15 @@ std::string MapConnectionType(const FederatedQuery::ConnectionSetting::Connectio
         return "Monitoring";
     case FederatedQuery::ConnectionSetting::ConnectionCase::kPostgresqlCluster:
         return "PostgreSQLCluster";
-    default:
+    case FederatedQuery::ConnectionSetting::ConnectionCase::kGreenplumCluster:
+        return "GreenplumCluster";
+    case FederatedQuery::ConnectionSetting::ConnectionCase::kMysqlCluster:
+        return "MySQLCluster";
+    case FederatedQuery::ConnectionSetting::ConnectionCase::kLogging:
+        return "Logging";
+    case FederatedQuery::ConnectionSetting::ConnectionCase::kIceberg:
+        return "Iceberg";
+    case FederatedQuery::ConnectionSetting::ConnectionCase::CONNECTION_NOT_SET:
         Y_ENSURE(false, "Invalid connection case " << i32(connectionCase));
     }
 }
@@ -76,8 +85,8 @@ std::string MapBindingType(const FederatedQuery::BindingSetting::BindingCase& bi
         return "YdbDataStreams";
     case FederatedQuery::BindingSetting::BindingSetting::kObjectStorage:
         return "ObjectStorage";
-    default:
-        Y_ENSURE(false, "Invalid connection case " << i32(bindingCase));
+    case FederatedQuery::BindingSetting::BindingSetting::BINDING_NOT_SET:
+        Y_ENSURE(false, "Invalid binding case " << i32(bindingCase));
     }
 }
 
@@ -101,6 +110,7 @@ void FillAuthentication(::yandex::cloud::events::Authentication& authentication,
     authentication.set_authenticated(true);
     authentication.set_subject_id(MaybeRemoveSuffix(info.User));
     authentication.set_subject_type(GetCloudSubjectType(info.SubjectType));
+    authentication.mutable_token_info()->set_masked_iam_token(NKikimr::MaskIAMTicket(info.Token));
 }
 
 void FillAuthorization(::yandex::cloud::events::Authorization& authorization, const NYql::TIssues& issues) {
@@ -131,14 +141,16 @@ void FillResponse(TEvent& cloudEvent, const NYql::TIssues& issues) {
     cloudEvent.set_event_status(issues.Empty()
         ? yandex::cloud::events::EventStatus::DONE
         : yandex::cloud::events::EventStatus::ERROR);
-
-    // response field must always be filled
-    cloudEvent.mutable_response();
-
+    
+    // response and error fields are mutually exclusive
+    // exactly one of them is required
     if (issues) {
+        cloudEvent.clear_response();
         auto* error = cloudEvent.mutable_error();
         error->set_code(grpc::StatusCode::UNKNOWN);
         error->set_message(issues.ToString());
+    } else {
+        cloudEvent.mutable_response();
     }
 }
 
@@ -379,7 +391,7 @@ public:
         clientParameters.SetLog(*SdkLogger);
 
         const auto& sharedKey = Config.GetUAConfig().GetSharedSecretKey();
-        if (!sharedKey.Empty()) {
+        if (!sharedKey.empty()) {
             clientParameters.SetSharedSecretKey(sharedKey);
         }
         auto clientPtr = NUnifiedAgent::MakeClient(clientParameters);

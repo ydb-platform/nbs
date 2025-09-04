@@ -1,7 +1,6 @@
 package xerrors
 
 import (
-	"bytes"
 	"errors"
 	"strconv"
 	"strings"
@@ -10,6 +9,11 @@ import (
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Issue"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xstring"
+)
+
+const (
+	IssueCodeTransactionLocksInvalidated       = 2001
+	IssueCodeDatashardProgramSizeLimitExceeded = 200509
 )
 
 type issues []*Ydb_Issue.IssueMessage
@@ -44,19 +48,20 @@ func (ii issues) String() string {
 		b.WriteByte('\'')
 		b.WriteString(strings.TrimSuffix(m.GetMessage(), "."))
 		b.WriteByte('\'')
-		if len(m.Issues) > 0 {
+		if len(m.GetIssues()) > 0 {
 			b.WriteByte(' ')
-			b.WriteString(issues(m.Issues).String())
+			b.WriteString(issues(m.GetIssues()).String())
 		}
 		b.WriteByte('}')
 	}
 	b.WriteByte(']')
+
 	return b.String()
 }
 
 // NewWithIssues returns error which contains child issues
 func NewWithIssues(text string, issues ...error) error {
-	err := &errorWithIssues{
+	err := &withIssuesError{
 		reason: text,
 	}
 	for i := range issues {
@@ -64,18 +69,20 @@ func NewWithIssues(text string, issues ...error) error {
 			err.issues = append(err.issues, issues[i])
 		}
 	}
+
 	return err
 }
 
-type errorWithIssues struct {
+type withIssuesError struct {
 	reason string
 	issues []error
 }
 
-func (e *errorWithIssues) isYdbError() {}
+func (e *withIssuesError) isYdbError() {}
 
-func (e *errorWithIssues) Error() string {
-	var b bytes.Buffer
+func (e *withIssuesError) Error() string {
+	b := xstring.Buffer()
+	defer b.Free()
 	if len(e.reason) > 0 {
 		b.WriteString(e.reason)
 		b.WriteString(", issues: [")
@@ -89,25 +96,32 @@ func (e *errorWithIssues) Error() string {
 		b.WriteString(issue.Error())
 	}
 	b.WriteString("]")
+
 	return b.String()
 }
 
-func (e *errorWithIssues) As(target interface{}) bool {
+func (e *withIssuesError) As(target interface{}) bool {
 	for _, err := range e.issues {
 		if As(err, target) {
 			return true
 		}
 	}
+
 	return false
 }
 
-func (e *errorWithIssues) Is(target error) bool {
+func (e *withIssuesError) Is(target error) bool {
 	for _, err := range e.issues {
 		if Is(err, target) {
 			return true
 		}
 	}
+
 	return false
+}
+
+func (e *withIssuesError) Unwrap() []error {
+	return e.issues
 }
 
 // Issue struct
@@ -125,9 +139,10 @@ func (it IssueIterator) Len() int {
 
 func (it IssueIterator) Get(i int) (issue Issue, nested IssueIterator) {
 	x := it[i]
-	if xs := x.Issues; len(xs) > 0 {
+	if xs := x.GetIssues(); len(xs) > 0 {
 		nested = IssueIterator(xs)
 	}
+
 	return Issue{
 		Message:  x.GetMessage(),
 		Code:     x.GetIssueCode(),
@@ -136,19 +151,37 @@ func (it IssueIterator) Get(i int) (issue Issue, nested IssueIterator) {
 }
 
 func IterateByIssues(err error, it func(message string, code Ydb.StatusIds_StatusCode, severity uint32)) {
+	_ = iterateByIssues(err, func(message string, code Ydb.StatusIds_StatusCode, severity uint32) (stop bool) {
+		it(message, code, severity)
+
+		return false
+	})
+}
+
+func iterateByIssues(err error,
+	it func(message string, code Ydb.StatusIds_StatusCode, severity uint32) (stop bool),
+) (stopped bool) {
 	var o *operationError
 	if !errors.As(err, &o) {
 		return
 	}
-	iterate(o.Issues(), it)
+
+	return iterate(o.Issues(), it)
 }
 
 func iterate(
 	issues []*Ydb_Issue.IssueMessage,
-	it func(message string, code Ydb.StatusIds_StatusCode, severity uint32),
-) {
+	it func(message string, code Ydb.StatusIds_StatusCode, severity uint32) (stop bool),
+) (stopped bool) {
 	for _, issue := range issues {
-		it(issue.GetMessage(), Ydb.StatusIds_StatusCode(issue.GetIssueCode()), issue.GetSeverity())
-		iterate(issue.GetIssues(), it)
+		if it(issue.GetMessage(), Ydb.StatusIds_StatusCode(issue.GetIssueCode()), issue.GetSeverity()) {
+			return true
+		}
+
+		if iterate(issue.GetIssues(), it) {
+			return true
+		}
 	}
+
+	return false
 }

@@ -2,16 +2,10 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v0.30.0)
+
 SRCS(
     downscoping.go
 )
 
-GO_TEST_SRCS(downscoping_test.go)
-
-GO_XTEST_SRCS(tokenbroker_test.go)
-
 END()
-
-RECURSE(
-    gotest
-)

@@ -1,3 +1,0 @@
-ansible_user: ubuntu
-ansible_become: true
-nbs_domain: blockstore.tech

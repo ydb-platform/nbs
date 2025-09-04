@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -45,6 +47,14 @@ const (
 	FieldTypeByteString
 	// FieldTypeContext wraps context for lazy context fields evaluation if possible
 	FieldTypeContext
+	// FieldTypeLazyCall wraps function to lazy evaluate it after log level confirm
+	FieldTypeLazyCall
+	// FieldTypeStringer is for fmt.Stringer
+	FieldTypeStringer
+	// FieldTypeSkip is for not logged fields
+	FieldTypeSkip
+
+	fieldTypeLast // service type for testing purposes
 )
 
 // Field stores one structured logging field
@@ -55,7 +65,7 @@ type Field struct {
 	signed   int64
 	unsigned uint64
 	float    float64
-	iface    interface{}
+	iface    any
 }
 
 // Key returns field key
@@ -158,6 +168,12 @@ func (f Field) Any() interface{} {
 		return f.Interface()
 	case FieldTypeContext:
 		return f.Interface()
+	case FieldTypeLazyCall:
+		return f.Interface()
+	case FieldTypeStringer:
+		return f.Interface()
+	case FieldTypeSkip:
+		return f.Interface()
 	default:
 		// For when new field type is not added to this func
 		panic(fmt.Sprintf("unknown field type: %d", f.Type()))
@@ -172,6 +188,11 @@ func Nil(key string) Field {
 // String constructs field of string type
 func String(key, value string) Field {
 	return Field{key: key, ftype: FieldTypeString, string: value}
+}
+
+// Stringer constructs field from fmt.Stringer interface
+func Stringer(key string, value fmt.Stringer) Field {
+	return Field{key: key, ftype: FieldTypeStringer, iface: value}
 }
 
 // Sprintf constructs field of string type with formatting
@@ -381,12 +402,27 @@ func Context(ctx context.Context) Field {
 	return Field{ftype: FieldTypeContext, iface: ctx}
 }
 
+// LazyEvaluator represents types that can be evaluate in a lazy manner
+type LazyEvaluator interface {
+	func() (any, error) | zapcore.ObjectMarshalerFunc
+}
+
+// Lazy constructs field with lazy evaluation type
+func Lazy[T LazyEvaluator](key string, fn T) Field {
+	return Field{key: key, ftype: FieldTypeLazyCall, iface: fn}
+}
+
+// Skip constructs field for not logged values
+func Skip(key string, value interface{}) Field {
+	return Field{key: key, ftype: FieldTypeSkip, iface: value}
+}
+
 // Any tries to deduce interface{} underlying type and constructs Field from it.
 // Use of this function is ok only for the sole purpose of not repeating its entire code
 // or parts of it in user's code (when you need to log interface{} types with unknown content).
 // Otherwise please use specialized functions.
 // nolint: gocyclo
-func Any(key string, value interface{}) Field {
+func Any(key string, value any) Field {
 	switch val := value.(type) {
 	case bool:
 		return Bool(key, val)
@@ -452,6 +488,10 @@ func Any(key string, value interface{}) Field {
 		return Errors(key, val)
 	case context.Context:
 		return Context(val)
+	case func() (any, error):
+		return Lazy(key, val)
+	case zapcore.ObjectMarshalerFunc:
+		return Lazy(key, val)
 	default:
 		return Field{key: key, ftype: FieldTypeAny, iface: value}
 	}

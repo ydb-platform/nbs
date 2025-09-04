@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.46.7)
+
 SRCS(
     aes_cbc.go
     aes_cbc_content_cipher.go
@@ -63,4 +65,6 @@ GO_XTEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

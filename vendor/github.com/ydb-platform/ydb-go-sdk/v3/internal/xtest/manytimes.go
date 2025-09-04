@@ -31,17 +31,22 @@ func TestManyTimes(t testing.TB, test TestFunc, opts ...TestManyTimesOption) {
 		stopAfter: time.Second,
 	}
 
-	for _, o := range opts {
-		if o != nil {
-			o(&options)
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
 		}
 	}
 
 	start := time.Now()
+	var testMutex sync.Mutex
 	for {
 		testCounter++
 		// run test, then check stopAfter for guarantee run test least once
-		runTest(t, test)
+		runTest(t, test, &testMutex)
+
+		if testing.Short() {
+			return
+		}
 
 		if time.Since(start) > options.stopAfter || t.Failed() {
 			return
@@ -60,11 +65,12 @@ func TestManyTimesWithName(t *testing.T, name string, test TestFunc) {
 
 type TestFunc func(t testing.TB)
 
-func runTest(t testing.TB, test TestFunc) {
+func runTest(t testing.TB, test TestFunc, testMutex *sync.Mutex) {
 	t.Helper()
 
 	tw := &testWrapper{
 		TB: t,
+		m:  testMutex,
 	}
 
 	defer tw.doCleanup()
@@ -75,7 +81,7 @@ func runTest(t testing.TB, test TestFunc) {
 type testWrapper struct {
 	testing.TB
 
-	m       sync.Mutex
+	m       *sync.Mutex
 	logs    []logRecord
 	cleanup []func()
 }

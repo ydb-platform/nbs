@@ -78,6 +78,7 @@ func EventType(ctx context.Context) Event {
 	if eventType, ok := ctx.Value(ctxEventTypeKey{}).(Event); ok {
 		return eventType
 	}
+
 	return EventUnknown
 }
 
@@ -107,9 +108,9 @@ func New(
 		trace:    &trace.Driver{},
 	}
 
-	for _, o := range opts {
-		if o != nil {
-			o(r)
+	for _, opt := range opts {
+		if opt != nil {
+			opt(r)
 		}
 	}
 
@@ -138,15 +139,11 @@ func (r *repeater) Force() {
 	}
 }
 
-func (r *repeater) wakeUp(ctx context.Context, e Event) (err error) {
-	if err = ctx.Err(); err != nil {
-		return err
-	}
-
-	ctx = WithEvent(ctx, e)
+func (r *repeater) wakeUp(e Event) (err error) {
+	ctx := WithEvent(context.Background(), e)
 
 	onDone := trace.DriverOnRepeaterWakeUp(r.trace, &ctx,
-		stack.FunctionID(""),
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/internal/repeater.(*repeater).wakeUp"),
 		r.name, e,
 	)
 	defer func() {
@@ -166,13 +163,15 @@ func (r *repeater) wakeUp(ctx context.Context, e Event) (err error) {
 }
 
 func (r *repeater) worker(ctx context.Context, tick clockwork.Ticker) {
-	defer close(r.stopped)
-	defer tick.Stop()
+	defer func() {
+		close(r.stopped)
+		tick.Stop()
+	}()
 
 	// force returns backoff with delays [500ms...32s]
 	force := backoff.New(
-		backoff.WithSlotDuration(500*time.Millisecond),
-		backoff.WithCeiling(6),
+		backoff.WithSlotDuration(500*time.Millisecond), //nolint:mnd
+		backoff.WithCeiling(6),                         //nolint:mnd
 		backoff.WithJitterLimit(1),
 	)
 
@@ -202,7 +201,7 @@ func (r *repeater) worker(ctx context.Context, tick clockwork.Ticker) {
 		if event == EventCancel {
 			return
 		}
-		if err := r.wakeUp(ctx, event); err != nil {
+		if err := r.wakeUp(event); err != nil {
 			forceIndex++
 		} else {
 			forceIndex = 0

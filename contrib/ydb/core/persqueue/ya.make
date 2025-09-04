@@ -3,15 +3,23 @@ LIBRARY()
 SRCS(
     actor_persqueue_client_iface.h
     blob.cpp
+    blob_serialization.cpp
+    common_app.cpp
     cluster_tracker.cpp
     event_helpers.cpp
     fetch_request_actor.cpp
     header.cpp
     heartbeat.cpp
+    key.cpp
     metering_sink.cpp
+    list_all_topics_actor.cpp
     mirrorer.cpp
     mirrorer.h
     ownerinfo.cpp
+    offload_actor.cpp
+    partition_blob_encoder.cpp
+    partition_compaction.cpp
+    partition_compactification.cpp
     partition_init.cpp
     partition_monitoring.cpp
     partition_read.cpp
@@ -21,11 +29,12 @@ SRCS(
     percentile_counter.cpp
     pq.cpp
     pq_database.cpp
+    pq_impl_app.cpp
+    pq_impl_app_sendreadset.cpp
     pq_impl.cpp
     pq_l2_cache.cpp
     pq_rl_helpers.cpp
     quota_tracker.cpp
-    read_balancer.cpp
     account_read_quoter.cpp
     read_quoter.cpp
     sourceid.cpp
@@ -35,16 +44,20 @@ SRCS(
     user_info.cpp
     utils.cpp
     write_meta.cpp
+    write_quoter.cpp
     microseconds_sliding_window.cpp
     dread_cache_service/caching_service.cpp
+    write_id.cpp
 )
 
-GENERATE_ENUM_SERIALIZATION(sourceid.h)
+GENERATE_ENUM_SERIALIZATION(sourceid_info.h)
 
 PEERDIR(
+    contrib/libs/fmt
     contrib/ydb/library/actors/core
     library/cpp/html/pcdata
     library/cpp/json
+    contrib/ydb/core/backup/impl
     contrib/ydb/core/base
     contrib/ydb/core/engine/minikql
     contrib/ydb/core/keyvalue
@@ -54,6 +67,7 @@ PEERDIR(
     contrib/ydb/core/persqueue/config
     contrib/ydb/core/persqueue/events
     contrib/ydb/core/persqueue/partition_key_range
+    contrib/ydb/core/persqueue/pqrb
     contrib/ydb/core/persqueue/writer
     contrib/ydb/core/protos
     contrib/ydb/library/logger
@@ -61,13 +75,24 @@ PEERDIR(
     contrib/ydb/library/persqueue/topic_parser
     contrib/ydb/library/protobuf_printer
     contrib/ydb/public/lib/base
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public
+    #ydb/library/dbgtrace
 )
 
 END()
+
+RECURSE(
+    codecs
+    config
+    events
+    partition_key_range
+    pqrb
+    writer
+)
 
 RECURSE_FOR_TESTS(
     ut
     dread_cache_service/ut
     ut/slow
+    ut/ut_with_sdk
 )

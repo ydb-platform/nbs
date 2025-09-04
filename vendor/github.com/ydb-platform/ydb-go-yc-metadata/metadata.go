@@ -147,30 +147,48 @@ func (m *InstanceServiceAccountCredentials) refreshOnce(ctx context.Context) {
 	m.token, m.expiry, m.err = tok.Token, now.Add(tok.ExpiresIn), nil
 }
 
-type InstanceServiceAccountCredentialsOption func(c *InstanceServiceAccountCredentials)
+type InstanceServiceAccountCredentialsOption interface {
+	ApplyInstanceServiceAccountCredentialsOption(c *InstanceServiceAccountCredentials)
+}
+
+type urlOption string
+
+func (url urlOption) ApplyInstanceServiceAccountCredentialsOption(c *InstanceServiceAccountCredentials) {
+	c.metadataURL = string(url)
+}
 
 func WithInstanceServiceAccountURL(url string) InstanceServiceAccountCredentialsOption {
-	return func(c *InstanceServiceAccountCredentials) {
-		c.metadataURL = url
-	}
+	return urlOption(url)
+}
+
+type traceOption trace.Trace
+
+func (t traceOption) ApplyInstanceServiceAccountCredentialsOption(c *InstanceServiceAccountCredentials) {
+	c.trace = c.trace.Compose(trace.Trace(t))
 }
 
 func WithTrace(t trace.Trace) InstanceServiceAccountCredentialsOption {
-	return func(c *InstanceServiceAccountCredentials) {
-		c.trace = c.trace.Compose(t)
-	}
+	return traceOption(t)
+}
+
+type sourceInfoOption string
+
+func (sourceInfo sourceInfoOption) ApplyInstanceServiceAccountCredentialsOption(c *InstanceServiceAccountCredentials) {
+	c.caller = string(sourceInfo)
 }
 
 func WithInstanceServiceAccountCredentialsSourceInfo(sourceInfo string) InstanceServiceAccountCredentialsOption {
-	return func(c *InstanceServiceAccountCredentials) {
-		c.caller = sourceInfo
-	}
+	return sourceInfoOption(sourceInfo)
+}
+
+type retryNotFoundOption struct{}
+
+func (retryNotFoundOption) ApplyInstanceServiceAccountCredentialsOption(c *InstanceServiceAccountCredentials) {
+	c.retryNotFound = true
 }
 
 func WithRetryNotFound() InstanceServiceAccountCredentialsOption {
-	return func(c *InstanceServiceAccountCredentials) {
-		c.retryNotFound = true
-	}
+	return retryNotFoundOption{}
 }
 
 // instanceServiceAccount makes credentials provider that uses instance metadata url to obtain
@@ -183,8 +201,8 @@ func instanceServiceAccount(opts ...InstanceServiceAccountCredentialsOption) *In
 		timer:       time.NewTimer(0), // Allocate expired
 		done:        make(chan struct{}),
 	}
-	for _, o := range opts {
-		o(credentials)
+	for _, opt := range opts {
+		opt.ApplyInstanceServiceAccountCredentialsOption(credentials)
 	}
 	// Start refresh loop.
 	go credentials.refreshLoop()

@@ -1,7 +1,5 @@
 UNITTEST_FOR(util)
 
-SUBSCRIBER(g:util-subscribers)
-
 SRCS(
     string/builder_ut.cpp
     string/cast_ut.cpp
@@ -11,6 +9,7 @@ SRCS(
     string/printf_ut.cpp
     string/split_ut.cpp
     string/strip_ut.cpp
+    string/strspn_ut.cpp
     string/subst_ut.cpp
     string/type_ut.cpp
     string/util_ut.cpp

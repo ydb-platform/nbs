@@ -75,7 +75,7 @@ func doRPCAndGetPath(client testgrpc.TestServiceClient, timeout time.Duration) t
 }
 
 func dialTCPUserTimeout(ctx context.Context, addr string) (net.Conn, error) {
-	control := func(network, address string, c syscall.RawConn) error {
+	control := func(_, _ string, c syscall.RawConn) error {
 		var syscallErr error
 		controlErr := c.Control(func(fd uintptr) {
 			syscallErr = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, unix.TCP_USER_TIMEOUT, 20000)
@@ -112,9 +112,9 @@ func createTestConn() *grpc.ClientConn {
 	default:
 		errorLog.Fatalf("Invalid --custom_credentials_type:%v", *customCredentialsType)
 	}
-	conn, err := grpc.Dial(*serverURI, opts...)
+	conn, err := grpc.NewClient(*serverURI, opts...)
 	if err != nil {
-		errorLog.Fatalf("Fail to dial: %v", err)
+		errorLog.Fatalf("grpc.NewClient(%q) = %v", *serverURI, err)
 	}
 	return conn
 }
@@ -132,7 +132,7 @@ func waitForFallbackAndDoRPCs(client testgrpc.TestServiceClient, fallbackDeadlin
 	for time.Now().Before(fallbackDeadline) {
 		g := doRPCAndGetPath(client, 20*time.Second)
 		if g == testpb.GrpclbRouteType_GRPCLB_ROUTE_TYPE_FALLBACK {
-			infoLog.Println("Made one successul RPC to a fallback. Now expect the same for the rest.")
+			infoLog.Println("Made one successful RPC to a fallback. Now expect the same for the rest.")
 			fellBack = true
 			break
 		} else if g == testpb.GrpclbRouteType_GRPCLB_ROUTE_TYPE_BACKEND {

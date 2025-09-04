@@ -2,8 +2,14 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
-SRCS(generator.go)
+VERSION(v1.5.4)
+
+SRCS(
+    generator.go
+)
 
 END()
 
-RECURSE(internal)
+RECURSE(
+    internal
+)

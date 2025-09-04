@@ -1,4 +1,0 @@
-SchemeShardDir: "/my_cluster/NFS"
-CleanupThreshold: 512
-CompactionThreshold: 10
-TwoStageReadEnabled: true

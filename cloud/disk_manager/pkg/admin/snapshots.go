@@ -495,6 +495,70 @@ func newMigrateSnapshotDatabaseCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type scheduleVerifyMigratedSnapshotCmd struct {
+	commandWithScheduler
+	snapshotID string
+}
+
+func (c *scheduleVerifyMigratedSnapshotCmd) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	taskID, err := c.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			c.ctx,
+			"dataplane.VerifyMigratedLegacySnapshot_"+generateID(),
+		),
+		"dataplane.VerifyMigratedLegacySnapshot",
+		"",
+		&dataplane_protos.VerifyMigratedLegacySnapshotRequest{
+			SnapshotId: c.snapshotID,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newScheduleVerifyMigratedSnapshotCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
+	c := &scheduleVerifyMigratedSnapshotCmd{
+		commandWithScheduler: cmdWithScheduler,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "schedule-verify-migrated-snapshot-task",
+		Aliases: []string{"schedule_verify_migrated_snapshot_task"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of snapshot to verify migrated data; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newSnapshotsCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -519,7 +583,7 @@ func newSnapshotsCmd(
 			clientConfig,
 			serverConfig,
 		),
-		newMigrateSnapshotDatabaseCmd(
+		newScheduleVerifyMigratedSnapshotCmd(
 			clientConfig,
 			serverConfig,
 		),

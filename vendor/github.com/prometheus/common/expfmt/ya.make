@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v0.62.0)
+
 SRCS(
     decode.go
     encode.go
@@ -15,6 +17,7 @@ GO_TEST_SRCS(
     bench_test.go
     decode_test.go
     encode_test.go
+    expfmt_test.go
     openmetrics_create_test.go
     text_create_test.go
     text_parse_test.go
@@ -22,4 +25,6 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

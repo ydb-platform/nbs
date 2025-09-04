@@ -2,7 +2,11 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
-SRCS(sysconf.go)
+VERSION(v0.3.12)
+
+SRCS(
+    sysconf.go
+)
 
 IF (OS_LINUX)
     SRCS(
@@ -21,11 +25,21 @@ IF (OS_LINUX)
 ENDIF()
 
 IF (OS_LINUX AND ARCH_X86_64)
-    SRCS(zsysconf_values_linux_amd64.go)
+    SRCS(
+        zsysconf_values_linux_amd64.go
+    )
 ENDIF()
 
 IF (OS_LINUX AND ARCH_ARM64)
-    SRCS(zsysconf_values_linux_arm64.go)
+    SRCS(
+        zsysconf_values_linux_arm64.go
+    )
+ENDIF()
+
+IF (OS_LINUX AND ARCH_ARM6 OR OS_LINUX AND ARCH_ARM7)
+    SRCS(
+        zsysconf_values_linux_arm.go
+    )
 ENDIF()
 
 IF (OS_DARWIN)
@@ -44,9 +58,13 @@ IF (OS_DARWIN)
 ENDIF()
 
 IF (OS_WINDOWS)
-    SRCS(sysconf_unsupported.go)
+    SRCS(
+        sysconf_unsupported.go
+    )
 ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

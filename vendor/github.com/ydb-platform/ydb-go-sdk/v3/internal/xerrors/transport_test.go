@@ -143,7 +143,7 @@ func TestGrpcError(t *testing.T) {
 	}
 }
 
-func Test_transportError_Error(t *testing.T) {
+func TestTransportErrorString(t *testing.T) {
 	for _, tt := range []struct {
 		err  error
 		text string
@@ -191,7 +191,7 @@ func TestTransportErrorName(t *testing.T) {
 	} {
 		t.Run("", func(t *testing.T) {
 			if tt.err == nil {
-				require.Nil(t, TransportError(tt.err))
+				require.Nil(t, TransportError(tt.err)) //nolint:testifylint
 			} else {
 				require.Equal(t, tt.name, TransportError(tt.err).Name())
 			}

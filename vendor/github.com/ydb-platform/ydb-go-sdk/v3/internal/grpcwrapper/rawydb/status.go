@@ -11,6 +11,7 @@ const (
 
 func (s *StatusCode) FromProto(p Ydb.StatusIds_StatusCode) error {
 	*s = StatusCode(p)
+
 	return nil
 }
 
@@ -20,4 +21,9 @@ func (s StatusCode) IsSuccess() bool {
 
 func (s StatusCode) String() string {
 	return Ydb.StatusIds_StatusCode(s).String()
+}
+
+// Equals compares this StatusCode with another StatusCode for equality
+func (s StatusCode) Equals(other StatusCode) bool {
+	return s == other
 }

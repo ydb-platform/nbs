@@ -6,13 +6,12 @@ PY_SRCS(
 
 IF (PYTHON2)
     ENV(PYTHON2_YDB_IMPORT='yes')
-    PEERDIR(contrib/ydb/public/sdk/python)
-ELSE()
-    PEERDIR(contrib/ydb/public/sdk/python)
 ENDIF()
 
 PEERDIR(
+    contrib/python/PyJWT
     contrib/ydb/tests/oss/canonical
+    contrib/ydb/public/sdk/python
 )
 
 END()

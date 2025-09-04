@@ -1,6 +1,0 @@
-ServerConfig {
-  Host: "*"
-  Port: 9021
-}
-KikimrServiceConfig {
-}

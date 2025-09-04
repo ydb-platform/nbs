@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.73.0)
+
 SRCS(
     call_metrics.go
     orca.go
@@ -11,7 +13,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
-    #server_metrics_test.go
+    # server_metrics_test.go
 )
 
 GO_XTEST_SRCS(

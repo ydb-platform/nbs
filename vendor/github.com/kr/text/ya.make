@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v0.2.0)
+
 SRCS(
     doc.go
     indent.go
@@ -15,4 +17,9 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    cmd
+    colwriter
+    gotest
+    mc
+)

@@ -26,7 +26,7 @@ public:
             return true;
         }
 
-        State.emplace(*Self, Self->HostRecords, TActivationContext::Now());
+        State.emplace(*Self, Self->HostRecords, TActivationContext::Now(), TActivationContext::Monotonic());
         State->CheckConsistency();
 
         NIceDb::TNiceDb db(txc.DB);
@@ -78,6 +78,47 @@ public:
             }
         }
 
+        for (const auto& report : record.GetPDiskReports()) {
+            if (!report.HasPDiskId() || !report.HasPhase()) {
+                continue; // ignore incorrect report
+            }
+
+            const TPDiskId pdiskId(record.GetNodeId(), report.GetPDiskId());
+
+            TPDiskInfo *pdisk = State->PDisks.FindForUpdate(pdiskId);
+            if (!pdisk) {
+                continue;
+            } else if (report.HasPDiskGuid() && pdisk->Guid != report.GetPDiskGuid()) {
+                continue; // race with reused PDisk id
+            }
+
+            switch (report.GetPhase()) {
+                case NKikimrBlobStorage::TEvControllerNodeReport::PD_UNKNOWN:
+                    continue;
+
+                case NKikimrBlobStorage::TEvControllerNodeReport::PD_RESTARTED:
+                    if (pdisk->Mood == TPDiskMood::Restarting) {
+                        pdisk->Mood = TPDiskMood::Normal;
+                    }
+                    break;
+
+                case NKikimrBlobStorage::TEvControllerNodeReport::PD_SHRED:
+                    switch (report.GetShredStateCase()) {
+                        case NKikimrBlobStorage::TEvControllerNodeReport::TPDiskReport::kShredGenerationFinished:
+                            Self->ShredState.OnShredFinished(pdiskId, *pdisk, report.GetShredGenerationFinished(), txc);
+                            break;
+
+                        case NKikimrBlobStorage::TEvControllerNodeReport::TPDiskReport::kShredAborted:
+                        case NKikimrBlobStorage::TEvControllerNodeReport::TPDiskReport::SHREDSTATE_NOT_SET:
+                            STLOG(PRI_ERROR, BS_CONTROLLER, BSCTXNR00, "shred aborted due to error", (PDiskId, pdiskId),
+                                (ErrorReason, report.GetShredAborted()));
+                            Self->ShredState.OnShredAborted(pdiskId, *pdisk);
+                            break;
+                    }
+                    break;
+            }
+        }
+
         State->CheckConsistency();
         TString error;
         if (State->Changed() && !Self->CommitConfigUpdates(*State, false, false, false, txc, &error)) {
@@ -93,6 +134,7 @@ public:
             State->ApplyConfigUpdates();
             State.reset();
         }
+        Self->ShredState.OnNodeReportTxComplete();
     }
 };
 

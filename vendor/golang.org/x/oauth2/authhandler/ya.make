@@ -2,14 +2,10 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v0.30.0)
+
 SRCS(
     authhandler.go
 )
 
-GO_TEST_SRCS(authhandler_test.go)
-
 END()
-
-RECURSE(
-    gotest
-)

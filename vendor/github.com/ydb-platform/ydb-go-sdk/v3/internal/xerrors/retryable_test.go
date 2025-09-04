@@ -1,6 +1,7 @@
 package xerrors
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -50,4 +51,36 @@ func TestRetryableCode(t *testing.T) {
 			require.Equal(t, tt.code, err.Code())
 		})
 	}
+}
+
+func TestRetriableError(t *testing.T) {
+	t.Run("retryable", func(t *testing.T) {
+		retriable := Retryable(errors.New("test"))
+		wrapped := fmt.Errorf("wrap: %w", retriable)
+		require.Equal(t, retriable, RetryableError(retriable))
+		require.Equal(t, retriable, RetryableError(wrapped))
+	})
+	t.Run("unretryable", func(t *testing.T) {
+		require.NoError(t, RetryableError(errors.New("test")))
+		require.NoError(t, RetryableError(Unretryable(Retryable(errors.New("test")))))
+	})
+}
+
+func TestUnretryableUnwrap(t *testing.T) {
+	test := errors.New("test")
+	wrapped := Unretryable(test)
+	require.ErrorIs(t, wrapped, test)
+}
+
+func TestIsValid(t *testing.T) {
+	type myType struct{}
+	obj := &myType{}
+	err := Retryable(fmt.Errorf("test"), Invalid(obj))
+	require.False(t, IsValid(err, obj))
+	require.True(t, IsValid(err, &myType{}))
+	var objAsInterface any
+	objAsInterface = obj
+	require.False(t, IsValid(err, objAsInterface))
+	objAsInterface = &myType{}
+	require.True(t, IsValid(err, objAsInterface))
 }

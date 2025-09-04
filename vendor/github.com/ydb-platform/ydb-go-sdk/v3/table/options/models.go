@@ -7,10 +7,9 @@ import (
 
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Table"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/allocator"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/feature"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/types"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/value"
-	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 type Column struct {
@@ -19,10 +18,10 @@ type Column struct {
 	Family string
 }
 
-func (c Column) toYDB(a *allocator.Allocator) *Ydb_Table.ColumnMeta {
+func (c Column) toYDB() *Ydb_Table.ColumnMeta {
 	return &Ydb_Table.ColumnMeta{
 		Name:   c.Name,
-		Type:   value.TypeToYDB(c.Type, a),
+		Type:   types.TypeToYDB(c.Type),
 		Family: c.Family,
 	}
 }
@@ -43,15 +42,6 @@ type IndexDescription struct {
 	Type         IndexType
 }
 
-//nolint:unused
-func (i IndexDescription) toYDB() *Ydb_Table.TableIndexDescription {
-	return &Ydb_Table.TableIndexDescription{
-		Name:         i.Name,
-		IndexColumns: i.IndexColumns,
-		Status:       i.Status,
-	}
-}
-
 type Description struct {
 	Name                 string
 	Columns              []Column
@@ -68,6 +58,7 @@ type Description struct {
 	TimeToLiveSettings   *TimeToLiveSettings
 	Changefeeds          []ChangefeedDescription
 	Tiering              string
+	StoreType            StoreType
 }
 
 type TableStats struct {
@@ -82,6 +73,7 @@ type TableStats struct {
 type PartitionStats struct {
 	RowsEstimate uint64
 	StoreSize    uint64
+	LeaderNodeID uint32
 }
 
 type ColumnFamily struct {
@@ -117,6 +109,7 @@ func (s StoragePool) toYDB() *Ydb_Table.StoragePool {
 	if s.Media == "" {
 		return nil
 	}
+
 	return &Ydb_Table.StoragePool{
 		Media: s.Media,
 	}
@@ -198,7 +191,8 @@ func (rr ReadReplicasSettings) ToYDB() *Ydb_Table.ReadReplicasSettings {
 }
 
 func NewReadReplicasSettings(rr *Ydb_Table.ReadReplicasSettings) ReadReplicasSettings {
-	t, c := ReadReplicasPerAzReadReplicas, uint64(0)
+	t := ReadReplicasPerAzReadReplicas
+	var c uint64
 
 	if c = rr.GetPerAzReadReplicasCount(); c != 0 {
 		t = ReadReplicasPerAzReadReplicas
@@ -404,8 +398,8 @@ type (
 )
 
 type KeyRange struct {
-	From types.Value
-	To   types.Value
+	From value.Value
+	To   value.Value
 }
 
 func (kr KeyRange) String() string {
@@ -423,11 +417,13 @@ func (kr KeyRange) String() string {
 		buf.WriteString(kr.To.Yql())
 	}
 	buf.WriteString("]")
+
 	return buf.String()
 }
 
 // Deprecated: use TimeToLiveSettings instead.
-// Will be removed after Jan 2022.
+// Will be removed after Oct 2024.
+// Read about versioning policy: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#deprecated
 type TTLSettings struct {
 	DateTimeColumn string
 	TTLSeconds     uint32
@@ -462,6 +458,7 @@ func NewTTLSettings() TimeToLiveSettings {
 func (ttl TimeToLiveSettings) ColumnDateType(columnName string) TimeToLiveSettings {
 	ttl.Mode = TimeToLiveModeDateType
 	ttl.ColumnName = columnName
+
 	return ttl
 }
 
@@ -473,6 +470,7 @@ func (ttl TimeToLiveSettings) ColumnSeconds(columnName string) TimeToLiveSetting
 	ttl.Mode = TimeToLiveModeValueSinceUnixEpoch
 	ttl.ColumnName = columnName
 	ttl.ColumnUnit = unitToPointer(TimeToLiveUnitSeconds)
+
 	return ttl
 }
 
@@ -480,6 +478,7 @@ func (ttl TimeToLiveSettings) ColumnMilliseconds(columnName string) TimeToLiveSe
 	ttl.Mode = TimeToLiveModeValueSinceUnixEpoch
 	ttl.ColumnName = columnName
 	ttl.ColumnUnit = unitToPointer(TimeToLiveUnitMilliseconds)
+
 	return ttl
 }
 
@@ -487,6 +486,7 @@ func (ttl TimeToLiveSettings) ColumnMicroseconds(columnName string) TimeToLiveSe
 	ttl.Mode = TimeToLiveModeValueSinceUnixEpoch
 	ttl.ColumnName = columnName
 	ttl.ColumnUnit = unitToPointer(TimeToLiveUnitMicroseconds)
+
 	return ttl
 }
 
@@ -494,11 +494,13 @@ func (ttl TimeToLiveSettings) ColumnNanoseconds(columnName string) TimeToLiveSet
 	ttl.Mode = TimeToLiveModeValueSinceUnixEpoch
 	ttl.ColumnName = columnName
 	ttl.ColumnUnit = unitToPointer(TimeToLiveUnitNanoseconds)
+
 	return ttl
 }
 
 func (ttl TimeToLiveSettings) ExpireAfter(expireAfter time.Duration) TimeToLiveSettings {
 	ttl.ExpireAfterSeconds = uint32(expireAfter.Seconds())
+
 	return ttl
 }
 
@@ -560,18 +562,20 @@ func (unit *TimeToLiveUnit) ToYDB() Ydb_Table.ValueSinceUnixEpochModeSettings_Un
 }
 
 type ChangefeedDescription struct {
-	Name   string
-	Mode   ChangefeedMode
-	Format ChangefeedFormat
-	State  ChangefeedState
+	Name             string
+	Mode             ChangefeedMode
+	Format           ChangefeedFormat
+	State            ChangefeedState
+	VirtualTimestamp bool
 }
 
 func NewChangefeedDescription(proto *Ydb_Table.ChangefeedDescription) ChangefeedDescription {
 	return ChangefeedDescription{
-		Name:   proto.GetName(),
-		Mode:   ChangefeedMode(proto.GetMode()),
-		Format: ChangefeedFormat(proto.GetFormat()),
-		State:  ChangefeedState(proto.GetState()),
+		Name:             proto.GetName(),
+		Mode:             ChangefeedMode(proto.GetMode()),
+		Format:           ChangefeedFormat(proto.GetFormat()),
+		State:            ChangefeedState(proto.GetState()),
+		VirtualTimestamp: proto.GetVirtualTimestamps(),
 	}
 }
 
@@ -600,4 +604,12 @@ const (
 	ChangefeedFormatUnspecified         = ChangefeedFormat(Ydb_Table.ChangefeedFormat_FORMAT_UNSPECIFIED)
 	ChangefeedFormatJSON                = ChangefeedFormat(Ydb_Table.ChangefeedFormat_FORMAT_JSON)
 	ChangefeedFormatDynamoDBStreamsJSON = ChangefeedFormat(Ydb_Table.ChangefeedFormat_FORMAT_DYNAMODB_STREAMS_JSON)
+)
+
+type StoreType int
+
+const (
+	StoreTypeUnspecified = StoreType(Ydb_Table.StoreType_STORE_TYPE_UNSPECIFIED)
+	StoreTypeRow         = StoreType(Ydb_Table.StoreType_STORE_TYPE_ROW)
+	StoreTypeColumn      = StoreType(Ydb_Table.StoreType_STORE_TYPE_COLUMN)
 )

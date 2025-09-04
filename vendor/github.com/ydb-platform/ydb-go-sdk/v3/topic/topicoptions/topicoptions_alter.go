@@ -43,6 +43,7 @@ func AlterWithSupportedCodecs(codecs ...topictypes.Codec) AlterOption {
 	sort.Slice(codecs, func(i, j int) bool {
 		return codecs[i] < codecs[j]
 	})
+
 	return withSupportedCodecs(codecs)
 }
 
@@ -66,12 +67,14 @@ func AlterWithAddConsumers(consumers ...topictypes.Consumer) AlterOption {
 	sort.Slice(consumers, func(i, j int) bool {
 		return consumers[i].Name < consumers[j].Name
 	})
+
 	return withAddConsumers(consumers)
 }
 
 // AlterWithDropConsumers drop consumer from the topic
 func AlterWithDropConsumers(consumersName ...string) AlterOption {
 	sort.Strings(consumersName)
+
 	return withDropConsumers(consumersName)
 }
 
@@ -96,6 +99,7 @@ func AlterConsumerWithSupportedCodecs(name string, codecs []topictypes.Codec) Al
 	sort.Slice(codecs, func(i, j int) bool {
 		return codecs[i] < codecs[j]
 	})
+
 	return withConsumerWithSupportedCodecs{
 		name:   name,
 		codecs: codecs,
@@ -108,6 +112,33 @@ func AlterConsumerWithAttributes(name string, attributes map[string]string) Alte
 		name:       name,
 		attributes: attributes,
 	}
+}
+
+// AlterWithMaxActivePartitions change max active partitions of the topic
+func AlterWithMaxActivePartitions(maxActivePartitions int64) AlterOption {
+	return alterWithMaxActivePartitions(maxActivePartitions)
+}
+
+// AlterWithAutoPartitioningStrategy change auto partitioning strategy for the topic
+func AlterWithAutoPartitioningStrategy(strategy topictypes.AutoPartitioningStrategy) AlterOption {
+	return withAutoPartitioningStrategy(strategy)
+}
+
+// AlterWithAutoPartitioningWriteSpeedStabilizationWindow change stabilization window for auto partitioning write speed
+func AlterWithAutoPartitioningWriteSpeedStabilizationWindow(window time.Duration) AlterOption {
+	return withAutoPartitioningWriteSpeedStabilizationWindow(window)
+}
+
+// AlterWithAutoPartitioningWriteSpeedUpUtilizationPercent change up utilization percent for auto
+// partitioning write speed
+func AlterWithAutoPartitioningWriteSpeedUpUtilizationPercent(percent int32) AlterOption {
+	return withAutoPartitioningWriteSpeedUpUtilizationPercent(percent)
+}
+
+// AlterWithAutoPartitioningWriteSpeedDownUtilizationPercent change down utilization percent for auto
+// partitioning write speed
+func AlterWithAutoPartitioningWriteSpeedDownUtilizationPercent(percent int32) AlterOption {
+	return withAutoPartitioningWriteSpeedDownUtilizationPercent(percent)
 }
 
 func ensureAlterConsumer(
@@ -123,5 +154,64 @@ func ensureAlterConsumer(
 		}
 	}
 	consumers = append(consumers, rawtopic.AlterConsumer{Name: name})
+
 	return consumers, len(consumers) - 1
+}
+
+type alterWithMaxActivePartitions int64
+
+func (maxActivePartitions alterWithMaxActivePartitions) ApplyAlterOption(req *rawtopic.AlterTopicRequest) {
+	req.AlterPartitionSettings.SetMaxActivePartitions.HasValue = true
+	req.AlterPartitionSettings.SetMaxActivePartitions.Value = int64(maxActivePartitions)
+}
+
+type withAutoPartitioningStrategy topictypes.AutoPartitioningStrategy
+
+func (strategy withAutoPartitioningStrategy) ApplyAlterOption(req *rawtopic.AlterTopicRequest) {
+	if req.AlterPartitionSettings.AlterAutoPartitioningSettings == nil {
+		req.AlterPartitionSettings.AlterAutoPartitioningSettings = &rawtopic.AlterAutoPartitioningSettings{}
+	}
+	req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetStrategy = rawtopic.AutoPartitioningStrategy(strategy)
+}
+
+type withAutoPartitioningWriteSpeedStabilizationWindow time.Duration
+
+//nolint:lll
+func (window withAutoPartitioningWriteSpeedStabilizationWindow) ApplyAlterOption(req *rawtopic.AlterTopicRequest) {
+	if req.AlterPartitionSettings.AlterAutoPartitioningSettings == nil {
+		req.AlterPartitionSettings.AlterAutoPartitioningSettings = &rawtopic.AlterAutoPartitioningSettings{}
+	}
+	if req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetPartitionWriteSpeed == nil {
+		req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetPartitionWriteSpeed = &rawtopic.AlterAutoPartitioningWriteSpeedStrategy{}
+	}
+	req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetPartitionWriteSpeed.SetStabilizationWindow.HasValue = true
+	req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetPartitionWriteSpeed.SetStabilizationWindow.Value = time.Duration(window)
+}
+
+type withAutoPartitioningWriteSpeedUpUtilizationPercent int32
+
+//nolint:lll
+func (percent withAutoPartitioningWriteSpeedUpUtilizationPercent) ApplyAlterOption(req *rawtopic.AlterTopicRequest) {
+	if req.AlterPartitionSettings.AlterAutoPartitioningSettings == nil {
+		req.AlterPartitionSettings.AlterAutoPartitioningSettings = &rawtopic.AlterAutoPartitioningSettings{}
+	}
+	if req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetPartitionWriteSpeed == nil {
+		req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetPartitionWriteSpeed = &rawtopic.AlterAutoPartitioningWriteSpeedStrategy{}
+	}
+	req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetPartitionWriteSpeed.SetUpUtilizationPercent.HasValue = true
+	req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetPartitionWriteSpeed.SetUpUtilizationPercent.Value = int32(percent)
+}
+
+type withAutoPartitioningWriteSpeedDownUtilizationPercent int32
+
+//nolint:lll
+func (percent withAutoPartitioningWriteSpeedDownUtilizationPercent) ApplyAlterOption(req *rawtopic.AlterTopicRequest) {
+	if req.AlterPartitionSettings.AlterAutoPartitioningSettings == nil {
+		req.AlterPartitionSettings.AlterAutoPartitioningSettings = &rawtopic.AlterAutoPartitioningSettings{}
+	}
+	if req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetPartitionWriteSpeed == nil {
+		req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetPartitionWriteSpeed = &rawtopic.AlterAutoPartitioningWriteSpeedStrategy{}
+	}
+	req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetPartitionWriteSpeed.SetDownUtilizationPercent.HasValue = true
+	req.AlterPartitionSettings.AlterAutoPartitioningSettings.SetPartitionWriteSpeed.SetDownUtilizationPercent.Value = int32(percent)
 }

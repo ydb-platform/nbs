@@ -1,5 +1,6 @@
 #pragma once
 
+#include "contrib/ydb/core/persqueue/utils.h"
 #include <contrib/ydb/library/persqueue/topic_parser/topic_parser.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
@@ -11,6 +12,10 @@
 
 namespace NKikimr::NGRpcProxy {
 
+struct TPartitionInfo {
+    ui64 TabletId;
+};
+
 struct TTopicInitInfo {
     NPersQueue::TTopicConverterPtr TopicNameConverter;
     ui64 TabletID;
@@ -20,12 +25,15 @@ struct TTopicInitInfo {
     bool IsServerless = false;
     TString FolderId;
     NKikimrPQ::TPQTabletConfig::EMeteringMode MeteringMode;
-    THashMap<ui32, ui64> PartitionIdToTabletId;
+    THashMap<ui32, TPartitionInfo> Partitions;
+    std::shared_ptr<NPQ::TPartitionGraph> PartitionGraph;
 };
 
 using TTopicInitInfoMap = THashMap<TString, TTopicInitInfo>;
 
 struct TTopicHolder {
+    using TPtr = std::shared_ptr<TTopicHolder>;
+
     ui64 TabletID = 0;
     TActorId PipeClient;
     bool ACLRequestInfly = false;
@@ -40,23 +48,28 @@ struct TTopicHolder {
     TMaybe<TString> CdcStreamPath;
 
     TVector<ui32> Groups;
-    TMap<ui64, ui64> Partitions;
-    THashMap<ui32, ui64> PartitionIdToTabletId;
+    THashMap<ui32, TPartitionInfo> Partitions;
+    std::shared_ptr<NPQ::TPartitionGraph> PartitionGraph;
 
+    TTopicHolder() {
+    }
 
-    inline static TTopicHolder FromTopicInfo(const TTopicInitInfo& info) {
-        return TTopicHolder{
-            .TabletID = info.TabletID,
-            .ACLRequestInfly = false,
-            .CloudId = info.CloudId,
-            .DbId = info.DbId,
-            .DbPath = info.DbPath,
-            .IsServerless = info.IsServerless,
-            .FolderId = info.FolderId,
-            .MeteringMode = info.MeteringMode,
-            .FullConverter = info.TopicNameConverter,
-            .PartitionIdToTabletId = info.PartitionIdToTabletId,
-        };
+    explicit TTopicHolder(const TTopicInitInfo& info) {
+        TabletID = info.TabletID;
+        ACLRequestInfly = false;
+        CloudId = info.CloudId;
+        DbId = info.DbId;
+        DbPath = info.DbPath;
+        IsServerless = info.IsServerless;
+        FolderId = info.FolderId;
+        MeteringMode = info.MeteringMode;
+        FullConverter = info.TopicNameConverter;
+        Partitions = info.Partitions;
+        PartitionGraph = info.PartitionGraph;
+    }
+
+    inline static TTopicHolder::TPtr FromTopicInfo(const TTopicInitInfo& info) {
+        return std::make_shared<TTopicHolder>(info);
     }
 };
 

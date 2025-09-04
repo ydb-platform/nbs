@@ -1,4 +1,5 @@
-from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig, DEVICE_ERASE_METHOD_NONE
+from cloud.blockstore.config.disk_pb2 import DEVICE_ERASE_METHOD_NONE
+
 from cloud.blockstore.config.server_pb2 import \
     TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import \
@@ -41,7 +42,7 @@ def kikimr_start():
 
     configurator = KikimrConfigGenerator(
         erasure=None,
-        binary_path=kikimr_binary_path,
+        binary_paths=[kikimr_binary_path],
         use_in_memory_pdisks=True,
         static_pdisk_size=PDISK_SIZE,
         dynamic_pdisk_size=PDISK_SIZE,
@@ -117,9 +118,8 @@ def test_change_device():
     setup_nonreplicated(
         kikimr_cluster.client,
         [devices],
-        disk_agent_config_patch=TDiskAgentConfig(
-            DedicatedDiskAgent=True,
-            DeviceEraseMethod=DEVICE_ERASE_METHOD_NONE))
+        DEVICE_ERASE_METHOD_NONE,
+        True)
 
     enable_writable_state(nbs.nbs_port, nbs_client_binary_path)
 

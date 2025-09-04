@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jonboulle/clockwork"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRepeaterNoWakeUpsAfterStop(t *testing.T) {
@@ -20,6 +21,7 @@ func TestRepeaterNoWakeUpsAfterStop(t *testing.T) {
 	r := New(context.Background(), interval, func(ctx context.Context) (err error) {
 		wakeUpStart <- struct{}{}
 		<-wakeUpDone
+
 		return nil
 	}, WithClock(fakeClock))
 
@@ -83,6 +85,7 @@ func TestRepeaterForceLogBackoff(t *testing.T) {
 		}
 		lastWakeUp = fakeClock.Now()
 		wakeUps++
+
 		return fmt.Errorf("special error for force with log backoff")
 	}, WithClock(fakeClock))
 	defer r.Stop()
@@ -92,7 +95,8 @@ func TestRepeaterForceLogBackoff(t *testing.T) {
 
 	for _, delay := range delays[1:] {
 		// ensure right listeners attached
-		fakeClock.BlockUntil(2)
+		err := fakeClock.BlockUntilContext(context.Background(), 2)
+		require.NoError(t, err)
 
 		// release trash timer listeners
 		fakeClock.Advance(delay - 1)

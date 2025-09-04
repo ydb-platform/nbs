@@ -69,7 +69,7 @@ class LocalLoadTest:
 
         self.configurator = KikimrConfigGenerator(
             erasure=None,
-            binary_path=kikimr_binary_path,
+            binary_paths=[kikimr_binary_path],
             use_in_memory_pdisks=use_in_memory_pdisks,
             dynamic_pdisks=dynamic_pdisks,
             dynamic_storage_pools=dynamic_storage_pools,
@@ -151,6 +151,7 @@ class LocalLoadTest:
             setup_disk_agent_config(
                 self.kikimr_cluster.client,
                 self.__devices,
+                device_erase_method=None,
                 node_type=None)
 
         if self.endpoint_proxy:

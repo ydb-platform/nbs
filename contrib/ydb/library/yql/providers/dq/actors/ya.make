@@ -22,13 +22,14 @@ PEERDIR(
     contrib/ydb/library/actors/core
     library/cpp/yson
     contrib/ydb/library/mkql_proto
-    contrib/ydb/library/yql/core/services
-    contrib/ydb/library/yql/core/services/mounts
-    contrib/ydb/library/yql/core/user_data
+    yql/essentials/core/services
+    yql/essentials/core/services/mounts
+    yql/essentials/core/user_data
+    yql/essentials/core
     contrib/ydb/library/yql/utils/actors
     contrib/ydb/library/yql/utils/actor_log
-    contrib/ydb/library/yql/utils/backtrace
-    contrib/ydb/library/yql/utils/log
+    yql/essentials/utils/backtrace
+    yql/essentials/utils/log
     contrib/ydb/public/api/protos
     contrib/ydb/public/lib/yson_value
     contrib/ydb/library/yql/dq/common
@@ -36,8 +37,8 @@ PEERDIR(
     contrib/ydb/library/yql/dq/runtime
     contrib/ydb/library/yql/dq/tasks
     contrib/ydb/library/yql/dq/actors/compute
-    contrib/ydb/library/yql/utils/failure_injector
-    contrib/ydb/library/yql/providers/common/metrics
+    yql/essentials/utils/failure_injector
+    yql/essentials/providers/common/metrics
     contrib/ydb/library/yql/providers/dq/actors/events
     contrib/ydb/library/yql/providers/dq/api/grpc
     contrib/ydb/library/yql/providers/dq/api/protos

@@ -45,6 +45,10 @@ import (
 // Name is the name of the priority balancer.
 const Name = "priority_experimental"
 
+// DefaultSubBalancerCloseTimeout is defined as a variable instead of const for
+// testing.
+var DefaultSubBalancerCloseTimeout = 15 * time.Minute
+
 func init() {
 	balancer.Register(bb{})
 }
@@ -60,8 +64,13 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 	}
 
 	b.logger = prefixLogger(b)
-	b.bg = balancergroup.New(cc, bOpts, b, b.logger)
-	b.bg.Start()
+	b.bg = balancergroup.New(balancergroup.Options{
+		CC:                      cc,
+		BuildOpts:               bOpts,
+		StateAggregator:         b,
+		Logger:                  b.logger,
+		SubBalancerCloseTimeout: DefaultSubBalancerCloseTimeout,
+	})
 	go b.run()
 	b.logger.Infof("Created")
 	return b
@@ -105,12 +114,15 @@ type priorityBalancer struct {
 }
 
 func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) error {
-	b.logger.Debugf("Received an update with balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	if b.logger.V(2) {
+		b.logger.Infof("Received an update with balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	}
 	newConfig, ok := s.BalancerConfig.(*LBConfig)
 	if !ok {
 		return fmt.Errorf("unexpected balancer config with type: %T", s.BalancerConfig)
 	}
 	addressesSplit := hierarchy.Group(s.ResolverState.Addresses)
+	endpointsSplit := hierarchy.GroupEndpoints(s.ResolverState.Endpoints)
 
 	b.mu.Lock()
 	// Create and remove children, since we know all children from the config
@@ -130,6 +142,7 @@ func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) err
 			cb := newChildBalancer(name, b, bb.Name(), b.cc)
 			cb.updateConfig(newSubConfig, resolver.State{
 				Addresses:     addressesSplit[name],
+				Endpoints:     endpointsSplit[name],
 				ServiceConfig: s.ResolverState.ServiceConfig,
 				Attributes:    s.ResolverState.Attributes,
 			})
@@ -151,6 +164,7 @@ func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) err
 		// be built, if it's a low priority).
 		currentChild.updateConfig(newSubConfig, resolver.State{
 			Addresses:     addressesSplit[name],
+			Endpoints:     endpointsSplit[name],
 			ServiceConfig: s.ResolverState.ServiceConfig,
 			Attributes:    s.ResolverState.Attributes,
 		})
@@ -196,11 +210,14 @@ func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) err
 }
 
 func (b *priorityBalancer) ResolverError(err error) {
+	if b.logger.V(2) {
+		b.logger.Infof("Received error from the resolver: %v", err)
+	}
 	b.bg.ResolverError(err)
 }
 
 func (b *priorityBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
-	b.bg.UpdateSubConnState(sc, state)
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
 func (b *priorityBalancer) Close() {
@@ -258,6 +275,7 @@ func (b *priorityBalancer) run() {
 			// deadlock.
 			b.mu.Lock()
 			if b.done.HasFired() {
+				b.mu.Unlock()
 				return
 			}
 			switch s := u.(type) {

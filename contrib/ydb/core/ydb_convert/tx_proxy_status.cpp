@@ -1,5 +1,7 @@
 #include "tx_proxy_status.h"
 
+#include <contrib/ydb/public/api/protos/ydb_issue_message.pb.h>
+
 namespace NKikimr {
 
 

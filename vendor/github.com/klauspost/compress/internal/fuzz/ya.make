@@ -6,6 +6,10 @@ LICENSE(
     MIT
 )
 
-SRCS(helpers.go)
+VERSION(v1.18.0)
+
+SRCS(
+    helpers.go
+)
 
 END()

@@ -2,10 +2,10 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
-SRCS(registry.go)
+VERSION(v1.36.6)
 
-GO_XTEST_SRCS(registry_test.go)
+SRCS(
+    registry.go
+)
 
 END()
-
-RECURSE(gotest)

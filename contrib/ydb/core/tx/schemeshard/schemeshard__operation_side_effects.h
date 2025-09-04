@@ -6,8 +6,8 @@
 #include <contrib/ydb/core/tablet/pipe_tracker.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executor.h>
 
-#include <util/generic/ptr.h>
 #include <util/generic/map.h>
+#include <util/generic/ptr.h>
 
 namespace NKikimr {
 namespace NSchemeShard {
@@ -56,6 +56,7 @@ private:
     THashSet<TOperationId> DoneOperations;
     THashSet<TTxId> DoneTransactions;
     THashSet<TShardIdx> ToDeleteShards;
+    THashSet<TShardIdx> ToDeleteSystemShards;  // temporary: special case for deleting tenant's system shards
     TDeque<TDependence> Dependencies;
     TDeque<TPathStateRec> ReleasePathStateRecs;
     THashSet<TPathId> TenantsToUpdate;
@@ -64,8 +65,8 @@ private:
     TVector<TActivateShardCreated> PendingActivateShardCreated;
     TDeque<TWaitPublication> WaitPublications;
     TDeque<TBarrierRec> Barriers;
-    THashMap<TActorId, TVector<TPathId>> TempTablesToCreateState;
-    THashMap<TActorId, TVector<TPathId>> TempTablesToDropState;
+    THashMap<TActorId, TVector<TPathId>> TempDirsToMakeState;
+    THashMap<TActorId, TVector<TPathId>> TempDirsToRemoveState;
 
 public:
     using TPtr = TIntrusivePtr<TSideEffects>;
@@ -102,8 +103,8 @@ public:
     void UnbindMsgFromPipe(TOperationId opId, TTabletId dst, TShardIdx shardIdx);
     void UnbindMsgFromPipe(TOperationId opId, TTabletId dst, TPipeMessageId cookie);
 
-    void UpdateTempTablesToCreateState(const TActorId& ownerActorId, const TPathId& pathId);
-    void UpdateTempTablesToDropState(const TActorId& ownerActorId, const TPathId& pathId);
+    void UpdateTempDirsToMakeState(const TActorId& ownerActorId, const TPathId& pathId);
+    void UpdateTempDirsToRemoveState(const TActorId& ownerActorId, const TPathId& pathId);
 
     void RouteByTabletsFromOperation(TOperationId opId);
     void RouteByTablet(TOperationId opId, TTabletId dst);
@@ -124,6 +125,7 @@ public:
     void PublishAndWaitPublication(TOperationId opId, TPathId pathId);
 
     void DeleteShard(TShardIdx idx);
+    void DeleteSystemShard(TShardIdx idx);
 
     void ToProgress(TIndexBuildId id);
 
@@ -153,6 +155,7 @@ private:
 
     void DoRegisterRelations(TSchemeShard* ss, const TActorContext& ctx);
     void DoTriggerDeleteShards(TSchemeShard* ss, const TActorContext &ctx);
+    void DoTriggerDeleteSystemShards(TSchemeShard *ss, const TActorContext &ctx);
 
     void DoReleasePathState(TSchemeShard* ss, const TActorContext &ctx);
     void DoDoneParts(TSchemeShard* ss, const TActorContext& ctx);
@@ -163,9 +166,10 @@ private:
     void DoActivateOps(TSchemeShard* ss, const TActorContext& ctx);
 
     void DoPersistDeleteShards(TSchemeShard* ss, NTabletFlatExecutor::TTransactionContext &txc, const TActorContext &ctx);
+    void DoPersistDeleteSystemShards(TSchemeShard* ss, NTabletFlatExecutor::TTransactionContext &txc, const TActorContext &ctx);
 
-    void DoUpdateTempTablesToCreateState(TSchemeShard* ss, const TActorContext &ctx);
-    void DoUpdateTempTablesToDropState(TSchemeShard* ss, const TActorContext &ctx);
+    void DoUpdateTempDirsToMakeState(TSchemeShard* ss, const TActorContext &ctx);
+    void DoUpdateTempDirsToRemoveState(TSchemeShard* ss, const TActorContext &ctx);
 
     void ResumeLongOps(TSchemeShard* ss, const TActorContext& ctx);
     void SetupRoutingLongOps(TSchemeShard* ss, const TActorContext& ctx);

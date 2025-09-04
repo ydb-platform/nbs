@@ -1,12 +1,12 @@
 import json
-import six
 
 
 def extract_macro_calls(unit, macro_value_name):
-    if not unit.get(macro_value_name):
+    value = unit.get(macro_value_name)  # TODO(dimdim11) replace by get_subst
+    if not value:
         return []
 
-    return filter(None, unit.get(macro_value_name).replace('$' + macro_value_name, '').split())
+    return filter(None, value.replace('$' + macro_value_name, '').split())
 
 
 def macro_calls_to_dict(unit, calls):
@@ -46,11 +46,3 @@ def onprocess_docs(unit, *args):
     variables = get_variables(unit)
     if variables:
         unit.set(['_DOCS_VARS_FLAG', '--vars {}'.format(json.dumps(json.dumps(variables, sort_keys=True)))])
-
-
-def onprocess_mkdocs(unit, *args):
-    variables = get_variables(unit)
-    if variables:
-        unit.set(
-            ['_DOCS_VARS_FLAG', ' '.join(['--var {}={}'.format(k, v) for k, v in sorted(six.iteritems(variables))])]
-        )

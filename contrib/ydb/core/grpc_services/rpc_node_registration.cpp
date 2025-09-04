@@ -4,11 +4,13 @@
 #include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>
-#include <contrib/ydb/core/grpc_services/auth_processor/dynamic_node_auth_processor.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/auth.h>
 #include <contrib/ydb/core/base/nameservice.h>
+#include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/mind/node_broker.h>
+#include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_discovery.pb.h>
 
@@ -24,57 +26,38 @@ using TEvNodeRegistrationRequest = TGrpcRequestOperationCall<Ydb::Discovery::Nod
 class TNodeRegistrationRPC : public TActorBootstrapped<TNodeRegistrationRPC> {
     using TActorBase = TActorBootstrapped<TNodeRegistrationRPC>;
 
-    struct TNodeAuthorizationResult {
-        bool IsAuthorized = false;
-        bool IsCertificateUsed = false;
-
-        operator bool() const {
-            return IsAuthorized;
-        }
-    };
-
 public:
     static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
         return NKikimrServices::TActivity::GRPC_REQ;
     }
 
-    TNodeRegistrationRPC(IRequestOpCtx* request, const TDynamicNodeAuthorizationParams& dynamicNodeAuthorizationParams)
-        : Request(request), DynamicNodeAuthorizationParams(dynamicNodeAuthorizationParams)
+    TNodeRegistrationRPC(IRequestOpCtx* request)
+        : Request(request)
     {}
 
     void Bootstrap(const TActorContext& ctx) {
         auto req = dynamic_cast<TEvNodeRegistrationRequest*>(Request.get());
         Y_ABORT_UNLESS(req, "Unexpected request type for TNodeRegistrationRPC");
-        const TNodeAuthorizationResult nodeAuthorizationResult = IsNodeAuthorized(req->FindClientCert());
-        if (!nodeAuthorizationResult.IsAuthorized) {
+
+        if (!CheckAccess()) {
+            Status = Ydb::StatusIds::UNAUTHORIZED;
+            Request->RaiseIssue(NYql::TIssue("Cannot authorize node. Access denied"));
             SendReplyAndDie(ctx);
+            return;
         }
 
         auto dinfo = AppData(ctx)->DomainsInfo;
-        ui32 group;
         auto request = TEvNodeRegistrationRequest::GetProtoRequest(Request);
         const TString& domainPath = request->domain_path();
-        if (!domainPath.Empty()) {
-            auto *domain = dinfo->GetDomainByName(domainPath);
-            if (!domain) {
-                auto error = Sprintf("Unknown domain %s", domainPath.data());
-                ReplyWithErrorAndDie(error, ctx);
-                return;
-            }
-            group = dinfo->GetDefaultStateStorageGroup(domain->DomainUid);
-        } else {
-            if (dinfo->Domains.size() > 1) {
-                auto error = "Ambiguous domain (specify DomainPath in request)";
-                ReplyWithErrorAndDie(error, ctx);
-                return;
-            }
-            auto domain = dinfo->Domains.begin()->second;
-            group = dinfo->GetDefaultStateStorageGroup(domain->DomainUid);
+        if (domainPath && dinfo->GetDomain()->Name != domainPath) {
+            auto error = Sprintf("Unknown domain %s", domainPath.data());
+            ReplyWithErrorAndDie(error, ctx);
+            return;
         }
 
         NTabletPipe::TClientConfig pipeConfig;
         pipeConfig.RetryPolicy = {.RetryLimitCount = 10};
-        auto pipe = NTabletPipe::CreateClient(SelfId(), MakeNodeBrokerID(group), pipeConfig);
+        auto pipe = NTabletPipe::CreateClient(SelfId(), MakeNodeBrokerID(), pipeConfig);
         NodeBrokerPipe = ctx.RegisterWithSameMailbox(pipe);
 
         TAutoPtr<TEvNodeBroker::TEvRegistrationRequest> nodeBrokerRequest
@@ -89,7 +72,7 @@ public:
         if (request->has_path()) {
             nodeBrokerRequest->Record.SetPath(request->path());
         }
-        nodeBrokerRequest->Record.SetAuthorizedByCertificate(nodeAuthorizationResult.IsCertificateUsed);
+        nodeBrokerRequest->Record.SetAuthorizedByCertificate(IsNodeAuthorizedByCertificate);
 
         NTabletPipe::SendData(ctx, NodeBrokerPipe, nodeBrokerRequest.Release());
 
@@ -125,9 +108,11 @@ public:
     }
 
     void Handle(TEvInterconnect::TEvNodesInfo::TPtr &ev, const TActorContext &ctx) {
+        EvNodesInfo = ev;
+
         auto config = AppData()->DynamicNameserviceConfig;
 
-        for (const auto &node : ev->Get()->Nodes) {
+        for (const auto &node : EvNodesInfo->Get()->Nodes) {
             // Copy static nodes only.
             if (!config || node.NodeId <= config->MaxStaticNodeId) {
                 auto &info = *Result.add_nodes();
@@ -189,38 +174,13 @@ public:
     }
 
 private:
-    TNodeAuthorizationResult IsNodeAuthorized(const TVector<TStringBuf>& nodeAuthValues) {
-        TNodeAuthorizationResult result {.IsAuthorized = false, .IsCertificateUsed = false};
-        auto* appdata = AppData();
-        if (appdata && appdata->FeatureFlags.GetEnableDynamicNodeAuthorization() && DynamicNodeAuthorizationParams) {
-            if (nodeAuthValues.empty()) {
-                Request->RaiseIssue(NYql::TIssue("Cannot authorize node. Node has not provided certificate"));
-                Status = Ydb::StatusIds::UNAUTHORIZED;
-                return result;
-            }
-            const auto& pemCert = nodeAuthValues.front();
-            TMap<TString, TString> subjectDescription;
-            X509CertificateReader::X509Ptr x509cert = X509CertificateReader::ReadCertAsPEM(pemCert);
-            for(const auto& term: X509CertificateReader::ReadSubjectTerms(x509cert)) {
-                subjectDescription.insert(term);
-            }
-
-            if (!DynamicNodeAuthorizationParams.IsSubjectDescriptionMatched(subjectDescription)) {
-                Status = Ydb::StatusIds::UNAUTHORIZED;
-                Request->RaiseIssue(NYql::TIssue("Cannot authorize node by certificate"));
-                return result;
-            }
-            auto request = TEvNodeRegistrationRequest::GetProtoRequest(Request);
-            const auto& host = request->host();
-            if (!DynamicNodeAuthorizationParams.IsHostMatchAttributeCN(host)) {
-                Status = Ydb::StatusIds::UNAUTHORIZED;
-                Request->RaiseIssue(NYql::TIssue("Cannot authorize node with host: " + host));
-                return result;
-            }
-            result.IsCertificateUsed = true;
+    bool CheckAccess() {
+        if (Request->GetInternalToken()) {
+            return IsTokenAllowed(Request->GetInternalToken().Get(), AppData()->RegisterDynamicNodeAllowedSIDs);
         }
-        result.IsAuthorized = true;
-        return result;;
+        // No token at this stage means that token is not required
+        // and access should be granted
+        return true;
     }
 
     static void CopyNodeInfo(Ydb::Discovery::NodeInfo* dst, const NKikimrNodeBroker::TNodeInfo& src) {
@@ -248,6 +208,9 @@ private:
         }
         if (src.has_body()) {
             dst->SetBody(src.body());
+        }
+        if (src.has_bridge_pile_name()) {
+            dst->SetBridgePileName(src.bridge_pile_name());
         }
         if (src.has_data_center()) {
             dst->SetDataCenter(src.data_center());
@@ -279,6 +242,9 @@ private:
         if (src.HasBody()) {
             dst->set_body(src.GetBody());
         }
+        if (src.HasBridgePileName()) {
+            dst->set_bridge_pile_name(src.GetBridgePileName());
+        }
         if (src.HasDataCenter()) {
             dst->set_data_center(src.GetDataCenter());
         }
@@ -297,11 +263,12 @@ private:
     Ydb::Discovery::NodeRegistrationResult Result;
     Ydb::StatusIds_StatusCode Status = Ydb::StatusIds::SUCCESS;
     TActorId NodeBrokerPipe;
-    const TDynamicNodeAuthorizationParams DynamicNodeAuthorizationParams;
+    bool IsNodeAuthorizedByCertificate = false;
+    TEvInterconnect::TEvNodesInfo::TPtr EvNodesInfo;
 };
 
-void DoNodeRegistrationRequest(std::unique_ptr<IRequestOpCtx> p, const IFacilityProvider& f, const TDynamicNodeAuthorizationParams& dynamicNodeAuthorizationParams) {
-    f.RegisterActor(new TNodeRegistrationRPC(p.release(), dynamicNodeAuthorizationParams));
+void DoNodeRegistrationRequest(std::unique_ptr<IRequestOpCtx> p, const IFacilityProvider& f) {
+    f.RegisterActor(new TNodeRegistrationRPC(p.release()));
 }
 
 } // namespace NGRpcService

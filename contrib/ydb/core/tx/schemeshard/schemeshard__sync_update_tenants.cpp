@@ -113,6 +113,11 @@ struct TSchemeShard::TTxUpdateTenant : public TSchemeShard::TRwTxBase {
                 Self->PersistSubDomainDatabaseQuotas(db, Self->RootPathId(), *subdomain);
             }
 
+            if (record.HasSchemeLimits()) {
+                subdomain->MergeSchemeLimits(record.GetSchemeLimits(), Self);
+                Self->PersistSchemeLimits(db, Self->RootPathId(), *subdomain);
+            }
+
             if (record.HasAuditSettings()) {
                 subdomain->SetAuditSettings(record.GetAuditSettings());
                 Self->PersistSubDomainAuditSettings(db, Self->RootPathId(), *subdomain);
@@ -157,7 +162,7 @@ struct TSchemeShard::TTxUpdateTenant : public TSchemeShard::TRwTxBase {
             }
 
             subdomain->AddPrivateShard(shardIdx);
-            subdomain->AddInternalShard(shardIdx);
+            subdomain->AddInternalShard(shardIdx, Self);
 
             subdomain->Initialize(Self->ShardInfos);
             Self->PersistSubDomain(db, Self->RootPathId(), *subdomain);
@@ -198,6 +203,14 @@ struct TSchemeShard::TTxUpdateTenant : public TSchemeShard::TRwTxBase {
                 addPrivateShard(tenantGS, ETabletType::GraphShard);
             }
             Y_ABORT_UNLESS(tenantGS == subdomain->GetTenantGraphShardID());
+        }
+
+        if (record.HasTenantBackupController()) {
+            TTabletId tenantSA = TTabletId(record.GetTenantBackupController());
+            if (!subdomain->GetTenantBackupControllerID()) {
+                addPrivateShard(tenantSA, ETabletType::BackupController);
+            }
+            Y_ABORT_UNLESS(tenantSA == subdomain->GetTenantBackupControllerID());
         }
 
         if (record.HasUpdateTenantRootACL()) {

@@ -144,7 +144,7 @@ func createServices(
 	clearEndedTasksTaskScheduleInterval := "6s"
 	clearEndedTasksLimit := uint64(10)
 	maxRetriableErrorCount := uint64(1000)
-	inflightHangingTaskTimeout := "100s"
+	hangingTaskTimeout := "100s"
 
 	tasksConfig := &tasks_config.TasksConfig{
 		PollForTaskUpdatesPeriod:            &pollForTaskUpdatesPeriod,
@@ -163,7 +163,7 @@ func createServices(
 		ClearEndedTasksTaskScheduleInterval: &clearEndedTasksTaskScheduleInterval,
 		ClearEndedTasksLimit:                &clearEndedTasksLimit,
 		MaxRetriableErrorCount:              &maxRetriableErrorCount,
-		InflightHangingTaskTimeout:          &inflightHangingTaskTimeout,
+		HangingTaskTimeout:                  &hangingTaskTimeout,
 	}
 
 	taskStorage, err := newTaskStorage(

@@ -6,12 +6,12 @@
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 
 #include <contrib/ydb/public/api/grpc/ydb_monitoring_v1.grpc.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_monitoring/monitoring.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/result/result.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/monitoring/monitoring.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
 
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 
 using namespace NYdb;
 

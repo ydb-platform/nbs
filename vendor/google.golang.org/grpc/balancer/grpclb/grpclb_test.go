@@ -50,8 +50,8 @@ import (
 	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/serviceconfig"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 
-	durationpb "github.com/golang/protobuf/ptypes/duration"
 	lbgrpc "google.golang.org/grpc/balancer/grpclb/grpc_lb_v1"
 	lbpb "google.golang.org/grpc/balancer/grpclb/grpc_lb_v1"
 	testgrpc "google.golang.org/grpc/interop/grpc_testing"
@@ -126,7 +126,7 @@ func (c *serverNameCheckCreds) Info() credentials.ProtocolInfo {
 func (c *serverNameCheckCreds) Clone() credentials.TransportCredentials {
 	return &serverNameCheckCreds{}
 }
-func (c *serverNameCheckCreds) OverrideServerName(s string) error {
+func (c *serverNameCheckCreds) OverrideServerName(string) error {
 	return nil
 }
 
@@ -307,7 +307,7 @@ type testServer struct {
 
 const testmdkey = "testmd"
 
-func (s *testServer) EmptyCall(ctx context.Context, in *testpb.Empty) (*testpb.Empty, error) {
+func (s *testServer) EmptyCall(ctx context.Context, _ *testpb.Empty) (*testpb.Empty, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, status.Error(codes.Internal, "failed to receive metadata")
@@ -319,7 +319,7 @@ func (s *testServer) EmptyCall(ctx context.Context, in *testpb.Empty) (*testpb.E
 	return &testpb.Empty{}, nil
 }
 
-func (s *testServer) FullDuplexCall(stream testgrpc.TestService_FullDuplexCallServer) error {
+func (s *testServer) FullDuplexCall(testgrpc.TestService_FullDuplexCallServer) error {
 	return nil
 }
 
@@ -458,9 +458,9 @@ func (s) TestGRPCLB_Basic(t *testing.T) {
 		grpc.WithContextDialer(fakeNameDialer),
 		grpc.WithUserAgent(testUserAgent),
 	}
-	cc, err := grpc.Dial(r.Scheme()+":///"+beServerName, dopts...)
+	cc, err := grpc.NewClient(r.Scheme()+":///"+beServerName, dopts...)
 	if err != nil {
-		t.Fatalf("Failed to dial to the backend %v", err)
+		t.Fatalf("Failed to create a client for the backend %v", err)
 	}
 	defer cc.Close()
 
@@ -515,9 +515,9 @@ func (s) TestGRPCLB_Weighted(t *testing.T) {
 		grpc.WithTransportCredentials(&serverNameCheckCreds{}),
 		grpc.WithContextDialer(fakeNameDialer),
 	}
-	cc, err := grpc.Dial(r.Scheme()+":///"+beServerName, dopts...)
+	cc, err := grpc.NewClient(r.Scheme()+":///"+beServerName, dopts...)
 	if err != nil {
-		t.Fatalf("Failed to dial to the backend %v", err)
+		t.Fatalf("Failed to create a client for the backend %v", err)
 	}
 	defer cc.Close()
 
@@ -595,9 +595,9 @@ func (s) TestGRPCLB_DropRequest(t *testing.T) {
 		grpc.WithTransportCredentials(&serverNameCheckCreds{}),
 		grpc.WithContextDialer(fakeNameDialer),
 	}
-	cc, err := grpc.Dial(r.Scheme()+":///"+beServerName, dopts...)
+	cc, err := grpc.NewClient(r.Scheme()+":///"+beServerName, dopts...)
 	if err != nil {
-		t.Fatalf("Failed to dial to the backend %v", err)
+		t.Fatalf("Failed to create a client for the backend %v", err)
 	}
 	defer cc.Close()
 	testC := testgrpc.NewTestServiceClient(cc)
@@ -767,9 +767,9 @@ func (s) TestGRPCLB_BalancerDisconnects(t *testing.T) {
 		grpc.WithTransportCredentials(&serverNameCheckCreds{}),
 		grpc.WithContextDialer(fakeNameDialer),
 	}
-	cc, err := grpc.Dial(r.Scheme()+":///"+beServerName, dopts...)
+	cc, err := grpc.NewClient(r.Scheme()+":///"+beServerName, dopts...)
 	if err != nil {
-		t.Fatalf("Failed to dial to the backend %v", err)
+		t.Fatalf("Failed to create a client for the backend %v", err)
 	}
 	defer cc.Close()
 	testC := testgrpc.NewTestServiceClient(cc)
@@ -827,27 +827,27 @@ func (s) TestGRPCLB_Fallback(t *testing.T) {
 	defer stopBackends(standaloneBEs)
 
 	r := manual.NewBuilderWithScheme("whatever")
+	// Set the initial resolver state with fallback backend address stored in
+	// the `Addresses` field and an invalid remote balancer address stored in
+	// attributes, which will cause fallback behavior to be invoked.
+	rs := resolver.State{
+		Addresses:     []resolver.Address{{Addr: beLis.Addr().String()}},
+		ServiceConfig: internal.ParseServiceConfig.(func(string) *serviceconfig.ParseResult)(grpclbConfig),
+	}
+	rs = grpclbstate.Set(rs, &grpclbstate.State{BalancerAddresses: []resolver.Address{{Addr: "invalid.address", ServerName: lbServerName}}})
+	r.InitialState(rs)
+
 	dopts := []grpc.DialOption{
 		grpc.WithResolvers(r),
 		grpc.WithTransportCredentials(&serverNameCheckCreds{}),
 		grpc.WithContextDialer(fakeNameDialer),
 	}
-	cc, err := grpc.Dial(r.Scheme()+":///"+beServerName, dopts...)
+	cc, err := grpc.NewClient(r.Scheme()+":///"+beServerName, dopts...)
 	if err != nil {
-		t.Fatalf("Failed to dial to the backend %v", err)
+		t.Fatalf("Failed to create new client to the backend %v", err)
 	}
 	defer cc.Close()
 	testC := testgrpc.NewTestServiceClient(cc)
-
-	// Push an update to the resolver with fallback backend address stored in
-	// the `Addresses` field and an invalid remote balancer address stored in
-	// attributes, which will cause fallback behavior to be invoked.
-	rs := resolver.State{
-		Addresses:     []resolver.Address{{Addr: beLis.Addr().String()}},
-		ServiceConfig: r.CC.ParseServiceConfig(grpclbConfig),
-	}
-	rs = grpclbstate.Set(rs, &grpclbstate.State{BalancerAddresses: []resolver.Address{{Addr: "invalid.address", ServerName: lbServerName}}})
-	r.UpdateState(rs)
 
 	// Make an RPC and verify that it got routed to the fallback backend.
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
@@ -859,7 +859,7 @@ func (s) TestGRPCLB_Fallback(t *testing.T) {
 	// Push another update to the resolver, this time with a valid balancer
 	// address in the attributes field.
 	rs = resolver.State{
-		ServiceConfig: r.CC.ParseServiceConfig(grpclbConfig),
+		ServiceConfig: r.CC().ParseServiceConfig(grpclbConfig),
 		Addresses:     []resolver.Address{{Addr: beLis.Addr().String()}},
 	}
 	rs = grpclbstate.Set(rs, &grpclbstate.State{BalancerAddresses: []resolver.Address{{Addr: tss.lbAddr, ServerName: lbServerName}}})
@@ -938,9 +938,9 @@ func (s) TestGRPCLB_ExplicitFallback(t *testing.T) {
 		grpc.WithTransportCredentials(&serverNameCheckCreds{}),
 		grpc.WithContextDialer(fakeNameDialer),
 	}
-	cc, err := grpc.Dial(r.Scheme()+":///"+beServerName, dopts...)
+	cc, err := grpc.NewClient(r.Scheme()+":///"+beServerName, dopts...)
 	if err != nil {
-		t.Fatalf("Failed to dial to the backend %v", err)
+		t.Fatalf("Failed to create a client for the backend %v", err)
 	}
 	defer cc.Close()
 	testC := testgrpc.NewTestServiceClient(cc)
@@ -973,7 +973,7 @@ func (s) TestGRPCLB_FallBackWithNoServerAddress(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), defaultTestShortTimeout)
 		defer cancel()
 		if err := resolveNowCh.SendContext(ctx, nil); err != nil {
-			t.Error("timeout when attemping to send on resolverNowCh")
+			t.Error("timeout when attempting to send on resolverNowCh")
 		}
 	}
 
@@ -1008,11 +1008,12 @@ func (s) TestGRPCLB_FallBackWithNoServerAddress(t *testing.T) {
 		grpc.WithTransportCredentials(&serverNameCheckCreds{}),
 		grpc.WithContextDialer(fakeNameDialer),
 	}
-	cc, err := grpc.Dial(r.Scheme()+":///"+beServerName, dopts...)
+	cc, err := grpc.NewClient(r.Scheme()+":///"+beServerName, dopts...)
 	if err != nil {
-		t.Fatalf("Failed to dial to the backend %v", err)
+		t.Fatalf("Failed to create a client for the backend %v", err)
 	}
 	defer cc.Close()
+	cc.Connect()
 	testC := testgrpc.NewTestServiceClient(cc)
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
@@ -1022,7 +1023,7 @@ func (s) TestGRPCLB_FallBackWithNoServerAddress(t *testing.T) {
 		// fallback and use the fallback backend.
 		r.UpdateState(resolver.State{
 			Addresses:     []resolver.Address{{Addr: beLis.Addr().String()}},
-			ServiceConfig: r.CC.ParseServiceConfig(grpclbConfig),
+			ServiceConfig: r.CC().ParseServiceConfig(grpclbConfig),
 		})
 
 		sCtx, sCancel := context.WithTimeout(context.Background(), defaultTestShortTimeout)
@@ -1050,7 +1051,7 @@ func (s) TestGRPCLB_FallBackWithNoServerAddress(t *testing.T) {
 		// be used.
 		rs := resolver.State{
 			Addresses:     []resolver.Address{{Addr: beLis.Addr().String()}},
-			ServiceConfig: r.CC.ParseServiceConfig(grpclbConfig),
+			ServiceConfig: r.CC().ParseServiceConfig(grpclbConfig),
 		}
 		rs = grpclbstate.Set(rs, &grpclbstate.State{BalancerAddresses: []resolver.Address{{Addr: tss.lbAddr, ServerName: lbServerName}}})
 		r.UpdateState(rs)
@@ -1102,15 +1103,16 @@ func (s) TestGRPCLB_PickFirst(t *testing.T) {
 		grpc.WithTransportCredentials(&serverNameCheckCreds{}),
 		grpc.WithContextDialer(fakeNameDialer),
 	}
-	cc, err := grpc.Dial(r.Scheme()+":///"+beServerName, dopts...)
+	cc, err := grpc.NewClient(r.Scheme()+":///"+beServerName, dopts...)
 	if err != nil {
-		t.Fatalf("Failed to dial to the backend %v", err)
+		t.Fatalf("Failed to create a client for the backend: %v", err)
 	}
+	cc.Connect()
 	defer cc.Close()
 
 	// Push a service config with grpclb as the load balancing policy and
 	// configure pick_first as its child policy.
-	rs := resolver.State{ServiceConfig: r.CC.ParseServiceConfig(`{"loadBalancingConfig":[{"grpclb":{"childPolicy":[{"pick_first":{}}]}}]}`)}
+	rs := resolver.State{ServiceConfig: r.CC().ParseServiceConfig(`{"loadBalancingConfig":[{"grpclb":{"childPolicy":[{"pick_first":{}}]}}]}`)}
 
 	// Push a resolver update with the remote balancer address specified via
 	// attributes.
@@ -1150,7 +1152,7 @@ func (s) TestGRPCLB_PickFirst(t *testing.T) {
 			},
 		},
 	}
-	rs = grpclbstate.Set(resolver.State{ServiceConfig: r.CC.ParseServiceConfig(grpclbConfig)}, s)
+	rs = grpclbstate.Set(resolver.State{ServiceConfig: r.CC().ParseServiceConfig(grpclbConfig)}, s)
 	r.UpdateState(rs)
 	testC := testgrpc.NewTestServiceClient(cc)
 	if err := roundrobin.CheckRoundRobinRPCs(ctx, testC, beServerAddrs[1:]); err != nil {
@@ -1187,22 +1189,21 @@ func (s) TestGRPCLB_BackendConnectionErrorPropagation(t *testing.T) {
 	standaloneBEs := startBackends(t, "arbitrary.invalid.name", true, beLis)
 	defer stopBackends(standaloneBEs)
 
-	cc, err := grpc.Dial(r.Scheme()+":///"+beServerName,
+	rs := resolver.State{
+		Addresses:     []resolver.Address{{Addr: beLis.Addr().String()}},
+		ServiceConfig: internal.ParseServiceConfig.(func(string) *serviceconfig.ParseResult)(grpclbConfig),
+	}
+	rs = grpclbstate.Set(rs, &grpclbstate.State{BalancerAddresses: []resolver.Address{{Addr: tss.lbAddr, ServerName: lbServerName}}})
+	r.InitialState(rs)
+	cc, err := grpc.NewClient(r.Scheme()+":///"+beServerName,
 		grpc.WithResolvers(r),
 		grpc.WithTransportCredentials(&serverNameCheckCreds{}),
 		grpc.WithContextDialer(fakeNameDialer))
 	if err != nil {
-		t.Fatalf("Failed to dial to the backend %v", err)
+		t.Fatalf("Failed to create a client for the backend: %v", err)
 	}
 	defer cc.Close()
 	testC := testgrpc.NewTestServiceClient(cc)
-
-	rs := resolver.State{
-		Addresses:     []resolver.Address{{Addr: beLis.Addr().String()}},
-		ServiceConfig: r.CC.ParseServiceConfig(grpclbConfig),
-	}
-	rs = grpclbstate.Set(rs, &grpclbstate.State{BalancerAddresses: []resolver.Address{{Addr: tss.lbAddr, ServerName: lbServerName}}})
-	r.UpdateState(rs)
 
 	// If https://github.com/grpc/grpc-go/blob/65cabd74d8e18d7347fecd414fa8d83a00035f5f/balancer/grpclb/grpclb_test.go#L103
 	// changes, then expectedErrMsg may need to be updated.
@@ -1242,10 +1243,11 @@ func testGRPCLBEmptyServerList(t *testing.T, svcfg string) {
 		grpc.WithTransportCredentials(&serverNameCheckCreds{}),
 		grpc.WithContextDialer(fakeNameDialer),
 	}
-	cc, err := grpc.DialContext(ctx, r.Scheme()+":///"+beServerName, dopts...)
+	cc, err := grpc.NewClient(r.Scheme()+":///"+beServerName, dopts...)
 	if err != nil {
-		t.Fatalf("Failed to dial to the backend %v", err)
+		t.Fatalf("Failed to create a client for the backend %v", err)
 	}
+	cc.Connect()
 	defer cc.Close()
 	testC := testgrpc.NewTestServiceClient(cc)
 
@@ -1259,7 +1261,7 @@ func testGRPCLBEmptyServerList(t *testing.T, svcfg string) {
 			},
 		},
 	}
-	rs := grpclbstate.Set(resolver.State{ServiceConfig: r.CC.ParseServiceConfig(svcfg)}, s)
+	rs := grpclbstate.Set(resolver.State{ServiceConfig: r.CC().ParseServiceConfig(svcfg)}, s)
 	r.UpdateState(rs)
 	t.Log("Perform an initial RPC and expect it to succeed...")
 	if _, err := testC.EmptyCall(ctx, &testpb.Empty{}, grpc.WaitForReady(true)); err != nil {
@@ -1312,21 +1314,22 @@ func (s) TestGRPCLBWithTargetNameFieldInConfig(t *testing.T) {
 	// Push the backend address to the remote balancer.
 	tss.ls.sls <- sl
 
-	cc, err := grpc.Dial(r.Scheme()+":///"+beServerName,
+	cc, err := grpc.NewClient(r.Scheme()+":///"+beServerName,
 		grpc.WithResolvers(r),
 		grpc.WithTransportCredentials(&serverNameCheckCreds{}),
 		grpc.WithContextDialer(fakeNameDialer),
 		grpc.WithUserAgent(testUserAgent))
 	if err != nil {
-		t.Fatalf("Failed to dial to the backend %v", err)
+		t.Fatalf("Failed to create a client for the backend %v", err)
 	}
 	defer cc.Close()
+	cc.Connect()
 	testC := testgrpc.NewTestServiceClient(cc)
 
 	// Push a resolver update with grpclb configuration which does not contain the
 	// target_name field. Our fake remote balancer is configured to always
 	// expect `beServerName` as the server name in the initial request.
-	rs := grpclbstate.Set(resolver.State{ServiceConfig: r.CC.ParseServiceConfig(grpclbConfig)},
+	rs := grpclbstate.Set(resolver.State{ServiceConfig: r.CC().ParseServiceConfig(grpclbConfig)},
 		&grpclbstate.State{BalancerAddresses: []resolver.Address{{
 			Addr:       tss.lbAddr,
 			ServerName: lbServerName,
@@ -1363,7 +1366,7 @@ func (s) TestGRPCLBWithTargetNameFieldInConfig(t *testing.T) {
 			},
 		},
 	}
-	rs = grpclbstate.Set(resolver.State{ServiceConfig: r.CC.ParseServiceConfig(lbCfg)}, s)
+	rs = grpclbstate.Set(resolver.State{ServiceConfig: r.CC().ParseServiceConfig(lbCfg)}, s)
 	r.UpdateState(rs)
 	select {
 	case <-ctx.Done():
@@ -1378,7 +1381,7 @@ func (s) TestGRPCLBWithTargetNameFieldInConfig(t *testing.T) {
 
 type failPreRPCCred struct{}
 
-func (failPreRPCCred) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+func (failPreRPCCred) GetRequestMetadata(_ context.Context, uri ...string) (map[string]string, error) {
 	if strings.Contains(uri[0], failtosendURI) {
 		return nil, fmt.Errorf("rpc should fail to send")
 	}
@@ -1419,22 +1422,21 @@ func runAndCheckStats(t *testing.T, drop bool, statsChan chan *lbpb.ClientStats,
 	tss.ls.statsDura = 100 * time.Millisecond
 	creds := serverNameCheckCreds{}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	cc, err := grpc.DialContext(ctx, r.Scheme()+":///"+beServerName, grpc.WithResolvers(r),
+	cc, err := grpc.NewClient(r.Scheme()+":///"+beServerName, grpc.WithResolvers(r),
 		grpc.WithTransportCredentials(&creds),
 		grpc.WithPerRPCCredentials(failPreRPCCred{}),
 		grpc.WithContextDialer(fakeNameDialer))
 	if err != nil {
-		t.Fatalf("Failed to dial to the backend %v", err)
+		t.Fatalf("Failed to create a client for the backend %v", err)
 	}
+	cc.Connect()
 	defer cc.Close()
 
-	r.UpdateState(resolver.State{Addresses: []resolver.Address{{
+	rstate := resolver.State{ServiceConfig: r.CC().ParseServiceConfig(grpclbConfig)}
+	r.UpdateState(grpclbstate.Set(rstate, &grpclbstate.State{BalancerAddresses: []resolver.Address{{
 		Addr:       tss.lbAddr,
-		Type:       resolver.GRPCLB,
 		ServerName: lbServerName,
-	}}})
+	}}}))
 
 	runRPCs(cc)
 	end := time.Now().Add(time.Second)
@@ -1619,7 +1621,7 @@ func (s) TestGRPCLBStatsStreamingFailedToSend(t *testing.T) {
 func (s) TestGRPCLBStatsQuashEmpty(t *testing.T) {
 	ch := make(chan *lbpb.ClientStats)
 	defer close(ch)
-	if err := runAndCheckStats(t, false, ch, func(cc *grpc.ClientConn) {
+	if err := runAndCheckStats(t, false, ch, func(*grpc.ClientConn) {
 		// Perform no RPCs; wait for load reports to start, which should be
 		// zero, then expect no other load report within 5x the update
 		// interval.

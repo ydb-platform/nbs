@@ -20,7 +20,9 @@
 package main
 
 import (
+	"context"
 	"flag"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -51,6 +53,9 @@ var (
 	soakPerIterationMaxAcceptableLatencyMs = flag.Int("soak_per_iteration_max_acceptable_latency_ms", 1000, "The number of milliseconds a single iteration in the two soak tests (rpc_soak and channel_soak) should take.")
 	soakOverallTimeoutSeconds              = flag.Int("soak_overall_timeout_seconds", 10, "The overall number of seconds after which a soak test should stop and fail, if the desired number of iterations have not yet completed.")
 	soakMinTimeMsBetweenRPCs               = flag.Int("soak_min_time_ms_between_rpcs", 0, "The minimum time in milliseconds between consecutive RPCs in a soak test (rpc_soak or channel_soak), useful for limiting QPS")
+	soakRequestSize                        = flag.Int("soak_request_size", 271828, "The request size in a soak RPC. The default value is set based on the interop large unary test case.")
+	soakResponseSize                       = flag.Int("soak_response_size", 314159, "The response size in a soak RPC. The default value is set based on the interop large unary test case.")
+	soakNumThreads                         = flag.Int("soak_num_threads", 1, "The number of threads for concurrent execution of the soak tests (rpc_soak or channel_soak). The default value is set based on the interop large unary test case.")
 	testCase                               = flag.String("test_case", "rpc_soak",
 		`Configure different test cases. Valid options are:
         rpc_soak: sends --soak_iterations large_unary RPCs;
@@ -60,6 +65,7 @@ var (
 )
 
 type clientConfig struct {
+	conn *grpc.ClientConn
 	tc   testgrpc.TestServiceClient
 	opts []grpc.DialOption
 	uri  string
@@ -78,17 +84,6 @@ func main() {
 			logger.Fatalf("Unsupported credentials type: %v", c)
 		}
 	}
-	var resetChannel bool
-	switch *testCase {
-	case "rpc_soak":
-		resetChannel = false
-	case "channel_soak":
-		resetChannel = true
-	default:
-		logger.Fatal("Unsupported test case: ", *testCase)
-	}
-
-	// create clients as specified in flags
 	var clients []clientConfig
 	for i := range uris {
 		var opts []grpc.DialOption
@@ -98,12 +93,13 @@ func main() {
 		case insecureCredsName:
 			opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		}
-		cc, err := grpc.Dial(uris[i], opts...)
+		cc, err := grpc.NewClient(uris[i], opts...)
 		if err != nil {
-			logger.Fatalf("Fail to dial %v: %v", uris[i], err)
+			logger.Fatalf("grpc.NewClient(%q) = %v", uris[i], err)
 		}
 		defer cc.Close()
 		clients = append(clients, clientConfig{
+			conn: cc,
 			tc:   testgrpc.NewTestServiceClient(cc),
 			opts: opts,
 			uri:  uris[i],
@@ -113,10 +109,40 @@ func main() {
 	// run soak tests with the different clients
 	logger.Infof("Clients running with test case %q", *testCase)
 	var wg sync.WaitGroup
+	var channelForTest func() (*grpc.ClientConn, func())
+	ctx := context.Background()
 	for i := range clients {
 		wg.Add(1)
 		go func(c clientConfig) {
-			interop.DoSoakTest(c.tc, c.uri, c.opts, resetChannel, *soakIterations, *soakMaxFailures, time.Duration(*soakPerIterationMaxAcceptableLatencyMs)*time.Millisecond, time.Duration(*soakMinTimeMsBetweenRPCs)*time.Millisecond, time.Now().Add(time.Duration(*soakOverallTimeoutSeconds)*time.Second))
+			ctxWithDeadline, cancel := context.WithTimeout(ctx, time.Duration(*soakOverallTimeoutSeconds)*time.Second)
+			defer cancel()
+			switch *testCase {
+			case "rpc_soak":
+				channelForTest = func() (*grpc.ClientConn, func()) { return c.conn, func() {} }
+			case "channel_soak":
+				channelForTest = func() (*grpc.ClientConn, func()) {
+					cc, err := grpc.NewClient(c.uri, c.opts...)
+					if err != nil {
+						log.Fatalf("Failed to create shared channel: %v", err)
+					}
+					return cc, func() { cc.Close() }
+				}
+			default:
+				logger.Fatal("Unsupported test case: ", *testCase)
+			}
+			soakConfig := interop.SoakTestConfig{
+				RequestSize:                      *soakRequestSize,
+				ResponseSize:                     *soakResponseSize,
+				PerIterationMaxAcceptableLatency: time.Duration(*soakPerIterationMaxAcceptableLatencyMs) * time.Millisecond,
+				MinTimeBetweenRPCs:               time.Duration(*soakMinTimeMsBetweenRPCs) * time.Millisecond,
+				OverallTimeout:                   time.Duration(*soakOverallTimeoutSeconds) * time.Second,
+				ServerAddr:                       c.uri,
+				NumWorkers:                       *soakNumThreads,
+				Iterations:                       *soakIterations,
+				MaxFailures:                      *soakMaxFailures,
+				ChannelForTest:                   channelForTest,
+			}
+			interop.DoSoakTest(ctxWithDeadline, soakConfig)
 			logger.Infof("%s test done for server: %s", *testCase, c.uri)
 			wg.Done()
 		}(clients[i])

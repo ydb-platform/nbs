@@ -20,14 +20,15 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	TopicService_StreamWrite_FullMethodName      = "/Ydb.Topic.V1.TopicService/StreamWrite"
-	TopicService_StreamRead_FullMethodName       = "/Ydb.Topic.V1.TopicService/StreamRead"
-	TopicService_CommitOffset_FullMethodName     = "/Ydb.Topic.V1.TopicService/CommitOffset"
-	TopicService_CreateTopic_FullMethodName      = "/Ydb.Topic.V1.TopicService/CreateTopic"
-	TopicService_DescribeTopic_FullMethodName    = "/Ydb.Topic.V1.TopicService/DescribeTopic"
-	TopicService_DescribeConsumer_FullMethodName = "/Ydb.Topic.V1.TopicService/DescribeConsumer"
-	TopicService_AlterTopic_FullMethodName       = "/Ydb.Topic.V1.TopicService/AlterTopic"
-	TopicService_DropTopic_FullMethodName        = "/Ydb.Topic.V1.TopicService/DropTopic"
+	TopicService_StreamWrite_FullMethodName                = "/Ydb.Topic.V1.TopicService/StreamWrite"
+	TopicService_StreamRead_FullMethodName                 = "/Ydb.Topic.V1.TopicService/StreamRead"
+	TopicService_CommitOffset_FullMethodName               = "/Ydb.Topic.V1.TopicService/CommitOffset"
+	TopicService_UpdateOffsetsInTransaction_FullMethodName = "/Ydb.Topic.V1.TopicService/UpdateOffsetsInTransaction"
+	TopicService_CreateTopic_FullMethodName                = "/Ydb.Topic.V1.TopicService/CreateTopic"
+	TopicService_DescribeTopic_FullMethodName              = "/Ydb.Topic.V1.TopicService/DescribeTopic"
+	TopicService_DescribeConsumer_FullMethodName           = "/Ydb.Topic.V1.TopicService/DescribeConsumer"
+	TopicService_AlterTopic_FullMethodName                 = "/Ydb.Topic.V1.TopicService/AlterTopic"
+	TopicService_DropTopic_FullMethodName                  = "/Ydb.Topic.V1.TopicService/DropTopic"
 )
 
 // TopicServiceClient is the client API for TopicService service.
@@ -92,6 +93,8 @@ type TopicServiceClient interface {
 	StreamRead(ctx context.Context, opts ...grpc.CallOption) (TopicService_StreamReadClient, error)
 	// Single commit offset request.
 	CommitOffset(ctx context.Context, in *Ydb_Topic.CommitOffsetRequest, opts ...grpc.CallOption) (*Ydb_Topic.CommitOffsetResponse, error)
+	// Add information about offset ranges to the transaction.
+	UpdateOffsetsInTransaction(ctx context.Context, in *Ydb_Topic.UpdateOffsetsInTransactionRequest, opts ...grpc.CallOption) (*Ydb_Topic.UpdateOffsetsInTransactionResponse, error)
 	// Create topic command.
 	CreateTopic(ctx context.Context, in *Ydb_Topic.CreateTopicRequest, opts ...grpc.CallOption) (*Ydb_Topic.CreateTopicResponse, error)
 	// Describe topic command.
@@ -177,6 +180,15 @@ func (x *topicServiceStreamReadClient) Recv() (*Ydb_Topic.StreamReadMessage_From
 func (c *topicServiceClient) CommitOffset(ctx context.Context, in *Ydb_Topic.CommitOffsetRequest, opts ...grpc.CallOption) (*Ydb_Topic.CommitOffsetResponse, error) {
 	out := new(Ydb_Topic.CommitOffsetResponse)
 	err := c.cc.Invoke(ctx, TopicService_CommitOffset_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *topicServiceClient) UpdateOffsetsInTransaction(ctx context.Context, in *Ydb_Topic.UpdateOffsetsInTransactionRequest, opts ...grpc.CallOption) (*Ydb_Topic.UpdateOffsetsInTransactionResponse, error) {
+	out := new(Ydb_Topic.UpdateOffsetsInTransactionResponse)
+	err := c.cc.Invoke(ctx, TopicService_UpdateOffsetsInTransaction_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -290,6 +302,8 @@ type TopicServiceServer interface {
 	StreamRead(TopicService_StreamReadServer) error
 	// Single commit offset request.
 	CommitOffset(context.Context, *Ydb_Topic.CommitOffsetRequest) (*Ydb_Topic.CommitOffsetResponse, error)
+	// Add information about offset ranges to the transaction.
+	UpdateOffsetsInTransaction(context.Context, *Ydb_Topic.UpdateOffsetsInTransactionRequest) (*Ydb_Topic.UpdateOffsetsInTransactionResponse, error)
 	// Create topic command.
 	CreateTopic(context.Context, *Ydb_Topic.CreateTopicRequest) (*Ydb_Topic.CreateTopicResponse, error)
 	// Describe topic command.
@@ -315,6 +329,9 @@ func (UnimplementedTopicServiceServer) StreamRead(TopicService_StreamReadServer)
 }
 func (UnimplementedTopicServiceServer) CommitOffset(context.Context, *Ydb_Topic.CommitOffsetRequest) (*Ydb_Topic.CommitOffsetResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CommitOffset not implemented")
+}
+func (UnimplementedTopicServiceServer) UpdateOffsetsInTransaction(context.Context, *Ydb_Topic.UpdateOffsetsInTransactionRequest) (*Ydb_Topic.UpdateOffsetsInTransactionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateOffsetsInTransaction not implemented")
 }
 func (UnimplementedTopicServiceServer) CreateTopic(context.Context, *Ydb_Topic.CreateTopicRequest) (*Ydb_Topic.CreateTopicResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateTopic not implemented")
@@ -410,6 +427,24 @@ func _TopicService_CommitOffset_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(TopicServiceServer).CommitOffset(ctx, req.(*Ydb_Topic.CommitOffsetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TopicService_UpdateOffsetsInTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Ydb_Topic.UpdateOffsetsInTransactionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TopicServiceServer).UpdateOffsetsInTransaction(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TopicService_UpdateOffsetsInTransaction_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TopicServiceServer).UpdateOffsetsInTransaction(ctx, req.(*Ydb_Topic.UpdateOffsetsInTransactionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -514,6 +549,10 @@ var TopicService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CommitOffset",
 			Handler:    _TopicService_CommitOffset_Handler,
+		},
+		{
+			MethodName: "UpdateOffsetsInTransaction",
+			Handler:    _TopicService_UpdateOffsetsInTransaction_Handler,
 		},
 		{
 			MethodName: "CreateTopic",

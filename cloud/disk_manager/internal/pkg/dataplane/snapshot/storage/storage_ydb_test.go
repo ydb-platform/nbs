@@ -14,8 +14,6 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/errgroup"
-
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
@@ -28,6 +26,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	"golang.org/x/sync/errgroup"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

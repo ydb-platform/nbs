@@ -9,7 +9,7 @@ PEERDIR(
     contrib/ydb/library/actors/interconnect
     contrib/ydb/core/fq/libs/checkpointing_common
     contrib/ydb/core/fq/libs/control_plane_storage/events
-    contrib/ydb/library/yql/public/issue
+    yql/essentials/public/issue
     contrib/ydb/public/api/protos
 )
 

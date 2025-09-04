@@ -1,3 +1,0 @@
-# There is a race between reading and writing 'allow_customize' on initialization
-# https://github.com/ydb-platform/nbs/blob/main/contrib/libs/openssl/crypto/mem.c#L204-L211
-race:CRYPTO_malloc

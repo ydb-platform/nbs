@@ -30,8 +30,6 @@ TDuration Seconds(ui32 value)
     xxx(UseSsl,                           bool,             false             )\
     xxx(StatsTableTtl,                    TDuration,        Seconds(0)        )\
     xxx(ArchiveStatsTableTtl,             TDuration,        Seconds(0)        )\
-                                                                               \
-    xxx(IamTokenRefreshTimeBeforeExpiration, TDuration,     Seconds(5)        )\
 
 // BLOCKSTORE_YDBSTATS_CONFIG
 

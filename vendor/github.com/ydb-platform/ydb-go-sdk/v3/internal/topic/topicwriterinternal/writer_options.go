@@ -3,8 +3,11 @@ package topicwriterinternal
 import (
 	"time"
 
+	"github.com/jonboulle/clockwork"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/config"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicwriter"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
@@ -43,6 +46,12 @@ func WithCompressorCount(num int) PublicWriterOption {
 	}
 }
 
+func WithMaxGrpcMessageBytes(num int) PublicWriterOption {
+	return func(cfg *WriterReconnectorConfig) {
+		cfg.maxBytesPerMessage = num
+	}
+}
+
 func WithTokenUpdateInterval(interval time.Duration) PublicWriterOption {
 	return func(cfg *WriterReconnectorConfig) {
 		cfg.credUpdateInterval = interval
@@ -51,9 +60,7 @@ func WithTokenUpdateInterval(interval time.Duration) PublicWriterOption {
 
 // WithCommonConfig
 //
-// # Experimental
-//
-// Notice: This API is EXPERIMENTAL and may be changed or removed in a later release.
+// Experimental: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#experimental
 func WithCommonConfig(common config.Common) PublicWriterOption {
 	return func(cfg *WriterReconnectorConfig) {
 		cfg.Common = common
@@ -68,6 +75,14 @@ func WithCredentials(cred credentials.Credentials) PublicWriterOption {
 			cred = credentials.NewAnonymousCredentials()
 		}
 		cfg.cred = cred
+	}
+}
+
+// WithRawClient for internal usage only
+// no proxy to public interface
+func WithRawClient(rawClient *rawtopic.Client) PublicWriterOption {
+	return func(cfg *WriterReconnectorConfig) {
+		cfg.rawTopicClient = rawClient
 	}
 }
 
@@ -145,12 +160,19 @@ func WithWaitAckOnWrite(val bool) PublicWriterOption {
 
 func WithTrace(tracer *trace.Topic) PublicWriterOption {
 	return func(cfg *WriterReconnectorConfig) {
-		cfg.tracer = cfg.tracer.Compose(tracer)
+		cfg.Tracer = cfg.Tracer.Compose(tracer)
 	}
 }
 
 func WithTopic(topic string) PublicWriterOption {
 	return func(cfg *WriterReconnectorConfig) {
 		cfg.topic = topic
+	}
+}
+
+// WithClock is private option for tests
+func WithClock(clock clockwork.Clock) PublicWriterOption {
+	return func(cfg *WriterReconnectorConfig) {
+		cfg.clock = clock
 	}
 }

@@ -2,6 +2,10 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
-SRCS(camel.go)
+VERSION(v1.16.0)
+
+SRCS(
+    camel.go
+)
 
 END()

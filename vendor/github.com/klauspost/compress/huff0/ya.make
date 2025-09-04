@@ -6,10 +6,11 @@ LICENSE(
     MIT
 )
 
+VERSION(v1.18.0)
+
 SRCS(
     bitreader.go
     bitwriter.go
-    bytereader.go
     compress.go
     decompress.go
     huff0.go
@@ -18,6 +19,7 @@ SRCS(
 GO_TEST_SRCS(
     compress_test.go
     decompress_test.go
+    fuzz_test.go
 )
 
 IF (ARCH_X86_64)
@@ -28,9 +30,19 @@ IF (ARCH_X86_64)
 ENDIF()
 
 IF (ARCH_ARM64)
-    SRCS(decompress_generic.go)
+    SRCS(
+        decompress_generic.go
+    )
+ENDIF()
+
+IF (OS_LINUX AND ARCH_ARM7)
+    SRCS(
+        decompress_generic.go
+    )
 ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

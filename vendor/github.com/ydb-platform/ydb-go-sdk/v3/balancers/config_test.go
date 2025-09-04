@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	balancerConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/balancer/config"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/conn"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/endpoint"
 )
 
 func TestFromConfig(t *testing.T) {
@@ -70,8 +70,22 @@ func TestFromConfig(t *testing.T) {
 				"prefer": "local_dc"
 			}`,
 			res: balancerConfig.Config{
-				DetectLocalDC: true,
-				Filter: filterFunc(func(info balancerConfig.Info, c conn.Conn) bool {
+				DetectNearestDC: true,
+				Filter: filterFunc(func(info balancerConfig.Info, e endpoint.Info) bool {
+					// some non nil func
+					return false
+				}),
+			},
+		},
+		{
+			name: "prefer_nearest_dc",
+			config: `{
+				"type": "random_choice",
+				"prefer": "nearest_dc"
+			}`,
+			res: balancerConfig.Config{
+				DetectNearestDC: true,
+				Filter: filterFunc(func(info balancerConfig.Info, e endpoint.Info) bool {
 					// some non nil func
 					return false
 				}),
@@ -93,9 +107,25 @@ func TestFromConfig(t *testing.T) {
 				"fallback": true
 			}`,
 			res: balancerConfig.Config{
-				AllowFallback: true,
-				DetectLocalDC: true,
-				Filter: filterFunc(func(info balancerConfig.Info, c conn.Conn) bool {
+				AllowFallback:   true,
+				DetectNearestDC: true,
+				Filter: filterFunc(func(info balancerConfig.Info, e endpoint.Info) bool {
+					// some non nil func
+					return false
+				}),
+			},
+		},
+		{
+			name: "prefer_nearest_dc_with_fallback",
+			config: `{
+				"type": "random_choice",
+				"prefer": "nearest_dc",
+				"fallback": true
+			}`,
+			res: balancerConfig.Config{
+				AllowFallback:   true,
+				DetectNearestDC: true,
+				Filter: filterFunc(func(info balancerConfig.Info, e endpoint.Info) bool {
 					// some non nil func
 					return false
 				}),
@@ -109,7 +139,7 @@ func TestFromConfig(t *testing.T) {
 				"locations": ["AAA", "BBB", "CCC"]
 			}`,
 			res: balancerConfig.Config{
-				Filter: filterFunc(func(info balancerConfig.Info, c conn.Conn) bool {
+				Filter: filterFunc(func(info balancerConfig.Info, e endpoint.Info) bool {
 					// some non nil func
 					return false
 				}),
@@ -125,7 +155,7 @@ func TestFromConfig(t *testing.T) {
 			}`,
 			res: balancerConfig.Config{
 				AllowFallback: true,
-				Filter: filterFunc(func(info balancerConfig.Info, c conn.Conn) bool {
+				Filter: filterFunc(func(info balancerConfig.Info, e endpoint.Info) bool {
 					// some non nil func
 					return false
 				}),
@@ -161,7 +191,7 @@ func TestFromConfig(t *testing.T) {
 				tt.res.Filter = nil
 			}
 
-			require.Equal(t, &tt.res, b)
+			require.Equal(t, tt.res, *b)
 		})
 	}
 }

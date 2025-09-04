@@ -1,9 +1,5 @@
 PROTO_LIBRARY()
-
-OWNER(
-    xenoxeno
-    g:kikimr
-)
+PROTOC_FATAL_WARNINGS()
 
 SRCS(
     counters_shard.proto

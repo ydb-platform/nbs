@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/library/yverify_stream/yverify_stream.h>
 #include <contrib/ydb/public/api/protos/draft/ydb_maintenance.pb.h>
-#include <contrib/ydb/library/yql/public/issue/protos/issue_severity.pb.h>
+#include <yql/essentials/public/issue/protos/issue_severity.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -43,22 +43,74 @@ namespace {
         }
     }
 
+    static bool ConvertToPDiskId(const TString &name, TPDiskID &id) {
+        int size;
+
+        if (sscanf(name.data(), "pdisk-%" SCNu32 "-%" SCNu32 "%n", &id.NodeId, &id.DiskId, &size) != 2) {
+            return false;
+        }
+
+        if (size != static_cast<int>(name.size())) {
+            return false;
+        }
+
+        return true;
+    }
+
     void ConvertAction(const NKikimrCms::TAction& cmsAction, Ydb::Maintenance::LockAction& action) {
         *action.mutable_duration() = TimeUtil::MicrosecondsToDuration(cmsAction.GetDuration());
 
-        ui32 nodeId;
-        if (TryFromString(cmsAction.GetHost(), nodeId)) {
-            action.mutable_scope()->set_node_id(nodeId);
+        if (cmsAction.DevicesSize() > 0) {
+            Y_ABORT_UNLESS(cmsAction.DevicesSize() == 1);
+            auto& device = cmsAction.GetDevices()[0];
+            auto* pdisk = action.mutable_scope()->mutable_pdisk();
+            TPDiskID id;
+            if (ConvertToPDiskId(device, id)) {
+                auto* pdiskId = pdisk->mutable_pdisk_id();
+                pdiskId->set_node_id(id.NodeId);
+                pdiskId->set_pdisk_id(id.DiskId);
+            } else {
+                auto* pdiskLocation = pdisk->mutable_pdisk_location();
+                pdiskLocation->set_host(cmsAction.GetHost());
+                pdiskLocation->set_path(device);
+            }
         } else {
-            action.mutable_scope()->set_host(cmsAction.GetHost());
+            ui32 nodeId;
+            if (TryFromString(cmsAction.GetHost(), nodeId)) {
+                action.mutable_scope()->set_node_id(nodeId);
+            } else {
+                action.mutable_scope()->set_host(cmsAction.GetHost());
+            }
         }
+    }
+
+    Ydb::Maintenance::ActionState::ActionReason ConvertReason(NKikimrCms::TAction::TIssue::EType cmsActionIssueType) {
+        using EIssueType = NKikimrCms::TAction::TIssue;
+        switch (cmsActionIssueType) {
+            case EIssueType::UNKNOWN:
+                return Ydb::Maintenance::ActionState::ACTION_REASON_UNSPECIFIED;
+            case EIssueType::GENERIC:
+                return Ydb::Maintenance::ActionState::ACTION_REASON_GENERIC;
+            case EIssueType::TOO_MANY_UNAVAILABLE_VDISKS:
+                return Ydb::Maintenance::ActionState::ACTION_REASON_TOO_MANY_UNAVAILABLE_VDISKS;
+            case EIssueType::TOO_MANY_UNAVAILABLE_STATE_STORAGE_RINGS:
+                return Ydb::Maintenance::ActionState::ACTION_REASON_TOO_MANY_UNAVAILABLE_STATE_STORAGE_RINGS;
+            case EIssueType::DISABLED_NODES_LIMIT_REACHED:
+                return Ydb::Maintenance::ActionState::ACTION_REASON_DISABLED_NODES_LIMIT_REACHED;
+            case EIssueType::TENANT_DISABLED_NODES_LIMIT_REACHED:
+                return Ydb::Maintenance::ActionState::ACTION_REASON_TENANT_DISABLED_NODES_LIMIT_REACHED;
+            case EIssueType::SYS_TABLETS_NODE_LIMIT_REACHED:
+                return Ydb::Maintenance::ActionState::ACTION_REASON_SYS_TABLETS_NODE_LIMIT_REACHED;
+        }
+        return Ydb::Maintenance::ActionState::ACTION_REASON_UNSPECIFIED;
     }
 
     void ConvertAction(const NKikimrCms::TAction& cmsAction, Ydb::Maintenance::ActionState& actionState) {
         ConvertAction(cmsAction, *actionState.mutable_action()->mutable_lock_action());
         // FIXME: specify action_uid
         actionState.set_status(Ydb::Maintenance::ActionState::ACTION_STATUS_PENDING);
-        actionState.set_reason(Ydb::Maintenance::ActionState::ACTION_REASON_UNSPECIFIED); // FIXME: specify
+        actionState.set_reason(ConvertReason(cmsAction.GetIssue().GetType()));
+        actionState.set_reason_details(cmsAction.GetIssue().GetMessage());
     }
 
     void ConvertActionUid(const TString& taskUid, const TString& permissionId,
@@ -85,6 +137,11 @@ namespace {
         NKikimrCms::TPermission protoPermission;
         permission.CopyTo(protoPermission);
         ConvertPermission(taskUid, protoPermission, actionState);
+    }
+
+    void ConvertInstant(const TInstant& instant, google::protobuf::Timestamp& protoValue) {
+        protoValue.set_seconds(instant.Seconds());
+        protoValue.set_nanos(instant.NanoSecondsOfSecond());
     }
 
 } // anonymous
@@ -172,6 +229,10 @@ class TListClusterNodes: public TAdapterActor<
         location.set_rack(in.Location.GetRackId());
         location.set_unit(in.Location.GetUnitId());
 
+        if (const auto bridgePileName = in.Location.GetBridgePileName(); bridgePileName) {
+            location.set_bridge_pile_name(*bridgePileName);
+        }
+
         if (in.Services & EService::DynamicNode) {
             out.mutable_dynamic()->set_tenant(in.Tenant);
         } else {
@@ -212,8 +273,25 @@ public:
 
 }; // TListClusterNodes
 
+class TCompositeActionGroupHandler {
+protected:
+    template <typename TResult>
+    Ydb::Maintenance::ActionGroupStates* GetActionGroupState(TResult& result) const {
+        if (HasSingleCompositeActionGroup && !result.action_group_states().empty()) {
+            return result.mutable_action_group_states(0);
+        }
+        return result.add_action_group_states();
+    }
+
+protected:
+    bool HasSingleCompositeActionGroup = false;
+};
+
 template <typename TDerived, typename TEvRequest>
-class TPermissionResponseProcessor: public TAdapterActor<TDerived, TEvRequest, TEvCms::TEvMaintenanceTaskResponse> {
+class TPermissionResponseProcessor  
+    : public TAdapterActor<TDerived, TEvRequest, TEvCms::TEvMaintenanceTaskResponse>  
+    , public TCompositeActionGroupHandler
+{
 protected:
     using TBase = TPermissionResponseProcessor<TDerived, TEvRequest>;
 
@@ -232,11 +310,11 @@ public:
         switch (record.GetStatus().GetCode()) {
         case NKikimrCms::TStatus::ALLOW:
         case NKikimrCms::TStatus::ALLOW_PARTIAL:
-        case NKikimrCms::TStatus::DISALLOW:
         case NKikimrCms::TStatus::DISALLOW_TEMP:
             break;
         case NKikimrCms::TStatus::ERROR_TEMP:
             return this->Reply(Ydb::StatusIds::UNAVAILABLE, record.GetStatus().GetReason());
+        case NKikimrCms::TStatus::DISALLOW:
         case NKikimrCms::TStatus::WRONG_REQUEST:
         case NKikimrCms::TStatus::ERROR:
         case NKikimrCms::TStatus::NO_SUCH_HOST:
@@ -266,20 +344,24 @@ public:
         // performed actions: new permissions
         for (const auto& permission : record.GetPermissions()) {
             permissionsSeen.insert(permission.GetId());
-            ConvertPermission(taskUid, permission, *result.add_action_group_states()->add_action_states());
+            ConvertPermission(taskUid, permission, *GetActionGroupState(result)->add_action_states());
         }
 
         auto cmsState = this->GetCmsState();
         // performed actions: existing permissions
         if (cmsState->MaintenanceTasks.contains(taskUid)) {
             const auto& task = cmsState->MaintenanceTasks.at(taskUid);
+
+            ConvertInstant(task.CreateTime, *result.mutable_create_time());
+            ConvertInstant(task.LastRefreshTime, *result.mutable_last_refresh_time());
+
             for (const auto& id : task.Permissions) {
                 if (!cmsState->Permissions.contains(id) || permissionsSeen.contains(id)) {
                     continue;
                 }
 
                 ConvertPermission(taskUid, cmsState->Permissions.at(id),
-                    *result.add_action_group_states()->add_action_states());
+                    *GetActionGroupState(result)->add_action_states());
             }
         }
 
@@ -287,7 +369,7 @@ public:
         if (cmsState->ScheduledRequests.contains(record.GetRequestId())) {
             const auto& request = cmsState->ScheduledRequests.at(record.GetRequestId());
             for (const auto& action : request.Request.GetActions()) {
-                ConvertAction(action, *result.add_action_group_states()->add_action_states());
+                ConvertAction(action, *GetActionGroupState(result)->add_action_states());
             }
         }
 
@@ -304,6 +386,7 @@ class TCreateMaintenanceTask: public TPermissionResponseProcessor<
         switch (scope.scope_case()) {
         case Ydb::Maintenance::ActionScope::kNodeId:
         case Ydb::Maintenance::ActionScope::kHost:
+        case Ydb::Maintenance::ActionScope::kPdisk:
             return true;
         default:
             Reply(Ydb::StatusIds::BAD_REQUEST, "Unknown scope");
@@ -336,8 +419,17 @@ class TCreateMaintenanceTask: public TPermissionResponseProcessor<
             if (group.actions().size() < 1) {
                 Reply(Ydb::StatusIds::BAD_REQUEST, "Empty actions");
                 return false;
-            } else if (group.actions().size() > 1) {
-                Reply(Ydb::StatusIds::UNSUPPORTED, "Composite action groups are not supported");
+            } 
+            
+            if (!GetCmsState()->EnableSingleCompositeActionGroup && group.actions().size() > 1) {
+                Reply(Ydb::StatusIds::UNSUPPORTED, "Feature flag EnableSingleCompositeActionGroup is off");
+                return false;
+            } 
+
+            if (request.action_groups().size() > 1 && group.actions().size() > 1) {
+                Reply(Ydb::StatusIds::UNSUPPORTED, TStringBuilder()
+                    << "A task can have either a single composite action group or many action groups"
+                    << " with only one action");
                 return false;
             }
 
@@ -351,24 +443,41 @@ class TCreateMaintenanceTask: public TPermissionResponseProcessor<
         return true;
     }
 
+    static void ConvertPDiskId(const Ydb::Maintenance::ActionScope_PDiskId& pdiskId, TString& out) {
+        out = Sprintf("pdisk-%" PRIu32 "-%" PRIu32, pdiskId.node_id(), pdiskId.pdisk_id());
+    }
+
     static void ConvertAction(const Ydb::Maintenance::LockAction& action, NKikimrCms::TAction& cmsAction) {
-        cmsAction.SetType(NKikimrCms::TAction::SHUTDOWN_HOST);
         cmsAction.SetDuration(TimeUtil::DurationToMicroseconds(action.duration()));
 
         const auto& scope = action.scope();
         switch (scope.scope_case()) {
         case Ydb::Maintenance::ActionScope::kNodeId:
+            cmsAction.SetType(NKikimrCms::TAction::SHUTDOWN_HOST);
             cmsAction.SetHost(ToString(scope.node_id()));
             break;
         case Ydb::Maintenance::ActionScope::kHost:
+            cmsAction.SetType(NKikimrCms::TAction::SHUTDOWN_HOST);
             cmsAction.SetHost(scope.host());
             break;
+        case Ydb::Maintenance::ActionScope::kPdisk: {
+            cmsAction.SetType(NKikimrCms::TAction::REPLACE_DEVICES);
+            auto& pdisk = scope.pdisk();
+            if (pdisk.has_pdisk_id()) {
+                ConvertPDiskId(pdisk.pdisk_id(), *cmsAction.add_devices());
+            } else if (pdisk.has_pdisk_location()) {
+                auto& pdiskLocation = pdisk.pdisk_location();
+                cmsAction.SetHost(pdiskLocation.host());
+                *cmsAction.add_devices() = pdiskLocation.path();
+            }
+            break;
+        }
         default:
             Y_ABORT("unreachable");
         }
     }
 
-    static void ConvertRequest(const TString& user, const Ydb::Maintenance::CreateMaintenanceTaskRequest& request,
+    void ConvertRequest(const TString& user, const Ydb::Maintenance::CreateMaintenanceTaskRequest& request,
             NKikimrCms::TPermissionRequest& cmsRequest)
     {
         const auto& opts = request.task_options();
@@ -378,11 +487,19 @@ class TCreateMaintenanceTask: public TPermissionResponseProcessor<
         cmsRequest.SetDryRun(opts.dry_run());
         cmsRequest.SetReason(opts.description());
         cmsRequest.SetAvailabilityMode(ConvertAvailabilityMode(opts.availability_mode()));
-        cmsRequest.SetPartialPermissionAllowed(true);
         cmsRequest.SetSchedule(true);
 
+        i32 priority = opts.priority();
+        if (priority != 0) {
+            cmsRequest.SetPriority(priority);
+        }
+
+        HasSingleCompositeActionGroup = request.action_groups().size() == 1 
+                                        && request.action_groups(0).actions().size() > 1;
+        cmsRequest.SetPartialPermissionAllowed(!HasSingleCompositeActionGroup);
+
         for (const auto& group : request.action_groups()) {
-            Y_ABORT_UNLESS(group.actions().size() == 1);
+            Y_ABORT_UNLESS(HasSingleCompositeActionGroup || group.actions().size() == 1);
             for (const auto& action : group.actions()) {
                 if (action.has_lock_action()) {
                     ConvertAction(action.lock_action(), *cmsRequest.AddActions());
@@ -436,6 +553,7 @@ public:
         }
 
         const auto& task = tit->second;
+        HasSingleCompositeActionGroup = task.HasSingleCompositeActionGroup;
 
         auto rit = cmsState->ScheduledRequests.find(task.RequestId);
         if (rit == cmsState->ScheduledRequests.end()) {
@@ -444,6 +562,8 @@ public:
 
             auto& result = *response->Record.MutableResult();
             result.set_task_uid(taskUid);
+            ConvertInstant(task.CreateTime, *result.mutable_create_time());
+            ConvertInstant(task.LastRefreshTime, *result.mutable_last_refresh_time());
 
             // performed actions
             for (const auto& id : task.Permissions) {
@@ -452,7 +572,7 @@ public:
                 }
 
                 ConvertPermission(taskUid, cmsState->Permissions.at(id),
-                    *result.add_action_group_states()->add_action_states());
+                    *GetActionGroupState(result)->add_action_states());
             }
 
             if (result.action_group_states().empty()) {
@@ -481,10 +601,12 @@ public:
 
 }; // TRefreshMaintenanceTask
 
-class TGetMaintenanceTask: public TAdapterActor<
-        TGetMaintenanceTask,
-        TEvCms::TEvGetMaintenanceTaskRequest,
-        TEvCms::TEvGetMaintenanceTaskResponse>
+class TGetMaintenanceTask  
+    : public TAdapterActor<  
+        TGetMaintenanceTask,  
+        TEvCms::TEvGetMaintenanceTaskRequest,  
+        TEvCms::TEvGetMaintenanceTaskResponse>  
+    , public TCompositeActionGroupHandler 
 {
 public:
     using TBase::TBase;
@@ -499,6 +621,7 @@ public:
         }
 
         const auto& task = it->second;
+        HasSingleCompositeActionGroup = task.HasSingleCompositeActionGroup;
 
         if (!cmsState->ScheduledRequests.contains(task.RequestId)) {
             auto response = MakeHolder<TEvCms::TEvGetMaintenanceTaskResponse>();
@@ -506,6 +629,8 @@ public:
 
             auto& result = *response->Record.MutableResult();
             result.mutable_task_options()->set_task_uid(taskUid);
+            ConvertInstant(task.CreateTime, *result.mutable_create_time());
+            ConvertInstant(task.LastRefreshTime, *result.mutable_last_refresh_time());
 
             // performed actions
             for (const auto& id : task.Permissions) {
@@ -514,7 +639,7 @@ public:
                 }
 
                 ConvertPermission(taskUid, cmsState->Permissions.at(id),
-                    *result.add_action_group_states()->add_action_states());
+                    *GetActionGroupState(result)->add_action_states());
             }
 
             return Reply(std::move(response));
@@ -561,10 +686,11 @@ public:
             opts.set_task_uid(taskUid);
             opts.set_description(request.GetReason());
             opts.set_availability_mode(ConvertAvailabilityMode(request.GetAvailabilityMode()));
+            opts.set_priority(request.GetPriority());
 
             // pending actions
             for (const auto& action : request.GetActions()) {
-                ConvertAction(action, *result.add_action_group_states()->add_action_states());
+                ConvertAction(action, *GetActionGroupState(result)->add_action_states());
             }
         }
 
@@ -572,13 +698,17 @@ public:
         // performed actions
         if (cmsState->MaintenanceTasks.contains(taskUid)) {
             const auto& task = cmsState->MaintenanceTasks.at(taskUid);
+
+            ConvertInstant(task.CreateTime, *result.mutable_create_time());
+            ConvertInstant(task.LastRefreshTime, *result.mutable_last_refresh_time());
+
             for (const auto& id : task.Permissions) {
                 if (!cmsState->Permissions.contains(id)) {
                     continue;
                 }
 
                 ConvertPermission(taskUid, cmsState->Permissions.at(id),
-                    *result.add_action_group_states()->add_action_states());
+                    *GetActionGroupState(result)->add_action_states());
             }
         }
 

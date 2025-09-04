@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package attribute_test
 
@@ -54,14 +43,47 @@ func TestSetDedup(t *testing.T) {
 	cases := []testCase{
 		expect("A=B", attribute.String("A", "2"), attribute.String("A", "B")),
 		expect("A=B", attribute.String("A", "2"), attribute.Int("A", 1), attribute.String("A", "B")),
-		expect("A=B", attribute.String("A", "B"), attribute.String("A", "C"), attribute.String("A", "D"), attribute.String("A", "B")),
+		expect(
+			"A=B",
+			attribute.String("A", "B"),
+			attribute.String("A", "C"),
+			attribute.String("A", "D"),
+			attribute.String("A", "B"),
+		),
 
 		expect("A=B,C=D", attribute.String("A", "1"), attribute.String("C", "D"), attribute.String("A", "B")),
 		expect("A=B,C=D", attribute.String("A", "2"), attribute.String("A", "B"), attribute.String("C", "D")),
-		expect("A=B,C=D", attribute.Float64("C", 1.2), attribute.String("A", "2"), attribute.String("A", "B"), attribute.String("C", "D")),
-		expect("A=B,C=D", attribute.String("C", "D"), attribute.String("A", "B"), attribute.String("A", "C"), attribute.String("A", "D"), attribute.String("A", "B")),
-		expect("A=B,C=D", attribute.String("A", "B"), attribute.String("C", "D"), attribute.String("A", "C"), attribute.String("A", "D"), attribute.String("A", "B")),
-		expect("A=B,C=D", attribute.String("A", "B"), attribute.String("A", "C"), attribute.String("A", "D"), attribute.String("A", "B"), attribute.String("C", "D")),
+		expect(
+			"A=B,C=D",
+			attribute.Float64("C", 1.2),
+			attribute.String("A", "2"),
+			attribute.String("A", "B"),
+			attribute.String("C", "D"),
+		),
+		expect(
+			"A=B,C=D",
+			attribute.String("C", "D"),
+			attribute.String("A", "B"),
+			attribute.String("A", "C"),
+			attribute.String("A", "D"),
+			attribute.String("A", "B"),
+		),
+		expect(
+			"A=B,C=D",
+			attribute.String("A", "B"),
+			attribute.String("C", "D"),
+			attribute.String("A", "C"),
+			attribute.String("A", "D"),
+			attribute.String("A", "B"),
+		),
+		expect(
+			"A=B,C=D",
+			attribute.String("A", "B"),
+			attribute.String("A", "C"),
+			attribute.String("A", "D"),
+			attribute.String("A", "B"),
+			attribute.String("C", "D"),
+		),
 	}
 	enc := attribute.DefaultEncoder()
 
@@ -366,4 +388,23 @@ func BenchmarkFiltering(b *testing.B) {
 	b.Run("NoFiltered", benchFn(func(attribute.KeyValue) bool { return true }))
 	b.Run("Filtered", benchFn(func(kv attribute.KeyValue) bool { return kv.Key == "A" }))
 	b.Run("AllDropped", benchFn(func(attribute.KeyValue) bool { return false }))
+}
+
+var sinkSet attribute.Set
+
+func BenchmarkNewSet(b *testing.B) {
+	attrs := []attribute.KeyValue{
+		attribute.String("B1", "2"),
+		attribute.String("C2", "5"),
+		attribute.String("B3", "2"),
+		attribute.String("C4", "1"),
+		attribute.String("A5", "4"),
+		attribute.String("C6", "3"),
+		attribute.String("A7", "1"),
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		sinkSet = attribute.NewSet(attrs...)
+	}
 }

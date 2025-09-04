@@ -3,6 +3,8 @@ package table
 import (
 	"context"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/closer"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/pool"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/table/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
@@ -11,27 +13,24 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
-// SessionProvider is the interface that holds session lifecycle logic.
-type SessionProvider interface {
-	// Get returns alive idle session or creates new one.
-	Get(context.Context) (*session, error)
+// sessionPool is the interface that holds session lifecycle logic.
+type sessionPool interface {
+	closer.Closer
 
-	// Put takes no longer needed session for reuse or deletion depending
-	// on implementation.
-	// Put must be fast, if necessary must be async
-	Put(context.Context, *session) (err error)
+	Stats() pool.Stats
+	With(ctx context.Context, f func(ctx context.Context, s *Session) error, opts ...retry.Option) error
 }
 
 func do(
 	ctx context.Context,
-	c SessionProvider,
+	pool sessionPool,
 	config *config.Config,
-	op table.Operation,
+	op func(ctx context.Context, s *Session) error,
 	onAttempt func(err error),
 	opts ...retry.Option,
 ) (err error) {
-	return retryBackoff(ctx, c,
-		func(ctx context.Context, s table.Session) (err error) {
+	return retryBackoff(ctx, pool,
+		func(ctx context.Context, s *Session) (err error) {
 			defer func() {
 				if onAttempt != nil {
 					onAttempt(err)
@@ -46,9 +45,9 @@ func do(
 						}
 					}()
 				}
+
 				return op(xcontext.MarkRetryCall(ctx), s)
 			}()
-
 			if err != nil {
 				return xerrors.WithStackTrace(err)
 			}
@@ -61,32 +60,17 @@ func do(
 
 func retryBackoff(
 	ctx context.Context,
-	p SessionProvider,
-	op table.Operation,
+	pool sessionPool,
+	op func(ctx context.Context, s *Session) error,
 	opts ...retry.Option,
 ) error {
-	return retry.Retry(ctx,
-		func(ctx context.Context) (err error) {
-			var s *session
+	return pool.With(ctx, func(ctx context.Context, s *Session) (err error) {
+		if err := op(ctx, s); err != nil {
+			return xerrors.WithStackTrace(err)
+		}
 
-			s, err = p.Get(ctx)
-			if err != nil {
-				return xerrors.WithStackTrace(err)
-			}
-
-			defer func() {
-				_ = p.Put(ctx, s)
-			}()
-
-			if err = op(ctx, s); err != nil {
-				s.checkError(err)
-				return xerrors.WithStackTrace(err)
-			}
-
-			return nil
-		},
-		opts...,
-	)
+		return nil
+	}, opts...)
 }
 
 func (c *Client) retryOptions(opts ...table.Option) *table.Options {
@@ -97,6 +81,7 @@ func (c *Client) retryOptions(opts ...table.Option) *table.Options {
 		),
 		RetryOptions: []retry.Option{
 			retry.WithTrace(c.config.TraceRetry()),
+			retry.WithBudget(c.config.RetryBudget()),
 		},
 	}
 	for _, opt := range opts {
@@ -107,5 +92,6 @@ func (c *Client) retryOptions(opts ...table.Option) *table.Options {
 	if options.Trace == nil {
 		options.Trace = &trace.Table{}
 	}
+
 	return options
 }

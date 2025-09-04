@@ -5,7 +5,7 @@
 #include <contrib/ydb/library/yql/providers/dq/api/grpc/api.grpc.pb.h>
 #include <contrib/ydb/library/yql/providers/dq/api/protos/service.pb.h>
 
-#include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
+#include <yql/essentials/minikql/mkql_function_registry.h>
 
 #include <contrib/ydb/library/grpc/server/grpc_request.h>
 #include <contrib/ydb/library/grpc/server/grpc_server.h>
@@ -28,17 +28,12 @@ namespace NYql::NDqs {
                         const TDqTaskPreprocessorFactoryCollection& dqTaskPreprocessorFactories);
 
         void InitService(grpc::ServerCompletionQueue* cq, NYdbGrpc::TLoggerPtr logger) override;
-        void SetGlobalLimiterHandle(NYdbGrpc::TGlobalLimiter* limiter) override;
-
-        bool IncRequest();
-        void DecRequest();
 
         NThreading::TFuture<void> Stop();
 
     private:
         NActors::TActorSystem& ActorSystem;
         grpc::ServerCompletionQueue* CQ = nullptr;
-        NYdbGrpc::TGlobalLimiter* Limiter = nullptr;
 
         TIntrusivePtr<NMonitoring::TDynamicCounters> Counters;
         TDqTaskPreprocessorFactoryCollection DqTaskPreprocessorFactories;

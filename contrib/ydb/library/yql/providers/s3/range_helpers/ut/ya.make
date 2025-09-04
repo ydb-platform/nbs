@@ -6,9 +6,9 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/providers/common/provider
-    contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/providers/common/provider
+    yql/essentials/public/udf/service/exception_policy
+    yql/essentials/sql/pg_dummy
 )
 
 YQL_LAST_ABI_VERSION()

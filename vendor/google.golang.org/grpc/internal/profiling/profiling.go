@@ -26,10 +26,10 @@
 // example, if one wants to profile the load balancing layer, which is
 // independent of RPC queries, a separate CircularBuffer can be used.
 //
-// Note that the circular buffer simply takes any interface{}. In the future,
-// more types of measurements (such as the number of memory allocations) could
-// be measured, which might require a different type of object being pushed
-// into the circular buffer.
+// Note that the circular buffer simply takes any type. In the future, more
+// types of measurements (such as the number of memory allocations) could be
+// measured, which might require a different type of object being pushed into
+// the circular buffer.
 package profiling
 
 import (
@@ -189,7 +189,7 @@ func (stat *Stat) AppendTimer(timer *Timer) {
 var statsInitialized int32
 
 // Stats for the last defaultStreamStatsBufsize RPCs will be stored in memory.
-// This is can be configured by the registering server at profiling service
+// This can be configured by the registering server at profiling service
 // initialization with google.golang.org/grpc/profiling/service.ProfilingConfig
 const defaultStreamStatsSize uint32 = 16 << 10
 

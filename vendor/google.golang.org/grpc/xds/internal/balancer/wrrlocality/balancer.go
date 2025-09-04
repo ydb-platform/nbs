@@ -103,7 +103,7 @@ func (bb) ParseConfig(s json.RawMessage) (serviceconfig.LoadBalancingConfig, err
 type attributeKey struct{}
 
 // Equal allows the values to be compared by Attributes.Equal.
-func (a AddrInfo) Equal(o interface{}) bool {
+func (a AddrInfo) Equal(o any) bool {
 	oa, ok := o.(AddrInfo)
 	return ok && oa.LocalityWeight == a.LocalityWeight
 }
@@ -118,6 +118,13 @@ type AddrInfo struct {
 func SetAddrInfo(addr resolver.Address, addrInfo AddrInfo) resolver.Address {
 	addr.BalancerAttributes = addr.BalancerAttributes.WithValue(attributeKey{}, addrInfo)
 	return addr
+}
+
+// SetAddrInfoInEndpoint returns a copy of endpoint in which the Attributes
+// field is updated with AddrInfo.
+func SetAddrInfoInEndpoint(endpoint resolver.Endpoint, addrInfo AddrInfo) resolver.Endpoint {
+	endpoint.Attributes = endpoint.Attributes.WithValue(attributeKey{}, addrInfo)
+	return endpoint
 }
 
 func (a AddrInfo) String() string {
@@ -160,11 +167,7 @@ func (b *wrrLocalityBalancer) UpdateClientConnState(s balancer.ClientConnState) 
 		// shouldn't happen though (this attribute that is set actually gets
 		// used to build localities in the first place), and thus don't error
 		// out, and just build a weighted target with undefined behavior.
-		locality, err := internal.GetLocalityID(addr).ToString()
-		if err != nil {
-			// Should never happen.
-			logger.Errorf("Failed to marshal LocalityID: %v, skipping this locality in weighted target")
-		}
+		locality := internal.GetLocalityID(addr).ToString()
 		ai, ok := getAddrInfo(addr)
 		if !ok {
 			return fmt.Errorf("xds_wrr_locality: missing locality weight information in address %q", addr)
@@ -192,8 +195,8 @@ func (b *wrrLocalityBalancer) ResolverError(err error) {
 	b.child.ResolverError(err)
 }
 
-func (b *wrrLocalityBalancer) UpdateSubConnState(sc balancer.SubConn, scState balancer.SubConnState) {
-	b.child.UpdateSubConnState(sc, scState)
+func (b *wrrLocalityBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
 func (b *wrrLocalityBalancer) Close() {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/core/base/tablet.h>
+#include <contrib/ydb/core/protos/tx_proxy.pb.h>
 
 namespace NKikimr {
 namespace NMiniKQL {

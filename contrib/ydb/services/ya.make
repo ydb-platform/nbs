@@ -1,10 +1,15 @@
 RECURSE(
     auth
+    backup
     bg_tasks
+    bridge
     cms
-    dynamic_config
+    config
     datastreams
+    deprecated/persqueue_v0
     discovery
+    dynamic_config
+    ext_index
     fq
     kesus
     keyvalue
@@ -15,9 +20,10 @@ RECURSE(
     monitoring
     persqueue_cluster_discovery
     persqueue_v1
-    deprecated/persqueue_v0
-    deprecated/persqueue_v0/api
     rate_limiter
-    ext_index
+    replication
+    tablet
+    view
     ydb
+    ymq
 )

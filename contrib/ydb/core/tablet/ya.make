@@ -2,6 +2,8 @@ LIBRARY()
 
 SRCS(
     bootstrapper.cpp
+    bootstrapper.h
+    bootstrapper_impl.h
     defs.h
     labeled_counters_merger.cpp
     labeled_counters_merger.h
@@ -56,6 +58,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/library/actors/async
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/helpers
     contrib/ydb/library/actors/protos

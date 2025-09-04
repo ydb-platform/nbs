@@ -6,6 +6,8 @@ LICENSE(
     MIT
 )
 
+VERSION(v1.18.0)
+
 SRCS(
     bitreader.go
     bitwriter.go
@@ -70,6 +72,14 @@ IF (ARCH_X86_64)
 ENDIF()
 
 IF (ARCH_ARM64)
+    SRCS(
+        fse_decoder_generic.go
+        matchlen_generic.go
+        seqdec_generic.go
+    )
+ENDIF()
+
+IF (OS_LINUX AND ARCH_ARM7)
     SRCS(
         fse_decoder_generic.go
         matchlen_generic.go

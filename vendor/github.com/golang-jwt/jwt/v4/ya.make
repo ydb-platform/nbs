@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v4.5.2)
+
 SRCS(
     claims.go
     doc.go
@@ -24,6 +26,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    # jwt_test.go
     # map_claims_test.go
 )
 

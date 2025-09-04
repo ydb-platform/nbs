@@ -3,7 +3,7 @@
 #include "proxy.h"
 
 #include <contrib/ydb/library/services/services.pb.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 
 #include <library/cpp/yson/node/node_io.h>
 #include <contrib/ydb/library/actors/core/events.h>

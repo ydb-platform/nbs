@@ -1,13 +1,12 @@
 #pragma once
 
-#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem_fwd.h>
 
 #include <contrib/ydb/public/api/grpc/ydb_discovery_v1.grpc.pb.h>
 
 #include <contrib/ydb/library/grpc/server/grpc_server.h>
 
 #include <contrib/ydb/core/grpc_services/base/base_service.h>
-#include <contrib/ydb/core/grpc_services/auth_processor/dynamic_node_auth_processor.h>
 
 
 namespace NKikimr {
@@ -22,12 +21,8 @@ namespace NGRpcService {
   public:
      using TGrpcServiceBase<Ydb::Discovery::V1::DiscoveryService>::TGrpcServiceBase;
 
-     void SetDynamicNodeAuthParams(const TDynamicNodeAuthorizationParams& dynamicNodeAuthorizationParams);
-
   private:
      void SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger);
-     TDynamicNodeAuthorizationParams DynamicNodeAuthorizationParams = {};
-     std::function<void(std::unique_ptr<IRequestOpCtx>, const IFacilityProvider&)> NodeRegistrationRequest;
  };
 
 } // namespace NGRpcService

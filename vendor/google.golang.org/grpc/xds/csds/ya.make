@@ -2,7 +2,11 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
-SRCS(csds.go)
+VERSION(v1.73.0)
+
+SRCS(
+    csds.go
+)
 
 GO_XTEST_SRCS(
     # csds_e2e_test.go
@@ -10,4 +14,6 @@ GO_XTEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

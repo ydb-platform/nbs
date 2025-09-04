@@ -26,35 +26,35 @@ import (
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/experimental/stats"
+	"google.golang.org/grpc/internal"
+	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/resolver"
+
+	istats "google.golang.org/grpc/internal/stats"
 )
-
-// TestSubConnsCount is the number of TestSubConns initialized as part of
-// package init.
-const TestSubConnsCount = 16
-
-// testingLogger wraps the logging methods from testing.T.
-type testingLogger interface {
-	Log(args ...interface{})
-	Logf(format string, args ...interface{})
-}
-
-// TestSubConns contains a list of SubConns to be used in tests.
-var TestSubConns []*TestSubConn
-
-func init() {
-	for i := 0; i < TestSubConnsCount; i++ {
-		TestSubConns = append(TestSubConns, &TestSubConn{
-			id:        fmt.Sprintf("sc%d", i),
-			ConnectCh: make(chan struct{}, 1),
-		})
-	}
-}
 
 // TestSubConn implements the SubConn interface, to be used in tests.
 type TestSubConn struct {
-	id        string
-	ConnectCh chan struct{}
+	balancer.SubConn
+	tcc            *BalancerClientConn // the CC that owns this SubConn
+	id             string
+	ConnectCh      chan struct{}
+	stateListener  func(balancer.SubConnState)
+	healthListener func(balancer.SubConnState)
+	connectCalled  *grpcsync.Event
+	Addresses      []resolver.Address
+}
+
+// NewTestSubConn returns a newly initialized SubConn.  Typically, subconns
+// should be created via TestClientConn.NewSubConn instead, but can be useful
+// for some tests.
+func NewTestSubConn(id string) *TestSubConn {
+	return &TestSubConn{
+		ConnectCh:     make(chan struct{}, 1),
+		connectCalled: grpcsync.NewEvent(),
+		id:            id,
+	}
 }
 
 // UpdateAddresses is a no-op.
@@ -62,6 +62,7 @@ func (tsc *TestSubConn) UpdateAddresses([]resolver.Address) {}
 
 // Connect is a no-op.
 func (tsc *TestSubConn) Connect() {
+	tsc.connectCalled.Fire()
 	select {
 	case tsc.ConnectCh <- struct{}{}:
 	default:
@@ -73,18 +74,50 @@ func (tsc *TestSubConn) GetOrBuildProducer(balancer.ProducerBuilder) (balancer.P
 	return nil, nil
 }
 
+// UpdateState pushes the state to the listener, if one is registered.
+func (tsc *TestSubConn) UpdateState(state balancer.SubConnState) {
+	<-tsc.connectCalled.Done()
+	if tsc.stateListener != nil {
+		tsc.stateListener(state)
+	}
+	// pickfirst registers a health listener synchronously while handing updates
+	// to READY. It updates the balancing state only after receiving the health
+	// update. We update the health state here so callers of tsc.UpdateState
+	// can verify picker updates as soon as UpdateState returns.
+	if state.ConnectivityState == connectivity.Ready && tsc.healthListener != nil {
+		tsc.healthListener(balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	}
+}
+
+// Shutdown pushes the SubConn to the ShutdownSubConn channel in the parent
+// TestClientConn.
+func (tsc *TestSubConn) Shutdown() {
+	tsc.tcc.logger.Logf("SubConn %s: Shutdown", tsc)
+	select {
+	case tsc.tcc.ShutdownSubConnCh <- tsc:
+	default:
+	}
+}
+
 // String implements stringer to print human friendly error message.
 func (tsc *TestSubConn) String() string {
 	return tsc.id
 }
 
-// TestClientConn is a mock balancer.ClientConn used in tests.
-type TestClientConn struct {
-	logger testingLogger
+// RegisterHealthListener sends a READY update to mock a situation when no
+// health checking mechanisms are configured.
+func (tsc *TestSubConn) RegisterHealthListener(lis func(balancer.SubConnState)) {
+	tsc.healthListener = lis
+}
+
+// BalancerClientConn is a mock balancer.ClientConn used in tests.
+type BalancerClientConn struct {
+	internal.EnforceClientConnEmbedding
+	logger Logger
 
 	NewSubConnAddrsCh      chan []resolver.Address // the last 10 []Address to create subconn.
-	NewSubConnCh           chan balancer.SubConn   // the last 10 subconn created.
-	RemoveSubConnCh        chan balancer.SubConn   // the last 10 subconn removed.
+	NewSubConnCh           chan *TestSubConn       // the last 10 subconn created.
+	ShutdownSubConnCh      chan *TestSubConn       // the last 10 subconn removed.
 	UpdateAddressesAddrsCh chan []resolver.Address // last updated address via UpdateAddresses().
 
 	NewPickerCh  chan balancer.Picker            // the last picker updated.
@@ -94,14 +127,14 @@ type TestClientConn struct {
 	subConnIdx int
 }
 
-// NewTestClientConn creates a TestClientConn.
-func NewTestClientConn(t *testing.T) *TestClientConn {
-	return &TestClientConn{
+// NewBalancerClientConn creates a BalancerClientConn.
+func NewBalancerClientConn(t *testing.T) *BalancerClientConn {
+	return &BalancerClientConn{
 		logger: t,
 
 		NewSubConnAddrsCh:      make(chan []resolver.Address, 10),
-		NewSubConnCh:           make(chan balancer.SubConn, 10),
-		RemoveSubConnCh:        make(chan balancer.SubConn, 10),
+		NewSubConnCh:           make(chan *TestSubConn, 10),
+		ShutdownSubConnCh:      make(chan *TestSubConn, 10),
 		UpdateAddressesAddrsCh: make(chan []resolver.Address, 1),
 
 		NewPickerCh:  make(chan balancer.Picker, 1),
@@ -111,10 +144,16 @@ func NewTestClientConn(t *testing.T) *TestClientConn {
 }
 
 // NewSubConn creates a new SubConn.
-func (tcc *TestClientConn) NewSubConn(a []resolver.Address, o balancer.NewSubConnOptions) (balancer.SubConn, error) {
-	sc := TestSubConns[tcc.subConnIdx]
+func (tcc *BalancerClientConn) NewSubConn(a []resolver.Address, o balancer.NewSubConnOptions) (balancer.SubConn, error) {
+	sc := &TestSubConn{
+		tcc:           tcc,
+		id:            fmt.Sprintf("sc%d", tcc.subConnIdx),
+		ConnectCh:     make(chan struct{}, 1),
+		stateListener: o.StateListener,
+		connectCalled: grpcsync.NewEvent(),
+		Addresses:     a,
+	}
 	tcc.subConnIdx++
-
 	tcc.logger.Logf("testClientConn: NewSubConn(%v, %+v) => %s", a, o, sc)
 	select {
 	case tcc.NewSubConnAddrsCh <- a:
@@ -129,18 +168,20 @@ func (tcc *TestClientConn) NewSubConn(a []resolver.Address, o balancer.NewSubCon
 	return sc, nil
 }
 
-// RemoveSubConn removes the SubConn.
-func (tcc *TestClientConn) RemoveSubConn(sc balancer.SubConn) {
-	tcc.logger.Logf("testClientConn: RemoveSubConn(%s)", sc)
-	select {
-	case tcc.RemoveSubConnCh <- sc:
-	default:
-	}
+// MetricsRecorder returns an empty MetricsRecorderList.
+func (*BalancerClientConn) MetricsRecorder() stats.MetricsRecorder {
+	return istats.NewMetricsRecorderList(nil)
+}
+
+// RemoveSubConn is a nop; tests should all be updated to use sc.Shutdown()
+// instead.
+func (tcc *BalancerClientConn) RemoveSubConn(sc balancer.SubConn) {
+	tcc.logger.Errorf("RemoveSubConn(%v) called unexpectedly", sc)
 }
 
 // UpdateAddresses updates the addresses on the SubConn.
-func (tcc *TestClientConn) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Address) {
-	tcc.logger.Logf("testClientConn: UpdateAddresses(%v, %+v)", sc, addrs)
+func (tcc *BalancerClientConn) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Address) {
+	tcc.logger.Logf("testutils.BalancerClientConn: UpdateAddresses(%v, %+v)", sc, addrs)
 	select {
 	case tcc.UpdateAddressesAddrsCh <- addrs:
 	default:
@@ -148,8 +189,8 @@ func (tcc *TestClientConn) UpdateAddresses(sc balancer.SubConn, addrs []resolver
 }
 
 // UpdateState updates connectivity state and picker.
-func (tcc *TestClientConn) UpdateState(bs balancer.State) {
-	tcc.logger.Logf("testClientConn: UpdateState(%v)", bs)
+func (tcc *BalancerClientConn) UpdateState(bs balancer.State) {
+	tcc.logger.Logf("testutils.BalancerClientConn: UpdateState(%v)", bs)
 	select {
 	case <-tcc.NewStateCh:
 	default:
@@ -164,7 +205,7 @@ func (tcc *TestClientConn) UpdateState(bs balancer.State) {
 }
 
 // ResolveNow panics.
-func (tcc *TestClientConn) ResolveNow(o resolver.ResolveNowOptions) {
+func (tcc *BalancerClientConn) ResolveNow(o resolver.ResolveNowOptions) {
 	select {
 	case <-tcc.ResolveNowCh:
 	default:
@@ -173,14 +214,14 @@ func (tcc *TestClientConn) ResolveNow(o resolver.ResolveNowOptions) {
 }
 
 // Target panics.
-func (tcc *TestClientConn) Target() string {
+func (tcc *BalancerClientConn) Target() string {
 	panic("not implemented")
 }
 
 // WaitForErrPicker waits until an error picker is pushed to this ClientConn.
 // Returns error if the provided context expires or a non-error picker is pushed
 // to the ClientConn.
-func (tcc *TestClientConn) WaitForErrPicker(ctx context.Context) error {
+func (tcc *BalancerClientConn) WaitForErrPicker(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return errors.New("timeout when waiting for an error picker")
@@ -196,7 +237,7 @@ func (tcc *TestClientConn) WaitForErrPicker(ctx context.Context) error {
 // ClientConn with the error matching the wanted error.  Returns an error if
 // the provided context expires, including the last received picker error (if
 // any).
-func (tcc *TestClientConn) WaitForPickerWithErr(ctx context.Context, want error) error {
+func (tcc *BalancerClientConn) WaitForPickerWithErr(ctx context.Context, want error) error {
 	lastErr := errors.New("received no picker")
 	for {
 		select {
@@ -213,7 +254,7 @@ func (tcc *TestClientConn) WaitForPickerWithErr(ctx context.Context, want error)
 // WaitForConnectivityState waits until the state pushed to this ClientConn
 // matches the wanted state.  Returns an error if the provided context expires,
 // including the last received state (if any).
-func (tcc *TestClientConn) WaitForConnectivityState(ctx context.Context, want connectivity.State) error {
+func (tcc *BalancerClientConn) WaitForConnectivityState(ctx context.Context, want connectivity.State) error {
 	var lastState connectivity.State = -1
 	for {
 		select {
@@ -233,7 +274,7 @@ func (tcc *TestClientConn) WaitForConnectivityState(ctx context.Context, want co
 // is pending) to be considered.  Returns an error if the provided context
 // expires, including the last received error from IsRoundRobin or the picker
 // (if any).
-func (tcc *TestClientConn) WaitForRoundRobinPicker(ctx context.Context, want ...balancer.SubConn) error {
+func (tcc *BalancerClientConn) WaitForRoundRobinPicker(ctx context.Context, want ...balancer.SubConn) error {
 	lastErr := errors.New("received no picker")
 	for {
 		select {
@@ -272,7 +313,7 @@ func (tcc *TestClientConn) WaitForRoundRobinPicker(ctx context.Context, want ...
 
 // WaitForPicker waits for a picker that results in f returning nil.  If the
 // context expires, returns the last error returned by f (if any).
-func (tcc *TestClientConn) WaitForPicker(ctx context.Context, f func(balancer.Picker) error) error {
+func (tcc *BalancerClientConn) WaitForPicker(ctx context.Context, f func(balancer.Picker) error) error {
 	lastErr := errors.New("received no picker")
 	for {
 		select {
@@ -302,7 +343,7 @@ func (tcc *TestClientConn) WaitForPicker(ctx context.Context, f func(balancer.Pi
 // iteration until where it goes wrong.
 //
 // Step 2. the return values of f should be repetitions of the same permutation.
-// E.g. if want is {a,a,b}, the check failes if f returns:
+// E.g. if want is {a,a,b}, the check fails if f returns:
 //   - {a,b,a,b,a,a}: though it satisfies step 1, the second iteration is not
 //     repeating the first iteration.
 //
@@ -364,7 +405,7 @@ type TestConstPicker struct {
 }
 
 // Pick returns the const SubConn or the error.
-func (tcp *TestConstPicker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
+func (tcp *TestConstPicker) Pick(balancer.PickInfo) (balancer.PickResult, error) {
 	if tcp.Err != nil {
 		return balancer.PickResult{}, tcp.Err
 	}

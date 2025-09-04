@@ -2,7 +2,7 @@
 
 #include "yql_clickhouse_settings.h"
 
-#include <contrib/ydb/library/yql/core/yql_data_provider.h>
+#include <yql/essentials/core/yql_data_provider.h>
 #include <contrib/ydb/library/yql/providers/common/http_gateway/yql_http_gateway.h>
 #include <contrib/ydb/library/yql/providers/common/db_id_async_resolver/db_async_resolver.h>
 

@@ -6,4 +6,6 @@ LICENSE(
     MIT
 )
 
+VERSION(v1.18.0)
+
 END()

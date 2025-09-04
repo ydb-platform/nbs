@@ -1,7 +1,7 @@
 #include "service.h"
 
 #include "auth_factory.h"
-#include "cfg.h"
+#include <contrib/ydb/core/ymq/actor/cfg/cfg.h>
 #include "executor.h"
 #include "garbage_collector.h"
 #include "local_rate_limiter_allocator.h"
@@ -13,11 +13,12 @@
 #include "user_settings_names.h"
 #include "user_settings_reader.h"
 #include "index_events_processor.h"
+#include "cloud_events/cloud_events.h"
 #include "node_tracker.h"
 #include "cleanup_queue_data.h"
 
 #include <contrib/ydb/public/lib/value/value.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/credentials.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/credentials/credentials.h>
 #include <contrib/ydb/core/quoter/public/quoter.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/ymq/base/counters.h>
@@ -430,6 +431,24 @@ void TSqsService::Bootstrap() {
 
         MakeAndRegisterYcEventsProcessor();
     }
+
+    if (Cfg().HasCloudEventsConfig()) {
+        const auto& cloudEvCfg = Cfg().GetCloudEventsConfig();
+        CloudEventsConfig.Enabled = cloudEvCfg.GetEnableCloudEvents();
+
+        if (cloudEvCfg.HasRetryTimeoutSeconds()) {
+            CloudEventsConfig.RetryTimeout = TDuration::Seconds(cloudEvCfg.GetRetryTimeoutSeconds());
+        } else {
+            CloudEventsConfig.RetryTimeout = TDuration::Seconds(10);
+        }
+
+        if (cloudEvCfg.HasTenantMode() && cloudEvCfg.GetTenantMode()) {
+            CloudEventsConfig.Database = Cfg().GetRoot();
+            CloudEventsConfig.TenantMode = true;
+        }
+
+        MakeAndRegisterCloudEventsProcessor();
+    }
 }
 
 STATEFN(TSqsService::StateFunc) {
@@ -579,18 +598,28 @@ void TSqsService::HandleGetConfiguration(TSqsEvents::TEvGetConfiguration::TPtr& 
     }
 
     const auto queueIt = user->Queues_.find(queueName);
-    if (queueIt == user->Queues_.end()) {
-        if (RequestQueueListForUser(user, reqId)) {
-            LWPROBE(QueueRequestCacheMiss, userName, queueName, reqId, ev->Get()->ToStringHeader());
-            RLOG_SQS_REQ_DEBUG(reqId, "Queue [" << userName << "/" << queueName << "] was not found in sqs service list. Requesting queues list");
-            user->GetConfigurationRequests_.emplace(queueName, std::move(ev));
-        } else {
-            AnswerThrottled(ev);
-        }
+    if (queueIt != user->Queues_.end()) {
+        ProcessConfigurationRequestForQueue(ev, user, queueIt->second);
         return;
+    } else if (ev->Get()->FolderId) {
+        const auto byNameAndFolderIt = user->QueueByNameAndFolder_ .find(
+                std::make_pair(ev->Get()->QueueName, ev->Get()->FolderId)
+        );
+        if (byNameAndFolderIt != user->QueueByNameAndFolder_.end()) {
+            ProcessConfigurationRequestForQueue(ev, user, byNameAndFolderIt->second);
+            return;
+        }
     }
 
-    ProcessConfigurationRequestForQueue(ev, user, queueIt->second);
+    if (RequestQueueListForUser(user, reqId)) {
+        LWPROBE(QueueRequestCacheMiss, userName, queueName, reqId, ev->Get()->ToStringHeader());
+        RLOG_SQS_REQ_DEBUG(reqId, "Queue [" << userName << "/" << queueName << "] was not found in sqs service list. Requesting queues list");
+        user->GetConfigurationRequests_.emplace(queueName, std::move(ev));
+    } else if (ev->Get()->EnableThrottling) {
+        AnswerThrottled(ev);
+    } else {
+        AnswerNotExists(ev, user);
+    }
 }
 
 void TSqsService::AnswerNotExists(TSqsEvents::TEvGetConfiguration::TPtr& ev, const TUserInfoPtr& userInfo) {
@@ -1557,17 +1586,35 @@ void TSqsService::AnswerErrorToRequests(const TUserInfoPtr& user, TMultimap& map
 }
 
 void TSqsService::MakeAndRegisterYcEventsProcessor() {
-    if (!YcSearchEventsConfig.Enabled)
+    if (!YcSearchEventsConfig.Enabled) {
         return;
+    }
 
     auto root = YcSearchEventsConfig.TenantMode ? TString() : Cfg().GetRoot();
 
-    auto factory = AppData()->SqsEventsWriterFactory;
+    auto factory = AppData()->SqsEventsWriterFactory; // Why is factory here? Why can't we use default methods without insane abstractions?
     Y_ABORT_UNLESS(factory);
     Register(new TSearchEventsProcessor(
             root, YcSearchEventsConfig.ReindexInterval, YcSearchEventsConfig.RescanInterval,
             YcSearchEventsConfig.Database,
             factory->CreateEventsWriter(Cfg(), GetSqsServiceCounters(AppData()->Counters, "yc_unified_agent"))
+    ));
+}
+
+void TSqsService::MakeAndRegisterCloudEventsProcessor() {
+    if (!CloudEventsConfig.Enabled) {
+        return;
+    }
+
+    auto root = CloudEventsConfig.TenantMode ? TString() : Cfg().GetRoot();
+
+    auto factory = AppData()->SqsEventsWriterFactory; // Why is factory here? Why can't we use default methods without insane abstractions?
+    Y_ABORT_UNLESS(factory);
+    Register(new NCloudEvents::TProcessor(
+        root,
+        CloudEventsConfig.Database,
+        CloudEventsConfig.RetryTimeout,
+        factory->CreateCloudEventsWriter(Cfg(), GetSqsServiceCounters(AppData()->Counters, "yc_unified_agent"))
     ));
 }
 

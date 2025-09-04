@@ -178,6 +178,17 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = taskRegistry.RegisterForExecution("dataplane.VerifyMigratedLegacySnapshot", func() tasks.Task {
+		return &verifyMigratedLegacySnapshotTask{
+			config:        config,
+			storage:       storage,
+			legacyStorage: legacyStorage,
+		}
+	})
+	if err != nil {
+		return err
+	}
+
 	snapshotCollectionTimeout, err := time.ParseDuration(
 		config.GetSnapshotCollectionTimeout(),
 	)
@@ -304,4 +315,5 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.DeleteSnapshotData":               func() tasks.Task { return &deleteSnapshotDataTask{} },
 	"dataplane.DeleteDiskFromIncremental":        func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
 	"dataplane.CreateDRBasedDiskCheckpoint":      func() tasks.Task { return &createDRBasedDiskCheckpointTask{} },
+	"dataplane.VerifyMigratedLegacySnapshot":     func() tasks.Task { return &verifyMigratedLegacySnapshotTask{} },
 }

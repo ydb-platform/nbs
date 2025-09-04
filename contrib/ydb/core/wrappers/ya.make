@@ -12,6 +12,7 @@ ELSE()
         abstract.cpp
         fake_storage.cpp
         fake_storage_config.cpp
+        unavailable_storage.cpp
     )
     PEERDIR(
         contrib/libs/aws-sdk-cpp/aws-cpp-sdk-s3
@@ -19,7 +20,6 @@ ELSE()
         contrib/ydb/library/actors/core
         contrib/ydb/core/base
         contrib/ydb/core/protos
-        contrib/ydb/core/wrappers/ut_helpers
         contrib/ydb/core/wrappers/events
     )
 ENDIF()

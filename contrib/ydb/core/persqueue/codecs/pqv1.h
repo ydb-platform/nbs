@@ -1,8 +1,8 @@
 #pragma once
 
 #include <contrib/ydb/public/api/protos/draft/persqueue_common.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/persqueue.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/persqueue_public/persqueue.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/topic/client.h>
 
 namespace NKikimr::NPQ {
 

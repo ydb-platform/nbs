@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    read_attributes_utils.cpp
     rewrite_io_utils.cpp
     yql_kikimr_datasink.cpp
     yql_kikimr_datasource.cpp
@@ -27,41 +28,52 @@ PEERDIR(
     contrib/ydb/core/base
     contrib/ydb/core/protos
     contrib/ydb/core/docapi
+    contrib/ydb/core/scheme
     contrib/ydb/core/kqp/query_data
     contrib/ydb/library/aclib
     contrib/ydb/library/aclib/protos
-    contrib/ydb/library/binary_json
-    contrib/ydb/library/dynumber
-    contrib/ydb/library/yql/core/services
-    contrib/ydb/library/yql/minikql
-    contrib/ydb/library/yql/public/decimal
+    yql/essentials/types/binary_json
+    yql/essentials/types/dynumber
+    yql/essentials/core/services
+    yql/essentials/minikql
+    yql/essentials/public/decimal
     contrib/ydb/public/lib/scheme_types
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
-    contrib/ydb/library/yql/core/expr_nodes
-    contrib/ydb/library/yql/core/peephole_opt
-    contrib/ydb/library/yql/parser/pg_wrapper/interface
-    contrib/ydb/library/yql/providers/common/codec
-    contrib/ydb/library/yql/providers/common/config
-    contrib/ydb/library/yql/providers/common/gateway
-    contrib/ydb/library/yql/providers/common/proto
-    contrib/ydb/library/yql/providers/common/provider
-    contrib/ydb/library/yql/providers/common/schema/expr
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    yql/essentials/core/expr_nodes
+    yql/essentials/core/peephole_opt
+    yql/essentials/parser/pg_wrapper/interface
+    yql/essentials/providers/common/codec
+    yql/essentials/providers/common/config
+    yql/essentials/providers/common/gateway
+    yql/essentials/providers/common/proto
+    yql/essentials/providers/common/provider
+    yql/essentials/providers/common/schema/expr
     contrib/ydb/library/yql/providers/dq/expr_nodes
-    contrib/ydb/library/yql/providers/result/expr_nodes
-    contrib/ydb/library/yql/providers/result/provider
-    contrib/ydb/library/yql/sql
+    yql/essentials/providers/pg/expr_nodes
+    yql/essentials/providers/result/expr_nodes
+    yql/essentials/providers/result/provider
+    yql/essentials/sql
+    yql/essentials/sql/v1
+    yql/essentials/sql/v1/lexer/antlr4
+    yql/essentials/sql/v1/lexer/antlr4_ansi
+    yql/essentials/sql/v1/proto_parser/antlr4
+    yql/essentials/sql/v1/proto_parser/antlr4_ansi
+    yql/essentials/sql/v1/lexer/antlr3
+    yql/essentials/sql/v1/lexer/antlr3_ansi
+    yql/essentials/sql/v1/proto_parser/antlr3
+    yql/essentials/sql/v1/proto_parser/antlr3_ansi
     contrib/ydb/library/ydb_issue/proto
-    contrib/ydb/library/yql/public/issue
-    contrib/ydb/library/yql/utils/log
+    yql/essentials/public/issue
+    yql/essentials/utils/log
 )
 
 YQL_LAST_ABI_VERSION()
 
-SRCDIR(contrib/ydb/library/yql/core/expr_nodes_gen)
+SRCDIR(yql/essentials/core/expr_nodes_gen)
 
 IF(EXPORT_CMAKE)
     RUN_PYTHON3(
-        ${ARCADIA_ROOT}/contrib/ydb/library/yql/core/expr_nodes_gen/gen/__main__.py
+        ${ARCADIA_ROOT}/yql/essentials/core/expr_nodes_gen/gen/__main__.py
             yql_expr_nodes_gen.jnj
             yql_kikimr_expr_nodes.json
             yql_kikimr_expr_nodes.gen.h
@@ -73,12 +85,12 @@ IF(EXPORT_CMAKE)
         OUT yql_kikimr_expr_nodes.decl.inl.h
         OUT yql_kikimr_expr_nodes.defs.inl.h
         OUTPUT_INCLUDES
-        ${ARCADIA_ROOT}/contrib/ydb/library/yql/core/expr_nodes_gen/yql_expr_nodes_gen.h
+        ${ARCADIA_ROOT}/yql/essentials/core/expr_nodes_gen/yql_expr_nodes_gen.h
         ${ARCADIA_ROOT}/util/generic/hash_set.h
     )
 ELSE()
     RUN_PROGRAM(
-        contrib/ydb/library/yql/core/expr_nodes_gen/gen
+        yql/essentials/core/expr_nodes_gen/gen
             yql_expr_nodes_gen.jnj
             yql_kikimr_expr_nodes.json
             yql_kikimr_expr_nodes.gen.h
@@ -90,7 +102,7 @@ ELSE()
         OUT yql_kikimr_expr_nodes.decl.inl.h
         OUT yql_kikimr_expr_nodes.defs.inl.h
         OUTPUT_INCLUDES
-        ${ARCADIA_ROOT}/contrib/ydb/library/yql/core/expr_nodes_gen/yql_expr_nodes_gen.h
+        ${ARCADIA_ROOT}/yql/essentials/core/expr_nodes_gen/yql_expr_nodes_gen.h
         ${ARCADIA_ROOT}/util/generic/hash_set.h
     )
 ENDIF()

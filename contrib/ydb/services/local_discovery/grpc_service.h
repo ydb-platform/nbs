@@ -1,13 +1,12 @@
 #pragma once
 
-#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/actorsystem_fwd.h>
 
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/public/api/grpc/ydb_discovery_v1.grpc.pb.h>
 
 #include <contrib/ydb/library/grpc/server/grpc_server.h>
 #include <contrib/ydb/core/grpc_services/base/base_service.h>
-#include <contrib/ydb/core/grpc_services/auth_processor/dynamic_node_auth_processor.h>
 
 namespace NKikimr {
 namespace NGRpcService {
@@ -25,12 +24,6 @@ public:
                     NActors::TActorId id);
 
     void InitService(grpc::ServerCompletionQueue* cq, NYdbGrpc::TLoggerPtr logger) override;
-    void SetGlobalLimiterHandle(NYdbGrpc::TGlobalLimiter* limiter) override;
-
-    bool IncRequest();
-    void DecRequest();
-
-    void SetDynamicNodeAuthParams(const TDynamicNodeAuthorizationParams& dynamicNodeAuthorizationParams);
 
 private:
     void SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger);
@@ -42,10 +35,6 @@ private:
 
     TIntrusivePtr<::NMonitoring::TDynamicCounters> Counters_;
     NActors::TActorId GRpcRequestProxyId_;
-    NYdbGrpc::TGlobalLimiter* Limiter_ = nullptr;
-
-    TDynamicNodeAuthorizationParams DynamicNodeAuthorizationParams = {};
-    std::function<void(std::unique_ptr<IRequestOpCtx>, const IFacilityProvider&)> NodeRegistrationRequest;
 };
 
 } // namespace NGRpcService

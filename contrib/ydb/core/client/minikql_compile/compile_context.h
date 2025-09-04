@@ -2,9 +2,9 @@
 
 #include "compile_result.h"
 
-#include <contrib/ydb/library/yql/ast/yql_expr.h>
-#include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node.h>
+#include <yql/essentials/ast/yql_expr.h>
+#include <yql/essentials/minikql/mkql_function_registry.h>
+#include <yql/essentials/minikql/mkql_node.h>
 #include <contrib/ydb/core/client/minikql_compile/db_key_resolver.h>
 #include <contrib/ydb/core/engine/kikimr_program_builder.h>
 

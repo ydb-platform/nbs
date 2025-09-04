@@ -7,18 +7,19 @@ SRCS(
 PEERDIR(
     contrib/libs/fmt
     library/cpp/random_provider
-    contrib/ydb/library/yql/ast
-    contrib/ydb/library/yql/core
-    contrib/ydb/library/yql/core/services
     contrib/ydb/library/yql/dq/expr_nodes
-    contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/providers/common/db_id_async_resolver
     contrib/ydb/library/yql/providers/generic/expr_nodes
-    contrib/ydb/library/yql/providers/result/provider
-    contrib/ydb/library/yql/public/udf/service/stub
-    contrib/ydb/library/yql/sql
-    contrib/ydb/library/yql/minikql/invoke_builtins/llvm14
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/ast
+    yql/essentials/core
+    yql/essentials/core/services
+    yql/essentials/minikql
+    yql/essentials/minikql/invoke_builtins/llvm16
+    yql/essentials/providers/result/provider
+    yql/essentials/public/udf/service/stub
+    yql/essentials/sql
+    yql/essentials/sql/pg_dummy
+    yql/essentials/udfs/common/re2
 )
 
 SIZE(SMALL)

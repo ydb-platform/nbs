@@ -19,16 +19,20 @@ package xdsresource
 
 import (
 	"context"
+	rand "math/rand/v2"
 	"testing"
 
-	"google.golang.org/grpc/internal/grpcrand"
+	"github.com/google/go-cmp/cmp"
 	"google.golang.org/grpc/internal/grpcutil"
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/xds/matcher"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/proto"
 )
 
 func (s) TestAndMatcherMatch(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
 	tests := []struct {
 		name string
 		pm   pathMatcher
@@ -42,7 +46,7 @@ func (s) TestAndMatcherMatch(t *testing.T) {
 			hm:   matcher.NewHeaderExactMatcher("th", "tv", false),
 			info: iresolver.RPCInfo{
 				Method:  "/a/b",
-				Context: metadata.NewOutgoingContext(context.Background(), metadata.Pairs("th", "tv")),
+				Context: metadata.NewOutgoingContext(ctx, metadata.Pairs("th", "tv")),
 			},
 			want: true,
 		},
@@ -52,7 +56,7 @@ func (s) TestAndMatcherMatch(t *testing.T) {
 			hm:   matcher.NewHeaderExactMatcher("th", "tv", false),
 			info: iresolver.RPCInfo{
 				Method:  "/a/b",
-				Context: metadata.NewOutgoingContext(context.Background(), metadata.Pairs("th", "tv")),
+				Context: metadata.NewOutgoingContext(ctx, metadata.Pairs("th", "tv")),
 			},
 			want: true,
 		},
@@ -62,7 +66,7 @@ func (s) TestAndMatcherMatch(t *testing.T) {
 			hm:   matcher.NewHeaderExactMatcher("th", "tv", false),
 			info: iresolver.RPCInfo{
 				Method:  "/z/y",
-				Context: metadata.NewOutgoingContext(context.Background(), metadata.Pairs("th", "tv")),
+				Context: metadata.NewOutgoingContext(ctx, metadata.Pairs("th", "tv")),
 			},
 			want: false,
 		},
@@ -72,7 +76,7 @@ func (s) TestAndMatcherMatch(t *testing.T) {
 			hm:   matcher.NewHeaderExactMatcher("th", "abc", false),
 			info: iresolver.RPCInfo{
 				Method:  "/a/b",
-				Context: metadata.NewOutgoingContext(context.Background(), metadata.Pairs("th", "tv")),
+				Context: metadata.NewOutgoingContext(ctx, metadata.Pairs("th", "tv")),
 			},
 			want: false,
 		},
@@ -82,7 +86,7 @@ func (s) TestAndMatcherMatch(t *testing.T) {
 			hm:   matcher.NewHeaderExactMatcher("content-type", "fake", false),
 			info: iresolver.RPCInfo{
 				Method: "/a/b",
-				Context: grpcutil.WithExtraMetadata(context.Background(), metadata.Pairs(
+				Context: grpcutil.WithExtraMetadata(ctx, metadata.Pairs(
 					"content-type", "fake",
 				)),
 			},
@@ -95,7 +99,7 @@ func (s) TestAndMatcherMatch(t *testing.T) {
 			info: iresolver.RPCInfo{
 				Method: "/a/b",
 				Context: grpcutil.WithExtraMetadata(
-					metadata.NewOutgoingContext(context.Background(), metadata.Pairs("t-bin", "123")), metadata.Pairs(
+					metadata.NewOutgoingContext(ctx, metadata.Pairs("t-bin", "123")), metadata.Pairs(
 						"content-type", "fake",
 					)),
 			},
@@ -117,11 +121,11 @@ func (s) TestFractionMatcherMatch(t *testing.T) {
 	const fraction = 500000
 	fm := newFractionMatcher(fraction)
 	defer func() {
-		RandInt63n = grpcrand.Int63n
+		RandInt64n = rand.Int64N
 	}()
 
 	// rand > fraction, should return false.
-	RandInt63n = func(n int64) int64 {
+	RandInt64n = func(int64) int64 {
 		return fraction + 1
 	}
 	if matched := fm.match(); matched {
@@ -129,7 +133,7 @@ func (s) TestFractionMatcherMatch(t *testing.T) {
 	}
 
 	// rand == fraction, should return true.
-	RandInt63n = func(n int64) int64 {
+	RandInt64n = func(int64) int64 {
 		return fraction
 	}
 	if matched := fm.match(); !matched {
@@ -137,7 +141,7 @@ func (s) TestFractionMatcherMatch(t *testing.T) {
 	}
 
 	// rand < fraction, should return true.
-	RandInt63n = func(n int64) int64 {
+	RandInt64n = func(int64) int64 {
 		return fraction - 1
 	}
 	if matched := fm.match(); !matched {
@@ -186,6 +190,44 @@ func (s) TestMatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if gotTyp, gotMatched := match(tt.domain, tt.host); gotTyp != tt.wantTyp || gotMatched != tt.wantMatched {
 				t.Errorf("match() = %v, %v, want %v, %v", gotTyp, gotMatched, tt.wantTyp, tt.wantMatched)
+			}
+		})
+	}
+}
+
+func (s) TestFindBestMatchingVirtualHost(t *testing.T) {
+	var (
+		oneExactMatch     = &VirtualHost{Domains: []string{"foo.bar.com"}}
+		oneSuffixMatch    = &VirtualHost{Domains: []string{"*.bar.com"}}
+		onePrefixMatch    = &VirtualHost{Domains: []string{"foo.bar.*"}}
+		oneUniversalMatch = &VirtualHost{Domains: []string{"*"}}
+		longExactMatch    = &VirtualHost{Domains: []string{"v2.foo.bar.com"}}
+		multipleMatch     = &VirtualHost{Domains: []string{"pi.foo.bar.com", "314.*", "*.159"}}
+		vhs               = []*VirtualHost{oneExactMatch, oneSuffixMatch, onePrefixMatch, oneUniversalMatch, longExactMatch, multipleMatch}
+	)
+
+	tests := []struct {
+		name   string
+		host   string
+		vHosts []*VirtualHost
+		want   *VirtualHost
+	}{
+		{name: "exact-match", host: "foo.bar.com", vHosts: vhs, want: oneExactMatch},
+		{name: "suffix-match", host: "123.bar.com", vHosts: vhs, want: oneSuffixMatch},
+		{name: "prefix-match", host: "foo.bar.org", vHosts: vhs, want: onePrefixMatch},
+		{name: "universal-match", host: "abc.123", vHosts: vhs, want: oneUniversalMatch},
+		{name: "long-exact-match", host: "v2.foo.bar.com", vHosts: vhs, want: longExactMatch},
+		// Matches suffix "*.bar.com" and exact "pi.foo.bar.com". Takes exact.
+		{name: "multiple-match-exact", host: "pi.foo.bar.com", vHosts: vhs, want: multipleMatch},
+		// Matches suffix "*.159" and prefix "foo.bar.*". Takes suffix.
+		{name: "multiple-match-suffix", host: "foo.bar.159", vHosts: vhs, want: multipleMatch},
+		// Matches suffix "*.bar.com" and prefix "314.*". Takes suffix.
+		{name: "multiple-match-prefix", host: "314.bar.com", vHosts: vhs, want: oneSuffixMatch},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := FindBestMatchingVirtualHost(tt.host, tt.vHosts); !cmp.Equal(got, tt.want, cmp.Comparer(proto.Equal)) {
+				t.Errorf("FindBestMatchingxdsclient.VirtualHost() = %v, want %v", got, tt.want)
 			}
 		})
 	}

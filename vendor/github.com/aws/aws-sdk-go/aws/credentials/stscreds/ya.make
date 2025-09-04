@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.46.7)
+
 SRCS(
     assume_role_provider.go
     web_identity_provider.go

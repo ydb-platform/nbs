@@ -3,9 +3,9 @@
 #include "yql_s3_provider.h"
 #include <contrib/ydb/library/yql/providers/common/http_gateway/yql_http_gateway.h>
 
-#include <contrib/ydb/library/yql/core/yql_graph_transformer.h>
-#include <contrib/ydb/library/yql/providers/common/transform/yql_exec.h>
-#include <contrib/ydb/library/yql/providers/common/transform/yql_visit.h>
+#include <yql/essentials/core/yql_graph_transformer.h>
+#include <yql/essentials/providers/common/transform/yql_exec.h>
+#include <yql/essentials/providers/common/transform/yql_visit.h>
 
 #include <util/generic/ptr.h>
 
@@ -18,9 +18,11 @@ THolder<TExecTransformerBase> CreateS3DataSinkExecTransformer(TS3State::TPtr sta
 
 THolder<IGraphTransformer> CreateS3LogicalOptProposalTransformer(TS3State::TPtr state);
 THolder<IGraphTransformer> CreateS3SourceCallableExecutionTransformer(TS3State::TPtr state);
-THolder<IGraphTransformer> CreateS3IODiscoveryTransformer(TS3State::TPtr state, IHTTPGateway::TPtr gateway);
+THolder<IGraphTransformer> CreateS3IODiscoveryTransformer(TS3State::TPtr state);
 THolder<IGraphTransformer> CreateS3PhysicalOptProposalTransformer(TS3State::TPtr state);
 
 TExprNode::TPtr ExtractFormat(TExprNode::TListType& settings);
+
+bool UseBlocksSink(TStringBuf format, const TExprNode::TListType& keys, const TStructExprType* outputType, TS3Configuration::TPtr configuration, TString& error);
 
 } // namespace NYql

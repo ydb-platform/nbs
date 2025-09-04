@@ -153,7 +153,7 @@ func main() {
 	b = controlRegsRegex.ReplaceAll(b, []byte("_ [0]uint64"))
 
 	// Remove fields that are added by glibc
-	// Note that this is unstable as the identifers are private.
+	// Note that this is unstable as the identifiers are private.
 	removeFieldsRegex := regexp.MustCompile(`X__glibc\S*`)
 	b = removeFieldsRegex.ReplaceAll(b, []byte("_"))
 
@@ -185,6 +185,15 @@ func main() {
 		b = bytes.Replace(b, s, newNames, 1)
 	}
 
+	// Convert []int8 to []byte in PtpPinDesc
+	ptpBytesRegex := regexp.MustCompile(`(Name)(\s+)\[(\d+)\]u?int8`)
+	ptpIoctlType := regexp.MustCompile(`PtpPinDesc\s+struct {[^}]*}`)
+	ptpStructs := ptpIoctlType.FindAll(b, -1)
+	for _, s := range ptpStructs {
+		newNames := ptpBytesRegex.ReplaceAll(s, []byte("$1$2[$3]byte"))
+		b = bytes.Replace(b, s, newNames, 1)
+	}
+
 	// Convert []int8 to []byte in ctl_info ioctl interface
 	convertCtlInfoName := regexp.MustCompile(`(Name)(\s+)\[(\d+)\]int8`)
 	ctlInfoType := regexp.MustCompile(`type CtlInfo struct {[^}]*}`)
@@ -201,6 +210,20 @@ func main() {
 	// Remove spare fields (e.g. in Statx_t)
 	spareFieldsRegex := regexp.MustCompile(`X__spare\S*`)
 	b = spareFieldsRegex.ReplaceAll(b, []byte("_"))
+
+	// Rename chunk_size field in XDPUmemReg.
+	// When the struct was originally added (CL 136695) the only
+	// field with a prefix was chunk_size, so cgo rewrote the
+	// field to Size. Later Linux added a tx_metadata_len field,
+	// so cgo left chunk_size as Chunk_size (CL 577975).
+	// Go back to Size so that packages like gvisor don't have
+	// to adjust.
+	xdpUmemRegType := regexp.MustCompile(`type XDPUmemReg struct {[^}]*}`)
+	xdpUmemRegStructs := xdpUmemRegType.FindAll(b, -1)
+	for _, s := range xdpUmemRegStructs {
+		newName := bytes.Replace(s, []byte("Chunk_size"), []byte("Size"), 1)
+		b = bytes.Replace(b, s, newName, 1)
+	}
 
 	// Remove cgo padding fields
 	removePaddingFieldsRegex := regexp.MustCompile(`Pad_cgo_\d+`)

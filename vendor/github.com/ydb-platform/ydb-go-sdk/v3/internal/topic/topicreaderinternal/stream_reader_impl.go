@@ -9,44 +9,54 @@ import (
 	"math/big"
 	"reflect"
 	"runtime/pprof"
+	"sync/atomic"
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/background"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xatomic"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawydb"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/operation"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topic/topicreadercommon"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/tx"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
+	"github.com/ydb-platform/ydb-go-sdk/v3/retry"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
 var (
-	PublicErrCommitSessionToExpiredSession = xerrors.Wrap(errors.New("ydb: commit to expired session"))
-
-	errPartitionSessionStoppedByServer = xerrors.Wrap(errors.New("ydb: topic partition session stopped by server"))
-	errCommitWithNilPartitionSession   = xerrors.Wrap(errors.New("ydb: commit with nil partition session"))
+	errCommitWithNilPartitionSession = xerrors.Wrap(errors.New("ydb: commit with nil partition session"))
+	errUnexpectedEmptyConsumerName   = xerrors.Wrap(errors.New("ydb: create ydb reader with empty consumer name. Set one of: consumer name or option WithReaderWithoutConsumer")) //nolint:lll
+	errCantCommitWithoutConsumer     = xerrors.Wrap(errors.New("ydb: reader can't commit messages without consumer"))
+	errBufferSize                    = xerrors.Wrap(errors.New("ydb: buffer of topic reader must be greater than zero, see option topicoptions.WithReaderBufferSizeBytes")) //nolint:lll
+	errTopicSelectorsEmpty           = xerrors.Wrap(errors.New("ydb: topic selector for topic reader is empty, see arguments on topic starts"))                             //nolint:lll
 )
+
+var clientSessionCounter atomic.Int64
 
 type partitionSessionID = rawtopicreader.PartitionSessionID
 
 type topicStreamReaderImpl struct {
 	cfg    topicStreamReaderConfig
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx
 	cancel context.CancelFunc
 
+	topicClient         TopicClient
 	freeBytes           chan int
-	restBufferSizeBytes xatomic.Int64
-	sessionController   partitionSessionStorage
+	restBufferSizeBytes atomic.Int64
+	sessionController   topicreadercommon.PartitionSessionStorage
 	backgroundWorkers   background.Worker
 
 	rawMessagesFromBuffer chan rawtopicreader.ServerMessage
 
 	batcher   *batcher
-	committer *committer
+	committer *topicreadercommon.Committer
 
-	stream           RawTopicReaderStream
+	stream           topicreadercommon.RawTopicReaderStream
 	readConnectionID string
 	readerID         int64
 
@@ -59,57 +69,60 @@ type topicStreamReaderImpl struct {
 type topicStreamReaderConfig struct {
 	CommitterBatchTimeLag           time.Duration
 	CommitterBatchCounterTrigger    int
-	BaseContext                     context.Context
+	BaseContext                     context.Context //nolint:containedctx
 	BufferSizeProtoBytes            int
 	Cred                            credentials.Credentials
 	CredUpdateInterval              time.Duration
 	Consumer                        string
-	ReadSelectors                   []*PublicReadSelector
+	ReadWithoutConsumer             bool
+	ReadSelectors                   []*topicreadercommon.PublicReadSelector
 	Trace                           *trace.Topic
 	GetPartitionStartOffsetCallback PublicGetPartitionStartOffsetFunc
-	CommitMode                      PublicCommitMode
-	Decoders                        decoderMap
+	CommitMode                      topicreadercommon.PublicCommitMode
+	Decoders                        topicreadercommon.DecoderMap
+	EnableSplitMergeSupport         bool
 }
 
 func newTopicStreamReaderConfig() topicStreamReaderConfig {
 	return topicStreamReaderConfig{
-		BaseContext:           context.Background(),
-		BufferSizeProtoBytes:  1024 * 1024,
-		Cred:                  credentials.NewAnonymousCredentials(),
-		CredUpdateInterval:    time.Hour,
-		CommitMode:            CommitModeAsync,
-		CommitterBatchTimeLag: time.Second,
-		Decoders:              newDecoderMap(),
-		Trace:                 &trace.Topic{},
+		BaseContext:             context.Background(),
+		BufferSizeProtoBytes:    topicreadercommon.DefaultBufferSize,
+		Cred:                    credentials.NewAnonymousCredentials(),
+		CredUpdateInterval:      time.Hour,
+		CommitMode:              topicreadercommon.CommitModeAsync,
+		CommitterBatchTimeLag:   time.Second,
+		Decoders:                topicreadercommon.NewDecoderMap(),
+		Trace:                   &trace.Topic{},
+		EnableSplitMergeSupport: true,
 	}
 }
 
-func (cfg *topicStreamReaderConfig) initMessage() *rawtopicreader.InitRequest {
-	res := &rawtopicreader.InitRequest{
-		Consumer: cfg.Consumer,
+func (cfg *topicStreamReaderConfig) Validate() []error {
+	var validateErrors []error
+
+	if cfg.Consumer != "" && cfg.ReadWithoutConsumer {
+		validateErrors = append(validateErrors, errSetConsumerAndNoConsumer)
+	}
+	if cfg.Consumer == "" && !cfg.ReadWithoutConsumer {
+		validateErrors = append(validateErrors, errUnexpectedEmptyConsumerName)
+	}
+	if cfg.ReadWithoutConsumer && cfg.CommitMode != topicreadercommon.CommitModeNone {
+		validateErrors = append(validateErrors, errCantCommitWithoutConsumer)
+	}
+	if cfg.BufferSizeProtoBytes <= 0 {
+		validateErrors = append(validateErrors, errBufferSize)
+	}
+	if len(cfg.ReadSelectors) == 0 {
+		validateErrors = append(validateErrors, errTopicSelectorsEmpty)
 	}
 
-	res.TopicsReadSettings = make([]rawtopicreader.TopicReadSettings, len(cfg.ReadSelectors))
-	for i, selector := range cfg.ReadSelectors {
-		settings := &res.TopicsReadSettings[i]
-		settings.Path = selector.Path
-		settings.PartitionsID = selector.Partitions
-		if !selector.ReadFrom.IsZero() {
-			settings.ReadFrom.HasValue = true
-			settings.ReadFrom.Value = selector.ReadFrom
-		}
-		if selector.MaxTimeLag != 0 {
-			settings.MaxLag.HasValue = true
-			settings.MaxLag.Value = selector.MaxTimeLag
-		}
-	}
-
-	return res
+	return validateErrors
 }
 
 func newTopicStreamReader(
+	client TopicClient,
 	readerID int64,
-	stream RawTopicReaderStream,
+	stream topicreadercommon.RawTopicReaderStream,
 	cfg topicStreamReaderConfig, //nolint:gocritic
 ) (_ *topicStreamReaderImpl, err error) {
 	defer func() {
@@ -118,11 +131,11 @@ func newTopicStreamReader(
 		}
 	}()
 
-	reader := newTopicStreamReaderStopped(readerID, stream, cfg)
+	reader := newTopicStreamReaderStopped(client, readerID, stream, cfg)
 	if err = reader.initSession(); err != nil {
 		return nil, err
 	}
-	if err = reader.startLoops(); err != nil {
+	if err = reader.startBackgroundWorkers(); err != nil {
 		return nil, err
 	}
 
@@ -130,8 +143,9 @@ func newTopicStreamReader(
 }
 
 func newTopicStreamReaderStopped(
+	client TopicClient,
 	readerID int64,
-	stream RawTopicReaderStream,
+	stream topicreadercommon.RawTopicReaderStream,
 	cfg topicStreamReaderConfig, //nolint:gocritic
 ) *topicStreamReaderImpl {
 	labeledContext := pprof.WithLabels(cfg.BaseContext, pprof.Labels("base-context", "topic-stream-reader"))
@@ -145,21 +159,23 @@ func newTopicStreamReaderStopped(
 	res := &topicStreamReaderImpl{
 		cfg:                   cfg,
 		ctx:                   stopPump,
+		topicClient:           client,
 		freeBytes:             make(chan int, 1),
-		stream:                &syncedStream{stream: stream},
+		stream:                topicreadercommon.NewSyncedStream(stream),
 		cancel:                cancel,
 		batcher:               newBatcher(),
-		backgroundWorkers:     *background.NewWorker(stopPump),
 		readConnectionID:      "preinitID-" + readerConnectionID.String(),
 		readerID:              readerID,
 		rawMessagesFromBuffer: make(chan rawtopicreader.ServerMessage, 1),
 	}
 
-	res.committer = newCommitter(cfg.Trace, labeledContext, cfg.CommitMode, res.send)
+	res.backgroundWorkers = *background.NewWorker(stopPump, "topic-reader-stream-background")
+
+	res.committer = topicreadercommon.NewCommitterStopped(cfg.Trace, labeledContext, cfg.CommitMode, res.send)
 	res.committer.BufferTimeLagTrigger = cfg.CommitterBatchTimeLag
 	res.committer.BufferCountTrigger = cfg.CommitterBatchCounterTrigger
-	res.sessionController.init()
 	res.freeBytes <- cfg.BufferSizeProtoBytes
+
 	return res
 }
 
@@ -167,33 +183,200 @@ func (r *topicStreamReaderImpl) WaitInit(_ context.Context) error {
 	if !r.started {
 		return errors.New("not started: can be started only after initialize from constructor")
 	}
+
 	return nil
+}
+
+func (r *topicStreamReaderImpl) TopicOnReaderStart(consumer string, err error) {
+	logCtx := r.cfg.BaseContext
+	trace.TopicOnReaderStart(r.cfg.Trace, &logCtx, r.readerID, consumer, err)
+}
+
+func (r *topicStreamReaderImpl) PopMessagesBatchTx(
+	ctx context.Context,
+	tx tx.Transaction,
+	opts ReadMessageBatchOptions,
+) (_ *topicreadercommon.PublicBatch, resErr error) {
+	defer func() {
+		logCtx := r.cfg.BaseContext
+		trace.TopicOnReaderStreamPopBatchTx(
+			r.cfg.Trace,
+			&logCtx,
+			r.readerID,
+			r.readConnectionID,
+			tx.SessionID(),
+			tx,
+		)(resErr)
+	}()
+
+	batch, err := r.ReadMessageBatch(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = r.commitWithTransaction(ctx, tx, batch); err == nil {
+		return batch, nil
+	}
+
+	return nil, err
+}
+
+func (r *topicStreamReaderImpl) commitWithTransaction(
+	ctx context.Context,
+	tx tx.Transaction,
+	batch *topicreadercommon.PublicBatch,
+) error {
+	if err := tx.UnLazy(ctx); err != nil {
+		return fmt.Errorf("ydb: failed to materialize transaction: %w", err)
+	}
+
+	req := r.createUpdateOffsetRequest(ctx, batch, tx)
+	updateOffsetInTransactionErr := retry.Retry(ctx, func(ctx context.Context) (err error) {
+		defer func() {
+			logCtx := r.cfg.BaseContext
+			trace.TopicOnReaderUpdateOffsetsInTransaction(
+				r.cfg.Trace,
+				&logCtx,
+				r.readerID,
+				r.readConnectionID,
+				tx.SessionID(),
+				tx,
+			)
+		}()
+
+		err = r.topicClient.UpdateOffsetsInTransaction(ctx, req)
+
+		return err
+	})
+	if updateOffsetInTransactionErr == nil {
+		r.addOnTransactionCompletedHandler(ctx, tx, batch, updateOffsetInTransactionErr)
+	} else {
+		_ = retry.Retry(ctx, func(ctx context.Context) (err error) {
+			defer func() {
+				logCtx := r.cfg.BaseContext
+				trace.TopicOnReaderTransactionRollback(
+					r.cfg.Trace,
+					&logCtx,
+					r.readerID,
+					r.readConnectionID,
+					tx.SessionID(),
+					tx,
+				)(err)
+			}()
+
+			return tx.Rollback(ctx)
+		})
+
+		_ = r.CloseWithError(xcontext.ValueOnly(ctx), xerrors.WithStackTrace(xerrors.Retryable(
+			fmt.Errorf("ydb: failed add topic offsets in transaction: %w", updateOffsetInTransactionErr),
+		)))
+
+		return updateOffsetInTransactionErr
+	}
+
+	return nil
+}
+
+func (r *topicStreamReaderImpl) addOnTransactionCompletedHandler(
+	ctx context.Context,
+	tx tx.Transaction,
+	batch *topicreadercommon.PublicBatch,
+	updateOffesetInTransactionErr error,
+) {
+	commitRange := topicreadercommon.GetCommitRange(batch)
+	tx.OnCompleted(func(transactionResult error) {
+		defer func() {
+			logCtx := r.cfg.BaseContext
+			trace.TopicOnReaderTransactionCompleted(
+				r.cfg.Trace,
+				&logCtx,
+				r.readerID,
+				r.readConnectionID,
+				tx.SessionID(),
+				tx,
+				transactionResult,
+			)
+		}()
+
+		if transactionResult == nil {
+			topicreadercommon.BatchGetPartitionSession(batch).SetCommittedOffsetForward(commitRange.CommitOffsetEnd)
+		} else {
+			_ = r.CloseWithError(xcontext.ValueOnly(ctx), xerrors.WithStackTrace(xerrors.Retryable(
+				fmt.Errorf("ydb: failed batch commit because transaction doesn't committed: %w", updateOffesetInTransactionErr),
+			)))
+		}
+	})
+}
+
+func (r *topicStreamReaderImpl) createUpdateOffsetRequest(
+	ctx context.Context,
+	batch *topicreadercommon.PublicBatch,
+	tx tx.Transaction,
+) *rawtopic.UpdateOffsetsInTransactionRequest {
+	commitRange := topicreadercommon.GetCommitRange(batch)
+
+	return &rawtopic.UpdateOffsetsInTransactionRequest{
+		OperationParams: rawydb.NewRawOperationParamsFromProto(operation.Params(ctx, 0, 0, operation.ModeSync)),
+		Tx: rawtopiccommon.TransactionIdentity{
+			ID:      tx.ID(),
+			Session: tx.SessionID(),
+		},
+		Topics: []rawtopic.UpdateOffsetsInTransactionRequest_TopicOffsets{
+			{
+				Path: batch.Topic(),
+				Partitions: []rawtopic.UpdateOffsetsInTransactionRequest_PartitionOffsets{
+					{
+						PartitionID: batch.PartitionID(),
+						PartitionOffsets: []rawtopiccommon.OffsetRange{
+							{
+								Start: commitRange.CommitOffsetStart,
+								End:   commitRange.CommitOffsetEnd,
+							},
+						},
+					},
+				},
+			},
+		},
+		Consumer: r.cfg.Consumer,
+	}
 }
 
 func (r *topicStreamReaderImpl) ReadMessageBatch(
 	ctx context.Context,
 	opts ReadMessageBatchOptions,
-) (batch *PublicBatch, err error) {
-	onDone := trace.TopicOnReaderReadMessages(
-		r.cfg.Trace,
-		ctx,
-		opts.MinCount,
-		opts.MaxCount,
-		r.getRestBufferBytes(),
-	)
+) (batch *topicreadercommon.PublicBatch, err error) {
 	defer func() {
+		traceFunc := func(
+			messagesCount int,
+			topic string,
+			partitionID int64,
+			partitionSessionID int64,
+			offsetStart int64,
+			offsetEnd int64,
+			freeBufferCapacity int,
+		) {
+			mergeCtx := xcontext.MergeContexts(ctx, r.cfg.BaseContext)
+			onDone := trace.TopicOnReaderReadMessages(
+				r.cfg.Trace,
+				&mergeCtx,
+				opts.MinCount,
+				opts.MaxCount,
+				r.getRestBufferBytes(),
+			)
+			onDone(messagesCount, topic, partitionID, partitionSessionID, offsetStart, offsetEnd, freeBufferCapacity, nil)
+		}
 		if batch == nil {
-			onDone(0, "", -1, -1, -1, -1, r.getRestBufferBytes(), err)
+			traceFunc(0, "", -1, -1, -1, -1, r.getRestBufferBytes())
 		} else {
-			onDone(
+			commitRange := topicreadercommon.GetCommitRange(batch)
+			traceFunc(
 				len(batch.Messages),
 				batch.Topic(),
 				batch.PartitionID(),
-				batch.partitionSession().partitionSessionID.ToInt64(),
-				batch.commitRange.commitOffsetStart.ToInt64(),
-				batch.commitRange.commitOffsetEnd.ToInt64(),
+				topicreadercommon.BatchGetPartitionSession(batch).StreamPartitionSessionID.ToInt64(),
+				commitRange.CommitOffsetStart.ToInt64(),
+				commitRange.CommitOffsetEnd.ToInt64(),
 				r.getRestBufferBytes(),
-				err,
 			)
 		}
 	}()
@@ -214,7 +397,7 @@ func (r *topicStreamReaderImpl) ReadMessageBatch(
 func (r *topicStreamReaderImpl) consumeMessagesUntilBatch(
 	ctx context.Context,
 	opts ReadMessageBatchOptions,
-) (*PublicBatch, error) {
+) (*topicreadercommon.PublicBatch, error) {
 	for {
 		item, err := r.batcher.Pop(ctx, opts.batcherGetOptions)
 		if err != nil {
@@ -263,6 +446,7 @@ func (r *topicStreamReaderImpl) consumeRawMessageFromBuffer(ctx context.Context)
 		case *rawtopicreader.StartPartitionSessionRequest:
 			if err := r.onStartPartitionSessionRequestFromBuffer(m); err != nil {
 				_ = r.CloseWithError(ctx, err)
+
 				return
 			}
 		case *rawtopicreader.StopPartitionSessionRequest:
@@ -270,6 +454,7 @@ func (r *topicStreamReaderImpl) consumeRawMessageFromBuffer(ctx context.Context)
 				_ = r.CloseWithError(ctx, xerrors.WithStackTrace(
 					fmt.Errorf("ydb: unexpected error on stop partition handler: %w", err),
 				))
+
 				return
 			}
 		case *rawtopicreader.PartitionSessionStatusResponse:
@@ -289,14 +474,13 @@ func (r *topicStreamReaderImpl) onStopPartitionSessionRequestFromBuffer(
 	if err != nil {
 		return err
 	}
-
 	onDone := trace.TopicOnReaderPartitionReadStopResponse(
 		r.cfg.Trace,
 		r.readConnectionID,
 		session.Context(),
 		session.Topic,
 		session.PartitionID,
-		session.partitionSessionID.ToInt64(),
+		session.StreamPartitionSessionID.ToInt64(),
 		msg.CommittedOffset.ToInt64(),
 		msg.Graceful,
 	)
@@ -307,14 +491,14 @@ func (r *topicStreamReaderImpl) onStopPartitionSessionRequestFromBuffer(
 	if msg.Graceful {
 		session.Close()
 		resp := &rawtopicreader.StopPartitionSessionResponse{
-			PartitionSessionID: session.partitionSessionID,
+			PartitionSessionID: session.StreamPartitionSessionID,
 		}
 		if err = r.send(resp); err != nil {
 			return err
 		}
 	}
 
-	if _, err = r.sessionController.Remove(session.partitionSessionID); err != nil {
+	if _, err = r.sessionController.Remove(session.StreamPartitionSessionID); err != nil {
 		if msg.Graceful {
 			return err
 		} else { //nolint:revive,staticcheck
@@ -338,57 +522,61 @@ func (r *topicStreamReaderImpl) onPartitionSessionStatusResponseFromBuffer(
 func (r *topicStreamReaderImpl) onUpdateTokenResponse(m *rawtopicreader.UpdateTokenResponse) {
 }
 
-func (r *topicStreamReaderImpl) Commit(ctx context.Context, commitRange commitRange) (err error) {
+func (r *topicStreamReaderImpl) Commit(ctx context.Context, commitRange topicreadercommon.CommitRange) (err error) {
 	defer func() {
-		if errors.Is(err, PublicErrCommitSessionToExpiredSession) && r.cfg.CommitMode == CommitModeAsync {
+		if errors.Is(
+			err,
+			topicreadercommon.ErrPublicCommitSessionToExpiredSession,
+		) && r.cfg.CommitMode == topicreadercommon.CommitModeAsync {
 			err = nil
 		}
 	}()
 
-	if commitRange.partitionSession == nil {
+	if commitRange.PartitionSession == nil {
 		return xerrors.WithStackTrace(errCommitWithNilPartitionSession)
 	}
 
-	session := commitRange.partitionSession
-	onDone := trace.TopicOnReaderCommit(
-		r.cfg.Trace,
-		ctx,
-		session.Topic,
-		session.PartitionID,
-		session.partitionSessionID.ToInt64(),
-		commitRange.commitOffsetStart.ToInt64(),
-		commitRange.commitOffsetEnd.ToInt64(),
-	)
 	defer func() {
-		onDone(err)
+		session := commitRange.PartitionSession
+		mergeCtx := xcontext.MergeContexts(ctx, r.cfg.BaseContext)
+		trace.TopicOnReaderCommit(
+			r.cfg.Trace,
+			&mergeCtx,
+			session.Topic,
+			session.PartitionID,
+			session.StreamPartitionSessionID.ToInt64(),
+			commitRange.CommitOffsetStart.ToInt64(),
+			commitRange.CommitOffsetEnd.ToInt64(),
+		)
 	}()
 
 	if err = r.checkCommitRange(commitRange); err != nil {
 		return err
 	}
+
 	return r.committer.Commit(ctx, commitRange)
 }
 
-func (r *topicStreamReaderImpl) checkCommitRange(commitRange commitRange) error {
-	if r.cfg.CommitMode == CommitModeNone {
-		return ErrCommitDisabled
+func (r *topicStreamReaderImpl) checkCommitRange(commitRange topicreadercommon.CommitRange) error {
+	if r.cfg.CommitMode == topicreadercommon.CommitModeNone {
+		return topicreadercommon.ErrCommitDisabled
 	}
-	session := commitRange.partitionSession
+	session := commitRange.PartitionSession
 
 	if session == nil {
 		return xerrors.WithStackTrace(errCommitWithNilPartitionSession)
 	}
 
 	if session.Context().Err() != nil {
-		return xerrors.WithStackTrace(fmt.Errorf("ydb: commit error: %w", errPartitionSessionStoppedByServer))
+		return xerrors.WithStackTrace(topicreadercommon.ErrPublicCommitSessionToExpiredSession)
 	}
 
-	ownSession, err := r.sessionController.Get(session.partitionSessionID)
+	ownSession, err := r.sessionController.Get(session.StreamPartitionSessionID)
 	if err != nil || session != ownSession {
-		return xerrors.WithStackTrace(PublicErrCommitSessionToExpiredSession)
+		return xerrors.WithStackTrace(topicreadercommon.ErrPublicCommitSessionToExpiredSession)
 	}
-	if session.committedOffset() != commitRange.commitOffsetStart && r.cfg.CommitMode == CommitModeSync {
-		return ErrWrongCommitOrderInSyncMode
+	if session.CommittedOffset() != commitRange.CommitOffsetStart && r.cfg.CommitMode == topicreadercommon.CommitModeSync {
+		return topicreadercommon.ErrWrongCommitOrderInSyncMode
 	}
 
 	return nil
@@ -397,16 +585,21 @@ func (r *topicStreamReaderImpl) checkCommitRange(commitRange commitRange) error 
 func (r *topicStreamReaderImpl) send(msg rawtopicreader.ClientMessage) error {
 	err := r.stream.Send(msg)
 	if err != nil {
-		trace.TopicOnReaderError(r.cfg.Trace, r.readConnectionID, err)
+		logCtx := r.cfg.BaseContext
+		trace.TopicOnReaderError(r.cfg.Trace, &logCtx, r.readConnectionID, err)
+
 		_ = r.CloseWithError(r.ctx, err)
 	}
+
 	return err
 }
 
-func (r *topicStreamReaderImpl) startLoops() error {
+func (r *topicStreamReaderImpl) startBackgroundWorkers() error {
 	if err := r.setStarted(); err != nil {
 		return err
 	}
+
+	r.committer.Start()
 
 	r.backgroundWorkers.Start("readMessagesLoop", r.readMessagesLoop)
 	r.backgroundWorkers.Start("dataRequestLoop", r.dataRequestLoop)
@@ -426,14 +619,16 @@ func (r *topicStreamReaderImpl) setStarted() error {
 	}
 
 	r.started = true
+
 	return nil
 }
 
 func (r *topicStreamReaderImpl) initSession() (err error) {
-	initMessage := r.cfg.initMessage()
+	initMessage := topicreadercommon.CreateInitMessage(r.cfg.Consumer, r.cfg.EnableSplitMergeSupport, r.cfg.ReadSelectors)
 
-	onDone := trace.TopicOnReaderInit(r.cfg.Trace, r.readConnectionID, initMessage)
 	defer func() {
+		logCtx := r.cfg.BaseContext
+		onDone := trace.TopicOnReaderInit(r.cfg.Trace, &logCtx, r.readConnectionID, initMessage)
 		onDone(r.readConnectionID, err)
 	}()
 
@@ -447,6 +642,8 @@ func (r *topicStreamReaderImpl) initSession() (err error) {
 	}
 
 	if status := resp.StatusData(); !status.Status.IsSuccess() {
+		// Need wrap status to common ydb operational error
+		// https://github.com/ydb-platform/ydb-go-sdk/issues/1361
 		return xerrors.WithStackTrace(fmt.Errorf("bad status on initial error: %v (%v)", status.Status, status.Issues))
 	}
 
@@ -465,6 +662,7 @@ func (r *topicStreamReaderImpl) addRestBufferBytes(delta int) int {
 	if val <= 0 {
 		r.batcher.IgnoreMinRestrictionsOnNextPop()
 	}
+
 	return int(val)
 }
 
@@ -472,6 +670,7 @@ func (r *topicStreamReaderImpl) getRestBufferBytes() int {
 	return int(r.restBufferSizeBytes.Load())
 }
 
+//nolint:funlen
 func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
 	ctx, cancel := xcontext.WithCancel(ctx)
 	defer cancel()
@@ -479,14 +678,16 @@ func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
 	for {
 		serverMessage, err := r.stream.Recv()
 		if err != nil {
-			trace.TopicOnReaderError(r.cfg.Trace, r.readConnectionID, err)
+			logCtx := r.cfg.BaseContext
+			trace.TopicOnReaderError(r.cfg.Trace, &logCtx, r.readConnectionID, err)
 			if errors.Is(err, rawtopicreader.ErrUnexpectedMessageType) {
-				trace.TopicOnReaderUnknownGrpcMessage(r.cfg.Trace, r.readConnectionID, err)
+				trace.TopicOnReaderUnknownGrpcMessage(r.cfg.Trace, &logCtx, r.readConnectionID, err)
 				// new messages can be added to protocol, it must be backward compatible to old programs
 				// and skip message is safe
 				continue
 			}
 			_ = r.CloseWithError(ctx, err)
+
 			return
 		}
 
@@ -507,30 +708,41 @@ func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
 		case *rawtopicreader.StartPartitionSessionRequest:
 			if err = r.onStartPartitionSessionRequest(m); err != nil {
 				_ = r.CloseWithError(ctx, err)
+
 				return
 			}
 		case *rawtopicreader.StopPartitionSessionRequest:
 			if err = r.onStopPartitionSessionRequest(m); err != nil {
 				_ = r.CloseWithError(ctx, err)
+
 				return
+			}
+		case *rawtopicreader.EndPartitionSession:
+			if err = r.onEndPartitionSession(m); err != nil {
+				_ = r.CloseWithError(ctx, err)
 			}
 		case *rawtopicreader.CommitOffsetResponse:
 			if err = r.onCommitResponse(m); err != nil {
 				_ = r.CloseWithError(ctx, err)
+
 				return
 			}
 
 		case *rawtopicreader.UpdateTokenResponse:
 			r.onUpdateTokenResponse(m)
 		default:
-			trace.TopicOnReaderUnknownGrpcMessage(
-				r.cfg.Trace,
-				r.readConnectionID,
-				xerrors.WithStackTrace(xerrors.Wrap(fmt.Errorf(
-					"ydb: unexpected message type in stream reader: %v",
-					reflect.TypeOf(serverMessage),
-				))),
-			)
+			{
+				logCtx := r.cfg.BaseContext
+				trace.TopicOnReaderUnknownGrpcMessage(
+					r.cfg.Trace,
+					&logCtx,
+					r.readConnectionID,
+					xerrors.WithStackTrace(xerrors.Wrap(fmt.Errorf(
+						"ydb: unexpected message type in stream reader: %v",
+						reflect.TypeOf(serverMessage),
+					))),
+				)
+			}
 		}
 	}
 }
@@ -546,6 +758,7 @@ func (r *topicStreamReaderImpl) dataRequestLoop(ctx context.Context) {
 		select {
 		case <-doneChan:
 			_ = r.CloseWithError(ctx, r.ctx.Err())
+
 			return
 
 		case free := <-r.freeBytes:
@@ -563,7 +776,8 @@ func (r *topicStreamReaderImpl) dataRequestLoop(ctx context.Context) {
 			}
 
 			resCapacity := r.addRestBufferBytes(sum)
-			trace.TopicOnReaderSentDataRequest(r.cfg.Trace, r.readConnectionID, sum, resCapacity)
+			logCtx := r.cfg.BaseContext
+			trace.TopicOnReaderSentDataRequest(r.cfg.Trace, &logCtx, r.readConnectionID, sum, resCapacity)
 			if err := r.sendDataRequest(sum); err != nil {
 				return
 			}
@@ -575,10 +789,10 @@ func (r *topicStreamReaderImpl) sendDataRequest(size int) error {
 	return r.send(&rawtopicreader.ReadRequest{BytesSize: size})
 }
 
-func (r *topicStreamReaderImpl) freeBufferFromMessages(batch *PublicBatch) {
+func (r *topicStreamReaderImpl) freeBufferFromMessages(batch *topicreadercommon.PublicBatch) {
 	size := 0
 	for messageIndex := range batch.Messages {
-		size += batch.Messages[messageIndex].bufferBytesAccount
+		size += topicreadercommon.MessageGetBufferBytesAccount(batch.Messages[messageIndex])
 	}
 	select {
 	case r.freeBytes <- size:
@@ -603,41 +817,14 @@ func (r *topicStreamReaderImpl) updateTokenLoop(ctx context.Context) {
 
 func (r *topicStreamReaderImpl) onReadResponse(msg *rawtopicreader.ReadResponse) (err error) {
 	resCapacity := r.addRestBufferBytes(-msg.BytesSize)
-	onDone := trace.TopicOnReaderReceiveDataResponse(r.cfg.Trace, r.readConnectionID, resCapacity, msg)
 	defer func() {
-		onDone(err)
+		logCtx := r.cfg.BaseContext
+		trace.TopicOnReaderReceiveDataResponse(r.cfg.Trace, &logCtx, r.readConnectionID, resCapacity, msg)
 	}()
 
-	batchesCount := 0
-	for i := range msg.PartitionData {
-		batchesCount += len(msg.PartitionData[i].Batches)
-	}
-
-	var batches []*PublicBatch
-	for pIndex := range msg.PartitionData {
-		p := &msg.PartitionData[pIndex]
-
-		// normal way
-		session, err := r.sessionController.Get(p.PartitionSessionID)
-		if err != nil {
-			return err
-		}
-
-		for bIndex := range p.Batches {
-			if r.ctx.Err() != nil {
-				return r.ctx.Err()
-			}
-
-			batch, err := newBatchFromStream(r.cfg.Decoders, session, p.Batches[bIndex])
-			if err != nil {
-				return err
-			}
-			batches = append(batches, batch)
-		}
-	}
-
-	if err := splitBytesByMessagesInBatches(batches, msg.BytesSize); err != nil {
-		return err
+	batches, err2 := topicreadercommon.ReadRawBatchesToPublicBatches(msg, &r.sessionController, r.cfg.Decoders)
+	if err2 != nil {
+		return err2
 	}
 
 	for i := range batches {
@@ -650,8 +837,10 @@ func (r *topicStreamReaderImpl) onReadResponse(msg *rawtopicreader.ReadResponse)
 }
 
 func (r *topicStreamReaderImpl) CloseWithError(ctx context.Context, reason error) (closeErr error) {
-	onDone := trace.TopicOnReaderClose(r.cfg.Trace, r.readConnectionID, reason)
-	defer onDone(closeErr)
+	defer func() {
+		logCtx := r.cfg.BaseContext
+		trace.TopicOnReaderClose(r.cfg.Trace, &logCtx, r.readConnectionID, reason)
+	}()
 
 	isFirstClose := false
 	r.m.WithLock(func() {
@@ -686,6 +875,7 @@ func (r *topicStreamReaderImpl) CloseWithError(ctx context.Context, reason error
 	if closeErr == nil {
 		closeErr = bgCloseErr
 	}
+
 	return closeErr
 }
 
@@ -696,14 +886,16 @@ func (r *topicStreamReaderImpl) onCommitResponse(msg *rawtopicreader.CommitOffse
 		if err != nil {
 			return fmt.Errorf("ydb: can't found session on commit response: %w", err)
 		}
-		partition.setCommittedOffset(commit.CommittedOffset)
+		partition.SetCommittedOffsetForward(commit.CommittedOffset)
 
+		logCtx := r.cfg.BaseContext
 		trace.TopicOnReaderCommittedNotify(
 			r.cfg.Trace,
+			&logCtx,
 			r.readConnectionID,
 			partition.Topic,
 			partition.PartitionID,
-			partition.partitionSessionID.ToInt64(),
+			partition.StreamPartitionSessionID.ToInt64(),
 			commit.CommittedOffset.ToInt64(),
 		)
 
@@ -714,12 +906,14 @@ func (r *topicStreamReaderImpl) onCommitResponse(msg *rawtopicreader.CommitOffse
 }
 
 func (r *topicStreamReaderImpl) updateToken(ctx context.Context) {
+	logCtx := r.cfg.BaseContext
 	onUpdateToken := trace.TopicOnReaderUpdateToken(
 		r.cfg.Trace,
+		&logCtx,
 		r.readConnectionID,
 	)
 	token, err := r.cfg.Cred.Token(ctx)
-	onSent := onUpdateToken(len(token), err)
+	onSent := onUpdateToken(&ctx, len(token), err)
 	if err != nil {
 		return
 	}
@@ -729,18 +923,20 @@ func (r *topicStreamReaderImpl) updateToken(ctx context.Context) {
 }
 
 func (r *topicStreamReaderImpl) onStartPartitionSessionRequest(m *rawtopicreader.StartPartitionSessionRequest) error {
-	session := newPartitionSession(
+	session := topicreadercommon.NewPartitionSession(
 		r.ctx,
 		m.PartitionSession.Path,
 		m.PartitionSession.PartitionID,
 		r.readerID,
 		r.readConnectionID,
 		m.PartitionSession.PartitionSessionID,
+		clientSessionCounter.Add(1),
 		m.CommittedOffset,
 	)
 	if err := r.sessionController.Add(session); err != nil {
 		return err
 	}
+
 	return r.batcher.PushRawMessage(session, m)
 }
 
@@ -752,17 +948,20 @@ func (r *topicStreamReaderImpl) onStartPartitionSessionRequestFromBuffer(
 		return err
 	}
 
-	onDone := trace.TopicOnReaderPartitionReadStartResponse(
-		r.cfg.Trace,
-		r.readConnectionID,
-		session.Context(),
-		session.Topic,
-		session.PartitionID,
-		session.partitionSessionID.ToInt64(),
+	var (
+		ctx    = session.Context()
+		onDone = trace.TopicOnReaderPartitionReadStartResponse(
+			r.cfg.Trace,
+			r.readConnectionID,
+			&ctx,
+			session.Topic,
+			session.PartitionID,
+			session.StreamPartitionSessionID.ToInt64(),
+		)
 	)
 
 	respMessage := &rawtopicreader.StartPartitionSessionResponse{
-		PartitionSessionID: session.partitionSessionID,
+		PartitionSessionID: session.StreamPartitionSessionID,
 	}
 
 	var forceOffset *int64
@@ -788,9 +987,12 @@ func (r *topicStreamReaderImpl) onStartPartitionSessionRequestFromBuffer(
 	}
 
 	respMessage.ReadOffset.FromInt64Pointer(forceOffset)
-	if r.cfg.CommitMode.commitsEnabled() {
+	if r.cfg.CommitMode.CommitsEnabled() {
 		commitOffset = forceOffset
 		respMessage.CommitOffset.FromInt64Pointer(commitOffset)
+	}
+	if forceOffset != nil {
+		session.SetInitialCommitOffset(rawtopiccommon.NewOffset(*forceOffset))
 	}
 
 	return r.send(respMessage)
@@ -802,9 +1004,35 @@ func (r *topicStreamReaderImpl) onStopPartitionSessionRequest(m *rawtopicreader.
 		return err
 	}
 
+	session.SetNoMoreMessages()
 	if !m.Graceful {
 		session.Close()
 	}
 
 	return r.batcher.PushRawMessage(session, m)
+}
+
+func (r *topicStreamReaderImpl) onEndPartitionSession(m *rawtopicreader.EndPartitionSession) error {
+	// need err value in else block
+	//nolint:revive
+	if session, err := r.sessionController.Get(m.PartitionSessionID); err == nil {
+		trace.TopicOnReaderEndPartitionSession(
+			r.cfg.Trace,
+			r.readConnectionID,
+			session.Context(),
+			session.Topic,
+			session.PartitionID,
+			m.PartitionSessionID.ToInt64(),
+			m.AdjacentPartitionIDs,
+			m.ChildPartitionIDs,
+		)
+		session.SetNoMoreMessages()
+		r.batcher.FlushPartitionSession(session)
+
+		return nil
+	} else {
+		return xerrors.Retryable(xerrors.Wrap(fmt.Errorf(
+			"ydb: unknown partition for end partition session: %w", err,
+		)))
+	}
 }

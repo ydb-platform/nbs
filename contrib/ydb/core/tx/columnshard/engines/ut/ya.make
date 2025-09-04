@@ -4,39 +4,36 @@ FORK_SUBTESTS()
 
 SPLIT_FACTOR(60)
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
-    SIZE(LARGE)
-    TAG(ya:fat)
-    REQUIREMENTS(ram:16)
-ELSE()
-    TIMEOUT(600)
-    SIZE(MEDIUM)
-ENDIF()
-
 PEERDIR(
     contrib/libs/apache/arrow
     contrib/ydb/core/base
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
     contrib/ydb/core/tx/columnshard/counters
-    contrib/ydb/library/yql/sql/pg_dummy
-    contrib/ydb/library/yql/core/arrow_kernels/request
+    yql/essentials/sql/pg_dummy
+    yql/essentials/core/arrow_kernels/request
     contrib/ydb/core/testlib/default
+    contrib/ydb/core/tx/columnshard/test_helper
     contrib/ydb/core/tx/columnshard/hooks/abstract
     contrib/ydb/core/tx/columnshard/hooks/testing
 
-    contrib/ydb/library/yql/udfs/common/json2
+    yql/essentials/udfs/common/json2
 )
+
+IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
+    SIZE(LARGE)
+    TAG(ya:fat)
+    REQUIREMENTS(ram:16)
+ELSE()
+    SIZE(MEDIUM)
+ENDIF()
 
 YQL_LAST_ABI_VERSION()
 
 SRCS(
-    ut_insert_table.cpp
-    ut_logs_engine.cpp
     ut_program.cpp
+    ut_script.cpp
     helper.cpp
-    contrib/ydb/core/tx/columnshard/columnshard_ut_common.cpp
 )
 
 END()

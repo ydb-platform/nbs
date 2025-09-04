@@ -7,6 +7,7 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/library/ydb_issue/proto
+    contrib/ydb/library/yql/public/ydb_issue
 )
 
 RESOURCE(

@@ -1,20 +1,102 @@
 #include "kqp_federated_query_helpers.h"
 
 #include <contrib/ydb/library/actors/http/http_proxy.h>
+#include <contrib/ydb/library/yql/providers/common/db_id_async_resolver/database_type.h>
+#include <contrib/ydb/library/yql/providers/pq/gateway/native/yql_pq_gateway.h>
+#include <contrib/ydb/library/yql/providers/s3/proto/sink.pb.h>
 
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/base/feature_flags.h>
+#include <contrib/ydb/core/protos/auth.pb.h>
 #include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/protos/kqp_physical.pb.h>
 
-#include <contrib/ydb/core/fq/libs/actors/database_resolver.h>
-#include <contrib/ydb/core/fq/libs/actors/proxy.h>
+#include <contrib/ydb/core/fq/libs/db_id_async_resolver_impl/database_resolver.h>
 #include <contrib/ydb/core/fq/libs/db_id_async_resolver_impl/db_async_resolver_impl.h>
+#include <contrib/ydb/core/fq/libs/db_id_async_resolver_impl/http_proxy.h>
 #include <contrib/ydb/core/fq/libs/db_id_async_resolver_impl/mdb_endpoint_generator.h>
+#include <contrib/ydb/library/actors/http/http_proxy.h>
+#include <yql/essentials/public/issue/yql_issue_utils.h>
+
+#include <yt/yql/providers/yt/comp_nodes/dq/dq_yt_factory.h>
+#include <yt/yql/providers/yt/gateway/native/yql_yt_native.h>
+#include <yt/yql/providers/yt/lib/yt_download/yt_download.h>
+#include <yt/yql/providers/yt/mkql_dq/yql_yt_dq_transform.h>
 
 #include <util/system/file.h>
 #include <util/stream/file.h>
 
 namespace NKikimr::NKqp {
+
+namespace {
+
+    bool ValidateExternalSink(const NKqpProto::TKqpExternalSink& sink) {
+        if (sink.GetType() != "S3Sink") {
+            return false;
+        }
+
+        NYql::NS3::TSink sinkSettings;
+        sink.GetSettings().UnpackTo(&sinkSettings);
+
+        return sinkSettings.GetAtomicUploadCommit();
+    }
+
+}  // anonymous namespace
+
+    bool CheckNestingDepth(const google::protobuf::Message& message, ui32 maxDepth) {
+        if (!maxDepth) {
+            return false;
+        }
+        --maxDepth;
+
+        const auto* descriptor = message.GetDescriptor();
+        const auto* reflection = message.GetReflection();
+        for (int i = 0; i < descriptor->field_count(); ++i) {
+            const auto* field = descriptor->field(i);
+            if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+                continue;
+            }
+
+            if (field->is_repeated()) {
+                for (int j = 0; j < reflection->FieldSize(message, field); ++j) {
+                    if (!CheckNestingDepth(reflection->GetRepeatedMessage(message, field, j), maxDepth)) {
+                        return false;
+                    }
+                }
+            } else if (reflection->HasField(message, field) && !CheckNestingDepth(reflection->GetMessage(message, field), maxDepth)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    NYql::IYtGateway::TPtr MakeYtGateway(const NMiniKQL::IFunctionRegistry* functionRegistry, const NKikimrConfig::TQueryServiceConfig& queryServiceConfig) {
+        NYql::TYtNativeServices ytServices;
+        ytServices.FunctionRegistry = functionRegistry;
+        ytServices.FileStorage = WithAsync(CreateFileStorage(queryServiceConfig.GetFileStorage(), {MakeYtDownloader(queryServiceConfig.GetFileStorage())}));
+        ytServices.Config = std::make_shared<NYql::TYtGatewayConfig>(queryServiceConfig.GetYt());
+        return CreateYtNativeGateway(ytServices);
+    }
+
+    NMonitoring::TDynamicCounterPtr HttpGatewayGroupCounters(NMonitoring::TDynamicCounterPtr countersRoot) {
+        return GetServiceCounters(countersRoot, "utils")->GetSubgroup("subcomponent", "http_gateway");
+    }
+
+    NYql::IHTTPGateway::TPtr MakeHttpGateway(const NYql::THttpGatewayConfig& httpGatewayConfig, NMonitoring::TDynamicCounterPtr countersRoot) {
+        NMonitoring::TDynamicCounterPtr httpGatewayGroup = HttpGatewayGroupCounters(countersRoot);
+        return NYql::IHTTPGateway::Make(&httpGatewayConfig, httpGatewayGroup);
+    }
+
+    NYql::IPqGateway::TPtr MakePqGateway(const std::shared_ptr<NYdb::TDriver>& driver, const NYql::TPqGatewayConfig& pqGatewayConfig) {
+        NYql::TPqGatewayServices pqServices(
+            *driver,
+            nullptr,
+            nullptr,
+            std::make_shared<NYql::TPqGatewayConfig>(pqGatewayConfig),
+            nullptr);
+        return CreatePqNativeGateway(pqServices);
+    }
 
     NYql::THttpGatewayConfig DefaultHttpGatewayConfig() {
         NYql::THttpGatewayConfig config;
@@ -35,6 +117,11 @@ namespace NKikimr::NKqp {
         return std::make_pair(ToString(host), scheme == "grpcs");
     }
 
+    bool IsValidExternalDataSourceType(const TString& type) {
+        static auto allTypes = NYql::GetAllExternalDataSourceTypes();
+        return allTypes.contains(type);
+    }
+
     // TKqpFederatedQuerySetupFactoryDefault contains network clients and service actors necessary
     // for federated queries. HTTP Gateway (required by S3 provider) is run by default even without
     // explicit configuration. Token Accessor and Connector Client are run only if config is provided.
@@ -45,13 +132,27 @@ namespace NKikimr::NKqp {
         const auto& queryServiceConfig = appConfig.GetQueryServiceConfig();
 
         // Initialize HTTP Gateway
-        TIntrusivePtr<::NMonitoring::TDynamicCounters> httpGatewayGroup = GetServiceCounters(
-            appData->Counters, "utils")->GetSubgroup("subcomponent", "http_gateway");
-
         HttpGatewayConfig = queryServiceConfig.HasHttpGateway() ? queryServiceConfig.GetHttpGateway() : DefaultHttpGatewayConfig();
-        HttpGateway = NYql::IHTTPGateway::Make(&HttpGatewayConfig, httpGatewayGroup);
+        HttpGateway = MakeHttpGateway(HttpGatewayConfig, appData->Counters);
 
         S3GatewayConfig = queryServiceConfig.GetS3();
+
+        SolomonGatewayConfig = queryServiceConfig.GetSolomon();
+        SolomonGateway = NYql::CreateSolomonGateway(SolomonGatewayConfig);
+
+        S3ReadActorFactoryConfig = NYql::NDq::CreateReadActorFactoryConfig(S3GatewayConfig);
+
+        YtGatewayConfig = queryServiceConfig.GetYt();
+        YtGateway = MakeYtGateway(appData->FunctionRegistry, queryServiceConfig);
+        DqTaskTransformFactory = NYql::CreateYtDqTaskTransformFactory(true);
+
+        ActorSystemPtr = std::make_shared<NKikimr::TDeferredActorLogBackend::TAtomicActorSystemPtr>(nullptr);
+        NYdb::TDriverConfig cfg;
+        cfg.SetLog(std::make_unique<NKikimr::TDeferredActorLogBackend>(ActorSystemPtr, NKikimrServices::EServiceKikimr::YDB_SDK));
+        Driver = std::make_shared<NYdb::TDriver>(cfg);
+
+        PqGatewayConfig = NYql::TPqGatewayConfig{};
+        PqGateway = MakePqGateway(Driver, NYql::TPqGatewayConfig{});
 
         // Initialize Token Accessor
         if (appConfig.GetAuthConfig().HasTokenAccessorConfig()) {
@@ -72,7 +173,7 @@ namespace NKikimr::NKqp {
         // Initialize Connector client
         if (queryServiceConfig.HasGeneric()) {
             GenericGatewaysConfig = queryServiceConfig.GetGeneric();
-            ConnectorClient = NYql::NConnector::MakeClientGRPC(GenericGatewaysConfig.GetConnector());
+            ConnectorClient = NYql::NConnector::MakeClientGRPC(GenericGatewaysConfig);
 
             if (queryServiceConfig.HasMdbTransformHost()) {
                 MdbEndpointGenerator = NFq::MakeMdbEndpointGeneratorGeneric(queryServiceConfig.GetMdbTransformHost());
@@ -96,20 +197,36 @@ namespace NKikimr::NKqp {
     }
 
     std::optional<TKqpFederatedQuerySetup> TKqpFederatedQuerySetupFactoryDefault::Make(NActors::TActorSystem* actorSystem) {
+        if (!ActorSystemPtr->load(std::memory_order_relaxed)) {
+            ActorSystemPtr->store(actorSystem, std::memory_order_relaxed);
+        }
+
         auto result = TKqpFederatedQuerySetup{
             HttpGateway,
             ConnectorClient,
             CredentialsFactory,
             nullptr,
             S3GatewayConfig,
-            GenericGatewaysConfig};
+            GenericGatewaysConfig,
+            YtGatewayConfig,
+            YtGateway,
+            SolomonGatewayConfig,
+            SolomonGateway,
+            nullptr,
+            S3ReadActorFactoryConfig,
+            DqTaskTransformFactory,
+            PqGatewayConfig,
+            PqGateway,
+            ActorSystemPtr,
+            Driver};
 
         // Init DatabaseAsyncResolver only if all requirements are met
-        if (DatabaseResolverActorId && GenericGatewaysConfig.HasMdbGateway() && MdbEndpointGenerator) {
+        if (DatabaseResolverActorId && MdbEndpointGenerator &&
+            (GenericGatewaysConfig.HasMdbGateway() || GenericGatewaysConfig.HasYdbMvpEndpoint())) {
             result.DatabaseAsyncResolver = std::make_shared<NFq::TDatabaseAsyncResolverImpl>(
                 actorSystem,
                 DatabaseResolverActorId.value(),
-                "", // TODO: use YDB Gateway endpoint?
+                GenericGatewaysConfig.GetYdbMvpEndpoint(),
                 GenericGatewaysConfig.GetMdbGateway(),
                 MdbEndpointGenerator);
         }
@@ -126,6 +243,121 @@ namespace NKikimr::NKqp {
             return std::make_shared<TKqpFederatedQuerySetupFactoryNoop>();
         }
 
+        for (const auto& source : appConfig.GetQueryServiceConfig().GetAvailableExternalDataSources()) {
+            if (!IsValidExternalDataSourceType(source)) {
+                ythrow yexception() << "wrong AvailableExternalDataSources \"" << source << "\"";
+            }
+        }
         return std::make_shared<NKikimr::NKqp::TKqpFederatedQuerySetupFactoryDefault>(setup, appData, appConfig);
     }
-}
+
+    NMiniKQL::TComputationNodeFactory MakeKqpFederatedQueryComputeFactory(NMiniKQL::TComputationNodeFactory baseComputeFactory, const std::optional<TKqpFederatedQuerySetup>& federatedQuerySetup) {
+        auto ytComputeFactory = NYql::GetDqYtFactory();
+        auto federatedComputeFactory = federatedQuerySetup ? federatedQuerySetup->ComputationFactory : nullptr;
+
+        return [baseComputeFactory, ytComputeFactory, federatedComputeFactory]
+            (NMiniKQL::TCallable& callable, const NMiniKQL::TComputationNodeFactoryContext& ctx) -> NMiniKQL::IComputationNode* {
+                if (auto compute = baseComputeFactory(callable, ctx)) {
+                    return compute;
+                }
+
+                if (auto ytCompute = ytComputeFactory(callable, ctx)) {
+                    return ytCompute;
+                }
+
+                if (federatedComputeFactory) {
+                    if (auto compute = federatedComputeFactory(callable, ctx)) {
+                        return compute;
+                    }
+                }
+
+                return nullptr;
+            };
+    }
+
+    bool WaitHttpGatewayFinalization(NMonitoring::TDynamicCounterPtr countersRoot, TDuration timeout, TDuration refreshPeriod) {
+        NMonitoring::TDynamicCounters::TCounterPtr httpRequestsInFlight = HttpGatewayGroupCounters(countersRoot)->GetCounter("InFlight");
+
+        TInstant deadline = TInstant::Now() + timeout;
+        do {
+            if (httpRequestsInFlight->Val() == 0) {
+                return true;
+            }
+
+            Sleep(refreshPeriod);
+        } while (TInstant::Now() <= deadline);
+
+        return false;
+    }
+
+    NYql::TIssues TruncateIssues(const NYql::TIssues& issues, ui32 maxLevels, ui32 keepTailLevels) {
+        const auto options = NYql::TTruncateIssueOpts()
+            .SetMaxLevels(maxLevels)
+            .SetKeepTailLevels(keepTailLevels);
+
+        NYql::TIssues result;
+        result.Reserve(issues.Size());
+        for (const auto& issue : issues) {
+            result.AddIssue(NYql::TruncateIssueLevels(issue, options));
+        }
+        return result;
+    }
+
+    NYql::TIssues ValidateResultSetColumns(const google::protobuf::RepeatedPtrField<Ydb::Column>& columns, ui32 maxNestingDepth) {
+        NYql::TIssues issues;
+        for (const auto& column : columns) {
+            if (!CheckNestingDepth(column.type(), maxNestingDepth)) {
+                issues.AddIssue(NYql::TIssue(TStringBuilder() << "Nesting depth of type for result column '" << column.name() << "' large than allowed limit " << maxNestingDepth));
+            }
+        }
+        return issues;
+    }
+
+    NThreading::TFuture<TGetSchemeEntryResult> GetSchemeEntryType(
+        const std::optional<TKqpFederatedQuerySetup>& federatedQuerySetup,
+        const TString& endpoint,
+        const TString& database,
+        bool useTls,
+        const TString& structuredTokenJson,
+        const TString& path) {
+
+        if (!federatedQuerySetup || !federatedQuerySetup->Driver) {
+            return NThreading::MakeFuture<TGetSchemeEntryResult>(Nothing()); 
+        }
+        std::shared_ptr<NYdb::ICredentialsProviderFactory> credentialsProviderFactory = NYql::CreateCredentialsProviderFactoryForStructuredToken(nullptr, structuredTokenJson, false);
+        auto driver = federatedQuerySetup->Driver;
+
+        NYdb::TCommonClientSettings opts;
+        opts
+            .DiscoveryEndpoint(endpoint)
+            .Database(database)
+            .SslCredentials(NYdb::TSslCredentials(useTls))
+            .DiscoveryMode(NYdb::EDiscoveryMode::Async)
+            .CredentialsProviderFactory(credentialsProviderFactory);
+        auto schemeClient = std::make_shared<NYdb::NScheme::TSchemeClient>(*driver, opts);
+
+        return schemeClient->DescribePath(path)
+            .Apply([actorSystem = NActors::TActivationContext::ActorSystem(), p = path, sc = schemeClient, database, endpoint](const NThreading::TFuture<NYdb::NScheme::TDescribePathResult>& result) {
+                auto describePathResult = result.GetValue();
+                if (!describePathResult.IsSuccess()) {
+                    LOG_WARN_S(*actorSystem, NKikimrServices::KQP_GATEWAY, "Describe path '" << p << "' in external YDB database '" << database << "' with endpoint '" << endpoint << "' failed: " << describePathResult.GetIssues().ToString());
+                    return NThreading::MakeFuture<TGetSchemeEntryResult>(Nothing());
+                }
+                NYdb::NScheme::TSchemeEntry entry = describePathResult.GetEntry();
+                return NThreading::MakeFuture<TGetSchemeEntryResult>(entry.Type);
+            });
+    };
+
+    std::vector<NKqpProto::TKqpExternalSink> FilterExternalSinksWithEffects(const std::vector<NKqpProto::TKqpExternalSink>& sinks) {
+        std::vector<NKqpProto::TKqpExternalSink> filteredSinks;
+        filteredSinks.reserve(sinks.size());
+        for (const auto& sink : sinks) {
+            if (ValidateExternalSink(sink)) {
+                filteredSinks.push_back(sink);
+            }
+        }
+
+        return filteredSinks;
+    }
+
+}  // namespace NKikimr::NKqp

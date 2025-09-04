@@ -1,6 +1,6 @@
-#include "schemeshard__operation_part.h"
-#include "schemeshard__operation_common_subdomain.h"
 #include "schemeshard__operation_common.h"
+#include "schemeshard__operation_common_subdomain.h"
+#include "schemeshard__operation_part.h"
 #include "schemeshard_impl.h"
 
 #include <contrib/ydb/core/base/subdomain.h>
@@ -287,7 +287,18 @@ public:
         }
 
         if (settings.HasDatabaseQuotas()) {
+            if (const auto& effectivePools = requestedPools.empty()
+                    ? actualPools
+                    : requestedPools;
+                !CheckStoragePoolsInQuotas(settings.GetDatabaseQuotas(), effectivePools, path.PathString(), errStr)
+            ) {
+                result->SetError(NKikimrScheme::StatusInvalidParameter, errStr);
+                return result;
+            }
             alterData->SetDatabaseQuotas(settings.GetDatabaseQuotas());
+        }
+        if (settings.HasSchemeLimits()) {
+            alterData->MergeSchemeLimits(settings.GetSchemeLimits());
         }
 
         if (const auto& auditSettings = subDomainInfo->GetAuditSettings()) {
@@ -324,7 +335,7 @@ public:
         context.SS->PersistTxState(db, OperationId);
         context.OnComplete.ActivateTx(OperationId);
 
-        path.DomainInfo()->AddInternalShards(txState);
+        path.DomainInfo()->AddInternalShards(txState, context.SS);
         path.Base()->IncShardsInside(shardsToCreate);
 
         SetState(NextState());

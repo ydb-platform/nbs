@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import copy
+import typing
 from concurrent import futures
 import uuid
 import threading
@@ -25,6 +26,7 @@ YDB_TRACE_ID_HEADER = "x-ydb-trace-id"
 YDB_REQUEST_TYPE_HEADER = "x-ydb-request-type"
 
 _DEFAULT_MAX_GRPC_MESSAGE_SIZE = 64 * 10**6
+_DEFAULT_KEEPALIVE_TIMEOUT = 10000
 
 
 def _message_to_string(message):
@@ -61,7 +63,11 @@ def _log_request(rpc_state, request):
         logger.debug("%s: request = { %s }", rpc_state, _message_to_string(request))
 
 
-def _rpc_error_handler(rpc_state, rpc_error, on_disconnected=None):
+def _rpc_error_handler(
+    rpc_state,
+    rpc_error: typing.Union[grpc.RpcError, grpc.aio.AioRpcError, grpc.Call, grpc.aio.Call],
+    on_disconnected: typing.Callable[[], None] = None,
+):
     """
     RPC call error handler, that translates gRPC error into YDB issue
     :param rpc_state: A state of rpc
@@ -69,7 +75,7 @@ def _rpc_error_handler(rpc_state, rpc_error, on_disconnected=None):
     :param on_disconnected: a handler to call on disconnected connection
     """
     logger.info("%s: received error, %s", rpc_state, rpc_error)
-    if isinstance(rpc_error, grpc.Call):
+    if isinstance(rpc_error, (grpc.RpcError, grpc.aio.AioRpcError, grpc.Call, grpc.aio.Call)):
         if rpc_error.code() == grpc.StatusCode.UNAUTHENTICATED:
             return issues.Unauthenticated(rpc_error.details())
         elif rpc_error.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
@@ -180,15 +186,18 @@ def _construct_channel_options(driver_config, endpoint_options=None):
             getattr(driver_config, "grpc_lb_policy_name", "round_robin"),
         ),
     ]
-    if driver_config.grpc_keep_alive_timeout is not None:
-        _default_connect_options.extend(
-            [
-                ("grpc.keepalive_time_ms", driver_config.grpc_keep_alive_timeout >> 3),
-                ("grpc.keepalive_timeout_ms", driver_config.grpc_keep_alive_timeout),
-                ("grpc.http2.max_pings_without_data", 0),
-                ("grpc.keepalive_permit_without_calls", 0),
-            ]
-        )
+    if driver_config.grpc_keep_alive_timeout is None:
+        driver_config.grpc_keep_alive_timeout = _DEFAULT_KEEPALIVE_TIMEOUT
+
+    _default_connect_options.extend(
+        [
+            ("grpc.keepalive_time_ms", driver_config.grpc_keep_alive_timeout >> 3),
+            ("grpc.keepalive_timeout_ms", driver_config.grpc_keep_alive_timeout),
+            ("grpc.http2.max_pings_without_data", 0),
+            ("grpc.keepalive_permit_without_calls", 0),
+        ]
+    )
+
     if endpoint_options is not None:
         if endpoint_options.ssl_target_name_override:
             _default_connect_options.append(

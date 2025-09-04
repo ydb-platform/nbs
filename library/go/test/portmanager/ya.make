@@ -5,7 +5,7 @@ SRCS(
     manager_ci.go
 )
 
-GO_XTEST_SRCS(manager_test.go)
+GO_TEST_SRCS(manager_test.go)
 
 IF (OS_LINUX)
     SRCS(

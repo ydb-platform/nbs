@@ -2,14 +2,29 @@
 #include "topic_reader.h"
 #include "worker.h"
 
+#include <contrib/ydb/core/tx/replication/ydb_proxy/topic_message.h>
 #include <contrib/ydb/core/tx/replication/ydb_proxy/ydb_proxy.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/services/services.pb.h>
+
+#include <util/generic/maybe.h>
+#include <util/string/builder.h>
 
 namespace NKikimr::NReplication::NService {
 
 class TRemoteTopicReader: public TActor<TRemoteTopicReader> {
-    using TReadSessionSettings = NYdb::NTopic::TReadSessionSettings;
+    TStringBuf GetLogPrefix() const {
+        if (!LogPrefix) {
+            LogPrefix = TStringBuilder()
+                << "[RemoteTopicReader]"
+                << "[" << Settings.GetBase().Topics_[0].Path_ << "]"
+                << "[" << Settings.GetBase().Topics_[0].PartitionIds_[0] << "]"
+                << SelfId() << " ";
+        }
+
+        return LogPrefix.GetRef();
+    }
 
     void Handle(TEvWorker::TEvHandshake::TPtr& ev) {
         Worker = ev->Sender;
@@ -33,49 +48,90 @@ class TRemoteTopicReader: public TActor<TRemoteTopicReader> {
         LOG_D("Handle " << ev->Get()->ToString());
 
         Y_ABORT_UNLESS(ReadSession);
-        Send(ReadSession, new TEvYdbProxy::TEvReadTopicRequest());
+        auto settings = TEvYdbProxy::TReadTopicSettings()
+            .SkipCommit(ev->Get()->SkipCommit);
 
-        if (CommitOffset) {
-            LOG_D("Commit offset"
-                << ": offset# " << CommitOffset);
-
-            Send(YdbProxy, new TEvYdbProxy::TEvCommitOffsetRequest(
-                Settings.Topics_[0].Path_,
-                Settings.Topics_[0].PartitionIds_[0],
-                Settings.ConsumerName_,
-                CommitOffset, {}
-            ));
-        }
+        Send(ReadSession, new TEvYdbProxy::TEvReadTopicRequest(settings));
     }
 
     void Handle(TEvYdbProxy::TEvReadTopicResponse::TPtr& ev) {
         LOG_D("Handle " << ev->Get()->ToString());
 
         auto& result = ev->Get()->Result;
-        TVector<TEvWorker::TEvData::TRecord> records(Reserve(result.Messages.size()));
+        TVector<TTopicMessage> records(::Reserve(result.Messages.size()));
 
         for (auto& msg : result.Messages) {
             Y_ABORT_UNLESS(msg.GetCodec() == NYdb::NTopic::ECodec::RAW);
-            Y_DEBUG_ABORT_UNLESS(msg.GetOffset() + 1 > CommitOffset);
-            CommitOffset = Max(CommitOffset, msg.GetOffset() + 1);
-            records.emplace_back(msg.GetOffset(), std::move(msg.GetData()));
+            records.push_back(std::move(msg));
         }
 
-        Send(Worker, new TEvWorker::TEvData(std::move(records)));
+        Send(Worker, new TEvWorker::TEvData(result.PartitionId, ToString(result.PartitionId), std::move(records)));
+    }
+
+    void Handle(TEvYdbProxy::TEvEndTopicPartition::TPtr& ev) {
+        LOG_D("Handle " << ev->Get()->ToString());
+
+        auto& result = ev->Get()->Result;
+        Send(Worker, new TEvWorker::TEvDataEnd(result.PartitionId, std::move(result.AdjacentPartitionsIds), std::move(result.ChildPartitionsIds)));
+    }
+
+    void Handle(TEvYdbProxy::TEvStartTopicReadingSession::TPtr& ev) {
+        LOG_D("Handle " << ev->Get()->ToString());
+
+        ReadSessionId = ev->Get()->Result.ReadSessionId;
+    }
+
+    void Handle(TEvWorker::TEvCommit::TPtr& ev) {
+        LOG_D("Handle " << ev->Get()->ToString());
+
+        if (!YdbProxy || !ReadSessionId) {
+            return Leave(TEvWorker::TEvGone::UNAVAILABLE);
+        }
+
+        CommittedOffset = ev->Get()->Offset;
+        Send(YdbProxy, CreateCommitOffsetRequest().release());
     }
 
     void Handle(TEvYdbProxy::TEvCommitOffsetResponse::TPtr& ev) {
-        LOG_D("Handle " << ev->Get()->ToString());
-
         if (!ev->Get()->Result.IsSuccess()) {
-            LOG_N("Unsuccessful commit offset");
-            Leave();
+            LOG_W("Handle " << ev->Get()->ToString());
+            return Leave(TEvWorker::TEvGone::UNAVAILABLE);
+        } else {
+            LOG_D("Handle " << CommittedOffset << " " << ev->Get()->ToString());
+            if (CommittedOffset) {
+                Send(ReadSession, CreateCommitOffsetRequest().release());
+            }
         }
     }
 
-    void Leave() {
+    std::unique_ptr<TEvYdbProxy::TEvCommitOffsetRequest> CreateCommitOffsetRequest() {
+        auto settings = NYdb::NTopic::TCommitOffsetSettings()
+            .ReadSessionId(ReadSessionId);
+
+        const auto& topicName = Settings.GetBase().Topics_.at(0).Path_;
+        const auto partitionId = Settings.GetBase().Topics_.at(0).PartitionIds_.at(0);
+        const auto& consumerName = Settings.GetBase().ConsumerName_;
+
+        return std::make_unique<TEvYdbProxy::TEvCommitOffsetRequest>(topicName, partitionId, consumerName, CommittedOffset, std::move(settings));
+    }
+
+    void Handle(TEvYdbProxy::TEvTopicReaderGone::TPtr& ev) {
+        LOG_D("Handle " << ev->Get()->ToString());
+
+        switch (ev->Get()->Result.GetStatus()) {
+        case NYdb::EStatus::SCHEME_ERROR:
+        case NYdb::EStatus::BAD_REQUEST:
+            return Leave(TEvWorker::TEvGone::SCHEME_ERROR, ev->Get()->Result.GetIssues().ToOneLineString());
+        default:
+            return Leave(TEvWorker::TEvGone::UNAVAILABLE, ev->Get()->Result.GetIssues().ToOneLineString());
+        }
+    }
+
+    template <typename... Args>
+    void Leave(Args&&... args) {
         LOG_I("Leave");
-        Send(Worker, new TEvents::TEvGone());
+
+        Send(Worker, new TEvWorker::TEvGone(std::forward<Args>(args)...));
         PassAway();
     }
 
@@ -88,38 +144,48 @@ class TRemoteTopicReader: public TActor<TRemoteTopicReader> {
     }
 
 public:
-    explicit TRemoteTopicReader(const TActorId& ydbProxy, const TReadSessionSettings& opts)
+    static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
+        return NKikimrServices::TActivity::REPLICATION_REMOTE_TOPIC_READER;
+    }
+
+    explicit TRemoteTopicReader(const TActorId& ydbProxy, const TEvYdbProxy::TTopicReaderSettings& opts)
         : TActor(&TThis::StateWork)
         , YdbProxy(ydbProxy)
         , Settings(opts)
     {
-        Y_ABORT_UNLESS(Settings.Topics_.size() == 1);
-        Y_ABORT_UNLESS(Settings.Topics_.at(0).PartitionIds_.size() == 1);
+        const auto& base = Settings.GetBase();
+        Y_ABORT_UNLESS(base.Topics_.size() == 1);
+        Y_ABORT_UNLESS(base.Topics_.at(0).PartitionIds_.size() == 1);
     }
 
     STFUNC(StateWork) {
         switch (ev->GetTypeRewrite()) {
             hFunc(TEvWorker::TEvHandshake, Handle);
             hFunc(TEvWorker::TEvPoll, Handle);
+            hFunc(TEvWorker::TEvCommit, Handle);
             hFunc(TEvYdbProxy::TEvCreateTopicReaderResponse, Handle);
             hFunc(TEvYdbProxy::TEvReadTopicResponse, Handle);
             hFunc(TEvYdbProxy::TEvCommitOffsetResponse, Handle);
-            sFunc(TEvents::TEvGone, Leave);
+            hFunc(TEvYdbProxy::TEvStartTopicReadingSession, Handle);
+            hFunc(TEvYdbProxy::TEvEndTopicPartition, Handle);
+            hFunc(TEvYdbProxy::TEvTopicReaderGone, Handle);
             sFunc(TEvents::TEvPoison, PassAway);
         }
     }
 
 private:
     const TActorId YdbProxy;
-    const TReadSessionSettings Settings;
+    const TEvYdbProxy::TTopicReaderSettings Settings;
+    mutable TMaybe<TString> LogPrefix;
 
     TActorId Worker;
     TActorId ReadSession;
-    ui64 CommitOffset = 0;
+    TString ReadSessionId;
+    ui64 CommittedOffset = 0;
 
 }; // TRemoteTopicReader
 
-IActor* CreateRemoteTopicReader(const TActorId& ydbProxy, const NYdb::NTopic::TReadSessionSettings& opts) {
+IActor* CreateRemoteTopicReader(const TActorId& ydbProxy, const TEvYdbProxy::TTopicReaderSettings& opts) {
     return new TRemoteTopicReader(ydbProxy, opts);
 }
 

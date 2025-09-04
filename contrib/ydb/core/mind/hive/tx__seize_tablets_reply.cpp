@@ -24,7 +24,7 @@ public:
             TTabletId tabletId = protoTabletInfo.GetTabletID();
             std::pair<ui64, ui64> owner(protoTabletInfo.GetTabletOwner().GetOwner(), protoTabletInfo.GetTabletOwner().GetOwnerIdx());
             TLeaderTabletInfo& tablet = Self->GetTablet(tabletId);
-            tablet.Type = protoTabletInfo.GetTabletType();
+            tablet.SetType(protoTabletInfo.GetTabletType());
             tablet.NodeId = 0;
             tablet.Node = nullptr;
             tablet.BecomeStopped();
@@ -51,6 +51,9 @@ public:
 
             tablet.LockedToActor = ActorIdFromProto(protoTabletInfo.GetLockedToActor());
             tablet.LockedReconnectTimeout = TDuration::MilliSeconds(protoTabletInfo.GetLockedReconnectTimeout());
+            if (Self->CurrentConfig.GetLockedTabletsSendMetrics() && tablet.LockedToActor) {
+                tablet.BecomeUnknown(tablet.Hive.FindNode(tablet.LockedToActor.NodeId()));
+            }
 
             db.Table<Schema::Tablet>().Key(tabletId).Update(
                         NIceDb::TUpdate<Schema::Tablet::Owner>(owner),

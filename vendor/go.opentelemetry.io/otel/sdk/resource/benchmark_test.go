@@ -1,22 +1,11 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package resource_test
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"testing"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -32,18 +21,18 @@ func makeAttrs(n int) (_, _ *resource.Resource) {
 	for i := 0; i < n; i++ {
 		var k string
 		for {
-			k = fmt.Sprint("k", rand.Intn(1000000000))
+			k = fmt.Sprint("k", rand.IntN(1000000000))
 			if !used[k] {
 				used[k] = true
 				break
 			}
 		}
-		l1[i] = attribute.String(k, fmt.Sprint("v", rand.Intn(1000000000)))
+		l1[i] = attribute.String(k, fmt.Sprint("v", rand.IntN(1000000000)))
 
 		if rand.Float64() < conflict {
 			l2[i] = l1[i]
 		} else {
-			l2[i] = attribute.String(k, fmt.Sprint("v", rand.Intn(1000000000)))
+			l2[i] = attribute.String(k, fmt.Sprint("v", rand.IntN(1000000000)))
 		}
 	}
 	return resource.NewSchemaless(l1...), resource.NewSchemaless(l2...)

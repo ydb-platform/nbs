@@ -1,1 +1,3 @@
-RECURSE(jwt)
+RECURSE(
+    jwt
+)

@@ -1,4 +1,5 @@
 #include "user_attributes.h"
+
 #include "schemeshard_user_attr_limits.h"
 
 #include <library/cpp/json/json_reader.h>
@@ -57,6 +58,8 @@ inline bool IsValidPathName_WeakCheck(const TString& name) {
                 HANDLE_ATTR(EXTRA_PATH_SYMBOLS_ALLOWED);
                 HANDLE_ATTR(DOCUMENT_API_VERSION);
                 HANDLE_ATTR(ASYNC_REPLICATION);
+                HANDLE_ATTR(ASYNC_REPLICA);
+                HANDLE_ATTR(INCREMENTAL_BACKUP);
 
             #undef HANDLE_ATTR
             return EAttribute::UNKNOWN;
@@ -145,6 +148,12 @@ inline bool IsValidPathName_WeakCheck(const TString& name) {
                     return false;
                 }
                 return CheckValueJson(name, value, errStr);
+            case EAttribute::ASYNC_REPLICA:
+                errStr = Sprintf("UserAttributes: attribute '%s' cannot be set", name.c_str());
+                return false;
+            case EAttribute::INCREMENTAL_BACKUP:
+                // TODO(enjection): check ops
+                return CheckValueJson(name, value, errStr);
         }
 
         Y_UNREACHABLE();
@@ -183,6 +192,12 @@ inline bool IsValidPathName_WeakCheck(const TString& name) {
                     errStr = Sprintf("UserAttributes: attribute '%s' can only be set during CreateChangefeed", name.c_str());
                     return false;
                 }
+                return true;
+            case EAttribute::ASYNC_REPLICA:
+                errStr = Sprintf("UserAttributes: attribute '%s' cannot be set", name.c_str());
+                return false;
+            case EAttribute::INCREMENTAL_BACKUP:
+                // TODO(enjection): check ops
                 return true;
         }
 

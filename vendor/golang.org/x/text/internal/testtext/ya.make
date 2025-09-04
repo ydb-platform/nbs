@@ -2,11 +2,12 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v0.27.0)
+
 SRCS(
     codesize.go
     flag.go
     gc.go
-    go1_7.go
     text.go
 )
 

@@ -14,11 +14,14 @@ SRCS(
     ydb_value_operator.cpp
     modification_controller.cpp
     object.cpp
+    fetch_database.cpp
 )
 
 PEERDIR(
     contrib/ydb/library/accessor
     contrib/ydb/library/actors/core
+    contrib/ydb/library/table_creator
+    yql/essentials/sql/settings
     contrib/ydb/public/api/protos
     contrib/ydb/core/protos
     contrib/ydb/services/bg_tasks/abstract

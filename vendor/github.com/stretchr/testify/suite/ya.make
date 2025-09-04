@@ -1,8 +1,8 @@
 GO_LIBRARY()
 
-OWNER(g:go-contrib)
-
 LICENSE(MIT)
+
+VERSION(v1.10.0)
 
 GO_SKIP_TESTS(
     TestSuiteRequireTwice
@@ -25,4 +25,6 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

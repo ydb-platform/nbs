@@ -1,10 +1,10 @@
 LIBRARY()
 
 SRCS(
-    process_response.cpp
     events.cpp
     query.cpp
     script_executions.cpp
+    workload_service.cpp
 )
 
 PEERDIR(
@@ -14,10 +14,12 @@ PEERDIR(
     contrib/ydb/core/grpc_services/cancelation
     contrib/ydb/core/kqp/common/shutdown
     contrib/ydb/core/kqp/common/compilation
+    contrib/ydb/core/resource_pools
+    contrib/ydb/core/scheme
 
     contrib/ydb/library/yql/dq/actors
     contrib/ydb/public/api/protos
-    contrib/ydb/public/lib/operation_id
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
 
     contrib/ydb/library/actors/core
 )

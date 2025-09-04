@@ -35,7 +35,7 @@ namespace {
             auto& value = proto.GetValue();
             auto& type = proto.GetType();
             TString errStr;
-            bool res = NMiniKQL::CellsFromTuple(&type, value, keyTypes, true, key, errStr, memoryOwner);
+            bool res = NMiniKQL::CellsFromTuple(&type, value, keyTypes, {}, true, key, errStr, memoryOwner);
             if (!res) {
                 unresolvedKeys.push_back("Failed to parse range key tuple: " + errStr);
                 return false;
@@ -60,7 +60,8 @@ namespace {
         NSchemeCache::TDomainInfo::TPtr domainInfo;
 
         for (const auto& entry : Tables) {
-            if (entry.KeyDescription->TableId.IsSystemView() ||
+            if ((entry.KeyDescription->TableId.IsSystemView() ||
+                 entry.Kind == NSchemeCache::TSchemeCacheNavigate::KindSysView) ||
                 TSysTables::IsSystemTable(entry.KeyDescription->TableId))
             {
                 continue;
@@ -181,7 +182,7 @@ namespace {
                 auto& entry = resp->ResultSet[index];
 
                 table.TableId = entry.TableId;
-                table.IsColumnTable = (entry.Kind == NSchemeCache::TSchemeCacheNavigate::KindColumnTable);
+                table.Kind = entry.Kind;
 
                 TVector<NScheme::TTypeInfo> keyColumnTypes(entry.Columns.size());
                 TVector<TKeyDesc::TColumnOp> columns(entry.Columns.size());

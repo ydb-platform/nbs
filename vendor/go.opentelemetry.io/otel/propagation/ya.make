@@ -1,8 +1,8 @@
 GO_LIBRARY()
 
-SUBSCRIBER(g:go-contrib)
-
 LICENSE(Apache-2.0)
+
+VERSION(v1.37.0)
 
 SRCS(
     baggage.go
@@ -13,6 +13,7 @@ SRCS(
 
 GO_XTEST_SRCS(
     baggage_test.go
+    example_test.go
     propagation_test.go
     propagators_test.go
     trace_context_benchmark_test.go

@@ -6,8 +6,12 @@ IF (WITH_VALGRIND)
     SPLIT_FACTOR(40)
 ENDIF()
 
-TIMEOUT(600)
-SIZE(MEDIUM)
+IF (SANITIZER_TYPE OR WITH_VALGRIND)
+    SIZE(LARGE)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+ELSE()
+    SIZE(MEDIUM)
+ENDIF()
 
 PEERDIR(
     library/cpp/getopt
@@ -17,7 +21,8 @@ PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/core/tx
     contrib/ydb/core/tx/schemeshard/ut_helpers
-    contrib/ydb/library/yql/public/udf/service/exception_policy
+    yql/essentials/public/udf/service/exception_policy
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 SRCS(

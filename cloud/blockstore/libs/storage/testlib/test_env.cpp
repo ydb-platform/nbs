@@ -42,6 +42,7 @@
 #include <contrib/ydb/core/mind/bscontroller/bsc.h>
 #include <contrib/ydb/core/mind/hive/hive.h>
 #include <contrib/ydb/core/mind/tenant_pool.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/security/ticket_parser.h>
 #include <contrib/ydb/core/tx/coordinator/coordinator.h>
 #include <contrib/ydb/core/tx/mediator/mediator.h>
@@ -92,7 +93,7 @@ TTestEnv::TTestEnv(
         ui32 nchannels,
         ui32 ngroups,
         TTestEnvState state,
-        NKikimr::NFake::TCaches cachesConfig)
+        const NKikimr::NSharedCache::TSharedCacheConfig* sharedCacheConfig)
     : DomainUid(1)
     , DomainName("local")
     , StaticNodeCount(staticNodes)
@@ -107,7 +108,7 @@ TTestEnv::TTestEnv(
     SetupDomain(app);
     app.AddHive(DomainUid, ChangeDomain(Tests::Hive, DomainUid));
     SetupChannelProfiles(app, nchannels);
-    SetupTabletServices(Runtime, &app, false, {}, std::move(cachesConfig));
+    SetupTabletServices(Runtime, &app, false, {}, sharedCacheConfig);
     BootTablets();
     SetupStorage(ngroups);
     SetupLocalServices();
@@ -644,7 +645,7 @@ void TTestEnv::SetupProxies()
 
 void TTestEnv::SetupTicketParser(ui32 nodeIdx)
 {
-    IActor* ticketParser = CreateTicketParser(Runtime.GetAppData().AuthConfig);
+    IActor* ticketParser = CreateTicketParser({.AuthConfig = Runtime.GetAppData().AuthConfig, .CertificateAuthValues = {}});
     TActorId ticketParserId = Runtime.Register(ticketParser, nodeIdx);
     Runtime.EnableScheduleForActor(ticketParserId);
     Runtime.RegisterService(MakeTicketParserID(), ticketParserId, nodeIdx);

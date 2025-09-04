@@ -11,7 +11,7 @@ var testSize = 10000
 
 func BenchmarkTestScanWithColumns(b *testing.B) {
 	b.ReportAllocs()
-	res := PrepareScannerPerformanceTest(b.N)
+	res := generateScannerData(b.N)
 	var (
 		id    uint64     // for requied scan
 		title *string    // for optional scan
@@ -30,7 +30,7 @@ func BenchmarkTestScanWithColumns(b *testing.B) {
 
 func BenchmarkTestScan(b *testing.B) {
 	b.ReportAllocs()
-	res := PrepareScannerPerformanceTest(b.N)
+	res := generateScannerData(b.N)
 	var (
 		id    uint64     // for requied scan
 		title *string    // for optional scan
@@ -48,7 +48,7 @@ func BenchmarkTestScan(b *testing.B) {
 
 func BenchmarkTestScanNamed(b *testing.B) {
 	b.ReportAllocs()
-	res := PrepareScannerPerformanceTest(b.N)
+	res := generateScannerData(b.N)
 	var (
 		id    uint64    // for requied scan
 		title *string   // for optional scan
@@ -101,29 +101,12 @@ func TestOverallSliceApproaches(t *testing.T) {
 	}
 }
 
-func BenchmarkTestSliceReduce(b *testing.B) {
-	slice := make([]*column, testSize)
-	for j := 0; j < testSize; j++ {
-		slice[j] = &column{}
-	}
-	b.ResetTimer()
-	var row column
-	for i := 0; i < b.N; i++ {
-		c := slice
-		for j := 0; j < testSize; j++ {
-			row = *c[0]
-			slice = c[1:]
-		}
-	}
-	_ = row
-}
-
 func BenchmarkTestSliceIncrement(b *testing.B) {
 	slice := make([]*column, testSize)
 	for j := 0; j < testSize; j++ {
 		slice[j] = &column{}
 	}
-	cnt := 0
+	var cnt int
 	var row column
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

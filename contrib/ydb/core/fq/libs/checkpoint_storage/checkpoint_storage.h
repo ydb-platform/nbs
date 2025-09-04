@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/fq/libs/checkpointing_common/defs.h>
 #include <contrib/ydb/core/fq/libs/checkpoint_storage/proto/graph_description.pb.h>
 
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 #include <library/cpp/threading/future/core/future.h>
 

@@ -1,3 +1,0 @@
-SamplingRate: 1
-SlowRequestSamplingRate: 1
-

@@ -18,12 +18,16 @@ SRCS(
     replicate_disk_task.go
     transfer_from_disk_to_disk_task.go
     transfer_from_snapshot_to_disk_task.go
+    verify_migrated_legacy_snapshot_task.go
 )
 
 GO_TEST_SRCS(
     collect_snapshots_task_test.go
     replicate_disk_task_test.go
+    verify_migrated_legacy_snapshot_task_test.go
 )
+
+SIZE(MEDIUM)
 
 END()
 

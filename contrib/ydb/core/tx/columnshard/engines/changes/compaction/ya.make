@@ -1,14 +1,17 @@
 LIBRARY()
 
 SRCS(
-    merge_context.cpp
-    column_cursor.cpp
-    column_portion_chunk.cpp
-    merged_column.cpp
+    merger.cpp
 )
 
 PEERDIR(
     contrib/ydb/core/tx/tiering
+    contrib/ydb/core/tx/columnshard/engines/changes/compaction/abstract
+    contrib/ydb/core/tx/columnshard/engines/changes/compaction/common
+    contrib/ydb/core/tx/columnshard/engines/changes/compaction/plain
+    contrib/ydb/core/tx/columnshard/engines/changes/compaction/sparsed
+    contrib/ydb/core/tx/columnshard/engines/changes/compaction/dictionary
+    contrib/ydb/core/tx/columnshard/engines/changes/compaction/sub_columns
 )
 
 END()

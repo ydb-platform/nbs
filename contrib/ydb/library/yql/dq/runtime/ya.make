@@ -2,18 +2,23 @@ LIBRARY()
 
 PEERDIR(
     contrib/libs/apache/arrow
-    contrib/ydb/library/yverify_stream
+    contrib/ydb/library/actors/util
+    contrib/ydb/library/formats/arrow
+    contrib/ydb/library/formats/arrow/hash
     contrib/ydb/library/mkql_proto
-    contrib/ydb/library/yql/minikql/comp_nodes
-    contrib/ydb/library/yql/parser/pg_wrapper/interface
-    contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/dq/actors/protos
     contrib/ydb/library/yql/dq/common
     contrib/ydb/library/yql/dq/expr_nodes
     contrib/ydb/library/yql/dq/type_ann
-    contrib/ydb/library/yql/parser/pg_wrapper/interface
-    contrib/ydb/library/yql/providers/common/schema/mkql
-    contrib/ydb/library/actors/util
+    contrib/ydb/library/yverify_stream
+    yql/essentials/minikql
+    yql/essentials/minikql/arrow
+    yql/essentials/minikql/comp_nodes
+    yql/essentials/minikql/computation
+    yql/essentials/parser/pg_wrapper/interface
+    yql/essentials/providers/common/comp_nodes
+    yql/essentials/providers/common/schema/mkql
+    yql/essentials/public/udf
 )
 
 SRCS(
@@ -26,6 +31,7 @@ SRCS(
     dq_input_producer.cpp
     dq_output_channel.cpp
     dq_output_consumer.cpp
+    dq_tasks_counters.cpp
     dq_tasks_runner.cpp
     dq_transport.cpp
 )

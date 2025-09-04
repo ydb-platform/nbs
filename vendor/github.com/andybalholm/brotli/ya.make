@@ -2,11 +2,14 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v1.1.1)
+
 SRCS(
     backward_references.go
     backward_references_hq.go
     bit_cost.go
     bit_reader.go
+    bitwriter.go
     block_splitter.go
     block_splitter_command.go
     block_splitter_distance.go
@@ -25,6 +28,7 @@ SRCS(
     dictionary.go
     dictionary_hash.go
     encode.go
+    encoder.go
     encoder_dict.go
     entropy_encode.go
     entropy_encode_static.go
@@ -65,8 +69,14 @@ SRCS(
     writer.go
 )
 
-GO_TEST_SRCS(brotli_test.go)
+GO_TEST_SRCS(
+    # brotli_test.go
+    example_test.go
+)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+    matchfinder
+)

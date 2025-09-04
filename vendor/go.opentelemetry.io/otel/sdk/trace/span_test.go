@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package trace
 
@@ -24,6 +13,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestSetStatus(t *testing.T) {
@@ -211,30 +201,6 @@ func TestTruncateAttr(t *testing.T) {
 			attr:  strSliceAttr,
 			want:  strSliceAttr,
 		},
-		{
-			// This tests the ordinary safeTruncate().
-			limit: 10,
-			attr:  attribute.String(key, "€€€€"), // 3 bytes each
-			want:  attribute.String(key, "€€€"),
-		},
-		{
-			// This tests truncation with an invalid UTF-8 input.
-			//
-			// Note that after removing the invalid rune,
-			// the string is over length and still has to
-			// be truncated on a code point boundary.
-			limit: 10,
-			attr:  attribute.String(key, "€"[0:2]+"hello€€"), // corrupted first rune, then over limit
-			want:  attribute.String(key, "hello€"),
-		},
-		{
-			// This tests the fallback to invalidTruncate()
-			// where after validation the string does not require
-			// truncation.
-			limit: 6,
-			attr:  attribute.String(key, "€"[0:2]+"hello"), // corrupted first rune, then not over limit
-			want:  attribute.String(key, "hello"),
-		},
 	}
 
 	for _, test := range tests {
@@ -243,6 +209,166 @@ func TestTruncateAttr(t *testing.T) {
 			assert.Equal(t, test.want, truncateAttr(test.limit, test.attr))
 		})
 	}
+}
+
+func TestTruncate(t *testing.T) {
+	type group struct {
+		limit    int
+		input    string
+		expected string
+	}
+
+	tests := []struct {
+		name   string
+		groups []group
+	}{
+		// Edge case: limit is negative, no truncation should occur
+		{
+			name: "NoTruncation",
+			groups: []group{
+				{-1, "No truncation!", "No truncation!"},
+			},
+		},
+
+		// Edge case: string is already shorter than the limit, no truncation
+		// should occur
+		{
+			name: "ShortText",
+			groups: []group{
+				{10, "Short text", "Short text"},
+				{15, "Short text", "Short text"},
+				{100, "Short text", "Short text"},
+			},
+		},
+
+		// Edge case: truncation happens with ASCII characters only
+		{
+			name: "ASCIIOnly",
+			groups: []group{
+				{1, "Hello World!", "H"},
+				{5, "Hello World!", "Hello"},
+				{12, "Hello World!", "Hello World!"},
+			},
+		},
+
+		// Truncation including multi-byte characters (UTF-8)
+		{
+			name: "ValidUTF-8",
+			groups: []group{
+				{7, "Hello, 世界", "Hello, "},
+				{8, "Hello, 世界", "Hello, 世"},
+				{2, "こんにちは", "こん"},
+				{3, "こんにちは", "こんに"},
+				{5, "こんにちは", "こんにちは"},
+				{12, "こんにちは", "こんにちは"},
+			},
+		},
+
+		// Truncation with invalid UTF-8 characters
+		{
+			name: "InvalidUTF-8",
+			groups: []group{
+				{11, "Invalid\x80text", "Invalidtext"},
+				// Do not modify invalid text if equal to limit.
+				{11, "Valid text\x80", "Valid text\x80"},
+				// Do not modify invalid text if under limit.
+				{15, "Valid text\x80", "Valid text\x80"},
+				{5, "Hello\x80World", "Hello"},
+				{11, "Hello\x80World\x80!", "HelloWorld!"},
+				{15, "Hello\x80World\x80Test", "HelloWorldTest"},
+				{15, "Hello\x80\x80\x80World\x80Test", "HelloWorldTest"},
+				{15, "\x80\x80\x80Hello\x80\x80\x80World\x80Test\x80\x80", "HelloWorldTest"},
+			},
+		},
+
+		// Truncation with mixed validn and invalid UTF-8 characters
+		{
+			name: "MixedUTF-8",
+			groups: []group{
+				{6, "€"[0:2] + "hello€€", "hello€"},
+				{6, "€" + "€"[0:2] + "hello", "€hello"},
+				{11, "Valid text\x80📜", "Valid text📜"},
+				{11, "Valid text📜\x80", "Valid text📜"},
+				{14, "😊 Hello\x80World🌍🚀", "😊 HelloWorld🌍🚀"},
+				{14, "😊\x80 Hello\x80World🌍🚀", "😊 HelloWorld🌍🚀"},
+				{14, "😊\x80 Hello\x80World🌍\x80🚀", "😊 HelloWorld🌍🚀"},
+				{14, "😊\x80 Hello\x80World🌍\x80🚀\x80", "😊 HelloWorld🌍🚀"},
+				{14, "\x80😊\x80 Hello\x80World🌍\x80🚀\x80", "😊 HelloWorld🌍🚀"},
+			},
+		},
+
+		// Edge case: empty string, should return empty string
+		{
+			name: "Empty",
+			groups: []group{
+				{5, "", ""},
+			},
+		},
+
+		// Edge case: limit is 0, should return an empty string
+		{
+			name: "Zero",
+			groups: []group{
+				{0, "Some text", ""},
+				{0, "", ""},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		for _, g := range tt.groups {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				got := truncate(g.limit, g.input)
+				assert.Equalf(
+					t, g.expected, got,
+					"input: %q([]rune%v))\ngot: %q([]rune%v)\nwant %q([]rune%v)",
+					g.input, []rune(g.input),
+					got, []rune(got),
+					g.expected, []rune(g.expected),
+				)
+			})
+		}
+	}
+}
+
+func BenchmarkTruncate(b *testing.B) {
+	run := func(limit int, input string) func(b *testing.B) {
+		return func(b *testing.B) {
+			b.ReportAllocs()
+			b.RunParallel(func(pb *testing.PB) {
+				var out string
+				for pb.Next() {
+					out = truncate(limit, input)
+				}
+				_ = out
+			})
+		}
+	}
+	b.Run("Unlimited", run(-1, "hello 😊 world 🌍🚀"))
+	b.Run("Zero", run(0, "Some text"))
+	b.Run("Short", run(10, "Short Text"))
+	b.Run("ASCII", run(5, "Hello, World!"))
+	b.Run("ValidUTF-8", run(10, "hello 😊 world 🌍🚀"))
+	b.Run("InvalidUTF-8", run(6, "€"[0:2]+"hello€€"))
+	b.Run("MixedUTF-8", run(14, "\x80😊\x80 Hello\x80World🌍\x80🚀\x80"))
+}
+
+func TestLogDropAttrs(t *testing.T) {
+	orig := logDropAttrs
+	t.Cleanup(func() { logDropAttrs = orig })
+
+	var called bool
+	logDropAttrs = func() { called = true }
+
+	s := &recordingSpan{}
+	s.addDroppedAttr(1)
+	assert.True(t, called, "logDropAttrs not called")
+
+	called = false
+	s.addDroppedAttr(1)
+	assert.False(t, called, "logDropAttrs called multiple times for same Span")
 }
 
 func BenchmarkRecordingSpanSetAttributes(b *testing.B) {
@@ -270,5 +396,22 @@ func BenchmarkRecordingSpanSetAttributes(b *testing.B) {
 				span.End()
 			}
 		})
+	}
+}
+
+func BenchmarkSpanEnd(b *testing.B) {
+	tracer := NewTracerProvider().Tracer("")
+	ctx := trace.ContextWithSpanContext(context.Background(), trace.SpanContext{})
+
+	spans := make([]trace.Span, b.N)
+	for i := 0; i < b.N; i++ {
+		_, span := tracer.Start(ctx, "")
+		spans[i] = span
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		spans[i].End()
 	}
 }

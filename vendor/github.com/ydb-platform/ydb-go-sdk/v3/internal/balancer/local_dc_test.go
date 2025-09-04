@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/balancers"
 	"github.com/ydb-platform/ydb-go-sdk/v3/config"
@@ -131,23 +132,25 @@ func TestDetectLocalDC(t *testing.T) {
 func TestLocalDCDiscovery(t *testing.T) {
 	ctx := context.Background()
 	cfg := config.New(
-		config.WithBalancer(balancers.PreferLocalDC(balancers.Default())),
+		config.WithBalancer(balancers.PreferNearestDC(balancers.Default())),
 	)
 	r := &Balancer{
-		driverConfig: cfg,
-		config:       *cfg.Balancer(),
-		pool:         conn.NewPool(context.Background(), cfg),
-		discoveryClient: discoveryMock{endpoints: []endpoint.Endpoint{
-			&mock.Endpoint{AddrField: "a:123", LocationField: "a"},
-			&mock.Endpoint{AddrField: "b:234", LocationField: "b"},
-			&mock.Endpoint{AddrField: "c:456", LocationField: "c"},
-		}},
+		driverConfig:   cfg,
+		balancerConfig: *cfg.Balancer(),
+		pool:           conn.NewPool(context.Background(), cfg),
+		discover: func(ctx context.Context, _ *grpc.ClientConn) (endpoints []endpoint.Endpoint, location string, err error) {
+			return []endpoint.Endpoint{
+				&mock.Endpoint{AddrField: "a:123", LocationField: "a"},
+				&mock.Endpoint{AddrField: "b:234", LocationField: "b"},
+				&mock.Endpoint{AddrField: "c:456", LocationField: "c"},
+			}, "", nil
+		},
 		localDCDetector: func(ctx context.Context, endpoints []endpoint.Endpoint) (string, error) {
 			return "b", nil
 		},
 	}
 
-	err := r.clusterDiscoveryAttempt(ctx)
+	err := r.clusterDiscoveryAttempt(ctx, nil)
 	require.NoError(t, err)
 
 	for i := 0; i < 100; i++ {

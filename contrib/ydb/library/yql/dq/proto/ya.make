@@ -1,11 +1,11 @@
 PROTO_LIBRARY()
+PROTOC_FATAL_WARNINGS()
 
 PEERDIR(
     contrib/ydb/library/actors/protos
 )
 
 SRCS(
-    dq_checkpoint.proto
     dq_state_load_plan.proto
     dq_tasks.proto
     dq_transport.proto

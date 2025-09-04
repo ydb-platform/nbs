@@ -1,18 +1,32 @@
 LIBRARY()
 
-SRCS(
-    GLOBAL stock_workload.cpp
-    GLOBAL kv_workload.cpp
-    workload_factory.cpp
-)
-
 PEERDIR(
-    library/cpp/getopt
-    contrib/ydb/public/api/protos
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/library/workload/abstract
+    contrib/ydb/library/workload/clickbench
+    contrib/ydb/library/workload/query
+    contrib/ydb/library/workload/kv
+    contrib/ydb/library/workload/log
+    contrib/ydb/library/workload/mixed
+    contrib/ydb/library/workload/stock
+    contrib/ydb/library/workload/tpcc
+    contrib/ydb/library/workload/tpcds
+    contrib/ydb/library/workload/tpch
+    contrib/ydb/library/workload/vector
 )
-
-GENERATE_ENUM_SERIALIZATION_WITH_HEADER(kv_workload.h)
-GENERATE_ENUM_SERIALIZATION_WITH_HEADER(stock_workload.h)
 
 END()
+
+RECURSE(
+    abstract
+    benchmark_base
+    clickbench
+    query
+    kv
+    log
+    mixed
+    stock
+    tpcc
+    tpc_base
+    tpcds
+    tpch
+)

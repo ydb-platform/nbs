@@ -10,7 +10,7 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/library/mkql_proto/protos
     contrib/ydb/public/lib/scheme_types
-    contrib/ydb/public/sdk/cpp/client/ydb_value
+    contrib/ydb/public/sdk/cpp/src/client/value
 )
 
 END()

@@ -5,8 +5,8 @@
 #include <util/string/builder.h>
 #include <util/system/type_name.h>
 #include <contrib/ydb/core/formats/arrow/serializer/abstract.h>
-#include <contrib/ydb/library/yql/utils/log/log.h>
-#include <contrib/ydb/library/yql/utils/yql_panic.h>
+#include <contrib/ydb/library/yql/providers/generic/connector/api/service/protos/connector.pb.h>
+#include <yql/essentials/utils/yql_panic.h>
 
 namespace NYql::NConnector {
     arrow::Status MakeConversion(const Ydb::Column columnMeta,
@@ -110,4 +110,4 @@ namespace NYql::NConnector {
 
         return res->type();
     }
-}
+} // namespace NYql::NConnector

@@ -52,7 +52,7 @@ def start(argv):
     kikimr_configurator = KikimrConfigGenerator(
         erasure=None,
         use_in_memory_pdisks=args.in_memory_pdisks,
-        binary_path=kikimr_binary_path,
+        binary_paths=[kikimr_binary_path],
         static_pdisk_size=PDISK_SIZE,
         use_log_files=args.use_log_files,
         bs_cache_file_path=args.bs_cache_file_path,

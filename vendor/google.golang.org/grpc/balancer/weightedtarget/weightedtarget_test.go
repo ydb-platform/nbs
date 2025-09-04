@@ -28,17 +28,23 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/roundrobin"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/internal/balancer/stub"
-	"google.golang.org/grpc/internal/balancergroup"
 	"google.golang.org/grpc/internal/grpctest"
 	"google.golang.org/grpc/internal/hierarchy"
 	"google.golang.org/grpc/internal/testutils"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
+	"google.golang.org/grpc/status"
+
+	testgrpc "google.golang.org/grpc/interop/grpc_testing"
+	testpb "google.golang.org/grpc/interop/grpc_testing"
 )
 
 const (
@@ -130,12 +136,14 @@ func (b *testConfigBalancer) UpdateClientConnState(s balancer.ClientConnState) e
 		return fmt.Errorf("unexpected balancer config with type %T", s.BalancerConfig)
 	}
 
-	addrsWithAttr := make([]resolver.Address, len(s.ResolverState.Addresses))
-	for i, addr := range s.ResolverState.Addresses {
-		addrsWithAttr[i] = setConfigKey(addr, c.configStr)
+	for i, ep := range s.ResolverState.Endpoints {
+		addrsWithAttr := make([]resolver.Address, len(ep.Addresses))
+		for j, addr := range ep.Addresses {
+			addrsWithAttr[j] = setConfigKey(addr, c.configStr)
+		}
+		s.ResolverState.Endpoints[i].Addresses = addrsWithAttr
 	}
 	s.BalancerConfig = nil
-	s.ResolverState.Addresses = addrsWithAttr
 	return b.Balancer.UpdateClientConnState(s)
 }
 
@@ -159,8 +167,40 @@ func init() {
 	wtbBuilder = balancer.Get(Name)
 	wtbParser = wtbBuilder.(balancer.ConfigParser)
 
-	balancergroup.DefaultSubBalancerCloseTimeout = time.Millisecond
 	NewRandomWRR = testutils.NewTestWRR
+}
+
+// Tests the behavior of the weighted_target LB policy when there are no targets
+// configured. It verifies that the LB policy sets the overall channel state to
+// TRANSIENT_FAILURE and fails RPCs with an expected status code and message.
+func (s) TestWeightedTarget_NoTargets(t *testing.T) {
+	dopts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultServiceConfig(`{"loadBalancingConfig": [{"weighted_target_experimental":{}}]}`),
+	}
+	cc, err := grpc.NewClient("passthrough:///test.server", dopts...)
+	if err != nil {
+		t.Fatalf("grpc.NewClient() failed: %v", err)
+	}
+	defer cc.Close()
+	cc.Connect()
+
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	client := testgrpc.NewTestServiceClient(cc)
+	_, err = client.EmptyCall(ctx, &testpb.Empty{})
+	if err == nil {
+		t.Error("EmptyCall() succeeded, want failure")
+	}
+	if gotCode, wantCode := status.Code(err), codes.Unavailable; gotCode != wantCode {
+		t.Errorf("EmptyCall() failed with code = %v, want %s", gotCode, wantCode)
+	}
+	if gotMsg, wantMsg := err.Error(), "no targets to pick from"; !strings.Contains(gotMsg, wantMsg) {
+		t.Errorf("EmptyCall() failed with message = %q, want to contain %q", gotMsg, wantMsg)
+	}
+	if gotState, wantState := cc.GetState(), connectivity.TransientFailure; gotState != wantState {
+		t.Errorf("cc.GetState() = %v, want %v", gotState, wantState)
+	}
 }
 
 // TestWeightedTarget covers the cases that a sub-balancer is added and a
@@ -169,7 +209,7 @@ func init() {
 // glue code in weighted_target. It also tests an empty target config update,
 // which should trigger a transient failure state update.
 func (s) TestWeightedTarget(t *testing.T) {
-	cc := testutils.NewTestClientConn(t)
+	cc := testutils.NewBalancerClientConn(t)
 	wtb := wtbBuilder.Build(cc, balancer.BuildOptions{})
 	defer wtb.Close()
 
@@ -190,7 +230,9 @@ func (s) TestWeightedTarget(t *testing.T) {
 	// Send the config, and an address with hierarchy path ["cluster_1"].
 	addr1 := resolver.Address{Addr: testBackendAddrStrs[1], Attributes: nil}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState:  resolver.State{Addresses: []resolver.Address{hierarchy.Set(addr1, []string{"cluster_1"})}},
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr1}}, []string{"cluster_1"}),
+		}},
 		BalancerConfig: config1,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
@@ -199,15 +241,15 @@ func (s) TestWeightedTarget(t *testing.T) {
 
 	// Send subconn state change.
 	sc1 := <-cc.NewSubConnCh
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	p := <-cc.NewPickerCh
 
 	// Test pick with one backend.
 	for i := 0; i < 5; i++ {
 		gotSCSt, _ := p.Pick(balancer.PickInfo{})
-		if !cmp.Equal(gotSCSt.SubConn, sc1, cmp.AllowUnexported(testutils.TestSubConn{})) {
+		if gotSCSt.SubConn != sc1 {
 			t.Fatalf("picker.Pick, got %v, want SubConn=%v", gotSCSt, sc1)
 		}
 	}
@@ -231,7 +273,9 @@ func (s) TestWeightedTarget(t *testing.T) {
 	// Send the config, and one address with hierarchy path "cluster_2".
 	addr2 := resolver.Address{Addr: testBackendAddrStrs[2], Attributes: nil}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState:  resolver.State{Addresses: []resolver.Address{hierarchy.Set(addr2, []string{"cluster_2"})}},
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr2}}, []string{"cluster_2"}),
+		}},
 		BalancerConfig: config2,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
@@ -241,23 +285,29 @@ func (s) TestWeightedTarget(t *testing.T) {
 	// attribute set to the config that was passed to it.
 	verifyAddressInNewSubConn(t, cc, setConfigKey(addr2, "cluster_2"))
 
-	// The subconn for cluster_1 should be removed.
-	scRemoved := <-cc.RemoveSubConnCh
-	if !cmp.Equal(scRemoved, sc1, cmp.AllowUnexported(testutils.TestSubConn{})) {
-		t.Fatalf("RemoveSubConn, want %v, got %v", sc1, scRemoved)
+	// The subconn for cluster_1 should be shut down.
+	scShutdown := <-cc.ShutdownSubConnCh
+	// The same SubConn is closed by gracefulswitch and pickfirstleaf when they
+	// are closed. Remove duplicate events.
+	// TODO: https://github.com/grpc/grpc-go/issues/6472 - Remove this
+	// workaround once pickfirst is the only leaf policy and responsible for
+	// shutting down SubConns.
+	<-cc.ShutdownSubConnCh
+	if scShutdown != sc1 {
+		t.Fatalf("ShutdownSubConn, want %v, got %v", sc1, scShutdown)
 	}
-	wtb.UpdateSubConnState(scRemoved, balancer.SubConnState{ConnectivityState: connectivity.Shutdown})
+	scShutdown.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Shutdown})
 
 	sc2 := <-cc.NewSubConnCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	p = <-cc.NewPickerCh
 
 	// Test pick with one backend.
 	for i := 0; i < 5; i++ {
 		gotSCSt, _ := p.Pick(balancer.PickInfo{})
-		if !cmp.Equal(gotSCSt.SubConn, sc2, cmp.AllowUnexported(testutils.TestSubConn{})) {
+		if gotSCSt.SubConn != sc2 {
 			t.Fatalf("picker.Pick, got %v, want SubConn=%v", gotSCSt, sc2)
 		}
 	}
@@ -279,34 +329,44 @@ func (s) TestWeightedTarget(t *testing.T) {
 	// Send the config, and an address with hierarchy path ["cluster_2"].
 	addr3 := resolver.Address{Addr: testBackendAddrStrs[3], Attributes: nil}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState:  resolver.State{Addresses: []resolver.Address{hierarchy.Set(addr3, []string{"cluster_2"})}},
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr3}}, []string{"cluster_2"}),
+		}},
 		BalancerConfig: config3,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
 	}
 	verifyAddressInNewSubConn(t, cc, addr3)
 
-	// The subconn from the test_config_balancer should be removed.
-	scRemoved = <-cc.RemoveSubConnCh
-	if !cmp.Equal(scRemoved, sc2, cmp.AllowUnexported(testutils.TestSubConn{})) {
-		t.Fatalf("RemoveSubConn, want %v, got %v", sc1, scRemoved)
+	// The subconn from the test_config_balancer should be shut down.
+	scShutdown = <-cc.ShutdownSubConnCh
+	// The same SubConn is closed by gracefulswitch and pickfirstleaf when they
+	// are closed. Remove duplicate events.
+	// TODO: https://github.com/grpc/grpc-go/issues/6472 - Remove this
+	// workaround once pickfirst is the only leaf policy and responsible for
+	// shutting down SubConns.
+	<-cc.ShutdownSubConnCh
+
+	if scShutdown != sc2 {
+		t.Fatalf("ShutdownSubConn, want %v, got %v", sc2, scShutdown)
 	}
-	wtb.UpdateSubConnState(scRemoved, balancer.SubConnState{ConnectivityState: connectivity.Shutdown})
+	scShutdown.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Shutdown})
 
 	// Send subconn state change.
 	sc3 := <-cc.NewSubConnCh
-	wtb.UpdateSubConnState(sc3, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc3.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc3, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc3.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	p = <-cc.NewPickerCh
 
 	// Test pick with one backend.
 	for i := 0; i < 5; i++ {
 		gotSCSt, _ := p.Pick(balancer.PickInfo{})
-		if !cmp.Equal(gotSCSt.SubConn, sc3, cmp.AllowUnexported(testutils.TestSubConn{})) {
+		if gotSCSt.SubConn != sc3 {
 			t.Fatalf("picker.Pick, got %v, want SubConn=%v", gotSCSt, sc3)
 		}
 	}
+
 	// Update the Weighted Target Balancer with an empty address list and no
 	// targets. This should cause a Transient Failure State update to the Client
 	// Conn.
@@ -325,13 +385,18 @@ func (s) TestWeightedTarget(t *testing.T) {
 	if state != connectivity.TransientFailure {
 		t.Fatalf("Empty target update should have triggered a TF state update, got: %v", state)
 	}
+	p = <-cc.NewPickerCh
+	const wantErr = "no targets to pick from"
+	if _, err := p.Pick(balancer.PickInfo{}); err == nil || !strings.Contains(err.Error(), wantErr) {
+		t.Fatalf("Pick() returned error: %v, want: %v", err, wantErr)
+	}
 }
 
 // TestWeightedTarget_OneSubBalancer_AddRemoveBackend tests the case where we
 // have a weighted target balancer will one sub-balancer, and we add and remove
 // backends from the subBalancer.
 func (s) TestWeightedTarget_OneSubBalancer_AddRemoveBackend(t *testing.T) {
-	cc := testutils.NewTestClientConn(t)
+	cc := testutils.NewBalancerClientConn(t)
 	wtb := wtbBuilder.Build(cc, balancer.BuildOptions{})
 	defer wtb.Close()
 
@@ -352,7 +417,9 @@ func (s) TestWeightedTarget_OneSubBalancer_AddRemoveBackend(t *testing.T) {
 	// Send the config, and an address with hierarchy path ["cluster_1"].
 	addr1 := resolver.Address{Addr: testBackendAddrStrs[1]}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState:  resolver.State{Addresses: []resolver.Address{hierarchy.Set(addr1, []string{"cluster_1"})}},
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr1}}, []string{"cluster_1"}),
+		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
@@ -361,15 +428,15 @@ func (s) TestWeightedTarget_OneSubBalancer_AddRemoveBackend(t *testing.T) {
 
 	// Expect one SubConn, and move it to READY.
 	sc1 := <-cc.NewSubConnCh
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	p := <-cc.NewPickerCh
 
 	// Test pick with one backend.
 	for i := 0; i < 5; i++ {
 		gotSCSt, _ := p.Pick(balancer.PickInfo{})
-		if !cmp.Equal(gotSCSt.SubConn, sc1, cmp.AllowUnexported(testutils.TestSubConn{})) {
+		if gotSCSt.SubConn != sc1 {
 			t.Fatalf("picker.Pick, got %v, want SubConn=%v", gotSCSt, sc1)
 		}
 	}
@@ -377,9 +444,9 @@ func (s) TestWeightedTarget_OneSubBalancer_AddRemoveBackend(t *testing.T) {
 	// Send two addresses.
 	addr2 := resolver.Address{Addr: testBackendAddrStrs[2]}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState: resolver.State{Addresses: []resolver.Address{
-			hierarchy.Set(addr1, []string{"cluster_1"}),
-			hierarchy.Set(addr2, []string{"cluster_1"}),
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr1}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr2}}, []string{"cluster_1"}),
 		}},
 		BalancerConfig: config,
 	}); err != nil {
@@ -390,9 +457,9 @@ func (s) TestWeightedTarget_OneSubBalancer_AddRemoveBackend(t *testing.T) {
 	// Expect one new SubConn, and move it to READY.
 	sc2 := <-cc.NewSubConnCh
 	// Update the SubConn to become READY.
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	p = <-cc.NewPickerCh
 
 	// Test round robin pick.
@@ -403,24 +470,26 @@ func (s) TestWeightedTarget_OneSubBalancer_AddRemoveBackend(t *testing.T) {
 
 	// Remove the first address.
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState:  resolver.State{Addresses: []resolver.Address{hierarchy.Set(addr2, []string{"cluster_1"})}},
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr2}}, []string{"cluster_1"}),
+		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
 	}
 
-	// Expect one SubConn to be removed.
-	scRemoved := <-cc.RemoveSubConnCh
-	if !cmp.Equal(scRemoved, sc1, cmp.AllowUnexported(testutils.TestSubConn{})) {
-		t.Fatalf("RemoveSubConn, want %v, got %v", sc1, scRemoved)
+	// Expect one SubConn to be shut down.
+	scShutdown := <-cc.ShutdownSubConnCh
+	if scShutdown != sc1 {
+		t.Fatalf("ShutdownSubConn, want %v, got %v", sc1, scShutdown)
 	}
-	wtb.UpdateSubConnState(scRemoved, balancer.SubConnState{ConnectivityState: connectivity.Shutdown})
+	scShutdown.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Shutdown})
 	p = <-cc.NewPickerCh
 
 	// Test pick with only the second SubConn.
 	for i := 0; i < 5; i++ {
 		gotSC, _ := p.Pick(balancer.PickInfo{})
-		if !cmp.Equal(gotSC.SubConn, sc2, cmp.AllowUnexported(testutils.TestSubConn{})) {
+		if gotSC.SubConn != sc2 {
 			t.Fatalf("picker.Pick, got %v, want SubConn=%v", gotSC, sc2)
 		}
 	}
@@ -429,7 +498,7 @@ func (s) TestWeightedTarget_OneSubBalancer_AddRemoveBackend(t *testing.T) {
 // TestWeightedTarget_TwoSubBalancers_OneBackend tests the case where we have a
 // weighted target balancer with two sub-balancers, each with one backend.
 func (s) TestWeightedTarget_TwoSubBalancers_OneBackend(t *testing.T) {
-	cc := testutils.NewTestClientConn(t)
+	cc := testutils.NewBalancerClientConn(t)
 	wtb := wtbBuilder.Build(cc, balancer.BuildOptions{})
 	defer wtb.Close()
 
@@ -455,33 +524,36 @@ func (s) TestWeightedTarget_TwoSubBalancers_OneBackend(t *testing.T) {
 	addr1 := resolver.Address{Addr: testBackendAddrStrs[1]}
 	addr2 := resolver.Address{Addr: testBackendAddrStrs[2]}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState: resolver.State{Addresses: []resolver.Address{
-			hierarchy.Set(addr1, []string{"cluster_1"}),
-			hierarchy.Set(addr2, []string{"cluster_2"}),
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr1}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr2}}, []string{"cluster_2"}),
 		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
 	}
 
-	scs := waitForNewSubConns(t, cc, 2)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	scs := waitForNewSubConns(ctx, t, cc, 2)
 	verifySubConnAddrs(t, scs, map[string][]resolver.Address{
 		"cluster_1": {addr1},
 		"cluster_2": {addr2},
 	})
 
 	// We expect a single subConn on each subBalancer.
-	sc1 := scs["cluster_1"][0].sc
-	sc2 := scs["cluster_2"][0].sc
+	sc1 := scs["cluster_1"][0].sc.(*testutils.TestSubConn)
+	sc2 := scs["cluster_2"][0].sc.(*testutils.TestSubConn)
 
+	// The CONNECTING picker should be sent by all leaf pickfirst policies on
+	// receiving the first resolver update.
+	<-cc.NewPickerCh
 	// Send state changes for both SubConns, and wait for the picker.
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Ready})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	p := <-cc.NewPickerCh
 
 	// Test roundrobin on the last picker.
@@ -495,7 +567,7 @@ func (s) TestWeightedTarget_TwoSubBalancers_OneBackend(t *testing.T) {
 // a weighted target balancer with two sub-balancers, each with more than one
 // backend.
 func (s) TestWeightedTarget_TwoSubBalancers_MoreBackends(t *testing.T) {
-	cc := testutils.NewTestClientConn(t)
+	cc := testutils.NewBalancerClientConn(t)
 	wtb := wtbBuilder.Build(cc, balancer.BuildOptions{})
 	defer wtb.Close()
 
@@ -523,45 +595,47 @@ func (s) TestWeightedTarget_TwoSubBalancers_MoreBackends(t *testing.T) {
 	addr3 := resolver.Address{Addr: testBackendAddrStrs[3]}
 	addr4 := resolver.Address{Addr: testBackendAddrStrs[4]}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState: resolver.State{Addresses: []resolver.Address{
-			hierarchy.Set(addr1, []string{"cluster_1"}),
-			hierarchy.Set(addr2, []string{"cluster_1"}),
-			hierarchy.Set(addr3, []string{"cluster_2"}),
-			hierarchy.Set(addr4, []string{"cluster_2"}),
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr1}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr2}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr3}}, []string{"cluster_2"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr4}}, []string{"cluster_2"}),
 		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
 	}
 
-	scs := waitForNewSubConns(t, cc, 4)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	scs := waitForNewSubConns(ctx, t, cc, 4)
 	verifySubConnAddrs(t, scs, map[string][]resolver.Address{
 		"cluster_1": {addr1, addr2},
 		"cluster_2": {addr3, addr4},
 	})
 
 	// We expect two subConns on each subBalancer.
-	sc1 := scs["cluster_1"][0].sc
-	sc2 := scs["cluster_1"][1].sc
-	sc3 := scs["cluster_2"][0].sc
-	sc4 := scs["cluster_2"][1].sc
+	sc1 := scs["cluster_1"][0].sc.(*testutils.TestSubConn)
+	sc2 := scs["cluster_1"][1].sc.(*testutils.TestSubConn)
+	sc3 := scs["cluster_2"][0].sc.(*testutils.TestSubConn)
+	sc4 := scs["cluster_2"][1].sc.(*testutils.TestSubConn)
+
+	// The CONNECTING picker should be sent by all leaf pickfirst policies on
+	// receiving the first resolver update.
+	<-cc.NewPickerCh
 
 	// Send state changes for all SubConns, and wait for the picker.
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc3.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc3.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Ready})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc3, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc3, balancer.SubConnState{ConnectivityState: connectivity.Ready})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc4, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc4, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc4.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc4.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	p := <-cc.NewPickerCh
 
 	// Test roundrobin on the last picker. RPCs should be sent equally to all
@@ -572,29 +646,35 @@ func (s) TestWeightedTarget_TwoSubBalancers_MoreBackends(t *testing.T) {
 	}
 
 	// Turn sc2's connection down, should be RR between balancers.
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.TransientFailure})
+	wantSubConnErr := errors.New("subConn connection error")
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Idle})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc2.UpdateState(balancer.SubConnState{
+		ConnectivityState: connectivity.TransientFailure,
+		ConnectionError:   wantSubConnErr,
+	})
 	p = <-cc.NewPickerCh
 	want = []balancer.SubConn{sc1, sc1, sc3, sc4}
 	if err := testutils.IsRoundRobin(want, testutils.SubConnFromPicker(p)); err != nil {
 		t.Fatalf("want %v, got %v", want, err)
 	}
 
-	// Remove subConn corresponding to addr3.
+	// Shut down subConn corresponding to addr3.
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState: resolver.State{Addresses: []resolver.Address{
-			hierarchy.Set(addr1, []string{"cluster_1"}),
-			hierarchy.Set(addr2, []string{"cluster_1"}),
-			hierarchy.Set(addr4, []string{"cluster_2"}),
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr1}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr2}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr4}}, []string{"cluster_2"}),
 		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
 	}
-	scRemoved := <-cc.RemoveSubConnCh
-	if !cmp.Equal(scRemoved, sc3, cmp.AllowUnexported(testutils.TestSubConn{})) {
-		t.Fatalf("RemoveSubConn, want %v, got %v", sc3, scRemoved)
+	scShutdown := <-cc.ShutdownSubConnCh
+	if scShutdown != sc3 {
+		t.Fatalf("ShutdownSubConn, want %v, got %v", sc3, scShutdown)
 	}
-	wtb.UpdateSubConnState(scRemoved, balancer.SubConnState{ConnectivityState: connectivity.Shutdown})
+	scShutdown.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Shutdown})
 	p = <-cc.NewPickerCh
 	want = []balancer.SubConn{sc1, sc4}
 	if err := testutils.IsRoundRobin(want, testutils.SubConnFromPicker(p)); err != nil {
@@ -602,8 +682,9 @@ func (s) TestWeightedTarget_TwoSubBalancers_MoreBackends(t *testing.T) {
 	}
 
 	// Turn sc1's connection down.
-	wantSubConnErr := errors.New("subConn connection error")
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Idle})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{
 		ConnectivityState: connectivity.TransientFailure,
 		ConnectionError:   wantSubConnErr,
 	})
@@ -614,7 +695,8 @@ func (s) TestWeightedTarget_TwoSubBalancers_MoreBackends(t *testing.T) {
 	}
 
 	// Turn last connection to connecting.
-	wtb.UpdateSubConnState(sc4, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc4.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Idle})
+	sc4.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
 	p = <-cc.NewPickerCh
 	for i := 0; i < 5; i++ {
 		if _, err := p.Pick(balancer.PickInfo{}); err != balancer.ErrNoSubConnAvailable {
@@ -623,13 +705,11 @@ func (s) TestWeightedTarget_TwoSubBalancers_MoreBackends(t *testing.T) {
 	}
 
 	// Turn all connections down.
-	wtb.UpdateSubConnState(sc4, balancer.SubConnState{
+	sc4.UpdateState(balancer.SubConnState{
 		ConnectivityState: connectivity.TransientFailure,
 		ConnectionError:   wantSubConnErr,
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
-	defer cancel()
 	if err := cc.WaitForPicker(ctx, pickAndCheckError(wantSubConnErr)); err != nil {
 		t.Fatal(err)
 	}
@@ -639,7 +719,7 @@ func (s) TestWeightedTarget_TwoSubBalancers_MoreBackends(t *testing.T) {
 // case where we have a weighted target balancer with two sub-balancers of
 // differing weights.
 func (s) TestWeightedTarget_TwoSubBalancers_DifferentWeight_MoreBackends(t *testing.T) {
-	cc := testutils.NewTestClientConn(t)
+	cc := testutils.NewBalancerClientConn(t)
 	wtb := wtbBuilder.Build(cc, balancer.BuildOptions{})
 	defer wtb.Close()
 
@@ -667,45 +747,47 @@ func (s) TestWeightedTarget_TwoSubBalancers_DifferentWeight_MoreBackends(t *test
 	addr3 := resolver.Address{Addr: testBackendAddrStrs[3]}
 	addr4 := resolver.Address{Addr: testBackendAddrStrs[4]}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState: resolver.State{Addresses: []resolver.Address{
-			hierarchy.Set(addr1, []string{"cluster_1"}),
-			hierarchy.Set(addr2, []string{"cluster_1"}),
-			hierarchy.Set(addr3, []string{"cluster_2"}),
-			hierarchy.Set(addr4, []string{"cluster_2"}),
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr1}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr2}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr3}}, []string{"cluster_2"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr4}}, []string{"cluster_2"}),
 		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
 	}
 
-	scs := waitForNewSubConns(t, cc, 4)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	scs := waitForNewSubConns(ctx, t, cc, 4)
 	verifySubConnAddrs(t, scs, map[string][]resolver.Address{
 		"cluster_1": {addr1, addr2},
 		"cluster_2": {addr3, addr4},
 	})
 
 	// We expect two subConns on each subBalancer.
-	sc1 := scs["cluster_1"][0].sc
-	sc2 := scs["cluster_1"][1].sc
-	sc3 := scs["cluster_2"][0].sc
-	sc4 := scs["cluster_2"][1].sc
+	sc1 := scs["cluster_1"][0].sc.(*testutils.TestSubConn)
+	sc2 := scs["cluster_1"][1].sc.(*testutils.TestSubConn)
+	sc3 := scs["cluster_2"][0].sc.(*testutils.TestSubConn)
+	sc4 := scs["cluster_2"][1].sc.(*testutils.TestSubConn)
+
+	// The CONNECTING picker should be sent by all leaf pickfirst policies on
+	// receiving the first resolver update.
+	<-cc.NewPickerCh
 
 	// Send state changes for all SubConns, and wait for the picker.
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc3.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc3.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Ready})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc3, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc3, balancer.SubConnState{ConnectivityState: connectivity.Ready})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc4, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc4, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc4.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc4.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	p := <-cc.NewPickerCh
 
 	// Test roundrobin on the last picker. Twice the number of RPCs should be
@@ -720,7 +802,7 @@ func (s) TestWeightedTarget_TwoSubBalancers_DifferentWeight_MoreBackends(t *test
 // have a weighted target balancer with three sub-balancers and we remove one of
 // the subBalancers.
 func (s) TestWeightedTarget_ThreeSubBalancers_RemoveBalancer(t *testing.T) {
-	cc := testutils.NewTestClientConn(t)
+	cc := testutils.NewBalancerClientConn(t)
 	wtb := wtbBuilder.Build(cc, balancer.BuildOptions{})
 	defer wtb.Close()
 
@@ -751,17 +833,19 @@ func (s) TestWeightedTarget_ThreeSubBalancers_RemoveBalancer(t *testing.T) {
 	addr2 := resolver.Address{Addr: testBackendAddrStrs[2]}
 	addr3 := resolver.Address{Addr: testBackendAddrStrs[3]}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState: resolver.State{Addresses: []resolver.Address{
-			hierarchy.Set(addr1, []string{"cluster_1"}),
-			hierarchy.Set(addr2, []string{"cluster_2"}),
-			hierarchy.Set(addr3, []string{"cluster_3"}),
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr1}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr2}}, []string{"cluster_2"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr3}}, []string{"cluster_3"}),
 		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
 	}
 
-	scs := waitForNewSubConns(t, cc, 3)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	scs := waitForNewSubConns(ctx, t, cc, 3)
 	verifySubConnAddrs(t, scs, map[string][]resolver.Address{
 		"cluster_1": {addr1},
 		"cluster_2": {addr2},
@@ -769,22 +853,23 @@ func (s) TestWeightedTarget_ThreeSubBalancers_RemoveBalancer(t *testing.T) {
 	})
 
 	// We expect one subConn on each subBalancer.
-	sc1 := scs["cluster_1"][0].sc
-	sc2 := scs["cluster_2"][0].sc
-	sc3 := scs["cluster_3"][0].sc
+	sc1 := scs["cluster_1"][0].sc.(*testutils.TestSubConn)
+	sc2 := scs["cluster_2"][0].sc.(*testutils.TestSubConn)
+	sc3 := scs["cluster_3"][0].sc.(*testutils.TestSubConn)
 
 	// Send state changes for all SubConns, and wait for the picker.
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	// The CONNECTING picker should be sent by all leaf pickfirst policies on
+	// receiving the first resolver update.
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Ready})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc3, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc3, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	<-sc3.ConnectCh
+	sc3.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc3.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	p := <-cc.NewPickerCh
 
 	want := []balancer.SubConn{sc1, sc2, sc3}
@@ -810,9 +895,9 @@ func (s) TestWeightedTarget_ThreeSubBalancers_RemoveBalancer(t *testing.T) {
 		t.Fatalf("failed to parse balancer config: %v", err)
 	}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState: resolver.State{Addresses: []resolver.Address{
-			hierarchy.Set(addr1, []string{"cluster_1"}),
-			hierarchy.Set(addr3, []string{"cluster_3"}),
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr1}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr3}}, []string{"cluster_3"}),
 		}},
 		BalancerConfig: config,
 	}); err != nil {
@@ -823,9 +908,15 @@ func (s) TestWeightedTarget_ThreeSubBalancers_RemoveBalancer(t *testing.T) {
 	// picker which ensures that the removed subBalancer is not picked for RPCs.
 	p = <-cc.NewPickerCh
 
-	scRemoved := <-cc.RemoveSubConnCh
-	if !cmp.Equal(scRemoved, sc2, cmp.AllowUnexported(testutils.TestSubConn{})) {
-		t.Fatalf("RemoveSubConn, want %v, got %v", sc2, scRemoved)
+	scShutdown := <-cc.ShutdownSubConnCh
+	// The same SubConn is closed by gracefulswitch and pickfirstleaf when they
+	// are closed. Remove duplicate events.
+	// TODO: https://github.com/grpc/grpc-go/issues/6472 - Remove this
+	// workaround once pickfirst is the only leaf policy and responsible for
+	// shutting down SubConns.
+	<-cc.ShutdownSubConnCh
+	if scShutdown != sc2 {
+		t.Fatalf("ShutdownSubConn, want %v, got %v", sc2, scShutdown)
 	}
 	want = []balancer.SubConn{sc1, sc3}
 	if err := testutils.IsRoundRobin(want, testutils.SubConnFromPicker(p)); err != nil {
@@ -833,8 +924,11 @@ func (s) TestWeightedTarget_ThreeSubBalancers_RemoveBalancer(t *testing.T) {
 	}
 
 	// Move balancer 3 into transient failure.
+	sc3.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Idle})
+	<-sc3.ConnectCh
+	sc3.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
 	wantSubConnErr := errors.New("subConn connection error")
-	wtb.UpdateSubConnState(sc3, balancer.SubConnState{
+	sc3.UpdateState(balancer.SubConnState{
 		ConnectivityState: connectivity.TransientFailure,
 		ConnectionError:   wantSubConnErr,
 	})
@@ -854,8 +948,8 @@ func (s) TestWeightedTarget_ThreeSubBalancers_RemoveBalancer(t *testing.T) {
 		t.Fatalf("failed to parse balancer config: %v", err)
 	}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState: resolver.State{Addresses: []resolver.Address{
-			hierarchy.Set(addr3, []string{"cluster_3"}),
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr3}}, []string{"cluster_3"}),
 		}},
 		BalancerConfig: config,
 	}); err != nil {
@@ -864,14 +958,17 @@ func (s) TestWeightedTarget_ThreeSubBalancers_RemoveBalancer(t *testing.T) {
 
 	// Removing a subBalancer causes the weighted target LB policy to push a new
 	// picker which ensures that the removed subBalancer is not picked for RPCs.
-
-	scRemoved = <-cc.RemoveSubConnCh
-	if !cmp.Equal(scRemoved, sc1, cmp.AllowUnexported(testutils.TestSubConn{})) {
-		t.Fatalf("RemoveSubConn, want %v, got %v", sc1, scRemoved)
+	scShutdown = <-cc.ShutdownSubConnCh
+	// The same SubConn is closed by gracefulswitch and pickfirstleaf when they
+	// are closed. Remove duplicate events.
+	// TODO: https://github.com/grpc/grpc-go/issues/6472 - Remove this
+	// workaround once pickfirst is the only leaf policy and responsible for
+	// shutting down SubConns.
+	<-cc.ShutdownSubConnCh
+	if scShutdown != sc1 {
+		t.Fatalf("ShutdownSubConn, want %v, got %v", sc1, scShutdown)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
-	defer cancel()
 	if err := cc.WaitForPicker(ctx, pickAndCheckError(wantSubConnErr)); err != nil {
 		t.Fatal(err)
 	}
@@ -881,7 +978,7 @@ func (s) TestWeightedTarget_ThreeSubBalancers_RemoveBalancer(t *testing.T) {
 // where we have a weighted target balancer with two sub-balancers, and we
 // change the weight of these subBalancers.
 func (s) TestWeightedTarget_TwoSubBalancers_ChangeWeight_MoreBackends(t *testing.T) {
-	cc := testutils.NewTestClientConn(t)
+	cc := testutils.NewBalancerClientConn(t)
 	wtb := wtbBuilder.Build(cc, balancer.BuildOptions{})
 	defer wtb.Close()
 
@@ -909,45 +1006,47 @@ func (s) TestWeightedTarget_TwoSubBalancers_ChangeWeight_MoreBackends(t *testing
 	addr3 := resolver.Address{Addr: testBackendAddrStrs[3]}
 	addr4 := resolver.Address{Addr: testBackendAddrStrs[4]}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState: resolver.State{Addresses: []resolver.Address{
-			hierarchy.Set(addr1, []string{"cluster_1"}),
-			hierarchy.Set(addr2, []string{"cluster_1"}),
-			hierarchy.Set(addr3, []string{"cluster_2"}),
-			hierarchy.Set(addr4, []string{"cluster_2"}),
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr1}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr2}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr3}}, []string{"cluster_2"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr4}}, []string{"cluster_2"}),
 		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
 	}
 
-	scs := waitForNewSubConns(t, cc, 4)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	scs := waitForNewSubConns(ctx, t, cc, 4)
 	verifySubConnAddrs(t, scs, map[string][]resolver.Address{
 		"cluster_1": {addr1, addr2},
 		"cluster_2": {addr3, addr4},
 	})
 
 	// We expect two subConns on each subBalancer.
-	sc1 := scs["cluster_1"][0].sc
-	sc2 := scs["cluster_1"][1].sc
-	sc3 := scs["cluster_2"][0].sc
-	sc4 := scs["cluster_2"][1].sc
+	sc1 := scs["cluster_1"][0].sc.(*testutils.TestSubConn)
+	sc2 := scs["cluster_1"][1].sc.(*testutils.TestSubConn)
+	sc3 := scs["cluster_2"][0].sc.(*testutils.TestSubConn)
+	sc4 := scs["cluster_2"][1].sc.(*testutils.TestSubConn)
+
+	// The CONNECTING picker should be sent by all leaf pickfirst policies on
+	// receiving the first resolver update.
+	<-cc.NewPickerCh
 
 	// Send state changes for all SubConns, and wait for the picker.
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc2.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc3.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc3.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{ConnectivityState: connectivity.Ready})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc3, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc3, balancer.SubConnState{ConnectivityState: connectivity.Ready})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc4, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
-	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc4, balancer.SubConnState{ConnectivityState: connectivity.Ready})
+	sc4.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc4.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Ready})
 	p := <-cc.NewPickerCh
 
 	// Test roundrobin on the last picker. Twice the number of RPCs should be
@@ -975,11 +1074,11 @@ func (s) TestWeightedTarget_TwoSubBalancers_ChangeWeight_MoreBackends(t *testing
 		t.Fatalf("failed to parse balancer config: %v", err)
 	}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState: resolver.State{Addresses: []resolver.Address{
-			hierarchy.Set(addr1, []string{"cluster_1"}),
-			hierarchy.Set(addr2, []string{"cluster_1"}),
-			hierarchy.Set(addr3, []string{"cluster_2"}),
-			hierarchy.Set(addr4, []string{"cluster_2"}),
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr1}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr2}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr3}}, []string{"cluster_2"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr4}}, []string{"cluster_2"}),
 		}},
 		BalancerConfig: config,
 	}); err != nil {
@@ -999,7 +1098,7 @@ func (s) TestWeightedTarget_TwoSubBalancers_ChangeWeight_MoreBackends(t *testing
 // the picks won't fail with transient_failure, and should instead wait for the
 // other sub-balancer.
 func (s) TestWeightedTarget_InitOneSubBalancerTransientFailure(t *testing.T) {
-	cc := testutils.NewTestClientConn(t)
+	cc := testutils.NewBalancerClientConn(t)
 	wtb := wtbBuilder.Build(cc, balancer.BuildOptions{})
 	defer wtb.Close()
 
@@ -1025,28 +1124,30 @@ func (s) TestWeightedTarget_InitOneSubBalancerTransientFailure(t *testing.T) {
 	addr1 := resolver.Address{Addr: testBackendAddrStrs[1]}
 	addr2 := resolver.Address{Addr: testBackendAddrStrs[2]}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState: resolver.State{Addresses: []resolver.Address{
-			hierarchy.Set(addr1, []string{"cluster_1"}),
-			hierarchy.Set(addr2, []string{"cluster_2"}),
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr1}}, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr2}}, []string{"cluster_2"}),
 		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
 	}
 
-	scs := waitForNewSubConns(t, cc, 2)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	scs := waitForNewSubConns(ctx, t, cc, 2)
 	verifySubConnAddrs(t, scs, map[string][]resolver.Address{
 		"cluster_1": {addr1},
 		"cluster_2": {addr2},
 	})
 
 	// We expect a single subConn on each subBalancer.
-	sc1 := scs["cluster_1"][0].sc
+	sc1 := scs["cluster_1"][0].sc.(*testutils.TestSubConn)
 	_ = scs["cluster_2"][0].sc
 
 	// Set one subconn to TransientFailure, this will trigger one sub-balancer
 	// to report transient failure.
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.TransientFailure})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.TransientFailure})
 
 	p := <-cc.NewPickerCh
 	for i := 0; i < 5; i++ {
@@ -1061,7 +1162,7 @@ func (s) TestWeightedTarget_InitOneSubBalancerTransientFailure(t *testing.T) {
 // connecting, the overall state stays in transient_failure, and all picks
 // return transient failure error.
 func (s) TestBalancerGroup_SubBalancerTurnsConnectingFromTransientFailure(t *testing.T) {
-	cc := testutils.NewTestClientConn(t)
+	cc := testutils.NewBalancerClientConn(t)
 	wtb := wtbBuilder.Build(cc, balancer.BuildOptions{})
 	defer wtb.Close()
 
@@ -1086,35 +1187,39 @@ func (s) TestBalancerGroup_SubBalancerTurnsConnectingFromTransientFailure(t *tes
 	// Send the config with one address for each cluster.
 	addr1 := resolver.Address{Addr: testBackendAddrStrs[1]}
 	addr2 := resolver.Address{Addr: testBackendAddrStrs[2]}
+	ep1 := resolver.Endpoint{Addresses: []resolver.Address{addr1}}
+	ep2 := resolver.Endpoint{Addresses: []resolver.Address{addr2}}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState: resolver.State{Addresses: []resolver.Address{
-			hierarchy.Set(addr1, []string{"cluster_1"}),
-			hierarchy.Set(addr2, []string{"cluster_2"}),
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(ep1, []string{"cluster_1"}),
+			hierarchy.SetInEndpoint(ep2, []string{"cluster_2"}),
 		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
 	}
 
-	scs := waitForNewSubConns(t, cc, 2)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	scs := waitForNewSubConns(ctx, t, cc, 2)
 	verifySubConnAddrs(t, scs, map[string][]resolver.Address{
 		"cluster_1": {addr1},
 		"cluster_2": {addr2},
 	})
 
 	// We expect a single subConn on each subBalancer.
-	sc1 := scs["cluster_1"][0].sc
-	sc2 := scs["cluster_2"][0].sc
+	sc1 := scs["cluster_1"][0].sc.(*testutils.TestSubConn)
+	sc2 := scs["cluster_2"][0].sc.(*testutils.TestSubConn)
 
 	// Set both subconn to TransientFailure, this will put both sub-balancers in
 	// transient failure.
 	wantSubConnErr := errors.New("subConn connection error")
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{
+	sc1.UpdateState(balancer.SubConnState{
 		ConnectivityState: connectivity.TransientFailure,
 		ConnectionError:   wantSubConnErr,
 	})
 	<-cc.NewPickerCh
-	wtb.UpdateSubConnState(sc2, balancer.SubConnState{
+	sc2.UpdateState(balancer.SubConnState{
 		ConnectivityState: connectivity.TransientFailure,
 		ConnectionError:   wantSubConnErr,
 	})
@@ -1127,7 +1232,7 @@ func (s) TestBalancerGroup_SubBalancerTurnsConnectingFromTransientFailure(t *tes
 	}
 
 	// Set one subconn to Connecting, it shouldn't change the overall state.
-	wtb.UpdateSubConnState(sc1, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc1.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
 	select {
 	case <-time.After(100 * time.Millisecond):
 	case <-cc.NewPickerCh:
@@ -1141,13 +1246,13 @@ func (s) TestBalancerGroup_SubBalancerTurnsConnectingFromTransientFailure(t *tes
 	}
 }
 
-// Verify that a SubConn is created with the expected address and hierarchy
-// path cleared.
-func verifyAddressInNewSubConn(t *testing.T, cc *testutils.TestClientConn, addr resolver.Address) {
+// Verify that a SubConn is created with the expected address.
+func verifyAddressInNewSubConn(t *testing.T, cc *testutils.BalancerClientConn, addr resolver.Address) {
 	t.Helper()
 
 	gotAddr := <-cc.NewSubConnAddrsCh
-	wantAddr := []resolver.Address{hierarchy.Set(addr, []string{})}
+	wantAddr := []resolver.Address{addr}
+	gotAddr[0].BalancerAttributes = nil
 	if diff := cmp.Diff(gotAddr, wantAddr, cmp.AllowUnexported(attributes.Attributes{})); diff != "" {
 		t.Fatalf("got unexpected new subconn addrs: %v", diff)
 	}
@@ -1165,12 +1270,17 @@ type subConnWithAddr struct {
 //
 // Returned value is a map from subBalancer (identified by its config) to
 // subConns created by it.
-func waitForNewSubConns(t *testing.T, cc *testutils.TestClientConn, num int) map[string][]subConnWithAddr {
+func waitForNewSubConns(ctx context.Context, t *testing.T, cc *testutils.BalancerClientConn, num int) map[string][]subConnWithAddr {
 	t.Helper()
 
 	scs := make(map[string][]subConnWithAddr)
 	for i := 0; i < num; i++ {
-		addrs := <-cc.NewSubConnAddrsCh
+		var addrs []resolver.Address
+		select {
+		case <-ctx.Done():
+			t.Fatalf("Timed out waiting for addresses for new SubConn.")
+		case addrs = <-cc.NewSubConnAddrsCh:
+		}
 		if len(addrs) != 1 {
 			t.Fatalf("received subConns with %d addresses, want 1", len(addrs))
 		}
@@ -1178,7 +1288,12 @@ func waitForNewSubConns(t *testing.T, cc *testutils.TestClientConn, num int) map
 		if !ok {
 			t.Fatalf("received subConn address %v contains no attribute for balancer config", addrs[0])
 		}
-		sc := <-cc.NewSubConnCh
+		var sc balancer.SubConn
+		select {
+		case <-ctx.Done():
+			t.Fatalf("Timed out waiting for new SubConn.")
+		case sc = <-cc.NewSubConnCh:
+		}
 		scWithAddr := subConnWithAddr{sc: sc, addr: addrs[0]}
 		scs[cfg] = append(scs[cfg], scWithAddr)
 	}
@@ -1211,18 +1326,23 @@ var errTestInitIdle = fmt.Errorf("init Idle balancer error 0")
 func init() {
 	stub.Register(initIdleBalancerName, stub.BalancerFuncs{
 		UpdateClientConnState: func(bd *stub.BalancerData, opts balancer.ClientConnState) error {
-			bd.ClientConn.NewSubConn(opts.ResolverState.Addresses, balancer.NewSubConnOptions{})
-			return nil
-		},
-		UpdateSubConnState: func(bd *stub.BalancerData, sc balancer.SubConn, state balancer.SubConnState) {
-			err := fmt.Errorf("wrong picker error")
-			if state.ConnectivityState == connectivity.Idle {
-				err = errTestInitIdle
-			}
-			bd.ClientConn.UpdateState(balancer.State{
-				ConnectivityState: state.ConnectivityState,
-				Picker:            &testutils.TestConstPicker{Err: err},
+			sc, err := bd.ClientConn.NewSubConn(opts.ResolverState.Addresses, balancer.NewSubConnOptions{
+				StateListener: func(state balancer.SubConnState) {
+					err := fmt.Errorf("wrong picker error")
+					if state.ConnectivityState == connectivity.Idle {
+						err = errTestInitIdle
+					}
+					bd.ClientConn.UpdateState(balancer.State{
+						ConnectivityState: state.ConnectivityState,
+						Picker:            &testutils.TestConstPicker{Err: err},
+					})
+				},
 			})
+			if err != nil {
+				return err
+			}
+			sc.Connect()
+			return nil
 		},
 	})
 }
@@ -1230,7 +1350,7 @@ func init() {
 // TestInitialIdle covers the case that if the child reports Idle, the overall
 // state will be Idle.
 func (s) TestInitialIdle(t *testing.T) {
-	cc := testutils.NewTestClientConn(t)
+	cc := testutils.NewBalancerClientConn(t)
 	wtb := wtbBuilder.Build(cc, balancer.BuildOptions{})
 	defer wtb.Close()
 
@@ -1250,7 +1370,9 @@ func (s) TestInitialIdle(t *testing.T) {
 	// Send the config, and an address with hierarchy path ["cluster_1"].
 	addrs := []resolver.Address{{Addr: testBackendAddrStrs[0], Attributes: nil}}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState:  resolver.State{Addresses: []resolver.Address{hierarchy.Set(addrs[0], []string{"cds:cluster_1"})}},
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addrs[0]}}, []string{"cds:cluster_1"}),
+		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
@@ -1260,7 +1382,7 @@ func (s) TestInitialIdle(t *testing.T) {
 	// in the address is cleared.
 	for range addrs {
 		sc := <-cc.NewSubConnCh
-		wtb.UpdateSubConnState(sc, balancer.SubConnState{ConnectivityState: connectivity.Idle})
+		sc.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Idle})
 	}
 
 	if state := <-cc.NewStateCh; state != connectivity.Idle {
@@ -1271,7 +1393,7 @@ func (s) TestInitialIdle(t *testing.T) {
 // TestIgnoreSubBalancerStateTransitions covers the case that if the child reports a
 // transition from TF to Connecting, the overall state will still be TF.
 func (s) TestIgnoreSubBalancerStateTransitions(t *testing.T) {
-	cc := &tcc{TestClientConn: testutils.NewTestClientConn(t)}
+	cc := &tcc{BalancerClientConn: testutils.NewBalancerClientConn(t)}
 
 	wtb := wtbBuilder.Build(cc, balancer.BuildOptions{})
 	defer wtb.Close()
@@ -1292,15 +1414,17 @@ func (s) TestIgnoreSubBalancerStateTransitions(t *testing.T) {
 	// Send the config, and an address with hierarchy path ["cluster_1"].
 	addr := resolver.Address{Addr: testBackendAddrStrs[0], Attributes: nil}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState:  resolver.State{Addresses: []resolver.Address{hierarchy.Set(addr, []string{"cluster_1"})}},
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addr}}, []string{"cluster_1"}),
+		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)
 	}
 
 	sc := <-cc.NewSubConnCh
-	wtb.UpdateSubConnState(sc, balancer.SubConnState{ConnectivityState: connectivity.TransientFailure})
-	wtb.UpdateSubConnState(sc, balancer.SubConnState{ConnectivityState: connectivity.Connecting})
+	sc.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.TransientFailure})
+	sc.UpdateState(balancer.SubConnState{ConnectivityState: connectivity.Connecting})
 
 	// Verify that the SubConnState update from TF to Connecting is ignored.
 	if len(cc.states) != 2 || cc.states[0].ConnectivityState != connectivity.Connecting || cc.states[1].ConnectivityState != connectivity.TransientFailure {
@@ -1311,20 +1435,20 @@ func (s) TestIgnoreSubBalancerStateTransitions(t *testing.T) {
 // tcc wraps a testutils.TestClientConn but stores all state transitions in a
 // slice.
 type tcc struct {
-	*testutils.TestClientConn
+	*testutils.BalancerClientConn
 	states []balancer.State
 }
 
 func (t *tcc) UpdateState(bs balancer.State) {
 	t.states = append(t.states, bs)
-	t.TestClientConn.UpdateState(bs)
+	t.BalancerClientConn.UpdateState(bs)
 }
 
 func (s) TestUpdateStatePauses(t *testing.T) {
-	cc := &tcc{TestClientConn: testutils.NewTestClientConn(t)}
+	cc := &tcc{BalancerClientConn: testutils.NewBalancerClientConn(t)}
 
 	balFuncs := stub.BalancerFuncs{
-		UpdateClientConnState: func(bd *stub.BalancerData, s balancer.ClientConnState) error {
+		UpdateClientConnState: func(bd *stub.BalancerData, _ balancer.ClientConnState) error {
 			bd.ClientConn.UpdateState(balancer.State{ConnectivityState: connectivity.TransientFailure, Picker: nil})
 			bd.ClientConn.UpdateState(balancer.State{ConnectivityState: connectivity.Ready, Picker: nil})
 			return nil
@@ -1351,7 +1475,9 @@ func (s) TestUpdateStatePauses(t *testing.T) {
 	// Send the config, and an address with hierarchy path ["cluster_1"].
 	addrs := []resolver.Address{{Addr: testBackendAddrStrs[0], Attributes: nil}}
 	if err := wtb.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState:  resolver.State{Addresses: []resolver.Address{hierarchy.Set(addrs[0], []string{"cds:cluster_1"})}},
+		ResolverState: resolver.State{Endpoints: []resolver.Endpoint{
+			hierarchy.SetInEndpoint(resolver.Endpoint{Addresses: []resolver.Address{addrs[0]}}, []string{"cds:cluster_1"}),
+		}},
 		BalancerConfig: config,
 	}); err != nil {
 		t.Fatalf("failed to update ClientConn state: %v", err)

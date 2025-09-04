@@ -53,7 +53,7 @@ var (
 type byteBufCodec struct {
 }
 
-func (byteBufCodec) Marshal(v interface{}) ([]byte, error) {
+func (byteBufCodec) Marshal(v any) ([]byte, error) {
 	b, ok := v.(*[]byte)
 	if !ok {
 		return nil, fmt.Errorf("failed to marshal: %v is not type of *[]byte", v)
@@ -61,7 +61,7 @@ func (byteBufCodec) Marshal(v interface{}) ([]byte, error) {
 	return *b, nil
 }
 
-func (byteBufCodec) Unmarshal(data []byte, v interface{}) error {
+func (byteBufCodec) Unmarshal(data []byte, v any) error {
 	b, ok := v.(*[]byte)
 	if !ok {
 		return fmt.Errorf("failed to marshal: %v is not type of *[]byte", v)
@@ -141,7 +141,7 @@ func (s *workerServer) RunClient(stream testgrpc.WorkerService_RunClientServer) 
 	var bc *benchmarkClient
 	defer func() {
 		// Shut down benchmark client when stream ends.
-		logger.Infof("shuting down benchmark client")
+		logger.Infof("shutting down benchmark client")
 		if bc != nil {
 			bc.shutdown()
 		}
@@ -160,7 +160,7 @@ func (s *workerServer) RunClient(stream testgrpc.WorkerService_RunClientServer) 
 		case *testpb.ClientArgs_Setup:
 			logger.Infof("client setup received:")
 			if bc != nil {
-				logger.Infof("client setup received when client already exists, shuting down the existing client")
+				logger.Infof("client setup received when client already exists, shutting down the existing client")
 				bc.shutdown()
 			}
 			bc, err = startBenchmarkClient(t.Setup)
@@ -188,12 +188,12 @@ func (s *workerServer) RunClient(stream testgrpc.WorkerService_RunClientServer) 
 	}
 }
 
-func (s *workerServer) CoreCount(ctx context.Context, in *testpb.CoreRequest) (*testpb.CoreResponse, error) {
+func (s *workerServer) CoreCount(context.Context, *testpb.CoreRequest) (*testpb.CoreResponse, error) {
 	logger.Infof("core count: %v", runtime.NumCPU())
 	return &testpb.CoreResponse{Cores: int32(runtime.NumCPU())}, nil
 }
 
-func (s *workerServer) QuitWorker(ctx context.Context, in *testpb.Void) (*testpb.Void, error) {
+func (s *workerServer) QuitWorker(context.Context, *testpb.Void) (*testpb.Void, error) {
 	logger.Infof("quitting worker")
 	s.stop <- true
 	return &testpb.Void{}, nil

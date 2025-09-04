@@ -1,1 +1,3 @@
-RECURSE(grpc_gcp)
+RECURSE(
+    grpc_gcp
+)

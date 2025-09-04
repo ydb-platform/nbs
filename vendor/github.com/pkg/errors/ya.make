@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-2-Clause)
 
+VERSION(v0.9.1)
+
 SRCS(
     errors.go
     go113.go
@@ -21,4 +23,6 @@ GO_XTEST_SRCS(example_test.go)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

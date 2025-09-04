@@ -129,10 +129,11 @@ cdef class _BaseContext:
             python.Py_INCREF(utf)
         return utf
 
-    cdef void _set_xpath_context(self, xpath.xmlXPathContext* xpathCtxt):
+    cdef void _set_xpath_context(self, xpath.xmlXPathContext* xpathCtxt) noexcept:
         self._xpathCtxt = xpathCtxt
         xpathCtxt.userData = <void*>self
-        xpathCtxt.error = _receiveXPathError
+        # Need a cast here because older libxml2 releases do not use 'const' in the functype.
+        xpathCtxt.error = <xmlerror.xmlStructuredErrorFunc> _receiveXPathError
 
     @cython.final
     cdef _register_context(self, _Document doc):
@@ -213,7 +214,7 @@ cdef class _BaseContext:
                                          _xcstr(prefix_utf), NULL)
             del self._global_namespaces[:]
     
-    cdef void _unregisterNamespace(self, prefix_utf):
+    cdef void _unregisterNamespace(self, prefix_utf) noexcept:
         xpath.xmlXPathRegisterNs(self._xpathCtxt,
                                  _xcstr(prefix_utf), NULL)
     
@@ -393,7 +394,7 @@ cdef tuple LIBXML2_XPATH_ERROR_MESSAGES = (
     b"?? Unknown error ??\n",
 )
 
-cdef void _forwardXPathError(void* c_ctxt, xmlerror.xmlError* c_error) with gil:
+cdef void _forwardXPathError(void* c_ctxt, const xmlerror.xmlError* c_error) noexcept with gil:
     cdef xmlerror.xmlError error
     cdef int xpath_code
     if c_error.message is not NULL:
@@ -414,7 +415,7 @@ cdef void _forwardXPathError(void* c_ctxt, xmlerror.xmlError* c_error) with gil:
 
     (<_BaseContext>c_ctxt)._error_log._receive(&error)
 
-cdef void _receiveXPathError(void* c_context, xmlerror.xmlError* error) nogil:
+cdef void _receiveXPathError(void* c_context, const xmlerror.xmlError* error) noexcept nogil:
     if not __DEBUG:
         return
     if c_context is NULL:
@@ -691,7 +692,7 @@ cdef _unpackNodeSetEntry(list results, xmlNode* c_node, _Document doc,
         raise NotImplementedError, \
             f"Not yet implemented result node type: {c_node.type}"
 
-cdef void _freeXPathObject(xpath.xmlXPathObject* xpathObj):
+cdef void _freeXPathObject(xpath.xmlXPathObject* xpathObj) noexcept:
     u"""Free the XPath object, but *never* free the *content* of node sets.
     Python dealloc will do that for us.
     """
@@ -821,7 +822,7 @@ cdef object _buildElementStringResult(_Document doc, xmlNode* c_node,
 # callbacks for XPath/XSLT extension functions
 
 cdef void _extension_function_call(_BaseContext context, function,
-                                   xpath.xmlXPathParserContext* ctxt, int nargs):
+                                   xpath.xmlXPathParserContext* ctxt, int nargs) noexcept:
     cdef _Document doc
     cdef xpath.xmlXPathObject* obj
     cdef list args
@@ -851,7 +852,7 @@ cdef void _extension_function_call(_BaseContext context, function,
 # lookup the function by name and call it
 
 cdef void _xpath_function_call(xpath.xmlXPathParserContext* ctxt,
-                               int nargs) with gil:
+                               int nargs) noexcept with gil:
     cdef _BaseContext context
     cdef xpath.xmlXPathContext* rctxt = ctxt.context
     context = <_BaseContext> rctxt.userData

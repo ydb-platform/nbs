@@ -8,12 +8,13 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/grpc/client
+    contrib/ydb/public/sdk/cpp/src/library/grpc/client
     library/cpp/threading/atomic
     library/cpp/threading/future
-    contrib/ydb/library/yql/providers/common/structured_token
+    yql/essentials/providers/common/structured_token
     contrib/ydb/library/yql/providers/common/token_accessor/grpc
-    contrib/ydb/public/sdk/cpp/client/ydb_types/credentials
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials/login
 )
 
 END()

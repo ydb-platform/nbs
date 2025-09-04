@@ -6,6 +6,8 @@ LICENSE(
     MIT
 )
 
+VERSION(v1.18.0)
+
 SRCS(
     decode.go
     encode.go
@@ -16,4 +18,6 @@ GO_TEST_SRCS(snappy_test.go)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

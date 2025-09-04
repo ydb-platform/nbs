@@ -27,7 +27,7 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/sql/pg_dummy
 )
 
 END()

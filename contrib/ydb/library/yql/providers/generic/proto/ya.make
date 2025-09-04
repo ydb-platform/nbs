@@ -1,14 +1,15 @@
 PROTO_LIBRARY()
+PROTOC_FATAL_WARNINGS()
 
 ONLY_TAGS(CPP_PROTO)
 
 PEERDIR(
     contrib/ydb/library/yql/providers/generic/connector/api/service/protos
-    contrib/ydb/library/yql/providers/generic/connector/api/common
+    yql/essentials/providers/common/proto
 )
 
 SRCS(
-    range.proto
+    partition.proto
     source.proto
 )
 
@@ -17,4 +18,3 @@ IF (NOT PY_PROTOS_FOR)
 ENDIF()
 
 END()
-

@@ -3,6 +3,7 @@
 #include <library/cpp/testing/unittest/gtest.h>
 
 #include <util/generic/noncopyable.h>
+#include <util/generic/ptr.h>
 #include <util/generic/string.h>
 #include <util/string/cast.h>
 
@@ -143,6 +144,46 @@ TEST(TConcurrentHashTest, TRemoveTest) {
     EXPECT_FALSE(h.Has("key2"));
     EXPECT_FALSE(h.Has("key3"));
     EXPECT_EQ(h.Get("key1"), 1);
+}
+
+TEST(TConcurrentHashTest, TTryRemoveTest) {
+    TConcurrentHashMap<TString, ui32> h;
+
+    EXPECT_FALSE(h.Has("key"));
+
+    ui32 res;
+    EXPECT_FALSE(h.TryRemove("key", res));
+
+    h.Insert("key", 1);
+    EXPECT_TRUE(h.Has("key"));
+    EXPECT_TRUE(h.TryRemove("key", res));
+    EXPECT_EQ(res, 1);
+    EXPECT_FALSE(h.TryRemove("key", res));
+}
+
+TEST(TConcurrentHashTest, TExchangeTest) {
+    struct TValue: TThrRefBase {
+        TValue(int v)
+            : Value(v)
+        {
+        }
+
+        int Value;
+    };
+
+    using TValuePtr = TIntrusivePtr<TValue>;
+
+    TConcurrentHashMap<int, TValuePtr> h;
+
+    TValuePtr v = MakeIntrusive<TValue>(123);
+    h.Exchange(1, v);
+    EXPECT_EQ(v, nullptr);
+
+    v = MakeIntrusive<TValue>(456);
+    h.Exchange(1, v);
+    EXPECT_EQ(v->RefCount(), 1);
+    EXPECT_EQ(v->Value, 123);
+    EXPECT_EQ(h.Get(1)->Value, 456);
 }
 
 TEST(TConcurrentHashTest, TGetBucketTest) {

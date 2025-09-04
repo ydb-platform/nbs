@@ -1,4 +1,5 @@
 #include "schemeshard_svp_migration.h"
+
 #include "schemeshard_impl.h"
 
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
@@ -65,6 +66,9 @@ private:
         }
         if (Current.CreateSA) {
             modifySubDomain.SetExternalStatisticsAggregator(true);
+        }
+        if (Current.CreateBCT) {
+            modifySubDomain.SetExternalBackupController(true);
         }
 
         LOG_DEBUG_S(TlsActivationContext->AsActorContext(), NKikimrServices::FLAT_TX_SCHEMESHARD,

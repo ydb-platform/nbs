@@ -27,7 +27,8 @@ namespace NKikimr {
 
         void TKeeper::Bootstrap(const TActorContext& ctx) {
             // send yard init message
-            TVDiskID myVDiskId(~0, ~0, 'H', 'I', 'K');
+            TVDiskID myVDiskId(TGroupId::FromValue(~0), ~0, 'H', 'I', 'K');
+            // TODO(ydynnikov): revise SlotSizeInUnits=0 in TEvYardInit
             ctx.Send(State.Settings.PDiskActorId, new NPDisk::TEvYardInit(State.Settings.InitOwnerRound, myVDiskId,
                     State.Settings.PDiskGuid, ctx.SelfID));
             Become(&TKeeper::StateFunc);

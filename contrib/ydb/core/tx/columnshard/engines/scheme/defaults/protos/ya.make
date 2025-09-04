@@ -1,0 +1,12 @@
+PROTO_LIBRARY()
+PROTOC_FATAL_WARNINGS()
+
+SRCS(
+    data.proto
+)
+
+PEERDIR(
+
+)
+
+END()

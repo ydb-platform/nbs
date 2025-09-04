@@ -49,8 +49,8 @@ func Test(t *testing.T) {
 	grpctest.RunSubTests(t, s{})
 }
 
-func setup(t *testing.T) (*testutils.TestClientConn, *Balancer) {
-	tcc := testutils.NewTestClientConn(t)
+func setup(t *testing.T) (*testutils.BalancerClientConn, *Balancer) {
+	tcc := testutils.NewBalancerClientConn(t)
 	return tcc, NewBalancer(tcc, balancer.BuildOptions{})
 }
 
@@ -87,7 +87,7 @@ func (s) TestSuccessfulFirstUpdate(t *testing.T) {
 // TestTwoBalancersSameType tests the scenario where there is a graceful switch
 // load balancer setup with a current and pending load balancer of the same
 // type. Any ClientConn update should be forwarded to the current lb if there is
-// a current lb and no pending lb, and the only the pending lb if the graceful
+// a current lb and no pending lb, and only the pending lb if the graceful
 // switch balancer contains both a current lb and a pending lb. The pending load
 // balancer should also swap into current whenever it updates with a
 // connectivity state other than CONNECTING.
@@ -345,9 +345,7 @@ func (s) TestCurrentLeavingReady(t *testing.T) {
 
 // TestBalancerSubconns tests the SubConn functionality of the graceful switch
 // load balancer. This tests the SubConn update flow in both directions, and
-// make sure updates end up at the correct component. Also, it tests that on an
-// UpdateSubConnState() call from the ClientConn, the graceful switch load
-// balancer forwards it to the correct child balancer.
+// make sure updates end up at the correct component.
 func (s) TestBalancerSubconns(t *testing.T) {
 	tcc, gsb := setup(t)
 	gsb.SwitchTo(mockBalancerBuilder1{})
@@ -365,7 +363,7 @@ func (s) TestBalancerSubconns(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatalf("timeout while waiting for an NewSubConn call on the ClientConn")
 	case sc := <-tcc.NewSubConnCh:
-		if !cmp.Equal(sc1, sc, cmp.AllowUnexported(testutils.TestSubConn{})) {
+		if sc != sc1 {
 			t.Fatalf("NewSubConn, want %v, got %v", sc1, sc)
 		}
 	}
@@ -380,7 +378,7 @@ func (s) TestBalancerSubconns(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatalf("timeout while waiting for an NewSubConn call on the ClientConn")
 	case sc := <-tcc.NewSubConnCh:
-		if !cmp.Equal(sc2, sc, cmp.AllowUnexported(testutils.TestSubConn{})) {
+		if sc != sc2 {
 			t.Fatalf("NewSubConn, want %v, got %v", sc2, sc)
 		}
 	}
@@ -388,39 +386,12 @@ func (s) TestBalancerSubconns(t *testing.T) {
 	// Updating the SubConnState for sc1 should cause the graceful switch
 	// balancer to forward the Update to balancerCurrent for sc1, as that is the
 	// balancer that created this SubConn.
-	gsb.UpdateSubConnState(sc1, scState)
-
-	// This update should get forwarded to balancerCurrent, as that is the LB
-	// that created this SubConn.
-	if err := gsb.balancerCurrent.Balancer.(*mockBalancer).waitForSubConnUpdate(ctx, subConnWithState{sc: sc1, state: scState}); err != nil {
-		t.Fatal(err)
-	}
-	// This update should not get forwarded to balancerPending, as that is not
-	// the LB that created this SubConn.
-	sCtx, sCancel := context.WithTimeout(context.Background(), defaultTestShortTimeout)
-	defer sCancel()
-	if err := gsb.balancerPending.Balancer.(*mockBalancer).waitForSubConnUpdate(sCtx, subConnWithState{sc: sc1, state: scState}); err == nil {
-		t.Fatalf("balancerPending should not have received a subconn update for sc1")
-	}
+	sc1.(*testutils.TestSubConn).UpdateState(scState)
 
 	// Updating the SubConnState for sc2 should cause the graceful switch
 	// balancer to forward the Update to balancerPending for sc2, as that is the
 	// balancer that created this SubConn.
-	gsb.UpdateSubConnState(sc2, scState)
-
-	// This update should get forwarded to balancerPending, as that is the LB
-	// that created this SubConn.
-	if err := gsb.balancerPending.Balancer.(*mockBalancer).waitForSubConnUpdate(ctx, subConnWithState{sc: sc2, state: scState}); err != nil {
-		t.Fatal(err)
-	}
-
-	// This update should not get forwarded to balancerCurrent, as that is not
-	// the LB that created this SubConn.
-	sCtx, sCancel = context.WithTimeout(context.Background(), defaultTestShortTimeout)
-	defer sCancel()
-	if err := gsb.balancerCurrent.Balancer.(*mockBalancer).waitForSubConnUpdate(sCtx, subConnWithState{sc: sc2, state: scState}); err == nil {
-		t.Fatalf("balancerCurrent should not have received a subconn update for sc2")
-	}
+	sc2.(*testutils.TestSubConn).UpdateState(scState)
 
 	// Updating the addresses for both SubConns and removing both SubConns
 	// should get forwarded to the ClientConn.
@@ -443,32 +414,32 @@ func (s) TestBalancerSubconns(t *testing.T) {
 	}
 
 	// balancerCurrent removing sc1 should get forwarded to the ClientConn.
-	gsb.balancerCurrent.Balancer.(*mockBalancer).removeSubConn(sc1)
+	sc1.Shutdown()
 	select {
 	case <-ctx.Done():
 		t.Fatalf("timeout while waiting for an UpdateAddresses call on the ClientConn")
-	case sc := <-tcc.RemoveSubConnCh:
-		if !cmp.Equal(sc1, sc, cmp.AllowUnexported(testutils.TestSubConn{})) {
-			t.Fatalf("RemoveSubConn, want %v, got %v", sc1, sc)
+	case sc := <-tcc.ShutdownSubConnCh:
+		if sc != sc1 {
+			t.Fatalf("ShutdownSubConn, want %v, got %v", sc1, sc)
 		}
 	}
 	// balancerPending removing sc2 should get forwarded to the ClientConn.
-	gsb.balancerPending.Balancer.(*mockBalancer).removeSubConn(sc2)
+	sc2.Shutdown()
 	select {
 	case <-ctx.Done():
 		t.Fatalf("timeout while waiting for an UpdateAddresses call on the ClientConn")
-	case sc := <-tcc.RemoveSubConnCh:
-		if !cmp.Equal(sc2, sc, cmp.AllowUnexported(testutils.TestSubConn{})) {
-			t.Fatalf("RemoveSubConn, want %v, got %v", sc2, sc)
+	case sc := <-tcc.ShutdownSubConnCh:
+		if sc != sc2 {
+			t.Fatalf("ShutdownSubConn, want %v, got %v", sc2, sc)
 		}
 	}
 }
 
-// TestBalancerClose tests the graceful switch balancer's Close() functionality.
-// From the Close() call, the graceful switch balancer should remove any created
-// Subconns and Close() the current and pending load balancers. This Close()
-// call should also cause any other events (calls to entrance functions) to be
-// no-ops.
+// TestBalancerClose tests the graceful switch balancer's Close()
+// functionality.  From the Close() call, the graceful switch balancer should
+// shut down any created Subconns and Close() the current and pending load
+// balancers. This Close() call should also cause any other events (calls to
+// entrance functions) to be no-ops.
 func (s) TestBalancerClose(t *testing.T) {
 	// Setup gsb balancer with current, pending, and one created SubConn on both
 	// current and pending.
@@ -476,7 +447,8 @@ func (s) TestBalancerClose(t *testing.T) {
 	gsb.SwitchTo(mockBalancerBuilder1{})
 	gsb.SwitchTo(mockBalancerBuilder2{})
 
-	sc1, err := gsb.balancerCurrent.Balancer.(*mockBalancer).newSubConn([]resolver.Address{}, balancer.NewSubConnOptions{}) // Will eventually get back a SubConn with an identifying property id 1
+	sc1, err := gsb.balancerCurrent.Balancer.(*mockBalancer).newSubConn([]resolver.Address{}, balancer.NewSubConnOptions{})
+	// Will eventually get back a SubConn with an identifying property id 1
 	if err != nil {
 		t.Fatalf("error constructing newSubConn in gsb: %v", err)
 	}
@@ -488,7 +460,8 @@ func (s) TestBalancerClose(t *testing.T) {
 	case <-tcc.NewSubConnCh:
 	}
 
-	sc2, err := gsb.balancerPending.Balancer.(*mockBalancer).newSubConn([]resolver.Address{}, balancer.NewSubConnOptions{}) // Will eventually get back a SubConn with an identifying property id 2
+	sc2, err := gsb.balancerPending.Balancer.(*mockBalancer).newSubConn([]resolver.Address{}, balancer.NewSubConnOptions{})
+	// Will eventually get back a SubConn with an identifying property id 2
 	if err != nil {
 		t.Fatalf("error constructing newSubConn in gsb: %v", err)
 	}
@@ -506,29 +479,25 @@ func (s) TestBalancerClose(t *testing.T) {
 	gsb.Close()
 
 	// The order of SubConns the graceful switch load balancer tells the Client
-	// Conn to remove is non deterministic, as it is stored in a map. However,
-	// the first SubConn removed should be either sc1 or sc2.
+	// Conn to shut down is non deterministic, as it is stored in a
+	// map. However, the first SubConn shut down should be either sc1 or sc2.
 	select {
 	case <-ctx.Done():
 		t.Fatalf("timeout while waiting for an UpdateAddresses call on the ClientConn")
-	case sc := <-tcc.RemoveSubConnCh:
-		if !cmp.Equal(sc1, sc, cmp.AllowUnexported(testutils.TestSubConn{})) {
-			if !cmp.Equal(sc2, sc, cmp.AllowUnexported(testutils.TestSubConn{})) {
-				t.Fatalf("RemoveSubConn, want either %v or %v, got %v", sc1, sc2, sc)
-			}
+	case sc := <-tcc.ShutdownSubConnCh:
+		if sc != sc1 && sc != sc2 {
+			t.Fatalf("ShutdownSubConn, want either %v or %v, got %v", sc1, sc2, sc)
 		}
 	}
 
 	// The graceful switch load balancer should then tell the ClientConn to
-	// remove the other SubConn.
+	// shut down the other SubConn.
 	select {
 	case <-ctx.Done():
 		t.Fatalf("timeout while waiting for an UpdateAddresses call on the ClientConn")
-	case sc := <-tcc.RemoveSubConnCh:
-		if !cmp.Equal(sc1, sc, cmp.AllowUnexported(testutils.TestSubConn{})) {
-			if !cmp.Equal(sc2, sc, cmp.AllowUnexported(testutils.TestSubConn{})) {
-				t.Fatalf("RemoveSubConn, want either %v or %v, got %v", sc1, sc2, sc)
-			}
+	case sc := <-tcc.ShutdownSubConnCh:
+		if sc != sc1 && sc != sc2 {
+			t.Fatalf("ShutdownSubConn, want either %v or %v, got %v", sc1, sc2, sc)
 		}
 	}
 
@@ -557,7 +526,7 @@ func (s) TestBalancerClose(t *testing.T) {
 		BalancerConfig: mockBalancerConfig{},
 	}
 	if err := gsb.UpdateClientConnState(ccs); err != errBalancerClosed {
-		t.Fatalf("gsb.UpdateCLientConnState(%v) returned error %v, want %v", ccs, err, errBalancerClosed)
+		t.Fatalf("gsb.UpdateClientConnState(%v) returned error %v, want %v", ccs, err, errBalancerClosed)
 	}
 
 	// After the graceful switch load balancer has been closed, any resolver error
@@ -635,7 +604,7 @@ func (s) TestPendingReplacedByAnotherPending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error constructing newSubConn in gsb: %v", err)
 	}
-	// This picker never returns an error, which can help this this test verify
+	// This picker never returns an error, which can help this test verify
 	// whether this cached state will get cleared on a new pending balancer
 	// (will replace it with a picker that always errors).
 	pendBal.updateState(balancer.State{
@@ -646,16 +615,16 @@ func (s) TestPendingReplacedByAnotherPending(t *testing.T) {
 	// Replace pending with a SwitchTo() call.
 	gsb.SwitchTo(mockBalancerBuilder2{})
 	// The pending balancer being replaced should cause the graceful switch
-	// balancer to Remove() any created SubConns for the old pending balancer
+	// balancer to Shutdown() any created SubConns for the old pending balancer
 	// and also Close() the old pending balancer.
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 	defer cancel()
 	select {
 	case <-ctx.Done():
-		t.Fatalf("timeout while waiting for a RemoveSubConn call on the ClientConn")
-	case sc := <-tcc.RemoveSubConnCh:
-		if !cmp.Equal(sc1, sc, cmp.AllowUnexported(testutils.TestSubConn{})) {
-			t.Fatalf("RemoveSubConn, want %v, got %v", sc1, sc)
+		t.Fatalf("timeout while waiting for a SubConn.Shutdown")
+	case sc := <-tcc.ShutdownSubConnCh:
+		if sc != sc1 {
+			t.Fatalf("ShutdownSubConn, want %v, got %v", sc1, sc)
 		}
 	}
 
@@ -697,13 +666,13 @@ func (s) TestPendingReplacedByAnotherPending(t *testing.T) {
 // Picker which never errors here for test purposes (can fill up tests further up with this)
 type neverErrPicker struct{}
 
-func (p *neverErrPicker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
+func (p *neverErrPicker) Pick(balancer.PickInfo) (balancer.PickResult, error) {
 	return balancer.PickResult{}, nil
 }
 
 // TestUpdateSubConnStateRace tests the race condition when the graceful switch
 // load balancer receives a SubConnUpdate concurrently with an UpdateState()
-// call, which can cause the balancer to forward the update to to be closed and
+// call, which can cause the balancer to forward the update to be closed and
 // cleared. The balancer API guarantees to never call any method the balancer
 // after a Close() call, and the test verifies that doesn't happen within the
 // graceful switch load balancer.
@@ -735,7 +704,7 @@ func (s) TestUpdateSubConnStateRace(t *testing.T) {
 				return
 			default:
 			}
-			gsb.UpdateSubConnState(sc, balancer.SubConnState{
+			sc.(*testutils.TestSubConn).UpdateState(balancer.SubConnState{
 				ConnectivityState: connectivity.Ready,
 			})
 		}
@@ -756,7 +725,7 @@ func (s) TestUpdateSubConnStateRace(t *testing.T) {
 }
 
 // TestInlineCallbackInBuild tests the scenario where a balancer calls back into
-// the balancer.ClientConn API inline from it's build function.
+// the balancer.ClientConn API inline from its build function.
 func (s) TestInlineCallbackInBuild(t *testing.T) {
 	tcc, gsb := setup(t)
 	// This build call should cause all of the inline updates to forward to the
@@ -771,7 +740,7 @@ func (s) TestInlineCallbackInBuild(t *testing.T) {
 	}
 	select {
 	case <-ctx.Done():
-		t.Fatalf("timeout while waiting for an NewSubConn() call on the ClientConn")
+		t.Fatalf("timeout while waiting for a NewSubConn() call on the ClientConn")
 	case <-tcc.NewSubConnCh:
 	}
 	select {
@@ -781,8 +750,8 @@ func (s) TestInlineCallbackInBuild(t *testing.T) {
 	}
 	select {
 	case <-ctx.Done():
-		t.Fatalf("timeout while waiting for an RemoveSubConn() call on the ClientConn")
-	case <-tcc.RemoveSubConnCh:
+		t.Fatalf("timeout while waiting for a Shutdown() call on the SubConn")
+	case <-tcc.ShutdownSubConnCh:
 	}
 	oldCurrent := gsb.balancerCurrent.Balancer.(*buildCallbackBal)
 
@@ -796,7 +765,7 @@ func (s) TestInlineCallbackInBuild(t *testing.T) {
 	}
 	select {
 	case <-ctx.Done():
-		t.Fatalf("timeout while waiting for an NewSubConn() call on the ClientConn")
+		t.Fatalf("timeout while waiting for a NewSubConn() call on the ClientConn")
 	case <-tcc.NewSubConnCh:
 	}
 	select {
@@ -806,8 +775,8 @@ func (s) TestInlineCallbackInBuild(t *testing.T) {
 	}
 	select {
 	case <-ctx.Done():
-		t.Fatalf("timeout while waiting for an RemoveSubConn() call on the ClientConn")
-	case <-tcc.RemoveSubConnCh:
+		t.Fatalf("timeout while waiting for a Shutdown() call on the SubConn")
+	case <-tcc.ShutdownSubConnCh:
 	}
 
 	// The current balancer should be closed as a result of the swap.
@@ -867,7 +836,7 @@ const buildCallbackBalName = "callbackInBuildBalancer"
 
 type mockBalancerBuilder1 struct{}
 
-func (mockBalancerBuilder1) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Balancer {
+func (mockBalancerBuilder1) Build(cc balancer.ClientConn, _ balancer.BuildOptions) balancer.Balancer {
 	return &mockBalancer{
 		ccsCh:         testutils.NewChannel(),
 		scStateCh:     testutils.NewChannel(),
@@ -920,7 +889,7 @@ func (mb1 *mockBalancer) ResolverError(err error) {
 }
 
 func (mb1 *mockBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
-	mb1.scStateCh.Send(subConnWithState{sc: sc, state: state})
+	panic(fmt.Sprintf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state))
 }
 
 func (mb1 *mockBalancer) Close() {
@@ -941,20 +910,6 @@ func (mb1 *mockBalancer) waitForClientConnUpdate(ctx context.Context, wantCCS ba
 	gotCCS := ccs.(balancer.ClientConnState)
 	if diff := cmp.Diff(gotCCS, wantCCS, cmpopts.IgnoreFields(resolver.State{}, "Attributes")); diff != "" {
 		return fmt.Errorf("error in ClientConnUpdate: received unexpected ClientConnState, diff (-got +want): %v", diff)
-	}
-	return nil
-}
-
-// waitForSubConnUpdate verifies if the mockBalancer receives the provided
-// SubConn update before the context expires.
-func (mb1 *mockBalancer) waitForSubConnUpdate(ctx context.Context, wantSCS subConnWithState) error {
-	scs, err := mb1.scStateCh.Receive(ctx)
-	if err != nil {
-		return fmt.Errorf("error waiting for SubConnUpdate: %v", err)
-	}
-	gotSCS := scs.(subConnWithState)
-	if !cmp.Equal(gotSCS, wantSCS, cmp.AllowUnexported(subConnWithState{}, testutils.TestSubConn{})) {
-		return fmt.Errorf("error in SubConnUpdate: received SubConnState: %+v, want %+v", gotSCS, wantSCS)
 	}
 	return nil
 }
@@ -994,7 +949,17 @@ func (mb1 *mockBalancer) updateState(state balancer.State) {
 	mb1.cc.UpdateState(state)
 }
 
-func (mb1 *mockBalancer) newSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
+func (mb1 *mockBalancer) newSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (sc balancer.SubConn, err error) {
+	if opts.StateListener == nil {
+		opts.StateListener = func(state balancer.SubConnState) {
+			mb1.scStateCh.Send(subConnWithState{sc: sc, state: state})
+		}
+	}
+	defer func() {
+		if sc != nil {
+			sc.Connect()
+		}
+	}()
 	return mb1.cc.NewSubConn(addrs, opts)
 }
 
@@ -1002,13 +967,9 @@ func (mb1 *mockBalancer) updateAddresses(sc balancer.SubConn, addrs []resolver.A
 	mb1.cc.UpdateAddresses(sc, addrs)
 }
 
-func (mb1 *mockBalancer) removeSubConn(sc balancer.SubConn) {
-	mb1.cc.RemoveSubConn(sc)
-}
-
 type mockBalancerBuilder2 struct{}
 
-func (mockBalancerBuilder2) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Balancer {
+func (mockBalancerBuilder2) Build(cc balancer.ClientConn, _ balancer.BuildOptions) balancer.Balancer {
 	return &mockBalancer{
 		ccsCh:         testutils.NewChannel(),
 		scStateCh:     testutils.NewChannel(),
@@ -1024,7 +985,7 @@ func (mockBalancerBuilder2) Name() string {
 
 type verifyBalancerBuilder struct{}
 
-func (verifyBalancerBuilder) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Balancer {
+func (verifyBalancerBuilder) Build(cc balancer.ClientConn, _ balancer.BuildOptions) balancer.Balancer {
 	return &verifyBalancer{
 		closed: grpcsync.NewEvent(),
 		cc:     cc,
@@ -1035,39 +996,45 @@ func (verifyBalancerBuilder) Name() string {
 	return verifyBalName
 }
 
-// verifyBalancer is a balancer that verifies that after a Close() call, an
-// updateSubConnState() call never happens.
+// verifyBalancer is a balancer that verifies that after a Close() call, a
+// StateListener() call never happens.
 type verifyBalancer struct {
 	closed *grpcsync.Event
 	// Hold onto the ClientConn wrapper to communicate with it.
 	cc balancer.ClientConn
-	// To fail the test if UpdateSubConnState gets called after Close().
+	// To fail the test if StateListener gets called after Close().
 	t *testing.T
 }
 
-func (vb *verifyBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error {
+func (vb *verifyBalancer) UpdateClientConnState(balancer.ClientConnState) error {
 	return nil
 }
 
-func (vb *verifyBalancer) ResolverError(err error) {}
+func (vb *verifyBalancer) ResolverError(error) {}
 
 func (vb *verifyBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
-	if vb.closed.HasFired() {
-		vb.t.Fatal("UpdateSubConnState was called after Close(), which breaks the balancer API")
-	}
+	panic(fmt.Sprintf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state))
 }
 
 func (vb *verifyBalancer) Close() {
 	vb.closed.Fire()
 }
 
-func (vb *verifyBalancer) newSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
+func (vb *verifyBalancer) newSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (sc balancer.SubConn, err error) {
+	if opts.StateListener == nil {
+		opts.StateListener = func(state balancer.SubConnState) {
+			if vb.closed.HasFired() {
+				vb.t.Fatalf("StateListener(%+v) was called after Close(), which breaks the balancer API", state)
+			}
+		}
+	}
+	defer func() { sc.Connect() }()
 	return vb.cc.NewSubConn(addrs, opts)
 }
 
 type buildCallbackBalancerBuilder struct{}
 
-func (buildCallbackBalancerBuilder) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Balancer {
+func (buildCallbackBalancerBuilder) Build(cc balancer.ClientConn, _ balancer.BuildOptions) balancer.Balancer {
 	b := &buildCallbackBal{
 		cc:      cc,
 		closeCh: testutils.NewChannel(),
@@ -1080,7 +1047,7 @@ func (buildCallbackBalancerBuilder) Build(cc balancer.ClientConn, opts balancer.
 		return nil
 	}
 	b.updateAddresses(sc, []resolver.Address{})
-	b.removeSubConn(sc)
+	sc.Shutdown()
 	return b
 }
 
@@ -1095,13 +1062,15 @@ type buildCallbackBal struct {
 	closeCh *testutils.Channel
 }
 
-func (bcb *buildCallbackBal) UpdateClientConnState(ccs balancer.ClientConnState) error {
+func (bcb *buildCallbackBal) UpdateClientConnState(balancer.ClientConnState) error {
 	return nil
 }
 
-func (bcb *buildCallbackBal) ResolverError(err error) {}
+func (bcb *buildCallbackBal) ResolverError(error) {}
 
-func (bcb *buildCallbackBal) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {}
+func (bcb *buildCallbackBal) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+	panic(fmt.Sprintf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state))
+}
 
 func (bcb *buildCallbackBal) Close() {
 	bcb.closeCh.Send(struct{}{})
@@ -1111,16 +1080,17 @@ func (bcb *buildCallbackBal) updateState(state balancer.State) {
 	bcb.cc.UpdateState(state)
 }
 
-func (bcb *buildCallbackBal) newSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
+func (bcb *buildCallbackBal) newSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (sc balancer.SubConn, err error) {
+	defer func() {
+		if sc != nil {
+			sc.Connect()
+		}
+	}()
 	return bcb.cc.NewSubConn(addrs, opts)
 }
 
 func (bcb *buildCallbackBal) updateAddresses(sc balancer.SubConn, addrs []resolver.Address) {
 	bcb.cc.UpdateAddresses(sc, addrs)
-}
-
-func (bcb *buildCallbackBal) removeSubConn(sc balancer.SubConn) {
-	bcb.cc.RemoveSubConn(sc)
 }
 
 // waitForClose verifies that the mockBalancer is closed before the context

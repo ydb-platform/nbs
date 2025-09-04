@@ -9,12 +9,15 @@
 # obtain one at https://mozilla.org/MPL/2.0/.
 
 import codecs
+import copy
+import dataclasses
 import inspect
 import platform
 import sys
+import sysconfig
 import typing
 from functools import partial
-from typing import Any, ForwardRef, get_args
+from typing import Any, ForwardRef, Optional, TypedDict as TypedDict, get_args
 
 try:
     BaseExceptionGroup = BaseExceptionGroup
@@ -25,22 +28,60 @@ except NameError:
         ExceptionGroup as ExceptionGroup,
     )
 if typing.TYPE_CHECKING:  # pragma: no cover
-    from typing_extensions import Concatenate as Concatenate, ParamSpec as ParamSpec
+    from typing_extensions import (
+        Concatenate as Concatenate,
+        NotRequired as NotRequired,
+        ParamSpec as ParamSpec,
+        TypeAlias as TypeAlias,
+        TypedDict as TypedDict,
+        override as override,
+    )
+
+    from hypothesis.internal.conjecture.engine import ConjectureRunner
 else:
+    # In order to use NotRequired, we need the version of TypedDict included in Python 3.11+.
+    if sys.version_info[:2] >= (3, 11):
+        from typing import NotRequired as NotRequired, TypedDict as TypedDict
+    else:
+        try:
+            from typing_extensions import (
+                NotRequired as NotRequired,
+                TypedDict as TypedDict,
+            )
+        except ImportError:
+            # We can use the old TypedDict from Python 3.8+ at runtime.
+            class NotRequired:
+                """A runtime placeholder for the NotRequired type, which is not available in Python <3.11."""
+
+                def __class_getitem__(cls, item):
+                    return cls
+
     try:
-        from typing import Concatenate as Concatenate, ParamSpec as ParamSpec
+        from typing import (
+            Concatenate as Concatenate,
+            ParamSpec as ParamSpec,
+            TypeAlias as TypeAlias,
+            override as override,
+        )
     except ImportError:
         try:
             from typing_extensions import (
                 Concatenate as Concatenate,
                 ParamSpec as ParamSpec,
+                TypeAlias as TypeAlias,
+                override as override,
             )
         except ImportError:
             Concatenate, ParamSpec = None, None
+            TypeAlias = None
+            override = lambda f: f
+
 
 PYPY = platform.python_implementation() == "PyPy"
 GRAALPY = platform.python_implementation() == "GraalVM"
 WINDOWS = platform.system() == "Windows"
+# First defined in CPython 3.13, defaults to False
+FREE_THREADED_CPYTHON = bool(sysconfig.get_config_var("Py_GIL_DISABLED"))
 
 
 def add_note(exc, note):
@@ -48,7 +89,10 @@ def add_note(exc, note):
         exc.add_note(note)
     except AttributeError:
         if not hasattr(exc, "__notes__"):
-            exc.__notes__ = []
+            try:
+                exc.__notes__ = []
+            except AttributeError:
+                return  # give up, might be e.g. a frozen dataclass
         exc.__notes__.append(note)
 
 
@@ -68,7 +112,7 @@ def int_to_byte(i: int) -> bytes:
     return bytes([i])
 
 
-def is_typed_named_tuple(cls):
+def is_typed_named_tuple(cls: type) -> bool:
     """Return True if cls is probably a subtype of `typing.NamedTuple`.
 
     Unfortunately types created with `class T(NamedTuple):` actually
@@ -87,7 +131,7 @@ def _hint_and_args(x):
     return (x, *get_args(x))
 
 
-def get_type_hints(thing):
+def get_type_hints(thing: object) -> dict[str, Any]:
     """Like the typing version, but tries harder and never errors.
 
     Tries harder: if the thing to inspect is a class but typing.get_type_hints
@@ -108,16 +152,14 @@ def get_type_hints(thing):
         )
         return {k: v for k, v in get_type_hints(thing.func).items() if k not in bound}
 
-    kwargs = {} if sys.version_info[:2] < (3, 9) else {"include_extras": True}
-
     try:
-        hints = typing.get_type_hints(thing, **kwargs)
+        hints = typing.get_type_hints(thing, include_extras=True)
     except (AttributeError, TypeError, NameError):  # pragma: no cover
         hints = {}
 
     if inspect.isclass(thing):
         try:
-            hints.update(typing.get_type_hints(thing.__init__, **kwargs))
+            hints.update(typing.get_type_hints(thing.__init__, include_extras=True))
         except (TypeError, NameError, AttributeError):
             pass
 
@@ -178,7 +220,26 @@ def ceil(x):
     return y
 
 
-def bad_django_TestCase(runner):
+def extract_bits(x: int, /, width: Optional[int] = None) -> list[int]:
+    assert x >= 0
+    result = []
+    while x:
+        result.append(x & 1)
+        x >>= 1
+    if width is not None:
+        result = (result + [0] * width)[:width]
+    result.reverse()
+    return result
+
+
+# int.bit_count was added in python 3.10
+try:
+    bit_count = int.bit_count
+except AttributeError:  # pragma: no cover
+    bit_count = lambda self: sum(extract_bits(abs(self)))
+
+
+def bad_django_TestCase(runner: Optional["ConjectureRunner"]) -> bool:
     if runner is None or "django.test" not in sys.modules:
         return False
     else:  # pragma: no cover
@@ -188,3 +249,46 @@ def bad_django_TestCase(runner):
         from hypothesis.extra.django._impl import HypothesisTestCase
 
         return not isinstance(runner, HypothesisTestCase)
+
+
+# see issue #3812
+if sys.version_info[:2] < (3, 12):
+
+    def dataclass_asdict(obj, *, dict_factory=dict):
+        """
+        A vendored variant of dataclasses.asdict. Includes the bugfix for
+        defaultdicts (cpython/32056) for all versions. See also issues/3812.
+
+        This should be removed whenever we drop support for 3.11. We can use the
+        standard dataclasses.asdict after that point.
+        """
+        if not dataclasses._is_dataclass_instance(obj):  # pragma: no cover
+            raise TypeError("asdict() should be called on dataclass instances")
+        return _asdict_inner(obj, dict_factory)
+
+else:  # pragma: no cover
+    dataclass_asdict = dataclasses.asdict
+
+
+def _asdict_inner(obj, dict_factory):
+    if dataclasses._is_dataclass_instance(obj):
+        return dict_factory(
+            (f.name, _asdict_inner(getattr(obj, f.name), dict_factory))
+            for f in dataclasses.fields(obj)
+        )
+    elif isinstance(obj, tuple) and hasattr(obj, "_fields"):
+        return type(obj)(*[_asdict_inner(v, dict_factory) for v in obj])
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(_asdict_inner(v, dict_factory) for v in obj)
+    elif isinstance(obj, dict):
+        if hasattr(type(obj), "default_factory"):
+            result = type(obj)(obj.default_factory)
+            for k, v in obj.items():
+                result[_asdict_inner(k, dict_factory)] = _asdict_inner(v, dict_factory)
+            return result
+        return type(obj)(
+            (_asdict_inner(k, dict_factory), _asdict_inner(v, dict_factory))
+            for k, v in obj.items()
+        )
+    else:
+        return copy.deepcopy(obj)

@@ -38,10 +38,21 @@ var (
 	addr5 = Address{Addr: "a1", Attributes: attributes.New("a1", "3"), ServerName: "s1"}
 	addr6 = Address{Addr: "a1", Attributes: attributes.New("a1", 3), ServerName: "s2"}
 	addr7 = Address{Addr: "a1", Attributes: attributes.New("a1", 3), ServerName: "s1", BalancerAttributes: attributes.New("xx", 3)}
+
+	endpoint1   = Endpoint{Addresses: []Address{{Addr: "addr1"}}}
+	endpoint2   = Endpoint{Addresses: []Address{{Addr: "addr2"}}}
+	endpoint3   = Endpoint{Addresses: []Address{{Addr: "addr3"}}}
+	endpoint4   = Endpoint{Addresses: []Address{{Addr: "addr4"}}}
+	endpoint5   = Endpoint{Addresses: []Address{{Addr: "addr5"}}}
+	endpoint6   = Endpoint{Addresses: []Address{{Addr: "addr6"}}}
+	endpoint7   = Endpoint{Addresses: []Address{{Addr: "addr7"}}}
+	endpoint12  = Endpoint{Addresses: []Address{{Addr: "addr1"}, {Addr: "addr2"}}}
+	endpoint21  = Endpoint{Addresses: []Address{{Addr: "addr2"}, {Addr: "addr1"}}}
+	endpoint123 = Endpoint{Addresses: []Address{{Addr: "addr1"}, {Addr: "addr2"}, {Addr: "addr3"}}}
 )
 
 func (s) TestAddressMap_Length(t *testing.T) {
-	addrMap := NewAddressMap()
+	addrMap := NewAddressMapV2[any]()
 	if got := addrMap.Len(); got != 0 {
 		t.Fatalf("addrMap.Len() = %v; want 0", got)
 	}
@@ -61,11 +72,11 @@ func (s) TestAddressMap_Length(t *testing.T) {
 }
 
 func (s) TestAddressMap_Get(t *testing.T) {
-	addrMap := NewAddressMap()
+	addrMap := NewAddressMapV2[int]()
 	addrMap.Set(addr1, 1)
 
-	if got, ok := addrMap.Get(addr2); ok || got != nil {
-		t.Fatalf("addrMap.Get(addr1) = %v, %v; want nil, false", got, ok)
+	if got, ok := addrMap.Get(addr2); ok || got != 0 {
+		t.Fatalf("addrMap.Get(addr1) = %v, %v; want 0, false", got, ok)
 	}
 
 	addrMap.Set(addr2, 2)
@@ -74,31 +85,31 @@ func (s) TestAddressMap_Get(t *testing.T) {
 	addrMap.Set(addr5, 5)
 	addrMap.Set(addr6, 6)
 	addrMap.Set(addr7, 7) // aliases addr1
-	if got, ok := addrMap.Get(addr1); !ok || got.(int) != 7 {
+	if got, ok := addrMap.Get(addr1); !ok || got != 7 {
 		t.Fatalf("addrMap.Get(addr1) = %v, %v; want %v, true", got, ok, 7)
 	}
-	if got, ok := addrMap.Get(addr2); !ok || got.(int) != 2 {
+	if got, ok := addrMap.Get(addr2); !ok || got != 2 {
 		t.Fatalf("addrMap.Get(addr2) = %v, %v; want %v, true", got, ok, 2)
 	}
-	if got, ok := addrMap.Get(addr3); !ok || got.(int) != 3 {
+	if got, ok := addrMap.Get(addr3); !ok || got != 3 {
 		t.Fatalf("addrMap.Get(addr3) = %v, %v; want %v, true", got, ok, 3)
 	}
-	if got, ok := addrMap.Get(addr4); !ok || got.(int) != 4 {
+	if got, ok := addrMap.Get(addr4); !ok || got != 4 {
 		t.Fatalf("addrMap.Get(addr4) = %v, %v; want %v, true", got, ok, 4)
 	}
-	if got, ok := addrMap.Get(addr5); !ok || got.(int) != 5 {
+	if got, ok := addrMap.Get(addr5); !ok || got != 5 {
 		t.Fatalf("addrMap.Get(addr5) = %v, %v; want %v, true", got, ok, 5)
 	}
-	if got, ok := addrMap.Get(addr6); !ok || got.(int) != 6 {
+	if got, ok := addrMap.Get(addr6); !ok || got != 6 {
 		t.Fatalf("addrMap.Get(addr6) = %v, %v; want %v, true", got, ok, 6)
 	}
-	if got, ok := addrMap.Get(addr7); !ok || got.(int) != 7 {
+	if got, ok := addrMap.Get(addr7); !ok || got != 7 {
 		t.Fatalf("addrMap.Get(addr7) = %v, %v; want %v, true", got, ok, 7)
 	}
 }
 
 func (s) TestAddressMap_Delete(t *testing.T) {
-	addrMap := NewAddressMap()
+	addrMap := NewAddressMapV2[any]()
 	addrMap.Set(addr1, 1)
 	addrMap.Set(addr2, 2)
 	if got, want := addrMap.Len(), 2; got != want {
@@ -121,7 +132,7 @@ func (s) TestAddressMap_Delete(t *testing.T) {
 }
 
 func (s) TestAddressMap_Keys(t *testing.T) {
-	addrMap := NewAddressMap()
+	addrMap := NewAddressMapV2[int]()
 	addrMap.Set(addr1, 1)
 	addrMap.Set(addr2, 2)
 	addrMap.Set(addr3, 3)
@@ -142,7 +153,7 @@ func (s) TestAddressMap_Keys(t *testing.T) {
 }
 
 func (s) TestAddressMap_Values(t *testing.T) {
-	addrMap := NewAddressMap()
+	addrMap := NewAddressMapV2[int]()
 	addrMap.Set(addr1, 1)
 	addrMap.Set(addr2, 2)
 	addrMap.Set(addr3, 3)
@@ -152,12 +163,143 @@ func (s) TestAddressMap_Values(t *testing.T) {
 	addrMap.Set(addr7, 7) // aliases addr1
 
 	want := []int{2, 3, 4, 5, 6, 7}
-	var got []int
-	for _, v := range addrMap.Values() {
-		got = append(got, v.(int))
-	}
+	got := addrMap.Values()
 	sort.Ints(got)
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Fatalf("addrMap.Values returned unexpected elements (-want, +got):\n%v", diff)
+	}
+}
+
+func (s) TestEndpointMap_Length(t *testing.T) {
+	em := NewEndpointMap[struct{}]()
+	// Should be empty at creation time.
+	if got := em.Len(); got != 0 {
+		t.Fatalf("em.Len() = %v; want 0", got)
+	}
+	// Add two endpoints with the same unordered set of addresses. This should
+	// amount to one endpoint. It should also not take into account attributes.
+	em.Set(endpoint12, struct{}{})
+	em.Set(endpoint21, struct{}{})
+
+	if got := em.Len(); got != 1 {
+		t.Fatalf("em.Len() = %v; want 1", got)
+	}
+
+	// Add another unique endpoint. This should cause the length to be 2.
+	em.Set(endpoint123, struct{}{})
+	if got := em.Len(); got != 2 {
+		t.Fatalf("em.Len() = %v; want 2", got)
+	}
+}
+
+func (s) TestEndpointMap_Get(t *testing.T) {
+	em := NewEndpointMap[int]()
+	em.Set(endpoint1, 1)
+	// The second endpoint endpoint21 should override.
+	em.Set(endpoint12, 1)
+	em.Set(endpoint21, 2)
+	em.Set(endpoint3, 3)
+	em.Set(endpoint4, 4)
+	em.Set(endpoint5, 5)
+	em.Set(endpoint6, 6)
+	em.Set(endpoint7, 7)
+
+	if got, ok := em.Get(endpoint1); !ok || got != 1 {
+		t.Fatalf("em.Get(endpoint1) = %v, %v; want %v, true", got, ok, 1)
+	}
+	if got, ok := em.Get(endpoint12); !ok || got != 2 {
+		t.Fatalf("em.Get(endpoint12) = %v, %v; want %v, true", got, ok, 2)
+	}
+	if got, ok := em.Get(endpoint21); !ok || got != 2 {
+		t.Fatalf("em.Get(endpoint21) = %v, %v; want %v, true", got, ok, 2)
+	}
+	if got, ok := em.Get(endpoint3); !ok || got != 3 {
+		t.Fatalf("em.Get(endpoint1) = %v, %v; want %v, true", got, ok, 3)
+	}
+	if got, ok := em.Get(endpoint4); !ok || got != 4 {
+		t.Fatalf("em.Get(endpoint1) = %v, %v; want %v, true", got, ok, 4)
+	}
+	if got, ok := em.Get(endpoint5); !ok || got != 5 {
+		t.Fatalf("em.Get(endpoint1) = %v, %v; want %v, true", got, ok, 5)
+	}
+	if got, ok := em.Get(endpoint6); !ok || got != 6 {
+		t.Fatalf("em.Get(endpoint1) = %v, %v; want %v, true", got, ok, 6)
+	}
+	if got, ok := em.Get(endpoint7); !ok || got != 7 {
+		t.Fatalf("em.Get(endpoint1) = %v, %v; want %v, true", got, ok, 7)
+	}
+	if _, ok := em.Get(endpoint123); ok {
+		t.Fatalf("em.Get(endpoint123) = _, %v; want _, false", ok)
+	}
+}
+
+func (s) TestEndpointMap_Delete(t *testing.T) {
+	em := NewEndpointMap[struct{}]()
+	// Initial state of system: [1, 2, 3, 12]
+	em.Set(endpoint1, struct{}{})
+	em.Set(endpoint2, struct{}{})
+	em.Set(endpoint3, struct{}{})
+	em.Set(endpoint12, struct{}{})
+	// Delete: [2, 21]
+	em.Delete(endpoint2)
+	em.Delete(endpoint21)
+
+	// [1, 3] should be present:
+	if _, ok := em.Get(endpoint1); !ok {
+		t.Fatalf("em.Get(endpoint1) = %v, want true", ok)
+	}
+	if _, ok := em.Get(endpoint3); !ok {
+		t.Fatalf("em.Get(endpoint3) = %v, want true", ok)
+	}
+	// [2, 12] should not be present:
+	if _, ok := em.Get(endpoint2); ok {
+		t.Fatalf("em.Get(endpoint2) = %v, want false", ok)
+	}
+	if _, ok := em.Get(endpoint12); ok {
+		t.Fatalf("em.Get(endpoint12) = %v, want false", ok)
+	}
+	if _, ok := em.Get(endpoint21); ok {
+		t.Fatalf("em.Get(endpoint21) = %v, want false", ok)
+	}
+}
+
+func (s) TestEndpointMap_Values(t *testing.T) {
+	em := NewEndpointMap[int]()
+	em.Set(endpoint1, 1)
+	// The second endpoint endpoint21 should override.
+	em.Set(endpoint12, 1)
+	em.Set(endpoint21, 2)
+	em.Set(endpoint3, 3)
+	em.Set(endpoint4, 4)
+	em.Set(endpoint5, 5)
+	em.Set(endpoint6, 6)
+	em.Set(endpoint7, 7)
+	want := []int{1, 2, 3, 4, 5, 6, 7}
+	got := em.Values()
+	sort.Ints(got)
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Fatalf("em.Values() returned unexpected elements (-want, +got):\n%v", diff)
+	}
+}
+
+// BenchmarkEndpointMap benchmarks map operations that are expected to run
+// faster than O(n). This test doesn't run O(n) operations including listing
+// keys and values.
+func BenchmarkEndpointMap(b *testing.B) {
+	em := NewEndpointMap[any]()
+	for i := range b.N {
+		em.Set(Endpoint{
+			Addresses: []Address{{Addr: fmt.Sprintf("%d.%d.%d.%d", i, i, i, i)}},
+		}, i)
+	}
+	for i := range b.N {
+		em.Get(Endpoint{
+			Addresses: []Address{{Addr: fmt.Sprintf("%d.%d.%d.%d", i, i, i, i)}},
+		})
+	}
+	for i := range b.N {
+		em.Delete(Endpoint{
+			Addresses: []Address{{Addr: fmt.Sprintf("%d.%d.%d.%d", i, i, i, i)}},
+		})
 	}
 }

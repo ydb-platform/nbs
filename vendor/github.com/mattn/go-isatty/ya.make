@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v0.0.20)
+
 SRCS(
     doc.go
 )

@@ -24,7 +24,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/internal/grpcsync"
+	"google.golang.org/grpc/internal/backoff"
 	"google.golang.org/grpc/orca/internal"
 	"google.golang.org/grpc/status"
 
@@ -37,7 +37,7 @@ import (
 type producerBuilder struct{}
 
 // Build constructs and returns a producer and its cleanup function
-func (*producerBuilder) Build(cci interface{}) (balancer.Producer, func()) {
+func (*producerBuilder) Build(cci any) (balancer.Producer, func()) {
 	p := &producer{
 		client:    v3orcaservicegrpc.NewOpenRcaServiceClient(cci.(grpc.ClientConnInterface)),
 		intervals: make(map[time.Duration]int),
@@ -45,6 +45,12 @@ func (*producerBuilder) Build(cci interface{}) (balancer.Producer, func()) {
 		backoff:   internal.DefaultBackoffFunc,
 	}
 	return p, func() {
+		p.mu.Lock()
+		if p.stop != nil {
+			p.stop()
+			p.stop = nil
+		}
+		p.mu.Unlock()
 		<-p.stopped
 	}
 }
@@ -66,24 +72,21 @@ type OOBListenerOptions struct {
 	ReportInterval time.Duration
 }
 
-// RegisterOOBListener registers an out-of-band load report listener on sc.
-// Any OOBListener may only be registered once per subchannel at a time.  The
-// returned stop function must be called when no longer needed.  Do not
+// RegisterOOBListener registers an out-of-band load report listener on a Ready
+// sc.  Any OOBListener may only be registered once per subchannel at a time.
+// The returned stop function must be called when no longer needed.  Do not
 // register a single OOBListener more than once per SubConn.
 func RegisterOOBListener(sc balancer.SubConn, l OOBListener, opts OOBListenerOptions) (stop func()) {
-	pr, close := sc.GetOrBuildProducer(producerBuilderSingleton)
+	pr, closeFn := sc.GetOrBuildProducer(producerBuilderSingleton)
 	p := pr.(*producer)
 
 	p.registerListener(l, opts.ReportInterval)
 
-	// TODO: When we can register for SubConn state updates, automatically call
-	// stop() on SHUTDOWN.
-
 	// If stop is called multiple times, prevent it from having any effect on
 	// subsequent calls.
-	return grpcsync.OnceFunc(func() {
+	return sync.OnceFunc(func() {
 		p.unregisterListener(l, opts.ReportInterval)
-		close()
+		closeFn()
 	})
 }
 
@@ -95,13 +98,13 @@ type producer struct {
 	// is incremented when stream errors occur and is reset when the stream
 	// reports a result.
 	backoff func(int) time.Duration
+	stopped chan struct{} // closed when the run goroutine exits
 
 	mu          sync.Mutex
 	intervals   map[time.Duration]int    // map from interval time to count of listeners requesting that time
 	listeners   map[OOBListener]struct{} // set of registered listeners
 	minInterval time.Duration
-	stop        func()        // stops the current run goroutine
-	stopped     chan struct{} // closed when the run goroutine exits
+	stop        func() // stops the current run goroutine
 }
 
 // registerListener adds the listener and its requested report interval to the
@@ -169,48 +172,29 @@ func (p *producer) updateRunLocked() {
 func (p *producer) run(ctx context.Context, done chan struct{}, interval time.Duration) {
 	defer close(done)
 
-	backoffAttempt := 0
-	backoffTimer := time.NewTimer(0)
-	for ctx.Err() == nil {
-		select {
-		case <-backoffTimer.C:
-		case <-ctx.Done():
-			return
-		}
-
+	runStream := func() error {
 		resetBackoff, err := p.runStream(ctx, interval)
-
-		if resetBackoff {
-			backoffTimer.Reset(0)
-			backoffAttempt = 0
-		} else {
-			backoffTimer.Reset(p.backoff(backoffAttempt))
-			backoffAttempt++
-		}
-
-		switch {
-		case err == nil:
-			// No error was encountered; restart the stream.
-		case ctx.Err() != nil:
-			// Producer was stopped; exit immediately and without logging an
-			// error.
-			return
-		case status.Code(err) == codes.Unimplemented:
+		if status.Code(err) == codes.Unimplemented {
 			// Unimplemented; do not retry.
 			logger.Error("Server doesn't support ORCA OOB load reporting protocol; not listening for load reports.")
-			return
-		case status.Code(err) == codes.Unavailable, status.Code(err) == codes.Canceled:
-			// TODO: these codes should ideally log an error, too, but for now
-			// we receive them when shutting down the ClientConn (Unavailable
-			// if the stream hasn't started yet, and Canceled if it happens
-			// mid-stream).  Once we can determine the state or ensure the
-			// producer is stopped before the stream ends, we can log an error
-			// when it's not a natural shutdown.
-		default:
-			// Log all other errors.
+			return err
+		}
+		// Retry for all other errors.
+		if code := status.Code(err); code != codes.Unavailable && code != codes.Canceled {
+			// TODO: Unavailable and Canceled should also ideally log an error,
+			// but for now we receive them when shutting down the ClientConn
+			// (Unavailable if the stream hasn't started yet, and Canceled if it
+			// happens mid-stream).  Once we can determine the state or ensure
+			// the producer is stopped before the stream ends, we can log an
+			// error when it's not a natural shutdown.
 			logger.Error("Received unexpected stream error:", err)
 		}
+		if resetBackoff {
+			return backoff.ErrResetBackoff
+		}
+		return nil
 	}
+	backoff.RunF(ctx, runStream, p.backoff)
 }
 
 // runStream runs a single stream on the subchannel and returns the resulting

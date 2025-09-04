@@ -1,5 +1,4 @@
 RECURSE(
-    allocator
     background
     backoff
     balancer
@@ -19,28 +18,37 @@ RECURSE(
     endpoint
     feature
     grpcwrapper
+    kv
     meta
     mock
+    node
     operation
+    params
+    pg
+    pool
+    query
     ratelimiter
     repeater
-    response
+    scanner
     scheme
     scripting
     secret
     stack
+    stats
     table
     topic
+    tx
+    types
     value
     version
-    wait
-    wrap
-    xatomic
-    xbytes
     xcontext
     xerrors
+    xiter
+    xlist
     xrand
     xresolver
+    xruntime
+    xslices
     xsql
     xstring
     xsync

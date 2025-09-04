@@ -2,6 +2,10 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
-SRCS(api.pb.go)
+VERSION(v1.36.6)
+
+SRCS(
+    api.pb.go
+)
 
 END()

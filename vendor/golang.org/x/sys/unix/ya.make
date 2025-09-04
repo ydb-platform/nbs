@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v0.34.0)
+
 BUILD_ONLY_IF(
     WARNING
     OS_DARWIN
@@ -16,6 +18,7 @@ IF (OS_LINUX)
     SRCS(
         affinity_linux.go
         aliases.go
+        auxv.go
         bluetooth_linux.go
         constants.go
         dev_linux.go
@@ -41,6 +44,7 @@ IF (OS_LINUX)
         sysvshm_linux.go
         sysvshm_unix.go
         timestruct.go
+        vgetrandom_linux.go
         zerrors_linux.go
         zsyscall_linux.go
         ztypes_linux.go
@@ -53,6 +57,7 @@ IF (OS_LINUX)
     )
 
     GO_XTEST_SRCS(
+        auxv_linux_test.go
         creds_test.go
         dev_linux_test.go
         dirent_test.go
@@ -101,9 +106,24 @@ IF (OS_LINUX AND ARCH_ARM64)
     )
 ENDIF()
 
+IF (OS_LINUX AND ARCH_ARM6 OR OS_LINUX AND ARCH_ARM7)
+    SRCS(
+        asm_linux_arm.s
+        fcntl_linux_32bit.go
+        syscall_linux_arm.go
+        syscall_linux_gc_arm.go
+        zerrors_linux_arm.go
+        zptrace_armnn_linux.go
+        zsyscall_linux_arm.go
+        zsysnum_linux_arm.go
+        ztypes_linux_arm.go
+    )
+ENDIF()
+
 IF (OS_DARWIN)
     SRCS(
         aliases.go
+        auxv.go
         constants.go
         dev_darwin.go
         dirent.go
@@ -127,6 +147,7 @@ IF (OS_DARWIN)
         sysvshm_unix.go
         sysvshm_unix_other.go
         timestruct.go
+        vgetrandom_unsupported.go
     )
 
     GO_TEST_SRCS(
@@ -184,6 +205,12 @@ IF (OS_DARWIN AND ARCH_ARM64)
     )
 
     GO_TEST_SRCS(darwin_arm64_test.go)
+ENDIF()
+
+IF (OS_WINDOWS)
+    SRCS(
+        vgetrandom_unsupported.go
+    )
 ENDIF()
 
 END()

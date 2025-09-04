@@ -3,8 +3,10 @@ package ydb
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"google.golang.org/grpc"
 
@@ -20,6 +22,9 @@ import (
 	discoveryConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/discovery/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/dsn"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/endpoint"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/meta"
+	internalQuery "github.com/ydb-platform/ydb-go-sdk/v3/internal/query"
+	queryConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/query/config"
 	internalRatelimiter "github.com/ydb-platform/ydb-go-sdk/v3/internal/ratelimiter"
 	ratelimiterConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/ratelimiter/config"
 	internalScheme "github.com/ydb-platform/ydb-go-sdk/v3/internal/scheme"
@@ -29,12 +34,15 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/stack"
 	internalTable "github.com/ydb-platform/ydb-go-sdk/v3/internal/table"
 	tableConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/table/config"
+	internalTopic "github.com/ydb-platform/ydb-go-sdk/v3/internal/topic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topic/topicclientinternal"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsql"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 	"github.com/ydb-platform/ydb-go-sdk/v3/log"
+	"github.com/ydb-platform/ydb-go-sdk/v3/operation"
+	"github.com/ydb-platform/ydb-go-sdk/v3/query"
 	"github.com/ydb-platform/ydb-go-sdk/v3/ratelimiter"
 	"github.com/ydb-platform/ydb-go-sdk/v3/scheme"
 	"github.com/ydb-platform/ydb-go-sdk/v3/scripting"
@@ -46,73 +54,110 @@ import (
 
 var _ Connection = (*Driver)(nil)
 
-// Driver type provide access to YDB service clients
-type Driver struct { //nolint:maligned
-	ctx       context.Context // cancel while Driver.Close called.
-	ctxCancel context.CancelFunc
+type (
+	// Driver type provide access to YDB service clients
+	Driver struct {
+		ctxCancel context.CancelFunc
 
-	userInfo *dsn.UserInfo
+		userInfo *dsn.UserInfo
 
-	logger        log.Logger
-	loggerOpts    []log.Option
-	loggerDetails trace.Detailer
+		logger        log.Logger
+		loggerOpts    []log.Option
+		loggerDetails trace.Detailer
 
-	opts []Option
+		opts []Option
 
-	config  *config.Config
-	options []config.Option
+		config  *config.Config
+		options []config.Option
 
-	discovery        *internalDiscovery.Client
-	discoveryOptions []discoveryConfig.Option
+		discovery        *xsync.Once[*internalDiscovery.Client]
+		discoveryOptions []discoveryConfig.Option
 
-	table        *internalTable.Client
-	tableOptions []tableConfig.Option
+		operation *xsync.Once[*operation.Client]
 
-	scripting        *internalScripting.Client
-	scriptingOptions []scriptingConfig.Option
+		table        *xsync.Once[*internalTable.Client]
+		tableOptions []tableConfig.Option
 
-	scheme        *internalScheme.Client
-	schemeOptions []schemeConfig.Option
+		query        *xsync.Once[*internalQuery.Client]
+		queryOptions []queryConfig.Option
 
-	coordination        *internalCoordination.Client
-	coordinationOptions []coordinationConfig.Option
+		scripting        *xsync.Once[*internalScripting.Client]
+		scriptingOptions []scriptingConfig.Option
 
-	ratelimiter        *internalRatelimiter.Client
-	ratelimiterOptions []ratelimiterConfig.Option
+		scheme        *xsync.Once[*internalScheme.Client]
+		schemeOptions []schemeConfig.Option
 
-	topic        *topicclientinternal.Client
-	topicOptions []topicoptions.TopicOption
+		coordination        *xsync.Once[*internalCoordination.Client]
+		coordinationOptions []coordinationConfig.Option
 
-	databaseSQLOptions []xsql.ConnectorOption
+		ratelimiter        *xsync.Once[*internalRatelimiter.Client]
+		ratelimiterOptions []ratelimiterConfig.Option
 
-	pool *conn.Pool
+		topic        *xsync.Once[*topicclientinternal.Client]
+		topicOptions []topicoptions.TopicOption
 
-	mtx      sync.Mutex
-	balancer *balancer.Balancer
+		databaseSQLOptions []xsql.Option
 
-	children    map[uint64]*Driver
-	childrenMtx xsync.Mutex
-	onClose     []func(c *Driver)
+		pool *conn.Pool
 
-	panicCallback func(e interface{})
-}
+		mtx          sync.Mutex
+		metaBalancer *balancerWithMeta
 
-func (d *Driver) trace() *trace.Driver {
-	if d.config != nil {
-		return d.config.Trace()
+		children    map[uint64]*Driver
+		childrenMtx xsync.Mutex
+		onClose     []func(c *Driver)
+		closed      atomic.Bool
+
+		panicCallback func(e interface{})
+	}
+	balancerWithMeta struct {
+		balancer *balancer.Balancer
+		meta     *meta.Meta
+		close    func(ctx context.Context) error
+	}
+)
+
+func (b *balancerWithMeta) Invoke(ctx context.Context, method string, args any, reply any,
+	opts ...grpc.CallOption,
+) error {
+	metaCtx, err := b.meta.Context(ctx)
+	if err != nil {
+		return xerrors.WithStackTrace(err)
 	}
 
-	return &trace.Driver{}
+	return b.balancer.Invoke(metaCtx, method, args, reply, opts...)
+}
+
+func (b *balancerWithMeta) NewStream(ctx context.Context, desc *grpc.StreamDesc, method string,
+	opts ...grpc.CallOption,
+) (grpc.ClientStream, error) {
+	metaCtx, err := b.meta.Context(ctx)
+	if err != nil {
+		return nil, xerrors.WithStackTrace(err)
+	}
+
+	return b.balancer.NewStream(metaCtx, desc, method, opts...)
+}
+
+func (b *balancerWithMeta) Close(ctx context.Context) error {
+	return b.close(ctx)
 }
 
 // Close closes Driver and clear resources
 //
 //nolint:nonamedreturns
 func (d *Driver) Close(ctx context.Context) (finalErr error) {
-	onDone := trace.DriverOnClose(d.trace(), &ctx, stack.FunctionID(""))
+	onDone := trace.DriverOnClose(d.config.Trace(), &ctx,
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/ydb.(*Driver).Close"),
+	)
 	defer func() {
 		onDone(finalErr)
 	}()
+
+	if !d.closed.CompareAndSwap(false, true) {
+		return nil
+	}
+
 	d.ctxCancel()
 
 	d.mtx.Lock()
@@ -121,8 +166,8 @@ func (d *Driver) Close(ctx context.Context) (finalErr error) {
 	d.ctxCancel()
 
 	defer func() {
-		for _, f := range d.onClose {
-			f(d)
+		for _, onClose := range d.onClose {
+			onClose(d)
 		}
 	}()
 
@@ -141,8 +186,11 @@ func (d *Driver) Close(ctx context.Context) (finalErr error) {
 		d.scheme.Close,
 		d.scripting.Close,
 		d.table.Close,
+		d.operation.Close,
+		d.query.Close,
 		d.topic.Close,
-		d.balancer.Close,
+		d.discovery.Close,
+		d.metaBalancer.Close,
 		d.pool.Release,
 	)
 
@@ -177,37 +225,49 @@ func (d *Driver) Secure() bool {
 
 // Table returns table client
 func (d *Driver) Table() table.Client {
-	return d.table
+	return d.table.Must()
+}
+
+// Query returns query client
+func (d *Driver) Query() query.Client {
+	return d.query.Must()
 }
 
 // Scheme returns scheme client
 func (d *Driver) Scheme() scheme.Client {
-	return d.scheme
+	return d.scheme.Must()
 }
 
 // Coordination returns coordination client
 func (d *Driver) Coordination() coordination.Client {
-	return d.coordination
+	return d.coordination.Must()
 }
 
 // Ratelimiter returns ratelimiter client
 func (d *Driver) Ratelimiter() ratelimiter.Client {
-	return d.ratelimiter
+	return d.ratelimiter.Must()
 }
 
 // Discovery returns discovery client
 func (d *Driver) Discovery() discovery.Client {
-	return d.discovery
+	return d.discovery.Must()
+}
+
+// Operation returns operation client
+//
+// Experimental: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#experimental
+func (d *Driver) Operation() *operation.Client {
+	return d.operation.Must()
 }
 
 // Scripting returns scripting client
 func (d *Driver) Scripting() scripting.Client {
-	return d.scripting
+	return d.scripting.Must()
 }
 
 // Topic returns topic client
 func (d *Driver) Topic() topic.Client {
-	return d.topic
+	return d.topic.Must()
 }
 
 // Open connects to database by DSN and return driver runtime holder
@@ -219,20 +279,27 @@ func (d *Driver) Topic() topic.Client {
 // See sugar.DSN helper for make dsn from endpoint and database
 //
 //nolint:nonamedreturns
-func Open(ctx context.Context, dsn string, opts ...Option) (_ *Driver, err error) {
-	d, err := newConnectionFromOptions(ctx, append(
-		[]Option{
-			WithConnectionString(dsn),
-		},
-		opts...,
-	)...)
+func Open(ctx context.Context, dsn string, opts ...Option) (_ *Driver, _ error) {
+	opts = append(append(make([]Option, 0, len(opts)+1), WithConnectionString(dsn)), opts...)
+
+	for parserIdx := range dsnParsers {
+		if parser := dsnParsers[parserIdx]; parser != nil {
+			optsFromParser, err := parser(dsn)
+			if err != nil {
+				return nil, xerrors.WithStackTrace(fmt.Errorf("data source name '%s' wrong: %w", dsn, err))
+			}
+			opts = append(opts, optsFromParser...)
+		}
+	}
+
+	d, err := driverFromOptions(ctx, opts...)
 	if err != nil {
 		return nil, xerrors.WithStackTrace(err)
 	}
 
 	onDone := trace.DriverOnInit(
-		d.trace(), &ctx,
-		stack.FunctionID(""),
+		d.config.Trace(), &ctx,
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/ydb.Open"),
 		d.config.Endpoint(), d.config.Database(), d.config.Secure(),
 	)
 	defer func() {
@@ -240,6 +307,10 @@ func Open(ctx context.Context, dsn string, opts ...Option) (_ *Driver, err error
 	}()
 
 	if err = d.connect(ctx); err != nil {
+		if d.pool != nil {
+			_ = d.pool.Release(ctx)
+		}
+
 		return nil, xerrors.WithStackTrace(err)
 	}
 
@@ -257,18 +328,20 @@ func MustOpen(ctx context.Context, dsn string, opts ...Option) *Driver {
 
 // New connects to database and return driver runtime holder
 //
-// Deprecated: use Open with required param connectionString instead
-//
-//nolint:nonamedreturns
-func New(ctx context.Context, opts ...Option) (_ *Driver, err error) {
-	d, err := newConnectionFromOptions(ctx, opts...)
+// Deprecated: use ydb.Open instead.
+// New func have no required arguments, such as connection string.
+// Thats why we recognize that New have wrong signature.
+// Will be removed after Oct 2024.
+// Read about versioning policy: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#deprecated
+func New(ctx context.Context, opts ...Option) (_ *Driver, err error) { //nolint:nonamedreturns
+	d, err := driverFromOptions(ctx, opts...)
 	if err != nil {
 		return nil, xerrors.WithStackTrace(err)
 	}
 
 	onDone := trace.DriverOnInit(
-		d.trace(), &ctx,
-		stack.FunctionID(""),
+		d.config.Trace(), &ctx,
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/ydb.New"),
 		d.config.Endpoint(), d.config.Database(), d.config.Secure(),
 	)
 	defer func() {
@@ -282,9 +355,9 @@ func New(ctx context.Context, opts ...Option) (_ *Driver, err error) {
 	return d, nil
 }
 
-//nolint:cyclop, nonamedreturns
-func newConnectionFromOptions(ctx context.Context, opts ...Option) (_ *Driver, err error) {
-	ctx, driverCtxCancel := xcontext.WithCancel(xcontext.WithoutDeadline(ctx))
+//nolint:cyclop, nonamedreturns, funlen
+func driverFromOptions(ctx context.Context, opts ...Option) (_ *Driver, err error) {
+	ctx, driverCtxCancel := xcontext.WithCancel(xcontext.ValueOnly(ctx))
 	defer func() {
 		if err != nil {
 			driverCtxCancel()
@@ -292,9 +365,9 @@ func newConnectionFromOptions(ctx context.Context, opts ...Option) (_ *Driver, e
 	}()
 
 	d := &Driver{
-		children:  make(map[uint64]*Driver),
-		ctx:       ctx,
-		ctxCancel: driverCtxCancel,
+		children:     make(map[uint64]*Driver),
+		ctxCancel:    driverCtxCancel,
+		metaBalancer: &balancerWithMeta{},
 	}
 
 	if caFile, has := os.LookupEnv("YDB_SSL_ROOT_CERTIFICATES_FILE"); has {
@@ -332,6 +405,7 @@ func newConnectionFromOptions(ctx context.Context, opts ...Option) (_ *Driver, e
 		for _, opt := range []Option{
 			WithTraceDriver(log.Driver(d.logger, d.loggerDetails, d.loggerOpts...)),       //nolint:contextcheck
 			WithTraceTable(log.Table(d.logger, d.loggerDetails, d.loggerOpts...)),         //nolint:contextcheck
+			WithTraceQuery(log.Query(d.logger, d.loggerDetails, d.loggerOpts...)),         //nolint:contextcheck
 			WithTraceScripting(log.Scripting(d.logger, d.loggerDetails, d.loggerOpts...)), //nolint:contextcheck
 			WithTraceScheme(log.Scheme(d.logger, d.loggerDetails, d.loggerOpts...)),
 			WithTraceCoordination(log.Coordination(d.logger, d.loggerDetails, d.loggerOpts...)),
@@ -355,13 +429,13 @@ func newConnectionFromOptions(ctx context.Context, opts ...Option) (_ *Driver, e
 }
 
 //nolint:cyclop, nonamedreturns, funlen
-func (d *Driver) connect(ctx context.Context) (err error) {
+func (d *Driver) connect(ctx context.Context) error {
 	if d.config.Endpoint() == "" {
-		return xerrors.WithStackTrace(errors.New("configuration: empty dial address")) //nolint:goerr113
+		return xerrors.WithStackTrace(errors.New("configuration: empty dial address")) //nolint:err113
 	}
 
 	if d.config.Database() == "" {
-		return xerrors.WithStackTrace(errors.New("configuration: empty database")) //nolint:goerr113
+		return xerrors.WithStackTrace(errors.New("configuration: empty database")) //nolint:err113
 	}
 
 	if d.userInfo != nil {
@@ -378,127 +452,149 @@ func (d *Driver) connect(ctx context.Context) (err error) {
 		d.pool = conn.NewPool(ctx, d.config)
 	}
 
-	d.balancer, err = balancer.New(ctx, d.config, d.pool, d.discoveryOptions...)
-	if err != nil {
-		return xerrors.WithStackTrace(err)
+	if d.metaBalancer.balancer == nil {
+		b, err := balancer.New(ctx, d.config, d.pool, d.discoveryOptions...)
+		if err != nil {
+			return xerrors.WithStackTrace(err)
+		}
+		d.metaBalancer.balancer = b
+		d.metaBalancer.close = b.Close
 	}
+	d.metaBalancer.meta = d.config.Meta()
 
-	d.table, err = internalTable.New(ctx,
-		d.balancer,
-		tableConfig.New(
+	d.table = xsync.OnceValue(func() (*internalTable.Client, error) {
+		return internalTable.New(xcontext.ValueOnly(ctx),
+			d.metaBalancer,
+			tableConfig.New(
+				append(
+					// prepend common params from root config
+					[]tableConfig.Option{
+						tableConfig.With(d.config.Common),
+
+						tableConfig.WithMaxRequestMessageSize(d.config.GrpcMaxMessageSize()),
+					},
+					d.tableOptions...,
+				)...,
+			),
+		), nil
+	})
+
+	d.query = xsync.OnceValue(func() (*internalQuery.Client, error) {
+		return internalQuery.New(xcontext.ValueOnly(ctx),
+			d.metaBalancer,
+			queryConfig.New(
+				append(
+					// prepend common params from root config
+					[]queryConfig.Option{
+						queryConfig.With(d.config.Common),
+					},
+					d.queryOptions...,
+				)...,
+			),
+		), nil
+	})
+
+	d.scheme = xsync.OnceValue(func() (*internalScheme.Client, error) {
+		return internalScheme.New(xcontext.ValueOnly(ctx),
+			d.metaBalancer,
+			schemeConfig.New(
+				append(
+					// prepend common params from root config
+					[]schemeConfig.Option{
+						schemeConfig.WithDatabaseName(d.Name()),
+						schemeConfig.With(d.config.Common),
+					},
+					d.schemeOptions...,
+				)...,
+			),
+		), nil
+	})
+
+	d.coordination = xsync.OnceValue(func() (*internalCoordination.Client, error) {
+		return internalCoordination.New(xcontext.ValueOnly(ctx),
+			d.metaBalancer,
+			coordinationConfig.New(
+				append(
+					// prepend common params from root config
+					[]coordinationConfig.Option{
+						coordinationConfig.With(d.config.Common),
+					},
+					d.coordinationOptions...,
+				)...,
+			),
+		), nil
+	})
+
+	d.ratelimiter = xsync.OnceValue(func() (*internalRatelimiter.Client, error) {
+		return internalRatelimiter.New(xcontext.ValueOnly(ctx),
+			d.metaBalancer,
+			ratelimiterConfig.New(
+				append(
+					// prepend common params from root config
+					[]ratelimiterConfig.Option{
+						ratelimiterConfig.With(d.config.Common),
+					},
+					d.ratelimiterOptions...,
+				)...,
+			),
+		), nil
+	})
+
+	d.discovery = xsync.OnceValue(func() (*internalDiscovery.Client, error) {
+		return internalDiscovery.New(xcontext.ValueOnly(ctx),
+			d.pool.Get(endpoint.New(d.config.Endpoint())),
+			discoveryConfig.New(
+				append(
+					// prepend common params from root config
+					[]discoveryConfig.Option{
+						discoveryConfig.With(d.config.Common),
+						discoveryConfig.WithEndpoint(d.Endpoint()),
+						discoveryConfig.WithDatabase(d.Name()),
+						discoveryConfig.WithSecure(d.Secure()),
+						discoveryConfig.WithMeta(d.config.Meta()),
+					},
+					d.discoveryOptions...,
+				)...,
+			),
+		), nil
+	})
+
+	d.operation = xsync.OnceValue(func() (*operation.Client, error) {
+		return operation.New(xcontext.ValueOnly(ctx),
+			d.metaBalancer,
+		), nil
+	})
+
+	d.scripting = xsync.OnceValue(func() (*internalScripting.Client, error) {
+		return internalScripting.New(xcontext.ValueOnly(ctx),
+			d.metaBalancer,
+			scriptingConfig.New(
+				append(
+					// prepend common params from root config
+					[]scriptingConfig.Option{
+						scriptingConfig.With(d.config.Common),
+					},
+					d.scriptingOptions...,
+				)...,
+			),
+		), nil
+	})
+
+	d.topic = xsync.OnceValue(func() (*topicclientinternal.Client, error) {
+		return topicclientinternal.New(xcontext.ValueOnly(ctx),
+			d.metaBalancer,
+			d.config.Credentials(),
 			append(
 				// prepend common params from root config
-				[]tableConfig.Option{
-					tableConfig.With(d.config.Common),
+				[]topicoptions.TopicOption{
+					topicoptions.WithOperationTimeout(d.config.OperationTimeout()),
+					topicoptions.WithOperationCancelAfter(d.config.OperationCancelAfter()),
+					internalTopic.WithGrpcMessageSize(d.config.GrpcMaxMessageSize()),
 				},
-				d.tableOptions...,
+				d.topicOptions...,
 			)...,
-		),
-	)
-	if err != nil {
-		return xerrors.WithStackTrace(err)
-	}
-
-	d.scheme, err = internalScheme.New(ctx,
-		d.balancer,
-		schemeConfig.New(
-			append(
-				// prepend common params from root config
-				[]schemeConfig.Option{
-					schemeConfig.WithDatabaseName(d.Name()),
-					schemeConfig.With(d.config.Common),
-				},
-				d.schemeOptions...,
-			)...,
-		),
-	)
-	if err != nil {
-		return xerrors.WithStackTrace(err)
-	}
-
-	d.coordination, err = internalCoordination.New(ctx,
-		d.balancer,
-		coordinationConfig.New(
-			append(
-				// prepend common params from root config
-				[]coordinationConfig.Option{
-					coordinationConfig.With(d.config.Common),
-				},
-				d.coordinationOptions...,
-			)...,
-		),
-	)
-	if err != nil {
-		return xerrors.WithStackTrace(err)
-	}
-
-	d.ratelimiter, err = internalRatelimiter.New(ctx,
-		d.balancer,
-		ratelimiterConfig.New(
-			append(
-				// prepend common params from root config
-				[]ratelimiterConfig.Option{
-					ratelimiterConfig.With(d.config.Common),
-				},
-				d.ratelimiterOptions...,
-			)...,
-		),
-	)
-	if err != nil {
-		return xerrors.WithStackTrace(err)
-	}
-
-	d.discovery, err = internalDiscovery.New(ctx,
-		d.pool.Get(endpoint.New(d.config.Endpoint())),
-		discoveryConfig.New(
-			append(
-				// prepend common params from root config
-				[]discoveryConfig.Option{
-					discoveryConfig.With(d.config.Common),
-					discoveryConfig.WithEndpoint(d.Endpoint()),
-					discoveryConfig.WithDatabase(d.Name()),
-					discoveryConfig.WithSecure(d.Secure()),
-					discoveryConfig.WithMeta(d.config.Meta()),
-				},
-				d.discoveryOptions...,
-			)...,
-		),
-	)
-	if err != nil {
-		return xerrors.WithStackTrace(err)
-	}
-
-	d.scripting, err = internalScripting.New(ctx,
-		d.balancer,
-		scriptingConfig.New(
-			append(
-				// prepend common params from root config
-				[]scriptingConfig.Option{
-					scriptingConfig.With(d.config.Common),
-				},
-				d.scriptingOptions...,
-			)...,
-		),
-	)
-	if err != nil {
-		return xerrors.WithStackTrace(err)
-	}
-
-	d.topic, err = topicclientinternal.New(ctx,
-		d.balancer,
-		d.config.Credentials(),
-		append(
-			// prepend common params from root config
-			[]topicoptions.TopicOption{
-				topicoptions.WithOperationTimeout(d.config.OperationTimeout()),
-				topicoptions.WithOperationCancelAfter(d.config.OperationCancelAfter()),
-			},
-			d.topicOptions...,
-		)...,
-	)
-	if err != nil {
-		return xerrors.WithStackTrace(err)
-	}
+		), nil
+	})
 
 	return nil
 }
@@ -508,5 +604,5 @@ func (d *Driver) connect(ctx context.Context) (err error) {
 //
 // Warning: for connect to driver-unsupported YDB services
 func GRPCConn(cc *Driver) grpc.ClientConnInterface {
-	return conn.WithContextModifier(cc.balancer, conn.WithoutWrapping)
+	return conn.WithContextModifier(cc.metaBalancer, conn.WithoutWrapping)
 }

@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     ydb_clickhouse_internal.cpp
+    ydb_debug.cpp
     ydb_dummy.cpp
     ydb_export.cpp
     ydb_import.cpp
@@ -11,6 +12,7 @@ SRCS(
     ydb_scheme.cpp
     ydb_scripting.cpp
     ydb_table.cpp
+    ydb_object_storage.cpp
 )
 
 PEERDIR(
@@ -21,7 +23,7 @@ PEERDIR(
     contrib/ydb/core/formats
     contrib/ydb/core/grpc_services
     contrib/ydb/core/grpc_services/base
-    contrib/ydb/core/grpc_services/auth_processor
+    contrib/ydb/core/security
     contrib/ydb/core/grpc_streaming
     contrib/ydb/core/protos
     contrib/ydb/core/scheme
@@ -29,16 +31,14 @@ PEERDIR(
     contrib/ydb/public/api/grpc
     contrib/ydb/public/api/grpc/draft
     contrib/ydb/public/api/protos
-    contrib/ydb/library/yql/public/types
+    yql/essentials/public/types
     contrib/libs/openssl
 )
 
 END()
 
 RECURSE_FOR_TESTS(
-    sdk_credprovider_ut
-    sdk_sessions_ut
-    sdk_sessions_pool_ut
+    backup_ut
     table_split_ut
     ut
 )

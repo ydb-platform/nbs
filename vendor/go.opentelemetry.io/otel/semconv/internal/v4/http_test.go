@@ -1,15 +1,5 @@
 // Copyright The OpenTelemetry Authors
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package internal
 
@@ -76,7 +66,7 @@ func TestHTTPSClientRequest(t *testing.T) {
 	assert.Equal(
 		t,
 		[]attribute.KeyValue{
-			attribute.String("http.method", "GET"),
+			attribute.String("http.method", http.MethodGet),
 			attribute.String("net.protocol.version", "1.0"),
 			attribute.String("http.url", "https://127.0.0.1:443/resource"),
 			attribute.String("net.peer.name", "127.0.0.1"),
@@ -111,7 +101,7 @@ func TestHTTPClientRequest(t *testing.T) {
 	assert.Equal(
 		t,
 		[]attribute.KeyValue{
-			attribute.String("http.method", "GET"),
+			attribute.String("http.method", http.MethodGet),
 			attribute.String("net.protocol.version", "1.0"),
 			attribute.String("http.url", "http://127.0.0.1:8080/resource"),
 			attribute.String("net.peer.name", "127.0.0.1"),
@@ -129,7 +119,7 @@ func TestHTTPClientRequestRequired(t *testing.T) {
 	var got []attribute.KeyValue
 	assert.NotPanics(t, func() { got = hc.ClientRequest(req) })
 	want := []attribute.KeyValue{
-		attribute.String("http.method", "GET"),
+		attribute.String("http.method", http.MethodGet),
 		attribute.String("net.protocol.name", ""),
 		attribute.String("http.url", ""),
 		attribute.String("net.peer.name", ""),
@@ -167,7 +157,7 @@ func TestHTTPServerRequest(t *testing.T) {
 
 	assert.ElementsMatch(t,
 		[]attribute.KeyValue{
-			attribute.String("http.method", "GET"),
+			attribute.String("http.method", http.MethodGet),
 			attribute.String("http.scheme", "http"),
 			attribute.String("net.protocol.version", "1.1"),
 			attribute.String("net.host.name", srvURL.Hostname()),
@@ -207,7 +197,7 @@ func TestHTTPServerRequestFailsGracefully(t *testing.T) {
 	var got []attribute.KeyValue
 	assert.NotPanics(t, func() { got = hc.ServerRequest("", req) })
 	want := []attribute.KeyValue{
-		attribute.String("http.method", "GET"),
+		attribute.String("http.method", http.MethodGet),
 		attribute.String("http.scheme", "http"),
 		attribute.String("net.protocol.name", ""),
 		attribute.String("net.host.name", ""),
@@ -216,8 +206,8 @@ func TestHTTPServerRequestFailsGracefully(t *testing.T) {
 }
 
 func TestMethod(t *testing.T) {
-	assert.Equal(t, attribute.String("http.method", "POST"), hc.method("POST"))
-	assert.Equal(t, attribute.String("http.method", "GET"), hc.method(""))
+	assert.Equal(t, attribute.String("http.method", http.MethodPost), hc.method(http.MethodPost))
+	assert.Equal(t, attribute.String("http.method", http.MethodGet), hc.method(""))
 	assert.Equal(t, attribute.String("http.method", "garbage"), hc.method("garbage"))
 }
 
@@ -298,7 +288,7 @@ func TestRequiredHTTPPort(t *testing.T) {
 	}
 	for _, test := range tests {
 		got := requiredHTTPPort(test.https, test.port)
-		assert.Equal(t, test.want, got, test.https, test.port)
+		assert.Equalf(t, test.want, got, "HTTP: %t, Port: %d", test.https, test.port)
 	}
 }
 
@@ -315,8 +305,8 @@ func TestFirstHostPort(t *testing.T) {
 
 	for _, src := range sources {
 		h, p := firstHostPort(src...)
-		assert.Equal(t, host, h, src)
-		assert.Equal(t, port, p, src)
+		assert.Equal(t, host, h, "%+v", src)
+		assert.Equal(t, port, p, "%+v", src)
 	}
 }
 
@@ -333,7 +323,7 @@ func TestRequestHeader(t *testing.T) {
 	}, got)
 }
 
-func TestReponseHeader(t *testing.T) {
+func TestResponseHeader(t *testing.T) {
 	ips := []string{"127.0.0.5", "127.0.0.9"}
 	user := []string{"alice"}
 	h := http.Header{"ips": ips, "user": user}

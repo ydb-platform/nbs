@@ -142,6 +142,21 @@ def setup_logging(log_path, level=logging.DEBUG, *other_logs):
         root_logger.addHandler(file_handler)
 
 
+class YaHookspec:
+    @pytest.hookspec(firstresult=True)
+    def pytest_ya_summarize_error(self, report):
+        pass
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_ya_summarize_error(report):
+    return get_formatted_error(report)
+
+
+def pytest_addhooks(pluginmanager):
+    pluginmanager.add_hookspecs(YaHookspec)
+
+
 def pytest_addoption(parser):
     parser.addoption("--build-root", action="store", dest="build_root", default="", help="path to the build root")
     parser.addoption("--dep-root", action="append", dest="dep_roots", default=[], help="path to the dep build roots")
@@ -198,7 +213,6 @@ def pytest_configure(config):
     config.suite_metrics = {}
     config.configure_timestamp = time.time()
     context = {
-        "project_path": config.option.project_path,
         "test_stderr": config.option.test_stderr,
         "test_debug": config.option.test_debug,
         "build_type": config.option.build_type,
@@ -222,6 +236,7 @@ def pytest_configure(config):
         config.option.valgrind_path,
         config.option.gdb_path,
         config.option.data_root,
+        project_path=config.option.project_path,
     )
     config.option.test_log_level = {
         "critical": logging.CRITICAL,
@@ -326,7 +341,9 @@ def _graceful_shutdown(*args):
         library.python.coverage.stop_coverage_tracing()
     except ImportError:
         pass
-    traceback.print_stack(file=sys.stderr)
+    stack = traceback.format_stack()
+    # NOTE: Using os.write because it's reentrant, Python I/O stack isn't https://bugs.python.org/issue24283
+    os.write(sys.stderr.fileno(), b''.join(item.encode() for item in stack))
     capman = pytest_config.pluginmanager.getplugin("capturemanager")
     capman.suspend(in_=True)
     _graceful_shutdown_on_log(not capman.is_globally_capturing())
@@ -698,7 +715,9 @@ class TestItem(object):
     def set_error(self, entry, marker='bad'):
         assert entry != ""
         if isinstance(entry, _pytest.reports.BaseReport):
-            self._error = get_formatted_error(entry)
+            self._error = pytest_config.pluginmanager.hook.pytest_ya_summarize_error(
+                report=entry
+            )
         else:
             self._error = "[[{}]]{}".format(yatest_lib.tools.to_str(marker), yatest_lib.tools.to_str(entry))
 

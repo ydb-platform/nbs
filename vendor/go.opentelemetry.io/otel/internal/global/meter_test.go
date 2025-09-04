@@ -1,21 +1,11 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package global // import "go.opentelemetry.io/otel/internal/global"
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -23,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 )
@@ -53,7 +44,7 @@ var zeroCallback metric.Callback = func(ctx context.Context, or metric.Observer)
 }
 
 func TestMeterConcurrentSafe(t *testing.T) {
-	mtr := &meter{}
+	mtr := &meter{instruments: make(map[instID]delegatedInstrument)}
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
@@ -72,9 +63,11 @@ func TestMeterConcurrentSafe(t *testing.T) {
 			_, _ = mtr.Float64Counter(name)
 			_, _ = mtr.Float64UpDownCounter(name)
 			_, _ = mtr.Float64Histogram(name)
+			_, _ = mtr.Float64Gauge(name)
 			_, _ = mtr.Int64Counter(name)
 			_, _ = mtr.Int64UpDownCounter(name)
 			_, _ = mtr.Int64Histogram(name)
+			_, _ = mtr.Int64Gauge(name)
 			_, _ = mtr.RegisterCallback(zeroCallback)
 			if !once {
 				wg.Done()
@@ -92,10 +85,16 @@ func TestMeterConcurrentSafe(t *testing.T) {
 	mtr.setDelegate(noop.NewMeterProvider())
 	close(finish)
 	<-done
+
+	// No instruments should be left after the meter is replaced.
+	assert.Empty(t, mtr.instruments)
+
+	// No callbacks should be left after the meter is replaced.
+	assert.Zero(t, mtr.registry.Len())
 }
 
 func TestUnregisterConcurrentSafe(t *testing.T) {
-	mtr := &meter{}
+	mtr := &meter{instruments: make(map[instID]delegatedInstrument)}
 	reg, err := mtr.RegisterCallback(zeroCallback)
 	require.NoError(t, err)
 
@@ -126,7 +125,10 @@ func TestUnregisterConcurrentSafe(t *testing.T) {
 	<-done
 }
 
-func testSetupAllInstrumentTypes(t *testing.T, m metric.Meter) (metric.Float64Counter, metric.Float64ObservableCounter) {
+func testSetupAllInstrumentTypes(
+	t *testing.T,
+	m metric.Meter,
+) (metric.Float64Counter, metric.Float64ObservableCounter) {
 	afcounter, err := m.Float64ObservableCounter("test_Async_Counter")
 	require.NoError(t, err)
 	_, err = m.Float64ObservableUpDownCounter("test_Async_UpDownCounter")
@@ -147,18 +149,22 @@ func testSetupAllInstrumentTypes(t *testing.T, m metric.Meter) (metric.Float64Co
 	}, afcounter)
 	require.NoError(t, err)
 
-	sfcounter, err := m.Float64Counter("test_Async_Counter")
+	sfcounter, err := m.Float64Counter("test_Sync_Counter")
 	require.NoError(t, err)
-	_, err = m.Float64UpDownCounter("test_Async_UpDownCounter")
+	_, err = m.Float64UpDownCounter("test_Sync_UpDownCounter")
 	assert.NoError(t, err)
-	_, err = m.Float64Histogram("test_Async_Histogram")
+	_, err = m.Float64Histogram("test_Sync_Histogram")
+	assert.NoError(t, err)
+	_, err = m.Float64Gauge("test_Sync_Gauge")
 	assert.NoError(t, err)
 
-	_, err = m.Int64Counter("test_Async_Counter")
+	_, err = m.Int64Counter("test_Sync_Counter")
 	assert.NoError(t, err)
-	_, err = m.Int64UpDownCounter("test_Async_UpDownCounter")
+	_, err = m.Int64UpDownCounter("test_Sync_UpDownCounter")
 	assert.NoError(t, err)
-	_, err = m.Int64Histogram("test_Async_Histogram")
+	_, err = m.Int64Histogram("test_Sync_Histogram")
+	assert.NoError(t, err)
+	_, err = m.Int64Gauge("test_Sync_Gauge")
 	assert.NoError(t, err)
 
 	return sfcounter, afcounter
@@ -167,8 +173,9 @@ func testSetupAllInstrumentTypes(t *testing.T, m metric.Meter) (metric.Float64Co
 // This is to emulate a read from an exporter.
 func testCollect(t *testing.T, m metric.Meter) {
 	if tMeter, ok := m.(*meter); ok {
-		m, ok = tMeter.delegate.Load().(metric.Meter)
-		if !ok {
+		// This changes the input m to the delegate.
+		m = tMeter.delegate
+		if m == nil {
 			t.Error("meter was not delegated")
 			return
 		}
@@ -179,6 +186,18 @@ func testCollect(t *testing.T, m metric.Meter) {
 		return
 	}
 	tMeter.collect()
+}
+
+func TestInstrumentIdentity(t *testing.T) {
+	globalMeterProvider := &meterProvider{}
+	m := globalMeterProvider.Meter("go.opentelemetry.io/otel/metric/internal/global/meter_test")
+	tMeter := m.(*meter)
+	testSetupAllInstrumentTypes(t, m)
+	assert.Len(t, tMeter.instruments, 14)
+	// Creating the same instruments multiple times should not increase the
+	// number of instruments.
+	testSetupAllInstrumentTypes(t, m)
+	assert.Len(t, tMeter.instruments, 14)
 }
 
 func TestMeterProviderDelegatesCalls(t *testing.T) {
@@ -218,9 +237,9 @@ func TestMeterProviderDelegatesCalls(t *testing.T) {
 	assert.Equal(t, 1, tMeter.siCount)
 	assert.Equal(t, 1, tMeter.siUDCount)
 	assert.Equal(t, 1, tMeter.siHist)
-	assert.Equal(t, 1, len(tMeter.callbacks))
+	assert.Len(t, tMeter.callbacks, 1)
 
-	// Because the Meter was provided by testmeterProvider it should also return our test instrument
+	// Because the Meter was provided by testMeterProvider it should also return our test instrument
 	require.IsType(t, &testCountingFloatInstrument{}, ctr, "the meter did not delegate calls to the meter")
 	assert.Equal(t, 1, ctr.(*testCountingFloatInstrument).count)
 
@@ -254,7 +273,7 @@ func TestMeterDelegatesCalls(t *testing.T) {
 
 	// Calls to Meter methods after setDelegate() should be executed by the delegate
 	require.IsType(t, &meter{}, m)
-	tMeter := m.(*meter).delegate.Load().(*testMeter)
+	tMeter := m.(*meter).delegate.(*testMeter)
 	require.NotNil(t, tMeter)
 	assert.Equal(t, 1, tMeter.afCount)
 	assert.Equal(t, 1, tMeter.afUDCount)
@@ -269,11 +288,11 @@ func TestMeterDelegatesCalls(t *testing.T) {
 	assert.Equal(t, 1, tMeter.siUDCount)
 	assert.Equal(t, 1, tMeter.siHist)
 
-	// Because the Meter was provided by testmeterProvider it should also return our test instrument
+	// Because the Meter was provided by testMeterProvider it should also return our test instrument
 	require.IsType(t, &testCountingFloatInstrument{}, ctr, "the meter did not delegate calls to the meter")
 	assert.Equal(t, 1, ctr.(*testCountingFloatInstrument).count)
 
-	// Because the Meter was provided by testmeterProvider it should also return our test instrument
+	// Because the Meter was provided by testMeterProvider it should also return our test instrument
 	require.IsType(t, &testCountingFloatInstrument{}, actr, "the meter did not delegate calls to the meter")
 	assert.Equal(t, 1, actr.(*testCountingFloatInstrument).count)
 
@@ -302,7 +321,7 @@ func TestMeterDefersDelegations(t *testing.T) {
 
 	// Calls to Meter() before setDelegate() should be the delegated type
 	require.IsType(t, &meter{}, m)
-	tMeter := m.(*meter).delegate.Load().(*testMeter)
+	tMeter := m.(*meter).delegate.(*testMeter)
 	require.NotNil(t, tMeter)
 	assert.Equal(t, 1, tMeter.afCount)
 	assert.Equal(t, 1, tMeter.afUDCount)
@@ -378,5 +397,65 @@ func TestRegistrationDelegation(t *testing.T) {
 
 	assert.NotPanics(t, func() {
 		assert.NoError(t, reg1.Unregister(), "duplicate unregister calls")
+	})
+}
+
+func TestMeterIdentity(t *testing.T) {
+	type id struct{ name, ver, url, attr string }
+
+	ids := []id{
+		{"name-a", "version-a", "url-a", ""},
+		{"name-a", "version-a", "url-a", "attr"},
+		{"name-a", "version-a", "url-b", ""},
+		{"name-a", "version-b", "url-a", ""},
+		{"name-a", "version-b", "url-b", ""},
+		{"name-b", "version-a", "url-a", ""},
+		{"name-b", "version-a", "url-b", ""},
+		{"name-b", "version-b", "url-a", ""},
+		{"name-b", "version-b", "url-b", ""},
+	}
+
+	provider := &meterProvider{}
+	newMeter := func(i id) metric.Meter {
+		return provider.Meter(
+			i.name,
+			metric.WithInstrumentationVersion(i.ver),
+			metric.WithSchemaURL(i.url),
+			metric.WithInstrumentationAttributes(attribute.String("key", i.attr)),
+		)
+	}
+
+	for i, id0 := range ids {
+		for j, id1 := range ids {
+			l0, l1 := newMeter(id0), newMeter(id1)
+
+			if i == j {
+				assert.Samef(t, l0, l1, "Meter(%v) != Meter(%v)", id0, id1)
+			} else {
+				assert.NotSamef(t, l0, l1, "Meter(%v) == Meter(%v)", id0, id1)
+			}
+		}
+	}
+}
+
+type failingRegisterCallbackMeter struct {
+	noop.Meter
+}
+
+func (m *failingRegisterCallbackMeter) RegisterCallback(
+	metric.Callback,
+	...metric.Observable,
+) (metric.Registration, error) {
+	return nil, errors.New("an error occurred")
+}
+
+func TestRegistrationDelegateFailingCallback(t *testing.T) {
+	r := &registration{
+		unreg: func() error { return nil },
+	}
+	m := &failingRegisterCallbackMeter{}
+
+	assert.NotPanics(t, func() {
+		r.setDelegate(m)
 	})
 }

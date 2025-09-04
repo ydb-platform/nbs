@@ -2,7 +2,11 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.32.4)
+
 SRCS(
+    address.pb.go
+    address.pb.validate.go
     filter_state.pb.go
     filter_state.pb.validate.go
     http_inputs.pb.go

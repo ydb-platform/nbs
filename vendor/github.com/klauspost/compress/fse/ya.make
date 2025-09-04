@@ -6,6 +6,8 @@ LICENSE(
     MIT
 )
 
+VERSION(v1.18.0)
+
 SRCS(
     bitreader.go
     bitwriter.go
@@ -15,8 +17,13 @@ SRCS(
     fse.go
 )
 
-GO_TEST_SRCS(fse_test.go)
+GO_TEST_SRCS(
+    fse_test.go
+    fuzz_test.go
+)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

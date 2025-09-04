@@ -79,9 +79,9 @@ func remoteCommand() error {
 	}
 
 	logger.Infof("dialing %s", *flagAddress)
-	cc, err := grpc.Dial(*flagAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	cc, err := grpc.NewClient(*flagAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		logger.Errorf("cannot dial %s: %v", *flagAddress, err)
+		logger.Fatalf("grpc.NewClient(%q) = %v", *flagAddress, err)
 		return err
 	}
 	defer cc.Close()
@@ -90,9 +90,9 @@ func remoteCommand() error {
 
 	if *flagEnableProfiling || *flagDisableProfiling {
 		return setEnabled(ctx, c, *flagEnableProfiling)
-	} else if *flagRetrieveSnapshot {
-		return retrieveSnapshot(ctx, c, *flagSnapshot)
-	} else {
-		return fmt.Errorf("what should I do with the remote target?")
 	}
+	if *flagRetrieveSnapshot {
+		return retrieveSnapshot(ctx, c, *flagSnapshot)
+	}
+	return fmt.Errorf("what should I do with the remote target?")
 }

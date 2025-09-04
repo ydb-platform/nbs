@@ -23,10 +23,9 @@ package xds
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
-	"fmt"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/credentials"
@@ -114,7 +113,9 @@ func (c *credsImpl) ClientHandshake(ctx context.Context, authority string, rawCo
 	if chi.Attributes == nil {
 		return c.fallback.ClientHandshake(ctx, authority, rawConn)
 	}
-	hi := xdsinternal.GetHandshakeInfo(chi.Attributes)
+
+	uPtr := xdsinternal.GetHandshakeInfo(chi.Attributes)
+	hi := (*xdsinternal.HandshakeInfo)(atomic.LoadPointer(uPtr))
 	if hi.UseFallbackCreds() {
 		return c.fallback.ClientHandshake(ctx, authority, rawConn)
 	}
@@ -134,40 +135,6 @@ func (c *credsImpl) ClientHandshake(ctx context.Context, authority string, rawCo
 	cfg, err := hi.ClientSideTLSConfig(ctx)
 	if err != nil {
 		return nil, nil, err
-	}
-	cfg.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-		// Parse all raw certificates presented by the peer.
-		var certs []*x509.Certificate
-		for _, rc := range rawCerts {
-			cert, err := x509.ParseCertificate(rc)
-			if err != nil {
-				return err
-			}
-			certs = append(certs, cert)
-		}
-
-		// Build the intermediates list and verify that the leaf certificate
-		// is signed by one of the root certificates.
-		intermediates := x509.NewCertPool()
-		for _, cert := range certs[1:] {
-			intermediates.AddCert(cert)
-		}
-		opts := x509.VerifyOptions{
-			Roots:         cfg.RootCAs,
-			Intermediates: intermediates,
-			KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		}
-		if _, err := certs[0].Verify(opts); err != nil {
-			return err
-		}
-		// The SANs sent by the MeshCA are encoded as SPIFFE IDs. We need to
-		// only look at the SANs on the leaf cert.
-		if cert := certs[0]; !hi.MatchingSANExists(cert) {
-			// TODO: Print the complete certificate once the x509 package
-			// supports a String() method on the Certificate type.
-			return fmt.Errorf("xds: received SANs {DNSNames: %v, EmailAddresses: %v, IPAddresses: %v, URIs: %v} do not match any of the accepted SANs", cert.DNSNames, cert.EmailAddresses, cert.IPAddresses, cert.URIs)
-		}
-		return nil
 	}
 
 	// Perform the TLS handshake with the tls.Config that we have. We run the

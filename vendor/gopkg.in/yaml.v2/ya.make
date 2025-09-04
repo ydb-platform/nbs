@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v2.4.0)
+
 SRCS(
     apic.go
     decode.go
@@ -28,4 +30,6 @@ GO_XTEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

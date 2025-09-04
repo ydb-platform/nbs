@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/tx/tx_proxy/read_table.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/result/result.h>
 
 namespace NKikimr {
 

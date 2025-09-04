@@ -23,23 +23,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/bits"
+	rand "math/rand/v2"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	xxhash "github.com/cespare/xxhash/v2"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/internal/envconfig"
-	"google.golang.org/grpc/internal/grpcrand"
+	"google.golang.org/grpc/internal/grpcutil"
 	iresolver "google.golang.org/grpc/internal/resolver"
+	iringhash "google.golang.org/grpc/internal/ringhash"
 	"google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/internal/wrr"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/xds/internal/balancer/clustermanager"
-	"google.golang.org/grpc/xds/internal/balancer/ringhash"
 	"google.golang.org/grpc/xds/internal/httpfilter"
-	"google.golang.org/grpc/xds/internal/httpfilter/router"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
@@ -54,10 +53,10 @@ type serviceConfig struct {
 	LoadBalancingConfig balancerConfig `json:"loadBalancingConfig"`
 }
 
-type balancerConfig []map[string]interface{}
+type balancerConfig []map[string]any
 
-func newBalancerConfig(name string, config interface{}) balancerConfig {
-	return []map[string]interface{}{{name: config}}
+func newBalancerConfig(name string, config any) balancerConfig {
+	return []map[string]any{{name: config}}
 }
 
 type cdsBalancerConfig struct {
@@ -72,20 +71,10 @@ type xdsClusterManagerConfig struct {
 	Children map[string]xdsChildConfig `json:"children"`
 }
 
-// pruneActiveClusters deletes entries in r.activeClusters with zero
-// references.
-func (r *xdsResolver) pruneActiveClusters() {
-	for cluster, ci := range r.activeClusters {
-		if atomic.LoadInt32(&ci.refCount) == 0 {
-			delete(r.activeClusters, cluster)
-		}
-	}
-}
-
-// serviceConfigJSON produces a service config in JSON format representing all
-// the clusters referenced in activeClusters.  This includes clusters with zero
-// references, so they must be pruned first.
-func serviceConfigJSON(activeClusters map[string]*clusterInfo) ([]byte, error) {
+// serviceConfigJSON produces a service config in JSON format that contains LB
+// policy config for the "xds_cluster_manager" LB policy, with entries in the
+// children map for all active clusters.
+func serviceConfigJSON(activeClusters map[string]*clusterInfo) []byte {
 	// Generate children (all entries in activeClusters).
 	children := make(map[string]xdsChildConfig)
 	for cluster, ci := range activeClusters {
@@ -98,11 +87,13 @@ func serviceConfigJSON(activeClusters map[string]*clusterInfo) ([]byte, error) {
 		),
 	}
 
+	// This is not expected to fail as we have constructed the service config by
+	// hand right above, and therefore ok to panic.
 	bs, err := json.Marshal(sc)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal json: %v", err)
+		panic(fmt.Sprintf("failed to marshal service config %+v: %v", sc, err))
 	}
-	return bs, nil
+	return bs
 }
 
 type virtualHost struct {
@@ -121,6 +112,7 @@ type routeCluster struct {
 
 type route struct {
 	m                 *xdsresource.CompositeMatcher // converted from route matchers
+	actionType        xdsresource.RouteActionType   // holds route action type
 	clusters          wrr.WRR                       // holds *routeCluster entries
 	maxStreamDuration time.Duration
 	// map from filter name to its config
@@ -133,8 +125,34 @@ func (r route) String() string {
 	return fmt.Sprintf("%s -> { clusters: %v, maxStreamDuration: %v }", r.m.String(), r.clusters, r.maxStreamDuration)
 }
 
+// stoppableConfigSelector extends the iresolver.ConfigSelector interface with a
+// stop() method. This makes it possible to swap the current config selector
+// with an erroring config selector when the LDS or RDS resource is not found on
+// the management server.
+type stoppableConfigSelector interface {
+	iresolver.ConfigSelector
+	stop()
+}
+
+// erroringConfigSelector always returns an error, with the xDS node ID included
+// in the error message. It is used to swap out the current config selector
+// when the LDS or RDS resource is not found on the management server.
+type erroringConfigSelector struct {
+	err error
+}
+
+func newErroringConfigSelector(err error, xdsNodeID string) *erroringConfigSelector {
+	return &erroringConfigSelector{err: annotateErrorWithNodeID(status.Error(codes.Unavailable, err.Error()), xdsNodeID)}
+}
+
+func (cs *erroringConfigSelector) SelectConfig(iresolver.RPCInfo) (*iresolver.RPCConfig, error) {
+	return nil, cs.err
+}
+func (cs *erroringConfigSelector) stop() {}
+
 type configSelector struct {
 	r                *xdsResolver
+	xdsNodeID        string
 	virtualHost      virtualHost
 	routes           []route
 	clusters         map[string]*clusterInfo
@@ -142,11 +160,16 @@ type configSelector struct {
 }
 
 var errNoMatchedRouteFound = status.Errorf(codes.Unavailable, "no matched route was found")
+var errUnsupportedClientRouteAction = status.Errorf(codes.Unavailable, "matched route does not have a supported route action type")
+
+// annotateErrorWithNodeID annotates the given error with the provided xDS node
+// ID. This is used by the real config selector when it runs into errors, and
+// also by the erroring config selector.
+func annotateErrorWithNodeID(err error, nodeID string) error {
+	return fmt.Errorf("[xDS node id: %s]: %w", nodeID, err)
+}
 
 func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RPCConfig, error) {
-	if cs == nil {
-		return nil, status.Errorf(codes.Unavailable, "no valid clusters")
-	}
 	var rt *route
 	// Loop through routes in order and select first match.
 	for _, r := range cs.routes {
@@ -155,13 +178,18 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 			break
 		}
 	}
+
 	if rt == nil || rt.clusters == nil {
-		return nil, errNoMatchedRouteFound
+		return nil, annotateErrorWithNodeID(errNoMatchedRouteFound, cs.xdsNodeID)
+	}
+
+	if rt.actionType != xdsresource.RouteActionRoute {
+		return nil, annotateErrorWithNodeID(errUnsupportedClientRouteAction, cs.xdsNodeID)
 	}
 
 	cluster, ok := rt.clusters.Next().(*routeCluster)
 	if !ok {
-		return nil, status.Errorf(codes.Internal, "error retrieving cluster for match: %v (%T)", cluster, cluster)
+		return nil, annotateErrorWithNodeID(status.Errorf(codes.Internal, "error retrieving cluster for match: %v (%T)", cluster, cluster), cs.xdsNodeID)
 	}
 
 	// Add a ref to the selected cluster, as this RPC needs this cluster until
@@ -171,14 +199,11 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 
 	interceptor, err := cs.newInterceptor(rt, cluster)
 	if err != nil {
-		return nil, err
+		return nil, annotateErrorWithNodeID(err, cs.xdsNodeID)
 	}
 
 	lbCtx := clustermanager.SetPickedCluster(rpcInfo.Context, cluster.name)
-	// Request Hashes are only applicable for a Ring Hash LB.
-	if envconfig.XDSRingHash {
-		lbCtx = ringhash.SetRequestHash(lbCtx, cs.generateHash(rpcInfo, rt.hashPolicies))
-	}
+	lbCtx = iringhash.SetXDSRequestHash(lbCtx, cs.generateHash(rpcInfo, rt.hashPolicies))
 
 	config := &iresolver.RPCConfig{
 		// Communicate to the LB policy the chosen cluster and request hash, if Ring Hash LB policy.
@@ -189,10 +214,9 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 			if v := atomic.AddInt32(ref, -1); v == 0 {
 				// This entry will be removed from activeClusters when
 				// producing the service config for the empty update.
-				select {
-				case cs.r.updateCh <- suWithError{emptyUpdate: true}:
-				default:
-				}
+				cs.r.serializer.TrySchedule(func(context.Context) {
+					cs.r.onClusterRefDownToZero()
+				})
 			}
 		},
 		Interceptor: interceptor,
@@ -223,19 +247,30 @@ func retryConfigToPolicy(config *xdsresource.RetryConfig) *serviceconfig.RetryPo
 func (cs *configSelector) generateHash(rpcInfo iresolver.RPCInfo, hashPolicies []*xdsresource.HashPolicy) uint64 {
 	var hash uint64
 	var generatedHash bool
+	var md, emd metadata.MD
+	var mdRead bool
 	for _, policy := range hashPolicies {
 		var policyHash uint64
 		var generatedPolicyHash bool
 		switch policy.HashPolicyType {
 		case xdsresource.HashPolicyTypeHeader:
-			md, ok := metadata.FromOutgoingContext(rpcInfo.Context)
-			if !ok {
+			if strings.HasSuffix(policy.HeaderName, "-bin") {
 				continue
 			}
-			values := md.Get(policy.HeaderName)
-			// If the header isn't present, no-op.
+			if !mdRead {
+				md, _ = metadata.FromOutgoingContext(rpcInfo.Context)
+				emd, _ = grpcutil.ExtraMetadata(rpcInfo.Context)
+				mdRead = true
+			}
+			values := emd.Get(policy.HeaderName)
 			if len(values) == 0 {
-				continue
+				// Extra metadata (e.g. the "content-type" header) takes
+				// precedence over the user's metadata.
+				values = md.Get(policy.HeaderName)
+				if len(values) == 0 {
+					// If the header isn't present at all, this policy is a no-op.
+					continue
+				}
 			}
 			joinedValues := strings.Join(values, ",")
 			if policy.Regex != nil {
@@ -271,7 +306,7 @@ func (cs *configSelector) generateHash(rpcInfo iresolver.RPCInfo, hashPolicies [
 	}
 	// If no generated hash return a random long. In the grand scheme of things
 	// this logically will map to choosing a random backend to route request to.
-	return grpcrand.Uint64()
+	return rand.Uint64()
 }
 
 func (cs *configSelector) newInterceptor(rt *route, cluster *routeCluster) (iresolver.ClientInterceptor, error) {
@@ -280,11 +315,6 @@ func (cs *configSelector) newInterceptor(rt *route, cluster *routeCluster) (ires
 	}
 	interceptors := make([]iresolver.ClientInterceptor, 0, len(cs.httpFilterConfig))
 	for _, filter := range cs.httpFilterConfig {
-		if router.IsRouterFilter(filter.Filter) {
-			// Ignore any filters after the router filter.  The router itself
-			// is currently a nop.
-			return &interceptorList{interceptors: interceptors}, nil
-		}
 		override := cluster.httpFilterConfigOverride[filter.Name] // cluster is highest priority
 		if override == nil {
 			override = rt.httpFilterConfigOverride[filter.Name] // route is second priority
@@ -305,7 +335,7 @@ func (cs *configSelector) newInterceptor(rt *route, cluster *routeCluster) (ires
 			interceptors = append(interceptors, i)
 		}
 	}
-	return nil, fmt.Errorf("error in xds config: no router filter present")
+	return &interceptorList{interceptors: interceptors}, nil
 }
 
 // stop decrements refs of all clusters referenced by this config selector.
@@ -328,106 +358,17 @@ func (cs *configSelector) stop() {
 	// selector; we need another update to delete clusters from the config (if
 	// we don't have another update pending already).
 	if needUpdate {
-		select {
-		case cs.r.updateCh <- suWithError{emptyUpdate: true}:
-		default:
-		}
+		cs.r.serializer.TrySchedule(func(context.Context) {
+			cs.r.onClusterRefDownToZero()
+		})
 	}
-}
-
-// A global for testing.
-var newWRR = wrr.NewRandom
-
-// newConfigSelector creates the config selector for su; may add entries to
-// r.activeClusters for previously-unseen clusters.
-func (r *xdsResolver) newConfigSelector(su serviceUpdate) (*configSelector, error) {
-	cs := &configSelector{
-		r: r,
-		virtualHost: virtualHost{
-			httpFilterConfigOverride: su.virtualHost.HTTPFilterConfigOverride,
-			retryConfig:              su.virtualHost.RetryConfig,
-		},
-		routes:           make([]route, len(su.virtualHost.Routes)),
-		clusters:         make(map[string]*clusterInfo),
-		httpFilterConfig: su.ldsConfig.httpFilterConfig,
-	}
-
-	for i, rt := range su.virtualHost.Routes {
-		clusters := newWRR()
-		if rt.ClusterSpecifierPlugin != "" {
-			clusterName := clusterSpecifierPluginPrefix + rt.ClusterSpecifierPlugin
-			clusters.Add(&routeCluster{
-				name: clusterName,
-			}, 1)
-			cs.initializeCluster(clusterName, xdsChildConfig{
-				ChildPolicy: balancerConfig(su.clusterSpecifierPlugins[rt.ClusterSpecifierPlugin]),
-			})
-		} else {
-			for cluster, wc := range rt.WeightedClusters {
-				clusterName := clusterPrefix + cluster
-				clusters.Add(&routeCluster{
-					name:                     clusterName,
-					httpFilterConfigOverride: wc.HTTPFilterConfigOverride,
-				}, int64(wc.Weight))
-				cs.initializeCluster(clusterName, xdsChildConfig{
-					ChildPolicy: newBalancerConfig(cdsName, cdsBalancerConfig{Cluster: cluster}),
-				})
-			}
-		}
-		cs.routes[i].clusters = clusters
-
-		var err error
-		cs.routes[i].m, err = xdsresource.RouteToMatcher(rt)
-		if err != nil {
-			return nil, err
-		}
-		if rt.MaxStreamDuration == nil {
-			cs.routes[i].maxStreamDuration = su.ldsConfig.maxStreamDuration
-		} else {
-			cs.routes[i].maxStreamDuration = *rt.MaxStreamDuration
-		}
-
-		cs.routes[i].httpFilterConfigOverride = rt.HTTPFilterConfigOverride
-		cs.routes[i].retryConfig = rt.RetryConfig
-		cs.routes[i].hashPolicies = rt.HashPolicies
-	}
-
-	// Account for this config selector's clusters.  Do this after no further
-	// errors may occur.  Note: cs.clusters are pointers to entries in
-	// activeClusters.
-	for _, ci := range cs.clusters {
-		atomic.AddInt32(&ci.refCount, 1)
-	}
-
-	return cs, nil
-}
-
-// initializeCluster initializes entries in cs.clusters map, creating entries in
-// r.activeClusters as necessary.  Any created entries will have a ref count set
-// to zero as their ref count will be incremented by incRefs.
-func (cs *configSelector) initializeCluster(clusterName string, cfg xdsChildConfig) {
-	ci := cs.r.activeClusters[clusterName]
-	if ci == nil {
-		ci = &clusterInfo{refCount: 0}
-		cs.r.activeClusters[clusterName] = ci
-	}
-	cs.clusters[clusterName] = ci
-	cs.clusters[clusterName].cfg = cfg
-}
-
-type clusterInfo struct {
-	// number of references to this cluster; accessed atomically
-	refCount int32
-	// cfg is the child configuration for this cluster, containing either the
-	// csp config or the cds cluster config.
-	cfg xdsChildConfig
 }
 
 type interceptorList struct {
 	interceptors []iresolver.ClientInterceptor
 }
 
-func (il *interceptorList) NewStream(ctx context.Context, ri iresolver.RPCInfo, done func(), newStream func(ctx context.Context, done func()) (iresolver.ClientStream, error)) (iresolver.ClientStream, error) {
+func (il *interceptorList) NewStream(ctx context.Context, ri iresolver.RPCInfo, _ func(), newStream func(ctx context.Context, _ func()) (iresolver.ClientStream, error)) (iresolver.ClientStream, error) {
 	for i := len(il.interceptors) - 1; i >= 0; i-- {
 		ns := newStream
 		interceptor := il.interceptors[i]

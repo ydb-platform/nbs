@@ -17,11 +17,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/ydb-platform/nbs/contrib/ydb/public/api/client/yc_private/kms"
-
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-
 	grpc_codes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	grpc_status "google.golang.org/grpc/status"
 )
 

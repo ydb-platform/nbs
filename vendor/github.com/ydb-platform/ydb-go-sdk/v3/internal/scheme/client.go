@@ -22,7 +22,7 @@ import (
 var errNilClient = xerrors.Wrap(errors.New("scheme client is not initialized"))
 
 type Client struct {
-	config  config.Config
+	config  *config.Config
 	service Ydb_Scheme_V1.SchemeServiceClient
 }
 
@@ -34,19 +34,20 @@ func (c *Client) Close(_ context.Context) error {
 	if c == nil {
 		return xerrors.WithStackTrace(errNilClient)
 	}
+
 	return nil
 }
 
-func New(ctx context.Context, cc grpc.ClientConnInterface, config config.Config) (*Client, error) {
+func New(ctx context.Context, cc grpc.ClientConnInterface, config *config.Config) *Client {
 	return &Client{
 		config:  config,
 		service: Ydb_Scheme_V1.NewSchemeServiceClient(cc),
-	}, nil
+	}
 }
 
 func (c *Client) MakeDirectory(ctx context.Context, path string) (finalErr error) {
 	onDone := trace.SchemeOnMakeDirectory(c.config.Trace(), &ctx,
-		stack.FunctionID(""),
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/internal/scheme.(*Client).MakeDirectory"),
 		path,
 	)
 	defer func() {
@@ -58,10 +59,12 @@ func (c *Client) MakeDirectory(ctx context.Context, path string) (finalErr error
 	if !c.config.AutoRetry() {
 		return call(ctx)
 	}
+
 	return retry.Retry(ctx, call,
 		retry.WithStackTrace(),
 		retry.WithIdempotent(true),
 		retry.WithTrace(c.config.TraceRetry()),
+		retry.WithBudget(c.config.RetryBudget()),
 	)
 }
 
@@ -78,12 +81,13 @@ func (c *Client) makeDirectory(ctx context.Context, path string) (err error) {
 			),
 		},
 	)
+
 	return xerrors.WithStackTrace(err)
 }
 
 func (c *Client) RemoveDirectory(ctx context.Context, path string) (finalErr error) {
 	onDone := trace.SchemeOnRemoveDirectory(c.config.Trace(), &ctx,
-		stack.FunctionID(""),
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/internal/scheme.(*Client).RemoveDirectory"),
 		path,
 	)
 	defer func() {
@@ -95,10 +99,12 @@ func (c *Client) RemoveDirectory(ctx context.Context, path string) (finalErr err
 	if !c.config.AutoRetry() {
 		return call(ctx)
 	}
+
 	return retry.Retry(ctx, call,
 		retry.WithStackTrace(),
 		retry.WithIdempotent(true),
 		retry.WithTrace(c.config.TraceRetry()),
+		retry.WithBudget(c.config.RetryBudget()),
 	)
 }
 
@@ -115,27 +121,34 @@ func (c *Client) removeDirectory(ctx context.Context, path string) (err error) {
 			),
 		},
 	)
+
 	return xerrors.WithStackTrace(err)
 }
 
 func (c *Client) ListDirectory(ctx context.Context, path string) (d scheme.Directory, finalErr error) {
-	onDone := trace.SchemeOnListDirectory(c.config.Trace(), &ctx, stack.FunctionID(""))
+	onDone := trace.SchemeOnListDirectory(c.config.Trace(), &ctx,
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/internal/scheme.(*Client).ListDirectory"),
+	)
 	defer func() {
 		onDone(finalErr)
 	}()
 	call := func(ctx context.Context) (err error) {
 		d, err = c.listDirectory(ctx, path)
+
 		return xerrors.WithStackTrace(err)
 	}
 	if !c.config.AutoRetry() {
 		err := call(ctx)
+
 		return d, xerrors.WithStackTrace(err)
 	}
 	err := retry.Retry(ctx, call,
 		retry.WithIdempotent(true),
 		retry.WithStackTrace(),
 		retry.WithTrace(c.config.TraceRetry()),
+		retry.WithBudget(c.config.RetryBudget()),
 	)
+
 	return d, xerrors.WithStackTrace(err)
 }
 
@@ -165,15 +178,16 @@ func (c *Client) listDirectory(ctx context.Context, path string) (scheme.Directo
 	if err != nil {
 		return d, xerrors.WithStackTrace(err)
 	}
-	d.From(result.Self)
-	d.Children = make([]scheme.Entry, len(result.Children))
-	putEntry(d.Children, result.Children)
+	d.From(result.GetSelf())
+	d.Children = make([]scheme.Entry, len(result.GetChildren()))
+	putEntry(d.Children, result.GetChildren())
+
 	return d, nil
 }
 
 func (c *Client) DescribePath(ctx context.Context, path string) (e scheme.Entry, finalErr error) {
 	onDone := trace.SchemeOnDescribePath(c.config.Trace(), &ctx,
-		stack.FunctionID(""),
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/internal/scheme.(*Client).DescribePath"),
 		path,
 	)
 	defer func() {
@@ -184,17 +198,21 @@ func (c *Client) DescribePath(ctx context.Context, path string) (e scheme.Entry,
 		if err != nil {
 			return xerrors.WithStackTrace(err)
 		}
+
 		return nil
 	}
 	if !c.config.AutoRetry() {
 		err := call(ctx)
+
 		return e, err
 	}
 	err := retry.Retry(ctx, call,
 		retry.WithIdempotent(true),
 		retry.WithStackTrace(),
 		retry.WithTrace(c.config.TraceRetry()),
+		retry.WithBudget(c.config.RetryBudget()),
 	)
+
 	return e, xerrors.WithStackTrace(err)
 }
 
@@ -222,7 +240,8 @@ func (c *Client) describePath(ctx context.Context, path string) (e scheme.Entry,
 	if err != nil {
 		return e, xerrors.WithStackTrace(err)
 	}
-	e.From(result.Self)
+	e.From(result.GetSelf())
+
 	return e, nil
 }
 
@@ -230,16 +249,16 @@ func (c *Client) ModifyPermissions(
 	ctx context.Context, path string, opts ...scheme.PermissionsOption,
 ) (finalErr error) {
 	onDone := trace.SchemeOnModifyPermissions(c.config.Trace(), &ctx,
-		stack.FunctionID(""),
+		stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/internal/scheme.(*Client).ModifyPermissions"),
 		path,
 	)
 	defer func() {
 		onDone(finalErr)
 	}()
 	var desc permissionsDesc
-	for _, o := range opts {
-		if o != nil {
-			o(&desc)
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&desc)
 		}
 	}
 	call := func(ctx context.Context) error {
@@ -248,10 +267,12 @@ func (c *Client) ModifyPermissions(
 	if !c.config.AutoRetry() {
 		return call(ctx)
 	}
+
 	return retry.Retry(ctx, call,
 		retry.WithStackTrace(),
 		retry.WithIdempotent(true),
 		retry.WithTrace(c.config.TraceRetry()),
+		retry.WithBudget(c.config.RetryBudget()),
 	)
 }
 
@@ -273,6 +294,7 @@ func (c *Client) modifyPermissions(ctx context.Context, path string, desc permis
 	if err != nil {
 		return xerrors.WithStackTrace(err)
 	}
+
 	return nil
 }
 

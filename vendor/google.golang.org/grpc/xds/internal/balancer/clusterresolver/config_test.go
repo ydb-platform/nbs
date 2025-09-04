@@ -26,10 +26,12 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"google.golang.org/grpc/balancer"
+	"google.golang.org/grpc/balancer/ringhash"
+	"google.golang.org/grpc/balancer/roundrobin"
+	iringhash "google.golang.org/grpc/internal/ringhash"
 	iserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/xds/internal/balancer/outlierdetection"
-	"google.golang.org/grpc/xds/internal/balancer/ringhash"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 )
 
 func TestDiscoveryMechanismTypeMarshalJSON(t *testing.T) {
@@ -107,7 +109,7 @@ const (
     "edsServiceName": "test-eds-service-name",
     "outlierDetection": {}
   }],
-  "xdsLbPolicy":[{"ROUND_ROBIN":{}}]
+  "xdsLbPolicy":[{"round_robin":{}}]
 }`
 	testJSONConfig2 = `{
   "discoveryMechanisms": [{
@@ -124,7 +126,7 @@ const (
     "type": "LOGICAL_DNS",
     "outlierDetection": {}
   }],
-  "xdsLbPolicy":[{"ROUND_ROBIN":{}}]
+  "xdsLbPolicy":[{"round_robin":{}}]
 }`
 	testJSONConfig3 = `{
   "discoveryMechanisms": [{
@@ -138,7 +140,7 @@ const (
     "edsServiceName": "test-eds-service-name",
     "outlierDetection": {}
   }],
-  "xdsLbPolicy":[{"ROUND_ROBIN":{}}]
+  "xdsLbPolicy":[{"round_robin":{}}]
 }`
 	testJSONConfig4 = `{
   "discoveryMechanisms": [{
@@ -166,18 +168,18 @@ const (
     "edsServiceName": "test-eds-service-name",
     "outlierDetection": {}
   }],
-  "xdsLbPolicy":[{"ROUND_ROBIN":{}}]
+  "xdsLbPolicy":[{"round_robin":{}}]
 }`
 )
 
-var testLRSServerConfig = &bootstrap.ServerConfig{
-	ServerURI: "trafficdirector.googleapis.com:443",
-	Creds: bootstrap.ChannelCreds{
-		Type: "google_default",
-	},
-}
-
 func TestParseConfig(t *testing.T) {
+	testLRSServerConfig, err := bootstrap.ServerConfigForTesting(bootstrap.ServerConfigTestingOptions{
+		URI:          "trafficdirector.googleapis.com:443",
+		ChannelCreds: []bootstrap.ChannelCreds{{Type: "google_default"}},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create LRS server config for testing: %v", err)
+	}
 	tests := []struct {
 		name    string
 		js      string
@@ -211,7 +213,7 @@ func TestParseConfig(t *testing.T) {
 					},
 				},
 				xdsLBPolicy: iserviceconfig.BalancerConfig{ // do we want to make this not pointer
-					Name:   "ROUND_ROBIN",
+					Name:   roundrobin.Name,
 					Config: nil,
 				},
 			},
@@ -248,7 +250,7 @@ func TestParseConfig(t *testing.T) {
 					},
 				},
 				xdsLBPolicy: iserviceconfig.BalancerConfig{
-					Name:   "ROUND_ROBIN",
+					Name:   roundrobin.Name,
 					Config: nil,
 				},
 			},
@@ -275,7 +277,7 @@ func TestParseConfig(t *testing.T) {
 					},
 				},
 				xdsLBPolicy: iserviceconfig.BalancerConfig{
-					Name:   "ROUND_ROBIN",
+					Name:   roundrobin.Name,
 					Config: nil,
 				},
 			},
@@ -302,8 +304,12 @@ func TestParseConfig(t *testing.T) {
 					},
 				},
 				xdsLBPolicy: iserviceconfig.BalancerConfig{
-					Name:   ringhash.Name,
-					Config: &ringhash.LBConfig{MinRingSize: 1024, MaxRingSize: 4096}, // Ringhash LB config with default min and max.
+					Name: ringhash.Name,
+					Config: &iringhash.LBConfig{
+						// Ringhash LB config with default min and max.
+						MinRingSize: 1024,
+						MaxRingSize: 4096,
+					},
 				},
 			},
 			wantErr: false,
@@ -329,7 +335,7 @@ func TestParseConfig(t *testing.T) {
 					},
 				},
 				xdsLBPolicy: iserviceconfig.BalancerConfig{
-					Name:   "ROUND_ROBIN",
+					Name:   roundrobin.Name,
 					Config: nil,
 				},
 			},

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node.h>
+#include <yql/essentials/minikql/computation/mkql_computation_node.h>
 
 namespace NYql {
 

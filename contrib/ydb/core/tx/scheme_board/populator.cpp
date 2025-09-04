@@ -1,4 +1,6 @@
 #include "events.h"
+#include "events_internal.h"
+#include "events_schemeshard.h"
 #include "helpers.h"
 #include "monitorable_actor.h"
 #include "opaque_path_description.h"
@@ -48,23 +50,35 @@ namespace {
 
 } // anonymous
 
+bool ShouldIgnore(const TStateStorageInfo::TRingGroup& ringGroup) {
+    return ringGroup.State == ERingGroupState::DISCONNECTED;
+}
+
+bool ShouldIgnoreInQuorum(const TStateStorageInfo::TRingGroup& ringGroup) {
+    return ShouldIgnore(ringGroup) || ringGroup.WriteOnly;
+}
+
+bool IsMajorityReached(const TStateStorageInfo::TRingGroup& ringGroup, ui32 ringGroupAcks) {
+    return ringGroupAcks > ringGroup.NToSelect / 2;
+}
+
 class TReplicaPopulator: public TMonitorableActor<TReplicaPopulator> {
-    void ProcessSync(TSchemeBoardEvents::TEvDescribeResult* msg = nullptr, const TPathId& pathId = TPathId()) {
+    void ProcessSync(NInternalEvents::TEvDescribeResult* msg = nullptr, const TPathId& pathId = TPathId()) {
         if (msg == nullptr) {
             BatchSize = 0;
-            Send(Parent, new TSchemeBoardEvents::TEvRequestDescribe(pathId, Replica));
+            Send(Parent, new NInternalEvents::TEvRequestDescribe(pathId, Replica));
             return;
         }
 
         if (msg->Commit) {
-            auto commit = MakeHolder<TSchemeBoardEvents::TEvCommitRequest>(Owner, Generation);
+            auto commit = MakeHolder<NInternalEvents::TEvCommitRequest>(Owner, Generation);
             Send(Replica, std::move(commit), IEventHandle::FlagTrackDelivery);
             return;
         }
 
         auto update = msg->HasDescription()
-            ? MakeHolder<TSchemeBoardEvents::TEvUpdateBuilder>(Owner, Generation, msg->Description)
-            : MakeHolder<TSchemeBoardEvents::TEvUpdateBuilder>(Owner, Generation);
+            ? MakeHolder<NInternalEvents::TEvUpdateBuilder>(Owner, Generation, msg->Description)
+            : MakeHolder<NInternalEvents::TEvUpdateBuilder>(Owner, Generation);
 
         if (msg->HasDeletedLocalPathIds()) {
             auto& deletedLocalPathIds = *update->Record.MutableDeletedLocalPathIds();
@@ -98,7 +112,7 @@ class TReplicaPopulator: public TMonitorableActor<TReplicaPopulator> {
 
         if (++BatchSize < BatchSizeLimit) {
             CurPathId = CurPathId.NextId();
-            Send(Parent, new TSchemeBoardEvents::TEvRequestDescribe(CurPathId, Replica));
+            Send(Parent, new NInternalEvents::TEvRequestDescribe(CurPathId, Replica));
         } else {
             update->Record.SetNeedAck(true);
             BatchSize = 0;
@@ -111,9 +125,9 @@ class TReplicaPopulator: public TMonitorableActor<TReplicaPopulator> {
         ProcessSync(nullptr, fromPathId);
     }
 
-    void EnqueueUpdate(TSchemeBoardEvents::TEvUpdate::TPtr& ev, bool canSend = false) {
+    void EnqueueUpdate(NInternalEvents::TEvUpdate::TPtr& ev, bool canSend = false) {
         const TPathId pathId = ev->Get()->GetPathId();
-        const auto& record = (static_cast<TSchemeBoardEvents::TEvUpdateBuilder*>(ev->Get()))->Record;
+        const auto& record = (static_cast<NInternalEvents::TEvUpdateBuilder*>(ev->Get()))->Record;
         const ui64 version = record.GetIsDeletion() ? Max<ui64>() : NSchemeBoard::GetPathVersion(record);
 
         if (canSend && UpdatesInFlight.size() < BatchSizeLimit) {
@@ -145,7 +159,7 @@ class TReplicaPopulator: public TMonitorableActor<TReplicaPopulator> {
         }
     }
 
-    void DequeueUpdate(TSchemeBoardEvents::TEvUpdateAck::TPtr& ev) {
+    void DequeueUpdate(NSchemeshardEvents::TEvUpdateAck::TPtr& ev) {
         const TPathId pathId = ev->Get()->GetPathId();
         const ui64 version = ev->Get()->Record.GetVersion();
 
@@ -164,7 +178,7 @@ class TReplicaPopulator: public TMonitorableActor<TReplicaPopulator> {
             }
 
             for (ui64 txId : txIds) {
-                Send(Parent, new TSchemeBoardEvents::TEvUpdateAck(Owner, Generation, pathId, version), 0, txId);
+                Send(Parent, new NSchemeshardEvents::TEvUpdateAck(Owner, Generation, pathId, version), 0, txId);
             }
         }
 
@@ -184,7 +198,7 @@ class TReplicaPopulator: public TMonitorableActor<TReplicaPopulator> {
         }
 
         UpdatesRequested[it->first].insert(it->second.begin(), it->second.end());
-        Send(Parent, new TSchemeBoardEvents::TEvRequestUpdate(it->first));
+        Send(Parent, new NInternalEvents::TEvRequestUpdate(it->first));
         Updates.erase(it);
 
         return true;
@@ -224,7 +238,7 @@ class TReplicaPopulator: public TMonitorableActor<TReplicaPopulator> {
         return Check(ev, Generation, ev->Get()->Record.GetGeneration(), "generation");
     }
 
-    void Handle(TSchemeBoardEvents::TEvHandshakeResponse::TPtr& ev) {
+    void Handle(NInternalEvents::TEvHandshakeResponse::TPtr& ev) {
         SBP_LOG_D("Handle " << ev->Get()->ToString()
             << ": sender# " << ev->Sender);
 
@@ -256,14 +270,14 @@ class TReplicaPopulator: public TMonitorableActor<TReplicaPopulator> {
         }
     }
 
-    void Handle(TSchemeBoardEvents::TEvDescribeResult::TPtr& ev) {
+    void Handle(NInternalEvents::TEvDescribeResult::TPtr& ev) {
         SBP_LOG_D("Handle " << ev->Get()->ToString()
             << ": sender# " << ev->Sender);
 
         ProcessSync(ev->Get());
     }
 
-    void Handle(TSchemeBoardEvents::TEvUpdate::TPtr& ev) {
+    void Handle(NInternalEvents::TEvUpdate::TPtr& ev) {
         SBP_LOG_D("Handle " << ev->Get()->ToString()
             << ": sender# " << ev->Sender
             << ", cookie# " << ev->Cookie);
@@ -271,7 +285,7 @@ class TReplicaPopulator: public TMonitorableActor<TReplicaPopulator> {
         EnqueueUpdate(ev, true);
     }
 
-    void Handle(TSchemeBoardEvents::TEvUpdateAck::TPtr& ev) {
+    void Handle(NSchemeshardEvents::TEvUpdateAck::TPtr& ev) {
         SBP_LOG_D("Handle " << ev->Get()->ToString()
             << ": sender# " << ev->Sender
             << ", cookie# " << ev->Cookie);
@@ -284,13 +298,13 @@ class TReplicaPopulator: public TMonitorableActor<TReplicaPopulator> {
             LastAckedPathId = CurPathId;
 
             CurPathId = CurPathId.NextId();
-            Send(Parent, new TSchemeBoardEvents::TEvRequestDescribe(CurPathId, Replica));
+            Send(Parent, new NInternalEvents::TEvRequestDescribe(CurPathId, Replica));
         }
 
         DequeueUpdate(ev);
     }
 
-    void Handle(TSchemeBoardEvents::TEvCommitResponse::TPtr& ev) {
+    void Handle(NInternalEvents::TEvCommitResponse::TPtr& ev) {
         SBP_LOG_D("Handle " << ev->Get()->ToString()
             << ": sender# " << ev->Sender);
 
@@ -399,15 +413,15 @@ public:
     void Bootstrap() {
         TMonitorableActor::Bootstrap();
 
-        auto handshake = MakeHolder<TSchemeBoardEvents::TEvHandshakeRequest>(Owner, Generation);
+        auto handshake = MakeHolder<NInternalEvents::TEvHandshakeRequest>(Owner, Generation);
         Send(Replica, std::move(handshake), IEventHandle::FlagTrackDelivery | IEventHandle::FlagSubscribeOnSession);
         Become(&TThis::StateHandshake);
     }
 
     STATEFN(StateHandshake) {
         switch (ev->GetTypeRewrite()) {
-            hFunc(TSchemeBoardEvents::TEvHandshakeResponse, Handle);
-            hFunc(TSchemeBoardEvents::TEvUpdate, EnqueueUpdate);
+            hFunc(NInternalEvents::TEvHandshakeResponse, Handle);
+            hFunc(NInternalEvents::TEvUpdate, EnqueueUpdate);
 
             hFunc(TSchemeBoardMonEvents::TEvInfoRequest, Handle);
 
@@ -420,10 +434,10 @@ public:
 
     STATEFN(StateWork) {
         switch (ev->GetTypeRewrite()) {
-            hFunc(TSchemeBoardEvents::TEvDescribeResult, Handle);
-            hFunc(TSchemeBoardEvents::TEvUpdate, Handle);
-            hFunc(TSchemeBoardEvents::TEvUpdateAck, Handle);
-            hFunc(TSchemeBoardEvents::TEvCommitResponse, Handle);
+            hFunc(NInternalEvents::TEvDescribeResult, Handle);
+            hFunc(NInternalEvents::TEvUpdate, Handle);
+            hFunc(NSchemeshardEvents::TEvUpdateAck, Handle);
+            hFunc(NInternalEvents::TEvCommitResponse, Handle);
 
             hFunc(TSchemeBoardMonEvents::TEvInfoRequest, Handle);
 
@@ -436,7 +450,7 @@ public:
 
     STATEFN(StateSleep) {
         switch (ev->GetTypeRewrite()) {
-            hFunc(TSchemeBoardEvents::TEvUpdate, EnqueueUpdate);
+            hFunc(NInternalEvents::TEvUpdate, EnqueueUpdate);
 
             hFunc(TSchemeBoardMonEvents::TEvInfoRequest, Handle);
 
@@ -479,15 +493,20 @@ class TPopulator: public TMonitorableActor<TPopulator> {
         const ui64 pathHash = CityHash64(path);
         const ui64 idHash = pathId.Hash();
 
-        TStateStorageInfo::TSelection selection;
+        for (ui32 ringGroupIndex : xrange(GroupInfo->RingGroups.size())) {
+            if (ShouldIgnore(GroupInfo->RingGroups[ringGroupIndex])) {
+                continue;
+            }
+            TStateStorageInfo::TSelection selection;
 
-        GroupInfo->SelectReplicas(pathHash, &selection);
-        SelectionReplicaCache.insert(SelectionReplicaCache.end(), selection.begin(), selection.end());
+            GroupInfo->SelectReplicas(pathHash, &selection, ringGroupIndex);
+            SelectionReplicaCache.insert(SelectionReplicaCache.end(), selection.begin(), selection.end());
 
-        GroupInfo->SelectReplicas(idHash, &selection);
-        for (const TActorId& replica : selection) {
-            if (Find(SelectionReplicaCache, replica) == SelectionReplicaCache.end()) {
-                SelectionReplicaCache.emplace_back(replica);
+            GroupInfo->SelectReplicas(idHash, &selection, ringGroupIndex);
+            for (const TActorId& replica : selection) {
+                if (Find(SelectionReplicaCache, replica) == SelectionReplicaCache.end()) {
+                    SelectionReplicaCache.emplace_back(replica);
+                }
             }
         }
 
@@ -509,7 +528,7 @@ class TPopulator: public TMonitorableActor<TPopulator> {
             const TActorId* replicaPopulator = ReplicaToReplicaPopulator.FindPtr(replica);
             Y_ABORT_UNLESS(replicaPopulator != nullptr);
 
-            auto update = MakeHolder<TSchemeBoardEvents::TEvUpdateBuilder>(Owner, Generation, desc, isDeletion);
+            auto update = MakeHolder<NInternalEvents::TEvUpdateBuilder>(Owner, Generation, desc, isDeletion);
             if (!isDeletion) {
                 update->SetDescribeSchemeResultSerialized(desc.DescribeSchemeResultSerialized);
             }
@@ -519,7 +538,7 @@ class TPopulator: public TMonitorableActor<TPopulator> {
         }
     }
 
-    void Handle(TSchemeBoardEvents::TEvRequestDescribe::TPtr& ev) {
+    void Handle(NInternalEvents::TEvRequestDescribe::TPtr& ev) {
         SBP_LOG_D("Handle " << ev->Get()->ToString()
             << ": sender# " << ev->Sender);
 
@@ -534,7 +553,7 @@ class TPopulator: public TMonitorableActor<TPopulator> {
         }
 
         if (Descriptions.empty()) {
-            Send(replicaPopulator, new TSchemeBoardEvents::TEvDescribeResult(true));
+            Send(replicaPopulator, new NInternalEvents::TEvDescribeResult(true));
             return;
         }
 
@@ -571,14 +590,14 @@ class TPopulator: public TMonitorableActor<TPopulator> {
 
         if (it == Descriptions.end()) {
             if (startPathId >= MaxPathId) {
-                Send(replicaPopulator, new TSchemeBoardEvents::TEvDescribeResult(true));
+                Send(replicaPopulator, new NInternalEvents::TEvDescribeResult(true));
                 return;
             }
 
             if (startPathId.OwnerId == Owner) {
-                Send(replicaPopulator, new TSchemeBoardEvents::TEvDescribeResult(startPathId.LocalPathId, MaxPathId.LocalPathId));
+                Send(replicaPopulator, new NInternalEvents::TEvDescribeResult(startPathId.LocalPathId, MaxPathId.LocalPathId));
             } else {
-                Send(replicaPopulator, new TSchemeBoardEvents::TEvDescribeResult(1, MaxPathId.LocalPathId));
+                Send(replicaPopulator, new NInternalEvents::TEvDescribeResult(1, MaxPathId.LocalPathId));
             }
             return;
         }
@@ -587,7 +606,7 @@ class TPopulator: public TMonitorableActor<TPopulator> {
 
         if (description.PathId.OwnerId != Owner) {
             // this is an alien migrated migrated path from another owner, push it as a dot
-            Send(replicaPopulator, new TSchemeBoardEvents::TEvDescribeResult(0, 0, description));
+            Send(replicaPopulator, new NInternalEvents::TEvDescribeResult(0, 0, description));
             return;
         }
 
@@ -606,26 +625,26 @@ class TPopulator: public TMonitorableActor<TPopulator> {
 
         if (description.Status == NKikimrScheme::EStatus::StatusRedirectDomain) {
             // this path has been migrated to another owner
-            Send(replicaPopulator, new TSchemeBoardEvents::TEvDescribeResult(deletedBegin, deletedEnd, it->first.LocalPathId));
+            Send(replicaPopulator, new NInternalEvents::TEvDescribeResult(deletedBegin, deletedEnd, it->first.LocalPathId));
             return;
         }
 
-        Send(replicaPopulator, new TSchemeBoardEvents::TEvDescribeResult(deletedBegin, deletedEnd, description));
+        Send(replicaPopulator, new NInternalEvents::TEvDescribeResult(deletedBegin, deletedEnd, description));
     }
 
-    void Handle(TSchemeBoardEvents::TEvRequestUpdate::TPtr& ev) {
+    void Handle(NInternalEvents::TEvRequestUpdate::TPtr& ev) {
         SBP_LOG_D("Handle " << ev->Get()->ToString()
             << ": sender# " << ev->Sender);
 
         const TPathId pathId = ev->Get()->PathId;
-        THolder<TSchemeBoardEvents::TEvUpdateBuilder> update;
+        THolder<NInternalEvents::TEvUpdateBuilder> update;
 
         auto it = Descriptions.find(pathId);
         if (it == Descriptions.end()) {
-            update = MakeHolder<TSchemeBoardEvents::TEvUpdateBuilder>(Owner, Generation, pathId);
+            update = MakeHolder<NInternalEvents::TEvUpdateBuilder>(Owner, Generation, pathId);
         } else {
             const auto& desc = it->second;
-            update = MakeHolder<TSchemeBoardEvents::TEvUpdateBuilder>(Owner, Generation, desc);
+            update = MakeHolder<NInternalEvents::TEvUpdateBuilder>(Owner, Generation, desc);
             update->SetDescribeSchemeResultSerialized(desc.DescribeSchemeResultSerialized);
         }
         update->Record.SetNeedAck(true);
@@ -679,7 +698,7 @@ class TPopulator: public TMonitorableActor<TPopulator> {
                     << ", cookie# " << ev->Cookie
                     << ", pathId# " << pathId);
 
-                auto ack = MakeHolder<TSchemeBoardEvents::TEvUpdateAck>(Owner, Generation, pathId, Max<ui64>());
+                auto ack = MakeHolder<NSchemeshardEvents::TEvUpdateAck>(Owner, Generation, pathId, Max<ui64>());
                 Send(ev->Sender, std::move(ack), 0, ev->Cookie);
                 return;
             }
@@ -694,7 +713,7 @@ class TPopulator: public TMonitorableActor<TPopulator> {
         }
 
         it->second.AckTo = ev->Sender;
-        it->second.PathAcks.emplace(std::make_pair(pathId, version), 0);
+        it->second.PathAcks.emplace(std::make_pair(pathId, version), TVector<ui32>(GroupInfo->RingGroups.size(), 0));
 
         Update(pathId, isDeletion, ev->Cookie);
 
@@ -703,7 +722,34 @@ class TPopulator: public TMonitorableActor<TPopulator> {
         }
     }
 
-    void Handle(TSchemeBoardEvents::TEvUpdateAck::TPtr& ev) {
+    void ProcessReplicaAck(TVector<ui32>& ringGroupAcks, TActorId ackedReplica, TVector<bool>& ringGroupQuorums) const {
+        for (ui32 ringGroupIndex : xrange(GroupInfo->RingGroups.size())) {
+            const auto& ringGroup = GroupInfo->RingGroups[ringGroupIndex];
+            for (const auto& ring : ringGroup.Rings) {
+                for (const auto& replica : ring.Replicas) {
+                    if (replica == ackedReplica) {
+                        ++ringGroupAcks[ringGroupIndex];
+                        if (IsMajorityReached(ringGroup, ringGroupAcks[ringGroupIndex])) {
+                            ringGroupQuorums[ringGroupIndex] = true;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    bool CheckQuorum(TVector<ui32>& ringGroupAcks, TActorId ackedReplica) const {
+        TVector<bool> ringGroupQuorums(GroupInfo->RingGroups.size(), false);
+        for (ui32 ringGroupIndex : xrange(GroupInfo->RingGroups.size())) {
+            const auto& ringGroup = GroupInfo->RingGroups[ringGroupIndex];
+            ringGroupQuorums[ringGroupIndex] = ShouldIgnoreInQuorum(ringGroup) || IsMajorityReached(ringGroup, ringGroupAcks[ringGroupIndex]);
+        }
+        ProcessReplicaAck(ringGroupAcks, ackedReplica, ringGroupQuorums);
+        return Count(ringGroupQuorums, false) == 0;
+    }
+
+    void Handle(NSchemeshardEvents::TEvUpdateAck::TPtr& ev) {
         const auto& record = ev->Get()->Record;
 
         SBP_LOG_D("Handle " << ev->Get()->ToString()
@@ -717,7 +763,13 @@ class TPopulator: public TMonitorableActor<TPopulator> {
                 << ", cookie# " << ev->Cookie);
             return;
         }
-
+        TActorId* ackedReplica = ReplicaToReplicaPopulatorBackMap.FindPtr(ev->Sender);
+        if (ackedReplica == nullptr) {
+            SBP_LOG_D("Ack from unknown replica (config changed?)"
+                << ": sender# " << ev->Sender
+                << ", cookie# " << ev->Cookie);
+            return;
+        }
         const TPathId pathId = ev->Get()->GetPathId();
         const ui64 version = record.GetVersion();
 
@@ -725,14 +777,14 @@ class TPopulator: public TMonitorableActor<TPopulator> {
         while (pathIt != it->second.PathAcks.end()
                && pathIt->first.first == pathId
                && pathIt->first.second <= version) {
-            if (++pathIt->second > (GroupInfo->NToSelect / 2)) {
+            if (CheckQuorum(pathIt->second, *ackedReplica)) {
                 SBP_LOG_N("Ack update"
                     << ": ack to# " << it->second.AckTo
                     << ", cookie# " << ev->Cookie
                     << ", pathId# " << pathId
                     << ", version# " << pathIt->first.second);
 
-                auto ack = MakeHolder<TSchemeBoardEvents::TEvUpdateAck>(Owner, Generation, pathId, pathIt->first.second);
+                auto ack = MakeHolder<NSchemeshardEvents::TEvUpdateAck>(Owner, Generation, pathId, pathIt->first.second);
                 Send(it->second.AckTo, std::move(ack), 0, ev->Cookie);
 
                 auto eraseIt = pathIt;
@@ -756,16 +808,40 @@ class TPopulator: public TMonitorableActor<TPopulator> {
         const auto& info = ev->Get()->Info;
 
         if (!info) {
-            SBP_LOG_E("Publish on unconfigured SchemeBoard"
-                << ": StateStorage group# " << StateStorageGroup);
+            Y_ABORT_UNLESS(!GroupInfo);
+            SBP_LOG_E("Publish on unconfigured SchemeBoard");
             Become(&TThis::StateCalm);
             return;
         }
 
+        THashSet<TActorId> neededReplicas;
+
         GroupInfo = info;
-        for (auto& replica : info->SelectAllReplicas()) {
-            IActor* replicaPopulator = new TReplicaPopulator(SelfId(), replica, Owner, Generation);
-            ReplicaToReplicaPopulator.emplace(replica, Register(replicaPopulator, TMailboxType::ReadAsFilled));
+        for (const auto& ringGroup : info->RingGroups) {
+            if (ShouldIgnore(ringGroup)) {
+                continue;
+            }
+            for (const auto& ring : ringGroup.Rings) {
+                for (const auto& replica : ring.Replicas) {
+                    neededReplicas.emplace(replica);
+                    if (!ReplicaToReplicaPopulator.contains(replica)) {
+                        IActor* replicaPopulator = new TReplicaPopulator(SelfId(), replica, Owner, Generation);
+                        TActorId replicaPopulatorId = Register(replicaPopulator, TMailboxType::ReadAsFilled);
+                        ReplicaToReplicaPopulator.emplace(replica, replicaPopulatorId);
+                        ReplicaToReplicaPopulatorBackMap[replicaPopulatorId] = replica;
+                    }
+                }
+            }
+        }
+
+        for (auto it = ReplicaToReplicaPopulator.begin(); it != ReplicaToReplicaPopulator.end(); ) {
+            if (neededReplicas.contains(it->first)) {
+                ++it;
+            } else {
+                TActivationContext::Send(new IEventHandle(TEvents::TSystem::Poison, 0, it->second, SelfId(), nullptr, 0));
+                ReplicaToReplicaPopulatorBackMap.erase(it->second);
+                ReplicaToReplicaPopulator.erase(it++);
+            }
         }
 
         Become(&TThis::StateWork);
@@ -804,7 +880,7 @@ class TPopulator: public TMonitorableActor<TPopulator> {
                 pathAck.MutablePathId()->SetLocalPathId(pathIdVersion.first.LocalPathId);
 
                 pathAck.SetVersion(pathIdVersion.second);
-                pathAck.SetAcksCount(acksCount);
+                pathAck.SetAcksCount(Accumulate(acksCount.begin(), acksCount.end(), 0));
             }
 
             if (record.UpdateAcksSize() >= limit) {
@@ -835,8 +911,7 @@ class TPopulator: public TMonitorableActor<TPopulator> {
     }
 
     void HandleUndelivered() {
-        SBP_LOG_E("Publish on unavailable SchemeBoard"
-            << ": StateStorage group# " << StateStorageGroup);
+        SBP_LOG_E("Publish on unavailable SchemeBoard");
         Become(&TThis::StateCalm);
     }
 
@@ -844,6 +919,8 @@ class TPopulator: public TMonitorableActor<TPopulator> {
         for (const auto& x : ReplicaToReplicaPopulator) {
             Send(x.second, new TEvents::TEvPoisonPill());
         }
+        TActivationContext::Send(new IEventHandle(TEvents::TSystem::Unsubscribe, 0, MakeStateStorageProxyID(), SelfId(),
+            nullptr, 0));
 
         TMonitorableActor::PassAway();
     }
@@ -863,12 +940,10 @@ public:
     explicit TPopulator(
             const ui64 owner,
             const ui64 generation,
-            const ui32 ssId,
             std::vector<std::pair<TPathId, NSchemeBoard::TTwoPartDescription>>&& twoPartDescriptions,
             const ui64 maxPathId)
         : Owner(owner)
         , Generation(generation)
-        , StateStorageGroup(ssId)
         , MaxPathId(TPathId(owner, maxPathId))
     {
         for (const auto& [pathId, twoPart] : twoPartDescriptions) {
@@ -879,8 +954,8 @@ public:
     void Bootstrap() {
         TMonitorableActor::Bootstrap();
 
-        const TActorId proxy = MakeStateStorageProxyID(StateStorageGroup);
-        Send(proxy, new TEvStateStorage::TEvListSchemeBoard(), IEventHandle::FlagTrackDelivery);
+        const TActorId proxy = MakeStateStorageProxyID();
+        Send(proxy, new TEvStateStorage::TEvListSchemeBoard(true), IEventHandle::FlagTrackDelivery);
         Become(&TThis::StateResolve);
     }
 
@@ -900,11 +975,13 @@ public:
 
     STATEFN(StateWork) {
         switch (ev->GetTypeRewrite()) {
-            hFunc(TSchemeBoardEvents::TEvRequestDescribe, Handle);
-            hFunc(TSchemeBoardEvents::TEvRequestUpdate, Handle);
+            hFunc(TEvStateStorage::TEvListSchemeBoardResult, Handle);
+
+            hFunc(NInternalEvents::TEvRequestDescribe, Handle);
+            hFunc(NInternalEvents::TEvRequestUpdate, Handle);
 
             hFunc(NSchemeShard::TEvSchemeShard::TEvDescribeSchemeResult, Handle);
-            hFunc(TSchemeBoardEvents::TEvUpdateAck, Handle);
+            hFunc(NSchemeshardEvents::TEvUpdateAck, Handle);
 
             hFunc(TSchemeBoardMonEvents::TEvInfoRequest, Handle);
             hFunc(TSchemeBoardMonEvents::TEvDescribeRequest, Handle);
@@ -925,7 +1002,6 @@ public:
 private:
     const ui64 Owner;
     const ui64 Generation;
-    const ui64 StateStorageGroup;
 
     TMap<TPathId, TOpaquePathDescription> Descriptions;
     TPathId MaxPathId;
@@ -934,12 +1010,13 @@ private:
 
     TIntrusiveConstPtr<TStateStorageInfo> GroupInfo;
     THashMap<TActorId, TActorId> ReplicaToReplicaPopulator;
+    THashMap<TActorId, TActorId> ReplicaToReplicaPopulatorBackMap;
 
     TVector<TActorId> SelectionReplicaCache;
 
     struct TUpdateAckInfo {
         TActorId AckTo;
-        TMap<std::pair<TPathId, ui64>, ui32> PathAcks;
+        TMap<std::pair<TPathId, ui64>, TVector<ui32>> PathAcks;
     };
 
     THashMap<ui64, TUpdateAckInfo> UpdateAcks; // ui64 is a cookie
@@ -951,11 +1028,10 @@ private:
 IActor* CreateSchemeBoardPopulator(
     const ui64 owner,
     const ui64 generation,
-    const ui32 ssId,
     std::vector<std::pair<TPathId, NSchemeBoard::TTwoPartDescription>>&& twoPartDescriptions,
     const ui64 maxPathId
 ) {
-    return new NSchemeBoard::TPopulator(owner, generation, ssId, std::move(twoPartDescriptions), maxPathId);
+    return new NSchemeBoard::TPopulator(owner, generation, std::move(twoPartDescriptions), maxPathId);
 }
 
 } // NKikimr

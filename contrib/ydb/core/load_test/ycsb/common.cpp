@@ -3,6 +3,7 @@
 
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 

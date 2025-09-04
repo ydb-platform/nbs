@@ -35,6 +35,8 @@ SRCS(
     flat_executor_tx_env.h
     flat_executor_txloglogic.cpp
     flat_executor_txloglogic.h
+    flat_executor_vacuum_logic.cpp
+    flat_fwd_misc.cpp
     flat_iterator.h
     flat_load_blob_queue.cpp
     flat_mem_warm.cpp
@@ -45,7 +47,6 @@ SRCS(
     flat_part_charge_range.cpp
     flat_page_label.cpp
     flat_part_dump.cpp
-    flat_part_iter_multi.cpp
     flat_part_index_iter_create.cpp
     flat_part_loader.cpp
     flat_part_overlay.cpp
@@ -56,6 +57,9 @@ SRCS(
     flat_stat_part.h
     flat_stat_table.h
     flat_stat_table.cpp
+    flat_stat_table_btree_index.cpp
+    flat_stat_table_btree_index_histogram.cpp
+    flat_stat_part_group_iter_create.cpp
     flat_store_hotdog.cpp
     flat_table.cpp
     flat_table.h
@@ -64,12 +68,14 @@ SRCS(
     flat_table_misc.cpp
     flat_table_observer.cpp
     flat_table_observer.h
+    flat_table_committed.cpp
+    flat_table_committed.h
     flat_update_op.h
     probes.cpp
     shared_handle.cpp
+    shared_cache_counters.cpp
     shared_sausagecache.cpp
     shared_sausagecache.h
-    shared_cache_memtable.h
     tablet_flat_executor.h
     tablet_flat_executor.cpp
     tablet_flat_executed.h
@@ -78,12 +84,13 @@ SRCS(
 )
 
 GENERATE_ENUM_SERIALIZATION(flat_comp_gen.h)
-
-GENERATE_ENUM_SERIALIZATION(flat_part_loader.h)
-
 GENERATE_ENUM_SERIALIZATION(flat_executor_compaction_logic.h)
-
+GENERATE_ENUM_SERIALIZATION(flat_page_iface.h)
+GENERATE_ENUM_SERIALIZATION(flat_part_loader.h)
 GENERATE_ENUM_SERIALIZATION(flat_row_eggs.h)
+GENERATE_ENUM_SERIALIZATION(flat_scan_iface.h)
+GENERATE_ENUM_SERIALIZATION(shared_cache_s3fifo.h)
+GENERATE_ENUM_SERIALIZATION(shared_cache_events.h)
 
 IF (KIKIMR_TABLET_BORROW_WITHOUT_META)
     CFLAGS(
@@ -94,6 +101,8 @@ ENDIF()
 PEERDIR(
     contrib/libs/protobuf
     contrib/ydb/library/actors/util
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/services
     library/cpp/containers/absl_flat_hash
     library/cpp/containers/intrusive_rb_tree
     library/cpp/containers/stack_vector
@@ -102,12 +111,13 @@ PEERDIR(
     library/cpp/lwtrace
     library/cpp/lwtrace/mon
     contrib/ydb/core/base
-    contrib/ydb/core/control
+    contrib/ydb/core/control/lib
     contrib/ydb/core/protos
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat/protos
-    contrib/ydb/library/binary_json
-    contrib/ydb/library/dynumber
+    contrib/ydb/core/util
+    yql/essentials/types/binary_json
+    yql/essentials/types/dynumber
     contrib/ydb/library/mkql_proto/protos
 )
 

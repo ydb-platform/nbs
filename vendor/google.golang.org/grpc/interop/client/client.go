@@ -28,6 +28,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
+	"log"
 	"net"
 	"os"
 	"strconv"
@@ -60,7 +61,7 @@ const (
 )
 
 var (
-	caFile                                 = flag.String("ca_file", "", "The file containning the CA root cert file")
+	caFile                                 = flag.String("ca_file", "", "The file containing the CA root cert file")
 	useTLS                                 = flag.Bool("use_tls", false, "Connection uses TLS if true")
 	useALTS                                = flag.Bool("use_alts", false, "Connection uses ALTS if true (this option can only be used on GCP)")
 	customCredentialsType                  = flag.String("custom_credentials_type", "", "Custom creds to use, excluding TLS or ALTS")
@@ -77,6 +78,9 @@ var (
 	soakPerIterationMaxAcceptableLatencyMs = flag.Int("soak_per_iteration_max_acceptable_latency_ms", 1000, "The number of milliseconds a single iteration in the two soak tests (rpc_soak and channel_soak) should take.")
 	soakOverallTimeoutSeconds              = flag.Int("soak_overall_timeout_seconds", 10, "The overall number of seconds after which a soak test should stop and fail, if the desired number of iterations have not yet completed.")
 	soakMinTimeMsBetweenRPCs               = flag.Int("soak_min_time_ms_between_rpcs", 0, "The minimum time in milliseconds between consecutive RPCs in a soak test (rpc_soak or channel_soak), useful for limiting QPS")
+	soakRequestSize                        = flag.Int("soak_request_size", 271828, "The request size in a soak RPC. The default value is set based on the interop large unary test case.")
+	soakResponseSize                       = flag.Int("soak_response_size", 314159, "The response size in a soak RPC. The default value is set based on the interop large unary test case.")
+	soakNumThreads                         = flag.Int("soak_num_threads", 1, "The number of threads for concurrent execution of the soak tests (rpc_soak or channel_soak). The default value is set based on the interop large unary test case.")
 	tlsServerName                          = flag.String("server_host_override", "", "The server name used to verify the hostname returned by TLS handshake if it is not empty. Otherwise, --server_host is used.")
 	additionalMetadata                     = flag.String("additional_metadata", "", "Additional metadata to send in each request, as a semicolon-separated list of key:value pairs.")
 	testCase                               = flag.String("test_case", "large_unary",
@@ -147,6 +151,21 @@ func parseAdditionalMetadataFlag() []string {
 	return addMd
 }
 
+// createSoakTestConfig creates a shared configuration structure for soak tests.
+func createBaseSoakConfig(serverAddr string) interop.SoakTestConfig {
+	return interop.SoakTestConfig{
+		RequestSize:                      *soakRequestSize,
+		ResponseSize:                     *soakResponseSize,
+		PerIterationMaxAcceptableLatency: time.Duration(*soakPerIterationMaxAcceptableLatencyMs) * time.Millisecond,
+		MinTimeBetweenRPCs:               time.Duration(*soakMinTimeMsBetweenRPCs) * time.Millisecond,
+		OverallTimeout:                   time.Duration(*soakOverallTimeoutSeconds) * time.Second,
+		ServerAddr:                       serverAddr,
+		NumWorkers:                       *soakNumThreads,
+		Iterations:                       *soakIterations,
+		MaxFailures:                      *soakMaxFailures,
+	}
+}
+
 func main() {
 	flag.Parse()
 	logger.Infof("Client running with test case %q", *testCase)
@@ -166,6 +185,8 @@ func main() {
 	if (*useTLS && *useALTS) || (*useTLS && useGDC) || (*useALTS && useGDC) || (*useTLS && useCEC) || (*useALTS && useCEC) {
 		logger.Fatalf("only one of TLS, ALTS, google default creds, or compute engine creds can be used")
 	}
+
+	ctx := context.Background()
 
 	var credsChosen credsMode
 	switch {
@@ -240,14 +261,14 @@ func main() {
 			}
 			opts = append(opts, grpc.WithPerRPCCredentials(jwtCreds))
 		} else if *testCase == "oauth2_auth_token" {
-			opts = append(opts, grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: oauth2.StaticTokenSource(interop.GetToken(*serviceAccountKeyFile, *oauthScope))}))
+			opts = append(opts, grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: oauth2.StaticTokenSource(interop.GetToken(ctx, *serviceAccountKeyFile, *oauthScope))}))
 		}
 	}
 	if len(*serviceConfigJSON) > 0 {
 		opts = append(opts, grpc.WithDisableServiceConfig(), grpc.WithDefaultServiceConfig(*serviceConfigJSON))
 	}
 	if addMd := parseAdditionalMetadataFlag(); addMd != nil {
-		unaryAddMd := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		unaryAddMd := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 			ctx = metadata.AppendToOutgoingContext(ctx, addMd...)
 			return invoker(ctx, method, req, reply, cc, opts...)
 		}
@@ -257,111 +278,123 @@ func main() {
 		}
 		opts = append(opts, grpc.WithUnaryInterceptor(unaryAddMd), grpc.WithStreamInterceptor(streamingAddMd))
 	}
-	conn, err := grpc.Dial(serverAddr, opts...)
+	conn, err := grpc.NewClient(serverAddr, opts...)
 	if err != nil {
-		logger.Fatalf("Fail to dial: %v", err)
+		logger.Fatalf("grpc.NewClient(%q) = %v", serverAddr, err)
 	}
 	defer conn.Close()
 	tc := testgrpc.NewTestServiceClient(conn)
+	ctxWithDeadline, cancel := context.WithTimeout(ctx, time.Duration(*soakOverallTimeoutSeconds)*time.Second)
+	defer cancel()
 	switch *testCase {
 	case "empty_unary":
-		interop.DoEmptyUnaryCall(tc)
+		interop.DoEmptyUnaryCall(ctx, tc)
 		logger.Infoln("EmptyUnaryCall done")
 	case "large_unary":
-		interop.DoLargeUnaryCall(tc)
+		interop.DoLargeUnaryCall(ctx, tc)
 		logger.Infoln("LargeUnaryCall done")
 	case "client_streaming":
-		interop.DoClientStreaming(tc)
+		interop.DoClientStreaming(ctx, tc)
 		logger.Infoln("ClientStreaming done")
 	case "server_streaming":
-		interop.DoServerStreaming(tc)
+		interop.DoServerStreaming(ctx, tc)
 		logger.Infoln("ServerStreaming done")
 	case "ping_pong":
-		interop.DoPingPong(tc)
+		interop.DoPingPong(ctx, tc)
 		logger.Infoln("Pingpong done")
 	case "empty_stream":
-		interop.DoEmptyStream(tc)
+		interop.DoEmptyStream(ctx, tc)
 		logger.Infoln("Emptystream done")
 	case "timeout_on_sleeping_server":
-		interop.DoTimeoutOnSleepingServer(tc)
+		interop.DoTimeoutOnSleepingServer(ctx, tc)
 		logger.Infoln("TimeoutOnSleepingServer done")
 	case "compute_engine_creds":
 		if credsChosen != credsTLS {
 			logger.Fatalf("TLS credentials need to be set for compute_engine_creds test case.")
 		}
-		interop.DoComputeEngineCreds(tc, *defaultServiceAccount, *oauthScope)
+		interop.DoComputeEngineCreds(ctx, tc, *defaultServiceAccount, *oauthScope)
 		logger.Infoln("ComputeEngineCreds done")
 	case "service_account_creds":
 		if credsChosen != credsTLS {
 			logger.Fatalf("TLS credentials need to be set for service_account_creds test case.")
 		}
-		interop.DoServiceAccountCreds(tc, *serviceAccountKeyFile, *oauthScope)
+		interop.DoServiceAccountCreds(ctx, tc, *serviceAccountKeyFile, *oauthScope)
 		logger.Infoln("ServiceAccountCreds done")
 	case "jwt_token_creds":
 		if credsChosen != credsTLS {
 			logger.Fatalf("TLS credentials need to be set for jwt_token_creds test case.")
 		}
-		interop.DoJWTTokenCreds(tc, *serviceAccountKeyFile)
+		interop.DoJWTTokenCreds(ctx, tc, *serviceAccountKeyFile)
 		logger.Infoln("JWTtokenCreds done")
 	case "per_rpc_creds":
 		if credsChosen != credsTLS {
 			logger.Fatalf("TLS credentials need to be set for per_rpc_creds test case.")
 		}
-		interop.DoPerRPCCreds(tc, *serviceAccountKeyFile, *oauthScope)
+		interop.DoPerRPCCreds(ctx, tc, *serviceAccountKeyFile, *oauthScope)
 		logger.Infoln("PerRPCCreds done")
 	case "oauth2_auth_token":
 		if credsChosen != credsTLS {
 			logger.Fatalf("TLS credentials need to be set for oauth2_auth_token test case.")
 		}
-		interop.DoOauth2TokenCreds(tc, *serviceAccountKeyFile, *oauthScope)
+		interop.DoOauth2TokenCreds(ctx, tc, *serviceAccountKeyFile, *oauthScope)
 		logger.Infoln("Oauth2TokenCreds done")
 	case "google_default_credentials":
 		if credsChosen != credsGoogleDefaultCreds {
 			logger.Fatalf("GoogleDefaultCredentials need to be set for google_default_credentials test case.")
 		}
-		interop.DoGoogleDefaultCredentials(tc, *defaultServiceAccount)
+		interop.DoGoogleDefaultCredentials(ctx, tc, *defaultServiceAccount)
 		logger.Infoln("GoogleDefaultCredentials done")
 	case "compute_engine_channel_credentials":
 		if credsChosen != credsComputeEngineCreds {
 			logger.Fatalf("ComputeEngineCreds need to be set for compute_engine_channel_credentials test case.")
 		}
-		interop.DoComputeEngineChannelCredentials(tc, *defaultServiceAccount)
+		interop.DoComputeEngineChannelCredentials(ctx, tc, *defaultServiceAccount)
 		logger.Infoln("ComputeEngineChannelCredentials done")
 	case "cancel_after_begin":
-		interop.DoCancelAfterBegin(tc)
+		interop.DoCancelAfterBegin(ctx, tc)
 		logger.Infoln("CancelAfterBegin done")
 	case "cancel_after_first_response":
-		interop.DoCancelAfterFirstResponse(tc)
+		interop.DoCancelAfterFirstResponse(ctx, tc)
 		logger.Infoln("CancelAfterFirstResponse done")
 	case "status_code_and_message":
-		interop.DoStatusCodeAndMessage(tc)
+		interop.DoStatusCodeAndMessage(ctx, tc)
 		logger.Infoln("StatusCodeAndMessage done")
 	case "special_status_message":
-		interop.DoSpecialStatusMessage(tc)
+		interop.DoSpecialStatusMessage(ctx, tc)
 		logger.Infoln("SpecialStatusMessage done")
 	case "custom_metadata":
-		interop.DoCustomMetadata(tc)
+		interop.DoCustomMetadata(ctx, tc)
 		logger.Infoln("CustomMetadata done")
 	case "unimplemented_method":
-		interop.DoUnimplementedMethod(conn)
+		interop.DoUnimplementedMethod(ctx, conn)
 		logger.Infoln("UnimplementedMethod done")
 	case "unimplemented_service":
-		interop.DoUnimplementedService(testgrpc.NewUnimplementedServiceClient(conn))
+		interop.DoUnimplementedService(ctx, testgrpc.NewUnimplementedServiceClient(conn))
 		logger.Infoln("UnimplementedService done")
 	case "pick_first_unary":
-		interop.DoPickFirstUnary(tc)
+		interop.DoPickFirstUnary(ctx, tc)
 		logger.Infoln("PickFirstUnary done")
 	case "rpc_soak":
-		interop.DoSoakTest(tc, serverAddr, opts, false /* resetChannel */, *soakIterations, *soakMaxFailures, time.Duration(*soakPerIterationMaxAcceptableLatencyMs)*time.Millisecond, time.Duration(*soakMinTimeMsBetweenRPCs)*time.Millisecond, time.Now().Add(time.Duration(*soakOverallTimeoutSeconds)*time.Second))
+		rpcSoakConfig := createBaseSoakConfig(serverAddr)
+		rpcSoakConfig.ChannelForTest = func() (*grpc.ClientConn, func()) { return conn, func() {} }
+		interop.DoSoakTest(ctxWithDeadline, rpcSoakConfig)
 		logger.Infoln("RpcSoak done")
 	case "channel_soak":
-		interop.DoSoakTest(tc, serverAddr, opts, true /* resetChannel */, *soakIterations, *soakMaxFailures, time.Duration(*soakPerIterationMaxAcceptableLatencyMs)*time.Millisecond, time.Duration(*soakMinTimeMsBetweenRPCs)*time.Millisecond, time.Now().Add(time.Duration(*soakOverallTimeoutSeconds)*time.Second))
+		channelSoakConfig := createBaseSoakConfig(serverAddr)
+		channelSoakConfig.ChannelForTest = func() (*grpc.ClientConn, func()) {
+			cc, err := grpc.NewClient(serverAddr, opts...)
+			if err != nil {
+				log.Fatalf("Failed to create shared channel: %v", err)
+			}
+			return cc, func() { cc.Close() }
+		}
+		interop.DoSoakTest(ctxWithDeadline, channelSoakConfig)
 		logger.Infoln("ChannelSoak done")
 	case "orca_per_rpc":
-		interop.DoORCAPerRPCTest(tc)
+		interop.DoORCAPerRPCTest(ctx, tc)
 		logger.Infoln("ORCAPerRPC done")
 	case "orca_oob":
-		interop.DoORCAOOBTest(tc)
+		interop.DoORCAOOBTest(ctx, tc)
 		logger.Infoln("ORCAOOB done")
 	default:
 		logger.Fatal("Unsupported test case: ", *testCase)

@@ -1,4 +1,4 @@
-package portmanager_test
+package portmanager
 
 import (
 	"bytes"
@@ -15,7 +15,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/library/go/test/portmanager"
 	"github.com/ydb-platform/nbs/library/go/test/yatest"
 )
 
@@ -32,21 +31,36 @@ func Test_UDPTCP(t *testing.T) {
 }
 
 func TestPortManager_SinglePort(t *testing.T) {
-	pm := portmanager.NewT(t)
+	pm := NewT(t)
 
 	lsn, err := net.Listen("tcp", fmt.Sprintf(":%d", pm.GetPort()))
 	require.NoError(t, err)
 	require.NoError(t, lsn.Close())
 }
 
+func TestPortManager_SeqeuntialPorts(t *testing.T) {
+	pm := NewT(t)
+
+	ports := pm.GetSequentialPorts(4)
+	require.Len(t, ports, 4)
+	starting := ports[0]
+	for i := 0; i < 4; i++ {
+		require.EqualValues(t, starting+i, ports[i])
+		lsn, err := net.Listen("tcp", fmt.Sprintf(":%d", ports[i]))
+		require.NoError(t, err)
+		require.NoError(t, lsn.Close())
+	}
+}
+
 func TestPortManager_PortExhaustion(t *testing.T) {
-	pm, err := portmanager.New()
+	pm, err := New()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, pm.Cleanup())
 	}()
+	pm.rangeEnd = min(pm.rangeEnd, pm.rangeStart+30)
 
-	for i := 0; i < 1000000; i++ {
+	for i := 0; i < 31; i++ {
 		port, err := pm.GetPort()
 		if err != nil {
 			return
@@ -68,7 +82,7 @@ func TestPortManager_Concurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			pm := portmanager.NewT(t)
+			pm := NewT(t)
 			for i := 0; i < 100; i++ {
 				port := pm.GetPort()
 
@@ -93,7 +107,7 @@ func TestPortManager_PythonCompat(t *testing.T) {
 
 	require.NoError(t, pyProcess.Start())
 
-	pm := portmanager.NewT(t)
+	pm := NewT(t)
 
 	goPorts := map[int]struct{}{}
 	for i := 0; i < 1000; i++ {
@@ -128,7 +142,7 @@ func TestPortManager_PythonCompat(t *testing.T) {
 }
 
 func ExamplePortManager() {
-	pm, err := portmanager.New()
+	pm, err := New()
 	if err != nil {
 		panic(err)
 	}
@@ -150,7 +164,7 @@ func ExamplePortManager() {
 
 func ExamplePortManagerT() {
 	var t *testing.T
-	pm := portmanager.NewT(t)
+	pm := NewT(t)
 	port := pm.GetPort()
 	uiPort := pm.GetPort(8080)
 

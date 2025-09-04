@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
-#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <contrib/ydb/core/control/lib/immediate_control_board_impl.h>
 #include <contrib/ydb/core/keyvalue/keyvalue_events.h>
 
 #include <library/cpp/histogram/hdr/histogram.h>
@@ -79,7 +79,7 @@ public:
             write->SetStorageChannel(
                     IsInline ?  NKikimrClient::TKeyValueRequest::INLINE : NKikimrClient::TKeyValueRequest::MAIN);
             write->SetPriority(NKikimrClient::TKeyValueRequest::REALTIME);
-            BytesInFlight += DataBuffer.Size();
+            BytesInFlight += DataBuffer.size();
             ++ItemsInFlight;
             ++OperationIdx;
         }

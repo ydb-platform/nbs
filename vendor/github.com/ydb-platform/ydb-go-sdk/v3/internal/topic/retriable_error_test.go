@@ -12,6 +12,7 @@ import (
 	grpcStatus "google.golang.org/grpc/status"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backoff"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/value"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
@@ -226,9 +227,51 @@ func TestCheckRetryMode(t *testing.T) {
 
 	for _, test := range table {
 		t.Run(test.name, func(t *testing.T) {
-			resBackoff, retriable := CheckRetryMode(test.err, test.settings, test.duration)
+			resBackoff, stopReason := RetryDecision(test.err, test.settings, test.duration)
 			require.Equal(t, test.resBackoff, resBackoff)
-			require.Equal(t, test.resRetriable, retriable)
+			require.Equal(t, test.resRetriable, stopReason == nil)
+		})
+	}
+}
+
+func TestCheckResetReconnectionCounters(t *testing.T) {
+	now := time.Now()
+	table := []struct {
+		name              string
+		lastTry           time.Time
+		connectionTimeout time.Duration
+		shouldReset       bool
+	}{
+		{
+			name:              "RecentLastTryWithInfiniteConnectionTimeout",
+			lastTry:           now.Add(-30 * time.Second),
+			connectionTimeout: value.InfiniteDuration,
+			shouldReset:       false,
+		},
+		{
+			name:              "OldLastTryWithInfiniteConnectionTimeout",
+			lastTry:           now.Add(-30 * time.Minute),
+			connectionTimeout: value.InfiniteDuration,
+			shouldReset:       true,
+		},
+		{
+			name:              "LastTryLessThanConnectionTimeout",
+			lastTry:           now.Add(-30 * time.Second),
+			connectionTimeout: time.Minute,
+			shouldReset:       false,
+		},
+		{
+			name:              "LastTryGreaterThanConnectionTimeout",
+			lastTry:           now.Add(-time.Hour),
+			connectionTimeout: time.Minute,
+			shouldReset:       true,
+		},
+	}
+
+	for _, test := range table {
+		t.Run(test.name, func(t *testing.T) {
+			shouldReset := CheckResetReconnectionCounters(test.lastTry, now, test.connectionTimeout)
+			require.Equal(t, test.shouldReset, shouldReset)
 		})
 	}
 }

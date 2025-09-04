@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v3.113.3)
+
 SRCS(
     context.go
     coordination.go
@@ -11,6 +13,7 @@ SRCS(
     level.go
     logger.go
     options.go
+    query.go
     ratelimiter.go
     retry.go
     scheme.go
@@ -22,7 +25,6 @@ SRCS(
 
 GO_TEST_SRCS(
     context_test.go
-    field_test.go
     logger_test.go
 )
 

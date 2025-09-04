@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package cloud.disk_manager;
+package yandex.cloud.priv.disk_manager.v1;
 
 import "cloud/disk_manager/api/disk.proto";
 import "cloud/disk_manager/api/image.proto";

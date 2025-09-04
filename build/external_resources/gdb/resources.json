@@ -1,18 +1,16 @@
 {
     "by_platform": {
-        "darwin-x86_64": {
-            "uri": "sbr:3833498694"
-        },
         "darwin-arm64": {
             "uri": "sbr:2319130389"
         },
-        "linux-x86_64": {
-            "uri": "sbr:5298901591"
+        "darwin-x86_64": {
+            "uri": "sbr:3833498694"
         },
         "linux-aarch64": {
-            "uri": "sbr:5298918458"
+            "uri": "sbr:8989381149"
+        },
+        "linux-x86_64": {
+            "uri": "sbr:8989701781"
         }
-    },
-    "platform_replacements": {},
-    "match": "GDB"
+    }
 }

@@ -13,6 +13,7 @@
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 

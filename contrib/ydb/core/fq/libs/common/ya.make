@@ -9,17 +9,19 @@ SRCS(
     debug_info.cpp
     entity_id.cpp
     entity_id.h
-    util.cpp
+    iceberg_processor.cpp
+    iceberg_processor.h
     rows_proto_splitter.cpp
     rows_proto_splitter.h
+    util.cpp
 )
 
 PEERDIR(
     library/cpp/blockcodecs
     contrib/ydb/core/fq/libs/control_plane_storage/events
     contrib/ydb/core/fq/libs/events
-    contrib/ydb/library/yql/providers/common/structured_token
-    contrib/ydb/library/yql/public/issue
+    yql/essentials/providers/common/structured_token
+    yql/essentials/public/issue
     contrib/ydb/public/api/protos
 )
 

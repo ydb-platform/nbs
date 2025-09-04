@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v0.34.0)
+
 IF (OS_WINDOWS)
     SRCS(
         aliases.go
@@ -24,6 +26,7 @@ IF (OS_WINDOWS)
     )
 
     GO_XTEST_SRCS(
+        env_windows_test.go
         syscall_test.go
         syscall_windows_test.go
     )

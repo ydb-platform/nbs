@@ -19,12 +19,10 @@ import (
 )
 
 func TestMmap(t *testing.T) {
-	tmpdir := filepath.Join(t.TempDir(), "testdata")
-	if err := os.Mkdir(tmpdir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	filename := filepath.Join(tmpdir, "memmapped_file")
-	destination, err := os.Create(filename)
+	tempdir := t.TempDir()
+	filename := filepath.Join(tempdir, "memmapped_file")
+
+	destination, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0700)
 	if err != nil {
 		t.Fatal("os.Create:", err)
 		return
@@ -33,6 +31,7 @@ func TestMmap(t *testing.T) {
 	fmt.Fprintf(destination, "%s\n", "0 <- Flipped between 0 and 1 when test runs successfully")
 	fmt.Fprintf(destination, "%s\n", "//Do not change contents - mmap test relies on this")
 	destination.Close()
+
 	fd, err := unix.Open(filename, unix.O_RDWR, 0777)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -71,5 +70,19 @@ func TestMmap(t *testing.T) {
 
 	if err := unix.Munmap(b); err != nil {
 		t.Fatalf("Munmap: %v", err)
+	}
+}
+
+func TestMmapPtr(t *testing.T) {
+	p, err := unix.MmapPtr(-1, 0, nil, uintptr(2*unix.Getpagesize()),
+		unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE)
+	if err != nil {
+		t.Fatalf("MmapPtr: %v", err)
+	}
+
+	*(*byte)(p) = 42
+
+	if err := unix.MunmapPtr(p, uintptr(2*unix.Getpagesize())); err != nil {
+		t.Fatalf("MunmapPtr: %v", err)
 	}
 }

@@ -1,1 +1,0 @@
-fio --name "test_$(hostname)" --direct=1 --ioengine=libaio --directory=/mnt/storage --time_based --group_reporting --cpus_allowed=0-63 --runtime 60 --size 10G

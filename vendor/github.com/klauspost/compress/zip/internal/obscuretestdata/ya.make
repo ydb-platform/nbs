@@ -6,6 +6,10 @@ LICENSE(
     MIT
 )
 
-SRCS(obscuretestdata.go)
+VERSION(v1.18.0)
+
+SRCS(
+    obscuretestdata.go
+)
 
 END()

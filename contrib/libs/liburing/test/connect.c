@@ -134,7 +134,7 @@ static int configure_connect(int fd, struct sockaddr_in* addr)
 	return ret;
 }
 
-static int connect_socket(struct io_uring *ring, int fd, int *code)
+static int connect_socket(struct io_uring *ring, int fd, int *code, int async)
 {
 	struct sockaddr_in addr;
 	int ret, res;
@@ -151,6 +151,8 @@ static int connect_socket(struct io_uring *ring, int fd, int *code)
 	}
 
 	io_uring_prep_connect(sqe, fd, (struct sockaddr*)&addr, sizeof(addr));
+	if (async)
+		sqe->flags |= IOSQE_ASYNC;
 	sqe->user_data = 1;
 
 	ret = submit_and_wait(ring, &res);
@@ -187,7 +189,7 @@ static int test_connect_with_no_peer(struct io_uring *ring)
 	if (connect_fd == -1)
 		return -1;
 
-	ret = connect_socket(ring, connect_fd, &code);
+	ret = connect_socket(ring, connect_fd, &code, 0);
 	if (ret == -1)
 		goto err;
 
@@ -210,7 +212,7 @@ err:
 	return -1;
 }
 
-static int test_connect(struct io_uring *ring)
+static int test_connect(struct io_uring *ring, int async)
 {
 	int accept_fd;
 	int connect_fd;
@@ -228,7 +230,7 @@ static int test_connect(struct io_uring *ring)
 	if (connect_fd == -1)
 		goto err1;
 
-	ret = connect_socket(ring, connect_fd, &code);
+	ret = connect_socket(ring, connect_fd, &code, async);
 	if (ret == -1)
 		goto err2;
 
@@ -297,7 +299,7 @@ static int test_connect_timeout(struct io_uring *ring)
 	}
 
 	// We first connect with one client socket in order to fill the accept queue.
-	ret = connect_socket(ring, connect_fd[0], &code);
+	ret = connect_socket(ring, connect_fd[0], &code, 0);
 	if (ret == -1 || code != 0) {
 		fprintf(stderr, "unable to connect\n");
 		goto err;
@@ -364,17 +366,16 @@ err:
 	return -1;
 }
 
-int main(int argc, char *argv[])
+static int test(int flags)
 {
 	struct io_uring ring;
 	int ret;
 
-	if (argc > 1)
+	ret = io_uring_queue_init(8, &ring, flags);
+	if (ret == -EINVAL)
 		return T_EXIT_SKIP;
-
-	ret = io_uring_queue_init(8, &ring, 0);
 	if (ret) {
-		fprintf(stderr, "io_uring_queue_setup() = %d\n", ret);
+		fprintf(stderr, "io_uring_queue_init() = %d\n", ret);
 		return T_EXIT_FAIL;
 	}
 
@@ -391,7 +392,13 @@ int main(int argc, char *argv[])
 	if (no_connect)
 		return T_EXIT_SKIP;
 
-	ret = test_connect(&ring);
+	ret = test_connect(&ring, 0);
+	if (ret == -1) {
+		fprintf(stderr, "test_connect(): failed\n");
+		return T_EXIT_FAIL;
+	}
+
+	ret = test_connect(&ring, 1);
 	if (ret == -1) {
 		fprintf(stderr, "test_connect(): failed\n");
 		return T_EXIT_FAIL;
@@ -405,4 +412,36 @@ int main(int argc, char *argv[])
 
 	io_uring_queue_exit(&ring);
 	return T_EXIT_PASS;
+}
+
+int main(int argc, char *argv[])
+{
+	bool any_passed = false;
+	int ret;
+
+	if (argc > 1)
+		return T_EXIT_SKIP;
+
+	ret = test(0);
+	any_passed |= ret == T_EXIT_PASS;
+	if (ret == T_EXIT_FAIL) {
+		fprintf(stderr, "test 0 failed\n");
+		return T_EXIT_FAIL;
+	}
+
+	ret = test(IORING_SETUP_SQPOLL);
+	any_passed |= ret == T_EXIT_PASS;
+	if (ret == T_EXIT_FAIL) {
+		fprintf(stderr, "test SQPOLL failed\n");
+		return T_EXIT_FAIL;
+	}
+
+	ret = test(IORING_SETUP_SINGLE_ISSUER|IORING_SETUP_DEFER_TASKRUN);
+	any_passed |= ret == T_EXIT_PASS;
+	if (ret == T_EXIT_FAIL) {
+		fprintf(stderr, "test DEFER failed\n");
+		return T_EXIT_FAIL;
+	}
+
+	return any_passed ? T_EXIT_PASS : T_EXIT_SKIP;
 }

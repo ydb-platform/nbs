@@ -1,11 +1,13 @@
 #pragma once
 
-#include "schemeshard_types.h"
 #include "schemeshard_effective_acl.h"
+#include "schemeshard_types.h"
 #include "user_attributes.h"
 
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+
 #include <contrib/ydb/library/aclib/aclib.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <library/cpp/json/json_value.h>
 
@@ -81,10 +83,16 @@ struct TPathElement : TSimpleRefCount<TPathElement> {
     TSpaceLimits FileStoreSpaceSSDSystem;
     ui64 DocumentApiVersion = 0;
     NJson::TJsonValue AsyncReplication;
+    bool IsAsyncReplica = false;
+    bool IsIncrementalRestoreTable = false;
 
     // Number of references to this path element in the database
     size_t DbRefCount = 0;
     size_t AllChildrenCount = 0;
+
+    TActorId TempDirOwnerActorId; // Only for EPathType::EPathTypeDir.
+                                  // Not empty if dir must be deleted after loosing connection with TempDirOwnerActorId actor.
+                                  // See schemeshard__background_cleaning.cpp.
 
 private:
     ui64 AliveChildrenCount = 0;
@@ -94,10 +102,9 @@ private:
 public:
     TPathElement(TPathId pathId, TPathId parentPathId, TPathId domainPathId, const TString& name, const TString& owner);
     ui64 GetAliveChildren() const;
-    void SetAliveChildren(ui64 val);
+    void IncAliveChildrenPrivate(bool isBackup = false);
+    void DecAliveChildrenPrivate(bool isBackup = false);
     ui64 GetBackupChildren() const;
-    void IncAliveChildren(ui64 delta = 1, bool isBackup = false);
-    void DecAliveChildren(ui64 delta = 1, bool isBackup = false);
     ui64 GetShardsInside() const;
     void SetShardsInside(ui64 val);
     void IncShardsInside(ui64 delta = 1);
@@ -120,6 +127,7 @@ public:
     bool IsColumnTable() const;
     bool IsSequence() const;
     bool IsReplication() const;
+    bool IsTransfer() const;
     bool IsBlobDepot() const;
     bool IsContainer() const;
     bool IsLikeDirectory() const;
@@ -127,7 +135,12 @@ public:
     bool IsCreateFinished() const;
     bool IsExternalTable() const;
     bool IsExternalDataSource() const;
+    bool IsIncrementalBackupTable() const;
     bool IsView() const;
+    bool IsSysView() const;
+    bool IsTemporary() const;
+    bool IsResourcePool() const;
+    bool IsBackupCollection() const;
     TVirtualTimestamp GetCreateTS() const;
     TVirtualTimestamp GetDropTS() const;
     void SetDropped(TStepId step, TTxId txId);
@@ -154,6 +167,8 @@ public:
     void ChangeFileStoreSpaceBegin(TFileStoreSpace newSpace, TFileStoreSpace oldSpace);
     void ChangeFileStoreSpaceCommit(TFileStoreSpace newSpace, TFileStoreSpace oldSpace);
     bool CheckFileStoreSpaceChange(TFileStoreSpace newSpace, TFileStoreSpace oldSpace, TString& errStr);
+    void SetAsyncReplica(bool value);
+    void SetIncrementalRestoreTable();
     bool HasRuntimeAttrs() const;
     void SerializeRuntimeAttrs(google::protobuf::RepeatedPtrField<NKikimrSchemeOp::TUserAttribute>* userAttrs) const;
 };

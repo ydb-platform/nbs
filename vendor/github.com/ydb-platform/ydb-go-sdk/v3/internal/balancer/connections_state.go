@@ -5,6 +5,7 @@ import (
 
 	balancerConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/balancer/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/conn"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/endpoint"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xrand"
 )
 
@@ -35,11 +36,25 @@ func newConnectionsState(
 	} else {
 		res.all = res.prefer
 	}
+
 	return res
 }
 
 func (s *connectionsState) PreferredCount() int {
 	return len(s.prefer)
+}
+
+func (s *connectionsState) All() (all []endpoint.Endpoint) {
+	if s == nil {
+		return nil
+	}
+
+	all = make([]endpoint.Endpoint, len(s.all))
+	for i, c := range s.all {
+		all[i] = c.Endpoint()
+	}
+
+	return all
 }
 
 func (s *connectionsState) GetConnection(ctx context.Context) (_ conn.Conn, failedCount int) {
@@ -54,6 +69,7 @@ func (s *connectionsState) GetConnection(ctx context.Context) (_ conn.Conn, fail
 	try := func(conns []conn.Conn) conn.Conn {
 		c, tryFailed := s.selectRandomConnection(conns, false)
 		failedCount += tryFailed
+
 		return c
 	}
 
@@ -71,9 +87,9 @@ func (s *connectionsState) GetConnection(ctx context.Context) (_ conn.Conn, fail
 }
 
 func (s *connectionsState) preferConnection(ctx context.Context) conn.Conn {
-	if e, hasPreferEndpoint := ContextEndpoint(ctx); hasPreferEndpoint {
-		c := s.connByNodeID[e.NodeID()]
-		if c != nil && isOkConnection(c, true) {
+	if nodeID, hasPreferEndpoint := endpoint.ContextNodeID(ctx); hasPreferEndpoint {
+		c := s.connByNodeID[nodeID]
+		if c != nil && isOkConnection(c, false) {
 			return c
 		}
 	}
@@ -121,6 +137,7 @@ func connsToNodeIDMap(conns []conn.Conn) (nodes map[uint32]conn.Conn) {
 	for _, c := range conns {
 		nodes[c.Endpoint().NodeID()] = c
 	}
+
 	return nodes
 }
 
@@ -140,12 +157,13 @@ func sortPreferConnections(
 	}
 
 	for _, c := range conns {
-		if filter.Allow(info, c) {
+		if filter.Allow(info, c.Endpoint()) {
 			prefer = append(prefer, c)
 		} else if allowFallback {
 			fallback = append(fallback, c)
 		}
 	}
+
 	return prefer, fallback
 }
 

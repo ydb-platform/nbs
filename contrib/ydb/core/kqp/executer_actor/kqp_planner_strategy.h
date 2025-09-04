@@ -1,6 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/core/kqp/rm_service/kqp_resource_estimation.h>
+#include <contrib/ydb/core/protos/kqp.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -22,7 +23,7 @@ public:
         TVector<ui64> TaskIds;
     };
 
-    virtual TVector<TResult> Plan(const TVector<NKikimrKqp::TKqpNodeResources>& nodeResources,
+    virtual TVector<TResult> Plan(const TVector<const NKikimrKqp::TKqpNodeResources*>& nodeResources,
         const TVector<TTaskResourceEstimation>& estimatedResources) = 0;
 
 protected:

@@ -6,9 +6,11 @@
 #include <contrib/ydb/core/http_proxy/metrics_actor.h>
 #include <contrib/ydb/core/http_proxy/discovery_actor.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/iam_private/iam.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/iam_private/iam.h>
 
 #include <contrib/ydb/library/actors/http/http_proxy.h>
+
+#include <contrib/ydb/core/protos/config.pb.h>
 
 namespace NKikimr::NHttpProxy {
 

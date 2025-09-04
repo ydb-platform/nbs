@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v0.30.0)
+
 SRCS(
     doc.go
     oauth2.go
@@ -9,10 +11,4 @@ SRCS(
     transport.go
 )
 
-GO_TEST_SRCS(token_test.go)
-
 END()
-
-RECURSE(
-    gotest
-)

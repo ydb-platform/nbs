@@ -2,7 +2,11 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
-SRCS(handshaker.go)
+VERSION(v1.73.0)
+
+SRCS(
+    handshaker.go
+)
 
 GO_TEST_SRCS(handshaker_test.go)
 

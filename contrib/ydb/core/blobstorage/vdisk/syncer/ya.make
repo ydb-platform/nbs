@@ -10,11 +10,14 @@ PEERDIR(
     contrib/ydb/core/blobstorage/vdisk/anubis_osiris
     contrib/ydb/core/blobstorage/vdisk/common
     contrib/ydb/core/blobstorage/vdisk/hulldb/base
+    contrib/ydb/core/control/lib
     contrib/ydb/core/driver_lib/version
 )
 
 SRCS(
     defs.h
+    blobstorage_syncer_broker.cpp
+    blobstorage_syncer_broker.h
     blobstorage_syncer_committer.cpp
     blobstorage_syncer_committer.h
     blobstorage_syncer.cpp

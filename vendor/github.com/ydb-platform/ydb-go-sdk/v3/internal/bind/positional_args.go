@@ -16,8 +16,8 @@ func (m PositionalArgs) blockID() blockID {
 	return blockYQL
 }
 
-func (m PositionalArgs) RewriteQuery(sql string, args ...interface{}) (
-	yql string, newArgs []interface{}, err error,
+func (m PositionalArgs) ToYdb(sql string, args ...any) (
+	yql string, newArgs []any, err error,
 ) {
 	l := &sqlLexer{
 		src:        sql,
@@ -65,6 +65,7 @@ func (m PositionalArgs) RewriteQuery(sql string, args ...interface{}) (
 
 	if position > 0 {
 		const prefix = "-- origin query with positional args replacement\n"
+
 		return prefix + buffer.String(), newArgs, nil
 	}
 
@@ -90,12 +91,14 @@ func positionalArgsStateFn(l *sqlLexer) stateFn {
 			nextRune, width := utf8.DecodeRuneInString(l.src[l.pos:])
 			if nextRune == '-' {
 				l.pos += width
+
 				return oneLineCommentState
 			}
 		case '/':
 			nextRune, width := utf8.DecodeRuneInString(l.src[l.pos:])
 			if nextRune == '*' {
 				l.pos += width
+
 				return multilineCommentState
 			}
 		case utf8.RuneError:
@@ -103,6 +106,7 @@ func positionalArgsStateFn(l *sqlLexer) stateFn {
 				l.parts = append(l.parts, l.src[l.start:l.pos])
 				l.start = l.pos
 			}
+
 			return nil
 		}
 	}

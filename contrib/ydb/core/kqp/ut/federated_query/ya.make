@@ -1,7 +1,7 @@
 RECURSE_FOR_TESTS(
     common
-    generic
+    datastreams
     generic_ut
+    large_results
     s3
-    style
 )

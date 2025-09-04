@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"a.yandex-team.ru/library/go/core/buildinfo"
+	"github.com/ydb-platform/nbs/library/go/core/buildinfo"
 )
 
 func main() {

@@ -5,10 +5,10 @@
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/ydb_convert/ydb_convert.h>
 
-#include <contrib/ydb/public/lib/operation_id/operation_id.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_params/params.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_params/params.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/library/operation_id/operation_id.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/params/params.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/params/params.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/proto/accessor.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -217,7 +217,7 @@ private:
 
         --Inflight;
 
-        auto& response = ev->Get()->Record.GetRef();
+        auto& response = ev->Get()->Record;
         if (response.GetYdbStatus() != Ydb::StatusIds_StatusCode_SUCCESS) {
             ++Errors;
         }

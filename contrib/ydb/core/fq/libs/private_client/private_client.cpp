@@ -1,7 +1,7 @@
 #include "private_client.h"
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_common_client/impl/client.h>
+#include <yql/essentials/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/common_client/impl/client.h>
 
 namespace NFq {
 

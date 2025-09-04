@@ -21,7 +21,7 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/conn"
 )
 
-func TestWithCertificatesCached(t *testing.T) { //nolint:funlen
+func TestWithCertificatesCached(t *testing.T) {
 	ca := &x509.Certificate{
 		SerialNumber: big.NewInt(2019),
 		Subject: pkix.Name{
@@ -50,10 +50,11 @@ func TestWithCertificatesCached(t *testing.T) { //nolint:funlen
 	})
 	require.NoError(t, err)
 	f, err := os.CreateTemp(os.TempDir(), "ca.pem")
+	defer os.Remove(f.Name())
+	defer f.Close()
 	require.NoError(t, err)
 	_, err = f.Write(caPEM.Bytes())
 	require.NoError(t, err)
-	defer os.Remove(f.Name())
 
 	var (
 		n           = 100
@@ -128,7 +129,7 @@ func TestWithCertificatesCached(t *testing.T) { //nolint:funlen
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			db, err := newConnectionFromOptions(ctx,
+			db, err := driverFromOptions(ctx,
 				append(
 					test.options,
 					withConnPool(conn.NewPool(context.Background(), config.New())), //nolint:contextcheck

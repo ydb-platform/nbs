@@ -6,7 +6,11 @@ LICENSE(
     MIT
 )
 
-SRCS(cpuinfo.go)
+VERSION(v1.18.0)
+
+SRCS(
+    cpuinfo.go
+)
 
 IF (ARCH_X86_64)
     SRCS(

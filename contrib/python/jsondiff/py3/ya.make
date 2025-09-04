@@ -2,15 +2,20 @@
 
 PY3_LIBRARY()
 
-VERSION(2.0.0)
+VERSION(2.2.1)
 
 LICENSE(MIT)
+
+PEERDIR(
+    contrib/python/PyYAML
+)
 
 NO_LINT()
 
 PY_SRCS(
     TOP_LEVEL
     jsondiff/__init__.py
+    jsondiff/_version.py
     jsondiff/cli.py
     jsondiff/symbols.py
 )

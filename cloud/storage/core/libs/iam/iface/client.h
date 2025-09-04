@@ -15,8 +15,8 @@ namespace NCloud::NIamClient {
 
 struct TTokenInfo
 {
-    TString Token;
-    TInstant ExpiresAt;
+    const TString Token;
+    const TInstant ExpiresAt;
 
     TTokenInfo() = default;
 

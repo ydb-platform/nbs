@@ -13,57 +13,51 @@ obviously belong anywhere else. If you spot a better home for
 anything that lives here, please move it."""
 
 import array
+import gc
 import sys
+import time
 import warnings
-from random import Random
-from typing import (
-    Callable,
-    Dict,
-    Generic,
-    Iterable,
-    Iterator,
-    List,
-    Optional,
-    Sequence,
-    Tuple,
-    TypeVar,
-    Union,
-    overload,
-)
+from array import ArrayType
+from collections.abc import Iterable, Iterator, Sequence
+from typing import Any, Callable, Generic, Literal, Optional, TypeVar, Union, overload
+
+from sortedcontainers import SortedList
 
 from hypothesis.errors import HypothesisWarning
 
 ARRAY_CODES = ["B", "H", "I", "L", "Q", "O"]
 
+T = TypeVar("T")
+
 
 def array_or_list(
     code: str, contents: Iterable[int]
-) -> "Union[List[int], array.ArrayType[int]]":
+) -> Union[list[int], "ArrayType[int]"]:
     if code == "O":
         return list(contents)
     return array.array(code, contents)
 
 
 def replace_all(
-    buffer: Sequence[int],
-    replacements: Iterable[Tuple[int, int, Sequence[int]]],
-) -> bytes:
-    """Substitute multiple replacement values into a buffer.
+    ls: Sequence[T],
+    replacements: Iterable[tuple[int, int, Sequence[T]]],
+) -> list[T]:
+    """Substitute multiple replacement values into a list.
 
     Replacements is a list of (start, end, value) triples.
     """
 
-    result = bytearray()
+    result: list[T] = []
     prev = 0
     offset = 0
     for u, v, r in replacements:
-        result.extend(buffer[prev:u])
+        result.extend(ls[prev:u])
         result.extend(r)
         prev = v
         offset += len(r) - (v - u)
-    result.extend(buffer[prev:])
-    assert len(result) == len(buffer) + offset
-    return bytes(result)
+    result.extend(ls[prev:])
+    assert len(result) == len(ls) + offset
+    return result
 
 
 NEXT_ARRAY_CODE = dict(zip(ARRAY_CODES, ARRAY_CODES[1:]))
@@ -79,7 +73,7 @@ class IntList(Sequence[int]):
 
     __slots__ = ("__underlying",)
 
-    __underlying: "Union[List[int], array.ArrayType[int]]"
+    __underlying: Union[list[int], "ArrayType[int]"]
 
     def __init__(self, values: Sequence[int] = ()):
         for code in ARRAY_CODES:
@@ -103,26 +97,26 @@ class IntList(Sequence[int]):
     def count(self, value: int) -> int:
         return self.__underlying.count(value)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"IntList({list(self.__underlying)!r})"
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.__underlying)
 
     @overload
-    def __getitem__(self, i: int) -> int:
-        ...  # pragma: no cover
+    def __getitem__(self, i: int) -> int: ...  # pragma: no cover
 
     @overload
-    def __getitem__(self, i: slice) -> "IntList":
-        ...  # pragma: no cover
+    def __getitem__(
+        self, i: slice
+    ) -> Union[list[int], "ArrayType[int]"]: ...  # pragma: no cover
 
-    def __getitem__(self, i: Union[int, slice]) -> "Union[int, IntList]":
-        if isinstance(i, slice):
-            return IntList(self.__underlying[i])
+    def __getitem__(
+        self, i: Union[int, slice]
+    ) -> Union[int, list[int], "ArrayType[int]"]:
         return self.__underlying[i]
 
-    def __delitem__(self, i: int) -> None:
+    def __delitem__(self, i: Union[int, slice]) -> None:
         del self.__underlying[i]
 
     def insert(self, i: int, v: int) -> None:
@@ -187,75 +181,90 @@ def binary_search(lo: int, hi: int, f: Callable[[int], bool]) -> int:
     return lo
 
 
-def uniform(random: Random, n: int) -> bytes:
-    """Returns a bytestring of length n, distributed uniformly at random."""
-    return random.getrandbits(n * 8).to_bytes(n, "big")
-
-
-T = TypeVar("T")
-
-
-class LazySequenceCopy:
+class LazySequenceCopy(Generic[T]):
     """A "copy" of a sequence that works by inserting a mask in front
     of the underlying sequence, so that you can mutate it without changing
     the underlying sequence. Effectively behaves as if you could do list(x)
     in O(1) time. The full list API is not supported yet but there's no reason
     in principle it couldn't be."""
 
-    __mask: Optional[Dict[int, int]]
-
-    def __init__(self, values: Sequence[int]):
+    def __init__(self, values: Sequence[T]):
         self.__values = values
         self.__len = len(values)
-        self.__mask = None
+        self.__mask: Optional[dict[int, T]] = None
+        self.__popped_indices: Optional[SortedList] = None
 
     def __len__(self) -> int:
-        return self.__len
+        if self.__popped_indices is None:
+            return self.__len
+        return self.__len - len(self.__popped_indices)
 
-    def pop(self) -> int:
+    def pop(self, i: int = -1) -> T:
         if len(self) == 0:
             raise IndexError("Cannot pop from empty list")
-        result = self[-1]
-        self.__len -= 1
-        if self.__mask is not None:
-            self.__mask.pop(self.__len, None)
-        return result
+        i = self.__underlying_index(i)
 
-    def __getitem__(self, i: int) -> int:
-        i = self.__check_index(i)
+        v = None
+        if self.__mask is not None:
+            v = self.__mask.pop(i, None)
+        if v is None:
+            v = self.__values[i]
+
+        if self.__popped_indices is None:
+            self.__popped_indices = SortedList()
+        self.__popped_indices.add(i)
+        return v
+
+    def swap(self, i: int, j: int) -> None:
+        """Swap the elements ls[i], ls[j]."""
+        if i == j:
+            return
+        self[i], self[j] = self[j], self[i]
+
+    def __getitem__(self, i: int) -> T:
+        i = self.__underlying_index(i)
+
         default = self.__values[i]
         if self.__mask is None:
             return default
         else:
             return self.__mask.get(i, default)
 
-    def __setitem__(self, i: int, v: int) -> None:
-        i = self.__check_index(i)
+    def __setitem__(self, i: int, v: T) -> None:
+        i = self.__underlying_index(i)
         if self.__mask is None:
             self.__mask = {}
         self.__mask[i] = v
 
-    def __check_index(self, i: int) -> int:
+    def __underlying_index(self, i: int) -> int:
         n = len(self)
         if i < -n or i >= n:
             raise IndexError(f"Index {i} out of range [0, {n})")
         if i < 0:
             i += n
         assert 0 <= i < n
+
+        if self.__popped_indices is not None:
+            # given an index i in the popped representation of the list, compute
+            # its corresponding index in the underlying list. given
+            #   l = [1, 4, 2, 10, 188]
+            #   l.pop(3)
+            #   l.pop(1)
+            #   assert l == [1, 2, 188]
+            #
+            # we want l[i] == self.__values[f(i)], where f is this function.
+            assert len(self.__popped_indices) <= len(self.__values)
+
+            for idx in self.__popped_indices:
+                if idx > i:
+                    break
+                i += 1
         return i
 
-
-def clamp(lower: int, value: int, upper: int) -> int:
-    """Given a value and lower/upper bounds, 'clamp' the value so that
-    it satisfies lower <= value <= upper."""
-    return max(lower, min(value, upper))
-
-
-def swap(ls: LazySequenceCopy, i: int, j: int) -> None:
-    """Swap the elements ls[i], ls[j]."""
-    if i == j:
-        return
-    ls[i], ls[j] = ls[j], ls[i]
+    # even though we have len + getitem, mypyc requires iter.
+    def __iter__(self) -> Iterable[T]:
+        for i in range(len(self)):
+            yield self[i]
 
 
 def stack_depth_of_caller() -> int:
@@ -279,7 +288,7 @@ class ensure_free_stackframes:
     a reasonable value of N).
     """
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         cur_depth = stack_depth_of_caller()
         self.old_maxdepth = sys.getrecursionlimit()
         # The default CPython recursionlimit is 1000, but pytest seems to bump
@@ -348,14 +357,6 @@ def find_integer(f: Callable[[int], bool]) -> int:
     return lo
 
 
-def pop_random(random: Random, seq: LazySequenceCopy) -> int:
-    """Remove and return a random element of seq. This runs in O(1) but leaves
-    the sequence in an arbitrary order."""
-    i = random.randrange(0, len(seq))
-    swap(seq, i, len(seq) - 1)
-    return seq.pop()
-
-
 class NotFound(Exception):
     pass
 
@@ -397,3 +398,77 @@ class SelfOrganisingList(Generic[T]):
                 self.__values.append(value)
                 return value
         raise NotFound("No values satisfying condition")
+
+
+_gc_initialized = False
+_gc_start: float = 0
+_gc_cumulative_time: float = 0
+
+# Since gc_callback potentially runs in test context, and perf_counter
+# might be monkeypatched, we store a reference to the real one.
+_perf_counter = time.perf_counter
+
+
+def gc_cumulative_time() -> float:
+    global _gc_initialized
+    if not _gc_initialized:
+        if hasattr(gc, "callbacks"):
+            # CPython
+            def gc_callback(
+                phase: Literal["start", "stop"], info: dict[str, int]
+            ) -> None:
+                global _gc_start, _gc_cumulative_time
+                try:
+                    now = _perf_counter()
+                    if phase == "start":
+                        _gc_start = now
+                    elif phase == "stop" and _gc_start > 0:
+                        _gc_cumulative_time += now - _gc_start  # pragma: no cover # ??
+                except RecursionError:  # pragma: no cover
+                    # Avoid flakiness via UnraisableException, which is caught and
+                    # warned by pytest. The actual callback (this function) is
+                    # validated to never trigger a RecursionError itself when
+                    # when called by gc.collect.
+                    # Anyway, we should hit the same error on "start"
+                    # and "stop", but to ensure we don't get out of sync we just
+                    # signal that there is no matching start.
+                    _gc_start = 0
+                    return
+
+            gc.callbacks.insert(0, gc_callback)
+        elif hasattr(gc, "hooks"):  # pragma: no cover  # pypy only
+            # PyPy
+            def hook(stats: Any) -> None:
+                global _gc_cumulative_time
+                try:
+                    _gc_cumulative_time += stats.duration
+                except RecursionError:
+                    pass
+
+            if gc.hooks.on_gc_minor is None:
+                gc.hooks.on_gc_minor = hook
+            if gc.hooks.on_gc_collect_step is None:
+                gc.hooks.on_gc_collect_step = hook
+
+        _gc_initialized = True
+
+    return _gc_cumulative_time
+
+
+def startswith(l1: Sequence[T], l2: Sequence[T]) -> bool:
+    if len(l1) < len(l2):
+        return False
+    return all(v1 == v2 for v1, v2 in zip(l1[: len(l2)], l2))
+
+
+def endswith(l1: Sequence[T], l2: Sequence[T]) -> bool:
+    if len(l1) < len(l2):
+        return False
+    return all(v1 == v2 for v1, v2 in zip(l1[-len(l2) :], l2))
+
+
+def bits_to_bytes(n: int) -> int:
+    """The number of bytes required to represent an n-bit number.
+    Equivalent to (n + 7) // 8, but slightly faster. This really is
+    called enough times that that matters."""
+    return (n + 7) >> 3

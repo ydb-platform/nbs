@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 
@@ -69,22 +70,25 @@ func detectFastestEndpoint(ctx context.Context, endpoints []endpoint.Endpoint) (
 
 	var lastErr error
 	// common is 2 ip address for every fqdn: ipv4 + ipv6
-	initialAddressToEndpointCapacity := len(endpoints) * 2
+	initialAddressToEndpointCapacity := len(endpoints) * 2 //nolint:mnd
 	addressToEndpoint := make(map[string]endpoint.Endpoint, initialAddressToEndpointCapacity)
 	for _, ep := range endpoints {
 		host, port, err := extractHostPort(ep.Address())
 		if err != nil {
 			lastErr = xerrors.WithStackTrace(err)
+
 			continue
 		}
 
 		addresses, err := net.DefaultResolver.LookupHost(ctx, host)
 		if err != nil {
 			lastErr = err
+
 			continue
 		}
 		if len(addresses) == 0 {
 			lastErr = xerrors.WithStackTrace(fmt.Errorf("no ips for fqdn: %q", host))
+
 			continue
 		}
 
@@ -105,6 +109,7 @@ func detectFastestEndpoint(ctx context.Context, endpoints []endpoint.Endpoint) (
 	if fastestAddress == "" {
 		return nil, xerrors.WithStackTrace(errors.New("failed to check fastest address"))
 	}
+
 	return addressToEndpoint[fastestAddress], nil
 }
 
@@ -127,6 +132,7 @@ func detectLocalDC(ctx context.Context, endpoints []endpoint.Endpoint) (string, 
 	if err == nil {
 		return fastest.Location(), nil
 	}
+
 	return "", err
 }
 
@@ -143,6 +149,7 @@ func extractHostPort(address string) (host, port string, _ error) {
 	if err != nil {
 		return "", "", xerrors.WithStackTrace(err)
 	}
+
 	return host, port, nil
 }
 
@@ -151,21 +158,12 @@ func getRandomEndpoints(endpoints []endpoint.Endpoint, count int) []endpoint.End
 		return endpoints
 	}
 
-	got := make(map[int]bool, maxEndpointsCheckPerLocation)
+	endpoints = slices.Clone(endpoints)
+	rand.Shuffle(len(endpoints), func(i, j int) {
+		endpoints[i], endpoints[j] = endpoints[j], endpoints[i]
+	})
 
-	res := make([]endpoint.Endpoint, 0, maxEndpointsCheckPerLocation)
-	for len(got) < count {
-		//nolint:gosec
-		index := rand.Intn(len(endpoints))
-		if got[index] {
-			continue
-		}
-
-		got[index] = true
-		res = append(res, endpoints[index])
-	}
-
-	return res
+	return endpoints[:count]
 }
 
 func splitEndpointsByLocation(endpoints []endpoint.Endpoint) map[string][]endpoint.Endpoint {
@@ -174,5 +172,6 @@ func splitEndpointsByLocation(endpoints []endpoint.Endpoint) map[string][]endpoi
 		location := ep.Location()
 		res[location] = append(res[location], ep)
 	}
+
 	return res
 }

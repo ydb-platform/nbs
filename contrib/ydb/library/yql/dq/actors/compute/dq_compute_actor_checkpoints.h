@@ -2,8 +2,8 @@
 
 #include "dq_compute_actor.h"
 #include "dq_compute_actor_async_io.h"
-#include "retry_queue.h"
 
+#include <contrib/ydb/library/yql/dq/actors/common/retry_queue.h>
 #include <contrib/ydb/library/yql/dq/common/dq_common.h>
 
 #include <contrib/ydb/library/actors/core/log.h>
@@ -19,8 +19,6 @@ enum ECheckpointingMode : int;
 } // namespace NYql::NDqProto
 
 namespace NYql::NDq {
-
-NDqProto::ECheckpointingMode GetTaskCheckpointingMode(const TDqTaskSettings& task);
 
 class TDqComputeActorCheckpoints : public NActors::TActor<TDqComputeActorCheckpoints>
 {
@@ -58,7 +56,7 @@ class TDqComputeActorCheckpoints : public NActors::TActor<TDqComputeActorCheckpo
 
         const size_t SinksCount;
         TMaybe<NDqProto::TCheckpoint> Checkpoint;
-        NDqProto::TComputeActorState ComputeActorState;
+        TComputeActorState ComputeActorState;
         size_t SavedSinkStatesCount = 0;
         bool SavedComputeActorState = false;
     };
@@ -69,7 +67,7 @@ public:
     struct ICallbacks {
         [[nodiscard]]
         virtual bool ReadyToCheckpoint() const = 0;
-        virtual void SaveState(const NDqProto::TCheckpoint& checkpoint, NDqProto::TComputeActorState& state) const = 0;
+        virtual void SaveState(const NDqProto::TCheckpoint& checkpoint, TComputeActorState& state) const = 0;
         virtual void CommitState(const NDqProto::TCheckpoint& checkpoint) = 0;
         virtual void InjectBarrierToOutputs(const NDqProto::TCheckpoint& checkpoint) = 0;
         virtual void ResumeInputsByCheckpoint() = 0;
@@ -78,7 +76,7 @@ public:
         virtual void Stop() = 0;
         virtual void ResumeExecution(EResumeSource source) = 0;
 
-        virtual void LoadState(NDqProto::TComputeActorState&& state) = 0;
+        virtual void LoadState(TComputeActorState&& state) = 0;
 
         virtual ~ICallbacks() = default;
     };
@@ -102,9 +100,9 @@ public:
     void AbortCheckpoint();
 
     // Sink support.
-    void OnSinkStateSaved(NDqProto::TSinkState&& state, ui64 outputIndex, const NDqProto::TCheckpoint& checkpoint);
+    void OnSinkStateSaved(TSinkState&& state, ui64 outputIndex, const NDqProto::TCheckpoint& checkpoint);
 
-    void OnTransformStateSaved(NDqProto::TSinkState&& state, ui64 outputIndex, const NDqProto::TCheckpoint& checkpoint) {
+    void OnTransformStateSaved(TSinkState&& state, ui64 outputIndex, const NDqProto::TCheckpoint& checkpoint) {
         Y_UNUSED(state);
         Y_UNUSED(outputIndex); // Note that we can have both sink and transform on one output index
         Y_UNUSED(checkpoint);
@@ -127,6 +125,7 @@ private:
     void Handle(NActors::TEvents::TEvPoison::TPtr&);
     void Handle(NActors::TEvInterconnect::TEvNodeDisconnected::TPtr& ev);
     void Handle(NActors::TEvInterconnect::TEvNodeConnected::TPtr& ev);
+    void Handle(NActors::TEvents::TEvUndelivered::TPtr& ev);
     void Handle(TEvRetryQueuePrivate::TEvRetry::TPtr& ev);
     void Handle(NActors::TEvents::TEvWakeup::TPtr& ev);
     void HandleException(const std::exception& err);
@@ -161,5 +160,14 @@ private:
     TInstant CheckpointStartTime;
     bool SavingToDatabase = false;
 };
+
+NYql::NDqProto::ECheckpointingMode GetTaskCheckpointingMode(const NYql::NDq::TDqTaskSettings& task);
+
+bool IsIngress(const NYql::NDq::TDqTaskSettings& task);
+
+bool IsEgress(const NYql::NDq::TDqTaskSettings& task);
+
+bool HasState(const NYql::NDq::TDqTaskSettings& task);
+
 
 } // namespace NYql::NDq

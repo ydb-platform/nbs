@@ -1,12 +1,12 @@
 #pragma once
 
-#include "utils.h"
-#include "db_counters.h"
-
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/scheme/scheme_pathid.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/core/protos/sys_view.pb.h>
+#include <contrib/ydb/core/protos/tablet.pb.h>
+#include <contrib/ydb/core/sys_view/common/db_counters.h>
+#include <contrib/ydb/core/sys_view/common/utils.h>
 
 namespace NKikimr {
 namespace NSysView {
@@ -77,7 +77,15 @@ struct TEvSysView {
         EvCalculateStorageStatsRequest,
         EvCalculateStorageStatsResponse,
 
+        EvRosterUpdateFinished,
+
         EvEnd,
+    };
+
+    struct TEvRosterUpdateFinished : public TEventLocal<
+        TEvRosterUpdateFinished,
+        EvRosterUpdateFinished>
+    {
     };
 
     struct TEvSendPartitionStats : public TEventLocal<

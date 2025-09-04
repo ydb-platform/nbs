@@ -19,6 +19,8 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xstring"
 )
 
+const TokenRefreshDivisor = 10
+
 var (
 	_ Credentials             = (*Static)(nil)
 	_ fmt.Stringer            = (*Static)(nil)
@@ -47,8 +49,11 @@ func NewStaticCredentials(user, password, endpoint string, opts ...StaticCredent
 		sourceInfo: stack.Record(1),
 	}
 	for _, opt := range opts {
-		opt.ApplyStaticCredentialsOption(c)
+		if opt != nil {
+			opt.ApplyStaticCredentialsOption(c)
+		}
 	}
+
 	return c
 }
 
@@ -76,15 +81,13 @@ func (c *Static) Token(ctx context.Context) (token string, err error) {
 	if time.Until(c.requestAt) > 0 {
 		return c.token, nil
 	}
-	cc, err := grpc.DialContext(ctx, c.endpoint, c.opts...)
+	cc, err := grpc.DialContext(ctx, c.endpoint, c.opts...) //nolint:staticcheck,nolintlint
 	if err != nil {
 		return "", xerrors.WithStackTrace(
 			fmt.Errorf("dial failed: %w", err),
 		)
 	}
-	defer func() {
-		_ = cc.Close()
-	}()
+	defer cc.Close()
 
 	client := Ydb_Auth_V1.NewAuthServiceClient(cc)
 
@@ -130,7 +133,7 @@ func (c *Static) Token(ctx context.Context) (token string, err error) {
 		return "", xerrors.WithStackTrace(err)
 	}
 
-	c.requestAt = time.Now().Add(time.Until(expiresAt) / 10)
+	c.requestAt = time.Now().Add(time.Until(expiresAt) / TokenRefreshDivisor)
 	c.token = result.GetToken()
 
 	return c.token, nil
@@ -141,6 +144,11 @@ func parseExpiresAt(raw string) (expiresAt time.Time, err error) {
 	if _, _, err = jwt.NewParser().ParseUnverified(raw, &claims); err != nil {
 		return expiresAt, xerrors.WithStackTrace(err)
 	}
+
+	if claims.ExpiresAt == nil {
+		return expiresAt, xerrors.WithStackTrace(errNilExpiresAt)
+	}
+
 	return claims.ExpiresAt.Time, nil
 }
 
@@ -158,5 +166,6 @@ func (c *Static) String() string {
 		fmt.Fprintf(buffer, "%q", c.sourceInfo)
 	}
 	buffer.WriteByte('}')
+
 	return buffer.String()
 }

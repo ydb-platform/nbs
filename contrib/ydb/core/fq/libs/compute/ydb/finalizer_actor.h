@@ -2,9 +2,9 @@
 
 #include <contrib/ydb/core/fq/libs/compute/common/run_actor_params.h>
 
-#include <contrib/ydb/library/yql/providers/common/metrics/service_counters.h>
+#include <yql/essentials/providers/common/metrics/service_counters.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_query/query.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/query/query.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 

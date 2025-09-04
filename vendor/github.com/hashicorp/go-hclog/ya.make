@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v1.6.3)
+
 GO_SKIP_TESTS(TestInterceptLogger)
 
 SRCS(
@@ -28,17 +30,25 @@ GO_TEST_SRCS(
 )
 
 IF (OS_LINUX)
-    SRCS(colorize_unix.go)
+    SRCS(
+        colorize_unix.go
+    )
 ENDIF()
 
 IF (OS_DARWIN)
-    SRCS(colorize_unix.go)
+    SRCS(
+        colorize_unix.go
+    )
 ENDIF()
 
 IF (OS_WINDOWS)
-    SRCS(colorize_windows.go)
+    SRCS(
+        colorize_windows.go
+    )
 ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

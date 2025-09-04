@@ -4,6 +4,8 @@ package trace
 
 import (
 	"context"
+
+	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Topic"
 )
 
 // topicComposeOptions is a holder of options
@@ -12,9 +14,11 @@ type topicComposeOptions struct {
 }
 
 // TopicOption specified Topic compose option
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
 type TopicComposeOption func(o *topicComposeOptions)
 
 // WithTopicPanicCallback specified behavior on panic
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
 func WithTopicPanicCallback(cb func(e interface{})) TopicComposeOption {
 	return func(o *topicComposeOptions) {
 		o.panicCallback = cb
@@ -22,7 +26,11 @@ func WithTopicPanicCallback(cb func(e interface{})) TopicComposeOption {
 }
 
 // Compose returns a new Topic which has functional fields composed both from t and x.
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
 func (t *Topic) Compose(x *Topic, opts ...TopicComposeOption) *Topic {
+	if t == nil {
+		return x
+	}
 	var ret Topic
 	options := topicComposeOptions{}
 	for _, opt := range opts {
@@ -170,6 +178,25 @@ func (t *Topic) Compose(x *Topic, opts ...TopicComposeOption) *Topic {
 				if r1 != nil {
 					r1(t)
 				}
+			}
+		}
+	}
+	{
+		h1 := t.OnReaderEndPartitionSession
+		h2 := x.OnReaderEndPartitionSession
+		ret.OnReaderEndPartitionSession = func(t TopicReaderEndPartitionSessionInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
 			}
 		}
 	}
@@ -403,6 +430,219 @@ func (t *Topic) Compose(x *Topic, opts ...TopicComposeOption) *Topic {
 		}
 	}
 	{
+		h1 := t.OnReaderPopBatchTx
+		h2 := x.OnReaderPopBatchTx
+		ret.OnReaderPopBatchTx = func(t TopicReaderPopBatchTxStartInfo) func(TopicReaderPopBatchTxDoneInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			var r, r1 func(TopicReaderPopBatchTxDoneInfo)
+			if h1 != nil {
+				r = h1(t)
+			}
+			if h2 != nil {
+				r1 = h2(t)
+			}
+			return func(t TopicReaderPopBatchTxDoneInfo) {
+				if options.panicCallback != nil {
+					defer func() {
+						if e := recover(); e != nil {
+							options.panicCallback(e)
+						}
+					}()
+				}
+				if r != nil {
+					r(t)
+				}
+				if r1 != nil {
+					r1(t)
+				}
+			}
+		}
+	}
+	{
+		h1 := t.OnReaderStreamPopBatchTx
+		h2 := x.OnReaderStreamPopBatchTx
+		ret.OnReaderStreamPopBatchTx = func(t TopicReaderStreamPopBatchTxStartInfo) func(TopicReaderStreamPopBatchTxDoneInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			var r, r1 func(TopicReaderStreamPopBatchTxDoneInfo)
+			if h1 != nil {
+				r = h1(t)
+			}
+			if h2 != nil {
+				r1 = h2(t)
+			}
+			return func(t TopicReaderStreamPopBatchTxDoneInfo) {
+				if options.panicCallback != nil {
+					defer func() {
+						if e := recover(); e != nil {
+							options.panicCallback(e)
+						}
+					}()
+				}
+				if r != nil {
+					r(t)
+				}
+				if r1 != nil {
+					r1(t)
+				}
+			}
+		}
+	}
+	{
+		h1 := t.OnReaderUpdateOffsetsInTransaction
+		h2 := x.OnReaderUpdateOffsetsInTransaction
+		ret.OnReaderUpdateOffsetsInTransaction = func(t TopicReaderOnUpdateOffsetsInTransactionStartInfo) func(TopicReaderOnUpdateOffsetsInTransactionDoneInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			var r, r1 func(TopicReaderOnUpdateOffsetsInTransactionDoneInfo)
+			if h1 != nil {
+				r = h1(t)
+			}
+			if h2 != nil {
+				r1 = h2(t)
+			}
+			return func(t TopicReaderOnUpdateOffsetsInTransactionDoneInfo) {
+				if options.panicCallback != nil {
+					defer func() {
+						if e := recover(); e != nil {
+							options.panicCallback(e)
+						}
+					}()
+				}
+				if r != nil {
+					r(t)
+				}
+				if r1 != nil {
+					r1(t)
+				}
+			}
+		}
+	}
+	{
+		h1 := t.OnReaderTransactionCompleted
+		h2 := x.OnReaderTransactionCompleted
+		ret.OnReaderTransactionCompleted = func(t TopicReaderTransactionCompletedStartInfo) func(TopicReaderTransactionCompletedDoneInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			var r, r1 func(TopicReaderTransactionCompletedDoneInfo)
+			if h1 != nil {
+				r = h1(t)
+			}
+			if h2 != nil {
+				r1 = h2(t)
+			}
+			return func(t TopicReaderTransactionCompletedDoneInfo) {
+				if options.panicCallback != nil {
+					defer func() {
+						if e := recover(); e != nil {
+							options.panicCallback(e)
+						}
+					}()
+				}
+				if r != nil {
+					r(t)
+				}
+				if r1 != nil {
+					r1(t)
+				}
+			}
+		}
+	}
+	{
+		h1 := t.OnReaderTransactionRollback
+		h2 := x.OnReaderTransactionRollback
+		ret.OnReaderTransactionRollback = func(t TopicReaderTransactionRollbackStartInfo) func(TopicReaderTransactionRollbackDoneInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			var r, r1 func(TopicReaderTransactionRollbackDoneInfo)
+			if h1 != nil {
+				r = h1(t)
+			}
+			if h2 != nil {
+				r1 = h2(t)
+			}
+			return func(t TopicReaderTransactionRollbackDoneInfo) {
+				if options.panicCallback != nil {
+					defer func() {
+						if e := recover(); e != nil {
+							options.panicCallback(e)
+						}
+					}()
+				}
+				if r != nil {
+					r(t)
+				}
+				if r1 != nil {
+					r1(t)
+				}
+			}
+		}
+	}
+	{
+		h1 := t.OnReaderSentGRPCMessage
+		h2 := x.OnReaderSentGRPCMessage
+		ret.OnReaderSentGRPCMessage = func(t TopicReaderSentGRPCMessageInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
+		h1 := t.OnReaderReceiveGRPCMessage
+		h2 := x.OnReaderReceiveGRPCMessage
+		ret.OnReaderReceiveGRPCMessage = func(t TopicReaderReceiveGRPCMessageInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
 		h1 := t.OnReaderSentDataRequest
 		h2 := x.OnReaderSentDataRequest
 		ret.OnReaderSentDataRequest = func(t TopicReaderSentDataRequestInfo) {
@@ -513,7 +753,7 @@ func (t *Topic) Compose(x *Topic, opts ...TopicComposeOption) *Topic {
 	{
 		h1 := t.OnWriterReconnect
 		h2 := x.OnWriterReconnect
-		ret.OnWriterReconnect = func(t TopicWriterReconnectStartInfo) func(TopicWriterReconnectDoneInfo) {
+		ret.OnWriterReconnect = func(t TopicWriterReconnectStartInfo) func(TopicWriterReconnectConnectedInfo) func(TopicWriterReconnectDoneInfo) {
 			if options.panicCallback != nil {
 				defer func() {
 					if e := recover(); e != nil {
@@ -521,14 +761,14 @@ func (t *Topic) Compose(x *Topic, opts ...TopicComposeOption) *Topic {
 					}
 				}()
 			}
-			var r, r1 func(TopicWriterReconnectDoneInfo)
+			var r, r1 func(TopicWriterReconnectConnectedInfo) func(TopicWriterReconnectDoneInfo)
 			if h1 != nil {
 				r = h1(t)
 			}
 			if h2 != nil {
 				r1 = h2(t)
 			}
-			return func(t TopicWriterReconnectDoneInfo) {
+			return func(t TopicWriterReconnectConnectedInfo) func(TopicWriterReconnectDoneInfo) {
 				if options.panicCallback != nil {
 					defer func() {
 						if e := recover(); e != nil {
@@ -536,11 +776,27 @@ func (t *Topic) Compose(x *Topic, opts ...TopicComposeOption) *Topic {
 						}
 					}()
 				}
+				var r2, r3 func(TopicWriterReconnectDoneInfo)
 				if r != nil {
-					r(t)
+					r2 = r(t)
 				}
 				if r1 != nil {
-					r1(t)
+					r3 = r1(t)
+				}
+				return func(t TopicWriterReconnectDoneInfo) {
+					if options.panicCallback != nil {
+						defer func() {
+							if e := recover(); e != nil {
+								options.panicCallback(e)
+							}
+						}()
+					}
+					if r2 != nil {
+						r2(t)
+					}
+					if r3 != nil {
+						r3(t)
+					}
 				}
 			}
 		}
@@ -599,6 +855,76 @@ func (t *Topic) Compose(x *Topic, opts ...TopicComposeOption) *Topic {
 				r1 = h2(t)
 			}
 			return func(t TopicWriterCloseDoneInfo) {
+				if options.panicCallback != nil {
+					defer func() {
+						if e := recover(); e != nil {
+							options.panicCallback(e)
+						}
+					}()
+				}
+				if r != nil {
+					r(t)
+				}
+				if r1 != nil {
+					r1(t)
+				}
+			}
+		}
+	}
+	{
+		h1 := t.OnWriterBeforeCommitTransaction
+		h2 := x.OnWriterBeforeCommitTransaction
+		ret.OnWriterBeforeCommitTransaction = func(t TopicOnWriterBeforeCommitTransactionStartInfo) func(TopicOnWriterBeforeCommitTransactionDoneInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			var r, r1 func(TopicOnWriterBeforeCommitTransactionDoneInfo)
+			if h1 != nil {
+				r = h1(t)
+			}
+			if h2 != nil {
+				r1 = h2(t)
+			}
+			return func(t TopicOnWriterBeforeCommitTransactionDoneInfo) {
+				if options.panicCallback != nil {
+					defer func() {
+						if e := recover(); e != nil {
+							options.panicCallback(e)
+						}
+					}()
+				}
+				if r != nil {
+					r(t)
+				}
+				if r1 != nil {
+					r1(t)
+				}
+			}
+		}
+	}
+	{
+		h1 := t.OnWriterAfterFinishTransaction
+		h2 := x.OnWriterAfterFinishTransaction
+		ret.OnWriterAfterFinishTransaction = func(t TopicOnWriterAfterFinishTransactionStartInfo) func(TopicOnWriterAfterFinishTransactionDoneInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			var r, r1 func(TopicOnWriterAfterFinishTransactionDoneInfo)
+			if h1 != nil {
+				r = h1(t)
+			}
+			if h2 != nil {
+				r1 = h2(t)
+			}
+			return func(t TopicOnWriterAfterFinishTransactionDoneInfo) {
 				if options.panicCallback != nil {
 					defer func() {
 						if e := recover(); e != nil {
@@ -686,9 +1012,393 @@ func (t *Topic) Compose(x *Topic, opts ...TopicComposeOption) *Topic {
 		}
 	}
 	{
+		h1 := t.OnWriterReceiveResult
+		h2 := x.OnWriterReceiveResult
+		ret.OnWriterReceiveResult = func(t TopicWriterResultMessagesInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
+		h1 := t.OnWriterSentGRPCMessage
+		h2 := x.OnWriterSentGRPCMessage
+		ret.OnWriterSentGRPCMessage = func(t TopicWriterSentGRPCMessageInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
+		h1 := t.OnWriterReceiveGRPCMessage
+		h2 := x.OnWriterReceiveGRPCMessage
+		ret.OnWriterReceiveGRPCMessage = func(t TopicWriterReceiveGRPCMessageInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
 		h1 := t.OnWriterReadUnknownGrpcMessage
 		h2 := x.OnWriterReadUnknownGrpcMessage
 		ret.OnWriterReadUnknownGrpcMessage = func(t TopicOnWriterReadUnknownGrpcMessageInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
+		h1 := t.OnListenerStart
+		h2 := x.OnListenerStart
+		ret.OnListenerStart = func(t TopicListenerStartInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
+		h1 := t.OnListenerInit
+		h2 := x.OnListenerInit
+		ret.OnListenerInit = func(t TopicListenerInitStartInfo) func(TopicListenerInitDoneInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			var r, r1 func(TopicListenerInitDoneInfo)
+			if h1 != nil {
+				r = h1(t)
+			}
+			if h2 != nil {
+				r1 = h2(t)
+			}
+			return func(t TopicListenerInitDoneInfo) {
+				if options.panicCallback != nil {
+					defer func() {
+						if e := recover(); e != nil {
+							options.panicCallback(e)
+						}
+					}()
+				}
+				if r != nil {
+					r(t)
+				}
+				if r1 != nil {
+					r1(t)
+				}
+			}
+		}
+	}
+	{
+		h1 := t.OnListenerReceiveMessage
+		h2 := x.OnListenerReceiveMessage
+		ret.OnListenerReceiveMessage = func(t TopicListenerReceiveMessageInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
+		h1 := t.OnListenerRouteMessage
+		h2 := x.OnListenerRouteMessage
+		ret.OnListenerRouteMessage = func(t TopicListenerRouteMessageInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
+		h1 := t.OnListenerSplitMessage
+		h2 := x.OnListenerSplitMessage
+		ret.OnListenerSplitMessage = func(t TopicListenerSplitMessageInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
+		h1 := t.OnListenerError
+		h2 := x.OnListenerError
+		ret.OnListenerError = func(t TopicListenerErrorInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
+		h1 := t.OnListenerClose
+		h2 := x.OnListenerClose
+		ret.OnListenerClose = func(t TopicListenerCloseStartInfo) func(TopicListenerCloseDoneInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			var r, r1 func(TopicListenerCloseDoneInfo)
+			if h1 != nil {
+				r = h1(t)
+			}
+			if h2 != nil {
+				r1 = h2(t)
+			}
+			return func(t TopicListenerCloseDoneInfo) {
+				if options.panicCallback != nil {
+					defer func() {
+						if e := recover(); e != nil {
+							options.panicCallback(e)
+						}
+					}()
+				}
+				if r != nil {
+					r(t)
+				}
+				if r1 != nil {
+					r1(t)
+				}
+			}
+		}
+	}
+	{
+		h1 := t.OnPartitionWorkerStart
+		h2 := x.OnPartitionWorkerStart
+		ret.OnPartitionWorkerStart = func(t TopicPartitionWorkerStartInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
+		h1 := t.OnPartitionWorkerProcessMessage
+		h2 := x.OnPartitionWorkerProcessMessage
+		ret.OnPartitionWorkerProcessMessage = func(t TopicPartitionWorkerProcessMessageStartInfo) func(TopicPartitionWorkerProcessMessageDoneInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			var r, r1 func(TopicPartitionWorkerProcessMessageDoneInfo)
+			if h1 != nil {
+				r = h1(t)
+			}
+			if h2 != nil {
+				r1 = h2(t)
+			}
+			return func(t TopicPartitionWorkerProcessMessageDoneInfo) {
+				if options.panicCallback != nil {
+					defer func() {
+						if e := recover(); e != nil {
+							options.panicCallback(e)
+						}
+					}()
+				}
+				if r != nil {
+					r(t)
+				}
+				if r1 != nil {
+					r1(t)
+				}
+			}
+		}
+	}
+	{
+		h1 := t.OnPartitionWorkerHandlerCall
+		h2 := x.OnPartitionWorkerHandlerCall
+		ret.OnPartitionWorkerHandlerCall = func(t TopicPartitionWorkerHandlerCallStartInfo) func(TopicPartitionWorkerHandlerCallDoneInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			var r, r1 func(TopicPartitionWorkerHandlerCallDoneInfo)
+			if h1 != nil {
+				r = h1(t)
+			}
+			if h2 != nil {
+				r1 = h2(t)
+			}
+			return func(t TopicPartitionWorkerHandlerCallDoneInfo) {
+				if options.panicCallback != nil {
+					defer func() {
+						if e := recover(); e != nil {
+							options.panicCallback(e)
+						}
+					}()
+				}
+				if r != nil {
+					r(t)
+				}
+				if r1 != nil {
+					r1(t)
+				}
+			}
+		}
+	}
+	{
+		h1 := t.OnPartitionWorkerStop
+		h2 := x.OnPartitionWorkerStop
+		ret.OnPartitionWorkerStop = func(t TopicPartitionWorkerStopStartInfo) func(TopicPartitionWorkerStopDoneInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			var r, r1 func(TopicPartitionWorkerStopDoneInfo)
+			if h1 != nil {
+				r = h1(t)
+			}
+			if h2 != nil {
+				r1 = h2(t)
+			}
+			return func(t TopicPartitionWorkerStopDoneInfo) {
+				if options.panicCallback != nil {
+					defer func() {
+						if e := recover(); e != nil {
+							options.panicCallback(e)
+						}
+					}()
+				}
+				if r != nil {
+					r(t)
+				}
+				if r1 != nil {
+					r1(t)
+				}
+			}
+		}
+	}
+	{
+		h1 := t.OnListenerSendDataRequest
+		h2 := x.OnListenerSendDataRequest
+		ret.OnListenerSendDataRequest = func(t TopicListenerSendDataRequestInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(t)
+			}
+			if h2 != nil {
+				h2(t)
+			}
+		}
+	}
+	{
+		h1 := t.OnListenerUnknownMessage
+		h2 := x.OnListenerUnknownMessage
+		ret.OnListenerUnknownMessage = func(t TopicListenerUnknownMessageInfo) {
 			if options.panicCallback != nil {
 				defer func() {
 					if e := recover(); e != nil {
@@ -764,6 +1474,13 @@ func (t *Topic) onReaderPartitionReadStopResponse(t1 TopicReaderPartitionReadSto
 		}
 	}
 	return res
+}
+func (t *Topic) onReaderEndPartitionSession(t1 TopicReaderEndPartitionSessionInfo) {
+	fn := t.OnReaderEndPartitionSession
+	if fn == nil {
+		return
+	}
+	fn(t1)
 }
 func (t *Topic) onReaderCommit(t1 TopicReaderCommitStartInfo) func(TopicReaderCommitDoneInfo) {
 	fn := t.OnReaderCommit
@@ -866,6 +1583,95 @@ func (t *Topic) onReaderUpdateToken(o OnReadUpdateTokenStartInfo) func(OnReadUpd
 		return res
 	}
 }
+func (t *Topic) onReaderPopBatchTx(t1 TopicReaderPopBatchTxStartInfo) func(TopicReaderPopBatchTxDoneInfo) {
+	fn := t.OnReaderPopBatchTx
+	if fn == nil {
+		return func(TopicReaderPopBatchTxDoneInfo) {
+			return
+		}
+	}
+	res := fn(t1)
+	if res == nil {
+		return func(TopicReaderPopBatchTxDoneInfo) {
+			return
+		}
+	}
+	return res
+}
+func (t *Topic) onReaderStreamPopBatchTx(t1 TopicReaderStreamPopBatchTxStartInfo) func(TopicReaderStreamPopBatchTxDoneInfo) {
+	fn := t.OnReaderStreamPopBatchTx
+	if fn == nil {
+		return func(TopicReaderStreamPopBatchTxDoneInfo) {
+			return
+		}
+	}
+	res := fn(t1)
+	if res == nil {
+		return func(TopicReaderStreamPopBatchTxDoneInfo) {
+			return
+		}
+	}
+	return res
+}
+func (t *Topic) onReaderUpdateOffsetsInTransaction(t1 TopicReaderOnUpdateOffsetsInTransactionStartInfo) func(TopicReaderOnUpdateOffsetsInTransactionDoneInfo) {
+	fn := t.OnReaderUpdateOffsetsInTransaction
+	if fn == nil {
+		return func(TopicReaderOnUpdateOffsetsInTransactionDoneInfo) {
+			return
+		}
+	}
+	res := fn(t1)
+	if res == nil {
+		return func(TopicReaderOnUpdateOffsetsInTransactionDoneInfo) {
+			return
+		}
+	}
+	return res
+}
+func (t *Topic) onReaderTransactionCompleted(t1 TopicReaderTransactionCompletedStartInfo) func(TopicReaderTransactionCompletedDoneInfo) {
+	fn := t.OnReaderTransactionCompleted
+	if fn == nil {
+		return func(TopicReaderTransactionCompletedDoneInfo) {
+			return
+		}
+	}
+	res := fn(t1)
+	if res == nil {
+		return func(TopicReaderTransactionCompletedDoneInfo) {
+			return
+		}
+	}
+	return res
+}
+func (t *Topic) onReaderTransactionRollback(t1 TopicReaderTransactionRollbackStartInfo) func(TopicReaderTransactionRollbackDoneInfo) {
+	fn := t.OnReaderTransactionRollback
+	if fn == nil {
+		return func(TopicReaderTransactionRollbackDoneInfo) {
+			return
+		}
+	}
+	res := fn(t1)
+	if res == nil {
+		return func(TopicReaderTransactionRollbackDoneInfo) {
+			return
+		}
+	}
+	return res
+}
+func (t *Topic) onReaderSentGRPCMessage(t1 TopicReaderSentGRPCMessageInfo) {
+	fn := t.OnReaderSentGRPCMessage
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
+func (t *Topic) onReaderReceiveGRPCMessage(t1 TopicReaderReceiveGRPCMessageInfo) {
+	fn := t.OnReaderReceiveGRPCMessage
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
 func (t *Topic) onReaderSentDataRequest(t1 TopicReaderSentDataRequestInfo) {
 	fn := t.OnReaderSentDataRequest
 	if fn == nil {
@@ -910,20 +1716,32 @@ func (t *Topic) onReaderUnknownGrpcMessage(o OnReadUnknownGrpcMessageInfo) {
 	}
 	fn(o)
 }
-func (t *Topic) onWriterReconnect(t1 TopicWriterReconnectStartInfo) func(TopicWriterReconnectDoneInfo) {
+func (t *Topic) onWriterReconnect(t1 TopicWriterReconnectStartInfo) func(TopicWriterReconnectConnectedInfo) func(TopicWriterReconnectDoneInfo) {
 	fn := t.OnWriterReconnect
 	if fn == nil {
-		return func(TopicWriterReconnectDoneInfo) {
-			return
+		return func(TopicWriterReconnectConnectedInfo) func(TopicWriterReconnectDoneInfo) {
+			return func(TopicWriterReconnectDoneInfo) {
+				return
+			}
 		}
 	}
 	res := fn(t1)
 	if res == nil {
-		return func(TopicWriterReconnectDoneInfo) {
-			return
+		return func(TopicWriterReconnectConnectedInfo) func(TopicWriterReconnectDoneInfo) {
+			return func(TopicWriterReconnectDoneInfo) {
+				return
+			}
 		}
 	}
-	return res
+	return func(t TopicWriterReconnectConnectedInfo) func(TopicWriterReconnectDoneInfo) {
+		res := res(t)
+		if res == nil {
+			return func(TopicWriterReconnectDoneInfo) {
+				return
+			}
+		}
+		return res
+	}
 }
 func (t *Topic) onWriterInitStream(t1 TopicWriterInitStreamStartInfo) func(TopicWriterInitStreamDoneInfo) {
 	fn := t.OnWriterInitStream
@@ -950,6 +1768,36 @@ func (t *Topic) onWriterClose(t1 TopicWriterCloseStartInfo) func(TopicWriterClos
 	res := fn(t1)
 	if res == nil {
 		return func(TopicWriterCloseDoneInfo) {
+			return
+		}
+	}
+	return res
+}
+func (t *Topic) onWriterBeforeCommitTransaction(t1 TopicOnWriterBeforeCommitTransactionStartInfo) func(TopicOnWriterBeforeCommitTransactionDoneInfo) {
+	fn := t.OnWriterBeforeCommitTransaction
+	if fn == nil {
+		return func(TopicOnWriterBeforeCommitTransactionDoneInfo) {
+			return
+		}
+	}
+	res := fn(t1)
+	if res == nil {
+		return func(TopicOnWriterBeforeCommitTransactionDoneInfo) {
+			return
+		}
+	}
+	return res
+}
+func (t *Topic) onWriterAfterFinishTransaction(t1 TopicOnWriterAfterFinishTransactionStartInfo) func(TopicOnWriterAfterFinishTransactionDoneInfo) {
+	fn := t.OnWriterAfterFinishTransaction
+	if fn == nil {
+		return func(TopicOnWriterAfterFinishTransactionDoneInfo) {
+			return
+		}
+	}
+	res := fn(t1)
+	if res == nil {
+		return func(TopicOnWriterAfterFinishTransactionDoneInfo) {
 			return
 		}
 	}
@@ -985,6 +1833,27 @@ func (t *Topic) onWriterSendMessages(t1 TopicWriterSendMessagesStartInfo) func(T
 	}
 	return res
 }
+func (t *Topic) onWriterReceiveResult(t1 TopicWriterResultMessagesInfo) {
+	fn := t.OnWriterReceiveResult
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
+func (t *Topic) onWriterSentGRPCMessage(t1 TopicWriterSentGRPCMessageInfo) {
+	fn := t.OnWriterSentGRPCMessage
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
+func (t *Topic) onWriterReceiveGRPCMessage(t1 TopicWriterReceiveGRPCMessageInfo) {
+	fn := t.OnWriterReceiveGRPCMessage
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
 func (t *Topic) onWriterReadUnknownGrpcMessage(t1 TopicOnWriterReadUnknownGrpcMessageInfo) {
 	fn := t.OnWriterReadUnknownGrpcMessage
 	if fn == nil {
@@ -992,14 +1861,150 @@ func (t *Topic) onWriterReadUnknownGrpcMessage(t1 TopicOnWriterReadUnknownGrpcMe
 	}
 	fn(t1)
 }
-func TopicOnReaderStart(t *Topic, readerID int64, consumer string) {
+func (t *Topic) onListenerStart(t1 TopicListenerStartInfo) {
+	fn := t.OnListenerStart
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
+func (t *Topic) onListenerInit(t1 TopicListenerInitStartInfo) func(TopicListenerInitDoneInfo) {
+	fn := t.OnListenerInit
+	if fn == nil {
+		return func(TopicListenerInitDoneInfo) {
+			return
+		}
+	}
+	res := fn(t1)
+	if res == nil {
+		return func(TopicListenerInitDoneInfo) {
+			return
+		}
+	}
+	return res
+}
+func (t *Topic) onListenerReceiveMessage(t1 TopicListenerReceiveMessageInfo) {
+	fn := t.OnListenerReceiveMessage
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
+func (t *Topic) onListenerRouteMessage(t1 TopicListenerRouteMessageInfo) {
+	fn := t.OnListenerRouteMessage
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
+func (t *Topic) onListenerSplitMessage(t1 TopicListenerSplitMessageInfo) {
+	fn := t.OnListenerSplitMessage
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
+func (t *Topic) onListenerError(t1 TopicListenerErrorInfo) {
+	fn := t.OnListenerError
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
+func (t *Topic) onListenerClose(t1 TopicListenerCloseStartInfo) func(TopicListenerCloseDoneInfo) {
+	fn := t.OnListenerClose
+	if fn == nil {
+		return func(TopicListenerCloseDoneInfo) {
+			return
+		}
+	}
+	res := fn(t1)
+	if res == nil {
+		return func(TopicListenerCloseDoneInfo) {
+			return
+		}
+	}
+	return res
+}
+func (t *Topic) onPartitionWorkerStart(t1 TopicPartitionWorkerStartInfo) {
+	fn := t.OnPartitionWorkerStart
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
+func (t *Topic) onPartitionWorkerProcessMessage(t1 TopicPartitionWorkerProcessMessageStartInfo) func(TopicPartitionWorkerProcessMessageDoneInfo) {
+	fn := t.OnPartitionWorkerProcessMessage
+	if fn == nil {
+		return func(TopicPartitionWorkerProcessMessageDoneInfo) {
+			return
+		}
+	}
+	res := fn(t1)
+	if res == nil {
+		return func(TopicPartitionWorkerProcessMessageDoneInfo) {
+			return
+		}
+	}
+	return res
+}
+func (t *Topic) onPartitionWorkerHandlerCall(t1 TopicPartitionWorkerHandlerCallStartInfo) func(TopicPartitionWorkerHandlerCallDoneInfo) {
+	fn := t.OnPartitionWorkerHandlerCall
+	if fn == nil {
+		return func(TopicPartitionWorkerHandlerCallDoneInfo) {
+			return
+		}
+	}
+	res := fn(t1)
+	if res == nil {
+		return func(TopicPartitionWorkerHandlerCallDoneInfo) {
+			return
+		}
+	}
+	return res
+}
+func (t *Topic) onPartitionWorkerStop(t1 TopicPartitionWorkerStopStartInfo) func(TopicPartitionWorkerStopDoneInfo) {
+	fn := t.OnPartitionWorkerStop
+	if fn == nil {
+		return func(TopicPartitionWorkerStopDoneInfo) {
+			return
+		}
+	}
+	res := fn(t1)
+	if res == nil {
+		return func(TopicPartitionWorkerStopDoneInfo) {
+			return
+		}
+	}
+	return res
+}
+func (t *Topic) onListenerSendDataRequest(t1 TopicListenerSendDataRequestInfo) {
+	fn := t.OnListenerSendDataRequest
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
+func (t *Topic) onListenerUnknownMessage(t1 TopicListenerUnknownMessageInfo) {
+	fn := t.OnListenerUnknownMessage
+	if fn == nil {
+		return
+	}
+	fn(t1)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderStart(t *Topic, c *context.Context, readerID int64, consumer string, e error) {
 	var p TopicReaderStartInfo
+	p.Context = c
 	p.ReaderID = readerID
 	p.Consumer = consumer
+	p.Error = e
 	t.onReaderStart(p)
 }
-func TopicOnReaderReconnect(t *Topic, reason error) func(error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderReconnect(t *Topic, c *context.Context, reason error) func(error) {
 	var p TopicReaderReconnectStartInfo
+	p.Context = c
 	p.Reason = reason
 	res := t.onReaderReconnect(p)
 	return func(e error) {
@@ -1008,13 +2013,16 @@ func TopicOnReaderReconnect(t *Topic, reason error) func(error) {
 		res(p)
 	}
 }
-func TopicOnReaderReconnectRequest(t *Topic, reason error, wasSent bool) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderReconnectRequest(t *Topic, c *context.Context, reason error, wasSent bool) {
 	var p TopicReaderReconnectRequestInfo
+	p.Context = c
 	p.Reason = reason
 	p.WasSent = wasSent
 	t.onReaderReconnectRequest(p)
 }
-func TopicOnReaderPartitionReadStartResponse(t *Topic, readerConnectionID string, partitionContext context.Context, topic string, partitionID int64, partitionSessionID int64) func(readOffset *int64, commitOffset *int64, _ error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderPartitionReadStartResponse(t *Topic, readerConnectionID string, partitionContext *context.Context, topic string, partitionID int64, partitionSessionID int64) func(readOffset *int64, commitOffset *int64, _ error) {
 	var p TopicReaderPartitionReadStartResponseStartInfo
 	p.ReaderConnectionID = readerConnectionID
 	p.PartitionContext = partitionContext
@@ -1030,6 +2038,7 @@ func TopicOnReaderPartitionReadStartResponse(t *Topic, readerConnectionID string
 		res(p)
 	}
 }
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
 func TopicOnReaderPartitionReadStopResponse(t *Topic, readerConnectionID string, partitionContext context.Context, topic string, partitionID int64, partitionSessionID int64, committedOffset int64, graceful bool) func(error) {
 	var p TopicReaderPartitionReadStopResponseStartInfo
 	p.ReaderConnectionID = readerConnectionID
@@ -1046,9 +2055,22 @@ func TopicOnReaderPartitionReadStopResponse(t *Topic, readerConnectionID string,
 		res(p)
 	}
 }
-func TopicOnReaderCommit(t *Topic, requestContext context.Context, topic string, partitionID int64, partitionSessionID int64, startOffset int64, endOffset int64) func(error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderEndPartitionSession(t *Topic, readerConnectionID string, partitionContext context.Context, topic string, partitionID int64, partitionSessionID int64, adjacentPartitionIDs []int64, childPartitionIDs []int64) {
+	var p TopicReaderEndPartitionSessionInfo
+	p.ReaderConnectionID = readerConnectionID
+	p.PartitionContext = partitionContext
+	p.Topic = topic
+	p.PartitionID = partitionID
+	p.PartitionSessionID = partitionSessionID
+	p.AdjacentPartitionIDs = adjacentPartitionIDs
+	p.ChildPartitionIDs = childPartitionIDs
+	t.onReaderEndPartitionSession(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderCommit(t *Topic, c *context.Context, topic string, partitionID int64, partitionSessionID int64, startOffset int64, endOffset int64) func(error) {
 	var p TopicReaderCommitStartInfo
-	p.RequestContext = requestContext
+	p.Context = c
 	p.Topic = topic
 	p.PartitionID = partitionID
 	p.PartitionSessionID = partitionSessionID
@@ -1061,8 +2083,10 @@ func TopicOnReaderCommit(t *Topic, requestContext context.Context, topic string,
 		res(p)
 	}
 }
-func TopicOnReaderSendCommitMessage(t *Topic, commitsInfo TopicReaderStreamSendCommitMessageStartMessageInfo) func(error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderSendCommitMessage(t *Topic, c *context.Context, commitsInfo TopicReaderStreamSendCommitMessageStartMessageInfo) func(error) {
 	var p TopicReaderSendCommitMessageStartInfo
+	p.Context = c
 	p.CommitsInfo = commitsInfo
 	res := t.onReaderSendCommitMessage(p)
 	return func(e error) {
@@ -1071,8 +2095,10 @@ func TopicOnReaderSendCommitMessage(t *Topic, commitsInfo TopicReaderStreamSendC
 		res(p)
 	}
 }
-func TopicOnReaderCommittedNotify(t *Topic, readerConnectionID string, topic string, partitionID int64, partitionSessionID int64, committedOffset int64) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderCommittedNotify(t *Topic, c *context.Context, readerConnectionID string, topic string, partitionID int64, partitionSessionID int64, committedOffset int64) {
 	var p TopicReaderCommittedNotifyInfo
+	p.Context = c
 	p.ReaderConnectionID = readerConnectionID
 	p.Topic = topic
 	p.PartitionID = partitionID
@@ -1080,8 +2106,10 @@ func TopicOnReaderCommittedNotify(t *Topic, readerConnectionID string, topic str
 	p.CommittedOffset = committedOffset
 	t.onReaderCommittedNotify(p)
 }
-func TopicOnReaderClose(t *Topic, readerConnectionID string, closeReason error) func(closeError error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderClose(t *Topic, c *context.Context, readerConnectionID string, closeReason error) func(closeError error) {
 	var p TopicReaderCloseStartInfo
+	p.Context = c
 	p.ReaderConnectionID = readerConnectionID
 	p.CloseReason = closeReason
 	res := t.onReaderClose(p)
@@ -1091,8 +2119,10 @@ func TopicOnReaderClose(t *Topic, readerConnectionID string, closeReason error) 
 		res(p)
 	}
 }
-func TopicOnReaderInit(t *Topic, preInitReaderConnectionID string, initRequestInfo TopicReadStreamInitRequestInfo) func(readerConnectionID string, _ error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderInit(t *Topic, c *context.Context, preInitReaderConnectionID string, initRequestInfo TopicReadStreamInitRequestInfo) func(readerConnectionID string, _ error) {
 	var p TopicReaderInitStartInfo
+	p.Context = c
 	p.PreInitReaderConnectionID = preInitReaderConnectionID
 	p.InitRequestInfo = initRequestInfo
 	res := t.onReaderInit(p)
@@ -1103,18 +2133,23 @@ func TopicOnReaderInit(t *Topic, preInitReaderConnectionID string, initRequestIn
 		res(p)
 	}
 }
-func TopicOnReaderError(t *Topic, readerConnectionID string, e error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderError(t *Topic, c *context.Context, readerConnectionID string, e error) {
 	var p TopicReaderErrorInfo
+	p.Context = c
 	p.ReaderConnectionID = readerConnectionID
 	p.Error = e
 	t.onReaderError(p)
 }
-func TopicOnReaderUpdateToken(t *Topic, readerConnectionID string) func(tokenLen int, _ error) func(error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderUpdateToken(t *Topic, c *context.Context, readerConnectionID string) func(_ *context.Context, tokenLen int, _ error) func(error) {
 	var p OnReadUpdateTokenStartInfo
+	p.Context = c
 	p.ReaderConnectionID = readerConnectionID
 	res := t.onReaderUpdateToken(p)
-	return func(tokenLen int, e error) func(error) {
+	return func(c *context.Context, tokenLen int, e error) func(error) {
 		var p OnReadUpdateTokenMiddleTokenReceivedInfo
+		p.Context = c
 		p.TokenLen = tokenLen
 		p.Error = e
 		res := res(p)
@@ -1125,15 +2160,116 @@ func TopicOnReaderUpdateToken(t *Topic, readerConnectionID string) func(tokenLen
 		}
 	}
 }
-func TopicOnReaderSentDataRequest(t *Topic, readerConnectionID string, requestBytes int, localBufferSizeAfterSent int) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderPopBatchTx(t *Topic, c *context.Context, readerID int64, transactionSessionID string, tx txInfo) func(startOffset int64, endOffset int64, messagesCount int, _ error) {
+	var p TopicReaderPopBatchTxStartInfo
+	p.Context = c
+	p.ReaderID = readerID
+	p.TransactionSessionID = transactionSessionID
+	p.Tx = tx
+	res := t.onReaderPopBatchTx(p)
+	return func(startOffset int64, endOffset int64, messagesCount int, e error) {
+		var p TopicReaderPopBatchTxDoneInfo
+		p.StartOffset = startOffset
+		p.EndOffset = endOffset
+		p.MessagesCount = messagesCount
+		p.Error = e
+		res(p)
+	}
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderStreamPopBatchTx(t *Topic, c *context.Context, readerID int64, readerConnectionID string, transactionSessionID string, tx txInfo) func(error) {
+	var p TopicReaderStreamPopBatchTxStartInfo
+	p.Context = c
+	p.ReaderID = readerID
+	p.ReaderConnectionID = readerConnectionID
+	p.TransactionSessionID = transactionSessionID
+	p.Tx = tx
+	res := t.onReaderStreamPopBatchTx(p)
+	return func(e error) {
+		var p TopicReaderStreamPopBatchTxDoneInfo
+		p.Error = e
+		res(p)
+	}
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderUpdateOffsetsInTransaction(t *Topic, c *context.Context, readerID int64, readerConnectionID string, transactionSessionID string, tx txInfo) func(error) {
+	var p TopicReaderOnUpdateOffsetsInTransactionStartInfo
+	p.Context = c
+	p.ReaderID = readerID
+	p.ReaderConnectionID = readerConnectionID
+	p.TransactionSessionID = transactionSessionID
+	p.Tx = tx
+	res := t.onReaderUpdateOffsetsInTransaction(p)
+	return func(e error) {
+		var p TopicReaderOnUpdateOffsetsInTransactionDoneInfo
+		p.Error = e
+		res(p)
+	}
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderTransactionCompleted(t *Topic, c *context.Context, readerID int64, readerConnectionID string, transactionSessionID string, tx txInfo, transactionResult error) func() {
+	var p TopicReaderTransactionCompletedStartInfo
+	p.Context = c
+	p.ReaderID = readerID
+	p.ReaderConnectionID = readerConnectionID
+	p.TransactionSessionID = transactionSessionID
+	p.Tx = tx
+	p.TransactionResult = transactionResult
+	res := t.onReaderTransactionCompleted(p)
+	return func() {
+		var p TopicReaderTransactionCompletedDoneInfo
+		res(p)
+	}
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderTransactionRollback(t *Topic, c *context.Context, readerID int64, readerConnectionID string, transactionSessionID string, tx txInfo) func(rollbackError error) {
+	var p TopicReaderTransactionRollbackStartInfo
+	p.Context = c
+	p.ReaderID = readerID
+	p.ReaderConnectionID = readerConnectionID
+	p.TransactionSessionID = transactionSessionID
+	p.Tx = tx
+	res := t.onReaderTransactionRollback(p)
+	return func(rollbackError error) {
+		var p TopicReaderTransactionRollbackDoneInfo
+		p.RollbackError = rollbackError
+		res(p)
+	}
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderSentGRPCMessage(t *Topic, readerID int64, sessionID string, messageNumber int, message *Ydb_Topic.StreamReadMessage_FromClient, e error) {
+	var p TopicReaderSentGRPCMessageInfo
+	p.ReaderID = readerID
+	p.SessionID = sessionID
+	p.MessageNumber = messageNumber
+	p.Message = message
+	p.Error = e
+	t.onReaderSentGRPCMessage(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderReceiveGRPCMessage(t *Topic, readerID int64, sessionID string, messageNumber int, message *Ydb_Topic.StreamReadMessage_FromServer, e error) {
+	var p TopicReaderReceiveGRPCMessageInfo
+	p.ReaderID = readerID
+	p.SessionID = sessionID
+	p.MessageNumber = messageNumber
+	p.Message = message
+	p.Error = e
+	t.onReaderReceiveGRPCMessage(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderSentDataRequest(t *Topic, c *context.Context, readerConnectionID string, requestBytes int, localBufferSizeAfterSent int) {
 	var p TopicReaderSentDataRequestInfo
+	p.Context = c
 	p.ReaderConnectionID = readerConnectionID
 	p.RequestBytes = requestBytes
 	p.LocalBufferSizeAfterSent = localBufferSizeAfterSent
 	t.onReaderSentDataRequest(p)
 }
-func TopicOnReaderReceiveDataResponse(t *Topic, readerConnectionID string, localBufferSizeAfterReceive int, dataResponse TopicReaderDataResponseInfo) func(error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderReceiveDataResponse(t *Topic, c *context.Context, readerConnectionID string, localBufferSizeAfterReceive int, dataResponse TopicReaderDataResponseInfo) func(error) {
 	var p TopicReaderReceiveDataResponseStartInfo
+	p.Context = c
 	p.ReaderConnectionID = readerConnectionID
 	p.LocalBufferSizeAfterReceive = localBufferSizeAfterReceive
 	p.DataResponse = dataResponse
@@ -1144,9 +2280,10 @@ func TopicOnReaderReceiveDataResponse(t *Topic, readerConnectionID string, local
 		res(p)
 	}
 }
-func TopicOnReaderReadMessages(t *Topic, requestContext context.Context, minCount int, maxCount int, freeBufferCapacity int) func(messagesCount int, topic string, partitionID int64, partitionSessionID int64, offsetStart int64, offsetEnd int64, freeBufferCapacity int, _ error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderReadMessages(t *Topic, c *context.Context, minCount int, maxCount int, freeBufferCapacity int) func(messagesCount int, topic string, partitionID int64, partitionSessionID int64, offsetStart int64, offsetEnd int64, freeBufferCapacity int, _ error) {
 	var p TopicReaderReadMessagesStartInfo
-	p.RequestContext = requestContext
+	p.Context = c
 	p.MinCount = minCount
 	p.MaxCount = maxCount
 	p.FreeBufferCapacity = freeBufferCapacity
@@ -1164,27 +2301,38 @@ func TopicOnReaderReadMessages(t *Topic, requestContext context.Context, minCoun
 		res(p)
 	}
 }
-func TopicOnReaderUnknownGrpcMessage(t *Topic, readerConnectionID string, e error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnReaderUnknownGrpcMessage(t *Topic, c *context.Context, readerConnectionID string, e error) {
 	var p OnReadUnknownGrpcMessageInfo
+	p.Context = c
 	p.ReaderConnectionID = readerConnectionID
 	p.Error = e
 	t.onReaderUnknownGrpcMessage(p)
 }
-func TopicOnWriterReconnect(t *Topic, writerInstanceID string, topic string, producerID string, attempt int) func(error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnWriterReconnect(t *Topic, c *context.Context, writerInstanceID string, topic string, producerID string, attempt int) func(connectionResult error) func(error) {
 	var p TopicWriterReconnectStartInfo
+	p.Context = c
 	p.WriterInstanceID = writerInstanceID
 	p.Topic = topic
 	p.ProducerID = producerID
 	p.Attempt = attempt
 	res := t.onWriterReconnect(p)
-	return func(e error) {
-		var p TopicWriterReconnectDoneInfo
-		p.Error = e
-		res(p)
+	return func(connectionResult error) func(error) {
+		var p TopicWriterReconnectConnectedInfo
+		p.ConnectionResult = connectionResult
+		res := res(p)
+		return func(e error) {
+			var p TopicWriterReconnectDoneInfo
+			p.Error = e
+			res(p)
+		}
 	}
 }
-func TopicOnWriterInitStream(t *Topic, writerInstanceID string, topic string, producerID string) func(sessionID string, _ error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnWriterInitStream(t *Topic, c *context.Context, writerInstanceID string, topic string, producerID string) func(sessionID string, _ error) {
 	var p TopicWriterInitStreamStartInfo
+	p.Context = c
 	p.WriterInstanceID = writerInstanceID
 	p.Topic = topic
 	p.ProducerID = producerID
@@ -1196,8 +2344,10 @@ func TopicOnWriterInitStream(t *Topic, writerInstanceID string, topic string, pr
 		res(p)
 	}
 }
-func TopicOnWriterClose(t *Topic, writerInstanceID string, reason error) func(error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnWriterClose(t *Topic, c *context.Context, writerInstanceID string, reason error) func(error) {
 	var p TopicWriterCloseStartInfo
+	p.Context = c
 	p.WriterInstanceID = writerInstanceID
 	p.Reason = reason
 	res := t.onWriterClose(p)
@@ -1207,8 +2357,39 @@ func TopicOnWriterClose(t *Topic, writerInstanceID string, reason error) func(er
 		res(p)
 	}
 }
-func TopicOnWriterCompressMessages(t *Topic, writerInstanceID string, sessionID string, codec int32, firstSeqNo int64, messagesCount int, reason TopicWriterCompressMessagesReason) func(error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnWriterBeforeCommitTransaction(t *Topic, c *context.Context, kqpSessionID string, topicSessionID string, transactionID string) func(_ error, topicSessionID string) {
+	var p TopicOnWriterBeforeCommitTransactionStartInfo
+	p.Context = c
+	p.KqpSessionID = kqpSessionID
+	p.TopicSessionID = topicSessionID
+	p.TransactionID = transactionID
+	res := t.onWriterBeforeCommitTransaction(p)
+	return func(e error, topicSessionID string) {
+		var p TopicOnWriterBeforeCommitTransactionDoneInfo
+		p.Error = e
+		p.TopicSessionID = topicSessionID
+		res(p)
+	}
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnWriterAfterFinishTransaction(t *Topic, c *context.Context, e error, sessionID string, transactionID string) func(closeError error) {
+	var p TopicOnWriterAfterFinishTransactionStartInfo
+	p.Context = c
+	p.Error = e
+	p.SessionID = sessionID
+	p.TransactionID = transactionID
+	res := t.onWriterAfterFinishTransaction(p)
+	return func(closeError error) {
+		var p TopicOnWriterAfterFinishTransactionDoneInfo
+		p.CloseError = closeError
+		res(p)
+	}
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnWriterCompressMessages(t *Topic, c *context.Context, writerInstanceID string, sessionID string, codec int32, firstSeqNo int64, messagesCount int, reason TopicWriterCompressMessagesReason) func(error) {
 	var p TopicWriterCompressMessagesStartInfo
+	p.Context = c
 	p.WriterInstanceID = writerInstanceID
 	p.SessionID = sessionID
 	p.Codec = codec
@@ -1222,8 +2403,10 @@ func TopicOnWriterCompressMessages(t *Topic, writerInstanceID string, sessionID 
 		res(p)
 	}
 }
-func TopicOnWriterSendMessages(t *Topic, writerInstanceID string, sessionID string, codec int32, firstSeqNo int64, messagesCount int) func(error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnWriterSendMessages(t *Topic, c *context.Context, writerInstanceID string, sessionID string, codec int32, firstSeqNo int64, messagesCount int) func(error) {
 	var p TopicWriterSendMessagesStartInfo
+	p.Context = c
 	p.WriterInstanceID = writerInstanceID
 	p.SessionID = sessionID
 	p.Codec = codec
@@ -1236,10 +2419,214 @@ func TopicOnWriterSendMessages(t *Topic, writerInstanceID string, sessionID stri
 		res(p)
 	}
 }
-func TopicOnWriterReadUnknownGrpcMessage(t *Topic, writerInstanceID string, sessionID string, e error) {
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnWriterReceiveResult(t *Topic, c *context.Context, writerInstanceID string, sessionID string, partitionID int64, acks TopicWriterResultMessagesInfoAcks) {
+	var p TopicWriterResultMessagesInfo
+	p.Context = c
+	p.WriterInstanceID = writerInstanceID
+	p.SessionID = sessionID
+	p.PartitionID = partitionID
+	p.Acks = acks
+	t.onWriterReceiveResult(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnWriterSentGRPCMessage(t *Topic, c *context.Context, topicStreamInternalID string, sessionID string, messageNumber int, message *Ydb_Topic.StreamWriteMessage_FromClient, e error) {
+	var p TopicWriterSentGRPCMessageInfo
+	p.Context = c
+	p.TopicStreamInternalID = topicStreamInternalID
+	p.SessionID = sessionID
+	p.MessageNumber = messageNumber
+	p.Message = message
+	p.Error = e
+	t.onWriterSentGRPCMessage(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnWriterReceiveGRPCMessage(t *Topic, c *context.Context, topicStreamInternalID string, sessionID string, messageNumber int, message *Ydb_Topic.StreamWriteMessage_FromServer, e error) {
+	var p TopicWriterReceiveGRPCMessageInfo
+	p.Context = c
+	p.TopicStreamInternalID = topicStreamInternalID
+	p.SessionID = sessionID
+	p.MessageNumber = messageNumber
+	p.Message = message
+	p.Error = e
+	t.onWriterReceiveGRPCMessage(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnWriterReadUnknownGrpcMessage(t *Topic, c *context.Context, writerInstanceID string, sessionID string, e error) {
 	var p TopicOnWriterReadUnknownGrpcMessageInfo
+	p.Context = c
 	p.WriterInstanceID = writerInstanceID
 	p.SessionID = sessionID
 	p.Error = e
 	t.onWriterReadUnknownGrpcMessage(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnListenerStart(t *Topic, c *context.Context, listenerID string, consumer string, e error) {
+	var p TopicListenerStartInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.Consumer = consumer
+	p.Error = e
+	t.onListenerStart(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnListenerInit(t *Topic, c *context.Context, listenerID string, consumer string, topicSelectors []string) func(sessionID string, _ error) {
+	var p TopicListenerInitStartInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.Consumer = consumer
+	p.TopicSelectors = topicSelectors
+	res := t.onListenerInit(p)
+	return func(sessionID string, e error) {
+		var p TopicListenerInitDoneInfo
+		p.SessionID = sessionID
+		p.Error = e
+		res(p)
+	}
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnListenerReceiveMessage(t *Topic, c *context.Context, listenerID string, sessionID string, messageType string, bytesSize int, e error) {
+	var p TopicListenerReceiveMessageInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.SessionID = sessionID
+	p.MessageType = messageType
+	p.BytesSize = bytesSize
+	p.Error = e
+	t.onListenerReceiveMessage(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnListenerRouteMessage(t *Topic, c *context.Context, listenerID string, sessionID string, messageType string, partitionSessionID *int64, workerFound bool, e error) {
+	var p TopicListenerRouteMessageInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.SessionID = sessionID
+	p.MessageType = messageType
+	p.PartitionSessionID = partitionSessionID
+	p.WorkerFound = workerFound
+	p.Error = e
+	t.onListenerRouteMessage(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnListenerSplitMessage(t *Topic, c *context.Context, listenerID string, sessionID string, messageType string, totalBatches int, totalPartitions int, splitBatches int, routedBatches int, e error) {
+	var p TopicListenerSplitMessageInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.SessionID = sessionID
+	p.MessageType = messageType
+	p.TotalBatches = totalBatches
+	p.TotalPartitions = totalPartitions
+	p.SplitBatches = splitBatches
+	p.RoutedBatches = routedBatches
+	p.Error = e
+	t.onListenerSplitMessage(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnListenerError(t *Topic, c *context.Context, listenerID string, sessionID string, e error) {
+	var p TopicListenerErrorInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.SessionID = sessionID
+	p.Error = e
+	t.onListenerError(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnListenerClose(t *Topic, c *context.Context, listenerID string, sessionID string, reason error) func(workersClosed int, _ error) {
+	var p TopicListenerCloseStartInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.SessionID = sessionID
+	p.Reason = reason
+	res := t.onListenerClose(p)
+	return func(workersClosed int, e error) {
+		var p TopicListenerCloseDoneInfo
+		p.WorkersClosed = workersClosed
+		p.Error = e
+		res(p)
+	}
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnPartitionWorkerStart(t *Topic, c *context.Context, listenerID string, sessionID string, partitionSessionID int64, partitionID int64, topic string) {
+	var p TopicPartitionWorkerStartInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.SessionID = sessionID
+	p.PartitionSessionID = partitionSessionID
+	p.PartitionID = partitionID
+	p.Topic = topic
+	t.onPartitionWorkerStart(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnPartitionWorkerProcessMessage(t *Topic, c *context.Context, listenerID string, sessionID string, partitionSessionID int64, partitionID int64, topic string, messageType string, messagesCount int) func(processedMessages int, _ error) {
+	var p TopicPartitionWorkerProcessMessageStartInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.SessionID = sessionID
+	p.PartitionSessionID = partitionSessionID
+	p.PartitionID = partitionID
+	p.Topic = topic
+	p.MessageType = messageType
+	p.MessagesCount = messagesCount
+	res := t.onPartitionWorkerProcessMessage(p)
+	return func(processedMessages int, e error) {
+		var p TopicPartitionWorkerProcessMessageDoneInfo
+		p.ProcessedMessages = processedMessages
+		p.Error = e
+		res(p)
+	}
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnPartitionWorkerHandlerCall(t *Topic, c *context.Context, listenerID string, sessionID string, partitionSessionID int64, partitionID int64, topic string, handlerType string, messagesCount int) func(error) {
+	var p TopicPartitionWorkerHandlerCallStartInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.SessionID = sessionID
+	p.PartitionSessionID = partitionSessionID
+	p.PartitionID = partitionID
+	p.Topic = topic
+	p.HandlerType = handlerType
+	p.MessagesCount = messagesCount
+	res := t.onPartitionWorkerHandlerCall(p)
+	return func(e error) {
+		var p TopicPartitionWorkerHandlerCallDoneInfo
+		p.Error = e
+		res(p)
+	}
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnPartitionWorkerStop(t *Topic, c *context.Context, listenerID string, sessionID string, partitionSessionID int64, partitionID int64, topic string, reason error) func(error) {
+	var p TopicPartitionWorkerStopStartInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.SessionID = sessionID
+	p.PartitionSessionID = partitionSessionID
+	p.PartitionID = partitionID
+	p.Topic = topic
+	p.Reason = reason
+	res := t.onPartitionWorkerStop(p)
+	return func(e error) {
+		var p TopicPartitionWorkerStopDoneInfo
+		p.Error = e
+		res(p)
+	}
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnListenerSendDataRequest(t *Topic, c *context.Context, listenerID string, sessionID string, messageType string, e error) {
+	var p TopicListenerSendDataRequestInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.SessionID = sessionID
+	p.MessageType = messageType
+	p.Error = e
+	t.onListenerSendDataRequest(p)
+}
+// Internals: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#internals
+func TopicOnListenerUnknownMessage(t *Topic, c *context.Context, listenerID string, sessionID string, messageType string, e error) {
+	var p TopicListenerUnknownMessageInfo
+	p.Context = c
+	p.ListenerID = listenerID
+	p.SessionID = sessionID
+	p.MessageType = messageType
+	p.Error = e
+	t.onListenerUnknownMessage(p)
 }

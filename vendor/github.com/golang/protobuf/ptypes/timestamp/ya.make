@@ -2,6 +2,10 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
-SRCS(timestamp.pb.go)
+VERSION(v1.5.4)
+
+SRCS(
+    timestamp.pb.go
+)
 
 END()

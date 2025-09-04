@@ -2,6 +2,10 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
-SRCS(color.go)
+VERSION(v0.0.0-20160513160801-0940f3fc43a0)
+
+SRCS(
+    color.go
+)
 
 END()

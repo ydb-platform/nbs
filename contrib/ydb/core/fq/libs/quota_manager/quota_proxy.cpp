@@ -5,7 +5,7 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
 #include <contrib/ydb/core/fq/libs/control_plane_storage/util.h>
 #include <contrib/ydb/core/fq/libs/shared_resources/shared_resources.h>
 

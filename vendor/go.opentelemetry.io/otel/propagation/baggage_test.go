@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package propagation_test
 
@@ -67,7 +56,7 @@ func (m members) Baggage(t *testing.T) baggage.Baggage {
 	return bag
 }
 
-func TestExtractValidBaggageFromHTTPReq(t *testing.T) {
+func TestExtractValidBaggage(t *testing.T) {
 	prop := propagation.TextMapPropagator(propagation.Baggage{})
 	tests := []struct {
 		name   string
@@ -124,12 +113,78 @@ func TestExtractValidBaggageFromHTTPReq(t *testing.T) {
 				{Key: "key1", Value: "val%2"},
 			},
 		},
+		{
+			name:   "empty header",
+			header: "",
+			want:   members{},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", "http://example.com", nil)
+			mapCarr := propagation.MapCarrier{}
+			mapCarr["baggage"] = tt.header
+			req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
 			req.Header.Set("baggage", tt.header)
+
+			// test with http header carrier (which implements ValuesGetter)
+			ctx := prop.Extract(context.Background(), propagation.HeaderCarrier(req.Header))
+			expected := tt.want.Baggage(t)
+			assert.Equal(t, expected, baggage.FromContext(ctx), "should extract baggage for HeaderCarrier")
+
+			// test with map carrier (which does not implement ValuesGetter)
+			ctx = prop.Extract(context.Background(), mapCarr)
+			expected = tt.want.Baggage(t)
+			assert.Equal(t, expected, baggage.FromContext(ctx), "should extract baggage for MapCarrier")
+		})
+	}
+}
+
+func TestExtractValidMultipleBaggageHeaders(t *testing.T) {
+	prop := propagation.TextMapPropagator(propagation.Baggage{})
+	tests := []struct {
+		name    string
+		headers []string
+		want    members
+	}{
+		{
+			name:    "non conflicting headers",
+			headers: []string{"key1=val1", "key2=val2"},
+			want: members{
+				{Key: "key1", Value: "val1"},
+				{Key: "key2", Value: "val2"},
+			},
+		},
+		{
+			name:    "conflicting keys, uses last val",
+			headers: []string{"key1=val1", "key1=val2"},
+			want: members{
+				{Key: "key1", Value: "val2"},
+			},
+		},
+		{
+			name:    "single empty",
+			headers: []string{"", "key1=val1"},
+			want: members{
+				{Key: "key1", Value: "val1"},
+			},
+		},
+		{
+			name:    "all empty",
+			headers: []string{"", ""},
+			want:    members{},
+		},
+		{
+			name:    "none",
+			headers: []string{},
+			want:    members{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
+			req.Header["Baggage"] = tt.headers
 
 			ctx := context.Background()
 			ctx = prop.Extract(ctx, propagation.HeaderCarrier(req.Header))
@@ -184,7 +239,7 @@ func TestExtractInvalidDistributedContextFromHTTPReq(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", "http://example.com", nil)
+			req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
 			req.Header.Set("baggage", tt.header)
 
 			expected := tt.has.Baggage(t)
@@ -237,7 +292,7 @@ func TestInjectBaggageToHTTPReq(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", "http://example.com", nil)
+			req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
 			ctx := baggage.ContextWithBaggage(context.Background(), tt.mems.Baggage(t))
 			propagator.Inject(ctx, propagation.HeaderCarrier(req.Header))
 
@@ -284,7 +339,7 @@ func TestBaggageInjectExtractRoundtrip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := tt.mems.Baggage(t)
-			req, _ := http.NewRequest("GET", "http://example.com", nil)
+			req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
 			ctx := baggage.ContextWithBaggage(context.Background(), b)
 			propagator.Inject(ctx, propagation.HeaderCarrier(req.Header))
 

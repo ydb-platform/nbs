@@ -1,4 +1,5 @@
 PROTO_LIBRARY()
+PROTOC_FATAL_WARNINGS()
 
 SRCS(
     dq_events.proto
@@ -9,10 +10,10 @@ SRCS(
 PEERDIR(
     contrib/ydb/library/actors/protos
     contrib/ydb/public/api/protos
-    contrib/ydb/library/yql/core/issue/protos
+    yql/essentials/core/issue/protos
     contrib/ydb/library/yql/dq/proto
-    contrib/ydb/library/yql/public/issue/protos
-    contrib/ydb/library/yql/public/types
+    yql/essentials/public/issue/protos
+    yql/essentials/public/types
 )
 
 EXCLUDE_TAGS(GO_PROTO)

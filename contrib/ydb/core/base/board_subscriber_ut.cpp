@@ -17,11 +17,11 @@
 
 namespace NKikimr {
 
-class TBoardSubscriberTest: public NUnitTest::TTestBase {
+class TBoardSubscriberTestBase : public NUnitTest::TTestBase {
 
     TActorId CreateSubscriber(const TString& path, const TActorId& owner, ui32 nodeIdx) {
         const TActorId subscriber = Context->Register(
-            CreateBoardLookupActor(path, owner, 0, EBoardLookupMode::Subscription), nodeIdx
+            CreateBoardLookupActor(path, owner, EBoardLookupMode::Subscription), nodeIdx
         );
         Context->EnableScheduleForActor(subscriber);
         return subscriber;
@@ -30,7 +30,7 @@ class TBoardSubscriberTest: public NUnitTest::TTestBase {
     TActorId CreatePublisher(
             const TString& path, const TString& payload, const TActorId& owner, ui32 nodeIdx) {
         const TActorId publisher = Context->Register(
-            CreateBoardPublishActor(path, payload, owner, 0, 0, true), nodeIdx
+            CreateBoardPublishActor(path, payload, owner, 0, true), nodeIdx
         );
         Context->EnableScheduleForActor(publisher);
         return publisher;
@@ -61,13 +61,13 @@ class TBoardSubscriberTest: public NUnitTest::TTestBase {
     }
 
     TVector<TActorId> ResolveReplicas() {
-        const TActorId proxy = MakeStateStorageProxyID(0);
+        const TActorId proxy = MakeStateStorageProxyID();
         const TActorId edge = Context->AllocateEdgeActor();
 
         Context->Send(proxy, edge, new TEvStateStorage::TEvResolveBoard("path"));
         auto ev = Context->GrabEdgeEvent<TEvStateStorage::TEvResolveReplicasList>(edge);
 
-        auto allReplicas = ev->Get()->Replicas;
+        auto allReplicas = ev->Get()->GetPlainReplicas();
         return TVector<TActorId>(allReplicas.begin(), allReplicas.end());
     }
 
@@ -76,7 +76,7 @@ public:
     void SetUp() override {
         Context = MakeHolder<TTestBasicRuntime>(3);
 
-        SetupCustomStateStorage(*Context, 3, 3, 1, 0);
+        SetupCustomStateStorage(*Context, 3, 3, 1);
 
         Context->Initialize(TAppPrepare().Unwrap());
     }
@@ -85,6 +85,17 @@ public:
         Context.Reset();
     }
 
+    void SimpleSubscriber();
+    void ManySubscribersManyPublisher();
+    void NotAvailableByShutdown();
+    void ReconnectReplica();
+    void DropByDisconnect();
+
+protected:
+    THolder<TTestBasicRuntime> Context;
+};
+
+class TBoardSubscriberTest : public TBoardSubscriberTestBase {
     UNIT_TEST_SUITE(TBoardSubscriberTest);
     UNIT_TEST(SimpleSubscriber);
     UNIT_TEST(ManySubscribersManyPublisher);
@@ -92,20 +103,32 @@ public:
     UNIT_TEST(ReconnectReplica);
     UNIT_TEST(DropByDisconnect);
     UNIT_TEST_SUITE_END();
-
-    void SimpleSubscriber();
-    void ManySubscribersManyPublisher();
-    void NotAvailableByShutdown();
-    void ReconnectReplica();
-    void DropByDisconnect();
-
-private:
-    THolder<TTestBasicRuntime> Context;
 };
+
+class TBoardSubscriber2DCTest : public TBoardSubscriberTest {
+public:
+    void SetUp() override {
+        Context = MakeHolder<TTestBasicRuntime>(6);
+
+        SetupCustomStateStorage(*Context, 3, 3, 1, 2);
+
+        Context->Initialize(TAppPrepare().Unwrap());
+    }
+
+    UNIT_TEST_SUITE(TBoardSubscriber2DCTest);
+    UNIT_TEST(SimpleSubscriber);
+    UNIT_TEST(ManySubscribersManyPublisher);
+    UNIT_TEST(NotAvailableByShutdown);
+    UNIT_TEST(ReconnectReplica);
+    UNIT_TEST(DropByDisconnect);
+    UNIT_TEST_SUITE_END();
+};
+
+UNIT_TEST_SUITE_REGISTRATION(TBoardSubscriber2DCTest);
 
 UNIT_TEST_SUITE_REGISTRATION(TBoardSubscriberTest);
 
-void TBoardSubscriberTest::SimpleSubscriber() {
+void TBoardSubscriberTestBase::SimpleSubscriber() {
     const auto edgeSubscriber = Context->AllocateEdgeActor(0);
     CreateSubscriber("path", edgeSubscriber, 0);
 
@@ -158,7 +181,7 @@ void TBoardSubscriberTest::SimpleSubscriber() {
     }
 }
 
-void TBoardSubscriberTest::ManySubscribersManyPublisher() {
+void TBoardSubscriberTestBase::ManySubscribersManyPublisher() {
     size_t subscribersCount = 10;
     size_t publishersCount = 10;
 
@@ -203,7 +226,7 @@ void TBoardSubscriberTest::ManySubscribersManyPublisher() {
     }
 }
 
-void TBoardSubscriberTest::NotAvailableByShutdown() {
+void TBoardSubscriberTestBase::NotAvailableByShutdown() {
 
     auto replicas = ResolveReplicas();
 
@@ -225,7 +248,7 @@ void TBoardSubscriberTest::NotAvailableByShutdown() {
     UNIT_ASSERT_EQUAL(event->Get()->Status, TEvStateStorage::TEvBoardInfo::EStatus::NotAvailable);
 }
 
-void TBoardSubscriberTest::ReconnectReplica() {
+void TBoardSubscriberTestBase::ReconnectReplica() {
 
     const auto edgeSubscriber = Context->AllocateEdgeActor(1);
     CreateSubscriber("path", edgeSubscriber, 1);
@@ -262,7 +285,7 @@ void TBoardSubscriberTest::ReconnectReplica() {
     }
 }
 
-void TBoardSubscriberTest::DropByDisconnect() {
+void TBoardSubscriberTestBase::DropByDisconnect() {
     auto replicas = ResolveReplicas();
 
     const auto edgeSubscriber = Context->AllocateEdgeActor(1);

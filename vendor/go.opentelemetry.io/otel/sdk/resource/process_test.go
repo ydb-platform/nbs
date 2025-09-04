@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package resource_test
 
@@ -115,23 +104,23 @@ func TestWithProcessFuncsErrors(t *testing.T) {
 }
 
 func TestCommandArgs(t *testing.T) {
-	require.EqualValues(t, os.Args, resource.CommandArgs())
+	require.Equal(t, os.Args, resource.CommandArgs())
 }
 
 func TestRuntimeName(t *testing.T) {
 	if runtime.Compiler == "gc" {
-		require.EqualValues(t, "go", resource.RuntimeName())
+		require.Equal(t, "go", resource.RuntimeName())
 	} else {
-		require.EqualValues(t, runtime.Compiler, resource.RuntimeName())
+		require.Equal(t, runtime.Compiler, resource.RuntimeName())
 	}
 }
 
 func TestRuntimeOS(t *testing.T) {
-	require.EqualValues(t, runtime.GOOS, resource.RuntimeOS())
+	require.Equal(t, runtime.GOOS, resource.RuntimeOS())
 }
 
 func TestRuntimeArch(t *testing.T) {
-	require.EqualValues(t, runtime.GOARCH, resource.RuntimeArch())
+	require.Equal(t, runtime.GOARCH, resource.RuntimeArch())
 }
 
 func testWithProcessExecutablePathError(t *testing.T) {
@@ -142,7 +131,7 @@ func testWithProcessExecutablePathError(t *testing.T) {
 	)
 
 	require.Error(t, err)
-	require.EqualValues(t, map[string]string{}, toMap(res))
+	require.Equal(t, map[string]string{}, toMap(res))
 }
 
 func testWithProcessOwnerError(t *testing.T) {
@@ -153,5 +142,5 @@ func testWithProcessOwnerError(t *testing.T) {
 	)
 
 	require.Error(t, err)
-	require.EqualValues(t, map[string]string{}, toMap(res))
+	require.Equal(t, map[string]string{}, toMap(res))
 }

@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.73.0)
+
 SRCS(
     benchmark_service.pb.go
     benchmark_service_grpc.pb.go
@@ -20,4 +22,6 @@ SRCS(
 
 END()
 
-RECURSE(core)
+RECURSE(
+    core
+)

@@ -13,8 +13,8 @@ func (m AutoDeclare) blockID() blockID {
 	return blockDeclare
 }
 
-func (m AutoDeclare) RewriteQuery(query string, args ...interface{}) (
-	yql string, newArgs []interface{}, err error,
+func (m AutoDeclare) ToYdb(sql string, args ...any) (
+	yql string, newArgs []any, err error,
 ) {
 	params, err := Params(args...)
 	if err != nil {
@@ -22,7 +22,7 @@ func (m AutoDeclare) RewriteQuery(query string, args ...interface{}) (
 	}
 
 	if len(params) == 0 {
-		return query, args, nil
+		return sql, args, nil
 	}
 
 	var (
@@ -46,7 +46,7 @@ func (m AutoDeclare) RewriteQuery(query string, args ...interface{}) (
 
 	buffer.WriteByte('\n')
 
-	buffer.WriteString(query)
+	buffer.WriteString(sql)
 
 	for _, param := range params {
 		newArgs = append(newArgs, param)

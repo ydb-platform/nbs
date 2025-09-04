@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.46.7)
+
 SRCS(
     ecs_container.go
     shared_config.go
@@ -22,4 +24,6 @@ ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

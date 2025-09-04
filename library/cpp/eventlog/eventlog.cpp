@@ -318,7 +318,12 @@ static THolder<TLogBackend> ConstructBackend(const TString& fileName, const TEve
     try {
         THolder<TLogBackend> backend;
         if (backendOpts.UseSyncPageCacheBackend) {
-            backend = MakeHolder<TSyncPageCacheFileLogBackend>(fileName, backendOpts.SyncPageCacheBackendBufferSize, backendOpts.SyncPageCacheBackendMaxPendingSize);
+            backend = MakeHolder<TSyncPageCacheFileLogBackend>(
+                fileName,
+                backendOpts.SyncPageCacheBackendBufferSize,
+                backendOpts.SyncPageCacheBackendMaxPendingSize,
+                backendOpts.SyncPageCacheBackendBufferFlushPeriod
+            );
         } else {
             backend = MakeHolder<TFileLogBackend>(fileName);
         }
@@ -338,7 +343,7 @@ TEventLog::TEventLog(const TString& fileName, TEventLogFormat contentFormat, con
     , Lz4hcCodec_(NBlockCodecs::Codec("lz4hc"))
     , ZstdCodec_(NBlockCodecs::Codec("zstd_1"))
 {
-    Y_ENSURE(LogFormat_ == COMPRESSED_LOG_FORMAT_V4 || LogFormat_ == COMPRESSED_LOG_FORMAT_V5);
+    Y_ENSURE(LogFormat_ == COMPRESSED_LOG_FORMAT_V4 || LogFormat_ == COMPRESSED_LOG_FORMAT_V5 || LogFormat_ == UNCOMPRESSED_LOG_FORMAT);
 
     if (contentFormat & 0xff000000) {
         ythrow yexception() << "wrong compressed event log content format code (" << contentFormat << ")";
@@ -417,11 +422,13 @@ void TEventLog::WriteFrame(TBuffer& buffer,
                            TEventTimestamp endTimestamp,
                            TWriteFrameCallbackPtr writeFrameCallback,
                            TLogRecord::TMetaFlags metaFlags) {
-    Y_ENSURE(LogFormat_ == COMPRESSED_LOG_FORMAT_V4 || LogFormat_ == COMPRESSED_LOG_FORMAT_V5);
+    Y_ENSURE(LogFormat_ == COMPRESSED_LOG_FORMAT_V4 || LogFormat_ == COMPRESSED_LOG_FORMAT_V5 || LogFormat_ == UNCOMPRESSED_LOG_FORMAT);
 
     TBuffer& b1 = buffer;
 
-    size_t maxCompressedLength = (LogFormat_ == COMPRESSED_LOG_FORMAT_V4) ? b1.Size() + 256 : ZstdCodec_->MaxCompressedLength(b1);
+    size_t maxCompressedLength = (LogFormat_ == UNCOMPRESSED_LOG_FORMAT)  ? b1.Size() :
+                                 (LogFormat_ == COMPRESSED_LOG_FORMAT_V4) ? b1.Size() + 256
+                                                                          : ZstdCodec_->MaxCompressedLength(b1);
 
     // Reserve enough memory to minimize reallocs
     TBufferOutput outbuf(sizeof(TFrameHeaderData) + maxCompressedLength);
@@ -441,7 +448,9 @@ void TEventLog::WriteFrame(TBuffer& buffer,
         hdr.HeaderEx.CompressorVersion = 0;
     }
 
-    if (LogFormat_ == COMPRESSED_LOG_FORMAT_V4) {
+    if (LogFormat_ == UNCOMPRESSED_LOG_FORMAT) {
+        outbuf.Write(b1.Data(), b1.Size());
+    } else if (LogFormat_ == COMPRESSED_LOG_FORMAT_V4) {
         TBuffer encoded(b1.Size() + sizeof(TFrameHeaderData) + 256);
         Lz4hcCodec_->Encode(b1, encoded);
 
@@ -471,7 +480,7 @@ void TEventLog::WriteFrame(TBuffer& buffer,
     });
 
     if (writeFrameCallback) {
-        writeFrameCallback->OnAfterCompress(frameData, startTimestamp, endTimestamp);
+        writeFrameCallback->OnAfterCompress(frameData, startTimestamp, endTimestamp, metaFlags);
     }
 
     Log_.Write(frameData.Data(), frameData.Size(), std::move(metaFlags));
@@ -480,8 +489,8 @@ void TEventLog::WriteFrame(TBuffer& buffer,
     }
 }
 
-TEvent* TProtobufEventFactory::CreateLogEvent(TEventClass c) {
-    return new TProtobufEvent(c, EventFactory_);
+THolder<TEvent> TProtobufEventFactory::CreateLogEvent(TEventClass c) {
+    return MakeHolder<TProtobufEvent>(c, EventFactory_);
 }
 
 TEventClass TProtobufEventFactory::ClassByName(TStringBuf name) const {

@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package resource_test
 
@@ -30,9 +19,8 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk"
-	ottest "go.opentelemetry.io/otel/sdk/internal/internaltest"
 	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
 var (
@@ -195,7 +183,7 @@ func TestMerge(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
-			assert.EqualValues(t, c.schemaURL, res.SchemaURL())
+			assert.Equal(t, c.schemaURL, res.SchemaURL())
 			if diff := cmp.Diff(
 				res.Attributes(),
 				c.want,
@@ -208,8 +196,8 @@ func TestMerge(t *testing.T) {
 
 func TestEmpty(t *testing.T) {
 	var res *resource.Resource
-	assert.Equal(t, "", res.SchemaURL())
-	assert.Equal(t, "", res.String())
+	assert.Empty(t, res.SchemaURL())
+	assert.Empty(t, res.String())
 	assert.Equal(t, []attribute.KeyValue(nil), res.Attributes())
 
 	it := res.Iter()
@@ -310,7 +298,7 @@ func TestMarshalJSON(t *testing.T) {
 	r := resource.NewSchemaless(attribute.Int64("A", 1), attribute.String("C", "D"))
 	data, err := json.Marshal(r)
 	require.NoError(t, err)
-	require.Equal(t,
+	require.JSONEq(t,
 		`[{"Key":"A","Value":{"Type":"INT64","Value":1}},{"Key":"C","Value":{"Type":"STRING","Value":"D"}}]`,
 		string(data))
 }
@@ -421,7 +409,11 @@ func TestNew(t *testing.T) {
 			options: []resource.Option{
 				resource.WithDetectors(
 					resource.StringDetector("https://opentelemetry.io/schemas/1.0.0", semconv.HostNameKey, os.Hostname),
-					resource.StringDetector("https://opentelemetry.io/schemas/1.1.0", semconv.HostNameKey, func() (string, error) { return "", errors.New("fail") }),
+					resource.StringDetector(
+						"https://opentelemetry.io/schemas/1.1.0",
+						semconv.HostNameKey,
+						func() (string, error) { return "", errors.New("fail") },
+					),
 				),
 				resource.WithSchemaURL("https://opentelemetry.io/schemas/1.2.0"),
 			},
@@ -437,12 +429,7 @@ func TestNew(t *testing.T) {
 	}
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
-			store, err := ottest.SetEnvVariables(map[string]string{
-				envVar: tt.envars,
-			})
-			require.NoError(t, err)
-			defer func() { require.NoError(t, store.Restore()) }()
-
+			t.Setenv(envVar, tt.envars)
 			ctx := context.Background()
 			res, err := resource.New(ctx, tt.options...)
 
@@ -452,18 +439,18 @@ func TestNew(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			require.EqualValues(t, tt.resourceValues, toMap(res))
+			require.Equal(t, tt.resourceValues, toMap(res))
 
 			// TODO: do we need to ensure that resource is never nil and eliminate the
 			// following if?
 			if res != nil {
-				assert.EqualValues(t, tt.schemaURL, res.SchemaURL())
+				assert.Equal(t, tt.schemaURL, res.SchemaURL())
 			}
 		})
 	}
 }
 
-func TestNewWrapedError(t *testing.T) {
+func TestNewWrappedError(t *testing.T) {
 	localErr := errors.New("local error")
 	_, err := resource.New(
 		context.Background(),
@@ -493,7 +480,7 @@ func TestWithHostID(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
+	require.Equal(t, map[string]string{
 		"host.id": "f2c668b579780554f70f72a063dc0864",
 	}, toMap(res))
 }
@@ -509,7 +496,7 @@ func TestWithHostIDError(t *testing.T) {
 	)
 
 	assert.ErrorIs(t, err, assert.AnError)
-	require.EqualValues(t, map[string]string{}, toMap(res))
+	require.Equal(t, map[string]string{}, toMap(res))
 }
 
 func TestWithOSType(t *testing.T) {
@@ -523,7 +510,7 @@ func TestWithOSType(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
+	require.Equal(t, map[string]string{
 		"os.type": "linux",
 	}, toMap(res))
 }
@@ -539,7 +526,7 @@ func TestWithOSDescription(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
+	require.Equal(t, map[string]string{
 		"os.description": "Test",
 	}, toMap(res))
 }
@@ -555,7 +542,7 @@ func TestWithOS(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
+	require.Equal(t, map[string]string{
 		"os.type":        "linux",
 		"os.description": "Test",
 	}, toMap(res))
@@ -570,7 +557,7 @@ func TestWithProcessPID(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
+	require.Equal(t, map[string]string{
 		"process.pid": fmt.Sprint(fakePID),
 	}, toMap(res))
 }
@@ -584,7 +571,7 @@ func TestWithProcessExecutableName(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
+	require.Equal(t, map[string]string{
 		"process.executable.name": fakeExecutableName,
 	}, toMap(res))
 }
@@ -598,7 +585,7 @@ func TestWithProcessExecutablePath(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
+	require.Equal(t, map[string]string{
 		"process.executable.path": fakeExecutablePath,
 	}, toMap(res))
 }
@@ -612,8 +599,9 @@ func TestWithProcessCommandArgs(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
-		"process.command_args": fmt.Sprint(fakeCommandArgs),
+	jsonCommandArgs, _ := json.Marshal(fakeCommandArgs)
+	require.Equal(t, map[string]string{
+		"process.command_args": string(jsonCommandArgs),
 	}, toMap(res))
 }
 
@@ -626,7 +614,7 @@ func TestWithProcessOwner(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
+	require.Equal(t, map[string]string{
 		"process.owner": fakeOwner,
 	}, toMap(res))
 }
@@ -640,7 +628,7 @@ func TestWithProcessRuntimeName(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
+	require.Equal(t, map[string]string{
 		"process.runtime.name": fakeRuntimeName,
 	}, toMap(res))
 }
@@ -654,7 +642,7 @@ func TestWithProcessRuntimeVersion(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
+	require.Equal(t, map[string]string{
 		"process.runtime.version": fakeRuntimeVersion,
 	}, toMap(res))
 }
@@ -668,7 +656,7 @@ func TestWithProcessRuntimeDescription(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
+	require.Equal(t, map[string]string{
 		"process.runtime.description": fakeRuntimeDescription,
 	}, toMap(res))
 }
@@ -682,11 +670,12 @@ func TestWithProcess(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	require.EqualValues(t, map[string]string{
+	jsonCommandArgs, _ := json.Marshal(fakeCommandArgs)
+	require.Equal(t, map[string]string{
 		"process.pid":                 fmt.Sprint(fakePID),
 		"process.executable.name":     fakeExecutableName,
 		"process.executable.path":     fakeExecutablePath,
-		"process.command_args":        fmt.Sprint(fakeCommandArgs),
+		"process.command_args":        string(jsonCommandArgs),
 		"process.owner":               fakeOwner,
 		"process.runtime.name":        fakeRuntimeName,
 		"process.runtime.version":     fakeRuntimeVersion,

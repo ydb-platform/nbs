@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.32.4)
+
 SRCS(
     datadog.pb.go
     datadog.pb.validate.go
@@ -11,8 +13,6 @@ SRCS(
     http_tracer.pb.validate.go
     lightstep.pb.go
     lightstep.pb.validate.go
-    opencensus.pb.go
-    opencensus.pb.validate.go
     opentelemetry.pb.go
     opentelemetry.pb.validate.go
     service.pb.go

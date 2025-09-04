@@ -1,15 +1,12 @@
 PROGRAM(ydbd)
 
-IF (OS_LINUX)
-    ALLOCATOR(TCMALLOC_256K)
-ELSE()
-    IF (PROFILE_MEMORY_ALLOCATIONS)
-        ALLOCATOR(LF_DBG)
-    ELSE()
-        ALLOCATOR(LF_YT)
-    ENDIF()
+IF (NOT SANITIZER_TYPE)  # for some reasons some tests with asan are failed, see comment in CPPCOM-32
+    NO_EXPORT_DYNAMIC_SYMBOLS()
 ENDIF()
 
+IF (OS_LINUX)
+    ALLOCATOR(TCMALLOC_256K)
+ENDIF()
 
 IF (OS_DARWIN)
     STRIP()
@@ -30,7 +27,7 @@ SRCS(
 
 IF (ARCH_X86_64)
     PEERDIR(
-        contrib/ydb/library/yql/udfs/common/hyperscan
+        yql/essentials/udfs/common/hyperscan
     )
 ENDIF()
 
@@ -39,62 +36,42 @@ PEERDIR(
     contrib/ydb/core/driver_lib/run
     contrib/ydb/core/protos
     contrib/ydb/core/security
+    contrib/ydb/core/tx/schemeshard
     contrib/ydb/core/ymq/actor
     contrib/ydb/core/ymq/base
     contrib/ydb/library/folder_service/mock
     contrib/ydb/library/keys
     contrib/ydb/library/pdisk_io
     contrib/ydb/library/security
-    contrib/ydb/library/yql/parser/pg_wrapper
-    contrib/ydb/library/yql/sql/pg
+    yql/essentials/parser/pg_wrapper
+    yql/essentials/sql/pg
     contrib/ydb/library/yql/udfs/common/clickhouse/client
-    contrib/ydb/library/yql/udfs/common/compress_base
+    yql/essentials/udfs/common/compress_base
     contrib/ydb/library/yql/udfs/common/datetime
-    contrib/ydb/library/yql/udfs/common/datetime2
-    contrib/ydb/library/yql/udfs/common/digest
-    contrib/ydb/library/yql/udfs/common/histogram
-    contrib/ydb/library/yql/udfs/common/hyperloglog
-    contrib/ydb/library/yql/udfs/common/ip_base
+    yql/essentials/udfs/common/datetime2
+    yql/essentials/udfs/common/digest
+    yql/essentials/udfs/common/histogram
+    yql/essentials/udfs/common/hyperloglog
+    yql/essentials/udfs/common/ip_base
     contrib/ydb/library/yql/udfs/common/knn
-    contrib/ydb/library/yql/udfs/common/json
-    contrib/ydb/library/yql/udfs/common/json2
-    contrib/ydb/library/yql/udfs/common/math
-    contrib/ydb/library/yql/udfs/common/pire
-    contrib/ydb/library/yql/udfs/common/re2
-    contrib/ydb/library/yql/udfs/common/set
-    contrib/ydb/library/yql/udfs/common/stat
-    contrib/ydb/library/yql/udfs/common/string
-    contrib/ydb/library/yql/udfs/common/top
-    contrib/ydb/library/yql/udfs/common/topfreq
-    contrib/ydb/library/yql/udfs/common/unicode_base
-    contrib/ydb/library/yql/udfs/common/url_base
-    contrib/ydb/library/yql/udfs/common/yson2
-    contrib/ydb/library/yql/udfs/logs/dsv
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/codecs
-)
-
-#
-# DON'T ALLOW NEW DEPENDENCIES WITHOUT EXPLICIT APPROVE FROM  kikimr-dev@ or fomichev@
-#
-CHECK_DEPENDENT_DIRS(
-    ALLOW_ONLY
-    PEERDIRS
-    arc/api/public
-    build/internal/platform
-    build/platform
-    certs
-    contrib
-    library
-    tools/archiver
-    tools/enum_parser/enum_parser
-    tools/enum_parser/enum_serialization_runtime
-    tools/rescompressor
-    tools/rorescompiler
-    util
-    contrib/ydb
+    contrib/ydb/library/yql/udfs/common/roaring
+    yql/essentials/udfs/common/json
+    yql/essentials/udfs/common/json2
+    yql/essentials/udfs/common/math
+    yql/essentials/udfs/common/pire
+    yql/essentials/udfs/common/re2
+    yql/essentials/udfs/common/set
+    yql/essentials/udfs/common/stat
+    yql/essentials/udfs/common/string
+    yql/essentials/udfs/common/top
+    yql/essentials/udfs/common/topfreq
+    yql/essentials/udfs/common/unicode_base
+    yql/essentials/udfs/common/url_base
+    yql/essentials/udfs/common/yson2
+    yql/essentials/udfs/logs/dsv
+    contrib/ydb/library/breakpad
 )
 
 YQL_LAST_ABI_VERSION()
 
 END()
-

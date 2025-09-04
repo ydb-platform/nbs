@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-2-Clause)
 
+VERSION(v1.0.0-20201130134442-10cb98267c6c)
+
 SRCS(
     benchmark.go
     check.go
@@ -30,4 +32,6 @@ GO_XTEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

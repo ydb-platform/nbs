@@ -2,7 +2,11 @@ GO_TEST_FOR(vendor/github.com/stretchr/testify/assert)
 
 LICENSE(MIT)
 
-DATA(arcadia/vendor/github.com/stretchr/testify)
+VERSION(v1.10.0)
+
+DATA(
+    arcadia/vendor/github.com/stretchr/testify
+)
 
 TEST_CWD(vendor/github.com/stretchr/testify/assert)
 

@@ -197,11 +197,30 @@ void TInfoCollector::Bootstrap() {
     Become(&TThis::StateWork);
 }
 
+using TPileMap = TEvInterconnect::TEvNodesInfo::TPileMap;
+
+THashMap<ui32, ui32> FlipPileMap(const std::shared_ptr<const TPileMap> pileMap) {
+    THashMap<ui32, ui32> result;
+
+    if (!pileMap)
+        return result;
+
+    for (ui32 i = 0; i < pileMap->size(); ++i) {
+        for (ui32 j : pileMap->at(i)) {
+            result.emplace(j, i);
+        }
+    }
+    return result;
+}
+
 void TInfoCollector::Handle(TEvInterconnect::TEvNodesInfo::TPtr& ev) {
     RequestBaseConfig();
     RequestBootstrapConfig();
     RequestStateStorageConfig();
 
+    const auto& pileMap = ev->Get()->PileMap;
+    Info->IsBridgeMode = static_cast<bool>(pileMap);
+    Info->NodeIdToPileId = FlipPileMap(pileMap);
     for (const auto& node : ev->Get()->Nodes) {
         Info->AddNode(node, &TlsActivationContext->AsActorContext());
         SendNodeRequests(node.NodeId);
@@ -239,11 +258,8 @@ void TInfoCollector::Handle(TEvConfigsDispatcher::TEvGetConfigResponse::TPtr& ev
 }
 
 void TInfoCollector::RequestStateStorageConfig() {
-    const auto& domains = AppData()->DomainsInfo->Domains;
-    Y_ABORT_UNLESS(domains.size() <= 1);
-
-    for (const auto& domain : domains) {
-        const auto ssProxyId = MakeStateStorageProxyID(domain.second->DefaultStateStorageGroup);
+    if (AppData()->DomainsInfo->Domain) {
+        const auto ssProxyId = MakeStateStorageProxyID();
         Send(ssProxyId, new TEvStateStorage::TEvListStateStorage());
     }
 }
@@ -265,11 +281,8 @@ void TInfoCollector::Handle(TEvStateStorage::TEvListStateStorageResult::TPtr& ev
 void TInfoCollector::RequestBaseConfig() {
     using namespace NTabletPipe;
 
-    const auto& domains = AppData()->DomainsInfo->Domains;
-    Y_ABORT_UNLESS(domains.size() <= 1);
-
-    for (const auto& domain : domains) {
-        const auto bscId = MakeBSControllerID(domain.second->DefaultStateStorageGroup);
+    if (AppData()->DomainsInfo->Domain) {
+        const auto bscId = MakeBSControllerID();
         BscPipe = Register(CreateClient(SelfId(), bscId, TClientConfig(TClientRetryPolicy::WithRetries())));
 
         auto ev = MakeHolder<TEvBlobStorage::TEvControllerConfigRequest>();
@@ -298,7 +311,9 @@ void TInfoCollector::Handle(TEvBlobStorage::TEvControllerConfigResponse::TPtr& e
         }
 
         for (const auto& group : record.GetStatus(0).GetBaseConfig().GetGroup()) {
-            Info->AddBSGroup(group);
+            if (!group.GetIsProxyGroup()) {
+                Info->AddBSGroup(group);
+            }
         }
 
         MaybeReplyAndDie();
@@ -338,11 +353,8 @@ void TInfoCollector::SendNodeRequests(ui32 nodeId) {
     SendNodeEvent(nodeId, whiteBoardId, new TEvWhiteboard::TEvPDiskStateRequest(), TEvWhiteboard::EvPDiskStateResponse);
     SendNodeEvent(nodeId, whiteBoardId, new TEvWhiteboard::TEvVDiskStateRequest(), TEvWhiteboard::EvVDiskStateResponse);
 
-    const auto& domains = AppData()->DomainsInfo->Domains;
-    Y_ABORT_UNLESS(domains.size() <= 1);
-
-    for (const auto& domain : domains) {
-        const TActorId tenantPoolId = MakeTenantPoolID(nodeId, domain.second->DomainUid);
+    if (AppData()->DomainsInfo->Domain) {
+        const TActorId tenantPoolId = MakeTenantPoolID(nodeId);
         SendNodeEvent(nodeId, tenantPoolId, new TEvTenantPool::TEvGetStatus(true), TEvTenantPool::EvTenantPoolStatus);
     }
 }

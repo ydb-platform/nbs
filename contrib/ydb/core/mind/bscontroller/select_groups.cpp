@@ -32,7 +32,7 @@ public:
         out.SetNewStyleQuerySupported(true);
 
         if (!record.GetReturnAllMatchingGroups()) {
-            Y_DEBUG_ABORT_UNLESS(false, "obsolete command");
+            Y_DEBUG_ABORT("obsolete command");
             out.SetStatus(NKikimrProto::ERROR);
         } else {
             TVector<const TGroupInfo*> groups;
@@ -52,11 +52,11 @@ public:
                     if (!group->Down && (group->SeenOperational || !record.GetOnlySeenOperational())) {
                         auto *reportedGroup = pb->AddGroups();
                         reportedGroup->SetErasureSpecies(group->ErasureSpecies);
-                        reportedGroup->SetGroupID(group->ID);
+                        reportedGroup->SetGroupID(group->ID.GetRawId());
                         reportedGroup->SetStoragePoolName(Self->StoragePools.at(group->StoragePoolId).Name);
                         reportedGroup->SetPhysicalGroup(group->IsPhysicalGroup());
                         reportedGroup->SetDecommitted(group->IsDecommitted());
-                        group->FillInGroupParameters(reportedGroup);
+                        group->FillInGroupParameters(reportedGroup, Self);
                     }
                 }
             }
@@ -116,8 +116,8 @@ void TBlobStorageController::ProcessSelectGroupsQueueItem(TList<TSelectGroupsQue
 
             };
 
-            if (TGroupInfo *group = FindGroup(g.GetGroupID()); group && !hasResources()) {
-                group->FillInGroupParameters(&g);
+            if (TGroupInfo *group = FindGroup(TGroupId::FromProto(&g, &NKikimrBlobStorage::TEvControllerSelectGroupsResult::TGroupParameters::GetGroupID)); group && !hasResources()) {
+                group->FillInGroupParameters(&g, this);
                 if (!hasResources()) {
                     // any of PDisks will do
                     for (const TVSlotInfo *vslot : group->VDisksInGroup) {

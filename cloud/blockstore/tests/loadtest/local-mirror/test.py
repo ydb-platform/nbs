@@ -3,7 +3,6 @@ import os
 import pytest
 
 from cloud.blockstore.config.client_pb2 import TClientConfig
-from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
     TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
@@ -162,7 +161,7 @@ def __run_test(test_case, use_rdma):
 
     configurator = KikimrConfigGenerator(
         erasure=None,
-        binary_path=kikimr_binary_path,
+        binary_paths=[kikimr_binary_path],
         use_in_memory_pdisks=True,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
@@ -200,7 +199,7 @@ def __run_test(test_case, use_rdma):
         setup_nonreplicated(
             kikimr_cluster.client,
             devices_per_agent,
-            disk_agent_config_patch=TDiskAgentConfig(DedicatedDiskAgent=True),
+            dedicated_disk_agent=True,
             agent_count=test_case.agent_count,
         )
 

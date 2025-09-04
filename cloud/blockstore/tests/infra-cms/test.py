@@ -125,7 +125,6 @@ class _TestCmsRemoveAgentNoUserDisks:
             response = cms.add_agent("localhost")
             assert response.ActionResults[0].Timeout == 0
             nbs.wait_for_stats(UnknownDevices=0)
-            wait_for_secure_erase(nbs.mon_port)
         else:
             nbs.wait_for_stats(AgentsInWarningState=1)
             assert nbs.get_stats("UnknownDevices") == 0
@@ -480,7 +479,7 @@ def __run_test(test_case, always_allocate_local_ssd):
 
     configurator = KikimrConfigGenerator(
         erasure=None,
-        binary_path=kikimr_binary_path,
+        binary_paths=[kikimr_binary_path],
         use_in_memory_pdisks=True,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),

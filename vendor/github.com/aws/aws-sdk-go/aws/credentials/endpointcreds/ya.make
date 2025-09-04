@@ -2,10 +2,16 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
-SRCS(provider.go)
+VERSION(v1.46.7)
+
+SRCS(
+    provider.go
+)
 
 GO_XTEST_SRCS(provider_test.go)
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

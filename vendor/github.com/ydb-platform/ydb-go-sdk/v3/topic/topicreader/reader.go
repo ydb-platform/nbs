@@ -2,10 +2,13 @@ package topicreader
 
 import (
 	"context"
+	"sync/atomic"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topic/topicreadercommon"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topic/topicreaderinternal"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xatomic"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/tx"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
 // Reader allow to read message from YDB topics.
@@ -21,8 +24,8 @@ import (
 // | Close            |      -      |         -        |   -    | -     |
 type Reader struct {
 	reader         topicreaderinternal.Reader
-	readInFlyght   xatomic.Bool
-	commitInFlyght xatomic.Bool
+	readInFlyght   atomic.Bool
+	commitInFlyght atomic.Bool
 }
 
 // NewReader
@@ -49,16 +52,17 @@ func (r *Reader) ReadMessage(ctx context.Context) (*Message, error) {
 }
 
 // Message contains data and metadata, readed from the server
-type Message = topicreaderinternal.PublicMessage
+type Message = topicreadercommon.PublicMessage
 
 // MessageContentUnmarshaler is interface for unmarshal message content to own struct
-type MessageContentUnmarshaler = topicreaderinternal.PublicMessageContentUnmarshaler
+type MessageContentUnmarshaler = topicreadercommon.PublicMessageContentUnmarshaler
 
 // Commit receive Message, Batch of single offset
 // It can be fast (by default) or sync and waite response from server
-// see topicoptions.CommitMode for details
-//
-// for topicoptions.CommitModeSync mode sync the method can return ErrCommitToExpiredSession
+// see topicoptions.CommitMode for details.
+// Fast mode of commit (default) - store commit info to internal buffer only and send it to the server later.
+// Close the reader for wait to send all commits to the server.
+// For topicoptions.CommitModeSync mode sync the method can return ErrCommitToExpiredSession
 // it means about the message/batch was not committed because connection broken or partition routed to
 // other reader by server.
 // Client code should continue work normally
@@ -71,12 +75,64 @@ func (r *Reader) Commit(ctx context.Context, obj CommitRangeGetter) error {
 	return r.reader.Commit(ctx, obj)
 }
 
+// PopMessagesBatchTx read messages batch and commit them within tx.
+// If tx failed - the batch will be received again.
+//
+// Now it means reconnect to the server and re-read messages from the server to the readers buffer.
+// It is expensive operation and will be good to minimize transaction failures.
+//
+// The reconnect is implementation detail and may be changed in the future.
+//
+// Experimental: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#experimental
+func (r *Reader) PopMessagesBatchTx(
+	ctx context.Context,
+	transaction tx.Identifier,
+	opts ...ReadBatchOption,
+) (
+	resBatch *Batch,
+	resErr error,
+) {
+	if err := r.inCall(&r.readInFlyght); err != nil {
+		return nil, err
+	}
+	defer r.outCall(&r.readInFlyght)
+
+	internalTx, err := tx.AsTransaction(transaction)
+	if err != nil {
+		return nil, err
+	}
+
+	tracer := r.reader.Tracer()
+
+	traceCtx := ctx
+	onDone := trace.TopicOnReaderPopBatchTx(tracer, &traceCtx, r.reader.ID(), internalTx.SessionID(), internalTx)
+	ctx = traceCtx
+
+	defer func() {
+		var startOffset, endOffset int64
+		var messagesCount int
+
+		if resBatch != nil {
+			messagesCount = len(resBatch.Messages)
+			commitRange := topicreadercommon.GetCommitRange(resBatch)
+			startOffset = commitRange.CommitOffsetStart.ToInt64()
+			endOffset = commitRange.CommitOffsetEnd.ToInt64()
+		}
+		onDone(startOffset, endOffset, messagesCount, resErr)
+	}()
+
+	return r.reader.PopBatchTx(ctx, internalTx, opts...)
+}
+
 // CommitRangeGetter interface for get commit offsets
-type CommitRangeGetter = topicreaderinternal.PublicCommitRangeGetter
+type CommitRangeGetter = topicreadercommon.PublicCommitRangeGetter
 
 // ReadMessageBatch
-// Deprecated: (was experimental) will be removed soon.
+//
+// Deprecated: was experimental and not actual now.
 // Use ReadMessagesBatch instead.
+// Will be removed after Oct 2024.
+// Read about versioning policy: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#deprecated
 func (r *Reader) ReadMessageBatch(ctx context.Context, opts ...ReadBatchOption) (*Batch, error) {
 	if err := r.inCall(&r.readInFlyght); err != nil {
 		return nil, err
@@ -100,14 +156,14 @@ func (r *Reader) ReadMessagesBatch(ctx context.Context, opts ...ReadBatchOption)
 }
 
 // Batch is ordered group of messages from one partition
-type Batch = topicreaderinternal.PublicBatch
+type Batch = topicreadercommon.PublicBatch
 
 // ReadBatchOption is type for options of read batch
 type ReadBatchOption = topicreaderinternal.PublicReadBatchOption
 
-// Close stop work with reader
-// return when reader complete internal works, flush commit buffer, ets
-// or when ctx cancelled
+// Close stop work with reader.
+// return when reader complete internal works, flush commit buffer. You should close the Reader after use and before
+// exit from a program for prevent lost last commits.
 func (r *Reader) Close(ctx context.Context) error {
 	// close must be non-concurrent with read and commit
 
@@ -124,7 +180,7 @@ func (r *Reader) Close(ctx context.Context) error {
 	return r.reader.Close(ctx)
 }
 
-func (r *Reader) inCall(inFlight *xatomic.Bool) error {
+func (r *Reader) inCall(inFlight *atomic.Bool) error {
 	if inFlight.CompareAndSwap(false, true) {
 		return nil
 	}
@@ -132,7 +188,7 @@ func (r *Reader) inCall(inFlight *xatomic.Bool) error {
 	return xerrors.WithStackTrace(ErrConcurrencyCall)
 }
 
-func (r *Reader) outCall(inFlight *xatomic.Bool) {
+func (r *Reader) outCall(inFlight *atomic.Bool) {
 	if inFlight.CompareAndSwap(true, false) {
 		return
 	}

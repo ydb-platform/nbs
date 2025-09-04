@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v3.24.2)
+
 SRCS(
     net.go
     net_linux_116.go
@@ -10,7 +12,9 @@ SRCS(
 GO_TEST_SRCS(net_test.go)
 
 IF (OS_LINUX)
-    SRCS(net_linux.go)
+    SRCS(
+        net_linux.go
+    )
 
     GO_TEST_SRCS(
         net_linux_netlink_test.go
@@ -28,9 +32,13 @@ IF (OS_DARWIN)
 ENDIF()
 
 IF (OS_WINDOWS)
-    SRCS(net_windows.go)
+    SRCS(
+        net_windows.go
+    )
 ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

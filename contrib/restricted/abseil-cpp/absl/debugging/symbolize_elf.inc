@@ -52,6 +52,7 @@
 #include <elf.h>
 #include <fcntl.h>
 #include <link.h>  // For ElfW() macro.
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -124,12 +125,20 @@ namespace {
 // Some platforms use a special .opd section to store function pointers.
 const char kOpdSectionName[] = ".opd";
 
-#if (defined(__powerpc__) && !(_CALL_ELF > 1)) || defined(__ia64)
+#if defined(__powerpc64__) && defined(_CALL_ELF)
+#if _CALL_ELF <= 1
+#define ABSL_INTERNAL_HAVE_PPC64_ELFV1_ABI 1
+#endif
+#endif
+#if defined(ABSL_INTERNAL_HAVE_PPC64_ELFV1_ABI) || defined(__ia64)
 // Use opd section for function descriptors on these platforms, the function
 // address is the first word of the descriptor.
-enum { kPlatformUsesOPDSections = 1 };
-#else  // not PPC or IA64
-enum { kPlatformUsesOPDSections = 0 };
+//
+// https://maskray.me/blog/2023-02-26-linker-notes-on-power-isa notes that
+// opd sections are used on 64-bit PowerPC with the ELFv1 ABI.
+inline constexpr bool kPlatformUsesOPDSections = true;
+#else
+inline constexpr bool kPlatformUsesOPDSections = false;
 #endif
 
 // This works for PowerPC & IA64 only.  A function descriptor consist of two
@@ -158,22 +167,22 @@ struct FileMappingHint {
 // We are using SpinLock and not a Mutex here, because we may be called
 // from inside Mutex::Lock itself, and it prohibits recursive calls.
 // This happens in e.g. base/stacktrace_syscall_unittest.
-// Moreover, we are using only TryLock(), if the decorator list
+// Moreover, we are using only try_lock(), if the decorator list
 // is being modified (is busy), we skip all decorators, and possibly
 // loose some info. Sorry, that's the best we could do.
 ABSL_CONST_INIT absl::base_internal::SpinLock g_decorators_mu(
-    absl::kConstInit, absl::base_internal::SCHEDULE_KERNEL_ONLY);
+    absl::base_internal::SCHEDULE_KERNEL_ONLY);
 
 const int kMaxFileMappingHints = 8;
 int g_num_file_mapping_hints;
 FileMappingHint g_file_mapping_hints[kMaxFileMappingHints];
 // Protects g_file_mapping_hints.
 ABSL_CONST_INIT absl::base_internal::SpinLock g_file_mapping_mu(
-    absl::kConstInit, absl::base_internal::SCHEDULE_KERNEL_ONLY);
+    absl::base_internal::SCHEDULE_KERNEL_ONLY);
 
 // Async-signal-safe function to zero a buffer.
 // memset() is not guaranteed to be async-signal-safe.
-static void SafeMemZero(void* p, size_t size) {
+static void SafeMemZero(void *p, size_t size) {
   unsigned char *c = static_cast<unsigned char *>(p);
   while (size--) {
     *c++ = 0;
@@ -224,29 +233,6 @@ struct SymbolCacheLine {
 };
 
 // ---------------------------------------------------------------
-// An async-signal-safe arena for LowLevelAlloc
-static std::atomic<base_internal::LowLevelAlloc::Arena *> g_sig_safe_arena;
-
-static base_internal::LowLevelAlloc::Arena *SigSafeArena() {
-  return g_sig_safe_arena.load(std::memory_order_acquire);
-}
-
-static void InitSigSafeArena() {
-  if (SigSafeArena() == nullptr) {
-    base_internal::LowLevelAlloc::Arena *new_arena =
-        base_internal::LowLevelAlloc::NewArena(
-            base_internal::LowLevelAlloc::kAsyncSignalSafe);
-    base_internal::LowLevelAlloc::Arena *old_value = nullptr;
-    if (!g_sig_safe_arena.compare_exchange_strong(old_value, new_arena,
-                                                  std::memory_order_release,
-                                                  std::memory_order_relaxed)) {
-      // We lost a race to allocate an arena; deallocate.
-      base_internal::LowLevelAlloc::DeleteArena(new_arena);
-    }
-  }
-}
-
-// ---------------------------------------------------------------
 // An AddrMap is a vector of ObjFile, using SigSafeArena() for allocation.
 
 class AddrMap {
@@ -278,7 +264,7 @@ ObjFile *AddrMap::Add() {
     size_t new_allocated = allocated_ * 2 + 50;
     ObjFile *new_obj_ =
         static_cast<ObjFile *>(base_internal::LowLevelAlloc::AllocWithArena(
-            new_allocated * sizeof(*new_obj_), SigSafeArena()));
+            new_allocated * sizeof(*new_obj_), base_internal::SigSafeArena()));
     if (obj_) {
       memcpy(new_obj_, obj_, allocated_ * sizeof(*new_obj_));
       base_internal::LowLevelAlloc::Free(obj_);
@@ -288,6 +274,30 @@ ObjFile *AddrMap::Add() {
   }
   return new (&obj_[size_++]) ObjFile;
 }
+
+class CachingFile {
+ public:
+  // Setup reader for fd that uses buf[0, buf_size-1] as a cache.
+  CachingFile(int fd, char *buf, size_t buf_size)
+      : fd_(fd),
+        cache_(buf),
+        cache_size_(buf_size),
+        cache_start_(0),
+        cache_limit_(0) {}
+
+  int fd() const { return fd_; }
+  ssize_t ReadFromOffset(void *buf, size_t count, off_t offset);
+  bool ReadFromOffsetExact(void *buf, size_t count, off_t offset);
+
+ private:
+  // Bytes [cache_start_, cache_limit_-1] from fd_ are stored in
+  // a prefix of cache_[0, cache_size_-1].
+  int fd_;
+  char *cache_;
+  size_t cache_size_;
+  off_t cache_start_;
+  off_t cache_limit_;
+};
 
 // ---------------------------------------------------------------
 
@@ -302,8 +312,9 @@ class Symbolizer {
  private:
   char *CopyString(const char *s) {
     size_t len = strlen(s);
-    char *dst = static_cast<char *>(
-        base_internal::LowLevelAlloc::AllocWithArena(len + 1, SigSafeArena()));
+    char *dst =
+        static_cast<char *>(base_internal::LowLevelAlloc::AllocWithArena(
+            len + 1, base_internal::SigSafeArena()));
     ABSL_RAW_CHECK(dst != nullptr, "out of memory");
     memcpy(dst, s, len + 1);
     return dst;
@@ -330,6 +341,7 @@ class Symbolizer {
     SYMBOL_BUF_SIZE = 3072,
     TMP_BUF_SIZE = 1024,
     SYMBOL_CACHE_LINES = 128,
+    FILE_CACHE_SIZE = 8192,
   };
 
   AddrMap addr_map_;
@@ -338,6 +350,7 @@ class Symbolizer {
   bool addr_map_read_;
 
   char symbol_buf_[SYMBOL_BUF_SIZE];
+  char file_cache_[FILE_CACHE_SIZE];
 
   // tmp_buf_ will be used to store arrays of ElfW(Shdr) and ElfW(Sym)
   // so we ensure that tmp_buf_ is properly aligned to store either.
@@ -349,6 +362,46 @@ class Symbolizer {
 
   SymbolCacheLine symbol_cache_[SYMBOL_CACHE_LINES];
 };
+
+// Protect against client code closing low-valued file descriptors it doesn't
+// actually own.
+int OpenReadOnlyWithHighFD(const char *fname) {
+  static int high_fd = [] {
+    struct rlimit rlim{};
+    const int rc = getrlimit(RLIMIT_NOFILE, &rlim);
+    if (rc == 0 && rlim.rlim_cur >= 2000) {
+      const int max_fd = static_cast<int>(rlim.rlim_cur);
+
+      // This will return 2000 on reasonably-configured systems.
+      return std::min<int>(2000, max_fd - 1000);
+    }
+    ABSL_RAW_LOG(WARNING, "Unable to get high fd: rc=%d, limit=%ld",  //
+                 rc, static_cast<long>(rlim.rlim_cur));
+    return -1;
+  }();
+  constexpr int kOpenFlags = O_RDONLY | O_CLOEXEC;
+  if (high_fd >= 1000) {
+    const int fd = open(fname, kOpenFlags);
+    if (fd != -1 && fd < high_fd) {
+      // Try to relocate fd to high range.
+      static_assert(kOpenFlags & O_CLOEXEC,
+                    "F_DUPFD_CLOEXEC assumes O_CLOEXEC");
+      const int fd2 = fcntl(fd, F_DUPFD_CLOEXEC, high_fd);
+      if (fd2 != -1) {
+        // Successfully obtained high fd. Use it.
+        close(fd);
+        return fd2;
+      } else {
+        ABSL_RAW_LOG(WARNING, "Unable to dup fd=%d above %d, errno=%d", fd,
+                     high_fd, errno);
+      }
+    }
+    // Either open failed and fd==-1, or fd is already above high_fd, or fcntl
+    // failed and fd is valid (but low).
+    return fd;
+  }
+  return open(fname, kOpenFlags);
+}
 
 static std::atomic<Symbolizer *> g_cached_symbolizer;
 
@@ -366,14 +419,14 @@ static size_t SymbolizerSize() {
 // Return (and set null) g_cached_symbolized_state if it is not null.
 // Otherwise return a new symbolizer.
 static Symbolizer *AllocateSymbolizer() {
-  InitSigSafeArena();
+  base_internal::InitSigSafeArena();
   Symbolizer *symbolizer =
       g_cached_symbolizer.exchange(nullptr, std::memory_order_acquire);
   if (symbolizer != nullptr) {
     return symbolizer;
   }
   return new (base_internal::LowLevelAlloc::AllocWithArena(
-      SymbolizerSize(), SigSafeArena())) Symbolizer();
+      SymbolizerSize(), base_internal::SigSafeArena())) Symbolizer();
 }
 
 // Set g_cached_symbolize_state to s if it is null, otherwise
@@ -436,34 +489,58 @@ static ssize_t ReadPersistent(int fd, void *buf, size_t count) {
   return static_cast<ssize_t>(num_bytes);
 }
 
-// Read up to "count" bytes from "offset" in the file pointed by file
-// descriptor "fd" into the buffer starting at "buf".  On success,
-// return the number of bytes read.  Otherwise, return -1.
-static ssize_t ReadFromOffset(const int fd, void *buf, const size_t count,
-                              const off_t offset) {
-  off_t off = lseek(fd, offset, SEEK_SET);
-  if (off == (off_t)-1) {
-    ABSL_RAW_LOG(WARNING, "lseek(%d, %jd, SEEK_SET) failed: errno=%d", fd,
-                 static_cast<intmax_t>(offset), errno);
-    return -1;
+// Read up to "count" bytes from "offset" into the buffer starting at "buf",
+// while handling short reads and EINTR.  On success, return the number of bytes
+// read.  Otherwise, return -1.
+ssize_t CachingFile::ReadFromOffset(void *buf, size_t count, off_t offset) {
+  char *dst = static_cast<char *>(buf);
+  size_t read = 0;
+  while (read < count) {
+    // Look in cache first.
+    if (offset >= cache_start_ && offset < cache_limit_) {
+      const char *hit_start = &cache_[offset - cache_start_];
+      const size_t n =
+          std::min(count - read, static_cast<size_t>(cache_limit_ - offset));
+      memcpy(dst, hit_start, n);
+      dst += n;
+      read += static_cast<size_t>(n);
+      offset += static_cast<off_t>(n);
+      continue;
+    }
+
+    cache_start_ = 0;
+    cache_limit_ = 0;
+    ssize_t n = pread(fd_, cache_, cache_size_, offset);
+    if (n < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      ABSL_RAW_LOG(WARNING, "read failed: errno=%d", errno);
+      return -1;
+    }
+    if (n == 0) {  // Reached EOF.
+      break;
+    }
+
+    cache_start_ = offset;
+    cache_limit_ = offset + static_cast<off_t>(n);
+    // Next iteration will copy from cache into dst.
   }
-  return ReadPersistent(fd, buf, count);
+  return static_cast<ssize_t>(read);
 }
 
-// Try reading exactly "count" bytes from "offset" bytes in a file
-// pointed by "fd" into the buffer starting at "buf" while handling
-// short reads and EINTR.  On success, return true. Otherwise, return
-// false.
-static bool ReadFromOffsetExact(const int fd, void *buf, const size_t count,
-                                const off_t offset) {
-  ssize_t len = ReadFromOffset(fd, buf, count, offset);
+// Try reading exactly "count" bytes from "offset" bytes into the buffer
+// starting at "buf" while handling short reads and EINTR.  On success, return
+// true. Otherwise, return false.
+bool CachingFile::ReadFromOffsetExact(void *buf, size_t count, off_t offset) {
+  ssize_t len = ReadFromOffset(buf, count, offset);
   return len >= 0 && static_cast<size_t>(len) == count;
 }
 
 // Returns elf_header.e_type if the file pointed by fd is an ELF binary.
-static int FileGetElfType(const int fd) {
+static int FileGetElfType(CachingFile *file) {
   ElfW(Ehdr) elf_header;
-  if (!ReadFromOffsetExact(fd, &elf_header, sizeof(elf_header), 0)) {
+  if (!file->ReadFromOffsetExact(&elf_header, sizeof(elf_header), 0)) {
     return -1;
   }
   if (memcmp(elf_header.e_ident, ELFMAG, SELFMAG) != 0) {
@@ -478,8 +555,8 @@ static int FileGetElfType(const int fd) {
 // To keep stack consumption low, we would like this function to not get
 // inlined.
 static ABSL_ATTRIBUTE_NOINLINE bool GetSectionHeaderByType(
-    const int fd, ElfW(Half) sh_num, const off_t sh_offset, ElfW(Word) type,
-    ElfW(Shdr) * out, char *tmp_buf, size_t tmp_buf_size) {
+    CachingFile *file, ElfW(Half) sh_num, const off_t sh_offset,
+    ElfW(Word) type, ElfW(Shdr) * out, char *tmp_buf, size_t tmp_buf_size) {
   ElfW(Shdr) *buf = reinterpret_cast<ElfW(Shdr) *>(tmp_buf);
   const size_t buf_entries = tmp_buf_size / sizeof(buf[0]);
   const size_t buf_bytes = buf_entries * sizeof(buf[0]);
@@ -490,12 +567,10 @@ static ABSL_ATTRIBUTE_NOINLINE bool GetSectionHeaderByType(
     const size_t num_bytes_to_read =
         (buf_bytes > num_bytes_left) ? num_bytes_left : buf_bytes;
     const off_t offset = sh_offset + static_cast<off_t>(i * sizeof(buf[0]));
-    const ssize_t len = ReadFromOffset(fd, buf, num_bytes_to_read, offset);
-    if (len < 0) {
-      ABSL_RAW_LOG(
-          WARNING,
-          "Reading %zu bytes from offset %ju returned %zd which is negative.",
-          num_bytes_to_read, static_cast<intmax_t>(offset), len);
+    const ssize_t len = file->ReadFromOffset(buf, num_bytes_to_read, offset);
+    if (len <= 0) {
+      ABSL_RAW_LOG(WARNING, "Reading %zu bytes from offset %ju returned %zd.",
+                   num_bytes_to_read, static_cast<intmax_t>(offset), len);
       return false;
     }
     if (static_cast<size_t>(len) % sizeof(buf[0]) != 0) {
@@ -524,11 +599,17 @@ static ABSL_ATTRIBUTE_NOINLINE bool GetSectionHeaderByType(
 // but there has (as yet) been no need for anything longer either.
 const int kMaxSectionNameLen = 64;
 
+// Small cache to use for miscellaneous file reads.
+const int kSmallFileCacheSize = 100;
+
 bool ForEachSection(int fd,
                     const std::function<bool(absl::string_view name,
                                              const ElfW(Shdr) &)> &callback) {
+  char buf[kSmallFileCacheSize];
+  CachingFile file(fd, buf, sizeof(buf));
+
   ElfW(Ehdr) elf_header;
-  if (!ReadFromOffsetExact(fd, &elf_header, sizeof(elf_header), 0)) {
+  if (!file.ReadFromOffsetExact(&elf_header, sizeof(elf_header), 0)) {
     return false;
   }
 
@@ -540,7 +621,7 @@ bool ForEachSection(int fd,
   ElfW(Shdr) shstrtab;
   off_t shstrtab_offset = static_cast<off_t>(elf_header.e_shoff) +
                           elf_header.e_shentsize * elf_header.e_shstrndx;
-  if (!ReadFromOffsetExact(fd, &shstrtab, sizeof(shstrtab), shstrtab_offset)) {
+  if (!file.ReadFromOffsetExact(&shstrtab, sizeof(shstrtab), shstrtab_offset)) {
     return false;
   }
 
@@ -548,13 +629,13 @@ bool ForEachSection(int fd,
     ElfW(Shdr) out;
     off_t section_header_offset =
         static_cast<off_t>(elf_header.e_shoff) + elf_header.e_shentsize * i;
-    if (!ReadFromOffsetExact(fd, &out, sizeof(out), section_header_offset)) {
+    if (!file.ReadFromOffsetExact(&out, sizeof(out), section_header_offset)) {
       return false;
     }
     off_t name_offset = static_cast<off_t>(shstrtab.sh_offset) + out.sh_name;
     char header_name[kMaxSectionNameLen];
     ssize_t n_read =
-        ReadFromOffset(fd, &header_name, kMaxSectionNameLen, name_offset);
+        file.ReadFromOffset(&header_name, kMaxSectionNameLen, name_offset);
     if (n_read < 0) {
       return false;
     } else if (n_read > kMaxSectionNameLen) {
@@ -584,8 +665,10 @@ bool GetSectionHeaderByName(int fd, const char *name, size_t name_len,
     return false;
   }
 
+  char buf[kSmallFileCacheSize];
+  CachingFile file(fd, buf, sizeof(buf));
   ElfW(Ehdr) elf_header;
-  if (!ReadFromOffsetExact(fd, &elf_header, sizeof(elf_header), 0)) {
+  if (!file.ReadFromOffsetExact(&elf_header, sizeof(elf_header), 0)) {
     return false;
   }
 
@@ -597,18 +680,18 @@ bool GetSectionHeaderByName(int fd, const char *name, size_t name_len,
   ElfW(Shdr) shstrtab;
   off_t shstrtab_offset = static_cast<off_t>(elf_header.e_shoff) +
                           elf_header.e_shentsize * elf_header.e_shstrndx;
-  if (!ReadFromOffsetExact(fd, &shstrtab, sizeof(shstrtab), shstrtab_offset)) {
+  if (!file.ReadFromOffsetExact(&shstrtab, sizeof(shstrtab), shstrtab_offset)) {
     return false;
   }
 
   for (int i = 0; i < elf_header.e_shnum; ++i) {
     off_t section_header_offset =
         static_cast<off_t>(elf_header.e_shoff) + elf_header.e_shentsize * i;
-    if (!ReadFromOffsetExact(fd, out, sizeof(*out), section_header_offset)) {
+    if (!file.ReadFromOffsetExact(out, sizeof(*out), section_header_offset)) {
       return false;
     }
     off_t name_offset = static_cast<off_t>(shstrtab.sh_offset) + out->sh_name;
-    ssize_t n_read = ReadFromOffset(fd, &header_name, name_len, name_offset);
+    ssize_t n_read = file.ReadFromOffset(&header_name, name_len, name_offset);
     if (n_read < 0) {
       return false;
     } else if (static_cast<size_t>(n_read) != name_len) {
@@ -683,7 +766,7 @@ static const char *ComputeOffset(const char *base, ptrdiff_t offset) {
 // To keep stack consumption low, we would like this function to not get
 // inlined.
 static ABSL_ATTRIBUTE_NOINLINE FindSymbolResult FindSymbol(
-    const void *const pc, const int fd, char *out, size_t out_size,
+    const void *const pc, CachingFile *file, char *out, size_t out_size,
     ptrdiff_t relocation, const ElfW(Shdr) * strtab, const ElfW(Shdr) * symtab,
     const ElfW(Shdr) * opd, char *tmp_buf, size_t tmp_buf_size) {
   if (symtab == nullptr) {
@@ -716,7 +799,7 @@ static ABSL_ATTRIBUTE_NOINLINE FindSymbolResult FindSymbol(
     const size_t entries_in_chunk =
         std::min(num_remaining_symbols, buf_entries);
     const size_t bytes_in_chunk = entries_in_chunk * sizeof(buf[0]);
-    const ssize_t len = ReadFromOffset(fd, buf, bytes_in_chunk, offset);
+    const ssize_t len = file->ReadFromOffset(buf, bytes_in_chunk, offset);
     SAFE_ASSERT(len >= 0);
     SAFE_ASSERT(static_cast<size_t>(len) % sizeof(buf[0]) == 0);
     const size_t num_symbols_in_buf = static_cast<size_t>(len) / sizeof(buf[0]);
@@ -772,12 +855,12 @@ static ABSL_ATTRIBUTE_NOINLINE FindSymbolResult FindSymbol(
   if (found_match) {
     const off_t off =
         static_cast<off_t>(strtab->sh_offset) + best_match.st_name;
-    const ssize_t n_read = ReadFromOffset(fd, out, out_size, off);
+    const ssize_t n_read = file->ReadFromOffset(out, out_size, off);
     if (n_read <= 0) {
       // This should never happen.
       ABSL_RAW_LOG(WARNING,
-                   "Unable to read from fd %d at offset %lld: n_read = %zd", fd,
-                   static_cast<long long>(off), n_read);
+                   "Unable to read from fd %d at offset %lld: n_read = %zd",
+                   file->fd(), static_cast<long long>(off), n_read);
       return SYMBOL_NOT_FOUND;
     }
     ABSL_RAW_CHECK(static_cast<size_t>(n_read) <= out_size,
@@ -827,22 +910,24 @@ FindSymbolResult Symbolizer::GetSymbolFromObjectFile(
     }
   }
 
+  CachingFile file(obj.fd, file_cache_, sizeof(file_cache_));
+
   // Consult a regular symbol table, then fall back to the dynamic symbol table.
   for (const auto symbol_table_type : {SHT_SYMTAB, SHT_DYNSYM}) {
-    if (!GetSectionHeaderByType(obj.fd, obj.elf_header.e_shnum,
+    if (!GetSectionHeaderByType(&file, obj.elf_header.e_shnum,
                                 static_cast<off_t>(obj.elf_header.e_shoff),
                                 static_cast<ElfW(Word)>(symbol_table_type),
                                 &symtab, tmp_buf, tmp_buf_size)) {
       continue;
     }
-    if (!ReadFromOffsetExact(
-            obj.fd, &strtab, sizeof(strtab),
+    if (!file.ReadFromOffsetExact(
+            &strtab, sizeof(strtab),
             static_cast<off_t>(obj.elf_header.e_shoff +
                                symtab.sh_link * sizeof(symtab)))) {
       continue;
     }
     const FindSymbolResult rc =
-        FindSymbol(pc, obj.fd, out, out_size, relocation, &strtab, &symtab,
+        FindSymbol(pc, &file, out, out_size, relocation, &strtab, &symtab,
                    opd_ptr, tmp_buf, tmp_buf_size);
     if (rc != SYMBOL_NOT_FOUND) {
       return rc;
@@ -1006,7 +1091,7 @@ static ABSL_ATTRIBUTE_NOINLINE bool ReadAddrMap(
   snprintf(maps_path, sizeof(maps_path), "/proc/self/task/%d/maps", getpid());
 
   int maps_fd;
-  NO_INTR(maps_fd = open(maps_path, O_RDONLY));
+  NO_INTR(maps_fd = OpenReadOnlyWithHighFD(maps_path));
   FileDescriptor wrapped_maps_fd(maps_fd);
   if (wrapped_maps_fd.get() < 0) {
     ABSL_RAW_LOG(WARNING, "%s: errno=%d", maps_path, errno);
@@ -1280,7 +1365,7 @@ static void MaybeOpenFdFromSelfExe(ObjFile *obj) {
   if (memcmp(obj->start_addr, ELFMAG, SELFMAG) != 0) {
     return;
   }
-  int fd = open("/proc/self/exe", O_RDONLY);
+  int fd = OpenReadOnlyWithHighFD("/proc/self/exe");
   if (fd == -1) {
     return;
   }
@@ -1304,7 +1389,7 @@ static void MaybeOpenFdFromSelfExe(ObjFile *obj) {
 
 static bool MaybeInitializeObjFile(ObjFile *obj) {
   if (obj->fd < 0) {
-    obj->fd = open(obj->filename, O_RDONLY);
+    obj->fd = OpenReadOnlyWithHighFD(obj->filename);
 
     if (obj->fd < 0) {
       // Getting /proc/self/exe here means that we were hinted.
@@ -1312,7 +1397,7 @@ static bool MaybeInitializeObjFile(ObjFile *obj) {
         // /proc/self/exe may be inaccessible (due to setuid, etc.), so try
         // accessing the binary via argv0.
         if (argv0_value != nullptr) {
-          obj->fd = open(argv0_value, O_RDONLY);
+          obj->fd = OpenReadOnlyWithHighFD(argv0_value);
         }
       } else {
         MaybeOpenFdFromSelfExe(obj);
@@ -1323,15 +1408,19 @@ static bool MaybeInitializeObjFile(ObjFile *obj) {
       ABSL_RAW_LOG(WARNING, "%s: open failed: errno=%d", obj->filename, errno);
       return false;
     }
-    obj->elf_type = FileGetElfType(obj->fd);
+
+    char buf[kSmallFileCacheSize];
+    CachingFile file(obj->fd, buf, sizeof(buf));
+
+    obj->elf_type = FileGetElfType(&file);
     if (obj->elf_type < 0) {
       ABSL_RAW_LOG(WARNING, "%s: wrong elf type: %d", obj->filename,
                    obj->elf_type);
       return false;
     }
 
-    if (!ReadFromOffsetExact(obj->fd, &obj->elf_header, sizeof(obj->elf_header),
-                             0)) {
+    if (!file.ReadFromOffsetExact(&obj->elf_header, sizeof(obj->elf_header),
+                                  0)) {
       ABSL_RAW_LOG(WARNING, "%s: failed to read elf header", obj->filename);
       return false;
     }
@@ -1341,31 +1430,32 @@ static bool MaybeInitializeObjFile(ObjFile *obj) {
     size_t num_interesting_load_segments = 0;
     for (int j = 0; j < phnum; j++) {
       ElfW(Phdr) phdr;
-      if (!ReadFromOffsetExact(obj->fd, &phdr, sizeof(phdr), phoff)) {
+      if (!file.ReadFromOffsetExact(&phdr, sizeof(phdr), phoff)) {
         ABSL_RAW_LOG(WARNING, "%s: failed to read program header %d",
                      obj->filename, j);
         return false;
       }
       phoff += phentsize;
 
-#if defined(__powerpc__) && !(_CALL_ELF > 1)
-      // On the PowerPC ELF v1 ABI, function pointers actually point to function
-      // descriptors. These descriptors are stored in an .opd section, which is
-      // mapped read-only. We thus need to look at all readable segments, not
-      // just the executable ones.
+#ifdef ABSL_INTERNAL_HAVE_PPC64_ELFV1_ABI
+      // On the PowerPC 64-bit ELFv1 ABI, function pointers actually point to
+      // function descriptors. These descriptors are stored in an .opd section,
+      // which is mapped read-only. We thus need to look at all readable
+      // segments, not just the executable ones.
       constexpr int interesting = PF_R;
 #else
       constexpr int interesting = PF_X | PF_R;
 #endif
 
-      if (phdr.p_type != PT_LOAD
-          || (phdr.p_flags & interesting) != interesting) {
+      if (phdr.p_type != PT_LOAD ||
+          (phdr.p_flags & interesting) != interesting) {
         // Not a LOAD segment, not executable code, and not a function
         // descriptor.
         continue;
       }
       if (num_interesting_load_segments < obj->phdr.size()) {
-        memcpy(&obj->phdr[num_interesting_load_segments++], &phdr, sizeof(phdr));
+        memcpy(&obj->phdr[num_interesting_load_segments++], &phdr,
+               sizeof(phdr));
       } else {
         ABSL_RAW_LOG(
             WARNING, "%s: too many interesting LOAD segments: %zu >= %zu",
@@ -1414,7 +1504,8 @@ const char *Symbolizer::GetUncachedSymbol(const void *pc) {
             ABSL_RAW_CHECK(p.p_type == PT_NULL, "unexpected p_type");
             break;
           }
-          if (pc < reinterpret_cast<void *>(start_addr + p.p_vaddr + p.p_memsz)) {
+          if (pc <
+              reinterpret_cast<void *>(start_addr + p.p_vaddr + p.p_memsz)) {
             phdr = &p;
             break;
           }
@@ -1458,7 +1549,7 @@ const char *Symbolizer::GetUncachedSymbol(const void *pc) {
 #endif
   }
 
-  if (g_decorators_mu.TryLock()) {
+  if (g_decorators_mu.try_lock()) {
     if (g_num_decorators > 0) {
       SymbolDecoratorArgs decorator_args = {
           pc,       relocation,       fd,     symbol_buf_, sizeof(symbol_buf_),
@@ -1468,7 +1559,7 @@ const char *Symbolizer::GetUncachedSymbol(const void *pc) {
         g_decorators[i].fn(&decorator_args);
       }
     }
-    g_decorators_mu.Unlock();
+    g_decorators_mu.unlock();
   }
   if (symbol_buf_[0] == '\0') {
     return nullptr;
@@ -1514,17 +1605,17 @@ const char *Symbolizer::GetSymbol(const void *pc) {
 }
 
 bool RemoveAllSymbolDecorators(void) {
-  if (!g_decorators_mu.TryLock()) {
+  if (!g_decorators_mu.try_lock()) {
     // Someone else is using decorators. Get out.
     return false;
   }
   g_num_decorators = 0;
-  g_decorators_mu.Unlock();
+  g_decorators_mu.unlock();
   return true;
 }
 
 bool RemoveSymbolDecorator(int ticket) {
-  if (!g_decorators_mu.TryLock()) {
+  if (!g_decorators_mu.try_lock()) {
     // Someone else is using decorators. Get out.
     return false;
   }
@@ -1538,14 +1629,14 @@ bool RemoveSymbolDecorator(int ticket) {
       break;
     }
   }
-  g_decorators_mu.Unlock();
+  g_decorators_mu.unlock();
   return true;  // Decorator is known to be removed.
 }
 
 int InstallSymbolDecorator(SymbolDecorator decorator, void *arg) {
   static int ticket = 0;
 
-  if (!g_decorators_mu.TryLock()) {
+  if (!g_decorators_mu.try_lock()) {
     // Someone else is using decorators. Get out.
     return -2;
   }
@@ -1556,18 +1647,18 @@ int InstallSymbolDecorator(SymbolDecorator decorator, void *arg) {
     g_decorators[g_num_decorators] = {decorator, arg, ticket++};
     ++g_num_decorators;
   }
-  g_decorators_mu.Unlock();
+  g_decorators_mu.unlock();
   return ret;
 }
 
-bool RegisterFileMappingHint(const void *start, const void *end, uint64_t offset,
-                             const char *filename) {
+bool RegisterFileMappingHint(const void *start, const void *end,
+                             uint64_t offset, const char *filename) {
   SAFE_ASSERT(start <= end);
   SAFE_ASSERT(filename != nullptr);
 
-  InitSigSafeArena();
+  base_internal::InitSigSafeArena();
 
-  if (!g_file_mapping_mu.TryLock()) {
+  if (!g_file_mapping_mu.try_lock()) {
     return false;
   }
 
@@ -1577,8 +1668,9 @@ bool RegisterFileMappingHint(const void *start, const void *end, uint64_t offset
   } else {
     // TODO(ckennelly): Move this into a string copy routine.
     size_t len = strlen(filename);
-    char *dst = static_cast<char *>(
-        base_internal::LowLevelAlloc::AllocWithArena(len + 1, SigSafeArena()));
+    char *dst =
+        static_cast<char *>(base_internal::LowLevelAlloc::AllocWithArena(
+            len + 1, base_internal::SigSafeArena()));
     ABSL_RAW_CHECK(dst != nullptr, "out of memory");
     memcpy(dst, filename, len + 1);
 
@@ -1589,13 +1681,13 @@ bool RegisterFileMappingHint(const void *start, const void *end, uint64_t offset
     hint.filename = dst;
   }
 
-  g_file_mapping_mu.Unlock();
+  g_file_mapping_mu.unlock();
   return ret;
 }
 
 bool GetFileMappingHint(const void **start, const void **end, uint64_t *offset,
                         const char **filename) {
-  if (!g_file_mapping_mu.TryLock()) {
+  if (!g_file_mapping_mu.try_lock()) {
     return false;
   }
   bool found = false;
@@ -1618,7 +1710,7 @@ bool GetFileMappingHint(const void **start, const void **end, uint64_t *offset,
       break;
     }
   }
-  g_file_mapping_mu.Unlock();
+  g_file_mapping_mu.unlock();
   return found;
 }
 
@@ -1654,8 +1746,11 @@ ABSL_NAMESPACE_END
 }  // namespace absl
 
 extern "C" bool AbslInternalGetFileMappingHint(const void **start,
-                                               const void **end, uint64_t *offset,
+                                               const void **end,
+                                               uint64_t *offset,
                                                const char **filename) {
   return absl::debugging_internal::GetFileMappingHint(start, end, offset,
                                                       filename);
 }
+
+#undef ABSL_INTERNAL_HAVE_PPC64_ELFV1_ABI

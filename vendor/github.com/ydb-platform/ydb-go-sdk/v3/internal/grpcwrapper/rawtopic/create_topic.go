@@ -14,7 +14,7 @@ type CreateTopicRequest struct {
 	OperationParams rawydb.OperationParams
 
 	Path                              string
-	PartitionSettings                 PartitioningSettings
+	PartitioningSettings              PartitioningSettings
 	RetentionPeriod                   time.Duration
 	RetentionStorageMB                int64
 	SupportedCodecs                   rawtopiccommon.SupportedCodecs
@@ -28,7 +28,7 @@ type CreateTopicRequest struct {
 func (req *CreateTopicRequest) ToProto() *Ydb_Topic.CreateTopicRequest {
 	proto := &Ydb_Topic.CreateTopicRequest{
 		Path:                 req.Path,
-		PartitioningSettings: req.PartitionSettings.ToProto(),
+		PartitioningSettings: req.PartitioningSettings.ToProto(),
 	}
 
 	if req.RetentionPeriod != 0 {
@@ -41,7 +41,7 @@ func (req *CreateTopicRequest) ToProto() *Ydb_Topic.CreateTopicRequest {
 	proto.Attributes = req.Attributes
 
 	proto.Consumers = make([]*Ydb_Topic.Consumer, len(req.Consumers))
-	for i := range proto.Consumers {
+	for i := range proto.GetConsumers() {
 		proto.Consumers[i] = req.Consumers[i].ToProto()
 	}
 
@@ -55,5 +55,5 @@ type CreateTopicResult struct {
 }
 
 func (r *CreateTopicResult) FromProto(proto *Ydb_Topic.CreateTopicResponse) error {
-	return r.Operation.FromProtoWithStatusCheck(proto.Operation)
+	return r.Operation.FromProtoWithStatusCheck(proto.GetOperation())
 }

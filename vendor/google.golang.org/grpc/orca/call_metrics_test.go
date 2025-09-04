@@ -24,7 +24,6 @@ import (
 	"io"
 	"testing"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/google/go-cmp/cmp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -33,6 +32,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/orca"
 	"google.golang.org/grpc/orca/internal"
+	"google.golang.org/protobuf/proto"
 
 	v3orcapb "github.com/cncf/xds/go/xds/data/orca/v3"
 	testgrpc "google.golang.org/grpc/interop/grpc_testing"
@@ -73,7 +73,7 @@ func (s) TestE2ECallMetricsUnary(t *testing.T) {
 
 			// An interceptor to injects custom backend metrics, added only when
 			// the injectMetrics field in the test is set.
-			injectingInterceptor := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+			injectingInterceptor := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 				recorder := orca.CallMetricsRecorderFromContext(ctx)
 				if recorder == nil {
 					err := errors.New("Failed to retrieve per-RPC custom metrics recorder from the RPC context")
@@ -118,9 +118,9 @@ func (s) TestE2ECallMetricsUnary(t *testing.T) {
 			defer srv.Stop()
 
 			// Dial the stub server.
-			cc, err := grpc.Dial(srv.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			cc, err := grpc.NewClient(srv.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
-				t.Fatalf("grpc.Dial(%s) failed: %v", srv.Address, err)
+				t.Fatalf("grpc.NewClient(%s) failed: %v", srv.Address, err)
 			}
 			defer cc.Close()
 
@@ -179,7 +179,7 @@ func (s) TestE2ECallMetricsStreaming(t *testing.T) {
 
 			// An interceptor which injects custom backend metrics, added only
 			// when the injectMetrics field in the test is set.
-			injectingInterceptor := func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+			injectingInterceptor := func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 				recorder := orca.CallMetricsRecorderFromContext(ss.Context())
 				if recorder == nil {
 					err := errors.New("Failed to retrieve per-RPC custom metrics recorder from the RPC context")
@@ -239,9 +239,9 @@ func (s) TestE2ECallMetricsStreaming(t *testing.T) {
 			defer srv.Stop()
 
 			// Dial the stub server.
-			cc, err := grpc.Dial(srv.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			cc, err := grpc.NewClient(srv.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
-				t.Fatalf("grpc.Dial(%s) failed: %v", srv.Address, err)
+				t.Fatalf("grpc.NewClient(%s) failed: %v", srv.Address, err)
 			}
 			defer cc.Close()
 

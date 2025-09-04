@@ -20,21 +20,27 @@
 package grpctest
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/internal/leakcheck"
 )
 
 var lcFailed uint32
 
-type errorer struct {
+type logger struct {
 	t *testing.T
 }
 
-func (e errorer) Errorf(format string, args ...interface{}) {
+func (e logger) Logf(format string, args ...any) {
+	e.t.Logf(format, args...)
+}
+
+func (e logger) Errorf(format string, args ...any) {
 	atomic.StoreUint32(&lcFailed, 1)
 	e.t.Errorf(format, args...)
 }
@@ -48,18 +54,34 @@ type Tester struct{}
 // Setup updates the tlogger.
 func (Tester) Setup(t *testing.T) {
 	TLogger.Update(t)
+	// TODO: There is one final leak around closing connections without completely
+	//  draining the recvBuffer that has yet to be resolved. All other leaks have been
+	//  completely addressed, and this can be turned back on as soon as this issue is
+	//  fixed.
+	leakcheck.SetTrackingBufferPool(logger{t: t})
+	leakcheck.TrackTimers()
 }
 
 // Teardown performs a leak check.
 func (Tester) Teardown(t *testing.T) {
+	leakcheck.CheckTrackingBufferPool()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	leakcheck.CheckTimers(ctx, logger{t: t})
 	if atomic.LoadUint32(&lcFailed) == 1 {
 		return
 	}
-	leakcheck.Check(errorer{t: t})
+	leakcheck.CheckGoroutines(ctx, logger{t: t})
 	if atomic.LoadUint32(&lcFailed) == 1 {
-		t.Log("Leak check disabled for future tests")
+		t.Log("Goroutine leak check disabled for future tests")
 	}
 	TLogger.EndTest(t)
+}
+
+// Interface defines Tester's methods for use in this package.
+type Interface interface {
+	Setup(*testing.T)
+	Teardown(*testing.T)
 }
 
 func getTestFunc(t *testing.T, xv reflect.Value, name string) func(*testing.T) {
@@ -74,9 +96,8 @@ func getTestFunc(t *testing.T, xv reflect.Value, name string) func(*testing.T) {
 }
 
 // RunSubTests runs all "Test___" functions that are methods of x as subtests
-// of the current test.  If x contains methods "Setup(*testing.T)" or
-// "Teardown(*testing.T)", those are run before or after each of the test
-// functions, respectively.
+// of the current test.  Setup is run before the test function and Teardown is
+// run after.
 //
 // For example usage, see example_test.go.  Run it using:
 //
@@ -85,12 +106,9 @@ func getTestFunc(t *testing.T, xv reflect.Value, name string) func(*testing.T) {
 // To run a specific test/subtest:
 //
 //	$ go test -v -run 'TestExample/^Something$' .
-func RunSubTests(t *testing.T, x interface{}) {
+func RunSubTests(t *testing.T, x Interface) {
 	xt := reflect.TypeOf(x)
 	xv := reflect.ValueOf(x)
-
-	setup := getTestFunc(t, xv, "Setup")
-	teardown := getTestFunc(t, xv, "Teardown")
 
 	for i := 0; i < xt.NumMethod(); i++ {
 		methodName := xt.Method(i).Name
@@ -104,8 +122,8 @@ func RunSubTests(t *testing.T, x interface{}) {
 			//
 			// Note that a defer would run before t.Cleanup, so if a goroutine
 			// is closed by a test's t.Cleanup, a deferred leakcheck would fail.
-			t.Cleanup(func() { teardown(t) })
-			setup(t)
+			t.Cleanup(func() { x.Teardown(t) })
+			x.Setup(t)
 			tfunc(t)
 		})
 	}

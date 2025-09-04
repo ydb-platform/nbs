@@ -2,7 +2,9 @@ package retry
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xtest"
 )
 
 func TestRetryModes(t *testing.T) {
@@ -21,37 +24,12 @@ func TestRetryModes(t *testing.T) {
 		nonIdempotent,
 	} {
 		t.Run(idempotentType.String(), func(t *testing.T) {
-			for _, tt := range errsToCheck {
-				t.Run(tt.err.Error(), func(t *testing.T) {
+			for i, tt := range errsToCheck {
+				t.Run(strconv.Itoa(i)+"."+tt.err.Error(), func(t *testing.T) {
 					m := Check(tt.err)
-					if m.MustRetry(true) != tt.canRetry[idempotent] {
-						t.Errorf(
-							"unexpected must retry idempotent operation status: %v, want: %v",
-							m.MustRetry(true),
-							tt.canRetry[idempotent],
-						)
-					}
-					if m.MustRetry(false) != tt.canRetry[nonIdempotent] {
-						t.Errorf(
-							"unexpected must retry non-idempotent operation status: %v, want: %v",
-							m.MustRetry(false),
-							tt.canRetry[nonIdempotent],
-						)
-					}
-					if m.BackoffType() != tt.backoff {
-						t.Errorf(
-							"unexpected backoff status: %v, want: %v",
-							m.BackoffType(),
-							tt.backoff,
-						)
-					}
-					if m.MustDeleteSession() != tt.deleteSession {
-						t.Errorf(
-							"unexpected delete session status: %v, want: %v",
-							m.MustDeleteSession(),
-							tt.deleteSession,
-						)
-					}
+					require.Equal(t, tt.canRetry[idempotent], m.MustRetry(true))
+					require.Equal(t, tt.canRetry[nonIdempotent], m.MustRetry(false))
+					require.Equal(t, tt.backoff, m.BackoffType())
 				})
 			}
 		})
@@ -126,6 +104,7 @@ func TestRetryWithCustomErrors(t *testing.T) {
 				if i < limit {
 					return tt.error
 				}
+
 				return nil
 			})
 			if tt.retriable {
@@ -147,17 +126,20 @@ func TestRetryTransportDeadlineExceeded(t *testing.T) {
 		grpcCodes.DeadlineExceeded,
 		grpcCodes.Canceled,
 	} {
-		counter := 0
-		ctx, cancel := xcontext.WithTimeout(context.Background(), time.Hour)
-		err := Retry(ctx, func(ctx context.Context) error {
-			counter++
-			if !(counter < cancelCounterValue) {
-				cancel()
-			}
-			return xerrors.Transport(grpcStatus.Error(code, ""))
-		}, WithIdempotent(true))
-		require.ErrorIs(t, err, context.Canceled)
-		require.Equal(t, cancelCounterValue, counter)
+		t.Run(code.String(), func(t *testing.T) {
+			counter := 0
+			ctx, cancel := xcontext.WithTimeout(context.Background(), time.Hour)
+			err := Retry(ctx, func(ctx context.Context) error {
+				counter++
+				if counter >= cancelCounterValue {
+					cancel()
+				}
+
+				return xerrors.Transport(grpcStatus.Error(code, ""))
+			}, WithIdempotent(true))
+			require.ErrorIs(t, err, context.Canceled)
+			require.Equal(t, cancelCounterValue, counter)
+		})
 	}
 }
 
@@ -167,16 +149,134 @@ func TestRetryTransportCancelled(t *testing.T) {
 		grpcCodes.DeadlineExceeded,
 		grpcCodes.Canceled,
 	} {
-		counter := 0
-		ctx, cancel := xcontext.WithCancel(context.Background())
-		err := Retry(ctx, func(ctx context.Context) error {
-			counter++
-			if !(counter < cancelCounterValue) {
-				cancel()
-			}
-			return xerrors.Transport(grpcStatus.Error(code, ""))
-		}, WithIdempotent(true))
-		require.ErrorIs(t, err, context.Canceled)
-		require.Equal(t, cancelCounterValue, counter)
+		t.Run(code.String(), func(t *testing.T) {
+			t.Helper()
+			counter := 0
+			ctx, cancel := xcontext.WithCancel(context.Background())
+			err := Retry(ctx, func(ctx context.Context) error {
+				counter++
+				if counter >= cancelCounterValue {
+					cancel()
+				}
+
+				return xerrors.Transport(grpcStatus.Error(code, ""))
+			}, WithIdempotent(true))
+			require.ErrorIs(t, err, context.Canceled)
+			require.Equal(t, cancelCounterValue, counter)
+		})
 	}
+}
+
+type noQuota struct{}
+
+var errNoQuota = errors.New("no quota")
+
+func (noQuota) Acquire(ctx context.Context) error {
+	return errNoQuota
+}
+
+func TestRetryWithBudget(t *testing.T) {
+	xtest.TestManyTimes(t, func(t testing.TB) {
+		quota := noQuota{}
+		ctx, cancel := context.WithCancel(xtest.Context(t))
+		defer cancel()
+		err := Retry(ctx, func(ctx context.Context) (err error) {
+			return RetryableError(errors.New("custom error"))
+		}, WithBudget(quota))
+		require.ErrorIs(t, err, errNoQuota)
+	})
+}
+
+type MockPanicCallback struct {
+	called   bool
+	received interface{}
+}
+
+func (m *MockPanicCallback) Call(e interface{}) {
+	m.called = true
+	m.received = e
+}
+
+func TestOpWithRecover_NoPanic(t *testing.T) {
+	ctx := context.Background()
+	options := &retryOptions{
+		panicCallback: nil,
+	}
+	op := func(ctx context.Context) (*struct{}, error) {
+		return nil, nil //nolint:nilnil
+	}
+
+	_, err := opWithRecover(ctx, options, op)
+
+	require.NoError(t, err)
+}
+
+func TestOpWithRecover_WithPanic(t *testing.T) {
+	ctx := context.Background()
+	mockCallback := new(MockPanicCallback)
+	options := &retryOptions{
+		panicCallback: mockCallback.Call,
+	}
+	op := func(ctx context.Context) (*struct{}, error) {
+		panic("test panic")
+	}
+
+	_, err := opWithRecover(ctx, options, op)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "panic recovered: test panic")
+	require.True(t, mockCallback.called)
+	require.Equal(t, "test panic", mockCallback.received)
+}
+
+func TestRetryWithResult(t *testing.T) {
+	ctx := xtest.Context(t)
+	t.Run("HappyWay", func(t *testing.T) {
+		v, err := RetryWithResult(ctx, func(ctx context.Context) (*int, error) {
+			v := 123
+
+			return &v, nil
+		})
+		require.NoError(t, err)
+		require.NotNil(t, v)
+		require.EqualValues(t, 123, *v)
+	})
+	t.Run("RetryableError", func(t *testing.T) {
+		var counter int
+		v, err := RetryWithResult(ctx, func(ctx context.Context) (*int, error) {
+			counter++
+			if counter < 10 {
+				return nil, RetryableError(errors.New("test"))
+			}
+			v := counter * 123
+
+			return &v, nil
+		})
+		require.NoError(t, err)
+		require.NotNil(t, v)
+		require.EqualValues(t, 1230, *v)
+		require.EqualValues(t, 10, counter)
+	})
+	t.Run("Context", func(t *testing.T) {
+		t.Run("Cancelled", func(t *testing.T) {
+			childCtx, cancel := context.WithCancel(ctx)
+			v, err := RetryWithResult(childCtx, func(ctx context.Context) (*int, error) {
+				cancel()
+
+				return nil, ctx.Err()
+			})
+			require.ErrorIs(t, err, context.Canceled)
+			require.Nil(t, v)
+		})
+		t.Run("DeadlineExceeded", func(t *testing.T) {
+			childCtx, cancel := context.WithTimeout(ctx, 0)
+			v, err := RetryWithResult(childCtx, func(ctx context.Context) (*int, error) {
+				cancel()
+
+				return nil, ctx.Err()
+			})
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.Nil(t, v)
+		})
+	})
 }

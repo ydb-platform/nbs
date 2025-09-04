@@ -20,19 +20,21 @@ package xdsclient_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
-	"time"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/internal/testutils"
 	"google.golang.org/grpc/internal/testutils/xds/e2e"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	xdstestutils "google.golang.org/grpc/xds/internal/testutils"
 	"google.golang.org/grpc/xds/internal/xdsclient"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 
 	v3clusterpb "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
-	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 )
 
 const (
@@ -64,9 +66,7 @@ var (
 //
 // Returns two listeners used by the default and non-default management servers
 // respectively, and the xDS client and its close function.
-func setupForAuthorityTests(ctx context.Context, t *testing.T, idleTimeout time.Duration) (*testutils.ListenerWrapper, *testutils.ListenerWrapper, xdsclient.XDSClient, func()) {
-	overrideFedEnvVar(t)
-
+func setupForAuthorityTests(ctx context.Context, t *testing.T) (*testutils.ListenerWrapper, *testutils.ListenerWrapper, xdsclient.XDSClient, func()) {
 	// Create listener wrappers which notify on to a channel whenever a new
 	// connection is accepted. We use this to track the number of transports
 	// used by the xDS client.
@@ -74,34 +74,45 @@ func setupForAuthorityTests(ctx context.Context, t *testing.T, idleTimeout time.
 	lisNonDefault := testutils.NewListenerWrapper(t, nil)
 
 	// Start a management server to act as the default authority.
-	defaultAuthorityServer, err := e2e.StartManagementServer(e2e.ManagementServerOptions{Listener: lisDefault})
-	if err != nil {
-		t.Fatalf("Failed to spin up the xDS management server: %v", err)
-	}
-	t.Cleanup(func() { defaultAuthorityServer.Stop() })
+	defaultAuthorityServer := e2e.StartManagementServer(t, e2e.ManagementServerOptions{Listener: lisDefault})
 
 	// Start a management server to act as the non-default authority.
-	nonDefaultAuthorityServer, err := e2e.StartManagementServer(e2e.ManagementServerOptions{Listener: lisNonDefault})
-	if err != nil {
-		t.Fatalf("Failed to spin up the xDS management server: %v", err)
-	}
-	t.Cleanup(func() { nonDefaultAuthorityServer.Stop() })
+	nonDefaultAuthorityServer := e2e.StartManagementServer(t, e2e.ManagementServerOptions{Listener: lisNonDefault})
 
 	// Create a bootstrap configuration with two non-default authorities which
 	// have empty server configs, and therefore end up using the default server
 	// config, which points to the above management server.
 	nodeID := uuid.New().String()
-	client, close, err := xdsclient.NewWithConfigForTesting(&bootstrap.Config{
-		XDSServer: xdstestutils.ServerConfigForAddress(t, defaultAuthorityServer.Address),
-		NodeProto: &v3corepb.Node{Id: nodeID},
-		Authorities: map[string]*bootstrap.Authority{
-			testAuthority1: {},
-			testAuthority2: {},
-			testAuthority3: {XDSServer: xdstestutils.ServerConfigForAddress(t, nonDefaultAuthorityServer.Address)},
+	bootstrapContents, err := bootstrap.NewContentsForTesting(bootstrap.ConfigOptionsForTesting{
+		Servers: []byte(fmt.Sprintf(`[{
+			"server_uri": %q,
+			"channel_creds": [{"type": "insecure"}]
+		}]`, defaultAuthorityServer.Address)),
+		Node: []byte(fmt.Sprintf(`{"id": "%s"}`, nodeID)),
+		Authorities: map[string]json.RawMessage{
+			testAuthority1: []byte(`{}`),
+			testAuthority2: []byte(`{}`),
+			testAuthority3: []byte(fmt.Sprintf(`{
+				"xds_servers": [{
+					"server_uri": %q,
+					"channel_creds": [{"type": "insecure"}]
+				}]}`, nonDefaultAuthorityServer.Address)),
 		},
-	}, defaultTestWatchExpiryTimeout, idleTimeout)
+	})
 	if err != nil {
-		t.Fatalf("failed to create xds client: %v", err)
+		t.Fatalf("Failed to create bootstrap configuration: %v", err)
+	}
+	config, err := bootstrap.NewConfigFromContents(bootstrapContents)
+	if err != nil {
+		t.Fatalf("Failed to parse bootstrap contents: %s, %v", string(bootstrapContents), err)
+	}
+	pool := xdsclient.NewPool(config)
+	client, close, err := pool.NewClientForTesting(xdsclient.OptionsForTesting{
+		Name:               t.Name(),
+		WatchExpiryTimeout: defaultTestWatchExpiryTimeout,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create an xDS client: %v", err)
 	}
 
 	resources := e2e.UpdateOptions{
@@ -120,17 +131,17 @@ func setupForAuthorityTests(ctx context.Context, t *testing.T, idleTimeout time.
 	return lisDefault, lisNonDefault, client, close
 }
 
-// TestAuthorityShare tests the authority sharing logic. The test verifies the
+// Tests the xdsChannel sharing logic among authorities. The test verifies the
 // following scenarios:
 //   - A watch for a resource name with an authority matching an existing watch
 //     should not result in a new transport being created.
 //   - A watch for a resource name with different authority name but same
 //     authority config as an existing watch should not result in a new transport
 //     being created.
-func (s) TestAuthorityShare(t *testing.T) {
+func (s) TestAuthority_XDSChannelSharing(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 	defer cancel()
-	lis, _, client, close := setupForAuthorityTests(ctx, t, time.Duration(0))
+	lis, _, client, close := setupForAuthorityTests(ctx, t)
 	defer close()
 
 	// Verify that no connection is established to the management server at this
@@ -143,14 +154,15 @@ func (s) TestAuthorityShare(t *testing.T) {
 	}
 
 	// Request the first resource. Verify that a new transport is created.
-	cdsCancel1 := client.WatchCluster(authorityTestResourceName11, func(u xdsresource.ClusterUpdate, err error) {})
+	watcher := noopClusterWatcher{}
+	cdsCancel1 := xdsresource.WatchCluster(client, authorityTestResourceName11, watcher)
 	defer cdsCancel1()
 	if _, err := lis.NewConnCh.Receive(ctx); err != nil {
 		t.Fatalf("Timed out when waiting for a new transport to be created to the management server: %v", err)
 	}
 
 	// Request the second resource. Verify that no new transport is created.
-	cdsCancel2 := client.WatchCluster(authorityTestResourceName12, func(u xdsresource.ClusterUpdate, err error) {})
+	cdsCancel2 := xdsresource.WatchCluster(client, authorityTestResourceName12, watcher)
 	defer cdsCancel2()
 	sCtx, sCancel = context.WithTimeout(ctx, defaultTestShortTimeout)
 	defer sCancel()
@@ -159,7 +171,7 @@ func (s) TestAuthorityShare(t *testing.T) {
 	}
 
 	// Request the third resource. Verify that no new transport is created.
-	cdsCancel3 := client.WatchCluster(authorityTestResourceName2, func(u xdsresource.ClusterUpdate, err error) {})
+	cdsCancel3 := xdsresource.WatchCluster(client, authorityTestResourceName2, watcher)
 	defer cdsCancel3()
 	sCtx, sCancel = context.WithTimeout(ctx, defaultTestShortTimeout)
 	defer sCancel()
@@ -168,18 +180,17 @@ func (s) TestAuthorityShare(t *testing.T) {
 	}
 }
 
-// TestAuthorityIdle test the authority idle timeout logic. The test verifies
-// that the xDS client does not close authorities immediately after the last
-// watch is canceled, but waits for the configured idle timeout to expire before
-// closing them.
-func (s) TestAuthorityIdleTimeout(t *testing.T) {
+// Test the xdsChannel close logic. The test verifies that the xDS client
+// closes an xdsChannel immediately after the last watch is canceled.
+func (s) TestAuthority_XDSChannelClose(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 	defer cancel()
-	lis, _, client, close := setupForAuthorityTests(ctx, t, defaultTestIdleAuthorityTimeout)
+	lis, _, client, close := setupForAuthorityTests(ctx, t)
 	defer close()
 
 	// Request the first resource. Verify that a new transport is created.
-	cdsCancel1 := client.WatchCluster(authorityTestResourceName11, func(u xdsresource.ClusterUpdate, err error) {})
+	watcher := noopClusterWatcher{}
+	cdsCancel1 := xdsresource.WatchCluster(client, authorityTestResourceName11, watcher)
 	val, err := lis.NewConnCh.Receive(ctx)
 	if err != nil {
 		t.Fatalf("Timed out when waiting for a new transport to be created to the management server: %v", err)
@@ -187,7 +198,7 @@ func (s) TestAuthorityIdleTimeout(t *testing.T) {
 	conn := val.(*testutils.ConnWrapper)
 
 	// Request the second resource. Verify that no new transport is created.
-	cdsCancel2 := client.WatchCluster(authorityTestResourceName12, func(u xdsresource.ClusterUpdate, err error) {})
+	cdsCancel2 := xdsresource.WatchCluster(client, authorityTestResourceName12, watcher)
 	sCtx, sCancel := context.WithTimeout(ctx, defaultTestShortTimeout)
 	defer sCancel()
 	if _, err := lis.NewConnCh.Receive(sCtx); err != context.DeadlineExceeded {
@@ -195,109 +206,170 @@ func (s) TestAuthorityIdleTimeout(t *testing.T) {
 	}
 
 	// Cancel both watches, and verify that the connection to the management
-	// server is not closed immediately.
+	// server is closed.
 	cdsCancel1()
 	cdsCancel2()
-	sCtx, sCancel = context.WithTimeout(ctx, defaultTestShortTimeout)
-	defer sCancel()
-	if _, err := conn.CloseCh.Receive(sCtx); err != context.DeadlineExceeded {
-		t.Fatal("Connection to management server closed unexpectedly")
-	}
-
-	// Wait for the authority idle timeout to fire.
-	time.Sleep(2 * defaultTestIdleAuthorityTimeout)
-	sCtx, sCancel = context.WithTimeout(ctx, defaultTestShortTimeout)
-	defer sCancel()
-	if _, err := conn.CloseCh.Receive(sCtx); err != nil {
-		t.Fatal("Connection to management server not closed after idle timeout expiry")
+	if _, err := conn.CloseCh.Receive(ctx); err != nil {
+		t.Fatal("Timeout when waiting for connection to management server to be closed")
 	}
 }
 
-// TestAuthorityClientClose verifies that authorities in use and in the idle
-// cache are all closed when the client is closed.
-func (s) TestAuthorityClientClose(t *testing.T) {
-	// Set the authority idle timeout to twice the defaultTestTimeout. This will
-	// ensure that idle authorities stay in the cache for the duration of this
-	// test, until explicitly closed.
+// Tests the scenario where the primary management server is unavailable at
+// startup and the xDS client falls back to the secondary.  The test verifies
+// that the resource watcher is not notifified of the connectivity failure until
+// all servers have failed.
+func (s) TestAuthority_Fallback(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 	defer cancel()
-	lisDefault, lisNonDefault, client, close := setupForAuthorityTests(ctx, t, time.Duration(2*defaultTestTimeout))
 
-	// Request the first resource. Verify that a new transport is created to the
-	// default management server.
-	cdsCancel1 := client.WatchCluster(authorityTestResourceName11, func(u xdsresource.ClusterUpdate, err error) {})
-	val, err := lisDefault.NewConnCh.Receive(ctx)
+	// Create primary and secondary management servers with restartable
+	// listeners.
+	l, err := testutils.LocalTCPListener()
 	if err != nil {
-		t.Fatalf("Timed out when waiting for a new transport to be created to the management server: %v", err)
+		t.Fatalf("testutils.LocalTCPListener() failed: %v", err)
 	}
-	connDefault := val.(*testutils.ConnWrapper)
-
-	// Request another resource which is served by the non-default authority.
-	// Verify that a new transport is created to the non-default management
-	// server.
-	client.WatchCluster(authorityTestResourceName3, func(u xdsresource.ClusterUpdate, err error) {})
-	val, err = lisNonDefault.NewConnCh.Receive(ctx)
+	primaryLis := testutils.NewRestartableListener(l)
+	primaryMgmtServer := e2e.StartManagementServer(t, e2e.ManagementServerOptions{Listener: primaryLis})
+	l, err = testutils.LocalTCPListener()
 	if err != nil {
-		t.Fatalf("Timed out when waiting for a new transport to be created to the management server: %v", err)
+		t.Fatalf("testutils.LocalTCPListener() failed: %v", err)
 	}
-	connNonDefault := val.(*testutils.ConnWrapper)
+	secondaryLis := testutils.NewRestartableListener(l)
+	secondaryMgmtServer := e2e.StartManagementServer(t, e2e.ManagementServerOptions{Listener: secondaryLis})
 
-	// Cancel the first watch. This should move the default authority to the
-	// idle cache, but the connection should not be closed yet, because the idle
-	// timeout would not have fired.
-	cdsCancel1()
-	sCtx, sCancel := context.WithTimeout(ctx, defaultTestShortTimeout)
-	defer sCancel()
-	if _, err := connDefault.CloseCh.Receive(sCtx); err != context.DeadlineExceeded {
-		t.Fatal("Connection to management server closed unexpectedly")
+	// Create bootstrap configuration with the above primary and fallback
+	// management servers, and an xDS client with that configuration.
+	nodeID := uuid.New().String()
+	bootstrapContents, err := bootstrap.NewContentsForTesting(bootstrap.ConfigOptionsForTesting{
+		Servers: []byte(fmt.Sprintf(`
+		[
+			{
+				"server_uri": %q,
+				"channel_creds": [{"type": "insecure"}]
+			},
+			{
+				"server_uri": %q,
+				"channel_creds": [{"type": "insecure"}]
+			}
+		]`, primaryMgmtServer.Address, secondaryMgmtServer.Address)),
+		Node: []byte(fmt.Sprintf(`{"id": "%s"}`, nodeID)),
+	})
+	if err != nil {
+		t.Fatalf("Failed to create bootstrap configuration: %v", err)
 	}
-
-	// Closing the xDS client should close the connection to both management
-	// servers, even though we have an open watch to one of them.
-	close()
-	if _, err := connDefault.CloseCh.Receive(ctx); err != nil {
-		t.Fatal("Connection to management server not closed after client close")
+	config, err := bootstrap.NewConfigFromContents(bootstrapContents)
+	if err != nil {
+		t.Fatalf("Failed to parse bootstrap contents: %s, %v", string(bootstrapContents), err)
 	}
-	if _, err := connNonDefault.CloseCh.Receive(ctx); err != nil {
-		t.Fatal("Connection to management server not closed after client close")
+	pool := xdsclient.NewPool(config)
+	xdsC, close, err := pool.NewClientForTesting(xdsclient.OptionsForTesting{Name: t.Name()})
+	if err != nil {
+		t.Fatalf("Failed to create an xDS client: %v", err)
 	}
-}
-
-// TestAuthorityRevive verifies that an authority in the idle cache is revived
-// when a new watch is started on this authority.
-func (s) TestAuthorityRevive(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
-	defer cancel()
-	lis, _, client, close := setupForAuthorityTests(ctx, t, defaultTestIdleAuthorityTimeout)
 	defer close()
 
-	// Request the first resource. Verify that a new transport is created.
-	cdsCancel1 := client.WatchCluster(authorityTestResourceName11, func(u xdsresource.ClusterUpdate, err error) {})
-	val, err := lis.NewConnCh.Receive(ctx)
-	if err != nil {
-		t.Fatalf("Timed out when waiting for a new transport to be created to the management server: %v", err)
+	const clusterName = "cluster"
+	const edsPrimaryName = "eds-primary"
+	const edsSecondaryName = "eds-secondary"
+
+	// Create a Cluster resource on the primary.
+	resources := e2e.UpdateOptions{
+		NodeID: nodeID,
+		Clusters: []*v3clusterpb.Cluster{
+			e2e.DefaultCluster(clusterName, edsPrimaryName, e2e.SecurityLevelNone),
+		},
+		SkipValidation: true,
 	}
-	conn := val.(*testutils.ConnWrapper)
+	if err := primaryMgmtServer.Update(ctx, resources); err != nil {
+		t.Fatalf("Failed to update primary management server with resources: %v, err: %v", resources, err)
+	}
 
-	// Cancel the above watch. This should move the authority to the idle cache.
-	cdsCancel1()
+	// Create a Cluster resource on the secondary .
+	resources = e2e.UpdateOptions{
+		NodeID: nodeID,
+		Clusters: []*v3clusterpb.Cluster{
+			e2e.DefaultCluster(clusterName, edsSecondaryName, e2e.SecurityLevelNone),
+		},
+		SkipValidation: true,
+	}
+	if err := secondaryMgmtServer.Update(ctx, resources); err != nil {
+		t.Fatalf("Failed to update primary management server with resources: %v, err: %v", resources, err)
+	}
 
-	// Request the second resource. Verify that no new transport is created.
-	// This should move the authority out of the idle cache.
-	cdsCancel2 := client.WatchCluster(authorityTestResourceName12, func(u xdsresource.ClusterUpdate, err error) {})
-	defer cdsCancel2()
+	// Stop the primary.
+	primaryLis.Close()
+
+	// Register a watch.
+	watcher := newClusterWatcherV2()
+	cdsCancel := xdsresource.WatchCluster(xdsC, clusterName, watcher)
+	defer cdsCancel()
+
+	// Ensure that the connectivity error callback is not called.
 	sCtx, sCancel := context.WithTimeout(ctx, defaultTestShortTimeout)
 	defer sCancel()
-	if _, err := lis.NewConnCh.Receive(sCtx); err != context.DeadlineExceeded {
-		t.Fatal("Unexpected new transport created to management server")
+	if v, err := watcher.ambientErrCh.Receive(sCtx); err != context.DeadlineExceeded {
+		t.Fatalf("Error callback on the watcher with error:  %v", v.(error))
 	}
 
-	// Wait for double the idle timeout, and the connection to the management
-	// server should not be closed, since it was revived from the idle cache.
-	time.Sleep(2 * defaultTestIdleAuthorityTimeout)
-	sCtx, sCancel = context.WithTimeout(ctx, defaultTestShortTimeout)
-	defer sCancel()
-	if _, err := conn.CloseCh.Receive(sCtx); err != context.DeadlineExceeded {
-		t.Fatal("Connection to management server closed unexpectedly")
+	// Ensure that the resource update callback is invoked.
+	v, err := watcher.updateCh.Receive(ctx)
+	if err != nil {
+		t.Fatalf("Error when waiting for a resource update callback:  %v", err)
 	}
+	gotUpdate := v.(xdsresource.ClusterUpdate)
+	wantUpdate := xdsresource.ClusterUpdate{
+		ClusterName:    clusterName,
+		EDSServiceName: edsSecondaryName,
+	}
+	cmpOpts := []cmp.Option{cmpopts.EquateEmpty(), cmpopts.IgnoreFields(xdsresource.ClusterUpdate{}, "Raw", "LBPolicy", "TelemetryLabels")}
+	if diff := cmp.Diff(wantUpdate, gotUpdate, cmpOpts...); diff != "" {
+		t.Fatalf("Diff in the cluster resource update: (-want, got):\n%s", diff)
+	}
+
+	// Stop the secondary.
+	secondaryLis.Close()
+
+	// Ensure that the connectivity error callback is called.
+	if _, err := watcher.ambientErrCh.Receive(ctx); err != nil {
+		t.Fatal("Timeout when waiting for error callback on the watcher")
+	}
+}
+
+// TODO: Get rid of the clusterWatcher type in cds_watchers_test.go and use this
+// one instead. Also, rename this to clusterWatcher as part of that refactor.
+type clusterWatcherV2 struct {
+	updateCh      *testutils.Channel // Messages of type xdsresource.ClusterUpdate
+	ambientErrCh  *testutils.Channel // Messages of type ambient error
+	resourceErrCh *testutils.Channel // Messages of type resource error
+}
+
+func newClusterWatcherV2() *clusterWatcherV2 {
+	return &clusterWatcherV2{
+		updateCh:      testutils.NewChannel(),
+		ambientErrCh:  testutils.NewChannel(),
+		resourceErrCh: testutils.NewChannel(),
+	}
+}
+
+func (cw *clusterWatcherV2) ResourceChanged(update *xdsresource.ClusterResourceData, onDone func()) {
+	cw.updateCh.Send(update.Resource)
+	onDone()
+}
+
+func (cw *clusterWatcherV2) AmbientError(err error, onDone func()) {
+	// When used with a go-control-plane management server that continuously
+	// resends resources which are NACKed by the xDS client, using a `Replace()`
+	// here simplifies tests that want access to the most recently received
+	// error.
+	cw.ambientErrCh.Replace(err)
+	onDone()
+}
+
+func (cw *clusterWatcherV2) ResourceError(err error, onDone func()) {
+	// When used with a go-control-plane management server that continuously
+	// resends resources which are NACKed by the xDS client, using a `Replace()`
+	// here simplifies tests that want access to the most recently received
+	// error.
+	cw.resourceErrCh.Replace(err)
+	onDone()
 }

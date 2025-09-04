@@ -1,10 +1,14 @@
-#include "schemeshard__operation_part.h"
+#include "schemeshard__op_traits.h"
 #include "schemeshard__operation_common.h"
+#include "schemeshard__operation_part.h"
 #include "schemeshard_impl.h"
-
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include "schemeshard_utils.h"  // for IsAllowedKeyType
 
 #include <contrib/ydb/core/base/subdomain.h>
+#include <contrib/ydb/core/mind/hive/hive.h>
+#include <contrib/ydb/core/protos/datashard_config.pb.h>
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/scheme/scheme_tabledefs.h>  // for IsAllowedKeyType
 
 namespace {
 
@@ -117,7 +121,7 @@ bool DoInitPartitioning(TTableInfo::TPtr tableInfo,
     for (ui32 ki : keyColIds) {
         auto type = tableInfo->Columns[ki].PType;
 
-        if (!IsAllowedKeyType(type)) {
+        if (!NKikimr::IsAllowedKeyType(type)) {
             errStr = Sprintf("Column %s has wrong key type %s",
                 tableInfo->Columns[ki].Name.c_str(), NScheme::TypeName(type).c_str());
             return false;
@@ -162,7 +166,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TCreateTable TConfigureParts"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -243,7 +247,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TCreateTable TPropose"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -441,14 +445,23 @@ public:
                 .IsAtLocalSchemeShard()
                 .IsResolved()
                 .NotDeleted()
-                .NotUnderDeleting();
+                .NotUnderDeleting()
+                .FailOnRestrictedCreateInTempZone(Transaction.GetAllowCreateInTempDir());
 
             if (checks) {
+                if (parentPathStr.StartsWith(JoinPath({parentPath.GetDomainPathString(), ".backups/collections"}))) {
+                    schema.SetSystemColumnNamesAllowed(true);
+                }
                 if (parentPath.Base()->IsTableIndex()) {
-                    checks.IsInsideTableIndexPath()
-                          .IsUnderCreating(NKikimrScheme::StatusNameConflict)
-                          .IsUnderTheSameOperation(OperationId.GetTxId()); //allow only as part of creating base table
-                } else {
+                    checks.IsInsideTableIndexPath();
+                    // Not build index impl tables can be created only as part of create index
+                    // build index impl tables created multiple times during index construction
+                    if (!NTableIndex::IsBuildImplTable(name)) {
+                        checks
+                            .IsUnderCreating(NKikimrScheme::StatusNameConflict)
+                            .IsUnderTheSameOperation(OperationId.GetTxId());
+                    }
+                } else if (!Transaction.GetAllowAccessToPrivatePaths()) {
                     checks.IsCommonSensePath()
                           .IsLikeDirectory();
                 }
@@ -484,12 +497,16 @@ public:
                 }
 
                 checks
-                    .IsValidLeafName()
+                    .IsValidLeafName(context.UserToken.Get())
                     .PathsLimit()
                     .DirChildrenLimit()
-                    .ShardsLimit(shardsToCreate)
-                    .PathShardsLimit(shardsToCreate)
                     .IsValidACL(acl);
+
+                if (!Transaction.GetInternal()) {
+                    checks
+                        .ShardsLimit(shardsToCreate)
+                        .PathShardsLimit(shardsToCreate);
+                }
             }
 
             if (!checks) {
@@ -537,12 +554,6 @@ public:
 
         TString errStr;
 
-        if ((schema.HasTemporary() && schema.GetTemporary()) && !context.SS->EnableTempTables) {
-            result->SetError(NKikimrScheme::StatusPreconditionFailed,
-                TStringBuilder() << "It is not allowed to create temp table: " << schema.GetName());
-            return result;
-        }
-
         if (!CheckColumnTypesConstraints(schema, errStr)) {
             result->SetError(NKikimrScheme::StatusPreconditionFailed, errStr);
             return result;
@@ -563,7 +574,21 @@ public:
 
         const NScheme::TTypeRegistry* typeRegistry = AppData()->TypeRegistry;
         const TSchemeLimits& limits = domainInfo->GetSchemeLimits();
-        TTableInfo::TAlterDataPtr alterData = TTableInfo::CreateAlterData(nullptr, schema, *typeRegistry, limits, *domainInfo, context.SS->EnableTablePgTypes, errStr, LocalSequences);
+        const TTableInfo::TCreateAlterDataFeatureFlags featureFlags = {
+            .EnableTablePgTypes = AppData()->FeatureFlags.GetEnableTablePgTypes(),
+            .EnableTableDatetime64 = AppData()->FeatureFlags.GetEnableTableDatetime64(),
+            .EnableParameterizedDecimal = AppData()->FeatureFlags.GetEnableParameterizedDecimal(),
+        };
+        TTableInfo::TAlterDataPtr alterData = TTableInfo::CreateAlterData(
+            nullptr,
+            schema,
+            *typeRegistry,
+            limits,
+            *domainInfo,
+            featureFlags,
+            errStr,
+            LocalSequences);
+
         if (!alterData.Get()) {
             result->SetError(NKikimrScheme::StatusSchemeError, errStr);
             return result;
@@ -644,9 +669,12 @@ public:
 
         Y_ABORT_UNLESS(tableInfo->GetPartitions().back().EndOfRange.empty(), "End of last range must be +INF");
 
-        if (schema.HasTemporary() && schema.GetTemporary()) {
-            tableInfo->IsTemporary = true;
-            tableInfo->OwnerActorId = ActorIdFromProto(Transaction.GetTempTableOwnerActorId());
+        if (tableInfo->IsAsyncReplica()) {
+            newTable->SetAsyncReplica(true);
+        }
+
+        if (tableInfo->IsIncrementalRestoreTable()) {
+            newTable->SetIncrementalRestoreTable();
         }
 
         context.SS->Tables[newTable->PathId] = tableInfo;
@@ -661,13 +689,12 @@ public:
         context.SS->ChangeTxState(db, OperationId, TTxState::CreateParts);
         context.OnComplete.ActivateTx(OperationId);
 
-        context.SS->PersistPath(db, newTable->PathId);
         context.SS->ApplyAndPersistUserAttrs(db, newTable->PathId);
 
         if (!acl.empty()) {
             newTable->ApplyACL(acl);
-            context.SS->PersistACL(db, newTable);
         }
+        context.SS->PersistPath(db, newTable->PathId);
         context.SS->PersistTable(db, newTable->PathId);
         context.SS->PersistTxState(db, OperationId);
 
@@ -697,23 +724,21 @@ public:
         context.SS->ClearDescribePathCaches(dstPath.Base());
         context.OnComplete.PublishToSchemeBoard(OperationId, dstPath.Base()->PathId);
 
-        if (schema.HasTemporary() && schema.GetTemporary()) {
-            const auto& ownerActorId = tableInfo->OwnerActorId;
-            LOG_DEBUG_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
-                    "Processing create temp table with Name: " << name
-                    << ", WorkingDir: " << parentPathStr
-                    << ", OwnerActorId: " << ownerActorId
-                    << ", PathId: " << newTable->PathId);
-            context.OnComplete.UpdateTempTablesToCreateState(
-                ownerActorId, newTable->PathId);
-        }
-
         Y_ABORT_UNLESS(shardsToCreate == txState.Shards.size());
-        dstPath.DomainInfo()->IncPathsInside();
-        dstPath.DomainInfo()->AddInternalShards(txState);
+        dstPath.DomainInfo()->IncPathsInside(context.SS);
+        dstPath.DomainInfo()->AddInternalShards(txState, context.SS);
 
         dstPath.Base()->IncShardsInside(shardsToCreate);
-        parentPath.Base()->IncAliveChildren();
+        IncAliveChildrenDirect(OperationId, parentPath, context); // for correct discard of ChildrenExist prop
+
+        LOG_TRACE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                "TCreateTable Propose creating new table"
+                << " opId# " << OperationId
+                << " path# " << dstPath.PathString()
+                << " pathId# " << newTable->PathId
+                << " schemeshard# " << ssId
+                << " tx# " << Transaction.DebugString()
+                );
 
         SetState(NextState());
         return result;
@@ -737,6 +762,33 @@ public:
 }
 
 namespace NKikimr::NSchemeShard {
+
+using TTag = TSchemeTxTraits<NKikimrSchemeOp::EOperationType::ESchemeOpCreateTable>;
+
+namespace NOperation {
+
+template <>
+std::optional<TString> GetTargetName<TTag>(
+    TTag,
+    const TTxTransaction& tx)
+{
+    if (tx.GetCreateTable().HasCopyFromTable()) {
+        return std::nullopt;
+    }
+    return tx.GetCreateTable().GetName();
+}
+
+template <>
+bool SetName<TTag>(
+    TTag,
+    TTxTransaction& tx,
+    const TString& name)
+{
+    tx.MutableCreateTable()->SetName(name);
+    return true;
+}
+
+} // namespace NOperation
 
 ISubOperation::TPtr CreateNewTable(TOperationId id, const TTxTransaction& tx, const THashSet<TString>& localSequences) {
     auto obj = MakeSubOperation<TCreateTable>(id, tx);

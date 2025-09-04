@@ -2,30 +2,29 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v3.113.3)
+
 SRCS(
     conn.go
+    conn_helpers.go
     connector.go
     context.go
-    dsn.go
     errors.go
-    mode.go
+    options.go
     rows.go
     stmt.go
     tx.go
-    tx_fake.go
-    unwrap_go1.18.go
-    valuer.go
+    unwrap.go
 )
 
-GO_TEST_SRCS(
-    conn_test.go
-    dsn_test.go
-)
+GO_TEST_SRCS(conn_helpers_test.go)
 
 END()
 
 RECURSE(
     badconn
+    common
     gotest
-    isolation
+    xquery
+    xtable
 )

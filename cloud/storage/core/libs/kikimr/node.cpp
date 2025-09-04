@@ -10,8 +10,8 @@
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
+#include <ydb-cpp-sdk/client/discovery/discovery.h>
+#include <ydb-cpp-sdk/client/driver/driver.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event.h>
@@ -345,7 +345,7 @@ struct TDiscoveryNodeRegistrant
                     node,
                     result.HasNodeName()
                         ? result.GetNodeName()
-                        : std::optional<TString>{});
+                        : std::optional<std::string>{});
             } else {
                 *NsConfig.AddNode() = CreateStaticNodeInfo(node);
             }

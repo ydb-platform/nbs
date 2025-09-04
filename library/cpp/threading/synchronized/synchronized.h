@@ -10,7 +10,6 @@ namespace NThreading {
             : Value(std::move(value))
         {
         }
-
         TSynchronized(TSynchronized&& other)
             : Value(std::move(other.Value))
         {
@@ -25,22 +24,26 @@ namespace NThreading {
         class TAccess {
         public:
             TAccess(M& mutex, T& value)
-                : Guard(mutex)
-                , Value(value)
+                : Guard_(mutex)
+                , Value_(value)
             {
             }
 
             T& operator*() {
-                return Value;
+                return Value_;
             }
 
             T* operator->() {
-                return &Value;
+                return &Value_;
+            }
+
+            void Release() {
+                return Guard_.Release();
             }
 
         private:
-            TGuard<M> Guard;
-            T& Value;
+            TGuard<M> Guard_;
+            T& Value_;
         };
 
         TAccess Access() {

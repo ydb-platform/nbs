@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.32.4)
+
 SRCS(
     address.pb.go
     address.pb.validate.go
@@ -21,6 +23,8 @@ SRCS(
     grpc_service.pb.validate.go
     health_check.pb.go
     health_check.pb.validate.go
+    http_service.pb.go
+    http_service.pb.validate.go
     http_uri.pb.go
     http_uri.pb.validate.go
     protocol.pb.go
@@ -29,6 +33,8 @@ SRCS(
     proxy_protocol.pb.validate.go
     resolver.pb.go
     resolver.pb.validate.go
+    socket_cmsg_headers.pb.go
+    socket_cmsg_headers.pb.validate.go
     socket_option.pb.go
     socket_option.pb.validate.go
     substitution_format_string.pb.go

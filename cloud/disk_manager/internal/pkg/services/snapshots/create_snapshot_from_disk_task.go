@@ -134,7 +134,7 @@ func (t *createSnapshotFromDiskTask) run(
 	}
 
 	// TODO: estimate should be applied before resource creation, not after.
-	execCtx.SetEstimatedInflightDuration(performance.Estimate(
+	execCtx.SetEstimate(performance.Estimate(
 		typedResponse.TransferredDataSize,
 		t.performanceConfig.GetCreateSnapshotFromDiskBandwidthMiBs(),
 	))

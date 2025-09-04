@@ -1,28 +1,27 @@
 """
 Internal hook annotation, representation and calling machinery.
 """
+
 from __future__ import annotations
 
+from collections.abc import Generator
+from collections.abc import Mapping
+from collections.abc import Sequence
+from collections.abc import Set
 import inspect
 import sys
-import warnings
 from types import ModuleType
-from typing import AbstractSet
 from typing import Any
 from typing import Callable
 from typing import Final
 from typing import final
-from typing import Generator
-from typing import List
-from typing import Mapping
 from typing import Optional
 from typing import overload
-from typing import Sequence
-from typing import Tuple
 from typing import TYPE_CHECKING
 from typing import TypedDict
 from typing import TypeVar
 from typing import Union
+import warnings
 
 from ._result import Result
 
@@ -33,7 +32,7 @@ _Namespace = Union[ModuleType, type]
 _Plugin = object
 _HookExec = Callable[
     [str, Sequence["HookImpl"], Mapping[str, object], bool],
-    Union[object, List[object]],
+    Union[object, list[object]],
 ]
 _HookImplFunction = Callable[..., Union[_T, Generator[None, Result[_T], None]]]
 
@@ -47,6 +46,11 @@ class HookspecOpts(TypedDict):
     historic: bool
     #: Whether the hook :ref:`warns when implemented <warn_on_impl>`.
     warn_on_impl: Warning | None
+    #: Whether the hook warns when :ref:`certain arguments are requested
+    #: <warn_on_impl>`.
+    #:
+    #: .. versionadded:: 1.5
+    warn_on_impl_args: Mapping[str, Warning] | None
 
 
 class HookimplOpts(TypedDict):
@@ -91,8 +95,8 @@ class HookspecMarker:
         firstresult: bool = False,
         historic: bool = False,
         warn_on_impl: Warning | None = None,
-    ) -> _F:
-        ...
+        warn_on_impl_args: Mapping[str, Warning] | None = None,
+    ) -> _F: ...
 
     @overload  # noqa: F811
     def __call__(  # noqa: F811
@@ -101,8 +105,8 @@ class HookspecMarker:
         firstresult: bool = ...,
         historic: bool = ...,
         warn_on_impl: Warning | None = ...,
-    ) -> Callable[[_F], _F]:
-        ...
+        warn_on_impl_args: Mapping[str, Warning] | None = ...,
+    ) -> Callable[[_F], _F]: ...
 
     def __call__(  # noqa: F811
         self,
@@ -110,6 +114,7 @@ class HookspecMarker:
         firstresult: bool = False,
         historic: bool = False,
         warn_on_impl: Warning | None = None,
+        warn_on_impl_args: Mapping[str, Warning] | None = None,
     ) -> _F | Callable[[_F], _F]:
         """If passed a function, directly sets attributes on the function
         which will make it discoverable to :meth:`PluginManager.add_hookspecs`.
@@ -129,6 +134,13 @@ class HookspecMarker:
         :param warn_on_impl:
             If given, every implementation of this hook will trigger the given
             warning. See :ref:`warn_on_impl`.
+
+        :param warn_on_impl_args:
+            If given, every implementation of this hook which requests one of
+            the arguments in the dict will trigger the corresponding warning.
+            See :ref:`warn_on_impl`.
+
+            .. versionadded:: 1.5
         """
 
         def setattr_hookspec_opts(func: _F) -> _F:
@@ -138,6 +150,7 @@ class HookspecMarker:
                 "firstresult": firstresult,
                 "historic": historic,
                 "warn_on_impl": warn_on_impl,
+                "warn_on_impl_args": warn_on_impl_args,
             }
             setattr(func, self.project_name + "_spec", opts)
             return func
@@ -172,8 +185,7 @@ class HookimplMarker:
         trylast: bool = ...,
         specname: str | None = ...,
         wrapper: bool = ...,
-    ) -> _F:
-        ...
+    ) -> _F: ...
 
     @overload  # noqa: F811
     def __call__(  # noqa: F811
@@ -185,8 +197,7 @@ class HookimplMarker:
         trylast: bool = ...,
         specname: str | None = ...,
         wrapper: bool = ...,
-    ) -> Callable[[_F], _F]:
-        ...
+    ) -> Callable[[_F], _F]: ...
 
     def __call__(  # noqa: F811
         self,
@@ -289,12 +300,12 @@ def varnames(func: object) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if inspect.isclass(func):
         try:
             func = func.__init__
-        except AttributeError:
+        except AttributeError:  # pragma: no cover - pypy special case
             return (), ()
     elif not inspect.isroutine(func):  # callable object?
         try:
             func = getattr(func, "__call__", func)
-        except Exception:
+        except Exception:  # pragma: no cover - pypy special case
             return (), ()
 
     try:
@@ -302,7 +313,7 @@ def varnames(func: object) -> tuple[tuple[str, ...], tuple[str, ...]]:
         sig = inspect.signature(
             func.__func__ if inspect.ismethod(func) else func  # type:ignore[arg-type]
         )
-    except TypeError:
+    except TypeError:  # pragma: no cover
         return (), ()
 
     _valid_param_kinds = (
@@ -334,7 +345,7 @@ def varnames(func: object) -> tuple[tuple[str, ...], tuple[str, ...]]:
     # pypy3 uses "obj" instead of "self" for default dunder methods
     if not _PYPY:
         implicit_names: tuple[str, ...] = ("self",)
-    else:
+    else:  # pragma: no cover
         implicit_names = ("self", "obj")
     if args:
         qualname: str = getattr(func, "__qualname__", "")
@@ -356,15 +367,14 @@ class HookRelay:
 
     if TYPE_CHECKING:
 
-        def __getattr__(self, name: str) -> HookCaller:
-            ...
+        def __getattr__(self, name: str) -> HookCaller: ...
 
 
 # Historical name (pluggy<=1.2), kept for backward compatibility.
 _HookRelay = HookRelay
 
 
-_CallHistory = List[Tuple[Mapping[str, object], Optional[Callable[[Any], None]]]]
+_CallHistory = list[tuple[Mapping[str, object], Optional[Callable[[Any], None]]]]
 
 
 class HookCaller:
@@ -389,6 +399,13 @@ class HookCaller:
         #: Name of the hook getting called.
         self.name: Final = name
         self._hookexec: Final = hook_execute
+        # The hookimpls list. The caller iterates it *in reverse*. Format:
+        # 1. trylast nonwrappers
+        # 2. nonwrappers
+        # 3. tryfirst nonwrappers
+        # 4. trylast wrappers
+        # 5. wrappers
+        # 6. tryfirst wrappers
         self._hookimpls: Final[list[HookImpl]] = []
         self._call_history: _CallHistory | None = None
         # TODO: Document, or make private.
@@ -466,12 +483,13 @@ class HookCaller:
                     notincall = ", ".join(
                         repr(argname)
                         for argname in self.spec.argnames
-                        # Avoid self.spec.argnames - kwargs.keys() - doesn't preserve order.
+                        # Avoid self.spec.argnames - kwargs.keys()
+                        # it doesn't preserve order.
                         if argname not in kwargs.keys()
                     )
                     warnings.warn(
-                        "Argument(s) {} which are declared in the hookspec "
-                        "cannot be found in this hook call".format(notincall),
+                        f"Argument(s) {notincall} which are declared in the hookspec "
+                        "cannot be found in this hook call",
                         stacklevel=2,
                     )
                     break
@@ -485,12 +503,13 @@ class HookCaller:
         Returns the result(s) of calling all registered plugins, see
         :ref:`calling`.
         """
-        assert (
-            not self.is_historic()
-        ), "Cannot directly call a historic hook - use call_historic instead."
+        assert not self.is_historic(), (
+            "Cannot directly call a historic hook - use call_historic instead."
+        )
         self._verify_all_args_are_provided(kwargs)
         firstresult = self.spec.opts.get("firstresult", False) if self.spec else False
-        return self._hookexec(self.name, self._hookimpls, kwargs, firstresult)
+        # Copy because plugins may register other plugins during iteration (#438).
+        return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
 
     def call_historic(
         self,
@@ -511,7 +530,8 @@ class HookCaller:
         self._call_history.append((kwargs, result_callback))
         # Historizing hooks don't return results.
         # Remember firstresult isn't compatible with historic.
-        res = self._hookexec(self.name, self._hookimpls, kwargs, False)
+        # Copy because plugins may register other plugins during iteration (#438).
+        res = self._hookexec(self.name, self._hookimpls.copy(), kwargs, False)
         if result_callback is None:
             return
         if isinstance(res, list):
@@ -524,9 +544,9 @@ class HookCaller:
         """Call the hook with some additional temporarily participating
         methods using the specified ``kwargs`` as call parameters, see
         :ref:`call_extra`."""
-        assert (
-            not self.is_historic()
-        ), "Cannot directly call a historic hook - use call_historic instead."
+        assert not self.is_historic(), (
+            "Cannot directly call a historic hook - use call_historic instead."
+        )
         self._verify_all_args_are_provided(kwargs)
         opts: HookimplOpts = {
             "wrapper": False,
@@ -541,10 +561,11 @@ class HookCaller:
             hookimpl = HookImpl(None, "<temp>", method, opts)
             # Find last non-tryfirst nonwrapper method.
             i = len(hookimpls) - 1
-            while (
-                i >= 0
-                and hookimpls[i].tryfirst
-                and not (hookimpls[i].hookwrapper or hookimpls[i].wrapper)
+            while i >= 0 and (
+                # Skip wrappers.
+                (hookimpls[i].hookwrapper or hookimpls[i].wrapper)
+                # Skip tryfirst nonwrappers.
+                or hookimpls[i].tryfirst
             ):
                 i -= 1
             hookimpls.insert(i + 1, hookimpl)
@@ -586,7 +607,7 @@ class _SubsetHookCaller(HookCaller):
         "_remove_plugins",
     )
 
-    def __init__(self, orig: HookCaller, remove_plugins: AbstractSet[_Plugin]) -> None:
+    def __init__(self, orig: HookCaller, remove_plugins: Set[_Plugin]) -> None:
         self._orig = orig
         self._remove_plugins = remove_plugins
         self.name = orig.name  # type: ignore[misc]
@@ -680,6 +701,7 @@ class HookSpec:
         "kwargnames",
         "opts",
         "warn_on_impl",
+        "warn_on_impl_args",
     )
 
     def __init__(self, namespace: _Namespace, name: str, opts: HookspecOpts) -> None:
@@ -689,3 +711,4 @@ class HookSpec:
         self.argnames, self.kwargnames = varnames(self.function)
         self.opts = opts
         self.warn_on_impl = opts.get("warn_on_impl")
+        self.warn_on_impl_args = opts.get("warn_on_impl_args")

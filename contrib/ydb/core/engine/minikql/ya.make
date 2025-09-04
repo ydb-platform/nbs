@@ -13,7 +13,7 @@ PEERDIR(
     contrib/ydb/core/engine
     contrib/ydb/core/formats
     contrib/ydb/core/tablet_flat
-    contrib/ydb/library/yql/parser/pg_wrapper/interface
+    yql/essentials/parser/pg_wrapper/interface
 )
 
 YQL_LAST_ABI_VERSION()

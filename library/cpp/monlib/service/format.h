@@ -12,7 +12,7 @@ namespace NMonitoring {
         Y_HAS_MEMBER(second, Second);
     } // namespace NPrivate
 
-    template <typename TRequest>
+    template <typename TRequest, bool UseFastest = false>
     ECompression ParseCompression(const TRequest& req) {
         auto&& headers = req.GetHeaders();
 
@@ -21,9 +21,11 @@ namespace NMonitoring {
         auto it = FindIf(std::begin(headers), std::end(headers),
             [=] (const auto& h) {
                 if constexpr (NPrivate::THasName<std::decay_t<decltype(h)>>::value) {
-                    return AsciiCompareIgnoreCase(h.Name(), TStringBuf("accept-encoding")) == 0;
-                } else if (isPlainPair) {
-                    return AsciiCompareIgnoreCase(h.first, TStringBuf("accept-encoding")) == 0;
+                    return AsciiEqualsIgnoreCase(h.Name(), TStringBuf("accept-encoding"));
+                } else if constexpr (isPlainPair) {
+                    return AsciiEqualsIgnoreCase(h.first, TStringBuf("accept-encoding"));
+                } else {
+                    static_assert(TDependentFalse<decltype(h)>);
                 }
             });
 
@@ -32,10 +34,19 @@ namespace NMonitoring {
         }
 
         NMonitoring::ECompression val{};
+
         if constexpr (isPlainPair) {
-            val = CompressionFromAcceptEncodingHeader(it->second);
+            if constexpr (UseFastest) {
+              val = FastestCompressionFromAcceptEncodingHeader(it->second);
+            } else {
+              val = CompressionFromAcceptEncodingHeader(it->second);
+            }
         } else {
-            val = CompressionFromAcceptEncodingHeader(it->Value());
+            if constexpr (UseFastest) {
+              val = FastestCompressionFromAcceptEncodingHeader(it->Value());
+            } else {
+              val = CompressionFromAcceptEncodingHeader(it->Value());
+            }
         }
 
         return val != NMonitoring::ECompression::UNKNOWN
@@ -66,9 +77,11 @@ namespace NMonitoring {
         auto it = FindIf(std::begin(headers), std::end(headers),
             [=] (const auto& h) {
                 if constexpr (NPrivate::THasName<std::decay_t<decltype(h)>>::value) {
-                    return AsciiCompareIgnoreCase(h.Name(), TStringBuf("accept")) == 0;
-                } else if (isPlainPair) {
-                    return AsciiCompareIgnoreCase(h.first, TStringBuf("accept")) == 0;
+                    return AsciiEqualsIgnoreCase(h.Name(), TStringBuf("accept"));
+                } else if constexpr (isPlainPair) {
+                    return AsciiEqualsIgnoreCase(h.first, TStringBuf("accept"));
+                } else {
+                    static_assert(TDependentFalse<decltype(h)>);
                 }
             });
 

@@ -10,6 +10,8 @@ type Detailer interface {
 	Details() Details
 }
 
+var _ Detailer = Details(0)
+
 type Details uint64
 
 func (d Details) Details() Details {
@@ -24,12 +26,14 @@ func (d Details) String() string {
 		}
 	}
 	sort.Strings(ss)
+
 	return strings.Join(ss, "|")
 }
 
 const (
 	DriverNetEvents Details = 1 << iota // for bitmask: 1, 2, 4, 8, 16, 32, ...
 	DriverConnEvents
+	DriverConnStreamEvents
 	DriverBalancerEvents
 	DriverResolverEvents
 	DriverRepeaterEvents
@@ -43,17 +47,28 @@ const (
 	TablePoolSessionLifeCycleEvents
 	TablePoolAPIEvents
 
+	QuerySessionEvents
+	QueryResultEvents
+	QueryTransactionEvents
+	QueryPoolEvents
+
 	TopicControlPlaneEvents
 
 	TopicReaderCustomerEvents
 
 	TopicReaderStreamLifeCycleEvents
 	TopicReaderStreamEvents
+	TopicReaderTransactionEvents
 	TopicReaderMessageEvents
 	TopicReaderPartitionEvents
 
+	TopicListenerStreamEvents
+	TopicListenerWorkerEvents
+	TopicListenerPartitionEvents
+
 	TopicWriterStreamLifeCycleEvents
 	TopicWriterStreamEvents
+	TopicWriterStreamGrpcMessageEvents
 
 	DatabaseSQLConnectorEvents
 	DatabaseSQLConnEvents
@@ -72,10 +87,8 @@ const (
 
 	CoordinationEvents
 
-	// Deprecated: has no effect now
-	DriverClusterEvents
-
 	DriverEvents = DriverConnEvents |
+		DriverConnStreamEvents |
 		DriverBalancerEvents |
 		DriverResolverEvents |
 		DriverRepeaterEvents |
@@ -88,6 +101,11 @@ const (
 		TablePoolLifeCycleEvents |
 		TablePoolSessionLifeCycleEvents |
 		TablePoolAPIEvents
+
+	QueryEvents = QuerySessionEvents |
+		QueryPoolEvents |
+		QueryResultEvents |
+		QueryTransactionEvents
 
 	TablePoolEvents = TablePoolLifeCycleEvents |
 		TablePoolSessionLifeCycleEvents |
@@ -103,7 +121,12 @@ const (
 		TopicReaderPartitionEvents |
 		TopicReaderStreamLifeCycleEvents
 
-	TopicEvents = TopicControlPlaneEvents | TopicReaderEvents
+	TopicListenerEvents = TopicListenerStreamEvents | TopicListenerWorkerEvents | TopicListenerPartitionEvents
+
+	TopicWriterEvents = TopicWriterStreamLifeCycleEvents | TopicWriterStreamEvents |
+		TopicWriterStreamGrpcMessageEvents
+
+	TopicEvents = TopicControlPlaneEvents | TopicReaderEvents | TopicListenerEvents | TopicWriterEvents
 
 	DatabaseSQLEvents = DatabaseSQLConnectorEvents |
 		DatabaseSQLConnEvents |
@@ -120,6 +143,7 @@ var (
 		DriverResolverEvents:    "ydb.driver.resolver",
 		DriverRepeaterEvents:    "ydb.driver.repeater",
 		DriverConnEvents:        "ydb.driver.conn",
+		DriverConnStreamEvents:  "ydb.driver.conn.stream",
 		DriverCredentialsEvents: "ydb.driver.credentials",
 
 		DiscoveryEvents: "ydb.discovery",
@@ -143,21 +167,33 @@ var (
 		TablePoolSessionLifeCycleEvents: "ydb.table.pool.session",
 		TablePoolAPIEvents:              "ydb.table.pool.api",
 
+		QueryEvents:            "ydb.query",
+		QueryPoolEvents:        "ydb.query.pool",
+		QuerySessionEvents:     "ydb.query.session",
+		QueryResultEvents:      "ydb.query.result",
+		QueryTransactionEvents: "ydb.query.tx",
+
 		DatabaseSQLEvents:          "ydb.database.sql",
 		DatabaseSQLConnectorEvents: "ydb.database.sql.connector",
 		DatabaseSQLConnEvents:      "ydb.database.sql.conn",
 		DatabaseSQLTxEvents:        "ydb.database.sql.tx",
 		DatabaseSQLStmtEvents:      "ydb.database.sql.stmt",
 
-		TopicEvents:                      "ydb.topic",
-		TopicControlPlaneEvents:          "ydb.topic.controlplane",
-		TopicReaderEvents:                "ydb.topic.reader",
-		TopicReaderStreamEvents:          "ydb.topic.reader.stream",
-		TopicReaderMessageEvents:         "ydb.topic.reader.message",
-		TopicReaderPartitionEvents:       "ydb.topic.reader.partition",
-		TopicReaderStreamLifeCycleEvents: "ydb.topic.reader.lifecycle",
-		TopicWriterStreamLifeCycleEvents: "ydb.topic.writer.lifecycle",
-		TopicWriterStreamEvents:          "ydb.topic.writer.stream",
+		TopicEvents:                        "ydb.topic",
+		TopicControlPlaneEvents:            "ydb.topic.controlplane",
+		TopicReaderEvents:                  "ydb.topic.reader",
+		TopicReaderStreamEvents:            "ydb.topic.reader.stream",
+		TopicReaderMessageEvents:           "ydb.topic.reader.message",
+		TopicReaderPartitionEvents:         "ydb.topic.reader.partition",
+		TopicReaderStreamLifeCycleEvents:   "ydb.topic.reader.lifecycle",
+		TopicListenerEvents:                "ydb.topic.listener",
+		TopicWriterStreamLifeCycleEvents:   "ydb.topic.writer.lifecycle",
+		TopicWriterStreamEvents:            "ydb.topic.writer.stream",
+		TopicWriterStreamGrpcMessageEvents: "ydb.topic.writer.grpc",
+
+		TopicListenerStreamEvents:    "ydb.topic.listener.stream",
+		TopicListenerWorkerEvents:    "ydb.topic.listener.worker",
+		TopicListenerPartitionEvents: "ydb.topic.listener.partition",
 	}
 	defaultDetails = DetailsAll
 )
@@ -190,9 +226,9 @@ func MatchDetails(pattern string, opts ...matchDetailsOption) (d Details) {
 		err error
 	)
 
-	for _, o := range opts {
-		if o != nil {
-			o(h)
+	for _, opt := range opts {
+		if opt != nil {
+			opt(h)
 		}
 	}
 	if h.posixMatch {
@@ -211,5 +247,6 @@ func MatchDetails(pattern string, opts ...matchDetailsOption) (d Details) {
 	if d == 0 {
 		return h.defaultDetails
 	}
+
 	return d
 }

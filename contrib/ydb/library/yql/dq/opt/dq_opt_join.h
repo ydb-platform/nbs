@@ -3,7 +3,8 @@
 #include "dq_opt.h"
 
 #include <contrib/ydb/library/yql/dq/common/dq_common.h>
-#include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
+#include <yql/essentials/core/yql_expr_optimize.h>
+#include <yql/essentials/core/cbo/cbo_optimizer_new.h>
 
 namespace NYql {
 
@@ -12,14 +13,31 @@ struct TRelOptimizerNode;
 
 namespace NDq {
 
-NNodes::TExprBase DqRewriteEquiJoin(const NNodes::TExprBase& node, EHashJoinMode mode, TExprContext& ctx);
+NNodes::TExprBase DqRewriteEquiJoin(const NNodes::TExprBase& node, EHashJoinMode mode, bool useCBO, TExprContext& ctx, TTypeAnnotationContext& typeCtx, const TOptimizerHints& hints = {});
 
-NNodes::TExprBase DqBuildPhyJoin(const NNodes::TDqJoin& join, bool pushLeftStage, TExprContext& ctx, IOptimizationContext& optCtx);
+NNodes::TExprBase DqRewriteEquiJoin(const NNodes::TExprBase& node, EHashJoinMode mode, bool useCBO, TExprContext& ctx, TTypeAnnotationContext& typeCtx, int& joinCounter, const TOptimizerHints& hints = {});
 
-NNodes::TExprBase DqBuildJoin(const NNodes::TExprBase& node, TExprContext& ctx,
-    IOptimizationContext& optCtx, const TParentsMap& parentsMap, bool allowStageMultiUsage, bool pushLeftStage, EHashJoinMode hashJoin = EHashJoinMode::Off);
+NNodes::TExprBase DqBuildPhyJoin(const NNodes::TDqJoin& join, bool pushLeftStage, TExprContext& ctx, IOptimizationContext& optCtx, bool useGraceCoreForMap, bool buildCollectStage=true);
 
-NNodes::TExprBase DqBuildHashJoin(const NNodes::TDqJoin& join, EHashJoinMode mode, TExprContext& ctx, IOptimizationContext& optCtx);
+NNodes::TExprBase DqBuildJoin(
+    const NNodes::TExprBase& node,
+    TExprContext& ctx,
+    IOptimizationContext& optCtx,
+    const TParentsMap& parentsMap,
+    bool allowStageMultiUsage,
+    bool pushLeftStage,
+    EHashJoinMode hashJoin = EHashJoinMode::Off,
+    bool shuffleMapJoin = true,
+    bool useGraceCoreForMap = false,
+    bool useBlockHashJoin = false,
+    bool shuffleElimination = false,
+    bool shuffleEliminationWithMap = false,
+    bool buildCollectStage=true
+);
+
+NNodes::TExprBase DqBuildHashJoin(const NNodes::TDqJoin& join, EHashJoinMode mode, TExprContext& ctx, IOptimizationContext& optCtx, bool shuffleElimination, bool shuffleEliminationWithMap, bool useBlockHashJoin = false);
+
+NNodes::TExprBase DqBuildBlockHashJoin(const NNodes::TDqJoin& join, TExprContext& ctx);
 
 NNodes::TExprBase DqBuildJoinDict(const NNodes::TDqJoin& join, TExprContext& ctx);
 

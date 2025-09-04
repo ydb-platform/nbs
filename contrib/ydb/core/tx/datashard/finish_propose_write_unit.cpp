@@ -1,5 +1,6 @@
 #include "datashard_failpoints.h"
 #include "datashard_impl.h"
+#include "datashard_integrity_trails.h"
 #include "datashard_pipeline.h"
 #include "datashard_write_operation.h"
 #include "execution_unit_ctors.h"
@@ -48,16 +49,16 @@ TDataShard::TPromotePostExecuteEdges TFinishProposeWriteUnit::PromoteImmediatePo
         TTransactionContext& txc)
 {
     if (op->IsMvccSnapshotRead()) {
-        if (op->IsMvccSnapshotRepeatable()) {
+        if (op->IsMvccSnapshotRepeatable() && op->GetPerformedUserReads()) {
             return DataShard.PromoteImmediatePostExecuteEdges(op->GetMvccSnapshot(), TDataShard::EPromotePostExecuteEdges::RepeatableRead, txc);
         } else {
             return DataShard.PromoteImmediatePostExecuteEdges(op->GetMvccSnapshot(), TDataShard::EPromotePostExecuteEdges::ReadOnly, txc);
         }
-    } else if (op->MvccReadWriteVersion) {
-        if (op->IsReadOnly()) {
-            return DataShard.PromoteImmediatePostExecuteEdges(*op->MvccReadWriteVersion, TDataShard::EPromotePostExecuteEdges::ReadOnly, txc);
+    } else if (op->CachedMvccVersion) {
+        if (op->IsReadOnly() || op->LockTxId()) {
+            return DataShard.PromoteImmediatePostExecuteEdges(*op->CachedMvccVersion, TDataShard::EPromotePostExecuteEdges::ReadOnly, txc);
         } else {
-            return DataShard.PromoteImmediatePostExecuteEdges(*op->MvccReadWriteVersion, TDataShard::EPromotePostExecuteEdges::ReadWrite, txc);
+            return DataShard.PromoteImmediatePostExecuteEdges(*op->CachedMvccVersion, TDataShard::EPromotePostExecuteEdges::ReadWrite, txc);
         }
     } else {
         return { };
@@ -80,7 +81,7 @@ EExecutionStatus TFinishProposeWriteUnit::Execute(TOperation::TPtr op,
         op->SetWaitCompletionFlag(true);
     } else if (DataShard.IsFollower()) {
         // It doesn't matter whether we wait or not
-    } else if (DataShard.IsMvccEnabled() && op->IsImmediate()) {
+    } else if (op->IsImmediate()) {
         auto res = PromoteImmediatePostExecuteEdges(op.Get(), txc);
 
         if (res.HadWrites) {
@@ -161,23 +162,25 @@ void TFinishProposeWriteUnit::CompleteRequest(TOperation::TPtr op, const TActorC
                 << DataShard.TabletID() << " send to client, propose latency: "
                 << duration.MilliSeconds() << " ms, status: " << res->GetStatus());
 
-    TString errors = res->GetError();
-    if (errors.size()) {
+    if (res->IsError()) {
         LOG_LOG_S_THROTTLE(DataShard.GetLogThrottler(TDataShard::ELogThrottlerType::FinishProposeUnit_CompleteRequest), ctx, NActors::NLog::PRI_ERROR, NKikimrServices::TX_DATASHARD, 
                     "Errors while proposing transaction txid " << op->GetTxId()
-                    << " at tablet " << DataShard.TabletID() << " status: "
-                    << res->GetStatus() << " errors: " << errors);
+                    << " at tablet " << DataShard.TabletID() << " " << res->GetError());
+    }
+
+    if (op->IsImmediate() && !op->IsReadOnly()) {
+        NDataIntegrity::LogIntegrityTrailsFinish<NKikimrDataEvents::TEvWriteResult>(ctx, DataShard.TabletID(), op->GetGlobalTxId(), res->GetStatus());
     }
 
     if (res->IsPrepared()) {
         DataShard.IncCounter(COUNTER_WRITE_SUCCESS_COMPLETE_LATENCY, duration);
     } else {
         DataShard.CheckSplitCanStart(ctx);
-        DataShard.CheckMvccStateChangeCanStart(ctx);
     }
 
-    if (op->HasNeedDiagnosticsFlag())
-        AddDiagnosticsResult(*res);
+    AddDiagnosticsResult(*res);
+
+    DataShard.FillExecutionStats(op->GetExecutionProfile(), *res->Record.MutableTxStats());
 
     if (!gSkipRepliesFailPoint.Check(DataShard.TabletID(), op->GetTxId())) {
         if (res->IsPrepared()) {
@@ -187,7 +190,13 @@ void TFinishProposeWriteUnit::CompleteRequest(TOperation::TPtr op, const TActorC
             res->SetOrbit(std::move(op->Orbit));
         }
 
-        ctx.Send(writeOp->GetEv()->Sender, res.release(), 0, writeOp->GetEv()->Cookie);
+        if (op->IsImmediate() && !op->IsReadOnly() && !op->IsAborted() && op->CachedMvccVersion) {
+            DataShard.SendImmediateWriteResult(*op->CachedMvccVersion, op->GetTarget(), res.release(), op->GetCookie(), {}, op->GetTraceId());
+        } else if (op->HasVolatilePrepareFlag() && !op->IsDirty()) {
+            DataShard.SendWithConfirmedReadOnlyLease(op->GetFinishProposeTs(), op->GetTarget(), res.release(), op->GetCookie(), {}, op->GetTraceId());
+        } else {
+            ctx.Send(op->GetTarget(), res.release(), 0, op->GetCookie(), op->GetTraceId());
+        }
     }
 }
 

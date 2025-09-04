@@ -26,21 +26,25 @@ import ast
 import inspect
 import math
 import operator
+from collections.abc import Collection
 from decimal import Decimal
 from fractions import Fraction
 from functools import partial
-from typing import Any, Callable, Collection, Dict, NamedTuple, Optional, TypeVar
+from typing import Any, Callable, NamedTuple, Optional, TypeVar
 
 from hypothesis.internal.compat import ceil, floor
 from hypothesis.internal.floats import next_down, next_up
-from hypothesis.internal.reflection import extract_lambda_source
+from hypothesis.internal.reflection import (
+    extract_lambda_source,
+    get_pretty_function_description,
+)
 
 Ex = TypeVar("Ex")
 Predicate = Callable[[Ex], bool]
 
 
 class ConstructivePredicate(NamedTuple):
-    """Return kwargs to the appropriate strategy, and the predicate if needed.
+    """Return constraints to the appropriate strategy, and the predicate if needed.
 
     For example::
 
@@ -57,12 +61,16 @@ class ConstructivePredicate(NamedTuple):
     for each numeric type, for strings, for bytes, for collection sizes, etc.
     """
 
-    kwargs: Dict[str, Any]
+    constraints: dict[str, Any]
     predicate: Optional[Predicate]
 
     @classmethod
     def unchanged(cls, predicate: Predicate) -> "ConstructivePredicate":
         return cls({}, predicate)
+
+    def __repr__(self) -> str:
+        fn = get_pretty_function_description(self.predicate)
+        return f"{self.__class__.__name__}(constraints={self.constraints!r}, predicate={fn})"
 
 
 ARG = object()
@@ -73,10 +81,18 @@ def convert(node: ast.AST, argname: str) -> object:
         if node.id != argname:
             raise ValueError("Non-local variable")
         return ARG
+    if isinstance(node, ast.Call):
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "len"
+            and len(node.args) == 1
+        ):
+            # error unless comparison is to the len *of the lambda arg*
+            return convert(node.args[0], argname)
     return ast.literal_eval(node)
 
 
-def comp_to_kwargs(x: ast.AST, op: ast.AST, y: ast.AST, *, argname: str) -> dict:
+def comp_to_constraints(x: ast.AST, op: ast.AST, y: ast.AST, *, argname: str) -> dict:
     a = convert(x, argname)
     b = convert(y, argname)
     num = (int, float)
@@ -86,26 +102,28 @@ def comp_to_kwargs(x: ast.AST, op: ast.AST, y: ast.AST, *, argname: str) -> dict
         # (and we can't even do `arg == arg`, because what if it's NaN?)
         raise ValueError("Can't analyse this comparison")
 
+    of_len = {"len": True} if isinstance(x, ast.Call) or isinstance(y, ast.Call) else {}
+
     if isinstance(op, ast.Lt):
         if a is ARG:
-            return {"max_value": b, "exclude_max": True}
-        return {"min_value": a, "exclude_min": True}
+            return {"max_value": b, "exclude_max": True, **of_len}
+        return {"min_value": a, "exclude_min": True, **of_len}
     elif isinstance(op, ast.LtE):
         if a is ARG:
-            return {"max_value": b}
-        return {"min_value": a}
+            return {"max_value": b, **of_len}
+        return {"min_value": a, **of_len}
     elif isinstance(op, ast.Eq):
         if a is ARG:
-            return {"min_value": b, "max_value": b}
-        return {"min_value": a, "max_value": a}
+            return {"min_value": b, "max_value": b, **of_len}
+        return {"min_value": a, "max_value": a, **of_len}
     elif isinstance(op, ast.GtE):
         if a is ARG:
-            return {"min_value": b}
-        return {"max_value": a}
+            return {"min_value": b, **of_len}
+        return {"max_value": a, **of_len}
     elif isinstance(op, ast.Gt):
         if a is ARG:
-            return {"min_value": b, "exclude_min": True}
-        return {"max_value": a, "exclude_max": True}
+            return {"min_value": b, "exclude_min": True, **of_len}
+        return {"max_value": a, "exclude_max": True, **of_len}
     raise ValueError("Unhandled comparison operator")  # e.g. ast.Ne
 
 
@@ -120,6 +138,9 @@ def merge_preds(*con_predicates: ConstructivePredicate) -> ConstructivePredicate
     }
     predicate = None
     for kw, p in con_predicates:
+        assert (
+            not p or not predicate or p is predicate
+        ), "Can't merge two partially-constructive preds"
         predicate = p or predicate
         if "min_value" in kw:
             if kw["min_value"] > base["min_value"]:
@@ -133,6 +154,11 @@ def merge_preds(*con_predicates: ConstructivePredicate) -> ConstructivePredicate
                 base["max_value"] = kw["max_value"]
             elif kw["max_value"] == base["max_value"]:
                 base["exclude_max"] |= kw.get("exclude_max", False)
+
+    has_len = {"len" in kw for kw, _ in con_predicates if kw}
+    assert len(has_len) <= 1, "can't mix numeric with length constraints"
+    if has_len == {True}:
+        base["len"] = True
 
     if not base["exclude_min"]:
         del base["exclude_min"]
@@ -154,6 +180,8 @@ def numeric_bounds_from_ast(
     {"min_value": 0}, None
     >>> lambda x: x < 10
     {"max_value": 10, "exclude_max": True}, None
+    >>> lambda x: len(x) >= 5
+    {"min_value": 5, "len": True}, None
     >>> lambda x: x >= y
     {}, lambda x: x >= y
 
@@ -168,8 +196,11 @@ def numeric_bounds_from_ast(
         bounds = []
         for comp in comparisons:
             try:
-                kwargs = comp_to_kwargs(*comp, argname=argname)
-                bounds.append(ConstructivePredicate(kwargs, None))
+                constraints = comp_to_constraints(*comp, argname=argname)
+                # Because `len` could be redefined in the enclosing scope, we *always*
+                # have to apply the condition as a filter, in addition to rewriting.
+                pred = fallback.predicate if "len" in constraints else None
+                bounds.append(ConstructivePredicate(constraints, pred))
             except ValueError:
                 bounds.append(fallback)
         return merge_preds(*bounds)
@@ -205,10 +236,13 @@ def get_numeric_predicate_bounds(predicate: Predicate) -> ConstructivePredicate:
         options = {
             # We're talking about op(arg, x) - the reverse of our usual intuition!
             operator.lt: {"min_value": arg, "exclude_min": True},  # lambda x: arg < x
-            operator.le: {"min_value": arg},  # lambda x: arg <= x
-            operator.eq: {"min_value": arg, "max_value": arg},  # lambda x: arg == x
-            operator.ge: {"max_value": arg},  # lambda x: arg >= x
+            operator.le: {"min_value": arg},  #                      lambda x: arg <= x
+            operator.eq: {"min_value": arg, "max_value": arg},  #    lambda x: arg == x
+            operator.ge: {"max_value": arg},  #                      lambda x: arg >= x
             operator.gt: {"max_value": arg, "exclude_max": True},  # lambda x: arg > x
+            # Special-case our default predicates for length bounds
+            min_len: {"min_value": arg, "len": True},
+            max_len: {"max_value": arg, "len": True},
         }
         if predicate.func in options:
             return ConstructivePredicate(options[predicate.func], None)
@@ -248,58 +282,63 @@ def get_numeric_predicate_bounds(predicate: Predicate) -> ConstructivePredicate:
 
 
 def get_integer_predicate_bounds(predicate: Predicate) -> ConstructivePredicate:
-    kwargs, predicate = get_numeric_predicate_bounds(predicate)  # type: ignore
+    constraints, predicate = get_numeric_predicate_bounds(predicate)
 
-    if "min_value" in kwargs:
-        if kwargs["min_value"] == -math.inf:
-            del kwargs["min_value"]
-        elif math.isinf(kwargs["min_value"]):
+    if "min_value" in constraints:
+        if constraints["min_value"] == -math.inf:
+            del constraints["min_value"]
+        elif math.isinf(constraints["min_value"]):
             return ConstructivePredicate({"min_value": 1, "max_value": -1}, None)
-        elif kwargs["min_value"] != int(kwargs["min_value"]):
-            kwargs["min_value"] = ceil(kwargs["min_value"])
-        elif kwargs.get("exclude_min", False):
-            kwargs["min_value"] = int(kwargs["min_value"]) + 1
+        elif constraints["min_value"] != int(constraints["min_value"]):
+            constraints["min_value"] = ceil(constraints["min_value"])
+        elif constraints.get("exclude_min", False):
+            constraints["min_value"] = int(constraints["min_value"]) + 1
 
-    if "max_value" in kwargs:
-        if kwargs["max_value"] == math.inf:
-            del kwargs["max_value"]
-        elif math.isinf(kwargs["max_value"]):
+    if "max_value" in constraints:
+        if constraints["max_value"] == math.inf:
+            del constraints["max_value"]
+        elif math.isinf(constraints["max_value"]):
             return ConstructivePredicate({"min_value": 1, "max_value": -1}, None)
-        elif kwargs["max_value"] != int(kwargs["max_value"]):
-            kwargs["max_value"] = floor(kwargs["max_value"])
-        elif kwargs.get("exclude_max", False):
-            kwargs["max_value"] = int(kwargs["max_value"]) - 1
+        elif constraints["max_value"] != int(constraints["max_value"]):
+            constraints["max_value"] = floor(constraints["max_value"])
+        elif constraints.get("exclude_max", False):
+            constraints["max_value"] = int(constraints["max_value"]) - 1
 
-    kwargs = {k: v for k, v in kwargs.items() if k in {"min_value", "max_value"}}
-    return ConstructivePredicate(kwargs, predicate)
+    kw_categories = {"min_value", "max_value", "len"}
+    constraints = {k: v for k, v in constraints.items() if k in kw_categories}
+    return ConstructivePredicate(constraints, predicate)
 
 
 def get_float_predicate_bounds(predicate: Predicate) -> ConstructivePredicate:
-    kwargs, predicate = get_numeric_predicate_bounds(predicate)  # type: ignore
+    constraints, predicate = get_numeric_predicate_bounds(predicate)
 
-    if "min_value" in kwargs:
-        min_value = kwargs["min_value"]
-        kwargs["min_value"] = float(kwargs["min_value"])
-        if min_value < kwargs["min_value"] or (
-            min_value == kwargs["min_value"] and kwargs.get("exclude_min", False)
+    if "min_value" in constraints:
+        min_value = constraints["min_value"]
+        constraints["min_value"] = float(constraints["min_value"])
+        if min_value < constraints["min_value"] or (
+            min_value == constraints["min_value"]
+            and constraints.get("exclude_min", False)
         ):
-            kwargs["min_value"] = next_up(kwargs["min_value"])
+            constraints["min_value"] = next_up(constraints["min_value"])
 
-    if "max_value" in kwargs:
-        max_value = kwargs["max_value"]
-        kwargs["max_value"] = float(kwargs["max_value"])
-        if max_value > kwargs["max_value"] or (
-            max_value == kwargs["max_value"] and kwargs.get("exclude_max", False)
+    if "max_value" in constraints:
+        max_value = constraints["max_value"]
+        constraints["max_value"] = float(constraints["max_value"])
+        if max_value > constraints["max_value"] or (
+            max_value == constraints["max_value"]
+            and constraints.get("exclude_max", False)
         ):
-            kwargs["max_value"] = next_down(kwargs["max_value"])
+            constraints["max_value"] = next_down(constraints["max_value"])
 
-    kwargs = {k: v for k, v in kwargs.items() if k in {"min_value", "max_value"}}
-    return ConstructivePredicate(kwargs, predicate)
+    constraints = {
+        k: v for k, v in constraints.items() if k in {"min_value", "max_value"}
+    }
+    return ConstructivePredicate(constraints, predicate)
 
 
-def max_len(size: int, element: Collection) -> bool:
+def max_len(size: int, element: Collection[object]) -> bool:
     return len(element) <= size
 
 
-def min_len(size: int, element: Collection) -> bool:
+def min_len(size: int, element: Collection[object]) -> bool:
     return size <= len(element)

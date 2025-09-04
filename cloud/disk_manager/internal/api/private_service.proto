@@ -11,21 +11,21 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/api
 
 service PrivateService {
     // Schedules blank (no op) operation, used for testing.
-    rpc ScheduleBlankOperation(google.protobuf.Empty) returns (cloud.disk_manager.Operation);
+    rpc ScheduleBlankOperation(google.protobuf.Empty) returns (yandex.cloud.priv.disk_manager.v1.Operation);
 
-    rpc ReleaseBaseDisk(ReleaseBaseDiskRequest) returns (cloud.disk_manager.Operation);
+    rpc ReleaseBaseDisk(ReleaseBaseDiskRequest) returns (yandex.cloud.priv.disk_manager.v1.Operation);
 
-    rpc RebaseOverlayDisk(RebaseOverlayDiskRequest) returns (cloud.disk_manager.Operation);
+    rpc RebaseOverlayDisk(RebaseOverlayDiskRequest) returns (yandex.cloud.priv.disk_manager.v1.Operation);
 
-    rpc RetireBaseDisk(RetireBaseDiskRequest) returns (cloud.disk_manager.Operation);
+    rpc RetireBaseDisk(RetireBaseDiskRequest) returns (yandex.cloud.priv.disk_manager.v1.Operation);
 
-    rpc RetireBaseDisks(RetireBaseDisksRequest) returns (cloud.disk_manager.Operation);
+    rpc RetireBaseDisks(RetireBaseDisksRequest) returns (yandex.cloud.priv.disk_manager.v1.Operation);
 
-    rpc OptimizeBaseDisks(google.protobuf.Empty) returns (cloud.disk_manager.Operation);
+    rpc OptimizeBaseDisks(google.protobuf.Empty) returns (yandex.cloud.priv.disk_manager.v1.Operation);
 
-    rpc ConfigurePool(ConfigurePoolRequest) returns (cloud.disk_manager.Operation);
+    rpc ConfigurePool(ConfigurePoolRequest) returns (yandex.cloud.priv.disk_manager.v1.Operation);
 
-    rpc DeletePool(DeletePoolRequest) returns (cloud.disk_manager.Operation);
+    rpc DeletePool(DeletePoolRequest) returns (yandex.cloud.priv.disk_manager.v1.Operation);
 
     // Lists all existing disk ids in specified |folder_id|.
     // Lists all existing disk ids if |folder_id| is not set.
@@ -56,11 +56,11 @@ service PrivateService {
 }
 
 message ReleaseBaseDiskRequest {
-    cloud.disk_manager.DiskId disk_id = 1;
+    yandex.cloud.priv.disk_manager.v1.DiskId disk_id = 1;
 }
 
 message RebaseOverlayDiskRequest {
-    cloud.disk_manager.DiskId disk_id = 1;
+    yandex.cloud.priv.disk_manager.v1.DiskId disk_id = 1;
     string base_disk_id = 4;
     string target_base_disk_id = 2;
     uint64 slot_generation = 3;
@@ -70,7 +70,7 @@ message RetireBaseDiskRequest {
     reserved 3;
 
     string base_disk_id = 1;
-    cloud.disk_manager.DiskId src_disk_id = 2;
+    yandex.cloud.priv.disk_manager.v1.DiskId src_disk_id = 2;
 }
 
 message RetireBaseDisksRequest {

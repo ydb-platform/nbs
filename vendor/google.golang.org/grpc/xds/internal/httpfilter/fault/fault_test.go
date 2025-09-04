@@ -26,23 +26,25 @@ import (
 	"context"
 	"fmt"
 	"io"
+	rand "math/rand/v2"
 	"net"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/internal/grpcrand"
+	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/grpctest"
+	"google.golang.org/grpc/internal/stubserver"
 	"google.golang.org/grpc/internal/testutils"
-	"google.golang.org/grpc/internal/testutils/xds/bootstrap"
 	"google.golang.org/grpc/internal/testutils/xds/e2e"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	v3listenerpb "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
@@ -53,8 +55,9 @@ import (
 	testgrpc "google.golang.org/grpc/interop/grpc_testing"
 	testpb "google.golang.org/grpc/interop/grpc_testing"
 
-	_ "google.golang.org/grpc/xds/internal/balancer" // Register the balancers.
-	_ "google.golang.org/grpc/xds/internal/resolver" // Register the xds_resolver.
+	_ "google.golang.org/grpc/xds/internal/balancer"          // Register the balancers.
+	_ "google.golang.org/grpc/xds/internal/httpfilter/router" // Register the router filter.
+	_ "google.golang.org/grpc/xds/internal/resolver"          // Register the xds_resolver.
 )
 
 const defaultTestTimeout = 10 * time.Second
@@ -67,25 +70,6 @@ func Test(t *testing.T) {
 	grpctest.RunSubTests(t, s{})
 }
 
-type testService struct {
-	testgrpc.TestServiceServer
-}
-
-func (*testService) EmptyCall(context.Context, *testpb.Empty) (*testpb.Empty, error) {
-	return &testpb.Empty{}, nil
-}
-
-func (*testService) FullDuplexCall(stream testgrpc.TestService_FullDuplexCallServer) error {
-	// End RPC after client does a CloseSend.
-	for {
-		if _, err := stream.Recv(); err == io.EOF {
-			return nil
-		} else if err != nil {
-			return err
-		}
-	}
-}
-
 // clientSetup performs a bunch of steps common to all xDS server tests here:
 // - spin up an xDS management server on a local port
 // - spin up a gRPC server and register the test service on it
@@ -94,48 +78,46 @@ func (*testService) FullDuplexCall(stream testgrpc.TestService_FullDuplexCallSer
 // Returns the following:
 //   - the management server: tests use this to configure resources
 //   - nodeID expected by the management server: this is set in the Node proto
-//     sent by the xdsClient for queries.
+//     sent by the xdsClient for queries
 //   - the port the server is listening on
-//   - cleanup function to be invoked by the tests when done
-func clientSetup(t *testing.T) (*e2e.ManagementServer, string, uint32, func()) {
+//   - contents of the bootstrap configuration pointing to xDS management
+//     server
+func clientSetup(t *testing.T) (*e2e.ManagementServer, string, uint32, []byte) {
 	// Spin up a xDS management server on a local port.
 	nodeID := uuid.New().String()
-	fs, err := e2e.StartManagementServer(e2e.ManagementServerOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	managementServer := e2e.StartManagementServer(t, e2e.ManagementServerOptions{})
 
-	// Create a bootstrap file in a temporary directory.
-	bootstrapCleanup, err := bootstrap.CreateFile(bootstrap.Options{
-		NodeID:                             nodeID,
-		ServerURI:                          fs.Address,
-		ServerListenerResourceNameTemplate: "grpc/server",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Create a bootstrap config pointing to the above management server with
+	// the nodeID.
+	bootstrapContents := e2e.DefaultBootstrapContents(t, nodeID, managementServer.Address)
 
-	// Initialize a gRPC server and register the stubServer on it.
-	server := grpc.NewServer()
-	testgrpc.RegisterTestServiceServer(server, &testService{})
-
-	// Create a local listener and pass it to Serve().
+	// Create a local listener.
 	lis, err := testutils.LocalTCPListener()
 	if err != nil {
 		t.Fatalf("testutils.LocalTCPListener() failed: %v", err)
 	}
 
-	go func() {
-		if err := server.Serve(lis); err != nil {
-			t.Errorf("Serve() failed: %v", err)
-		}
-	}()
-
-	return fs, nodeID, uint32(lis.Addr().(*net.TCPAddr).Port), func() {
-		fs.Stop()
-		bootstrapCleanup()
-		server.Stop()
+	// Initialize a test gRPC server, assign it to the stub server, and start the test service.
+	stub := &stubserver.StubServer{
+		Listener: lis,
+		EmptyCallF: func(context.Context, *testpb.Empty) (*testpb.Empty, error) {
+			return &testpb.Empty{}, nil
+		},
+		FullDuplexCallF: func(stream testgrpc.TestService_FullDuplexCallServer) error {
+			// End RPC after client does a CloseSend.
+			for {
+				if _, err := stream.Recv(); err == io.EOF {
+					return nil
+				} else if err != nil {
+					return err
+				}
+			}
+		},
 	}
+
+	stubserver.StartTestService(t, stub)
+	t.Cleanup(stub.S.Stop)
+	return managementServer, nodeID, uint32(lis.Addr().(*net.TCPAddr).Port), bootstrapContents
 }
 
 func (s) TestFaultInjection_Unary(t *testing.T) {
@@ -218,7 +200,7 @@ func (s) TestFaultInjection_Unary(t *testing.T) {
 		cfgs: []*fpb.HTTPFault{{
 			Delay: &cpb.FaultDelay{
 				Percentage:         &tpb.FractionalPercent{Numerator: 100, Denominator: tpb.FractionalPercent_HUNDRED},
-				FaultDelaySecifier: &cpb.FaultDelay_FixedDelay{FixedDelay: ptypes.DurationProto(time.Second)},
+				FaultDelaySecifier: &cpb.FaultDelay_FixedDelay{FixedDelay: durationpb.New(time.Second)},
 			},
 		}},
 		randOutInc: 5,
@@ -232,7 +214,7 @@ func (s) TestFaultInjection_Unary(t *testing.T) {
 		cfgs: []*fpb.HTTPFault{{
 			Delay: &cpb.FaultDelay{
 				Percentage:         &tpb.FractionalPercent{Numerator: 1000, Denominator: tpb.FractionalPercent_TEN_THOUSAND},
-				FaultDelaySecifier: &cpb.FaultDelay_FixedDelay{FixedDelay: ptypes.DurationProto(time.Second)},
+				FaultDelaySecifier: &cpb.FaultDelay_FixedDelay{FixedDelay: durationpb.New(time.Second)},
 			},
 		}},
 		randOutInc: 500,
@@ -256,7 +238,7 @@ func (s) TestFaultInjection_Unary(t *testing.T) {
 		cfgs: []*fpb.HTTPFault{{
 			Delay: &cpb.FaultDelay{
 				Percentage:         &tpb.FractionalPercent{Numerator: 80, Denominator: tpb.FractionalPercent_HUNDRED},
-				FaultDelaySecifier: &cpb.FaultDelay_FixedDelay{FixedDelay: ptypes.DurationProto(3 * time.Second)},
+				FaultDelaySecifier: &cpb.FaultDelay_FixedDelay{FixedDelay: durationpb.New(3 * time.Second)},
 			},
 			Abort: &fpb.FaultAbort{
 				Percentage: &tpb.FractionalPercent{Numerator: 50, Denominator: tpb.FractionalPercent_HUNDRED},
@@ -456,7 +438,7 @@ func (s) TestFaultInjection_Unary(t *testing.T) {
 		}, {
 			Delay: &cpb.FaultDelay{
 				Percentage:         &tpb.FractionalPercent{Numerator: 80, Denominator: tpb.FractionalPercent_HUNDRED},
-				FaultDelaySecifier: &cpb.FaultDelay_FixedDelay{FixedDelay: ptypes.DurationProto(time.Second)},
+				FaultDelaySecifier: &cpb.FaultDelay_FixedDelay{FixedDelay: durationpb.New(time.Second)},
 			},
 		}},
 		randOutInc: 10,
@@ -477,12 +459,19 @@ func (s) TestFaultInjection_Unary(t *testing.T) {
 		}},
 	}}
 
-	fs, nodeID, port, cleanup := clientSetup(t)
-	defer cleanup()
+	fs, nodeID, port, bc := clientSetup(t)
+	// Create an xDS resolver with the above bootstrap configuration.
+	if internal.NewXDSResolverWithConfigForTesting == nil {
+		t.Fatalf("internal.NewXDSResolverWithConfigForTesting is nil")
+	}
+	xdsResolver, err := internal.NewXDSResolverWithConfigForTesting.(func([]byte) (resolver.Builder, error))(bc)
+	if err != nil {
+		t.Fatalf("Failed to create xDS resolver for testing: %v", err)
+	}
 
 	for tcNum, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			defer func() { randIntn = grpcrand.Intn; newTimer = time.NewTimer }()
+			defer func() { randIntn = rand.IntN; newTimer = time.NewTimer }()
 			var intnCalls []int
 			var newTimerCalls []time.Duration
 			randOut := 0
@@ -505,7 +494,8 @@ func (s) TestFaultInjection_Unary(t *testing.T) {
 				SecLevel:   e2e.SecurityLevelNone,
 			})
 			hcm := new(v3httppb.HttpConnectionManager)
-			err := ptypes.UnmarshalAny(resources.Listeners[0].GetApiListener().GetApiListener(), hcm)
+			lis := resources.Listeners[0].GetApiListener().GetApiListener()
+			err := lis.UnmarshalTo(hcm)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -516,7 +506,7 @@ func (s) TestFaultInjection_Unary(t *testing.T) {
 				hcm.HttpFilters = append(hcm.HttpFilters, e2e.HTTPFilter(fmt.Sprintf("fault%d", i), cfg))
 			}
 			hcm.HttpFilters = append(hcm.HttpFilters, routerFilter)
-			hcmAny := testutils.MarshalAny(hcm)
+			hcmAny := testutils.MarshalAny(t, hcm)
 			resources.Listeners[0].ApiListener.ApiListener = hcmAny
 			resources.Listeners[0].FilterChains[0].Filters[0].ConfigType = &v3listenerpb.Filter_TypedConfig{TypedConfig: hcmAny}
 
@@ -527,7 +517,7 @@ func (s) TestFaultInjection_Unary(t *testing.T) {
 			}
 
 			// Create a ClientConn and run the test case.
-			cc, err := grpc.Dial("xds:///"+serviceName, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			cc, err := grpc.NewClient("xds:///"+serviceName, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithResolvers(xdsResolver))
 			if err != nil {
 				t.Fatalf("failed to dial local test server: %v", err)
 			}
@@ -559,8 +549,15 @@ func (s) TestFaultInjection_Unary(t *testing.T) {
 }
 
 func (s) TestFaultInjection_MaxActiveFaults(t *testing.T) {
-	fs, nodeID, port, cleanup := clientSetup(t)
-	defer cleanup()
+	fs, nodeID, port, bc := clientSetup(t)
+	// Create an xDS resolver with the above bootstrap configuration.
+	if internal.NewXDSResolverWithConfigForTesting == nil {
+		t.Fatalf("internal.NewXDSResolverWithConfigForTesting is nil")
+	}
+	xdsResolver, err := internal.NewXDSResolverWithConfigForTesting.(func([]byte) (resolver.Builder, error))(bc)
+	if err != nil {
+		t.Fatalf("Failed to create xDS resolver for testing: %v", err)
+	}
 	resources := e2e.DefaultClientResources(e2e.ResourceParams{
 		DialTarget: "myservice",
 		NodeID:     nodeID,
@@ -569,14 +566,14 @@ func (s) TestFaultInjection_MaxActiveFaults(t *testing.T) {
 		SecLevel:   e2e.SecurityLevelNone,
 	})
 	hcm := new(v3httppb.HttpConnectionManager)
-	err := ptypes.UnmarshalAny(resources.Listeners[0].GetApiListener().GetApiListener(), hcm)
-	if err != nil {
+	lis := resources.Listeners[0].GetApiListener().GetApiListener()
+	if err = lis.UnmarshalTo(hcm); err != nil {
 		t.Fatal(err)
 	}
 
 	defer func() { newTimer = time.NewTimer }()
 	timers := make(chan *time.Timer, 2)
-	newTimer = func(d time.Duration) *time.Timer {
+	newTimer = func(time.Duration) *time.Timer {
 		t := time.NewTimer(24 * time.Hour) // Will reset to fire.
 		timers <- t
 		return t
@@ -587,11 +584,11 @@ func (s) TestFaultInjection_MaxActiveFaults(t *testing.T) {
 			MaxActiveFaults: wrapperspb.UInt32(2),
 			Delay: &cpb.FaultDelay{
 				Percentage:         &tpb.FractionalPercent{Numerator: 100, Denominator: tpb.FractionalPercent_HUNDRED},
-				FaultDelaySecifier: &cpb.FaultDelay_FixedDelay{FixedDelay: ptypes.DurationProto(time.Second)},
+				FaultDelaySecifier: &cpb.FaultDelay_FixedDelay{FixedDelay: durationpb.New(time.Second)},
 			},
 		})},
 		hcm.HttpFilters...)
-	hcmAny := testutils.MarshalAny(hcm)
+	hcmAny := testutils.MarshalAny(t, hcm)
 	resources.Listeners[0].ApiListener.ApiListener = hcmAny
 	resources.Listeners[0].FilterChains[0].Filters[0].ConfigType = &v3listenerpb.Filter_TypedConfig{TypedConfig: hcmAny}
 
@@ -602,7 +599,7 @@ func (s) TestFaultInjection_MaxActiveFaults(t *testing.T) {
 	}
 
 	// Create a ClientConn
-	cc, err := grpc.Dial("xds:///myservice", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	cc, err := grpc.NewClient("xds:///myservice", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithResolvers(xdsResolver))
 	if err != nil {
 		t.Fatalf("failed to dial local test server: %v", err)
 	}

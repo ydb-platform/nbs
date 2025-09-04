@@ -279,7 +279,7 @@ void TVolumeActor::OnActivateExecutor(const TActorContext& ctx)
 
     ScheduleRegularUpdates(ctx);
 
-    if (!Executor()->GetStats().IsFollower) {
+    if (!Executor()->GetStats().IsFollower()) {
         ExecuteTx<TInitSchema>(ctx);
     }
 

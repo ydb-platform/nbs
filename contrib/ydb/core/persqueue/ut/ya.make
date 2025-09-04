@@ -1,5 +1,9 @@
 UNITTEST_FOR(contrib/ydb/core/persqueue)
 
+ADDINCL(
+    contrib/ydb/public/sdk/cpp
+)
+
 FORK_SUBTESTS()
 
 SPLIT_FACTOR(40)
@@ -7,20 +11,19 @@ SPLIT_FACTOR(40)
 IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
     SIZE(LARGE)
     TAG(ya:fat)
-    TIMEOUT(3000)
 ELSE()
     SIZE(MEDIUM)
-    TIMEOUT(600)
 ENDIF()
 
 PEERDIR(
     library/cpp/getopt
+    library/cpp/json
     library/cpp/regex/pcre
     library/cpp/svnversion
     contrib/ydb/core/persqueue/ut/common
     contrib/ydb/core/testlib/default
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils
-    contrib/ydb/public/sdk/cpp/client/ydb_topic/ut/ut_utils
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils
 
     contrib/ydb/core/tx/schemeshard/ut_helpers
 )
@@ -28,12 +31,12 @@ PEERDIR(
 YQL_LAST_ABI_VERSION()
 
 SRCS(
+    blob_ut.cpp
     counters_ut.cpp
     pqtablet_mock.cpp
     internals_ut.cpp
     make_config.cpp
     metering_sink_ut.cpp
-    mirrorer_ut.cpp
     partition_chooser_ut.cpp
     pq_ut.cpp
     partition_ut.cpp
@@ -41,12 +44,14 @@ SRCS(
     pqtablet_ut.cpp
     quota_tracker_ut.cpp
     sourceid_ut.cpp
-    splitmerge_ut.cpp
     type_codecs_ut.cpp
     user_info_ut.cpp
     pqrb_describes_ut.cpp
     microseconds_sliding_window_ut.cpp
     fetch_request_ut.cpp
+    utils_ut.cpp
+    list_all_topics_ut.cpp
+    cache_eviction_ut.cpp
 )
 
 RESOURCE(

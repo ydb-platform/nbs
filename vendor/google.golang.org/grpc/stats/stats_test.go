@@ -28,13 +28,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/google/go-cmp/cmp"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/grpctest"
+	"google.golang.org/grpc/internal/stubserver"
+	"google.golang.org/grpc/internal/testutils"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/testing/protocmp"
 
 	testgrpc "google.golang.org/grpc/interop/grpc_testing"
 	testpb "google.golang.org/grpc/interop/grpc_testing"
@@ -87,6 +93,27 @@ func payloadToID(p *testpb.Payload) int32 {
 		panic("invalid payload")
 	}
 	return int32(p.Body[0]) + int32(p.Body[1])<<8 + int32(p.Body[2])<<16 + int32(p.Body[3])<<24
+}
+
+func setIncomingStats(ctx context.Context, mdKey string, b []byte) context.Context {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		md = metadata.MD{}
+	}
+	md.Set(mdKey, string(b))
+	return metadata.NewIncomingContext(ctx, md)
+}
+
+func getOutgoingStats(ctx context.Context, mdKey string) []byte {
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		return nil
+	}
+	tagValues := md.Get(mdKey)
+	if len(tagValues) == 0 {
+		return nil
+	}
+	return []byte(tagValues[len(tagValues)-1])
 }
 
 type testServer struct {
@@ -242,13 +269,12 @@ func (te *test) startServer(ts testgrpc.TestServiceServer) {
 	te.srvAddr = lis.Addr().String()
 }
 
-func (te *test) clientConn() *grpc.ClientConn {
+func (te *test) clientConn(ctx context.Context) *grpc.ClientConn {
 	if te.cc != nil {
 		return te.cc
 	}
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 		grpc.WithUserAgent("test/0.0.1"),
 	}
 	if te.compress == "gzip" {
@@ -262,10 +288,12 @@ func (te *test) clientConn() *grpc.ClientConn {
 	}
 
 	var err error
-	te.cc, err = grpc.Dial(te.srvAddr, opts...)
+	te.cc, err = grpc.NewClient(te.srvAddr, opts...)
 	if err != nil {
-		te.t.Fatalf("Dial(%q) = %v", te.srvAddr, err)
+		te.t.Fatalf("grpc.NewClient(%q) failed: %v", te.srvAddr, err)
 	}
+	te.cc.Connect()
+	testutils.AwaitState(ctx, te.t, te.cc, connectivity.Ready)
 	return te.cc
 }
 
@@ -291,15 +319,15 @@ func (te *test) doUnaryCall(c *rpcConfig) (*testpb.SimpleRequest, *testpb.Simple
 		req  *testpb.SimpleRequest
 		err  error
 	)
-	tc := testgrpc.NewTestServiceClient(te.clientConn())
+	tCtx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	tc := testgrpc.NewTestServiceClient(te.clientConn(tCtx))
 	if c.success {
 		req = &testpb.SimpleRequest{Payload: idToPayload(errorID + 1)}
 	} else {
 		req = &testpb.SimpleRequest{Payload: idToPayload(errorID)}
 	}
 
-	tCtx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
-	defer cancel()
 	resp, err = tc.UnaryCall(metadata.NewOutgoingContext(tCtx, testMetadata), req, grpc.WaitForReady(!c.failfast))
 	return req, resp, err
 }
@@ -310,9 +338,9 @@ func (te *test) doFullDuplexCallRoundtrip(c *rpcConfig) ([]proto.Message, []prot
 		resps []proto.Message
 		err   error
 	)
-	tc := testgrpc.NewTestServiceClient(te.clientConn())
 	tCtx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 	defer cancel()
+	tc := testgrpc.NewTestServiceClient(te.clientConn(tCtx))
 	stream, err := tc.FullDuplexCall(metadata.NewOutgoingContext(tCtx, testMetadata), grpc.WaitForReady(!c.failfast))
 	if err != nil {
 		return reqs, resps, err
@@ -351,9 +379,9 @@ func (te *test) doClientStreamCall(c *rpcConfig) ([]proto.Message, *testpb.Strea
 		resp *testpb.StreamingInputCallResponse
 		err  error
 	)
-	tc := testgrpc.NewTestServiceClient(te.clientConn())
 	tCtx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 	defer cancel()
+	tc := testgrpc.NewTestServiceClient(te.clientConn(tCtx))
 	stream, err := tc.StreamingInputCall(metadata.NewOutgoingContext(tCtx, testMetadata), grpc.WaitForReady(!c.failfast))
 	if err != nil {
 		return reqs, resp, err
@@ -381,16 +409,15 @@ func (te *test) doServerStreamCall(c *rpcConfig) (*testpb.StreamingOutputCallReq
 		resps []proto.Message
 		err   error
 	)
-
-	tc := testgrpc.NewTestServiceClient(te.clientConn())
+	tCtx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	tc := testgrpc.NewTestServiceClient(te.clientConn(tCtx))
 
 	var startID int32
 	if !c.success {
 		startID = errorID
 	}
 	req = &testpb.StreamingOutputCallRequest{Payload: idToPayload(startID)}
-	tCtx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
-	defer cancel()
 	stream, err := tc.StreamingOutputCall(metadata.NewOutgoingContext(tCtx, testMetadata), req, grpc.WaitForReady(!c.failfast))
 	if err != nil {
 		return req, resps, err
@@ -424,7 +451,7 @@ type expectedData struct {
 type gotData struct {
 	ctx    context.Context
 	client bool
-	s      interface{} // This could be RPCStats or ConnStats.
+	s      any // This could be RPCStats or ConnStats.
 }
 
 const (
@@ -535,40 +562,29 @@ func checkInPayload(t *testing.T, d *gotData, e *expectedData) {
 	if d.ctx == nil {
 		t.Fatalf("d.ctx = nil, want <non-nil>")
 	}
+
+	var idx *int
+	var payloads []proto.Message
 	if d.client {
-		b, err := proto.Marshal(e.responses[e.respIdx])
-		if err != nil {
-			t.Fatalf("failed to marshal message: %v", err)
-		}
-		if reflect.TypeOf(st.Payload) != reflect.TypeOf(e.responses[e.respIdx]) {
-			t.Fatalf("st.Payload = %T, want %T", st.Payload, e.responses[e.respIdx])
-		}
-		e.respIdx++
-		if string(st.Data) != string(b) {
-			t.Fatalf("st.Data = %v, want %v", st.Data, b)
-		}
-		if st.Length != len(b) {
-			t.Fatalf("st.Lenght = %v, want %v", st.Length, len(b))
-		}
+		idx = &e.respIdx
+		payloads = e.responses
 	} else {
-		b, err := proto.Marshal(e.requests[e.reqIdx])
-		if err != nil {
-			t.Fatalf("failed to marshal message: %v", err)
-		}
-		if reflect.TypeOf(st.Payload) != reflect.TypeOf(e.requests[e.reqIdx]) {
-			t.Fatalf("st.Payload = %T, want %T", st.Payload, e.requests[e.reqIdx])
-		}
-		e.reqIdx++
-		if string(st.Data) != string(b) {
-			t.Fatalf("st.Data = %v, want %v", st.Data, b)
-		}
-		if st.Length != len(b) {
-			t.Fatalf("st.Lenght = %v, want %v", st.Length, len(b))
-		}
+		idx = &e.reqIdx
+		payloads = e.requests
 	}
+
+	wantPayload := payloads[*idx]
+	if diff := cmp.Diff(wantPayload, st.Payload.(proto.Message), protocmp.Transform()); diff != "" {
+		t.Fatalf("unexpected difference in st.Payload (-want +got):\n%s", diff)
+	}
+	*idx++
+	if st.Length != proto.Size(wantPayload) {
+		t.Fatalf("st.Length = %v, want %v", st.Length, proto.Size(wantPayload))
+	}
+
 	// Below are sanity checks that WireLength and RecvTime are populated.
 	// TODO: check values of WireLength and RecvTime.
-	if len(st.Data) > 0 && st.CompressedLength == 0 {
+	if st.Length > 0 && st.CompressedLength == 0 {
 		t.Fatalf("st.WireLength = %v with non-empty data, want <non-zero>",
 			st.CompressedLength)
 	}
@@ -654,40 +670,29 @@ func checkOutPayload(t *testing.T, d *gotData, e *expectedData) {
 	if d.ctx == nil {
 		t.Fatalf("d.ctx = nil, want <non-nil>")
 	}
+
+	var idx *int
+	var payloads []proto.Message
 	if d.client {
-		b, err := proto.Marshal(e.requests[e.reqIdx])
-		if err != nil {
-			t.Fatalf("failed to marshal message: %v", err)
-		}
-		if reflect.TypeOf(st.Payload) != reflect.TypeOf(e.requests[e.reqIdx]) {
-			t.Fatalf("st.Payload = %T, want %T", st.Payload, e.requests[e.reqIdx])
-		}
-		e.reqIdx++
-		if string(st.Data) != string(b) {
-			t.Fatalf("st.Data = %v, want %v", st.Data, b)
-		}
-		if st.Length != len(b) {
-			t.Fatalf("st.Lenght = %v, want %v", st.Length, len(b))
-		}
+		idx = &e.reqIdx
+		payloads = e.requests
 	} else {
-		b, err := proto.Marshal(e.responses[e.respIdx])
-		if err != nil {
-			t.Fatalf("failed to marshal message: %v", err)
-		}
-		if reflect.TypeOf(st.Payload) != reflect.TypeOf(e.responses[e.respIdx]) {
-			t.Fatalf("st.Payload = %T, want %T", st.Payload, e.responses[e.respIdx])
-		}
-		e.respIdx++
-		if string(st.Data) != string(b) {
-			t.Fatalf("st.Data = %v, want %v", st.Data, b)
-		}
-		if st.Length != len(b) {
-			t.Fatalf("st.Lenght = %v, want %v", st.Length, len(b))
-		}
+		idx = &e.respIdx
+		payloads = e.responses
 	}
-	// Below are sanity checks that WireLength and SentTime are populated.
+
+	expectedPayload := payloads[*idx]
+	if !proto.Equal(st.Payload.(proto.Message), expectedPayload) {
+		t.Fatalf("st.Payload = %v, want %v", st.Payload, expectedPayload)
+	}
+	*idx++
+	if st.Length != proto.Size(expectedPayload) {
+		t.Fatalf("st.Length = %v, want %v", st.Length, proto.Size(expectedPayload))
+	}
+
+	// Below are sanity checks that Length, CompressedLength and SentTime are populated.
 	// TODO: check values of WireLength and SentTime.
-	if len(st.Data) > 0 && st.WireLength == 0 {
+	if st.Length > 0 && st.WireLength == 0 {
 		t.Fatalf("st.WireLength = %v with non-empty data, want <non-zero>",
 			st.WireLength)
 	}
@@ -827,16 +832,6 @@ func checkServerStats(t *testing.T, got []*gotData, expect *expectedData, checkF
 			t.Errorf(" - %v, %T", i, g.s)
 		}
 		t.Fatalf("got %v stats, want %v stats", len(got), len(checkFuncs))
-	}
-
-	var rpcctx context.Context
-	for i := 0; i < len(got); i++ {
-		if _, ok := got[i].s.(stats.RPCStats); ok {
-			if rpcctx != nil && got[i].ctx != rpcctx {
-				t.Fatalf("got different contexts with stats %T", got[i].s)
-			}
-			rpcctx = got[i].ctx
-		}
 	}
 
 	for i, f := range checkFuncs {
@@ -1339,19 +1334,19 @@ func (s) TestTags(t *testing.T) {
 	tCtx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 	defer cancel()
 	ctx := stats.SetTags(tCtx, b)
-	if tg := stats.OutgoingTags(ctx); !reflect.DeepEqual(tg, b) {
-		t.Errorf("OutgoingTags(%v) = %v; want %v", ctx, tg, b)
+	if tg := getOutgoingStats(ctx, "grpc-tags-bin"); !reflect.DeepEqual(tg, b) {
+		t.Errorf("getOutgoingStats(%v, grpc-tags-bin) = %v; want %v", ctx, tg, b)
 	}
 	if tg := stats.Tags(ctx); tg != nil {
 		t.Errorf("Tags(%v) = %v; want nil", ctx, tg)
 	}
 
-	ctx = stats.SetIncomingTags(tCtx, b)
+	ctx = setIncomingStats(tCtx, "grpc-tags-bin", b)
 	if tg := stats.Tags(ctx); !reflect.DeepEqual(tg, b) {
 		t.Errorf("Tags(%v) = %v; want %v", ctx, tg, b)
 	}
-	if tg := stats.OutgoingTags(ctx); tg != nil {
-		t.Errorf("OutgoingTags(%v) = %v; want nil", ctx, tg)
+	if tg := getOutgoingStats(ctx, "grpc-tags-bin"); tg != nil {
+		t.Errorf("getOutgoingStats(%v, grpc-tags-bin) = %v; want nil", ctx, tg)
 	}
 }
 
@@ -1360,19 +1355,19 @@ func (s) TestTrace(t *testing.T) {
 	tCtx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 	defer cancel()
 	ctx := stats.SetTrace(tCtx, b)
-	if tr := stats.OutgoingTrace(ctx); !reflect.DeepEqual(tr, b) {
-		t.Errorf("OutgoingTrace(%v) = %v; want %v", ctx, tr, b)
+	if tr := getOutgoingStats(ctx, "grpc-trace-bin"); !reflect.DeepEqual(tr, b) {
+		t.Errorf("getOutgoingStats(%v, grpc-trace-bin) = %v; want %v", ctx, tr, b)
 	}
 	if tr := stats.Trace(ctx); tr != nil {
 		t.Errorf("Trace(%v) = %v; want nil", ctx, tr)
 	}
 
-	ctx = stats.SetIncomingTrace(tCtx, b)
+	ctx = setIncomingStats(tCtx, "grpc-trace-bin", b)
 	if tr := stats.Trace(ctx); !reflect.DeepEqual(tr, b) {
 		t.Errorf("Trace(%v) = %v; want %v", ctx, tr, b)
 	}
-	if tr := stats.OutgoingTrace(ctx); tr != nil {
-		t.Errorf("OutgoingTrace(%v) = %v; want nil", ctx, tr)
+	if tr := getOutgoingStats(ctx, "grpc-trace-bin"); tr != nil {
+		t.Errorf("getOutgoingStats(%v, grpc-trace-bin) = %v; want nil", ctx, tr)
 	}
 }
 
@@ -1466,4 +1461,62 @@ func (s) TestMultipleServerStatsHandler(t *testing.T) {
 	if len(h.gotConn) != 4 {
 		t.Fatalf("h.gotConn: unexpected amount of ConnStats: %v != %v", len(h.gotConn), 4)
 	}
+}
+
+// TestStatsHandlerCallsServerIsRegisteredMethod tests whether a stats handler
+// gets access to a Server on the server side, and thus the method that the
+// server owns which specifies whether a method is made or not. The test sets up
+// a server with a unary call and full duplex call configured, and makes an RPC.
+// Within the stats handler, asking the server whether unary or duplex method
+// names are registered should return true, and any other query should return
+// false.
+func (s) TestStatsHandlerCallsServerIsRegisteredMethod(t *testing.T) {
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	stubStatsHandler := &testutils.StubStatsHandler{
+		TagRPCF: func(ctx context.Context, _ *stats.RPCTagInfo) context.Context {
+			// OpenTelemetry instrumentation needs the passed in Server to determine if
+			// methods are registered in different handle calls in to record metrics.
+			// This tag RPC call context gets passed into every handle call, so can
+			// assert once here, since it maps to all the handle RPC calls that come
+			// after. These internal calls will be how the OpenTelemetry instrumentation
+			// component accesses this server and the subsequent helper on the server.
+			server := internal.ServerFromContext.(func(context.Context) *grpc.Server)(ctx)
+			if server == nil {
+				t.Errorf("stats handler received ctx has no server present")
+			}
+			isRegisteredMethod := internal.IsRegisteredMethod.(func(*grpc.Server, string) bool)
+			// /s/m and s/m are valid.
+			if !isRegisteredMethod(server, "/grpc.testing.TestService/UnaryCall") {
+				t.Errorf("UnaryCall should be a registered method according to server")
+			}
+			if !isRegisteredMethod(server, "grpc.testing.TestService/FullDuplexCall") {
+				t.Errorf("FullDuplexCall should be a registered method according to server")
+			}
+			if isRegisteredMethod(server, "/grpc.testing.TestService/DoesNotExistCall") {
+				t.Errorf("DoesNotExistCall should not be a registered method according to server")
+			}
+			if isRegisteredMethod(server, "/unknownService/UnaryCall") {
+				t.Errorf("/unknownService/UnaryCall should not be a registered method according to server")
+			}
+			wg.Done()
+			return ctx
+		},
+	}
+	ss := &stubserver.StubServer{
+		UnaryCallF: func(ctx context.Context, in *testpb.SimpleRequest) (*testpb.SimpleResponse, error) {
+			return &testpb.SimpleResponse{}, nil
+		},
+	}
+	if err := ss.Start([]grpc.ServerOption{grpc.StatsHandler(stubStatsHandler)}); err != nil {
+		t.Fatalf("Error starting endpoint server: %v", err)
+	}
+	defer ss.Stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
+	if _, err := ss.Client.UnaryCall(ctx, &testpb.SimpleRequest{Payload: &testpb.Payload{}}); err != nil {
+		t.Fatalf("Unexpected error from UnaryCall: %v", err)
+	}
+	wg.Wait()
 }

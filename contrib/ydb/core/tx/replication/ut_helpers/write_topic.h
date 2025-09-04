@@ -1,6 +1,8 @@
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
+#pragma once
 
-namespace NKikimr::NReplication {
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/topic/client.h>
+
+namespace NKikimr::NReplication::NTestHelpers {
 
 template <typename Env>
 bool WriteTopic(const Env& env, const TString& topicPath, const TString& data) {

@@ -2,68 +2,70 @@ package table
 
 import (
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Table"
-
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/allocator"
 )
 
 type (
-	query interface {
+	Query interface {
 		String() string
 		ID() string
 		YQL() string
 
-		toYDB(a *allocator.Allocator) *Ydb_Table.Query
+		toYDB() *Ydb_Table.Query
 	}
-	textDataQuery     string
-	preparedDataQuery struct {
-		id    string
-		query string
+	textQuery     string
+	preparedQuery struct {
+		id  string
+		sql string
 	}
 )
 
-func (q textDataQuery) String() string {
+func (q textQuery) String() string {
 	return string(q)
 }
 
-func (q textDataQuery) ID() string {
+func (q textQuery) ID() string {
 	return ""
 }
 
-func (q textDataQuery) YQL() string {
+func (q textQuery) YQL() string {
 	return string(q)
 }
 
-func (q textDataQuery) toYDB(a *allocator.Allocator) *Ydb_Table.Query {
-	query := a.TableQuery()
-	query.Query = a.TableQueryYqlText(string(q))
-	return query
+func (q textQuery) toYDB() *Ydb_Table.Query {
+	return &Ydb_Table.Query{
+		Query: &Ydb_Table.Query_YqlText{
+			YqlText: string(q),
+		},
+	}
 }
 
-func (q preparedDataQuery) String() string {
-	return q.query
+func (q preparedQuery) String() string {
+	return q.sql
 }
 
-func (q preparedDataQuery) ID() string {
+func (q preparedQuery) ID() string {
 	return q.id
 }
 
-func (q preparedDataQuery) YQL() string {
-	return q.query
+func (q preparedQuery) YQL() string {
+	return q.sql
 }
 
-func (q preparedDataQuery) toYDB(a *allocator.Allocator) *Ydb_Table.Query {
-	query := a.TableQuery()
-	query.Query = a.TableQueryID(q.id)
-	return query
+func (q preparedQuery) toYDB() *Ydb_Table.Query {
+	return &Ydb_Table.Query{
+		Query: &Ydb_Table.Query_YqlText{
+			YqlText: q.sql,
+		},
+	}
 }
 
-func queryFromText(s string) query {
-	return textDataQuery(s)
+func queryFromText(s string) Query {
+	return textQuery(s)
 }
 
-func queryPrepared(id, query string) query {
-	return preparedDataQuery{
-		id:    id,
-		query: query,
+func queryPrepared(id, sql string) Query {
+	return preparedQuery{
+		id:  id,
+		sql: sql,
 	}
 }

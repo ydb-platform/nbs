@@ -1,9 +1,0 @@
-Node {
-  NodeId: 1
-  Port: 29501
-  Host: "localhost"
-  InterconnectHost: "localhost"
-}
-ClusterUUID: "local"
-AcceptUUID: "local"
-

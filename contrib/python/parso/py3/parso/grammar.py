@@ -107,14 +107,14 @@ class Grammar(Generic[_NodeT]):
 
         if file_io is None:
             if code is None:
-                file_io = FileIO(path)  # type: ignore
+                file_io = FileIO(path)  # type: ignore[arg-type]
             else:
                 file_io = KnownContentFileIO(path, code)
 
         if cache and file_io.path is not None:
             module_node = load_module(self._hashed, file_io, cache_path=cache_path)
             if module_node is not None:
-                return module_node  # type: ignore
+                return module_node  # type: ignore[no-any-return]
 
         if code is None:
             code = file_io.read()
@@ -133,7 +133,7 @@ class Grammar(Generic[_NodeT]):
                 module_node = module_cache_item.node
                 old_lines = module_cache_item.lines
                 if old_lines == lines:
-                    return module_node  # type: ignore
+                    return module_node  # type: ignore[no-any-return]
 
                 new_node = self._diff_parser(
                     self._pgen_grammar, self._tokenizer, module_node
@@ -145,7 +145,7 @@ class Grammar(Generic[_NodeT]):
                                    # Never pickle in pypy, it's slow as hell.
                                    pickling=cache and not is_pypy,
                                    cache_path=cache_path)
-                return new_node  # type: ignore
+                return new_node  # type: ignore[no-any-return]
 
         tokens = self._tokenizer(lines)
 
@@ -161,7 +161,7 @@ class Grammar(Generic[_NodeT]):
                                # Never pickle in pypy, it's slow as hell.
                                pickling=cache and not is_pypy,
                                cache_path=cache_path)
-        return root_node  # type: ignore
+        return root_node  # type: ignore[no-any-return]
 
     def _get_token_namespace(self):
         ns = self._token_namespace
@@ -253,9 +253,13 @@ def load_grammar(*, version: str = None, path: str = None):
         return _loaded_grammars[path]
     except KeyError:
         try:
-            bnf_text = pkgutil.get_data("parso", file).decode("utf-8")
-            if bnf_text is None:
-                raise FileNotFoundError
+            if os.getenv("Y_PYTHON_SOURCE_ROOT"):
+                with open(path) as f:
+                    bnf_text = f.read()
+            else:
+                bnf_text = pkgutil.get_data("parso", file).decode("utf-8")
+                if bnf_text is None:
+                    raise FileNotFoundError
 
             grammar = PythonGrammar(version_info, bnf_text)
             return _loaded_grammars.setdefault(path, grammar)

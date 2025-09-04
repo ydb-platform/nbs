@@ -4,7 +4,8 @@
 
 #include <contrib/ydb/core/fq/libs/config/protos/common.pb.h>
 #include <contrib/ydb/core/fq/libs/config/protos/control_plane_storage.pb.h>
-#include <contrib/ydb/library/yql/providers/common/proto/gateways_config.pb.h>
+#include <contrib/ydb/core/kqp/proxy_service/kqp_script_execution_retries.h>
+#include <yql/essentials/providers/common/proto/gateways_config.pb.h>
 #include <contrib/ydb/public/api/protos/draft/fq.pb.h>
 
 #include <util/datetime/base.h>
@@ -26,8 +27,8 @@ struct TControlPlaneStorageConfig {
     TSet<FederatedQuery::ConnectionSetting::ConnectionCase> AvailableConnections;
     TSet<FederatedQuery::BindingSetting::BindingCase> AvailableBindings;
     ui64 GeneratorPathsLimit;
-    THashMap<ui64, TRetryPolicyItem> RetryPolicies;
-    TRetryPolicyItem TaskLeaseRetryPolicy;
+    THashMap<ui64, NKikimr::NKqp::TRetryPolicyItem> RetryPolicies;
+    NKikimr::NKqp::TRetryPolicyItem TaskLeaseRetryPolicy;
     TDuration QuotaTtl;
     TDuration MetricsTtl;
     TSet<FederatedQuery::ConnectionSetting::ConnectionCase> AvailableStreamingConnections;

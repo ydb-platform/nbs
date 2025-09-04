@@ -6,6 +6,8 @@ LICENSE(Apache-2.0 WITH LLVM-exception)
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
+VERSION(20.1.8)
+
 PEERDIR(
     contrib/libs/afl/llvm_mode
 )

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
 
 namespace NKikimr {
 

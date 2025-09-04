@@ -102,7 +102,7 @@ public:
             typeCounters->Apply(tabletId, executorCounters, appCounters, tabletType);
         }
         //
-        if (!IsFollower && AppData(ctx)->FeatureFlags.GetEnableDbCounters() && tenantPathId) {
+        if (!IsFollower && DbWatcherActorId && tenantPathId) {
             auto dbCounters = GetDbCounters(tenantPathId, ctx);
             if (dbCounters) {
                 auto* limitedAppCounters = GetOrAddLimitedAppCounters(tabletType);
@@ -159,7 +159,7 @@ public:
         }
 
         for (ui32 i = 0, e = labeledCounters->GetCounters().Size(); i < e; ++i) {
-            if(!strlen(labeledCounters->GetCounterName(i))) 
+            if(!strlen(labeledCounters->GetCounterName(i)))
                 continue;
             const ui64& value = labeledCounters->GetCounters()[i].Get();
             const ui64& id = labeledCounters->GetIds()[i].Get();
@@ -763,13 +763,25 @@ private:
         TCounterPtr ScanBytes;
         TCounterPtr DatashardRowCount;
         TCounterPtr DatashardSizeBytes;
+        TCounterPtr DatashardCacheHitBytes;
+        TCounterPtr DatashardCacheMissBytes;
         TCounterPtr ColumnShardScanRows_;
         TCounterPtr ColumnShardScanBytes_;
+        TCounterPtr ColumnShardWriteRows_;
+        TCounterPtr ColumnShardWriteBytes_;
         TCounterPtr ColumnShardBulkUpsertRows_;
         TCounterPtr ColumnShardBulkUpsertBytes_;
+        TCounterPtr ColumnShardEraseRows_;
+        TCounterPtr ColumnShardEraseBytes_;
         TCounterPtr ResourcesStorageUsedBytes;
+        TCounterPtr ResourcesStorageUsedBytesOnSsd;
+        TCounterPtr ResourcesStorageUsedBytesOnHdd;
         TCounterPtr ResourcesStorageLimitBytes;
+        TCounterPtr ResourcesStorageLimitBytesOnSsd;
+        TCounterPtr ResourcesStorageLimitBytesOnHdd;
         TCounterPtr ResourcesStorageTableUsedBytes;
+        TCounterPtr ResourcesStorageTableUsedBytesOnSsd;
+        TCounterPtr ResourcesStorageTableUsedBytesOnHdd;
         TCounterPtr ResourcesStorageTopicUsedBytes;
         TCounterPtr ResourcesStreamUsedShards;
         TCounterPtr ResourcesStreamLimitShards;
@@ -795,15 +807,25 @@ private:
         TCounterPtr DbUniqueRowsTotal;
         TCounterPtr DbUniqueDataBytes;
         THistogramPtr ConsumedCpuHistogram;
+        TCounterPtr TxCachedBytes;
+        TCounterPtr TxReadBytes;
 
         TCounterPtr ColumnShardScannedBytes_;
         TCounterPtr ColumnShardScannedRows_;
-        TCounterPtr ColumnShardUpsertBlobsWritten_;
-        TCounterPtr ColumnShardUpsertBytesWritten_;
+        TCounterPtr ColumnShardOperationsRowsWritten_;
+        TCounterPtr ColumnShardOperationsBytesWritten_;
+        TCounterPtr ColumnShardOperationsBulkRowsWritten_;
+        TCounterPtr ColumnShardOperationsBulkBytesWritten_;
+        TCounterPtr ColumnShardErasedBytes_;
+        TCounterPtr ColumnShardErasedRows_;
 
         TCounterPtr DiskSpaceTablesTotalBytes;
+        TCounterPtr DiskSpaceTablesTotalBytesOnSsd;
+        TCounterPtr DiskSpaceTablesTotalBytesOnHdd;
         TCounterPtr DiskSpaceTopicsTotalBytes;
         TCounterPtr DiskSpaceSoftQuotaBytes;
+        TCounterPtr DiskSpaceSoftQuotaBytesOnSsd;
+        TCounterPtr DiskSpaceSoftQuotaBytesOnHdd;
 
         TCounterPtr StreamShardsCount;
         TCounterPtr StreamShardsQuota;
@@ -840,21 +862,46 @@ private:
             DatashardSizeBytes = ydbGroup->GetNamedCounter("name",
                 "table.datashard.size_bytes", false);
 
+            DatashardCacheHitBytes = ydbGroup->GetNamedCounter("name",
+                "table.datashard.cache_hit.bytes", true);
+            DatashardCacheMissBytes = ydbGroup->GetNamedCounter("name",
+                "table.datashard.cache_miss.bytes", true);
+
             ColumnShardScanRows_ = ydbGroup->GetNamedCounter("name",
                 "table.columnshard.scan.rows", true);
             ColumnShardScanBytes_ = ydbGroup->GetNamedCounter("name",
                 "table.columnshard.scan.bytes", true);
+            ColumnShardWriteRows_ = ydbGroup->GetNamedCounter("name",
+                "table.columnshard.write.rows", true);
+            ColumnShardWriteBytes_ = ydbGroup->GetNamedCounter("name",
+                "table.columnshard.write.bytes", true);
             ColumnShardBulkUpsertRows_ = ydbGroup->GetNamedCounter("name",
                 "table.columnshard.bulk_upsert.rows", true);
             ColumnShardBulkUpsertBytes_ = ydbGroup->GetNamedCounter("name",
                 "table.columnshard.bulk_upsert.bytes", true);
+            ColumnShardEraseRows_ = ydbGroup->GetNamedCounter("name",
+                "table.columnshard.erase.rows", true);
+            ColumnShardEraseBytes_ = ydbGroup->GetNamedCounter("name",
+                "table.columnshard.erase.bytes", true);
 
             ResourcesStorageUsedBytes = ydbGroup->GetNamedCounter("name",
                 "resources.storage.used_bytes", false);
+            ResourcesStorageUsedBytesOnSsd = ydbGroup->GetNamedCounter("name",
+                "resources.storage.used_bytes.ssd", false);
+            ResourcesStorageUsedBytesOnHdd = ydbGroup->GetNamedCounter("name",
+                "resources.storage.used_bytes.hdd", false);
             ResourcesStorageLimitBytes = ydbGroup->GetNamedCounter("name",
                 "resources.storage.limit_bytes", false);
+            ResourcesStorageLimitBytesOnSsd = ydbGroup->GetNamedCounter("name",
+                "resources.storage.limit_bytes.ssd", false);
+            ResourcesStorageLimitBytesOnHdd = ydbGroup->GetNamedCounter("name",
+                "resources.storage.limit_bytes.hdd", false);
             ResourcesStorageTableUsedBytes = ydbGroup->GetNamedCounter("name",
                 "resources.storage.table.used_bytes", false);
+            ResourcesStorageTableUsedBytesOnSsd = ydbGroup->GetNamedCounter("name",
+                "resources.storage.table.used_bytes.ssd", false);
+            ResourcesStorageTableUsedBytesOnHdd = ydbGroup->GetNamedCounter("name",
+                "resources.storage.table.used_bytes.hdd", false);
             ResourcesStorageTopicUsedBytes = ydbGroup->GetNamedCounter("name",
                 "resources.storage.topic.used_bytes", false);
 
@@ -902,6 +949,8 @@ private:
                 DbUniqueRowsTotal = execGroup->GetCounter("SUM(DbUniqueRowsTotal)");
                 DbUniqueDataBytes = execGroup->GetCounter("SUM(DbUniqueDataBytes)");
                 ConsumedCpuHistogram = execGroup->FindHistogram("HIST(ConsumedCPU)");
+                TxCachedBytes = execGroup->GetCounter("TxCachedBytes");
+                TxReadBytes = execGroup->GetCounter("TxReadBytes");
             }
 
             if (hasColumnShard && !ColumnShardScannedBytes_) {
@@ -910,8 +959,12 @@ private:
 
                 ColumnShardScannedBytes_ = appGroup->GetCounter("ColumnShard/ScannedBytes");
                 ColumnShardScannedRows_ = appGroup->GetCounter("ColumnShard/ScannedRows");
-                ColumnShardUpsertBlobsWritten_ = appGroup->GetCounter("ColumnShard/UpsertBlobsWritten");
-                ColumnShardUpsertBytesWritten_ = appGroup->GetCounter("ColumnShard/UpsertBytesWritten");
+                ColumnShardOperationsRowsWritten_ = appGroup->GetCounter("ColumnShard/OperationsRowsWritten");
+                ColumnShardOperationsBytesWritten_ = appGroup->GetCounter("ColumnShard/OperationsBytesWritten");
+                ColumnShardOperationsBulkRowsWritten_ = appGroup->GetCounter("ColumnShard/OperationsBulkRowsWritten");
+                ColumnShardOperationsBulkBytesWritten_ = appGroup->GetCounter("ColumnShard/OperationsBulkBytesWritten");
+                ColumnShardErasedBytes_ = appGroup->GetCounter("ColumnShard/BytesErased");
+                ColumnShardErasedRows_ = appGroup->GetCounter("ColumnShard/RowsErased");
             }
 
             if (hasSchemeshard && !DiskSpaceTablesTotalBytes) {
@@ -919,8 +972,12 @@ private:
                 auto appGroup = schemeshardGroup->GetSubgroup("category", "app");
 
                 DiskSpaceTablesTotalBytes = appGroup->GetCounter("SUM(SchemeShard/DiskSpaceTablesTotalBytes)");
+                DiskSpaceTablesTotalBytesOnSsd = appGroup->GetCounter("SUM(SchemeShard/DiskSpaceTablesTotalBytesOnSsd)");
+                DiskSpaceTablesTotalBytesOnHdd = appGroup->GetCounter("SUM(SchemeShard/DiskSpaceTablesTotalBytesOnHdd)");
                 DiskSpaceTopicsTotalBytes = appGroup->GetCounter("SUM(SchemeShard/DiskSpaceTopicsTotalBytes)");
                 DiskSpaceSoftQuotaBytes = appGroup->GetCounter("SUM(SchemeShard/DiskSpaceSoftQuotaBytes)");
+                DiskSpaceSoftQuotaBytesOnSsd = appGroup->GetCounter("SUM(SchemeShard/DiskSpaceSoftQuotaBytesOnSsd)");
+                DiskSpaceSoftQuotaBytesOnHdd = appGroup->GetCounter("SUM(SchemeShard/DiskSpaceSoftQuotaBytesOnHdd)");
 
                 StreamShardsCount = appGroup->GetCounter("SUM(SchemeShard/StreamShardsCount)");
                 StreamShardsQuota = appGroup->GetCounter("SUM(SchemeShard/StreamShardsQuota)");
@@ -944,6 +1001,8 @@ private:
                 ScanBytes->Set(ScannedBytes->Val());
                 DatashardRowCount->Set(DbUniqueRowsTotal->Val());
                 DatashardSizeBytes->Set(DbUniqueDataBytes->Val());
+                DatashardCacheHitBytes->Set(TxCachedBytes->Val());
+                DatashardCacheMissBytes->Set(TxReadBytes->Val());
 
                 if (ConsumedCpuHistogram) {
                     TransferBuckets(ShardCpuUtilization, ConsumedCpuHistogram);
@@ -953,19 +1012,31 @@ private:
             if (ColumnShardScannedBytes_) {
                 ColumnShardScanRows_->Set(ColumnShardScannedRows_->Val());
                 ColumnShardScanBytes_->Set(ColumnShardScannedBytes_->Val());
-                ColumnShardBulkUpsertRows_->Set(ColumnShardUpsertBlobsWritten_->Val());
-                ColumnShardBulkUpsertBytes_->Set(ColumnShardUpsertBytesWritten_->Val());
+                ColumnShardWriteRows_->Set(ColumnShardOperationsRowsWritten_->Val());
+                ColumnShardWriteBytes_->Set(ColumnShardOperationsBytesWritten_->Val());
+                ColumnShardBulkUpsertRows_->Set(ColumnShardOperationsBulkRowsWritten_->Val());
+                ColumnShardBulkUpsertBytes_->Set(ColumnShardOperationsBulkBytesWritten_->Val());
+                ColumnShardEraseRows_->Set(ColumnShardErasedRows_->Val());
+                ColumnShardEraseBytes_->Set(ColumnShardErasedBytes_->Val());
             }
 
             if (DiskSpaceTablesTotalBytes) {
                 ResourcesStorageLimitBytes->Set(DiskSpaceSoftQuotaBytes->Val());
+                ResourcesStorageLimitBytesOnSsd->Set(DiskSpaceSoftQuotaBytesOnSsd->Val());
+                ResourcesStorageLimitBytesOnHdd->Set(DiskSpaceSoftQuotaBytesOnHdd->Val());
                 ResourcesStorageTableUsedBytes->Set(DiskSpaceTablesTotalBytes->Val());
+                ResourcesStorageTableUsedBytesOnSsd->Set(DiskSpaceTablesTotalBytesOnSsd->Val());
+                ResourcesStorageTableUsedBytesOnHdd->Set(DiskSpaceTablesTotalBytesOnHdd->Val());
                 ResourcesStorageTopicUsedBytes->Set(DiskSpaceTopicsTotalBytes->Val());
 
                 if (AppData()->FeatureFlags.GetEnableTopicDiskSubDomainQuota()) {
                     ResourcesStorageUsedBytes->Set(ResourcesStorageTableUsedBytes->Val() + ResourcesStorageTopicUsedBytes->Val());
+                    ResourcesStorageUsedBytesOnSsd->Set(ResourcesStorageTableUsedBytesOnSsd->Val());
+                    ResourcesStorageUsedBytesOnHdd->Set(ResourcesStorageTableUsedBytesOnHdd->Val());
                 } else {
                     ResourcesStorageUsedBytes->Set(ResourcesStorageTableUsedBytes->Val());
+                    ResourcesStorageUsedBytesOnSsd->Set(ResourcesStorageTableUsedBytesOnSsd->Val());
+                    ResourcesStorageUsedBytesOnHdd->Set(ResourcesStorageTableUsedBytesOnHdd->Val());
                 }
 
                 auto quota = StreamShardsQuota->Val();
@@ -1270,9 +1341,9 @@ TTabletCountersAggregatorActor::Bootstrap(const TActorContext &ctx) {
     auto mon = appData->Mon;
     if (mon) {
         if (!Follower)
-            mon->RegisterActorPage(nullptr, "labeledcounters", "Labeled Counters", false, TlsActivationContext->ExecutorThread.ActorSystem, SelfId(), false);
+            mon->RegisterActorPage(nullptr, "labeledcounters", "Labeled Counters", false, TActivationContext::ActorSystem(), SelfId(), false);
         else
-            mon->RegisterActorPage(nullptr, "followercounters", "Follower Counters", false, TlsActivationContext->ExecutorThread.ActorSystem, SelfId(), false);
+            mon->RegisterActorPage(nullptr, "followercounters", "Follower Counters", false, TActivationContext::ActorSystem(), SelfId(), false);
     }
 
     ctx.Schedule(TDuration::Seconds(WAKEUP_TIMEOUT_SECONDS), new TEvents::TEvWakeup());
@@ -1390,7 +1461,7 @@ TTabletCountersAggregatorActor::HandleWork(TEvTabletCounters::TEvTabletLabeledCo
                 groupNames[j] = TString(1, toupper(groupNames[j][0])) + groupNames[j].substr(1);
                 if (groupNames[j] == "Topic") {
                     if (NPersQueue::CorrectName(groups[j])) {
-                        TString dc = to_title(NPersQueue::GetDC(groups[j]));
+                        TString dc = to_title(TString{NPersQueue::GetDC(groups[j])});
                         TString producer = NPersQueue::GetProducer(groups[j]);
                         TString topic = NPersQueue::GetRealTopic(groups[j]);
                         group = group->GetSubgroup("OriginDC", dc);
@@ -1417,7 +1488,8 @@ TTabletCountersAggregatorActor::HandleWork(TEvTabletCounters::TEvTabletLabeledCo
                     continue;
                 }
                 if (groupNames[j] == "Client") {
-                    group = group->GetSubgroup("ConsumerPath", NPersQueue::ConvertOldConsumerName(groups[j], ctx));
+                    group = group->GetSubgroup("ConsumerPath",
+                                         NPersQueue::ConvertOldConsumerName(groups[j], AppData(ctx)->PQConfig));
                     continue;
                 }
             }
@@ -2011,7 +2083,7 @@ public:
             if (groups.size() == 1) { //topic case
                 ff = groups[0];
             } else if (groups.size() == 3) { //client important topic
-                res = NPersQueue::ConvertOldConsumerName(groups[0], ctx) + "|" + groups[1] + "|";
+                res = NPersQueue::ConvertOldConsumerName(groups[0], AppData(ctx)->PQConfig) + "|" + groups[1] + "|";
                 ff = groups[2];
             } else {
                 continue;

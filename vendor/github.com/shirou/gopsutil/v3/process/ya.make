@@ -2,13 +2,17 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v3.24.2)
+
 GO_SKIP_TESTS(
     Test_Process_Environ
     Test_Process_Long_Name
     Test_Process_Long_Name_With_Spaces
 )
 
-SRCS(process.go)
+SRCS(
+    process.go
+)
 
 GO_TEST_SRCS(process_test.go)
 
@@ -37,11 +41,15 @@ IF (OS_DARWIN AND CGO_ENABLED)
 ENDIF()
 
 IF (OS_DARWIN AND ARCH_X86_64)
-    SRCS(process_darwin_amd64.go)
+    SRCS(
+        process_darwin_amd64.go
+    )
 ENDIF()
 
 IF (OS_DARWIN AND ARCH_ARM64)
-    SRCS(process_darwin_arm64.go)
+    SRCS(
+        process_darwin_arm64.go
+    )
 ENDIF()
 
 IF (OS_WINDOWS)
@@ -53,4 +61,6 @@ ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

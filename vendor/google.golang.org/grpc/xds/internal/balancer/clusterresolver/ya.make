@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.73.0)
+
 SRCS(
     clusterresolver.go
     config.go
@@ -18,9 +20,6 @@ GO_TEST_SRCS(
     config_test.go
     configbuilder_childname_test.go
     configbuilder_test.go
-    priority_test.go
-    resource_resolver_test.go
-    testutil_test.go
 )
 
 END()

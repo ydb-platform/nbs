@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"reflect"
 	"testing"
+	"time"
 
 	v1xdsudpatypepb "github.com/cncf/xds/go/udpa/type/v1"
 	v3xdsxdstypepb "github.com/cncf/xds/go/xds/type/v3"
@@ -35,7 +36,6 @@ import (
 	v3routepb "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	v3matcherpb "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	v3typepb "github.com/envoyproxy/go-control-plane/envoy/type/v3"
-	wrapperspb "github.com/golang/protobuf/ptypes/wrappers"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/authz/audit"
 	"google.golang.org/grpc/codes"
@@ -46,7 +46,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
+
+const defaultTestTimeout = 10 * time.Second
 
 type s struct {
 	grpctest.Tester
@@ -316,7 +319,7 @@ func (s) TestNewChainEngine(t *testing.T) {
 			},
 		},
 		{
-			name: "MatcherToNotPrinicipal",
+			name: "MatcherToNotPrincipal",
 			policies: []*v3rbacpb.RBAC{
 				{
 					Action: v3rbacpb.RBAC_ALLOW,
@@ -333,7 +336,7 @@ func (s) TestNewChainEngine(t *testing.T) {
 				},
 			},
 		},
-		// PrinicpalProductViewer tests the construction of a chained engine
+		// PrincipalProductViewer tests the construction of a chained engine
 		// with a policy that allows any downstream to send a GET request on a
 		// certain path.
 		{
@@ -388,6 +391,7 @@ func (s) TestNewChainEngine(t *testing.T) {
 										{Identifier: &v3rbacpb.Principal_Header{Header: &v3routepb.HeaderMatcher{Name: ":method", HeaderMatchSpecifier: &v3routepb.HeaderMatcher_PresentMatch{PresentMatch: true}}}},
 										{Identifier: &v3rbacpb.Principal_Header{Header: &v3routepb.HeaderMatcher{Name: ":method", HeaderMatchSpecifier: &v3routepb.HeaderMatcher_PrefixMatch{PrefixMatch: "GET"}}}},
 										{Identifier: &v3rbacpb.Principal_Header{Header: &v3routepb.HeaderMatcher{Name: ":method", HeaderMatchSpecifier: &v3routepb.HeaderMatcher_SuffixMatch{SuffixMatch: "GET"}}}},
+										{Identifier: &v3rbacpb.Principal_Header{Header: &v3routepb.HeaderMatcher{Name: ":method", HeaderMatchSpecifier: &v3routepb.HeaderMatcher_ContainsMatch{ContainsMatch: "GET"}}}},
 										{Identifier: &v3rbacpb.Principal_Header{Header: &v3routepb.HeaderMatcher{Name: ":method", HeaderMatchSpecifier: &v3routepb.HeaderMatcher_ContainsMatch{ContainsMatch: "GET"}}}},
 									}}},
 								},
@@ -453,7 +457,7 @@ func (s) TestNewChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerBuffer",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "SimpleAuditLogger_TestAuditLoggerBuffer")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{}, "SimpleAuditLogger_TestAuditLoggerBuffer")},
 								IsOptional: false,
 							},
 						},
@@ -481,7 +485,7 @@ func (s) TestNewChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerCustomConfig",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{"abc": 123, "xyz": "123"}, "AuditLoggerCustomConfig_TestAuditLoggerCustomConfig")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{"abc": 123, "xyz": "123"}, "AuditLoggerCustomConfig_TestAuditLoggerCustomConfig")},
 								IsOptional: false,
 							},
 						},
@@ -510,7 +514,7 @@ func (s) TestNewChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerCustomConfig",
-								TypedConfig: createXDSTypedStruct(t, map[string]interface{}{"abc": 123, "xyz": "123"}, "AuditLoggerCustomConfigXdsTypedStruct_TestAuditLoggerCustomConfig")},
+								TypedConfig: createXDSTypedStruct(t, map[string]any{"abc": 123, "xyz": "123"}, "AuditLoggerCustomConfigXdsTypedStruct_TestAuditLoggerCustomConfig")},
 								IsOptional: false,
 							},
 						},
@@ -539,7 +543,7 @@ func (s) TestNewChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "UnsupportedLogger",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "Missing Optional AuditLogger doesn't fail_UnsupportedLogger")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{}, "Missing Optional AuditLogger doesn't fail_UnsupportedLogger")},
 								IsOptional: true,
 							},
 						},
@@ -567,7 +571,7 @@ func (s) TestNewChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "UnsupportedLogger",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "Missing Non-Optional AuditLogger fails_UnsupportedLogger")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{}, "Missing Non-Optional AuditLogger fails_UnsupportedLogger")},
 								IsOptional: false,
 							},
 						},
@@ -625,7 +629,7 @@ func (s) TestNewChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerCustomConfig",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{"abc": "BADVALUE", "xyz": "123"}, "Cannot_parse_bad_CustomConfig_TestAuditLoggerCustomConfig")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{"abc": "BADVALUE", "xyz": "123"}, "Cannot_parse_bad_CustomConfig_TestAuditLoggerCustomConfig")},
 								IsOptional: false,
 							},
 						},
@@ -654,7 +658,7 @@ func (s) TestNewChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerCustomConfig",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{"abc": 123, "xyz": "123"}, "")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{"abc": 123, "xyz": "123"}, "")},
 								IsOptional: false,
 							},
 						},
@@ -1247,7 +1251,7 @@ func (s) TestChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerBuffer",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "AuditLoggingAllowAndDenyPolicy_ON_ALLOW_TestAuditLoggerBuffer")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{}, "AuditLoggingAllowAndDenyPolicy_ON_ALLOW_TestAuditLoggerBuffer")},
 								IsOptional: false,
 							},
 						},
@@ -1270,7 +1274,7 @@ func (s) TestChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerBuffer",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "AuditLoggingAllowAndDenyPolicy_ON_ALLOW_TestAuditLoggerBuffer")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{}, "AuditLoggingAllowAndDenyPolicy_ON_ALLOW_TestAuditLoggerBuffer")},
 								IsOptional: false,
 							},
 						},
@@ -1373,7 +1377,7 @@ func (s) TestChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerBuffer",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "AuditLoggingAllowAndDenyPolicy_ON_DENY_TestAuditLoggerBuffer")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{}, "AuditLoggingAllowAndDenyPolicy_ON_DENY_TestAuditLoggerBuffer")},
 								IsOptional: false,
 							},
 						},
@@ -1396,7 +1400,7 @@ func (s) TestChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerBuffer",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "AuditLoggingAllowAndDenyPolicy_ON_DENY_TestAuditLoggerBuffer")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{}, "AuditLoggingAllowAndDenyPolicy_ON_DENY_TestAuditLoggerBuffer")},
 								IsOptional: false,
 							},
 						},
@@ -1512,7 +1516,7 @@ func (s) TestChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerBuffer",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "AuditLoggingAllowAndDenyPolicy_NONE_TestAuditLoggerBuffer")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{}, "AuditLoggingAllowAndDenyPolicy_NONE_TestAuditLoggerBuffer")},
 								IsOptional: false,
 							},
 						},
@@ -1535,7 +1539,7 @@ func (s) TestChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerBuffer",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "AuditLoggingAllowAndDenyPolicy_NONE_TestAuditLoggerBuffer")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{}, "AuditLoggingAllowAndDenyPolicy_NONE_TestAuditLoggerBuffer")},
 								IsOptional: false,
 							},
 						},
@@ -1613,7 +1617,7 @@ func (s) TestChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerBuffer",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "AuditLoggingAllowAndDenyPolicy_ON_DENY_AND_ALLOW_TestAuditLoggerBuffer")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{}, "AuditLoggingAllowAndDenyPolicy_ON_DENY_AND_ALLOW_TestAuditLoggerBuffer")},
 								IsOptional: false,
 							},
 						},
@@ -1636,7 +1640,7 @@ func (s) TestChainEngine(t *testing.T) {
 						LoggerConfigs: []*v3rbacpb.RBAC_AuditLoggingOptions_AuditLoggerConfig{
 							{AuditLogger: &v3corepb.TypedExtensionConfig{
 								Name:        "TestAuditLoggerBuffer",
-								TypedConfig: createUDPATypedStruct(t, map[string]interface{}{}, "AuditLoggingAllowAndDenyPolicy_ON_DENY_AND_ALLOW_TestAuditLoggerBuffer")},
+								TypedConfig: createUDPATypedStruct(t, map[string]any{}, "AuditLoggingAllowAndDenyPolicy_ON_DENY_AND_ALLOW_TestAuditLoggerBuffer")},
 								IsOptional: false,
 							},
 						},
@@ -1741,14 +1745,15 @@ func (s) TestChainEngine(t *testing.T) {
 			}
 			// Query the created chain of RBAC Engines with different args to see
 			// if the chain of RBAC Engines configured as such works as intended.
+			ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+			defer cancel()
 			for _, data := range test.rbacQueries {
 				func() {
 					// Construct the context with three data points that have enough
 					// information to represent incoming RPC's. This will be how a
 					// user uses this API. A user will have to put MD, PeerInfo, and
 					// the connection the RPC is sent on in the context.
-					ctx := metadata.NewIncomingContext(context.Background(), data.rpcData.md)
-
+					ctx = metadata.NewIncomingContext(ctx, data.rpcData.md)
 					// Make a TCP connection with a certain destination port. The
 					// address/port of this connection will be used to populate the
 					// destination ip/port in RPCData struct. This represents what
@@ -1807,15 +1812,15 @@ func (sts *ServerTransportStreamWithMethod) Method() string {
 	return sts.method
 }
 
-func (sts *ServerTransportStreamWithMethod) SetHeader(md metadata.MD) error {
+func (sts *ServerTransportStreamWithMethod) SetHeader(metadata.MD) error {
 	return nil
 }
 
-func (sts *ServerTransportStreamWithMethod) SendHeader(md metadata.MD) error {
+func (sts *ServerTransportStreamWithMethod) SendHeader(metadata.MD) error {
 	return nil
 }
 
-func (sts *ServerTransportStreamWithMethod) SetTrailer(md metadata.MD) error {
+func (sts *ServerTransportStreamWithMethod) SetTrailer(metadata.MD) error {
 	return nil
 }
 
@@ -1839,11 +1844,11 @@ type TestAuditLoggerBufferConfig struct {
 	audit.LoggerConfig
 }
 
-func (b *TestAuditLoggerBufferBuilder) ParseLoggerConfig(configJSON json.RawMessage) (config audit.LoggerConfig, err error) {
+func (b *TestAuditLoggerBufferBuilder) ParseLoggerConfig(json.RawMessage) (config audit.LoggerConfig, err error) {
 	return TestAuditLoggerBufferConfig{}, nil
 }
 
-func (b *TestAuditLoggerBufferBuilder) Build(config audit.LoggerConfig) audit.Logger {
+func (b *TestAuditLoggerBufferBuilder) Build(audit.LoggerConfig) audit.Logger {
 	return &TestAuditLoggerBuffer{auditEvents: &b.auditEvents}
 }
 
@@ -1880,7 +1885,7 @@ func (b TestAuditLoggerCustomConfigBuilder) ParseLoggerConfig(configJSON json.Ra
 	return c, nil
 }
 
-func (b *TestAuditLoggerCustomConfigBuilder) Build(config audit.LoggerConfig) audit.Logger {
+func (b *TestAuditLoggerCustomConfigBuilder) Build(audit.LoggerConfig) audit.Logger {
 	return &TestAuditLoggerCustomConfig{}
 }
 
@@ -1889,7 +1894,7 @@ func (b *TestAuditLoggerCustomConfigBuilder) Name() string {
 }
 
 // Builds custom configs for audit logger RBAC protos.
-func createUDPATypedStruct(t *testing.T, in map[string]interface{}, name string) *anypb.Any {
+func createUDPATypedStruct(t *testing.T, in map[string]any, name string) *anypb.Any {
 	t.Helper()
 	pb, err := structpb.NewStruct(in)
 	if err != nil {
@@ -1911,7 +1916,7 @@ func createUDPATypedStruct(t *testing.T, in map[string]interface{}, name string)
 }
 
 // Builds custom configs for audit logger RBAC protos.
-func createXDSTypedStruct(t *testing.T, in map[string]interface{}, name string) *anypb.Any {
+func createXDSTypedStruct(t *testing.T, in map[string]any, name string) *anypb.Any {
 	t.Helper()
 	pb, err := structpb.NewStruct(in)
 	if err != nil {

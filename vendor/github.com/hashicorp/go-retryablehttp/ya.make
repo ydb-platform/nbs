@@ -2,7 +2,10 @@ GO_LIBRARY()
 
 LICENSE(MPL-2.0)
 
+VERSION(v0.7.7)
+
 SRCS(
+    cert_error_go120.go
     client.go
     roundtripper.go
 )

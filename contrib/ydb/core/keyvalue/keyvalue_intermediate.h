@@ -70,6 +70,7 @@ struct TIntermediate {
         NKikimrProto::EReplyStatus Status;
         TStorageStatusFlags StatusFlags;
         TDuration Latency;
+        ui64 CreationUnixTime;
     };
     struct TDelete {
         TKeyRange Range;
@@ -77,6 +78,7 @@ struct TIntermediate {
     struct TRename {
         TString OldKey;
         TString NewKey;
+        ui64 CreationUnixTime;
     };
     struct TCopyRange {
         TKeyRange Range;
@@ -102,13 +104,30 @@ struct TIntermediate {
     struct TSetExecutorFastLogPolicy {
         bool IsAllowed;
     };
+    struct TPatch {
+        struct TDiff {
+            ui32 Offset;
+            TRope Buffer;
+        };
 
-    using TCmd = std::variant<TWrite, TDelete, TRename, TCopyRange, TConcat>;
+        TString OriginalKey;
+        TLogoBlobID OriginalBlobId;
+        TString PatchedKey;
+        TLogoBlobID PatchedBlobId;
+
+        NKikimrProto::EReplyStatus Status;
+        TStorageStatusFlags StatusFlags;
+
+        TVector<TDiff> Diffs;
+    };
+
+    using TCmd = std::variant<TWrite, TDelete, TRename, TCopyRange, TConcat, TPatch>;
     using TReadCmd = std::variant<TRead, TRangeRead>;
 
     TDeque<TRead> Reads;
     TDeque<TRangeRead> RangeReads;
     TDeque<TWrite> Writes;
+    TDeque<TPatch> Patches;
     TDeque<TDelete> Deletes;
     TDeque<TRename> Renames;
     TDeque<TCopyRange> CopyRanges;
@@ -120,6 +139,7 @@ struct TIntermediate {
 
     TStackVec<TCmd, 1> Commands;
     TStackVec<ui32, 1> WriteIndices;
+    TStackVec<ui32, 1> PatchIndices;
     std::optional<TReadCmd> ReadCommand;
 
     ui64 WriteCount = 0;

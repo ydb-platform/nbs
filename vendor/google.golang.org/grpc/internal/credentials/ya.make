@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.73.0)
+
 SRCS(
     credentials.go
     spiffe.go
@@ -19,5 +21,6 @@ END()
 
 RECURSE(
     gotest
+    spiffe
     xds
 )

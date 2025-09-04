@@ -9,19 +9,19 @@ namespace NKikimr {
 namespace NTable {
 
     struct TSizeEnv : public IPages {
-        using TInfo = NTabletFlatExecutor::TPrivatePageCache::TInfo;
+        using TPageCollection = NTabletFlatExecutor::TPrivatePageCache::TPageCollection;
 
         TSizeEnv(IPages* env)
             : Env(env)
         {
         }
 
-        TResult Locate(const TMemTable*, ui64, ui32) noexcept override
+        TResult Locate(const TMemTable*, ui64, ui32) override
         {
-            Y_ABORT("IPages::Locate(TMemTable*, ...) shouldn't be used here");
+            Y_TABLET_ERROR("IPages::Locate(TMemTable*, ...) shouldn't be used here");
         }
 
-        TResult Locate(const TPart *part, ui64 ref, ELargeObj lob) noexcept override
+        TResult Locate(const TPart *part, ui64 ref, ELargeObj lob) override
         {
             auto *partStore = CheckedCast<const NTable::TPartStore*>(part);
 
@@ -35,10 +35,10 @@ namespace NTable {
             auto *partStore = CheckedCast<const NTable::TPartStore*>(part);
 
             auto info = partStore->PageCollections.at(groupId.Index).Get();
-            auto type = EPage(info->PageCollection->Page(pageId).Type);
+            auto type = info->GetPageType(pageId);
             
             switch (type) {
-                case EPage::Index:
+                case EPage::FlatIndex:
                 case EPage::BTreeIndex:
                     // need index pages to continue counting
                     // do not count index
@@ -55,11 +55,11 @@ namespace NTable {
         }
 
     private:
-        void AddPageSize(TInfo *info, TPageId page) noexcept
+        void AddPageSize(TPageCollection *info, TPageId pageId)
         {
-            if (Touched[info].insert(page).second) {
+            if (Touched[info].insert(pageId).second) {
                 Pages++;
-                Bytes += info->PageCollection->Page(page).Size;
+                Bytes += info->GetPageSize(pageId);
             }
         }
 

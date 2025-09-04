@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v1.11.0)
+
 SRCS(
     bool.go
     bool_ext.go
@@ -56,8 +58,12 @@ GO_XTEST_SRCS(example_test.go)
 
 END()
 
-RECURSE(internal)
+RECURSE(
+    internal
+)
 
 IF (NOT OPENSOURCE)
-    RECURSE(gotest)
+    RECURSE(
+        gotest
+    )
 ENDIF()

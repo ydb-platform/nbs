@@ -3,12 +3,13 @@ package retry
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backoff"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/stack"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/wait"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+	"github.com/ydb-platform/ydb-go-sdk/v3/retry/budget"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
@@ -25,6 +26,7 @@ type retryOptions struct {
 	stackTrace  bool
 	fastBackoff backoff.Backoff
 	slowBackoff backoff.Backoff
+	budget      budget.Budget
 
 	panicCallback func(e interface{})
 }
@@ -73,7 +75,7 @@ func (call callOption) ApplyRetryOption(opts *retryOptions) {
 }
 
 type call interface {
-	FunctionID() string
+	String() string
 }
 
 func withCaller(call call) callOption {
@@ -122,6 +124,31 @@ func (t traceOption) ApplyDoTxOption(opts *doTxOptions) {
 // WithTrace returns trace option
 func WithTrace(t *trace.Retry) traceOption {
 	return traceOption{t: t}
+}
+
+var _ Option = budgetOption{}
+
+type budgetOption struct {
+	b budget.Budget
+}
+
+func (b budgetOption) ApplyRetryOption(opts *retryOptions) {
+	opts.budget = b.b
+}
+
+func (b budgetOption) ApplyDoOption(opts *doOptions) {
+	opts.retryOptions = append(opts.retryOptions, WithBudget(b.b))
+}
+
+func (b budgetOption) ApplyDoTxOption(opts *doTxOptions) {
+	opts.retryOptions = append(opts.retryOptions, WithBudget(b.b))
+}
+
+//	WithBudget returns budget option
+//
+// Experimental: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#experimental
+func WithBudget(b budget.Budget) budgetOption {
+	return budgetOption{b: b}
 }
 
 var _ Option = idempotentOption(false)
@@ -227,16 +254,51 @@ func WithPanicCallback(panicCallback func(e interface{})) panicCallbackOption {
 //
 // - retry operation returned nil as error
 //
-// Warning: if deadline without deadline or cancellation func Retry will be worked infinite
+// Warning: if context without deadline or cancellation func was passed, Retry will work infinitely.
 //
-// If you need to retry your op func on some logic errors - you must return RetryableError() from retryOperation
+// # If you need to retry your op func on some logic errors - you must return RetryableError() from retryOperation
 func Retry(ctx context.Context, op retryOperation, opts ...Option) (finalErr error) {
-	options := &retryOptions{
-		call:        stack.FunctionID(""),
-		trace:       &trace.Retry{},
-		fastBackoff: backoff.Fast,
-		slowBackoff: backoff.Slow,
+	_, err := RetryWithResult[*struct{}](ctx, func(ctx context.Context) (*struct{}, error) {
+		err := op(ctx)
+		if err != nil {
+			return nil, xerrors.WithStackTrace(err)
+		}
+
+		return nil, nil //nolint:nilnil
+	}, opts...)
+	if err != nil {
+		return xerrors.WithStackTrace(err)
 	}
+
+	return nil
+}
+
+// RetryWithResult provide the best effort fo retrying operation which will return value or error
+//
+// RetryWithResult implements internal busy loop until one of the following conditions is met:
+//
+// - context was canceled or deadlined
+//
+// - retry operation returned nil as error
+//
+// Warning: if context without deadline or cancellation func was passed, RetryWithResult will work infinitely.
+//
+// # If you need to retry your op func on some logic errors - you must return RetryableError() from retryOperation
+//
+// Experimental: https://github.com/ydb-platform/ydb-go-sdk/blob/master/VERSIONING.md#experimental
+func RetryWithResult[T any](ctx context.Context, //nolint:revive,funlen
+	op func(context.Context) (T, error), opts ...Option,
+) (_ T, finalErr error) {
+	var (
+		zeroValue T
+		options   = &retryOptions{
+			call:        stack.FunctionID("github.com/ydb-platform/ydb-go-sdk/v3/retry.RetryWithResult"),
+			trace:       &trace.Retry{},
+			budget:      budget.Limited(-1),
+			fastBackoff: backoff.Fast,
+			slowBackoff: backoff.Slow,
+		}
+	)
 	for _, opt := range opts {
 		if opt != nil {
 			opt.ApplyRetryOption(options)
@@ -245,8 +307,10 @@ func Retry(ctx context.Context, op retryOperation, opts ...Option) (finalErr err
 	if options.idempotent {
 		ctx = xcontext.WithIdempotent(ctx, options.idempotent)
 	}
+
 	defer func() {
 		if finalErr != nil && options.stackTrace {
+			//nolint:mnd
 			finalErr = xerrors.WithStackTrace(finalErr,
 				xerrors.WithSkipDepth(2), // 1 - exit from defer, 1 - exit from Retry call
 			)
@@ -255,52 +319,31 @@ func Retry(ctx context.Context, op retryOperation, opts ...Option) (finalErr err
 	var (
 		i        int
 		attempts int
+		lastErr  error
 
-		code           = int64(0)
-		onIntermediate = trace.RetryOnRetry(options.trace, &ctx,
-			options.label, options.call, options.label, options.idempotent, xcontext.IsNestedCall(ctx),
+		code   = int64(0)
+		onDone = trace.RetryOnRetry(options.trace, &ctx,
+			options.call, options.label, options.idempotent, xcontext.IsNestedCall(ctx),
 		)
 	)
 	defer func() {
-		onIntermediate(finalErr)(attempts, finalErr)
+		onDone(attempts, finalErr)
 	}()
 	for {
 		i++
 		attempts++
 		select {
 		case <-ctx.Done():
-			return xerrors.WithStackTrace(
-				fmt.Errorf("retry failed on attempt No.%d: %w",
-					attempts, ctx.Err(),
-				),
-			)
+			return zeroValue, xerrors.WithStackTrace(xerrors.Join(
+				fmt.Errorf("retry failed on attempt No.%d: %w", attempts, ctx.Err()),
+				lastErr,
+			))
 
 		default:
-			err := func() (err error) {
-				if options.panicCallback != nil {
-					defer func() {
-						if e := recover(); e != nil {
-							options.panicCallback(e)
-							err = xerrors.WithStackTrace(
-								fmt.Errorf("panic recovered: %v", e),
-							)
-						}
-					}()
-				}
-				return op(ctx)
-			}()
+			v, err := opWithRecover(ctx, options, op)
 
 			if err == nil {
-				return nil
-			}
-
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return xerrors.WithStackTrace(
-					xerrors.Join(
-						fmt.Errorf("context error occurred on attempt No.%d", attempts),
-						ctxErr, err,
-					),
-				)
+				return v, nil
 			}
 
 			m := Check(err)
@@ -309,38 +352,82 @@ func Retry(ctx context.Context, op retryOperation, opts ...Option) (finalErr err
 				i = 0
 			}
 
-			if !m.MustRetry(options.idempotent) {
-				return xerrors.WithStackTrace(
-					fmt.Errorf("non-retryable error occurred on attempt No.%d (idempotent=%v): %w",
-						attempts, options.idempotent, err,
-					),
-				)
-			}
-
-			if e := wait.Wait(ctx, options.fastBackoff, options.slowBackoff, m.BackoffType(), i); e != nil {
-				return xerrors.WithStackTrace(
-					xerrors.Join(
-						fmt.Errorf("wait exit on attempt No.%d",
-							attempts,
-						), e, err,
-					),
-				)
-			}
-
 			code = m.StatusCode()
 
-			onIntermediate(err)
+			if !m.MustRetry(options.idempotent) {
+				return zeroValue, xerrors.WithStackTrace(xerrors.Join(
+					fmt.Errorf("non-retryable error occurred on attempt No.%d (idempotent=%v): %w",
+						attempts, options.idempotent, err),
+					lastErr,
+				))
+			}
+
+			t := time.NewTimer(backoff.Delay(m.BackoffType(), i,
+				backoff.WithFastBackoff(options.fastBackoff),
+				backoff.WithSlowBackoff(options.slowBackoff),
+			))
+
+			select {
+			case <-ctx.Done():
+				t.Stop()
+
+				return zeroValue, xerrors.WithStackTrace(
+					xerrors.Join(
+						fmt.Errorf("attempt No.%d: %w", attempts, ctx.Err()),
+						err,
+						lastErr,
+					),
+				)
+			case <-t.C:
+				t.Stop()
+
+				if acquireErr := options.budget.Acquire(ctx); acquireErr != nil {
+					return zeroValue, xerrors.WithStackTrace(
+						xerrors.Join(
+							fmt.Errorf("attempt No.%d: %w", attempts, budget.ErrNoQuota),
+							acquireErr,
+							err,
+							lastErr,
+						),
+					)
+				}
+			}
+
+			lastErr = err
 		}
 	}
 }
 
+func opWithRecover[T any](ctx context.Context,
+	options *retryOptions, op func(context.Context) (T, error),
+) (_ T, finalErr error) {
+	var zeroValue T
+	if options.panicCallback != nil {
+		defer func() {
+			if e := recover(); e != nil {
+				options.panicCallback(e)
+				finalErr = xerrors.WithStackTrace(
+					fmt.Errorf("panic recovered: %v", e),
+				)
+			}
+		}()
+	}
+
+	v, err := op(ctx)
+	if err != nil {
+		return zeroValue, xerrors.WithStackTrace(err)
+	}
+
+	return v, nil
+}
+
 // Check returns retry mode for queryErr.
 func Check(err error) (m retryMode) {
-	code, errType, backoffType, deleteSession := xerrors.Check(err)
+	code, errType, backoffType := xerrors.Check(err)
+
 	return retryMode{
-		code:          code,
-		errType:       errType,
-		backoff:       backoffType,
-		deleteSession: deleteSession,
+		code:    code,
+		errType: errType,
+		backoff: backoffType,
 	}
 }

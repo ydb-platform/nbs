@@ -4,7 +4,7 @@
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/protos/certificate.pb.h>
 
-#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <contrib/ydb/core/control/lib/immediate_control_board_impl.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 

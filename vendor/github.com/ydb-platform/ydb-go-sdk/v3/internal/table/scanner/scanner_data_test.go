@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/result/indexed"
@@ -29,6 +30,7 @@ func (s *intIncScanner) Scan(src interface{}) error {
 		return fmt.Errorf("wrong type: %T, exp: int64", src)
 	}
 	*s = intIncScanner(v + 10)
+
 	return nil
 }
 
@@ -40,6 +42,7 @@ func (s *dateScanner) Scan(src interface{}) error {
 		return fmt.Errorf("wrong type: %T, exp: time.Time", src)
 	}
 	*s = dateScanner(v)
+
 	return nil
 }
 
@@ -61,7 +64,7 @@ var scannerData = []struct {
 			name:   "date",
 			typeID: Ydb.Type_DATE,
 		}},
-		values: []indexed.RequiredOrOptional{new([16]byte), new(time.Time)},
+		values: []indexed.RequiredOrOptional{new(uuid.UUID), new(time.Time)},
 	},
 	{
 		name:  "Scan JSON, DOUBLE",
@@ -206,7 +209,7 @@ var scannerData = []struct {
 		setColumnIndexes: []int{0, 2, 1},
 	},
 	{
-		name:  "Scan int64, float, json as ydb.Value",
+		name:  "Scan int64, float, json as ydb.valueType",
 		count: 100,
 		columns: []*column{{
 			name:     "valueint64",
@@ -270,7 +273,7 @@ var scannerData = []struct {
 			typeID:   Ydb.Type_DOUBLE,
 			optional: true,
 		}},
-		values: []indexed.RequiredOrOptional{new(*time.Duration), new(*[16]byte), new(*float64)},
+		values: []indexed.RequiredOrOptional{new(*time.Duration), new(*uuid.UUID), new(*float64)},
 	},
 	{
 		name:  "Scan int64, date, string as ydb.Scanner",
@@ -422,7 +425,7 @@ var scannerData = []struct {
 			optional: true,
 			nilValue: true,
 		}},
-		values: []indexed.RequiredOrOptional{new(*uint8), new(*[]byte), new(*time.Time), new(*[16]byte)},
+		values: []indexed.RequiredOrOptional{new(*uint8), new(*[]byte), new(*time.Time), new(*uuid.UUID)},
 	},
 	{
 		name:  "Scan string as byte array.",
@@ -468,8 +471,8 @@ var scannerData = []struct {
 	},
 }
 
-func initScanner() *scanner {
-	res := scanner{
+func initScanner() *valueScanner {
+	res := valueScanner{
 		set: &Ydb.ResultSet{
 			Columns:   nil,
 			Rows:      nil,
@@ -485,10 +488,11 @@ func initScanner() *scanner {
 		columnIndexes: nil,
 		err:           nil,
 	}
+
 	return &res
 }
 
-func PrepareScannerPerformanceTest(count int) *scanner {
+func generateScannerData(count int) *valueScanner {
 	res := initScanner()
 	res.set.Columns = []*Ydb.Column{{
 		Name: "series_id",
@@ -526,7 +530,7 @@ func PrepareScannerPerformanceTest(count int) *scanner {
 	}}
 	res.set.Rows = []*Ydb.Value{}
 	for i := 0; i < count; i++ {
-		res.set.Rows = append(res.set.Rows, &Ydb.Value{
+		res.set.Rows = append(res.set.GetRows(), &Ydb.Value{
 			Items: []*Ydb.Value{{
 				Value: &Ydb.Value_Uint64Value{
 					Uint64Value: uint64(i),
@@ -543,5 +547,6 @@ func PrepareScannerPerformanceTest(count int) *scanner {
 		})
 	}
 	res.converter = &rawConverter{res}
+
 	return res
 }

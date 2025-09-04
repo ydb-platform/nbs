@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v3.113.3)
+
 SRCS(
     configs.go
     convertors.go
@@ -15,6 +17,8 @@ END()
 RECURSE(
     gotest
     topicclientinternal
+    topiclistenerinternal
+    topicreadercommon
     topicreaderinternal
     topicwriterinternal
 )

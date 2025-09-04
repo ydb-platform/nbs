@@ -341,7 +341,7 @@ func (t *migrateDiskTask) setEstimate(
 		return err
 	}
 
-	execCtx.SetEstimatedInflightDuration(performance.Estimate(
+	execCtx.SetEstimate(performance.Estimate(
 		stats.StorageSize,
 		t.performanceConfig.GetReplicateDiskBandwidthMiBs(),
 	))

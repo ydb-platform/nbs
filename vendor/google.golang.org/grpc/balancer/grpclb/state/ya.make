@@ -2,6 +2,10 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
-SRCS(state.go)
+VERSION(v1.73.0)
+
+SRCS(
+    state.go
+)
 
 END()

@@ -5,6 +5,8 @@ LICENSE(
     MIT
 )
 
+VERSION(v3.0.1)
+
 SRCS(
     apic.go
     decode.go
@@ -32,4 +34,6 @@ GO_XTEST_SRCS(
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

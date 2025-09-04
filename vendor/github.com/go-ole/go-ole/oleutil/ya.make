@@ -2,7 +2,11 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
-SRCS(oleutil.go)
+VERSION(v1.2.7-0.20211215081658-ee6c8cce8e87)
+
+SRCS(
+    oleutil.go
+)
 
 IF (OS_LINUX)
     SRCS(

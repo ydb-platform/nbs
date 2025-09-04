@@ -4,9 +4,9 @@
 
 #include <contrib/ydb/core/fq/libs/compute/common/metrics.h>
 
-#include <contrib/ydb/library/yql/providers/common/metrics/service_counters.h>
+#include <yql/essentials/providers/common/metrics/service_counters.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/status_codes.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/status_codes.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <library/cpp/retry/retry_policy.h>

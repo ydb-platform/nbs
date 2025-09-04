@@ -2,13 +2,9 @@
 
 PY2_LIBRARY()
 
-VERSION(1.3.4)
+VERSION(1.3.7)
 
 LICENSE(Apache-2.0)
-
-PEERDIR(
-    contrib/python/six
-)
 
 NO_LINT()
 

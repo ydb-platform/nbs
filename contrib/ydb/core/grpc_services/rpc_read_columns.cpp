@@ -1,4 +1,5 @@
 #include "service_coordination.h"
+#include <contrib/ydb/core/base/auth.h>
 #include <contrib/ydb/core/grpc_services/base/base.h>
 
 #include "rpc_common/rpc_common.h"
@@ -81,7 +82,7 @@ public:
         : TBase()
         , Request(std::move(request))
         , SchemeCache(MakeSchemeCacheID())
-        , LeaderPipeCache(MakePipePeNodeCacheID(false))
+        , LeaderPipeCache(MakePipePerNodeCacheID(false))
         , Timeout(TDuration::Seconds(DEFAULT_TIMEOUT_SEC))
         , WaitingResolveReply(false)
         , Finished(false)
@@ -142,12 +143,12 @@ private:
         auto path = ::NKikimr::SplitPath(table);
         TMaybe<ui64> tabletId = TryParseLocalDbPath(path);
         if (tabletId) {
-            if (Request->GetSerializedToken().empty() || !IsSuperUser(NACLib::TUserToken(Request->GetSerializedToken()), *AppData(ctx))) {
+            if (!IsAdministrator(AppData(ctx), Request->GetInternalToken().Get())) {
                 return ReplyWithError(Ydb::StatusIds::NOT_FOUND, "Invalid table path specified", ctx);
             }
 
             std::unique_ptr<TEvTablet::TEvLocalSchemeTx> ev(new TEvTablet::TEvLocalSchemeTx());
-            ctx.Send(MakePipePeNodeCacheID(true), new TEvPipeCache::TEvForward(ev.release(), *tabletId, true), IEventHandle::FlagTrackDelivery);
+            ctx.Send(MakePipePerNodeCacheID(true), new TEvPipeCache::TEvForward(ev.release(), *tabletId, true), IEventHandle::FlagTrackDelivery);
 
             TBase::Become(&TThis::StateWaitResolveTable);
             WaitingResolveReply = true;
@@ -229,9 +230,9 @@ private:
                                   ctx);
         }
 
-        if (ResolveNamesResult->ResultSet.front().TableId.IsSystemView()) {
+        if (entry.TableId.IsSystemView() || entry.Kind == NSchemeCache::TSchemeCacheNavigate::KindSysView) {
             return ScanSystemView(ctx);
-        } if (TryParseLocalDbPath(ResolveNamesResult->ResultSet.front().Path)) {
+        } if (TryParseLocalDbPath(entry.Path)) {
             return ScanLocalDbTable(ctx);
         } else {
             return ResolveShards(ctx);
@@ -315,10 +316,23 @@ private:
 
         {
             TTableRange range(MinKey.GetCells(), MinKeyInclusive, MaxKey.GetCells(), MaxKeyInclusive);
+            TMaybe<NKikimrSysView::TSysViewDescription> sysViewInfo;
+            const auto& entry = ResolveNamesResult->ResultSet.front();
+            if (entry.Kind == NSchemeCache::TSchemeCacheNavigate::KindSysView) {
+                Y_ABORT_UNLESS(entry.SysViewInfo);
+                sysViewInfo.ConstructInPlace();
+                sysViewInfo->SetType(entry.SysViewInfo->Description.GetType());
+                *sysViewInfo->MutableSourceObject() = entry.SysViewInfo->Description.GetSourceObject();
+            }
             auto tableScanActor = NSysView::CreateSystemViewScan(ctx.SelfID, 0,
-                ResolveNamesResult->ResultSet.front().TableId,
+                entry.TableId,
+                JoinPath(entry.Path),
+                sysViewInfo,
                 range,
-                columns);
+                columns,
+                Request->GetInternalToken(),
+                Request->GetDatabaseName().GetOrElse({}),
+                false);
 
             if (!tableScanActor) {
                 return ReplyWithError(Ydb::StatusIds::SCHEME_ERROR,

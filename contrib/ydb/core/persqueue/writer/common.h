@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/base/defs.h>
 #include <contrib/ydb/core/protos/msgbus.pb.h>
 #include <contrib/ydb/core/protos/msgbus_pq.pb.h>
+#include <contrib/ydb/public/api/protos/draft/persqueue_error_codes.pb.h>
 
 #include <contrib/ydb/public/lib/base/msgbus_status.h>
 
@@ -22,7 +23,7 @@ inline bool BasicCheck(const NKikimrClient::TResponse& response, TString& error,
     }
 
     if (mustHaveResponse && !response.HasPartitionResponse()) {
-        error = "Absent partition response";
+        error = TStringBuilder() << "Absent partition response: '" << response.DebugString() << "'";
         return false;
     }
 

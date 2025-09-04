@@ -1,7 +1,7 @@
 GO_TEST_FOR(vendor/github.com/cenkalti/backoff/v4)
 
-SUBSCRIBER(g:go-contrib)
-
 LICENSE(MIT)
+
+VERSION(v4.3.0)
 
 END()

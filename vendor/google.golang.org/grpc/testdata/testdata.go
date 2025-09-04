@@ -19,15 +19,17 @@ package testdata
 
 import (
 	"path/filepath"
-	"runtime"
+
+	"github.com/ydb-platform/nbs/library/go/test/yatest"
 )
 
 // basepath is the root directory of this package.
 var basepath string
 
 func init() {
-	_, currentFile, _, _ := runtime.Caller(0)
-	basepath = filepath.Dir(currentFile)
+	// _, currentFile, _, _ := runtime.Caller(0)
+	// basepath = filepath.Dir(currentFile)
+	basepath = yatest.SourcePath("vendor/google.golang.org/grpc/testdata")
 }
 
 // Path returns the absolute path the given relative file or directory path,

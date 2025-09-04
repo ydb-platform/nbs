@@ -1,8 +1,8 @@
 GO_LIBRARY()
 
-SUBSCRIBER(g:go-contrib)
-
 LICENSE(BSD-3-Clause)
+
+VERSION(v2.26.3)
 
 SRCS(
     compile.go

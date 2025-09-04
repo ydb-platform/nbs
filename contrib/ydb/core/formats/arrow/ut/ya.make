@@ -5,11 +5,16 @@ SIZE(SMALL)
 PEERDIR(
     contrib/libs/apache/arrow
     contrib/ydb/library/arrow_kernels
+    contrib/ydb/library/formats/arrow/simple_builder
+    contrib/ydb/core/formats/arrow/program
     contrib/ydb/core/base
+    contrib/ydb/library/formats/arrow
 
     # for NYql::NUdf alloc stuff used in binary_json
-    contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/public/udf/service/exception_policy
+    yql/essentials/sql/pg
+    yql/essentials/parser/pg_wrapper
+
 )
 
 ADDINCL(
@@ -26,9 +31,9 @@ SRCS(
     ut_arrow.cpp
     ut_program_step.cpp
     ut_dictionary.cpp
-    ut_size_calcer.cpp
     ut_column_filter.cpp
     ut_hash.cpp
+    ut_reader.cpp
 )
 
 END()

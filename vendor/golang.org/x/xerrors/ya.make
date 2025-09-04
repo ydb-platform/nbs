@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v0.0.0-20240903120638-7835f813f4da)
+
 SRCS(
     adaptor.go
     doc.go
@@ -21,7 +23,6 @@ GO_XTEST_SRCS(
     example_test.go
     fmt_test.go
     stack_test.go
-    wrap_113_test.go
     wrap_test.go
 )
 

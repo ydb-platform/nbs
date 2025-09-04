@@ -4,9 +4,12 @@
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/base/statestorage.h>
+#include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 #include <contrib/ydb/public/api/protos/ydb_discovery.pb.h>
 
+#include <contrib/ydb/library/actors/async/event.h>
+#include <contrib/ydb/library/actors/async/wait_for_event.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -42,6 +45,16 @@ namespace NDiscovery {
         for (const auto &x : entry.GetServices())
             if (req.count(x))
                 return true;
+
+        return false;
+    }
+
+    bool CheckEndpointId(const TString& endpointId, const NKikimrStateStorage::TEndpointBoardEntry &entry) {
+        if (endpointId.empty() && !entry.HasEndpointId())
+            return true;
+
+        if (entry.HasEndpointId() && entry.GetEndpointId() == endpointId)
+            return true;
 
         return false;
     }
@@ -91,6 +104,7 @@ namespace NDiscovery {
                 }
             }
             xres->set_ssl_target_name_override(entry.GetTargetNameOverride());
+            xres->set_bridge_pile_name(entry.GetBridgePileName());
         }
 
         if (IsSafeLocationMarker(entry.GetDataCenter())) {
@@ -106,6 +120,32 @@ namespace NDiscovery {
         for (auto &service : entry.GetServices()) {
             if (state.Services.insert(service).second) {
                 xres->add_service(service);
+            }
+        }
+    }
+
+    void AddPileState(Ydb::Discovery::ListEndpointsResult& result, const TBridgeInfo::TPile& pile) {
+        auto* pileInfo = result.add_pile_states();
+        pileInfo->set_pile_name(pile.Name);
+        if (pile.IsPrimary) {
+            pileInfo->set_state(Ydb::Bridge::PileState::PRIMARY);
+        } else if (pile.IsBeingPromoted) {
+            pileInfo->set_state(Ydb::Bridge::PileState::PROMOTED);
+        } else {
+            switch (pile.State) {
+                case NKikimrBridge::TClusterState::SYNCHRONIZED:
+                    pileInfo->set_state(Ydb::Bridge::PileState::SYNCHRONIZED);
+                    break;
+                case NKikimrBridge::TClusterState::NOT_SYNCHRONIZED_1:
+                case NKikimrBridge::TClusterState::NOT_SYNCHRONIZED_2:
+                    pileInfo->set_state(Ydb::Bridge::PileState::NOT_SYNCHRONIZED);
+                    break;
+                case NKikimrBridge::TClusterState::DISCONNECTED:
+                    pileInfo->set_state(Ydb::Bridge::PileState::DISCONNECTED);
+                    break;
+                case NKikimrBridge::TClusterState_EPileState_TClusterState_EPileState_INT_MIN_SENTINEL_DO_NOT_USE_:
+                case NKikimrBridge::TClusterState_EPileState_TClusterState_EPileState_INT_MAX_SENTINEL_DO_NOT_USE_:
+                    Y_ABORT("Unknown pile state");
             }
         }
     }
@@ -128,7 +168,9 @@ namespace NDiscovery {
                 const TMap<TActorId, TEvStateStorage::TBoardInfoEntry>& prevInfoEntries,
                 TMap<TActorId, TEvStateStorage::TBoardInfoEntry> newInfoEntries,
                 TSet<TString> services,
-                const THolder<TEvInterconnect::TEvNodeInfo>& nameserviceResponse) {
+                TString endpointId,
+                const THolder<TEvInterconnect::TEvNodeInfo>& nameserviceResponse,
+                const TBridgeInfo::TPtr& bridgeInfo) {
         TMap<TActorId, TEvStateStorage::TBoardInfoEntry> infoEntries;
         if (prevInfoEntries.empty()) {
             infoEntries = std::move(newInfoEntries);
@@ -144,7 +186,7 @@ namespace NDiscovery {
         }
 
         if (!nameserviceResponse) {
-            return {"", "", std::move(infoEntries)};
+            return {"", "", std::move(infoEntries), bridgeInfo};
         }
 
         TStackVec<const TString*> entries;
@@ -156,9 +198,11 @@ namespace NDiscovery {
 
         Ydb::Discovery::ListEndpointsResult cachedMessage;
         cachedMessage.mutable_endpoints()->Reserve(infoEntries.size());
+        cachedMessage.mutable_pile_states()->Reserve(bridgeInfo ? bridgeInfo->Piles.size() : 0);
 
         Ydb::Discovery::ListEndpointsResult cachedMessageSsl;
         cachedMessageSsl.mutable_endpoints()->Reserve(infoEntries.size());
+        cachedMessageSsl.mutable_pile_states()->Reserve(bridgeInfo ? bridgeInfo->Piles.size() : 0);
 
         THashMap<TEndpointKey, TEndpointState> states;
         THashMap<TEndpointKey, TEndpointState> statesSsl;
@@ -170,6 +214,9 @@ namespace NDiscovery {
                 continue;
             }
 
+            if (!CheckEndpointId(endpointId, entry)) {
+                continue;
+            }
             if (entry.GetSsl()) {
                 AddEndpoint(cachedMessageSsl, statesSsl, entry);
             } else {
@@ -186,7 +233,14 @@ namespace NDiscovery {
             }
         }
 
-        return {SerializeResult(cachedMessage), SerializeResult(cachedMessageSsl), std::move(infoEntries)};
+        if (bridgeInfo) {
+            for (const auto& pile : bridgeInfo->Piles) {
+                AddPileState(cachedMessage, pile);
+                AddPileState(cachedMessageSsl, pile);
+            }
+        }
+
+        return {SerializeResult(cachedMessage), SerializeResult(cachedMessageSsl), std::move(infoEntries), bridgeInfo};
     }
 }
 
@@ -199,11 +253,9 @@ namespace NDiscoveryPrivate {
 
         struct TEvRequest: public TEventLocal<TEvRequest, EvRequest> {
             const TString Database;
-            const ui32 StateStorageId;
 
-            TEvRequest(const TString& db, ui32 stateStorageId)
+            TEvRequest(const TString& db)
                 : Database(db)
-                , StateStorageId(stateStorageId)
             {
             }
         };
@@ -211,9 +263,12 @@ namespace NDiscoveryPrivate {
 
     class TDiscoveryCache: public TActorBootstrapped<TDiscoveryCache> {
         THashMap<TString, std::shared_ptr<NDiscovery::TCachedMessageData>> CurrentCachedMessages;
-        THashMap<TString, std::shared_ptr<NDiscovery::TCachedMessageData>> OldCachedMessages; // when subscriptions are enabled
+        THashMap<TString, std::shared_ptr<NDiscovery::TCachedMessageData>> OldCachedMessages; // when subscriptions are disabled
         THashMap<TString, std::shared_ptr<NDiscovery::TCachedMessageData>> CachedNotAvailable; // for subscriptions
         THolder<TEvInterconnect::TEvNodeInfo> NameserviceResponse;
+        TBridgeInfo::TPtr BridgeInfo;
+
+        THashMap<TString, std::shared_ptr<TAsyncEvent>> Awaiters;
 
         struct TWaiter {
             TActorId ActorId;
@@ -222,8 +277,10 @@ namespace NDiscoveryPrivate {
 
         THashMap<TString, TVector<TWaiter>> Requested;
         bool Scheduled = false;
+        TMaybe<TString> EndpointId;
+        TMaybe<TActorId> NameserviceActorId;
 
-        auto Request(const TString& database, ui32 groupId) {
+        auto Request(const TString& database) {
             auto result = Requested.emplace(database, TVector<TWaiter>());
             if (result.second) {
                 auto mode = EBoardLookupMode::Second;
@@ -232,14 +289,14 @@ namespace NDiscoveryPrivate {
                 }
                 CLOG_D("Lookup"
                     << ": path# " << database);
-                Register(CreateBoardLookupActor(database, SelfId(), groupId, mode));
+                Register(CreateBoardLookupActor(database, SelfId(), mode));
             }
 
             return result.first;
         }
 
-        void Request(const TString& database, ui32 groupId, const TWaiter& waiter) {
-            auto it = Request(database, groupId);
+        void Request(const TString& database, const TWaiter& waiter) {
+            auto it = Request(database);
             it->second.push_back(waiter);
         }
 
@@ -247,40 +304,73 @@ namespace NDiscoveryPrivate {
             NameserviceResponse.Reset(ev->Release().Release());
         }
 
-        void Handle(TEvStateStorage::TEvBoardInfoUpdate::TPtr& ev) {
+        async<void> WaitForNameserviceAndBridgeInfo() {
+            if (!NameserviceResponse) {
+                auto nodeInfo = co_await ActorWaitForEvent<TEvInterconnect::TEvNodeInfo>(0);
+                NameserviceResponse.Reset(nodeInfo->Release().Release());
+            }
+
+            if (IsBridgeMode(ActorContext()) && !BridgeInfo) {
+                auto nodeWardenStorageConfig = co_await ActorWaitForEvent<TEvNodeWardenStorageConfig>(0);
+                BridgeInfo = nodeWardenStorageConfig->Get()->BridgeInfo;
+            }
+        }
+
+        async<std::reference_wrapper<std::shared_ptr<NDiscovery::TCachedMessageData>>> WaitForCachedMessage(const TString& path) {
+            auto& currentCachedMessage = CurrentCachedMessages[path];
+            if (currentCachedMessage) {
+                co_return currentCachedMessage;
+            }
+
+            auto awaiter = Awaiters[path];
+            if (awaiter == nullptr) {
+                awaiter = std::make_shared<TAsyncEvent>();
+                Awaiters[path] = awaiter;
+            }
+            co_await awaiter->Wait();
+
+            co_return CurrentCachedMessages[path];
+        }
+
+        void Handle(TEvStateStorage::TEvBoardInfoUpdate::TPtr ev) {
             CLOG_T("Handle " << ev->Get()->ToString());
             if (!AppData()->FeatureFlags.GetEnableSubscriptionsInDiscovery()) {
-                return;
+                co_return;
             }
             THolder<TEvStateStorage::TEvBoardInfoUpdate> msg = ev->Release();
             const auto& path = msg->Path;
 
             if (msg->Status != TEvStateStorage::TEvBoardInfo::EStatus::Ok) {
                 CurrentCachedMessages.erase(path);
-                return;
+                co_return;
             }
 
-            auto& currentCachedMessage = CurrentCachedMessages[path];
+            auto currentCachedMessage = co_await WaitForCachedMessage(path);
+            Y_ABORT_UNLESS(currentCachedMessage.get());
 
-            Y_ABORT_UNLESS(currentCachedMessage);
+            co_await WaitForNameserviceAndBridgeInfo();
 
-            currentCachedMessage = std::make_shared<NDiscovery::TCachedMessageData>(
+            currentCachedMessage.get() = std::make_shared<NDiscovery::TCachedMessageData>(
                 NDiscovery::CreateCachedMessage(
-                    currentCachedMessage->InfoEntries, std::move(msg->Updates), {}, NameserviceResponse)
+                    currentCachedMessage.get()->InfoEntries, std::move(msg->Updates),
+                    {}, EndpointId.GetOrElse({}), NameserviceResponse, BridgeInfo)
             );
 
             auto it = Requested.find(path);
             Y_ABORT_UNLESS(it == Requested.end());
         }
 
-        void Handle(TEvStateStorage::TEvBoardInfo::TPtr& ev) {
+        void Handle(TEvStateStorage::TEvBoardInfo::TPtr ev) {
             CLOG_T("Handle " << ev->Get()->ToString());
 
             THolder<TEvStateStorage::TEvBoardInfo> msg = ev->Release();
             const auto& path = msg->Path;
 
+            co_await WaitForNameserviceAndBridgeInfo();
+
             auto newCachedData = std::make_shared<NDiscovery::TCachedMessageData>(
-                NDiscovery::CreateCachedMessage({}, std::move(msg->InfoEntries), {}, NameserviceResponse)
+                NDiscovery::CreateCachedMessage({}, std::move(msg->InfoEntries),
+                {}, EndpointId.GetOrElse({}), NameserviceResponse, BridgeInfo)
             );
             newCachedData->Status = msg->Status;
 
@@ -309,6 +399,10 @@ namespace NDiscoveryPrivate {
             if (!Scheduled) {
                 Scheduled = true;
                 Schedule(TDuration::Seconds(1), new TEvents::TEvWakeup());
+            }
+            if (auto it = Awaiters.find(path); it != Awaiters.end() && it->second != nullptr) {
+                it->second->NotifyAll();
+                Awaiters.erase(it);
             }
         }
 
@@ -342,30 +436,43 @@ namespace NDiscoveryPrivate {
                 if (enableSubscriptions) {
                     cachedData = CachedNotAvailable.FindPtr(msg->Database);
                     if (cachedData == nullptr) {
-                        Request(msg->Database, msg->StateStorageId, {ev->Sender, ev->Cookie});
+                        Request(msg->Database, {ev->Sender, ev->Cookie});
                         return;
                     }
                 } else {
                     cachedData = OldCachedMessages.FindPtr(msg->Database);
                     if (cachedData == nullptr) {
-                        Request(msg->Database, msg->StateStorageId, {ev->Sender, ev->Cookie});
+                        Request(msg->Database, {ev->Sender, ev->Cookie});
                         return;
                     }
-                    Request(msg->Database, msg->StateStorageId);
+                    Request(msg->Database);
                 }
             }
 
             Send(ev->Sender, new TEvDiscovery::TEvDiscoveryData(*cachedData), 0, ev->Cookie);
         }
 
+        void Handle(TEvNodeWardenStorageConfig::TPtr& ev) {
+            CLOG_T("Handle " << ev->Get()->ToString());
+            BridgeInfo = ev->Get()->BridgeInfo;
+        }
+
     public:
+        TDiscoveryCache(const TString& endpointId, const TMaybe<TActorId>& nameserviceActorId)
+            : EndpointId(endpointId)
+            , NameserviceActorId(nameserviceActorId)
+        {
+        }
         static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
             return NKikimrServices::TActivity::DISCOVERY_CACHE_ACTOR;
         }
 
-        void Bootstrap() {
-            Send(GetNameserviceActorId(), new TEvInterconnect::TEvGetNode(SelfId().NodeId()));
-
+        void Bootstrap(const TActorContext& ctx) {
+            Send(NameserviceActorId.GetOrElse(GetNameserviceActorId()), new TEvInterconnect::TEvGetNode(SelfId().NodeId()));
+            if (IsBridgeMode(ctx)) {
+                const TActorId wardenId = MakeBlobStorageNodeWardenID(SelfId().NodeId());
+                Send(wardenId, new TEvNodeWardenQueryStorageConfig(true));
+            }
             Become(&TThis::StateWork);
         }
 
@@ -375,6 +482,7 @@ namespace NDiscoveryPrivate {
                 hFunc(TEvStateStorage::TEvBoardInfo, Handle);
                 hFunc(TEvStateStorage::TEvBoardInfoUpdate, Handle);
                 hFunc(TEvInterconnect::TEvNodeInfo, Handle);
+                hFunc(TEvNodeWardenStorageConfig, Handle);
                 sFunc(TEvents::TEvWakeup, Wakeup);
                 sFunc(TEvents::TEvPoison, PassAway);
             }
@@ -510,7 +618,7 @@ public:
                 return true;
             default:
                 return true;
-        } 
+        }
     }
 
     void MaybeReply() {
@@ -567,10 +675,9 @@ public:
             database.append("/").append(token);
         }
 
-        const auto stateStorageGroupId = domainInfo->DefaultStateStorageGroup;
         const auto reqPath = MakeLookupPath(database);
 
-        Send(CacheId, new NDiscoveryPrivate::TEvPrivate::TEvRequest(reqPath, stateStorageGroupId), 0, ++LookupCookie);
+        Send(CacheId, new NDiscoveryPrivate::TEvPrivate::TEvRequest(reqPath), 0, ++LookupCookie);
         LookupResponse.Reset();
     }
 
@@ -609,8 +716,8 @@ IActor* CreateDiscoverer(
     return new TDiscoverer(f, database, replyTo, cacheId);
 }
 
-IActor* CreateDiscoveryCache() {
-    return new NDiscoveryPrivate::TDiscoveryCache();
+IActor* CreateDiscoveryCache(const TString& endpointId, const TMaybe<TActorId>& nameserviceActorId) {
+    return new NDiscoveryPrivate::TDiscoveryCache(endpointId, nameserviceActorId);
 }
 
 }

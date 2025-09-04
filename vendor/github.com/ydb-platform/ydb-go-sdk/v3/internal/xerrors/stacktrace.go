@@ -6,6 +6,8 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/stack"
 )
 
+const KeywordAt = "at"
+
 type withStackTraceOptions struct {
 	skipDepth int
 }
@@ -24,9 +26,9 @@ func WithStackTrace(err error, opts ...withStackTraceOption) error {
 		return nil
 	}
 	options := withStackTraceOptions{}
-	for _, o := range opts {
-		if o != nil {
-			o(&options)
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
 		}
 	}
 	if s, has := grpcStatus.FromError(err); has {
@@ -38,6 +40,7 @@ func WithStackTrace(err error, opts ...withStackTraceOption) error {
 			status: s,
 		}
 	}
+
 	return &stackError{
 		stackRecord: stack.Record(options.skipDepth + 1),
 		err:         err,
@@ -50,7 +53,7 @@ type stackError struct {
 }
 
 func (e *stackError) Error() string {
-	return e.err.Error() + " at `" + e.stackRecord + "`"
+	return e.err.Error() + " " + KeywordAt + " `" + e.stackRecord + "`"
 }
 
 func (e *stackError) Unwrap() error {

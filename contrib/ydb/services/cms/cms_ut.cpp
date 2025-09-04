@@ -1,28 +1,33 @@
 #include <library/cpp/testing/unittest/tests_data.h>
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <grpc++/client_context.h>
-#include <grpc++/create_channel.h>
+#include <grpcpp/client_context.h>
+#include <grpcpp/create_channel.h>
 
 #include <contrib/ydb/core/testlib/test_client.h>
+#include <contrib/ydb/core/protos/console_config.pb.h>
+#include <contrib/ydb/core/protos/console_base.pb.h>
+#include <contrib/ydb/core/protos/console.pb.h>
+#include <contrib/ydb/core/protos/cms.pb.h>
+#include <contrib/ydb/core/protos/console_tenant.pb.h>
 
 #include <contrib/ydb/library/aclib/aclib.h>
 
 #include <contrib/ydb/public/api/grpc/ydb_cms_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/grpc/ydb_operation_v1.grpc.pb.h>
 
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
 
 #include <google/protobuf/any.h>
 
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 
 // new grpc client
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_params/params.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
-#include <contrib/ydb/public/sdk/cpp/client/resources/ydb_resources.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/driver/driver.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/params/params.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/result/result.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/resources/ydb_resources.h>
 
 #include <contrib/ydb/services/ydb/ydb_common_ut.h>
 

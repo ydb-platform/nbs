@@ -8,57 +8,45 @@ namespace NHive {
 
 struct TBootQueue {
     struct TBootQueueRecord {
-        TFullTabletId TabletId;
+        TTabletId TabletId;
         double Priority;
-
-        static double GetBootPriority(const TTabletInfo& tablet) {
-            double priority = 0;
-            switch (tablet.GetTabletType()) {
-            case TTabletTypes::Hive:
-                priority = 4;
-                break;
-            case TTabletTypes::SchemeShard:
-                priority = 3;
-                break;
-            case TTabletTypes::Mediator:
-            case TTabletTypes::Coordinator:
-            case TTabletTypes::BlobDepot:
-                priority = 2;
-                break;
-            case TTabletTypes::ColumnShard:
-                priority = 0;
-                break;
-            default:
-                if (tablet.IsLeader()) {
-                    priority = 1;
-                }
-                break;
-            }
-            priority += tablet.Weight;
-            if (tablet.RestartsOften()) {
-               priority -= 5;
-            }
-            return priority;
-        }
+        TFollowerId FollowerId;
+        TNodeId SuggestedNodeId;
 
         bool operator <(const TBootQueueRecord& o) const {
             return Priority < o.Priority;
         }
 
-        TBootQueueRecord(const TTabletInfo& tablet)
-            : TabletId(tablet.GetFullTabletId())
-            , Priority(GetBootPriority(tablet))
-        {
-        }
+        TBootQueueRecord(const TTabletInfo& tablet, double priority, TNodeId suggestedNodeId);
     };
 
-    std::priority_queue<TBootQueueRecord, std::vector<TBootQueueRecord>> BootQueue;
-    std::deque<TBootQueueRecord> WaitQueue; // tablets from BootQueue waiting for new nodes
+    static_assert(sizeof(TBootQueueRecord) <= 24);
 
+    using TQueue = TPriorityQueue<TBootQueueRecord>;
+    using TTabletTypeToBootPriority = TMap<TTabletTypes::EType, double>;
+
+    TQueue BootQueue;
+    TQueue WaitQueue; // tablets from BootQueue waiting for new nodes
+private:
+    bool ProcessWaitQueue = false;
+    bool NextFromWaitQueue = false;
+
+    TTabletTypeToBootPriority TabletTypeToBootPriority;
+
+public:
     void AddToBootQueue(TBootQueueRecord record);
+    void AddToBootQueue(const TTabletInfo &tablet, TNodeId node);
+    void UpdateTabletBootQueuePriorities(const NKikimrConfig::THiveConfig& hiveConfig);
     TBootQueueRecord PopFromBootQueue();
     void AddToWaitQueue(TBootQueueRecord record);
-    void MoveFromWaitQueueToBootQueue();
+    void IncludeWaitQueue();
+    void ExcludeWaitQueue();
+    bool Empty() const;
+    size_t Size() const;
+
+private:
+    TQueue& GetCurrentQueue();
+    double GetBootPriority(const TTabletInfo& tablet) const;
 };
 
 }

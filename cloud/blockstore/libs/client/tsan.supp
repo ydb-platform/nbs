@@ -1,3 +1,0 @@
-# There is a race between tc_on_alarm & on_writable NBS-3614
-race:tc_on_alarm
-race:on_writable

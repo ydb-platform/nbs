@@ -8,10 +8,9 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
-#include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/public.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/value/value.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -56,7 +55,7 @@ struct TDescribeTableResponse
     TDescribeTableResponse(
             TVector<NYdb::TColumn> columns,
             TVector<TString> keyColumns,
-            TMaybe<NYdb::NTable::TTtlSettings> ttlSettings )
+            TMaybe<NYdb::NTable::TTtlSettings> ttlSettings)
         : TableScheme(
             std::move(columns),
             std::move(keyColumns),

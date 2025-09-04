@@ -1,22 +1,11 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package propagation_test
 
 import (
 	"context"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -110,8 +99,8 @@ func TestMapCarrierGet(t *testing.T) {
 		"baz": "qux",
 	}
 
-	assert.Equal(t, carrier.Get("foo"), "bar")
-	assert.Equal(t, carrier.Get("baz"), "qux")
+	assert.Equal(t, "bar", carrier.Get("foo"))
+	assert.Equal(t, "qux", carrier.Get("baz"))
 }
 
 func TestMapCarrierSet(t *testing.T) {
@@ -119,8 +108,8 @@ func TestMapCarrierSet(t *testing.T) {
 	carrier.Set("foo", "bar")
 	carrier.Set("baz", "qux")
 
-	assert.Equal(t, carrier["foo"], "bar")
-	assert.Equal(t, carrier["baz"], "qux")
+	assert.Equal(t, "bar", carrier["foo"])
+	assert.Equal(t, "qux", carrier["baz"])
 }
 
 func TestMapCarrierKeys(t *testing.T) {
@@ -130,6 +119,6 @@ func TestMapCarrierKeys(t *testing.T) {
 	}
 
 	keys := carrier.Keys()
-	sort.Strings(keys)
+	slices.Sort(keys)
 	assert.Equal(t, []string{"baz", "foo"}, keys)
 }

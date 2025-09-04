@@ -1,7 +1,5 @@
 #include "scheduler_test.h"
 
-#include <algorithm>
-
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -12,9 +10,10 @@ void TTestScheduler::Schedule(
     TCallback callback)
 {
     Y_UNUSED(taskQueue);
+    Y_UNUSED(deadline);
 
     with_lock (CallbacksLock) {
-        Callbacks.push_back({callback, deadline});
+        Callbacks.push_back(callback);
         if (GotNewCallback) {
             GotNewCallback->SetValue();
         }
@@ -24,32 +23,12 @@ void TTestScheduler::Schedule(
 
 void TTestScheduler::RunAllScheduledTasks()
 {
-    RunAllScheduledTasksUntilDeadline(TInstant::Max());
-}
-
-void TTestScheduler::RunAllScheduledTasksUntilNow()
-{
-    RunAllScheduledTasksUntilDeadline(Now);
-}
-
-void TTestScheduler::RunAllScheduledTasksUntilDeadline(TInstant deadline)
-{
-    TVector<TScheduledCallback> callbacks;
+    TVector<TCallback> callbacks;
     with_lock (CallbacksLock) {
-        auto removed = std::ranges::remove_if(
-            Callbacks,
-            [&](auto& callbackInfo)
-            {
-                if (callbackInfo.Deadline <= deadline) {
-                    callbacks.emplace_back(std::move(callbackInfo));
-                    return true;
-                }
-                return false;
-            });
-        Callbacks.erase(removed.begin(), removed.end());
+        callbacks = std::move(Callbacks);
     }
 
-    for (auto& [callback, _]: callbacks) {
+    for (auto& callback: callbacks) {
         callback();
     }
 }
@@ -62,12 +41,6 @@ NThreading::TFuture<void> TTestScheduler::WaitForTaskSchedule()
         }
         return GotNewCallback->GetFuture();
     }
-}
-
-void TTestScheduler::AdvanceTime(TDuration duration)
-{
-    TGuard guard(CallbacksLock);
-    Now += duration;
 }
 
 }   // namespace NCloud

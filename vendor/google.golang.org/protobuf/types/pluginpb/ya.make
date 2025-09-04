@@ -2,6 +2,10 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
-SRCS(plugin.pb.go)
+VERSION(v1.36.6)
+
+SRCS(
+    plugin.pb.go
+)
 
 END()

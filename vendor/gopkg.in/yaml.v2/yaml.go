@@ -91,8 +91,9 @@ func UnmarshalStrict(in []byte, out interface{}) (err error) {
 
 // A Decoder reads and decodes YAML values from an input stream.
 type Decoder struct {
-	strict bool
-	parser *parser
+	strict           bool
+	unlimitedAliases bool
+	parser           *parser
 }
 
 // NewDecoder returns a new decoder that reads from r.
@@ -111,6 +112,11 @@ func (dec *Decoder) SetStrict(strict bool) {
 	dec.strict = strict
 }
 
+// UnlimitedAliases disables heuristic that limits alias expansion.
+func (dec *Decoder) UnlimitedAliases(enable bool) {
+	dec.unlimitedAliases = enable
+}
+
 // Decode reads the next YAML-encoded value from its input
 // and stores it in the value pointed to by v.
 //
@@ -118,6 +124,7 @@ func (dec *Decoder) SetStrict(strict bool) {
 // conversion of YAML into a Go value.
 func (dec *Decoder) Decode(v interface{}) (err error) {
 	d := newDecoder(dec.strict)
+	d.unlimitedAliases = dec.unlimitedAliases
 	defer handleErr(&err)
 	node := dec.parser.parse()
 	if node == nil {

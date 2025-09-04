@@ -23,15 +23,17 @@ import (
 	"testing"
 
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/internal"
 	icredentials "google.golang.org/grpc/internal/credentials"
+	"google.golang.org/grpc/internal/xds"
 	"google.golang.org/grpc/resolver"
 )
 
 func (s) TestIsDirectPathCluster(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+	defer cancel()
 	c := func(cluster string) context.Context {
-		return icredentials.NewClientHandshakeInfoContext(context.Background(), credentials.ClientHandshakeInfo{
-			Attributes: internal.SetXDSHandshakeClusterName(resolver.Address{}, cluster).Attributes,
+		return icredentials.NewClientHandshakeInfoContext(ctx, credentials.ClientHandshakeInfo{
+			Attributes: xds.SetXDSHandshakeClusterName(resolver.Address{}, cluster).Attributes,
 		})
 	}
 
@@ -40,7 +42,7 @@ func (s) TestIsDirectPathCluster(t *testing.T) {
 		ctx  context.Context
 		want bool
 	}{
-		{"not an xDS cluster", context.Background(), false},
+		{"not an xDS cluster", ctx, false},
 		{"cfe", c("google_cfe_bigtable.googleapis.com"), false},
 		{"non-cfe", c("google_bigtable.googleapis.com"), true},
 		{"starts with xdstp but not cfe format", c("xdstp:google_cfe_bigtable.googleapis.com"), true},

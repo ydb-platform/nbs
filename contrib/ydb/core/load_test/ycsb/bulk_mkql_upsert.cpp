@@ -3,6 +3,7 @@
 
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/protos/tx_proxy.pb.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 

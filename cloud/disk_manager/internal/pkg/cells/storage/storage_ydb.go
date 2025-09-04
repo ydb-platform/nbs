@@ -8,7 +8,6 @@ import (
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 

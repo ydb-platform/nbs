@@ -10,7 +10,7 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/table/table.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -761,7 +761,12 @@ TFuture<NProto::TError> TYdbStatsUploader::CreateTable(
             TTypeParser(column.Type).GetPrimitive());
     }
 
-    tableBuilder.SetPrimaryKeyColumns(tableScheme.KeyColumns);
+    std::vector<std::string> keyColumns;
+    for (const auto& column : tableScheme.KeyColumns) {
+        keyColumns.push_back(column);
+    }
+
+    tableBuilder.SetPrimaryKeyColumns(keyColumns);
 
     if (tableScheme.Ttl) {
         tableBuilder.SetTtlSettings(*tableScheme.Ttl);

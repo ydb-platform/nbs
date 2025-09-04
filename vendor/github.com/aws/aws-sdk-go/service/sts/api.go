@@ -1460,6 +1460,9 @@ type AssumeRoleInput struct {
 	// in the IAM User Guide.
 	PolicyArns []*PolicyDescriptorType `type:"list"`
 
+	// Reserved for future use.
+	ProvidedContexts []*ProvidedContext `type:"list"`
+
 	// The Amazon Resource Name (ARN) of the role to assume.
 	//
 	// RoleArn is a required field
@@ -1633,6 +1636,16 @@ func (s *AssumeRoleInput) Validate() error {
 			}
 		}
 	}
+	if s.ProvidedContexts != nil {
+		for i, v := range s.ProvidedContexts {
+			if v == nil {
+				continue
+			}
+			if err := v.Validate(); err != nil {
+				invalidParams.AddNested(fmt.Sprintf("%s[%v]", "ProvidedContexts", i), err.(request.ErrInvalidParams))
+			}
+		}
+	}
 	if s.Tags != nil {
 		for i, v := range s.Tags {
 			if v == nil {
@@ -1671,6 +1684,12 @@ func (s *AssumeRoleInput) SetPolicy(v string) *AssumeRoleInput {
 // SetPolicyArns sets the PolicyArns field's value.
 func (s *AssumeRoleInput) SetPolicyArns(v []*PolicyDescriptorType) *AssumeRoleInput {
 	s.PolicyArns = v
+	return s
+}
+
+// SetProvidedContexts sets the ProvidedContexts field's value.
+func (s *AssumeRoleInput) SetProvidedContexts(v []*ProvidedContext) *AssumeRoleInput {
+	s.ProvidedContexts = v
 	return s
 }
 
@@ -1898,8 +1917,12 @@ type AssumeRoleWithSAMLInput struct {
 	// For more information, see Configuring a Relying Party and Adding Claims (https://docs.aws.amazon.com/IAM/latest/UserGuide/create-role-saml-IdP-tasks.html)
 	// in the IAM User Guide.
 	//
+	// SAMLAssertion is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by AssumeRoleWithSAMLInput's
+	// String and GoString methods.
+	//
 	// SAMLAssertion is a required field
-	SAMLAssertion *string `min:"4" type:"string" required:"true"`
+	SAMLAssertion *string `min:"4" type:"string" required:"true" sensitive:"true"`
 }
 
 // String returns the string representation.
@@ -2262,10 +2285,15 @@ type AssumeRoleWithWebIdentityInput struct {
 	// The OAuth 2.0 access token or OpenID Connect ID token that is provided by
 	// the identity provider. Your application must get this token by authenticating
 	// the user who is using your application with a web identity provider before
-	// the application makes an AssumeRoleWithWebIdentity call.
+	// the application makes an AssumeRoleWithWebIdentity call. Only tokens with
+	// RSA algorithms (RS256) are supported.
+	//
+	// WebIdentityToken is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by AssumeRoleWithWebIdentityInput's
+	// String and GoString methods.
 	//
 	// WebIdentityToken is a required field
-	WebIdentityToken *string `min:"4" type:"string" required:"true"`
+	WebIdentityToken *string `min:"4" type:"string" required:"true" sensitive:"true"`
 }
 
 // String returns the string representation.
@@ -2571,8 +2599,12 @@ type Credentials struct {
 
 	// The secret access key that can be used to sign requests.
 	//
+	// SecretAccessKey is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by Credentials's
+	// String and GoString methods.
+	//
 	// SecretAccessKey is a required field
-	SecretAccessKey *string `type:"string" required:"true"`
+	SecretAccessKey *string `type:"string" required:"true" sensitive:"true"`
 
 	// The token that users must pass to the service API to use the temporary credentials.
 	//
@@ -3370,6 +3402,63 @@ func (s *PolicyDescriptorType) Validate() error {
 // SetArn sets the Arn field's value.
 func (s *PolicyDescriptorType) SetArn(v string) *PolicyDescriptorType {
 	s.Arn = &v
+	return s
+}
+
+// Reserved for future use.
+type ProvidedContext struct {
+	_ struct{} `type:"structure"`
+
+	// Reserved for future use.
+	ContextAssertion *string `min:"4" type:"string"`
+
+	// Reserved for future use.
+	ProviderArn *string `min:"20" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ProvidedContext) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ProvidedContext) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *ProvidedContext) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "ProvidedContext"}
+	if s.ContextAssertion != nil && len(*s.ContextAssertion) < 4 {
+		invalidParams.Add(request.NewErrParamMinLen("ContextAssertion", 4))
+	}
+	if s.ProviderArn != nil && len(*s.ProviderArn) < 20 {
+		invalidParams.Add(request.NewErrParamMinLen("ProviderArn", 20))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetContextAssertion sets the ContextAssertion field's value.
+func (s *ProvidedContext) SetContextAssertion(v string) *ProvidedContext {
+	s.ContextAssertion = &v
+	return s
+}
+
+// SetProviderArn sets the ProviderArn field's value.
+func (s *ProvidedContext) SetProviderArn(v string) *ProvidedContext {
+	s.ProviderArn = &v
 	return s
 }
 

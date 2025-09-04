@@ -2,8 +2,11 @@ GO_LIBRARY()
 
 LICENSE(Apache-2.0)
 
+VERSION(v1.73.0)
+
 SRCS(
     orcalb.go
+    soak_tests.go
     test_utils.go
 )
 
@@ -16,11 +19,13 @@ RECURSE(
     grpc_testing
     http2
     server
-    xds
+    stress
     xds_federation
     # yo
 )
 
 IF (OS_LINUX)
-    RECURSE(grpclb_fallback)
+    RECURSE(
+        grpclb_fallback
+    )
 ENDIF()

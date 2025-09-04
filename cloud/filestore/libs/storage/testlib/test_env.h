@@ -103,7 +103,7 @@ public:
     TTestEnv(
         const TTestEnvConfig& config = {},
         NProto::TStorageConfig storageConfig = {},
-        NKikimr::NFake::TCaches cachesConfig = {},
+        const NKikimr::NSharedCache::TSharedCacheConfig* sharedCacheConfig = nullptr,
         IProfileLogPtr profileLog = CreateProfileLogStub(),
         NProto::TDiagnosticsConfig diagConfig = {});
 

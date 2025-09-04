@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package trace
 
@@ -420,6 +409,52 @@ func TestTraceStateDelete(t *testing.T) {
 	}
 }
 
+func TestTraceStateWalk(t *testing.T) {
+	testCases := []struct {
+		name       string
+		tracestate TraceState
+		num        int
+		expected   [][]string
+	}{
+		{
+			name: "With keys",
+			tracestate: TraceState{list: []member{
+				{Key: "key1", Value: "val1"},
+				{Key: "key2", Value: "val2"},
+			}},
+			num:      3,
+			expected: [][]string{{"key1", "val1"}, {"key2", "val2"}},
+		},
+		{
+			name: "With keys walk partially",
+			tracestate: TraceState{list: []member{
+				{Key: "key1", Value: "val1"},
+				{Key: "key2", Value: "val2"},
+			}},
+			num:      1,
+			expected: [][]string{{"key1", "val1"}},
+		},
+
+		{
+			name:       "Without keys",
+			tracestate: TraceState{list: []member{}},
+			num:        2,
+			expected:   [][]string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := [][]string{}
+			tc.tracestate.Walk(func(key, value string) bool {
+				got = append(got, []string{key, value})
+				return len(got) < tc.num
+			})
+			assert.Equal(t, tc.expected, got)
+		})
+	}
+}
+
 var insertTS = TraceState{list: []member{
 	{Key: "key1", Value: "val1"},
 	{Key: "key2", Value: "val2"},
@@ -530,7 +565,7 @@ func TestTraceStateImmutable(t *testing.T) {
 	ts1, err := ts0.Insert(k1, v1)
 	require.NoError(t, err)
 	assert.Equal(t, v0, ts0.Get(k0))
-	assert.Equal(t, "", ts0.Get(k1))
+	assert.Empty(t, ts0.Get(k1))
 	assert.Equal(t, v0, ts1.Get(k0))
 	assert.Equal(t, v1, ts1.Get(k1))
 
@@ -539,7 +574,7 @@ func TestTraceStateImmutable(t *testing.T) {
 	ts2, err := ts1.Insert(k1, v2)
 	require.NoError(t, err)
 	assert.Equal(t, v0, ts0.Get(k0))
-	assert.Equal(t, "", ts0.Get(k1))
+	assert.Empty(t, ts0.Get(k1))
 	assert.Equal(t, v0, ts1.Get(k0))
 	assert.Equal(t, v1, ts1.Get(k1))
 	assert.Equal(t, v0, ts2.Get(k0))
@@ -550,7 +585,7 @@ func TestTraceStateImmutable(t *testing.T) {
 	assert.Equal(t, v0, ts0.Get(k0))
 	assert.Equal(t, v0, ts1.Get(k0))
 	assert.Equal(t, v0, ts2.Get(k0))
-	assert.Equal(t, "", ts3.Get(k0))
+	assert.Empty(t, ts3.Get(k0))
 }
 
 func BenchmarkParseTraceState(b *testing.B) {
@@ -560,19 +595,19 @@ func BenchmarkParseTraceState(b *testing.B) {
 	}{
 		{
 			name: "single key",
-			in:   "somewhatRealisticKeyLength=someValueAbcdefgh1234567890",
+			in:   "somewhat-realistic-key-length=someValueAbcdefgh1234567890",
 		},
 		{
 			name: "tenant single key",
-			in:   "somewhatRealisticKeyLength@someTenant=someValueAbcdefgh1234567890",
+			in:   "somewhat-realistic-key-length@some-tenant=someValueAbcdefgh1234567890",
 		},
 		{
 			name: "three keys",
-			in:   "someKeyName.One=someValue1,someKeyName.Two=someValue2,someKeyName.Three=someValue3",
+			in:   "some-key-name/one=someValue1,some-key-name/two=someValue2,some-key-name/three=someValue3",
 		},
 		{
 			name: "tenant three keys",
-			in:   "someKeyName.One@tenant=someValue1,someKeyName.Two@tenant=someValue2,someKeyName.Three@tenant=someValue3",
+			in:   "some-key-name/one@tenant=someValue1,some-key-name/two@tenant=someValue2,some-key-name/three@tenant=someValue3",
 		},
 	}
 	for _, bench := range benches {
@@ -581,7 +616,10 @@ func BenchmarkParseTraceState(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				_, _ = ParseTraceState(bench.in)
+				_, err := ParseTraceState(bench.in)
+				if err != nil {
+					b.Fatalf("parse TraceState: %v", err)
+				}
 			}
 		})
 	}

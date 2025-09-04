@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package trace
 
@@ -18,14 +7,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	ottest "go.opentelemetry.io/otel/sdk/internal/internaltest"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	envTracesSampler    = "OTEL_TRACES_SAMPLER"
+	envTracesSamplerArg = "OTEL_TRACES_SAMPLER_ARG"
 )
 
 type basicSpanProcessor struct {
@@ -202,7 +196,7 @@ func TestSchemaURL(t *testing.T) {
 
 	// Verify that the SchemaURL of the constructed Tracer is correctly populated.
 	tracerStruct := tracerIface.(*tracer)
-	assert.EqualValues(t, schemaURL, tracerStruct.instrumentationScope.SchemaURL)
+	assert.Equal(t, schemaURL, tracerStruct.instrumentationScope.SchemaURL)
 }
 
 func TestRegisterAfterShutdownWithoutProcessors(t *testing.T) {
@@ -323,19 +317,11 @@ func TestTracerProviderSamplerConfigFromEnv(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.sampler, func(t *testing.T) {
-			envVars := map[string]string{
-				"OTEL_TRACES_SAMPLER": test.sampler,
-			}
+			t.Setenv(envTracesSampler, test.sampler)
 
 			if test.samplerArg != "" {
-				envVars["OTEL_TRACES_SAMPLER_ARG"] = test.samplerArg
+				t.Setenv(envTracesSamplerArg, test.samplerArg)
 			}
-			envStore, err := ottest.SetEnvVariables(envVars)
-			require.NoError(t, err)
-			t.Cleanup(func() {
-				handler.Reset()
-				require.NoError(t, envStore.Restore())
-			})
 
 			stp := NewTracerProvider(WithSyncer(NewTestExporter()))
 			assert.Equal(t, test.description, stp.sampler.Description())
@@ -347,15 +333,8 @@ func TestTracerProviderSamplerConfigFromEnv(t *testing.T) {
 
 			if test.argOptional {
 				t.Run("invalid sampler arg", func(t *testing.T) {
-					envStore, err := ottest.SetEnvVariables(map[string]string{
-						"OTEL_TRACES_SAMPLER":     test.sampler,
-						"OTEL_TRACES_SAMPLER_ARG": "invalid-ignored-string",
-					})
-					require.NoError(t, err)
-					t.Cleanup(func() {
-						handler.Reset()
-						require.NoError(t, envStore.Restore())
-					})
+					t.Setenv(envTracesSampler, test.sampler)
+					t.Setenv(envTracesSamplerArg, "invalid-ignored-string")
 
 					stp := NewTracerProvider(WithSyncer(NewTestExporter()))
 					t.Cleanup(func() {
@@ -381,7 +360,7 @@ func testStoredError(t *testing.T, target interface{}) {
 		err := handler.errs[0]
 
 		require.Implements(t, (*error)(nil), target)
-		require.NotNil(t, target.(error))
+		require.Error(t, target.(error))
 
 		defer handler.Reset()
 		if errors.Is(err, target.(error)) {
@@ -390,4 +369,32 @@ func testStoredError(t *testing.T, target interface{}) {
 
 		assert.ErrorAs(t, err, target)
 	}
+}
+
+func TestTracerProviderReturnsSameTracer(t *testing.T) {
+	p := NewTracerProvider()
+
+	t0, t1, t2 := p.Tracer(
+		"t0",
+	), p.Tracer(
+		"t1",
+	), p.Tracer(
+		"t0",
+		trace.WithInstrumentationAttributes(attribute.String("foo", "bar")),
+	)
+	assert.NotSame(t, t0, t1)
+	assert.NotSame(t, t0, t2)
+	assert.NotSame(t, t1, t2)
+
+	t3, t4, t5 := p.Tracer(
+		"t0",
+	), p.Tracer(
+		"t1",
+	), p.Tracer(
+		"t0",
+		trace.WithInstrumentationAttributes(attribute.String("foo", "bar")),
+	)
+	assert.Same(t, t0, t3)
+	assert.Same(t, t1, t4)
+	assert.Same(t, t2, t5)
 }

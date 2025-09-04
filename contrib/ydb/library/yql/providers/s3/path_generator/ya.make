@@ -6,8 +6,8 @@ SRCS(
 
 PEERDIR(
     library/cpp/scheme
-    contrib/ydb/library/yql/minikql/datetime
-    contrib/ydb/library/yql/public/udf
+    yql/essentials/minikql/datetime
+    yql/essentials/public/udf
 )
 
 GENERATE_ENUM_SERIALIZATION(yql_s3_path_generator.h)

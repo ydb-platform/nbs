@@ -2,6 +2,10 @@ GO_PROGRAM()
 
 LICENSE(MIT)
 
-SRCS(main.go)
+VERSION(v4.5.2)
+
+SRCS(
+    main.go
+)
 
 END()

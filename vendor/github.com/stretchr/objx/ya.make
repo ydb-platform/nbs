@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v0.5.2)
+
 SRCS(
     accessors.go
     conversions.go

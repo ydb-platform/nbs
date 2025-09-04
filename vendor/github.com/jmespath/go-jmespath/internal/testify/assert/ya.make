@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v1.5.1)
+
 SRCS(
     assertion_format.go
     assertion_forward.go

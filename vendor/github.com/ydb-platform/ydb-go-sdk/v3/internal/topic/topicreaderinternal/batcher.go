@@ -8,7 +8,9 @@ import (
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/empty"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topic/topicreadercommon"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xslices"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 )
 
@@ -25,6 +27,7 @@ type batcher struct {
 	closed                                        bool
 	closeChan                                     empty.Chan
 	messages                                      batcherMessagesMap
+	sessionsForFlush                              []*topicreadercommon.PartitionSession
 }
 
 func newBatcher() *batcher {
@@ -46,10 +49,11 @@ func (b *batcher) Close(err error) error {
 	b.closed = true
 	b.closeErr = err
 	close(b.closeChan)
+
 	return nil
 }
 
-func (b *batcher) PushBatches(batches ...*PublicBatch) error {
+func (b *batcher) PushBatches(batches ...*topicreadercommon.PublicBatch) error {
 	b.m.Lock()
 	defer b.m.Unlock()
 	if b.closed {
@@ -57,7 +61,10 @@ func (b *batcher) PushBatches(batches ...*PublicBatch) error {
 	}
 
 	for _, batch := range batches {
-		if err := b.addNeedLock(batch.commitRange.partitionSession, newBatcherItemBatch(batch)); err != nil {
+		if err := b.addNeedLock(
+			topicreadercommon.GetCommitRange(batch).PartitionSession,
+			newBatcherItemBatch(batch),
+		); err != nil {
 			return err
 		}
 	}
@@ -65,7 +72,7 @@ func (b *batcher) PushBatches(batches ...*PublicBatch) error {
 	return nil
 }
 
-func (b *batcher) PushRawMessage(session *partitionSession, m rawtopicreader.ServerMessage) error {
+func (b *batcher) PushRawMessage(session *topicreadercommon.PartitionSession, m rawtopicreader.ServerMessage) error {
 	b.m.Lock()
 	defer b.m.Unlock()
 
@@ -76,7 +83,21 @@ func (b *batcher) PushRawMessage(session *partitionSession, m rawtopicreader.Ser
 	return b.addNeedLock(session, newBatcherItemRawMessage(m))
 }
 
-func (b *batcher) addNeedLock(session *partitionSession, item batcherMessageOrderItem) error {
+func (b *batcher) FlushPartitionSession(session *topicreadercommon.PartitionSession) {
+	b.m.WithLock(func() {
+		if b.closed {
+			return
+		}
+
+		if _, ok := b.messages[session]; !ok {
+			return
+		}
+
+		b.sessionsForFlush = append(b.sessionsForFlush, session)
+	})
+}
+
+func (b *batcher) addNeedLock(session *topicreadercommon.PartitionSession, item batcherMessageOrderItem) error {
 	var currentItems batcherMessageOrderItems
 	var ok bool
 	var err error
@@ -126,14 +147,18 @@ func (o batcherGetOptions) cutBatchItemsHead(items batcherMessageOrderItems) (
 
 		head = newBatcherItemBatch(batchHead)
 		rest = items.ReplaceHeadItem(newBatcherItemBatch(batchRest))
+
 		return head, rest, true
 	}
 
 	return items[0], items[1:], true
 }
 
-func (o batcherGetOptions) splitBatch(batch *PublicBatch) (head, rest *PublicBatch, ok bool) {
-	notFound := func() (*PublicBatch, *PublicBatch, bool) {
+func (o batcherGetOptions) splitBatch(batch *topicreadercommon.PublicBatch) (
+	head, rest *topicreadercommon.PublicBatch,
+	ok bool,
+) {
+	notFound := func() (*topicreadercommon.PublicBatch, *topicreadercommon.PublicBatch, bool) {
 		return nil, nil, false
 	}
 
@@ -145,7 +170,8 @@ func (o batcherGetOptions) splitBatch(batch *PublicBatch) (head, rest *PublicBat
 		return batch, nil, true
 	}
 
-	head, rest = batch.cutMessages(o.MaxCount)
+	head, rest = topicreadercommon.BatchCutMessages(batch, o.MaxCount)
+
 	return head, rest, true
 }
 
@@ -173,7 +199,8 @@ func (b *batcher) Pop(ctx context.Context, opts batcherGetOptions) (_ batcherMes
 
 			findRes = b.findNeedLock(opts)
 			if findRes.Ok {
-				b.applyNeedLock(findRes)
+				b.applyNeedLock(&findRes)
+
 				return
 			}
 		})
@@ -213,7 +240,7 @@ func (b *batcher) notifyAboutNewMessages() {
 }
 
 type batcherResultCandidate struct {
-	Key         *partitionSession
+	Key         *topicreadercommon.PartitionSession
 	Result      batcherMessageOrderItem
 	Rest        batcherMessageOrderItems
 	WaiterIndex int
@@ -221,7 +248,7 @@ type batcherResultCandidate struct {
 }
 
 func newBatcherResultCandidate(
-	key *partitionSession,
+	key *topicreadercommon.PartitionSession,
 	result batcherMessageOrderItem,
 	rest batcherMessageOrderItems,
 	ok bool,
@@ -239,29 +266,57 @@ func (b *batcher) findNeedLock(filter batcherGetOptions) batcherResultCandidate 
 		return batcherResultCandidate{}
 	}
 
-	rawMessageOpts := batcherGetOptions{rawMessagesOnly: true}
-
 	var batchResult batcherResultCandidate
 	needBatchResult := true
 
-	for k, items := range b.messages {
-		head, rest, ok := rawMessageOpts.cutBatchItemsHead(items)
-		if ok {
-			return newBatcherResultCandidate(k, head, rest, true)
+	for _, session := range b.sessionsForFlush {
+		items := b.messages[session]
+		candidate := b.findNeedLockProcessItem(filter, session, items, true)
+		if !candidate.Result.IsEmpty() {
+			return candidate
+		}
+	}
+
+	for session, items := range b.messages {
+		candidate := b.findNeedLockProcessItem(filter, session, items, needBatchResult)
+
+		if candidate.Result.IsRawMessage() {
+			return candidate
 		}
 
-		if needBatchResult {
-			head, rest, ok = b.applyForceFlagToOptions(filter).cutBatchItemsHead(items)
-			if !ok {
-				continue
-			}
-
+		if candidate.Result.IsBatch() {
+			batchResult = candidate
 			needBatchResult = false
-			batchResult = newBatcherResultCandidate(k, head, rest, true)
 		}
 	}
 
 	return batchResult
+}
+
+func (b *batcher) findNeedLockProcessItem(
+	filter batcherGetOptions,
+	k *topicreadercommon.PartitionSession,
+	items batcherMessageOrderItems,
+	needBatchResult bool,
+) (
+	result batcherResultCandidate,
+) {
+	rawMessageOpts := batcherGetOptions{rawMessagesOnly: true}
+	head, rest, ok := rawMessageOpts.cutBatchItemsHead(items)
+	if ok {
+		return newBatcherResultCandidate(k, head, rest, true)
+	}
+
+	if needBatchResult {
+		head, rest, ok = b.applyForceFlagToOptions(filter).cutBatchItemsHead(items)
+		if !ok {
+			return batcherResultCandidate{}
+		}
+
+		return newBatcherResultCandidate(k, head, rest, true)
+	}
+
+	return batcherResultCandidate{}
 }
 
 func (b *batcher) applyForceFlagToOptions(options batcherGetOptions) batcherGetOptions {
@@ -271,12 +326,16 @@ func (b *batcher) applyForceFlagToOptions(options batcherGetOptions) batcherGetO
 
 	res := options
 	res.MinCount = 1
+
 	return res
 }
 
-func (b *batcher) applyNeedLock(res batcherResultCandidate) {
+func (b *batcher) applyNeedLock(res *batcherResultCandidate) {
 	if res.Rest.IsEmpty() && res.WaiterIndex >= 0 {
 		delete(b.messages, res.Key)
+		if len(b.sessionsForFlush) > 0 && b.sessionsForFlush[0] == res.Key {
+			b.sessionsForFlush = xslices.Delete(b.sessionsForFlush, 0, 1)
+		}
 	} else {
 		b.messages[res.Key] = res.Rest
 	}
@@ -294,7 +353,7 @@ func (b *batcher) IgnoreMinRestrictionsOnNextPop() {
 	b.notifyAboutNewMessages()
 }
 
-type batcherMessagesMap map[*partitionSession]batcherMessageOrderItems
+type batcherMessagesMap map[*topicreadercommon.PartitionSession]batcherMessageOrderItems
 
 type batcherMessageOrderItems []batcherMessageOrderItem
 
@@ -305,11 +364,12 @@ func (items batcherMessageOrderItems) Append(item batcherMessageOrderItem) (batc
 
 	lastItem := &items[len(items)-1]
 	if item.IsBatch() && lastItem.IsBatch() {
-		if resBatch, err := lastItem.Batch.append(item.Batch); err == nil {
+		if resBatch, err := topicreadercommon.BatchAppend(lastItem.Batch, item.Batch); err == nil {
 			lastItem.Batch = resBatch
 		} else {
 			return nil, err
 		}
+
 		return items, nil
 	}
 
@@ -328,15 +388,16 @@ func (items batcherMessageOrderItems) ReplaceHeadItem(item batcherMessageOrderIt
 	res := make(batcherMessageOrderItems, len(items))
 	res[0] = item
 	copy(res[1:], items[1:])
+
 	return res
 }
 
 type batcherMessageOrderItem struct {
-	Batch      *PublicBatch
+	Batch      *topicreadercommon.PublicBatch
 	RawMessage rawtopicreader.ServerMessage
 }
 
-func newBatcherItemBatch(b *PublicBatch) batcherMessageOrderItem {
+func newBatcherItemBatch(b *topicreadercommon.PublicBatch) batcherMessageOrderItem {
 	return batcherMessageOrderItem{Batch: b}
 }
 
@@ -345,7 +406,7 @@ func newBatcherItemRawMessage(b rawtopicreader.ServerMessage) batcherMessageOrde
 }
 
 func (item *batcherMessageOrderItem) IsBatch() bool {
-	return !item.Batch.isEmpty()
+	return !topicreadercommon.BatchIsEmpty(item.Batch)
 }
 
 func (item *batcherMessageOrderItem) IsRawMessage() bool {
@@ -353,5 +414,5 @@ func (item *batcherMessageOrderItem) IsRawMessage() bool {
 }
 
 func (item *batcherMessageOrderItem) IsEmpty() bool {
-	return item.RawMessage == nil && item.Batch.isEmpty()
+	return item.RawMessage == nil && topicreadercommon.BatchIsEmpty(item.Batch)
 }

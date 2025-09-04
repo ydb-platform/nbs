@@ -1,8 +1,8 @@
 GO_LIBRARY()
 
-SUBSCRIBER(g:go-contrib)
-
 LICENSE(MIT)
+
+VERSION(v4.3.0)
 
 SRCS(
     backoff.go

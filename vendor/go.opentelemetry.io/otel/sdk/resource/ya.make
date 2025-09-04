@@ -1,8 +1,8 @@
 GO_LIBRARY()
 
-SUBSCRIBER(g:go-contrib)
-
 LICENSE(Apache-2.0)
+
+VERSION(v1.36.0)
 
 SRCS(
     auto.go
@@ -22,6 +22,7 @@ GO_TEST_SRCS(
     # env_test.go
     export_test.go
     host_id_test.go
+    resource_experimental_test.go
 )
 
 GO_XTEST_SRCS(

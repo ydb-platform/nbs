@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+message VerifyMigratedLegacySnapshotRequest {
+    string SnapshotId = 1;
+}
+
+message VerifyMigratedLegacySnapshotState {
+    uint32 ChunkCount = 1;
+    uint32 MilestoneChunkIndex = 2;
+    uint32 LegacyMilestoneChunkIndex = 3;
+    double Progress = 4;
+}
+
+message VerifyMigratedLegacySnapshotMetadata {
+    double Progress = 1;
+}

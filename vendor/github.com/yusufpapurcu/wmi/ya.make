@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(MIT)
 
+VERSION(v1.2.4)
+
 IF (OS_WINDOWS)
     SRCS(
         swbemservices.go
@@ -16,4 +18,6 @@ ENDIF()
 
 END()
 
-RECURSE(gotest)
+RECURSE(
+    gotest
+)

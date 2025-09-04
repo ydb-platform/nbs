@@ -122,7 +122,7 @@ class Sender(object):
     @retry(max_times=10, delay=60)
     def _send_email(self):
         self._logger.info("Send core to email %r", self.emails)
-        mail_from = "devnull@example.com"
+        mail_from = "devnull@yandex-team.ru"
         mail_to = ", ".join(self.emails)
         message_body = [self._header()]
         if self._core_url:

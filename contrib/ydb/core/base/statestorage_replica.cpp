@@ -7,6 +7,8 @@
 #include <contrib/ydb/library/actors/core/interconnect.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
+#include <contrib/ydb/core/blobstorage/nodewarden/node_warden_events.h>
 
 #include <util/generic/map.h>
 #include <util/generic/hash_set.h>
@@ -22,7 +24,7 @@
 
 namespace NKikimr {
 
-class TStateStorageReplica : public TActor<TStateStorageReplica> {
+class TStateStorageReplica : public TActorBootstrapped<TStateStorageReplica> {
     TIntrusivePtr<TStateStorageInfo> Info;
     const ui32 ReplicaIndex;
 
@@ -88,7 +90,8 @@ class TStateStorageReplica : public TActor<TStateStorageReplica> {
             auto now = TActivationContext::Now();
 
             const ui64 lockedFor = (locked && (now.MicroSeconds() > entry->LockedFrom)) ? (now.MicroSeconds() - entry->LockedFrom) : 0;
-            msg.Reset(new TEvStateStorage::TEvReplicaInfo(tabletId, entry->CurrentLeader, entry->CurrentLeaderTablet, entry->CurrentGeneration, entry->CurrentStep, locked, lockedFor));
+            msg.Reset(new TEvStateStorage::TEvReplicaInfo(tabletId, entry->CurrentLeader, entry->CurrentLeaderTablet, entry->CurrentGeneration
+                , entry->CurrentStep, locked, lockedFor, Info ? Info->ClusterStateGeneration : 0, Info ? Info->ClusterStateGuid : 0));
             if (entry->Followers.size()) {
                 msg->Record.MutableFollowerTablet()->Reserve(entry->Followers.size());
                 msg->Record.MutableFollower()->Reserve(entry->Followers.size());
@@ -103,7 +106,8 @@ class TStateStorageReplica : public TActor<TStateStorageReplica> {
                 }
             }
         } else {
-            msg.Reset(new TEvStateStorage::TEvReplicaInfo(tabletId, NKikimrProto::ERROR));
+            // FIXME: change to NODATA in a future version
+            msg.Reset(new TEvStateStorage::TEvReplicaInfo(tabletId, NKikimrProto::ERROR, Info ? Info->ClusterStateGeneration : 0, Info ? Info->ClusterStateGuid : 0));
         }
         msg->Record.SetCookie(cookie);
         msg->Record.SetSignature(Signature());
@@ -112,7 +116,7 @@ class TStateStorageReplica : public TActor<TStateStorageReplica> {
     }
 
     void ReplyWithStatus(const TActorId &recp, ui64 tabletId, ui64 cookie, NKikimrProto::EReplyStatus status) {
-        THolder<TEvStateStorage::TEvReplicaInfo> msg(new TEvStateStorage::TEvReplicaInfo(tabletId, status));
+        THolder<TEvStateStorage::TEvReplicaInfo> msg(new TEvStateStorage::TEvReplicaInfo(tabletId, status, Info ? Info->ClusterStateGeneration : 0, Info ? Info->ClusterStateGuid : 0));
         msg->Record.SetCookie(cookie);
         msg->Record.SetSignature(Signature());
         msg->Record.SetConfigContentHash(Info->ContentHash());
@@ -179,10 +183,10 @@ class TStateStorageReplica : public TActor<TStateStorageReplica> {
     void Handle(TEvStateStorage::TEvReplicaLookup::TPtr &ev) {
         TEvStateStorage::TEvReplicaLookup *msg = ev->Get();
         BLOG_D("Replica::Handle ev: " << msg->ToString());
+        
+        CheckConfigVersion(ev->Sender, msg);
+
         const ui64 tabletId = msg->Record.GetTabletID();
-        Y_DEBUG_ABORT_UNLESS(StateStorageGroupFromTabletID(tabletId) == Info->StateStorageGroup,
-            "tabletId# %" PRIu64 " SSGFTID# %" PRIu64 " SSG# %" PRIu64,
-            (ui64)tabletId, (ui64)StateStorageGroupFromTabletID(tabletId), (ui64)Info->StateStorageGroup);
         TTablets::const_iterator it = Tablets.find(msg->Record.GetTabletID());
         if (it != Tablets.end())
             NotifyWithTabletInfo(ev->Sender, it->first, msg->Record.GetCookie(), &it->second);
@@ -209,9 +213,10 @@ class TStateStorageReplica : public TActor<TStateStorageReplica> {
     void Handle(TEvStateStorage::TEvReplicaUpdate::TPtr &ev) {
         TEvStateStorage::TEvReplicaUpdate *msg = ev->Get();
         BLOG_D("Replica::Handle ev: " << msg->ToString());
-        const ui64 tabletId = msg->Record.GetTabletID();
-        Y_DEBUG_ABORT_UNLESS(StateStorageGroupFromTabletID(tabletId) == Info->StateStorageGroup);
 
+        CheckConfigVersion(ev->Sender, msg);
+
+        const ui64 tabletId = msg->Record.GetTabletID();
         TEntry *x = nullptr;
         auto tabletIt = Tablets.find(tabletId);
         if (tabletIt != Tablets.end())
@@ -256,8 +261,9 @@ class TStateStorageReplica : public TActor<TStateStorageReplica> {
         const auto &record = ev->Get()->Record;
         BLOG_D("Replica::Handle ev: " << ev->Get()->ToString());
         const ui64 tabletId = record.GetTabletID();
-        Y_DEBUG_ABORT_UNLESS(StateStorageGroupFromTabletID(tabletId) == Info->StateStorageGroup);
         const TActorId proposedLeader = ActorIdFromProto(record.GetProposedLeader());
+
+        CheckConfigVersion(ev->Sender, ev->Get());
 
         auto tabletIt = Tablets.find(tabletId);
         if (tabletIt == Tablets.end() || tabletIt->second.CurrentLeader != proposedLeader)
@@ -276,7 +282,8 @@ class TStateStorageReplica : public TActor<TStateStorageReplica> {
         TEvStateStorage::TEvReplicaDelete *msg = ev->Get();
         BLOG_D("Replica::Handle ev: " << msg->ToString());
         const ui64 tabletId = msg->Record.GetTabletID();
-        Y_DEBUG_ABORT_UNLESS(StateStorageGroupFromTabletID(tabletId) == Info->StateStorageGroup);
+
+        CheckConfigVersion(ev->Sender, msg);
 
         auto tabletIt = Tablets.find(tabletId);
         if (tabletIt == Tablets.end()) {
@@ -294,12 +301,24 @@ class TStateStorageReplica : public TActor<TStateStorageReplica> {
         ReplyWithStatus(ev->Sender, tabletId, 0/*msg->Record.GetCookie()*/, NKikimrProto::OK);
     }
 
+    void CheckConfigVersion(const TActorId &sender, const auto *msg) {
+        ui64 msgGeneration = msg->Record.GetClusterStateGeneration();
+        ui64 msgGuid = msg->Record.GetClusterStateGuid();
+        Y_ABORT_UNLESS(Info);
+        if (Info->ClusterStateGeneration < msgGeneration || (Info->ClusterStateGeneration == msgGeneration && Info->ClusterStateGuid != msgGuid)) {
+            BLOG_D("Replica TEvNodeWardenNotifyConfigMismatch: Info->ClusterStateGeneration=" << Info->ClusterStateGeneration << " msgGeneration=" << msgGeneration <<" Info->ClusterStateGuid=" << Info->ClusterStateGuid << " msgGuid=" << msgGuid);
+            Send(MakeBlobStorageNodeWardenID(SelfId().NodeId()), 
+                new NStorage::TEvNodeWardenNotifyConfigMismatch(sender.NodeId(), msgGeneration, msgGuid));
+        }
+    }
+
     void Handle(TEvStateStorage::TEvReplicaLock::TPtr &ev) {
         TEvStateStorage::TEvReplicaLock *msg = ev->Get();
         BLOG_D("Replica::Handle ev: " << msg->ToString());
         const ui64 tabletId = msg->Record.GetTabletID();
-        Y_DEBUG_ABORT_UNLESS(StateStorageGroupFromTabletID(tabletId) == Info->StateStorageGroup);
         const TActorId &sender = ev->Sender;
+
+        CheckConfigVersion(sender, msg);
 
         if (CheckSignature(msg)) {
             TEntry &x = Tablets[tabletId];
@@ -331,8 +350,8 @@ class TStateStorageReplica : public TActor<TStateStorageReplica> {
 
     void Handle(TEvStateStorage::TEvReplicaRegFollower::TPtr &ev) {
         const NKikimrStateStorage::TEvRegisterFollower &record = ev->Get()->Record;
+        CheckConfigVersion(ev->Sender, ev->Get());
         const ui64 tabletId = record.GetTabletID();
-        Y_DEBUG_ABORT_UNLESS(StateStorageGroupFromTabletID(tabletId) == Info->StateStorageGroup);
         TEntry &x = Tablets[tabletId]; // could lead to creation of zombie entries when follower exist w/o leader so we must filter on info
 
         const TActorId follower = ActorIdFromProto(record.GetFollower());
@@ -370,15 +389,12 @@ class TStateStorageReplica : public TActor<TStateStorageReplica> {
     void Handle(TEvStateStorage::TEvReplicaUnregFollower::TPtr &ev) {
         const TEvStateStorage::TEvReplicaUnregFollower *msg = ev->Get();
         const ui64 tabletId = msg->Record.GetTabletID();
-        Y_DEBUG_ABORT_UNLESS(StateStorageGroupFromTabletID(tabletId) == Info->StateStorageGroup);
-
+        CheckConfigVersion(ev->Sender, msg);
         ForgetFollower(tabletId, ev->Sender);
     }
 
     void Handle(TEvents::TEvUndelivered::TPtr &ev) {
         const ui64 tabletId = ev->Cookie;
-        Y_DEBUG_ABORT_UNLESS(StateStorageGroupFromTabletID(tabletId) == Info->StateStorageGroup);
-
         ForgetFollower(tabletId, ev->Sender);
     }
 
@@ -416,17 +432,29 @@ class TStateStorageReplica : public TActor<TStateStorageReplica> {
         followerIndex->clear();
     }
 
+    void Handle(TEvStateStorage::TEvUpdateGroupConfig::TPtr ev) {
+        Info = ev->Get()->GroupConfig;
+        Y_ABORT_UNLESS(!ev->Get()->BoardConfig);
+        Y_ABORT_UNLESS(!ev->Get()->SchemeBoardConfig);
+    }
+
 public:
     static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
         return NKikimrServices::TActivity::SS_REPLICA;
     }
 
     TStateStorageReplica(const TIntrusivePtr<TStateStorageInfo> &info, ui32 replicaIndex)
-        : TActor(&TThis::StateInit)
-        , Info(info)
+        : Info(info)
         , ReplicaIndex(replicaIndex)
     {
         Y_UNUSED(ReplicaIndex);
+    }
+
+    void Bootstrap() {
+        auto localNodeId = SelfId().NodeId();
+        auto whiteboardId = NNodeWhiteboard::MakeNodeWhiteboardServiceId(localNodeId);
+        Send(whiteboardId, new NNodeWhiteboard::TEvWhiteboard::TEvSystemStateAddRole("StateStorage"));
+        Become(&TThis::StateInit);
     }
 
     STATEFN(StateInit) {
@@ -444,6 +472,7 @@ public:
             cFunc(TEvents::TEvPoison::EventType, PassAway);
             hFunc(TEvInterconnect::TEvNodeDisconnected, Handle);
             IgnoreFunc(TEvInterconnect::TEvNodeConnected);
+            hFunc(TEvStateStorage::TEvUpdateGroupConfig, Handle);
 
             default:
                 BLOG_W("Replica::StateInit unexpected event type# " << ev->GetTypeRewrite()

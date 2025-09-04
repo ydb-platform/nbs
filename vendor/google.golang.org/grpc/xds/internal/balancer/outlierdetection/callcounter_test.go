@@ -18,9 +18,7 @@
 package outlierdetection
 
 import (
-	"sync/atomic"
 	"testing"
-	"unsafe"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -38,26 +36,26 @@ func (b1 *bucket) Equal(b2 *bucket) bool {
 	return b1.numFailures == b2.numFailures
 }
 
-func (cc1 *callCounter) Equal(cc2 *callCounter) bool {
-	if cc1 == nil && cc2 == nil {
+func (cc *callCounter) Equal(cc2 *callCounter) bool {
+	if cc == nil && cc2 == nil {
 		return true
 	}
-	if (cc1 != nil) != (cc2 != nil) {
+	if (cc != nil) != (cc2 != nil) {
 		return false
 	}
-	ab1 := (*bucket)(atomic.LoadPointer(&cc1.activeBucket))
-	ab2 := (*bucket)(atomic.LoadPointer(&cc2.activeBucket))
+	ab1 := cc.activeBucket.Load()
+	ab2 := cc2.activeBucket.Load()
 	if !ab1.Equal(ab2) {
 		return false
 	}
-	return cc1.inactiveBucket.Equal(cc2.inactiveBucket)
+	return cc.inactiveBucket.Equal(cc2.inactiveBucket)
 }
 
 // TestClear tests that clear on the call counter clears (everything set to 0)
 // the active and inactive buckets.
 func (s) TestClear(t *testing.T) {
 	cc := newCallCounter()
-	ab := (*bucket)(atomic.LoadPointer(&cc.activeBucket))
+	ab := cc.activeBucket.Load()
 	ab.numSuccesses = 1
 	ab.numFailures = 2
 	cc.inactiveBucket.numSuccesses = 4
@@ -75,7 +73,7 @@ func (s) TestClear(t *testing.T) {
 // and the active bucket being cleared.
 func (s) TestSwap(t *testing.T) {
 	cc := newCallCounter()
-	ab := (*bucket)(atomic.LoadPointer(&cc.activeBucket))
+	ab := cc.activeBucket.Load()
 	ab.numSuccesses = 1
 	ab.numFailures = 2
 	cc.inactiveBucket.numSuccesses = 4
@@ -87,7 +85,7 @@ func (s) TestSwap(t *testing.T) {
 	ccWant := newCallCounter()
 	ccWant.inactiveBucket.numSuccesses = 1
 	ccWant.inactiveBucket.numFailures = 2
-	atomic.StorePointer(&ccWant.activeBucket, unsafe.Pointer(ib))
+	ccWant.activeBucket.Store(ib)
 	if diff := cmp.Diff(cc, ccWant); diff != "" {
 		t.Fatalf("callCounter is different than expected, diff (-got +want): %v", diff)
 	}

@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 LICENSE(BSD-3-Clause)
 
+VERSION(v1.36.6)
+
 SRCS(
     methods.go
     proto.go
@@ -14,12 +16,4 @@ SRCS(
     value_unsafe.go
 )
 
-GO_TEST_SRCS(
-    proto_test.go
-    source_test.go
-    value_test.go
-)
-
 END()
-
-RECURSE(gotest)

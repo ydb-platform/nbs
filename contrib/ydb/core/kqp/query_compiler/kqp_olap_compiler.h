@@ -1,7 +1,6 @@
 #pragma once
 
 #include <contrib/ydb/core/kqp/expr_nodes/kqp_expr_nodes.h>
-#include <contrib/ydb/core/protos/ssa.pb.h>
 
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_gateway.h>
 
