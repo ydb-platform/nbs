@@ -257,4 +257,47 @@ TMirroredDiskDevicesStat TReplicaTable::CalculateDiskStats(
     return result;
 }
 
+TVector<TString> TReplicaTable::GetDevicesReplacements(
+    const TDiskId& diskId) const
+{
+    const auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        return {};
+    }
+
+    TVector<TDiskId> devicesReplacements;
+    for (const auto& cell: disk->Cells) {
+        for (const auto& deviceInfo: cell) {
+            if (deviceInfo.IsReplacement) {
+                devicesReplacements.push_back(deviceInfo.Id);
+            }
+        }
+    }
+
+    return devicesReplacements;
+}
+
+bool TReplicaTable::IsReplacementDevice(
+    const TDiskId& diskId,
+    const TDeviceId& deviceId) const
+{
+    const auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        return false;
+    }
+
+    const auto* cell = disk->DeviceId2Cell.FindPtr(deviceId);
+    if (!cell) {
+        return false;
+    }
+
+    for (const auto& device: **cell) {
+        if (device.Id == deviceId) {
+            return device.IsReplacement;
+        }
+    }
+
+    return false;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

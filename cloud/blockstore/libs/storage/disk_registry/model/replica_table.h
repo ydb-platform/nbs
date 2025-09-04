@@ -75,6 +75,11 @@ public:
         const TDiskId& diskId,
         const TDeviceId& deviceId,
         bool isReplacement);
+    [[nodiscard]] TVector<TString> GetDevicesReplacements(
+        const TDiskId& diskId) const;
+    [[nodiscard]] bool IsReplacementDevice(
+        const TDiskId& diskId,
+        const TDeviceId& deviceId) const;
 
     // for tests and monpages
     TVector<TVector<TDeviceInfo>> AsMatrix(const TString& diskId) const;

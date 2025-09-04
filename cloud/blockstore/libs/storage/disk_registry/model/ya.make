@@ -6,7 +6,6 @@ SRCS(
     agent_counters.cpp
     agent_list.cpp
     device_list.cpp
-    device_replacement_tracker.cpp
     pending_cleanup.cpp
     replica_table.cpp
     user_notification.cpp
