@@ -89,6 +89,9 @@ def test_zero_range_read_rand_data():
 
     client.destroy("fs0")
 
+    with open(results_path, "wb") as results_file:
+        results_file.write(result)
+
     with open(expected_file, mode='rb') as expected_file_handle:
         expected_file_content = expected_file_handle.read()
         assert expected_file_content == result
