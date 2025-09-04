@@ -11,7 +11,6 @@ import tempfile
 import time
 import urllib3
 import uuid
-import logging
 
 import yatest.common as common
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -30,8 +29,6 @@ from library.python.testing.recipe import set_env
 
 from google.protobuf import text_format
 
-
-logger = logging.getLogger(__name__)
 
 def get_restart_interval():
     if common.context.sanitize is not None:
@@ -372,52 +369,17 @@ def get_file_size(filename):
         os.close(fd)
 
 
-def get_nbs_device_path(path=None):
+def get_nbs_device_path(path=None, index=0):
     if not path:
-        path = os.getenv("NBS_DEVICE_PATH")
+        path = os.getenv(env_with_guest_index("NBS_DEVICE_PATH", index))
 
     if not path:
-        raise RuntimeError("Invalid path")
+        raise RuntimeError("Path is not set")
 
     if not os.path.exists(path):
         raise RuntimeError("Path does not exist: {}".format(path))
 
     return path
-
-
-def get_nbs_device_path_by_index(index):
-        path = (os.getenv(env_with_guest_index("NBS_DEVICE_PATH", index)))
-        logger.info("path from NBS_{}_DEVICE_PATH: {}".format(index, path))
-
-        if not path:
-            raise RuntimeError("Invalid index")
-
-        if not os.path.exists(path):
-            logger.info("path with index {} doen't exist: {}".format(index, path))
-            raise RuntimeError("Path does not exist: {}".format(path))
-
-        logger.info("path with index {} exist: {}".format(index, path))
-        return path
-
-
-def get_all_nbs_paths(nbs_instance_count):
-    paths = []
-
-    for i in range(nbs_instance_count):
-        path = (os.getenv("NBS_{}_DEVICE_PATH".format(i)))
-        logger.info("path from NBS_{}_DEVICE_PATH: {}".format(i, path))
-
-        if not path:
-            raise RuntimeError("Invalid path")
-
-        if not os.path.exists(path):
-            raise RuntimeError("Path does not exist: {}".format(path))
-
-        logger.info("this path exist: {}".format(path))
-        paths.append(path)
-
-    logger.info("find paths: {}".format(len(paths)))
-    return paths
 
 
 def get_sensor(sensors, default_value, **kwargs):

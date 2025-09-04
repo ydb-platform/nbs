@@ -3,10 +3,9 @@ import os
 import uuid
 
 from cloud.blockstore.public.sdk.python import client
+from cloud.blockstore.tests.python.lib.test_base import recipe_set_env, env_with_guest_index
 
 from library.python.testing.recipe import declare_recipe
-
-from cloud.blockstore.tests.python.lib.test_base import recipe_set_env, env_with_guest_index
 
 
 BLOCK_SIZE = 4*1024
@@ -30,9 +29,9 @@ def _get_ipc_type(ipc_type_name):
 def _get_nbs_port(index):
     port = os.getenv(env_with_guest_index("LOCAL_KIKIMR_INSECURE_NBS_SERVER_PORT", index))
     if port is None:
-        port = os.getenv(env_with_guest_index("SERVICE_LOCAL_INSECURE_NBS_SERVER_PORT"), index)
+        port = os.getenv(env_with_guest_index("SERVICE_LOCAL_INSECURE_NBS_SERVER_PORT", index))
     if port is None:
-        port = os.getenv(env_with_guest_index("LOCAL_NULL_INSECURE_NBS_SERVER_PORT"), index)
+        port = os.getenv(env_with_guest_index("LOCAL_NULL_INSECURE_NBS_SERVER_PORT", index))
 
     return port
 
@@ -45,7 +44,11 @@ def start(argv):
     parser.add_argument("--verbose", action="store_true", default=False)
     args = parser.parse_args(argv)
 
-    clusters_count = int(os.getenv("NBS_INSTANCE_COUNT"))
+    if os.getenv("NBS_INSTANCE_COUNT") == None:
+        clusters_count = 1
+        recipe_set_env("NBS_INSTANCE_COUNT", clusters_count)
+    else:
+        clusters_count = int(os.getenv("NBS_INSTANCE_COUNT"))
 
     for cluster_index in range(clusters_count):
         disk_id = uuid.uuid4().hex[:20]

@@ -30,19 +30,21 @@ ERR_LOG_FILE_NAMES_FILE = "local_kikimr_nbs_server_recipe.err_log_files"
 logger = logging.getLogger(__name__)
 
 
-def cells_configuration(args, path, port, secure_port) -> TCellsConfig:
-    if not args.cells_enabled:
+def create_cells_config(args, path, port, secure_port) -> TCellsConfig:
+    if not args.use_cells:
         return None
 
     cells_config = TCellsConfig()
     cells_config.CellsEnabled = True
     cells_config.CellId = uuid.uuid4().hex[:20]
 
+    file_already_exists = True
     if os.path.exists(path):
         with open(path, "r") as f:
             cells_meta = json.load(f)
     else:
         cells_meta = {'cells': []}
+        file_already_exists = False
 
     cells_meta['cells'].append({
         'id': cells_config.CellId,
@@ -51,9 +53,9 @@ def cells_configuration(args, path, port, secure_port) -> TCellsConfig:
     })
 
     with open(path, "w") as f:
-            json.dump(cells_meta, f)
+        json.dump(cells_meta, f)
 
-    if not args.cells_with_conections:
+    if file_already_exists:
         return cells_config
 
     for cell in cells_meta['cells']:
@@ -78,8 +80,7 @@ def pars_args(argv):
     parser.add_argument("--nbs-package-path", action='store', default=None)
     parser.add_argument("--use-log-files", action='store_true', default=False)
     parser.add_argument("--use-ic-version-check", action='store_true', default=False)
-    parser.add_argument("--cells-enabled", action='store_true', default=False)
-    parser.add_argument("--cells-with-conections", action='store_true', default=False)
+    parser.add_argument("--use-cells", action='store_true', default=False)
     parser.add_argument("--nbs-index", action='store', default=0)
 
     return parser.parse_args(argv)
@@ -107,14 +108,14 @@ def start(argv):
     nbs_index = int(args.nbs_index)
     logger.info("starting instans No {}".format(nbs_index))
     configurator = KikimrConfigGenerator(
-    erasure=None,
-    binary_path=kikimr_binary_path,
-    use_in_memory_pdisks=True,
-    dynamic_storage_pools=[
-        dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
-        dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
-    ],
-    use_log_files=args.use_log_files)
+        erasure=None,
+        binary_path=kikimr_binary_path,
+        use_in_memory_pdisks=True,
+        dynamic_storage_pools=[
+            dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
+            dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
+        ],
+        use_log_files=args.use_log_files)
 
     kikimr_cluster = kikimr_cluster_factory(configurator=configurator, sub_folder_name="kikimr_configs_{}".format(nbs_index))
     kikimr_cluster.start()
@@ -147,7 +148,7 @@ def start(argv):
     discovery_config.InstanceListFile = instance_list_file
 
     cells_config_file = os.path.join(yatest_common.output_path(), "cells_config.json")
-    cells_config = cells_configuration(args, cells_config_file, nbs_port, nbs_secure_port)
+    cells_config = create_cells_config(args, cells_config_file, nbs_port, nbs_secure_port)
 
     kikimr_port = list(kikimr_cluster.nodes.values())[0].port
     nbs = LocalNbs(

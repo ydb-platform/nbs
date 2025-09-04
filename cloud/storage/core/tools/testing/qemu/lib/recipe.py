@@ -78,11 +78,7 @@ def start_instance(args, inst_index):
         if virtio == "fs":
             vhost_sockets.append(recipe_get_env("NFS_VHOST_SOCKET", nbs_index))
         elif virtio == "blk":
-            nsf_vhost_socket = recipe_get_env("NFS_VHOST_SOCKET", nbs_index)
-            if nsf_vhost_socket is not None:
-                vhost_sockets.append(nsf_vhost_socket)
-            else:
-                vhost_sockets.append(recipe_get_env("NBS_VHOST_SOCKET", nbs_index))
+            vhost_sockets.append(recipe_get_env("NBS_VHOST_SOCKET", nbs_index))
 
     use_virtiofs_server = _get_vm_use_virtiofs_server(args)
 
