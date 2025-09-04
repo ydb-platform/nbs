@@ -66,7 +66,7 @@ inputs:
     description: "Percentage of available RAM to allocate for tmpfs (0 to disable tmpfs)"
   tmpfs_path:
     required: false
-    default: "/tmp/ram_drive"
+    default: "/home/github/mnt/tmpfs"
     description: "Mount point path for the tmpfs filesystem"
 runs:
   using: composite
@@ -91,46 +91,36 @@ runs:
     - name: Setup tmpfs
       id: setup_tmpfs
       shell: bash --noprofile --norc -eo pipefail -x {0}
+      env:
+        TMPFS_RAM_PERCENTAGE: ${{ inputs.tmpfs_ram_percentage }}
+        TMPFS_MOUNT_POINT: ${{ inputs.tmpfs_path }}
       run: |
         echo "::group::Setup tmpfs"
 
-        echo "Requested percentage: ${{ inputs.tmpfs_ram_percentage }}%"
-        echo "Target path: ${{ inputs.tmpfs_path }}"
+        echo "Requested percentage: ${TMPFS_RAM_PERCENTAGE}%"
+        echo "Target path: ${TMPFS_MOUNT_POINT}"
 
-        if [[ -e "${{ inputs.tmpfs_path }}" ]]; then
-          echo "::notice::Path already exists: ${{ inputs.tmpfs_path }}"
-          echo "path=${{ inputs.tmpfs_path }}" >> $GITHUB_OUTPUT
+        if [[ -e "${TMPFS_MOUNT_POINT}" ]]; then
+          echo "::notice::Path already exists: ${TMPFS_MOUNT_POINT}"
+          echo "path=${TMPFS_MOUNT_POINT}" >> $GITHUB_OUTPUT
           echo "status=exists" >> $GITHUB_OUTPUT
           echo "::endgroup::"
           exit 0
         fi
 
-        if [[ "${{ inputs.tmpfs_ram_percentage }}" -le 0 ]]; then
+        if [[ "${TMPFS_RAM_PERCENTAGE}" -le 0 ]]; then
           echo "::notice::Tmpfs disabled (percentage <= 0)"
           echo "status=disabled" >> $GITHUB_OUTPUT
           echo "::endgroup::"
           exit 0
         fi
 
-        available_kb=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)
-        tmpfs_size_mb=$(( available_kb * ${{ inputs.tmpfs_ram_percentage }} / 100 / 1024 ))
-
-        echo "Available RAM: $(( available_kb / 1024 )) MB"
-        echo "Calculated tmpfs size: $tmpfs_size_mb MB"
-
-        if [[ $tmpfs_size_mb -lt 1024 ]]; then
-          echo "::warning::Tmpfs size too small (< 1GB), skipping"
-          echo "status=too_small" >> $GITHUB_OUTPUT
-          echo "::endgroup::"
-          exit 0
-        fi
-
         echo "Creating tmpfs..."
-        sudo mkdir -p "${{ inputs.tmpfs_path }}"
+        sudo mkdir -p "${TMPFS_MOUNT_POINT}"
 
-        if sudo mount -t tmpfs -o size=${tmpfs_size_mb}M tmpfs "${{ inputs.tmpfs_path }}"; then
-          echo "::notice::Tmpfs mounted successfully at ${{ inputs.tmpfs_path }}"
-          echo "path=${{ inputs.tmpfs_path }}" >> $GITHUB_OUTPUT
+        if sudo mount -t tmpfs -o size=${TMPFS_RAM_PERCENTAGE}% tmpfs "${TMPFS_MOUNT_POINT}"; then
+          echo "::notice::Tmpfs mounted successfully at ${TMPFS_MOUNT_POINT}"
+          echo "path=${TMPFS_MOUNT_POINT}" >> $GITHUB_OUTPUT
           echo "status=mounted" >> $GITHUB_OUTPUT
         else
           echo "::error::Failed to mount tmpfs"
@@ -664,11 +654,13 @@ runs:
         echo "::endgroup::"
     - name: Cleanup tmpfs
       if: always() && steps.setup_tmpfs.outputs.status == 'mounted'
+      env:
+        TMPFS_MOUNT_POINT: ${{ steps.setup_tmpfs.outputs.path }}
       run: |
         echo "::group::cleaning-up-tmpfs"
         echo "Cleaning up tmpfs..."
-        sudo umount "${{ steps.setup_tmpfs.outputs.path }}" || true
-        sudo rm -rf "${{ steps.setup_tmpfs.outputs.path }}" || true
+        sudo umount "${TMPFS_MOUNT_POINT}" || true
+        sudo rm -rf "${TMPFS_MOUNT_POINT}" || true
         echo "::endgroup::"
     - name: show free space
       if: always()
