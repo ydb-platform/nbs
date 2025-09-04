@@ -868,7 +868,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 
 	// startNbsEndpointForNBD is async function. Kubelet will retry
 	// NodeStageVolume request if nbd device is not available yet.
-	hasBlockDevice, err := s.mounter.HasBlockDevice(resp.NbdDeviceFile)
+	hasBlockDevice, err := s.mounter.HasBlockDevice(ctx, resp.NbdDeviceFile)
 	if !hasBlockDevice {
 		return s.statusErrorf(codes.Unavailable,
 			"Nbd device is not available: %w", err)
@@ -1703,31 +1703,6 @@ func (s *nodeService) formatAndMount(
 	logVolume(nbsId, "mount source %q to target %q, fsType: %q, options: %v",
 		source, target, fsType, options)
 	return s.mounter.FormatAndMount(source, target, fsType, options)
-}
-
-func (s *nodeService) makeFilesystemIfNeeded(
-	diskId string,
-	deviceName string,
-	fsType string) error {
-
-	existed, err := s.mounter.IsFilesystemExisted(deviceName)
-	if err != nil {
-		return err
-	}
-
-	if existed {
-		logVolume(diskId, "filesystem exists on device: %q", deviceName)
-		return nil
-	}
-
-	logVolume(diskId, "making filesystem %q on device %q", fsType, deviceName)
-	out, err := s.mounter.MakeFilesystem(deviceName, fsType)
-	if err != nil {
-		return fmt.Errorf("failed to make filesystem: %w, output %q", err, out)
-	}
-
-	logVolume(diskId, "succeeded making filesystem: %q", out)
-	return nil
 }
 
 func (s *nodeService) getPodId(req *csi.NodePublishVolumeRequest) string {
