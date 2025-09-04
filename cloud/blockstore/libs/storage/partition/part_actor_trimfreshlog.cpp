@@ -167,7 +167,6 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             Suicide(ctx);
             return;
         }
-
     } else {
         LOG_DEBUG(
             ctx,

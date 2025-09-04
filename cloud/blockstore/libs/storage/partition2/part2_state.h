@@ -553,10 +553,7 @@ public:
 
     void RegisterTrimFreshLogError(const NProto::TError& error, ui64 tabletId);
 
-    void RegisterTrimFreshLogSuccess()
-    {
-        TrimFreshLogTimeout = {};
-    }
+    void RegisterTrimFreshLogSuccess();
 
     ui64 GetTrimFreshLogToCommitId() const
     {

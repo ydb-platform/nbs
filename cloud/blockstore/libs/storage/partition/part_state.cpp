@@ -988,7 +988,7 @@ void TPartitionState::DeleteFreshBlock(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// TrimFreshLog errors
+// TrimFreshLog status
 
 void TPartitionState::RegisterTrimFreshLogError(
     const NProto::TError& error,
@@ -1008,6 +1008,11 @@ void TPartitionState::RegisterTrimFreshLogError(
         TDuration::Seconds(5),
         Max(TDuration::MilliSeconds(100), TrimFreshLogTimeout * 2)
     );
+}
+
+void TPartitionState::RegisterTrimFreshLogSuccess()
+{
+    TrimFreshLogTimeout = {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
