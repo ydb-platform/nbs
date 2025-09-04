@@ -1,5 +1,6 @@
 #include "actor_trimfreshlog.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
@@ -138,6 +139,9 @@ void TTrimFreshLogActor::HandleCollectGarbageResult(
     if (auto error = MakeKikimrError(msg->Status, msg->ErrorReason);
         HasError(error))
     {
+        ReportTrimFreshLogError(
+            FormatError(error),
+            {{"disk", DiskId}, {"TabletId", TabletInfo->TabletID}});
         Error = std::move(error);
     }
 
@@ -166,6 +170,10 @@ void TTrimFreshLogActor::HandleWakeup(
     Y_UNUSED(ev);
 
     Error = MakeError(E_TIMEOUT, "TrimFreshLog timeout timer hit");
+
+    ReportTrimFreshLogTimeout(
+        FormatError(Error),
+        {{"disk", DiskId}, {"TabletId", TabletInfo->TabletID}});
 
     NotifyCompleted(ctx);
     ReplyAndDie(ctx);

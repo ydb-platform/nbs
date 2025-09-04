@@ -1,7 +1,5 @@
 #include "part_state.h"
 
-#include <cloud/blockstore/libs/diagnostics/critical_events.h>
-
 #include <cloud/storage/core/libs/tablet/model/channels.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -985,34 +983,6 @@ void TPartitionState::DeleteFreshBlock(
     Y_ABORT_UNLESS(removed);
 
     DecrementUnflushedFreshBlocksFromChannelCount(1);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// TrimFreshLog status
-
-void TPartitionState::RegisterTrimFreshLogError(
-    const NProto::TError& error,
-    ui64 tabletId)
-{
-    TVector<std::pair<TStringBuf, TValue>> info =
-         {{"disk", Config.GetDiskId()}, {"TabletId", tabletId}};
-
-    if (error.GetCode() == E_TIMEOUT) {
-        ReportTrimFreshLogTimeout(FormatError(error), info);
-        return;
-    }
-
-    ReportTrimFreshLogError(FormatError(error), info);
-
-    TrimFreshLogTimeout = Min(
-        TDuration::Seconds(5),
-        Max(TDuration::MilliSeconds(100), TrimFreshLogTimeout * 2)
-    );
-}
-
-void TPartitionState::RegisterTrimFreshLogSuccess()
-{
-    TrimFreshLogTimeout = {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

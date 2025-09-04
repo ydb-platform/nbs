@@ -551,7 +551,13 @@ public:
         return TrimFreshLogTimeout;
     }
 
-    void RegisterTrimFreshLogError(const NProto::TError& error, ui64 tabletId);
+    void RegisterTrimFreshLogError()
+    {
+        TrimFreshLogTimeout = Min(
+            TDuration::Seconds(5),
+            Max(TDuration::MilliSeconds(100), TrimFreshLogTimeout * 2)
+        );
+    }
 
     void RegisterTrimFreshLogSuccess();
 
