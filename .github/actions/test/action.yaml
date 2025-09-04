@@ -60,7 +60,14 @@ inputs:
     required: false
     default: "1"
     description: "Number of retries for ya make"
-
+  tmpfs_ram_percentage:
+    required: false
+    default: "10"
+    description: "Percentage of available RAM to allocate for tmpfs (0 to disable tmpfs)"
+  tmpfs_path:
+    required: false
+    default: "/tmp/ram_drive"
+    description: "Mount point path for the tmpfs filesystem"
 runs:
   using: composite
   steps:
@@ -81,11 +88,65 @@ runs:
           echo "SUMMARY_LINKS=$(mktemp -p /home/github)"
         } | tee -a $GITHUB_ENV
 
+    - name: Setup tmpfs
+      id: setup_tmpfs
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      run: |
+        echo "::group::Setup tmpfs"
+
+        echo "Requested percentage: ${{ inputs.tmpfs_ram_percentage }}%"
+        echo "Target path: ${{ inputs.tmpfs_path }}"
+
+        if [[ -e "${{ inputs.tmpfs_path }}" ]]; then
+          echo "::notice::Path already exists: ${{ inputs.tmpfs_path }}"
+          echo "path=${{ inputs.tmpfs_path }}" >> $GITHUB_OUTPUT
+          echo "status=exists" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+          exit 0
+        fi
+
+        if [[ "${{ inputs.tmpfs_ram_percentage }}" -le 0 ]]; then
+          echo "::notice::Tmpfs disabled (percentage <= 0)"
+          echo "status=disabled" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+          exit 0
+        fi
+
+        available_kb=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)
+        tmpfs_size_mb=$(( available_kb * ${{ inputs.tmpfs_ram_percentage }} / 100 / 1024 ))
+
+        echo "Available RAM: $(( available_kb / 1024 )) MB"
+        echo "Calculated tmpfs size: $tmpfs_size_mb MB"
+
+        if [[ $tmpfs_size_mb -lt 1024 ]]; then
+          echo "::warning::Tmpfs size too small (< 1GB), skipping"
+          echo "status=too_small" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+          exit 0
+        fi
+
+        echo "Creating tmpfs..."
+        sudo mkdir -p "${{ inputs.tmpfs_path }}"
+
+        if sudo mount -t tmpfs -o size=${tmpfs_size_mb}M tmpfs "${{ inputs.tmpfs_path }}"; then
+          echo "::notice::Tmpfs mounted successfully at ${{ inputs.tmpfs_path }}"
+          echo "path=${{ inputs.tmpfs_path }}" >> $GITHUB_OUTPUT
+          echo "status=mounted" >> $GITHUB_OUTPUT
+        else
+          echo "::error::Failed to mount tmpfs"
+          echo "status=failed" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+
+        echo "::endgroup::"
+
     - name: prepare
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
         CLEAN_YA_DIR: ${{ inputs.clean_ya_dir }}
       run: |
+        echo "::group::prepare"
+
         rm -rf $TMP_DIR $JUNIT_REPORT_XML $JUNIT_REPORT_PARTS $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
         mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $JUNIT_REPORT_PARTS $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
         chown -R github:github $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $JUNIT_REPORT_PARTS \
@@ -98,6 +159,8 @@ runs:
         fi
         # checking /etc/hosts to see if vm was created correctly
         cat /etc/hosts
+
+        echo "::endgroup::"
 
     - name: Setup cache password file
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -127,6 +190,7 @@ runs:
         TRUNCATE_ENABLED: ${{ inputs.truncate_enabled }}
         SYNC_TO_S3: ${{ inputs.sync_to_s3 || 'false' }}
         GITHUB_TOKEN: ${{ github.token }}
+        YA_TEST_RAM_DRIVE_PATH: ${{ steps.setup_tmpfs.outputs.path }}
       run: |
         extra_params=(
           --run-all-tests
@@ -451,7 +515,7 @@ runs:
         sudo chown -R github:github "$LOG_DIR/system_logs/" || true
         sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/"
         echo "::endgroup::"
-    
+
     - name: sync logs in case of cancel and additional debug info
       if: ${{ cancelled() }}
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -470,7 +534,7 @@ runs:
         sudo chown -R github:github "$LOG_DIR/"
 
         sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/" || true
-        
+
         if [ ! -f "${LAST_STEP}_artifacts_synced" ]; then
           echo "Syncing artifacts dir"
           if [ -d "$ARTIFACTS_DIR/logs/" ]; then
@@ -597,6 +661,14 @@ runs:
       run: |
         echo "::group::generate-listing"
         sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH" --generate-indexes --apply
+        echo "::endgroup::"
+    - name: Cleanup tmpfs
+      if: always() && steps.setup_tmpfs.outputs.status == 'mounted'
+      run: |
+        echo "::group::cleaning-up-tmpfs"
+        echo "Cleaning up tmpfs..."
+        sudo umount "${{ steps.setup_tmpfs.outputs.path }}" || true
+        sudo rm -rf "${{ steps.setup_tmpfs.outputs.path }}" || true
         echo "::endgroup::"
     - name: show free space
       if: always()
