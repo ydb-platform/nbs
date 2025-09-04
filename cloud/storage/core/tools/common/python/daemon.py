@@ -190,6 +190,7 @@ class Daemon(object):
                 self.__schedule_restart()
 
     def allow_restart(self):
+        logger.info("allow restart")
         with self.__lock:
             self.__restart_allowed = True
             self.__schedule_restart()

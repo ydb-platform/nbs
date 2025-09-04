@@ -328,9 +328,10 @@ def __run_test(test_case, use_rdma):
 
         disk_agents = []
         for i in range(test_case.agent_count):
-            disk_agent = None
+            restart_interval = None
+            if i in test_case.agent_indexes_to_restart:
+                restart_interval = test_case.restart_interval
 
-            restart_interval = test_case.restart_interval if i in test_case.agent_indexes_to_restart else None
             disk_agent = LocalDiskAgent(
                 kikimr_port,
                 configurator.domains_txt,
@@ -342,6 +343,7 @@ def __run_test(test_case, use_rdma):
                 disk_agent_binary_path=yatest_common.binary_path(disk_agent_binary_path),
                 restart_interval=restart_interval,
                 restart_downtime=test_case.disk_agent_downtime,
+                suspend_restarts=True,
                 rack="rack-%s" % i,
                 node_type=make_agent_node_type(i))
 
@@ -351,6 +353,9 @@ def __run_test(test_case, use_rdma):
             disk_agents.append(disk_agent)
 
         wait_for_secure_erase(nbs.mon_port, expectedAgents=test_case.agent_count)
+        for i, agent in enumerate(disk_agents):
+            if i in test_case.agent_indexes_to_restart
+                agent.allow_restart()
 
         client_config.NbdSocketSuffix = nbd_socket_suffix
 
