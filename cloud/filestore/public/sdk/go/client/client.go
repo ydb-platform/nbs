@@ -37,21 +37,6 @@ type Session struct {
 	FileSystemID string
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-type NodeType uint32
-
-const (
-	NodeType_INVALID NodeType = iota
-	NodeType_FILE
-	NodeType_DIR
-	NodeType_SYMLINK
-	NodeType_LINK
-	NodeType_SOCK
-)
-
-////////////////////////////////////////////////////////////////////////////////
-
 type Node struct {
 	ParentID   uint64
 	NodeID     uint64
@@ -63,7 +48,7 @@ type Node struct {
 	Mode       uint32
 	UID        uint64
 	GID        uint64
-	Type       NodeType
+	Type       protos.ENodeType
 	LinkTarget string
 }
 
@@ -313,7 +298,7 @@ func (client *Client) ListNodes(
 			Mode:     nodes[idx].GetMode(),
 			UID:      uint64(nodes[idx].GetUid()),
 			GID:      uint64(nodes[idx].GetGid()),
-			Type:     NodeType(nodes[idx].GetType()),
+			Type:     protos.ENodeType(nodes[idx].GetType()),
 		}
 	}
 
@@ -339,31 +324,31 @@ func (client *Client) CreateNode(
 	}
 
 	switch node.Type {
-	case NodeType_FILE:
+	case protos.ENodeType_E_REGULAR_NODE:
 		req.Params = &protos.TCreateNodeRequest_File{
 			File: &protos.TCreateNodeRequest_TFile{
 				Mode: node.Mode,
 			},
 		}
-	case NodeType_DIR:
+	case protos.ENodeType_E_DIRECTORY_NODE:
 		req.Params = &protos.TCreateNodeRequest_Directory{
 			Directory: &protos.TCreateNodeRequest_TDirectory{
 				Mode: node.Mode,
 			},
 		}
-	case NodeType_SOCK:
+	case protos.ENodeType_E_SOCK_NODE:
 		req.Params = &protos.TCreateNodeRequest_Socket{
 			Socket: &protos.TCreateNodeRequest_TSocket{
 				Mode: node.Mode,
 			},
 		}
-	case NodeType_SYMLINK:
+	case protos.ENodeType_E_SYMLINK_NODE:
 		req.Params = &protos.TCreateNodeRequest_SymLink{
 			SymLink: &protos.TCreateNodeRequest_TSymLink{
 				TargetPath: []byte(node.LinkTarget),
 			},
 		}
-	case NodeType_LINK:
+	case protos.ENodeType_E_LINK_NODE:
 		req.Params = &protos.TCreateNodeRequest_Link{
 			Link: &protos.TCreateNodeRequest_TLink{
 				TargetNode: node.NodeID,
