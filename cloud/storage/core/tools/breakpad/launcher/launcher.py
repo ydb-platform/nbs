@@ -4,6 +4,7 @@ import argparse
 import datetime
 import errno
 import fcntl
+import json
 import logging
 import os
 import resource
@@ -160,30 +161,56 @@ class Launcher(object):
         self.args = None
 
     def parse_args(self):
-        parser = argparse.ArgumentParser(description="Breakpad Executer")
-        parser.add_argument("-l", "--log", type=str, metavar="PATH", help="Search VERIFY/FAIL messages in this logfile")
+        parser = argparse.ArgumentParser(
+            description="Breakpad Executer",
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        parser.add_argument("-l", "--log", type=str, metavar="PATH",
+                            help="Search VERIFY/FAIL messages in this logfile")
         parser.add_argument("--enable-rotate-log", action="store_true")
-        parser.add_argument("--breakpad-enable", action="store_true", help="Use Breakpad")
+        parser.add_argument("--breakpad-enable", action="store_true",
+                            help="Use Breakpad")
         # TODO: use more generic default
-        parser.add_argument("--breakpad-lib", type=str, default="libbreakpad_init_nbs.so", metavar="PATH")
-        parser.add_argument("--breakpad-coredir", type=str, default="/var/tmp/breakpad/coredir", metavar="DIR")
-        parser.add_argument("--coredir", type=str, default="/coredumps", metavar="DIR")
-        parser.add_argument("--datadir", type=str, default="/var/tmp/breakpad", metavar="DIR")
+        parser.add_argument("--breakpad-lib", type=str, metavar="PATH",
+                            default="libbreakpad_init_nbs.so",
+                            help="Path to breakpad library")
+        parser.add_argument("--breakpad-coredir", type=str, metavar="DIR",
+                            default="/var/tmp/breakpad/coredir",
+                            help="Directory to search for Breakpad minidumps")
+        parser.add_argument("--coredir", type=str, metavar="DIR",
+                            default="/coredumps",
+                            help="Directory to search for coredumps")
+        parser.add_argument("--datadir", type=str, metavar="DIR",
+                            default="/var/tmp/breakpad",
+                            help="Directory to store queued crashes"
+                                 "for breakpad-sender")
         parser.add_argument("--verbose", action="store_true")
         parser.add_argument("--enable-collect-oom", action="store_true")
+        parser.add_argument("--service",  type=str,
+                            help="Service name (will be deduced from binary "
+                                 "if not set)")
+        parser.add_argument("--metadata", type=json.loads,
+                            help="Additional metadata, JSON format")
 
         parser.add_argument("cmd", metavar="CMD")
         parser.add_argument("args", metavar="ARGS", nargs="*")
         self.args = parser.parse_args()
 
     @property
-    def coredir(self):
+    def breakpad_coredir(self):
         pid = os.getpid()
         return os.path.join(self.args.breakpad_coredir, str(pid))
 
+    @property
+    def service(self):
+        if self.args.service:
+            return self.args.service
+        if self.args.cmd:
+            return os.path.basename(self.args.cmd)
+        return None
+
     def ensure_directory(self, path):
         try:
-            os.makedirs(path, 0700)
+            os.makedirs(path, 0o700)
         except OSError as e:
             if e.errno != os.errno.EEXIST:
                 raise
@@ -192,15 +219,15 @@ class Launcher(object):
             self._logger.debug("Exception", exc_info=True)
             raise LauncherError("Error create directory")
 
-    def init_coredir(self):
-        self.clean_coredir()
-        self.ensure_directory(self.coredir)
+    def init_breakpad_coredir(self):
+        self.clean_breakpad_coredir()
+        self.ensure_directory(self.breakpad_coredir)
 
-    def clean_coredir(self):
+    def clean_breakpad_coredir(self):
         try:
-            shutil.rmtree(self.coredir, ignore_errors=True)
+            shutil.rmtree(self.breakpad_coredir, ignore_errors=True)
         except IOError as e:
-            self._logger.error("Can't remove directory %s %r", self.coredir, e)
+            self._logger.error("Can't remove directory %s %r", self.breakpad_coredir, e)
             self._logger.debug("Exception", exc_info=True)
             raise LauncherError("Error remove directory")
 
@@ -233,7 +260,7 @@ class Launcher(object):
             raise LauncherError("Can't get core mtime")
 
     def collect_minidump(self):
-        for corefile in CoreChecker().cores(self.coredir, pid=None):
+        for corefile in CoreChecker().cores(self.breakpad_coredir, pid=None):
             logging.info("Found minidump %s", corefile)
             info = CrashInfo()
             info.time = self.core_time(corefile)
@@ -241,6 +268,8 @@ class Launcher(object):
             info.is_minidump = True
             info.logfile = self.logfile
             info.info = self.errors
+            info.service = self.service
+            info.metadata = self.args.metadata
             self.storage.put(info)
 
     def collect_coredump(self):
@@ -252,6 +281,8 @@ class Launcher(object):
             info.is_minidump = False
             info.logfile = self.logfile
             info.info = self.errors
+            info.service = self.service
+            info.metadata = self.args.metadata
             self.storage.put(info)
 
     def collect_oom(self):
@@ -265,6 +296,7 @@ class Launcher(object):
         info.logfile = self.args.log
         info.info = self.errors + "\n" + oom_checker.text
         info.service = oom_checker.service
+        info.metadata = self.args.metadata
         self.storage.put(info)
 
     def rotate_logfile(self):
@@ -324,9 +356,9 @@ class Launcher(object):
             self.init()
             if self.args.breakpad_enable:
                 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-                self.init_coredir()
+                self.init_breakpad_coredir()
                 self.launcher.set_env("LD_PRELOAD", self.args.breakpad_lib)
-                self.launcher.set_env("BREAKPAD_MINIDUMPS_PATH", self.coredir)
+                self.launcher.set_env("BREAKPAD_MINIDUMPS_PATH", self.breakpad_coredir)
             return self.launch()
         except Exception as e:
             self._logger.error("%r", e)
@@ -334,7 +366,7 @@ class Launcher(object):
             return 1
         finally:
             if self.args.breakpad_enable:
-                self.clean_coredir()
+                self.clean_breakpad_coredir()
 
 
 def main():
