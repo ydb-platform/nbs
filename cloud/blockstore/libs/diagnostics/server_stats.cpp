@@ -414,7 +414,9 @@ void TServerStats::RequestCompleted(
     }
 
     if (errorKind != EDiagnosticsErrorKind::Success && req.CellRequest) {
-        // Hide inter-cell errors here to prevent them from showing in error metrics.
+        // We want to exclude from our metrics errors resulting from requests
+        // coming from other cells, since those errors will already appear
+        // in the metrics of the host that sent the request
         errorKind = EDiagnosticsErrorKind::Success;
     }
 
