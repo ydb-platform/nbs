@@ -285,8 +285,8 @@ void TMixedBlocks::FindBlocks(
             blockIndex,
             blocksCount);
 
-        while (iter->Next()) {
-            auto& block = iter->Block;
+        while (iter.Next()) {
+            auto& block = iter.Block;
 
             Y_ABORT_UNLESS(block.NodeId == nodeId);
             Y_ABORT_UNLESS(block.MinCommitId <= commitId);
@@ -294,7 +294,7 @@ void TMixedBlocks::FindBlocks(
             range->DeletionMarkers.Apply(block);
 
             if (commitId < block.MaxCommitId) {
-                visitor.Accept(block, blob.BlobId, iter->BlobOffset);
+                visitor.Accept(block, blob.BlobId, iter.BlobOffset);
             }
         }
     }
