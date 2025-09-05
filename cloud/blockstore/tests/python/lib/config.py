@@ -98,7 +98,7 @@ class NbsConfigurator:
             if self.location is None:
                 self.files["location"] = generate_location_txt()
 
-    def install(self, config_folder):
+    def install(self, config_folder, ydb_ssl_port=None):
 
         self.__install_cms_configs()
 
@@ -112,7 +112,10 @@ class NbsConfigurator:
 
         if self.ssl_registration:
             self.__params += ["--use-secure-registration"]
-            self.__params += ["--node-broker", f"localhost:{self.ydb_ssl_port}"]
+            self.__params += [
+                "--node-broker",
+                f"localhost:{self.ydb_ssl_port if ydb_ssl_port is None else ydb_ssl_port}",
+            ]
         else:
             self.__params += ["--node-broker", f"localhost:{self.ydb_port}"]
 
