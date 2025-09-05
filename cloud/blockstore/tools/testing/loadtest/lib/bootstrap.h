@@ -60,7 +60,7 @@ public:
     TBootstrap(
         TOptionsPtr options,
         std::shared_ptr<TModuleFactories> moduleFactories);
-    ~TBootstrap();
+    ~TBootstrap() final;
 
     void Init();
 
@@ -110,7 +110,9 @@ public:
 
     IBlockDigestCalculatorPtr CreateDigestCalculator();
 
-    IBlockStorePtr CreateClient(TVector<ui32> nonretriableErrorCodes) override;
+    IBlockStorePtr CreateClient(
+        TVector<ui32> nonretriableErrorCodes,
+        const TString& clientId) override;
 
     IBlockStorePtr CreateAndStartFilesystemClient() override;
 
@@ -138,6 +140,9 @@ private:
     IBlockStorePtr CreateDurableDataClient(
         IBlockStorePtr dataClient,
         TVector<ui32> nonretriableErrorCodes);
+    NClient::TClientAppConfigPtr CreateClientConfig(
+        const NClient::TClientAppConfigPtr& config,
+        TString clientId);
 };
 
 }   // namespace NCloud::NBlockStore::NLoadTest
