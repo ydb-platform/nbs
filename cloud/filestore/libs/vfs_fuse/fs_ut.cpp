@@ -2269,7 +2269,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TReadDataResponse result;
             result.MutableBuffer()->assign(TString(request->GetLength(), 'a'));
 
-            ReportErrorWasSentToTheGuest( TStringBuilder() << "Error sent to guest");
+            ReportErrorWasSentToTheGuest(TStringBuilder() << "Error sent to guest");
 
             return MakeFuture(result);
         };
@@ -2305,7 +2305,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             Y_UNUSED(request);
             Y_UNUSED(callContext);
 
-            ReportErrorWasSentToTheGuest( TStringBuilder() << "Error sent to guest");
+            ReportErrorWasSentToTheGuest(TStringBuilder() << "Error sent to guest");
 
             NProto::TWriteDataResponse result;
             return MakeFuture(result);
