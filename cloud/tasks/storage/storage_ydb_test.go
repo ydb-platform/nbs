@@ -4038,6 +4038,10 @@ func TestStorageYDBCreateRegularTasks(t *testing.T) {
 		"time/total",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
 
 	_, err = storage.UpdateTask(ctx, task1)
 	require.NoError(t, err)
@@ -4060,6 +4064,10 @@ func TestStorageYDBCreateRegularTasks(t *testing.T) {
 	).On("Add", int64(1)).Maybe().Panic("shouldn't create new task in UpdateTask")
 	metricsRegistry.GetTimer(
 		"time/total",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
 
@@ -4192,6 +4200,10 @@ func TestStorageYDBCreateRegularTasksUsingCrontab(t *testing.T) {
 		"time/total",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
 
 	_, err = storage.UpdateTask(ctx, task1)
 	require.NoError(t, err)
@@ -4215,6 +4227,10 @@ func TestStorageYDBCreateRegularTasksUsingCrontab(t *testing.T) {
 	).On("Add", int64(1)).Maybe().Panic("shouldn't create new task in UpdateTask")
 	metricsRegistry.GetTimer(
 		"time/total",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
 
@@ -4310,6 +4326,10 @@ func TestStorageYDBCreateRegularTasksUsingCrontabInNewMonthOrYear(t *testing.T) 
 		"time/total",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
 
 	_, err = storage.UpdateTask(ctx, actual)
 	require.NoError(t, err)
@@ -4346,6 +4366,10 @@ func TestStorageYDBCreateRegularTasksUsingCrontabInNewMonthOrYear(t *testing.T) 
 	actual.Status = TaskStatusFinished
 	metricsRegistry.GetTimer(
 		"time/total",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
 
@@ -4447,6 +4471,10 @@ func TestStorageYDBRegularTaskShouldNotBeCreatedIfPreviousCrontabTaskIsNotFinish
 	currTask.Status = TaskStatusFinished
 	metricsRegistry.GetTimer(
 		"time/total",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
 
@@ -4581,6 +4609,10 @@ func TestStorageYDBClearEndedTasks(t *testing.T) {
 	).On("Add", int64(1)).Times(4)
 	metricsRegistry.GetTimer(
 		"time/total",
+		map[string]string{"type": "task"},
+	).On("RecordDuration", mock.Anything).Twice()
+	metricsRegistry.GetTimer(
+		"time/inflight",
 		map[string]string{"type": "task"},
 	).On("RecordDuration", mock.Anything).Twice()
 
@@ -4753,6 +4785,10 @@ func TestStorageYDBPauseResumeTask(t *testing.T) {
 	task.Status = TaskStatusFinished
 	metricsRegistry.GetTimer(
 		"time/total",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
 
