@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     import.cpp
     cli_arrow_helpers.cpp

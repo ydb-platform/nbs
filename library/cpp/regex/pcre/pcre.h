@@ -153,7 +153,7 @@ namespace NPcre {
             size_t ovecsize = (initialWorkspaceSize + 1) * 3;
             while (true) {
                 NStackArray::TStackArray<int> ovector(ALLOC_ON_STACK(int, ovecsize));
-                int rc = TTraits::Exec(Code.Get(), Extra.Get(), (TStringType) string.Data(), string.Size(), 0, executeFlags, ovector.data(), ovecsize);
+                int rc = TTraits::Exec(Code.Get(), Extra.Get(), (TStringType) string.Data(), string.size(), 0, executeFlags, ovector.data(), ovecsize);
                 if (rc > 0) {
                     TPcreMatches result(Reserve(rc >> 1));
                     for (int i = 0, pos = 0; i < rc; ++i) {
@@ -188,4 +188,3 @@ namespace NPcre {
         }
     };
 }
-

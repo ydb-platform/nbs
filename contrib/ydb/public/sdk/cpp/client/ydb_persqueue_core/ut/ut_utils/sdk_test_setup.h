@@ -130,7 +130,7 @@ public:
 
     void SetNetDataViaFile(const TString& netDataTsv) {
         NetDataFile = MakeHolder<TTempFileHandle>();
-        NetDataFile->Write(netDataTsv.Data(), netDataTsv.Size());
+        NetDataFile->Write(netDataTsv.Data(), netDataTsv.size());
         NetDataFile->FlushData();
         Server.ServerSettings.NetClassifierConfig.SetNetDataFilePath(NetDataFile->Name());
     }
@@ -224,7 +224,7 @@ public:
             Server.AnnoyingClient->KickNodeInHive(Server.CleverServer->GetRuntime(), i);
         }
     }
-   
+
     void AllowTablets() {
         for (ui32 i = 0; i < Server.CleverServer->StaticNodes() + Server.CleverServer->DynamicNodes(); i++) {
             Server.AnnoyingClient->MarkNodeInHive(Server.CleverServer->GetRuntime(), i, true);
