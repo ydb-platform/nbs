@@ -8,7 +8,11 @@ ENDIF()
 
 TAG(ya:manual)
 
-ENV(NBS_INSTANCE_COUNT=1)
+TIMEOUT(300)
+
+ENV(NBS_INSTANCE_COUNT=2)
+
+SET(VIRTIOFS_SERVER_COUNT 2)
 
 DEPENDS(
     cloud/storage/core/tools/testing/fio/bin
@@ -23,7 +27,7 @@ TEST_SRCS(
     test.py
 )
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/local-kikimr/local-kikimr.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/local-kikimr/local-kikimr-with-cells.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/endpoint/vhost-endpoint.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/qemu.inc)
 
