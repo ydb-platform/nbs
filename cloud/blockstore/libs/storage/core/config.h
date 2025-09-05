@@ -723,6 +723,8 @@ public:
     [[nodiscard]] TDuration GetTrimFreshLogTimeout() const;
 
     [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
+
+    [[nodiscard]] TDuration GetDiscoveryNodeRegistrantTimeout() const;
 };
 
 ui64 GetAllocationUnit(

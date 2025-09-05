@@ -15,7 +15,11 @@ struct TNodeRegistrationSettings
 {
     ui32 MaxAttempts = 0;
     TDuration ErrorTimeout;
+    // Timeout for Cms load config
     TDuration RegistrationTimeout;
+
+    // Timeout for dynamic node registration via discovery service
+    TDuration DiscoveryNodeRegistrantTimeout;
 
     TDuration LoadConfigsFromCmsRetryMinDelay;
     TDuration LoadConfigsFromCmsRetryMaxDelay;
