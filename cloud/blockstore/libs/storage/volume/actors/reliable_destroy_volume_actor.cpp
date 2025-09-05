@@ -48,7 +48,7 @@ void TReliableDestroyVolumeActor::DestroyDisk(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
     request->Record.SetDiskId(DiskId);
-    request->Record.SetSync(false);
+    request->Record.SetUseStrictDiskId(true);
     NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
 }
 

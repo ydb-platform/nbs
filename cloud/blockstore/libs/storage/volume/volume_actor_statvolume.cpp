@@ -337,6 +337,7 @@ void TVolumeActor::HandleStatVolume(
         State->FillDeviceInfo(*volume);
         volume->SetResyncInProgress(State->IsMirrorResyncNeeded());
         FillCheckpoints(std::move(checkpoints), response->Record);
+        volume->SetSubstituteDiskId(State->GetSubstituteDiskId());
 
         LWTRACK(
             ResponseSent_Volume,
