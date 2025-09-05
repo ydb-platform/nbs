@@ -228,7 +228,10 @@ func (t *createDiskFromSnapshotTask) Cancel(
 	}
 
 	if diskMeta == nil {
-		return nil
+		return errors.NewNonCancellableErrorf(
+			"id %v is not accepted",
+			params.Disk.DiskId,
+		)
 	}
 
 	err = client.Delete(ctx, params.Disk.DiskId)

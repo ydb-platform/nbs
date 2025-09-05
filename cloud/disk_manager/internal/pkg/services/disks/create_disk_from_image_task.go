@@ -217,7 +217,7 @@ func (t *createDiskFromImageTask) Cancel(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	diskMeta, err := t.storage.DeleteDisk(
+	disk, err := t.storage.DeleteDisk(
 		ctx,
 		params.Disk.DiskId,
 		selfTaskID,
@@ -227,8 +227,11 @@ func (t *createDiskFromImageTask) Cancel(
 		return err
 	}
 
-	if diskMeta == nil {
-		return nil
+	if disk == nil {
+		return errors.NewNonCancellableErrorf(
+			"id %v is not accepted",
+			params.Disk.DiskId,
+		)
 	}
 
 	err = client.Delete(ctx, params.Disk.DiskId)
