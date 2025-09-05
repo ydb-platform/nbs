@@ -13183,10 +13183,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         partition.Flush();
 
-        // wait for tablet to reboot
+        // wait for trimfreshlog to complete
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Poison);
-        runtime->DispatchEvents(options, TDuration::Seconds(2));
+        options.FinalEvents.emplace_back(
+            TEvPartitionCommonPrivate::EvTrimFreshLogCompleted);
+        runtime->DispatchEvents(options);
 
         UNIT_ASSERT_VALUES_EQUAL(true, trimSeen);
         UNIT_ASSERT_VALUES_EQUAL(true, trimCompletedSeen);

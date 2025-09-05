@@ -1253,7 +1253,7 @@ private:
     TBarriers TrimFreshLogBarriers;
     TOperationState TrimFreshLogState;
     ui64 LastTrimFreshLogToCommitId = 0;
-    TDuration TrimFreshLogTimeout;
+    TDuration TrimFreshLogBackoffDelay;
 
 public:
     TBarriers& GetTrimFreshLogBarriers()
@@ -1276,20 +1276,23 @@ public:
         return TrimFreshLogState;
     }
 
-    TDuration GetTrimFreshLogTimeout()
+    TDuration GetTrimFreshLogBackoffDelay()
     {
-        return TrimFreshLogTimeout;
+        return TrimFreshLogBackoffDelay;
     }
 
     void RegisterTrimFreshLogError()
     {
-        TrimFreshLogTimeout = Min(
+        TrimFreshLogBackoffDelay = Min(
             TDuration::Seconds(5),
-            Max(TDuration::MilliSeconds(100), TrimFreshLogTimeout * 2)
+            Max(TDuration::MilliSeconds(100), TrimFreshLogBackoffDelay * 2)
         );
     }
 
-    void RegisterTrimFreshLogSuccess();
+    void RegisterTrimFreshLogSuccess()
+    {
+        TrimFreshLogBackoffDelay = {};
+    }
 
     ui64 GetLastTrimFreshLogToCommitId() const
     {

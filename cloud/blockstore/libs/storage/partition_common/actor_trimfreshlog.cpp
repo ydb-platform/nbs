@@ -169,7 +169,7 @@ void TTrimFreshLogActor::HandleWakeup(
 {
     Y_UNUSED(ev);
 
-    Error = MakeError(E_TIMEOUT, "TrimFreshLog timeout timer hit");
+    Error = MakeError(E_TIMEOUT, "TrimFreshLog timed out");
 
     ReportTrimFreshLogTimeout(
         FormatError(Error),
