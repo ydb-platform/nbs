@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 PEERDIR(
     contrib/libs/protobuf
     library/cpp/histogram/hdr

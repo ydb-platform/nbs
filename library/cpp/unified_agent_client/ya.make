@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 ADDINCL(
     contrib/libs/grpc
     contrib/libs/grpc/include

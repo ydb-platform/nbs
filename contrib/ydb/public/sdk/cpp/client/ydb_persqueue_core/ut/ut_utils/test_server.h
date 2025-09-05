@@ -15,7 +15,7 @@ static constexpr int DEBUG_LOG_LEVEL = 7;
 
 class TTestServer {
 public:
-    TTestServer(const NKikimr::Tests::TServerSettings& settings, 
+    TTestServer(const NKikimr::Tests::TServerSettings& settings,
                 bool start = true,
                 const TVector<NKikimrServices::EServiceKikimr>& logServices = TTestServer::LOGGED_SERVICES,
                 NActors::NLog::EPriority logPriority = NActors::NLog::PRI_DEBUG,
@@ -100,7 +100,7 @@ public:
         if (NetDataFile)
             return false;
         NetDataFile = MakeHolder<TTempFileHandle>();
-        NetDataFile->Write(content.Data(), content.Size());
+        NetDataFile->Write(content.Data(), content.size());
         NetDataFile->FlushData();
         ServerSettings.NetClassifierConfig.SetNetDataFilePath(NetDataFile->Name());
         return true;
