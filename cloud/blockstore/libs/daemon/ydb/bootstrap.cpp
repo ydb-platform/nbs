@@ -510,6 +510,7 @@ void TBootstrapYdb::InitKikimrService()
             Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
         .ErrorTimeout = Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
         .RegistrationTimeout = Configs->StorageConfig->GetNodeRegistrationTimeout(),
+        .DiscoveryNodeRegistrantTimeout = Configs->StorageConfig->GetDiscoveryNodeRegistrantTimeout(),
         .LoadConfigsFromCmsRetryMinDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
         .LoadConfigsFromCmsRetryMaxDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
         .LoadConfigsFromCmsTotalTimeout = Configs->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),

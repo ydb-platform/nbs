@@ -709,6 +709,8 @@ public:
     [[nodiscard]] bool GetVolumeThrottlingManagerEnabled() const;
     [[nodiscard]] TDuration
     GetVolumeThrottlingManagerNotificationPeriodSeconds() const;
+
+    [[nodiscard]] TDuration GetDiscoveryNodeRegistrantTimeout() const;
 };
 
 ui64 GetAllocationUnit(

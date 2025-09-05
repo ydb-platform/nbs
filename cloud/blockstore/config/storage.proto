@@ -1297,4 +1297,8 @@ message TStorageServiceConfig
     optional bool VolumeThrottlingManagerEnabled = 447;
     // Duration between VolumeThrottlingManager notifications to volumes
     optional uint32 VolumeThrottlingManagerNotificationPeriodSeconds = 448;
+
+    // Timeout for dynamic node registration via discovery service
+    // in ms
+    optional uint32 DiscoveryNodeRegistrantTimeout = 449;
 }
