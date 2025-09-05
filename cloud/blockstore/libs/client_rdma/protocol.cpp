@@ -29,11 +29,11 @@ NRdma::TProtoMessageSerializer* TBlockStoreProtocol::Serializer()
             RegisterProto<NProto::TPingRequest>(PingRequest);
             RegisterProto<NProto::TPingResponse>(PingResponse);
 
-            RegisterProto<NProto::TMountVolumeRequest>(EvMountVolumeRequest);
-            RegisterProto<NProto::TMountVolumeResponse>(EvMountVolumeResponse);
+            RegisterProto<NProto::TMountVolumeRequest>(MountVolumeRequest);
+            RegisterProto<NProto::TMountVolumeResponse>(MountVolumeResponse);
 
-            RegisterProto<NProto::TUnmountVolumeRequest>(EvUnmountVolumeRequest);
-            RegisterProto<NProto::TUnmountVolumeResponse>(EvUnmountVolumeResponse);
+            RegisterProto<NProto::TUnmountVolumeRequest>(UnmountVolumeRequest);
+            RegisterProto<NProto::TUnmountVolumeResponse>(UnmountVolumeResponse);
         }
     };
 

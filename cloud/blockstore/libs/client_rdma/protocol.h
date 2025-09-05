@@ -24,11 +24,11 @@ struct TBlockStoreProtocol
         PingRequest = 7,
         PingResponse = 8,
 
-        EvMountVolumeRequest = 9,
-        EvMountVolumeResponse = 10,
+        MountVolumeRequest = 9,
+        MountVolumeResponse = 10,
 
-        EvUnmountVolumeRequest = 11,
-        EvUnmountVolumeResponse = 12,
+        UnmountVolumeRequest = 11,
+        UnmountVolumeResponse = 12,
     };
 
     static NRdma::TProtoMessageSerializer* Serializer();

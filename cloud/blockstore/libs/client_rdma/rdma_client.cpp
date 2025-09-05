@@ -422,19 +422,47 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TProtoRequest, typename TProtoResponse>
+struct TPingMethod
+{
+    static constexpr TBlockStoreProtocol::EMessageType ResponseType =
+        TBlockStoreProtocol::EMessageType::PingResponse;
+
+    using TRequest = NProto::TPingRequest;
+    using TResponse = NProto::TPingResponse;
+};
+
+struct TMountVolumeMethod
+{
+    static constexpr TBlockStoreProtocol::EMessageType ResponseType =
+        TBlockStoreProtocol::EMessageType::MountVolumeResponse;
+
+    using TRequest = NProto::TMountVolumeRequest;
+    using TResponse = NProto::TMountVolumeResponse;
+};
+
+struct TUnmountVolumeMethod
+{
+    static constexpr TBlockStoreProtocol::EMessageType ResponseType =
+        TBlockStoreProtocol::EMessageType::UnmountVolumeResponse;
+
+    using TRequest = NProto::TUnmountVolumeRequest;
+    using TResponse = NProto::TUnmountVolumeResponse;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
 class TProtoMessageHandler final
     : public IRequestHandler
 {
 public:
-    using TRequest = TProtoRequest;
-    using TResponse = TProtoResponse;
+    using TRequest =  TMethod::TRequest;
+    using TResponse = TMethod::TResponse;
 
 private:
     const TCallContextPtr CallContext;
     const std::shared_ptr<TRequest> Request;
     const ITraceSerializerPtr TraceSerializer;
-    const bool IsAlignedDataEnabled;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
     NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
@@ -448,8 +476,8 @@ public:
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , TraceSerializer(std::move(traceSerializer))
-        , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
+        Y_UNUSED(isAlignedDataEnabled);
     }
 
     size_t GetRequestSize() const
@@ -487,7 +515,7 @@ public:
         }
 
         const auto& response = resultOrError.GetResult();
-        Y_ENSURE(response.MsgId == TBlockStoreProtocol::ZeroBlocksResponse);
+        Y_ENSURE(response.MsgId == TMethod::ResponseType);
         Y_ENSURE(response.Data.length() == 0);
 
         auto& responseMsg = static_cast<TResponse&>(*response.Proto);
@@ -548,9 +576,7 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TMountVolumeRequest> request) override
     {
-        using THandler = TProtoMessageHandler<
-            NProto::TMountVolumeRequest,
-            NProto::TMountVolumeResponse>;
+        using THandler = TProtoMessageHandler<TMountVolumeMethod>;
         return HandleRequest<THandler>(
             std::move(callContext),
             std::move(request));
@@ -560,9 +586,7 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TUnmountVolumeRequest> request) override
     {
-        using THandler = TProtoMessageHandler<
-            NProto::TUnmountVolumeRequest,
-            NProto::TUnmountVolumeResponse>;
+        using THandler = TProtoMessageHandler<TUnmountVolumeMethod>;
         return HandleRequest<THandler>(
             std::move(callContext),
             std::move(request));
@@ -573,7 +597,7 @@ public:
         std::shared_ptr<NProto::TPingRequest> request) override
     {
         using THandler =
-            TProtoMessageHandler<NProto::TPingRequest, NProto::TPingResponse>;
+            TProtoMessageHandler<TPingMethod>;
         return HandleRequest<THandler>(
             std::move(callContext),
             std::move(request));
