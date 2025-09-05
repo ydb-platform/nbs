@@ -144,7 +144,8 @@ class FilestoreCliClient:
             mount_seqno,
             readonly,
             persistent=False,
-            client_id=""):
+            client_id="",
+            vhost_queue_count=0):
 
         cmd = [
             self.__binary_path, "startendpoint",
@@ -152,7 +153,12 @@ class FilestoreCliClient:
             "--socket-path", socket,
             "--mount-seqno", str(mount_seqno),
             "--client-id", client_id,
-        ] + self.__cmd_opts(vhost=True)
+        ]
+
+        if vhost_queue_count:
+            cmd += ["--vhost-queue-count", str(vhost_queue_count)]
+
+        cmd += self.__cmd_opts(vhost=True)
 
         if readonly:
             cmd.append("--mount-readonly")
@@ -384,7 +390,8 @@ def create_endpoint(
         endpoint_storage_dir,
         mount_seqno=0,
         readonly=False,
-        client_id=""):
+        client_id="",
+        vhost_queue_count=0):
 
     _uid = str(uuid.uuid4())
 
@@ -400,7 +407,8 @@ def create_endpoint(
         mount_seqno,
         readonly,
         persistent=persistent,
-        client_id=client_id)
+        client_id=client_id,
+        vhost_queue_count=vhost_queue_count)
 
     return socket
 

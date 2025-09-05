@@ -20,6 +20,8 @@ SET(
     cloud/filestore/tests/common_configs/nfs-storage-newfeatures-patch.txt
 )
 
+SET(FILESTORE_VHOST_QUEUE_COUNT 8)
+
 SET(QEMU_VIRTIO fs)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
