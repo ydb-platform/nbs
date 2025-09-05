@@ -43,6 +43,8 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
+    void SetVolumePreemptionType(NProto::EVolumePreemptionType volumePreemptionType);
+
     void Register(NKikimr::TControlBoard& controlBoard);
 
     static TStorageConfigPtr Merge(

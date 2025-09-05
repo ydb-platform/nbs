@@ -8,10 +8,13 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <cloud/storage/core/protos/config_dispatcher_settings.pb.h>
+
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/library/actors/core/defs.h>
 
+#include <util/generic/map.h>
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
 
@@ -39,6 +42,8 @@ using INodeRegistrantPtr = std::unique_ptr<INodeRegistrant>;
 
 struct TRegisterDynamicNodeOptions
 {
+    using TNodeLabels = TMap<TString, TString>;
+
     TString Domain;
     TString SchemeShardDir;
 
@@ -56,6 +61,8 @@ struct TRegisterDynamicNodeOptions
     bool LoadCmsConfigs = false;
 
     TNodeRegistrationSettings Settings;
+
+    TNodeLabels Labels;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

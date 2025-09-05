@@ -1,5 +1,6 @@
 BUILD_ROOT="../cloud/blockstore/buildall"
 YDBD_BIN="$BUILD_ROOT/contrib/ydb/apps/ydbd/ydbd"
+YDB_BIN="$BUILD_ROOT/contrib/ydb/apps/ydb/ydb"
 NBSD_BIN="$BUILD_ROOT/cloud/blockstore/apps/server/nbsd"
 BLOCKSTORE_CLIENT_BIN="$BUILD_ROOT/cloud/blockstore/apps/client/blockstore-client"
 BLOCKSTORE_VHOST_SERVER_BIN="$BUILD_ROOT/cloud/blockstore/vhost-server/blockstore-vhost-server"
@@ -14,6 +15,10 @@ do
     return 1
   fi
 done
+
+function ydb {
+  LD_LIBRARY_PATH=$(dirname $YDB_BIN) $YDB_BIN "$@"
+}
 
 function ydbd {
   LD_LIBRARY_PATH=$(dirname $YDBD_BIN) $YDBD_BIN "$@"
