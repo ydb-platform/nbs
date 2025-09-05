@@ -413,6 +413,13 @@ void TServerStats::RequestCompleted(
         errorKind = EDiagnosticsErrorKind::ErrorSilent;
     }
 
+    if (errorKind != EDiagnosticsErrorKind::Success && req.CellRequest) {
+        // We want to exclude from our metrics errors resulting from requests
+        // coming from other cells, since those errors will already appear
+        // in the metrics of the host that sent the request
+        errorKind = EDiagnosticsErrorKind::Success;
+    }
+
     auto calcMaxTime = callContext.GetHasUncountableRejects()
                            ? ECalcMaxTime::DISABLE
                            : ECalcMaxTime::ENABLE;
