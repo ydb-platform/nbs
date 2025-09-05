@@ -27,7 +27,6 @@ private:
     const TRequestInfoPtr RequestInfo;
     const NProtoPrivate::TGetStorageStatsRequest Request;
     TString MainFileSystemId;
-    bool FetchStatsFromMain;
     const google::protobuf::RepeatedPtrField<TString> ShardIds;
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> Response;
     TVector<TShardStats> ShardStats;
@@ -40,7 +39,6 @@ public:
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TGetStorageStatsRequest request,
         TString mainFileSystemId,
-        bool fetchStatsFromMain,
         google::protobuf::RepeatedPtrField<TString> shardIds,
         std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response);
 
@@ -76,7 +74,6 @@ TAggregateStatsActor::TAggregateStatsActor(
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TGetStorageStatsRequest request,
         TString mainFileSystemId,
-        bool fetchStatsFromMain,
         google::protobuf::RepeatedPtrField<TString> shardIds,
         std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response)
     : LogTag(std::move(logTag))
@@ -84,7 +81,6 @@ TAggregateStatsActor::TAggregateStatsActor(
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , MainFileSystemId(std::move(mainFileSystemId))
-    , FetchStatsFromMain(fetchStatsFromMain)
     , ShardIds(std::move(shardIds))
     , Response(std::move(response))
     , ShardStats(ShardIds.size())
@@ -103,7 +99,7 @@ void TAggregateStatsActor::SendRequests(const TActorContext& ctx)
         SendRequestToFileSystem(ctx, shardId, cookie++);
     }
 
-    if (FetchStatsFromMain) {
+    if (!MainFileSystemId.empty()) {
         SendRequestToFileSystem(ctx, MainFileSystemId, cookie);
     }
 }
@@ -140,7 +136,7 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
     const auto* msg = ev->Get();
 
     const int requestsCount =
-        FetchStatsFromMain ? ShardIds.size() + 1 : ShardIds.size();
+        ShardIds.size() + (MainFileSystemId.empty() ? 0 : 1);
     TABLET_VERIFY(ev->Cookie < static_cast<ui64>(requestsCount));
     const TString& fileSystemId =
         ev->Cookie < static_cast<ui64>(ShardIds.size()) ? ShardIds[ev->Cookie]
@@ -894,7 +890,7 @@ void TIndexTabletActor::HandleUpdateCounters(
             std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
         auto* stats = response->Record.MutableStats();
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-        // if shardIds isn't empty and current tablet is a shard, it will
+        // If shardIds isn't empty and the current tablet is a shard, it will
         // collect self stats via TAggregateStatsActor
         if (shardIds.empty() || IsMainTablet()) {
             FillSelfStorageStats(stats);
@@ -909,8 +905,7 @@ void TIndexTabletActor::HandleUpdateCounters(
             SelfId(),
             TRequestInfoPtr(),
             NProtoPrivate::TGetStorageStatsRequest(),
-            GetFileSystem().GetMainFileSystemId(),
-            !IsMainTablet(),
+            !IsMainTablet() ? GetFileSystem().GetMainFileSystemId() : TString(),
             shardIds,
             std::move(response));
 
@@ -989,9 +984,8 @@ void TIndexTabletActor::HandleGetStorageStats(
     // shard <-> shard stats exchange which is handled in HandleUpdateCounters
     // or it's required by STATS_REQUEST_MODE_FORCE_FETCH_SHARDS)
     const bool pollShards =
-        req.GetMode() != NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF &&
-        (req.GetMode() ==
-             NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS ||
+        req.GetMode() == NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS ||
+        (req.GetMode() != NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF &&
          IsMainTablet());
     const auto& shardIds = pollShards
         ? GetFileSystem().GetShardFileSystemIds()
@@ -1057,7 +1051,7 @@ void TIndexTabletActor::HandleGetStorageStats(
     requestInfo->StartedTs = ctx.Now();
 
     if (!IsMainTablet()) {
-        // if current tablet is a shard, it will collect self stats via
+        // If the current tablet is a shard, it will collect self stats via
         // TAggregateStatsActor
         stats->Clear();
     }
@@ -1067,8 +1061,7 @@ void TIndexTabletActor::HandleGetStorageStats(
         SelfId(),
         std::move(requestInfo),
         std::move(req),
-        GetFileSystem().GetMainFileSystemId(),
-        !IsMainTablet(),
+        !IsMainTablet() ? GetFileSystem().GetMainFileSystemId() : TString(),
         shardIds,
         std::move(response));
 
