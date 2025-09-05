@@ -1315,4 +1315,8 @@ message TStorageServiceConfig
     // Min percentage of reassignable fresh channels after which reassign requests
     // are sent.
     optional uint32 ReassignFreshChannelsPercentageThreshold = 453;
+
+    // Enables data integrity validation for the YDB-based disks.
+    // See "EnableChecksumValidation" in server.proto for more details.
+    optional bool EnableChecksumValidationForYdbBasedDisks = 454;
 }
