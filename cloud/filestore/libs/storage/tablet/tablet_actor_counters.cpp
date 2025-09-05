@@ -991,10 +991,7 @@ void TIndexTabletActor::HandleGetStorageStats(
         ? GetFileSystem().GetShardFileSystemIds()
         : Default<google::protobuf::RepeatedPtrField<TString>>();
 
-    const bool useCache =
-        req.GetAllowCache() &&
-        req.GetMode() != NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF;
-    if (useCache) {
+    if (req.GetAllowCache()) {
         *stats = CachedAggregateStats;
         const ui32 shardMetricsCount =
             Min<ui32>(shardIds.size(), CachedShardStats.size());
@@ -1038,7 +1035,7 @@ void TIndexTabletActor::HandleGetStorageStats(
         out->SetGarbageBlockCount(r.Stats.GarbageBlocksCount);
     }
 
-    if (useCache || shardIds.empty()) {
+    if (req.GetAllowCache() || shardIds.empty()) {
         Metrics.StatFileStore.Update(1, 0, TDuration::Zero());
         NCloud::Reply(ctx, *ev, std::move(response));
         return;

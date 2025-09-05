@@ -159,14 +159,12 @@ message TStorageStats
 
 enum StatsRequestMode
 {
-    // Statistics form shards is fetched for a mainfilesystem and not fetched
-    // for shards. Cache usage depends on AllowCache.
+    // Statistics form shards is fetched for a main filesystem and not fetched
+    // for shards.
     STATS_REQUEST_MODE_DEFAULT = 0;
-    // Statistcis from shards is always fetched. Cache usage depends on
-    // AllowCache.
+    // Statistcis from shards is always fetched.
     STATS_REQUEST_MODE_FORCE_FETCH_SHARDS = 1;
-    // Own statics is always returned. In order to return most recent statistics
-    // cache is not used.
+    // Own statics is always returned.
     STATS_REQUEST_MODE_GET_ONLY_SELF = 2;
 }
 
