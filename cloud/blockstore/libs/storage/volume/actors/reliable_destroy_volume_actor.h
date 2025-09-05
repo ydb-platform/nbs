@@ -14,8 +14,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDestroyVolumeActor final
-    : public NActors::TActorBootstrapped<TDestroyVolumeActor>
+class TReliableDestroyVolumeActor final
+    : public NActors::TActorBootstrapped<TReliableDestroyVolumeActor>
 {
 private:
     const TChildLogTitle LogTitle;
@@ -28,7 +28,7 @@ private:
     size_t TryCount = 0;
 
 public:
-    TDestroyVolumeActor(
+    TReliableDestroyVolumeActor(
         TChildLogTitle logTitle,
         TRequestInfoPtr requestInfo,
         TString diskId);

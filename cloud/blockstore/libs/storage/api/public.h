@@ -10,7 +10,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 constexpr TStringBuf IntermediateWriteBufferTagName =
     "use-intermediate-write-buffer";
-constexpr TStringBuf OutdatedVolumeTagName = "outdated";
+constexpr TStringBuf LogicalVolumeIdTagName = "logical-volume-id";
 
 ////////////////////////////////////////////////////////////////////////////////
 // BackpressureReport event descriptor

@@ -111,29 +111,28 @@ public:
         return Primary.Client->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                              \
-    TFuture<NProto::T##name##Response> name(                                \
-        TCallContextPtr callContext,                                        \
-        std::shared_ptr<NProto::T##name##Request> request) override         \
-    {                                                                       \
-        constexpr bool isSwitchableRequest = IsReadWriteRequest(            \
-            GetBlockStoreRequest<NProto::T##name##Request>());              \
-        if constexpr (isSwitchableRequest) {                                \
-            if (Switched) {                                                 \
-                STORAGE_INFO(                                               \
-                    "Switcher forward " << #name << " from "                \
-                                        << Primary.DiskId.Quote() << " to " \
-                                        << Secondary.DiskId.Quote());       \
-                SetDiskIdIfExists(*request, Secondary.DiskId);              \
-                SetSessionIdIfExists(*request, Secondary.SessionId);        \
-                return Secondary.Client->name(                              \
-                    std::move(callContext),                                 \
-                    std::move(request));                                    \
-            }                                                               \
-        }                                                                   \
-        return Primary.Client->name(                                        \
-            std::move(callContext),                                         \
-            std::move(request));                                            \
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                \
+    TFuture<NProto::T##name##Response> name(                                  \
+        TCallContextPtr callContext,                                          \
+        std::shared_ptr<NProto::T##name##Request> request) override           \
+    {                                                                         \
+        constexpr bool isSwitchableRequest = IsReadWriteRequest(              \
+            GetBlockStoreRequest<NProto::T##name##Request>());                \
+        if constexpr (isSwitchableRequest) {                                  \
+            if (Switched) {                                                   \
+                STORAGE_DEBUG(                                                \
+                    "Forward " << #name << " from " << Primary.DiskId.Quote() \
+                               << " to " << Secondary.DiskId.Quote());        \
+                SetDiskIdIfExists(*request, Secondary.DiskId);                \
+                SetSessionIdIfExists(*request, Secondary.SessionId);          \
+                return Secondary.Client->name(                                \
+                    std::move(callContext),                                   \
+                    std::move(request));                                      \
+            }                                                                 \
+        }                                                                     \
+        return Primary.Client->name(                                          \
+            std::move(callContext),                                           \
+            std::move(request));                                              \
     }
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)

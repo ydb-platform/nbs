@@ -1,6 +1,6 @@
-#include "destroy_volume_actor.h"
+#include "reliable_destroy_volume_actor.h"
 
-#include "cloud/storage/core/libs/common/format.h"
+#include <cloud/storage/core/libs/common/format.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -8,7 +8,7 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDestroyVolumeActor::TDestroyVolumeActor(
+TReliableDestroyVolumeActor::TReliableDestroyVolumeActor(
     TChildLogTitle logTitle,
     TRequestInfoPtr requestInfo,
     TString diskId)
@@ -17,14 +17,14 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     , DiskId(std::move(diskId))
 {}
 
-void TDestroyVolumeActor::Bootstrap(const TActorContext& ctx)
+void TReliableDestroyVolumeActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
     DestroyDisk(ctx);
 }
 
-void TDestroyVolumeActor::ReplyAndDie(
+void TReliableDestroyVolumeActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
@@ -36,11 +36,11 @@ void TDestroyVolumeActor::ReplyAndDie(
     Die(ctx);
 }
 
-void TDestroyVolumeActor::DestroyDisk(const TActorContext& ctx)
+void TReliableDestroyVolumeActor::DestroyDisk(const TActorContext& ctx)
 {
     LOG_INFO(
         ctx,
-        TBlockStoreComponents::DISK_REGISTRY,
+        TBlockStoreComponents::VOLUME,
         "%s Destroy volume DiskId=%s, try# %lu",
         LogTitle.GetWithTime().c_str(),
         DiskId.Quote().c_str(),
@@ -52,7 +52,7 @@ void TDestroyVolumeActor::DestroyDisk(const TActorContext& ctx)
     NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
 }
 
-STFUNC(TDestroyVolumeActor::StateWork)
+STFUNC(TReliableDestroyVolumeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
@@ -62,13 +62,13 @@ STFUNC(TDestroyVolumeActor::StateWork)
         default:
             HandleUnexpectedEvent(
                 ev,
-                TBlockStoreComponents::DISK_REGISTRY_WORKER,
+                TBlockStoreComponents::VOLUME,
                 __PRETTY_FUNCTION__);
             break;
     }
 }
 
-void TDestroyVolumeActor::HandleDestroyVolumeResponse(
+void TReliableDestroyVolumeActor::HandleDestroyVolumeResponse(
     const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -76,7 +76,7 @@ void TDestroyVolumeActor::HandleDestroyVolumeResponse(
         auto timeout = DelayProvider.GetDelayAndIncrease();
         LOG_ERROR(
             ctx,
-            TBlockStoreComponents::DISK_REGISTRY,
+            TBlockStoreComponents::VOLUME,
             "%s Volume destruction failed: DiskId=%s, Error=%s, Will retry "
             "after %s",
             LogTitle.GetWithTime().c_str(),
@@ -90,7 +90,7 @@ void TDestroyVolumeActor::HandleDestroyVolumeResponse(
 
     LOG_INFO(
         ctx,
-        TBlockStoreComponents::DISK_REGISTRY,
+        TBlockStoreComponents::VOLUME,
         "%s Volume destruction succeeded: DiskId=%s",
         LogTitle.GetWithTime().c_str(),
         DiskId.Quote().c_str());
@@ -98,7 +98,7 @@ void TDestroyVolumeActor::HandleDestroyVolumeResponse(
     ReplyAndDie(ctx, MakeError(S_OK));
 }
 
-void TDestroyVolumeActor::HandleWakeup(
+void TReliableDestroyVolumeActor::HandleWakeup(
     const NActors::TEvents::TEvWakeup::TPtr& ev,
     const NActors::TActorContext& ctx)
 {

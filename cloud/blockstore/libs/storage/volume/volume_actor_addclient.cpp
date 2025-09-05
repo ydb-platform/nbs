@@ -42,10 +42,11 @@ std::unique_ptr<TEvVolume::TEvAddClientResponse> CreateAddClientResponse(
     response->Record.SetClientId(std::move(clientId));
     response->Record.SetForceTabletRestart(forceTabletRestart);
 
-    auto& volumeConfig = state.GetMeta().GetVolumeConfig();
+    const auto& volumeConfig = state.GetMeta().GetVolumeConfig();
     auto* volumeInfo = response->Record.MutableVolume();
     VolumeConfigToVolume(volumeConfig, *volumeInfo);
     volumeInfo->SetInstanceId(std::move(instanceId));
+    volumeInfo->SetSubstituteDiskId(state.GetSubstituteDiskId());
     state.FillDeviceInfo(*volumeInfo);
 
     return response;
@@ -396,28 +397,6 @@ void TVolumeActor::HandleAddClient(
     const auto fillSeqNumber = msg->Record.GetFillSeqNumber();
     const auto fillGeneration = msg->Record.GetFillGeneration();
     const auto& host = msg->Record.GetHost();
-
-    const bool isOutdated =
-        ParseTags(State->GetMeta().GetVolumeConfig().GetTagsStr())
-            .contains(OutdatedVolumeTagName);
-    if (isOutdated) {
-        LOG_INFO(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s AddClientRequest to outdate volume %s",
-            LogTitle.GetWithTime().c_str(),
-            clientId.Quote().c_str());
-/*
-        NCloud::Reply(
-            ctx,
-            *ev,
-            std::make_unique<TEvVolume::TEvAddClientResponse>(MakeError(
-                E_BS_INVALID_SESSION,
-                "Can't add client to outdated volume")));
-
-        return;
-*/
-    }
 
     // If event was forwarded through pipe, its recipient and recipient rewrite
     // would be different

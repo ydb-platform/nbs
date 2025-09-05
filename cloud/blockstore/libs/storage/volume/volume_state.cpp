@@ -1028,16 +1028,6 @@ std::optional<TLeaderDiskInfo> TVolumeState::FindLeader(
     return std::nullopt;
 }
 
-std::optional<TLeaderDiskInfo> TVolumeState::FindLeaderByHash(ui64 hash) const
-{
-    for (const auto& leader: LeaderDisks) {
-        if (leader.Link.GetHash() == hash) {
-            return leader;
-        }
-    }
-    return std::nullopt;
-}
-
 void TVolumeState::AddOrUpdateLeader(TLeaderDiskInfo leader)
 {
     for (auto& leaderInfo: LeaderDisks) {
@@ -1061,17 +1051,15 @@ const TLeaderDisks& TVolumeState::GetAllLeaders() const
     return LeaderDisks;
 }
 
-TLinkCompletedRequestInfo& TVolumeState::AccessLinkCompletedRequests(
-    const TLeaderFollowerLink& link)
+TString TVolumeState::GetSubstituteDiskId() const
 {
-    for (auto& requestInfo: LinkCompletedRequests) {
-        if (requestInfo.Link.Match(link)) {
-            return requestInfo;
+    for (const auto& followerInfo: FollowerDisks) {
+        if (followerInfo.State == TFollowerDiskInfo::EState::DataReady) {
+            return followerInfo.Link.FollowerDiskId;
         }
     }
 
-    LinkCompletedRequests.push_back(TLinkCompletedRequestInfo{.Link = link});
-    return LinkCompletedRequests.back();
+    return {};
 }
 
 void TVolumeState::UpdateScrubberCounters(TScrubbingInfo counters)

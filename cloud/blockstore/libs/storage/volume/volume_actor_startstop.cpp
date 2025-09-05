@@ -4,7 +4,6 @@
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/bootstrapper/bootstrapper.h>
-#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/partition/part.h>
 #include <cloud/blockstore/libs/storage/partition2/part2.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
@@ -364,9 +363,6 @@ TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
             case TFollowerDiskInfo::EState::Preparing:
             case TFollowerDiskInfo::EState::DataReady: {
                 // Creating an actor wrapper.
-                auto tags =
-                    ParseTags(State->GetMeta().GetVolumeConfig().GetTagsStr());
-
                 auto actorId = NCloud::Register<TFollowerDiskActor>(
                     ctx,
                     LogTitle,
@@ -374,7 +370,6 @@ TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
                     DiagnosticsConfig,
                     ProfileLog,
                     BlockDigestGenerator,
-                    EndpointEventHandler,
                     TFollowerDiskActorParams{
                         .LeaderMediaKind = State->GetStorageMediaKind(),
                         .LeaderDiskId = State->GetDiskId(),
@@ -384,7 +379,6 @@ TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
                         .LeaderPartitionActorId = actors.GetTop(),
                         .TakePartitionOwnership = takePartitionOwnership,
                         .ClientId = State->GetReadWriteAccessClientId(),
-                        .LeaderOutdated = tags.contains(OutdatedVolumeTagName),
                         .FollowerDiskInfo = follower});
                 actors.Push(
                     actorId,

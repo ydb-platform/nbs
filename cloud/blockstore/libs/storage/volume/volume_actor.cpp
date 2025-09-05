@@ -1059,9 +1059,6 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvVolumePrivate::TEvLinkOnFollowerDestroyed,
             HandleLinkOnFollowerDestroyed);
-        HFunc(
-            TEvService::TEvAddTagsResponse,
-            HandleAddOutdatedTagResponse);
 
         HFunc(
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,

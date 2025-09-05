@@ -4,33 +4,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-namespace {
 ////////////////////////////////////////////////////////////////////////////////
-
-std::unique_ptr<TEvService::TEvAddTagsRequest> MakeAddOutdatedRequest(
-    const TLeaderFollowerLink& link)
-{
-    TString tag = TString(OutdatedVolumeTagName) + "=" + link.FollowerDiskId;
-    TVector<TString> tags({std::move(tag)});
-    auto result = std::make_unique<TEvService::TEvAddTagsRequest>(
-        link.LeaderDiskId,
-        std::move(tags));
-    return result;
-}
-
-bool IsPathDoesNotExistError(const NProto::TError& error)
-{
-    if (HasError(error) &&
-        FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD)
-    {
-        const auto status =
-            static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
-        return status == NKikimrScheme::StatusPathDoesNotExist;
-    }
-    return false;
-}
-
-}   // namespace
 
 bool TVolumeActor::PrepareUpdateLeader(
     const TActorContext& ctx,
@@ -166,20 +140,23 @@ void TVolumeActor::DestroyLeaderLink(
 }
 
 void TVolumeActor::UpdateLeaderLink(
+    TRequestInfoPtr requestInfo,
     TLeaderFollowerLink link,
     TLeaderDiskInfo::EState state,
     const NActors::TActorContext& ctx)
 {
     auto currenLeader = State->FindLeader(link);
-    auto& requests = State->AccessLinkCompletedRequests(currenLeader->Link);
-    auto requestInfo = requests.RequestInfo;
-    requests.RequestInfo = {};
 
-    if (!requestInfo) {
+    if (!currenLeader) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
+                MakeError(S_FALSE)));
         return;
     }
 
-    if (!currenLeader || currenLeader->State == state) {
+    if(currenLeader->State == state) {
         NCloud::Reply(
             ctx,
             *requestInfo,
@@ -197,127 +174,6 @@ void TVolumeActor::UpdateLeaderLink(
         ctx,
         std::move(requestInfo),
         std::move(leaderInfo));
-}
-
-void TVolumeActor::AddOutdatedTagToLeader(
-    TRequestInfoPtr requestInfo,
-    TLeaderFollowerLink link,
-    const NActors::TActorContext& ctx)
-{
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s Add outdated tag to leader",
-        LogTitle.GetWithTime().c_str());
-
-    auto currenLeader = State->FindLeader(link);
-    if (!currenLeader) {
-        NCloud::Reply(
-            ctx,
-            *requestInfo,
-            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-                MakeError(S_ALREADY, "Link not found")));
-        return;
-    }
-
-    if (currenLeader->State == TLeaderDiskInfo::EState::Leader) {
-        NCloud::Reply(
-            ctx,
-            *requestInfo,
-            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-                MakeError(S_ALREADY, "Already in leader state")));
-        return;
-    }
-
-    auto& requests = State->AccessLinkCompletedRequests(currenLeader->Link);
-    if (requests.RequestInfo) {
-        NCloud::Reply(
-            ctx,
-            *requests.RequestInfo,
-            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-                MakeError(E_REJECTED, "New request arrived")));
-    }
-
-    requests.RequestInfo = requestInfo;
-    const ui64 cookie = currenLeader->Link.GetHash();
-    ctx.Send(
-        MakeStorageServiceId(),
-        MakeAddOutdatedRequest(currenLeader->Link),
-        0,   // flags
-        cookie);
-}
-
-void TVolumeActor::HandleAddOutdatedTagResponse(
-    const TEvService::TEvAddTagsResponse::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s HandleAddOutdatedTagResponse %lu %s",
-        LogTitle.GetWithTime().c_str(),
-        ev->Cookie,
-        FormatError(msg->GetError()).c_str());
-
-    auto currenLeader = State->FindLeaderByHash(ev->Cookie);
-    if (!currenLeader) {
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s Link with leader not found %lu %s",
-            LogTitle.GetWithTime().c_str(),
-            ev->Cookie,
-            FormatError(msg->GetError()).c_str());
-        return;
-    }
-
-    if (HasError(msg->GetError())) {
-        if (IsPathDoesNotExistError(msg->GetError())) {
-            LOG_WARN(
-                ctx,
-                TBlockStoreComponents::VOLUME,
-                "%s %s Leader volume outdated tag set error: %s. Leader volume "
-                "does not exist.",
-                LogTitle.GetWithTime().c_str(),
-                currenLeader->Link.Describe().c_str(),
-                FormatError(msg->GetError()).c_str());
-            UpdateLeaderLink(
-                currenLeader->Link,
-                TLeaderDiskInfo::EState::Leader,
-                ctx);
-            return;
-        }
-        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
-            LOG_WARN(
-                ctx,
-                TBlockStoreComponents::VOLUME,
-                "%s %s Leader volume outdated tag set retriable error: %s",
-                LogTitle.GetWithTime().c_str(),
-                currenLeader->Link.Describe().c_str(),
-                FormatError(msg->GetError()).c_str());
-            ctx.Schedule(
-                TDuration::Seconds(5),
-                std::make_unique<IEventHandle>(
-                    MakeStorageServiceId(),
-                    SelfId(),
-                    MakeAddOutdatedRequest(currenLeader->Link).release(),
-                    TEventFlags{0},
-                    currenLeader->Link.GetHash()));
-        } else {
-            LOG_WARN(
-                ctx,
-                TBlockStoreComponents::VOLUME,
-                "%s %s Leader volume outdated tag set non-retriable error: %s",
-                LogTitle.GetWithTime().c_str(),
-                currenLeader->Link.Describe().c_str(),
-                FormatError(msg->GetError()).c_str());
-        }
-        return;
-    }
-
-    UpdateLeaderLink(currenLeader->Link, TLeaderDiskInfo::EState::Leader, ctx);
 }
 
 void TVolumeActor::HandleUpdateLinkOnFollower(
@@ -354,10 +210,10 @@ void TVolumeActor::HandleUpdateLinkOnFollower(
             break;
         }
         case NProto::LINK_ACTION_COMPLETED: {
-            //BecomeLeader(std::move(requestInfo), std::move(link), ctx);
-            AddOutdatedTagToLeader(
+            UpdateLeaderLink(
                 std::move(requestInfo),
                 std::move(link),
+                TLeaderDiskInfo::EState::Leader,
                 ctx);
             break;
         }

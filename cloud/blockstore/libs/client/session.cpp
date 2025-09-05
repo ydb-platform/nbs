@@ -634,10 +634,6 @@ void TSession::ProcessMountResponse(
                 << " complete request");
 
             if (response.GetVolume().GetSubstituteDiskId()) {
-                STORAGE_INFO(
-                    "Need to switch disk for session.  "
-                    << response.GetVolume().GetDiskId().Quote() << " -> "
-                    << response.GetVolume().GetSubstituteDiskId().Quote());
                 if (auto switcher = SessionSwitcherPtr.lock()) {
                     switcher->SwitchSession(response.GetVolume());
                 }

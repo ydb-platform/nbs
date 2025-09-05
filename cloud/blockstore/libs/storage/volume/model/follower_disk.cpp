@@ -63,15 +63,6 @@ bool TLeaderFollowerLink::Match(const TLeaderFollowerLink& rhs) const
     return withoutUUID(*this) == withoutUUID(rhs);
 }
 
-ui64 TLeaderFollowerLink::GetHash() const
-{
-    return MultiHash(
-        LeaderDiskId,
-        LeaderShardId,
-        FollowerDiskId,
-        FollowerShardId);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TString TLeaderDiskInfo::Describe() const

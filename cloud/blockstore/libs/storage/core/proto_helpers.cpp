@@ -213,9 +213,6 @@ void VolumeConfigToVolume(
 
     auto tags = ParseTags(volumeConfig.GetTagsStr());
 
-    if (tags.contains(OutdatedVolumeTagName)) {
-        volume.SetSubstituteDiskId(tags.find(OutdatedVolumeTagName)->second);
-    }
 
     if (tags.contains("use-fastpath")) {
         volume.SetIsFastPathEnabled(true);

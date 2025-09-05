@@ -7,8 +7,6 @@
 #include <cloud/blockstore/libs/storage/volume/model/follower_disk.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
-#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -25,7 +23,6 @@ struct TFollowerDiskActorParams
     NActors::TActorId LeaderPartitionActorId;
     bool TakePartitionOwnership = false;
     TString ClientId;
-    bool LeaderOutdated = false;
 
     TFollowerDiskInfo FollowerDiskInfo;
 };
@@ -34,29 +31,17 @@ struct TFollowerDiskActorParams
 
 //   DataTransfer (migration in progress)
 //        |
-//        |                          /----------------------\
-//        v                          v                      |
-//    DataReady ->  [Add "outdated" tag to leader]          |
-//                              |        |       Error      |
-//        /---------------------/        \------------------/
-//        |
-//        |         OK               / ---------------------\
-//        v                          v                      |
-//   OutdatedTagSet    ->    [Switch session]               |
-//                              |        |       Error      |
-//        ----------------------/        \------------------/
+//        |                          /--------------------------\
+//        v                          v                          |
+//    DataReady -> [Propagate follower state (CopyCompleted)]   |
+//                              |        |            Error     |
+//        ----------------------/        \----------------------/
 //        |         OK
-//        |                                   / ----------------------\
-//        v                                   v                       |
-//   SessionSwitched  ->  [Propagate follower state (CopyCompleted)]  |
-//                              |        |            Error           |
-//        ----------------------/        \----------------------------/
-//        |         OK
-//        |         OK               / ---------------------\
-//        v                          v                      |
-//   FollowerPropagated  ->  [Destroy leader volume]        |
-//                              |        |      Error       |
-//        ----------------------/        \------------------/
+//        |                             / ---------------------\
+//        v                             v                      |
+//   LeadershipTransferred  ->  [Destroy leader volume]        |
+//                                 |        |      Error       |
+//        -------------------------/        \------------------/
 //        |         OK
 //        v
 //   Actor destroyed since it created by leader
@@ -70,7 +55,7 @@ public:
     {
         DataTransfer,
         DataReady,
-        OutdatedTagSet,
+        LeadershipTransferred,
     };
 
 private:
@@ -82,17 +67,13 @@ private:
     const NActors::TActorId LeaderVolumeActorId;
     const NActors::TActorId LeaderPartitionActorId;
     const bool TakePartitionOwnership = false;
-    const bool LeaderOutdated = false;
-    NServer::IEndpointEventHandlerPtr EndpointEventHandler;
+    const EState InitialState = EState::DataTransfer;
+
     TString ClientId;
 
     EState State = EState::DataTransfer;
     TFollowerDiskInfo FollowerDiskInfo;
     NActors::TActorId FollowerPartitionActorId;
-
-    TBackoffDelayProvider Backoff{
-        TDuration::Seconds(1),
-        TDuration::Seconds(30)};
 
 public:
     TFollowerDiskActor(
@@ -101,7 +82,6 @@ public:
         TDiagnosticsConfigPtr diagnosticConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
-        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         TFollowerDiskActorParams params);
 
     ~TFollowerDiskActor() override;
@@ -122,9 +102,10 @@ private:
         const NActors::TActorContext& ctx,
         const TFollowerDiskInfo& newDiskInfo);
 
-    void AdvanceState(const NActors::TActorContext& ctx);
-    void PropagateReadyStateToFollower(const NActors::TActorContext& ctx);
+    void AdvanceState(const NActors::TActorContext& ctx, EState newState);
+    void PropagateLeadershipToFollower(const NActors::TActorContext& ctx);
     void DestroyLeaderVolume(const NActors::TActorContext& ctx);
+    void RebootLeaderVolume(const NActors::TActorContext& ctx);
 
     template <typename TMethod>
     void ForwardRequestToLeaderPartition(
@@ -152,7 +133,7 @@ private:
         const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandlePropagateReadyStateToFollowerResponse(
+    void HandlePropagateLeadershipToFollowerResponse(
         const TEvVolumePrivate::TEvLinkOnFollowerCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 

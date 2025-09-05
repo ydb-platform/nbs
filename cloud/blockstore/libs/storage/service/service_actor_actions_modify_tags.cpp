@@ -416,38 +416,6 @@ void TServiceActor::HandleAddTags(
             }));
 }
 
-void TServiceActor::HandleRemoveTags(
-    const TEvService::TEvRemoveTagsRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-
-    auto requestInfo =
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-
-    NPrivateProto::TModifyTagsRequest modifyTagsRequest;
-    modifyTagsRequest.SetDiskId(msg->DiskId);
-    for (const auto& tag: msg->Tags) {
-        modifyTagsRequest.AddTagsToRemove(tag);
-    }
-
-    TString input;
-    google::protobuf::util::MessageToJsonString(modifyTagsRequest, &input);
-
-    NCloud::Register(
-        ctx,
-        std::make_unique<TModifyTagsActionActor>(
-            std::move(requestInfo),
-            std::move(input),
-            [](NProto::TError error)
-            {
-                auto response =
-                    std::make_unique<TEvService::TEvRemoveTagsResponse>(
-                        std::move(error));
-                return response;
-            }));
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TResultOrError<IActorPtr> TServiceActor::CreateModifyTagsActionActor(

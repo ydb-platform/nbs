@@ -1234,17 +1234,9 @@ private:
 
     // Update link to leader volume on follower side
     void UpdateLeaderLink(
-        TLeaderFollowerLink link,
-        TLeaderDiskInfo::EState state,
-        const NActors::TActorContext& ctx);
-
-    void AddOutdatedTagToLeader(
         TRequestInfoPtr requestInfo,
         TLeaderFollowerLink link,
-        const NActors::TActorContext& ctx);
-
-    void HandleAddOutdatedTagResponse(
-        const TEvService::TEvAddTagsResponse::TPtr& ev,
+        TLeaderDiskInfo::EState state,
         const NActors::TActorContext& ctx);
 
     void HandlePartCountersCombined(

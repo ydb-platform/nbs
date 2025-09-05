@@ -605,7 +605,6 @@ struct TEvVolumePrivate
     using TEvLinkOnFollowerCompleted =
         TResponseEvent<TLinkOnFollowerCompleted, EvLinkOnFollowerCompleted>;
 
-
     using TEvCreateLinkFinished =
         TResponseEvent<TCreateLinkFinished, EvCreateLinkFinished>;
 };
