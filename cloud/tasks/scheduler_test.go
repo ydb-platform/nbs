@@ -91,8 +91,8 @@ func (c *executionContextMock) IsHanging() bool {
 	return args.Bool(0)
 }
 
-func (c *executionContextMock) SetEstimate(estimatedDuration time.Duration) {
-	c.Called(estimatedDuration)
+func (c *executionContextMock) SetEstimatedInflightDuration(estimatedInflightDuration time.Duration) {
+	c.Called(estimatedInflightDuration)
 }
 
 func (c *executionContextMock) HasEvent(ctx context.Context, event int64) bool {

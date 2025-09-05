@@ -137,6 +137,9 @@ public:
     ui32 GetMaxParallelSecureErasesAllowed() const;
 
     bool GetUseLocalStorageSubmissionThread() const;
+    bool GetUseOneSubmissionThreadPerAIOServiceEnabled() const;
+
+    [[nodiscard]] bool GetKickOutOldClientsEnabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

@@ -19,6 +19,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
+#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
@@ -265,43 +266,60 @@ private:
 
     TVolumeSelfCountersPtr VolumeSelfCounters;
 
+    struct TAcquireDiskRequest
+    {
+        TString ClientId;
+        NProto::EVolumeAccessMode AccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
+        ui64 MountSeqNumber = 0;
+        TClientRequestPtr ClientRequest = nullptr;
+        bool ForceTabletRestart = false;
+        bool Retriable = false;
+    };
+
+    struct TReleaseDiskRequest
+    {
+        TString ClientId;
+        TClientRequestPtr ClientRequest = nullptr;
+        TVector<NProto::TDeviceConfig> DevicesToRelease;
+        bool Retriable = false;
+    };
+
     struct TAcquireReleaseDiskRequest
     {
         bool IsAcquire;
         TString ClientId;
-        NProto::EVolumeAccessMode AccessMode;
-        ui64 MountSeqNumber;
+        NProto::EVolumeAccessMode AccessMode =
+            NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_WRITE;
+        ui64 MountSeqNumber = 0;
         TClientRequestPtr ClientRequest;
         TVector<NProto::TDeviceConfig> DevicesToRelease;
+        const bool Retriable = false;
+        const bool ForceTabletRestart = false;
 
-        TAcquireReleaseDiskRequest(
-                TString clientId,
-                NProto::EVolumeAccessMode accessMode,
-                ui64 mountSeqNumber,
-                TClientRequestPtr clientRequest)
+        TAcquireReleaseDiskRequest(TAcquireDiskRequest request)
             : IsAcquire(true)
-            , ClientId(std::move(clientId))
-            , AccessMode(accessMode)
-            , MountSeqNumber(mountSeqNumber)
-            , ClientRequest(std::move(clientRequest))
-        {
-        }
+            , ClientId(std::move(request.ClientId))
+            , AccessMode(request.AccessMode)
+            , MountSeqNumber(request.MountSeqNumber)
+            , ClientRequest(std::move(request.ClientRequest))
+            , Retriable(request.Retriable)
+            , ForceTabletRestart(request.ForceTabletRestart)
+        {}
 
-        TAcquireReleaseDiskRequest(
-                TString clientId,
-                TClientRequestPtr clientRequest,
-                TVector<NProto::TDeviceConfig> devicesToRelease)
+        TAcquireReleaseDiskRequest(TReleaseDiskRequest request)
             : IsAcquire(false)
-            , ClientId(std::move(clientId))
-            , AccessMode(NProto::EVolumeAccessMode::
-                             VOLUME_ACCESS_READ_WRITE)   // doesn't matter
-            , MountSeqNumber(0)                          // doesn't matter
-            , ClientRequest(std::move(clientRequest))
-            , DevicesToRelease(std::move(devicesToRelease))
+            , ClientId(std::move(request.ClientId))
+            , ClientRequest(std::move(request.ClientRequest))
+            , DevicesToRelease(std::move(request.DevicesToRelease))
+            , Retriable(request.Retriable)
         {}
     };
+
     TList<TAcquireReleaseDiskRequest> AcquireReleaseDiskRequests;
     bool AcquireDiskScheduled = false;
+    TBackoffDelayProvider BackoffDelayProviderForAcquireReleaseDiskRequests{
+        Config->GetRetryAcquireReleaseDiskInitialDelay(),
+        Config->GetRetryAcquireReleaseDiskMaxDelay()};
 
     NProto::TError StorageAllocationResult;
     bool DiskAllocationScheduled = false;
@@ -565,6 +583,15 @@ private:
     ui64 GetBlocksCount() const;
 
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);
+    void AddAcquireReleaseDiskRequest(
+        const NActors::TActorContext& ctx,
+        TAcquireReleaseDiskRequest request);
+    void AddAcquireDiskRequest(
+        const NActors::TActorContext& ctx,
+        TAcquireDiskRequest request);
+    void AddReleaseDiskRequest(
+        const NActors::TActorContext& ctx,
+        TReleaseDiskRequest request);
     void ProcessNextAcquireReleaseDiskRequest(const NActors::TActorContext& ctx);
     void OnClientListUpdate(const NActors::TActorContext& ctx);
 
@@ -709,6 +736,26 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_ResetTransactionLatencyStats(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_ResetRequestLatencyStats(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetTransactionsInflight(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetRequestsInflight(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleHttpInfo_Default(
         const NActors::TActorContext& ctx,
         const TVolumeMountHistorySlice& history,
@@ -844,10 +891,18 @@ private:
         const TEvVolumePrivate::TEvDevicesAcquireFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void ForceAcquireDisk(const NActors::TActorContext& ctx);
+
     void AcquireDiskIfNeeded(const NActors::TActorContext& ctx);
+
+    void AcquireDiskImpl(const NActors::TActorContext& ctx, bool retriable);
+
     void ReleaseReplacedDevices(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TDeviceConfig>& replacedDevices);
+    void ReleaseDiskFromOldClients(
+        const NActors::TActorContext& ctx,
+        const TVector<TString>& removedClients);
 
     void ScheduleAcquireDiskIfNeeded(const NActors::TActorContext& ctx);
 
@@ -857,6 +912,10 @@ private:
 
     void HandleReacquireDisk(
         const TEvVolume::TEvReacquireDisk::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRetryAcquireReleaseDisk(
+        const TEvVolume::TEvRetryAcquireReleaseDisk::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRdmaUnavailable(
@@ -1147,6 +1206,10 @@ private:
 
     void HandleLongRunningBlobOperation(
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdateVolatileThrottlingConfig(
+        const TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     TActorsStack WrapWithShadowDiskActorIfNeeded(

@@ -58,6 +58,8 @@ namespace {
                                                                                \
     xxx(MaxParallelSecureErasesAllowed,     ui32,       1                     )\
     xxx(UseLocalStorageSubmissionThread,    bool,       true                  )\
+    xxx(KickOutOldClientsEnabled,           bool,       false                 )\
+    xxx(UseOneSubmissionThreadPerAIOServiceEnabled,     bool,       false     )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \

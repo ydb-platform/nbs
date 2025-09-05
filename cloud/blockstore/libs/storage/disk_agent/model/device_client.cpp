@@ -10,14 +10,32 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString DescribeDeviceOwner(
+    const auto& clientId,
+    const auto& diskId,
+    auto volumeGeneration)
+{
+    return TStringBuilder()
+           << "[clientId=" << clientId.Quote() << ", diskId=" << diskId.Quote()
+           << ", volumeGeneration=" << volumeGeneration << "]";
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TDeviceClient::TDeviceClient(
         TDuration releaseInactiveSessionsTimeout,
         TVector<TString> uuids,
-        TLog log)
+        TLog log,
+        bool kickOutOldClientsEnabled)
     : ReleaseInactiveSessionsTimeout(releaseInactiveSessionsTimeout)
     , Devices(MakeDevices(std::move(uuids)))
+    , KickOutOldClientsEnabled(kickOutOldClientsEnabled)
     , Log(std::move(log))
 {}
 
@@ -109,19 +127,30 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 << ", LastGeneration: " << deviceState->VolumeGeneration);
         }
 
+        const bool canKickOutClient =
+            deviceState->DiskId == diskId &&
+            deviceState->VolumeGeneration < volumeGeneration &&
+            KickOutOldClientsEnabled;
+
         if (IsReadWriteMode(accessMode)
                 && deviceState->WriterSession.Id
                 && deviceState->WriterSession.Id != clientId
                 && deviceState->WriterSession.MountSeqNumber >= mountSeqNumber
                 && deviceState->WriterSession.LastActivityTs
                     + ReleaseInactiveSessionsTimeout
-                    > now)
+                    > now
+                && !canKickOutClient)
         {
-            return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
-                << "Error acquiring device " << uuid.Quote()
-                << " with client " << clientId.Quote()
-                << " already acquired by another client: "
-                << deviceState->WriterSession.Id.Quote());
+            return MakeError(
+                E_BS_INVALID_SESSION,
+                TStringBuilder()
+                    << "Error acquiring device " << uuid.Quote() << " by "
+                    << DescribeDeviceOwner(clientId, diskId, volumeGeneration)
+                    << " already acquired by another client: "
+                    << DescribeDeviceOwner(
+                           deviceState->WriterSession.Id,
+                           deviceState->DiskId,
+                           deviceState->VolumeGeneration));
         }
     }
 

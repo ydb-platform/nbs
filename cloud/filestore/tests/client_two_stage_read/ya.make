@@ -19,6 +19,8 @@ SET(
     cloud/filestore/tests/client_two_stage_read/nfs-storage.txt
 )
 
+SET(NFS_FORCE_VERBOSE 1)
+
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 
 END()

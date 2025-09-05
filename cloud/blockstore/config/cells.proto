@@ -50,6 +50,11 @@ message TCellConfig
 
     // Minimum number of hosts in a cell to have connections to.
     optional uint32 MinCellConnections = 10;
+
+    // Turn on cell id checking in DescribeVolume request/response.
+    // If cell ids in request and response do not match, an error is
+    // returned.
+    optional bool StrictCellIdCheckInDescribeVolume = 11;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

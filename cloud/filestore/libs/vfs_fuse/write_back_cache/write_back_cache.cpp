@@ -1061,6 +1061,8 @@ private:
         for (auto& request: state.WriteRequests) {
             auto callContext =
                 MakeIntrusive<TCallContext>(request->GetFileSystemId());
+            callContext->RequestType = EFileStoreRequest::WriteData;
+            callContext->RequestSize = request->GetBuffer().size();
 
             Session->WriteData(std::move(callContext), request)
                 .Subscribe(

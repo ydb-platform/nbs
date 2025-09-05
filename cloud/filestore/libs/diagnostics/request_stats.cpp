@@ -354,7 +354,7 @@ private:
             NCloud::NProto::EF_NONE,
             callContext.Unaligned,
             ECalcMaxTime::ENABLE,
-            0);
+            0).Time;
     }
 
     TString LogHeader(const TCallContext& callContext) const override
@@ -578,7 +578,7 @@ private:
             NCloud::NProto::EF_NONE,
             callContext.Unaligned,
             ECalcMaxTime::ENABLE,
-            0);
+            0).Time;
     }
 
     void PredictionStarted(TCallContext& callContext)

@@ -558,9 +558,11 @@ bool TIndexTabletState::PrechargeNodeRefs(
     IIndexTabletDatabase& db,
     ui64 nodeId,
     const TString& cookie,
-    ui32 bytesToPrecharge)
+    ui64 rowsToPrecharge,
+    ui64 bytesToPrecharge)
 {
-    return db.PrechargeNodeRefs(nodeId, cookie, bytesToPrecharge);
+    return db
+        .PrechargeNodeRefs(nodeId, cookie, rowsToPrecharge, bytesToPrecharge);
 }
 
 void TIndexTabletState::RewriteNodeRef(

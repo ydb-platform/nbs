@@ -69,7 +69,9 @@ TDuration CalculateBoostRefillTime(const NProto::TVolumePerformanceProfile& conf
 struct TVolumeThrottlingPolicy::TImpl
 {
     const NProto::TVolumePerformanceProfile Config;
+    const NProto::TVolumeThrottlingRule ThrottlingRule;
     const ui32 PolicyVersion;
+    const ui32 VolatileVersion;
     const TDuration MaxDelay;
     const ui32 MaxWriteCostMultiplier;
     const ui64 DefaultPostponedRequestWeight;
@@ -84,33 +86,94 @@ struct TVolumeThrottlingPolicy::TImpl
     double UsedBandwidthQuota = 0;
 
     TImpl(
-            const NProto::TVolumePerformanceProfile& config,
+            NProto::TVolumePerformanceProfile config,
+            NProto::TVolumeThrottlingRule throttlingRule,
             const ui32 policyVersion,
+            const ui32 volatileVersion,
             const TDuration maxDelay,
             const ui32 maxWriteCostMultiplier,
             const ui64 defaultPostponedRequestWeight,
             const TDuration initialBoostBudget,
             const bool useDiskSpaceScore)
-        : Config(config)
+        : Config(std::move(config))
+        , ThrottlingRule(std::move(throttlingRule))
         , PolicyVersion(policyVersion)
+        , VolatileVersion(volatileVersion)
         , MaxDelay(maxDelay)
         , MaxWriteCostMultiplier(maxWriteCostMultiplier)
         , DefaultPostponedRequestWeight(defaultPostponedRequestWeight)
         , UseDiskSpaceScore(useDiskSpaceScore)
         , Bucket(
             CalcBurstTime(),
-            CalculateBoostRate(Config),
-            CalculateBoostTime(Config),
-            CalculateBoostRefillTime(Config),
+            CalculateBoostRate(CurrentProfile()),
+            CalculateBoostTime(CurrentProfile()),
+            CalculateBoostRefillTime(CurrentProfile()),
             initialBoostBudget
         )
     {
     }
 
+    NProto::TVolumePerformanceProfile CurrentProfile() const
+    {
+        NProto::TVolumePerformanceProfile result = Config;
+
+        const auto& coefficients = ThrottlingRule.GetCoefficients();
+        // Volatile throttling can override ThrottlingEnabled
+        if (coefficients.HasThrottlingEnabled()) {
+            result.SetThrottlingEnabled(coefficients.GetThrottlingEnabled());
+        }
+        // Volatile throttling can multiply PerformanceProfile by coefficients
+        if (coefficients.HasMaxReadBandwidth()) {
+            result.SetMaxReadBandwidth(
+                Config.GetMaxReadBandwidth() *
+                coefficients.GetMaxReadBandwidth());
+        }
+        if (coefficients.HasMaxPostponedWeight()) {
+            result.SetMaxPostponedWeight(
+                Config.GetMaxPostponedWeight() *
+                coefficients.GetMaxPostponedWeight());
+        }
+        if (coefficients.HasMaxReadIops()) {
+            result.SetMaxReadIops(
+                Config.GetMaxReadIops() * coefficients.GetMaxReadIops());
+        }
+        if (coefficients.HasBoostTime()) {
+            result.SetBoostTime(
+                Config.GetBoostTime() * coefficients.GetBoostTime());
+        }
+        if (coefficients.HasBoostRefillTime()) {
+            result.SetBoostRefillTime(
+                Config.GetBoostRefillTime() *
+                coefficients.GetBoostRefillTime());
+        }
+        if (coefficients.HasBoostPercentage()) {
+            result.SetBoostPercentage(
+                Config.GetBoostPercentage() *
+                coefficients.GetBoostPercentage());
+        }
+        if (coefficients.HasMaxWriteBandwidth()) {
+            result.SetMaxWriteBandwidth(
+                Config.GetMaxWriteBandwidth() *
+                coefficients.GetMaxWriteBandwidth());
+        }
+        if (coefficients.HasMaxWriteIops()) {
+            result.SetMaxWriteIops(
+                Config.GetMaxWriteIops() * coefficients.GetMaxWriteIops());
+        }
+        if (coefficients.HasBurstPercentage()) {
+            result.SetBurstPercentage(
+                Config.GetBurstPercentage() *
+                coefficients.GetBurstPercentage());
+        }
+
+        return result;
+    }
+
     TDuration CalcBurstTime() const
     {
+        const auto& config = CurrentProfile();
         return SecondsToDuration(
-            (Config.GetBurstPercentage() ? Config.GetBurstPercentage() : 10)
+            (config.GetBurstPercentage() ? config.GetBurstPercentage() : 10)
             / 100.);
     }
 
@@ -181,7 +244,7 @@ struct TVolumeThrottlingPolicy::TImpl
         Y_UNUSED(ts);
 
         const auto newWeight = PostponedWeight + weight;
-        if (newWeight <= Config.GetMaxPostponedWeight()) {
+        if (newWeight <= CurrentProfile().GetMaxPostponedWeight()) {
             PostponedWeight = newWeight;
             return true;
         }
@@ -201,17 +264,19 @@ struct TVolumeThrottlingPolicy::TImpl
 
     ui32 MaxIops(EOpType opType) const
     {
-        if (opType == EOpType::Write && Config.GetMaxWriteIops()) {
-            return Config.GetMaxWriteIops();
+        const auto& config = CurrentProfile();
+        if (opType == EOpType::Write && config.GetMaxWriteIops()) {
+            return config.GetMaxWriteIops();
         }
 
-        return Config.GetMaxReadIops();
+        return config.GetMaxReadIops();
     }
 
     ui64 MaxBandwidth(EOpType opType) const
     {
-        if (opType == EOpType::Write && Config.GetMaxWriteBandwidth()) {
-            return Config.GetMaxWriteBandwidth();
+        const auto& config = CurrentProfile();
+        if (opType == EOpType::Write && config.GetMaxWriteBandwidth()) {
+            return config.GetMaxWriteBandwidth();
         }
 
         if (opType == EOpType::Describe) {
@@ -220,7 +285,7 @@ struct TVolumeThrottlingPolicy::TImpl
             // See NBS-2733
             return 0;
         }
-        return Config.GetMaxReadBandwidth();
+        return config.GetMaxReadBandwidth();
     }
 
     TMaybe<TDuration> SuggestDelay(
@@ -322,6 +387,8 @@ TVolumeThrottlingPolicy::~TVolumeThrottlingPolicy()
 
 void TVolumeThrottlingPolicy::Reset(
     const NProto::TVolumePerformanceProfile& config,
+    const NProto::TVolumeThrottlingRule& throttlingRule,
+    ui32 coefficientsVersion,
     TDuration maxDelay,
     ui32 maxWriteCostMultiplier,
     ui32 defaultPostponedRequestWeight,
@@ -330,7 +397,9 @@ void TVolumeThrottlingPolicy::Reset(
 {
     Impl.reset(new TImpl(
         config,
+        throttlingRule,
         ++PolicyVersion,
+        coefficientsVersion,
         maxDelay,
         maxWriteCostMultiplier,
         defaultPostponedRequestWeight,
@@ -342,8 +411,13 @@ void TVolumeThrottlingPolicy::Reset(
     const NProto::TVolumePerformanceProfile& config,
     const TThrottlerConfig& throttlerConfig)
 {
+    auto coefficients = Impl ? Impl->ThrottlingRule
+                             : NProto::TVolumeThrottlingRule{};
+    auto volatileVersion = Impl ? Impl->VolatileVersion : 0;
     Reset(
         config,
+        coefficients,
+        volatileVersion,
         throttlerConfig.MaxDelay,
         throttlerConfig.MaxWriteCostMultiplier,
         throttlerConfig.DefaultPostponedRequestWeight,
@@ -356,11 +430,28 @@ void TVolumeThrottlingPolicy::Reset(
 {
     Reset(
         policy.Impl->Config,
+        policy.Impl->ThrottlingRule,
+        policy.Impl->VolatileVersion,
         policy.Impl->MaxDelay,
         policy.Impl->MaxWriteCostMultiplier,
         policy.Impl->DefaultPostponedRequestWeight,
         policy.Impl->Bucket.GetCurrentBoostBudget(),
         policy.Impl->UseDiskSpaceScore);
+}
+
+void TVolumeThrottlingPolicy::Reset(
+    const NProto::TVolumeThrottlingRule& throttlingRule,
+    ui32 volatileVersion)
+{
+    Reset(
+        Impl->Config,
+        throttlingRule,
+        volatileVersion,
+        Impl->MaxDelay,
+        Impl->MaxWriteCostMultiplier,
+        Impl->DefaultPostponedRequestWeight,
+        Impl->Bucket.GetCurrentBoostBudget(),
+        Impl->UseDiskSpaceScore);
 }
 
 void TVolumeThrottlingPolicy::OnBackpressureReport(
@@ -427,6 +518,19 @@ const TBackpressureReport& TVolumeThrottlingPolicy::GetCurrentBackpressure() con
 const NProto::TVolumePerformanceProfile& TVolumeThrottlingPolicy::GetConfig() const
 {
     return Impl->Config;
+}
+
+ui32 TVolumeThrottlingPolicy::GetVolatileThrottlingVersion() const
+{
+    return Impl->VolatileVersion;
+}
+
+const NProto::TVolumeThrottlingRule& TVolumeThrottlingPolicy::GetVolatileThrottlingRule() const {
+    return Impl->ThrottlingRule;
+}
+
+NProto::TVolumePerformanceProfile TVolumeThrottlingPolicy::GetCurrentPerformanceProfile() const {
+    return Impl->CurrentProfile();
 }
 
 ui64 TVolumeThrottlingPolicy::C1(EOpType opType) const

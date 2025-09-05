@@ -34,7 +34,7 @@ func isRetriableError(err error) bool {
 	}
 
 	switch status.Code() {
-	case codes.Aborted, codes.AlreadyExists, codes.Unavailable:
+	case codes.Aborted, codes.DeadlineExceeded, codes.Unavailable:
 		return true
 	}
 

@@ -489,6 +489,8 @@ public:
     TDuration GetReassignRequestRetryTimeout() const;
     ui32 GetReassignChannelsPercentageThreshold() const;
     ui32 GetReassignMixedChannelsPercentageThreshold() const;
+    bool GetReassignSystemChannelsImmediately() const;
+    ui32 GetReassignFreshChannelsPercentageThreshold() const;
 
     TString GetCommonSSDPoolKind() const;
     ui64 GetMaxSSDGroupWriteBandwidth() const;
@@ -705,6 +707,16 @@ public:
 
     [[nodiscard]] TDuration GetInitialRetryDelayForServiceRequests() const;
     [[nodiscard]] TDuration GetMaxRetryDelayForServiceRequests() const;
+
+    [[nodiscard]] bool GetVolumeThrottlingManagerEnabled() const;
+    [[nodiscard]] TDuration
+    GetVolumeThrottlingManagerNotificationPeriodSeconds() const;
+
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskInitialDelay() const;
+    [[nodiscard]] TDuration GetRetryAcquireReleaseDiskMaxDelay() const;
+
+    [[nodiscard]] bool
+    GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() const;
 };
 
 ui64 GetAllocationUnit(

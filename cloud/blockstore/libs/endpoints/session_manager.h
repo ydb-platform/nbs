@@ -71,6 +71,7 @@ struct TSessionManagerOptions
     bool TemporaryServer = false;
     bool DisableDurableClient = false;
     bool DisableClientThrottler = false;
+    bool EnableDataIntegrityClient = false;
 
     NProto::TClientConfig DefaultClientConfig;
     NClient::THostPerformanceProfile HostProfile;

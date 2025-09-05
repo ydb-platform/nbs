@@ -8,7 +8,6 @@
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-#include <cloud/blockstore/libs/storage/service/service_events_private.h>   // TODO: invalid reference
 
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
@@ -998,6 +997,9 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvAcquireDiskIfNeeded,
             HandleAcquireDiskIfNeeded);
         HFunc(TEvVolume::TEvReacquireDisk, HandleReacquireDisk);
+        HFunc(
+            TEvVolume::TEvRetryAcquireReleaseDisk,
+            HandleRetryAcquireReleaseDisk);
         HFunc(TEvVolume::TEvRdmaUnavailable, HandleRdmaUnavailable);
         HFunc(
             TEvDiskRegistry::TEvReleaseDiskResponse,
@@ -1066,6 +1068,10 @@ STFUNC(TVolumeActor::StateWork)
             TEvPartitionCommonPrivate::TEvPartCountersCombined,
             HandlePartCountersCombined);
 
+        HFunc(
+            TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification,
+            HandleUpdateVolatileThrottlingConfig);
+
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:
@@ -1125,6 +1131,7 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvLinkLeaderVolumeToFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest);
         IgnoreFunc(TEvVolume::TEvUpdateLinkOnFollowerResponse);
+        IgnoreFunc(TEvVolume::TEvRetryAcquireReleaseDisk);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvPartCountersCombined);
 

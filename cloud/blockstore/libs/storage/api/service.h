@@ -265,11 +265,11 @@ struct TEvService
         EvDiscoverInstancesRequest = EvBegin + 37,
         EvDiscoverInstancesResponse = EvBegin + 38,
 
-        // EvBegin + 39, unused (see NBS-2410)
-        // EvBegin + 40, unused (see NBS-2410)
+        EvUpdateVolumeThrottlingConfigRequest = EvBegin + 39,
+        EvUpdateVolumeThrottlingConfigResponse = EvBegin + 40,
 
-        // EvBegin + 41, unused (see NBS-2410)
-        // EvBegin + 42, unused (see NBS-2410)
+        EvListDisksStatesRequest = EvBegin + 41,
+        EvListDisksStatesResponse = EvBegin + 42,
 
         EvExecuteActionRequest = EvBegin + 43,
         EvExecuteActionResponse = EvBegin + 44,

@@ -269,7 +269,7 @@ jobs:
         env:
           ANY_CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
           REMOVE_CANCELLED_VMS: ${{ vars.NEBIUS_REMOVE_CANCELLED_VMS }}
-          AUTO_CANCEL_EVENTS: ${{ vars.AUTO_CANCEL_EVENTS || 'pull_request' }}
+          AUTO_CANCEL_EVENTS: ${{ vars.AUTO_CANCEL_EVENTS || 'pull_request,pull_request_target' }}
         with:
           script: |
             const anyCancelled = (process.env.ANY_CANCELLED || '') === 'true';

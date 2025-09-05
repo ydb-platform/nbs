@@ -680,7 +680,8 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	log.Printf("csi.nodeStageDiskAsVhostSocket: %s %s %+v", instanceId, diskId, volumeContext)
 
 	endpointDir := s.getEndpointDir(instanceId, diskId)
-	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
+	err := os.MkdirAll(endpointDir, os.FileMode(0755))
+	if err != nil {
 		return err
 	}
 
@@ -693,6 +694,13 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	headers := &nbsapi.THeaders{
 		RequestTimeout: uint32(s.startEndpointRequestTimeout.Milliseconds()),
 	}
+
+	defer func() {
+		if err != nil {
+			s.cleanupNbsEndpoint(ctx, instanceId, diskId)
+		}
+	}()
+
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
 		Headers:          headers,
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
@@ -712,7 +720,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 			HostType: &hostType,
 		},
 	}
-	_, err := s.nbsClient.StartEndpoint(ctx,
+	_, err = s.nbsClient.StartEndpoint(ctx,
 		s.resolveEndpoint(ctx, startEndpointRequest))
 
 	if err != nil {
@@ -813,18 +821,23 @@ func (s *nodeService) GetGrpcErrorCode(err error) codes.Code {
 	}
 
 	errorCode, ok := s.GetNbsErrorCode(err)
+	if ok {
+		switch errorCode {
+		case nbsclient.E_MOUNT_CONFLICT:
+			return codes.Unavailable
+		case nbsclient.E_GRPC_UNAVAILABLE, nfsclient.E_GRPC_UNAVAILABLE:
+			return codes.Unavailable
+		case nbsclient.E_GRPC_DEADLINE_EXCEEDED, nfsclient.E_GRPC_DEADLINE_EXCEEDED:
+			return codes.DeadlineExceeded
+		}
+	}
+
+	status, ok := status.FromError(err)
 	if !ok {
 		return codes.Internal
 	}
 
-	switch errorCode {
-	case nbsclient.E_MOUNT_CONFLICT:
-		return codes.AlreadyExists
-	case nbsclient.E_GRPC_UNAVAILABLE, nfsclient.E_GRPC_UNAVAILABLE:
-		return codes.Unavailable
-	}
-
-	return codes.Internal
+	return status.Code()
 }
 
 func (s *nodeService) IsGrpcTimeoutError(err error) bool {
@@ -838,7 +851,8 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	req *csi.NodeStageVolumeRequest) error {
 
 	diskId := req.VolumeId
-	resp, err := s.startNbsEndpointForNBD(ctx, "", diskId, req.VolumeContext)
+	instanceId := ""
+	resp, err := s.startNbsEndpointForNBD(ctx, instanceId, diskId, req.VolumeContext)
 	if err != nil {
 		return err
 	}
@@ -846,7 +860,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	err = nil
 	defer func() {
 		if err != nil {
-			s.cleanupEndpoint(ctx, diskId)
+			s.cleanupNbsEndpoint(ctx, instanceId, diskId)
 		}
 	}()
 
@@ -871,7 +885,8 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	}
 
 	targetPerm := os.FileMode(0775)
-	if err := os.MkdirAll(req.StagingTargetPath, targetPerm); err != nil {
+	err = os.MkdirAll(req.StagingTargetPath, targetPerm)
+	if err != nil {
 		return fmt.Errorf("failed to create staging directory: %w", err)
 	}
 
@@ -900,7 +915,8 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to format or mount filesystem: %w", err)
 	}
 
-	if err := os.Chmod(req.StagingTargetPath, targetPerm); err != nil {
+	err = os.Chmod(req.StagingTargetPath, targetPerm)
+	if err != nil {
 		return fmt.Errorf("failed to chmod target path: %w", err)
 	}
 
@@ -912,7 +928,8 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	req *csi.NodeStageVolumeRequest) error {
 
 	diskId := req.VolumeId
-	resp, err := s.startNbsEndpointForNBD(ctx, "", diskId, req.VolumeContext)
+	instanceId := ""
+	resp, err := s.startNbsEndpointForNBD(ctx, instanceId, diskId, req.VolumeContext)
 	if err != nil {
 		return err
 	}
@@ -923,7 +940,7 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	err = s.mountBlockDevice(diskId, resp.NbdDeviceFile, devicePath, false)
 
 	if err != nil {
-		s.cleanupEndpoint(ctx, diskId)
+		s.cleanupNbsEndpoint(ctx, instanceId, diskId)
 	}
 	return err
 }
@@ -1015,9 +1032,9 @@ func (s *nodeService) resolveEndpoint(ctx context.Context,
 	return startEndpointRequest
 }
 
-func (s *nodeService) cleanupEndpoint(ctx context.Context, diskId string) {
+func (s *nodeService) cleanupNbsEndpoint(ctx context.Context, instanceId string, diskId string) {
 	_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-		UnixSocketPath: filepath.Join(s.getEndpointDir("", diskId), nbsSocketName),
+		UnixSocketPath: filepath.Join(s.getEndpointDir(instanceId, diskId), nbsSocketName),
 	})
 	if err != nil {
 		logVolume(diskId, "StopEndpoint failed in cleanup: %w", err)
@@ -1350,7 +1367,7 @@ func (s *nodeService) nodeUnstageVolume(
 			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to stop nbs endpoint: %w", err)
+			return s.statusError(s.GetGrpcErrorCode(err), "failed to stop nbs endpoint")
 		}
 	}
 
@@ -1407,7 +1424,7 @@ func (s *nodeService) nodeUnpublishVolume(
 				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 			})
 			if err != nil {
-				return fmt.Errorf("failed to stop nbs endpoint: %w", err)
+				return s.statusError(s.GetGrpcErrorCode(err), "failed to stop nbs endpoint")
 			}
 		}
 
@@ -1417,7 +1434,7 @@ func (s *nodeService) nodeUnpublishVolume(
 				SocketPath: filepath.Join(endpointDir, nfsSocketName),
 			})
 			if err != nil {
-				return fmt.Errorf("failed to stop nfs endpoint (%T): %w", nfsClient, err)
+				return s.statusErrorf(s.GetGrpcErrorCode(err), "failed to stop nfs endpoint (%T)", nfsClient)
 			}
 		}
 
@@ -1485,8 +1502,9 @@ func (s *nodeService) nodeUnstageFileStoreStopEndpoint(
 	_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
 		SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
 	})
+
 	if err != nil {
-		return fmt.Errorf("failed to stop nfs endpoint (%T): %w", s.nfsClient, err)
+		return s.statusErrorf(s.GetGrpcErrorCode(err), "failed to stop nfs endpoint (%T)", s.nfsClient)
 	}
 
 	return nil
@@ -1509,7 +1527,7 @@ func (s *nodeService) nodeUnstageLocalFileStoreStopEndpoint(
 			SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to stop local nfs endpoint (%T): %w", s.nfsLocalClient, err)
+			return s.statusErrorf(s.GetGrpcErrorCode(err), "failed to stop local nfs endpoint (%T)", s.nfsClient)
 		}
 
 		return nil
@@ -1549,7 +1567,7 @@ func (s *nodeService) nodeUnstageLocalFileStoreStopEndpoint(
 		FileSystemId: localFsId,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to destroy local nfs (%T): %w", s.nfsLocalFilestoreClient, err)
+		return s.statusErrorf(s.GetGrpcErrorCode(err), "failed to destroy local nfs (%T)", s.nfsLocalFilestoreClient)
 	}
 
 	return nil
@@ -1568,7 +1586,7 @@ func (s *nodeService) nodeUnstageVhostSocket(
 			UnixSocketPath: filepath.Join(stageData.RealStagePath, nbsSocketName),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to stop nbs endpoint: %w", err)
+			return s.statusError(s.GetGrpcErrorCode(err), "failed to stop nbs endpoint")
 		}
 	} else if stageData.Backend == "nfs" {
 		var err error

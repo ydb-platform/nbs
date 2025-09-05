@@ -73,6 +73,7 @@ using TValue =
     xxx(MirroredDiskResyncChecksumMismatch)                                    \
     xxx(DiskAgentInconsistentMultiWriteResponse)                               \
     xxx(ReleaseShadowDiskError)                                                \
+    xxx(WrongCellIdInDescribeVolume)                                           \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \

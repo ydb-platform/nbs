@@ -313,6 +313,7 @@ constexpr bool IsControlRequest(EBlockStoreRequest requestType)
         case EBlockStoreRequest::ExecuteAction:
         case EBlockStoreRequest::DescribeVolumeModel:
         case EBlockStoreRequest::UpdateDiskRegistryConfig:
+        case EBlockStoreRequest::UpdateVolumeThrottlingConfig:
         case EBlockStoreRequest::DescribeDiskRegistryConfig:
         case EBlockStoreRequest::CreatePlacementGroup:
         case EBlockStoreRequest::DestroyPlacementGroup:
@@ -333,6 +334,7 @@ constexpr bool IsControlRequest(EBlockStoreRequest requestType)
         case EBlockStoreRequest::CreateVolumeLink:
         case EBlockStoreRequest::DestroyVolumeLink:
         case EBlockStoreRequest::RemoveVolumeClient:
+        case EBlockStoreRequest::ListDisksStates:
             return true;
         case EBlockStoreRequest::MAX:
             Y_DEBUG_ABORT_UNLESS(false);

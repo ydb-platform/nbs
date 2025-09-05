@@ -106,7 +106,7 @@ func (t *createDiskFromSnapshotTask) Run(
 	}
 
 	if snapshotMeta != nil {
-		execCtx.SetEstimate(performance.Estimate(
+		execCtx.SetEstimatedInflightDuration(performance.Estimate(
 			snapshotMeta.StorageSize,
 			t.performanceConfig.GetCreateDiskFromSnapshotBandwidthMiBs(),
 		))
@@ -228,10 +228,7 @@ func (t *createDiskFromSnapshotTask) Cancel(
 	}
 
 	if diskMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			params.Disk.DiskId,
-		)
+		return nil
 	}
 
 	err = client.Delete(ctx, params.Disk.DiskId)

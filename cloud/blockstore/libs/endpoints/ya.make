@@ -19,6 +19,7 @@ PEERDIR(
     cloud/blockstore/libs/nbd
     cloud/blockstore/libs/rdma/impl
     cloud/blockstore/libs/service
+    cloud/blockstore/libs/storage/model
     cloud/blockstore/libs/validation
     cloud/storage/core/libs/coroutine
     cloud/storage/core/libs/endpoints/fs

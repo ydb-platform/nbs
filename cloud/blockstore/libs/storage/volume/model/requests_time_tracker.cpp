@@ -437,4 +437,17 @@ TRequestsTimeTracker::GetPercentileBuckets()
     return result;
 }
 
+void TRequestsTimeTracker::ResetStats()
+{
+    for (auto& [key, histogram]: Histograms) {
+        histogram.Reset();
+    }
+}
+
+const TRequestsTimeTracker::TInflightMap&
+TRequestsTimeTracker::GetInflightOperations() const
+{
+    return InflightRequests;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

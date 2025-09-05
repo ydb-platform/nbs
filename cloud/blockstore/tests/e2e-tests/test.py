@@ -6,7 +6,6 @@ import shutil
 import subprocess
 import tempfile
 import time
-import yaml
 
 from pathlib import Path
 
@@ -35,7 +34,6 @@ ENDPOINT_PROXY_PATH = common.binary_path(
 
 def init(
         with_netlink=True,
-        with_endpoint_proxy=True,
         stored_endpoints_path=None,
         nbd_request_timeout=None,
         nbd_reconnect_delay=None,
@@ -45,10 +43,7 @@ def init(
 ):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
-    if with_endpoint_proxy:
-        ep_socket = "ep-%s.sock" % hash(common.context.test_name)
-        server_config_patch.EndpointProxySocketPath = ep_socket
-    elif with_netlink:
+    if with_netlink:
         server_config_patch.NbdNetlink = True
         if nbd_request_timeout:
             server_config_patch.NbdRequestTimeout = nbd_request_timeout * 1000
@@ -76,7 +71,7 @@ def init(
     if max_zero_blocks_sub_request_size:
         server.ServerConfig.MaxZeroBlocksSubRequestSize = max_zero_blocks_sub_request_size
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
-    subprocess.check_call(["modprobe", "nbd", "nbds_max=4"], timeout=20)
+    subprocess.check_call(["modprobe", "nbd", f"nbds_max={nbds_max}"], timeout=20)
     if stored_endpoints_path:
         stored_endpoints_path.mkdir(exist_ok=True)
     log_config = TLogConfig()
@@ -86,7 +81,6 @@ def init(
         server_app_config=server,
         storage_config_patches=None,
         use_in_memory_pdisks=True,
-        with_endpoint_proxy=with_endpoint_proxy,
         with_netlink=with_netlink,
         stored_endpoints_path=stored_endpoints_path,
         nbd_request_timeout=nbd_request_timeout,
@@ -154,7 +148,6 @@ def test_free_device_allocation(with_netlink):
 
     env, run = init(
         with_netlink=with_netlink,
-        with_endpoint_proxy=False,
         nbds_max=nbds_max)
 
     def createvolume(i):
@@ -233,7 +226,6 @@ def test_nbd_reconnect():
 
     env, run = init(
         with_netlink=True,
-        with_endpoint_proxy=False,
         nbd_request_timeout=request_timeout)
 
     try:
@@ -323,7 +315,6 @@ def test_multiple_errors():
 
     env, run = init(
         with_netlink=True,
-        with_endpoint_proxy=True,
         nbd_request_timeout=request_timeout,
         proxy_restart_events=2)
 
@@ -400,7 +391,6 @@ def test_multiple_errors():
 def test_stop_start():
     env, run = init(
         with_netlink=True,
-        with_endpoint_proxy=True,
         nbd_reconnect_delay=1)
 
     volume_name = "example-disk"
@@ -492,14 +482,12 @@ def test_stop_start():
         cleanup_after_test(env)
 
 
-@pytest.mark.parametrize('with_netlink,with_endpoint_proxy',
-                         [(True, False), (True, True), (False, False), (False, True)])
-def test_resize_device(with_netlink, with_endpoint_proxy):
+@pytest.mark.parametrize('with_netlink', [True, False])
+def test_resize_device(with_netlink):
     stored_endpoints_path = Path(common.output_path()) / "stored_endpoints"
     env, run = init(
-        with_netlink,
-        with_endpoint_proxy,
-        stored_endpoints_path,
+        with_netlink=with_netlink,
+        stored_endpoints_path=stored_endpoints_path,
         max_zero_blocks_sub_request_size=512 * 1024 * 1024
     )
 
@@ -509,7 +497,6 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
     volume_size = blocks_count * block_size
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
-    stored_endpoint_path = stored_endpoints_path / socket_path.replace("/", "_")
     try:
         result = run(
             "createvolume",
@@ -559,11 +546,6 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
             stderr=subprocess.STDOUT)
         assert result.returncode == 0
 
-        if with_endpoint_proxy:
-            with open(stored_endpoint_path) as stream:
-                stored_endpoint = yaml.safe_load(stream)
-            assert stored_endpoint["BlocksCount"] == volume_size / block_size
-
         new_volume_size = 2 * volume_size
         result = run(
             "resizevolume",
@@ -595,11 +577,6 @@ def test_resize_device(with_netlink, with_endpoint_proxy):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT)
         assert result.returncode == 0
-
-        if with_endpoint_proxy:
-            with open(stored_endpoint_path) as stream:
-                stored_endpoint = yaml.safe_load(stream)
-            assert stored_endpoint["BlocksCount"] == new_volume_size / block_size
 
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
@@ -774,9 +751,8 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
 def test_discard_device():
     stored_endpoints_path = Path(common.output_path()) / "stored_endpoints"
     env, run = init(
-        True,
-        False,
-        stored_endpoints_path,
+        with_netlink=True,
+        stored_endpoints_path=stored_endpoints_path,
         max_zero_blocks_sub_request_size=512 * 1024 * 1024
     )
 

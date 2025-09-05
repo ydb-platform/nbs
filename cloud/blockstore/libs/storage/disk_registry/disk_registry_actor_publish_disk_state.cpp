@@ -10,28 +10,6 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-NProto::TDiskState OverrideDiskState(NProto::TDiskState state)
-{
-    switch (state.GetState()) {
-        case NProto::DISK_STATE_WARNING:
-            state.SetState(NProto::DISK_STATE_ONLINE);
-            break;
-        case NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE:
-            state.SetState(NProto::DISK_STATE_ERROR);
-            break;
-        default:
-            break;
-    }
-
-    return state;
-}
-
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::PublishDiskStates(const TActorContext& ctx)
@@ -192,6 +170,24 @@ void TDiskRegistryActor::CompleteDeleteDiskStateUpdates(
 
     DiskStatesPublicationInProgress = false;
     PublishDiskStates(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TDiskState OverrideDiskState(NProto::TDiskState state)
+{
+    switch (state.GetState()) {
+        case NProto::DISK_STATE_WARNING:
+            state.SetState(NProto::DISK_STATE_ONLINE);
+            break;
+        case NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE:
+            state.SetState(NProto::DISK_STATE_ERROR);
+            break;
+        default:
+            break;
+    }
+
+    return state;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

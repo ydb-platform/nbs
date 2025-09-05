@@ -307,6 +307,14 @@ message TDiskAgentConfig
 
     // Use a separate thread to submit requests to all FileIOServices.
     optional bool UseLocalStorageSubmissionThread = 41;
+
+    // When a volume with a higher generation sends an Acquire request,
+    // we kick out the old client (from older generations)
+    // and acquire a device for the new client.
+    optional bool KickOutOldClientsEnabled = 42;
+
+    // Use one submission thread per AIO service.
+    optional bool UseOneSubmissionThreadPerAIOServiceEnabled = 43;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

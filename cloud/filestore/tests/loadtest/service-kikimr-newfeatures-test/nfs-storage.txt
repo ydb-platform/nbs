@@ -14,5 +14,6 @@ InMemoryIndexCacheNodeRefsCapacity: 10
 InMemoryIndexCacheNodeAttrsCapacity: 10
 InMemoryIndexCacheLoadOnTabletStart: true
 InMemoryIndexCacheLoadOnTabletStartRowsPerTx: 1
+InMemoryIndexCacheNodeRefsExhaustivenessCapacity: 2
 UseMixedBlocksInsteadOfAliveBlocksInCompaction: true
 MixedBlocksOffloadedRangesCapacity: 1024

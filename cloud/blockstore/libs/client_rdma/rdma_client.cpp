@@ -509,11 +509,11 @@ private:
             IBlockStorePtr volumeClient,
             ITraceSerializerPtr traceSerializer,
             ITaskQueuePtr taskQueue,
-            bool IsAlignedDataEnabled)
+            bool isAlignedDataEnabled)
         : VolumeClient(std::move(volumeClient))
         , TraceSerializer(std::move(traceSerializer))
         , TaskQueue(std::move(taskQueue))
-        , IsAlignedDataEnabled(IsAlignedDataEnabled)
+        , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
         Log = logging->CreateLog("BLOCKSTORE_RDMA");
     }
@@ -538,7 +538,7 @@ void TRdmaEndpoint::Start()
 
 void TRdmaEndpoint::Stop()
 {
-    // TODO
+    Endpoint->Stop().Wait();
 }
 
 TStorageBuffer TRdmaEndpoint::AllocateBuffer(size_t bytesCount)

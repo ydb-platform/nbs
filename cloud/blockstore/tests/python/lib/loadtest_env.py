@@ -151,7 +151,6 @@ class LocalLoadTest:
             setup_disk_agent_config(
                 self.kikimr_cluster.client,
                 self.__devices,
-                device_erase_method=None,
                 node_type=None)
 
         if self.endpoint_proxy:

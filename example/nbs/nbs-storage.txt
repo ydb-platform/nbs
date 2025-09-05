@@ -1,5 +1,6 @@
 SchemeShardDir: "/Root/NBS"
 AuthorizationMode: AUTHORIZATION_IGNORE
+ManuallyPreemptedVolumesFile: "backups.1/nbs-preempted-volumes.json"
 
 # DiskRegistry
 AllocationUnitMirror2SSD: 1
@@ -52,8 +53,11 @@ LinkedDiskFillBandwidth {
 
 # SchemeShard proxy
 UseSchemeCache: true
-PathDescriptionBackupFilePath: "backups/nbs-path-description-backup.txt"
+PathDescriptionBackupFilePath: "backups.1/nbs-path-description-backup.txt"
 #SSProxyFallbackMode: true
 
 # Hive proxy
-TabletBootInfoBackupFilePath: "backups/nbs-tablet-boot-info-backup.txt"
+TabletBootInfoBackupFilePath: "backups.1/nbs-tablet-boot-info-backup.txt"
+
+# Volume Throttling Manager
+VolumeThrottlingManagerEnabled: true
