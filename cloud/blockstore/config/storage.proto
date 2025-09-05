@@ -1315,4 +1315,7 @@ message TStorageServiceConfig
     // Min percentage of reassignable fresh channels after which reassign requests
     // are sent.
     optional uint32 ReassignFreshChannelsPercentageThreshold = 453;
+
+    // Timeout for trim fresh log (in milliseconds).
+    optional uint32 TrimFreshLogTimeout = 454;
 }

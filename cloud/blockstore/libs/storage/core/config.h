@@ -717,6 +717,8 @@ public:
 
     [[nodiscard]] bool
     GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() const;
+
+    [[nodiscard]] TDuration GetTrimFreshLogTimeout() const;
 };
 
 ui64 GetAllocationUnit(

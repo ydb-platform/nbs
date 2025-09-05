@@ -994,6 +994,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateIndexStructuresResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 

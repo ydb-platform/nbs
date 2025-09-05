@@ -26,7 +26,8 @@ TTrimFreshLogActor::TTrimFreshLogActor(
         ui32 recordGeneration,
         ui32 perGenerationCounter,
         TVector<ui32> freshChannels,
-        TString diskId)
+        TString diskId,
+        TDuration timeout)
     : RequestInfo(std::move(requestInfo))
     , PartitionActorId(partitionActorId)
     , TabletInfo(std::move(tabletInfo))
@@ -35,6 +36,7 @@ TTrimFreshLogActor::TTrimFreshLogActor(
     , PerGenerationCounter(perGenerationCounter)
     , FreshChannels(std::move(freshChannels))
     , DiskId(std::move(diskId))
+    , Timeout(timeout)
 {}
 
 void TTrimFreshLogActor::Bootstrap(const TActorContext& ctx)
@@ -50,6 +52,10 @@ void TTrimFreshLogActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     TrimFreshLog(ctx);
+
+    if (Timeout) {
+        ctx.Schedule(Timeout, new TEvents::TEvWakeup());
+    }
 }
 
 void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
@@ -157,12 +163,29 @@ void TTrimFreshLogActor::HandlePoisonPill(
     Die(ctx);
 }
 
+void TTrimFreshLogActor::HandleWakeup(
+    const NActors::TEvents::TEvWakeup::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    Error = MakeError(E_TIMEOUT, "TrimFreshLog timed out");
+
+    ReportTrimFreshLogTimeout(
+        FormatError(Error),
+        {{"disk", DiskId}, {"TabletId", TabletInfo->TabletID}});
+
+    NotifyCompleted(ctx);
+    ReplyAndDie(ctx);
+}
+
 STFUNC(TTrimFreshLogActor::StateWork)
 {
     TRequestScope timer(*RequestInfo);
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         HFunc(TEvBlobStorage::TEvCollectGarbageResult, HandleCollectGarbageResult);
 

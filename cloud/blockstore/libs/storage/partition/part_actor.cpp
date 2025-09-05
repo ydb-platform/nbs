@@ -1090,6 +1090,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
