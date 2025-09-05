@@ -240,6 +240,84 @@ func (client *durableClient) DescribeFileStoreModel(
 	return resp.(*protos.TDescribeFileStoreModelResponse), err
 }
 
+func (client *durableClient) CreateSession(
+	ctx context.Context,
+	req *protos.TCreateSessionRequest,
+) (*protos.TCreateSessionResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.CreateSession(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TCreateSessionResponse), err
+}
+
+func (client *durableClient) DestroySession(
+	ctx context.Context,
+	req *protos.TDestroySessionRequest,
+) (*protos.TDestroySessionResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.DestroySession(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TDestroySessionResponse), err
+}
+
+func (client *durableClient) ListNodes(
+	ctx context.Context,
+	req *protos.TListNodesRequest,
+) (*protos.TListNodesResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ListNodes(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TListNodesResponse), err
+}
+
+func (client *durableClient) CreateNode(
+	ctx context.Context,
+	req *protos.TCreateNodeRequest,
+) (*protos.TCreateNodeResponse, error) {
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.CreateNode(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TCreateNodeResponse), err
+}
+
+func (client *durableClient) ReadLink(
+	ctx context.Context,
+	req *protos.TReadLinkRequest,
+) (*protos.TReadLinkResponse, error) {
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ReadLink(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TReadLinkResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type durableEndpointClient struct {

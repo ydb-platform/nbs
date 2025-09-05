@@ -13,6 +13,10 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type Node nfs_client.Node
+type Session nfs_client.Session
+
+// //////////////////////////////////////////////////////////////////////////////
 const (
 	maxConsecutiveRetries = 3
 )
@@ -226,4 +230,61 @@ func (c *client) DescribeModel(
 			MaxWriteIops:      model.PerformanceProfile.MaxWriteIops,
 		},
 	}, nil
+}
+
+func (c *client) CreateSession(
+	ctx context.Context,
+	fileSystemID string,
+	readonly bool,
+) (Session, error) {
+	session, err := c.nfs.CreateSession(ctx, fileSystemID, readonly)
+	return Session(session), wrapError(err)
+}
+
+func (c *client) DestroySession(ctx context.Context, session Session) error {
+	return wrapError(c.nfs.DestroySession(ctx, nfs_client.Session(session)))
+}
+
+func (c *client) ListNodes(
+	ctx context.Context,
+	session Session,
+	parentNodeID uint64,
+	cookie string,
+) ([]Node, string, error) {
+
+	nodes, cookie, err := c.nfs.ListNodes(
+		ctx,
+		nfs_client.Session(session),
+		parentNodeID,
+		cookie,
+	)
+	resultNodes := make([]Node, len(nodes))
+	for i := range nodes {
+		resultNodes[i] = Node(nodes[i])
+	}
+
+	return resultNodes, cookie, wrapError(err)
+}
+
+func (c *client) CreateNode(
+	ctx context.Context,
+	session Session,
+	node Node,
+) (uint64, error) {
+
+	nodeId, err := c.nfs.CreateNode(
+		ctx,
+		nfs_client.Session(session),
+		nfs_client.Node(node),
+	)
+	return nodeId, wrapError(err)
+}
+
+func (c *client) ReadLink(
+	ctx context.Context,
+	session Session,
+	nodeID uint64,
+) ([]byte, error) {
+
+	return c.nfs.ReadLink(ctx, nfs_client.Session(session), nodeID)
 }
