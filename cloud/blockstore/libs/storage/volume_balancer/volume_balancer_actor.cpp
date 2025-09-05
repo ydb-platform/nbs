@@ -250,7 +250,7 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
         auto [cpuWait, error] = StatsFetcher->GetCpuWait();
         if (HasError(error)) {
             auto errorMessage =
-                ReportCpuWaitCounterReadError(error.GetMessage());
+                ReportCpuWaitCounterReadError(FormatError(error));
                 LOG_WARN_S(
                     ctx,
                     TBlockStoreComponents::VOLUME_BALANCER,
