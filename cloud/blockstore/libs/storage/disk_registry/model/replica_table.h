@@ -99,12 +99,12 @@ private:
 private:
     // a transposed view of disk config
 
-    using TCell = TVector<TDeviceInfo>;
+    using TRow = TVector<TDeviceInfo>;
 
     struct TDiskState
     {
-        TDeque<TCell> Cells;
-        THashMap<TString, TCell*> DeviceId2Cell;
+        TDeque<TRow> Cells;
+        THashMap<TString, TRow*> DeviceId2Cell;
     };
 
     THashMap<TDiskId, TDiskState> Disks;

@@ -296,6 +296,7 @@ bool TReplicaTable::IsReplacementDevice(
             return device.IsReplacement;
         }
     }
+    Y_DEBUG_ABORT_UNLESS(false);
 
     return false;
 }

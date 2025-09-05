@@ -591,14 +591,13 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         }
     }
 
-    for (auto& config: configs) {
-        const auto& diskId = config.GetDiskId();
-        auto& disk = Disks[config.GetDiskId()];
-        if (!disk.ReplicaCount) {
+    for (const auto& config: configs) {
+        if (!config.GetReplicaCount()) {
             continue;
         }
-        for (const auto& id: config.GetDeviceReplacementUUIDs()) {
-            ReplicaTable.MarkReplacementDevice(diskId, id, true);
+        const auto& diskId = config.GetDiskId();
+        for (const auto& deviceId: config.GetDeviceReplacementUUIDs()) {
+            ReplicaTable.MarkReplacementDevice(diskId, deviceId, true);
         }
     }
 }
@@ -2617,7 +2616,6 @@ NProto::TError TDiskRegistryState::AllocateMirroredDisk(
 
     result->DeviceReplacementIds =
         ReplicaTable.GetDevicesReplacements(params.DiskId);
-    Sort(result->DeviceReplacementIds);
     result->LaggingDevices = disk.OutdatedLaggingDevices;
 
     disk.CloudId = params.CloudId;
@@ -3528,7 +3526,6 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     diskInfo.FinishedMigrations = disk.FinishedMigrations;
     diskInfo.OutdatedLaggingDevices = disk.OutdatedLaggingDevices;
     diskInfo.DeviceReplacementIds = ReplicaTable.GetDevicesReplacements(diskId);
-    Sort(diskInfo.DeviceReplacementIds);
     diskInfo.MediaKind = disk.MediaKind;
     diskInfo.MasterDiskId = disk.MasterDiskId;
     diskInfo.CheckpointId = disk.CheckpointReplica.GetCheckpointId();
@@ -6449,6 +6446,7 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
                          << sourceId << " was replaced by " << targetId);
 
     auto* masterDiskState = Disks.FindPtr(disk.MasterDiskId);
+    Y_DEBUG_ABORT_UNLESS(masterDiskState);
     if (masterDiskState) {
         masterDiskState->History.push_back(std::move(historyItem));
     }
