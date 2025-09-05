@@ -809,7 +809,11 @@ void TBootstrapBase::InitLocalService()
         CreateLocalStorageProvider(
             FileIOServiceProvider,
             NvmeManager,
-            {.DirectIO = false, .UseSubmissionThread = false}));
+            {.DirectIO = false,
+             .UseSubmissionThread = false,
+             .EnableChecksumValidation =
+                 Configs->DiskAgentConfig
+                     ->GetEnableChecksumValidationForDrBasedDisks()}));
 }
 
 void TBootstrapBase::InitNullService()

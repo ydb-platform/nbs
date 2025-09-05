@@ -77,7 +77,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 TLogTitle(
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
-                    .GetChild(GetCycleCount())});
+                    .GetChild(GetCycleCount()),
+                /*enableChecksumValidation=*/false});
 
         auto requestToPartition = ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -148,7 +149,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 TLogTitle(
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
-                    .GetChild(GetCycleCount())});
+                    .GetChild(GetCycleCount()),
+                /*enableChecksumValidation=*/false});
 
         ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();

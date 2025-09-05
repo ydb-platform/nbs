@@ -208,7 +208,7 @@ TDataIntegrityClient::TDataIntegrityClient(
     auto counters = monitoring->GetCounters();
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
     Counters = rootGroup->GetSubgroup("component", "service")
-                   ->GetSubgroup("component", "data_integrity");
+                   ->GetSubgroup("subcomponent", "data_integrity");
     RequestCounters.Register(*Counters);
 }
 

@@ -135,5 +135,4 @@ ui32 CalculateWriteRequestBlockCount(
     return request.GetBlocksCount();
 }
 
-
 }   // namespace NCloud::NBlockStore

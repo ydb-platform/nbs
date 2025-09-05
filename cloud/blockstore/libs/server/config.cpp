@@ -113,6 +113,7 @@ constexpr TDuration Seconds(int s)
         NProto::EEncryptZeroPolicy,                                            \
         NProto::EZP_WRITE_ENCRYPTED_ZEROS                                     )\
     xxx(VhostPteFlushByteThreshold,  ui64,                   0                )\
+    xxx(EnableChecksumValidation,    bool,                   false            )\
     xxx(AutomaticNbdDeviceManagement,bool,                   false            )
 // BLOCKSTORE_SERVER_CONFIG
 
