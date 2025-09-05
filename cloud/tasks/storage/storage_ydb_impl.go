@@ -953,7 +953,8 @@ func (s *storageYDB) listHangingTasks(
 			select id from ready_to_cancel UNION ALL
 			select id from cancelling
 		);
-		select * from tasks
+		select *
+		from tasks
 		where
 		 	(id in $task_ids) and
 			(task_type not in $except_task_types) and
@@ -1123,10 +1124,29 @@ func (s *storageYDB) listSlowTasks(
 		select *
 		from tasks
 		where
-			id in $task_ids
-			and estimated_inflight_duration != Interval("P0D")
-			and (inflight_duration - estimated_inflight_duration) >= $estimateMiss
-		order by DateTime::ToSeconds(inflight_duration) / DateTime::ToSeconds(estimated_inflight_duration) desc
+			id in $task_ids and
+			(
+				(
+					estimated_inflight_duration != Interval("P0D")
+					and (inflight_duration - estimated_inflight_duration) >= $estimateMiss
+				)
+				or (
+					estimated_stalling_duration != Interval("P0D")
+					and (stalling_duration - estimated_stalling_duration) >= $estimateMiss
+				)
+			)
+		order by MAX_OF(
+			IF(
+				estimated_inflight_duration != Interval("P0D"),
+				CAST(DateTime::ToSeconds(inflight_duration) AS Double) / DateTime::ToSeconds(estimated_inflight_duration),
+				0.0,
+			),
+			IF(
+				estimated_stalling_duration != Interval("P0D"),
+				CAST(DateTime::ToSeconds(stalling_duration) AS Double) / DateTime::ToSeconds(estimated_stalling_duration),
+				0.0,
+			)
+		) desc
 	`, s.tablesPath),
 		persistence.ValueParam("$since", persistence.TimestampValue(since)),
 		persistence.ValueParam("$estimateMiss", persistence.IntervalValue(estimateMiss)),
