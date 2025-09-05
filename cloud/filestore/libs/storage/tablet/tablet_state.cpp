@@ -232,6 +232,22 @@ TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
     };
 }
 
+THandlesStats TIndexTabletState::GetHandlesStats() const
+{
+    i64 withDirect = 0;
+    i64 total = 0;
+    for (const auto& p: Impl->SessionById) {
+        const auto* s = p.second;
+        const auto res = s->HandleStatsByNode.GetDirectAndTotalOpenHandles();
+        withDirect += res.first;
+        total += res.second;
+    }
+    return {
+        .DirectHandles = withDirect,
+        .TotalHandles = total,
+    };
+}
+
 ui64 TIndexTabletState::CalculateExpectedShardCount() const
 {
     if (FileSystem.GetShardNo()) {
