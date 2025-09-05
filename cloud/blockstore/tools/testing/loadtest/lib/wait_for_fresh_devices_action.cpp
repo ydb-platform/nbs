@@ -30,7 +30,7 @@ int TWaitForFreshDevicesActionRunner::Run(
 {
     const TDuration waitDuration = TDuration::Seconds(5);
 
-    TestContext.Client = ClientFactory.CreateClient({});
+    TestContext.Client = ClientFactory.CreateClient({}, action.GetName());
     TestContext.Client->Start();
 
     const TString& volumeName =

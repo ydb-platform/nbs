@@ -44,6 +44,7 @@ struct ITestRunner
 ////////////////////////////////////////////////////////////////////////////////
 
 ITestRunnerPtr CreateTestRunner(
+    TString testName,
     ILoggingServicePtr loggingService,
     NClient::ISessionPtr session,
     NProto::TVolume volume,

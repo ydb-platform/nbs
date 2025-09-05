@@ -49,7 +49,7 @@ int TCompareDataActionRunner::Run(
     int code = 0;
 
     try {
-        TestContext.Client = ClientFactory.CreateClient({});
+        TestContext.Client = ClientFactory.CreateClient({}, action.GetName());
         TestContext.Client->Start();
 
         Y_ENSURE(

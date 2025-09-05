@@ -89,6 +89,7 @@ class TTestRunner final
     , public std::enable_shared_from_this<TTestRunner>
 {
 private:
+    const TString TestName;
     TLog Log;
     NProto::TVolume Volume;
     TString LoggingTag;
@@ -120,6 +121,7 @@ private:
 
 public:
     TTestRunner(
+            TString testName,
             ILoggingServicePtr loggingService,
             ISessionPtr session,
             NProto::TVolume volume,
@@ -130,7 +132,8 @@ public:
             TVector<ui32> successOnError,
             IBlockDigestCalculatorPtr digestCalculator,
             std::atomic<bool>& shouldStop)
-        : Log(loggingService->CreateLog(requests->Describe()))
+        : TestName(std::move(testName))
+        , Log(loggingService->CreateLog(requests->Describe()))
         , Volume(std::move(volume))
         , LoggingTag(std::move(loggingTag))
         , Requests(std::move(requests))
@@ -178,7 +181,7 @@ private:
 
 void* TTestRunner::ThreadProc()
 {
-    SetCurrentThreadName("Test");
+    SetCurrentThreadName(TestName.c_str());
     StartTs = Now();
     LastReportTs = Now();
 
@@ -487,6 +490,7 @@ void TTestRunner::ReportProgress()
 ////////////////////////////////////////////////////////////////////////////////
 
 ITestRunnerPtr CreateTestRunner(
+    TString testName,
     ILoggingServicePtr loggingService,
     ISessionPtr session,
     NProto::TVolume volume,
@@ -499,6 +503,7 @@ ITestRunnerPtr CreateTestRunner(
     std::atomic<bool>& shouldStop)
 {
     return std::make_shared<TTestRunner>(
+        std::move(testName),
         std::move(loggingService),
         std::move(session),
         std::move(volume),

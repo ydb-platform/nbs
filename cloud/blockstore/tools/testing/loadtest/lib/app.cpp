@@ -136,7 +136,7 @@ int TApp::Run(TBootstrap& bootstrap)
     }
 
     auto& out = options->GetOutputStream();
-    for (const auto& testContext : TestContexts) {
+    for (const auto& testContext: TestContexts) {
         out << testContext.Result.Str() << Endl;
     }
 
@@ -337,7 +337,7 @@ void TApp::RunGraph(const NProto::TActionGraph& graph, TBootstrap& bootstrap)
 
                 case NProto::TActionGraph::TVertex::kControlPlaneAction: {
                     const auto& cpa = vertex.GetControlPlaneAction();
-                    auto client = bootstrap.CreateClient({});
+                    auto client = bootstrap.CreateClient({}, cpa.GetName());
                     for (ui32 j = 0; j < Max(1u, cpa.GetRepetitions()); ++j) {
                         if (j) {
                             testContext.Result << Endl;
