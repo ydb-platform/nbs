@@ -21,3 +21,4 @@ CalculateCleanupScoreBasedOnUsedBlocksCount: true
 AsyncDestroyHandleEnabled: true
 LazyXAttrsEnabled: true
 ServerWriteBackCacheEnabled: true
+StrictFileSystemSizeEnforcementEnabled: true

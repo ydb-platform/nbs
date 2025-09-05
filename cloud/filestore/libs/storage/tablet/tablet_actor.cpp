@@ -782,6 +782,8 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
     response->Record.SetDirectoryCreationInShardsEnabled(
         GetFileSystem().GetDirectoryCreationInShardsEnabled());
+    response->Record.SetStrictFileSystemSizeEnforcementEnabled(
+        GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled());
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
@@ -1051,8 +1053,8 @@ STFUNC(TIndexTabletActor::StateInit)
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
-            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
-            HandleGetShardStatsCompleted);
+            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
+            HandleAggregateStatsCompleted);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
@@ -1113,8 +1115,8 @@ STFUNC(TIndexTabletActor::StateWork)
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
-            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
-            HandleGetShardStatsCompleted);
+            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
+            HandleAggregateStatsCompleted);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
@@ -1204,8 +1206,8 @@ STFUNC(TIndexTabletActor::StateZombie)
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
-            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
-            HandleGetShardStatsCompleted);
+            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
+            HandleAggregateStatsCompleted);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
@@ -1261,8 +1263,8 @@ STFUNC(TIndexTabletActor::StateBroken)
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
-            TEvIndexTabletPrivate::TEvGetShardStatsCompleted,
-            HandleGetShardStatsCompleted);
+            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
+            HandleAggregateStatsCompleted);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);

@@ -902,7 +902,7 @@ struct TEvIndexTabletPrivate
     // GetShardStats
     //
 
-    struct TGetShardStatsCompleted
+    struct TAggregateStatsCompleted
     {
         NProtoPrivate::TStorageStats AggregateStats;
         TVector<TShardStats> ShardStats;
@@ -935,7 +935,7 @@ struct TEvIndexTabletPrivate
         EvNodeUnlinkedInShard,
         EvNodeRenamedInDestination,
 
-        EvGetShardStatsCompleted,
+        EvAggregateStatsCompleted,
 
         EvShardRequestCompleted,
 
@@ -980,8 +980,8 @@ struct TEvIndexTabletPrivate
     using TEvNodeRenamedInDestination =
         TRequestEvent<TNodeRenamedInDestination, EvNodeRenamedInDestination>;
 
-    using TEvGetShardStatsCompleted =
-        TResponseEvent<TGetShardStatsCompleted, EvGetShardStatsCompleted>;
+    using TEvAggregateStatsCompleted =
+        TResponseEvent<TAggregateStatsCompleted, EvAggregateStatsCompleted>;
 
     using TEvShardRequestCompleted =
         TResponseEvent<TEmpty, EvShardRequestCompleted>;
