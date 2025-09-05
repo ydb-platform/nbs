@@ -73,7 +73,7 @@ class NbsLauncher:
         storage_config_patch.AcquireNonReplicatedDevices = True
         storage_config_patch.ClientRemountPeriod = 1000
         storage_config_patch.NonReplicatedMigrationStartAllowed = True
-        storage_config_patch.NonReplicatedSecureEraseTimeout = 2000  # 2 sec
+        storage_config_patch.NonReplicatedSecureEraseTimeout = 30000  # 30 sec
         storage_config_patch.DisableLocalService = False
         storage_config_patch.InactiveClientsTimeout = 60000  # 1 min
         storage_config_patch.AgentRequestTimeout = 5000      # 5 sec

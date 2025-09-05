@@ -43,6 +43,7 @@ class LocalNbs(Daemon):
             enable_tls=False,
             discovery_config=None,
             restart_interval=None,
+            suspend_restarts=False,
             dynamic_storage_pools=None,
             load_configs_from_cms=False,
             nbs_secure_port=None,
@@ -175,6 +176,7 @@ class LocalNbs(Daemon):
         self.__load_configs_from_cms = load_configs_from_cms
         self.__use_ic_version_check = use_ic_version_check
         self.__restart_interval = restart_interval
+        self.__restart_allowed = restart_interval and not suspend_restarts
         self.__ping_path = ping_path
         self.__use_secure_registration = use_secure_registration
 
@@ -189,17 +191,16 @@ class LocalNbs(Daemon):
         if self.__binary_path:
             cp = core_pattern(self.__binary_path, self.__cwd)
 
-        restart_allowed = False
-        if self.__restart_interval is not None:
-            restart_allowed = True
-
         commands = self.__make_start_commands()
         logger.info("commands is {}".format(commands))
         super(LocalNbs, self).__init__(
-            commands=commands, cwd=self.__cwd,
-            restart_allowed=restart_allowed,
-            restart_interval=self.__restart_interval, ping_port=self.__mon_port,
-            ping_path=self.__ping_path, ping_success_codes=[200],
+            commands=commands,
+            cwd=self.__cwd,
+            restart_interval=self.__restart_interval,
+            restart_allowed=self.__restart_allowed,
+            ping_port=self.__mon_port,
+            ping_path=self.__ping_path,
+            ping_success_codes=[200],
             core_pattern=cp)
 
     @staticmethod
