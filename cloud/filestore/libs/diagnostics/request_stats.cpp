@@ -264,9 +264,8 @@ public:
 
     void Reset() override
     {
-        for (auto& p: IncompleteRequestProviders) {
-            p.reset();
-        }
+        TGuard g(ProvidersLock);
+        IncompleteRequestProviders.clear();
     }
 
     void Collect(const TIncompleteRequest& req) override
