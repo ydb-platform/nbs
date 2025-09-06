@@ -34,4 +34,9 @@ private:
     TString ValueToString(const TValue& val) const;
 };
 
+inline IOutputStream& operator<<(IOutputStream& out, const TLogPrefix& prefix)
+{
+    return out << prefix.Get();
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
