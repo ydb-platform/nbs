@@ -287,7 +287,7 @@ struct TTestVerbs
         TSockAddrInet6 DstAddr;
 
         TAddressInfo(const TString& host, ui32 port)
-            : SrcAddr("::1", 1111)
+            : SrcAddr(host.data(), port)
             , DstAddr(host.data(), port)
         {
             memset(
@@ -399,7 +399,7 @@ struct TTestVerbs
     void BindAddress(rdma_cm_id* id, sockaddr* addr) override
     {
         Y_UNUSED(id);
-        Y_UNUSED(addr);
+        TestContext->BindAddress = NVerbs::PrintAddress(addr);
     }
 
     void ResolveAddress(
