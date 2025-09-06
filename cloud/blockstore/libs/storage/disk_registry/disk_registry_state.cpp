@@ -5181,12 +5181,18 @@ NProto::TError TDiskRegistryState::UpdateAgentState(
 
     ChangeAgentState(*agent, newState, timestamp, std::move(reason));
 
-    size_t sizeBefore = affectedDisks.size();
     ApplyAgentStateChange(db, *agent, timestamp, affectedDisks);
 
     if (newState == NProto::AGENT_STATE_UNAVAILABLE && newState != oldState) {
-        for (auto i = sizeBefore; i < affectedDisks.size(); ++i) {
-            AddReallocateRequest(db, affectedDisks[i]);
+        for (const auto& d: agent->GetDevices()) {
+            const auto& deviceId = d.GetDeviceUUID();
+            auto diskId = DeviceList.FindDiskId(deviceId);
+
+            if (diskId.empty()) {
+                continue;
+            }
+
+            AddReallocateRequest(db, diskId);
         }
     }
 
