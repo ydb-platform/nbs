@@ -12,7 +12,6 @@ from cloud.blockstore.tests.python.lib.test_base import wait_for_nbs_server
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 
 from .nbs_runner import LocalNbs
-from .endpoint_proxy import EndpointProxy
 
 import yatest.common as yatest_common
 
@@ -51,14 +50,8 @@ class LocalLoadTest:
             rack='',
             bs_cache_file_path=None,
             kikimr_binary_path=None,
-            with_endpoint_proxy=False,
-            with_netlink=False,
             access_service_type=AccessService,
             load_configs_from_cms=True,
-            stored_endpoints_path=None,
-            nbd_request_timeout=None,
-            nbd_reconnect_delay=None,
-            proxy_restart_events=None,
             log_config=None,
     ):
 
@@ -126,17 +119,6 @@ class LocalLoadTest:
             log_config=log_config,
         )
 
-        self.endpoint_proxy = None
-        if with_endpoint_proxy:
-            self.endpoint_proxy = EndpointProxy(
-                working_dir=self.nbs.cwd,
-                unix_socket_path=server_app_config.ServerConfig.EndpointProxySocketPath,
-                with_netlink=with_netlink,
-                stored_endpoints_path=stored_endpoints_path,
-                nbd_request_timeout=nbd_request_timeout,
-                nbd_reconnect_delay=nbd_reconnect_delay,
-                restart_events=proxy_restart_events)
-
         if run_kikimr:
             self.nbs.setup_cms(self.kikimr_cluster.client)
 
@@ -153,8 +135,6 @@ class LocalLoadTest:
                 self.__devices,
                 node_type=None)
 
-        if self.endpoint_proxy:
-            self.endpoint_proxy.start()
         self.nbs.start()
         wait_for_nbs_server(self.nbs.nbs_port)
 
@@ -162,9 +142,6 @@ class LocalLoadTest:
         try:
             self.nbs.stop()
             self.kikimr_cluster.stop()
-
-            if self.endpoint_proxy:
-                self.endpoint_proxy.stop()
 
             for d in self.__devices:
                 d.handle.close()

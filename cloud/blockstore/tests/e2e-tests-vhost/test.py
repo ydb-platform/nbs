@@ -49,11 +49,7 @@ def init(stored_endpoints_path=None):
     env = LocalLoadTest(
         endpoint="",
         server_app_config=server,
-        storage_config_patches=None,
-        use_in_memory_pdisks=True,
-        with_endpoint_proxy=False,
-        with_netlink=False,
-        stored_endpoints_path=stored_endpoints_path)
+        use_in_memory_pdisks=True)
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
