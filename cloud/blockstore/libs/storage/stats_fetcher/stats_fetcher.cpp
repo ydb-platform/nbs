@@ -56,7 +56,7 @@ void TStatsFetcherActor::HandleWakeup(
 
     auto [cpuWait, error] = StatsFetcher->GetCpuWait();
     if (HasError(error)) {
-        auto errorMessage = ReportCpuWaitCounterReadError(error.GetMessage());
+        auto errorMessage = ReportCpuWaitCounterReadError(FormatError(error));
         LOG_WARN_S(
             ctx,
             TBlockStoreComponents::STATS_SERVICE,
