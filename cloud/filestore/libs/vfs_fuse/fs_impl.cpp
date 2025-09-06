@@ -1,7 +1,5 @@
 #include "fs_impl.h"
 
-#include <cloud/filestore/libs/diagnostics/critical_events.h>
-
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
