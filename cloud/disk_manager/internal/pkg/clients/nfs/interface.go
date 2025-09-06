@@ -78,7 +78,7 @@ type Client interface {
 		ctx context.Context,
 		session Session,
 		nodeID uint64,
-	) (string, error)
+	) ([]byte, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

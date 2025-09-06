@@ -266,6 +266,10 @@ func (client *Client) DestroySession(
 ) error {
 	req := &protos.TDestroySessionRequest{
 		FileSystemId: session.FileSystemID,
+		Headers: &protos.THeaders{
+			SessionSeqNo: session.SessionSeqNo,
+			SessionId:    []byte(session.SessionID),
+		},
 	}
 	_, err := client.Impl.DestroySession(ctx, req)
 	return err

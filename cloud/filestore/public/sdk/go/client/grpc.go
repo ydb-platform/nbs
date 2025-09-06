@@ -304,6 +304,10 @@ func (client *grpcClient) CreateSession(
 	req *protos.TCreateSessionRequest,
 ) (*protos.TCreateSessionResponse, error) {
 
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+
 	resp, err := client.executeRequest(
 		ctx,
 		req,
@@ -319,6 +323,10 @@ func (client *grpcClient) DestroySession(
 	ctx context.Context,
 	req *protos.TDestroySessionRequest,
 ) (*protos.TDestroySessionResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
 
 	resp, err := client.executeRequest(
 		ctx,
@@ -336,6 +344,8 @@ func (client *grpcClient) ListNodes(
 	req *protos.TListNodesRequest,
 ) (*protos.TListNodesResponse, error) {
 
+	// The headers MUST be not nill, since we need a session
+	// which is passed in headers.
 	resp, err := client.executeRequest(
 		ctx,
 		req,
