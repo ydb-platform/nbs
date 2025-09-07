@@ -53,13 +53,12 @@ ui32 InitPartitionRequest(
             } else {
                 ReportChecksumCalculationError(
                     TStringBuilder()
-                    << "VolumeActor: incorrectly calculated checksum for block "
-                       "range "
-                    << DescribeRange(stripeInfo.BlockRange)
-                    << ": request range length=" << stripeInfo.BlockRange.Size()
-                    << ", checksum length="
-                    << proto.GetChecksums(i).GetByteCount() / blockSize
-                    << ", diskId=" << partition.PartitionConfig.GetDiskId());
+                        << "Incorrectly calculated checksum for block range",
+                    {{"range", stripeInfo.BlockRange},
+                     {"range length=", stripeInfo.BlockRange.Size()},
+                     {"checksum length",
+                      proto.GetChecksums(i).GetByteCount() / blockSize},
+                     {"diskId", partition.PartitionConfig.GetDiskId()}});
             }
         }
     }
