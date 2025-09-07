@@ -440,6 +440,10 @@ bool TBlockIterator::NextMerged()
 
         Group.Index += blocksProcessed;
 
+        if (blockIndex >= maxBlockIndex) {
+            continue;
+        }
+
         if (Filter.CheckEntry(blockIndex, maxCommitId)) {
             Block.BlockIndex = blockIndex;
             Block.MaxCommitId = maxCommitId;

@@ -290,6 +290,7 @@ void TMixedBlocks::FindBlocks(
 
             Y_ABORT_UNLESS(block.NodeId == nodeId);
             Y_ABORT_UNLESS(block.MinCommitId <= commitId);
+            Y_ABORT_UNLESS(iter.BlocksCount);
 
             const auto deletionMarkersEmpty = range->DeletionMarkers.Empty();
             if (iter.BlocksCount > 1 && !deletionMarkersEmpty) {
