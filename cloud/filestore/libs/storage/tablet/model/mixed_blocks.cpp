@@ -291,14 +291,41 @@ void TMixedBlocks::FindBlocks(
             Y_ABORT_UNLESS(block.NodeId == nodeId);
             Y_ABORT_UNLESS(block.MinCommitId <= commitId);
 
-            range->DeletionMarkers.Apply(block);
-
-            if (commitId < block.MaxCommitId) {
-                visitor.Accept(
+            const auto deletionMarkersEmpty = range->DeletionMarkers.Empty();
+            if (iter.BlocksCount > 1 && !deletionMarkersEmpty) {
+                auto deletionMarkerIter = range->DeletionMarkers.FindBlocks(
                     block,
-                    blob.BlobId,
-                    iter.BlobOffset,
                     iter.BlocksCount);
+
+                auto b = block;
+
+                ui32 blobOffset = iter.BlobOffset;
+                while (deletionMarkerIter.Next()) {
+                    b.MaxCommitId = deletionMarkerIter.MaxCommitId;
+
+                    if (commitId < b.MaxCommitId) {
+                        visitor.Accept(
+                            b,
+                            blob.BlobId,
+                            blobOffset,
+                            deletionMarkerIter.BlocksCount);
+                    }
+
+                    b.BlockIndex += deletionMarkerIter.BlocksCount;
+                    blobOffset += deletionMarkerIter.BlocksCount;
+                }
+            } else {
+                if (!deletionMarkersEmpty) {
+                    range->DeletionMarkers.Apply(block);
+                }
+
+                if (commitId < block.MaxCommitId) {
+                    visitor.Accept(
+                        block,
+                        blob.BlobId,
+                        iter.BlobOffset,
+                        iter.BlocksCount);
+                }
             }
         }
     }

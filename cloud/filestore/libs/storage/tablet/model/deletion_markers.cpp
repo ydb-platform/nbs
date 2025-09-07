@@ -65,19 +65,21 @@ using TDisjointRangeMapByNodeId = THashMap<
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeletionMarkers::TImpl
+struct TDeletionMarkers::TImpl
 {
-private:
     TVector<TDeletionMarker> DeletionMarkers;
     TDisjointRangeMapByNodeId DisjointRangeMapByNodeId;
 
     IAllocator* Alloc;
 
-public:
     TImpl(IAllocator* alloc)
         : DisjointRangeMapByNodeId{alloc}
         , Alloc(alloc)
     {}
+
+    TDeletionMarkers::TIterator FindBlocks(
+        const TBlock& block,
+        ui32 maxBlocksToIterate);
 
     void Add(TDeletionMarker deletionMarker);
 
@@ -87,6 +89,13 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TDeletionMarkers::TIterator TDeletionMarkers::TImpl::FindBlocks(
+    const TBlock& block,
+    ui32 maxBlocksToIterate)
+{
+    return TIterator(*this, block, block.BlockIndex + maxBlocksToIterate);
+}
 
 void TDeletionMarkers::TImpl::Add(TDeletionMarker deletionMarker)
 {
@@ -175,11 +184,87 @@ TVector<TDeletionMarker> TDeletionMarkers::TImpl::Extract()
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TDeletionMarkers::TIterator::TIterator(
+        const TImpl& impl,
+        const TBlock& block,
+        ui64 maxBlockIndex)
+    : Impl(impl)
+    , MaxCommitId(block.MaxCommitId)
+    , Block(block)
+    , MaxBlockIndex(maxBlockIndex)
+{}
+
+bool TDeletionMarkers::TIterator::Next()
+{
+    if (Block.BlockIndex >= MaxBlockIndex) {
+        return false;
+    }
+
+    auto it = Impl.DisjointRangeMapByNodeId.find(Block.NodeId);
+    if (it == Impl.DisjointRangeMapByNodeId.end()) {
+        BlocksCount = MaxBlockIndex - Block.BlockIndex;
+        Block.BlockIndex = MaxBlockIndex;
+        return true;
+    }
+
+    auto& map = it->second;
+
+    auto findDeletedRange = [&](ui64 blockIndex) -> const TDeletedRange*
+    {
+        auto it = map.upper_bound(blockIndex);
+        if (it != map.end() &&
+            it->Start <= blockIndex &&
+            it->CommitId > Block.MinCommitId &&
+            it->CommitId < Block.MaxCommitId)
+        {
+            return &(*it);
+        }
+
+        return nullptr;
+    };
+
+    if (const auto* range = findDeletedRange(Block.BlockIndex)) {
+        MaxCommitId = range->CommitId;
+        BlocksCount = range->End - Block.BlockIndex;
+        Block.BlockIndex += BlocksCount;
+        return true;
+    }
+
+    MaxCommitId = Block.MaxCommitId;
+    BlocksCount = 1;
+    Block.BlockIndex++;
+
+    // Skip blocks before next deletion range
+    while (
+        Block.BlockIndex < MaxBlockIndex &&
+        !findDeletedRange(Block.BlockIndex)
+    ) {
+        Block.BlockIndex++;
+        BlocksCount++;
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TDeletionMarkers::TDeletionMarkers(IAllocator* alloc)
     : Impl(new TImpl(alloc))
 {}
 
 TDeletionMarkers::~TDeletionMarkers() = default;
+
+bool TDeletionMarkers::Empty() const
+{
+    return Impl->DeletionMarkers.empty();
+}
+
+TDeletionMarkers::TIterator TDeletionMarkers::FindBlocks(
+    const TBlock& block,
+    ui32 maxBlocksToIterate)
+{
+    return Impl->FindBlocks(block, maxBlocksToIterate);
+}
 
 void TDeletionMarkers::Add(TDeletionMarker deletionMarker)
 {
