@@ -429,21 +429,24 @@ bool TBlockIterator::NextMerged()
             Group.Count - Group.Index,  // blocksToProcess
             &blocksProcessed);
 
-        if (Filter.CheckEntry(blockIndex, maxCommitId)) {
-            const auto maxBlockIndex = Min(
-                blockIndex + blocksProcessed,
-                Filter.MaxBlockIndex);
-            blocksProcessed = maxBlockIndex - blockIndex;
-            Group.Index += blocksProcessed;
-
-            Block.BlockIndex = blockIndex;
-            Block.MaxCommitId = maxCommitId;
-            BlobOffset = blobOffset;
-            BlocksCount = blocksProcessed;
-            return true;
+        const auto maxBlockIndex = Min(
+            blockIndex + blocksProcessed,
+            Filter.MaxBlockIndex);
+        if (blockIndex < Filter.MinBlockIndex) {
+            // Skip first part of merged group
+            blobOffset += Filter.MinBlockIndex - blockIndex;
+            blockIndex = Filter.MinBlockIndex;
         }
 
         Group.Index += blocksProcessed;
+
+        if (Filter.CheckEntry(blockIndex, maxCommitId)) {
+            Block.BlockIndex = blockIndex;
+            Block.MaxCommitId = maxCommitId;
+            BlobOffset = blobOffset;
+            BlocksCount = maxBlockIndex - blockIndex;
+            return true;
+        }
     }
 
     NextBlock = nullptr;

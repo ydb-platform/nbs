@@ -20,9 +20,20 @@ public:
     void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset) override
+        ui32 blobOffset,
+        ui32 blocksCount) override
     {
-        Blocks.push_back({ block, blobId, blobOffset });
+        Blocks.emplace_back(block, blobId, blobOffset);
+
+        if (blocksCount > 1) {
+            auto b = block;
+            while (--blocksCount > 0) {
+                b.BlockIndex++;
+                blobOffset++;
+
+                Blocks.emplace_back(b, blobId, blobOffset);
+            }
+        }
     }
 
     TVector<TBlockDataRef> Finish()
@@ -99,7 +110,7 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
 
         mixedBlocks.AddDeletionMarker(
             rangeId,
-            {nodeId, minCommitId + 2, blockIndex,blocksCount}
+            {nodeId, minCommitId + 2, blockIndex, blocksCount}
         );
 
         {

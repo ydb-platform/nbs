@@ -287,18 +287,44 @@ void TMixedBlocks::FindBlocks(
 
         while (iter.Next()) {
             auto& block = iter.Block;
-            ui32 blockIndex = block.BlockIndex;
 
-            for (ui32 i = 0; i < iter.BlocksCount; i++) {
-                block.BlockIndex = blockIndex + i;
+            Y_ABORT_UNLESS(block.NodeId == nodeId);
+            Y_ABORT_UNLESS(block.MinCommitId <= commitId);
 
-                Y_ABORT_UNLESS(block.NodeId == nodeId);
-                Y_ABORT_UNLESS(block.MinCommitId <= commitId);
+            const auto deletionMarkersEmpty = range->DeletionMarkers.Empty();
+            if (iter.BlocksCount > 1 && !deletionMarkersEmpty) {
+                auto deletionMarkerIter = range->DeletionMarkers.FindBlocks(
+                    block,
+                    iter.BlocksCount);
 
-                range->DeletionMarkers.Apply(block);
+                auto b = block;
+
+                ui32 blobOffset = iter.BlobOffset;
+                while (deletionMarkerIter.Next()) {
+                    b.MaxCommitId = deletionMarkerIter.MaxCommitId;
+
+                    if (commitId < b.MaxCommitId) {
+                        visitor.Accept(
+                            b,
+                            blob.BlobId,
+                            blobOffset,
+                            deletionMarkerIter.BlocksCount);
+                    }
+
+                    b.BlockIndex += deletionMarkerIter.BlocksCount;
+                    blobOffset += deletionMarkerIter.BlocksCount;
+                }
+            } else {
+                if (!deletionMarkersEmpty) {
+                    range->DeletionMarkers.Apply(block);
+                }
 
                 if (commitId < block.MaxCommitId) {
-                    visitor.Accept(block, blob.BlobId, iter.BlobOffset + i);
+                    visitor.Accept(
+                        block,
+                        blob.BlobId,
+                        iter.BlobOffset,
+                        iter.BlocksCount);
                 }
             }
         }
