@@ -24,47 +24,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO(nasonov): remove this wrapper when TFileRingBuffer supports
-// in-place allocation
-class TFileRingBuffer: public NCloud::TFileRingBuffer
-{
-    using NCloud::TFileRingBuffer::TFileRingBuffer;
-
-private:
-    ui64 Capacity = 0;
-
-public:
-    TFileRingBuffer(const TString& filePath, ui64 capacity)
-        : NCloud::TFileRingBuffer(filePath, capacity)
-        , Capacity(capacity)
-    {}
-
-    ui64 MaxAllocationSize() const
-    {
-        // Capacity - sizeof(TEntryHeader)
-        return Capacity - 8;
-    }
-
-    bool AllocateBack(size_t size, char** ptr)
-    {
-        TString tmp(size, 0);
-        if (PushBack(tmp)) {
-            *ptr = const_cast<char*>(Back().data());
-            return true;
-        } else {
-            *ptr = nullptr;
-            return false;
-        }
-    }
-
-    void CommitAllocation(char* ptr)
-    {
-        Y_UNUSED(ptr);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TPendingReadDataRequest
 {
     TCallContextPtr CallContext;
@@ -765,23 +724,29 @@ private:
             auto& entry = PendingEntries.front();
             auto serializedSize = entry->GetSerializedSize();
 
-            char* allocationPtr = nullptr;
+            TFileRingBuffer::TAllocationHandle allocationHandle;
             bool allocated = CachedEntriesPersistentQueue.AllocateBack(
                 serializedSize,
-                &allocationPtr);
+                &allocationHandle);
 
             if (!allocated) {
                 ScheduleFlushAll();
                 break;
             }
 
-            Y_ABORT_UNLESS(allocationPtr != nullptr);
+            Y_ABORT_UNLESS(allocationHandle);
 
-            entry->SerializeAndMoveRequestBuffer(
-                allocationPtr,
-                PendingOperations);
+            CachedEntriesPersistentQueue.Write(
+                allocationHandle,
+                [&](auto data, auto size)
+                {
+                    entry->SerializeAndMoveRequestBuffer(
+                        data,
+                        size,
+                        PendingOperations);
+                });
 
-            CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
+            CachedEntriesPersistentQueue.CommitAllocation(allocationHandle);
 
             auto* handleState = GetHandleState(entry->GetHandle());
             AddCachedEntry(handleState, std::move(entry));
@@ -977,19 +942,25 @@ private:
             return;
         }
 
-        char* allocationPtr = nullptr;
+        TFileRingBuffer::TAllocationHandle allocationHandle;
         bool allocated = CachedEntriesPersistentQueue.AllocateBack(
             serializedSize,
-            &allocationPtr);
+            &allocationHandle);
 
         if (allocated) {
-            Y_ABORT_UNLESS(allocationPtr != nullptr);
+            Y_ABORT_UNLESS(allocationHandle);
 
-            entry->SerializeAndMoveRequestBuffer(
-                allocationPtr,
-                PendingOperations);
+            CachedEntriesPersistentQueue.Write(
+                allocationHandle,
+                [&](auto allocationPtr, auto size)
+                {
+                    entry->SerializeAndMoveRequestBuffer(
+                        allocationPtr,
+                        size,
+                        PendingOperations);
+                });
 
-            CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
+            CachedEntriesPersistentQueue.CommitAllocation(allocationHandle);
             AddCachedEntry(handleState, std::move(entry));
         } else {
             handleState->PendingEntriesCount++;
@@ -1304,6 +1275,7 @@ size_t TWriteBackCache::TWriteDataEntry::GetSerializedSize() const
 
 void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     char* allocationPtr,
+    size_t allocationSize,
     TPendingOperations& pendingOperations)
 {
     Y_ABORT_UNLESS(AllocationPtr == nullptr);
@@ -1314,9 +1286,8 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     AllocationPtr = allocationPtr;
 
     ui32 bufferSize = static_cast<ui32>(BufferRef.size());
-    auto serializedSize = GetSerializedSize();
 
-    TMemoryOutput mo(allocationPtr, serializedSize);
+    TMemoryOutput mo(allocationPtr, allocationSize);
     mo.Write(&bufferSize, sizeof(bufferSize));
     mo.Write(BufferRef);
 
