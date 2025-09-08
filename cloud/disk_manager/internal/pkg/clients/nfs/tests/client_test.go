@@ -127,7 +127,7 @@ func (f node) create(
 	ctx context.Context,
 	client nfs.Client,
 	session nfs.Session,
-	parentId uint64,
+	parentID uint64,
 ) {
 
 	mode := uint32(0o644)
@@ -139,7 +139,7 @@ func (f node) create(
 	if !f.root {
 		var err error
 		id, err = client.CreateNode(ctx, session, nfs.Node{
-			ParentID:   parentId,
+			ParentID:   parentID,
 			Name:       f.name,
 			Type:       f.fileType,
 			Mode:       mode,
