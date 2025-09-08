@@ -60,7 +60,7 @@ private:
     bool IsEnabled = true;
 
     const NProto::EVolumePreemptionType InitialVolumePreemptionType;
-    NProto::EVolumePreemptionType OverrideVolumePreemptionType;
+    NProto::EVolumePreemptionType OverridenVolumePreemptionType;
 
 public:
     TVolumeBalancerState(TStorageConfigPtr storageConfig);
@@ -90,7 +90,7 @@ public:
     void OverrideVolumePreemptionTypeIfPossible(
         NProto::EVolumePreemptionType volumePreemptionType)
     {
-        OverrideVolumePreemptionType = volumePreemptionType;
+        OverridenVolumePreemptionType = volumePreemptionType;
     }
 
     NProto::EVolumePreemptionType GetVolumePreemptionType() const
@@ -99,7 +99,7 @@ public:
         // Config Dispatcher ones
         return StorageConfig->GetVolumePreemptionType() ==
                        InitialVolumePreemptionType
-                   ? OverrideVolumePreemptionType
+                   ? OverridenVolumePreemptionType
                    : StorageConfig->GetVolumePreemptionType();
     }
 
