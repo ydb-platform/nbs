@@ -82,4 +82,6 @@ message TFileSystemConfig
 
     // Limits max threads used in fuse loop per mount
     optional uint32 MaxFuseLoopThreads = 24;
+    // Enable directory handles storage functionality
+    optional bool DirectoryHandlesStorageEnabled = 25;
 }

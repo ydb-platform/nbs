@@ -23,6 +23,7 @@ SRCS(
     lru_cache.cpp
     media.cpp
     page_size.cpp
+    dynamic_persistent_table.cpp
     persistent_table.cpp
     proto_helpers.cpp
     random.cpp
