@@ -431,7 +431,7 @@ void TVolumeBalancerActor::HandleConfigNotificationRequest(
     auto volumePreemptionType = static_cast<NProto::EVolumePreemptionType>(
         config.GetBlockstoreConfig().GetVolumePreemptionType());
 
-    State->SetVolumePreemptionType(volumePreemptionType);
+    State->OverrideVolumePreemptionTypeIfPossible(volumePreemptionType);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
