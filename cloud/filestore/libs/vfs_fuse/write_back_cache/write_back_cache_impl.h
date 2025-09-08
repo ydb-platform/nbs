@@ -112,6 +112,7 @@ public:
 
     void SerializeAndMoveRequestBuffer(
         char* allocationPtr,
+        size_t allocationSize,
         TPendingOperations& pendingOperations);
 
     void FinishFlush(TPendingOperations& pendingOperations);
