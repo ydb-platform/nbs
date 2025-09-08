@@ -392,6 +392,11 @@ func (c *ClientMock) FinishFillDisk(
 	return args.Error(0)
 }
 
+func (c *ClientMock) GetZone() string {
+	args := c.Called()
+	return args.String(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewClientMock() *ClientMock {
