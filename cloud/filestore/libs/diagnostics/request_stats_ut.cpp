@@ -957,7 +957,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotCrashOndestroy)
+    Y_UNIT_TEST(ShouldNotWhenUpdatingStatsAfterReset)
     {
         struct TIncompleteRequestProvider final
             : public IIncompleteRequestProvider
