@@ -286,5 +286,6 @@ func (c *client) ReadLink(
 	nodeID uint64,
 ) ([]byte, error) {
 
-	return c.nfs.ReadLink(ctx, nfs_client.Session(session), nodeID)
+	data, err := c.nfs.ReadLink(ctx, nfs_client.Session(session), nodeID)
+	return data, wrapError(err)
 }
