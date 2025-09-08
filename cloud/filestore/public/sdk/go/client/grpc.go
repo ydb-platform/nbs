@@ -344,7 +344,7 @@ func (client *grpcClient) ListNodes(
 	req *protos.TListNodesRequest,
 ) (*protos.TListNodesResponse, error) {
 
-	// The headers MUST be not nill, since we need a session
+	// The headers MUST be not nil, since we need a session
 	// which is passed in headers.
 	resp, err := client.executeRequest(
 		ctx,
