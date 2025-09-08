@@ -720,7 +720,7 @@ public:
 
     [[nodiscard]] TDuration GetTrimFreshLogTimeout() const;
 
-    [[nodiscard]] bool GetEnableChecksumValidationForYdbBasedDisks() const;
+    [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
 };
 
 ui64 GetAllocationUnit(

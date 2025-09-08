@@ -55,7 +55,7 @@ ui32 InitPartitionRequest(
                     TStringBuilder()
                         << "Incorrectly calculated checksum for block range",
                     {{"range", stripeInfo.BlockRange},
-                     {"range length=", stripeInfo.BlockRange.Size()},
+                     {"range length", stripeInfo.BlockRange.Size()},
                      {"checksum length",
                       proto.GetChecksums(i).GetByteCount() / blockSize},
                      {"diskId", partition.PartitionConfig.GetDiskId()}});

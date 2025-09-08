@@ -160,7 +160,7 @@ void TPartitionActor::HandleWriteBlocksRequest(
             blocksCount += buffer.Size() / State->GetBlockSize();
         }
 
-        if (Config->GetEnableChecksumValidationForYdbBasedDisks() &&
+        if (Config->GetEnableDataIntegrityValidationForYdbBasedDisks() &&
             msg->Record.ChecksumsSize() > 0)
         {
             if (msg->Record.ChecksumsSize() != 1) {

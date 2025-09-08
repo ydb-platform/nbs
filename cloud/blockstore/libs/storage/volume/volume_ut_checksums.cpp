@@ -29,7 +29,8 @@ Y_UNIT_TEST_SUITE(TVolumeChecksumsTest)
     void YdbBasedDiskShoudValidateChecksums(int version, int partitionCount)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
-        storageServiceConfig.SetEnableChecksumValidationForYdbBasedDisks(true);
+        storageServiceConfig.SetEnableDataIntegrityValidationForYdbBasedDisks(
+            true);
 
         auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
 

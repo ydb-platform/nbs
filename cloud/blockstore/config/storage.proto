@@ -1320,6 +1320,6 @@ message TStorageServiceConfig
     optional uint32 TrimFreshLogTimeout = 454;
 
     // Enables data integrity validation for the YDB-based disks.
-    // See "EnableChecksumValidation" in server.proto for more details.
-    optional bool EnableChecksumValidationForYdbBasedDisks = 455;
+    // See "EnableDataIntegrityClient" in server.proto for more details.
+    optional bool EnableDataIntegrityValidationForYdbBasedDisks = 455;
 }

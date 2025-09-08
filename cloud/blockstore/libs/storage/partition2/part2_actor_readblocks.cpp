@@ -983,7 +983,7 @@ void TPartitionActor::HandleReadBlocksRequest(
         readRange,
         msg->Record,
         State->GetBlockSize(),
-        Config->GetEnableChecksumValidationForYdbBasedDisks());
+        Config->GetEnableDataIntegrityValidationForYdbBasedDisks());
 
     ReadBlocks(
         ctx,
