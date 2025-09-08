@@ -84,11 +84,11 @@ func (c *ClientMock) DestroySession(
 func (c *ClientMock) ListNodes(
 	ctx context.Context,
 	session nfs.Session,
-	parentId uint64,
+	parentNodeID uint64,
 	cookie string,
 ) ([]nfs.Node, string, error) {
 
-	args := c.Called(ctx, session, parentId, cookie)
+	args := c.Called(ctx, session, parentNodeID, cookie)
 	res, _ := args.Get(0).([]nfs.Node)
 	return res, args.Get(1).(string), args.Error(2)
 }

@@ -42,12 +42,12 @@ type Session struct {
 type NodeType uint32
 
 const (
-	NodeType_INVALID NodeType = iota
-	NodeType_FILE
-	NodeType_DIR
-	NodeType_SYMLINK
-	NodeType_LINK
-	NodeType_SOCK
+	NODE_KIND_INVALID NodeType = iota
+	NODE_KIND_FILE
+	NODE_KIND_DIR
+	NODE_KIND_SYMLINK
+	NODE_KIND_LINK
+	NODE_KIND_SOCK
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -242,6 +242,7 @@ func (client *Client) CreateSession(
 	fileSystemID string,
 	readonly bool,
 ) (Session, error) {
+
 	req := &protos.TCreateSessionRequest{
 		FileSystemId:         fileSystemID,
 		ReadOnly:             readonly,
@@ -264,6 +265,7 @@ func (client *Client) DestroySession(
 	ctx context.Context,
 	session Session,
 ) error {
+
 	req := &protos.TDestroySessionRequest{
 		FileSystemId: session.FileSystemID,
 		Headers: &protos.THeaders{
@@ -278,12 +280,13 @@ func (client *Client) DestroySession(
 func (client *Client) ListNodes(
 	ctx context.Context,
 	session Session,
-	nodeId uint64,
+	nodeID uint64,
 	cookie string,
 ) ([]Node, string, error) {
+
 	req := &protos.TListNodesRequest{
 		FileSystemId: session.FileSystemID,
-		NodeId:       nodeId,
+		NodeId:       nodeID,
 		Cookie:       []byte(cookie),
 		Headers: &protos.THeaders{
 			SessionSeqNo: session.SessionSeqNo,
@@ -307,7 +310,7 @@ func (client *Client) ListNodes(
 	result := make([]Node, len(nodes))
 	for idx, name := range resp.GetNames() {
 		result[idx] = Node{
-			ParentID: nodeId,
+			ParentID: nodeID,
 			NodeID:   nodes[idx].GetId(),
 			Name:     string(name),
 			Atime:    nodes[idx].GetATime(),
@@ -343,31 +346,31 @@ func (client *Client) CreateNode(
 	}
 
 	switch node.Type {
-	case NodeType_FILE:
+	case NODE_KIND_FILE:
 		req.Params = &protos.TCreateNodeRequest_File{
 			File: &protos.TCreateNodeRequest_TFile{
 				Mode: node.Mode,
 			},
 		}
-	case NodeType_DIR:
+	case NODE_KIND_DIR:
 		req.Params = &protos.TCreateNodeRequest_Directory{
 			Directory: &protos.TCreateNodeRequest_TDirectory{
 				Mode: node.Mode,
 			},
 		}
-	case NodeType_SOCK:
+	case NODE_KIND_SOCK:
 		req.Params = &protos.TCreateNodeRequest_Socket{
 			Socket: &protos.TCreateNodeRequest_TSocket{
 				Mode: node.Mode,
 			},
 		}
-	case NodeType_SYMLINK:
+	case NODE_KIND_SYMLINK:
 		req.Params = &protos.TCreateNodeRequest_SymLink{
 			SymLink: &protos.TCreateNodeRequest_TSymLink{
 				TargetPath: []byte(node.LinkTarget),
 			},
 		}
-	case NodeType_LINK:
+	case NODE_KIND_LINK:
 		req.Params = &protos.TCreateNodeRequest_Link{
 			Link: &protos.TCreateNodeRequest_TLink{
 				TargetNode: node.NodeID,

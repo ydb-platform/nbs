@@ -153,6 +153,7 @@ func (client *testClient) CreateSession(
 	ctx context.Context,
 	req *protos.TCreateSessionRequest,
 ) (*protos.TCreateSessionResponse, error) {
+
 	return &protos.TCreateSessionResponse{}, nil
 }
 
@@ -160,6 +161,7 @@ func (client *testClient) DestroySession(
 	ctx context.Context,
 	req *protos.TDestroySessionRequest,
 ) (*protos.TDestroySessionResponse, error) {
+
 	return &protos.TDestroySessionResponse{}, nil
 }
 
@@ -167,6 +169,7 @@ func (client *testClient) ListNodes(
 	ctx context.Context,
 	req *protos.TListNodesRequest,
 ) (*protos.TListNodesResponse, error) {
+
 	return &protos.TListNodesResponse{}, nil
 }
 
@@ -174,6 +177,7 @@ func (client *testClient) CreateNode(
 	ctx context.Context,
 	req *protos.TCreateNodeRequest,
 ) (*protos.TCreateNodeResponse, error) {
+
 	return &protos.TCreateNodeResponse{}, nil
 }
 
@@ -181,5 +185,6 @@ func (client *testClient) ReadLink(
 	ctx context.Context,
 	req *protos.TReadLinkRequest,
 ) (*protos.TReadLinkResponse, error) {
+
 	return &protos.TReadLinkResponse{}, nil
 }

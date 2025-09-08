@@ -238,6 +238,7 @@ func (c *client) CreateSession(
 	fileSystemID string,
 	readonly bool,
 ) (Session, error) {
+
 	session, err := c.nfs.CreateSession(ctx, fileSystemID, readonly)
 	return Session(session), wrapError(err)
 }
@@ -273,12 +274,12 @@ func (c *client) CreateNode(
 	node Node,
 ) (uint64, error) {
 
-	nodeId, err := c.nfs.CreateNode(
+	nodeID, err := c.nfs.CreateNode(
 		ctx,
 		nfs_client.Session(session),
 		nfs_client.Node(node),
 	)
-	return nodeId, wrapError(err)
+	return nodeID, wrapError(err)
 }
 
 func (c *client) ReadLink(

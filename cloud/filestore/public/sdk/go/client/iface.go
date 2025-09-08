@@ -62,6 +62,7 @@ type ClientIface interface {
 		ctx context.Context,
 		req *protos.TDescribeFileStoreModelRequest,
 	) (*protos.TDescribeFileStoreModelResponse, error)
+
 	CreateSession(
 		ctx context.Context,
 		req *protos.TCreateSessionRequest,

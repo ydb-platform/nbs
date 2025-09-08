@@ -12,9 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
-
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -116,15 +114,15 @@ func TestDeleteFilesystem(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type fileNode struct {
+type node struct {
 	name     string
-	children []fileNode
+	children []node
 	fileType nfs_client.NodeType
 	target   string
 	root     bool
 }
 
-func (f fileNode) create(
+func (f node) create(
 	t *testing.T,
 	ctx context.Context,
 	client nfs.Client,
@@ -133,7 +131,7 @@ func (f fileNode) create(
 ) {
 
 	mode := uint32(0o644)
-	if f.fileType == nfs_client.NodeType_DIR {
+	if f.fileType == nfs_client.NODE_KIND_DIR {
 		mode = 0o755
 	}
 
@@ -152,7 +150,7 @@ func (f fileNode) create(
 		require.NoError(t, err)
 	}
 
-	if f.fileType != nfs_client.NodeType_DIR {
+	if f.fileType != nfs_client.NODE_KIND_DIR {
 		return
 	}
 
@@ -161,36 +159,36 @@ func (f fileNode) create(
 	}
 }
 
-func dir(name string, children ...fileNode) fileNode {
-	return fileNode{
+func dir(name string, children ...node) node {
+	return node{
 		name:     name,
-		fileType: nfs_client.NodeType_DIR,
+		fileType: nfs_client.NODE_KIND_DIR,
 		children: children,
 		root:     false,
 	}
 }
 
-func file(name string) fileNode {
-	return fileNode{
+func file(name string) node {
+	return node{
 		name:     name,
-		fileType: nfs_client.NodeType_FILE,
+		fileType: nfs_client.NODE_KIND_FILE,
 		root:     false,
 	}
 }
 
-func symlink(name string, target string) fileNode {
-	return fileNode{
+func symlink(name string, target string) node {
+	return node{
 		name:     name,
-		fileType: nfs_client.NodeType_SYMLINK,
+		fileType: nfs_client.NODE_KIND_SYMLINK,
 		target:   target,
 		root:     false,
 	}
 }
 
-func root(children ...fileNode) fileNode {
-	return fileNode{
+func root(children ...node) node {
+	return node{
 		name:     "/",
-		fileType: nfs_client.NodeType_DIR,
+		fileType: nfs_client.NODE_KIND_DIR,
 		children: children,
 		root:     true,
 	}
@@ -198,12 +196,13 @@ func root(children ...fileNode) fileNode {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func listAllFiles(
+func listAllNodes(
 	ctx context.Context,
 	client nfs.Client,
 	session nfs.Session,
 	parentNodeID uint64,
 ) ([]nfs.Node, error) {
+
 	var (
 		nodes  []nfs.Node
 		cookie string
@@ -231,15 +230,19 @@ func listAllFiles(
 	return nodes, nil
 }
 
-func dfsNodesTraversal(
+func listAllNodesRecursively(
 	ctx context.Context,
 	client nfs.Client,
 	session nfs.Session,
 	parentNodeID uint64,
 ) ([]nfs.Node, error) {
 
-	nodes, err := listAllFiles(ctx, client, session, parentNodeID)
-	// sort nodes by name to have a deterministic order
+	nodes, err := listAllNodes(ctx, client, session, parentNodeID)
+	if err != nil {
+		return []nfs.Node{}, err
+	}
+
+	// Sort nodes by name to have a deterministic order
 	slices.SortFunc(nodes, func(i, j nfs.Node) int {
 		if i.Name < j.Name {
 			return -1
@@ -251,15 +254,11 @@ func dfsNodesTraversal(
 
 		return 0
 	})
-
-	if err != nil {
-		return []nfs.Node{}, err
-	}
 	result := make([]nfs.Node, 0)
 	for _, node := range nodes {
 		result = append(result, node)
-		if node.Type == nfs_client.NodeType_DIR {
-			children, err := dfsNodesTraversal(
+		if node.Type == nfs_client.NODE_KIND_DIR {
+			children, err := listAllNodesRecursively(
 				ctx,
 				client,
 				session,
@@ -322,7 +321,7 @@ func TestListNodesFileSystem(t *testing.T) {
 		),
 	)
 	rootDir.create(t, ctx, client, session1, 1)
-	nodes, err := dfsNodesTraversal(ctx, client, session1, 1)
+	nodes, err := listAllNodesRecursively(ctx, client, session1, 1)
 	require.NoError(t, err)
 
 	expectedNames := []string{
