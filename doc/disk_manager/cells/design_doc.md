@@ -12,8 +12,6 @@ Disk Manager should be able to choose which cell is most advantageous to create 
 
 `cellSelector.SelectCellForLocalDisk` finds the only correct cell, where requested `Agent` is located. If the zone is not divided into cells, or cells are not allowed for the folder, or cells config is not set, returns the original zone nbsClient.
 
-`cellSelector.CellSelected` unbinds disk from cell.
-
 ### How to get cluster capacity information
 
 To get data about Cell capacity, we will create a `cells.CollectZoneCapacity` task that will be schedulled by default once per hour. Period is configurable.
@@ -27,7 +25,8 @@ sequenceDiagram
     participant GetCapactiyTask as cells.CollectZoneCapacity
     participant NBS as NBS Cell
 
-    GetCapactiyTask ->>+ NBS: [private API] getClusterCapacity
+    par GetCapacity(Cell 1)
+    GetCapactiyTask ->>+ NBS: [private API] getClusterCapacity(Cell1)
 
     create participant BSC as Blob Storage Contoller
     NBS ->> BSC: TEvControllerConfigRequest
@@ -43,12 +42,17 @@ sequenceDiagram
     NBS ->> GetCapactiyTask: TEvGetClusterCapacityResponse
 
     activate GetCapactiyTask
-    GetCapactiyTask ->> GetCapactiyTask: SaveStateWithPreparation (CellID)
     create participant CS as Cells Storage
     GetCapactiyTask ->> CS: UpdateClusterCapacities()
     destroy CS
     CS ->> GetCapactiyTask: OK
+    GetCapactiyTask ->> GetCapactiyTask: SaveState(CellID)
     deactivate GetCapactiyTask
+    and GetCapacity(Cell 2)
+    Note over GetCapactiyTask, NBS: The task is performed similarly.
+    and GetCapacity(Cell N)
+    Note over GetCapactiyTask, NBS: The task is performed similarly.
+    end
 ```
 
 ### How to select shard
@@ -87,28 +91,26 @@ sequenceDiagram
     participant CreateDiskTask
     participant CellSelector
 
+    alt len(state.selectedZoneID) > 0
+
+    create participant F as nbsFactory
+    CreateDiskTask->>+F:GetClient(selectedZone)
+    F->>-CreateDiskTask:nbsClient
+
+    else
     CreateDiskTask->>CellSelector:SelectCell(zone)
     CellSelector->>+CellSelector:Get Most Suitable Cell
 
-    create participant CellStorage
-    CellSelector->>CellStorage:BindDiskToCell(diskID, cellID)
-
-    CellStorage->>CellSelector:[idempotent] cellID
-
-    create participant F as nbsFactory
-    CellSelector->>F:GetClient(selectedZone)
+    CellSelector->>+F:GetClient(selectedZone)
     destroy F
-    F->>CellSelector:nbsClient
+    F->>-CellSelector:nbsClient
 
     CellSelector->>-CreateDiskTask:nbsClient
+    CreateDiskTask->>CreateDiskTask: saveState(nbsClient.Zone)
+
+    end
 
     Note right of CreateDiskTask: regular execution <br> of the task
-
-    CreateDiskTask->>CellSelector:CellSelected()
-    CellSelector->>CellStorage:UnbindDisk(diskID)
-    destroy CellStorage
-    CellStorage->>CellSelector:OK
-    CellSelector->>CreateDiskTask:OK
 ```
 
 For any task, that called from Disk Manager's Disks API we should get correct `zoneID` from `diskMeta`.
@@ -134,45 +136,49 @@ sequenceDiagram
     migrateTask->>CellSelector:SelectCell()
     CellSelector->>migrateTask:Dst NBS Client
 
+    migrateTask-->>migrateTask:SaveState(Selected Dst Cell)
+
     create participant storage as Resources Storage
     migrateTask->>storage:GetDiskMeta()
     destroy storage
-    storage->>migrateTask:Src ZoneID
+    storage->>migrateTask: srcDiskMeta
 
-    migrateTask->>migrateTask: SaveState (src ZoneID)
+    migrateTask->>migrateTask: SaveState (src CellID)
     Note right of migrateTask: regular execution <br> of the task
-
-    migrateTask->>CellSelector:CellSelected()
-    CellSelector->>migrateTask:OK
 ```
 
 ### SelectCellForLocalDisk
+
+Getting QueryAvailableStorage(AgentID) for each cell in parallel.
 
 ```mermaid
 sequenceDiagram
     participant CreateDiskTask
     participant CellSelector
 
-    CreateDiskTask ->> CellSelector: SelectCellForLocalDisk()
+    CreateDiskTask ->> CellSelector: DefineCellForLocalDisk(Agent ID)
 
+    par DefineCellForLocalDisk (cell 1)
     create participant F as nbsFactory
-    CellSelector->>F:GetClient(cell_0)
-    F->>CellSelector:nbsClient_0
-
-    create participant NBS0 as nbsClient0
-    CellSelector-->>NBS0:QueryAvailableStorage(agentID)
-    destroy NBS0
-    NBS0-->>CellSelector:empty agent
-
-    CellSelector->>F:GetClient(cell_1)
+    CellSelector->>F:GetClient(cell 1)
     F->>CellSelector:nbsClient_1
 
     create participant NBS1 as nbsClient1
-    CellSelector-->>NBS1:QueryAvailableStorage(agentID)
+    CellSelector-->>NBS1:QueryAvailableStorage(Agent ID)
     destroy NBS1
-    NBS1-->>CellSelector:Agent
+    NBS1-->>CellSelector:Empty Agent
 
-    CellSelector->>CreateDiskTask:nbsClient_1
+    and DefineCellForLocalDisk(cell 2)
+    CellSelector->>F:GetClient(cell 2)
+    F->>CellSelector:nbsClient_2
+
+    create participant NBS2 as nbsClient2
+    CellSelector-->>NBS2:QueryAvailableStorage(agentID)
+    destroy NBS2
+    NBS2-->>CellSelector:Agent
+    end
+
+    CellSelector->>CreateDiskTask:nbsClient_2
 ```
 
 If there are no available agents in any zone, we should return an `errors.NewInterruptExecutionError()`.
