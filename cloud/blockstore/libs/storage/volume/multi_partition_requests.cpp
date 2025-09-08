@@ -1,8 +1,10 @@
 #include "multi_partition_requests.h"
 
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/model/stripe.h>
+
 #include <cloud/storage/core/libs/common/verify.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -41,6 +43,25 @@ ui32 InitPartitionRequest(
     request.Event->Record.MutableHeaders()->CopyFrom(proto.GetHeaders());
     request.Event->Record.SetDiskId(proto.GetDiskId());
     request.Event->Record.SetStartIndex(stripeInfo.BlockRange.Start);
+    if constexpr (IsExactlyWriteMethod<TMethod>) {
+        if (i < proto.ChecksumsSize()) {
+            const ui32 blockSize = partition.PartitionConfig.GetBlockSize();
+            if (proto.GetChecksums(i).GetByteCount() ==
+                stripeInfo.BlockRange.Size() * blockSize)
+            {
+                *request.Event->Record.AddChecksums() = proto.GetChecksums(i);
+            } else {
+                ReportChecksumCalculationError(
+                    TStringBuilder()
+                        << "Incorrectly calculated checksum for block range",
+                    {{"range", stripeInfo.BlockRange},
+                     {"range length", stripeInfo.BlockRange.Size()},
+                     {"checksum length",
+                      proto.GetChecksums(i).GetByteCount() / blockSize},
+                     {"diskId", partition.PartitionConfig.GetDiskId()}});
+            }
+        }
+    }
 
     return stripeInfo.BlockRange.Size();
 }
@@ -123,6 +144,10 @@ bool ToPartitionRequests<TEvService::TWriteBlocksMethod>(
         *blockRange,
         partitions.size()
     ));
+
+    if (requests->size() == 1) {
+        CombineChecksumsInPlace(*proto.MutableChecksums());
+    }
 
     for (ui32 i = 0; i < requests->size(); ++i) {
         auto& request = (*requests)[i];
@@ -284,7 +309,7 @@ bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
     TVector<TPartitionRequest<TEvService::TWriteBlocksLocalMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    const auto& proto = ev->Get()->Record;
+    auto& proto = ev->Get()->Record;
 
     auto guard = proto.Sglist.Acquire();
     if (!guard) {
@@ -300,6 +325,10 @@ bool ToPartitionRequests<TEvService::TWriteBlocksLocalMethod>(
         *blockRange,
         partitions.size()
     ));
+
+    if (requests->size() == 1) {
+        CombineChecksumsInPlace(*proto.MutableChecksums());
+    }
 
     Y_ABORT_UNLESS(
         blockDatas.size() == blockRange->Size(),
