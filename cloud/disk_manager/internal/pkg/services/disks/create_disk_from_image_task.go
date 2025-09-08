@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
@@ -105,15 +104,8 @@ func (t *createDiskFromImageTask) Run(
 		diskEncryption = params.EncryptionDesc.Mode
 	}
 
-	if imageMeta != nil {
-		execCtx.SetEstimatedInflightDuration(performance.Estimate(
-			imageMeta.StorageSize,
-			t.performanceConfig.GetCreateDiskFromImageBandwidthMiBs(),
-		))
-
-		if imageMeta.Encryption != nil {
-			imageEncryption = imageMeta.Encryption.Mode
-		}
+	if imageMeta != nil && imageMeta.Encryption != nil {
+		imageEncryption = imageMeta.Encryption.Mode
 	}
 
 	if imageEncryption != types.EncryptionMode_NO_ENCRYPTION &&

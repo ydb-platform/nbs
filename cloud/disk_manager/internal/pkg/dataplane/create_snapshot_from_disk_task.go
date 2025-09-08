@@ -431,7 +431,7 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 	diskSize := diskParams.BlocksCount * uint64(diskParams.BlockSize)
 
 	if !incremental {
-		execCtx.SetInflightEstimate(performance.Estimate(
+		execCtx.SetEstimatedInflightDuration(performance.Estimate(
 			diskSize,
 			t.performanceConfig.GetCreateSnapshotFromDiskBandwidthMiBs(),
 		))
@@ -460,7 +460,7 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 		t.performanceConfig.GetCreateSnapshotFromSnapshotBandwidthMiBs(),
 	)
 
-	execCtx.SetInflightEstimate(replicateDuration + shallowCopyDuration)
+	execCtx.SetEstimatedInflightDuration(replicateDuration + shallowCopyDuration)
 
 	return nil
 }

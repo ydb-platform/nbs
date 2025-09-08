@@ -12,7 +12,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
@@ -205,11 +204,6 @@ func (t *migrateDiskTask) start(
 		return err
 	}
 
-	err = t.setEstimate(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
 	if t.state.FillGeneration == 0 {
 		fillGeneration, err := t.incrementFillGeneration(ctx, execCtx)
 		if err != nil {
@@ -319,32 +313,6 @@ func (t *migrateDiskTask) ensureNonLocalDisk(ctx context.Context) error {
 			"local disk migration is forbidden",
 		)
 	}
-
-	return nil
-}
-
-func (t *migrateDiskTask) setEstimate(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
-	if err != nil {
-		return err
-	}
-
-	stats, err := client.Stat(
-		ctx,
-		t.request.Disk.DiskId,
-	)
-	if err != nil {
-		return err
-	}
-
-	execCtx.SetEstimatedInflightDuration(performance.Estimate(
-		stats.StorageSize,
-		t.performanceConfig.GetReplicateDiskBandwidthMiBs(),
-	))
 
 	return nil
 }

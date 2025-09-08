@@ -419,7 +419,7 @@ func (t *replicateDiskTask) setEstimate(
 		return err
 	}
 
-	execCtx.SetInflightEstimate(performance.Estimate(
+	execCtx.SetEstimatedInflightDuration(performance.Estimate(
 		bytesToReplicate,
 		t.performanceConfig.GetReplicateDiskBandwidthMiBs(),
 	))

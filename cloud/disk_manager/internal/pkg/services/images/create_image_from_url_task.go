@@ -10,7 +10,6 @@ import (
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	url_package "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url"
 	url_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
@@ -108,12 +107,6 @@ func (t *createImageFromURLTask) Run(
 			response,
 		)
 	}
-
-	// TODO: estimate should be applied before resource creation, not after.
-	execCtx.SetEstimatedInflightDuration(performance.Estimate(
-		typedResponse.TransferredDataSize,
-		t.performanceConfig.GetCreateImageFromURLBandwidthMiBs(),
-	))
 
 	t.state.ImageSize = int64(typedResponse.SnapshotSize)
 	t.state.ImageStorageSize = int64(typedResponse.SnapshotStorageSize)

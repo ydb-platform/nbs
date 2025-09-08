@@ -56,7 +56,7 @@ func (t *transferFromSnapshotToDiskTask) Run(
 
 	t.state.ChunkCount = srcMeta.ChunkCount
 
-	execCtx.SetInflightEstimate(performance.Estimate(
+	execCtx.SetEstimatedInflightDuration(performance.Estimate(
 		srcMeta.StorageSize,
 		t.performanceConfig.GetCreateDiskFromSnapshotBandwidthMiBs(),
 	))
