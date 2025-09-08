@@ -306,6 +306,7 @@ func (client *Client) ListNodes(
 			len(resp.GetNodes()),
 		)
 	}
+
 	nodes := resp.GetNodes()
 	result := make([]Node, len(nodes))
 	for idx, name := range resp.GetNames() {
