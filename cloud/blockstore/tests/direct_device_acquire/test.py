@@ -356,7 +356,9 @@ def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_
     session.unmount_volume()
 
 
-def do_test_should_mount_volume_with_unavailable_agents(
+@pytest.mark.parametrize("should_break_device", [True, False])
+@pytest.mark.parametrize("nbs_with_dr", [{"NonReplicatedAgentTimeout": 6000}], indirect=["nbs_with_dr"])
+def test_should_mount_volume_with_unavailable_agents(
         nbs_with_dr,
         nbs,
         agent_ids,
@@ -442,35 +444,12 @@ def do_test_should_mount_volume_with_unavailable_agents(
     session.unmount_volume()
 
 
-@pytest.mark.parametrize("nbs_with_dr", [({"NonReplicatedAgentTimeout": 6000})], indirect=["nbs_with_dr"])
-def test_should_mount_volume_with_unavailable_agents(nbs_with_dr,
-                                                     nbs,
-                                                     agent_ids,
-                                                     disk_agent_configurators):
-    do_test_should_mount_volume_with_unavailable_agents(nbs_with_dr,
-                                                        nbs,
-                                                        agent_ids,
-                                                        disk_agent_configurators,
-                                                        should_break_device=False)
-
-
-@pytest.mark.parametrize("nbs_with_dr", [({"NonReplicatedAgentTimeout": 6000})], indirect=["nbs_with_dr"])
-def test_should_mount_volume_in_error_state_with_unavailable_agents(nbs_with_dr,
-                                                                    nbs,
-                                                                    agent_ids,
-                                                                    disk_agent_configurators):
-    do_test_should_mount_volume_with_unavailable_agents(nbs_with_dr,
-                                                        nbs,
-                                                        agent_ids,
-                                                        disk_agent_configurators,
-                                                        should_break_device=True)
-
-
-def do_test_should_stop_not_restored_endpoint(nbs_with_dr,
-                                              nbs,
-                                              agent_ids,
-                                              disk_agent_configurators,
-                                              pass_client_id):
+@pytest.mark.parametrize("nbs, pass_client_id", [({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}, False), ({}, True)], indirect=["nbs"])
+def test_should_stop_not_restored_endpoint(nbs_with_dr,
+                                           nbs,
+                                           agent_ids,
+                                           disk_agent_configurators,
+                                           pass_client_id):
 
     client = CreateTestClient(f"localhost:{nbs.port}")
 
@@ -534,29 +513,6 @@ def do_test_should_stop_not_restored_endpoint(nbs_with_dr,
     )
 
     assert not Path(another_socket.name).exists()
-
-
-@pytest.mark.parametrize("nbs", [({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True})], indirect=["nbs"])
-def test_should_stop_not_restored_endpoint(nbs_with_dr,
-                                           nbs,
-                                           agent_ids,
-                                           disk_agent_configurators):
-    do_test_should_stop_not_restored_endpoint(nbs_with_dr,
-                                              nbs,
-                                              agent_ids,
-                                              disk_agent_configurators,
-                                              pass_client_id=False)
-
-
-def test_should_stop_not_restored_endpoint_pass_client_id(nbs_with_dr,
-                                                          nbs,
-                                                          agent_ids,
-                                                          disk_agent_configurators):
-    do_test_should_stop_not_restored_endpoint(nbs_with_dr,
-                                              nbs,
-                                              agent_ids,
-                                              disk_agent_configurators,
-                                              pass_client_id=True)
 
 
 def test_should_stop_not_restored_endpoint_when_volume_was_deleted(nbs_with_dr,
