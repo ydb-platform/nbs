@@ -10,15 +10,14 @@ Disk Manager should be able to choose which cell is most advantageous to create 
 
 `cellSelector.SelectCell` idempotently returns nbsClient for most suitable Cell ID by given zone. If the zone is not divided into cells, or cells are not allowed for the folder, or cells config is not set, returns the original zone nbsClient.
 
-`cellSelector.SelectCellForLocalDisk` finds the only correct cell, where requested `Agent` is located. If the zone is not divided into cells, or cells are not allowed for the folder, or cells config is not set, returns the original zone nbsClient.
+`cellSelector.DefineCellForLocalDisk` finds the only correct cell, where requested `Agent` is located. If the zone is not divided into cells, or cells are not allowed for the folder, or cells config is not set, returns the original zone nbsClient.
 
 ### How to get cluster capacity information
 
 To get data about Cell capacity, we will create a `cells.CollectZoneCapacity` task that will be schedulled by default once per hour. Period is configurable.
 It will iterate through each of the Cells and get data from the `getClusterCapacity` handler.
 After each step, we add the processed cellID to the task state, because on retry we want to avoid repeated calls to the `getClusterCapacity` handler.
-If we get an error from the `getClusterCapacity` handler, we ignore it and move to the next Cell. In metrics, we increment the error counter to then set up an alert on this counter.
-Repeated calls to `getClusterCapacity` can lead to a sharp increase in load on BSC.
+If we get an error from the `getClusterCapacity` handler, we retry the request with the limit, in metrics, we increment the error counter to then set up an alert on this counter.
 
 ```mermaid
 sequenceDiagram
@@ -79,7 +78,7 @@ Cells: {
 }
 ```
 
-Each zone is one of its own Cells.
+Each zone should be one of its own `cells`. At service startup we should check this.
 
 #### SelectCell:
 
@@ -182,3 +181,8 @@ sequenceDiagram
 ```
 
 If there are no available agents in any zone, we should return an `errors.NewInterruptExecutionError()`.
+
+### Other
+
+To maintain naming consistency, we need to rename ZoneID to CellID in nbsFactory and nbsClient.
+We also need to add a CellID field to the resources tables for the same purpose.
