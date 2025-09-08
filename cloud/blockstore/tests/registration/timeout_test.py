@@ -3,6 +3,8 @@ import time
 import threading
 import pytest
 
+import contrib.ydb.core.protos.grpc_pb2_grpc as grpc_server
+
 from concurrent import futures
 
 from contrib.ydb.tests.library.common.yatest_common import PortManager
@@ -29,7 +31,56 @@ from google.protobuf.text_format import MessageToString
 
 from collections import namedtuple
 
+from google.protobuf.message import Message
+
 CFG_PREFIX = "Cloud.NBS."
+
+
+class ProxyInterceptor(grpc.ServerInterceptor):
+    def __init__(self, proxy_target, cred):
+        self.proxy_target = proxy_target
+        self._channel = grpc.secure_channel(self.proxy_target, cred)
+        self._stub = grpc_server.TGRpcServerStub(self._channel)
+        self._implemented_methods = set()
+        super().__init__()
+
+    def register_method(self, method_name):
+        self._implemented_methods.add(method_name)
+
+    def intercept_service(self, continuation, handler_call_details):
+        method = handler_call_details.method
+
+        if method in self._implemented_methods:
+            return continuation(handler_call_details)
+
+        def proxy_handler(request, context):
+            try:
+                if isinstance(request, Message):
+                    request_bytes = request.SerializeToString()
+                else:
+                    request_bytes = request
+
+                response_bytes = self._channel.unary_unary(
+                    method,
+                    request_serializer=lambda x: x,
+                    response_deserializer=lambda x: x,
+                )(request_bytes)
+
+                return response_bytes
+            except grpc.RpcError as e:
+                context.set_code(e.code())
+                context.set_details(e.details())
+                return None
+            except Exception as e:
+                context.set_code(grpc.StatusCode.INTERNAL)
+                context.set_details(f"Proxy error: {str(e)}")
+                return None
+
+        return grpc.unary_unary_rpc_method_handler(
+            proxy_handler,
+            request_deserializer=lambda x: x,
+            response_serializer=lambda x: x,
+        )
 
 
 class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceServicer):
@@ -37,14 +88,13 @@ class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceService
     def __init__(
         self,
         max_node_reg_count=1,
-        secondary_port=0,
         stop_event=threading.Event(),
         ydb=None,
     ):
         self.node_registration_count = 0
         self.max_node_reg_count = max_node_reg_count
         self.secondary_host = "localhost"
-        self.secondary_port = secondary_port
+        self.secondary_port = list(ydb.nodes.values())[0].grpc_ssl_port
         self.lock = threading.Lock()
         self.stop_event = stop_event
 
@@ -56,9 +106,9 @@ class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceService
         if self.secondary_stub is None:
             with open(self.ydb.config.grpc_tls_ca_path, "rb") as f:
                 ca_cert = f.read()
-            with open(self.ydb.config.grpc_tls_cert, "rb") as f:
+            with open(self.ydb.config.grpc_tls_cert_path, "rb") as f:
                 client_cert = f.read()
-            with open(self.ydb.config.grpc_tls_key, "rb") as f:
+            with open(self.ydb.config.grpc_tls_key_path, "rb") as f:
                 client_key = f.read()
 
             creds = grpc.ssl_channel_credentials(
@@ -80,10 +130,22 @@ class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceService
         return self.secondary_stub
 
     def ListEndpoints(self, request, context):
-        return ydb_discovery_pb2.ListEndpointsResponse()
+        try:
+            secondary_stub = self._get_secondary_stub()
+            secondary_response = secondary_stub.ListEndpoints(request)
+
+            return secondary_response
+        except Exception:
+            return ydb_discovery_pb2.ListEndpointsResponse()
 
     def WhoAmI(self, request, context):
-        return ydb_discovery_pb2.WhoAmIResponse()
+        try:
+            secondary_stub = self._get_secondary_stub()
+            secondary_response = secondary_stub.WhoAmI(request)
+
+            return secondary_response
+        except Exception:
+            return ydb_discovery_pb2.WhoAmIResponse()
 
     def NodeRegistration(self, request, context):
         with self.lock:
@@ -96,7 +158,6 @@ class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceService
                     time.sleep(0.5)
             except Exception:
                 pass
-            return ydb_discovery_pb2.NodeRegistrationResponse()
         else:
             try:
                 secondary_stub = self._get_secondary_stub()
@@ -135,6 +196,19 @@ def serve(not_responding_server_port, ydb):
     with open(ydb.config.grpc_tls_ca_path, "rb") as f:
         root_certificates = f.read()
 
+    interceptor = ProxyInterceptor(
+        f"localhost:{list(ydb.nodes.values())[0].grpc_ssl_port}",
+        grpc.ssl_channel_credentials(
+            root_certificates=root_certificates,
+            private_key=private_key,
+            certificate_chain=certificate_chain,
+        ),
+    )
+
+    interceptor.register_method("/Ydb.Discovery.V1.DiscoveryService/ListEndpoints")
+    interceptor.register_method("/Ydb.Discovery.V1.DiscoveryService/WhoAmI")
+    interceptor.register_method("/Ydb.Discovery.V1.DiscoveryService/NodeRegistration")
+
     server_credentials = grpc.ssl_server_credentials(
         [(private_key, certificate_chain)],
         root_certificates=root_certificates,
@@ -142,7 +216,7 @@ def serve(not_responding_server_port, ydb):
     )
 
     server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=1),
+        futures.ThreadPoolExecutor(max_workers=10),
         options=[
             ("grpc.keepalive_time_ms", 1000),
             ("grpc.keepalive_timeout_ms", 1000),
@@ -158,15 +232,14 @@ def serve(not_responding_server_port, ydb):
                 1,
             ),
         ],
+        interceptors=(interceptor,),
     )
 
     stop_event = threading.Event()
 
-    ydb_ssl_port = list(ydb.nodes.values())[0].grpc_ssl_port
     ydb_discovery_v1_pb2_grpc.add_DiscoveryServiceServicer_to_server(
         DiscoveryServiceServicer(
             max_node_reg_count=2,
-            secondary_port=ydb_ssl_port,
             stop_event=stop_event,
             ydb=ydb,
         ),
@@ -268,6 +341,7 @@ def prepare(
         )
     nbs_configurator.files["storage"].NodeType = node_type
     nbs_configurator.files["storage"].DisableLocalService = False
+    nbs_configurator.files["storage"].DiscoveryNodeRegistrantTimeout = 1000  # ms
 
     return nbs_configurator
 
@@ -276,7 +350,7 @@ def setup_and_run_test_for_server(kikimr_ssl, blockstore_ssl, node_type):
     ydb = start_ydb(grpc_ssl_enable=kikimr_ssl)
     setup_cms_configs(ydb.client)
 
-    not_responding_server_port = "4003"  # PortManager().get_port()
+    not_responding_server_port = PortManager().get_port()
 
     server, server_thread, stop_event = serve(not_responding_server_port, ydb)
 
@@ -294,7 +368,7 @@ def setup_and_run_test_for_server(kikimr_ssl, blockstore_ssl, node_type):
 
     stop_event.set()
     server.stop(0)
-    server_thread.join(timeout=4)
+    server_thread.join(timeout=1)
 
     return True
 
