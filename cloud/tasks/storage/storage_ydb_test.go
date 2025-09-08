@@ -1831,7 +1831,13 @@ func TestStorageYDBListSlowTasks(t *testing.T) {
 	createdAt := time.Now().Add(-3 * time.Hour)
 	var generationID uint64 = 1
 
-	createTask := func(created time.Time, estimated, durationMinutes int) TaskInfo {
+	createTask := func(
+		created time.Time,
+		inflightDurationMinutes int,
+		estimatedInflightDurationMinutes int,
+		stallingDurationMinutes int,
+		estimatedStallingDurationMinutes int,
+	) string {
 		task := TaskState{
 			IdempotencyKey:            getIdempotencyKeyForTest(t),
 			TaskType:                  "task1",
@@ -1844,23 +1850,43 @@ func TestStorageYDBListSlowTasks(t *testing.T) {
 			State:                     []byte{0},
 			Dependencies:              common.NewStringSet(),
 			EndedAt:                   created,
-			InflightDuration:          time.Duration(durationMinutes) * time.Minute,
-			EstimatedInflightDuration: time.Duration(estimated) * time.Minute,
+			InflightDuration:          time.Duration(inflightDurationMinutes) * time.Minute,
+			EstimatedInflightDuration: time.Duration(estimatedInflightDurationMinutes) * time.Minute,
+			StallingDuration:          time.Duration(stallingDurationMinutes) * time.Minute,
+			EstimatedStallingDuration: time.Duration(estimatedStallingDurationMinutes) * time.Minute,
 		}
 		id, err := storage.CreateTask(ctx, task)
 		generationID += 1
 		require.NoError(t, err)
-		return TaskInfo{
-			ID:           id,
-			GenerationID: task.GenerationID,
-			TaskType:     task.TaskType,
-		}
+		return id
 	}
-	createTask(createdAt, 5, 4) // Should not be presented in the result
-	largeDelay := createTask(createdAt, 1, 61)
-	mediumDelay := createTask(createdAt, 5, 64)
-	smallDelay := createTask(createdAt, 60, 70)
-	dayBefore := createTask(createdAt.Add(time.Duration(-24)*time.Hour), 5, 60)
+
+	// Should not be presented in the result
+	createTask(createdAt, 0, 0, 0, 0)
+	createTask(createdAt, 4, 5, 0, 0)
+	createTask(createdAt, 0, 0, 4, 5)
+	createTask(createdAt, 4, 5, 4, 5)
+
+	// Tasks are ordered by ratio of actual time to its estimate
+
+	// With EstimatedInflightDuration miss
+	// 61/1 = 61.0 ratio
+	largeDelayID := createTask(createdAt, 61, 1, 0, 0)
+	// 64/5 = 12.8 ratio
+	mediumDelayID := createTask(createdAt, 64, 5, 0, 0)
+
+	// With EstimatedStallingDuration miss
+	// 70/60 = 1.2 ratio
+	smallDelayID := createTask(createdAt, 0, 0, 70, 60)
+	// 60/5 = 12.0 ratio
+	dayBeforeID := createTask(
+		createdAt.Add(time.Duration(-24)*time.Hour),
+		0, 0, 60, 5,
+	)
+
+	// Both estimates are missed
+	// max(120/60, 60/2) = max(2.0, 30.0) = 30.0 ratio
+	mixedDelayID := createTask(createdAt, 120, 60, 60, 2)
 
 	testCases := []struct {
 		since        time.Time
@@ -1880,25 +1906,26 @@ func TestStorageYDBListSlowTasks(t *testing.T) {
 		},
 		{createdAt,
 			10 * time.Minute,
-			[]string{largeDelay.ID, mediumDelay.ID, smallDelay.ID},
-			"Since limited, 3 tasks expected",
+			[]string{largeDelayID, mixedDelayID, mediumDelayID, smallDelayID},
+			"Since limited, 4 tasks expected",
 		},
 		{createdAt.Add(-10 * time.Minute),
 			1 * time.Hour,
-			[]string{largeDelay.ID},
-			"EstimateMiss limited, one task expected",
+			[]string{largeDelayID, mixedDelayID},
+			"EstimateMiss limited, 2 tasks expected",
 		},
 		{createdAt.Add(-25 * time.Hour),
 			10 * time.Minute,
-			[]string{largeDelay.ID, mediumDelay.ID, smallDelay.ID, dayBefore.ID},
-			"All tasks fit, 4 expected",
+			[]string{largeDelayID, mixedDelayID, mediumDelayID, dayBeforeID, smallDelayID},
+			"All tasks fit, 5 expected",
 		},
 	}
 
 	for _, tc := range testCases {
 		tasks, err := storage.ListSlowTasks(ctx, tc.since, tc.estimateMiss)
 		require.NoError(t, err)
-		require.ElementsMatchf(t, tc.expected, tasks, tc.comment)
+		// Check the order of tasks.
+		require.Equal(t, tc.expected, tasks, tc.comment)
 	}
 }
 
