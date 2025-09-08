@@ -327,6 +327,16 @@ message TActionGraph
         uint64 Duration = 2;
     }
 
+    // Wait until all fresh devices are ready
+    message TWaitForFreshDevicesAction
+    {
+        // Used to reference this action in our graph
+        string Name = 1;
+
+        // The volume to wait.
+        string VolumeName = 2;
+    }
+
     message TVertex
     {
         oneof Action
@@ -335,6 +345,7 @@ message TActionGraph
             TControlPlaneAction ControlPlaneAction = 2;
             TSleep Sleep = 3;
             TCompareDataAction CompareData = 4;
+            TWaitForFreshDevicesAction WaitForFreshDevices = 5;
         }
     }
 
