@@ -86,6 +86,13 @@ Vertices {
 }
 
 Vertices {
+    WaitForFreshDevices {
+        Name: "wait_fresh"
+        VolumeName: "vol0"
+    }
+}
+
+Vertices {
     ControlPlaneAction {
         Name: "remove_agent2"
 
@@ -165,9 +172,16 @@ Dependencies {
 }
 
 Dependencies {
-    key: "remove_agent2",
+    key: "wait_fresh",
     value {
         Names: "shoot2"
+    }
+}
+
+Dependencies {
+    key: "remove_agent2",
+    value {
+        Names: "wait_fresh"
     }
 }
 

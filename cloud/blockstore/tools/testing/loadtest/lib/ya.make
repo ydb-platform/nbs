@@ -22,6 +22,7 @@ SRCS(
     test_runner.cpp
     validation_callback.cpp
     volume_infos.cpp
+    wait_for_fresh_devices_action.cpp
 )
 
 PEERDIR(
