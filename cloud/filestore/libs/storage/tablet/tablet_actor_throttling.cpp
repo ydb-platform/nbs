@@ -27,7 +27,7 @@ template <>
 ui64 CalculateByteCount<NProto::TWriteDataRequest>(
     const NProto::TWriteDataRequest& request)
 {
-    return request.GetBuffer().size();
+    return request.GetDataSize();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

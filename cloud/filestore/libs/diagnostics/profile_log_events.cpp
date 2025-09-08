@@ -237,7 +237,7 @@ void InitProfileLogRequestInfo(
     rangeInfo->SetNodeId(request.GetNodeId());
     rangeInfo->SetHandle(request.GetHandle());
     rangeInfo->SetOffset(request.GetOffset());
-    rangeInfo->SetBytes(request.GetBuffer().size());
+    rangeInfo->SetBytes(request.GetDataSize());
 }
 
 template <>
