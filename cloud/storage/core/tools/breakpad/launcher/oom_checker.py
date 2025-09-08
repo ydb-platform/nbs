@@ -24,7 +24,7 @@ class OOMChecker(object):
     ]
 
     def __init__(self):
-        super(OOMChecker, self).__init__()
+        super().__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self._pid = None
         self._oom_list = list()

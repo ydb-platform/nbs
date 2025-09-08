@@ -19,7 +19,7 @@ class Conductor(object):
     FILTERED_GROUPS = list()
 
     def __init__(self, hostname=None):
-        super(Conductor, self).__init__()
+        super().__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self.hostname = hostname
         if self.hostname is None:

@@ -47,6 +47,31 @@ class CrashInfo(object):
         self.metadata = obj.get("metadata", dict())
 
 
+class CrashInfoProcessed(CrashInfo):
+    CRASH_TYPE_CORE = "crash"
+    CRASH_TYPE_OOM = "oom"
+
+    def __init__(self, crash: CrashInfo):
+        super(CrashInfoProcessed, self).__init__()
+        self.__dict__.update(crash.__dict__)
+
+        self.crash_type = None
+        self.backtrace = None
+        self.formatted_backtrace = None
+        self.server = None
+        self.cluster = None
+        self.core_url = None
+
+    def get_header(self):
+        return "Process {service} {crash_type}ed " \
+               "on server={server}, cluster={cluster}".format(
+                   service=self.service,
+                   crash_type=self.crash_type,
+                   server=self.server,
+                   cluster=self.cluster,
+               )
+
+
 class CrashInfoStorage(object):
     FILETYPE = ".json"
 
@@ -91,7 +116,7 @@ class CrashInfoStorage(object):
                     crash_info.load(fd.read())
                 os.unlink(filename)
                 return crash_info
-        except IOError as e:
+        except Exception as e:
             self._logger.error("Can't get crash info %r", e)
             self._logger.debug("Exception", exc_info=True)
             raise CrashInfoStorageError("Error read crash info")

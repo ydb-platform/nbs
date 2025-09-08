@@ -1,4 +1,4 @@
-PY2_PROGRAM(yc-storage-breakpad-launcher)
+PY3_PROGRAM(yc-storage-breakpad-launcher)
 
 PEERDIR(
     cloud/storage/core/tools/breakpad/common

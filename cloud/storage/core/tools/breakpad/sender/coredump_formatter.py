@@ -12,7 +12,7 @@ class CoredumpFormatter(object):
     ARCADIA_PATH = "/arcadia/"
 
     def __init__(self, coredump: str):
-        super(CoredumpFormatter, self).__init__()
+        super().__init__()
         self.info = list()
         self.stacks = list()
         self.last_thread = None
@@ -91,10 +91,3 @@ class CoredumpFormatter(object):
     def format(self):
         backtraces = ["\n".join(line) for _, line in self.stacks]
         return "\n".join(self.info) + "\n\n" + ("\n\n".join(backtraces))
-
-    def format_current_thread(self):
-        info = "\n".join(self.info) + f"\nTotal threads: {len(self.stacks)}"
-        backtraces = ["\n".join(line) for thread, line in self.stacks
-                      if thread == self.current_thread]
-
-        return info + "\n\n" + "\n\n".join(backtraces)
