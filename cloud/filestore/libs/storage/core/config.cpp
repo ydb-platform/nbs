@@ -286,6 +286,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MaxFuseLoopThreads,                ui32,       1                      )\
                                                                                \
     xxx(StrictFileSystemSizeEnforcementEnabled, bool,  false                  )\
+                                                                               \
+    xxx(ZeroCopyWriteEnabled,              bool,      false                   )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

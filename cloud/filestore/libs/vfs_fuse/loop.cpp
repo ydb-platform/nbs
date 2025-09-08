@@ -1133,6 +1133,8 @@ private:
         config.SetMaxBackground(features.GetMaxBackground());
         config.SetMaxFuseLoopThreads(features.GetMaxFuseLoopThreads());
 
+        config.SetZeroCopyWriteEnabled(features.GetZeroCopyWriteEnabled());
+
         return std::make_shared<TFileSystemConfig>(config);
     }
 

@@ -3826,6 +3826,91 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(zeroBuffer, buffer.substr(2_KB, 1_KB));
         UNIT_ASSERT_VALUES_EQUAL(data2, buffer.substr(3_KB, 1_KB));
     }
+
+    void TestZeroCopyWrite(const NProto::TStorageConfig& config, ui64 offset, ui64 iovecSize) {
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+
+        const auto iovecsNum = 64;
+        std::vector<TString> data;
+        data.reserve(iovecsNum);
+        for(auto i = 0; i < iovecsNum; ++i) {
+            data.push_back(GenerateValidateData(iovecSize, i));
+        }
+        service.WriteData(headers, fs, nodeId, handle, offset, data);
+        for (auto i = 0; i < iovecsNum; ++i) {
+            std::cerr << "MYAGKOV: test index: " << i << std::endl;
+            auto readDataResult = service.ReadData(
+                headers,
+                fs,
+                nodeId,
+                handle,
+                offset + i * iovecSize,
+                iovecSize);
+            const auto& buffer = readDataResult->Record.GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL_C(data[i], buffer, i);
+        }
+    }
+
+    Y_UNIT_TEST(TestAlignedZeroCopyWrite)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+        TestZeroCopyWrite(config, 4_KB, 4_KB);
+        TestZeroCopyWrite(config, 4_KB, 8_KB);
+    }
+
+    Y_UNIT_TEST(TestAlignedZeroCopyWriteFallback)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(false);
+        config.SetUnalignedThreeStageWriteEnabled(false);
+        config.SetZeroCopyWriteEnabled(true);
+        TestZeroCopyWrite(config, 4_KB, 4_KB);
+    }
+
+    Y_UNIT_TEST(TestUnalignedZeroCopyWrite)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+        TestZeroCopyWrite(config, 111, 4_KB);
+        TestZeroCopyWrite(config, 0, 5000);
+    }
+
+    Y_UNIT_TEST(TestUnalignedZeroCopyWriteFallback)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(false);
+        config.SetZeroCopyWriteEnabled(true);
+        TestZeroCopyWrite(config, 111, 4_KB);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
