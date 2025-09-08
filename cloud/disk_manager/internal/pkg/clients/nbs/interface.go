@@ -113,6 +113,12 @@ type CheckpointParams struct {
 	CheckpointType CheckpointType
 }
 
+type AvailableStorageInfo struct {
+	AgentID    string
+	ChunkSize  uint64
+	ChunkCount uint32
+}
+
 // Used in tests.
 type DiskContentInfo struct {
 	ContentSize uint64 // The coordinate of the last non-zero byte.
@@ -312,6 +318,11 @@ type Client interface {
 		diskID string,
 		fillGeneration uint64,
 	) error
+
+	QueryAvailableStorage(
+		ctx context.Context,
+		agenstIDs []string,
+	) ([]AvailableStorageInfo, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
