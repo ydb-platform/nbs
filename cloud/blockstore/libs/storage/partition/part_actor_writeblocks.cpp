@@ -201,9 +201,11 @@ void TPartitionActor::HandleWriteBlocksRequest(
     if (!ok) {
         replyError(MakeError(
             E_ARGUMENT,
-            TStringBuilder() << "invalid block range ["
-                             << "index: " << msg->Record.GetStartIndex()
-                             << ", count: " << blocksCount << "]"));
+            TStringBuilder() << "invalid block range: "
+                             << TBlockRange64::WithLength(
+                                    msg->Record.GetStartIndex(),
+                                    blocksCount)
+                                    .Print()));
         return;
     }
 

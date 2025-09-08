@@ -50,6 +50,7 @@ namespace {
     xxx(IOParserActorCount,                 ui32,       0                     )\
     xxx(OffloadAllIORequestsParsingEnabled, bool,       false                 )\
     xxx(DisableNodeBrokerRegistrationOnDevicelessAgent, bool,          false  )\
+    xxx(EnableDataIntegrityValidationForDrBasedDisks,        bool,          false  )\
     xxx(MaxAIOContextEvents,                ui32,       1024                  )\
     xxx(PathsPerFileIOService,              ui32,       0                     )\
     xxx(DisableBrokenDevices,               bool,       false                 )\

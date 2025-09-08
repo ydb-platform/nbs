@@ -315,6 +315,10 @@ message TDiskAgentConfig
 
     // Use one submission thread per AIO service.
     optional bool UseOneSubmissionThreadPerAIOServiceEnabled = 43;
+
+    // Enables data integrity validation for the DR-based disks.
+    // See "EnableDataIntegrityClient" in server.proto for more details.
+    optional bool EnableDataIntegrityValidationForDrBasedDisks = 44;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

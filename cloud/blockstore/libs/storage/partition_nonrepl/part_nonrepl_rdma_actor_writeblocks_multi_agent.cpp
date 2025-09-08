@@ -3,6 +3,7 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -124,6 +125,7 @@ public:
 
 NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
     const NProto::TMultiAgentWriteRequest& request,
+    const TNonreplicatedPartitionConfigPtr& partConfig,
     bool assignVolumeRequestId)
 {
     NProto::TWriteDeviceBlocksRequest result;
@@ -141,6 +143,24 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
     if (assignVolumeRequestId) {
         result.SetVolumeRequestId(request.GetHeaders().GetVolumeRequestId());
         result.SetMultideviceRequest(false);
+    }
+
+    if (auto checksum = CombineChecksums(request.GetChecksums());
+        checksum.GetByteCount() > 0)
+    {
+        if (checksum.GetByteCount() == request.Range.Size() * request.BlockSize)
+        {
+            *result.MutableChecksum() = std::move(checksum);
+        } else {
+            ReportChecksumCalculationError(
+                "NonreplicatedPartitionRdmaActor: Incorrectly calculated "
+                "checksum for block range.",
+                {{"range", request.Range.Print()},
+                 {"request range length", request.Range.Size()},
+                 {"checksum length",
+                  checksum.GetByteCount() / request.BlockSize},
+                 {"diskId", partConfig->GetName().Quote()}});
+        }
     }
     return result;
 }
@@ -228,6 +248,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
     NProto::TWriteDeviceBlocksRequest writeDeviceBlocksRequest =
         MakeWriteDeviceBlocksRequest(
             msg->Record,
+            PartConfig,
             AssignIdToWriteAndZeroRequestsEnabled);
 
     const auto requestId = RequestsInProgress.GenerateRequestId();

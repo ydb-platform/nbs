@@ -3,6 +3,7 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
@@ -34,6 +35,7 @@ private:
     const bool CheckVoidBlocks;
     NProto::TReadBlocksResponse Response;
     ui32 VoidBlockCount = 0;
+    TVector<NProto::TChecksum> Checksums;
 
 public:
     using TRequestContext = TDeviceReadRequestContext;
@@ -59,6 +61,7 @@ public:
         , CheckVoidBlocks(checkVoidBlocks)
     {
         TRequestScope timer(GetRequestInfo());
+        Checksums.resize(requestCount);
 
         auto& buffers = *Response.MutableBlocks()->MutableBuffers();
         buffers.Reserve(blockCount);
@@ -72,7 +75,8 @@ public:
         TResponseProto& proto,
         TStringBuf data)
     {
-        Y_UNUSED(proto);
+        Y_ABORT_UNLESS(ctx.RequestIndex < Checksums.size());
+        Checksums[ctx.RequestIndex] = std::move(*proto.MutableChecksum());
 
         auto& blocks = *Response.MutableBlocks()->MutableBuffers();
 
@@ -131,6 +135,11 @@ public:
         auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
         response->Record = std::move(Response);
         response->Record.SetAllZeroes(allZeroes);
+        if (auto checksum = CombineChecksums(Checksums);
+            checksum.GetByteCount() > 0)
+        {
+            *response->Record.MutableChecksum() = std::move(checksum);
+        }
 
         return response;
     }

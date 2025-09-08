@@ -3,6 +3,7 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
@@ -35,6 +36,7 @@ private:
     const bool CheckVoidBlocks;
     TGuardedSgList SgList;
 
+    TVector<NProto::TChecksum> Checksums;
     ui32 VoidBlockCount = 0;
 
 public:
@@ -64,19 +66,22 @@ public:
         , ShouldReportBlockRangeOnFailure(shouldReportBlockRangeOnFailure)
         , CheckVoidBlocks(checkVoidBlocks)
         , SgList(std::move(sglist))
-    {}
+    {
+        Checksums.resize(requestCount);
+    }
 
     NProto::TError ProcessSubResponseProto(
         const TRequestContext& ctx,
         TResponseProto& proto,
         TStringBuf responseData)
     {
-        Y_UNUSED(proto);
-
         auto guard = SgList.Acquire();
         if (!guard) {
             return MakeError(E_CANCELLED, "can't acquire sglist");
         }
+
+        Y_ABORT_UNLESS(ctx.RequestIndex < Checksums.size());
+        Checksums[ctx.RequestIndex] = std::move(*proto.MutableChecksum());
 
         const TSgList& data = guard.Get();
 
@@ -138,6 +143,11 @@ public:
         if (ShouldReportBlockRangeOnFailure) {
             response->Record.FailInfo.FailedRanges.push_back(
                 DescribeRange(BlockRange));
+        }
+        if (auto checksum = CombineChecksums(Checksums);
+            checksum.GetByteCount() > 0)
+        {
+            *response->Record.MutableChecksum() = std::move(checksum);
         }
 
         return response;

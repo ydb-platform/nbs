@@ -4,6 +4,7 @@
 #include "safe_deallocator.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -28,6 +29,8 @@
 #include <util/system/sanitizers.h>
 #include <util/system/spinlock.h>
 #include <util/system/thread.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 #include <limits>
 #include <memory>
@@ -177,7 +180,8 @@ struct TStorageContext
     const ui64 StorageBlockCount;
 
     TFile File;
-    bool DirectIO;
+    const bool DirectIO;
+    const bool EnableChecksumValidation;
 
     TStorageContext(
             ITaskQueuePtr submitQueue,
@@ -187,7 +191,8 @@ struct TStorageContext
             ui64 startIndex,
             ui64 blockCount,
             TFile file,
-            bool directIO)
+            bool directIO,
+            bool enableChecksumValidation)
         : SubmitQueue(std::move(submitQueue))
         , FileIOService(std::move(fileIO))
         , NvmeManager(std::move(nvmeManager))
@@ -196,6 +201,7 @@ struct TStorageContext
         , StorageBlockCount(blockCount)
         , File(std::move(file))
         , DirectIO(directIO)
+        , EnableChecksumValidation(enableChecksumValidation)
     {}
 };
 
@@ -585,12 +591,33 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
 
     TReadGuard readGuard(WriteSubmissionLock);
 
-    return SendAsyncRequest<TAsyncReadRequest>(
-        this->weak_from_this(),
-        std::move(callContext),
-        std::move(request->Sglist),
-        fileOffset,
-        byteCount);
+    auto sglist = request->Sglist;
+    TFuture<NProto::TReadBlocksLocalResponse> future =
+        SendAsyncRequest<TAsyncReadRequest>(
+            this->weak_from_this(),
+            std::move(callContext),
+            std::move(request->Sglist),
+            fileOffset,
+            byteCount)
+            .GetFuture();
+    if (!EnableChecksumValidation) {
+        return future;
+    }
+
+    return future.Apply(
+        [sglist = std::move(sglist)](auto future)
+        {
+            NProto::TReadBlocksLocalResponse response =
+                future.ExtractValueSync();
+            if (HasError(response.GetError())) {
+                return response;
+            }
+
+            if (auto guard = sglist.Acquire()) {
+                *response.MutableChecksum() = CalculateChecksum(guard.Get());
+            }
+            return response;
+        });
 }
 
 TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
@@ -616,6 +643,48 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
             request->BlocksCount,
             MaxRequestSize / BlockSize);
         return MakeFuture(response);
+    }
+
+    if (EnableChecksumValidation && request->ChecksumsSize() > 0) {
+        if (request->ChecksumsSize() != 1) {
+            NProto::TWriteBlocksLocalResponse response;
+            ui32 flags = 0;
+            SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+            *response.MutableError() = MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Invalid checksums count: " << request->ChecksumsSize(),
+                flags);
+            return MakeFuture(response);
+        }
+
+        auto guard = request->Sglist.Acquire();
+        if (!guard) {
+            NProto::TWriteBlocksLocalResponse response;
+            *response.MutableError() = MakeError(
+                E_CANCELLED,
+                "failed to acquire sglist in Local Storage");
+            return MakeFuture(response);
+        }
+
+        auto calculatedChecksum = CalculateChecksum(guard.Get());
+        if (!google::protobuf::util::MessageDifferencer::Equals(
+                request->GetChecksums(0),
+                calculatedChecksum))
+        {
+            NProto::TWriteBlocksLocalResponse response;
+            ui32 flags = 0;
+            SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+            *response.MutableError() = MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Data integrity violation. Current checksum: "
+                    << calculatedChecksum.ShortUtf8DebugString()
+                    << "; Incoming checksum: "
+                    << request->GetChecksums(0).ShortUtf8DebugString(),
+                flags);
+            return MakeFuture(response);
+        }
     }
 
     const ui64 fileOffset = StorageStartIndex * BlockSize
@@ -768,17 +837,20 @@ private:
     IFileIOServiceProviderPtr FileIOServiceProvider;
     INvmeManagerPtr NvmeManager;
     const bool DirectIO;
+    const bool EnableDataIntegrityValidation;
 
 public:
     explicit TLocalStorageProvider(
             ITaskQueuePtr submitQueue,
             IFileIOServiceProviderPtr fileIOProvider,
             INvmeManagerPtr nvmeManager,
-            bool directIO)
+            bool directIO,
+            bool enableChecksumValidation)
         : SubmitQueue(std::move(submitQueue))
         , FileIOServiceProvider(std::move(fileIOProvider))
         , NvmeManager(std::move(nvmeManager))
         , DirectIO(directIO)
+        , EnableDataIntegrityValidation(enableChecksumValidation)
     {}
 
     TFuture<IStoragePtr> CreateStorage(
@@ -812,7 +884,8 @@ public:
             volume.GetStartIndex(),
             volume.GetBlocksCount(),
             TFile {filePath, flags},
-            DirectIO);
+            DirectIO,
+            EnableDataIntegrityValidation);
 
         return MakeFuture<IStoragePtr>(storage);
     };
@@ -837,7 +910,8 @@ IStorageProviderPtr CreateLocalStorageProvider(
         std::move(submitQueue),
         std::move(fileIOProvider),
         std::move(nvmeManager),
-        params.DirectIO);
+        params.DirectIO,
+        params.EnableDataIntegrityValidation);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

@@ -141,6 +141,8 @@ public:
 
     [[nodiscard]] bool GetKickOutOldClientsEnabled() const;
 
+    bool GetEnableDataIntegrityValidationForDrBasedDisks() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

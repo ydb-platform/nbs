@@ -410,6 +410,10 @@ void TDiskAgentActor::HandleParsedWriteDeviceBlocks(
             writeRequest->MutableBlocks()->Swap(request.MutableBlocks());
             writeRequest->SetStartIndex(request.GetStartIndex());
             writeRequest->Storage = std::move(storage);
+            if (request.HasChecksum()) {
+                writeRequest->MutableChecksums()->Add()->CopyFrom(
+                    request.GetChecksum());
+            }
 
             TStringBuf buffer{writeRequest->Storage.get(), storageSize};
 

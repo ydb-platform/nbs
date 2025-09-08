@@ -4,11 +4,13 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -37,6 +39,8 @@ private:
     ui32 RequestsCompleted = 0;
     ui32 VoidBlockCount = 0;
     ui32 NonVoidBlockCount = 0;
+
+    TVector<NProto::TChecksum> Checksums;
 
 public:
     TDiskAgentReadLocalActor(
@@ -93,7 +97,9 @@ TDiskAgentReadLocalActor::TDiskAgentReadLocalActor(
           NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
     , BlockRange(range)
     , ShouldReportBlockRangeOnFailure(shouldReportBlockRangeOnFailure)
-{}
+{
+    Checksums.resize(DeviceRequests.size());
+}
 
 void TDiskAgentReadLocalActor::SendRequest(const TActorContext& ctx)
 {
@@ -186,6 +192,8 @@ void TDiskAgentReadLocalActor::HandleReadDeviceBlocksResponse(
         return;
     }
 
+    Checksums[ev->Cookie].CopyFrom(msg->Record.GetChecksum());
+
     const auto blockRange = DeviceRequests[ev->Cookie].BlockRange;
 
     if (blockRange.Size() != 0) {
@@ -210,6 +218,11 @@ void TDiskAgentReadLocalActor::HandleReadDeviceBlocksResponse(
 
     auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>();
     response->Record.SetAllZeroes(VoidBlockCount == Request.GetBlocksCount());
+    if (auto checksum = CombineChecksums(Checksums);
+        checksum.GetByteCount() > 0)
+    {
+        *response->Record.MutableChecksum() = std::move(checksum);
+    }
 
     Done(ctx, std::move(response), EStatus::Success);
 }

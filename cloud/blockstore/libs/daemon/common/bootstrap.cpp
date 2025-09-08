@@ -783,7 +783,11 @@ void TBootstrapBase::InitLocalService()
         CreateLocalStorageProvider(
             FileIOServiceProvider,
             NvmeManager,
-            {.DirectIO = false, .UseSubmissionThread = false}));
+            {.DirectIO = false,
+             .UseSubmissionThread = false,
+             .EnableDataIntegrityValidation =
+                 Configs->DiskAgentConfig
+                     ->GetEnableDataIntegrityValidationForDrBasedDisks()}));
 }
 
 void TBootstrapBase::InitNullService()

@@ -631,6 +631,9 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
 
             *response.MutableError() = data.GetError();
             response.MutableBlocks()->Swap(data.MutableBlocks());
+            if (data.HasChecksum()) {
+                response.MutableChecksum()->CopyFrom(data.GetChecksum());
+            }
 
             return response;
         });
@@ -667,6 +670,10 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
     writeRequest->MutableHeaders()->CopyFrom(request.GetHeaders());
     writeRequest->SetStartIndex(request.GetStartIndex());
     writeRequest->MutableBlocks()->Swap(request.MutableBlocks());
+    if (request.HasChecksum()) {
+        writeRequest->MutableChecksums()->Add()->CopyFrom(
+            request.GetChecksum());
+    }
 
     return WriteBlocks(
         now,
@@ -832,15 +839,18 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
     );
 
     return result.Apply(
-        [] (auto future) {
+        [](auto future)
+        {
             auto data = future.ExtractValue();
             NProto::TChecksumDeviceBlocksResponse response;
 
             if (HasError(data.GetError())) {
                 *response.MutableError() = data.GetError();
+            } else if (data.HasChecksum()) {
+                response.SetChecksum(data.GetChecksum().GetChecksum());
             } else {
                 TBlockChecksum checksum;
-                for (const auto& buffer : data.GetBlocks().GetBuffers()) {
+                for (const auto& buffer: data.GetBlocks().GetBuffers()) {
                     checksum.Extend(buffer.data(), buffer.size());
                 }
                 response.SetChecksum(checksum.GetValue());
