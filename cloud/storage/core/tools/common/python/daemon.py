@@ -186,7 +186,7 @@ class Daemon(object):
     def __restart(self):
         with self.__lock:
             if self.__process is not None:
-                logger.info(f"restart the process")
+                logger.info("restart the process")
                 self.__kill_process()
                 self.__start()
                 self.__schedule_restart()
