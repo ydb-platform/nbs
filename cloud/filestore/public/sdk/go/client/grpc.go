@@ -325,7 +325,10 @@ func (client *grpcClient) DestroySession(
 ) (*protos.TDestroySessionResponse, error) {
 
 	if req.Headers == nil {
-		req.Headers = &protos.THeaders{}
+		return nil, &ClientError{
+			Code:    E_FS_INVALID_SESSION,
+			Message: "DestroySession: headers must be not nil",
+		}
 	}
 
 	resp, err := client.executeRequest(
@@ -344,8 +347,12 @@ func (client *grpcClient) ListNodes(
 	req *protos.TListNodesRequest,
 ) (*protos.TListNodesResponse, error) {
 
-	// The headers MUST be not nil, since we need a session
-	// which is passed in headers.
+	if req.Headers == nil {
+		return nil, &ClientError{
+			Code:    E_FS_INVALID_SESSION,
+			Message: "ListNodes: headers must be not nil",
+		}
+	}
 	resp, err := client.executeRequest(
 		ctx,
 		req,
@@ -362,6 +369,13 @@ func (client *grpcClient) CreateNode(
 	req *protos.TCreateNodeRequest,
 ) (*protos.TCreateNodeResponse, error) {
 
+	if req.Headers == nil {
+		return nil, &ClientError{
+			Code:    E_FS_INVALID_SESSION,
+			Message: "CreateNode: headers must be not nil",
+		}
+	}
+
 	resp, err := client.executeRequest(
 		ctx,
 		req,
@@ -377,6 +391,13 @@ func (client *grpcClient) ReadLink(
 	ctx context.Context,
 	req *protos.TReadLinkRequest,
 ) (*protos.TReadLinkResponse, error) {
+
+	if req.Headers == nil {
+		return nil, &ClientError{
+			Code:    E_FS_INVALID_SESSION,
+			Message: "ReadLink: headers must be not nil",
+		}
+	}
 
 	resp, err := client.executeRequest(
 		ctx,
