@@ -292,6 +292,7 @@ func (client *durableClient) CreateNode(
 	ctx context.Context,
 	req *protos.TCreateNodeRequest,
 ) (*protos.TCreateNodeResponse, error) {
+
 	resp, err := client.executeRequest(
 		ctx,
 		req,
@@ -307,6 +308,7 @@ func (client *durableClient) ReadLink(
 	ctx context.Context,
 	req *protos.TReadLinkRequest,
 ) (*protos.TReadLinkResponse, error) {
+
 	resp, err := client.executeRequest(
 		ctx,
 		req,

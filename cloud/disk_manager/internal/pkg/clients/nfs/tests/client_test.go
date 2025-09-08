@@ -131,6 +131,7 @@ func (f fileNode) create(
 	session nfs.Session,
 	parentId uint64,
 ) {
+
 	mode := uint32(0o644)
 	if f.fileType == nfs_client.NodeType_DIR {
 		mode = 0o755
@@ -150,6 +151,7 @@ func (f fileNode) create(
 		})
 		require.NoError(t, err)
 	}
+
 	if f.fileType != nfs_client.NodeType_DIR {
 		return
 	}
@@ -208,7 +210,12 @@ func listAllFiles(
 	)
 
 	for {
-		batch, nextCookie, err := client.ListNodes(ctx, session, parentNodeID, cookie)
+		batch, nextCookie, err := client.ListNodes(
+			ctx,
+			session,
+			parentNodeID,
+			cookie,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -232,6 +239,7 @@ func dfsNodesTraversal(
 ) ([]nfs.Node, error) {
 
 	nodes, err := listAllFiles(ctx, client, session, parentNodeID)
+	// sort nodes by name to have a deterministic order
 	slices.SortFunc(nodes, func(i, j nfs.Node) int {
 		if i.Name < j.Name {
 			return -1
@@ -251,7 +259,12 @@ func dfsNodesTraversal(
 	for _, node := range nodes {
 		result = append(result, node)
 		if node.Type == nfs_client.NodeType_DIR {
-			children, err := dfsNodesTraversal(ctx, client, session, node.NodeID)
+			children, err := dfsNodesTraversal(
+				ctx,
+				client,
+				session,
+				node.NodeID,
+			)
 			if err != nil {
 				return []nfs.Node{}, err
 			}
@@ -272,7 +285,7 @@ func nodeNames(nodes []nfs.Node) []string {
 	return result
 }
 
-func TestRecreateFilesystem(t *testing.T) {
+func TestListNodesFileSystem(t *testing.T) {
 	ctx := newContext()
 	client := newClient(t, ctx)
 

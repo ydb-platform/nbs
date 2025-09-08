@@ -353,6 +353,7 @@ func (client *grpcClient) ListNodes(
 			Message: "ListNodes: headers must be not nil",
 		}
 	}
+
 	resp, err := client.executeRequest(
 		ctx,
 		req,
