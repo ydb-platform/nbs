@@ -66,10 +66,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromImage", func() tasks.Task {
 		return &createDiskFromImageTask{
-			performanceConfig: performanceConfig,
-			storage:           resourceStorage,
-			scheduler:         taskScheduler,
-			nbsFactory:        nbsFactory,
+			storage:    resourceStorage,
+			scheduler:  taskScheduler,
+			nbsFactory: nbsFactory,
 		}
 	})
 	if err != nil {
@@ -78,10 +77,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromSnapshot", func() tasks.Task {
 		return &createDiskFromSnapshotTask{
-			performanceConfig: performanceConfig,
-			storage:           resourceStorage,
-			scheduler:         taskScheduler,
-			nbsFactory:        nbsFactory,
+			storage:    resourceStorage,
+			scheduler:  taskScheduler,
+			nbsFactory: nbsFactory,
 		}
 	})
 	if err != nil {
@@ -149,13 +147,12 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.MigrateDisk", func() tasks.Task {
 		return &migrateDiskTask{
-			disksConfig:       config,
-			performanceConfig: performanceConfig,
-			scheduler:         taskScheduler,
-			poolService:       poolService,
-			resourceStorage:   resourceStorage,
-			poolStorage:       poolStorage,
-			nbsFactory:        nbsFactory,
+			disksConfig:     config,
+			scheduler:       taskScheduler,
+			poolService:     poolService,
+			resourceStorage: resourceStorage,
+			poolStorage:     poolStorage,
+			nbsFactory:      nbsFactory,
 		}
 	})
 	if err != nil {

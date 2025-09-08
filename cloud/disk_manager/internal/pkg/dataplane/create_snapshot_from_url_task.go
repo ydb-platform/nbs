@@ -13,6 +13,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url"
 	url_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -23,6 +25,7 @@ type createSnapshotFromURLTask struct {
 	nbsFactory                nbs_client.Factory
 	storage                   storage.Storage
 	config                    *config.DataplaneConfig
+	performanceConfig         *performance_config.PerformanceConfig
 	httpClientTimeout         time.Duration
 	httpClientMinRetryTimeout time.Duration
 	httpClientMaxRetryTimeout time.Duration
@@ -84,6 +87,11 @@ func (t *createSnapshotFromURLTask) Run(
 		if err != nil {
 			return err
 		}
+
+		execCtx.SetInflightEstimate(performance.Estimate(
+			uint64(chunkCount)*chunkSize,
+			t.performanceConfig.GetCreateImageFromURLBandwidthMiBs(),
+		))
 
 		t.state.ChunkCount = chunkCount
 

@@ -12,6 +12,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -19,11 +21,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type transferFromSnapshotToDiskTask struct {
-	nbsFactory nbs_client.Factory
-	storage    storage.Storage
-	config     *config.DataplaneConfig
-	request    *protos.TransferFromSnapshotToDiskRequest
-	state      *protos.TransferFromSnapshotToDiskTaskState
+	nbsFactory        nbs_client.Factory
+	storage           storage.Storage
+	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
+	request           *protos.TransferFromSnapshotToDiskRequest
+	state             *protos.TransferFromSnapshotToDiskTaskState
 }
 
 func (t *transferFromSnapshotToDiskTask) Save() ([]byte, error) {
@@ -52,6 +55,11 @@ func (t *transferFromSnapshotToDiskTask) Run(
 	}
 
 	t.state.ChunkCount = srcMeta.ChunkCount
+
+	execCtx.SetInflightEstimate(performance.Estimate(
+		srcMeta.StorageSize,
+		t.performanceConfig.GetCreateDiskFromSnapshotBandwidthMiBs(),
+	))
 
 	source := snapshot.NewSnapshotSource(t.request.SrcSnapshotId, t.storage)
 	defer source.Close(ctx)

@@ -11,6 +11,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -18,11 +20,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromDiskTask struct {
-	nbsFactory nbs_client.Factory
-	storage    storage.Storage
-	config     *config.DataplaneConfig
-	request    *protos.CreateSnapshotFromDiskRequest
-	state      *protos.CreateSnapshotFromDiskTaskState
+	nbsFactory        nbs_client.Factory
+	storage           storage.Storage
+	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
+	request           *protos.CreateSnapshotFromDiskRequest
+	state             *protos.CreateSnapshotFromDiskTaskState
 }
 
 func (t *createSnapshotFromDiskTask) Save() ([]byte, error) {
@@ -269,6 +272,17 @@ func (t *createSnapshotFromDiskTask) run(
 
 	incremental := len(t.state.BaseSnapshotId) != 0
 
+	err = t.setEstimate(
+		ctx,
+		execCtx,
+		nbsClient,
+		diskParams,
+		incremental,
+	)
+	if err != nil {
+		return err
+	}
+
 	source, err := nbs.NewDiskSource(
 		ctx,
 		nbsClient,
@@ -402,6 +416,53 @@ func (t *createSnapshotFromDiskTask) run(
 		t.state.ChunkCount,
 		diskParams.EncryptionDesc,
 	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *createSnapshotFromDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	nbsClient nbs_client.Client,
+	diskParams nbs_client.DiskParams,
+	incremental bool,
+) error {
+
+	diskSize := diskParams.BlocksCount * uint64(diskParams.BlockSize)
+
+	if !incremental {
+		execCtx.SetInflightEstimate(performance.Estimate(
+			diskSize,
+			t.performanceConfig.GetCreateSnapshotFromDiskBandwidthMiBs(),
+		))
+		return nil
+	}
+
+	bytesToReplicate, err := nbsClient.GetChangedBytes(
+		ctx,
+		t.request.SrcDisk.DiskId,
+		t.state.BaseCheckpointId,
+		t.request.SrcDiskCheckpointId,
+		false, // ignoreBaseDisk
+	)
+	if err != nil {
+		return err
+	}
+
+	logging.Info(ctx, "bytes to replicate is %v", bytesToReplicate)
+
+	replicateDuration := performance.Estimate(
+		bytesToReplicate,
+		t.performanceConfig.GetCreateSnapshotFromDiskBandwidthMiBs(),
+	)
+	shallowCopyDuration := performance.Estimate(
+		diskSize-bytesToReplicate,
+		t.performanceConfig.GetCreateSnapshotFromSnapshotBandwidthMiBs(),
+	)
+
+	execCtx.SetInflightEstimate(replicateDuration + shallowCopyDuration)
+
+	return nil
 }
 
 func (t *createSnapshotFromDiskTask) createProxyOverlayDiskIfNeeded(

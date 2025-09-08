@@ -27,9 +27,9 @@ import (
 type replicateDiskTask struct {
 	nbsFactory        nbs_client.Factory
 	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
 	request           *protos.ReplicateDiskTaskRequest
 	state             *protos.ReplicateDiskTaskState
-	performanceConfig *performance_config.PerformanceConfig
 }
 
 func (t *replicateDiskTask) Save() ([]byte, error) {
@@ -51,6 +51,11 @@ func (t *replicateDiskTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	err := t.setEstimate(ctx, execCtx)
+	if err != nil {
+		return err
+	}
 
 	useLightCheckpoint, err := t.useLightCheckpoint(ctx)
 	if err != nil {
@@ -402,6 +407,24 @@ func (t *replicateDiskTask) getBytesToReplicate(
 	)
 
 	return bytesToReplicate, nil
+}
+
+func (t *replicateDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	bytesToReplicate, err := t.getBytesToReplicate(ctx, execCtx)
+	if err != nil {
+		return err
+	}
+
+	execCtx.SetInflightEstimate(performance.Estimate(
+		bytesToReplicate,
+		t.performanceConfig.GetReplicateDiskBandwidthMiBs(),
+	))
+
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

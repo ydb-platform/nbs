@@ -9,6 +9,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -16,11 +18,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromLegacySnapshotTask struct {
-	storage       storage.Storage
-	legacyStorage storage.Storage
-	config        *config.DataplaneConfig
-	request       *protos.CreateSnapshotFromLegacySnapshotRequest
-	state         *protos.CreateSnapshotFromLegacySnapshotTaskState
+	storage           storage.Storage
+	legacyStorage     storage.Storage
+	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
+	request           *protos.CreateSnapshotFromLegacySnapshotRequest
+	state             *protos.CreateSnapshotFromLegacySnapshotTaskState
 }
 
 func (t *createSnapshotFromLegacySnapshotTask) Save() ([]byte, error) {
@@ -55,6 +58,11 @@ func (t *createSnapshotFromLegacySnapshotTask) Run(
 	}
 
 	t.state.ChunkCount = srcMeta.ChunkCount
+
+	execCtx.SetInflightEstimate(performance.Estimate(
+		srcMeta.StorageSize,
+		t.performanceConfig.GetCreateSnapshotFromSnapshotBandwidthMiBs(),
+	))
 
 	_, err = t.storage.CreateSnapshot(
 		ctx,
