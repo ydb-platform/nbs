@@ -196,7 +196,7 @@ func root(children ...fileNode) fileNode {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func listAllFilest(
+func listAllFiles(
 	ctx context.Context,
 	client nfs.Client,
 	session nfs.Session,
@@ -231,7 +231,7 @@ func dfsNodesTraversal(
 	parentNodeID uint64,
 ) ([]nfs.Node, error) {
 
-	nodes, err := listAllFilest(ctx, client, session, parentNodeID)
+	nodes, err := listAllFiles(ctx, client, session, parentNodeID)
 	slices.SortFunc(nodes, func(i, j nfs.Node) int {
 		if i.Name < j.Name {
 			return -1
