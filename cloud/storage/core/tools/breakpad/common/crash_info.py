@@ -23,6 +23,7 @@ class CrashInfo(object):
         self.logfile = None
         self.info = None
         self.service = None
+        self.metadata = dict()  # Additional metadata dictionary
 
     def dump(self):
         return json.dumps(dict(
@@ -32,6 +33,7 @@ class CrashInfo(object):
             logfile=self.logfile,
             info=self.info,
             service=self.service,
+            metadata=self.metadata,
         ))
 
     def load(self, data):
@@ -42,6 +44,7 @@ class CrashInfo(object):
         self.logfile = obj.get("logfile")
         self.info = obj.get("info")
         self.service = obj.get("service")
+        self.metadata = obj.get("metadata", dict())
 
 
 class CrashInfoStorage(object):
