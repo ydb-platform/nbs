@@ -90,7 +90,7 @@ func (c *ClientMock) ListNodes(
 
 	args := c.Called(ctx, session, parentId, cookie)
 	res, _ := args.Get(0).([]nfs.Node)
-	return res, args.Get(1).(string), args.Error(1)
+	return res, args.Get(1).(string), args.Error(2)
 }
 
 func (c *ClientMock) CreateNode(
