@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	cells_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -21,6 +22,7 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 	nbsFactory := nbs_mocks.NewFactoryMock()
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	params := &protos.CreateDiskParams{
 		BlocksCount: 123,
@@ -34,10 +36,11 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 		FolderId:  "folder",
 	}
 	task := &createEmptyDiskTask{
-		storage:    storage,
-		nbsFactory: nbsFactory,
-		params:     params,
-		state:      &protos.CreateEmptyDiskTaskState{},
+		storage:      storage,
+		nbsFactory:   nbsFactory,
+		params:       params,
+		state:        &protos.CreateEmptyDiskTaskState{},
+		cellSelector: cellSelector,
 	}
 
 	// TODO: Improve this expectations.
@@ -46,7 +49,8 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 	}, nil)
 	storage.On("DiskCreated", ctx, mock.Anything).Return(nil)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
+	cellSelector.On("SelectCell", ctx, "zone", "folder").Return(nbsClient, nil)
+
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
 		ID:          "disk",
 		BlocksCount: 123,
@@ -55,9 +59,19 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 		CloudID:     "cloud",
 		FolderID:    "folder",
 	}).Return(nil)
+	nbsClient.On("GetZone").Return("zone")
+
+	execCtx.On("SaveState", ctx).Return(nil)
 
 	err := task.Run(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
 	require.NoError(t, err)
 }
 
@@ -67,6 +81,7 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 	nbsFactory := nbs_mocks.NewFactoryMock()
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	params := &protos.CreateDiskParams{
 		BlocksCount: 123,
@@ -80,16 +95,17 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 		FolderId:  "folder",
 	}
 	task := &createEmptyDiskTask{
-		storage:    storage,
-		nbsFactory: nbsFactory,
-		params:     params,
-		state:      &protos.CreateEmptyDiskTaskState{},
+		storage:      storage,
+		nbsFactory:   nbsFactory,
+		params:       params,
+		state:        &protos.CreateEmptyDiskTaskState{},
+		cellSelector: cellSelector,
 	}
 
 	// TODO: Improve this expectation.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{}, nil)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
+	cellSelector.On("SelectCell", ctx, "zone", "folder").Return(nbsClient, nil)
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
 		ID:          "disk",
 		BlocksCount: 123,
@@ -98,9 +114,19 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 		CloudID:     "cloud",
 		FolderID:    "folder",
 	}).Return(assert.AnError)
+	nbsClient.On("GetZone").Return("zone")
+
+	execCtx.On("SaveState", ctx).Return(nil)
 
 	err := task.Run(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
 	require.Equal(t, err, assert.AnError)
 }
 
