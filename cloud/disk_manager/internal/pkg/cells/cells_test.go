@@ -60,3 +60,40 @@ func TestCellsIsFolderAllowed(t *testing.T) {
 		})
 	}
 }
+
+func TestCellSelectorSelectsCorrectCell(t *testing.T) {
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			"zone1": {Cells: []string{"zone1-cell1", "zone1"}},
+			"zone2": {Cells: []string{"zone2"}},
+		},
+	}
+
+	selector := cellSelector{
+		config: config,
+	}
+
+	selectedCell, err := selector.selectCell("zone1", "folder")
+	require.NoError(t, err)
+	require.Equal(t, "zone1-cell1", selectedCell) // First in the config.
+
+	selectedCell, err = selector.selectCell("zone1-cell1", "folder")
+	require.NoError(t, err)
+	require.Equal(t, "zone1-cell1", selectedCell)
+
+	selectedCell, err = selector.selectCell("zone2", "folder")
+	require.NoError(t, err)
+	require.Equal(t, "zone2", selectedCell)
+
+	selectedCell, err = selector.selectCell("zone3", "folder")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "incorrect zone ID provided")
+}
+
+func TestCellSelectorReturnsCorrectNBSClientIfConfigsIsNotSet(t *testing.T) {
+	cellSelector := cellSelector{}
+
+	selectedCell, err := cellSelector.selectCell("zone", "folder")
+	require.NoError(t, err)
+	require.Equal(t, "zone", selectedCell)
+}
