@@ -58,13 +58,13 @@ IWriteBlocksHandlerPtr CreateWriteBlocksHandler(
 IReadBlocksHandlerPtr CreateReadBlocksHandler(
     const TBlockRange64& readRange,
     ui32 blockSize,
-    bool enableChecksumValidation);
+    bool enableDataIntegrityValidation);
 
 IReadBlocksHandlerPtr CreateReadBlocksHandler(
     const TBlockRange64& readRange,
     const TGuardedSgList& sglist,
     ui32 blockSize,
-    bool enableChecksumValidation);
+    bool enableDataIntegrityValidation);
 
 IWriteBlocksHandlerPtr CreateMixedWriteBlocksHandler(
     TVector<std::pair<IWriteBlocksHandlerPtr, TBlockRange64>> parts);

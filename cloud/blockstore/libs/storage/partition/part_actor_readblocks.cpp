@@ -92,13 +92,13 @@ IReadBlocksHandlerPtr CreateReadHandler(
     const TBlockRange64& readRange,
     const NProto::TReadBlocksRequest& request,
     ui32 blockSize,
-    bool enableChecksumValidation)
+    bool enableDataIntegrityValidation)
 {
     Y_UNUSED(request);
     return NStorage::CreateReadBlocksHandler(
         readRange,
         blockSize,
-        enableChecksumValidation
+        enableDataIntegrityValidation
     );
 }
 
@@ -106,13 +106,13 @@ IReadBlocksHandlerPtr CreateReadHandler(
     const TBlockRange64& readRange,
     const NProto::TReadBlocksLocalRequest& request,
     ui32 blockSize,
-    bool enableChecksumValidation)
+    bool enableDataIntegrityValidation)
 {
     return NStorage::CreateReadBlocksHandler(
         readRange,
         request.Sglist,
         blockSize,
-        enableChecksumValidation
+        enableDataIntegrityValidation
     );
 }
 

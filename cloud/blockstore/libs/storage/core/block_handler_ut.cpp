@@ -124,7 +124,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto handler = CreateReadBlocksHandler(
             blockRange,
             DefaultBlockSize,
-            /*enableChecksumValidation=*/false);
+            /*enableDataIntegrityValidation=*/false);
         for (ui64 blockIndex = blockRange.Start;
              blockIndex <= blockRange.End;
              ++blockIndex)
@@ -160,7 +160,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
             TBlockRange64::MakeOneBlock(0),
             sglist,
             DefaultBlockSize,
-            /*enableChecksumValidation=*/false);
+            /*enableDataIntegrityValidation=*/false);
         UNIT_ASSERT(handler->SetBlock(0, {}, false));
     }
 
@@ -172,7 +172,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
             TBlockRange64::MakeOneBlock(0),
             sglist,
             DefaultBlockSize,
-            /*enableChecksumValidation=*/false);
+            /*enableDataIntegrityValidation=*/false);
         sglist.Close();
         UNIT_ASSERT(!handler->SetBlock(0, {}, false));
     }
@@ -182,7 +182,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto handler = CreateReadBlocksHandler(
             TBlockRange64::WithLength(0, 8),
             DefaultBlockSize,
-            /*enableChecksumValidation=*/false);
+            /*enableDataIntegrityValidation=*/false);
 
         TString blockContent1(DefaultBlockSize, 'b');
         handler->SetBlock(
@@ -241,7 +241,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
             TBlockRange64::WithLength(0, blocks.size()),
             TGuardedSgList(std::move(sgList)),
             DefaultBlockSize,
-            /*enableChecksumValidation=*/false);
+            /*enableDataIntegrityValidation=*/false);
 
         TString blockContent1(DefaultBlockSize, 'b');
         handler->SetBlock(
@@ -302,7 +302,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto handler = CreateReadBlocksHandler(
             TBlockRange64::WithLength(0, 8),
             DefaultBlockSize,
-            /*enableChecksumValidation=*/false);
+            /*enableDataIntegrityValidation=*/false);
 
         auto zeroBlock = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
         handler->SetBlock(0, zeroBlock, false);
@@ -329,7 +329,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
             TBlockRange64::WithLength(0, blocks.size()),
             TGuardedSgList(std::move(sgList)),
             DefaultBlockSize,
-            /*enableChecksumValidation=*/false);
+            /*enableDataIntegrityValidation=*/false);
 
         auto zeroBlock = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
         handler->SetBlock(0, zeroBlock, false);
@@ -413,7 +413,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto handler = CreateReadBlocksHandler(
             TBlockRange64::WithLength(0, 8),
             DefaultBlockSize,
-            /*enableChecksumValidation=*/false);
+            /*enableDataIntegrityValidation=*/false);
         auto guardedSgList = handler->GetGuardedSgList({4, 5}, false);
 
         {
@@ -435,7 +435,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
         auto handler = CreateReadBlocksHandler(
             TBlockRange64::WithLength(startIndex, 7),
             DefaultBlockSize,
-            /*enableChecksumValidation=*/false);
+            /*enableDataIntegrityValidation=*/false);
 
         auto zeroBlock = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
         handler->SetBlock(startIndex + 0, zeroBlock, false);
@@ -477,7 +477,7 @@ Y_UNIT_TEST_SUITE(TBlockHandlerTest)
             TBlockRange64::WithLength(startIndex, blocks.size()),
             TGuardedSgList(std::move(sgList)),
             DefaultBlockSize,
-            /*enableChecksumValidation=*/false);
+            /*enableDataIntegrityValidation=*/false);
 
         auto zeroBlock = TBlockDataRef::CreateZeroBlock(DefaultBlockSize);
         handler->SetBlock(startIndex + 0, zeroBlock, false);
