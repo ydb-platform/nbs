@@ -160,6 +160,11 @@ message TReadDataResponse
 ////////////////////////////////////////////////////////////////////////////////
 // WriteData request/response
 
+message TBufferRef {
+    uint64 Data = 1;
+    uint64 Size = 2;
+}
+
 message TWriteDataRequest
 {
     // Optional request headers.
@@ -182,6 +187,12 @@ message TWriteDataRequest
 
     // Bytes to write start at buffer offset.
     uint32 BufferOffset = 7;
+
+    // Buffers with bytes to write.
+    repeated TBufferRef ZeroCopyBuffers = 8;
+
+    // Size of Buffer or ZeroCopyBuffers
+    uint64 BufferSize = 9;
 }
 
 message TWriteDataResponse

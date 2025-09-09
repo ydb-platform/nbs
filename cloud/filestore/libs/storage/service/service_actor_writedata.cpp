@@ -33,6 +33,31 @@ bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
     return !disabledAsHdd && fs.GetFeatures().GetThreeStageWriteEnabled();
 }
 
+void CopyBuffers(NProto::TWriteDataRequest& request)
+{
+    const auto& zeroCopyBuffers = request.GetZeroCopyBuffers();
+    auto* buffer = request.MutableBuffer();
+    if (!buffer->empty()) {
+        return;
+    }
+    if (!zeroCopyBuffers.empty()) {
+        ui64 size = 0;
+        for (const auto& zeroCopyBuffer: zeroCopyBuffers) {
+            size = zeroCopyBuffer.GetSize();
+        }
+
+
+        buffer->ReserveAndResize(size);
+        ui64 offset = 0;
+        for (const auto& zeroCopyBuffer: zeroCopyBuffers) {
+            memcpy(
+                &(*buffer)[offset],
+                reinterpret_cast<char*>(zeroCopyBuffer.GetData()),
+                zeroCopyBuffer.GetSize());
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
@@ -120,7 +145,7 @@ public:
             "%s WriteDataActor started, data size: %lu, offset: %lu, aligned "
             "size: %lu, aligned offset: %lu",
             LogTag.c_str(),
-            WriteRequest.GetBuffer().size(),
+            WriteRequest.GetBufferSize(),
             WriteRequest.GetOffset(),
             BlobRange.Length,
             BlobRange.Offset);
@@ -198,6 +223,11 @@ private:
         InFlightBSRequests.reserve(RemainingBlobsToWrite);
         StorageStatusFlags.resize(GenerateBlobIdsResponse.BlobsSize());
         ApproximateFreeSpaceShares.resize(GenerateBlobIdsResponse.BlobsSize());
+
+        const auto& zeroCopyBuffers = WriteRequest.GetZeroCopyBuffers();
+        int zeroCopyIndex = 0;
+        ui64 zeroCopyOffset = offset;
+        TString putData;
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
             NKikimr::TLogoBlobID blobId =
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
@@ -207,6 +237,7 @@ private:
                 RequestInfo->CallContext->RequestId);
             writeBlobCallContext->SetRequestStartedCycles(GetCycleCount());
             writeBlobCallContext->RequestType = EFileStoreRequest::WriteBlob;
+
             InFlightBSRequests.emplace_back(std::make_unique<TInFlightRequest>(
                 TRequestInfo(
                     RequestInfo->Sender,
@@ -218,23 +249,54 @@ private:
             InFlightBSRequests.back()->Start(ctx.Now());
 
             std::unique_ptr<TEvBlobStorage::TEvPut> request;
-            if (GenerateBlobIdsResponse.BlobsSize() == 1
-                    && Range == BlobRange)
-            {
-                // do not copy the buffer if there is only one blob
-                request = std::make_unique<TEvBlobStorage::TEvPut>(
-                    blobId,
-                    WriteRequest.GetBuffer(),
-                    TInstant::Max(),
-                    NKikimrBlobStorage::UserData);
+
+            if (WriteRequest.GetBuffer().size() == 0) {
+                ui64 bytesToCopy = blobId.BlobSize();
+                for (; zeroCopyIndex < zeroCopyBuffers.size(); ++zeroCopyIndex)
+                {
+                    auto& bufRef = zeroCopyBuffers[zeroCopyIndex];
+                    auto size = std::min(
+                        bytesToCopy,
+                        bufRef.GetSize() - zeroCopyOffset);
+                    memcpy(
+                        &putData[0],
+                        reinterpret_cast<const char*>(bufRef.GetData()) +
+                            zeroCopyOffset,
+                        size);
+
+                    zeroCopyOffset += size;
+                    bytesToCopy -= size;
+
+                    if (bytesToCopy == 0) {
+                        zeroCopyOffset = 0;
+                        break;
+                    }
+
+                    request = std::make_unique<TEvBlobStorage::TEvPut>(
+                        blobId,
+                        std::move(putData),
+                        TInstant::Max(),
+                        NKikimrBlobStorage::UserData);
+                }
             } else {
-                request = std::make_unique<TEvBlobStorage::TEvPut>(
-                    blobId,
-                    TString(
-                        WriteRequest.GetBuffer().data() + offset,
-                        blobId.BlobSize()),
-                    TInstant::Max(),
-                    NKikimrBlobStorage::UserData);
+                if (GenerateBlobIdsResponse.BlobsSize() == 1 &&
+                    Range == BlobRange)
+                {
+                    // do not copy the buffer if there is only one blob
+                    request = std::make_unique<TEvBlobStorage::TEvPut>(
+                        blobId,
+                        WriteRequest.GetBuffer(),
+                        TInstant::Max(),
+                        NKikimrBlobStorage::UserData);
+                } else {
+                    request = std::make_unique<TEvBlobStorage::TEvPut>(
+                        blobId,
+                        TString(
+                            WriteRequest.GetBuffer().data() + offset,
+                            blobId.BlobSize()),
+                        TInstant::Max(),
+                        NKikimrBlobStorage::UserData);
+                }
             }
             NKikimr::TActorId proxy =
                 MakeBlobStorageProxyID(blob.GetBSGroupId());
@@ -242,10 +304,11 @@ private:
                 ctx,
                 TFileStoreComponents::SERVICE,
                 "%s Sending TEvPut request to blob storage, blobId: %s, proxy: "
-                "%s",
+                "%s zero copy: %s",
                 LogTag.c_str(),
                 blobId.ToString().c_str(),
-                proxy.ToString().c_str());
+                proxy.ToString().c_str(),
+                WriteRequest.GetBuffer().size() == 0 ? "true" : "false");
             SendToBSProxy(ctx, proxy, request.release(), blobId.Cookie());
             offset += blobId.BlobSize();
         }
@@ -276,6 +339,7 @@ private:
                     inFlight->Complete(ctx.Now(), error);
                 }
             }
+
             return WriteData(ctx, error);
         }
 
@@ -314,7 +378,7 @@ private:
         request->Record.SetNodeId(WriteRequest.GetNodeId());
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
-        request->Record.SetLength(WriteRequest.GetBuffer().size());
+        request->Record.SetLength(WriteRequest.GetBufferSize());
         for (auto& blob: *GenerateBlobIdsResponse.MutableBlobs()) {
             request->Record.AddBlobIds()->Swap(blob.MutableBlobId());
         }
@@ -412,9 +476,10 @@ private:
             WriteRequest.GetNodeId(),
             WriteRequest.GetHandle(),
             WriteRequest.GetOffset(),
-            WriteRequest.GetBuffer().size(),
+            WriteRequest.GetBufferSize(),
             FormatError(error).Quote().c_str());
 
+        CopyBuffers(WriteRequest);
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
         request->Record.MutableHeaders()->SetThrottlingDisabled(true);
@@ -528,6 +593,7 @@ void TStorageServiceActor::HandleWriteData(
     if (!threeStageWriteAllowed) {
         // If three-stage write is disabled, forward the request to the tablet
         // in the same way as all other requests.
+        CopyBuffers(msg->Record);
         ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
         return;
     }
@@ -536,7 +602,7 @@ void TStorageServiceActor::HandleWriteData(
 
     const TByteRange range(
         msg->Record.GetOffset(),
-        msg->Record.GetBuffer().size(),
+        msg->Record.GetBufferSize(),
         blockSize);
     const bool threeStageWriteEnabled =
         range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold()
@@ -550,7 +616,7 @@ void TStorageServiceActor::HandleWriteData(
             TFileStoreComponents::SERVICE,
             "%s Using three-stage write for request, size: %lu",
             logTag.c_str(),
-            msg->Record.GetBuffer().size());
+            msg->Record.GetBufferSize());
 
         auto [cookie, inflight] = CreateInFlightRequest(
             TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
@@ -577,6 +643,7 @@ void TStorageServiceActor::HandleWriteData(
             ctx,
             TFileStoreComponents::SERVICE,
             "Forwarding WriteData request to tablet");
+        CopyBuffers(msg->Record);
         return ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
     }
 }

@@ -534,31 +534,48 @@ void TFileSystem::WriteBuf(
         << " size:" << size);
 
     auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
-    TAlignedBuffer alignedBuffer(size, align);
-
-    fuse_bufvec dst = FUSE_BUFVEC_INIT(size);
-    dst.buf[0].mem = (void*)(alignedBuffer.Begin());
-
-    ssize_t res = fuse_buf_copy(
-        &dst, bufv
-#if !defined(FUSE_VIRTIO)
-        ,fuse_buf_copy_flags(0)
-#endif
-    );
-    if (res < 0) {
-        ReplyError(*callContext, MakeError(res), req, res);
-        return;
-    }
-    Y_ABORT_UNLESS((size_t)res == size);
-
     callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
         || !IsAligned(size, Config->GetBlockSize());
-
     auto request = StartRequest<NProto::TWriteDataRequest>(ino);
+    if (Config->GetServerWriteBackCacheEnabled() || callContext->Unaligned) {
+        TAlignedBuffer alignedBuffer(size, align);
+
+        fuse_bufvec dst = FUSE_BUFVEC_INIT(size);
+        dst.buf[0].mem = (void*)(alignedBuffer.Begin());
+
+        ssize_t res = fuse_buf_copy(
+            &dst,
+            bufv
+#if !defined(FUSE_VIRTIO)
+            ,
+            fuse_buf_copy_flags(0)
+#endif
+        );
+        if (res < 0) {
+            ReplyError(*callContext, MakeError(res), req, res);
+            return;
+        }
+        Y_ABORT_UNLESS((size_t)res == size);
+        request->SetBufferSize(alignedBuffer.Size());
+        request->SetBuffer(alignedBuffer.TakeBuffer());
+        request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
+    } else {
+        ui64 bufferSize = 0;
+        for (size_t index = 0; index < bufv->count; ++index) {
+            const auto *srcFuseBuf = &bufv->buf[index];
+            if (srcFuseBuf->size == 0) {
+                continue;
+            }
+
+            auto bufferRefPtr = request->MutableZeroCopyBuffers()->Add();
+            bufferRefPtr->SetData(reinterpret_cast<ui64>(srcFuseBuf->mem));
+            bufferRefPtr->SetSize(srcFuseBuf->size);
+            bufferSize += srcFuseBuf->size;
+        }
+        request->SetBufferSize(bufferSize);
+    }
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
-    request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
-    request->SetBuffer(alignedBuffer.TakeBuffer());
 
     if (ShouldUseServerWriteBackCache(fi)) {
         WriteBackCache.WriteData(callContext, std::move(request))
