@@ -2354,6 +2354,24 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*writeBackCacheError));
     }
+
+    Y_UNIT_TEST(ShouldNotCrashWhileStoppingWhenForgetRequestIsInFlight)
+    {
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler);
+
+        bootstrap.Start();
+
+        const ui64 nodeId = 123;
+        const ui64 refCount = 10;
+
+        auto future = bootstrap.Fuse->SendRequest<TForgetRequest>(nodeId, refCount);
+        bootstrap.Stop();
+
+        scheduler->RunAllScheduledTasks();
+
+        UNIT_ASSERT_EXCEPTION(future.GetValue(WaitTimeout), yexception);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
