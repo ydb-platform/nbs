@@ -268,8 +268,8 @@ struct TEvService
         EvUpdateVolumeThrottlingConfigRequest = EvBegin + 39,
         EvUpdateVolumeThrottlingConfigResponse = EvBegin + 40,
 
-        EvListDisksStatesRequest = EvBegin + 41,
-        EvListDisksStatesResponse = EvBegin + 42,
+        EvListDiskStatesRequest = EvBegin + 41,
+        EvListDiskStatesResponse = EvBegin + 42,
 
         EvExecuteActionRequest = EvBegin + 43,
         EvExecuteActionResponse = EvBegin + 44,

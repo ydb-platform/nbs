@@ -21,7 +21,7 @@ SRCS(
     disk_registry_actor_get_dependent_disks.cpp
     disk_registry_actor_initiate_realloc.cpp
     disk_registry_actor_initschema.cpp
-    disk_registry_actor_list_disks_states.cpp
+    disk_registry_actor_list_disk_states.cpp
     disk_registry_actor_loadstate.cpp
     disk_registry_actor_mark_disk_for_cleanup.cpp
     disk_registry_actor_mark_replacement_device.cpp

@@ -579,7 +579,7 @@ public:
 
     const TVector<TDiskStateUpdate>& GetDiskStateUpdates() const;
 
-    TVector<NProto::TDiskState> ListDisksStates() const;
+    TVector<NProto::TDiskState> ListDiskStates() const;
 
     void DeleteDiskStateUpdate(TDiskRegistryDatabase& db, ui64 maxSeqNo);
 

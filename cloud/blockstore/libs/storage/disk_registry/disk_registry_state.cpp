@@ -8115,7 +8115,7 @@ bool TDiskRegistryState::MigrationCanBeStarted(
     return true;
 }
 
-TVector<NProto::TDiskState> TDiskRegistryState::ListDisksStates() const
+TVector<NProto::TDiskState> TDiskRegistryState::ListDiskStates() const
 {
     TVector<NProto::TDiskState> result;
     result.reserve(Disks.size());

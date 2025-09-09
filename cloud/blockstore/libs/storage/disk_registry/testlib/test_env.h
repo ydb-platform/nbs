@@ -1110,9 +1110,9 @@ public:
         return request;
     }
 
-    auto CreateListDisksStatesRequest()
+    auto CreateListDiskStatesRequest()
     {
-        return std::make_unique<TEvService::TEvListDisksStatesRequest>();
+        return std::make_unique<TEvService::TEvListDiskStatesRequest>();
     }
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
