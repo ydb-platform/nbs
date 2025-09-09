@@ -29,6 +29,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(EnableAgentDevice,        __VA_ARGS__)                                 \
     xxx(PartiallySuspendAgent,    __VA_ARGS__)                                 \
     xxx(DirectCopyBlocks,         __VA_ARGS__)                                 \
+    xxx(OpenDevice,              __VA_ARGS__)                                  \
+    xxx(CloseDevice,             __VA_ARGS__)                                  \
 
 // BLOCKSTORE_DISK_AGENT_REQUESTS_PROTO
 
@@ -96,6 +98,12 @@ struct TEvDiskAgent
 
         EvDirectCopyBlocksRequest = EvBegin + 23,
         EvDirectCopyBlocksResponse = EvBegin + 24,
+
+        EvOpenDeviceRequest = EvBegin + 25,
+        EvOpenDeviceResponse = EvBegin + 26,
+
+        EvCloseDeviceRequest = EvBegin + 27,
+        EvCloseDeviceResponse = EvBegin + 28,
 
         EvEnd
     };

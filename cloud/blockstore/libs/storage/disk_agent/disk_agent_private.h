@@ -205,6 +205,15 @@ struct TEvDiskAgentPrivate
     };
 
     //
+    // DeviceOpened
+    //
+
+    struct TDeviceOpened
+    {
+        THashMap<TString, TResultOrError<IStoragePtr>> Devices;
+    };
+
+    //
     // Events declaration
     //
 
@@ -226,6 +235,8 @@ struct TEvDiskAgentPrivate
 
         EvMultiAgentWriteDeviceBlocksRequest,
 
+        EvDeviceOpened,
+
         BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
 
         EvEnd
@@ -243,6 +254,8 @@ struct TEvDiskAgentPrivate
     using TEvSecureEraseCompleted = TResponseEvent<
         TSecureEraseCompleted,
         EvSecureEraseCompleted>;
+
+    using TEvDeviceOpened = TResponseEvent<TDeviceOpened, EvDeviceOpened>;
 
     using TEvWriteOrZeroCompleted = TResponseEvent<
         TWriteOrZeroCompleted,

@@ -1,12 +1,17 @@
 #include "disk_agent_actor.h"
 
 #include <cloud/blockstore/libs/rdma/iface/server.h>
+#include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
+#include <library/cpp/protobuf/json/proto2json.h>
 
 #include <util/stream/str.h>
+
+#include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -82,6 +87,7 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                     TABLEH() { out << "Rdma endpoint"; }
                     TABLEH() { out << "Writer session"; }
                     TABLEH() { out << "Reader sessions"; }
+                    TABLEH() { out << "Device generation"; }
                 }
             }
 
@@ -96,11 +102,7 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                         DumpDeviceState(
                             out,
                             config.GetState(),
-                            State->IsDeviceDisabled(uuid)
-                                ? EDeviceStateFlags::DISABLED
-                                : (State->IsDeviceSuspended(uuid)
-                                       ? EDeviceStateFlags::SUSPENDED
-                                       : EDeviceStateFlags::NONE));
+                            State->GetDeviceStateFlags(uuid));
                     }
                     TABLED() {
                         if (config.GetStateTs()) {
@@ -146,6 +148,20 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                                 }
                             }
                         }
+                    }
+
+                    TABLED() {
+                        out << Sprintf(
+                            R"(<form name="closeDevice" method="POST">
+                                <input type='hidden' name='action' value='closeDevice'/>
+                                <input type='hidden' name='deviceName' value='%s'/>
+                                <button type="submit">Close device</button>
+                            </form>)",
+                            config.GetDeviceName().c_str());
+                    }
+
+                    TABLED () {
+                        out << State->DeviceGeneration(uuid);
                     }
                 }
             }

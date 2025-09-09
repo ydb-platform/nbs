@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_guard.h>
+#include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -38,6 +39,11 @@ private:
         std::shared_ptr<TStorageAdapter> StorageAdapter;
 
         TStorageIoStatsPtr Stats;
+
+        bool IsOpen() const
+        {
+            return StorageAdapter != nullptr;
+        }
     };
 
 private:
@@ -161,6 +167,9 @@ public:
     void SuspendDevice(const TString& uuid);
     void EnableDevice(const TString& uuid);
     bool IsDeviceDisabled(const TString& uuid) const;
+    bool IsDeviceClosed(const TString& uuid) const;
+    ui64 DeviceGeneration(const TString& uuid) const;
+    EDeviceStateFlags GetDeviceStateFlags(const TString& uuid) const;
     bool IsDeviceSuspended(const TString& uuid) const;
     void ReportDisabledDeviceError(const TString& uuid);
 
@@ -168,6 +177,26 @@ public:
 
     void SetPartiallySuspended(bool partiallySuspended);
     bool GetPartiallySuspended() const;
+
+    NProto::TError CheckIsSameDevice(const TString& path);
+
+    NProto::TError CheckIsSameDevice(
+        const TString& path,
+        const TVector<NProto::TFileDeviceArgs>& files);
+
+    TVector<TString> GetAllDeviceUUIDsForPath(const TString& path);
+
+    TVector<NProto::TDeviceConfig> GetAllDevicesForPath(const TString& path);
+
+    TResultOrError<THashMap<TString, NThreading::TFuture<IStoragePtr>>>
+    OpenDevice(const TString& path, ui64 deviceGeneration);
+
+    void DeviceOpened(
+        NProto::TError error,
+        const TString& uuid,
+        IStoragePtr storage);
+
+    NProto::TError CloseDevice(const TString& path, ui64 deviceGeneration);
 
 private:
     const TDeviceState& GetDeviceState(
