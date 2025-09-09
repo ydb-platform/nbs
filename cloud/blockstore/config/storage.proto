@@ -1325,6 +1325,6 @@ message TStorageServiceConfig
     optional bool EnableDataIntegrityValidationForYdbBasedDisks = 455;
 
     // Timeout for dynamic node registration via discovery service
-    // in ms
+    // (in milliseconds).
     optional uint32 DiscoveryNodeRegistrantTimeout = 456;
 }

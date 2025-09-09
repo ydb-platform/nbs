@@ -1,7 +1,6 @@
 import grpc
 import time
 import threading
-import pytest
 
 import contrib.ydb.core.protos.grpc_pb2_grpc as grpc_server
 
@@ -28,9 +27,6 @@ from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
 from google.protobuf.text_format import MessageToString
-
-from collections import namedtuple
-
 from google.protobuf.message import Message
 
 CFG_PREFIX = "Cloud.NBS."
@@ -81,6 +77,13 @@ class ProxyInterceptor(grpc.ServerInterceptor):
             request_deserializer=lambda x: x,
             response_serializer=lambda x: x,
         )
+
+# This server simulates a hanging connection. It proxies all requests to the YDB server,
+# except for NodeRegistration requests which are handled specially:
+# - For the first max_node_reg_count NodeRegistration attempts, the server receives
+# the request but deliberately does not respond
+# - After these initial attempts, all subsequent NodeRegistration requests
+# are proxied normally to the YDB server
 
 
 class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceServicer):
@@ -215,6 +218,11 @@ def serve(not_responding_server_port, ydb):
         require_client_auth=False,
     )
 
+    # This server simulates a hanging connection. When a client sends a request,
+    # the server receives it but deliberately does not respond.
+    # Default settings would trigger keepalive timeout errors,
+    # so we configure additional options to prevent these errors.
+
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
         options=[
@@ -341,7 +349,7 @@ def prepare(
         )
     nbs_configurator.files["storage"].NodeType = node_type
     nbs_configurator.files["storage"].DisableLocalService = False
-    nbs_configurator.files["storage"].DiscoveryNodeRegistrantTimeout = 1000  # ms
+    nbs_configurator.files["storage"].DiscoveryNodeRegistrantTimeout = 1000  # 1 second
 
     return nbs_configurator
 
@@ -373,10 +381,5 @@ def setup_and_run_test_for_server(kikimr_ssl, blockstore_ssl, node_type):
     return True
 
 
-TestCase = namedtuple("TestCase", "SecureKikimr SecureBlockstore Result")
-Scenarios = [TestCase(SecureKikimr=True, SecureBlockstore=True, Result=True)]
-
-
-@pytest.mark.parametrize("kikimr_ssl, blockstore_ssl, result", Scenarios)
-def test_server_registration_with_timeout(kikimr_ssl, blockstore_ssl, result):
-    assert setup_and_run_test_for_server(kikimr_ssl, blockstore_ssl, "nbs") == result
+def test_server_registration_with_timeout():
+    assert setup_and_run_test_for_server(True, True, "nbs")
