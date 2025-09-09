@@ -102,11 +102,11 @@ class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceService
         self.stop_event = stop_event
 
         self.secondary_channel = None
-        self.secondary_stub = None
+        self.ydb_stub = None
         self.ydb = ydb
 
-    def _get_secondary_stub(self):
-        if self.secondary_stub is None:
+    def _get_ydb_stub(self):
+        if self.ydb_stub is None:
             with open(self.ydb.config.grpc_tls_ca_path, "rb") as f:
                 ca_cert = f.read()
             with open(self.ydb.config.grpc_tls_cert_path, "rb") as f:
@@ -126,16 +126,16 @@ class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceService
                 options=(("grpc.ssl_target_name_override", "localhost"),),
             )
 
-            self.secondary_stub = ydb_discovery_v1_pb2_grpc.DiscoveryServiceStub(
+            self.ydb_stub = ydb_discovery_v1_pb2_grpc.DiscoveryServiceStub(
                 self.secondary_channel
             )
 
-        return self.secondary_stub
+        return self.ydb_stub
 
     def ListEndpoints(self, request, context):
         try:
-            secondary_stub = self._get_secondary_stub()
-            secondary_response = secondary_stub.ListEndpoints(request)
+            ydb_stub = self._get_ydb_stub()
+            secondary_response = ydb_stub.ListEndpoints(request)
 
             return secondary_response
         except Exception:
@@ -143,8 +143,8 @@ class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceService
 
     def WhoAmI(self, request, context):
         try:
-            secondary_stub = self._get_secondary_stub()
-            secondary_response = secondary_stub.WhoAmI(request)
+            ydb_stub = self._get_ydb_stub()
+            secondary_response = ydb_stub.WhoAmI(request)
 
             return secondary_response
         except Exception:
@@ -163,8 +163,8 @@ class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceService
                 pass
         else:
             try:
-                secondary_stub = self._get_secondary_stub()
-                secondary_response = secondary_stub.NodeRegistration(request)
+                ydb_stub = self._get_ydb_stub()
+                secondary_response = ydb_stub.NodeRegistration(request)
 
                 return secondary_response
 
@@ -321,32 +321,23 @@ def setup_cms_configs(ydb_client):
 
 def prepare(
     ydb,
-    kikimr_ssl,
-    blockstore_ssl,
     node_type,
-    ic_port=None,
-    use_location=True,
-    location=None,
 ):
     nbs_configurator = NbsConfigurator(
         ydb,
-        ssl_registration=blockstore_ssl,
-        ic_port=ic_port,
-        use_location=use_location,
-        location=location,
+        ssl_registration=True,
     )
     nbs_configurator.generate_default_nbs_configs()
 
-    if blockstore_ssl and kikimr_ssl:
-        nbs_configurator.files["storage"].NodeRegistrationRootCertsFile = (
-            ydb.config.grpc_tls_ca_path
-        )
-        nbs_configurator.files["storage"].NodeRegistrationCert.CertFile = (
-            ydb.config.grpc_tls_cert_path
-        )
-        nbs_configurator.files["storage"].NodeRegistrationCert.CertPrivateKeyFile = (
-            ydb.config.grpc_tls_key_path
-        )
+    nbs_configurator.files["storage"].NodeRegistrationRootCertsFile = (
+        ydb.config.grpc_tls_ca_path
+    )
+    nbs_configurator.files["storage"].NodeRegistrationCert.CertFile = (
+        ydb.config.grpc_tls_cert_path
+    )
+    nbs_configurator.files["storage"].NodeRegistrationCert.CertPrivateKeyFile = (
+        ydb.config.grpc_tls_key_path
+    )
     nbs_configurator.files["storage"].NodeType = node_type
     nbs_configurator.files["storage"].DisableLocalService = False
     nbs_configurator.files["storage"].DiscoveryNodeRegistrantTimeout = 1000  # 1 second
@@ -354,8 +345,8 @@ def prepare(
     return nbs_configurator
 
 
-def setup_and_run_test_for_server(kikimr_ssl, blockstore_ssl, node_type):
-    ydb = start_ydb(grpc_ssl_enable=kikimr_ssl)
+def setup_and_run_test_for_server(node_type):
+    ydb = start_ydb(grpc_ssl_enable=True)
     setup_cms_configs(ydb.client)
 
     not_responding_server_port = PortManager().get_port()
@@ -363,7 +354,7 @@ def setup_and_run_test_for_server(kikimr_ssl, blockstore_ssl, node_type):
     server, server_thread, stop_event = serve(not_responding_server_port, ydb)
 
     nbs = start_nbs(
-        prepare(ydb, kikimr_ssl, blockstore_ssl, node_type),
+        prepare(ydb, node_type),
         ydb_ssl_port=not_responding_server_port,
     )
 
@@ -382,4 +373,4 @@ def setup_and_run_test_for_server(kikimr_ssl, blockstore_ssl, node_type):
 
 
 def test_server_registration_with_timeout():
-    assert setup_and_run_test_for_server(True, True, "nbs")
+    assert setup_and_run_test_for_server("nbs")
