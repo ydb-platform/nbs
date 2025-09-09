@@ -287,6 +287,7 @@ func newFileSystemModel(
 	session nfs.Session,
 	root node,
 ) *fileSystemModel {
+
 	return &fileSystemModel{
 		root:          root,
 		t:             t,
