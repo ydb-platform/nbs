@@ -319,6 +319,9 @@ message TDiskAgentConfig
     // Enables data integrity validation for the DR-based disks.
     // See "EnableDataIntegrityClient" in server.proto for more details.
     optional bool EnableDataIntegrityValidationForDrBasedDisks = 44;
+
+    // Enable to open or close devices in runtime.
+    optional bool OpenCloseDevicesEnabled = 45;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
