@@ -128,7 +128,7 @@ NProto::TError ValidateNodeName(const TString& name)
         name.find('\0') != TString::npos ||
         name.find('/') != TString::npos)
     {
-        return ErrorInvalidArgument();
+        return ErrorInvalidArgument("invalid name");
     }
 
     if (name.size() > MaxName) {
@@ -169,7 +169,7 @@ NProto::TError ValidateXAttrValue(const TString& name, const TString& value)
 NProto::TError ValidateRange(TByteRange byteRange, ui32 maxFileBlocks)
 {
     if (!byteRange.Length) {
-        return ErrorInvalidArgument();
+        return ErrorInvalidArgument("empty byte range");
     }
 
     if (byteRange.LastBlock() + 1 > maxFileBlocks) {
