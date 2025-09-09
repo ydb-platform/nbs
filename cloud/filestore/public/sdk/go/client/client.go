@@ -67,11 +67,6 @@ type Node struct {
 	LinkTarget string
 }
 
-type CreatedNode struct {
-	NodeId    uint64
-	NewNodeId uint64
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 type Client struct {
