@@ -241,6 +241,7 @@ func registerControlplaneTasks(
 	poolService pools.Service,
 	filesystemService filesystem.Service,
 	resourceStorage resources.Storage,
+	cellSelector cells.CellSelector,
 ) error {
 
 	logging.Info(ctx, "Registering pool tasks")
@@ -273,6 +274,7 @@ func registerControlplaneTasks(
 		taskScheduler,
 		poolService,
 		nbsFactory,
+		cellSelector,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register disk tasks: %v", err)
@@ -409,6 +411,9 @@ func initControlplane(
 		return nil, err
 	}
 
+	cellsConfig := config.GetCellsConfig()
+	cellSelector := cells.NewCellSelector(cellsConfig, nbsFactory)
+
 	err = registerControlplaneTasks(
 		ctx,
 		config,
@@ -424,6 +429,7 @@ func initControlplane(
 		poolService,
 		filesystemService,
 		resourceStorage,
+		cellSelector,
 	)
 	if err != nil {
 		return nil, err
@@ -435,10 +441,6 @@ func initControlplane(
 		logging.Error(ctx, "Failed to initialize GRPC server: %v", err)
 		return nil, err
 	}
-
-	cellsConfig := config.GetCellsConfig()
-
-	cellSelector := cells.NewCellSelector(cellsConfig, nbsFactory)
 
 	facade.RegisterDiskService(
 		server,
