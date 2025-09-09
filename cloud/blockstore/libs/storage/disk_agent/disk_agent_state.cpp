@@ -162,9 +162,10 @@ struct TCollectStatsContext
 TVector<IProfileLog::TBlockInfo> ComputeDigest(
     const IBlockDigestGenerator& generator,
     const NProto::TWriteBlocksRequest& req,
-    ui32 blockSize)
+    ui32 blockSize,
+    TStringBuf buffer)
 {
-    auto bytesCount = CalculateBytesCount(req, blockSize);
+    const ui64 bytesCount = CalculateBytesCount(req, blockSize);
     if (bytesCount % blockSize != 0) {
         Y_DEBUG_ABORT_UNLESS(false);
         return {};
@@ -179,14 +180,23 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
         return {};
     }
 
-    auto sglistOrError = SgListNormalize(GetSgList(req), blockSize);
+    TSgList sglist;
+    if (buffer) {
+        sglist = {{buffer.data(), buffer.size()}};
+    } else {
+        sglist = GetSgList(req);
+    }
+
+    auto sglistOrError = SgListNormalize(std::move(sglist), blockSize);
     if (HasError(sglistOrError)) {
         Y_DEBUG_ABORT_UNLESS(false);
         return {};
     }
-    auto sglist = sglistOrError.ExtractResult();
+
+    sglist = sglistOrError.ExtractResult();
 
     TVector<IProfileLog::TBlockInfo> blockInfos;
+    blockInfos.reserve(sglist.size());
 
     ui64 blockIndex = req.GetStartIndex();
     for (const auto& ref: sglist) {
@@ -636,27 +646,50 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
         });
 }
 
-template <typename T>
 void TDiskAgentState::WriteProfileLog(
     TInstant now,
     const TString& uuid,
-    const T& req,
+    const NProto::TWriteBlocksRequest& req,
     ui32 blockSize,
-    ESysRequestType requestType)
+    TStringBuf buffer)
+{
+    auto blockInfos =
+        ComputeDigest(*BlockDigestGenerator, req, blockSize, buffer);
+    if (!blockInfos) {
+        return;
+    }
+
+    ProfileLog->Write({
+        .DiskId = uuid,
+        .Ts = now,
+        .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
+            .RequestType = ESysRequestType::WriteDeviceBlocks,
+            .BlockInfos = std::move(blockInfos),
+            .CommitId = 0,
+        },
+    });
+}
+
+void TDiskAgentState::WriteProfileLog(
+    TInstant now,
+    const TString& uuid,
+    const NProto::TZeroBlocksRequest& req,
+    ui32 blockSize)
 {
     auto blockInfos = ComputeDigest(*BlockDigestGenerator, req, blockSize);
-
-    if (blockInfos) {
-        ProfileLog->Write({
-            .DiskId = uuid,
-            .Ts = now,
-            .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
-                .RequestType = requestType,
-                .BlockInfos = std::move(blockInfos),
-                .CommitId = 0,
-            },
-        });
+    if (!blockInfos) {
+        return;
     }
+
+    ProfileLog->Write({
+        .DiskId = uuid,
+        .Ts = now,
+        .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
+            .RequestType = ESysRequestType::ZeroDeviceBlocks,
+            .BlockInfos = std::move(blockInfos),
+            .CommitId = 0,
+        },
+    });
 }
 
 TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
@@ -698,7 +731,7 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::WriteBlocks(
         deviceUUID,
         *request,
         blockSize,
-        ESysRequestType::WriteDeviceBlocks);
+        buffer);
 
     auto result = device.StorageAdapter->WriteBlocks(
         now,
@@ -738,9 +771,7 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
         now,
         request.GetDeviceUUID(),
         *zeroRequest,
-        request.GetBlockSize(),
-        ESysRequestType::ZeroDeviceBlocks
-    );
+        request.GetBlockSize());
 
     auto result = device.StorageAdapter->ZeroBlocks(
         now,
