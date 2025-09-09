@@ -313,7 +313,7 @@ type Client interface {
 		fillGeneration uint64,
 	) error
 
-	Zone() string
+	ZoneID() string
 }
 
 ////////////////////////////////////////////////////////////////////////////////

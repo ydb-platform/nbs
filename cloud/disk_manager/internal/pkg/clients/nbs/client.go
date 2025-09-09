@@ -1708,7 +1708,7 @@ func (c *client) FinishFillDisk(
 	})
 }
 
-func (c *client) Zone() string {
+func (c *client) ZoneID() string {
 	return c.zoneID
 }
 
