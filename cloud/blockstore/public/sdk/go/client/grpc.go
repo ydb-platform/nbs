@@ -105,9 +105,9 @@ func (client *grpcClient) log(
 ) {
 
 	if requestLogLevel(req) == LOG_DEBUG {
-		client.logger.Debug(ctx, "%s "+format, v...)
+		client.logger.Debugf("%s "+format, v...)
 	} else {
-		client.logger.Info(ctx, "%s "+format, v...)
+		client.logger.Infof("%s "+format, v...)
 	}
 }
 
@@ -150,8 +150,7 @@ func (client *grpcClient) executeRequest(
 			err,
 		)
 	} else {
-		client.logger.Warn(
-			ctx,
+		client.logger.Warnf(
 			"%s%s #%d request too slow (time: %v, size: %d, error: %v)",
 			requestName(req),
 			requestDetails(req),

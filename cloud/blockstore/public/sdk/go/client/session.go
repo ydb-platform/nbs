@@ -94,8 +94,7 @@ func (s *Session) MountVolume(
 
 	s.fetchMountHeaders(ctx)
 
-	s.log.Debug(
-		ctx,
+	s.log.Debugf(
 		"Submit MountVolume for %s, client_id: %v, opts: %v",
 		diskId,
 		s.mountHeaders.ClientId,
@@ -145,8 +144,7 @@ func (s *Session) UnmountVolume(ctx context.Context) error {
 		}
 	}
 
-	s.log.Debug(
-		ctx,
+	s.log.Debugf(
 		"Submit UnmountVolume for %s, client_id: %v",
 		s.volume.DiskId,
 		s.mountHeaders.ClientId,
@@ -287,8 +285,7 @@ func (s *Session) ensureVolumeMounted(ctx context.Context) (string, string, erro
 	diskId := s.volume.DiskId
 
 	if s.state == stateMountRequested {
-		s.log.Warn(
-			ctx,
+		s.log.Warnf(
 			"Force remount volume %s, client_id: %v",
 			diskId,
 			s.mountHeaders.ClientId,
@@ -307,8 +304,7 @@ func (s *Session) remountVolume(ctx context.Context) (string, error) {
 
 	ctx = s.setupMountHeaders(ctx)
 	diskId := s.volume.DiskId
-	s.log.Debug(
-		ctx,
+	s.log.Debugf(
 		"Remount volume %s, client_id: %v",
 		diskId,
 		s.mountHeaders.ClientId,
@@ -401,8 +397,7 @@ func (s *Session) processMountResponse(
 	}
 
 	if err != nil {
-		s.log.Error(
-			ctx,
+		s.log.Errorf(
 			"MountVolume for %s failed: %v, client_id: %s",
 			diskId,
 			err,
@@ -416,8 +411,7 @@ func (s *Session) processMountResponse(
 		return err
 	}
 
-	s.log.Debug(
-		ctx,
+	s.log.Debugf(
 		"Complete MountVolume for %s, client_id: %s",
 		diskId,
 		s.mountHeaders.ClientId,

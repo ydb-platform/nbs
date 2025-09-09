@@ -39,8 +39,7 @@ func (client *durableClient) executeRequest(
 		resp, err := call(ctx)
 		if err == nil && retryCount > 1 {
 			duration := time.Since(started)
-			client.log.Info(
-				ctx,
+			client.log.Infof(
 				"%s%s completed (retries: %d, duration: %v)",
 				requestName(req),
 				requestDetails(req),
@@ -57,8 +56,7 @@ func (client *durableClient) executeRequest(
 		client.onError(ctx, cerr)
 
 		if !cerr.IsRetriable() {
-			client.log.Error(
-				ctx,
+			client.log.Errorf(
 				"%s%s request failed: %v",
 				requestName(req),
 				requestDetails(req),
@@ -67,8 +65,7 @@ func (client *durableClient) executeRequest(
 			return resp, err
 		}
 
-		client.log.Warn(
-			ctx,
+		client.log.Warnf(
 			"%s%s retry request (retries: %d, timeout: %v, error: %v)",
 			requestName(req),
 			requestDetails(req),

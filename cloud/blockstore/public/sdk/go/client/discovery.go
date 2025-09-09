@@ -79,8 +79,7 @@ func (client *discoveryClient) closeImpl(
 	addr *instanceAddress,
 ) {
 
-	client.logger.Debug(
-		ctx,
+	client.logger.Debugf(
 		"calling client.Close for %v, %s:%d",
 		impl,
 		addr.Host,
@@ -89,8 +88,7 @@ func (client *discoveryClient) closeImpl(
 
 	err := impl.Close()
 	if err != nil {
-		client.logger.Debug(
-			ctx,
+		client.logger.Debugf(
 			"error on client.Close: %v for %s:%d",
 			err,
 			addr.Host,
@@ -142,8 +140,7 @@ func (client *discoveryClient) shoot(
 		return nil, err
 	}
 
-	client.logger.Debug(
-		ctx,
+	client.logger.Debugf(
 		"shooting for %v, %s:%d",
 		impl,
 		addr.Host,
@@ -152,7 +149,12 @@ func (client *discoveryClient) shoot(
 
 	resp, err := op(ctx, impl)
 	if err != nil {
-		client.logger.Debug(ctx, "%s:%d request error: %v", addr.Host, addr.Port, err)
+		client.logger.Debugf(
+			"%s:%d request error: %v",
+			addr.Host,
+			addr.Port,
+			err,
+		)
 	}
 
 	client.closeImpl(ctx, impl, addr)
@@ -165,12 +167,11 @@ func (client *discoveryClient) createImpl(
 	addr *instanceAddress,
 ) (ClientIface, error) {
 
-	client.logger.Debug(ctx, "create client %s:%d", addr.Host, addr.Port)
+	client.logger.Debugf("create client %s:%d", addr.Host, addr.Port)
 
 	impl, err := client.clientFactory(addr.Host, addr.Port)
 	if err != nil {
-		client.logger.Error(
-			ctx,
+		client.logger.Errorf(
 			"can't create client for %s:%d, error '%v'",
 			addr.Host,
 			addr.Port,
@@ -265,12 +266,12 @@ func (client *discoveryClient) discoverInstances(
 
 	res, err := client.discoverInstancesImpl(ctx, req)
 	if err != nil {
-		client.logger.Error(ctx, "discovery error: %v", err)
+		client.logger.Errorf("discovery error: %v", err)
 		return nil, err
 	}
 
 	instances := res.(*protos.TDiscoverInstancesResponse).Instances
-	client.logger.Debug(ctx, "discovered instances: %v", instances)
+	client.logger.Debugf("discovered instances: %v", instances)
 	return instances, nil
 }
 
