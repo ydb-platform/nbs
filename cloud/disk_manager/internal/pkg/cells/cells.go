@@ -4,22 +4,27 @@ import (
 	"context"
 	"slices"
 
-	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type cellSelector struct {
-	config *cells_config.CellsConfig
+	config  *cells_config.CellsConfig
+	factory nbs.Factory
 }
 
 func NewCellSelector(
 	config *cells_config.CellsConfig,
+	factory nbs.Factory,
 ) CellSelector {
 
 	return &cellSelector{
-		config: config,
+		config:  config,
+		factory: factory,
 	}
 }
 
@@ -27,22 +32,28 @@ func NewCellSelector(
 
 func (s *cellSelector) SelectCell(
 	ctx context.Context,
-	req *disk_manager.CreateDiskRequest,
-) string {
+	disk *types.Disk,
+	folderID string,
+) (nbs.Client, error) {
 
-	if !s.isFolderAllowed(req.FolderId) {
-		return req.DiskId.ZoneId
+	if s.config == nil {
+		return s.factory.GetClient(ctx, disk.ZoneId)
 	}
 
-	cells := s.getCells(req.DiskId.ZoneId)
+	if !s.isFolderAllowed(folderID) {
+		return s.factory.GetClient(ctx, disk.ZoneId)
+	}
+
+	cells := s.getCells(disk.ZoneId)
 
 	if len(cells) == 0 {
-		// We end up here if a zone not divided into cells or a cell
-		// of a zone is provided as ZoneId.
-		return req.DiskId.ZoneId
+		return nil, errors.NewNonRetriableErrorf(
+			"no cells found for zone %q",
+			disk.ZoneId,
+		)
 	}
 
-	return cells[0]
+	return s.factory.GetClient(ctx, cells[0])
 }
 
 func (s *cellSelector) IsCellOfZone(cellID string, zoneID string) bool {
