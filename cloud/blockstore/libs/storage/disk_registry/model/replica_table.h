@@ -103,8 +103,8 @@ private:
 
     struct TDiskState
     {
-        TDeque<TRow> Cells;
-        THashMap<TString, TRow*> DeviceId2Cell;
+        TDeque<TRow> Rows;
+        THashMap<TString, TRow*> DeviceId2Row;
     };
 
     THashMap<TDiskId, TDiskState> Disks;
