@@ -41,6 +41,10 @@ type Session struct {
 
 type NodeType uint32
 
+func (t NodeType) IsDirectory() bool {
+	return t == NODE_KIND_DIR
+}
+
 const (
 	NODE_KIND_INVALID NodeType = iota
 	NODE_KIND_FILE

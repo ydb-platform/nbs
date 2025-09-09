@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -119,44 +120,6 @@ type node struct {
 	children []node
 	fileType nfs_client.NodeType
 	target   string
-	root     bool
-}
-
-func (f node) create(
-	t *testing.T,
-	ctx context.Context,
-	client nfs.Client,
-	session nfs.Session,
-	parentID uint64,
-) {
-
-	mode := uint32(0o644)
-	if f.fileType == nfs_client.NODE_KIND_DIR {
-		mode = 0o755
-	}
-
-	id := uint64(1)
-	if !f.root {
-		var err error
-		id, err = client.CreateNode(ctx, session, nfs.Node{
-			ParentID:   parentID,
-			Name:       f.name,
-			Type:       f.fileType,
-			Mode:       mode,
-			UID:        1,
-			GID:        1,
-			LinkTarget: f.target,
-		})
-		require.NoError(t, err)
-	}
-
-	if f.fileType != nfs_client.NODE_KIND_DIR {
-		return
-	}
-
-	for _, child := range f.children {
-		child.create(t, ctx, client, session, id)
-	}
 }
 
 func dir(name string, children ...node) node {
@@ -164,7 +127,6 @@ func dir(name string, children ...node) node {
 		name:     name,
 		fileType: nfs_client.NODE_KIND_DIR,
 		children: children,
-		root:     false,
 	}
 }
 
@@ -172,7 +134,6 @@ func file(name string) node {
 	return node{
 		name:     name,
 		fileType: nfs_client.NODE_KIND_FILE,
-		root:     false,
 	}
 }
 
@@ -181,7 +142,6 @@ func symlink(name string, target string) node {
 		name:     name,
 		fileType: nfs_client.NODE_KIND_SYMLINK,
 		target:   target,
-		root:     false,
 	}
 }
 
@@ -190,35 +150,84 @@ func root(children ...node) node {
 		name:     "/",
 		fileType: nfs_client.NODE_KIND_DIR,
 		children: children,
-		root:     true,
 	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func listAllNodes(
-	ctx context.Context,
-	client nfs.Client,
-	session nfs.Session,
-	parentNodeID uint64,
-) ([]nfs.Node, error) {
+type fileSystemModel struct {
+	root          node
+	t             *testing.T
+	ctx           context.Context
+	client        nfs.Client
+	session       nfs.Session
+	defaultUid    uint32
+	defaultGid    uint32
+	directoryMode uint32
+	fileMode      uint32
+	expectedNodes []nfs.Node
+}
 
+func (f *fileSystemModel) createNodes(parentID uint64, nodeToCreate node) {
+	mode := f.fileMode
+	if nodeToCreate.fileType.IsDirectory() {
+		mode = f.directoryMode
+	}
+
+	expectedNode := nfs.Node{
+		ParentID:   parentID,
+		Name:       nodeToCreate.name,
+		Type:       nodeToCreate.fileType,
+		Mode:       mode,
+		UID:        1,
+		GID:        1,
+		LinkTarget: nodeToCreate.target,
+	}
+	id, err := f.client.CreateNode(f.ctx, f.session, expectedNode)
+	require.NoError(f.t, err)
+	f.expectedNodes = append(f.expectedNodes, expectedNode)
+	if !nodeToCreate.fileType.IsDirectory() {
+		return
+	}
+
+	// Sort nodes by name to have a deterministic order
+	slices.SortFunc(
+		nodeToCreate.children,
+		func(i, j node) int {
+			return strings.Compare(i.name, j.name)
+		},
+	)
+	for _, child := range nodeToCreate.children {
+		f.createNodes(id, child)
+	}
+}
+
+func (f *fileSystemModel) create() {
+	slices.SortFunc(
+		f.root.children,
+		func(i, j node) int {
+			return strings.Compare(i.name, j.name)
+		},
+	)
+	for _, child := range f.root.children {
+		f.createNodes(1, child)
+	}
+}
+
+func (f *fileSystemModel) listAllNodes(parentNodeID uint64) []nfs.Node {
 	var (
 		nodes  []nfs.Node
 		cookie string
 	)
 
 	for {
-		batch, nextCookie, err := client.ListNodes(
-			ctx,
-			session,
+		batch, nextCookie, err := f.client.ListNodes(
+			f.ctx,
+			f.session,
 			parentNodeID,
 			cookie,
 		)
-		if err != nil {
-			return nil, err
-		}
-
+		require.NoError(f.t, err)
 		nodes = append(nodes, batch...)
 		if len(batch) == 0 {
 			break
@@ -227,62 +236,67 @@ func listAllNodes(
 		cookie = nextCookie
 	}
 
-	return nodes, nil
+	return nodes
 }
-
-func listAllNodesRecursively(
-	ctx context.Context,
-	client nfs.Client,
-	session nfs.Session,
-	parentNodeID uint64,
-) ([]nfs.Node, error) {
-
-	nodes, err := listAllNodes(ctx, client, session, parentNodeID)
-	if err != nil {
-		return []nfs.Node{}, err
-	}
-
+func (f *fileSystemModel) listNodesRecursively(parentNodeID uint64) []nfs.Node {
+	nodes := f.listAllNodes(parentNodeID)
 	// Sort nodes by name to have a deterministic order
-	slices.SortFunc(nodes, func(i, j nfs.Node) int {
-		if i.Name < j.Name {
-			return -1
-		}
-
-		if i.Name > j.Name {
-			return 1
-		}
-
-		return 0
-	})
+	slices.SortFunc(
+		nodes,
+		func(i, j nfs.Node) int {
+			return strings.Compare(i.Name, j.Name)
+		},
+	)
 	result := make([]nfs.Node, 0)
 	for _, node := range nodes {
 		result = append(result, node)
-		if node.Type == nfs_client.NODE_KIND_DIR {
-			children, err := listAllNodesRecursively(
-				ctx,
-				client,
-				session,
-				node.NodeID,
-			)
-			if err != nil {
-				return []nfs.Node{}, err
-			}
-
-			result = append(result, children...)
+		if !node.Type.IsDirectory() {
+			continue
 		}
-	}
 
-	return result, nil
-}
-
-func nodeNames(nodes []nfs.Node) []string {
-	result := make([]string, len(nodes))
-	for i := range nodes {
-		result[i] = nodes[i].Name
+		children := f.listNodesRecursively(node.NodeID)
+		result = append(result, children...)
 	}
 
 	return result
 }
+
+func (f *fileSystemModel) listAllNodesRecursively() []nfs.Node {
+	return f.listNodesRecursively(1)
+}
+
+func newFileSystemModel(
+	t *testing.T,
+	ctx context.Context,
+	client nfs.Client,
+	session nfs.Session,
+	root node,
+) *fileSystemModel {
+	return &fileSystemModel{
+		root:          root,
+		t:             t,
+		ctx:           ctx,
+		client:        client,
+		session:       session,
+		defaultUid:    1,
+		defaultGid:    1,
+		directoryMode: 0o755,
+		fileMode:      0o644,
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func nodeNames(nodes []nfs.Node) []string {
+	names := make([]string, len(nodes))
+	for i, node := range nodes {
+		names[i] = node.Name
+	}
+
+	return names
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 func TestListNodesFileSystem(t *testing.T) {
 	ctx := newContext()
@@ -299,9 +313,9 @@ func TestListNodesFileSystem(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Delete(ctx, filesystemID)
 
-	session1, err := client.CreateSession(ctx, filesystemID, false)
+	session, err := client.CreateSession(ctx, filesystemID, false)
 	require.NoError(t, err)
-	defer client.DestroySession(ctx, session1)
+	defer client.DestroySession(ctx, session)
 
 	rootDir := root(
 		dir("etc",
@@ -320,9 +334,21 @@ func TestListNodesFileSystem(t *testing.T) {
 			dir("lib", file("libc.so")),
 		),
 	)
-	rootDir.create(t, ctx, client, session1, 1)
-	nodes, err := listAllNodesRecursively(ctx, client, session1, 1)
-	require.NoError(t, err)
+	model := newFileSystemModel(t, ctx, client, session, rootDir)
+	model.create()
+
+	nodes := model.listAllNodesRecursively()
+	require.Equal(t, len(model.expectedNodes), len(nodes))
+	for index, node := range nodes {
+		expectedNode := model.expectedNodes[index]
+		require.Equal(t, expectedNode.ParentID, node.ParentID)
+		require.Equal(t, expectedNode.Name, node.Name)
+		require.Equal(t, expectedNode.Type, node.Type)
+		require.Equal(t, expectedNode.Mode, node.Mode)
+		require.Equal(t, expectedNode.UID, node.UID)
+		require.Equal(t, expectedNode.GID, node.GID)
+		require.Equal(t, expectedNode.LinkTarget, node.LinkTarget)
+	}
 
 	expectedNames := []string{
 		"bin",
