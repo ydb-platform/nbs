@@ -255,6 +255,17 @@ func (t *createSnapshotFromDiskTask) run(
 	t.state.BaseSnapshotId = baseSnapshotID
 	t.state.BaseCheckpointId = baseCheckpointID
 
+	incremental := len(t.state.BaseSnapshotId) != 0
+
+	err = t.setEstimate(
+		ctx,
+		execCtx,
+		incremental,
+	)
+	if err != nil {
+		return err
+	}
+
 	nbsClient, err := t.getNbsClient(ctx)
 	if err != nil {
 		return err
@@ -266,19 +277,6 @@ func (t *createSnapshotFromDiskTask) run(
 	}
 
 	diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
-	if err != nil {
-		return err
-	}
-
-	incremental := len(t.state.BaseSnapshotId) != 0
-
-	err = t.setEstimate(
-		ctx,
-		execCtx,
-		nbsClient,
-		diskParams,
-		incremental,
-	)
 	if err != nil {
 		return err
 	}
@@ -423,10 +421,18 @@ func (t *createSnapshotFromDiskTask) run(
 func (t *createSnapshotFromDiskTask) setEstimate(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	nbsClient nbs_client.Client,
-	diskParams nbs_client.DiskParams,
 	incremental bool,
 ) error {
+
+	nbsClient, err := t.getNbsClient(ctx)
+	if err != nil {
+		return err
+	}
+
+	diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
+	if err != nil {
+		return err
+	}
 
 	diskSize := diskParams.BlocksCount * uint64(diskParams.BlockSize)
 
