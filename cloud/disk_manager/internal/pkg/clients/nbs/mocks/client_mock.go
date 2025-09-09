@@ -392,7 +392,7 @@ func (c *ClientMock) FinishFillDisk(
 	return args.Error(0)
 }
 
-func (c *ClientMock) GetZone() string {
+func (c *ClientMock) Zone() string {
 	args := c.Called()
 	return args.String(0)
 }
