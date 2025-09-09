@@ -45,6 +45,12 @@ func (t NodeType) IsDirectory() bool {
 	return t == NODE_KIND_DIR
 }
 
+func (t NodeType) IsSymlink() bool {
+	return t == NODE_KIND_SYMLINK
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 const (
 	NODE_KIND_INVALID NodeType = iota
 	NODE_KIND_FILE
