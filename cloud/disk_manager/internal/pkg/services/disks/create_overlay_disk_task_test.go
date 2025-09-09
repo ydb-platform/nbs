@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	cells_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -36,6 +37,7 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 	nbsFactory := nbs_mocks.NewFactoryMock()
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	request := &protos.CreateOverlayDiskRequest{
 		SrcImageId: "image",
@@ -53,12 +55,13 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 	}
 
 	task := &createOverlayDiskTask{
-		storage:     storage,
-		scheduler:   scheduler,
-		poolService: poolService,
-		nbsFactory:  nbsFactory,
-		request:     request,
-		state:       &protos.CreateOverlayDiskTaskState{},
+		storage:      storage,
+		scheduler:    scheduler,
+		poolService:  poolService,
+		nbsFactory:   nbsFactory,
+		request:      request,
+		state:        &protos.CreateOverlayDiskTaskState{},
+		cellSelector: cellSelector,
 	}
 
 	// TODO: Improve this expectations.
@@ -87,7 +90,8 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 		nil,
 	)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
+	cellSelector.On("SelectCell", ctx, "zone", "folder").Return(nbsClient, nil)
+
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
 		ID:                   "disk",
 		BaseDiskID:           "base",
@@ -98,9 +102,21 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 		CloudID:              "cloud",
 		FolderID:             "folder",
 	}).Return(nil)
+	nbsClient.On("GetZone").Return("zone")
+
+	execCtx.On("SaveState", ctx).Return(nil)
 
 	err := task.Run(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		scheduler,
+		poolService,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
 	require.NoError(t, err)
 }
 
@@ -112,6 +128,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testin
 	nbsFactory := nbs_mocks.NewFactoryMock()
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	request := &protos.CreateOverlayDiskRequest{
 		SrcImageId: "image",
@@ -129,18 +146,23 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testin
 	}
 
 	task := &createOverlayDiskTask{
-		storage:     storage,
-		scheduler:   scheduler,
-		poolService: poolService,
-		nbsFactory:  nbsFactory,
-		request:     request,
-		state:       &protos.CreateOverlayDiskTaskState{},
+		storage:      storage,
+		scheduler:    scheduler,
+		poolService:  poolService,
+		nbsFactory:   nbsFactory,
+		request:      request,
+		state:        &protos.CreateOverlayDiskTaskState{},
+		cellSelector: cellSelector,
 	}
 
 	// TODO: Improve this expectation.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{}, nil)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
+	cellSelector.On("SelectCell", ctx, "zone", "folder").Return(nbsClient, nil)
+
+	nbsClient.On("GetZone").Return("zone")
+
+	execCtx.On("SaveState", ctx).Return(nil)
 
 	poolService.On(
 		"AcquireBaseDisk",
@@ -175,6 +197,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 	nbsFactory := nbs_mocks.NewFactoryMock()
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
 
 	request := &protos.CreateOverlayDiskRequest{
 		SrcImageId: "image",
@@ -192,18 +215,23 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 	}
 
 	task := &createOverlayDiskTask{
-		storage:     storage,
-		scheduler:   scheduler,
-		poolService: poolService,
-		nbsFactory:  nbsFactory,
-		request:     request,
-		state:       &protos.CreateOverlayDiskTaskState{},
+		storage:      storage,
+		scheduler:    scheduler,
+		poolService:  poolService,
+		nbsFactory:   nbsFactory,
+		request:      request,
+		state:        &protos.CreateOverlayDiskTaskState{},
+		cellSelector: cellSelector,
 	}
 
 	// TODO: Improve this expectation.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{}, nil)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
+	cellSelector.On("SelectCell", ctx, "zone", "folder").Return(nbsClient, nil)
+
+	nbsClient.On("GetZone").Return("zone")
+
+	execCtx.On("SaveState", ctx).Return(nil)
 
 	poolService.On(
 		"AcquireBaseDisk",
@@ -226,7 +254,16 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 	)
 
 	err := task.Run(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		scheduler,
+		poolService,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
 	require.Error(t, err)
 }
 

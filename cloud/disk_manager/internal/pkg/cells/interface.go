@@ -1,8 +1,9 @@
 package cells
 
 import (
+	"context"
+
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -12,7 +13,8 @@ type CellSelector interface {
 	// If the Cells mechanism is not enabled for this folder, returns an nbs
 	// Client for specified zone.
 	SelectCell(
-		disk *types.Disk,
+		ctx context.Context,
+		zoneID string,
 		folderID string,
 	) (nbs.Client, error)
 

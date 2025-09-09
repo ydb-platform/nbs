@@ -6,7 +6,6 @@ import (
 
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
@@ -32,24 +31,28 @@ func NewCellSelector(
 
 func (s *cellSelector) SelectCell(
 	ctx context.Context,
-	disk *types.Disk,
+	zoneID string,
 	folderID string,
 ) (nbs.Client, error) {
 
 	if s.config == nil {
-		return s.factory.GetClient(ctx, disk.ZoneId)
+		return s.factory.GetClient(ctx, zoneID)
 	}
 
 	if !s.isFolderAllowed(folderID) {
-		return s.factory.GetClient(ctx, disk.ZoneId)
+		return s.factory.GetClient(ctx, zoneID)
 	}
 
-	cells := s.getCells(disk.ZoneId)
+	if s.isOneOfCells(zoneID) {
+		return s.factory.GetClient(ctx, zoneID)
+	}
+
+	cells := s.getCells(zoneID)
 
 	if len(cells) == 0 {
-		return nil, errors.NewNonRetriableErrorf(
-			"no cells found for zone %q",
-			disk.ZoneId,
+		return nil, errors.NewNonCancellableErrorf(
+			"incorrect zone ID provided: %q",
+			zoneID,
 		)
 	}
 
@@ -78,4 +81,14 @@ func (s *cellSelector) isFolderAllowed(folderID string) bool {
 
 	return len(s.config.GetFolderAllowList()) == 0 ||
 		slices.Contains(s.config.GetFolderAllowList(), folderID)
+}
+
+func (s *cellSelector) isOneOfCells(zoneID string) bool {
+	for _, cells := range s.config.Cells {
+		if slices.Contains(cells.Cells, zoneID) {
+			return true
+		}
+	}
+
+	return false
 }

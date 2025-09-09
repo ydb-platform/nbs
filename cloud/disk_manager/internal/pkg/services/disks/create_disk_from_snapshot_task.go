@@ -8,6 +8,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
@@ -22,11 +23,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createDiskFromSnapshotTask struct {
-	storage    resources.Storage
-	scheduler  tasks.Scheduler
-	nbsFactory nbs.Factory
-	request    *protos.CreateDiskFromSnapshotRequest
-	state      *protos.CreateDiskFromSnapshotTaskState
+	storage      resources.Storage
+	scheduler    tasks.Scheduler
+	nbsFactory   nbs.Factory
+	request      *protos.CreateDiskFromSnapshotRequest
+	state        *protos.CreateDiskFromSnapshotTaskState
+	cellSelector cells.CellSelector
 }
 
 func (t *createDiskFromSnapshotTask) Save() ([]byte, error) {
@@ -47,7 +49,7 @@ func (t *createDiskFromSnapshotTask) Load(request, state []byte) error {
 func (t *createDiskFromSnapshotTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-) error {
+) (err error) {
 
 	params := t.request.Params
 
@@ -57,17 +59,41 @@ func (t *createDiskFromSnapshotTask) Run(
 		)
 	}
 
-	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
-	if err != nil {
-		return err
+	var client nbs.Client
+
+	if len(t.state.SelectedCellID) > 0 {
+		client, err = t.nbsFactory.GetClient(ctx, t.state.SelectedCellID)
+		if err != nil {
+			return err
+		}
+	} else {
+		client, err = t.cellSelector.SelectCell(
+			ctx,
+			params.Disk.ZoneId,
+			params.FolderId,
+		)
+		if err != nil {
+			return err
+		}
+
+		t.state.SelectedCellID = client.GetZone()
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
+	disk := &types.Disk{
+		DiskId: params.Disk.DiskId,
+		ZoneId: t.state.SelectedCellID,
 	}
 
 	selfTaskID := execCtx.GetTaskID()
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:            params.Disk.DiskId,
-		ZoneID:        params.Disk.ZoneId,
-		SrcSnapshotID: t.request.SrcSnapshotId,
+		ZoneID:        disk.DiskId,
+		SrcSnapshotID: disk.ZoneId,
 		BlocksCount:   params.BlocksCount,
 		BlockSize:     params.BlockSize,
 		Kind:          common.DiskKindToString(params.Kind),
@@ -126,7 +152,7 @@ func (t *createDiskFromSnapshotTask) Run(
 	}
 
 	err = client.Create(ctx, nbs.CreateDiskParams{
-		ID:                      params.Disk.DiskId,
+		ID:                      disk.DiskId,
 		BlocksCount:             params.BlocksCount,
 		BlockSize:               params.BlockSize,
 		Kind:                    params.Kind,
@@ -151,10 +177,10 @@ func (t *createDiskFromSnapshotTask) Run(
 			headers.SetIncomingIdempotencyKey(ctx, selfTaskID),
 			"dataplane.TransferFromSnapshotToDisk",
 			"",
-			params.Disk.ZoneId,
+			disk.ZoneId,
 			&dataplane_protos.TransferFromSnapshotToDiskRequest{
 				SrcSnapshotId: t.request.SrcSnapshotId,
-				DstDisk:       params.Disk,
+				DstDisk:       disk,
 				DstEncryption: encryption,
 			},
 		)
@@ -165,10 +191,10 @@ func (t *createDiskFromSnapshotTask) Run(
 			headers.SetIncomingIdempotencyKey(ctx, selfTaskID),
 			"dataplane.TransferFromLegacySnapshotToDisk",
 			"",
-			params.Disk.ZoneId,
+			disk.ZoneId,
 			&dataplane_protos.TransferFromSnapshotToDiskRequest{
 				SrcSnapshotId: t.request.SrcSnapshotId,
-				DstDisk:       params.Disk,
+				DstDisk:       disk,
 				DstEncryption: encryption,
 			},
 		)
@@ -200,7 +226,11 @@ func (t *createDiskFromSnapshotTask) Cancel(
 
 	params := t.request.Params
 
-	client, err := t.nbsFactory.GetClient(ctx, params.Disk.ZoneId)
+	if len(t.state.SelectedCellID) == 0 {
+		t.state.SelectedCellID = params.Disk.ZoneId
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, t.state.SelectedCellID)
 	if err != nil {
 		return err
 	}

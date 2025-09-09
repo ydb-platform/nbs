@@ -7,6 +7,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -18,11 +19,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createEmptyDiskTask struct {
-	storage    resources.Storage
-	scheduler  tasks.Scheduler
-	nbsFactory nbs.Factory
-	params     *protos.CreateDiskParams
-	state      *protos.CreateEmptyDiskTaskState
+	storage      resources.Storage
+	scheduler    tasks.Scheduler
+	nbsFactory   nbs.Factory
+	params       *protos.CreateDiskParams
+	state        *protos.CreateEmptyDiskTaskState
+	cellSelector cells.CellSelector
 }
 
 func (t *createEmptyDiskTask) Save() ([]byte, error) {
@@ -43,18 +45,37 @@ func (t *createEmptyDiskTask) Load(request, state []byte) error {
 func (t *createEmptyDiskTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-) error {
+) (err error) {
 
-	client, err := t.nbsFactory.GetClient(ctx, t.params.Disk.ZoneId)
-	if err != nil {
-		return err
+	var client nbs.Client
+
+	if len(t.state.SelectedCellID) > 0 {
+		client, err = t.nbsFactory.GetClient(ctx, t.state.SelectedCellID)
+		if err != nil {
+			return err
+		}
+	} else {
+		client, err = t.cellSelector.SelectCell(
+			ctx,
+			t.params.Disk.ZoneId,
+			t.params.FolderId,
+		)
+		if err != nil {
+			return err
+		}
+
+		t.state.SelectedCellID = client.GetZone()
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
 	}
 
 	selfTaskID := execCtx.GetTaskID()
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:          t.params.Disk.DiskId,
-		ZoneID:      t.params.Disk.ZoneId,
+		ZoneID:      t.state.SelectedCellID,
 		BlocksCount: t.params.BlocksCount,
 		BlockSize:   t.params.BlockSize,
 		Kind:        common.DiskKindToString(t.params.Kind),
@@ -104,7 +125,11 @@ func (t *createEmptyDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.nbsFactory.GetClient(ctx, t.params.Disk.ZoneId)
+	if len(t.state.SelectedCellID) == 0 {
+		t.state.SelectedCellID = t.params.Disk.ZoneId
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, t.state.SelectedCellID)
 	if err != nil {
 		return err
 	}
