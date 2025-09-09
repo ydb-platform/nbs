@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
-	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
@@ -438,11 +437,8 @@ func initControlplane(
 	}
 
 	cellsConfig := config.GetCellsConfig()
-	if cellsConfig == nil {
-		cellsConfig = &cells_config.CellsConfig{}
-	}
 
-	cellSelector := cells.NewCellSelector(cellsConfig)
+	cellSelector := cells.NewCellSelector(cellsConfig, nbsFactory)
 
 	facade.RegisterDiskService(
 		server,

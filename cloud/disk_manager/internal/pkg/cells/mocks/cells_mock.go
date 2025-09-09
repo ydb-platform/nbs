@@ -4,7 +4,8 @@ import (
 	"context"
 
 	"github.com/stretchr/testify/mock"
-	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -21,11 +22,14 @@ func NewCellSelectorMock() *CellSelectorMock {
 
 func (s *CellSelectorMock) SelectCell(
 	ctx context.Context,
-	req *disk_manager.CreateDiskRequest,
-) string {
+	disk *types.Disk,
+	folderID string,
+) (nbs.Client, error) {
 
-	args := s.Called(ctx, req)
-	return args.String(0)
+	args := s.Called(ctx, disk, folderID)
+	res, _ := args.Get(0).(nbs.Client)
+
+	return res, args.Error(1)
 }
 
 func (s *CellSelectorMock) IsCellOfZone(cellID string, zoneID string) bool {
