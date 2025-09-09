@@ -537,7 +537,7 @@ void TFileSystem::WriteBuf(
     callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
         || !IsAligned(size, Config->GetBlockSize());
     auto request = StartRequest<NProto::TWriteDataRequest>(ino);
-    if (callContext->Unaligned) {
+    if (Config->GetServerWriteBackCacheEnabled() || callContext->Unaligned) {
         TAlignedBuffer alignedBuffer(size, align);
 
         fuse_bufvec dst = FUSE_BUFVEC_INIT(size);
