@@ -238,6 +238,7 @@ func (f *fileSystemModel) listAllNodes(parentNodeID uint64) []nfs.Node {
 
 	return nodes
 }
+
 func (f *fileSystemModel) listNodesRecursively(parentNodeID uint64) []nfs.Node {
 	nodes := f.listAllNodes(parentNodeID)
 	// Sort nodes by name to have a deterministic order
