@@ -9,7 +9,6 @@ import sys
 import time
 
 from ..common.crash_info import CrashInfoStorage
-from .coredump import CoredumpError
 from .crash_processor import (
     CrashProcessorError, CoredumpCrashProcessor, OOMCrashProcessor)
 from .limiter import Limiter
@@ -32,7 +31,8 @@ class BreakpadSender(object):
         self._config = {}
 
     def _parse_args(self):
-        parser = argparse.ArgumentParser(description="Crash dump processor",
+        parser = argparse.ArgumentParser(
+            description="Crash dump processor",
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         parser.add_argument("--datadir", type=str, default="/var/tmp/breakpad",
                             metavar="DIR",

@@ -29,4 +29,3 @@ class CoresSender(BaseSender):
             params=self._get_metadata(),
             data=self._get_backtrace_with_info(crash),
             timeout=self._timeout)
-

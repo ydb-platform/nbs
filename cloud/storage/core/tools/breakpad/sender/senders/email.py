@@ -1,11 +1,11 @@
 
 from .base import BaseSender, CrashInfoProcessed
 
-import logging
 import subprocess
 from email.mime.text import MIMEText
 
 from library.python.retry import retry
+
 
 class EmailSender(BaseSender):
     def __init__(self, logger, emails):

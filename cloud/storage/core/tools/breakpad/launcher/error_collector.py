@@ -1,6 +1,6 @@
 # -*- coding: UTF-8 -*-
 
-import StringIO
+from io import StringIO
 import os
 
 

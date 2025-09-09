@@ -3,7 +3,6 @@ from uuid import uuid4
 from datetime import datetime, timezone
 
 import json
-import re
 import requests
 
 from .base import BaseSender, CrashInfoProcessed
