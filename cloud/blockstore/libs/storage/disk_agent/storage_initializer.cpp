@@ -150,12 +150,6 @@ public:
     TInitializeStorageResult GetResult();
 
 private:
-    TFuture<IStoragePtr> CreateFileStorage(
-        TString path,
-        ui64 startIndex,
-        const NProto::TDeviceConfig& config,
-        TStorageIoStatsPtr stats);
-
     TFuture<IStoragePtr> CreateMemoryStorage(
         const NProto::TDeviceConfig& config,
         TStorageIoStatsPtr stats);
@@ -208,33 +202,6 @@ TInitializer::TInitializer(
         std::make_move_iterator(fileDevices.end()));
 
     SortBy(FileDevices, GetDeviceId);
-}
-
-TFuture<IStoragePtr> TInitializer::CreateFileStorage(
-    TString path,
-    ui64 startIndex,
-    const NProto::TDeviceConfig& config,
-    TStorageIoStatsPtr stats)
-{
-    const ui32 blockSize = config.GetBlockSize();
-
-    NProto::TVolume volume;
-    volume.SetDiskId(std::move(path));
-    volume.SetBlockSize(blockSize);
-    volume.SetStartIndex(startIndex);
-    volume.SetBlocksCount(config.GetBlocksCount());
-
-    auto storage = StorageProvider->CreateStorage(
-        volume,
-        AgentConfig->GetAgentId(),
-        NProto::VOLUME_ACCESS_READ_WRITE);
-
-    return storage.Apply([=] (const auto& future) mutable {
-        return CreateStorageWithIoStats(
-            future.GetValue(),
-            std::move(stats),
-            blockSize);
-    });
 }
 
 TFuture<IStoragePtr> TInitializer::CreateMemoryStorage(
@@ -591,17 +558,21 @@ TFuture<void> TInitializer::Initialize()
             }
 
             auto result = CreateFileStorage(
-                device.GetPath(),
-                device.GetOffset() / device.GetBlockSize(),
-                Configs[i],
-                Stats[i]
-            ).Subscribe([=, this] (const auto& future) {
-                    try {
-                        Devices[i] = future.GetValue();
-                    } catch (...) {
-                        onInitError();
-                    }
-                });
+                              device.GetPath(),
+                              device.GetOffset() / device.GetBlockSize(),
+                              Configs[i],
+                              Stats[i],
+                              StorageProvider,
+                              AgentConfig->GetAgentId())
+                              .Subscribe(
+                                  [=, this](const auto& future)
+                                  {
+                                      try {
+                                          Devices[i] = future.GetValue();
+                                      } catch (...) {
+                                          onInitError();
+                                      }
+                                  });
 
             futures.push_back(result);
         } catch (...) {
@@ -731,6 +702,37 @@ TFuture<TInitializeStorageResult> InitializeStorage(
 
         return initializer->GetResult();
     });
+}
+
+TFuture<IStoragePtr> CreateFileStorage(
+    TString path,
+    ui64 startIndex,
+    const NProto::TDeviceConfig& config,
+    TStorageIoStatsPtr stats,
+    IStorageProviderPtr storageProvider,
+    const TString& agentId)
+{
+    const ui32 blockSize = config.GetBlockSize();
+
+    NProto::TVolume volume;
+    volume.SetDiskId(std::move(path));
+    volume.SetBlockSize(blockSize);
+    volume.SetStartIndex(startIndex);
+    volume.SetBlocksCount(config.GetBlocksCount());
+
+    auto storage = storageProvider->CreateStorage(
+        volume,
+        agentId,
+        NProto::VOLUME_ACCESS_READ_WRITE);
+
+    return storage.Apply(
+        [=](const auto& future) mutable
+        {
+            return CreateStorageWithIoStats(
+                future.GetValue(),
+                std::move(stats),
+                blockSize);
+        });
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

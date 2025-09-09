@@ -19,22 +19,35 @@ class TRegisterActor final
 {
 private:
     const TActorId Owner;
+    const bool OpenCloseDevicesEnabled;
     TRequestInfoPtr RequestInfo;
     NProto::TAgentConfig Config;
+
+    TVector<TString> DevicesToDisableIO;
+
+    ui64 PendingCloseDevices = 0;
+    NProto::TError Error;
 
 public:
     TRegisterActor(
         const TActorId& owner,
+        bool openCloseDevicesEnabled,
         TRequestInfoPtr requestInfo,
         NProto::TAgentConfig config);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    STFUNC(StateWork);
+    STFUNC(StateWaitRegisterResponse);
+
+    STFUNC(StateWaitDevicesClose);
 
     void HandleRegisterAgentResponse(
         const TEvDiskRegistry::TEvRegisterAgentResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleDeviceClosed(
+        const TEvDiskAgent::TEvCloseDeviceResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -42,16 +55,18 @@ private:
 
 TRegisterActor::TRegisterActor(
         const TActorId& owner,
+        bool openCloseDevicesEnabled,
         TRequestInfoPtr requestInfo,
         NProto::TAgentConfig config)
     : Owner(owner)
+    , OpenCloseDevicesEnabled(openCloseDevicesEnabled)
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
 {}
 
 void TRegisterActor::Bootstrap(const TActorContext& ctx)
 {
-    Become(&TThis::StateWork);
+    Become(&TThis::StateWaitRegisterResponse);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
         "Send RegisterAgent request: NodeId=%u, AgentId=%s"
@@ -87,18 +102,73 @@ void TRegisterActor::HandleRegisterAgentResponse(
 {
     const auto* msg = ev->Get();
 
-    auto response = std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(
-        msg->GetError());
-    response->DevicesToDisableIO.assign(
+    DevicesToDisableIO.assign(
         msg->Record.GetDevicesToDisableIO().cbegin(),
         msg->Record.GetDevicesToDisableIO().cend());
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    Error = msg->GetError();
+
+    if (!OpenCloseDevicesEnabled || msg->Record.GetUnknownDevices().empty()) {
+        auto response =
+            std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(
+                msg->GetError());
+        response->DevicesToDisableIO = std::move(DevicesToDisableIO);
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        Die(ctx);
+        return;
+    }
+
+    for (const auto& device: msg->Record.GetUnknownDevices()) {
+        auto closeRequest = std::make_unique<TEvDiskAgent::TEvCloseDeviceRequest>();
+        closeRequest->Record.SetDevicePath(device.GetDevicePath());
+        closeRequest->Record.SetDeviceGeneration(device.GetDeviceGeneration());
+
+        NCloud::Send(ctx, Owner, std::move(closeRequest));
+
+        ++PendingCloseDevices;
+    }
+
+    Become(&TThis::StateWaitDevicesClose);
 }
 
-STFUNC(TRegisterActor::StateWork)
+void TRegisterActor::HandleDeviceClosed(
+    const TEvDiskAgent::TEvCloseDeviceResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    --PendingCloseDevices;
+    auto error = ev->Get()->Record.GetError();
+    if (HasError(error)) {
+        Error = error;
+    }
+
+    if (PendingCloseDevices == 0) {
+        auto response =
+            std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(
+                Error);
+        response->DevicesToDisableIO = std::move(DevicesToDisableIO);
+
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        Die(ctx);
+    }
+}
+
+STFUNC(TRegisterActor::StateWaitRegisterResponse)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvDiskRegistry::TEvRegisterAgentResponse, HandleRegisterAgentResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_AGENT_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+STFUNC(TRegisterActor::StateWaitDevicesClose)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvDiskAgent::TEvCloseDeviceResponse, HandleDeviceClosed);
 
         default:
             HandleUnexpectedEvent(
@@ -180,6 +250,7 @@ void TDiskAgentActor::HandleRegisterAgent(
     NCloud::Register<TRegisterActor>(
         ctx,
         ctx.SelfID,
+        AgentConfig->GetOpenCloseDevicesEnabled(),
         std::move(requestInfo),
         std::move(config));
 }
