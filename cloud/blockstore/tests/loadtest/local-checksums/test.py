@@ -50,20 +50,9 @@ TESTS = [
         agent_count=2,
     ),
     TestCase(
-        "nonreplicated",
-        "cloud/blockstore/tests/loadtest/local-checksums/local-nonrepl.txt",
-        agent_count=1,
-    ),
-    TestCase(
         "mirror2-rdma",
         "cloud/blockstore/tests/loadtest/local-checksums/local-mirror2.txt",
         agent_count=2,
-        use_rdma=True,
-    ),
-    TestCase(
-        "nonreplicated-rdma",
-        "cloud/blockstore/tests/loadtest/local-checksums/local-nonrepl.txt",
-        agent_count=1,
         use_rdma=True,
     ),
     TestCase(

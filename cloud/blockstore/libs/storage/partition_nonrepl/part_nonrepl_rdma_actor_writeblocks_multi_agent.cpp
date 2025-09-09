@@ -154,7 +154,7 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
         } else {
             ReportChecksumCalculationError(
                 "NonreplicatedPartitionRdmaActor: Incorrectly calculated "
-                "checksum for block range.",
+                "checksum for block range",
                 {{"range", request.Range.Print()},
                  {"request range length", request.Range.Size()},
                  {"checksum length",

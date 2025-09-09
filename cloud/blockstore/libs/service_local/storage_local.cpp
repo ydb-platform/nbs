@@ -181,7 +181,7 @@ struct TStorageContext
 
     TFile File;
     const bool DirectIO;
-    const bool EnableChecksumValidation;
+    const bool EnableDataIntegrityValidation;
 
     TStorageContext(
             ITaskQueuePtr submitQueue,
@@ -201,7 +201,7 @@ struct TStorageContext
         , StorageBlockCount(blockCount)
         , File(std::move(file))
         , DirectIO(directIO)
-        , EnableChecksumValidation(enableChecksumValidation)
+        , EnableDataIntegrityValidation(enableChecksumValidation)
     {}
 };
 
@@ -600,7 +600,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
             fileOffset,
             byteCount)
             .GetFuture();
-    if (!EnableChecksumValidation) {
+    if (!EnableDataIntegrityValidation) {
         return future;
     }
 
@@ -645,7 +645,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
         return MakeFuture(response);
     }
 
-    if (EnableChecksumValidation && request->ChecksumsSize() > 0) {
+    if (EnableDataIntegrityValidation) {
         if (request->ChecksumsSize() != 1) {
             NProto::TWriteBlocksLocalResponse response;
             ui32 flags = 0;

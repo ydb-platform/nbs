@@ -117,12 +117,12 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
             } else {
                 ReportChecksumCalculationError(
                     "DiskAgentWriteActor: Incorrectly calculated checksum for "
-                    "block range.",
+                    "block range",
                     {{"range", deviceRequest.BlockRange.Print()},
                      {"request range length", deviceRequest.BlockRange.Size()},
                      {"checksum length",
                       checksum.GetByteCount() / PartConfig->GetBlockSize()},
-                     {"diskId", PartConfig->GetName().Quote()}});
+                     {"disk id", PartConfig->GetName().Quote()}});
             }
         }
 
