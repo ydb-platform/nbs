@@ -279,7 +279,8 @@ func RegisterForExecution(
 		"dataplane.CreateDRBasedDiskCheckpoint",
 		func() tasks.Task {
 			return &createDRBasedDiskCheckpointTask{
-				nbsFactory: nbsFactory,
+				nbsFactory:        nbsFactory,
+				performanceConfig: performanceConfig,
 			}
 		},
 	)

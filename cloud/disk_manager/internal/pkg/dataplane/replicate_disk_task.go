@@ -414,13 +414,21 @@ func (t *replicateDiskTask) setEstimate(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	bytesToReplicate, err := t.getBytesToReplicate(ctx, execCtx)
+	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	if err != nil {
+		return err
+	}
+
+	stats, err := client.Stat(
+		ctx,
+		t.request.SrcDisk.DiskId,
+	)
 	if err != nil {
 		return err
 	}
 
 	execCtx.SetEstimatedInflightDuration(performance.Estimate(
-		bytesToReplicate,
+		stats.StorageSize,
 		t.performanceConfig.GetReplicateDiskBandwidthMiBs(),
 	))
 

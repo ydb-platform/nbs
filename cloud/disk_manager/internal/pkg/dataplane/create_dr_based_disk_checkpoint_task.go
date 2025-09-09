@@ -7,6 +7,8 @@ import (
 	"github.com/golang/protobuf/proto"
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
@@ -14,9 +16,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createDRBasedDiskCheckpointTask struct {
-	nbsFactory nbs_client.Factory
-	request    *protos.CreateDRBasedDiskCheckpointRequest
-	state      *protos.CreateDRBasedDiskCheckpointTaskState
+	nbsFactory        nbs_client.Factory
+	performanceConfig *performance_config.PerformanceConfig
+	request           *protos.CreateDRBasedDiskCheckpointRequest
+	state             *protos.CreateDRBasedDiskCheckpointTaskState
 }
 
 func (t *createDRBasedDiskCheckpointTask) Save() ([]byte, error) {
@@ -38,6 +41,11 @@ func (t *createDRBasedDiskCheckpointTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	err := t.setEstimate(ctx, execCtx)
+	if err != nil {
+		return err
+	}
 
 	disk := t.request.Disk
 
@@ -103,6 +111,33 @@ func (t *createDRBasedDiskCheckpointTask) GetResponse() proto.Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (t *createDRBasedDiskCheckpointTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
+	if err != nil {
+		return err
+	}
+
+	stats, err := client.Stat(
+		ctx,
+		t.request.Disk.DiskId,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Creating DR-based disk checkpoint implicitly makes a full copy of disk data
+	execCtx.SetEstimatedInflightDuration(performance.Estimate(
+		stats.StorageSize,
+		t.performanceConfig.GetCreateDRBasedDiskCheckpointBandwidthMiBs(),
+	))
+
+	return nil
+}
 
 func (t *createDRBasedDiskCheckpointTask) makeCheckpointID(
 	iteration int32,
