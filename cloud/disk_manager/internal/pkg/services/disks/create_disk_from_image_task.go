@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -23,12 +22,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createDiskFromImageTask struct {
-	performanceConfig *performance_config.PerformanceConfig
-	storage           resources.Storage
-	scheduler         tasks.Scheduler
-	nbsFactory        nbs.Factory
-	request           *protos.CreateDiskFromImageRequest
-	state             *protos.CreateDiskFromImageTaskState
+	storage    resources.Storage
+	scheduler  tasks.Scheduler
+	nbsFactory nbs.Factory
+	request    *protos.CreateDiskFromImageRequest
+	state      *protos.CreateDiskFromImageTaskState
 }
 
 func (t *createDiskFromImageTask) Save() ([]byte, error) {

@@ -7,7 +7,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
@@ -21,13 +20,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createImageFromImageTask struct {
-	config            *config.ImagesConfig
-	performanceConfig *performance_config.PerformanceConfig
-	scheduler         tasks.Scheduler
-	storage           resources.Storage
-	poolService       pools.Service
-	request           *protos.CreateImageFromImageRequest
-	state             *protos.CreateImageFromImageTaskState
+	config      *config.ImagesConfig
+	scheduler   tasks.Scheduler
+	storage     resources.Storage
+	poolService pools.Service
+	request     *protos.CreateImageFromImageRequest
+	state       *protos.CreateImageFromImageTaskState
 }
 
 func (t *createImageFromImageTask) Save() ([]byte, error) {

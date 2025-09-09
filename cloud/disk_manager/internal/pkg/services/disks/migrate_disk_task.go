@@ -12,7 +12,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
@@ -33,15 +32,14 @@ const checkStatusPeriod = 200 * time.Millisecond
 ////////////////////////////////////////////////////////////////////////////////
 
 type migrateDiskTask struct {
-	disksConfig       *disks_config.DisksConfig
-	performanceConfig *performance_config.PerformanceConfig
-	scheduler         tasks.Scheduler
-	poolService       pools.Service
-	resourceStorage   resources.Storage
-	poolStorage       storage.Storage
-	nbsFactory        nbs.Factory
-	request           *protos.MigrateDiskRequest
-	state             *protos.MigrateDiskTaskState
+	disksConfig     *disks_config.DisksConfig
+	scheduler       tasks.Scheduler
+	poolService     pools.Service
+	resourceStorage resources.Storage
+	poolStorage     storage.Storage
+	nbsFactory      nbs.Factory
+	request         *protos.MigrateDiskRequest
+	state           *protos.MigrateDiskTaskState
 }
 
 func (t *migrateDiskTask) Save() ([]byte, error) {

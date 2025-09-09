@@ -10,7 +10,6 @@ import (
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	url_package "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url"
 	url_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
@@ -23,13 +22,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createImageFromURLTask struct {
-	config            *config.ImagesConfig
-	performanceConfig *performance_config.PerformanceConfig
-	scheduler         tasks.Scheduler
-	storage           resources.Storage
-	poolService       pools.Service
-	request           *protos.CreateImageFromURLRequest
-	state             *protos.CreateImageFromURLTaskState
+	config      *config.ImagesConfig
+	scheduler   tasks.Scheduler
+	storage     resources.Storage
+	poolService pools.Service
+	request     *protos.CreateImageFromURLRequest
+	state       *protos.CreateImageFromURLTaskState
 }
 
 func (t *createImageFromURLTask) Save() ([]byte, error) {
