@@ -10,6 +10,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -17,10 +19,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type transferFromDiskToDiskTask struct {
-	nbsFactory nbs_client.Factory
-	config     *config.DataplaneConfig
-	request    *protos.TransferFromDiskToDiskRequest
-	state      *protos.TransferFromDiskToDiskTaskState
+	nbsFactory        nbs_client.Factory
+	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
+	request           *protos.TransferFromDiskToDiskRequest
+	state             *protos.TransferFromDiskToDiskTaskState
 }
 
 func (t *transferFromDiskToDiskTask) Save() ([]byte, error) {
@@ -75,6 +78,11 @@ func (t *transferFromDiskToDiskTask) Run(
 	if err != nil {
 		return err
 	}
+
+	execCtx.SetEstimatedInflightDuration(performance.Estimate(
+		uint64(chunkCount)*chunkSize,
+		t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
+	))
 
 	t.state.ChunkCount = chunkCount
 

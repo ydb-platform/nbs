@@ -9,9 +9,12 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message PerformanceConfig {
-    optional uint64 CreateDiskFromSnapshotBandwidthMiBs = 1 [default = 300];
-    optional uint64 CreateSnapshotFromSnapshotBandwidthMiBs = 2 [default = 3000];
-    optional uint64 CreateImageFromURLBandwidthMiBs = 3 [default = 200];
-    optional uint64 CreateSnapshotFromDiskBandwidthMiBs = 4 [default = 200];
-    optional uint64 ReplicateDiskBandwidthMiBs = 5 [default = 200];
+    optional uint64 CreateSnapshotFromDiskBandwidthMiBs = 1 [default = 200];
+    optional uint64 CreateSnapshotFromLegacySnapshotBandwidthMiBs = 2 [default = 300];
+    optional uint64 CreateSnapshotFromSnapshotBandwidthMiBs = 3 [default = 3000];
+    optional uint64 CreateSnapshotFromURLBandwidthMiBs = 4 [default = 200];
+    optional uint64 DeleteSnapshotDataBandwidthMiBs = 5 [default = 3000];
+    optional uint64 ReplicateDiskBandwidthMiBs = 6 [default = 200];
+    optional uint64 TransferFromDiskToDiskBandwidthMiBs = 7 [default = 200];
+    optional uint64 TransferFromSnapshotToDiskBandwidthMiBs = 8 [default = 300];
 }

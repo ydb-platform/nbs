@@ -148,8 +148,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("dataplane.TransferFromDiskToDisk", func() tasks.Task {
 		return &transferFromDiskToDiskTask{
-			nbsFactory: nbsFactory,
-			config:     config,
+			nbsFactory:        nbsFactory,
+			config:            config,
+			performanceConfig: performanceConfig,
 		}
 	})
 	if err != nil {
