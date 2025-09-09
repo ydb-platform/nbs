@@ -462,11 +462,11 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 		t.performanceConfig.GetCreateSnapshotFromDiskBandwidthMiBs(),
 	)
 	shallowCopyDuration := performance.Estimate(
-		diskSize-bytesToReplicate,
+		diskSize,
 		t.performanceConfig.GetCreateSnapshotFromSnapshotBandwidthMiBs(),
 	)
 
-	execCtx.SetEstimatedInflightDuration(replicateDuration + shallowCopyDuration)
+	execCtx.SetEstimatedInflightDuration(max(replicateDuration, shallowCopyDuration))
 
 	return nil
 }
