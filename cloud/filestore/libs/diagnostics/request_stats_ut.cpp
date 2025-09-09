@@ -956,6 +956,26 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_EQUAL(createSessionCounter->Val(), 1);
         }
     }
+
+    Y_UNIT_TEST(ShouldNotCrashWhenUpdatingStatsAfterReset)
+    {
+        struct TIncompleteRequestProvider final
+            : public IIncompleteRequestProvider
+        {
+            void Accept(IIncompleteRequestCollector& collector) override
+            {
+                Y_UNUSED(collector);
+            }
+        };
+
+        const auto provider = std::make_shared<TIncompleteRequestProvider>();
+        TBootstrap bootstrap;
+        bootstrap.Registry->GetRequestStats()
+            ->RegisterIncompleteRequestProvider(provider);
+        bootstrap.Registry->GetRequestStats()->UpdateStats(false);
+        bootstrap.Registry->GetRequestStats()->Reset();
+        bootstrap.Registry->GetRequestStats()->UpdateStats(false);
+    }
 }
 
 } // namespace NCloud::NFileStore::NStorage
