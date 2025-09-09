@@ -35,28 +35,12 @@ func (s *cellSelector) SelectCell(
 	folderID string,
 ) (nbs.Client, error) {
 
-	if s.config == nil {
-		return s.nbsFactory.GetClient(ctx, zoneID)
+	cellID, err := s.selectCell(zoneID, folderID)
+	if err != nil {
+		return nil, err
 	}
 
-	if !s.isFolderAllowed(folderID) {
-		return s.nbsFactory.GetClient(ctx, zoneID)
-	}
-
-	cells := s.getCells(zoneID)
-
-	if len(cells) == 0 {
-		if s.isOneOfCells(zoneID) {
-			return s.nbsFactory.GetClient(ctx, zoneID)
-		}
-
-		return nil, errors.NewNonCancellableErrorf(
-			"incorrect zone ID provided: %q",
-			zoneID,
-		)
-	}
-
-	return s.nbsFactory.GetClient(ctx, cells[0])
+	return s.nbsFactory.GetClient(ctx, cellID)
 }
 
 func (s *cellSelector) IsCellOfZone(cellID string, zoneID string) bool {
@@ -91,4 +75,33 @@ func (s *cellSelector) isOneOfCells(zoneID string) bool {
 	}
 
 	return false
+}
+
+func (s *cellSelector) selectCell(
+	zoneID string,
+	folderID string,
+) (string, error) {
+
+	if s.config == nil {
+		return zoneID, nil
+	}
+
+	if !s.isFolderAllowed(folderID) {
+		return zoneID, nil
+	}
+
+	cells := s.getCells(zoneID)
+
+	if len(cells) == 0 {
+		if s.isOneOfCells(zoneID) {
+			return zoneID, nil
+		}
+
+		return "", errors.NewNonCancellableErrorf(
+			"incorrect zone ID provided: %q",
+			zoneID,
+		)
+	}
+
+	return cells[0], nil
 }
