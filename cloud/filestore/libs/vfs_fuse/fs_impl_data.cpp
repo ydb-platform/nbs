@@ -228,7 +228,7 @@ void TFileSystem::Release(
     }
 
     if (WriteBackCache) {
-        WriteBackCache.FlushData(handle).Subscribe(
+        WriteBackCache.FlushNodeData(ino).Subscribe(
             [=, ptr = weak_from_this()] (const auto&)
             {
                 if (auto self = ptr.lock()) {
@@ -717,7 +717,7 @@ void TFileSystem::Flush(
     auto future = fsyncQueueFuture;
 
     if (WriteBackCache) {
-        auto writeBackCacheFlushFuture = WriteBackCache.FlushData(fi->fh)
+        auto writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino)
             .Apply([] (const auto&) { return MakeError(S_OK); });
 
         future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
@@ -828,7 +828,7 @@ void TFileSystem::FSync(
 
         TFuture<NProto::TError> writeBackCacheFlushFuture;
         if (fi) {
-            writeBackCacheFlushFuture = WriteBackCache.FlushData(fi->fh)
+            writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino)
                 .Apply(convertOK);
         } else {
             writeBackCacheFlushFuture = WriteBackCache.FlushAllData()

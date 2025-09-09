@@ -37,6 +37,8 @@ constexpr ui32 DefaultMaxWriteRequestSize = 1_MB;
 constexpr ui32 DefaultMaxWriteRequestsCount = 64;
 constexpr ui32 DefaultMaxSumWriteRequestsSize = 32_MB;
 
+constexpr ui64 NodeToHandleOffset = 1000;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void SleepForRandomDurationMs(ui32 maxDurationMs)
@@ -129,15 +131,15 @@ struct TBootstrap
 
     TCallContextPtr CallContext;
 
-    // Maps handle to data
+    // Maps nodeId to data
     THashMap<ui64, TString> ExpectedData;
     std::mutex ExpectedDataMutex;
 
-    // Maps handle to data
+    // Maps nodeId to data
     THashMap<ui64, TString> UnflushedData;
     std::mutex UnflushedDataMutex;
 
-    // Maps handle to data
+    // Maps nodeId to data
     THashMap<ui64, TString> FlushedData;
     std::mutex FlushedDataMutex;
 
@@ -179,29 +181,29 @@ struct TBootstrap
         Session = std::make_shared<TFileStoreTest>();
 
         Session->ReadDataHandler = [&] (auto, auto request) {
-            const auto handle = request->GetHandle();
+            const auto nodeId = request->GetNodeId();
             const auto offset = request->GetOffset();
             const auto length = request->GetLength();
 
             // Overlapping write requests are not allowed
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                InFlightWriteRequestTracker[handle].Count(offset, length));
+                InFlightWriteRequestTracker[nodeId].Count(offset, length));
 
-            InFlightReadRequestTracker[handle].Add(offset, length);
+            InFlightReadRequestTracker[nodeId].Add(offset, length);
             Y_DEFER {
-                InFlightReadRequestTracker[handle].Remove(offset, length);
+                InFlightReadRequestTracker[nodeId].Remove(offset, length);
             };
 
             std::unique_lock lock(FlushedDataMutex);
 
             NProto::TReadDataResponse response;
 
-            if (!FlushedData.contains(request->GetHandle())) {
+            if (!FlushedData.contains(nodeId)) {
                 return MakeFuture(response);
             }
 
-            auto data = FlushedData[request->GetHandle()];
+            auto data = FlushedData[nodeId];
             // Append zeroes if needed
             auto newSize = Max(
                 data.size(),
@@ -223,33 +225,33 @@ struct TBootstrap
         };
 
         Session->WriteDataHandler = [&] (auto, auto request) {
-            const auto handle = request->GetHandle();
+            const auto nodeId = request->GetNodeId();
             const auto offset = request->GetOffset();
             const auto length = request->GetBuffer().length();
 
             // Overlapping read requests are not allowed
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                InFlightReadRequestTracker[handle].Count(offset, length));
+                InFlightReadRequestTracker[nodeId].Count(offset, length));
 
             // Overlapping write requests are not allowed
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                InFlightWriteRequestTracker[handle].Add(offset, length));
+                InFlightWriteRequestTracker[nodeId].Add(offset, length));
             Y_DEFER {
-                InFlightWriteRequestTracker[handle].Remove(offset, length);
+                InFlightWriteRequestTracker[nodeId].Remove(offset, length);
             };
 
             std::unique_lock lock1(UnflushedDataMutex);
             std::unique_lock lock2(FlushedDataMutex);
 
             STORAGE_INFO("Flushing " << request->GetBuffer().Quote()
-                << " to @" << request->GetHandle()
+                << " to @" << request->GetNodeId()
                 << " at offset " << request->GetOffset());
 
-            UNIT_ASSERT(UnflushedData.contains(request->GetHandle()));
+            UNIT_ASSERT(UnflushedData.contains(nodeId));
 
-            const auto unflushed = UnflushedData[request->GetHandle()];
+            const auto unflushed = UnflushedData[nodeId];
             UNIT_ASSERT_LE(
                 request->GetOffset() + request->GetBuffer().length(),
                 unflushed.length());
@@ -259,7 +261,7 @@ struct TBootstrap
                 request->GetBuffer().length());
             UNIT_ASSERT_VALUES_EQUAL(from, request->GetBuffer());
 
-            auto& to = FlushedData[request->GetHandle()];
+            auto& to = FlushedData[nodeId];
             // Append zeroes if needed
             auto newSize = Max(to.size(), request->GetOffset() + from.size());
             to.resize(newSize, 0);
@@ -318,29 +320,30 @@ struct TBootstrap
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
-        ui64 handle,
+        ui64 nodeId,
         ui64 offset,
         ui64 length)
     {
-        return ReadFromCache(handle, handle, offset, length);
+        auto handle = nodeId + NodeToHandleOffset;
+        return ReadFromCache(nodeId, handle, offset, length);
     }
 
-    void ValidateCache(ui64 handle, ui64 offset, TString expected)
+    void ValidateCache(ui64 nodeId, ui64 offset, TString expected)
     {
-        auto future = ReadFromCache(handle, offset, expected.length());
+        auto future = ReadFromCache(nodeId, offset, expected.length());
         auto response = future.GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             expected,
             response.GetBuffer().substr(response.GetBufferOffset()),
-            TStringBuilder() << " while validating @" << handle
+            TStringBuilder() << " while validating @" << nodeId
             << " at offset " << offset
             << " and length " << expected.length());
     }
 
-    void ValidateCache(ui64 handle, ui64 offset, size_t length)
+    void ValidateCache(ui64 nodeId, ui64 offset, size_t length)
     {
-        auto future = ReadFromCache(handle, offset, length);
+        auto future = ReadFromCache(nodeId, offset, length);
         auto response = future.GetValueSync();
 
         // In concurrent tests, new data may be written at any moment.
@@ -356,38 +359,38 @@ struct TBootstrap
         {
             std::unique_lock lock(ExpectedDataMutex);
             expected =
-                TStringBuf(ExpectedData[handle]).SubString(offset, length);
+                TStringBuf(ExpectedData[nodeId]).SubString(offset, length);
         }
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             expected,
             response.GetBuffer().substr(response.GetBufferOffset()),
-            TStringBuilder() << " while validating @" << handle
+            TStringBuilder() << " while validating @" << nodeId
             << " at offset " << offset
             << " and length " << length);
     }
 
-    void ValidateCache(ui64 handle)
+    void ValidateCache(ui64 nodeId)
     {
         size_t dataLength = 0;
         {
             std::unique_lock lock(ExpectedDataMutex);
-            dataLength = ExpectedData[handle].length();
+            dataLength = ExpectedData[nodeId].length();
         }
 
         for (size_t offset = 0; offset < dataLength; offset++) {
             for (size_t len = 1; len + offset < dataLength; len++) {
                 // TODO(svartmetal): validate with 'out of bounds'
                 // requests also
-                ValidateCache(handle, offset, len);
+                ValidateCache(nodeId, offset, len);
             }
         }
     }
 
     void ValidateCache()
     {
-        for (const auto& [handle, _]: ExpectedData) {
-            ValidateCache(handle);
+        for (const auto& [nodeId, _]: ExpectedData) {
+            ValidateCache(nodeId);
         }
     }
 
@@ -405,9 +408,9 @@ struct TBootstrap
 
         auto future = Cache.WriteData(CallContext, std::move(request));
 
-        future.Subscribe([&, handle, offset, buffer] (auto) {
+        future.Subscribe([&, nodeId, offset, buffer] (auto) {
             STORAGE_INFO("Written " << buffer.Quote()
-                << " to @" << handle
+                << " to @" << nodeId
                 << " at offset " << offset);
 
             auto write = [=] (auto* data) {
@@ -421,8 +424,8 @@ struct TBootstrap
                 std::unique_lock lock1(ExpectedDataMutex);
                 std::unique_lock lock2(UnflushedDataMutex);
 
-                write(&ExpectedData[handle]);
-                write(&UnflushedData[handle]);
+                write(&ExpectedData[nodeId]);
+                write(&UnflushedData[nodeId]);
             }
         });
 
@@ -430,11 +433,12 @@ struct TBootstrap
     }
 
     TFuture<NProto::TWriteDataResponse> WriteToCache(
-        ui64 handle,
+        ui64 nodeId,
         ui64 offset,
         TString buffer)
     {
-        return WriteToCache(handle, handle, offset, std::move(buffer));
+        auto handle = nodeId + NodeToHandleOffset;
+        return WriteToCache(nodeId, handle, offset, std::move(buffer));
     }
 
     void WriteToCacheSync(ui64 nodeId, ui64 handle, ui64 offset, TString buffer)
@@ -442,26 +446,26 @@ struct TBootstrap
         WriteToCache(nodeId, handle, offset, std::move(buffer)).GetValueSync();
     }
 
-    void WriteToCacheSync(ui64 handle, ui64 offset, TString buffer)
+    void WriteToCacheSync(ui64 nodeId, ui64 offset, TString buffer)
     {
-        WriteToCache(handle, offset, std::move(buffer)).GetValueSync();
+        WriteToCache(nodeId, offset, std::move(buffer)).GetValueSync();
     }
 
-    void FlushCache(ui64 handle)
+    void FlushCache(ui64 nodeId)
     {
-        STORAGE_INFO("Flushing @" << handle);
+        STORAGE_INFO("Flushing @" << nodeId);
 
-        Cache.FlushData(handle).GetValueSync();
+        Cache.FlushNodeData(nodeId).GetValueSync();
 
         {
             std::unique_lock lock1(ExpectedDataMutex);
             std::unique_lock lock2(UnflushedDataMutex);
             std::unique_lock lock3(FlushedDataMutex);
 
-            UNIT_ASSERT_VALUES_EQUAL(ExpectedData[handle], FlushedData[handle]);
+            UNIT_ASSERT_VALUES_EQUAL(ExpectedData[nodeId], FlushedData[nodeId]);
 
             if (EraseExpectedUnflushedDataAfterFirstUse) {
-                UnflushedData.erase(handle);
+                UnflushedData.erase(nodeId);
             }
         }
     }
@@ -496,7 +500,7 @@ struct TWriteRequestLogger
 {
     struct TRequest
     {
-        ui64 Handle = 0;
+        ui64 NodeId = 0;
         ui64 Offset = 0;
         ui64 Length = 0;
     };
@@ -512,7 +516,7 @@ struct TWriteRequestLogger
                  std::move(previousHandler)](auto context, auto request) mutable
         {
             Requests.push_back(
-                {.Handle = request->GetHandle(),
+                {.NodeId = request->GetNodeId(),
                  .Offset = request->GetOffset(),
                  .Length =
                      request->GetBuffer().size() - request->GetBufferOffset()});
@@ -521,11 +525,11 @@ struct TWriteRequestLogger
         };
     }
 
-    TString GetLog(ui64 handle) const
+    TString GetLog(ui64 nodeId) const
     {
         TStringBuilder sb;
         for (const auto& request : Requests) {
-            if (request.Handle != handle) {
+            if (request.NodeId != nodeId) {
                 continue;
             }
             if (!sb.empty()) {
@@ -593,7 +597,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             UNIT_ASSERT(!flushed);
             flushed = true;
 
-            UNIT_ASSERT_VALUES_EQUAL(1, request->GetHandle());
+            UNIT_ASSERT_VALUES_EQUAL(1, request->GetNodeId());
             UNIT_ASSERT_VALUES_EQUAL(0, request->GetOffset());
             UNIT_ASSERT_VALUES_EQUAL("abcdeeeeee", request->GetBuffer());
 
@@ -601,7 +605,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             return MakeFuture(response);
         };
 
-        b.Cache.FlushData(1).GetValueSync();
+        b.Cache.FlushNodeData(1).GetValueSync();
     }
 
     Y_UNIT_TEST(ShouldSequenceReadAndWriteRequestsAvoidingConflicts)
@@ -792,11 +796,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 TString(data));
 
             if (RandomNumber(10u) == 0 && flushesRemaining > 0) {
-                if (auto handle = RandomNumber(4u)) {
-                    if (handle == 3) {
+                if (auto nodeId = RandomNumber(4u)) {
+                    if (nodeId == 3) {
                         b.FlushCache();
                     } else {
-                        b.FlushCache(handle);
+                        b.FlushCache(nodeId);
                     }
                 }
                 flushesRemaining--;
@@ -839,12 +843,12 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         threads.emplace_back([&] {
             start.arrive_and_wait();
-            b.Cache.FlushData(1).GetValueSync();
+            b.Cache.FlushNodeData(1).GetValueSync();
         });
 
         threads.emplace_back([&] {
             start.arrive_and_wait();
-            b.Cache.FlushData(2).GetValueSync();
+            b.Cache.FlushNodeData(2).GetValueSync();
         });
 
         start.arrive_and_wait();
@@ -877,7 +881,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         TVector<std::thread> threads;
 
         for (ui32 i = 0; i < rwThreadCount; i++) {
-            threads.emplace_back([&, handle = i] {
+            threads.emplace_back([&, nodeId = i] {
                 start.arrive_and_wait();
 
                 int flushesRemaining = 10;
@@ -894,18 +898,18 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                     auto data = TStringBuf(alphabet).SubString(offset, length);
 
                     b.WriteToCacheSync(
-                        handle,
+                        nodeId,
                         offset + RandomNumber(11u),
                         TString(data));
 
                     if (withManualFlush) {
                         if (RandomNumber(10u) == 0 && flushesRemaining > 0) {
-                            b.FlushCache(handle);
+                            b.FlushCache(nodeId);
                             flushesRemaining--;
                         }
                     }
 
-                    b.ValidateCache(handle);
+                    b.ValidateCache(nodeId);
                 }
             });
         }
@@ -920,7 +924,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                     SleepForRandomDurationMs(10);
 
                     auto request = std::make_shared<NProto::TReadDataRequest>();
-                    request->SetHandle(0);
+                    request->SetNodeId(0);
                     request->SetOffset(0);
                     request->SetLength(333);
 
@@ -977,7 +981,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         promise.SetValue({});
 
-        b.Cache.FlushData(1);
+        b.Cache.FlushNodeData(1);
 
         UNIT_ASSERT_VALUES_EQUAL(writeRequestsExpected, writeRequestsActual);
     }
@@ -1002,7 +1006,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         };
 
         b.WriteToCacheSync(1, 12, "hello");
-        auto flushFuture = b.Cache.FlushData(1);
+        auto flushFuture = b.Cache.FlushNodeData(1);
 
         // Flush starts synchronously in FlushData call and makes an attempt
         // to write data but fails
@@ -1033,7 +1037,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 6, "dd");
         b.WriteToCacheSync(1, 8, "ee");
 
-        b.Cache.FlushData(1).GetValueSync();
+        b.Cache.FlushNodeData(1).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(
             "(0, 2), (2, 2), (4, 2), (6, 2), (8, 2)",
@@ -1054,7 +1058,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 6, "dd");
         b.WriteToCacheSync(1, 8, "ee");
 
-        b.Cache.FlushData(1).GetValueSync();
+        b.Cache.FlushNodeData(1).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(
             "(0, 6), (6, 4)",
@@ -1075,7 +1079,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 2, "d");
         b.WriteToCacheSync(1, 0, "e");
 
-        b.Cache.FlushData(1).GetValueSync();
+        b.Cache.FlushNodeData(1).GetValueSync();
 
         // Parts are going in the increased order in each flush operation
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1097,7 +1101,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 5, "c");
         b.WriteToCacheSync(1, 6, "d");
 
-        b.Cache.FlushData(1).GetValueSync();
+        b.Cache.FlushNodeData(1).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(
             "(0, 1), (1, 2), (3, 2), (5, 2)",
