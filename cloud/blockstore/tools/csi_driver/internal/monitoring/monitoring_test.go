@@ -165,6 +165,8 @@ func TestShouldReportRetriableErros(t *testing.T) {
 	mon.ReportRequestCompleted("/csi.v1.Node/NodeStageVolume", status.Error(codes.Aborted, ""), -1)
 	mon.ReportRequestReceived("/csi.v1.Node/NodeStageVolume")
 	mon.ReportRequestCompleted("/csi.v1.Node/NodeStageVolume", status.Error(codes.DeadlineExceeded, ""), -1)
+	mon.ReportRequestReceived("/csi.v1.Node/NodeStageVolume")
+	mon.ReportRequestCompleted("/csi.v1.Node/NodeStageVolume", status.Error(codes.Canceled, ""), -1)
 
 	serv := httptest.NewServer(mon.Handler)
 	defer serv.Close()
@@ -175,12 +177,12 @@ func TestShouldReportRetriableErros(t *testing.T) {
 	assert.Equal(t, getResponseBody(response),
 		`# HELP Count
 # TYPE Count counter
-Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 3
+Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 4
 # HELP InflightCount
 # TYPE InflightCount gauge
 InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
 # HELP RetriableErrors
 # TYPE RetriableErrors counter
-RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 3
+RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 4
 `)
 }
