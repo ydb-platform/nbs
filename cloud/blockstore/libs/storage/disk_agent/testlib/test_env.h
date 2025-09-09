@@ -309,6 +309,22 @@ public:
         return request;
     }
 
+    auto CreateOpenDeviceRequest(const TString& path, ui64 deviceGeneration)
+    {
+        auto request = std::make_unique<TEvDiskAgent::TEvOpenDeviceRequest>();
+        request->Record.SetDevicePath(path);
+        request->Record.SetDeviceGeneration(deviceGeneration);
+        return request;
+    }
+
+    auto CreateCloseDeviceRequest(const TString& path, ui64 deviceGeneration)
+    {
+        auto request = std::make_unique<TEvDiskAgent::TEvCloseDeviceRequest>();
+        request->Record.SetDevicePath(path);
+        request->Record.SetDeviceGeneration(deviceGeneration);
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
