@@ -20,6 +20,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -79,6 +80,12 @@ func (t *createDiskFromSnapshotTask) Run(
 			return err
 		}
 
+		logging.Debug(
+			ctx,
+			"Selected cell for disk %v is %v",
+			params.Disk.DiskId,
+			client.ZoneID(),
+		)
 		t.state.SelectedCellID = client.ZoneID()
 		err = execCtx.SaveState(ctx)
 		if err != nil {
@@ -94,9 +101,9 @@ func (t *createDiskFromSnapshotTask) Run(
 	selfTaskID := execCtx.GetTaskID()
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
-		ID:            params.Disk.DiskId,
-		ZoneID:        disk.DiskId,
-		SrcSnapshotID: disk.ZoneId,
+		ID:            disk.DiskId,
+		ZoneID:        disk.ZoneId,
+		SrcSnapshotID: t.request.SrcSnapshotId,
 		BlocksCount:   params.BlocksCount,
 		BlockSize:     params.BlockSize,
 		Kind:          common.DiskKindToString(params.Kind),
