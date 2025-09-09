@@ -162,6 +162,8 @@ message TDeviceConfig
 
     // Physical offset in bytes.
     uint64 PhysicalOffset = 19;
+
+    uint64 Generation = 20;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -592,6 +594,15 @@ message TRegisterAgentResponse
 
     // List of device IDs to which Disk Agent should disable IO operations.
     repeated string DevicesToDisableIO = 2;
+
+    message TUnknownDevice
+    {
+        string DevicePath = 1;
+        uint64 DeviceGeneration = 2;
+    }
+
+    // Unallowed devices attached to the agent.
+    repeated TUnknownDevice UnknownDevices = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1846,4 +1857,49 @@ message TGetClusterCapacityResponse
 
     // List of capacities.
     repeated TClusterCapacityInfo Capacity = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// OpenDevice
+
+message TOpenDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Path to device we want to open.
+    string DevicePath = 2;
+
+    //  Monotonously increasing counter, need to order open close requests.
+    uint64 DeviceGeneration = 3;
+}
+
+message TOpenDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of opened devices.
+    repeated TDeviceConfig OpenedDevices = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CloseDevice
+
+message TCloseDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Path to device we want to open.
+    string DevicePath = 2;
+
+    //  Monotonously increasing counter, need to order open close requests.
+    uint64 DeviceGeneration = 3;
+}
+
+message TCloseDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
 }
