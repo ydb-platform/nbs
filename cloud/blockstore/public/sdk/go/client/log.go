@@ -3,8 +3,6 @@ package client
 import (
 	"log"
 	"os"
-
-	"golang.org/x/net/context"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,17 +17,13 @@ const (
 	LOG_TRACE
 )
 
-type Log interface {
-	Logger(level LogLevel) Logger
-}
-
 type Logger interface {
-	Trace(ctx context.Context, format string, args ...interface{})
-	Debug(ctx context.Context, format string, args ...interface{})
-	Info(ctx context.Context, format string, args ...interface{})
-	Warn(ctx context.Context, format string, args ...interface{})
-	Error(ctx context.Context, format string, args ...interface{})
-	Fatal(ctx context.Context, format string, args ...interface{})
+	Tracef(format string, args ...interface{})
+	Debugf(format string, args ...interface{})
+	Infof(cformat string, args ...interface{})
+	Warnf(cformat string, args ...interface{})
+	Errorf(format string, args ...interface{})
+	Fatalf(format string, args ...interface{})
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,27 +41,27 @@ func (e *defaultLogger) write(level LogLevel, format string, args ...interface{}
 	e.logger.Printf(format, args...)
 }
 
-func (e *defaultLogger) Trace(ctx context.Context, format string, args ...interface{}) {
+func (e *defaultLogger) Tracef(format string, args ...interface{}) {
 	e.write(LOG_TRACE, format, args...)
 }
 
-func (e *defaultLogger) Debug(ctx context.Context, format string, args ...interface{}) {
+func (e *defaultLogger) Debugf(format string, args ...interface{}) {
 	e.write(LOG_DEBUG, format, args...)
 }
 
-func (e *defaultLogger) Info(ctx context.Context, format string, args ...interface{}) {
+func (e *defaultLogger) Infof(format string, args ...interface{}) {
 	e.write(LOG_INFO, format, args...)
 }
 
-func (e *defaultLogger) Warn(ctx context.Context, format string, args ...interface{}) {
+func (e *defaultLogger) Warnf(format string, args ...interface{}) {
 	e.write(LOG_WARN, format, args...)
 }
 
-func (e *defaultLogger) Error(ctx context.Context, format string, args ...interface{}) {
+func (e *defaultLogger) Errorf(format string, args ...interface{}) {
 	e.write(LOG_ERROR, format, args...)
 }
 
-func (e *defaultLogger) Fatal(ctx context.Context, format string, args ...interface{}) {
+func (e *defaultLogger) Fatalf(format string, args ...interface{}) {
 	log.Fatalf(format, args...)
 }
 

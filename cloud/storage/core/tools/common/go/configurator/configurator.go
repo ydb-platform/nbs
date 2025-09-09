@@ -107,7 +107,7 @@ func (g *ConfigGenerator) updateConfigMapFromDir(
 
 	for resultConfigFileName, configDesc := range *configProto {
 		configProtoPath := path.Join(overridesPath, configDesc.FileName)
-		g.logger.Debug(ctx, "Reading file %v", configProtoPath)
+		g.logger.Debugf("Reading file %v", configProtoPath)
 
 		configData, err := os.ReadFile(configProtoPath)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -171,8 +171,7 @@ func (g *ConfigGenerator) loadAllOverrides(
 	configMap *ConfigMap,
 	seed bool) error {
 
-	g.logger.Debug(
-		ctx,
+	g.logger.Debugf(
 		"Reading overrides for cluster %v, zone %v, target %v",
 		cluster,
 		zone,
@@ -392,7 +391,7 @@ func (g *ConfigGenerator) dumpTxtConfigs(
 	configPath string,
 ) error {
 
-	g.logger.Debug(ctx, "dump configs to %v", configPath)
+	g.logger.Debugf("dump configs to %v", configPath)
 
 	err := os.MkdirAll(configPath, 0755)
 	if err != nil {
@@ -403,7 +402,7 @@ func (g *ConfigGenerator) dumpTxtConfigs(
 		)
 	}
 	for _, cfg := range configList {
-		g.logger.Debug(ctx, "dump config %v", path.Join(configPath, cfg.FileName))
+		g.logger.Debugf("dump config %v", path.Join(configPath, cfg.FileName))
 		file, err := os.OpenFile(
 			path.Join(configPath, cfg.FileName),
 			os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
@@ -495,7 +494,7 @@ func (g *ConfigGenerator) dumpValues(
 	dumpPath string,
 	fileName string,
 ) error {
-	g.logger.Debug(ctx, "dump values to %v", dumpPath)
+	g.logger.Debugf("dump values to %v", dumpPath)
 
 	var resultConfigs []ResultConfig
 	for _, cfg := range configs {
@@ -645,7 +644,7 @@ func (g *ConfigGenerator) lookupCustomKey(
 		return value
 	}
 
-	g.logger.Debug(ctx, "key %v not found in custom overrides for cluster %v, zone %v", key, cluster, zone)
+	g.logger.Debugf("key %v not found in custom overrides for cluster %v, zone %v", key, cluster, zone)
 	return defaultValue
 }
 
@@ -657,8 +656,7 @@ func (g *ConfigGenerator) generateConfigForCluster(
 	seed bool,
 ) error {
 
-	g.logger.Info(
-		ctx,
+	g.logger.Infof(
 		"Generating configs for cluster %v, zone %v, target %v",
 		cluster,
 		zone,
@@ -704,8 +702,7 @@ func contains(collection []string, target string) bool {
 }
 
 func (g *ConfigGenerator) Generate(ctx context.Context, whiteListCluster []string) error {
-	g.logger.Info(
-		ctx,
+	g.logger.Infof(
 		"Start generation for service: %v",
 		g.spec.ServiceSpec.ServiceName)
 
