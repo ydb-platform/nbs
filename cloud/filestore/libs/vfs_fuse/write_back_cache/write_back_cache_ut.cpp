@@ -303,16 +303,26 @@ struct TBootstrap
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
+        ui64 nodeId,
         ui64 handle,
         ui64 offset,
         ui64 length)
     {
         auto request = std::make_shared<NProto::TReadDataRequest>();
+        request->SetNodeId(nodeId);
         request->SetHandle(handle);
         request->SetOffset(offset);
         request->SetLength(length);
 
         return Cache.ReadData(CallContext, move(request));
+    }
+
+    TFuture<NProto::TReadDataResponse> ReadFromCache(
+        ui64 handle,
+        ui64 offset,
+        ui64 length)
+    {
+        return ReadFromCache(handle, handle, offset, length);
     }
 
     void ValidateCache(ui64 handle, ui64 offset, TString expected)
@@ -382,11 +392,13 @@ struct TBootstrap
     }
 
     TFuture<NProto::TWriteDataResponse> WriteToCache(
+        ui64 nodeId,
         ui64 handle,
         ui64 offset,
         TString buffer)
     {
         auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetNodeId(nodeId);
         request->SetHandle(handle);
         request->SetOffset(offset);
         request->SetBuffer(buffer);
@@ -417,9 +429,22 @@ struct TBootstrap
         return future;
     }
 
+    TFuture<NProto::TWriteDataResponse> WriteToCache(
+        ui64 handle,
+        ui64 offset,
+        TString buffer)
+    {
+        return WriteToCache(handle, handle, offset, std::move(buffer));
+    }
+
+    void WriteToCacheSync(ui64 nodeId, ui64 handle, ui64 offset, TString buffer)
+    {
+        WriteToCache(nodeId, handle, offset, std::move(buffer)).GetValueSync();
+    }
+
     void WriteToCacheSync(ui64 handle, ui64 offset, TString buffer)
     {
-        WriteToCache(handle, offset, buffer).GetValueSync();
+        WriteToCache(handle, offset, std::move(buffer)).GetValueSync();
     }
 
     void FlushCache(ui64 handle)
@@ -1077,6 +1102,21 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "(0, 1), (1, 2), (3, 2), (5, 2)",
             logger.GetLog(1));
+    }
+
+    Y_UNIT_TEST(ShouldShareCacheBetweenHandles)
+    {
+        TBootstrap b;
+
+        b.WriteToCacheSync(1, 1, 0, "abc");
+        b.WriteToCacheSync(1, 2, 1, "def");
+        b.WriteToCacheSync(2, 3, 2, "xyz");
+
+        auto readFuture = b.ReadFromCache(1, 1, 0, 3);
+        UNIT_ASSERT(readFuture.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "ade",
+            readFuture.GetValue().GetBuffer());
     }
 
     /* TODO(svartmetal): fix tests with automatic flush
