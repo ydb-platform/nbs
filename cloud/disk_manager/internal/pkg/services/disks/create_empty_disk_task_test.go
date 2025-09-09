@@ -59,7 +59,7 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 		CloudID:     "cloud",
 		FolderID:    "folder",
 	}).Return(nil)
-	nbsClient.On("GetZone").Return("zone")
+	nbsClient.On("ZoneID").Return("zone")
 
 	execCtx.On("SaveState", ctx).Return(nil)
 
@@ -114,7 +114,7 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 		CloudID:     "cloud",
 		FolderID:    "folder",
 	}).Return(assert.AnError)
-	nbsClient.On("GetZone").Return("zone")
+	nbsClient.On("ZoneID").Return("zone")
 
 	execCtx.On("SaveState", ctx).Return(nil)
 

@@ -102,7 +102,7 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 		CloudID:              "cloud",
 		FolderID:             "folder",
 	}).Return(nil)
-	nbsClient.On("GetZone").Return("zone")
+	nbsClient.On("ZoneID").Return("zone")
 
 	execCtx.On("SaveState", ctx).Return(nil)
 
@@ -160,7 +160,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testin
 
 	cellSelector.On("SelectCell", ctx, "zone", "folder").Return(nbsClient, nil)
 
-	nbsClient.On("GetZone").Return("zone")
+	nbsClient.On("ZoneID").Return("zone")
 
 	execCtx.On("SaveState", ctx).Return(nil)
 
@@ -229,7 +229,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 
 	cellSelector.On("SelectCell", ctx, "zone", "folder").Return(nbsClient, nil)
 
-	nbsClient.On("GetZone").Return("zone")
+	nbsClient.On("ZoneID").Return("zone")
 
 	execCtx.On("SaveState", ctx).Return(nil)
 

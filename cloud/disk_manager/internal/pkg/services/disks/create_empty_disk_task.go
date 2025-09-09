@@ -64,7 +64,7 @@ func (t *createEmptyDiskTask) Run(
 			return err
 		}
 
-		t.state.SelectedCellID = client.GetZone()
+		t.state.SelectedCellID = client.ZoneID()
 		err = execCtx.SaveState(ctx)
 		if err != nil {
 			return err
