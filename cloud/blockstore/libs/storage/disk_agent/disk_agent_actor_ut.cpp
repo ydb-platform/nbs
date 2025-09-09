@@ -23,6 +23,7 @@
 #include <util/folder/tempdir.h>
 
 #include <chrono>
+#include <filesystem>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -58,6 +59,53 @@ TFsPath TryGetRamDrivePath()
     return !p
         ? GetSystemTempDir()
         : p;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TVector<ui64> FindProcessesWithOpenFile(const TString& target_file)
+{
+    TVector<ui64> result;
+
+    namespace NFs = std::filesystem;
+
+    for (const auto& entry: NFs::directory_iterator{NFs::path{"/proc"}}) {
+        try {
+            const auto& path = entry.path();
+            const auto pidFilename = path.filename().string();
+
+            i64 pid = FromString<i64>(pidFilename);
+
+            TString fdsDirectory = "/proc/";
+            fdsDirectory += pidFilename;
+            fdsDirectory += "/fd";
+
+            // std::strtoull(pidFilename.c_str(), nullptr, 10)
+
+            for (const auto& entry:
+                 NFs::directory_iterator{NFs::path{fdsDirectory.c_str()}})
+            {
+                const auto& path = entry.path();
+                const auto fd = path.filename().string();
+
+                if (fd == "." || fd == "..") {
+                    continue;
+                }
+
+                auto actualFilePath = ::NFs::ReadLink(path.c_str());
+
+                if (actualFilePath == target_file) {
+                    result.emplace_back(pid);
+                }
+            }
+        } catch (...) {
+            continue;
+        }
+    }
+
+    SortUnique(result);
+
+    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -6787,6 +6835,257 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             response.ReplicationResponses[1].GetCode(),
             FormatError(response.ReplicationResponses[1]));
     }
+
+    Y_UNIT_TEST(ShouldCloseDevice)
+    {
+        auto agentConfig = CreateDefaultAgentConfig();
+        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetAcquireRequired(true);
+        agentConfig.SetEnabled(true);
+        agentConfig.SetOpenCloseDevicesEnabled(true);
+
+        const auto workingDir = TryGetRamDrivePath();
+        const auto filePath =
+            workingDir / ("test" + ToString(RandomNumber<ui64>()));
+
+        {
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(16_MB);
+        }
+
+        auto prepareFileDevice = [&](const TString& deviceName)
+        {
+            NProto::TFileDeviceArgs device;
+            device.SetPath(filePath);
+            device.SetBlockSize(DefaultDeviceBlockSize);
+            device.SetDeviceId(deviceName);
+            return device;
+        };
+
+        {
+            auto* d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-1");
+
+            d->SetOffset(1_MB);
+            d->SetFileSize(4_MB);
+
+            d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-2");
+
+            d->SetOffset(5_MB);
+            d->SetFileSize(4_MB);
+        }
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime).With(agentConfig).Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.CloseDevice(filePath, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+    }
+
+    Y_UNIT_TEST(ShouldOpenDevice)
+    {
+        auto agentConfig = CreateDefaultAgentConfig();
+        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetAcquireRequired(true);
+        agentConfig.SetEnabled(true);
+        agentConfig.SetOpenCloseDevicesEnabled(true);
+
+        const auto workingDir = TryGetRamDrivePath();
+        const auto filePath =
+            workingDir / ("test" + ToString(RandomNumber<ui64>()));
+
+        {
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(16_MB);
+        }
+
+        auto prepareFileDevice = [&](const TString& deviceName)
+        {
+            NProto::TFileDeviceArgs device;
+            device.SetPath(filePath);
+            device.SetBlockSize(DefaultDeviceBlockSize);
+            device.SetDeviceId(deviceName);
+            return device;
+        };
+
+        {
+            auto* d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-1");
+
+            d->SetOffset(1_MB);
+            d->SetFileSize(4_MB);
+
+            d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-2");
+
+            d->SetOffset(5_MB);
+            d->SetFileSize(4_MB);
+        }
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime).With(agentConfig).Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.CloseDevice(filePath, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.OpenDevice(filePath, 2);
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+    }
+
+    Y_UNIT_TEST(ShouldRejectOldOpenCloseRequests)
+    {
+        auto agentConfig = CreateDefaultAgentConfig();
+        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetAcquireRequired(true);
+        agentConfig.SetEnabled(true);
+        agentConfig.SetOpenCloseDevicesEnabled(true);
+
+        const auto workingDir = TryGetRamDrivePath();
+        const auto filePath =
+            workingDir / ("test" + ToString(RandomNumber<ui64>()));
+
+        {
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(16_MB);
+        }
+
+        auto prepareFileDevice = [&](const TString& deviceName)
+        {
+            NProto::TFileDeviceArgs device;
+            device.SetPath(filePath);
+            device.SetBlockSize(DefaultDeviceBlockSize);
+            device.SetDeviceId(deviceName);
+            return device;
+        };
+
+        {
+            auto* d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-1");
+
+            d->SetOffset(1_MB);
+            d->SetFileSize(4_MB);
+
+            d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-2");
+
+            d->SetOffset(5_MB);
+            d->SetFileSize(4_MB);
+        }
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime).With(agentConfig).Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.CloseDevice(filePath, 10);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.SendOpenDeviceRequest(filePath, 1);
+
+        auto resp = diskAgent.RecvOpenDeviceResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, resp->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "outdated request",
+            resp->GetError().GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+    }
+
+    Y_UNIT_TEST(ShouldDetectDeviceChange)
+    {
+        auto agentConfig = CreateDefaultAgentConfig();
+        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetAcquireRequired(true);
+        agentConfig.SetEnabled(true);
+        agentConfig.SetOpenCloseDevicesEnabled(true);
+
+        const auto workingDir = TryGetRamDrivePath();
+        const auto filePath =
+            workingDir / ("test" + ToString(RandomNumber<ui64>()));
+
+        {
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(16_MB);
+        }
+
+        auto prepareFileDevice = [&](const TString& deviceName)
+        {
+            NProto::TFileDeviceArgs device;
+            device.SetPath(filePath);
+            device.SetBlockSize(DefaultDeviceBlockSize);
+            device.SetDeviceId(deviceName);
+            return device;
+        };
+
+        {
+            auto* d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-1");
+
+            d->SetOffset(1_MB);
+            d->SetFileSize(4_MB);
+
+            d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-2");
+
+            d->SetOffset(5_MB);
+            d->SetFileSize(4_MB);
+        }
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime).With(agentConfig).Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.CloseDevice(filePath, 10);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+
+        {
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(1_MB);
+        }
+
+        diskAgent.SendOpenDeviceRequest(filePath, 11);
+
+        auto resp = diskAgent.RecvOpenDeviceResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, resp->GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+    }
+
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

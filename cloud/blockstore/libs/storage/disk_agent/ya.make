@@ -9,6 +9,7 @@ SRCS(
     disk_agent_actor_init.cpp
     disk_agent_actor_io.cpp
     disk_agent_actor_monitoring.cpp
+    disk_agent_actor_open_close_devices.cpp
     disk_agent_actor_partial_suspend.cpp
     disk_agent_actor_register.cpp
     disk_agent_actor_release.cpp
