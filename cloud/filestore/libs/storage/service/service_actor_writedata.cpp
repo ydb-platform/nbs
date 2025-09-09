@@ -58,20 +58,6 @@ void CopyBuffers(NProto::TWriteDataRequest& request)
     }
 }
 
-ui64 GetBufferSize(const NProto::TWriteDataRequest& request) {
-    auto bufferSize = request.GetBuffer().size();
-
-    if (bufferSize != 0) {
-        return bufferSize;
-    }
-
-    for(const auto& zeroCopyBuffer : request.GetZeroCopyBuffers()) {
-        bufferSize += zeroCopyBuffer.GetSize();
-    }
-
-    return bufferSize;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
@@ -159,7 +145,7 @@ public:
             "%s WriteDataActor started, data size: %lu, offset: %lu, aligned "
             "size: %lu, aligned offset: %lu",
             LogTag.c_str(),
-            WriteRequest.GetBuffer().size(),
+            WriteRequest.GetBufferSize(),
             WriteRequest.GetOffset(),
             BlobRange.Length,
             BlobRange.Offset);
@@ -392,7 +378,7 @@ private:
         request->Record.SetNodeId(WriteRequest.GetNodeId());
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
-        request->Record.SetLength(WriteRequest.GetBuffer().size());
+        request->Record.SetLength(WriteRequest.GetBufferSize());
         for (auto& blob: *GenerateBlobIdsResponse.MutableBlobs()) {
             request->Record.AddBlobIds()->Swap(blob.MutableBlobId());
         }
@@ -490,7 +476,7 @@ private:
             WriteRequest.GetNodeId(),
             WriteRequest.GetHandle(),
             WriteRequest.GetOffset(),
-            WriteRequest.GetBuffer().size(),
+            WriteRequest.GetBufferSize(),
             FormatError(error).Quote().c_str());
 
         CopyBuffers(WriteRequest);
@@ -616,7 +602,7 @@ void TStorageServiceActor::HandleWriteData(
 
     const TByteRange range(
         msg->Record.GetOffset(),
-        GetBufferSize(msg->Record),
+        msg->Record.GetBufferSize(),
         blockSize);
     const bool threeStageWriteEnabled =
         range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold()
@@ -630,7 +616,7 @@ void TStorageServiceActor::HandleWriteData(
             TFileStoreComponents::SERVICE,
             "%s Using three-stage write for request, size: %lu",
             logTag.c_str(),
-            msg->Record.GetBuffer().size());
+            msg->Record.GetBufferSize());
 
         auto [cookie, inflight] = CreateInFlightRequest(
             TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),

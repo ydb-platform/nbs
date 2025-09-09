@@ -556,9 +556,11 @@ void TFileSystem::WriteBuf(
             return;
         }
         Y_ABORT_UNLESS((size_t)res == size);
+        request->SetBufferSize(alignedBuffer.Size());
         request->SetBuffer(alignedBuffer.TakeBuffer());
         request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
     } else {
+        ui64 bufferSize = 0;
         for (size_t index = 0; index < bufv->count; ++index) {
             const auto *srcFuseBuf = &bufv->buf[index];
             if (srcFuseBuf->size == 0) {
@@ -568,9 +570,10 @@ void TFileSystem::WriteBuf(
             auto bufferRefPtr = request->MutableZeroCopyBuffers()->Add();
             bufferRefPtr->SetData(reinterpret_cast<ui64>(srcFuseBuf->mem));
             bufferRefPtr->SetSize(srcFuseBuf->size);
+            bufferSize += srcFuseBuf->size;
         }
+        request->SetBufferSize(bufferSize);
     }
-
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
 

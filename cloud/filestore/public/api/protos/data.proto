@@ -190,6 +190,9 @@ message TWriteDataRequest
 
     // Buffers with bytes to write.
     repeated TBufferRef ZeroCopyBuffers = 8;
+
+    // Size of Buffer or ZeroCopyBuffers
+    uint64 BufferSize = 9;
 }
 
 message TWriteDataResponse
