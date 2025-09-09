@@ -10,13 +10,17 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
+#include <cloud/blockstore/libs/service_local/broken_storage.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/target.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/device_generator.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -30,6 +34,7 @@
 
 #include <util/string/join.h>
 #include <util/system/fs.h>
+#include <util/system/fstat.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -86,6 +91,17 @@ NProto::TReadDeviceBlocksResponse ConvertToReadDeviceBlocksResponse(
     }
 
     return response;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError MakeDeviceChangedError(
+    const TString& path,
+    const TString& reason)
+{
+    return MakeError(
+        E_INVALID_STATE,
+        Sprintf("device %s changed: %s", path.c_str(), reason.c_str()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -669,6 +685,12 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
     readRequest->SetStartIndex(request.GetStartIndex());
     readRequest->SetBlocksCount(request.GetBlocksCount());
 
+    if (!device.IsOpen()) {
+        NProto::TReadDeviceBlocksResponse response;
+        *response.MutableError() = MakeError(E_REJECTED, "device closed");
+        return MakeFuture(response);
+    }
+
     auto result = device.StorageAdapter->ReadBlocks(
         now,
         MakeIntrusive<TCallContext>(),
@@ -803,6 +825,12 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::WriteBlocks(
         blockSize,
         buffer);
 
+    if (!device.IsOpen()) {
+        NProto::TWriteDeviceBlocksResponse response;
+        *response.MutableError() = MakeError(E_REJECTED, "device closed");
+        return MakeFuture(response);
+    }
+
     auto result = device.StorageAdapter->WriteBlocks(
         now,
         MakeIntrusive<TCallContext>(),
@@ -842,6 +870,12 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
         request.GetDeviceUUID(),
         *zeroRequest,
         request.GetBlockSize());
+
+    if (!device.IsOpen()) {
+        NProto::TZeroDeviceBlocksResponse response;
+        *response.MutableError() = MakeError(E_REJECTED, "device closed");
+        return MakeFuture(response);
+    }
 
     auto result = device.StorageAdapter->ZeroBlocks(
         now,
@@ -891,6 +925,11 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         }
     };
 
+
+    if (!device.IsOpen()) {
+        return MakeFuture(MakeError(E_REJECTED, "device closed"));
+    }
+
     if (RdmaTarget) {
         auto error = RdmaTarget->DeviceSecureEraseStart(uuid);
         if (HasError(error)) {
@@ -923,6 +962,12 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
 
     readRequest->SetStartIndex(request.GetStartIndex());
     readRequest->SetBlocksCount(request.GetBlocksCount());
+
+    if (!device.IsOpen()) {
+        NProto::TChecksumDeviceBlocksResponse response;
+        *response.MutableError() = MakeError(E_REJECTED, "device closed");
+        return MakeFuture(response);
+    }
 
     auto result = device.StorageAdapter->ReadBlocks(
         now,
@@ -957,6 +1002,9 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
 void TDiskAgentState::CheckIOTimeouts(TInstant now)
 {
     for (auto& x: Devices) {
+        if (!x.second.IsOpen()) {
+            continue;
+        }
         x.second.StorageAdapter->CheckIOTimeouts(now);
     }
 }
@@ -1045,6 +1093,39 @@ bool TDiskAgentState::IsDeviceDisabled(const TString& uuid) const
     return DeviceClient->IsDeviceDisabled(uuid);
 }
 
+bool TDiskAgentState::IsDeviceClosed(const TString& uuid) const
+{
+    const auto* d = Devices.FindPtr(uuid);
+    if (!d) {
+        return true;
+    }
+
+    return !d->IsOpen();
+}
+
+ui64 TDiskAgentState::DeviceGeneration(const TString& uuid) const
+{
+    const auto* d = Devices.FindPtr(uuid);
+    if (!d) {
+        return 0;
+    }
+    return d->Config.GetGeneration();
+}
+
+EDeviceStateFlags TDiskAgentState::GetDeviceStateFlags(
+    const TString& uuid) const
+{
+    EDeviceStateFlags flags =
+        IsDeviceDisabled(uuid)
+            ? EDeviceStateFlags::DISABLED
+            : (IsDeviceSuspended(uuid) ? EDeviceStateFlags::SUSPENDED
+                                       : EDeviceStateFlags::NONE);
+    if (IsDeviceClosed(uuid)) {
+        flags |= EDeviceStateFlags::CLOSED;
+    }
+    return flags;
+}
+
 bool TDiskAgentState::IsDeviceSuspended(const TString& uuid) const
 {
     return DeviceClient->IsDeviceSuspended(uuid);
@@ -1076,6 +1157,302 @@ void TDiskAgentState::SetPartiallySuspended(bool partiallySuspended)
 bool TDiskAgentState::GetPartiallySuspended() const
 {
     return PartiallySuspended;
+}
+
+NProto::TError TDiskAgentState::CheckIsSameDevice(const TString& path)
+{
+    try {
+        TFile{path, EOpenModeFlag::RdOnly};
+    } catch (...) {
+        // device is broken, not config mismatch
+        return {};
+    }
+
+    auto [serialNumber, error] = NvmeManager->GetSerialNumber(path);
+
+    if (HasError(error)) {
+        STORAGE_INFO(
+            "Failed to get serial number for device " << path << ": "
+                                                      << error.GetMessage());
+    }
+
+    for (const auto& [uuid, device]: Devices) {
+        if (device.Config.GetDeviceName() != path) {
+            continue;
+        }
+        if (device.Config.GetSerialNumber() != serialNumber) {
+            return MakeDeviceChangedError(path, "serial number mismatch");
+        }
+    }
+
+    TVector<NProto::TFileDeviceArgs> files;
+
+    if (!AgentConfig->GetFileDevices().empty()) {
+        files.assign(
+            AgentConfig->GetFileDevices().begin(),
+            AgentConfig->GetFileDevices().end());
+    } else {
+        TDeviceGenerator gen{Log, AgentConfig->GetAgentId()};
+
+        if (auto error = FindDevices(
+                AgentConfig->GetStorageDiscoveryConfig(),
+                std::ref(gen));
+            HasError(error))
+        {
+            return error;
+        }
+
+        files = gen.ExtractResult();
+    }
+
+    return CheckIsSameDevice(path, files);
+}
+
+NProto::TError TDiskAgentState::CheckIsSameDevice(
+    const TString& path,
+    const TVector<NProto::TFileDeviceArgs>& files)
+{
+    THashMap<TString, NProto::TFileDeviceArgs> uuidToFileDeviceArgs;
+    for (const auto& file: files) {
+        if (file.GetPath() != path) {
+            continue;
+        }
+        uuidToFileDeviceArgs[file.GetDeviceId()] = file;
+    }
+
+    THashMap<TString, NProto::TDeviceConfig> uuidToDeviceConfigExpected;
+
+    for (const auto& [uuid, device]: Devices) {
+        if (device.Config.GetDeviceName() != path) {
+            continue;
+        }
+        uuidToDeviceConfigExpected[uuid] = device.Config;
+    }
+
+    if (uuidToDeviceConfigExpected.size() != uuidToFileDeviceArgs.size()) {
+        return MakeDeviceChangedError(path, "device count mismatch");
+    }
+
+    ui64 actualLength = GetFileLength(path);
+
+    for (const auto& [uuid, device]: uuidToDeviceConfigExpected) {
+        auto* fileDeviceArgs = uuidToFileDeviceArgs.FindPtr(uuid);
+        if (!fileDeviceArgs) {
+            return MakeDeviceChangedError(
+                path,
+                Sprintf("device with uuid %s not found", uuid.c_str()));
+        }
+
+        const ui32 blockSize = fileDeviceArgs->GetBlockSize();
+
+        if (device.GetPhysicalOffset() != fileDeviceArgs->GetOffset()) {
+            return MakeDeviceChangedError(path, "offset mismatch");
+        }
+
+        if (device.GetBlockSize() != blockSize) {
+            return MakeDeviceChangedError(path, "block size mismatch");
+        }
+
+        ui64 len = fileDeviceArgs->GetFileSize();
+        if (!len) {
+            len = actualLength;
+        }
+
+        if (device.GetBlocksCount() != len / blockSize) {
+            return MakeDeviceChangedError(path, "size mismatch");
+        }
+
+        if (fileDeviceArgs->GetOffset() && fileDeviceArgs->GetFileSize() &&
+            (actualLength <
+             fileDeviceArgs->GetOffset() + fileDeviceArgs->GetFileSize()))
+        {
+            return MakeDeviceChangedError(path, "file size mismatch");
+        }
+    }
+
+    return {};
+}
+
+TVector<TString> TDiskAgentState::GetAllDeviceUUIDsForPath(const TString& path)
+{
+    TVector<TString> result;
+    for (const auto& [uuid, device]: Devices) {
+        if (device.Config.GetDeviceName() == path) {
+            result.emplace_back(uuid);
+        }
+    }
+    return result;
+}
+
+TVector<NProto::TDeviceConfig> TDiskAgentState::GetAllDevicesForPath(
+    const TString& path)
+{
+    TVector<NProto::TDeviceConfig> result;
+    for (const auto& [uuid, device]: Devices) {
+        if (device.Config.GetDeviceName() == path) {
+            result.emplace_back(device.Config);
+        }
+    }
+    return result;
+}
+
+TResultOrError<THashMap<TString, NThreading::TFuture<IStoragePtr>>>
+TDiskAgentState::OpenDevice(const TString& path, ui64 deviceGeneration)
+{
+    if (Spdk) {
+        return MakeError(E_ARGUMENT, "Not supported in SPDK mode");
+    }
+
+    if (!AgentConfig->GetOpenCloseDevicesEnabled()) {
+        return MakeError(E_ARGUMENT, "open device feature disabled");
+    }
+
+    if (auto error = CheckIsSameDevice(path); HasError(error)) {
+        return error;
+    }
+
+    auto uuids = GetAllDeviceUUIDsForPath(path);
+    THashSet<TString> memoryDevices;
+
+    for (const auto& md: AgentConfig->GetMemoryDevices()) {
+        memoryDevices.emplace(md.GetDeviceId());
+    }
+
+    for (const auto& uuid: uuids) {
+        if (memoryDevices.contains(uuid)) {
+            return MakeError(E_ARGUMENT, "Not supported for memory devices");
+        }
+
+        auto* d = Devices.FindPtr(uuid);
+        auto& config = d->Config;
+
+        if (deviceGeneration < config.GetGeneration() ||
+            (deviceGeneration == config.GetGeneration() && !d->IsOpen()))
+        {
+            return MakeError(E_FAIL, "outdated request");
+        }
+    }
+
+    THashMap<TString, TFuture<IStoragePtr>> storages;
+
+    for (const auto& uuid: uuids) {
+        auto* d = Devices.FindPtr(uuid);
+        auto& config = d->Config;
+        TFuture<IStoragePtr> storage;
+        config.SetGeneration(deviceGeneration);
+
+        if (d->IsOpen()) {
+            continue;
+        }
+
+        try {
+            storage = CreateFileStorage(
+                config.GetDeviceName(),
+                config.GetPhysicalOffset() / config.GetBlockSize(),
+                config,
+                d->Stats,
+                StorageProvider,
+                AgentConfig->GetAgentId());
+        } catch (const std::exception& e) {
+            storage = MakeErrorFuture<IStoragePtr>(std::current_exception());
+        }
+
+        storages[uuid] = std::move(storage);
+    }
+
+    if (storages.empty()) {
+        return MakeError(S_ALREADY, "already opened");
+    }
+
+    return storages;
+}
+
+void TDiskAgentState::DeviceOpened(
+    NProto::TError error,
+    const TString& uuid,
+    IStoragePtr storage)
+{
+    Y_DEBUG_ABORT_UNLESS(
+        !Spdk,
+        "Open close device requests not supported in SPDK mode");
+    if (Spdk) {
+        return;
+    }
+
+    auto* d = Devices.FindPtr(uuid);
+
+    if (!d) {
+        return;
+    }
+
+    auto& config = d->Config;
+
+    if (HasError(error)) {
+        config.SetState(NProto::DEVICE_STATE_ERROR);
+        config.SetStateMessage(std::move(*error.MutableMessage()));
+        storage = CreateBrokenStorage();
+    } else {
+        config.SetState(NProto::DEVICE_STATE_ONLINE);
+        config.ClearStateMessage();
+    }
+
+    TDuration ioTimeout;
+    if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
+        ioTimeout = AgentConfig->GetDeviceIOTimeout();
+    }
+
+    auto storageAdapter = std::make_shared<TStorageAdapter>(
+        std::move(storage),
+        d->Config.GetBlockSize(),
+        false,   // normalize
+        ioTimeout,
+        AgentConfig->GetShutdownTimeout());
+
+    d->StorageAdapter = std::move(storageAdapter);
+
+    if (RdmaTarget) {
+        RdmaTarget->OpenDevice(uuid, std::move(storageAdapter));
+    }
+}
+
+NProto::TError TDiskAgentState::CloseDevice(
+    const TString& path,
+    ui64 deviceGeneration)
+{
+    if (Spdk) {
+        return MakeError(E_ARGUMENT, "Not supported in SPDK mode");
+    }
+
+    if (!AgentConfig->GetOpenCloseDevicesEnabled()) {
+        return MakeError(E_ARGUMENT, "close device feature disabled");
+    }
+
+    auto uuids = GetAllDeviceUUIDsForPath(path);
+
+    for (const auto& uuid: uuids) {
+        auto* d = Devices.FindPtr(uuid);
+        if (!d) {
+            return MakeError(E_NOT_FOUND, "device not found");
+        }
+
+        if (deviceGeneration < d->Config.GetGeneration() ||
+            (deviceGeneration == d->Config.GetGeneration() && d->IsOpen()))
+        {
+            return MakeError(E_FAIL, "outdated request");
+        }
+    }
+
+    for (const auto& uuid: uuids) {
+        auto* d = Devices.FindPtr(uuid);
+        d->Config.SetGeneration(deviceGeneration);
+        d->StorageAdapter.reset();
+
+        if (RdmaTarget) {
+            RdmaTarget->CloseDevice(uuid);
+        }
+    }
+
+    return {};
 }
 
 void TDiskAgentState::RestoreSessions(

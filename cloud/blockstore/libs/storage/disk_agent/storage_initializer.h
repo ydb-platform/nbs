@@ -41,4 +41,12 @@ NThreading::TFuture<TInitializeStorageResult> InitializeStorage(
     IStorageProviderPtr storageProvider,
     NNvme::INvmeManagerPtr nvmeManager);
 
+NThreading::TFuture<IStoragePtr> CreateFileStorage(
+    TString path,
+    ui64 startIndex,
+    const NProto::TDeviceConfig& config,
+    TStorageIoStatsPtr stats,
+    IStorageProviderPtr storageProvider,
+    const TString& agentId);
+
 }   // namespace NCloud::NBlockStore::NStorage
