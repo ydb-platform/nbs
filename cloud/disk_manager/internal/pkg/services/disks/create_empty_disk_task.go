@@ -14,6 +14,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -64,6 +65,12 @@ func (t *createEmptyDiskTask) Run(
 			return err
 		}
 
+		logging.Debug(
+			ctx,
+			"Selected cell for disk %v is %v",
+			t.params.Disk.DiskId,
+			client.ZoneID(),
+		)
 		t.state.SelectedCellID = client.ZoneID()
 		err = execCtx.SaveState(ctx)
 		if err != nil {

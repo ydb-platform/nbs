@@ -12,18 +12,18 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type cellSelector struct {
-	config  *cells_config.CellsConfig
-	factory nbs.Factory
+	config     *cells_config.CellsConfig
+	nbsFactory nbs.Factory
 }
 
 func NewCellSelector(
 	config *cells_config.CellsConfig,
-	factory nbs.Factory,
+	nbsFactory nbs.Factory,
 ) CellSelector {
 
 	return &cellSelector{
-		config:  config,
-		factory: factory,
+		config:     config,
+		nbsFactory: nbsFactory,
 	}
 }
 
@@ -36,27 +36,27 @@ func (s *cellSelector) SelectCell(
 ) (nbs.Client, error) {
 
 	if s.config == nil {
-		return s.factory.GetClient(ctx, zoneID)
+		return s.nbsFactory.GetClient(ctx, zoneID)
 	}
 
 	if !s.isFolderAllowed(folderID) {
-		return s.factory.GetClient(ctx, zoneID)
-	}
-
-	if s.isOneOfCells(zoneID) {
-		return s.factory.GetClient(ctx, zoneID)
+		return s.nbsFactory.GetClient(ctx, zoneID)
 	}
 
 	cells := s.getCells(zoneID)
 
 	if len(cells) == 0 {
+		if s.isOneOfCells(zoneID) {
+			return s.nbsFactory.GetClient(ctx, zoneID)
+		}
+
 		return nil, errors.NewNonCancellableErrorf(
 			"incorrect zone ID provided: %q",
 			zoneID,
 		)
 	}
 
-	return s.factory.GetClient(ctx, cells[0])
+	return s.nbsFactory.GetClient(ctx, cells[0])
 }
 
 func (s *cellSelector) IsCellOfZone(cellID string, zoneID string) bool {
