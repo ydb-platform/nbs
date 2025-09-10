@@ -16,11 +16,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 MaxReadSize = 1_MB;
-constexpr ui64 MaxWriteSize = 1_MB;
+constexpr ui64 DefaultMinReadSize = 4_KB;
+constexpr ui64 DefaultMaxReadSize = 1_MB;
 
-constexpr ui64 MinRegionSize = 3_MB;
-constexpr ui64 MaxRegionSize = 10_MB;
+constexpr ui64 DefaultMinWriteSize = 4_KB;
+constexpr ui64 DefaultMaxWriteSize = 1_MB;
+
+constexpr ui64 DefaultMinRegionSize = 3_MB;
+constexpr ui64 DefaultMaxRegionSize = 10_MB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -80,6 +83,13 @@ private:
     ui64 FileSize = 0;
     const TInstant TestStartTime;
 
+    ui64 MinReadSize = DefaultMinReadSize;
+    ui64 MaxReadSize = DefaultMaxReadSize;
+    ui64 MinWriteSize = DefaultMinWriteSize;
+    ui64 MaxWriteSize = DefaultMaxWriteSize;
+    ui64 MinRegionSize = DefaultMinRegionSize;
+    ui64 MaxRegionSize = DefaultMaxRegionSize;
+
 public:
     TFileTestScenario(IConfigHolderPtr configHolder, const TLog& log);
 
@@ -94,6 +104,7 @@ public:
     }
 
 private:
+    ui64 GetNextRegionSize(ui64 size) const;
     bool Format();
     bool ValidateFormat() const;
     bool Init(TFileHandle& file) override;
@@ -125,8 +136,8 @@ private:
 public:
     TTestThread(TFileTestScenario* testScenario, const TLog& log)
         : TestScenario(testScenario)
-        , ReadBuffer(MaxReadSize)
-        , WriteBuffer(MaxRegionSize)
+        , ReadBuffer(testScenario->MaxReadSize)
+        , WriteBuffer(testScenario->MaxWriteSize)
         , Log(log)
     {}
 
@@ -230,7 +241,13 @@ public:
 
         ofs = 0;
         while (ofs < metadata.Size) {
-            auto len = Min(RandomNumber(MaxWriteSize) + 1, metadata.Size - ofs);
+            auto len =
+                Min(RandomNumber(
+                        TestScenario->MaxWriteSize -
+                        TestScenario->MinWriteSize + 1) +
+                        TestScenario->MinWriteSize,
+                    metadata.Size - ofs);
+
             context->Write(
                 WriteBuffer.begin() + ofs,
                 len,
@@ -261,6 +278,19 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define HELPER(config, x) \
+    if ((config).GetMin##x() > 0) { \
+        Min##x = (config).GetMin##x(); \
+    } \
+    if ((config).GetMax##x() > 0) { \
+        Max##x = (config).GetMax##x(); \
+    } \
+    Y_ENSURE(Min##x <= Max##x, \
+        "Invalid configuration: Min" #x " (" << Min##x << ") > Max" #x \
+        " (" << Max##x << ")"); \
+    (config).SetMin##x(Min##x); \
+    (config).SetMax##x(Max##x); \
+
 TFileTestScenario::TFileTestScenario(
         IConfigHolderPtr configHolder,
         const TLog& log)
@@ -279,9 +309,16 @@ TFileTestScenario::TFileTestScenario(
     }
 
     WriteRate = config.GetWriteRate();
+
+    auto& fileTestConfig = *config.MutableFileTest();
+    HELPER(fileTestConfig, ReadSize);
+    HELPER(fileTestConfig, WriteSize);
+    HELPER(fileTestConfig, RegionSize);
 }
 
-ui64 GetNextRegionSize(ui64 size)
+#undef HELPER
+
+ui64 TFileTestScenario::GetNextRegionSize(ui64 size) const
 {
     if (size <= MaxRegionSize) {
         return size;

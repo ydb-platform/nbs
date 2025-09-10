@@ -58,6 +58,13 @@ struct TOptions
 
     TString DumpPath;
 
+    ui64 MinReadSize = 0;
+    ui64 MaxReadSize = 0;
+    ui64 MinWriteSize = 0;
+    ui64 MaxWriteSize = 0;
+    ui64 MinRegionSize = 0;
+    ui64 MaxRegionSize = 0;
+
     bool PrintDebugInfo = false;
 
     void Parse(int argc, char** argv);

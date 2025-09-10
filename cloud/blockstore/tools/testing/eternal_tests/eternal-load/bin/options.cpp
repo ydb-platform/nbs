@@ -161,6 +161,63 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&RestorePath);
 
     opts.AddLongOption(
+        "min-read-size",
+        "minimum size of read requests in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MinReadSize);
+
+    opts.AddLongOption(
+        "max-read-size",
+        "maximum size of read requests in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MaxReadSize);
+
+    opts.AddLongOption(
+        "read-size",
+        "minimum and maximum size of read requests in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MinReadSize)
+        .StoreResult(&MaxReadSize);
+
+    opts.AddLongOption(
+        "min-write-size",
+        "minimum size of write requests in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MinWriteSize);
+
+    opts.AddLongOption(
+        "max-write-size",
+        "maximum size of write requests in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MaxWriteSize);
+
+    opts.AddLongOption(
+        "write-size",
+        "minimum and maximum size of write requests in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MinWriteSize)
+        .StoreResult(&MaxWriteSize);
+
+    opts.AddLongOption(
+        "min-region-size",
+        "minimum size of file region in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MinRegionSize);
+
+    opts.AddLongOption(
+        "max-region-size",
+        "maximum size of file region in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MaxRegionSize);
+
+    opts.AddLongOption(
+        "region-size",
+        "minimum and maximum size of file region in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MinRegionSize)
+        .StoreResult(&MaxRegionSize);
+
+    opts.AddLongOption(
         "debug",
         "print debug statistics")
         .StoreTrue(&PrintDebugInfo);

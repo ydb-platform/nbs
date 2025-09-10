@@ -50,7 +50,13 @@ public:
         ui64 requestBlockCount,
         ui64 writeParts,
         TString alternatingPhase,
-        ui64 maxWriteRequestCount);
+        ui64 maxWriteRequestCount,
+        ui64 minReadSize,
+        ui64 maxReadSize,
+        ui64 minWriteSize,
+        ui64 maxWriteSize,
+        ui64 minRegionSize,
+        ui64 maxRegionSize);
 
     TTestConfig& GetConfig() override;
     void DumpConfig(const TString& filePath) override;
@@ -76,7 +82,13 @@ TConfigHolder::TConfigHolder(
         ui64 requestBlockCount,
         ui64 writeParts,
         TString alternatingPhase,
-        ui64 maxWriteRequestCount)
+        ui64 maxWriteRequestCount,
+        ui64 minReadSize,
+        ui64 maxReadSize,
+        ui64 minWriteSize,
+        ui64 maxWriteSize,
+        ui64 minRegionSize,
+        ui64 maxRegionSize)
 {
     Config.SetFilePath(filePath);
     Config.SetFileSize(fileSize);
@@ -101,6 +113,14 @@ TConfigHolder::TConfigHolder(
     }
 
     GenerateMissingFields();
+
+    auto& fileTestConfig = *Config.MutableFileTest();
+    fileTestConfig.SetMinReadSize(minReadSize);
+    fileTestConfig.SetMaxReadSize(maxReadSize);
+    fileTestConfig.SetMinWriteSize(minWriteSize);
+    fileTestConfig.SetMaxWriteSize(maxWriteSize);
+    fileTestConfig.SetMinRegionSize(minRegionSize);
+    fileTestConfig.SetMaxRegionSize(maxRegionSize);
 }
 
 void TConfigHolder::GenerateMissingFields()
@@ -167,7 +187,13 @@ IConfigHolderPtr CreateTestConfig(
     ui64 requestBlockCount,
     ui64 writeParts,
     TString alternatingPhase,
-    ui64 maxWriteRequestCount)
+    ui64 maxWriteRequestCount,
+    ui64 minReadSize,
+    ui64 maxReadSize,
+    ui64 minWriteSize,
+    ui64 maxWriteSize,
+    ui64 minRegionSize,
+    ui64 maxRegionSize)
 {
     return std::make_shared<TConfigHolder>(
         filePath,
@@ -178,7 +204,13 @@ IConfigHolderPtr CreateTestConfig(
         requestBlockCount,
         writeParts,
         alternatingPhase,
-        maxWriteRequestCount);
+        maxWriteRequestCount,
+        minReadSize,
+        maxReadSize,
+        minWriteSize,
+        maxWriteSize,
+        minRegionSize,
+        maxRegionSize);
 }
 
 IConfigHolderPtr CreateTestConfig(const TString& filePath)
@@ -188,4 +220,3 @@ IConfigHolderPtr CreateTestConfig(const TString& filePath)
 }
 
 }   // namespace NCloud::NBlockStore
-

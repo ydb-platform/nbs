@@ -77,7 +77,14 @@ int TTest::Run()
                 Options->WriteRate,
                 Options->RequestBlockCount,
                 Options->WriteParts,
-                Options->AlternatingPhase);
+                Options->AlternatingPhase,
+                0,
+                Options->MinReadSize,
+                Options->MaxReadSize,
+                Options->MinWriteSize,
+                Options->MaxWriteSize,
+                Options->MinRegionSize,
+                Options->MaxRegionSize);
             DumpConfiguration();
             break;
         case ECommand::ReadConfigCmd:
