@@ -1037,7 +1037,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             UNIT_ASSERT_VALUES_EQUAL("uuid-15", replicas[1][0].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-16", replicas[1][1].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-18", replicas[1][2].GetDeviceUUID());
-            ASSERT_VECTORS_EQUAL(
+            ASSERT_VECTOR_CONTENTS_EQUAL(
                 (TVector<TString>{"uuid-18", "uuid-2", "uuid-4"}),
                 diskInfo.DeviceReplacementIds);
             UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());

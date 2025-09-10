@@ -266,7 +266,6 @@ class TDiskRegistryState
         // Filled if the disk is a shadow disk for the checkpoint.
         NProto::TCheckpointReplica CheckpointReplica;
 
-        TVector<TDeviceId> DeviceReplacementIds;
         THashSet<TString> LostDeviceIds;
 
         NProto::EStorageMediaKind MediaKind =
