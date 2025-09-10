@@ -51,7 +51,7 @@ private:
     void SendRequestToFileSystem(
         const TActorContext& ctx,
         const TString& fileSystemId,
-        ui32 cookie);
+        ui64 cookie);
 
     void HandleGetStorageStatsResponse(
         const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
@@ -94,7 +94,7 @@ void TAggregateStatsActor::Bootstrap(const TActorContext& ctx)
 
 void TAggregateStatsActor::SendRequests(const TActorContext& ctx)
 {
-    ui32 cookie = 0;
+    ui64 cookie = 0;
     for (const auto& shardId: ShardIds) {
         SendRequestToFileSystem(ctx, shardId, cookie++);
     }
@@ -107,7 +107,7 @@ void TAggregateStatsActor::SendRequests(const TActorContext& ctx)
 void TAggregateStatsActor::SendRequestToFileSystem(
     const TActorContext& ctx,
     const TString& fileSystemId,
-    ui32 cookie)
+    ui64 cookie)
 {
     auto request =
         std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
@@ -137,10 +137,16 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
 
     const int requestsCount =
         ShardIds.size() + (MainFileSystemId.empty() ? 0 : 1);
-    TABLET_VERIFY(ev->Cookie < static_cast<ui64>(requestsCount));
+    Y_ASSERT(requestsCount >= 0);
+    TABLET_VERIFY_C(
+        ev->Cookie < static_cast<ui64>(requestsCount),
+        "ev->Cookie: "
+            << ev->Cookie
+            << " should be a request number and less than requestsCount: "
+            << requestsCount);
+    const int shardIndex = static_cast<int>(ev->Cookie);
     const TString& fileSystemId =
-        ev->Cookie < static_cast<ui64>(ShardIds.size()) ? ShardIds[ev->Cookie]
-                                                        : MainFileSystemId;
+        shardIndex < ShardIds.size() ? ShardIds[shardIndex] : MainFileSystemId;
 
     if (HasError(msg->GetError())) {
         LOG_ERROR(
@@ -176,8 +182,8 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
         src.GetUsedBlocksCount(),
         dst.GetUsedBlocksCount());
 
-    if (ev->Cookie < static_cast<ui64>(ShardIds.size())) {
-        auto& ss = ShardStats[ev->Cookie];
+    if (shardIndex < ShardIds.size()) {
+        auto& ss = ShardStats[shardIndex];
         ss.CurrentLoad = src.GetCurrentLoad();
         ss.Suffer = src.GetSuffer();
         ss.TotalBlocksCount = src.GetTotalBlocksCount();
@@ -211,7 +217,7 @@ void TAggregateStatsActor::ReplyAndDie(
     if (RequestInfo) {
         startedTs = RequestInfo->StartedTs;
         auto* stats = Response->Record.MutableStats();
-        for (ui32 i = 0; i < ShardStats.size(); ++i) {
+        for (size_t i = 0; i < ShardStats.size(); ++i) {
             auto* ss = stats->AddShardStats();
             ss->SetShardId(ShardIds[i]);
             ss->SetTotalBlocksCount(ShardStats[i].TotalBlocksCount);

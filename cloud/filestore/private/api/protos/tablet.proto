@@ -162,7 +162,7 @@ enum StatsRequestMode
     // Statistics form shards is fetched for a main filesystem and not fetched
     // for shards.
     STATS_REQUEST_MODE_DEFAULT = 0;
-    // Statistcis from shards is always fetched.
+    // Statistics from shards is always fetched.
     STATS_REQUEST_MODE_FORCE_FETCH_SHARDS = 1;
     // Own statics is always returned.
     STATS_REQUEST_MODE_GET_ONLY_SELF = 2;
@@ -594,7 +594,7 @@ message TConfigureShardsRequest
     // Make it possible to create directories in shards.
     bool DirectoryCreationInShardsEnabled = 4;
 
-    // Allow shards aggregate statistics from all other shards and sctricly
+    // Allow shards aggregate statistics from all other shards and strictly
     // enforce filesystem size.
     bool StrictFileSystemSizeEnforcementEnabled = 5;
 }
@@ -624,7 +624,7 @@ message TConfigureAsShardRequest
     // Make it possible to create directories in shards.
     bool DirectoryCreationInShardsEnabled = 5;
 
-    // Allow shards aggregate statistics from all other shards and sctricly
+    // Allow shards aggregate statistics from all other shards and strictly
     // enforce filesystem size.
     bool StrictFileSystemSizeEnforcementEnabled = 6;
 }
