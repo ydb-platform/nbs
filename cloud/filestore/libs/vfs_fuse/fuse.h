@@ -37,7 +37,10 @@ int fuse_cancel_request(
     fuse_req_t req,
     enum fuse_cancelation_code code);
 
-// 'overrides' fuse_reply_none
+// 'overrides' fuse_reply_none, needed for VIRTIO-specific request completion
+// handling.
+// See https://github.com/ydb-platform/nbs/pull/4283
+// and https://github.com/ydb-platform/nbs/pull/4313
 void fuse_reply_none_override(fuse_req_t req);
 
 #if defined(__cplusplus)
