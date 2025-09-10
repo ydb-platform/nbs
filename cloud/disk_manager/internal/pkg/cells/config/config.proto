@@ -2,6 +2,8 @@ syntax = "proto2";
 
 package cells;
 
+import "google/protobuf/duration.proto";
+
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -23,6 +25,8 @@ message CellsConfig {
 
     optional bool CollectClusterCapacity = 5 [default = false];
 
-    // Get cluster capacity is a heavy request, so we should use it rarely.
-    optional string GetClusterCapacityInterval = 6 [default = "2h"];
+    // GetClusterCapacity is a heavy request, so we should use it rarely.
+    optional string GetClusterCapacityInterval = 6 [default = "1h"];
+
+    optional string ClusterCapacityExpirationTimeout = 7 [default = "90d"];
 }

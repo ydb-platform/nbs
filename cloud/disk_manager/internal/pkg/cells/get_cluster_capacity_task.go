@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -18,10 +19,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type getClusterCapacityTask struct {
-	storage    storage.Storage
-	nbsFactory nbs.Factory
-	config     *cells_config.CellsConfig
-	state      *protos.GetClusterCapacityState
+	storage      storage.Storage
+	nbsFactory   nbs.Factory
+	config       *cells_config.CellsConfig
+	state        *protos.GetClusterCapacityState
+	deleteBefore time.Time
 }
 
 func (t *getClusterCapacityTask) Save() ([]byte, error) {
@@ -41,7 +43,7 @@ func (t *getClusterCapacityTask) Run(
 	for zoneID, cells := range t.config.Cells {
 		logging.Debug(ctx, "Getting cluster capacity for zone %s", zoneID)
 
-		for _, cellID := range cells {
+		for _, cellID := range cells.Cells {
 			client, err := t.nbsFactory.GetClient(ctx, cellID)
 			if err != nil {
 				return err
@@ -49,7 +51,12 @@ func (t *getClusterCapacityTask) Run(
 
 			capacityInfos, err := client.GetClusterCapacity(ctx)
 			if err != nil {
-				logging.Warn(ctx, "Failed to get cluster capacity from cell %s: %v", cellID, err)
+				logging.Error(
+					ctx,
+					"Failed to get cluster capacity from cell %s: %v",
+					cellID,
+					err,
+				)
 				return err
 			}
 
@@ -64,12 +71,33 @@ func (t *getClusterCapacityTask) Run(
 				})
 			}
 
-			err = t.storage.UpdateClusterCapacities(ctx, capacities, time.Now())
-			if err != nil {
-				return err
-			}
+			execCtx.SaveStateWithPreparation(
+				ctx,
+				func(ctx context.Context, tx *persistence.Transaction) error {
+					err := t.storage.UpdateClusterCapacitiesTx(
+						ctx,
+						tx,
+						capacities,
+						t.deleteBefore,
+					)
+					if err != nil {
+						return err
+					}
+
+					t.state.ProcessedCellIDs = append(
+						t.state.ProcessedCellIDs,
+						cellID,
+					)
+					return nil
+				})
 		}
 	}
+
+	logging.Debug(
+		ctx,
+		"Successfully finished getting cluster capacity for cells: %v",
+		t.state.ProcessedCellIDs,
+	)
 
 	return nil
 }
