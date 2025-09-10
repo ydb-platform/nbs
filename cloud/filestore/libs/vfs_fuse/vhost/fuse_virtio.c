@@ -238,6 +238,12 @@ static int process_request(struct fuse_session* se, struct vhd_io* io)
     size_t cplen = iov_iter_to_buf(&it, &in_hdr, sizeof(in_hdr));
     VHD_ASSERT(cplen == sizeof(in_hdr));
 
+    // Don't process some requests with strange logic
+    if (is_ignored_request(&in_hdr)) {
+        complete_request(req, 0);
+        return 0;
+    }
+
     size_t buf0len = !is_write_request(&in_hdr) ? len :
         sizeof(struct fuse_in_header) + sizeof(struct fuse_write_in);
 
@@ -266,12 +272,6 @@ static int process_request(struct fuse_session* se, struct vhd_io* io)
             .size = it.iov[it.idx].iov_len - it.off,
             .fd = -1,
         };
-    }
-
-    // Don't process some requests with strange logic
-    if (is_ignored_request(&in_hdr)) {
-        complete_request(req, 0);
-        return 0;
     }
 
     fuse_session_process_buf_int(se, pbufv, &req->ch);
