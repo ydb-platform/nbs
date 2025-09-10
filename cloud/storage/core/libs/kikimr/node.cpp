@@ -9,6 +9,7 @@
 #include <contrib/ydb/core/base/location.h>
 #include <contrib/ydb/core/config/init/init.h>
 #include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>

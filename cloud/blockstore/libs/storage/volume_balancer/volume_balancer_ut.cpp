@@ -15,6 +15,7 @@
 
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/cms/console/console.h>
+#include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

@@ -22,6 +22,8 @@
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
 
+#include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
+
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
