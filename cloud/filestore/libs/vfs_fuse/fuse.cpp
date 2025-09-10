@@ -16,3 +16,8 @@ int fuse_cancel_request(
     (void)code;
     return fuse_reply_err(req, EINTR);
 }
+
+void fuse_reply_none_override(fuse_req_t req)
+{
+    fuse_reply_none(req);
+}
