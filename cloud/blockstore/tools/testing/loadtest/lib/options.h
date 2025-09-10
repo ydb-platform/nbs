@@ -12,6 +12,7 @@ namespace NCloud::NBlockStore::NLoadTest {
 
 struct TOptions
 {
+    TString TestName;
     TString ClientConfig;
     TString Host;
     ui32 InsecurePort = 0;
