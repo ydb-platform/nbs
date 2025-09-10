@@ -299,19 +299,19 @@ message TResumeDeviceResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// List nonreplicated/mirrored disks states
+// List nonreplicated/mirrored disk states
 
-message TListDisksStatesRequest
+message TListDiskStatesRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
 };
 
-message TListDisksStatesResponse
+message TListDiskStatesResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // List of all disks states.
-    repeated TDiskState DisksStates = 2;
+    // List of all disk states.
+    repeated TDiskState DiskStates = 2;
 };

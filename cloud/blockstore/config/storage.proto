@@ -38,6 +38,7 @@ enum ECompactionType
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Keep consistent with copy from contrib/ydb/core/protos/nbs/blockstore.proto
 enum EVolumePreemptionType
 {
     // Do not preempt volumes when host is overloaded
@@ -1315,4 +1316,11 @@ message TStorageServiceConfig
     // Min percentage of reassignable fresh channels after which reassign requests
     // are sent.
     optional uint32 ReassignFreshChannelsPercentageThreshold = 453;
+
+    // Timeout for trim fresh log (in milliseconds).
+    optional uint32 TrimFreshLogTimeout = 454;
+
+    // Enables data integrity validation for the YDB-based disks.
+    // See "EnableDataIntegrityClient" in server.proto for more details.
+    optional bool EnableDataIntegrityValidationForYdbBasedDisks = 455;
 }

@@ -333,8 +333,7 @@ def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, external_fs
         endpoint="",
         server_app_config=server,
         storage_config_patches=None,
-        use_in_memory_pdisks=True,
-        with_netlink=True)
+        use_in_memory_pdisks=True)
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()

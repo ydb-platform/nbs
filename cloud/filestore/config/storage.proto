@@ -637,9 +637,15 @@ message TStorageConfig
     // allows to reply early to GetNodeXAttr and ListNodeXAttr queries.
     optional bool LazyXAttrsEnabled = 436;
 
+    // Limits max requests allowed at a time.
+    optional uint32 MaxBackground = 438;
+
+    // Limits max threads used in fuse loop per mount (vhost frontend queues)
+    optional uint32 MaxFuseLoopThreads = 439;
+
     // If this flag is on, shards store ids of all other shards. Counters
     // AggregateUsedBytesCount and AggregateUsedNodesCount are calculated for
     // all the shards. These counters are used to strictly enforce the
     // filesystem size.
-    optional bool StrictFileSystemSizeEnforcementEnabled = 438;
+    optional bool StrictFileSystemSizeEnforcementEnabled = 440;
 }

@@ -122,7 +122,10 @@ func (t *createEmptyDiskTask) Cancel(
 	}
 
 	if diskMeta == nil {
-		return nil
+		return errors.NewNonCancellableErrorf(
+			"id %v is not accepted",
+			t.params.Disk.DiskId,
+		)
 	}
 
 	err = client.Delete(ctx, t.params.Disk.DiskId)

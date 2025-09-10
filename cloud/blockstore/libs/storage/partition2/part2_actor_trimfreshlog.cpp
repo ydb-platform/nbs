@@ -34,14 +34,14 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
         MakeIntrusive<TCallContext>(CreateRequestId())
     );
 
-    if (State->GetTrimFreshLogTimeout()) {
+    if (State->GetTrimFreshLogBackoffDelay()) {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] TrimFreshLog request scheduled: %lu, %s",
             TabletID(),
             request->CallContext->RequestId,
-            State->GetTrimFreshLogTimeout().ToString().c_str());
+            State->GetTrimFreshLogBackoffDelay().ToString().c_str());
 
-        ctx.Schedule(State->GetTrimFreshLogTimeout(), request.release());
+        ctx.Schedule(State->GetTrimFreshLogBackoffDelay(), request.release());
     } else {
         LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] TrimFreshLog request sent: %lu",
@@ -131,7 +131,8 @@ void TPartitionActor::HandleTrimFreshLog(
         ParseCommitId(State->GetLastCommitId()).first,
         nextPerGenerationCounter,
         std::move(freshChannels),
-        "");
+        "",
+        Config->GetTrimFreshLogTimeout());
 
     Actors.insert(actor);
 }

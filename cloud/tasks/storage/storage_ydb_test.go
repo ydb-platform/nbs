@@ -1018,48 +1018,94 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 }
 
 type hangingTaskTestFixture struct {
-	t                  *testing.T
-	storage            Storage
-	ctx                context.Context
-	hangingTaskTimeout time.Duration
-	db                 *persistence.YDBClient
-	cancel             context.CancelFunc
+	t                                 *testing.T
+	db                                *persistence.YDBClient
+	storage                           Storage
+	ctx                               context.Context
+	cancel                            context.CancelFunc
+	hangingTaskTimeout                time.Duration
+	inflightHangingTaskTimeout        time.Duration
+	stallingHangingTaskTimeout        time.Duration
+	missedEstimatesUntilTaskIsHanging uint64
 }
 
 func (f hangingTaskTestFixture) createTask(
 	taskType string,
 	taskStatus TaskStatus,
 	createdAt time.Time,
-	estimatedDuration time.Duration,
+	inflightDuration time.Duration,
+	estimatedInflightDuration time.Duration,
+	stallingDuration time.Duration,
+	estimatedStallingDuration time.Duration,
 ) string {
 
 	state := TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(f.t),
-		TaskType:       taskType,
-		Description:    "Some task",
-		CreatedAt:      createdAt,
-		CreatedBy:      "some_user",
-		ModifiedAt:     time.Now(),
-		GenerationID:   10,
-		Status:         taskStatus,
-		State:          []byte{},
-		Dependencies:   common.NewStringSet(),
-	}
-	if estimatedDuration > 0 {
-		state.EstimatedTime = createdAt.Add(estimatedDuration)
+		IdempotencyKey:            getIdempotencyKeyForTest(f.t),
+		TaskType:                  taskType,
+		Description:               "Some task",
+		CreatedAt:                 createdAt,
+		CreatedBy:                 "some_user",
+		ModifiedAt:                time.Now(),
+		GenerationID:              10,
+		Status:                    taskStatus,
+		State:                     []byte{},
+		Dependencies:              common.NewStringSet(),
+		InflightDuration:          inflightDuration,
+		EstimatedInflightDuration: estimatedInflightDuration,
+		StallingDuration:          stallingDuration,
+		EstimatedStallingDuration: estimatedStallingDuration,
 	}
 
 	taskID, err := f.storage.CreateTask(f.ctx, state)
 	require.NoError(f.t, err)
 	logging.Info(
 		f.ctx,
-		"task with id=%s, created_at=%v, status %s, estimate=%v",
+		"task with id=%s, status=%s, created_at=%v, inflight=%v, inflightEstimate=%v, stalling=%v, stallingEstimate=%v",
 		taskID,
-		createdAt,
 		TaskStatusToString(taskStatus),
-		state.EstimatedTime,
+		createdAt,
+		inflightDuration,
+		estimatedInflightDuration,
+		stallingDuration,
+		estimatedStallingDuration,
 	)
 	return taskID
+}
+
+func (f hangingTaskTestFixture) createTaskWithInflightDuration(
+	taskType string,
+	taskStatus TaskStatus,
+	inflightDuration time.Duration,
+	estimatedInflightDuration time.Duration,
+) string {
+
+	return f.createTask(
+		taskType,
+		taskStatus,
+		time.Now(),
+		inflightDuration,
+		estimatedInflightDuration,
+		0, // stallingDuration
+		0, // estimatedStallingDuration
+	)
+}
+
+func (f hangingTaskTestFixture) createTaskWithStallingDuration(
+	taskType string,
+	taskStatus TaskStatus,
+	stallingDuration time.Duration,
+	estimatedStallingDuration time.Duration,
+) string {
+
+	return f.createTask(
+		taskType,
+		taskStatus,
+		time.Now(),
+		0, // inflightDuration
+		0, // estimatedInflightDuration
+		stallingDuration,
+		estimatedStallingDuration,
+	)
 }
 
 func (f hangingTaskTestFixture) createHangingTaskNoEstimate(
@@ -1067,26 +1113,73 @@ func (f hangingTaskTestFixture) createHangingTaskNoEstimate(
 	taskStatus TaskStatus,
 ) string {
 
-	return f.createTask(
+	return f.createTaskWithInflightDuration(
 		taskType,
 		taskStatus,
-		time.Now().Add(-f.hangingTaskTimeout).Add(-time.Minute),
-		-1,
+		f.inflightHangingTaskTimeout+time.Minute,
+		0, // estimatedInflightDuration
 	)
 }
 
-func (f hangingTaskTestFixture) createHangingTaskWithEstimate(
+func (f hangingTaskTestFixture) createHangingTaskWithInflightEstimate(
 	taskType string,
 	taskStatus TaskStatus,
 ) string {
 
+	estimatedDuration := 42 * time.Hour
+	return f.createTaskWithInflightDuration(
+		taskType,
+		taskStatus,
+		time.Duration(f.missedEstimatesUntilTaskIsHanging)*estimatedDuration+time.Minute,
+		estimatedDuration,
+	)
+}
+
+func (f hangingTaskTestFixture) createHangingTaskWithStallingEstimate(
+	taskType string,
+	taskStatus TaskStatus,
+) string {
+
+	estimatedDuration := 42 * time.Hour
+	return f.createTaskWithStallingDuration(
+		taskType,
+		taskStatus,
+		time.Duration(f.missedEstimatesUntilTaskIsHanging)*estimatedDuration+time.Minute,
+		estimatedDuration,
+	)
+}
+
+func (f hangingTaskTestFixture) createHangingTaskWithTotalDurationMissed(
+	taskType string,
+	taskStatus TaskStatus,
+) string {
+
+	// Estimates are not missed but hangingTaskTimeout is
 	return f.createTask(
 		taskType,
 		taskStatus,
-		time.Now().Add(
-			-(f.hangingTaskTimeout+time.Hour)*2,
-		).Add(-time.Minute),
-		time.Hour,
+		time.Now().Add(-f.hangingTaskTimeout).Add(-time.Minute),
+		0, 0, 0, 0, // durations and estimates
+	)
+}
+
+func (f hangingTaskTestFixture) createHangingTaskWithAllDurationsMissed(
+	taskType string,
+	taskStatus TaskStatus,
+) string {
+
+	estimatedDuration := 42 * time.Hour
+	return f.createTask(
+		taskType,
+		taskStatus,
+		// Total duration missed
+		time.Now().Add(-f.hangingTaskTimeout).Add(-time.Minute),
+		// Inflight duration missed
+		time.Duration(f.missedEstimatesUntilTaskIsHanging)*estimatedDuration+time.Minute,
+		estimatedDuration,
+		// Stalling duration missed
+		time.Duration(f.missedEstimatesUntilTaskIsHanging)*estimatedDuration+time.Minute,
+		estimatedDuration,
 	)
 }
 
@@ -1115,24 +1208,11 @@ func newHangingTaskTestFixture(
 	config *tasks_config.TasksConfig,
 ) hangingTaskTestFixture {
 
-	hangingTaskTimeout, err := time.ParseDuration(
-		config.GetHangingTaskTimeout(),
-	)
-	require.NoError(t, err)
-
 	ctx, cancel := context.WithCancel(newContext())
-	fixture := hangingTaskTestFixture{
-		t:                  t,
-		hangingTaskTimeout: hangingTaskTimeout,
-		ctx:                ctx,
-		cancel:             cancel,
-	}
-	fixture.ctx = ctx
-	fixture.cancel = cancel
+
 	db, err := newYDB(ctx)
 	require.NoError(t, err)
 
-	fixture.db = db
 	metricsRegistry := empty.NewRegistry()
 	storage, err := newStorage(
 		t,
@@ -1143,15 +1223,46 @@ func newHangingTaskTestFixture(
 	)
 	require.NoError(t, err)
 
-	fixture.storage = storage
-	return fixture
+	hangingTaskTimeout, err := time.ParseDuration(
+		config.GetHangingTaskTimeout(),
+	)
+	require.NoError(t, err)
+
+	inflightHangingTaskTimeout, err := time.ParseDuration(
+		config.GetInflightHangingTaskTimeout(),
+	)
+	require.NoError(t, err)
+
+	stallingHangingTaskTimeout, err := time.ParseDuration(
+		config.GetStallingHangingTaskTimeout(),
+	)
+	require.NoError(t, err)
+
+	return hangingTaskTestFixture{
+		t:                                 t,
+		db:                                db,
+		storage:                           storage,
+		ctx:                               ctx,
+		cancel:                            cancel,
+		hangingTaskTimeout:                hangingTaskTimeout,
+		inflightHangingTaskTimeout:        inflightHangingTaskTimeout,
+		stallingHangingTaskTimeout:        stallingHangingTaskTimeout,
+		missedEstimatesUntilTaskIsHanging: config.GetMissedEstimatesUntilTaskIsHanging(),
+	}
 }
 
 func TestStorageYDBListHangingTasks(t *testing.T) {
-	hangingTaskTimeout := 5 * time.Hour
-	hangingTaskTimeoutString := hangingTaskTimeout.String()
+	hangingTaskTimeoutString := "24h"
+	inflightHangingTaskTimeout := 5 * time.Hour
+	inflightHangingTaskTimeoutString := inflightHangingTaskTimeout.String()
+	missedEstimatesUntilTaskIsHanging := uint64(2)
+	stallingHangingTaskTimeout := 30 * time.Minute
+	stallingHangingTaskTimeoutString := stallingHangingTaskTimeout.String()
 	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
-		HangingTaskTimeout: &hangingTaskTimeoutString,
+		HangingTaskTimeout:                &hangingTaskTimeoutString,
+		InflightHangingTaskTimeout:        &inflightHangingTaskTimeoutString,
+		StallingHangingTaskTimeout:        &stallingHangingTaskTimeoutString,
+		MissedEstimatesUntilTaskIsHanging: &missedEstimatesUntilTaskIsHanging,
 	})
 	defer fixture.teardown()
 
@@ -1167,45 +1278,54 @@ func TestStorageYDBListHangingTasks(t *testing.T) {
 		taskID := fixture.createHangingTaskNoEstimate("first", taskStatus)
 		expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskID)
 
-		taskID = fixture.createHangingTaskWithEstimate("second", taskStatus)
+		taskID = fixture.createHangingTaskWithInflightEstimate("second", taskStatus)
 		expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskID)
 
-		fixture.createTask("a", taskStatus, time.Now(), -1)
-		fixture.createTask("a", taskStatus, time.Now(), time.Hour)
+		taskID = fixture.createHangingTaskWithStallingEstimate("third", taskStatus)
+		expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskID)
+
+		taskID = fixture.createHangingTaskWithTotalDurationMissed("fourth", taskStatus)
+		expectedHangingTaskIDs = append(expectedHangingTaskIDs, taskID)
+
+		fixture.createTask("a", taskStatus, time.Now(), 0, 0, 0, 0)
+		fixture.createTaskWithInflightDuration("a", taskStatus, 0 /* inflightDuration */, time.Hour)
+		fixture.createTaskWithStallingDuration("a", taskStatus, 0 /* stallingDuration */, time.Hour)
+
 		// Estimate is missed, but task duration does not exceed x2 estimate duration
-		fixture.createTask(
+		fixture.createTaskWithInflightDuration(
 			"b",
 			taskStatus,
-			time.Now().Add(-719*time.Minute),
-			hangingTaskTimeout+time.Hour,
+			12*time.Hour-time.Minute,
+			6*time.Hour,
 		)
+		fixture.createTaskWithStallingDuration(
+			"b",
+			taskStatus,
+			12*time.Hour-time.Minute,
+			6*time.Hour,
+		)
+
 		// Estimate is missed but default estimate is not
-		oneHourAgo := time.Now().Add(-time.Hour)
-		fixture.createTask("c", taskStatus, oneHourAgo, time.Minute*15)
+		fixture.createTaskWithInflightDuration("c", taskStatus, inflightHangingTaskTimeout-time.Minute, 10*time.Minute)
+		fixture.createTaskWithStallingDuration("c", taskStatus, stallingHangingTaskTimeout-time.Minute, 10*time.Minute)
 	}
 
-	fixture.createTask(
-		"d",
-		TaskStatusFinished,
-		time.Now().Add(-hangingTaskTimeout).Add(-time.Minute),
-		-1,
-	)
-	fixture.createTask(
-		"e",
-		TaskStatusCancelled,
-		time.Now().Add(-time.Hour*14),
-		hangingTaskTimeout+time.Hour,
-	)
+	// Ended tasks will not appear in hanging in any case
+	fixture.createHangingTaskNoEstimate("d", TaskStatusFinished)
+	fixture.createHangingTaskWithInflightEstimate("d", TaskStatusFinished)
+	fixture.createHangingTaskWithStallingEstimate("d", TaskStatusFinished)
+	fixture.createHangingTaskWithTotalDurationMissed("d", TaskStatusCancelled)
+	fixture.createHangingTaskWithAllDurationsMissed("d", TaskStatusCancelled)
 
 	actualHangingTasks := fixture.ListHangingTasksIDs()
 	require.ElementsMatch(t, expectedHangingTaskIDs, actualHangingTasks)
 }
 
 func TestStorageYDBListHangingTasksWithExceptions(t *testing.T) {
-	hangingTaskTimeout := "5h"
+	inflightHangingTaskTimeout := "5h"
 	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
-		ExceptHangingTaskTypes: []string{"exception"},
-		HangingTaskTimeout:     &hangingTaskTimeout,
+		ExceptHangingTaskTypes:     []string{"exception"},
+		InflightHangingTaskTimeout: &inflightHangingTaskTimeout,
 	})
 	defer fixture.teardown()
 
@@ -1711,35 +1831,62 @@ func TestStorageYDBListSlowTasks(t *testing.T) {
 	createdAt := time.Now().Add(-3 * time.Hour)
 	var generationID uint64 = 1
 
-	createTask := func(created time.Time, estimated, durationMinutes int) TaskInfo {
+	createTask := func(
+		created time.Time,
+		inflightDurationMinutes int,
+		estimatedInflightDurationMinutes int,
+		stallingDurationMinutes int,
+		estimatedStallingDurationMinutes int,
+	) string {
 		task := TaskState{
-			IdempotencyKey: getIdempotencyKeyForTest(t),
-			TaskType:       "task1",
-			Description:    "some task",
-			CreatedAt:      created,
-			CreatedBy:      "some_user",
-			ModifiedAt:     created,
-			GenerationID:   generationID,
-			Status:         TaskStatusFinished,
-			State:          []byte{0},
-			Dependencies:   common.NewStringSet(),
-			EndedAt:        created.Add(time.Duration(durationMinutes) * time.Minute),
-			EstimatedTime:  created.Add(time.Duration(estimated) * time.Minute),
+			IdempotencyKey:            getIdempotencyKeyForTest(t),
+			TaskType:                  "task1",
+			Description:               "some task",
+			CreatedAt:                 created,
+			CreatedBy:                 "some_user",
+			ModifiedAt:                created,
+			GenerationID:              generationID,
+			Status:                    TaskStatusFinished,
+			State:                     []byte{0},
+			Dependencies:              common.NewStringSet(),
+			EndedAt:                   created,
+			InflightDuration:          time.Duration(inflightDurationMinutes) * time.Minute,
+			EstimatedInflightDuration: time.Duration(estimatedInflightDurationMinutes) * time.Minute,
+			StallingDuration:          time.Duration(stallingDurationMinutes) * time.Minute,
+			EstimatedStallingDuration: time.Duration(estimatedStallingDurationMinutes) * time.Minute,
 		}
 		id, err := storage.CreateTask(ctx, task)
 		generationID += 1
 		require.NoError(t, err)
-		return TaskInfo{
-			ID:           id,
-			GenerationID: task.GenerationID,
-			TaskType:     task.TaskType,
-		}
+		return id
 	}
-	createTask(createdAt, 5, 4) // Should not be presented in the result
-	largeDelay := createTask(createdAt, 1, 61)
-	mediumDelay := createTask(createdAt, 5, 64)
-	smallDelay := createTask(createdAt, 60, 70)
-	dayBefore := createTask(createdAt.Add(time.Duration(-24)*time.Hour), 5, 60)
+
+	// Should not be presented in the result
+	createTask(createdAt, 0, 0, 0, 0)
+	createTask(createdAt, 4, 5, 0, 0)
+	createTask(createdAt, 0, 0, 4, 5)
+	createTask(createdAt, 4, 5, 4, 5)
+
+	// Tasks are ordered by ratio of actual time to its estimate
+
+	// With EstimatedInflightDuration miss
+	// 61/1 = 61.0 ratio
+	largeDelayID := createTask(createdAt, 61, 1, 0, 0)
+	// 64/5 = 12.8 ratio
+	mediumDelayID := createTask(createdAt, 64, 5, 0, 0)
+
+	// With EstimatedStallingDuration miss
+	// 70/60 = 1.2 ratio
+	smallDelayID := createTask(createdAt, 0, 0, 70, 60)
+	// 60/5 = 12.0 ratio
+	dayBeforeID := createTask(
+		createdAt.Add(time.Duration(-24)*time.Hour),
+		0, 0, 60, 5,
+	)
+
+	// Both estimates are missed
+	// max(120/60, 60/2) = max(2.0, 30.0) = 30.0 ratio
+	mixedDelayID := createTask(createdAt, 120, 60, 60, 2)
 
 	testCases := []struct {
 		since        time.Time
@@ -1759,25 +1906,26 @@ func TestStorageYDBListSlowTasks(t *testing.T) {
 		},
 		{createdAt,
 			10 * time.Minute,
-			[]string{largeDelay.ID, mediumDelay.ID, smallDelay.ID},
-			"Since limited, 3 tasks expected",
+			[]string{largeDelayID, mixedDelayID, mediumDelayID, smallDelayID},
+			"Since limited, 4 tasks expected",
 		},
 		{createdAt.Add(-10 * time.Minute),
 			1 * time.Hour,
-			[]string{largeDelay.ID},
-			"EstimateMiss limited, one task expected",
+			[]string{largeDelayID, mixedDelayID},
+			"EstimateMiss limited, 2 tasks expected",
 		},
 		{createdAt.Add(-25 * time.Hour),
 			10 * time.Minute,
-			[]string{largeDelay.ID, mediumDelay.ID, smallDelay.ID, dayBefore.ID},
-			"All tasks fit, 4 expected",
+			[]string{largeDelayID, mixedDelayID, mediumDelayID, dayBeforeID, smallDelayID},
+			"All tasks fit, 5 expected",
 		},
 	}
 
 	for _, tc := range testCases {
 		tasks, err := storage.ListSlowTasks(ctx, tc.since, tc.estimateMiss)
 		require.NoError(t, err)
-		require.ElementsMatchf(t, tc.expected, tasks, tc.comment)
+		// Check the order of tasks.
+		require.Equal(t, tc.expected, tasks, tc.comment)
 	}
 }
 
@@ -1923,20 +2071,6 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 		ModifiedAt:     stallTime,
 		GenerationID:   generationID,
 		Status:         TaskStatusCancelling,
-		State:          []byte{},
-		Dependencies:   common.NewStringSet(),
-	})
-	require.NoError(t, err)
-
-	_, err = storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createTime,
-		CreatedBy:      "some_user",
-		ModifiedAt:     stallTime,
-		GenerationID:   generationID,
-		Status:         TaskStatusCancelled,
 		State:          []byte{},
 		Dependencies:   common.NewStringSet(),
 	})
@@ -3931,6 +4065,10 @@ func TestStorageYDBCreateRegularTasks(t *testing.T) {
 		"time/total",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
 
 	_, err = storage.UpdateTask(ctx, task1)
 	require.NoError(t, err)
@@ -3953,6 +4091,10 @@ func TestStorageYDBCreateRegularTasks(t *testing.T) {
 	).On("Add", int64(1)).Maybe().Panic("shouldn't create new task in UpdateTask")
 	metricsRegistry.GetTimer(
 		"time/total",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
 
@@ -4085,6 +4227,10 @@ func TestStorageYDBCreateRegularTasksUsingCrontab(t *testing.T) {
 		"time/total",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
 
 	_, err = storage.UpdateTask(ctx, task1)
 	require.NoError(t, err)
@@ -4108,6 +4254,10 @@ func TestStorageYDBCreateRegularTasksUsingCrontab(t *testing.T) {
 	).On("Add", int64(1)).Maybe().Panic("shouldn't create new task in UpdateTask")
 	metricsRegistry.GetTimer(
 		"time/total",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
 
@@ -4203,6 +4353,10 @@ func TestStorageYDBCreateRegularTasksUsingCrontabInNewMonthOrYear(t *testing.T) 
 		"time/total",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
 
 	_, err = storage.UpdateTask(ctx, actual)
 	require.NoError(t, err)
@@ -4239,6 +4393,10 @@ func TestStorageYDBCreateRegularTasksUsingCrontabInNewMonthOrYear(t *testing.T) 
 	actual.Status = TaskStatusFinished
 	metricsRegistry.GetTimer(
 		"time/total",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
 
@@ -4340,6 +4498,10 @@ func TestStorageYDBRegularTaskShouldNotBeCreatedIfPreviousCrontabTaskIsNotFinish
 	currTask.Status = TaskStatusFinished
 	metricsRegistry.GetTimer(
 		"time/total",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
 
@@ -4474,6 +4636,10 @@ func TestStorageYDBClearEndedTasks(t *testing.T) {
 	).On("Add", int64(1)).Times(4)
 	metricsRegistry.GetTimer(
 		"time/total",
+		map[string]string{"type": "task"},
+	).On("RecordDuration", mock.Anything).Twice()
+	metricsRegistry.GetTimer(
+		"time/inflight",
 		map[string]string{"type": "task"},
 	).On("RecordDuration", mock.Anything).Twice()
 
@@ -4646,6 +4812,10 @@ func TestStorageYDBPauseResumeTask(t *testing.T) {
 	task.Status = TaskStatusFinished
 	metricsRegistry.GetTimer(
 		"time/total",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
+	metricsRegistry.GetTimer(
+		"time/inflight",
 		map[string]string{"type": task.TaskType},
 	).On("RecordDuration", mock.Anything).Once()
 

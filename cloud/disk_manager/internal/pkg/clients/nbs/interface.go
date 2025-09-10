@@ -312,6 +312,8 @@ type Client interface {
 		diskID string,
 		fillGeneration uint64,
 	) error
+
+	ZoneID() string
 }
 
 ////////////////////////////////////////////////////////////////////////////////

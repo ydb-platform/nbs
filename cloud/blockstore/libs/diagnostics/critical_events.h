@@ -74,6 +74,7 @@ using TValue =
     xxx(DiskAgentInconsistentMultiWriteResponse)                               \
     xxx(ReleaseShadowDiskError)                                                \
     xxx(WrongCellIdInDescribeVolume)                                           \
+    xxx(TrimFreshLogTimeout)                                                   \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
@@ -119,6 +120,7 @@ using TValue =
     xxx(LaggingAgentsProxyWrongRecipientActor)                                 \
     xxx(UnexpectedCookie)                                                      \
     xxx(MultiAgentRequestAffectsTwoDevices)                                    \
+    xxx(ChecksumCalculationError)                                              \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

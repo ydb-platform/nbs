@@ -377,10 +377,10 @@ func (n nbsService) RemoveVolumeClient(
 	panic("implement me")
 }
 
-func (n nbsService) ListDisksStates(
+func (n nbsService) ListDiskStates(
 	ctx context.Context,
-	request *protos.TListDisksStatesRequest,
-) (*protos.TListDisksStatesResponse, error) {
+	request *protos.TListDiskStatesRequest,
+) (*protos.TListDiskStatesResponse, error) {
 	//TODO implement me
 	panic("implement me")
 }

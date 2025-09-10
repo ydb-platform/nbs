@@ -1037,7 +1037,7 @@ class _SafeClient(object):
             request_timeout)
 
     @_handle_errors
-    def list_disks_states_async(
+    def list_disk_states_async(
             self,
             idempotence_id: str | None = None,
             timestamp: datetime | None = None,
@@ -1045,8 +1045,8 @@ class _SafeClient(object):
             request_timeout: int | None = None) -> futures.Future:
 
         future = futures.Future()
-        response = self.__impl.list_disks_states_async_async(
-            protos.TListDisksStatesRequest(),
+        response = self.__impl.list_disk_states_async(
+            protos.TListDiskStatesRequest(),
             idempotence_id,
             timestamp,
             trace_id,
@@ -1058,22 +1058,22 @@ class _SafeClient(object):
                 future.set_exception(exception)
             else:
                 result = f.result()
-                future.set_result(result.DisksStates)
+                future.set_result(result.DiskStates)
         response.add_done_callback(set_result)
 
         return future
 
     @_handle_errors
-    def list_disks_states(
+    def list_disk_states(
             self,
             idempotence_id: str | None = None,
             timestamp: datetime | None = None,
             trace_id: str | None = None,
             request_timeout: int | None = None):
 
-        return self.__impl.list_disks_states(
-            protos.TListDisksStatesRequest(),
+        return self.__impl.list_disk_states(
+            protos.TListDiskStatesRequest(),
             idempotence_id,
             timestamp,
             trace_id,
-            request_timeout).DisksStates
+            request_timeout).DiskStates

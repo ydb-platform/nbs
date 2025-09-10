@@ -1,5 +1,7 @@
 #pragma once
 
+#include "node.h"
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -13,6 +15,11 @@
 namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TRegisterDynamicNodeOptions::TNodeLabels GetLabels(
+    const NCloud::NProto::TConfigDispatcherSettings& settings,
+    const TString& tenantName,
+    const TString& nodeType);
 
 void SetupConfigDispatcher(
     const NProto::TConfigDispatcherSettings& settings,

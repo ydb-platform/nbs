@@ -2928,7 +2928,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(2, crits->Val());
     }
 
-    Y_UNIT_TEST(ShouldListDisksStates)
+    Y_UNIT_TEST(ShouldListDiskStates)
     {
         TVector agents {
             CreateAgentConfig("agent-1", {
@@ -2999,16 +2999,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             }
         }
 
-        auto listDisksStates = [&] {
-            auto response = diskRegistry.ListDisksStates();
-            auto& states = *response->Record.MutableDisksStates();
+        auto listDiskStates = [&] {
+            auto response = diskRegistry.ListDiskStates();
+            auto& states = *response->Record.MutableDiskStates();
             UNIT_ASSERT_VALUES_EQUAL(7, states.size());
             SortBy(states, [](const auto& s) { return s.GetDiskId(); });
             return states;
         };
 
         {
-            auto states = listDisksStates();
+            auto states = listDiskStates();
 
             UNIT_ASSERT_VALUES_EQUAL("mirror0", states[0].GetDiskId());
             UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, states[0].GetState());
@@ -3035,7 +3035,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         {
-            auto states = listDisksStates();
+            auto states = listDiskStates();
 
             UNIT_ASSERT_VALUES_EQUAL("mirror0", states[0].GetDiskId());
             UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, states[0].GetState());
@@ -3069,7 +3069,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
 
         {
-            auto states = listDisksStates();
+            auto states = listDiskStates();
 
             UNIT_ASSERT_VALUES_EQUAL("mirror0", states[0].GetDiskId());
             // Mirror disk can only be in online state

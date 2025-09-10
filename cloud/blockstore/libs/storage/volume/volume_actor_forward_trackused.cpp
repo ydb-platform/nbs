@@ -110,7 +110,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     GetDowntimeThreshold(
                         *DiagnosticsConfig,
                         NProto::STORAGE_MEDIA_SSD),
-                    LogTitle.GetChild(GetCycleCount()));
+                    LogTitle.GetChild(GetCycleCount()),
+                    Config->GetEnableDataIntegrityValidationForYdbBasedDisks());
             } else {
                 NCloud::Register<TReadAndClearEmptyBlocksActor<TMethod>>(
                     ctx,

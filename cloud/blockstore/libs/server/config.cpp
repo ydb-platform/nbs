@@ -100,7 +100,6 @@ constexpr TDuration Seconds(int s)
     xxx(NbdNetlink,                  bool,                  false             )\
     xxx(NbdRequestTimeout,           TDuration,             Seconds(600)      )\
     xxx(NbdConnectionTimeout,        TDuration,             Seconds(86400)    )\
-    xxx(EndpointProxySocketPath,     TString,               ""                )\
     xxx(AllowAllRequestsViaUDS,      bool,                  false             )\
     xxx(NodeRegistrationToken,       TString,               "root@builtin"    )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\

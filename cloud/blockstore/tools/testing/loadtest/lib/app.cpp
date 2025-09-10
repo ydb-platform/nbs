@@ -14,10 +14,11 @@
 #include "suite_runner.h"
 #include "test_runner.h"
 #include "volume_infos.h"
-
-#include <cloud/blockstore/tools/testing/loadtest/protos/loadtest.pb.h>
+#include "wait_for_fresh_devices_action.h"
 
 #include <cloud/blockstore/libs/storage/model/public.h>
+#include <cloud/blockstore/tools/testing/loadtest/protos/loadtest.pb.h>
+
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -83,6 +84,11 @@ private:
         TBootstrap& bootstrap,
         TTestContext& testContext,
         const NProto::TActionGraph::TCompareDataAction& action);
+
+    void RunWaitForFreshDevicesAction(
+        TBootstrap& bootstrap,
+        TTestContext& testContext,
+        const NProto::TActionGraph::TWaitForFreshDevicesAction& action);
 
     void RunGraph(const NProto::TActionGraph& graph, TBootstrap& bootstrap);
 
@@ -150,7 +156,7 @@ void TApp::Stop(int exitCode)
 {
     AppContext.ExitCode.store(exitCode, std::memory_order_release);
     AppContext.ShouldStop.store(true, std::memory_order_release);
-    for (auto& testContext : TestContexts) {
+    for (auto& testContext: TestContexts) {
         StopTest(testContext);
     }
 }
@@ -166,6 +172,8 @@ TStringBuf TApp::GetName(const NProto::TActionGraph::TVertex& v)
             return v.GetSleep().GetName();
         case NProto::TActionGraph::TVertex::kCompareData:
             return v.GetCompareData().GetName();
+        case NProto::TActionGraph::TVertex::kWaitForFreshDevices:
+            return v.GetWaitForFreshDevices().GetName();
         default:
             Y_ABORT_UNLESS(0);
     }
@@ -233,6 +241,23 @@ void TApp::RunCompareDataAction(
         bootstrap,
         testContext
     );
+
+    if (auto code = runner.Run(action)) {
+        Stop(code);
+    }
+}
+
+void TApp::RunWaitForFreshDevicesAction(
+    TBootstrap& bootstrap,
+    TTestContext& testContext,
+    const NProto::TActionGraph::TWaitForFreshDevicesAction& action)
+{
+    TWaitForFreshDevicesActionRunner runner(
+        Log,
+        AliasedVolumes,
+        bootstrap.GetLogging(),
+        bootstrap,
+        testContext);
 
     if (auto code = runner.Run(action)) {
         Stop(code);
@@ -341,6 +366,14 @@ void TApp::RunGraph(const NProto::TActionGraph& graph, TBootstrap& bootstrap)
                         testContext,
                         vertex.GetCompareData()
                     );
+                    break;
+                }
+
+                case NProto::TActionGraph::TVertex::kWaitForFreshDevices: {
+                    RunWaitForFreshDevicesAction(
+                        bootstrap,
+                        testContext,
+                        vertex.GetWaitForFreshDevices());
                     break;
                 }
 

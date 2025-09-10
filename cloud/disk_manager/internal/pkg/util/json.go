@@ -44,7 +44,9 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 	"disks.UnassignDisk":                            func() proto.Message { return &disk_protos.UnassignDiskRequest{} },
 	"disks.MigrateDisk":                             func() proto.Message { return &disk_protos.MigrateDiskRequest{} },
 	"filesystem.CreateFilesystem":                   func() proto.Message { return &filesystem_protos.CreateFilesystemRequest{} },
+	"filesystem.CreateExternalFilesystem":           func() proto.Message { return &filesystem_protos.CreateFilesystemRequest{} },
 	"filesystem.DeleteFilesystem":                   func() proto.Message { return &filesystem_protos.DeleteFilesystemRequest{} },
+	"filesystem.DeleteExternalFilesystem":           func() proto.Message { return &filesystem_protos.DeleteFilesystemRequest{} },
 	"filesystem.ResizeFilesystem":                   func() proto.Message { return &filesystem_protos.ResizeFilesystemRequest{} },
 	"images.CreateImageFromURL":                     func() proto.Message { return &images_protos.CreateImageFromURLRequest{} },
 	"images.CreateImageFromImage":                   func() proto.Message { return &images_protos.CreateImageFromImageRequest{} },
@@ -94,7 +96,9 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"disks.UnassignDisk":                            func() proto.Message { return &disk_protos.UnassignDiskTaskState{} },
 	"disks.MigrateDisk":                             func() proto.Message { return &disk_protos.MigrateDiskTaskState{} },
 	"filesystem.CreateFilesystem":                   func() proto.Message { return &filesystem_protos.CreateFilesystemTaskState{} },
+	"filesystem.CreateExternalFilesystem":           func() proto.Message { return &filesystem_protos.CreateFilesystemTaskState{} },
 	"filesystem.DeleteFilesystem":                   func() proto.Message { return &filesystem_protos.DeleteFilesystemTaskState{} },
+	"filesystem.DeleteExternalFilesystem":           func() proto.Message { return &filesystem_protos.DeleteFilesystemTaskState{} },
 	"filesystem.ResizeFilesystem":                   func() proto.Message { return &filesystem_protos.ResizeFilesystemTaskState{} },
 	"images.CreateImageFromURL":                     func() proto.Message { return &images_protos.CreateImageFromURLTaskState{} },
 	"images.CreateImageFromImage":                   func() proto.Message { return &images_protos.CreateImageFromImageTaskState{} },
@@ -127,38 +131,39 @@ func (d FormattableDuration) MarshalJSON() ([]byte, error) {
 }
 
 type TaskStateJSON struct {
-	ID                  string               `json:"id"`
-	IdempotencyKey      string               `json:"idempotency_key"`
-	AccountID           string               `json:"account_id"`
-	TaskType            string               `json:"task_type"`
-	Regular             bool                 `json:"regular"`
-	Description         string               `json:"description"`
-	StorageFolder       string               `json:"storage_folder"`
-	CreatedAt           time.Time            `json:"created_at"`
-	CreatedBy           string               `json:"created_by"`
-	ModifiedAt          time.Time            `json:"modified_at"`
-	GenerationID        uint64               `json:"generation_id"`
-	Status              string               `json:"status"`
-	ErrorCode           grpc_codes.Code      `json:"error_code"`
-	ErrorMessage        string               `json:"error_message"`
-	ErrorDetails        *errors.ErrorDetails `json:"error_details"`
-	RetriableErrorCount uint64               `json:"retriable_error_count"`
-	Request             proto.Message        `json:"request"`
-	State               proto.Message        `json:"state"`
-	Metadata            map[string]string    `json:"metadata"`
-	Dependencies        []*TaskStateJSON     `json:"dependencies"`
-	ChangedStateAt      time.Time            `json:"changed_state_at"`
-	EndedAt             time.Time            `json:"ended_at"`
-	LastHost            string               `json:"last_host"`
-	LastRunner          string               `json:"last_runner"`
-	ZoneID              string               `json:"zone_id"`
-	CloudID             string               `json:"cloud_id"`
-	FolderID            string               `json:"folder_id"`
-	EstimatedTime       time.Time            `json:"estimated_time"`
-	InflightDuration    FormattableDuration  `json:"inflight_duration"`
-	StallingDuration    FormattableDuration  `json:"stalling_duration"`
-	WaitingDuration     FormattableDuration  `json:"waiting_duration"`
-	PanicCount          uint64               `json:"panic_count"`
+	ID                        string               `json:"id"`
+	IdempotencyKey            string               `json:"idempotency_key"`
+	AccountID                 string               `json:"account_id"`
+	TaskType                  string               `json:"task_type"`
+	Regular                   bool                 `json:"regular"`
+	Description               string               `json:"description"`
+	StorageFolder             string               `json:"storage_folder"`
+	CreatedAt                 time.Time            `json:"created_at"`
+	CreatedBy                 string               `json:"created_by"`
+	ModifiedAt                time.Time            `json:"modified_at"`
+	GenerationID              uint64               `json:"generation_id"`
+	Status                    string               `json:"status"`
+	ErrorCode                 grpc_codes.Code      `json:"error_code"`
+	ErrorMessage              string               `json:"error_message"`
+	ErrorDetails              *errors.ErrorDetails `json:"error_details"`
+	RetriableErrorCount       uint64               `json:"retriable_error_count"`
+	Request                   proto.Message        `json:"request"`
+	State                     proto.Message        `json:"state"`
+	Metadata                  map[string]string    `json:"metadata"`
+	Dependencies              []*TaskStateJSON     `json:"dependencies"`
+	ChangedStateAt            time.Time            `json:"changed_state_at"`
+	EndedAt                   time.Time            `json:"ended_at"`
+	LastHost                  string               `json:"last_host"`
+	LastRunner                string               `json:"last_runner"`
+	ZoneID                    string               `json:"zone_id"`
+	CloudID                   string               `json:"cloud_id"`
+	FolderID                  string               `json:"folder_id"`
+	InflightDuration          FormattableDuration  `json:"inflight_duration"`
+	EstimatedInflightDuration FormattableDuration  `json:"estimated_inflight_duration"`
+	StallingDuration          FormattableDuration  `json:"stalling_duration"`
+	EstimatedStallingDuration FormattableDuration  `json:"estimated_stalling_duration"`
+	WaitingDuration           FormattableDuration  `json:"waiting_duration"`
+	PanicCount                uint64               `json:"panic_count"`
 }
 
 func (s *TaskStateJSON) Marshal() ([]byte, error) {
@@ -200,35 +205,36 @@ func TaskStateToJSON(state *storage.TaskState) *TaskStateJSON {
 	}
 
 	return &TaskStateJSON{
-		ID:                  state.ID,
-		IdempotencyKey:      state.IdempotencyKey,
-		AccountID:           state.AccountID,
-		TaskType:            state.TaskType,
-		Regular:             state.Regular,
-		Description:         state.Description,
-		StorageFolder:       state.StorageFolder,
-		CreatedAt:           state.CreatedAt,
-		CreatedBy:           state.CreatedBy,
-		ModifiedAt:          state.ModifiedAt,
-		GenerationID:        state.GenerationID,
-		Status:              storage.TaskStatusToString(state.Status),
-		ErrorCode:           state.ErrorCode,
-		ErrorMessage:        state.ErrorMessage,
-		ErrorDetails:        state.ErrorDetails,
-		RetriableErrorCount: state.RetriableErrorCount,
-		Request:             requestProto,
-		State:               stateProto,
-		Metadata:            state.Metadata.Vals(),
-		Dependencies:        dependencies,
-		ChangedStateAt:      state.ChangedStateAt,
-		EndedAt:             state.EndedAt,
-		LastHost:            state.LastHost,
-		LastRunner:          state.LastRunner,
-		ZoneID:              state.ZoneID,
-		EstimatedTime:       state.EstimatedTime,
-		InflightDuration:    FormattableDuration{state.InflightDuration},
-		StallingDuration:    FormattableDuration{state.StallingDuration},
-		WaitingDuration:     FormattableDuration{state.WaitingDuration},
-		PanicCount:          state.PanicCount,
+		ID:                        state.ID,
+		IdempotencyKey:            state.IdempotencyKey,
+		AccountID:                 state.AccountID,
+		TaskType:                  state.TaskType,
+		Regular:                   state.Regular,
+		Description:               state.Description,
+		StorageFolder:             state.StorageFolder,
+		CreatedAt:                 state.CreatedAt,
+		CreatedBy:                 state.CreatedBy,
+		ModifiedAt:                state.ModifiedAt,
+		GenerationID:              state.GenerationID,
+		Status:                    storage.TaskStatusToString(state.Status),
+		ErrorCode:                 state.ErrorCode,
+		ErrorMessage:              state.ErrorMessage,
+		ErrorDetails:              state.ErrorDetails,
+		RetriableErrorCount:       state.RetriableErrorCount,
+		Request:                   requestProto,
+		State:                     stateProto,
+		Metadata:                  state.Metadata.Vals(),
+		Dependencies:              dependencies,
+		ChangedStateAt:            state.ChangedStateAt,
+		EndedAt:                   state.EndedAt,
+		LastHost:                  state.LastHost,
+		LastRunner:                state.LastRunner,
+		ZoneID:                    state.ZoneID,
+		InflightDuration:          FormattableDuration{state.InflightDuration},
+		EstimatedInflightDuration: FormattableDuration{state.EstimatedInflightDuration},
+		StallingDuration:          FormattableDuration{state.StallingDuration},
+		EstimatedStallingDuration: FormattableDuration{state.EstimatedStallingDuration},
+		WaitingDuration:           FormattableDuration{state.WaitingDuration},
+		PanicCount:                state.PanicCount,
 	}
 }

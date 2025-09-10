@@ -257,6 +257,7 @@ func (f *factory) initClients(
 			sessionRediscoverPeriodMin:    sessionRediscoverPeriodMin,
 			sessionRediscoverPeriodMax:    sessionRediscoverPeriodMax,
 			serverRequestTimeout:          requestTimeout,
+			zoneID:                        zoneID,
 		}
 	}
 

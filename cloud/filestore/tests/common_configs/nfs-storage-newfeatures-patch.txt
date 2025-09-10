@@ -21,4 +21,6 @@ CalculateCleanupScoreBasedOnUsedBlocksCount: true
 AsyncDestroyHandleEnabled: true
 LazyXAttrsEnabled: true
 ServerWriteBackCacheEnabled: true
+MaxBackground: 16384
+MaxFuseLoopThreads: 4
 StrictFileSystemSizeEnforcementEnabled: true

@@ -244,6 +244,12 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+static ui32 CalcBackendVhostQueuesCount(const TVFSConfig& vfsConfig)
+{
+    // HIPRIO + number of requests queues
+    return Max(2u, vfsConfig.GetVhostQueuesCount());
+}
+
 class TArgs
 {
 private:
@@ -263,9 +269,9 @@ public:
             AddArg("--socket-path=" + path);
         }
 
-        // HIPRIO + number of requests queues
-        ui32 backendQueues = Max(2u, config.GetVhostQueuesCount());
-        AddArg("--num-backend-queues=" + ToString(backendQueues));
+        AddArg(
+            "--num-backend-queues=" +
+            ToString(CalcBackendVhostQueuesCount(config)));
         AddArg("--num-frontend-queues=" + ToString(threadsCount));
 #else
         Y_UNUSED(threadsCount);
@@ -1035,18 +1041,21 @@ private:
                 Config->GetClientId().Quote().c_str(),
                 SessionState.empty() ? "new" : "existing");
 
+            ui32 fuseLoopThreadCount =
+                Min(FileSystemConfig->GetMaxFuseLoopThreads(),
+                    CalcBackendVhostQueuesCount(*Config));
+            if (fuseLoopThreadCount == 0) {
+                fuseLoopThreadCount = 1;
+            }
+
             TStringStream filestoreConfigDump;
             FileSystemConfig->Dump(filestoreConfigDump);
             STORAGE_INFO(
-                "[f:%s][c:%s] new session filestore config: %s",
+                "[f:%s][c:%s] new session (%d threads) filestore config: %s",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
+                fuseLoopThreadCount,
                 filestoreConfigDump.Str().Quote().c_str());
-
-            ui32 fuseLoopThreadCount = FileSystemConfig->GetMaxFuseLoopThreads();
-            if (Config->GetVhostQueuesCount()) {
-                fuseLoopThreadCount = Min(fuseLoopThreadCount, Config->GetVhostQueuesCount());
-            }
 
             FuseLoop = std::make_unique<TFuseLoop>(
                 Log,

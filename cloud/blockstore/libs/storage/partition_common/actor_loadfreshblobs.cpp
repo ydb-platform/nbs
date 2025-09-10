@@ -190,11 +190,12 @@ void TLoadFreshBlobsActor::HandleRangeResult(
 
     auto error = MakeKikimrError(msg->Status, msg->ErrorReason);
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Fresh blobs range request failed: %u reason: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%lu] Fresh blobs range request failed: %s",
             TabletInfo->TabletID,
-            error.GetCode(),
-            error.GetMessage().Quote().c_str());
+            FormatError(error).c_str());
 
         Error = std::move(error);
     } else {

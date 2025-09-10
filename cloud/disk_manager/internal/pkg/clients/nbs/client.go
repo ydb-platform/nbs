@@ -502,6 +502,7 @@ type client struct {
 	sessionRediscoverPeriodMin    time.Duration
 	sessionRediscoverPeriodMax    time.Duration
 	serverRequestTimeout          time.Duration
+	zoneID                        string
 }
 
 func (c *client) updateVolume(
@@ -1705,6 +1706,10 @@ func (c *client) FinishFillDisk(
 			response,
 		)
 	})
+}
+
+func (c *client) ZoneID() string {
+	return c.zoneID
 }
 
 ////////////////////////////////////////////////////////////////////////////////

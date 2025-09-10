@@ -43,6 +43,8 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
+    void SetVolumePreemptionType(NProto::EVolumePreemptionType volumePreemptionType);
+
     void Register(NKikimr::TControlBoard& controlBoard);
 
     static TStorageConfigPtr Merge(
@@ -717,6 +719,10 @@ public:
 
     [[nodiscard]] bool
     GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() const;
+
+    [[nodiscard]] TDuration GetTrimFreshLogTimeout() const;
+
+    [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
 };
 
 ui64 GetAllocationUnit(

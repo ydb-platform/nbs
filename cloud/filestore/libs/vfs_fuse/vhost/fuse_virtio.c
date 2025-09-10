@@ -174,11 +174,6 @@ static bool is_ignored_request(struct fuse_in_header* in)
     return in->opcode == FUSE_INTERRUPT;
 }
 
-static bool is_oneway_request(struct fuse_in_header* in)
-{
-    return in->opcode == FUSE_FORGET || in->opcode == FUSE_BATCH_FORGET;
-}
-
 struct iov_iter {
     struct iovec *iov;
     size_t count;
@@ -285,16 +280,6 @@ static int process_request(struct fuse_session* se, struct vhd_io* io)
         vhd_free(pbufv);
     }
 
-    /*
-     * These requests don't assume response and thus don't call
-     * virtio_send_msg.  Be sure to complete and free the request and recycle
-     * the virtio descriptors.
-     * FIXME: wire completion into fuse_reply_none
-     */
-    if (is_oneway_request(&in_hdr)) {
-        complete_request(req, 0);
-    }
-
     return 0;
 }
 
@@ -382,6 +367,15 @@ int fuse_cancel_request(
             break;
     }
     return 0;
+}
+
+void fuse_reply_none(fuse_req_t req)
+{
+    struct fuse_chan* ch = req->ch;
+    struct fuse_virtio_request* vhd_req = VIRTIO_REQ_FROM_CHAN(ch);
+    complete_request(vhd_req, 0);
+
+    fuse_free_req(req);
 }
 
 int virtio_session_mount(struct fuse_session* se)

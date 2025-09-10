@@ -38,7 +38,8 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
         ui32 blockSize,
         EStorageAccessMode mode,
         TDuration longRunningThreshold,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        bool enableDataIntegrityValidation)
     : RequestInfo(std::move(requestInfo))
     , OriginalRequest(std::move(originalRequest))
     , VolumeActorId(volumeActorId)
@@ -49,6 +50,7 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
     , BlockSize(blockSize)
     , LongRunningThreshold(longRunningThreshold)
     , LogTitle(std::move(logTitle))
+    , EnableDataIntegrityValidation(enableDataIntegrityValidation)
     , Mode(mode)
     , BlockMarks(MakeUsedBlockMarks(
           usedBlocks,
@@ -62,13 +64,15 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
                 OriginalRequest.GetStartIndex(),
                 OriginalRequest.GetBlocksCount()),
             OriginalRequest.Sglist,
-            blockSize);
+            blockSize,
+            enableDataIntegrityValidation);
     } else {
         ReadHandler = CreateReadBlocksHandler(
             TBlockRange64::WithLength(
                 OriginalRequest.GetStartIndex(),
                 OriginalRequest.GetBlocksCount()),
-            blockSize);
+            blockSize,
+            enableDataIntegrityValidation);
     }
 }
 

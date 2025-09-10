@@ -91,24 +91,28 @@ ui64 GetCommitId(const NProto::TReadBlocksLocalRequest& request)
 IReadBlocksHandlerPtr CreateReadHandler(
     const TBlockRange64& readRange,
     const NProto::TReadBlocksRequest& request,
-    ui32 blockSize)
+    ui32 blockSize,
+    bool enableDataIntegrityValidation)
 {
     Y_UNUSED(request);
     return NStorage::CreateReadBlocksHandler(
         readRange,
-        blockSize
+        blockSize,
+        enableDataIntegrityValidation
     );
 }
 
 IReadBlocksHandlerPtr CreateReadHandler(
     const TBlockRange64& readRange,
     const NProto::TReadBlocksLocalRequest& request,
-    ui32 blockSize)
+    ui32 blockSize,
+    bool enableDataIntegrityValidation)
 {
     return NStorage::CreateReadBlocksHandler(
         readRange,
         request.Sglist,
-        blockSize
+        blockSize,
+        enableDataIntegrityValidation
     );
 }
 
@@ -941,7 +945,8 @@ void TPartitionActor::HandleReadBlocksRequest(
     auto readHandler = CreateReadHandler(
         readRange,
         msg->Record,
-        State->GetBlockSize());
+        State->GetBlockSize(),
+        Config->GetEnableDataIntegrityValidationForYdbBasedDisks());
 
     ReadBlocks(
         ctx,

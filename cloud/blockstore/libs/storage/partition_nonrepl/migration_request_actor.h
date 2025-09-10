@@ -251,7 +251,7 @@ void TMigrationRequestActor<TMethod>::HandleUndelivery(
         TBlockStoreComponents::PARTITION_WORKER,
         "[%s] %s",
         DiskId.c_str(),
-        error.GetMessage().c_str());
+        FormatError(error).c_str());
 
     TResponseProto response;
     *response.MutableError() = std::move(error);

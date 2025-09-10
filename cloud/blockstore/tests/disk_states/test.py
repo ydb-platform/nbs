@@ -168,7 +168,7 @@ def test_statuses(nbs, agent_ids, disk_agent_configurators):
 
     client.wait_for_devices_to_be_cleared()
 
-    states = client.list_disks_states()
+    states = client.list_disk_states()
     assert len(states) == 0
 
     # create volumes
@@ -179,7 +179,7 @@ def test_statuses(nbs, agent_ids, disk_agent_configurators):
         blocks_count=3*DEVICE_SIZE//4096,
         storage_media_kind=STORAGE_MEDIA_SSD_MIRROR3)
 
-    states = client.list_disks_states()
+    states = client.list_disk_states()
     assert len(states) == 1
 
     m3 = states[0]
@@ -197,7 +197,7 @@ def test_statuses(nbs, agent_ids, disk_agent_configurators):
             agent_ids=[agent_id])
 
     def get_states():
-        states = client.list_disks_states()
+        states = client.list_disk_states()
         assert len(states) == (len(agent_ids) + 1)
         states.sort(key=lambda s: s.DiskId)
         return states

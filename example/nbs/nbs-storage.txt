@@ -61,3 +61,15 @@ TabletBootInfoBackupFilePath: "backups.1/nbs-tablet-boot-info-backup.txt"
 
 # Volume Throttling Manager
 VolumeThrottlingManagerEnabled: true
+
+# YDB Config Dispatcher Support
+ConfigsDispatcherServiceEnabled: true
+ConfigDispatcherSettings {
+  AllowList {
+    Names: "BlockstoreConfigItem"
+  }
+  AdditionalNodeLabels {
+    Key: "nbs"
+    Value: "true"
+  }
+}
