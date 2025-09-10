@@ -1,6 +1,7 @@
 import logging
 import os
 import pytest
+import uuid
 
 from cloud.blockstore.config.client_pb2 import TClientAppConfig, TClientConfig
 from cloud.blockstore.config.disk_pb2 import DEVICE_ERASE_METHOD_NONE, TDiskAgentConfig
@@ -15,6 +16,7 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, \
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonreplicated, \
     create_devices, setup_disk_registry_config, \
     enable_writable_state, make_agent_node_type, make_agent_id, AgentInfo, DeviceInfo
+from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
 from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
@@ -202,6 +204,7 @@ def __process_config(config_path, devices_per_agent):
 
 def __run_test(test_case, use_rdma):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    endpoint_storage_dir = yatest_common.output_path() + '/endpoints-' + str(uuid.uuid4())
 
     configurator = KikimrConfigGenerator(
         erasure=None,
@@ -261,6 +264,8 @@ def __run_test(test_case, use_rdma):
         server_app_config.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
         server_app_config.ServerConfig.UseFakeRdmaClient = use_rdma
         server_app_config.ServerConfig.RdmaClientEnabled = use_rdma
+        server_app_config.ServerConfig.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
+        server_app_config.ServerConfig.EndpointStorageDir = endpoint_storage_dir
         server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
         storage = TStorageServiceConfig()
@@ -300,6 +305,7 @@ def __run_test(test_case, use_rdma):
         client_config = TClientConfig()
         client_config.RetryTimeout = 20000  # 20 sec
         client_config.RetryTimeoutIncrement = 100  # 100 msec
+        client_config.ConnectionErrorMaxRetryTimeout = 500  # 500 msec
         client_app_config = TClientAppConfig()
         client_app_config.ClientConfig.CopyFrom(client_config)
 
@@ -368,6 +374,7 @@ def __run_test(test_case, use_rdma):
             nbs.mon_port,
             nbs_log_path=nbs.stderr_file_name,
             client_config=client_config,
+            endpoint_storage_dir=endpoint_storage_dir,
             env_processes=disk_agents + [nbs],
         )
     finally:
