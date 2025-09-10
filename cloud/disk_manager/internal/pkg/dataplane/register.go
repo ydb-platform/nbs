@@ -99,9 +99,9 @@ func RegisterForExecution(
 	if migrationDstStorage != nil {
 		err = taskRegistry.RegisterForExecution("dataplane.MigrateSnapshotTask", func() tasks.Task {
 			return &migrateSnapshotTask{
-				config:     config,
 				srcStorage: storage,
 				dstStorage: migrationDstStorage,
+				config:     config,
 				useS3:      useS3InMigration,
 			}
 		})
@@ -111,10 +111,10 @@ func RegisterForExecution(
 
 		err = taskRegistry.RegisterForExecution("dataplane.MigrateSnapshotDatabaseTask", func() tasks.Task {
 			return &migrateSnapshotDatabaseTask{
-				config:     config,
 				registry:   metricsRegistry,
 				srcStorage: storage,
 				dstStorage: migrationDstStorage,
+				config:     config,
 				scheduler:  taskScheduler,
 			}
 		})
@@ -268,8 +268,8 @@ func RegisterForExecution(
 		"dataplane.DeleteDiskFromIncremental",
 		func() tasks.Task {
 			return &deleteDiskFromIncrementalTask{
-				config:  config,
 				storage: storage,
+				config:  config,
 			}
 		},
 	)
