@@ -397,6 +397,14 @@ func (c *ClientMock) ZoneID() string {
 	return args.String(0)
 }
 
+func (c *ClientMock) GetClusterCapacity(
+	ctx context.Context,
+) ([]nbs.ClusterCapacityInfo, error) {
+
+	args := c.Called(ctx)
+	return args.Get(0).([]nbs.ClusterCapacityInfo), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewClientMock() *ClientMock {
