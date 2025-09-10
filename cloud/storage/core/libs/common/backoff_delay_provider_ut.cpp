@@ -93,7 +93,6 @@ Y_UNIT_TEST_SUITE(TBackoffDelayProvider)
             TDuration::Seconds(2),
             TDuration::MilliSeconds(200));
 
-        // Начинаем с initialDelay
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MilliSeconds(50),
             provider.GetDelay());
