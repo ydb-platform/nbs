@@ -51,13 +51,22 @@ struct TFixture: public NUnitTest::TBaseFixture
     std::atomic<ui64> Acquires = 0;
     std::unique_ptr<TTestActorRuntime> Runtime;
 
-    void SetupTest(TDuration agentRequestTimeout = 1s)
+    struct TOptions
+    {
+        TDuration AgentRequestTimeout = 1s;
+        bool NonReplicatedVolumeAcquireDiskAfterAddClientEnabled = false;
+    };
+
+    void SetupTest(TOptions options)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
         config.SetNonReplicatedVolumeDirectAcquireEnabled(true);
-        config.SetAgentRequestTimeout(agentRequestTimeout.MilliSeconds());
+        config.SetAgentRequestTimeout(
+            options.AgentRequestTimeout.MilliSeconds());
         config.SetClientRemountPeriod(2000);
+        config.SetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled(
+            options.NonReplicatedVolumeAcquireDiskAfterAddClientEnabled);
         State = MakeIntrusive<TDiskRegistryState>();
         auto agentState = std::make_shared<TDiskAgentState>();
         agentState->AcquireObserveFunction = [this](auto&, const auto&)
@@ -108,7 +117,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 {
     Y_UNIT_TEST_F(ShouldPassAllParamsInAcquireDevicesRequest, TFixture)
     {
-        SetupTest();
+        SetupTest({});
 
         auto volume = GetVolumeClient();
 
@@ -176,7 +185,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
     Y_UNIT_TEST_F(ShouldPassAllParamsInReleaseDevicesRequest, TFixture)
     {
-        SetupTest();
+        SetupTest({});
 
         auto volume = GetVolumeClient();
 
@@ -238,7 +247,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
     Y_UNIT_TEST_F(ShouldSendAcquireReleaseRequestsDirectlyToDiskAgent, TFixture)
     {
-        SetupTest();
+        SetupTest({});
 
         TVolumeClient writerClient = GetVolumeClient();
         auto readerClient1 = GetVolumeClient();
@@ -352,39 +361,68 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
         UNIT_ASSERT_VALUES_EQUAL(releaseRequestsToDiskRegistry, 0);
     }
 
-    Y_UNIT_TEST_F(ShouldRejectTimedoutAcquireRequests, TFixture)
+    void DoShouldRejectTimedoutAcquireRequests(
+        TFixture & fixture,
+        bool enableAcquireAfterTransaction)
     {
-        SetupTest(100ms);
+        fixture.SetupTest(
+            {.AgentRequestTimeout = 100ms,
+             .NonReplicatedVolumeAcquireDiskAfterAddClientEnabled =
+                 enableAcquireAfterTransaction});
 
-        auto writerClient = GetVolumeClient();
+        auto writerClient = fixture.GetVolumeClient();
 
-        std::unique_ptr<IEventHandle> stollenResponse;
-        Runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        auto dropAcquireReleaseEvents = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvAcquireDevicesResponse ||
+                event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvReleaseDevicesResponse)
             {
-                if (event->GetTypeRewrite() ==
-                    TEvDiskAgent::EvAcquireDevicesResponse)
-                {
-                    stollenResponse.reset(event.Release());
-                    return TTestActorRuntimeBase::EEventAction::DROP;
-                }
+                return TTestActorRuntimeBase::EEventAction::DROP;
+            }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        fixture.Runtime->SetObserverFunc(dropAcquireReleaseEvents);
 
         auto writer = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
             0);
 
-        writerClient.SendAddClientRequest(writer);
-        auto response = writerClient.RecvAddClientResponse();
-        UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_TIMEOUT);
+        for (int i = 0; i < 3; ++i) {
+            writerClient.SendAddClientRequest(writer);
+            auto response = writerClient.RecvAddClientResponse();
+            UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_TIMEOUT);
+        }
+
+        fixture.Runtime->SetObserverFunc(
+            TTestActorRuntime::DefaultObserverFunc);
+        writerClient.AddClient(writer);
+
+        fixture.Runtime->SetObserverFunc(dropAcquireReleaseEvents);
+
+        for (int i = 0; i < 3; ++i) {
+            writerClient.SendRemoveClientRequest(writer.GetClientId());
+            auto response = writerClient.RecvRemoveClientResponse();
+            UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_TIMEOUT);
+        }
+
+        fixture.Runtime->SetObserverFunc(
+            TTestActorRuntime::DefaultObserverFunc);
+        writerClient.RemoveClient(writer.GetClientId());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectTimedoutAcquireRequests, TFixture)
+    {
+        DoShouldRejectTimedoutAcquireRequests(*this, false);
+        DoShouldRejectTimedoutAcquireRequests(*this, true);
     }
 
     Y_UNIT_TEST_F(ShouldPassErrorsFromDiskAgent, TFixture)
     {
-        SetupTest();
+        SetupTest({});
 
         auto writerClient = GetVolumeClient();
 
@@ -424,7 +462,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
     Y_UNIT_TEST_F(ShouldMuteErrorsWithMuteIoErrors, TFixture)
     {
-        SetupTest();
+        SetupTest({});
 
         auto writerClient = GetVolumeClient();
 
@@ -471,7 +509,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
     Y_UNIT_TEST_F(ShouldIgnoreTimeoutIfMuteIoErrorsFlagIsSet, TFixture)
     {
-        SetupTest(100ms);
+        SetupTest({.AgentRequestTimeout = 100ms});
 
         auto writerClient = GetVolumeClient();
 
@@ -515,7 +553,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
     Y_UNIT_TEST_F(ShouldHandleRequestsUndelivery, TFixture)
     {
-        SetupTest();
+        SetupTest({});
 
         auto writerClient = GetVolumeClient();
 
@@ -542,7 +580,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
     Y_UNIT_TEST_F(ShouldFilterUnavailableDevicesDuringAcquire, TFixture)
     {
-        SetupTest();
+        SetupTest({});
 
         auto volume = GetVolumeClient();
 
@@ -613,7 +651,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
     Y_UNIT_TEST_F(ShouldMountVolumeWithOnlyUnavailableDevices, TFixture)
     {
-        SetupTest();
+        SetupTest({});
 
         auto volume = GetVolumeClient();
 
@@ -642,7 +680,7 @@ Y_UNIT_TEST_SUITE(TVolumeSessionTest)
 
     Y_UNIT_TEST_F(ShouldAcquireDevicesAfterReboot, TFixture)
     {
-        SetupTest();
+        SetupTest({});
 
         auto writerClient1 = GetVolumeClient();
 

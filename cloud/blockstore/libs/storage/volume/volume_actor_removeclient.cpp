@@ -270,8 +270,7 @@ void TVolumeActor::CompleteRemoveClient(
     const bool needToReleaseDevices =
         State->IsDiskRegistryMediaKind() &&
         Config->GetAcquireNonReplicatedDevices() &&
-        Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() &&
-        args.Error.GetCode() == S_OK;
+        Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled();
 
     Y_DEFER
     {

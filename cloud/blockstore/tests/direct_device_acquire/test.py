@@ -213,6 +213,10 @@ def wait_for_all_volumes_to_be_notified(client, timeout=60):
         time.sleep(1)
 
 
+@pytest.mark.parametrize("nbs", [
+    ({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}),
+    ({})
+], indirect=["nbs"])
 def test_should_mount_volume_with_unknown_devices(
         nbs_with_dr,
         nbs,
@@ -299,6 +303,10 @@ def test_should_mount_volume_with_unknown_devices(
     session.unmount_volume()
 
 
+@pytest.mark.parametrize("nbs", [
+    ({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}),
+    ({})
+], indirect=["nbs"])
 def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_configurators):
 
     logger = logging.getLogger("client")
@@ -358,6 +366,10 @@ def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_
 
 @pytest.mark.parametrize("should_break_device", [True, False])
 @pytest.mark.parametrize("nbs_with_dr", [{"NonReplicatedAgentTimeout": 6000}], indirect=["nbs_with_dr"])
+@pytest.mark.parametrize("nbs", [
+    ({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}),
+    ({})
+], indirect=["nbs"])
 def test_should_mount_volume_with_unavailable_agents(
         nbs_with_dr,
         nbs,
@@ -515,6 +527,10 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
     assert not Path(another_socket.name).exists()
 
 
+@pytest.mark.parametrize("nbs", [
+    ({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}),
+    ({})
+], indirect=["nbs"])
 def test_should_stop_not_restored_endpoint_when_volume_was_deleted(nbs_with_dr,
                                                                    nbs,
                                                                    agent_ids,
