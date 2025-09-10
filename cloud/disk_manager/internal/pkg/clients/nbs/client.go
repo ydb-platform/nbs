@@ -151,6 +151,24 @@ func isLocalDiskMediaKind(mediaKind core_protos.EStorageMediaKind) bool {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func fromClusterCapacityInfo(
+	info *private_protos.TClusterCapacityInfo,
+) (ClusterCapacityInfo, error) {
+
+	diskKind, err := getDiskKind(info.StorageMediaKind)
+	if err != nil {
+		return ClusterCapacityInfo{}, err
+	}
+
+	return ClusterCapacityInfo{
+		DiskKind:   diskKind,
+		FreeBytes:  info.FreeBytes,
+		TotalBytes: info.TotalBytes,
+	}, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func toEncryptionMode(
 	mode types.EncryptionMode,
 ) (protos.EEncryptionMode, error) {
@@ -1706,6 +1724,36 @@ func (c *client) FinishFillDisk(
 			response,
 		)
 	})
+}
+
+func (c *client) GetClusterCapacity(
+	ctx context.Context,
+) (infos []ClusterCapacityInfo, err error) {
+
+	defer c.metrics.StatRequest("GetClusterCapacity")(&err)
+
+	response := &private_protos.TGetClusterCapacityResponse{}
+
+	err = c.executeAction(
+		ctx,
+		"GetClusterCapacity",
+		&private_protos.TGetClusterCapacityRequest{},
+		response,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, capacity := range response.Capacity {
+		info, err := fromClusterCapacityInfo(capacity)
+		if err != nil {
+			return nil, err
+		}
+
+		infos = append(infos, info)
+	}
+
+	return infos, err
 }
 
 func (c *client) ZoneID() string {

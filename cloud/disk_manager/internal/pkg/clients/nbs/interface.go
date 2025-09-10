@@ -121,6 +121,12 @@ type DiskContentInfo struct {
 	BlockCrc32s []uint32
 }
 
+type ClusterCapacityInfo struct {
+	DiskKind   types.DiskKind
+	FreeBytes  uint64
+	TotalBytes uint64
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type Client interface {
@@ -314,6 +320,8 @@ type Client interface {
 	) error
 
 	ZoneID() string
+
+	GetClusterCapacity(ctx context.Context) ([]ClusterCapacityInfo, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
