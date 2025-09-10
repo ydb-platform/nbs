@@ -257,11 +257,7 @@ func (t *createSnapshotFromDiskTask) run(
 
 	incremental := len(t.state.BaseSnapshotId) != 0
 
-	err = t.setEstimate(
-		ctx,
-		execCtx,
-		incremental,
-	)
+	err = t.setEstimate(ctx, execCtx)
 	if err != nil {
 		return err
 	}
@@ -421,7 +417,6 @@ func (t *createSnapshotFromDiskTask) run(
 func (t *createSnapshotFromDiskTask) setEstimate(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	incremental bool,
 ) error {
 
 	nbsClient, err := t.getNbsClient(ctx)
