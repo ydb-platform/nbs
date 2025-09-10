@@ -211,14 +211,11 @@ void VolumeConfigToVolume(
     volume.SetIsSystem(volumeConfig.GetIsSystem());
     volume.SetIsFillFinished(volumeConfig.GetIsFillFinished());
 
-    TStringBuf sit(volumeConfig.GetTagsStr());
-    TStringBuf tag;
-    while (sit.NextTok(',', tag)) {
-        if (tag == "use-fastpath") {
-            volume.SetIsFastPathEnabled(true);
-        }
-    }
+    const auto tags = ParseTags(volumeConfig.GetTagsStr());
 
+    if (tags.contains("use-fastpath")) {
+        volume.SetIsFastPathEnabled(true);
+    }
 }
 
 void VolumeConfigToVolumeModel(
@@ -540,6 +537,25 @@ NProto::TVolumePerformanceProfile VolumeConfigToVolumePerformanceProfile(
         volumeConfig,
         performanceProfile);
     return performanceProfile;
+}
+
+TMap<TString, TString> ParseTags(const TString& tags)
+{
+    TMap<TString, TString> result;
+
+    TStringBuf tok;
+    TStringBuf sit(tags);
+    while (sit.NextTok(',', tok)) {
+        TStringBuf key;
+        TStringBuf value;
+        if (tok.TrySplit('=', key, value)) {
+            result.insert({TString(key), TString(value)});
+        } else {
+            result.insert({TString(tok), ""});
+        }
+    }
+
+    return result;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
