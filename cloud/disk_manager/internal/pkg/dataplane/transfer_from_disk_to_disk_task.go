@@ -46,6 +46,11 @@ func (t *transferFromDiskToDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	err := t.setEstimate(ctx, execCtx)
+	if err != nil {
+		return err
+	}
+
 	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
 	if err != nil {
 		return err
@@ -78,11 +83,6 @@ func (t *transferFromDiskToDiskTask) Run(
 	if err != nil {
 		return err
 	}
-
-	execCtx.SetEstimatedInflightDuration(performance.Estimate(
-		uint64(chunkCount)*chunkSize,
-		t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
-	))
 
 	t.state.ChunkCount = chunkCount
 
@@ -153,6 +153,32 @@ func (t *transferFromDiskToDiskTask) GetResponse() proto.Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (t *transferFromDiskToDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	if err != nil {
+		return err
+	}
+
+	stats, err := client.Stat(
+		ctx,
+		t.request.SrcDisk.DiskId,
+	)
+	if err != nil {
+		return err
+	}
+
+	execCtx.SetEstimatedInflightDuration(performance.Estimate(
+		stats.StorageSize,
+		t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
+	))
+
+	return nil
+}
 
 func (t *transferFromDiskToDiskTask) saveProgress(
 	ctx context.Context,

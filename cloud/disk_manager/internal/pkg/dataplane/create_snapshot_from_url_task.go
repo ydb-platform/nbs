@@ -88,12 +88,12 @@ func (t *createSnapshotFromURLTask) Run(
 			return err
 		}
 
+		t.state.ChunkCount = chunkCount
+
 		execCtx.SetEstimatedInflightDuration(performance.Estimate(
 			uint64(chunkCount)*chunkSize,
 			t.performanceConfig.GetCreateSnapshotFromURLBandwidthMiBs(),
 		))
-
-		t.state.ChunkCount = chunkCount
 
 		err = execCtx.SaveState(ctx)
 		if err != nil {
