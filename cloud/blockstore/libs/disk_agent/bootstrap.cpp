@@ -509,8 +509,12 @@ bool TBootstrap::InitKikimrService()
     STORAGE_INFO("StatsFetcher initialized");
 
     if (Configs->StorageConfig->GetBlockDigestsEnabled()) {
-        BlockDigestGenerator = CreateExt4BlockDigestGenerator(
-            Configs->StorageConfig->GetDigestedBlocksPercentage());
+        if (Configs->StorageConfig->GetUseTestBlockDigestGenerator()) {
+            BlockDigestGenerator = CreateTestBlockDigestGenerator();
+        } else {
+            BlockDigestGenerator = CreateExt4BlockDigestGenerator(
+                Configs->StorageConfig->GetDigestedBlocksPercentage());
+        }
     } else {
         BlockDigestGenerator = CreateBlockDigestGeneratorStub();
     }
