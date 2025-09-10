@@ -54,12 +54,6 @@ void TLoadFreshBlobsActor::DiscoverBlobs(const TActorContext& ctx)
     const auto tabletId = TabletInfo->TabletID;
 
     auto [barrierGen, barrierStep] = ParseCommitId(TrimFreshLogToCommitId);
-    if (barrierStep == Max<ui32>()) {
-        barrierStep = 0;
-        ++barrierGen;
-    } else {
-        ++barrierStep;
-    }
 
     for (ui32 channel: FreshChannels) {
         LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
