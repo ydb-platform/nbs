@@ -25,6 +25,7 @@
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
@@ -533,7 +534,10 @@ private:
     // TxComplete and blocks got trimmed.
     ui64 TrimFreshLogToCommitId = 0;
     ui64 LastTrimFreshLogToCommitId = 0;
-    TDuration TrimFreshLogBackoffDelay;
+    TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
+        TDuration::Zero(),
+        TDuration::Seconds(5),
+        TDuration::MilliSeconds(100)};
 
 public:
     EOperationStatus GetTrimFreshLogStatus() const
@@ -548,20 +552,17 @@ public:
 
     TDuration GetTrimFreshLogBackoffDelay()
     {
-        return TrimFreshLogBackoffDelay;
+        return TrimFreshLogBackoffDelayProvider.GetDelay();
     }
 
     void RegisterTrimFreshLogError()
     {
-        TrimFreshLogBackoffDelay = Min(
-            TDuration::Seconds(5),
-            Max(TDuration::MilliSeconds(100), TrimFreshLogBackoffDelay * 2)
-        );
+        TrimFreshLogBackoffDelayProvider.IncreaseDelay();
     }
 
     void RegisterTrimFreshLogSuccess()
     {
-        TrimFreshLogBackoffDelay = {};
+        TrimFreshLogBackoffDelayProvider.Reset();
     }
 
     ui64 GetTrimFreshLogToCommitId() const

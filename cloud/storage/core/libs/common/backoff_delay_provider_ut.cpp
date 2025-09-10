@@ -60,6 +60,82 @@ Y_UNIT_TEST_SUITE(TBackoffDelayProvider)
             TDuration::Seconds(10),
             provider.GetDelayAndIncrease());
     }
+
+    Y_UNIT_TEST(FirstStepExampleUsage)
+    {
+        TBackoffDelayProvider provider(
+            TDuration::Zero(),
+            TDuration::Seconds(5),
+            TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), provider.GetDelay());
+
+        provider.IncreaseDelay();
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(100),
+            provider.GetDelay());
+
+        provider.IncreaseDelay();
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(200),
+            provider.GetDelay());
+
+        provider.IncreaseDelay();
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(400),
+            provider.GetDelay());
+    }
+
+    Y_UNIT_TEST(NonZeroInitialDelayWithCustomFirstStep)
+    {
+        TBackoffDelayProvider provider(
+            TDuration::MilliSeconds(50),
+            TDuration::Seconds(2),
+            TDuration::MilliSeconds(200));
+
+        // Начинаем с initialDelay
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(50),
+            provider.GetDelay());
+
+        provider.IncreaseDelay();
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(100),
+            provider.GetDelay());
+
+        provider.IncreaseDelay();
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(200),
+            provider.GetDelay());
+
+        provider.Reset();
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(50),
+            provider.GetDelay());
+    }
+
+    Y_UNIT_TEST(MaxDelayConstraintWithCustomFirstStep)
+    {
+        TBackoffDelayProvider provider(
+            TDuration::Zero(),
+            TDuration::MilliSeconds(150),
+            TDuration::MilliSeconds(100));
+
+        provider.IncreaseDelay();
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(100),
+            provider.GetDelay());
+
+        provider.IncreaseDelay();
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(150),
+            provider.GetDelay());
+
+        provider.IncreaseDelay();
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(150),
+            provider.GetDelay());
+    }
 }
 
 }   // namespace NCloud
