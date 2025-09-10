@@ -336,6 +336,8 @@ public:
 
     ui32 GetMaxBackground() const;
     ui32 GetMaxFuseLoopThreads() const;
+
+    bool GetStrictFileSystemSizeEnforcementEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

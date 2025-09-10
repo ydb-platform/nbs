@@ -164,6 +164,8 @@ void TIndexTabletActor::HandleUpdateConfig(
     newConfig.SetShardAllocationUnit(oldConfig.GetShardAllocationUnit());
     newConfig.SetDirectoryCreationInShardsEnabled(
         oldConfig.GetDirectoryCreationInShardsEnabled());
+    newConfig.SetStrictFileSystemSizeEnforcementEnabled(
+        oldConfig.GetStrictFileSystemSizeEnforcementEnabled());
 
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
@@ -348,6 +350,8 @@ void TIndexTabletActor::ExecuteTx_ConfigureShards(
         std::move(*args.Request.MutableShardFileSystemIds());
     config.SetDirectoryCreationInShardsEnabled(
         args.Request.GetDirectoryCreationInShardsEnabled());
+    config.SetStrictFileSystemSizeEnforcementEnabled(
+        args.Request.GetStrictFileSystemSizeEnforcementEnabled());
 
     LOG_INFO(
         ctx,
@@ -447,6 +451,8 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
         std::move(*args.Request.MutableShardFileSystemIds());
     config.SetDirectoryCreationInShardsEnabled(
         args.Request.GetDirectoryCreationInShardsEnabled());
+    config.SetStrictFileSystemSizeEnforcementEnabled(
+        args.Request.GetStrictFileSystemSizeEnforcementEnabled());
 
     UpdateConfig(db, *Config, config, GetThrottlingConfig());
 }
