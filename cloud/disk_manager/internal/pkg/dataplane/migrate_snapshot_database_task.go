@@ -76,10 +76,10 @@ func (m *snapshotToTasksMapping) snapshotIDs() []string {
 ////////////////////////////////////////////////////////////////////////////////
 
 type migrateSnapshotDatabaseTask struct {
-	config     *config.DataplaneConfig
 	registry   metrics.Registry
 	srcStorage storage.Storage
 	dstStorage storage.Storage
+	config     *config.DataplaneConfig
 	scheduler  tasks.Scheduler
 	state      *dataplane_protos.MigrateSnapshotDatabaseTaskState
 }
