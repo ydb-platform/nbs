@@ -58,7 +58,7 @@ ui32 InitPartitionRequest(
                      {"range length", stripeInfo.BlockRange.Size()},
                      {"checksum length",
                       proto.GetChecksums(i).GetByteCount() / blockSize},
-                     {"diskId", partition.PartitionConfig.GetDiskId()}});
+                     {"disk id", partition.PartitionConfig.GetDiskId()}});
             }
         }
     }

@@ -65,7 +65,7 @@ NProto::TWriteDeviceBlocksRequest CreateWriteDeviceBlocksRequest(
                  {"request range length", deviceRequest.BlockRange.Size()},
                  {"checksum length",
                   checksum.GetByteCount() / partConfig->GetBlockSize()},
-                 {"diskId", partConfig->GetName().Quote()}});
+                 {"disk id", partConfig->GetName().Quote()}});
         }
     }
 
