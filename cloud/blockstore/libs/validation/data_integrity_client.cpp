@@ -208,7 +208,7 @@ TDataIntegrityClient::TDataIntegrityClient(
     auto counters = monitoring->GetCounters();
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
     Counters = rootGroup->GetSubgroup("component", "service")
-                   ->GetSubgroup("component", "data_integrity");
+                   ->GetSubgroup("subcomponent", "data_integrity");
     RequestCounters.Register(*Counters);
 }
 
@@ -341,13 +341,13 @@ bool TDataIntegrityClient::HandleRequest(
 
     response =
         Client->WriteBlocks(std::move(callContext), std::move(request))
-            .Subscribe(
+            .Apply(
                 [weakPtr = weak_from_this()](
                     const TFuture<NProto::TWriteBlocksResponse>& response)
                 {
                     auto self = weakPtr.lock();
                     if (!self) {
-                        return;
+                        return response.GetValue();
                     }
 
                     const auto& error = response.GetValue().GetError();
@@ -357,6 +357,8 @@ bool TDataIntegrityClient::HandleRequest(
                     {
                         self->RequestCounters.WriteChecksumMismatch->Inc();
                     }
+
+                    return response.GetValue();
                 });
     return true;
 }
@@ -370,9 +372,10 @@ bool TDataIntegrityClient::HandleRequest(
 
     auto guard = request->Sglist.Acquire();
     if (!guard) {
-        MakeFuture<NProto::TWriteBlocksLocalResponse>(TErrorResponse{MakeError(
-            E_CANCELLED,
-            "failed to acquire sglist in DataIntegrityClient")});
+        response = MakeFuture<NProto::TWriteBlocksLocalResponse>(
+            TErrorResponse{MakeError(
+                E_CANCELLED,
+                "failed to acquire sglist in DataIntegrityClient")});
         return true;
     }
 
@@ -387,13 +390,13 @@ bool TDataIntegrityClient::HandleRequest(
 
     response =
         Client->WriteBlocksLocal(std::move(callContext), std::move(request))
-            .Subscribe(
+            .Apply(
                 [weakPtr = weak_from_this()](
                     const TFuture<NProto::TWriteBlocksLocalResponse>& response)
                 {
                     auto self = weakPtr.lock();
                     if (!self) {
-                        return;
+                        return response.GetValue();
                     }
 
                     const auto& error = response.GetValue().GetError();
@@ -403,6 +406,8 @@ bool TDataIntegrityClient::HandleRequest(
                     {
                         self->RequestCounters.WriteChecksumMismatch->Inc();
                     }
+
+                    return response.GetValue();
                 });
     return true;
 }

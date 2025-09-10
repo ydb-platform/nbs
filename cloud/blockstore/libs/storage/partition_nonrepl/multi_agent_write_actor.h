@@ -224,6 +224,9 @@ void TMultiAgentWriteActor<TMethod>::SendMultiagentWriteRequest(
     rec.BlockSize =
         ReplicasDiscovery[0].DiscoveryResult.PartConfig->GetBlockSize();
     rec.Range = Range;
+    if constexpr (IsExactlyWriteMethod<TMethod>) {
+        rec.MutableChecksums()->CopyFrom(Request.GetChecksums());
+    }
     for (const auto& discovery: ReplicasDiscovery) {
         rec.DevicesAndRanges.push_back(discovery.DiscoveryResult);
     }

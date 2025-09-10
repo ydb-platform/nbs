@@ -424,6 +424,9 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
     localRequest->SetSessionId(request->GetSessionId());
     localRequest->BlocksCount = localBlocksCount;
     localRequest->BlockSize = StorageBlockSize;
+    if (request->ChecksumsSize() > 0) {
+        localRequest->MutableChecksums()->CopyFrom(request->GetChecksums());
+    }
 
     TStorageBuffer buffer;
     TSgList sgList;

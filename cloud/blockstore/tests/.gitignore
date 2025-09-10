@@ -9,6 +9,7 @@ loadtest/local-auth/cloud-blockstore-tests-loadtest-local-auth
 loadtest/local-bsgroup-failure/tests-loadtest-local-bsgroup-failure
 loadtest/local-change-device/blockstore-tests-loadtest-local-change-device
 loadtest/local-checkpoint/cloud-blockstore-tests-loadtest-local-checkpoint
+loadtest/local-data-integrity/cloud-blockstore-tests-loadtest-local-data-integrity
 loadtest/local-discovery/cloud-blockstore-tests-loadtest-local-discovery
 loadtest/local-edgecase/cloud-blockstore-tests-loadtest-local-edgecase
 loadtest/local-emergency/cloud-blockstore-tests-loadtest-local-emergency

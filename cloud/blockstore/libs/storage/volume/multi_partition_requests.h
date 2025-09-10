@@ -144,7 +144,9 @@ private:
             buffers[index - OriginalRange.Start] = std::move(srcBuffers[i]);
         }
 
-        Checksums[requestNo] = std::move(*src.MutableChecksum());;
+        if (src.HasChecksum()) {
+            Checksums[requestNo] = std::move(*src.MutableChecksum());;
+        }
     }
 
     void Merge(

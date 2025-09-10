@@ -319,7 +319,8 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
     TRequestContext sentRequestCtx;
 
     ui64 startBlockIndexOffset = 0;
-    for (auto& r: deviceRequests) {
+    for (size_t i = 0; i < deviceRequests.size(); ++i) {
+        const auto& r = deviceRequests[i];
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
         auto dr = std::make_unique<TDeviceReadRequestContext>();
@@ -328,6 +329,7 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
         dr->StartIndexOffset = startBlockIndexOffset;
         dr->BlockCount = r.DeviceBlockRange.Size();
         dr->DeviceIdx = r.DeviceIdx;
+        dr->RequestIndex = i;
         startBlockIndexOffset += r.DeviceBlockRange.Size();
 
         sentRequestCtx.emplace_back(r.DeviceIdx);

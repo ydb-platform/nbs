@@ -431,8 +431,10 @@ def wait_for_free_bytes(mon_port, pool='default'):
 
 # wait for DA & secure erase of all available devices
 def wait_for_secure_erase(mon_port, pool='default', expectedAgents=1):
-    seen_zero_free_bytes = False
+    if expectedAgents == 0:
+        return
 
+    seen_zero_free_bytes = False
     while True:
         logging.info("Wait for agents ...")
         time.sleep(1)

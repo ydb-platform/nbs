@@ -622,6 +622,9 @@ private:
                     << requestDetails.ClientId << "] read error: "
                     << error.GetMessage() << " (" << error.GetCode() << ")");
         }
+        if (response.HasChecksum()) {
+            proto.MutableChecksum()->CopyFrom(response.GetChecksum());
+        }
 
         size_t bytes;
         ui32 flags = 0;
@@ -692,6 +695,9 @@ private:
             req->MutableBlocks()->AddBuffers(
                 requestData.data(),
                 requestData.length());
+        }
+        if (request.HasChecksum()) {
+            req->MutableChecksums()->Add()->CopyFrom(request.GetChecksum());
         }
 
         const ui32 blockCount = requestData.length() / request.GetBlockSize();
