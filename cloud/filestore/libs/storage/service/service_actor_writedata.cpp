@@ -38,6 +38,7 @@ void CopyBuffers(NProto::TWriteDataRequest& request)
     const auto& zeroCopyBuffers = request.GetZeroCopyBuffers();
     auto* buffer = request.MutableBuffer();
     if (!buffer->empty()) {
+        request.MutableZeroCopyBuffers()->Clear();
         return;
     }
     if (!zeroCopyBuffers.empty()) {
@@ -55,6 +56,8 @@ void CopyBuffers(NProto::TWriteDataRequest& request)
                 reinterpret_cast<char*>(zeroCopyBuffer.GetData()),
                 zeroCopyBuffer.GetSize());
         }
+
+        request.MutableZeroCopyBuffers()->Clear();
     }
 }
 
@@ -250,18 +253,16 @@ private:
 
             std::unique_ptr<TEvBlobStorage::TEvPut> request;
 
-            if (WriteRequest.GetBuffer().size() == 0) {
+            if (!WriteRequest.GetZeroCopyBuffers().empty()) {
                 ui64 bytesToCopy = blobId.BlobSize();
+                putData.ReserveAndResize(bytesToCopy);
                 for (; zeroCopyIndex < zeroCopyBuffers.size(); ++zeroCopyIndex)
                 {
-                    auto& bufRef = zeroCopyBuffers[zeroCopyIndex];
-                    auto size = std::min(
-                        bytesToCopy,
-                        bufRef.GetSize() - zeroCopyOffset);
+                    const auto& bufRef = zeroCopyBuffers[zeroCopyIndex];
+                    auto size = std::min(bytesToCopy, bufRef.size());
                     memcpy(
-                        &putData[0],
-                        reinterpret_cast<const char*>(bufRef.GetData()) +
-                            zeroCopyOffset,
+                        &putData[zeroCopyOffset],
+                        reinterpret_cast<const char*>(bufRef.GetData()),
                         size);
 
                     zeroCopyOffset += size;
@@ -269,6 +270,7 @@ private:
 
                     if (bytesToCopy == 0) {
                         zeroCopyOffset = 0;
+                        ++zeroCopyIndex;
                         break;
                     }
 
