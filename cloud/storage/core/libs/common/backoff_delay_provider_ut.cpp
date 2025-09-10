@@ -65,8 +65,8 @@ Y_UNIT_TEST_SUITE(TBackoffDelayProvider)
     {
         TBackoffDelayProvider provider(
             TDuration::Zero(),
-            TDuration::Seconds(5),
-            TDuration::MilliSeconds(100));
+            TDuration::MilliSeconds(100),
+            TDuration::Seconds(5));
 
         UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), provider.GetDelay());
 
@@ -90,8 +90,8 @@ Y_UNIT_TEST_SUITE(TBackoffDelayProvider)
     {
         TBackoffDelayProvider provider(
             TDuration::MilliSeconds(50),
-            TDuration::Seconds(2),
-            TDuration::MilliSeconds(200));
+            TDuration::MilliSeconds(200),
+            TDuration::Seconds(2));
 
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MilliSeconds(50),
@@ -117,8 +117,8 @@ Y_UNIT_TEST_SUITE(TBackoffDelayProvider)
     {
         TBackoffDelayProvider provider(
             TDuration::Zero(),
-            TDuration::MilliSeconds(150),
-            TDuration::MilliSeconds(100));
+            TDuration::MilliSeconds(100),
+            TDuration::MilliSeconds(150));
 
         provider.IncreaseDelay();
         UNIT_ASSERT_VALUES_EQUAL(

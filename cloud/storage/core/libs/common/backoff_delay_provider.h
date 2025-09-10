@@ -19,8 +19,8 @@ public:
 
     TBackoffDelayProvider(
         TDuration initialDelay,
-        TDuration maxDelay,
-        TDuration firstStepDelay);
+        TDuration firstStepDelay,
+        TDuration maxDelay);
 
     [[nodiscard]] TDuration GetDelay() const;
     [[nodiscard]] TDuration GetDelayAndIncrease();

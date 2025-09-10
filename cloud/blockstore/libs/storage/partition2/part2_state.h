@@ -536,8 +536,8 @@ private:
     ui64 LastTrimFreshLogToCommitId = 0;
     TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
         TDuration::Zero(),
-        TDuration::Seconds(5),
-        TDuration::MilliSeconds(100)};
+        TDuration::MilliSeconds(100),
+        TDuration::Seconds(5)};
 
 public:
     EOperationStatus GetTrimFreshLogStatus() const
