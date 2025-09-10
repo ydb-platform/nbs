@@ -63,7 +63,7 @@ TFsPath TryGetRamDrivePath()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<ui64> FindProcessesWithOpenFile(const TString& target_file)
+TVector<ui64> FindProcessesWithOpenFile(const TString& targetPath)
 {
     TVector<ui64> result;
 
@@ -80,8 +80,6 @@ TVector<ui64> FindProcessesWithOpenFile(const TString& target_file)
             fdsDirectory += pidFilename;
             fdsDirectory += "/fd";
 
-            // std::strtoull(pidFilename.c_str(), nullptr, 10)
-
             for (const auto& entry:
                  NFs::directory_iterator{NFs::path{fdsDirectory.c_str()}})
             {
@@ -94,7 +92,7 @@ TVector<ui64> FindProcessesWithOpenFile(const TString& target_file)
 
                 auto actualFilePath = ::NFs::ReadLink(path.c_str());
 
-                if (actualFilePath == target_file) {
+                if (actualFilePath == targetPath) {
                     result.emplace_back(pid);
                 }
             }
