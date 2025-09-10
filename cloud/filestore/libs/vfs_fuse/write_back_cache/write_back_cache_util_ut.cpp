@@ -40,7 +40,7 @@ IOutputStream& PrintValues(
 
 struct TTestCaseWriteDataEntry
 {
-    ui64 Handle = 0;
+    ui64 NodeId = 0;
     ui64 Offset = 0;
     ui64 Length = 0;
 };
@@ -50,7 +50,7 @@ IOutputStream& operator<<(
     const TTestCaseWriteDataEntry& e)
 {
     out << "{"
-        << "Handle: " << e.Handle << ", "
+        << "NodeId: " << e.NodeId << ", "
         << "Offset: " << e.Offset << ", "
         << "Length: " << e.Length
         << "}";
@@ -336,7 +336,7 @@ struct TTestCaseWriteDataEntries
     {
         for (const auto& e: testCaseEntries) {
             auto request = std::make_shared<NProto::TWriteDataRequest>();
-            request->SetHandle(e.Handle);
+            request->SetNodeId(e.NodeId);
             request->SetOffset(e.Offset);
             request->SetBuffer(TString(e.Length, 'a'));   // dummy buffer
 
@@ -357,7 +357,7 @@ IOutputStream& operator<<(
     const TWriteDataEntry& e)
 {
     out << "{"
-        << "Handle: " << e.GetHandle() << ", "
+        << "NodeId: " << e.GetNodeId() << ", "
         << "Offset: " << e.Offset() << ", "
         << "Length: " << e.GetBuffer().Size()
         << "}";
@@ -409,7 +409,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             Y_ABORT_UNLESS(e.Offset + e.Length < MaxLength);
 
             auto request = std::make_shared<NProto::TWriteDataRequest>();
-            request->SetHandle(e.Handle);
+            request->SetNodeId(e.NodeId);
             request->SetOffset(e.Offset);
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
@@ -462,7 +462,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             Y_ABORT_UNLESS(e.Offset + e.Length <= MaxLength);
 
             auto request = std::make_shared<NProto::TWriteDataRequest>();
-            request->SetHandle(e.Handle);
+            request->SetNodeId(e.NodeId);
             request->SetOffset(e.Offset);
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
@@ -568,7 +568,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             Y_ABORT_UNLESS(e.Offset + e.Length <= MaxLength);
 
             auto request = std::make_shared<NProto::TWriteDataRequest>();
-            request->SetHandle(e.Handle);
+            request->SetNodeId(e.NodeId);
             request->SetOffset(e.Offset);
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
@@ -892,7 +892,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
                 ui64 offset = RandomNumber(MaxLength - length + 1);
 
                 auto request = std::make_shared<NProto::TWriteDataRequest>();
-                request->SetHandle(1);
+                request->SetNodeId(1);
                 request->SetOffset(offset);
                 request->SetBuffer(TString(length, 'a'));
 

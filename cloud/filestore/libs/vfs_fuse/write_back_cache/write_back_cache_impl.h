@@ -67,6 +67,11 @@ public:
         return Request.get();
     }
 
+    ui64 GetNodeId() const
+    {
+        return Request->GetNodeId();
+    }
+
     ui64 GetHandle() const
     {
         return Request->GetHandle();
