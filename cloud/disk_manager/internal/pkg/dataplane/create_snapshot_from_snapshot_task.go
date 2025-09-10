@@ -16,9 +16,9 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromSnapshotTask struct {
-	storage           storage.Storage
 	config            *config.DataplaneConfig
 	performanceConfig *performance_config.PerformanceConfig
+	storage           storage.Storage
 	request           *protos.CreateSnapshotFromSnapshotRequest
 	state             *protos.CreateSnapshotFromSnapshotTaskState
 }

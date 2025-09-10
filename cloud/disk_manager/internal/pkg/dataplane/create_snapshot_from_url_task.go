@@ -22,10 +22,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromURLTask struct {
-	nbsFactory                nbs_client.Factory
-	storage                   storage.Storage
 	config                    *config.DataplaneConfig
 	performanceConfig         *performance_config.PerformanceConfig
+	nbsFactory                nbs_client.Factory
+	storage                   storage.Storage
 	httpClientTimeout         time.Duration
 	httpClientMinRetryTimeout time.Duration
 	httpClientMaxRetryTimeout time.Duration

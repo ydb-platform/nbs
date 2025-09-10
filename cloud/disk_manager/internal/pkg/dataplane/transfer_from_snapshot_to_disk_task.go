@@ -21,10 +21,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type transferFromSnapshotToDiskTask struct {
-	nbsFactory        nbs_client.Factory
-	storage           storage.Storage
 	config            *config.DataplaneConfig
 	performanceConfig *performance_config.PerformanceConfig
+	nbsFactory        nbs_client.Factory
+	storage           storage.Storage
 	request           *protos.TransferFromSnapshotToDiskRequest
 	state             *protos.TransferFromSnapshotToDiskTaskState
 }

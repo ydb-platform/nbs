@@ -31,6 +31,11 @@ func initDataplane(
 	dataplaneConfig := config.GetDataplaneConfig()
 	snapshotConfig := dataplaneConfig.GetSnapshotConfig()
 
+	performanceConfig := config.PerformanceConfig
+	if performanceConfig == nil {
+		performanceConfig = &performance_config.PerformanceConfig{}
+	}
+
 	snapshotMetricsRegistry := mon.NewRegistry("snapshot_storage")
 
 	snapshotStorage, err := snapshot_storage.NewStorage(
@@ -66,20 +71,15 @@ func initDataplane(
 		}
 	}
 
-	performanceConfig := config.PerformanceConfig
-	if performanceConfig == nil {
-		performanceConfig = &performance_config.PerformanceConfig{}
-	}
-
 	return dataplane.RegisterForExecution(
 		ctx,
+		dataplaneConfig,
+		performanceConfig,
 		taskRegistry,
 		taskScheduler,
 		nbsFactory,
 		snapshotStorage,
 		snapshotLegacyStorage,
-		dataplaneConfig,
-		performanceConfig,
 		snapshotMetricsRegistry,
 		migrationDstStorage,
 		useS3InSnapshotMigration,

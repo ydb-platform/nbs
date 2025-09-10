@@ -76,7 +76,7 @@ func (t *deleteSnapshotDataTask) deleteSnapshotData(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	snapshotMeta, err := t.storage.CheckSnapshotReady(ctx, t.request.SrcSnapshotId)
+	snapshotMeta, err := t.storage.CheckSnapshotReady(ctx, t.request.SnapshotId)
 	if err != nil {
 		return err
 	}

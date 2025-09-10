@@ -18,10 +18,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromLegacySnapshotTask struct {
-	storage           storage.Storage
-	legacyStorage     storage.Storage
 	config            *config.DataplaneConfig
 	performanceConfig *performance_config.PerformanceConfig
+	storage           storage.Storage
+	legacyStorage     storage.Storage
 	request           *protos.CreateSnapshotFromLegacySnapshotRequest
 	state             *protos.CreateSnapshotFromLegacySnapshotTaskState
 }

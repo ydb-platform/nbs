@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -18,7 +17,6 @@ import (
 func RegisterForExecution(
 	ctx context.Context,
 	config *disks_config.DisksConfig,
-	performanceConfig *performance_config.PerformanceConfig,
 	resourceStorage resources.Storage,
 	poolStorage storage.Storage,
 	taskRegistry *tasks.Registry,

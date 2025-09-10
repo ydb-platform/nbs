@@ -19,9 +19,9 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type transferFromDiskToDiskTask struct {
-	nbsFactory        nbs_client.Factory
 	config            *config.DataplaneConfig
 	performanceConfig *performance_config.PerformanceConfig
+	nbsFactory        nbs_client.Factory
 	request           *protos.TransferFromDiskToDiskRequest
 	state             *protos.TransferFromDiskToDiskTaskState
 }

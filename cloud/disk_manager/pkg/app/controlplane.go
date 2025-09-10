@@ -268,7 +268,6 @@ func registerControlplaneTasks(
 	err = disks.RegisterForExecution(
 		ctx,
 		config.GetDisksConfig(),
-		performanceConfig,
 		resourceStorage,
 		poolStorage,
 		taskRegistry,
@@ -285,7 +284,6 @@ func registerControlplaneTasks(
 	err = images.RegisterForExecution(
 		ctx,
 		config.GetImagesConfig(),
-		performanceConfig,
 		taskRegistry,
 		taskScheduler,
 		resourceStorage,

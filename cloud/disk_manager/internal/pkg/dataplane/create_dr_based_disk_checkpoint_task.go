@@ -16,8 +16,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createDRBasedDiskCheckpointTask struct {
-	nbsFactory        nbs_client.Factory
 	performanceConfig *performance_config.PerformanceConfig
+	nbsFactory        nbs_client.Factory
 	request           *protos.CreateDRBasedDiskCheckpointRequest
 	state             *protos.CreateDRBasedDiskCheckpointTaskState
 }
