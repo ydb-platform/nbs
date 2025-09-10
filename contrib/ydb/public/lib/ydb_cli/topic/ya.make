@@ -1,5 +1,9 @@
 LIBRARY(topic)
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     topic_read.cpp
     topic_write.cpp

@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     disjoint_interval_map.cpp
     overlapping_interval_set.cpp

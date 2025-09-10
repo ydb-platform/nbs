@@ -1,5 +1,9 @@
 LIBRARY(kikimr_backup)
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 PEERDIR(
     library/cpp/bucket_quoter
     library/cpp/regex/pcre
