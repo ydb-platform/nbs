@@ -405,12 +405,12 @@ service TBlockStoreService
     }
 
     //
-    // List nonreplicated/mirrored disks states
+    // List nonreplicated/mirrored disk states
     //
 
-    rpc ListDisksStates(TListDisksStatesRequest) returns (TListDisksStatesResponse) {
+    rpc ListDiskStates(TListDiskStatesRequest) returns (TListDiskStatesResponse) {
         option (google.api.http) = {
-            post: "/list_disks_states"
+            post: "/list_disk_states"
             body: "*"
         };
     }
