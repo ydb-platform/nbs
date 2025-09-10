@@ -436,14 +436,6 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 
 	diskSize := diskParams.BlocksCount * uint64(diskParams.BlockSize)
 
-	if !incremental {
-		execCtx.SetEstimatedInflightDuration(performance.Estimate(
-			diskSize,
-			t.performanceConfig.GetCreateSnapshotFromDiskBandwidthMiBs(),
-		))
-		return nil
-	}
-
 	bytesToReplicate, err := nbsClient.GetChangedBytes(
 		ctx,
 		t.request.SrcDisk.DiskId,
@@ -452,20 +444,25 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 		false, // ignoreBaseDisk
 	)
 	if err != nil {
-		return err
+		if !nbs_client.IsGetChangedBlocksNotSupportedError(err) {
+			return err
+		}
+
+		bytesToReplicate = diskSize
 	}
 
 	logging.Info(ctx, "bytes to replicate is %v", bytesToReplicate)
 
 	replicateDuration := performance.Estimate(
 		bytesToReplicate,
-		t.performanceConfig.GetCreateSnapshotFromDiskBandwidthMiBs(),
+		t.performanceConfig.GetTransferFromDiskToSnapshotBandwidthMiBs(),
 	)
 	shallowCopyDuration := performance.Estimate(
 		diskSize,
-		t.performanceConfig.GetCreateSnapshotFromSnapshotBandwidthMiBs(),
+		t.performanceConfig.GetSnapshotShallowCopyBandwidthMiBs(),
 	)
 
+	// Data transfer and shallow copy is performed in parallel
 	execCtx.SetEstimatedInflightDuration(max(replicateDuration, shallowCopyDuration))
 
 	return nil

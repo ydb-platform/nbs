@@ -301,7 +301,6 @@ func registerControlplaneTasks(
 	err = snapshots.RegisterForExecution(
 		ctx,
 		config.GetSnapshotsConfig(),
-		performanceConfig,
 		taskRegistry,
 		taskScheduler,
 		resourceStorage,

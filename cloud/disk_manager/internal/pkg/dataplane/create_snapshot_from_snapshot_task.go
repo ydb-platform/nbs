@@ -52,7 +52,7 @@ func (t *createSnapshotFromSnapshotTask) Run(
 
 	execCtx.SetEstimatedInflightDuration(performance.Estimate(
 		srcMeta.StorageSize,
-		t.performanceConfig.GetCreateSnapshotFromSnapshotBandwidthMiBs(),
+		t.performanceConfig.GetSnapshotShallowCopyBandwidthMiBs(),
 	))
 
 	_, err = t.storage.CreateSnapshot(

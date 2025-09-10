@@ -140,7 +140,7 @@ func (t *replicateDiskTask) saveProgress(
 	}
 
 	bytesPerSecond := performance.ConvertMiBsToBytes(
-		t.performanceConfig.GetReplicateDiskBandwidthMiBs(),
+		t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
 	)
 
 	if t.state.ChunkCount != 0 && t.state.Progress != 1 {
@@ -429,7 +429,7 @@ func (t *replicateDiskTask) setEstimate(
 
 	execCtx.SetEstimatedInflightDuration(performance.Estimate(
 		stats.StorageSize,
-		t.performanceConfig.GetReplicateDiskBandwidthMiBs(),
+		t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
 	))
 
 	return nil

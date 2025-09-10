@@ -180,7 +180,8 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("dataplane.DeleteSnapshotData", func() tasks.Task {
 		return &deleteSnapshotDataTask{
-			storage: storage,
+			performanceConfig: performanceConfig,
+			storage:           storage,
 		}
 	})
 	if err != nil {
