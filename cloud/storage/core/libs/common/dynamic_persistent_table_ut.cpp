@@ -103,6 +103,39 @@ struct TTestData
     }
 };
 
+using TTable = TDynamicPersistentTable<TTestHeader>;
+
+// Helper functions for accessing internal table structures
+TTable::THeader* GetTableHeader(TTable& table)
+{
+    TTestHeader* userHeader = table.HeaderData();
+    TTable::THeader* tableHeader = reinterpret_cast<TTable::THeader*>(
+        reinterpret_cast<char*>(userHeader) - offsetof(TTable::THeader, Data));
+    return tableHeader;
+}
+
+std::tuple<TTable::THeader*, TTable::TRecordDescriptor*, char*>
+GetTableInternals(TTable& table)
+{
+    auto* tableHeader = GetTableHeader(table);
+
+    TTable::TRecordDescriptor* descriptorsPtr =
+        reinterpret_cast<TTable::TRecordDescriptor*>(
+            reinterpret_cast<char*>(tableHeader) + tableHeader->HeaderSize);
+
+    char* dataPtr =
+        reinterpret_cast<char*>(tableHeader) + tableHeader->DataAreaOffset;
+
+    return std::make_tuple(tableHeader, descriptorsPtr, dataPtr);
+}
+
+TVector<TTestData> TestDataRecords = {
+    {1, "first", {10, 20}},
+    {2, "second", {30, 40}},
+    {3, "third", {50, 60}},
+    {4, "fourth", {70, 80}},
+    {5, "fifth", {90, 100}}};
+
 struct TReferenceImplementation
 {
     ui32 MaxTableSize;
@@ -150,11 +183,7 @@ struct TReferenceImplementation
         UNIT_ASSERT(!Records[index].empty());
         Records[index].clear();
 
-        if (index + 1 == NextFreeRecord) {
-            NextFreeRecord--;
-        } else {
-            FreeRecords.push_back(index);
-        }
+        FreeRecords.push_back(index);
     }
 
     TString GetRecord(ui64 index)
@@ -826,6 +855,329 @@ Y_UNIT_TEST_SUITE(TDynamicPersistentTableTest)
         UNIT_ASSERT_VALUES_EQUAL(0, normalRecord.size());
 
         UNIT_ASSERT_VALUES_EQUAL(2, table.CountRecords());
+    }
+
+    Y_UNIT_TEST(ShouldResumeAbortedCompaction)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        TVector<TTestData> testData = TestDataRecords;
+
+        {
+            TTable table(tablePath, 32, 1024, 30);
+
+            for (const auto& data: testData) {
+                TString serialized = data.Serialize();
+                ui64 index = table.AllocRecord(serialized.size());
+                UNIT_ASSERT(table.WriteRecordData(
+                    index,
+                    serialized.data(),
+                    serialized.size()));
+                table.CommitRecord(index);
+            }
+
+            auto* tableHeader = GetTableHeader(table);
+
+            UNIT_ASSERT_VALUES_EQUAL(TTable::Version, tableHeader->Version);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->CompactedRecordSrcIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->CompactedRecordDstIndex);
+
+            // Simulate aborted compaction: record 2 was being moved to position
+            // 1 but the operation was interrupted before completion
+            tableHeader->CompactedRecordSrcIndex = 2;
+            tableHeader->CompactedRecordDstIndex = 1;
+            table.DeleteRecord(tableHeader->CompactedRecordDstIndex);
+
+            // Update expected data to reflect the move
+            testData[tableHeader->CompactedRecordDstIndex] =
+                testData[tableHeader->CompactedRecordSrcIndex];
+            testData.erase(
+                testData.begin() + tableHeader->CompactedRecordSrcIndex);
+        }
+
+        {
+            TTable table(tablePath, 32, 1024, 30);
+            UNIT_ASSERT_VALUES_EQUAL(testData.size(), table.CountRecords());
+
+            auto* tableHeader = GetTableHeader(table);
+
+            UNIT_ASSERT_VALUES_EQUAL(TTable::Version, tableHeader->Version);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->CompactedRecordSrcIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->CompactedRecordDstIndex);
+
+            size_t index = 0;
+            for (auto it = table.begin(); it != table.end(); ++it, ++index) {
+                TStringBuf record = *it;
+                TTestData recovered =
+                    TTestData::Deserialize(record.data(), record.size());
+                UNIT_ASSERT(recovered == testData[index]);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(testData.size(), index);
+
+            // Test aborted compaction that never started copying data
+            tableHeader->CompactedRecordSrcIndex = 2;
+            tableHeader->CompactedRecordDstIndex = TTable::InvalidIndex;
+        }
+
+        {
+            TTable table(tablePath, 32, 1024, 30);
+            auto* tableHeader = GetTableHeader(table);
+
+            UNIT_ASSERT_VALUES_EQUAL(TTable::Version, tableHeader->Version);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->CompactedRecordSrcIndex);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->CompactedRecordDstIndex);
+
+            size_t index = 0;
+            UNIT_ASSERT_VALUES_EQUAL(testData.size(), table.CountRecords());
+            for (auto it = table.begin(); it != table.end(); ++it) {
+                TStringBuf record = *it;
+                TTestData recovered =
+                    TTestData::Deserialize(record.data(), record.size());
+                UNIT_ASSERT(testData[index] == recovered);
+                index++;
+            }
+            UNIT_ASSERT_VALUES_EQUAL(testData.size(), table.CountRecords());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldResumeAbortedDataAreaCompaction)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        TVector<TTestData> testData = TestDataRecords;
+
+        TVector<ui64> indices;
+
+        {
+            TTable table(tablePath, 32, 1024, 30);
+
+            for (const auto& data: testData) {
+                TString serialized = data.Serialize();
+                ui64 index = table.AllocRecord(serialized.size());
+                UNIT_ASSERT(table.WriteRecordData(
+                    index,
+                    serialized.data(),
+                    serialized.size()));
+                table.CommitRecord(index);
+                indices.push_back(index);
+            }
+
+            // Make the record smaller to create fragmentation
+            testData[1] = TTestData{2, "new_data", {11}};
+            TString serialized = testData[1].Serialize();
+            table.WriteRecordData(
+                indices[1],
+                serialized.data(),
+                serialized.size());
+
+            // Get table internals to simulate partial compaction
+            auto [tableHeader, descriptorsPtr, dataPtr] =
+                GetTableInternals(table);
+
+            // Find the record that will be moved during compaction
+            ui64 recordToMoveIndex = indices[2];
+            ui64 originalOffset = descriptorsPtr[recordToMoveIndex].DataOffset;
+            ui64 recordSize = descriptorsPtr[recordToMoveIndex].DataSize;
+
+            // Calculate where this record should be moved to fill the gap
+            ui64 firstRecordOffset = descriptorsPtr[indices[1]].DataOffset;
+            ui64 firstRecordSize = descriptorsPtr[indices[1]].DataSize;
+            ui64 newOffset = firstRecordOffset + firstRecordSize;
+
+            // SIMULATE ABORTED COMPACTION:
+            // 1. Move the data using memmove (as compaction would do)
+            std::memmove(
+                dataPtr + newOffset,
+                dataPtr + originalOffset,
+                recordSize);
+
+            // 2. DO NOT update the descriptor offset (simulate crash/abort)
+            // This creates corruption: data is at newOffset but descriptor
+            // still points to originalOffset
+        }
+
+        {
+            TTable table(tablePath, 32, 1024, 30);
+
+            // The corrupted record should be detected during restoration (via
+            // CRC mismatch) and should be removed from the table
+            // After compaction last record (with highest index) should be not
+            // there
+            UNIT_ASSERT_VALUES_EQUAL(testData.size() - 1, table.CountRecords());
+            UNIT_ASSERT_C(
+                table.GetRecordWithValidation(indices.back()).empty(),
+                "Corrupted record should be empty/inaccessible after "
+                "restoration");
+
+            // Other records should still be accessible
+            auto assertRecord = [&](ui64 tableIndex, ui64 testIndex)
+            {
+                TStringBuf record = table.GetRecordWithValidation(tableIndex);
+                UNIT_ASSERT_C(!record.empty(), "Record should be accessible");
+                TTestData recovered =
+                    TTestData::Deserialize(record.data(), record.size());
+                UNIT_ASSERT_C(
+                    recovered == testData[testIndex],
+                    "Record data should be intact");
+            };
+            assertRecord(indices[0], 0);
+            assertRecord(indices[1], 1);
+            assertRecord(indices[2], 3);
+            assertRecord(indices[3], 4);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldResumeAbortedAddRecord)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        using TTable = TDynamicPersistentTable<TTestHeader>;
+
+        TTestData testData1{1, "first", {10, 20}};
+        TTestData testData2{2, "second", {30, 40}};
+
+        {
+            TTable table(tablePath, 32, 1024, 30);
+
+            TString serialized1 = testData1.Serialize();
+            ui64 index1 = table.AllocRecord(serialized1.size());
+            UNIT_ASSERT(table.WriteRecordData(
+                index1,
+                serialized1.data(),
+                serialized1.size()));
+            table.CommitRecord(index1);
+
+            TString serialized2 = testData2.Serialize();
+
+            // Simulate crash during add operation before state change, but
+            // after index list was set
+            ui64 index2 = table.AllocRecord(serialized2.size());
+
+            auto [tableHeader, descriptorsPtr, dataPtr] =
+                GetTableInternals(table);
+
+            tableHeader->ListOperationState = TTable::EListOperationState::Add;
+            tableHeader->ListOperationIndex = index2;
+            tableHeader->ListOperationPrevIndex = index1;
+            descriptorsPtr[index2].State = TTable::ERecordState::Free;
+        }
+
+        {
+            TTable table(tablePath, 32, 1024, 30);
+
+            auto* tableHeader = GetTableHeader(table);
+
+            // After recovery, list operation state should be cleared
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(TTable::EListOperationState::None),
+                static_cast<int>(tableHeader->ListOperationState));
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->ListOperationIndex);
+
+            // Verify first record is still accessible
+            TStringBuf record1 = table.GetRecord(0);
+            UNIT_ASSERT(!record1.empty());
+            TTestData recovered1 =
+                TTestData::Deserialize(record1.data(), record1.size());
+            UNIT_ASSERT(testData1 == recovered1);
+
+            // Records should be properly linked after recovery
+            UNIT_ASSERT_VALUES_EQUAL(1, table.CountRecords());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldResumeAbortedRemoveRecord)
+    {
+        TTempDir tempDir;
+        TString tablePath = tempDir.Path() / "test.table";
+
+        using TTable = TDynamicPersistentTable<TTestHeader>;
+
+        TVector<TTestData> testData = TestDataRecords;
+        TVector<ui64> indices;
+
+        {
+            TTable table(tablePath, 32, 1024, 30);
+
+            for (const auto& data: testData) {
+                TString serialized = data.Serialize();
+                ui64 index = table.AllocRecord(serialized.size());
+                UNIT_ASSERT(table.WriteRecordData(
+                    index,
+                    serialized.data(),
+                    serialized.size()));
+                table.CommitRecord(index);
+                indices.push_back(index);
+            }
+
+            auto [tableHeader, descriptorsPtr, dataPtr] =
+                GetTableInternals(table);
+
+            // Simulate aborted remove operation for middle record
+            ui64 prevIndex = indices[1];
+            ui64 removeIndex = indices[2];
+            ui64 nextIndex = indices[3];
+
+            // Simulate crash during remove operation before state change, but
+            // after index list was changed
+            tableHeader->ListOperationState =
+                TTable::EListOperationState::Remove;
+            tableHeader->ListOperationIndex = removeIndex;
+            tableHeader->ListOperationPrevIndex = prevIndex;
+            tableHeader->ListOperationNextIndex = nextIndex;
+
+            descriptorsPtr[prevIndex].NextDataIndex = nextIndex;
+        }
+
+        {
+            TTable table(tablePath, 32, 1024, 30);
+
+            auto* tableHeader = GetTableHeader(table);
+
+            // After recovery, list operation state should be cleared
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(TTable::EListOperationState::None),
+                static_cast<int>(tableHeader->ListOperationState));
+            UNIT_ASSERT_VALUES_EQUAL(
+                TTable::InvalidIndex,
+                tableHeader->ListOperationIndex);
+
+            // The middle record should be properly removed from the list and
+            // records should be compacted
+            UNIT_ASSERT_VALUES_EQUAL(4, table.CountRecords());
+
+            // Verify remaining records are accessible
+            auto assertRecord = [&](ui64 tableIndex, ui64 testIndex)
+            {
+                TStringBuf record = table.GetRecordWithValidation(tableIndex);
+                UNIT_ASSERT_C(!record.empty(), "Record should be accessible");
+                TTestData recovered =
+                    TTestData::Deserialize(record.data(), record.size());
+                UNIT_ASSERT_C(
+                    testData[testIndex] == recovered,
+                    "Record data should be intact");
+            };
+            assertRecord(indices[0], 0);
+            assertRecord(indices[1], 1);
+            assertRecord(indices[2], 3);
+            assertRecord(indices[3], 4);
+        }
     }
 
     Y_UNIT_TEST(RandomizedAllocDeleteRestore)
