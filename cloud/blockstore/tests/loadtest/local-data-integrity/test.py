@@ -46,18 +46,18 @@ class TestCase(object):
 TESTS = [
     TestCase(
         "mirror2",
-        "cloud/blockstore/tests/loadtest/local-checksums/local-mirror2.txt",
+        "cloud/blockstore/tests/loadtest/local-data-integrity/local-mirror2.txt",
         agent_count=2,
     ),
     TestCase(
         "mirror2-rdma",
-        "cloud/blockstore/tests/loadtest/local-checksums/local-mirror2.txt",
+        "cloud/blockstore/tests/loadtest/local-data-integrity/local-mirror2.txt",
         agent_count=2,
         use_rdma=True,
     ),
     TestCase(
         "ssd",
-        "cloud/blockstore/tests/loadtest/local-checksums/local-ssd.txt",
+        "cloud/blockstore/tests/loadtest/local-data-integrity/local-ssd.txt",
         agent_count=0,
     ),
 ]

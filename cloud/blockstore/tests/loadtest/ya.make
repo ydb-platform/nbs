@@ -6,7 +6,7 @@ RECURSE(
     local-bsgroup-failure
     local-change-device
     local-checkpoint
-    local-checksums
+    local-data-integrity
     local-discovery
     local-edgecase
     local-emergency
