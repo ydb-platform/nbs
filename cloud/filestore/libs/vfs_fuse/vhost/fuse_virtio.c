@@ -369,13 +369,15 @@ int fuse_cancel_request(
     return 0;
 }
 
-void fuse_reply_none(fuse_req_t req)
+void fuse_reply_none_override(fuse_req_t req)
 {
+    // complete attached fuse virtio request
     struct fuse_chan* ch = req->ch;
     struct fuse_virtio_request* vhd_req = VIRTIO_REQ_FROM_CHAN(ch);
     complete_request(vhd_req, 0);
 
-    fuse_free_req(req);
+    // calling 'base' implementation
+    fuse_reply_none(req);
 }
 
 int virtio_session_mount(struct fuse_session* se)

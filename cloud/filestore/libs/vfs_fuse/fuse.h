@@ -37,6 +37,9 @@ int fuse_cancel_request(
     fuse_req_t req,
     enum fuse_cancelation_code code);
 
+// 'overrides' fuse_reply_none
+void fuse_reply_none_override(fuse_req_t req);
+
 #if defined(__cplusplus)
 }   // extern "C"
 #endif
