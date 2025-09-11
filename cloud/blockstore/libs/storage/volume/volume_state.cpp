@@ -354,38 +354,48 @@ void TVolumeState::Reset()
 
     BlockCount = ComputeBlockCount(Meta);
 
-    TStringBuf sit(Meta.GetVolumeConfig().GetTagsStr());
-    TStringBuf tagStr;
-    while (sit.NextTok(',', tagStr)) {
-        TStringBuf tag, value;
-        tagStr.Split('=', tag, value);
-        if (tag == "repair") {
-            ForceRepair = true;
-        } else if (tag == "mute-io-errors") {
-            Meta.SetMuteIOErrors(true);
-        } else if (tag == "accept-invalid-disk-allocation-response") {
-            AcceptInvalidDiskAllocationResponse = true;
-        } else if (tag == "read-only") {
-            RejectWrite = true;
-        } else if (tag == "track-used") {
-            // XXX beware that used block tracking is not supported for
-            // cross-partition writes in multipartition network-ssd/network-hdd
-            // volumes
-            TrackUsedBlocks = true;
-        } else if (tag == "mask-unused") {
-            TrackUsedBlocks = true;
-            MaskUnusedBlocks = true;
-        } else if (tag == "use-rdma") {
-            UseRdma = true;
-        } else if (tag == "disable-rdma") {
-            UseRdma = false;
-        } else if (tag == "max-timed-out-device-state-duration") {
-            TDuration::TryParse(value, MaxTimedOutDeviceStateDuration);
-        } else if (tag == "use-fastpath") {
-            UseFastPath = true;
-        } else if (tag == IntermediateWriteBufferTagName) {
-            UseIntermediateWriteBuffer = true;
-        }
+    const auto tags = ParseTags(Meta.GetVolumeConfig().GetTagsStr());
+
+    if (tags.contains("repair")) {
+        ForceRepair = true;
+    }
+    if (tags.contains("mute-io-errors")) {
+        Meta.SetMuteIOErrors(true);
+    }
+    if (tags.contains("accept-invalid-disk-allocation-response")) {
+        AcceptInvalidDiskAllocationResponse = true;
+    }
+    if (tags.contains("read-only")) {
+        RejectWrite = true;
+    }
+    if (tags.contains("track-used")) {
+        // XXX beware that used block tracking is not supported for
+        // cross-partition writes in multipartition network-ssd/network-hdd
+        // volumes
+        TrackUsedBlocks = true;
+    }
+    if (tags.contains("mask-unused")) {
+        TrackUsedBlocks = true;
+        MaskUnusedBlocks = true;
+    }
+    if (tags.contains("use-rdma")) {
+        UseRdma = true;
+    }
+    if (tags.contains("disable-rdma")) {
+        UseRdma = false;
+    }
+    if (const auto* value = tags.FindPtr("max-timed-out-device-state-duration"))
+    {
+        TDuration::TryParse(*value, MaxTimedOutDeviceStateDuration);
+    }
+    if (tags.contains("use-fastpath")) {
+        UseFastPath = true;
+    }
+    if (tags.contains(IntermediateWriteBufferTagName)) {
+        UseIntermediateWriteBuffer = true;
+    }
+    if (const auto* value = tags.FindPtr(SourceDiskIdTagName)) {
+        SourceDiskId = *value;
     }
 
     UseMirrorResync = StorageConfig->GetUseMirrorResync();

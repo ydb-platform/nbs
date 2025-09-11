@@ -267,6 +267,7 @@ private:
     std::optional<ui64> BlockCountToMigrate;
 
     TCreateFollowerRequests CreateFollowerRequests;
+    TString SourceDiskId;
     TFollowerDisks FollowerDisks;
     TLeaderDisks LeaderDisks;
 
