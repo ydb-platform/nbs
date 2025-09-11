@@ -338,8 +338,6 @@ private:
 
     THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
 
-    THashSet<TDiskId> MasterDisksToReallocateAfterStart;
-
 public:
     TDiskRegistryState(
         ILoggingServicePtr logging,
@@ -910,10 +908,6 @@ public:
 
     THashSet<TDeviceId> GetUnavailableDevicesForDisk(
         const TString& diskId) const;
-
-    bool IsRecentlyReplacedDevice(
-        const TDiskId& masterDiskId,
-        const TDeviceId& deviceId) const;
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);

@@ -316,7 +316,7 @@ bool TReplicaTable::IsRecentlyReplacedDevice(
         return true;
     }
 
-    return (*row)->IsRecentlyReplacedDevice;
+    return (*row)->IsRecentlyReplacedDevice || diskState->BlockReplacements;
 }
 
 void TReplicaTable::SetRecentlyReplacedDevice(
@@ -347,6 +347,8 @@ void TReplicaTable::ResetRecentlyReplacedDevices(
         return;
     }
 
+    diskState->BlockReplacements = false;
+
     for (auto& row: diskState->Rows) {
         if (!row.IsRecentlyReplacedDevice || row.SeqNo > seqNo) {
             continue;
@@ -354,6 +356,16 @@ void TReplicaTable::ResetRecentlyReplacedDevices(
         row.IsRecentlyReplacedDevice = false;
         row.SeqNo = seqNo;
     }
+}
+
+void TReplicaTable::BlockReplacement(const TDiskId& diskId)
+{
+    auto* diskState = Disks.FindPtr(diskId);
+    if (!diskState) {
+        return;
+    }
+
+    diskState->BlockReplacements = true;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
