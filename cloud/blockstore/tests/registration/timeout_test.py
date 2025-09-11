@@ -83,7 +83,10 @@ class ProxyInterceptor(grpc.ServerInterceptor):
 # - For the first max_node_reg_count NodeRegistration attempts, the server receives
 # the request but deliberately does not respond
 # - After these initial attempts, all subsequent NodeRegistration requests
-# are proxied normally to the YDB server
+# are proxied normally to the YDB server.
+# Names of methods ListEndpoints, WhoAmI, and NodeRegistration are written in camel case.
+# This naming style is used because these methods override the corresponding methods of the
+# interface ydb_discovery_v1_pb2_grpc.DiscoveryServiceServicer.
 
 
 class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceServicer):
@@ -191,7 +194,6 @@ class ServerThread(threading.Thread):
 
 
 def serve(not_responding_server_port, ydb):
-
     with open(ydb.config.grpc_tls_key_path, "rb") as f:
         private_key = f.read()
     with open(ydb.config.grpc_tls_cert_path, "rb") as f:
@@ -340,7 +342,7 @@ def prepare(
     )
     nbs_configurator.files["storage"].NodeType = node_type
     nbs_configurator.files["storage"].DisableLocalService = False
-    nbs_configurator.files["storage"].DiscoveryNodeRegistrantTimeout = 1000  # 1 second
+    nbs_configurator.files["storage"].DynamicNodeRegistrationTimeout = 1000  # 1 second
 
     return nbs_configurator
 

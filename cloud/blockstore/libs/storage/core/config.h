@@ -724,7 +724,7 @@ public:
 
     [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
 
-    [[nodiscard]] TDuration GetDiscoveryNodeRegistrantTimeout() const;
+    [[nodiscard]] TDuration GetDynamicNodeRegistrationTimeout() const;
 };
 
 ui64 GetAllocationUnit(

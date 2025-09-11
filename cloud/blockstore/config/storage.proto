@@ -1326,5 +1326,5 @@ message TStorageServiceConfig
 
     // Timeout for dynamic node registration via discovery service
     // (in milliseconds).
-    optional uint32 DiscoveryNodeRegistrantTimeout = 456;
+    optional uint32 DynamicNodeRegistrationTimeout = 456;
 }

@@ -19,7 +19,7 @@ struct TNodeRegistrationSettings
     TDuration RegistrationTimeout;
 
     // Timeout for dynamic node registration via discovery service
-    TDuration DiscoveryNodeRegistrantTimeout;
+    TDuration DynamicNodeRegistrationTimeout;
 
     TDuration LoadConfigsFromCmsRetryMinDelay;
     TDuration LoadConfigsFromCmsRetryMaxDelay;
