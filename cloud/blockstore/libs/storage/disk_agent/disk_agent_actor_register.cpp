@@ -25,7 +25,7 @@ private:
 
     TVector<TString> DevicesToDisableIO;
 
-    ui64 PendingCloseDevices = 0;
+    ui64 PendingOpenCloseDevices = 0;
     NProto::TError Error;
 
 public:
@@ -40,15 +40,31 @@ public:
 private:
     STFUNC(StateWaitRegisterResponse);
 
-    STFUNC(StateWaitDevicesClose);
+    STFUNC(StateWaitDevicesOpenClose);
 
     void HandleRegisterAgentResponse(
         const TEvDiskRegistry::TEvRegisterAgentResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleDeviceClosed(
-        const TEvDiskAgent::TEvCloseDeviceResponse::TPtr& ev,
-        const TActorContext& ctx);
+    template <typename TEvent>
+    void HandleDeviceOpenClosed(const TEvent& ev, const TActorContext& ctx)
+    {
+        --PendingOpenCloseDevices;
+        auto error = ev->Get()->Record.GetError();
+        if (HasError(error)) {
+            Error = error;
+        }
+
+        if (PendingOpenCloseDevices == 0) {
+            auto response =
+                std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(
+                    Error);
+            response->DevicesToDisableIO = std::move(DevicesToDisableIO);
+
+            NCloud::Reply(ctx, *RequestInfo, std::move(response));
+            Die(ctx);
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,7 +123,9 @@ void TRegisterActor::HandleRegisterAgentResponse(
         msg->Record.GetDevicesToDisableIO().cend());
     Error = msg->GetError();
 
-    if (!OpenCloseDevicesEnabled || msg->Record.GetUnknownDevices().empty()) {
+    if (!OpenCloseDevicesEnabled || (msg->Record.GetUnknownDevices().empty() &&
+                                     msg->Record.GetAllowedDevices().empty()))
+    {
         auto response =
             std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(
                 msg->GetError());
@@ -117,38 +135,28 @@ void TRegisterActor::HandleRegisterAgentResponse(
         return;
     }
 
+    for (const auto& device: msg->Record.GetAllowedDevices()) {
+        auto openRequest =
+            std::make_unique<TEvDiskAgent::TEvOpenDeviceRequest>();
+        openRequest->Record.SetDevicePath(device.GetDevicePath());
+        openRequest->Record.SetDeviceGeneration(device.GetDeviceGeneration());
+
+        NCloud::Send(ctx, Owner, std::move(openRequest));
+        ++PendingOpenCloseDevices;
+    }
+
     for (const auto& device: msg->Record.GetUnknownDevices()) {
-        auto closeRequest = std::make_unique<TEvDiskAgent::TEvCloseDeviceRequest>();
+        auto closeRequest =
+            std::make_unique<TEvDiskAgent::TEvCloseDeviceRequest>();
         closeRequest->Record.SetDevicePath(device.GetDevicePath());
         closeRequest->Record.SetDeviceGeneration(device.GetDeviceGeneration());
 
         NCloud::Send(ctx, Owner, std::move(closeRequest));
 
-        ++PendingCloseDevices;
+        ++PendingOpenCloseDevices;
     }
 
-    Become(&TThis::StateWaitDevicesClose);
-}
-
-void TRegisterActor::HandleDeviceClosed(
-    const TEvDiskAgent::TEvCloseDeviceResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    --PendingCloseDevices;
-    auto error = ev->Get()->Record.GetError();
-    if (HasError(error)) {
-        Error = error;
-    }
-
-    if (PendingCloseDevices == 0) {
-        auto response =
-            std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(
-                Error);
-        response->DevicesToDisableIO = std::move(DevicesToDisableIO);
-
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
-        Die(ctx);
-    }
+    Become(&TThis::StateWaitDevicesOpenClose);
 }
 
 STFUNC(TRegisterActor::StateWaitRegisterResponse)
@@ -165,10 +173,11 @@ STFUNC(TRegisterActor::StateWaitRegisterResponse)
     }
 }
 
-STFUNC(TRegisterActor::StateWaitDevicesClose)
+STFUNC(TRegisterActor::StateWaitDevicesOpenClose)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvDiskAgent::TEvCloseDeviceResponse, HandleDeviceClosed);
+        HFunc(TEvDiskAgent::TEvOpenDeviceResponse, HandleDeviceOpenClosed);
+        HFunc(TEvDiskAgent::TEvCloseDeviceResponse, HandleDeviceOpenClosed);
 
         default:
             HandleUnexpectedEvent(
