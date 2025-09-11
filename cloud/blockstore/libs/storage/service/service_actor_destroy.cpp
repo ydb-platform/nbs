@@ -24,17 +24,25 @@ namespace {
 class TDestroyVolumeActor final
     : public TActorBootstrapped<TDestroyVolumeActor>
 {
+public:
+    enum class EDiskIdTolerance
+    {
+        AllowMangled,
+        StrictMatch,
+    };
+
 private:
     const TActorId Sender;
     const ui64 Cookie;
 
     const TDuration AttachedDiskDestructionTimeout;
     const TVector<TString> DestructionAllowedOnlyForDisksWithIdPrefixes;
-    const TString DiskId;
+    TString DiskId;
     const bool DestroyIfBroken;
     const bool Sync;
     const ui64 FillGeneration;
     const TDuration Timeout;
+    const EDiskIdTolerance DiskIdTolerance = EDiskIdTolerance::AllowMangled;
 
     bool IsDiskRegistryBased = false;
     bool VolumeNotFoundInSS = false;
@@ -46,6 +54,7 @@ public:
         TDuration attachedDiskDestructionTimeout,
         TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
         TString diskId,
+        EDiskIdTolerance diskIdTolerance,
         bool destroyIfBroken,
         bool sync,
         ui64 fillGeneration,
@@ -105,6 +114,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
         TDuration attachedDiskDestructionTimeout,
         TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
         TString diskId,
+        EDiskIdTolerance diskIdTolerance,
         bool destroyIfBroken,
         bool sync,
         ui64 fillGeneration,
@@ -119,6 +129,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     , Sync(sync)
     , FillGeneration(fillGeneration)
     , Timeout(timeout)
+    , DiskIdTolerance(diskIdTolerance)
 {}
 
 void TDestroyVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -367,6 +378,34 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
+    if (msg->Record.GetVolume().GetDiskId() &&
+        msg->Record.GetVolume().GetDiskId() != DiskId)
+    {
+        switch (DiskIdTolerance) {
+            case EDiskIdTolerance::AllowMangled: {
+                LOG_WARN(
+                    ctx,
+                    TBlockStoreComponents::SERVICE,
+                    "Volume %s is not exist. Substituted by %s",
+                    DiskId.Quote().c_str(),
+                    msg->Record.GetVolume().GetDiskId().Quote().c_str());
+                DiskId = msg->Record.GetVolume().GetDiskId();
+                break;
+            }
+            case EDiskIdTolerance::StrictMatch: {
+                ReplyAndDie(
+                    ctx,
+                    MakeError(
+                        S_ALREADY,
+                        TStringBuilder()
+                            << "volume not found (but "
+                            << msg->Record.GetVolume().GetDiskId().Quote()
+                            << " exists)"));
+                return;
+            }
+        }
+    }
+
     if (auto error = CheckIfDestructionIsAllowed(); HasError(error)) {
         ReplyAndDie(ctx, std::move(error));
         return;
@@ -506,6 +545,10 @@ void TServiceActor::HandleDestroyVolume(
     const auto* msg = ev->Get();
     const auto& request = msg->Record;
     const auto& diskId = request.GetDiskId();
+    auto diskIdTolerance =
+        request.GetUseStrictDiskId()
+            ? TDestroyVolumeActor::EDiskIdTolerance::StrictMatch
+            : TDestroyVolumeActor::EDiskIdTolerance::AllowMangled;
     const bool destroyIfBroken = request.GetDestroyIfBroken();
     const bool sync = request.GetSync();
     const ui64 fillGeneration = request.GetFillGeneration();
@@ -524,6 +567,7 @@ void TServiceActor::HandleDestroyVolume(
         Config->GetAttachedDiskDestructionTimeout(),
         Config->GetDestructionAllowedOnlyForDisksWithIdPrefixes(),
         diskId,
+        diskIdTolerance,
         destroyIfBroken,
         sync,
         fillGeneration,
