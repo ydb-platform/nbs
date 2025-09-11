@@ -18,11 +18,10 @@ from .senders.durable_multi import (
 logger = logging.getLogger(__name__)
 
 
-class BreakpadSender(object):
+class BreakpadSender:
     EMPTY_QUEUE_WAIT_TIME = 5.0
 
     def __init__(self):
-        super().__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self._storage = None
         self._stopping = False

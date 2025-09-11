@@ -9,7 +9,7 @@ import time
 logger = logging.getLogger(__name__)
 
 
-class OOMChecker(object):
+class OOMChecker:
     KERN_LOG = "/var/log/kern.log"
     BEGIN_OOM_RE = re.compile(r'(\w+\s+\d+\s+\d{2}:\d{2}:\d{2}) .* Task in .+ killed as a result of limit of')
     KILL_OOM_RE = re.compile(r'Memory cgroup out of memory: Kill process (\d+)')
@@ -24,7 +24,6 @@ class OOMChecker(object):
     ]
 
     def __init__(self):
-        super().__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self._pid = None
         self._oom_list = list()

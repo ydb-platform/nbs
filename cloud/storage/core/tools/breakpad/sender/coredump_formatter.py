@@ -3,7 +3,7 @@
 import re
 
 
-class CoredumpFormatter(object):
+class CoredumpFormatter:
     CURRENT_THREAD_RE = re.compile(
         r'^\[Current thread is (\d+) \(LWP \d+\)\]$')
     NEW_STACK_RE = re.compile(r'^Thread (\d+) \(LWP \d+\):$')
@@ -12,7 +12,6 @@ class CoredumpFormatter(object):
     ARCADIA_PATH = "/arcadia/"
 
     def __init__(self, coredump: str):
-        super().__init__()
         self.info = list()
         self.stacks = list()
         self.last_thread = None

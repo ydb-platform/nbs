@@ -8,10 +8,7 @@ import requests
 from .base import BaseSender, CrashInfoProcessed
 
 
-class SentryFormatter(object):
-    def __init__(self):
-        return
-
+class SentryFormatter:
     def _get_envelope_header(self, event_id):
         envelope_header_dict = {
             "event_id": event_id,

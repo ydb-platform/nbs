@@ -13,10 +13,9 @@ class CrashInfoStorageError(Exception):
     pass
 
 
-class CrashInfo(object):
+class CrashInfo:
 
     def __init__(self):
-        super(CrashInfo, self).__init__()
         self.corefile = None
         self.is_minidump = False
         self.time = None
@@ -52,7 +51,7 @@ class CrashInfoProcessed(CrashInfo):
     CRASH_TYPE_OOM = "oom"
 
     def __init__(self, crash: CrashInfo):
-        super(CrashInfoProcessed, self).__init__()
+        super().__init__()
         self.__dict__.update(crash.__dict__)
 
         self.crash_type = None
@@ -72,11 +71,10 @@ class CrashInfoProcessed(CrashInfo):
                )
 
 
-class CrashInfoStorage(object):
+class CrashInfoStorage:
     FILETYPE = ".json"
 
     def __init__(self, queue_dir):
-        super(CrashInfoStorage, self).__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self._queue_dir = queue_dir
         self._ensure_queuedir()

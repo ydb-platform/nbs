@@ -27,10 +27,9 @@ class LauncherError(Exception):
     pass
 
 
-class Executer(object):
+class Executer:
 
     def __init__(self, command):
-        super(Executer, self).__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self.command = command
         self.environ = dict()
@@ -146,10 +145,9 @@ class Executer(object):
         return self.err_err.errors + self.err_out.errors
 
 
-class Launcher(object):
+class Launcher:
 
     def __init__(self):
-        super(Launcher, self).__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self.launcher = None
         self.errors = ""
