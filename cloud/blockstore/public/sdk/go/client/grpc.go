@@ -98,7 +98,6 @@ func (client *grpcClient) setupHeaders(ctx context.Context, req request) {
 }
 
 func (client *grpcClient) log(
-	ctx context.Context,
 	req request,
 	format string,
 	v ...interface{},
@@ -119,7 +118,7 @@ func (client *grpcClient) executeRequest(
 
 	requestId := nextRequestId()
 	client.setupHeaders(ctx, req)
-	client.log(ctx, req, "%s #%d sending request", requestName(req), requestId)
+	client.log(req, "%s #%d sending request", requestName(req), requestId)
 
 	ctx, cancel := context.WithTimeout(ctx, client.timeout)
 	defer cancel()
@@ -139,7 +138,6 @@ func (client *grpcClient) executeRequest(
 
 	if requestTime < requestTimeWarnThreshold {
 		client.log(
-			ctx,
 			req,
 			"%s%s #%d request completed (time: %v, size: %d, error: %v)",
 			requestName(req),
