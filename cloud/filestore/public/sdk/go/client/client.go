@@ -1,10 +1,10 @@
 package client
 
 import (
-	"fmt"
-
 	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+
 	"golang.org/x/net/context"
 )
 
@@ -305,7 +305,7 @@ func (client *Client) ListNodes(
 	}
 
 	if len(resp.GetNames()) != len(resp.GetNodes()) {
-		return nil, "", fmt.Errorf(
+		return nil, "", errors.NewNonRetriableErrorf(
 			"ListNodes: got %d names, but only %d nodes",
 			len(resp.GetNames()),
 			len(resp.GetNodes()),
