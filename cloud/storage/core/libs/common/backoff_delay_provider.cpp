@@ -16,7 +16,7 @@ TBackoffDelayProvider::TBackoffDelayProvider(
         TDuration initialDelay,
         TDuration maxDelay)
     : InitialDelay(initialDelay)
-    , MaxDelay(Max(maxDelay, initialDelay))
+    , MaxDelay(Max(maxDelay, initialDelay, DefaultInitialDelay))
     , FirstStepDelay(DefaultInitialDelay)
     , CurrentDelay(initialDelay)
 {}
@@ -26,7 +26,7 @@ TBackoffDelayProvider::TBackoffDelayProvider(
         TDuration firstStepDelay,
         TDuration maxDelay)
     : InitialDelay(initialDelay)
-    , MaxDelay(Max(maxDelay, initialDelay))
+    , MaxDelay(Max(maxDelay, initialDelay, firstStepDelay))
     , FirstStepDelay(firstStepDelay)
     , CurrentDelay(initialDelay)
 {}
