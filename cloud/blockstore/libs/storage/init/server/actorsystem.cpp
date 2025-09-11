@@ -497,7 +497,21 @@ public:
             );
 
             auto tenantPoolConfig = MakeIntrusive<TTenantPoolConfig>(localConfig);
-            tenantPoolConfig->AddStaticSlot(StorageConfig->GetSchemeShardDir());
+
+            NKikimrTabletBase::TMetrics resourceLimit;
+            if (StorageConfig->GetCpuResourceLimit()) {
+                resourceLimit.SetCPU(StorageConfig->GetCpuResourceLimit());
+            }
+            if (StorageConfig->GetMemoryResourceLimit()) {
+                resourceLimit.SetMemory(StorageConfig->GetMemoryResourceLimit());
+            }
+            if (StorageConfig->GetNetworkResourceLimit()) {
+                resourceLimit.SetNetwork(StorageConfig->GetNetworkResourceLimit());
+            }
+
+            tenantPoolConfig->AddStaticSlot(
+                StorageConfig->GetSchemeShardDir(),
+                resourceLimit);
 
             setup->LocalServices.emplace_back(
                 MakeTenantPoolRootID(),

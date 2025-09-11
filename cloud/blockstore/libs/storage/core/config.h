@@ -723,6 +723,10 @@ public:
     [[nodiscard]] TDuration GetTrimFreshLogTimeout() const;
 
     [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
+
+    [[nodiscard]] ui64 GetCpuResourceLimit() const;
+    [[nodiscard]] ui64 GetMemoryResourceLimit() const;
+    [[nodiscard]] ui64 GetNetworkResourceLimit() const;
 };
 
 ui64 GetAllocationUnit(
