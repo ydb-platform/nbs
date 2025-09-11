@@ -53,8 +53,7 @@ void TLoadFreshBlobsActor::DiscoverBlobs(const TActorContext& ctx)
 {
     const auto tabletId = TabletInfo->TabletID;
 
-    ui64 barrierGen, unused;
-    std::tie(barrierGen, unused) = ParseCommitId(TrimFreshLogToCommitId);
+    auto [barrierGen, barrierStep] = ParseCommitId(TrimFreshLogToCommitId);
 
     for (ui32 channel: FreshChannels) {
         LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
@@ -109,8 +108,8 @@ void TLoadFreshBlobsActor::DiscoverBlobs(const TActorContext& ctx)
         }
 
         for (;;) {
-            const ui32 fromGen = cur->FromGeneration;
-            const ui32 fromStep = 0;
+            const ui32 fromGen = barrierGen;
+            const ui32 fromStep = barrierStep;
 
             const ui32 toGen = (next == end ? Max<ui32>() : next->FromGeneration);
             const ui32 toStep = Max<ui32>();

@@ -13193,6 +13193,106 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(true, trimCompletedSeen);
         UNIT_ASSERT_VALUES_EQUAL(1, trimCounter->Val());
     }
+
+    Y_UNIT_TEST(ShouldLoadFreshBlobsFromLastTrimFreshLogToCommitIdInMeta)
+    {
+        constexpr ui32 FreshChannelId = 4;
+
+        auto config = DefaultConfig();
+        config.SetFreshChannelCount(1);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
+        }
+
+        bool saveBlobs = false;
+        TSet<ui64> expectedBlobs;
+
+        auto eventFilter =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCollectGarbage: {
+                        auto* msg = ev->Get<TEvBlobStorage::TEvCollectGarbage>();
+                        if (msg->Channel == FreshChannelId) {
+                            return true;
+                        }
+                        break;
+                    }
+                    case TEvBlobStorage::EvRangeResult: {
+                        using TEvent = TEvBlobStorage::TEvRangeResult;
+                        auto* msg = ev->Get<TEvent>();
+                        bool isRangeResponseFromFresh = false;
+                        for (const auto& r: msg->Responses) {
+                            if (r.Id.Channel() == FreshChannelId) {
+                                isRangeResponseFromFresh = true;
+                                auto commitId = MakeCommitId(
+                                        r.Id.Generation(),
+                                        r.Id.Step());
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    1,
+                                    expectedBlobs.count(commitId));
+                            }
+                        }
+                        if (isRangeResponseFromFresh) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                expectedBlobs.size(),
+                                msg->Responses.size());
+                        }
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvWriteBlobCompleted: {
+                        using TEvent = TEvPartitionPrivate::TEvWriteBlobCompleted;
+                        auto* msg = ev->Get<TEvent>();
+                        if (msg->BlobId.Channel() == 4 && saveBlobs)
+                        {
+                            expectedBlobs.emplace(msg->BlobId.CommitId());
+                        }
+                        break;
+                    }
+                }
+                return false;
+            };
+
+
+        runtime->SetEventFilter(eventFilter);
+
+        // update TrimFreshLogToCommitId in meta to gen:step = 0:0
+        partition.Flush();
+
+        runtime->DispatchEvents(TDispatchOptions{}, TDuration::Seconds(1));
+
+        saveBlobs = true;
+
+        partition.WriteBlocks(4, 4);
+        partition.WriteBlocks(5, 5);
+        partition.WriteBlocks(6, 6);
+
+        // update TrimFreshLogToCommitId in meta to gen:step = 2:4
+        partition.Flush();
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        // expect to read last 3 blobs ([2:5], [2:6], [2:7])
+
+        UNIT_ASSERT_VALUES_EQUAL(3, expectedBlobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 5)));
+        UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 6)));
+        UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 7)));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
