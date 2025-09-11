@@ -49,7 +49,7 @@ func (t *createDiskFromImageTask) Load(request, state []byte) error {
 func (t *createDiskFromImageTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-) (err error) {
+) error {
 
 	params := t.request.Params
 
@@ -60,6 +60,7 @@ func (t *createDiskFromImageTask) Run(
 	}
 
 	var client nbs.Client
+	var err error
 
 	if len(t.state.SelectedCellId) > 0 {
 		client, err = t.nbsFactory.GetClient(ctx, t.state.SelectedCellId)
