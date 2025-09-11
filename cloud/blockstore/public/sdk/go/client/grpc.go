@@ -33,7 +33,7 @@ func WithClientID(ctx context.Context, clientId string) context.Context {
 ////////////////////////////////////////////////////////////////////////////////
 
 type grpcClient struct {
-	log      Log
+	logger   Logger
 	impl     api.TBlockStoreServiceClient
 	conn     *grpc.ClientConn
 	timeout  time.Duration
@@ -97,6 +97,19 @@ func (client *grpcClient) setupHeaders(ctx context.Context, req request) {
 	headers.ClientId = clientId
 }
 
+func (client *grpcClient) log(
+	req request,
+	format string,
+	v ...interface{},
+) {
+
+	if requestLogLevel(req) == LOG_DEBUG {
+		client.logger.Debugf("%s "+format, v...)
+	} else {
+		client.logger.Infof("%s "+format, v...)
+	}
+}
+
 func (client *grpcClient) executeRequest(
 	ctx context.Context,
 	req request,
@@ -105,10 +118,7 @@ func (client *grpcClient) executeRequest(
 
 	requestId := nextRequestId()
 	client.setupHeaders(ctx, req)
-
-	if logger := client.log.Logger(requestLogLevel(req)); logger != nil {
-		logger.Printf(ctx, "%s #%d sending request", requestName(req), requestId)
-	}
+	client.log(req, "%s #%d sending request", requestName(req), requestId)
 
 	ctx, cancel := context.WithTimeout(ctx, client.timeout)
 	defer cancel()
@@ -127,31 +137,26 @@ func (client *grpcClient) executeRequest(
 	}
 
 	if requestTime < requestTimeWarnThreshold {
-		if logger := client.log.Logger(requestLogLevel(req)); logger != nil {
-			logger.Printf(
-				ctx,
-				"%s%s #%d request completed (time: %v, size: %d, error: %v)",
-				requestName(req),
-				requestDetails(req),
-				requestId,
-				requestTime,
-				requestSize(req),
-				err,
-			)
-		}
+		client.log(
+			req,
+			"%s%s #%d request completed (time: %v, size: %d, error: %v)",
+			requestName(req),
+			requestDetails(req),
+			requestId,
+			requestTime,
+			requestSize(req),
+			err,
+		)
 	} else {
-		if logger := client.log.Logger(LOG_WARN); logger != nil {
-			logger.Printf(
-				ctx,
-				"%s%s #%d request too slow (time: %v, size: %d, error: %v)",
-				requestName(req),
-				requestDetails(req),
-				requestId,
-				requestTime,
-				requestSize(req),
-				err,
-			)
-		}
+		client.logger.Warnf(
+			"%s%s #%d request too slow (time: %v, size: %d, error: %v)",
+			requestName(req),
+			requestDetails(req),
+			requestId,
+			requestTime,
+			requestSize(req),
+			err,
+		)
 	}
 
 	return resp, err
@@ -863,7 +868,7 @@ type GrpcClientOpts struct {
 	UseGZIPCompression bool
 }
 
-func NewGrpcClient(opts *GrpcClientOpts, log Log) (ClientIface, error) {
+func NewGrpcClient(opts *GrpcClientOpts, log Logger) (ClientIface, error) {
 	requestTimeout := defaultRequestTimeout
 	if opts.Timeout != nil {
 		requestTimeout = *opts.Timeout
