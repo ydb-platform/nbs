@@ -233,10 +233,6 @@ private:
 
     void ProcessNextOpenCloseDevicesRequests(const NActors::TActorContext& ctx);
 
-    bool ProcessHttpActon(
-        const NActors::NMon::TEvHttpInfo::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
 private:
     STFUNC(StateInit);
     STFUNC(StateWork);

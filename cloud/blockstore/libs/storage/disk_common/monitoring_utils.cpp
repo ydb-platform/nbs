@@ -95,7 +95,7 @@ IOutputStream& DumpDeviceState(
         out << " [<font color=Purple>lagging</font>]";
     }
     if (flags & EDeviceStateFlags::CLOSED) {
-        out << " [<font color=DarkCyan>closed</font>]";
+        out << " [<font color=Black>closed</font>]";
     }
     return out;
 }
