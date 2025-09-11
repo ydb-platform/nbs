@@ -2,6 +2,7 @@ package cells
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
@@ -10,7 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -19,11 +20,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type getClusterCapacityTask struct {
-	storage      storage.Storage
-	nbsFactory   nbs.Factory
-	config       *cells_config.CellsConfig
-	state        *protos.GetClusterCapacityState
-	deleteBefore time.Time
+	config            *cells_config.CellsConfig
+	storage           storage.Storage
+	nbsFactory        nbs.Factory
+	expirationTimeout time.Duration
+	state             *protos.GetClusterCapacityState
 }
 
 func (t *getClusterCapacityTask) Save() ([]byte, error) {
@@ -40,64 +41,94 @@ func (t *getClusterCapacityTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	group, ctx := errgroup.WithContext(ctx)
+
+	completedCells := make(chan string)
+
 	for zoneID, cells := range t.config.Cells {
 		logging.Debug(ctx, "Getting cluster capacity for zone %s", zoneID)
 
 		for _, cellID := range cells.Cells {
-			client, err := t.nbsFactory.GetClient(ctx, cellID)
-			if err != nil {
-				return err
-			}
+			group.Go(func(zoneID string, cellID string) func() error {
 
-			capacityInfos, err := client.GetClusterCapacity(ctx)
-			if err != nil {
-				logging.Error(
-					ctx,
-					"Failed to get cluster capacity from cell %s: %v",
-					cellID,
-					err,
-				)
-				return err
-			}
+				return func() error {
 
-			var capacities []storage.ClusterCapacity
-			for _, info := range capacityInfos {
-				capacities = append(capacities, storage.ClusterCapacity{
-					ZoneID:     zoneID,
-					CellID:     cellID,
-					Kind:       info.DiskKind,
-					FreeBytes:  info.FreeBytes,
-					TotalBytes: info.TotalBytes,
-				})
-			}
+					if slices.Contains(t.state.ProcessedCellIDs, cellID) {
+						return nil
+					}
 
-			execCtx.SaveStateWithPreparation(
-				ctx,
-				func(ctx context.Context, tx *persistence.Transaction) error {
-					err := t.storage.UpdateClusterCapacitiesTx(
+					client, err := t.nbsFactory.GetClient(ctx, cellID)
+					if err != nil {
+						return err
+					}
+
+					capacityInfos, err := client.GetClusterCapacity(ctx)
+					if err != nil {
+						logging.Error(
+							ctx,
+							"Failed to get cluster capacity from cell %s: %v",
+							cellID,
+							err,
+						)
+						return err
+					}
+
+					var capacities []storage.ClusterCapacity
+					for _, info := range capacityInfos {
+						capacities = append(capacities, storage.ClusterCapacity{
+							ZoneID:     zoneID,
+							CellID:     cellID,
+							Kind:       info.DiskKind,
+							FreeBytes:  info.FreeBytes,
+							TotalBytes: info.TotalBytes,
+						})
+					}
+
+					deleteBefore := time.Now().Add(-t.expirationTimeout)
+					err = t.storage.UpdateClusterCapacities(
 						ctx,
-						tx,
 						capacities,
-						t.deleteBefore,
+						deleteBefore,
 					)
 					if err != nil {
 						return err
 					}
 
-					t.state.ProcessedCellIDs = append(
-						t.state.ProcessedCellIDs,
+					logging.Debug(
+						ctx,
+						"Successfully finished getting capacity for cell: %v",
 						cellID,
 					)
+
+					select {
+					case completedCells <- cellID:
+					case <-ctx.Done():
+						return ctx.Err()
+					}
 					return nil
-				})
+				}
+			}(zoneID, cellID))
 		}
 	}
 
-	logging.Debug(
-		ctx,
-		"Successfully finished getting cluster capacity for cells: %v",
-		t.state.ProcessedCellIDs,
-	)
+	go func() {
+		_ = group.Wait()
+		close(completedCells)
+	}()
+
+	for cell := range completedCells {
+		t.state.ProcessedCellIDs = append(t.state.ProcessedCellIDs, cell)
+	}
+
+	err := execCtx.SaveState(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = group.Wait()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

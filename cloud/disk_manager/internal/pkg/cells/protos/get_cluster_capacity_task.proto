@@ -7,5 +7,5 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message GetClusterCapacityState {
-    repeated string ProcessedCellIDs = 1;
+    repeated string ProcessedCellIds = 1;
 }
