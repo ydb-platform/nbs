@@ -25,7 +25,7 @@ class AggregatorType(str, Enum):
         return self.value
 
 
-class MultiSender(BaseSender):
+class DurableMultiSender(BaseSender):
     def __init__(self, aggregator_type, aggregator_url, project, emails,
                  ca_file):
         super().__init__()
@@ -47,7 +47,7 @@ class MultiSender(BaseSender):
         if emails:
             self._email_sender = EmailSender(self._logger, emails)
 
-    @retry(max_times=1, max_time=timedelta(seconds=30))
+    @retry(max_times=10, max_time=timedelta(seconds=30))
     def _do_send_to_aggregator(self, crash: CrashInfoProcessed):
         self._logger.info(f"Sending crash info to aggregator "
                           f"{self._aggregator_type}: {self._aggregator_url}")

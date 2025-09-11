@@ -12,7 +12,8 @@ from ..common.crash_info import CrashInfoStorage
 from .crash_processor import (
     CrashProcessorError, CoredumpCrashProcessor, OOMCrashProcessor)
 from .limiter import Limiter
-from .senders.multi import AggregatorType, MultiSender, SenderError
+from .senders.durable_multi import (
+    AggregatorType, DurableMultiSender, SenderError)
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +142,7 @@ class BreakpadSender(object):
         url = self._config.get("aggregator_url", self._args.aggregator_url)
         ca_file = self._config.get("ca_file", self._args.ca_file)
 
-        self._sender = MultiSender(type, url, self._args.prj, emails, ca_file)
+        self._sender = DurableMultiSender(type, url, self._args.prj, emails, ca_file)
         self._limiter = Limiter(
             window_seconds=self._args.limit_window,
             limit=self._args.limit_cores)
