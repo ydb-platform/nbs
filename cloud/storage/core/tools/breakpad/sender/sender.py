@@ -57,6 +57,8 @@ class BreakpadSender(object):
                             help="Optional certificate authority file (*.pem)")
         parser.add_argument("--gdb-timeout", type=int, default=300,
                             help="GDB timeout in seconds")
+        parser.add_argument("--gdb-disabled", action="store_true",
+                            help="Disable running gdb (just send minidump)")
 
         # TODO: remove, kept for backward compatibility
         parser.add_argument("--nbs-config", type=str, metavar="PATH")
@@ -85,19 +87,23 @@ class BreakpadSender(object):
 
             try:
                 if crash_info.corefile:
-                    processor = CoredumpCrashProcessor(self._args.gdb_timeout)
+                    processor = CoredumpCrashProcessor(self._args.gdb_timeout,
+                                                       self._args.gdb_disabled)
                 else:
                     processor = OOMCrashProcessor()
 
-                crash_processed = processor.process(crash_info)
-                self._sender.send(crash_processed)
-            except CrashProcessorError as e:
-                self._logger.error("Can't process core %s %r",
-                                   crash_info.corefile, e)
-                self._logger.exception(e)
-                return
+                crash = processor.process(crash_info)
+                self._sender.send(crash)
+            except CrashProcessorError:
+                self._logger.exception(f"Can't process core "
+                                       f"{crash_info.corefile}")
+                continue
             except SenderError:
-                return
+                self._logger.exception(f"Can't send crash info {crash}")
+                continue
+            except Exception:
+                self._logger.exception("Unexpected error happened")
+                continue
 
             processor.cleanup()
 

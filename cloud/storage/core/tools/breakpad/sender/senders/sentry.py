@@ -13,19 +13,21 @@ class SentryFormatter(object):
         return
 
     def _get_envelope_header(self, event_id):
-        envelope_header = {
+        envelope_header_dict = {
             "event_id": event_id,
             "sent_at": str(datetime.now(timezone.utc))
         }
+        envelope_header = json.dumps(envelope_header_dict).encode("utf-8")
         return envelope_header
 
-    def _get_event_payload(self, event_id, crash: CrashInfoProcessed):
-        event_payload = {
+    def _get_event(self, event_id: str, crash: CrashInfoProcessed):
+        event_payload_dict = {
             "event_id": event_id,
+            "platform": "native",
+            "message": f"{crash.service}: crash detected",
             "logentry": {
                 "message": f"{crash.service}: crash detected",
             },
-
             "timestamp": int(crash.time),
             "level": "fatal",
             "server_name": crash.server,
@@ -39,10 +41,18 @@ class SentryFormatter(object):
                 "backtrace": crash.formatted_backtrace,
             }
         }
+        event_payload = json.dumps(event_payload_dict).encode("utf-8")
 
-        return event_payload
+        event_header_dict = {
+            "type": "event",
+            "content_type": "application/json",
+            "length": len(event_payload)
+        }
+        event_header = json.dumps(event_header_dict).encode("utf-8")
 
-    def _get_attachment(self, filepath: str):
+        return event_header, event_payload
+
+    def _get_attachment(self, filepath: str, type: str):
         try:
             with open(filepath, "rb") as f:
                 attachment_data = f.read()
@@ -51,46 +61,48 @@ class SentryFormatter(object):
                 f"Error occured while reading file" \
                 f"{filepath}: {str(e)}".encode(encoding="utf-8")
 
-        attachment_length = len(attachment_data)
-        attachment_item_header = {
+        attachment_header_dict = {
             "type": "attachment",
-            "length": attachment_length,
+            "attachment_type": f"{type}",
+            "length": len(attachment_data),
             "filename": filepath,
-            "content_type": "text/plain"
+            "content_type": "text/plain",
         }
-        return attachment_item_header, attachment_data
+        attachment_header = json.dumps(attachment_header_dict).encode("utf-8")
 
-    def _get_file_attachment(self, filepath: str):
-        attachment_header, attachment_data = self._get_attachment(filepath)
-        attachment_header_str = json.dumps(attachment_header) + "\n"
-
-        return attachment_header_str.encode("utf-8") + attachment_data
+        return attachment_header, attachment_data
 
     def create_event_envelope(self, crash: CrashInfoProcessed):
         event_id = uuid4().hex  # generate a unique event ID
 
         envelope_header = self._get_envelope_header(event_id)
-        event_item_header = {"type": "event"}
-        event_payload = self._get_event_payload(event_id, crash)
+        event_header, event_payload = self._get_event(event_id, crash)
 
         # Construct the Envelope (consists of multiple newline-separated parts):
-        # 1. Envelope Header (JSON)
-        envelope_str = json.dumps(envelope_header) + "\n"
-        # 2. Event Item Header (JSON)
-        envelope_str += json.dumps(event_item_header) + "\n"
-        # 3. Event Payload (JSON)
-        envelope_str += json.dumps(event_payload) + "\n"
+        parts = [
+            envelope_header,
+            event_header,
+            event_payload,
+        ]
 
-        envelope_bytes = envelope_str.encode("utf-8")
+        if crash.corefile and crash.is_minidump:
+            minidump_path = crash.corefile
+            core_path = crash.corefile + ".core"
 
-        if not crash.corefile or not crash.is_minidump:
-            return envelope_bytes
+            minidump_header, minidump_payload = \
+                self._get_attachment(minidump_path, "event.minidump")
 
-        envelope_bytes += self._get_file_attachment(crash.corefile)
-        envelope_bytes += "\n".encode("utf-8")
-        envelope_bytes += self._get_file_attachment(crash.corefile + ".core")
+            core_header, core_payload = \
+                self._get_attachment(core_path, "event.attachment")
 
-        return envelope_bytes
+            parts += [
+                minidump_header,
+                minidump_payload,
+                core_header,
+                core_payload,
+            ]
+
+        return b"\n".join(parts)
 
 
 class SentrySender(BaseSender):
@@ -114,8 +126,12 @@ class SentrySender(BaseSender):
             "X-Sentry-Auth": self._sentry_auth,
         }
 
-        return requests.post(self._endpoint_url, data=envelope_bytes,
-                             headers=headers, timeout=timeout, verify=self._ca_file)
+        response = requests.post(
+            self._endpoint_url, data=envelope_bytes, headers=headers,
+            timeout=timeout, verify=self._ca_file)
+        response.raise_for_status()
+
+        return response
 
     def send(self, crash: CrashInfoProcessed):
         formatter = SentryFormatter()

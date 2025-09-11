@@ -1,5 +1,7 @@
+from datetime import timedelta
 from enum import Enum
 from logging import getLogger
+from requests import HTTPError
 
 from library.python.retry import retry
 
@@ -29,6 +31,7 @@ class MultiSender(BaseSender):
         super().__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self._aggregator_url = aggregator_url
+        self._aggregator_type = aggregator_type
 
         AGGREGATOR_TIMEOUT = 60  # Seconds
         if aggregator_type == AggregatorType.Cores:
@@ -44,17 +47,17 @@ class MultiSender(BaseSender):
         if emails:
             self._email_sender = EmailSender(self._logger, emails)
 
-    @retry(max_times=1, delay=60)
+    @retry(max_times=1, max_time=timedelta(seconds=30))
     def _do_send_to_aggregator(self, crash: CrashInfoProcessed):
-        url = self._aggregator_url
-        self._logger.info("Sending crash info to aggregator %s", url)
+        self._logger.info(f"Sending crash info to aggregator "
+                          f"{self._aggregator_type}: {self._aggregator_url}")
 
-        response = self._aggregator_sender.send(crash)
-        if response.status_code != 200:
-            msg = f"Error sending crash to aggregator {url}: \
-                code {response.status_code}, {response.text}"
-            self._logger.error(msg)
-            raise SenderError(msg)
+        response = None
+        try:
+            response = self._aggregator_sender.send(crash)
+            response.raise_for_status()
+        except HTTPError as e:
+            raise SenderError("Error sending crash to aggregator") from e
 
         self._logger.info("Get response from aggregator: %r", response.text)
 
@@ -62,9 +65,13 @@ class MultiSender(BaseSender):
         try:
             self._do_send_to_aggregator(crash)
         except Exception as e:
-            self._logger.error(
-                "gave up on sending core dump to the aggregator: %r", e)
-            pass
+            raise SenderError(
+                "Gave up on sending core dump to the aggregator") from e
+
+    @retry(max_times=10, max_time=timedelta(seconds=30))
+    def _send_email(self, crash: CrashInfoProcessed):
+        if self._email_sender:
+            self._email_sender.send(crash)
 
     def _write_to_logfile(self, crash: CrashInfoProcessed):
         try:
@@ -85,12 +92,13 @@ class MultiSender(BaseSender):
             self._logger.info("URL %s", crash.core_url)
 
     def send(self, crash: CrashInfoProcessed):
-        self._send_to_aggregator(crash)
+        self._write_to_stdout(crash)
+
+        if self._aggregator_sender:
+            self._send_to_aggregator(crash)
 
         if self._email_sender:
-            self._email_sender.send(crash)
+            self._send_email(crash)
 
         if crash.logfile:
             self._write_to_logfile(crash)
-
-        self._write_to_stdout(crash)

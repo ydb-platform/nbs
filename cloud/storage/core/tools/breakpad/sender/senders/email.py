@@ -4,8 +4,6 @@ from .base import BaseSender, CrashInfoProcessed
 import subprocess
 from email.mime.text import MIMEText
 
-from library.python.retry import retry
-
 
 class EmailSender(BaseSender):
     def __init__(self, logger, emails):
@@ -13,7 +11,6 @@ class EmailSender(BaseSender):
         self._logger = logger
         self._emails = emails
 
-    @retry(max_times=10, delay=60)
     def send(self, crash: CrashInfoProcessed):
         self._logger.info("Send core to email %r", self._emails)
         mail_from = "devnull@example.com"
