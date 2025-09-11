@@ -52,42 +52,6 @@ class TDiskAgentActor final
         Registered,
     };
 
-    struct TOpenDevice
-    {
-        TString DeviceName;
-        ui64 DeviceGeneration;
-        TRequestInfoPtr RequestInfo;
-    };
-
-    struct TCloseDevice
-    {
-        TString DeviceName;
-        ui64 DeviceGeneration;
-        TRequestInfoPtr RequestInfo;
-    };
-
-    struct TOpenCloseDeviceRequest
-    {
-        bool IsOpen;
-        TString DeviceName;
-        ui64 DeviceGeneration;
-        TRequestInfoPtr RequestInfo;
-
-        TOpenCloseDeviceRequest(TOpenDevice request)
-            : IsOpen(true)
-            , DeviceName(std::move(request.DeviceName))
-            , DeviceGeneration(request.DeviceGeneration)
-            , RequestInfo(std::move(request.RequestInfo))
-        {}
-
-        TOpenCloseDeviceRequest(TCloseDevice request)
-            : IsOpen(false)
-            , DeviceName(std::move(request.DeviceName))
-            , DeviceGeneration(request.DeviceGeneration)
-            , RequestInfo(std::move(request.RequestInfo))
-        {}
-    };
-
 private:
     const TStorageConfigPtr Config;
     const TDiskAgentConfigPtr AgentConfig;
@@ -133,7 +97,7 @@ private:
 
     NActors::TActorId HealthCheckActor;
 
-    TDeque<TOpenCloseDeviceRequest> OpenCloseDevicesRequests;
+    THashMap<TString, TRequestInfoPtr> OpenCloseDevicesInProgress;
 
 public:
     TDiskAgentActor(
@@ -211,27 +175,15 @@ private:
 
     TDuration GetMaxRequestTimeout() const;
 
-    void AddOpenDeviceRequest(
+    NProto::TError AddOpenCloseDeviceRequest(
         const NActors::TActorContext& ctx,
-        const TOpenDevice& request);
+        const TString& path,
+        TRequestInfoPtr requestInfo);
 
-    void AddCloseDeviceRequest(
+    void ReplyToOpenCloseDeviceRequest(
         const NActors::TActorContext& ctx,
-        const TCloseDevice& request);
-
-    void AddOpenCloseDeviceRequest(
-        const NActors::TActorContext& ctx,
-        const TOpenCloseDeviceRequest& request);
-
-    bool ProcessOpenDevicesRequests(
-        const NActors::TActorContext& ctx,
-        const TOpenCloseDeviceRequest& request);
-
-    bool ProcessCloseDevicesRequests(
-        const NActors::TActorContext& ctx,
-        const TOpenCloseDeviceRequest& request);
-
-    void ProcessNextOpenCloseDevicesRequests(const NActors::TActorContext& ctx);
+        const TString& path,
+        NActors::IEventBasePtr response);
 
 private:
     STFUNC(StateInit);
