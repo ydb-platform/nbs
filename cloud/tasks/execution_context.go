@@ -34,7 +34,7 @@ type ExecutionContext interface {
 
 	SetEstimatedInflightDuration(estimatedInflightDuration time.Duration)
 
-	SetEstimatedStallingDuration(estimatedInflightDuration time.Duration)
+	SetEstimatedStallingDuration(estimatedStallingDuration time.Duration)
 
 	HasEvent(ctx context.Context, event int64) bool
 
