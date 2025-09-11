@@ -85,6 +85,7 @@ using TValue =
     xxx(DiskAgentSessionCacheRestoreError)                                     \
     xxx(DiskAgentSessionCacheUpdateError)                                      \
     xxx(UnexpectedIdentifierRepetition)                                        \
+    xxx(DiskConfigChangedAfterStart)                                           \
 // BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \
