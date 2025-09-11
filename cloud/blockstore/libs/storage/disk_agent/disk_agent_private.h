@@ -211,6 +211,7 @@ struct TEvDiskAgentPrivate
     struct TDeviceOpened
     {
         THashMap<TString, TResultOrError<IStoragePtr>> Devices;
+        TString Path;
     };
 
     //
