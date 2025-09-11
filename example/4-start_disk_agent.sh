@@ -29,8 +29,10 @@ start_nbs_agent() {
         exit 1
     fi
 
+    THIS_MON_PORT=$(($MON_PORT + $1))
+
     IC_PORT=$(($IC_PORT + $1 * 100)) \
-    MON_PORT=$(($MON_PORT + $1)) \
+    MON_PORT=$THIS_MON_PORT \
     start_disk-agent \
         --location-file $BIN_DIR/nbs/nbs-location-$1.txt \
         --disk-agent-file $BIN_DIR/nbs/nbs-disk-agent-$1.txt >logs/remote-da$1.log 2>&1 &
@@ -38,23 +40,23 @@ start_nbs_agent() {
 
 start_nbs_agent 0
 pid0=$!
-echo "Agent 0 started with pid $pid0"
+echo "Agent 0 started with pid $pid0 http://localhost:$THIS_MON_PORT/blockstore/disk_agent"
 
 start_nbs_agent 1
 pid1=$!
-echo "Agent 1 started with pid $pid1"
+echo "Agent 1 started with pid $pid1 http://localhost:$THIS_MON_PORT/blockstore/disk_agent"
 
 start_nbs_agent 2
 pid2=$!
-echo "Agent 2 started with pid $pid2"
+echo "Agent 2 started with pid $pid2 http://localhost:$THIS_MON_PORT/blockstore/disk_agent"
 
 start_nbs_agent 3
 pid3=$!
-echo "Agent 3 started with pid $pid3"
+echo "Agent 3 started with pid $pid3 http://localhost:$THIS_MON_PORT/blockstore/disk_agent"
 
 start_nbs_agent 4
 pid4=$!
-echo "Agent 4 started with pid $pid4"
+echo "Agent 4 started with pid $pid4 http://localhost:$THIS_MON_PORT/blockstore/disk_agent"
 
 # trap ctrl-c and call ctrl_c()
 trap ctrl_c INT
