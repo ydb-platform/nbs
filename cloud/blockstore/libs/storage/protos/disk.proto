@@ -163,6 +163,7 @@ message TDeviceConfig
     // Physical offset in bytes.
     uint64 PhysicalOffset = 19;
 
+    // Monotonously increasing counter, need to order open close requests.
     uint64 Generation = 20;
 }
 
@@ -595,14 +596,17 @@ message TRegisterAgentResponse
     // List of device IDs to which Disk Agent should disable IO operations.
     repeated string DevicesToDisableIO = 2;
 
-    message TUnknownDevice
+    message TDeviceToGeneration
     {
         string DevicePath = 1;
         uint64 DeviceGeneration = 2;
     }
 
+    // Allowed devices attached to the agent.
+    repeated TDeviceToGeneration AllowedDevices = 3;
+
     // Unallowed devices attached to the agent.
-    repeated TUnknownDevice UnknownDevices = 3;
+    repeated TDeviceToGeneration UnknownDevices = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

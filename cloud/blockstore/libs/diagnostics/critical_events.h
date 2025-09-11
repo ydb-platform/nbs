@@ -88,6 +88,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(DiskAgentSessionCacheUpdateError)                                      \
     xxx(UnexpectedIdentifierRepetition)                                        \
     xxx(ChaosGeneratedError)                                                   \
+    xxx(DiskConfigChangedAfterStart)                                           \
 // BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \
