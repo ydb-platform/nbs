@@ -22,45 +22,65 @@ TResultOrError<T> UnpackFuture(TFuture<T> f)
 
 }   // namespace
 
-void TDiskAgentActor::AddOpenCloseDeviceRequest(
+NProto::TError TDiskAgentActor::AddOpenCloseDeviceRequest(
     const NActors::TActorContext& ctx,
-    const TOpenCloseDeviceRequest& request)
+    const TString& path,
+    TRequestInfoPtr requestInfo)
 {
-    OpenCloseDevicesRequests.push_back(request);
-
-    if (OpenCloseDevicesRequests.size() == 1) {
-        ProcessNextOpenCloseDevicesRequests(ctx);
-    } else {
+    auto [it, inserted] = OpenCloseDevicesInProgress.emplace(path, requestInfo);
+    if (!inserted) {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
-            "Postponing open/close device request, another request is "
-            "in progress");
+            "Already processing open close request for device %s, rejecting "
+            "request",
+            path.Quote().c_str());
+
+        return MakeError(E_REJECTED, "another request is in progress");
     }
+
+    return {};
 }
 
-void TDiskAgentActor::AddOpenDeviceRequest(
+void TDiskAgentActor::ReplyToOpenCloseDeviceRequest(
     const NActors::TActorContext& ctx,
-    const TOpenDevice& request)
+    const TString& path,
+    NActors::IEventBasePtr response)
 {
-    AddOpenCloseDeviceRequest(ctx, request);
+    auto* requestInfo = OpenCloseDevicesInProgress.FindPtr(path);
+    Y_DEBUG_ABORT_UNLESS(requestInfo);
+    if (!requestInfo) {
+        return;
+    }
+
+    NCloud::Reply(ctx, **requestInfo, std::move(response));
+    OpenCloseDevicesInProgress.erase(path);
 }
 
-void TDiskAgentActor::AddCloseDeviceRequest(
-    const NActors::TActorContext& ctx,
-    const TCloseDevice& request)
+void TDiskAgentActor::HandleOpenDevice(
+    const TEvDiskAgent::TEvOpenDeviceRequest::TPtr& ev,
+    const TActorContext& ctx)
 {
-    AddOpenCloseDeviceRequest(ctx, request);
-}
+    auto* msg = ev->Get();
+    const auto& record = msg->Record;
 
-bool TDiskAgentActor::ProcessOpenDevicesRequests(
-    const NActors::TActorContext& ctx,
-    const TOpenCloseDeviceRequest& request)
-{
-    Y_DEBUG_ABORT_UNLESS(request.IsOpen);
-    const auto& path = request.DeviceName;
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+    auto path = record.GetDevicePath();
+    if (auto error =
+            AddOpenCloseDeviceRequest(ctx, path, std::move(requestInfo));
+        HasError(error))
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskAgent::TEvOpenDeviceResponse>(error));
+        return;
+    }
+
     auto [uuidToFuture, error] =
-        State->OpenDevice(path, request.DeviceGeneration);
+        State->OpenDevice(path, record.GetDeviceGeneration());
 
     if (HasError(error)) {
         LOG_ERROR(
@@ -72,8 +92,8 @@ bool TDiskAgentActor::ProcessOpenDevicesRequests(
 
         auto response =
             std::make_unique<TEvDiskAgent::TEvOpenDeviceResponse>(error);
-        NCloud::Reply(ctx, *request.RequestInfo, std::move(response));
-        return true;
+        ReplyToOpenCloseDeviceRequest(ctx, path, std::move(response));
+        return;
     }
 
     if (error.GetCode() == S_ALREADY) {
@@ -85,14 +105,13 @@ bool TDiskAgentActor::ProcessOpenDevicesRequests(
 
         auto response = std::make_unique<TEvDiskAgent::TEvOpenDeviceResponse>();
 
-        auto allDevicesForPath =
-            State->GetAllDevicesForPath(request.DeviceName);
+        auto allDevicesForPath = State->GetAllDevicesForPath(path);
         for (const auto& device: allDevicesForPath) {
             *response->Record.AddOpenedDevices() = device;
         }
 
-        NCloud::Reply(ctx, *request.RequestInfo, std::move(response));
-        return true;
+        ReplyToOpenCloseDeviceRequest(ctx, path, std::move(response));
+        return;
     }
 
     Y_DEBUG_ABORT_UNLESS(!uuidToFuture.empty());
@@ -104,7 +123,8 @@ bool TDiskAgentActor::ProcessOpenDevicesRequests(
     WaitAll(futures).Subscribe(
         [actorSystem = ctx.ActorSystem(),
          replyTo = ctx.SelfID,
-         uuidToFuture = std::move(uuidToFuture)](auto)
+         uuidToFuture = std::move(uuidToFuture),
+         path = std::move(path)](auto) mutable
         {
             THashMap<TString, TResultOrError<IStoragePtr>> deviceOpenResults;
             for (const auto& [uuid, future]: uuidToFuture) {
@@ -113,69 +133,10 @@ bool TDiskAgentActor::ProcessOpenDevicesRequests(
 
             auto response =
                 std::make_unique<TEvDiskAgentPrivate::TEvDeviceOpened>(
-                    std::move(deviceOpenResults));
+                    std::move(deviceOpenResults),
+                    std::move(path));
             actorSystem->Send(replyTo, response.release());
         });
-
-    return false;
-}
-
-bool TDiskAgentActor::ProcessCloseDevicesRequests(
-    const NActors::TActorContext& ctx,
-    const TOpenCloseDeviceRequest& request)
-{
-    auto error =
-        State->CloseDevice(request.DeviceName, request.DeviceGeneration);
-    if (HasError(error)) {
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::DISK_AGENT,
-            "Failed to close device %s: %s",
-            request.DeviceName.c_str(),
-            FormatError(error).c_str());
-    }
-
-    auto response = std::make_unique<TEvDiskAgent::TEvCloseDeviceResponse>();
-    *response->Record.MutableError() = error;
-    NCloud::Reply(ctx, *request.RequestInfo, std::move(response));
-
-    return true;
-}
-
-void TDiskAgentActor::ProcessNextOpenCloseDevicesRequests(
-    const NActors::TActorContext& ctx)
-{
-    if (OpenCloseDevicesRequests.size() == 0) {
-        return;
-    }
-    auto& request = OpenCloseDevicesRequests.front();
-
-    bool shouldProcessNextRequest = true;
-    if (request.IsOpen) {
-        shouldProcessNextRequest = ProcessOpenDevicesRequests(ctx, request);
-    } else {
-        shouldProcessNextRequest = ProcessCloseDevicesRequests(ctx, request);
-    }
-
-    if (shouldProcessNextRequest) {
-        OpenCloseDevicesRequests.pop_front();
-        ProcessNextOpenCloseDevicesRequests(ctx);
-    }
-}
-
-void TDiskAgentActor::HandleOpenDevice(
-    const TEvDiskAgent::TEvOpenDeviceRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-
-    auto requestInfo =
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-    AddOpenDeviceRequest(
-        ctx,
-        {.DeviceName = msg->Record.GetDevicePath(),
-         .DeviceGeneration = msg->Record.GetDeviceGeneration(),
-         .RequestInfo = requestInfo});
 }
 
 void TDiskAgentActor::HandleDeviceOpened(
@@ -184,31 +145,18 @@ void TDiskAgentActor::HandleDeviceOpened(
 {
     auto* msg = ev->Get();
 
-    auto request = OpenCloseDevicesRequests.front();
-    Y_DEBUG_ABORT_UNLESS(request.IsOpen);
-    if (!request.IsOpen) {
-        LOG_WARN(
-            ctx,
-            TBlockStoreComponents::DISK_AGENT,
-            "Unexpected device opened event");
-        return;
-    }
-
     for (auto [uuid, result]: msg->Devices) {
         auto [device, error] = result;
         State->DeviceOpened(error, uuid, device);
     }
 
     auto response = std::make_unique<TEvDiskAgent::TEvOpenDeviceResponse>();
-    auto allDevicesForPath = State->GetAllDevicesForPath(request.DeviceName);
+    auto allDevicesForPath = State->GetAllDevicesForPath(msg->Path);
     for (const auto& device: allDevicesForPath) {
         *response->Record.AddOpenedDevices() = device;
     }
 
-    NCloud::Reply(ctx, *request.RequestInfo, std::move(response));
-
-    OpenCloseDevicesRequests.pop_front();
-    ProcessNextOpenCloseDevicesRequests(ctx);
+    ReplyToOpenCloseDeviceRequest(ctx, msg->Path, std::move(response));
 }
 
 void TDiskAgentActor::HandleCloseDevice(
@@ -216,14 +164,36 @@ void TDiskAgentActor::HandleCloseDevice(
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    const auto& record = msg->Record;
 
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-    AddCloseDeviceRequest(
-        ctx,
-        {.DeviceName = msg->Record.GetDevicePath(),
-         .DeviceGeneration = msg->Record.GetDeviceGeneration(),
-         .RequestInfo = requestInfo});
+
+    auto path = record.GetDevicePath();
+    if (auto error =
+            AddOpenCloseDeviceRequest(ctx, path, std::move(requestInfo));
+        HasError(error))
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskAgent::TEvCloseDeviceResponse>(error));
+        return;
+    }
+
+    auto error = State->CloseDevice(path, record.GetDeviceGeneration());
+    if (HasError(error)) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "Failed to close device %s: %s",
+            path.Quote().c_str(),
+            FormatError(error).c_str());
+    }
+
+    auto response =
+        std::make_unique<TEvDiskAgent::TEvCloseDeviceResponse>(error);
+    ReplyToOpenCloseDeviceRequest(ctx, path, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
