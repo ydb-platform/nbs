@@ -7,5 +7,14 @@
     },
     "test.test_profile_log[sqlite]": {
         "uri": "file://test.test_profile_log_sqlite_/results.txt"
+    },
+    "test_grpc.test_profile_log[fstest]": {
+        "uri": "file://test_grpc.test_profile_log_fstest_/results.txt"
+    },
+    "test_grpc.test_profile_log[jpeg]": {
+        "uri": "file://test_grpc.test_profile_log_jpeg_/results.txt"
+    },
+    "test_grpc.test_profile_log[sqlite]": {
+        "uri": "file://test_grpc.test_profile_log_sqlite_/results.txt"
     }
 }
