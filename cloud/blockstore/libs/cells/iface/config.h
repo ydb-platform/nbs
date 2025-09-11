@@ -27,6 +27,9 @@ private:
     ui32 NbdPort = 0;
     TString Fqdn;
     NProto::ECellDataTransport Transport = NProto::CELL_DATA_TRANSPORT_UNSET;
+    TDuration HeartbeatInterval;
+    TDuration HeartbeatTimeout;
+    ui32 HeartbeatFailCount;
 
 public:
     TCellHostConfig(
@@ -35,34 +38,49 @@ public:
 
     TCellHostConfig() = default;
 
-    ui32 GetGrpcPort() const
+    [[nodiscard]] ui32 GetGrpcPort() const
     {
         return GrpcPort;
     }
 
-    ui32 GetSecureGrpcPort() const
+    [[nodiscard]] ui32 GetSecureGrpcPort() const
     {
         return SecureGrpcPort;
     }
 
-    ui32 GetRdmaPort() const
+    [[nodiscard]] ui32 GetRdmaPort() const
     {
         return RdmaPort;
     }
 
-    ui32 GetNbdPort() const
+    [[nodiscard]] ui32 GetNbdPort() const
     {
         return NbdPort;
     }
 
-    TString GetFqdn() const
+    [[nodiscard]] TString GetFqdn() const
     {
         return Fqdn;
     }
 
-    NProto::ECellDataTransport GetTransport() const
+    [[nodiscard]] NProto::ECellDataTransport GetTransport() const
     {
         return Transport;
+    }
+
+    [[nodiscard]] ui32 GetHeartbeatFailCount() const
+    {
+        return HeartbeatFailCount;
+    }
+
+    [[nodiscard]] TDuration GetHeartbeatTimeout() const
+    {
+        return HeartbeatTimeout;
+    }
+
+    [[nodiscard]] TDuration GetHeartbeatInterval() const
+    {
+        return HeartbeatInterval;
     }
 };
 
@@ -92,6 +110,9 @@ public:
     [[nodiscard]] ui32 GetDescribeVolumeHostCount() const;
     [[nodiscard]] ui32 GetMinCellConnections() const;
     [[nodiscard]] bool GetStrictCellIdCheckInDescribeVolume() const;
+    [[nodiscard]] ui32 GetHeartbeatFailCount() const;
+    [[nodiscard]] TDuration GetHeartbeatTimeout() const;
+    [[nodiscard]] TDuration GetHeartbeatInterval() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
