@@ -71,6 +71,12 @@ type DiskParams struct {
 	IsDiskRegistryBasedDisk bool
 }
 
+type DiskState struct {
+	DiskID       string
+	State        types.DiskState
+	StateMessage string
+}
+
 type PlacementGroup struct {
 	GroupID                 string
 	PlacementStrategy       types.PlacementStrategy
@@ -211,6 +217,8 @@ type Client interface {
 		ctx context.Context,
 		diskID string,
 	) (DiskParams, error)
+
+	ListDiskStates(ctx context.Context) ([]DiskState, error)
 
 	CreatePlacementGroup(
 		ctx context.Context,

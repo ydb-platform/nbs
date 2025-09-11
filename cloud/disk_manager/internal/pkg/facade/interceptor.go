@@ -39,6 +39,7 @@ var (
 		{name: "DiskService.Migrate", permission: "disk-manager.disks.update"},
 		{name: "DiskService.SendMigrationSignal", permission: "disk-manager.disks.update"},
 		{name: "DiskService.Describe", permission: "disk-manager.disks.get"},
+		{name: "DiskService.ListStates", permission: "disk-manager.disks.list"},
 
 		{name: "ImageService.Create", permission: "disk-manager.images.create"},
 		{name: "ImageService.Update", permission: "disk-manager.images.update"},

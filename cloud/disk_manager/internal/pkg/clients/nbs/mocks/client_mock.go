@@ -190,6 +190,14 @@ func (c *ClientMock) Describe(
 	return args.Get(0).(nbs.DiskParams), args.Error(1)
 }
 
+func (c *ClientMock) ListDiskStates(
+	ctx context.Context,
+) ([]nbs.DiskState, error) {
+
+	args := c.Called(ctx)
+	return args.Get(0).([]nbs.DiskState), args.Error(1)
+}
+
 func (c *ClientMock) CreatePlacementGroup(
 	ctx context.Context,
 	groupID string,
