@@ -50,11 +50,12 @@ func (t *createOverlayDiskTask) Load(request, state []byte) error {
 func (t *createOverlayDiskTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-) (err error) {
+) error {
 
 	params := t.request.Params
 
 	var client nbs.Client
+	var err error
 
 	if len(t.state.SelectedCellId) > 0 {
 		client, err = t.nbsFactory.GetClient(ctx, t.state.SelectedCellId)
