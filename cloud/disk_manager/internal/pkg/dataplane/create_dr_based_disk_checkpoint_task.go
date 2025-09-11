@@ -122,10 +122,7 @@ func (t *createDRBasedDiskCheckpointTask) setEstimate(
 		return err
 	}
 
-	stats, err := client.Stat(
-		ctx,
-		t.request.Disk.DiskId,
-	)
+	stats, err := client.Stat(ctx, t.request.Disk.DiskId)
 	if err != nil {
 		return err
 	}

@@ -164,10 +164,7 @@ func (t *transferFromDiskToDiskTask) setEstimate(
 		return err
 	}
 
-	stats, err := client.Stat(
-		ctx,
-		t.request.SrcDisk.DiskId,
-	)
+	stats, err := client.Stat(ctx, t.request.SrcDisk.DiskId)
 	if err != nil {
 		return err
 	}
