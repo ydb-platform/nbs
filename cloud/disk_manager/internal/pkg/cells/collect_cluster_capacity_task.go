@@ -19,7 +19,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type getClusterCapacityTask struct {
+type collectClusterCapacityTask struct {
 	config            *cells_config.CellsConfig
 	storage           storage.Storage
 	nbsFactory        nbs.Factory
@@ -27,16 +27,16 @@ type getClusterCapacityTask struct {
 	state             *protos.GetClusterCapacityState
 }
 
-func (t *getClusterCapacityTask) Save() ([]byte, error) {
+func (t *collectClusterCapacityTask) Save() ([]byte, error) {
 	return proto.Marshal(t.state)
 }
 
-func (t *getClusterCapacityTask) Load(_, state []byte) error {
+func (t *collectClusterCapacityTask) Load(_, state []byte) error {
 	t.state = &protos.GetClusterCapacityState{}
 	return proto.Unmarshal(state, t.state)
 }
 
-func (t *getClusterCapacityTask) Run(
+func (t *collectClusterCapacityTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -50,10 +50,8 @@ func (t *getClusterCapacityTask) Run(
 
 		for _, cellID := range cells.Cells {
 			group.Go(func(zoneID string, cellID string) func() error {
-
 				return func() error {
-
-					if slices.Contains(t.state.ProcessedCellIDs, cellID) {
+					if slices.Contains(t.state.ProcessedCells, cellID) {
 						return nil
 					}
 
@@ -117,7 +115,7 @@ func (t *getClusterCapacityTask) Run(
 	}()
 
 	for cell := range completedCells {
-		t.state.ProcessedCellIDs = append(t.state.ProcessedCellIDs, cell)
+		t.state.ProcessedCells = append(t.state.ProcessedCells, cell)
 	}
 
 	err := execCtx.SaveState(ctx)
@@ -133,7 +131,7 @@ func (t *getClusterCapacityTask) Run(
 	return nil
 }
 
-func (t *getClusterCapacityTask) Cancel(
+func (t *collectClusterCapacityTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -141,13 +139,13 @@ func (t *getClusterCapacityTask) Cancel(
 	return nil
 }
 
-func (t *getClusterCapacityTask) GetMetadata(
+func (t *collectClusterCapacityTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
 }
 
-func (t *getClusterCapacityTask) GetResponse() proto.Message {
+func (t *collectClusterCapacityTask) GetResponse() proto.Message {
 	return &empty.Empty{}
 }

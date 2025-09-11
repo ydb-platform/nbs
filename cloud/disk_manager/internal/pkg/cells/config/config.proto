@@ -23,10 +23,10 @@ message CellsConfig {
 
     optional string StorageFolder = 4 [default = "cells"];
 
-    optional bool CollectClusterCapacity = 5 [default = false];
+    optional bool ScheduleCollectClusterCapacityTask = 5 [default = false];
 
-    // GetClusterCapacity is a heavy request, so we should use it rarely.
-    optional string GetClusterCapacityInterval = 6 [default = "1h"];
+    // CollectClusterCapacity is a heavy request, so we should use it rarely.
+    optional string CollectClusterCapacityTaskScheduleInterval = 6 [default = "1h"];
 
     optional string ClusterCapacityExpirationTimeout = 7 [default = "90d"];
 }
