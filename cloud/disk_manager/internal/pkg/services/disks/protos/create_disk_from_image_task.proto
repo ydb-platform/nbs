@@ -20,5 +20,5 @@ message CreateDiskFromImageTaskState {
     reserved 2;
 
     string DataplaneTaskId = 3;
-    string SelectedCellID = 4;
+    string SelectedCellId = 4;
 }

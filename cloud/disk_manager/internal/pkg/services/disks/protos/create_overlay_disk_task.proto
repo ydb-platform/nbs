@@ -15,5 +15,5 @@ message CreateOverlayDiskRequest {
 }
 
 message CreateOverlayDiskTaskState {
-    string SelectedCellID = 1;
+    string SelectedCellId = 1;
 }

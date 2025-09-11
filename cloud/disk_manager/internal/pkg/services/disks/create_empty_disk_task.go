@@ -49,8 +49,8 @@ func (t *createEmptyDiskTask) Run(
 
 	var client nbs.Client
 
-	if len(t.state.SelectedCellID) > 0 {
-		client, err = t.nbsFactory.GetClient(ctx, t.state.SelectedCellID)
+	if len(t.state.SelectedCellId) > 0 {
+		client, err = t.nbsFactory.GetClient(ctx, t.state.SelectedCellId)
 		if err != nil {
 			return err
 		}
@@ -64,7 +64,7 @@ func (t *createEmptyDiskTask) Run(
 			return err
 		}
 
-		t.state.SelectedCellID = client.ZoneID()
+		t.state.SelectedCellId = client.ZoneID()
 		err = execCtx.SaveState(ctx)
 		if err != nil {
 			return err
@@ -75,7 +75,7 @@ func (t *createEmptyDiskTask) Run(
 
 	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
 		ID:          t.params.Disk.DiskId,
-		ZoneID:      t.state.SelectedCellID,
+		ZoneID:      t.state.SelectedCellId,
 		BlocksCount: t.params.BlocksCount,
 		BlockSize:   t.params.BlockSize,
 		Kind:        common.DiskKindToString(t.params.Kind),
@@ -125,11 +125,11 @@ func (t *createEmptyDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	if len(t.state.SelectedCellID) == 0 {
-		t.state.SelectedCellID = t.params.Disk.ZoneId
+	if len(t.state.SelectedCellId) == 0 {
+		t.state.SelectedCellId = t.params.Disk.ZoneId
 	}
 
-	client, err := t.nbsFactory.GetClient(ctx, t.state.SelectedCellID)
+	client, err := t.nbsFactory.GetClient(ctx, t.state.SelectedCellId)
 	if err != nil {
 		return err
 	}
