@@ -63,15 +63,15 @@ bool TDiskAgentActor::ProcessOpenDevicesRequests(
         State->OpenDevice(path, request.DeviceGeneration);
 
     if (HasError(error)) {
-        LOG_WARN(
+        LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
             "Failed to open device %s: %s",
             path.c_str(),
             FormatError(error).c_str());
 
-        auto response = std::make_unique<TEvDiskAgent::TEvOpenDeviceResponse>();
-        *response->Record.MutableError() = error;
+        auto response =
+            std::make_unique<TEvDiskAgent::TEvOpenDeviceResponse>(error);
         NCloud::Reply(ctx, *request.RequestInfo, std::move(response));
         return true;
     }
@@ -95,6 +95,7 @@ bool TDiskAgentActor::ProcessOpenDevicesRequests(
         return true;
     }
 
+    Y_DEBUG_ABORT_UNLESS(!uuidToFuture.empty());
     TVector<TFuture<IStoragePtr>> futures;
     for (const auto& [_, future]: uuidToFuture) {
         futures.push_back(future);
