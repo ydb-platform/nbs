@@ -1308,6 +1308,7 @@ TDiskAgentState::OpenDevice(const TString& path, ui64 deviceGeneration)
     }
 
     if (auto error = CheckIsSameDevice(path); HasError(error)) {
+        ReportDiskConfigChangedAfterStart(error.GetMessage());
         return error;
     }
 
@@ -1391,6 +1392,10 @@ void TDiskAgentState::DeviceOpened(
         config.SetState(NProto::DEVICE_STATE_ERROR);
         config.SetStateMessage(std::move(*error.MutableMessage()));
         storage = CreateBrokenStorage();
+        storage = CreateStorageWithIoStats(
+            storage,
+            d->Stats,
+            d->Config.GetBlockSize());
     } else {
         config.SetState(NProto::DEVICE_STATE_ONLINE);
         config.ClearStateMessage();
