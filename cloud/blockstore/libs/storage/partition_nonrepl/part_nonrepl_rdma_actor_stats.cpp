@@ -73,7 +73,6 @@ void TNonreplicatedPartitionRdmaActor::
         *ev,
         std::make_unique<TEvNonreplPartitionPrivate::
                              TEvGetDiskRegistryBasedPartCountersResponse>(
-            MakeError(S_OK),
             std::move(diskCounters),
             networkBytes,
             cpuUsage,

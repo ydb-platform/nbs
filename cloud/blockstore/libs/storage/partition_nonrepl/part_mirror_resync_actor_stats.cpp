@@ -70,15 +70,13 @@ void TMirrorPartitionResyncActor::HandleGetDiskRegistryBasedPartCounters(
         TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    ++StatisticSeqNo;
-
     if (StatisticRequestInfo) {
         NCloud::Reply(
             ctx,
             *StatisticRequestInfo,
             std::make_unique<TEvNonreplPartitionPrivate::
                                  TEvGetDiskRegistryBasedPartCountersResponse>(
-                MakeError(E_REJECTED, "Mirror resync actor gets new request"),
+                MakeError(E_REJECTED, "Mirror resync actor got new request"),
                 CreatePartitionDiskCounters(
                     EPublishingPolicy::DiskRegistryBased,
                     DiagnosticsConfig
@@ -87,6 +85,7 @@ void TMirrorPartitionResyncActor::HandleGetDiskRegistryBasedPartCounters(
                 TDuration{},                               // cpuUsage
                 SelfId(),
                 PartConfig->GetName()));
+        StatisticRequestInfo.Reset();
     }
 
     if (!MirrorActorId && Replicas.empty()) {
@@ -126,7 +125,7 @@ void TMirrorPartitionResyncActor::HandleGetDiskRegistryBasedPartCounters(
         ctx,
         SelfId(),
         std::move(statActorIds),
-        StatisticSeqNo);
+        ++StatisticSeqNo);
 }
 
 void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
@@ -138,8 +137,9 @@ void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION_NONREPL,
-            "Failed to send mirror resync actor statistics due to empty "
-            "StatisticRequestInfo");
+            "[%s] Failed to send mirror resync actor statistics due to empty "
+            "StatisticRequestInfo.",
+            PartConfig->GetName().Quote().c_str());
         return;
     }
 
@@ -155,7 +155,7 @@ void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
             counters.CpuUsage,
             std::move(counters.DiskCounters));
 
-        UpdateCounters(ctx, counters.SelfId, std::move(partCountersData));
+        UpdateCounters(ctx, counters.ActorId, std::move(partCountersData));
     }
 
     auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
@@ -172,7 +172,7 @@ void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
             SelfId(),
             PartConfig->GetName()));
 
-    StatisticRequestInfo = nullptr;
+    StatisticRequestInfo.Reset();;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

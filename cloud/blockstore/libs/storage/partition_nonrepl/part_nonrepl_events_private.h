@@ -394,19 +394,19 @@ struct TEvNonreplPartitionPrivate
         TPartitionDiskCountersPtr DiskCounters;
         ui64 NetworkBytes;
         TDuration CpuUsage;
-        NActors::TActorId SelfId;
+        NActors::TActorId ActorId;
         TString DiskId;
 
         TGetDiskRegistryBasedPartCountersResponse(
                 TPartitionDiskCountersPtr diskCounters,
                 ui64 networkBytes,
                 TDuration cpuUsage,
-                const NActors::TActorId& selfId,
+                const NActors::TActorId& actorId,
                 TString diskId)
             : DiskCounters(std::move(diskCounters))
             , NetworkBytes(networkBytes)
             , CpuUsage(cpuUsage)
-            , SelfId(selfId)
+            , ActorId(actorId)
             , DiskId(std::move(diskId))
         {}
     };

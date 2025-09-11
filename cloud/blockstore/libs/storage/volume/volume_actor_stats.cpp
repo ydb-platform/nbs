@@ -317,7 +317,8 @@ void TVolumeActor::HandleGetDiskRegistryBasedPartCountersResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Failed to update disk registry based part counters. Error: %s",
+            "%s Failed to update disk registry based part counters. Error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(msg->Error).c_str());
     }
 
@@ -327,7 +328,7 @@ void TVolumeActor::HandleGetDiskRegistryBasedPartCountersResponse(
         std::move(msg->DiskCounters));
 
     TDataForUpdatingDiskRegistryBasedPartCounters data(
-        msg->SelfId,
+        msg->ActorId,
         ev->Cookie,
         std::move(msg->DiskId),
         MakeIntrusive<TCallContext>(),

@@ -138,15 +138,13 @@ void TMirrorPartitionActor::HandleGetDiskRegistryBasedPartCounters(
         TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    ++StatisticSeqNo;
-
     if (StatisticRequestInfo) {
         NCloud::Reply(
             ctx,
             *StatisticRequestInfo,
             std::make_unique<TEvNonreplPartitionPrivate::
                                  TEvGetDiskRegistryBasedPartCountersResponse>(
-                MakeError(E_REJECTED, "Mirror actor gets new request"),
+                MakeError(E_REJECTED, "Mirror actor got new request"),
                 CreatePartitionDiskCounters(
                     EPublishingPolicy::DiskRegistryBased,
                     DiagnosticsConfig
@@ -155,6 +153,7 @@ void TMirrorPartitionActor::HandleGetDiskRegistryBasedPartCounters(
                 TDuration{},                               // cpuUsage
                 SelfId(),
                 DiskId));
+        StatisticRequestInfo.Reset();
     }
 
     auto statActorIds = State.GetReplicaActorsBypassingProxies();
@@ -184,7 +183,7 @@ void TMirrorPartitionActor::HandleGetDiskRegistryBasedPartCounters(
         ctx,
         SelfId(),
         std::move(statActorIds),
-        StatisticSeqNo);
+        ++StatisticSeqNo);
 }
 
 void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
@@ -196,8 +195,9 @@ void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION_NONREPL,
-            "Failed to send mirror actor statistics due to empty "
-            "StatisticRequestInfo");
+            "[%s] Failed to send mirror actor statistics due to empty "
+            "StatisticRequestInfo.",
+            DiskId.Quote().c_str());
         return;
     }
 
@@ -213,7 +213,7 @@ void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
             counters.CpuUsage,
             std::move(counters.DiskCounters));
 
-        UpdateCounters(ctx, counters.SelfId, std::move(partCountersData));
+        UpdateCounters(ctx, counters.ActorId, std::move(partCountersData));
     }
 
     auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters(ctx);
@@ -230,7 +230,7 @@ void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
             SelfId(),
             DiskId));
 
-    StatisticRequestInfo = nullptr;
+    StatisticRequestInfo.Reset();;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

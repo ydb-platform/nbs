@@ -117,15 +117,13 @@ void TNonreplicatedPartitionMigrationCommonActor::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const TActorContext& ctx)
 {
-    ++StatisticSeqNo;
-
     if (StatisticRequestInfo) {
         NCloud::Reply(
             ctx,
             *StatisticRequestInfo,
             std::make_unique<TEvNonreplPartitionPrivate::
                                  TEvGetDiskRegistryBasedPartCountersResponse>(
-                MakeError(E_REJECTED, "Migration actor gets new request"),
+                MakeError(E_REJECTED, "Migration actor got new request"),
                 CreatePartitionDiskCounters(
                     EPublishingPolicy::DiskRegistryBased,
                     DiagnosticsConfig
@@ -134,6 +132,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
                 TDuration{},                               // cpuUsage
                 SelfId(),
                 DiskId));
+        StatisticRequestInfo.Reset();
     }
 
     TVector<TActorId> statActorIds;
@@ -174,7 +173,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
         ctx,
         SelfId(),
         std::move(statActorIds),
-        StatisticSeqNo);
+        ++StatisticSeqNo);
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::
@@ -187,8 +186,9 @@ void TNonreplicatedPartitionMigrationCommonActor::
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION_NONREPL,
-            "Failed to send migration actor statistics due to empty "
-            "StatisticRequestInfo");
+            "[%s] Failed to send migration actor statistics due to empty "
+            "StatisticRequestInfo.",
+            DiskId.Quote().c_str());
         return;
     }
 
@@ -204,7 +204,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
             counters.CpuUsage,
             std::move(counters.DiskCounters));
 
-        UpdateCounters(ctx, counters.SelfId, std::move(partCountersData));
+        UpdateCounters(ctx, counters.ActorId, std::move(partCountersData));
     }
 
     auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
@@ -221,7 +221,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
             SelfId(),
             DiskId));
 
-    StatisticRequestInfo = nullptr;
+    StatisticRequestInfo.Reset();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
