@@ -258,7 +258,7 @@ TMirroredDiskDevicesStat TReplicaTable::CalculateDiskStats(
     return result;
 }
 
-TVector<TString> TReplicaTable::GetDevicesReplacements(
+TVector<TString> TReplicaTable::GetDeviceReplacements(
     const TDiskId& diskId) const
 {
     const auto* disk = Disks.FindPtr(diskId);

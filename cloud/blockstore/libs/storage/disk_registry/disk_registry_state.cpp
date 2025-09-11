@@ -2637,7 +2637,7 @@ NProto::TError TDiskRegistryState::AllocateMirroredDisk(
     }
 
     result->DeviceReplacementIds =
-        ReplicaTable.GetDevicesReplacements(params.DiskId);
+        ReplicaTable.GetDeviceReplacements(params.DiskId);
     result->LaggingDevices = disk.OutdatedLaggingDevices;
 
     disk.CloudId = params.CloudId;
@@ -3547,7 +3547,7 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     diskInfo.PlacementPartitionIndex = disk.PlacementPartitionIndex;
     diskInfo.FinishedMigrations = disk.FinishedMigrations;
     diskInfo.OutdatedLaggingDevices = disk.OutdatedLaggingDevices;
-    diskInfo.DeviceReplacementIds = ReplicaTable.GetDevicesReplacements(diskId);
+    diskInfo.DeviceReplacementIds = ReplicaTable.GetDeviceReplacements(diskId);
     diskInfo.MediaKind = disk.MediaKind;
     diskInfo.MasterDiskId = disk.MasterDiskId;
     diskInfo.CheckpointId = disk.CheckpointReplica.GetCheckpointId();
@@ -5101,7 +5101,7 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
         m.SetDeviceId(uuid);
     }
 
-    for (const auto& id: ReplicaTable.GetDevicesReplacements(diskId)) {
+    for (const auto& id: ReplicaTable.GetDeviceReplacements(diskId)) {
         *config.AddDeviceReplacementUUIDs() = id;
     }
 

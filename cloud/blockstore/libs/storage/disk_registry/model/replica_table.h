@@ -75,7 +75,7 @@ public:
         const TDiskId& diskId,
         const TDeviceId& deviceId,
         bool isReplacement);
-    [[nodiscard]] TVector<TString> GetDevicesReplacements(
+    [[nodiscard]] TVector<TString> GetDeviceReplacements(
         const TDiskId& diskId) const;
     [[nodiscard]] bool IsReplacementDevice(
         const TDiskId& diskId,
