@@ -33,23 +33,27 @@ struct TTestService
         return nullptr;
     }
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    using T##name##Handler = std::function<                                    \
-        NThreading::TFuture<NProto::T##name##Response>(                        \
-            std::shared_ptr<NProto::T##name##Request> request)                 \
-        >;                                                                     \
-                                                                               \
-    T##name##Handler name##Handler;                                            \
-                                                                               \
-    NThreading::TFuture<NProto::T##name##Response> name(                       \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(callContext);                                                 \
-        Y_DEBUG_ABORT_UNLESS(name##Handler);                                   \
-        return name##Handler(std::move(request));                              \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                          \
+    using T##name##Handler =                                          \
+        std::function<NThreading::TFuture<NProto::T##name##Response>( \
+            std::shared_ptr<NProto::T##name##Request> request)>;      \
+                                                                      \
+    T##name##Handler name##Handler;                                   \
+                                                                      \
+    void SetHandler(T##name##Handler handler)                         \
+    {                                                                 \
+        name##Handler = std::move(handler);                           \
+    }                                                                 \
+                                                                      \
+    NThreading::TFuture<NProto::T##name##Response> name(              \
+        TCallContextPtr callContext,                                  \
+        std::shared_ptr<NProto::T##name##Request> request) override   \
+    {                                                                 \
+        Y_UNUSED(callContext);                                        \
+        Y_DEBUG_ABORT_UNLESS(name##Handler);                          \
+        return name##Handler(std::move(request));                     \
+    }                                                                 \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
