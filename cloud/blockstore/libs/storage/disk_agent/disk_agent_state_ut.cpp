@@ -1031,7 +1031,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             UNIT_ASSERT(false);                                                \
         } catch (const TServiceError& e) {                                     \
             UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                E_BS_INVALID_SESSION,                                          \
+                E_BS_MOUNT_CONFLICT,                                           \
                 e.GetCode(),                                                   \
                 e.GetMessage()                                                 \
             );                                                                 \

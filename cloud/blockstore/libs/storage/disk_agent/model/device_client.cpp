@@ -142,7 +142,7 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 && !canKickOutClient)
         {
             return MakeError(
-                E_BS_INVALID_SESSION,
+                E_BS_MOUNT_CONFLICT,
                 TStringBuilder()
                     << "Error acquiring device " << uuid.Quote() << " by "
                     << DescribeDeviceOwner(clientId, diskId, volumeGeneration)

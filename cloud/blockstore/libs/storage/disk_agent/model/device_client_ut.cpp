@@ -229,7 +229,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             TAcquireParamsBuilder()
                 .SetUuids({"uuid2"})
                 .SetClientId("another_client"));
-        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_BS_MOUNT_CONFLICT, error.GetCode());
 
         error = AcquireDevices(
             client,
@@ -311,7 +311,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             TAcquireParamsBuilder()
                 .SetUuids({"uuid1", "uuid2"})
                 .SetClientId("another_client"));
-        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_BS_MOUNT_CONFLICT, error.GetCode());
 
         error = ReleaseDevices(
             client,
@@ -471,7 +471,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_BS_INVALID_SESSION,
             error.GetCode(),
-            error.GetMessage());
+            FormatError(error));
 
         // it should fail even if inactivity timeout passes
         error = AcquireDevices(
@@ -485,7 +485,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_BS_INVALID_SESSION,
             error.GetCode(),
-            error.GetMessage());
+            FormatError(error));
 
         // release should fail as well
         error = ReleaseDevices(
@@ -575,9 +575,9 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 .SetNow(TInstant::Seconds(57))
                 .SetVolumeGeneration(1));
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_BS_INVALID_SESSION,
+            E_BS_MOUNT_CONFLICT,
             error.GetCode(),
-            error.GetMessage());
+            FormatError(error));
 
         // reacquire with a different diskId should succeed after inactivity
         // timeout passes
@@ -875,7 +875,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 .SetClientId("client-2")
                 .SetDiskId("vol0")
                 .SetVolumeGeneration(1));
-        UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_BS_MOUNT_CONFLICT, error.GetCode());
 
         error = AcquireDevices(
             client,
