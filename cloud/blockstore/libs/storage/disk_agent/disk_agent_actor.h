@@ -97,6 +97,8 @@ private:
 
     NActors::TActorId HealthCheckActor;
 
+    THashMap<TString, TRequestInfoPtr> OpenCloseDevicesInProgress;
+
 public:
     TDiskAgentActor(
         TStorageConfigPtr config,
@@ -173,6 +175,16 @@ private:
 
     TDuration GetMaxRequestTimeout() const;
 
+    NProto::TError AddOpenCloseDeviceRequest(
+        const NActors::TActorContext& ctx,
+        const TString& path,
+        TRequestInfoPtr requestInfo);
+
+    void ReplyToOpenCloseDeviceRequest(
+        const NActors::TActorContext& ctx,
+        const TString& path,
+        NActors::IEventBasePtr response);
+
 private:
     STFUNC(StateInit);
     STFUNC(StateWork);
@@ -238,6 +250,10 @@ private:
     void HandleMultiAgentWriteDeviceBlocks(
         const TEvDiskAgentPrivate::TEvMultiAgentWriteDeviceBlocksRequest::TPtr&
             ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDeviceOpened(
+        const TEvDiskAgentPrivate::TEvDeviceOpened::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -82,6 +83,7 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                     TABLEH() { out << "Rdma endpoint"; }
                     TABLEH() { out << "Writer session"; }
                     TABLEH() { out << "Reader sessions"; }
+                    TABLEH() { out << "Device generation"; }
                 }
             }
 
@@ -96,11 +98,7 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                         DumpDeviceState(
                             out,
                             config.GetState(),
-                            State->IsDeviceDisabled(uuid)
-                                ? EDeviceStateFlags::DISABLED
-                                : (State->IsDeviceSuspended(uuid)
-                                       ? EDeviceStateFlags::SUSPENDED
-                                       : EDeviceStateFlags::NONE));
+                            State->GetDeviceStateFlags(uuid));
                     }
                     TABLED() {
                         if (config.GetStateTs()) {
@@ -146,6 +144,10 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                                 }
                             }
                         }
+                    }
+
+                    TABLED () {
+                        out << State->DeviceGeneration(uuid);
                     }
                 }
             }
