@@ -357,6 +357,7 @@ struct TDiscoveryNodeRegistrant
         Settings.DomainPath(Options.Domain);
         Settings.Port(Options.InterconnectPort);
         Settings.Path(Options.SchemeShardDir);
+        Settings.ClientTimeout(Options.Settings.DynamicNodeRegistrationTimeout);
     }
 
     TResultOrError<TRegistrationResult> RegisterNode(
