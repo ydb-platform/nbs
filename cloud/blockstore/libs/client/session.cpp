@@ -82,6 +82,8 @@ struct TSessionInfo
 
     NProto::THeaders MountHeaders;
 
+    TVector<TMountChangeListener> ChangeListeners;
+
     void ResetState()
     {
         BlockSize = 0;
@@ -172,6 +174,8 @@ public:
         NProto::EDeviceEraseMethod method) override;
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override;
+
+    void OnMountChange(TMountChangeListener fn) override;
 
     void ReportIOError() override;
 
@@ -507,6 +511,13 @@ TStorageBuffer TSession::AllocateBuffer(size_t bytesCount)
 void TSession::ReportIOError()
 {}
 
+void TSession::OnMountChange(TMountChangeListener fn)
+{
+    with_lock (SessionInfo.MountLock) {
+        SessionInfo.ChangeListeners.emplace_back(std::move(fn));
+    };
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TSession::SendMountRequest(
@@ -584,6 +595,7 @@ void TSession::ProcessMountResponse(
     NProto::TMountVolumeResponse response)
 {
     TPromise<NProto::TMountVolumeResponse> promise;
+    TVector<TMountChangeListener> changeListeners;
 
     with_lock (SessionInfo.MountLock) {
         if (!HasError(response) && SessionInfo.BlockSize != 0) {
@@ -650,6 +662,11 @@ void TSession::ProcessMountResponse(
         }
 
         promise = SessionInfo.MountResponse;
+        changeListeners = std::move(SessionInfo.ChangeListeners);
+    }
+
+    for (const auto& listener: changeListeners) {
+        listener(response);
     }
 
     // callbacks should be invoked outside of lock

@@ -1818,6 +1818,53 @@ Y_UNIT_TEST_SUITE(TSessionTest)
 
         bootstrap->Stop();
     }
+
+    Y_UNIT_TEST(ShouldCallListenersOnMountVolumeResponse)
+    {
+        auto client = std::make_shared<TTestService>();
+        TVector<TString> hosts {"host1", "host2"};
+        ui32 hostIdx = 0;
+
+        size_t sessionNum = 0;
+        client->MountVolumeHandler =
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request) mutable
+        {
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId(ToString(++sessionNum));
+
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(4 * 1024);
+            volume.SetBlocksCount(1024);
+
+            response.SetHostName(hosts[hostIdx++]);
+
+            return MakeFuture(response);
+        };
+
+        auto bootstrap = CreateBootstrap(client);
+
+        auto session = bootstrap->GetSession();
+
+        bootstrap->Start();
+
+        {
+            auto res = session->MountVolume().GetValueSync();
+            UNIT_ASSERT_C(!HasError(res), res.GetError().GetMessage());
+        }
+
+        {
+            auto listenerFn = [] (const NProto::TMountVolumeResponse& response)
+            {
+                UNIT_ASSERT_VALUES_EQUAL("host2", response.GetHostName());
+            };
+            session->OnMountChange(listenerFn);
+            auto res = session->MountVolume().GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL("host2", res.GetHostName());
+        }
+
+        bootstrap->Stop();
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NClient

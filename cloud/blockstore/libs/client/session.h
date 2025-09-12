@@ -16,6 +16,11 @@ namespace NCloud::NBlockStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TMountChangeListener =
+    std::function<void(const NProto::TMountVolumeResponse&)>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct ISession
     : public IStorage
 {
@@ -39,6 +44,8 @@ struct ISession
         const NProto::THeaders& headers = {}) = 0;
 
     virtual NThreading::TFuture<NProto::TMountVolumeResponse> EnsureVolumeMounted() = 0;
+
+    virtual void OnMountChange(TMountChangeListener fn) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -83,6 +83,7 @@ struct TVolumeInfo
     const TString DiskId;
 
     ui64 TabletId = 0;
+    TString TabletHost;
     TMaybe<NProto::TVolume> VolumeInfo;
     const TString SessionId;
 
