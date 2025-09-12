@@ -87,8 +87,11 @@ class BreakpadSender:
 
             try:
                 if crash_info.corefile:
+                    conductor_enabled = \
+                        self._args.aggregator_type == AggregatorType.Cores
                     processor = CoredumpCrashProcessor(self._args.gdb_timeout,
-                                                       self._args.gdb_disabled)
+                                                       self._args.gdb_disabled,
+                                                       conductor_enabled)
                 else:
                     processor = OOMCrashProcessor()
 

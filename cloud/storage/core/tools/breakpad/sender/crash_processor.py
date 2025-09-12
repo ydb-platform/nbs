@@ -2,6 +2,7 @@
 
 from abc import abstractmethod, ABC
 from socket import getfqdn
+from os import getenv
 
 from ..common.crash_info import CrashInfo, CrashInfoProcessed
 from .conductor import Conductor
@@ -35,25 +36,25 @@ class OOMCrashProcessor(CrashProcessor):
 
 
 class CoredumpCrashProcessor(CrashProcessor):
-    def __init__(self, gdb_timeout, gdb_disabled):
+    def __init__(self, gdb_timeout, gdb_disabled, conductor_enabled):
         self._gdb_timeout = gdb_timeout
         self._gdb_disabled = gdb_disabled
+        self._conductor_enabled = conductor_enabled
         self._core = None
 
     def _get_server(self, crash: CrashInfo):
-        if "server" in crash.metadata:
-            return crash.metadata["server"]
+        from_metadata = crash.metadata.get("server")
+        from_env = getenv("BREAKPAD_SERVER")
 
-        return getfqdn()
+        return from_metadata or from_env or getfqdn() or "unknown"
 
     def _get_cluster(self, crash: CrashInfo):
-        if "cluster" in crash.metadata:
-            return crash.metadata["cluster"]
+        from_metadata = crash.metadata.get("cluster")
+        from_env = getenv("BREAKPAD_CLUSTER")
+        from_conductor = \
+            Conductor().primary_group if self._conductor_enabled else None
 
-        try:
-            return Conductor().primary_group
-        except Exception:
-            return "error"
+        return from_metadata or from_env or from_conductor or "unknown"
 
     def process(self, crash: CrashInfo) -> CrashInfoProcessed:
         processed = CrashInfoProcessed(crash)
@@ -76,8 +77,8 @@ class CoredumpCrashProcessor(CrashProcessor):
         except (CoredumpError, MinidumpError) as e:
             raise CrashProcessorError from e
 
-        processed.server = self._get_server(crash) or "unknown"
-        processed.cluster = self._get_cluster(crash) or "unknown"
+        processed.server = self._get_server(crash)
+        processed.cluster = self._get_cluster(crash)
 
         return processed
 
