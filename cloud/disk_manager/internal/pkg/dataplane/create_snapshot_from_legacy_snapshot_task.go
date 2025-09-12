@@ -9,7 +9,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -58,11 +57,6 @@ func (t *createSnapshotFromLegacySnapshotTask) Run(
 	}
 
 	t.state.ChunkCount = srcMeta.ChunkCount
-
-	execCtx.SetEstimatedInflightDuration(performance.Estimate(
-		srcMeta.StorageSize,
-		t.performanceConfig.GetCreateSnapshotFromLegacySnapshotBandwidthMiBs(),
-	))
 
 	_, err = t.storage.CreateSnapshot(
 		ctx,
