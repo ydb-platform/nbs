@@ -273,13 +273,13 @@ private:
                         ++zeroCopyIndex;
                         break;
                     }
-
-                    request = std::make_unique<TEvBlobStorage::TEvPut>(
-                        blobId,
-                        std::move(putData),
-                        TInstant::Max(),
-                        NKikimrBlobStorage::UserData);
                 }
+
+                request = std::make_unique<TEvBlobStorage::TEvPut>(
+                    blobId,
+                    std::move(putData),
+                    TInstant::Max(),
+                    NKikimrBlobStorage::UserData);
             } else {
                 if (GenerateBlobIdsResponse.BlobsSize() == 1 &&
                     Range == BlobRange)
