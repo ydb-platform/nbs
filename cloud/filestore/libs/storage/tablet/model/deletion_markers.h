@@ -49,12 +49,40 @@ struct TDeletionMarker
 class TDeletionMarkers
 {
 private:
-    class TImpl;
+    struct TImpl;
     std::unique_ptr<TImpl> Impl;
+
+public:
+    class TIterator
+    {
+    private:
+        friend struct TImpl;
+        const TImpl& Impl;
+
+    public:
+        ui64 MaxCommitId;
+        ui32 BlocksCount = 0;
+
+    private:
+        TBlock Block;
+        ui64 MaxBlockIndex;
+
+        TIterator(
+            const TImpl& impl,
+            const TBlock& block,
+            ui64 maxBlockIndex);
+
+    public:
+        bool Next();
+    };
 
 public:
     TDeletionMarkers(IAllocator* alloc);
     ~TDeletionMarkers();
+
+    bool Empty() const;
+
+    TIterator FindBlocks(const TBlock& block, ui32 maxBlocksToIterate);
 
     void Add(TDeletionMarker deletionMarker);
     ui32 Apply(TBlock& block) const;

@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "alloc.h"
+#include "binary_reader.h"
 #include "block.h"
 
 #include <cloud/storage/core/libs/common/byte_vector.h>
@@ -14,13 +15,77 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IBlockIterator
+class TBlockIterator
 {
-    virtual ~IBlockIterator() = default;
-    virtual bool Next() = 0;
+    using PNextBlockFunc = bool (TBlockIterator::*)(void);
 
+public:
     TBlock Block;
     ui32 BlobOffset = 0;
+    ui32 BlocksCount = 0;
+
+public:
+    struct TBlockFilter
+    {
+        ui64 NodeId = 0;
+        ui64 CommitId = 0;
+        ui32 MinBlockIndex = 0;
+        ui32 MaxBlockIndex = 0;
+
+        bool CheckGroup(ui64 nodeId, ui64 minCommitId);
+        bool CheckEntry(ui32 blockIndex, ui64 maxCommitId);
+    };
+
+private:
+    TBinaryReader Reader;
+    const TByteVector& EncodedDeletionMarkers;
+    TBlockFilter Filter;
+
+    PNextBlockFunc NextBlock = nullptr;
+
+    struct {
+        ui32 Index;
+        ui32 Count;
+
+        union {
+            struct {
+                ui32 BlockIndex;
+                ui32 BlobOffset;
+            } Merged;
+
+            struct {
+                const ui32* BlockIndices;
+                const ui16* BlobOffsets;
+            } Mixed;
+        };
+    } Group;
+
+public:
+    TBlockIterator(
+        const TByteVector& encodedBlocks,
+        const TByteVector& encodedDeletionMarkers,
+        const TBlockFilter& filter);
+
+    bool Next();
+
+private:
+    void SetMerged(
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 count,
+        ui32 blockIndex,
+        ui16 blobOffset);
+
+    void SetMixed(
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 count,
+        const ui32* blockIndices,
+        const ui16* blobOffsets);
+
+    bool NextMerged();
+
+    bool NextMixed();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,9 +112,9 @@ public:
         return EncodedDeletionMarkers;
     }
 
-    IBlockIteratorPtr FindBlocks() const;
-
-    IBlockIteratorPtr FindBlocks(
+    // Performance of FindBlocks is slightly better if TBlockIterator is allocated
+    // on stack (not on heap). See https://github.com/ydb-platform/nbs/pull/4244
+    TBlockIterator FindBlocks(
         ui64 nodeId,
         ui64 commitId,
         ui32 blockIndex,

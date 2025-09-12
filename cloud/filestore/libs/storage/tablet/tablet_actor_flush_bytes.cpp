@@ -58,18 +58,39 @@ public:
     void Accept(
         const TBlock& block,
         const TPartialBlobId& blobId,
-        ui32 blobOffset) override
+        ui32 blobOffset)
     {
         TABLET_VERIFY(!ApplyingByteLayer);
 
         if (block.MinCommitId > BlockMinCommitId) {
             BlockMinCommitId = block.MinCommitId;
+
             TBlockDataRef ref;
             static_cast<TBlock&>(ref) = block;
             ref.BlobId = blobId;
             ref.BlobOffset = blobOffset;
+
             Block.Block = std::move(ref);
         }
+    }
+
+    void Accept(
+        const TBlock& block,
+        const TPartialBlobId& blobId,
+        ui32 blobOffset,
+        ui32 blocksCount) override
+    {
+        Accept(block, blobId, blobOffset);
+
+        if (blocksCount > 1) {
+            auto b = block;
+            while (--blocksCount > 0) {
+                b.BlockIndex++;
+                blobOffset++;
+
+                Accept(b, blobId, blobOffset);
+            }
+       }
     }
 
     void Accept(const TBlockDeletion& deletion) override
