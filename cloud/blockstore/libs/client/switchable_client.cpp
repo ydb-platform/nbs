@@ -54,7 +54,6 @@ class TSwitchableBlockStore final
     , public ISwitchableBlockStore
 {
 private:
-    const ILoggingServicePtr Logging;
     TLog Log;
 
     struct TClientInfo
@@ -73,8 +72,7 @@ public:
         ILoggingServicePtr logging,
         TString diskId,
         IBlockStorePtr client)
-        : Logging(std::move(logging))
-        , Log(Logging->CreateLog("BLOCKSTORE_CLIENT"))
+        : Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
         , Primary({.Client = std::move(client), .DiskId = std::move(diskId)})
     {}
 
@@ -120,7 +118,7 @@ public:
             GetBlockStoreRequest<NProto::T##name##Request>());                \
         if constexpr (isSwitchableRequest) {                                  \
             if (Switched) {                                                   \
-                STORAGE_DEBUG(                                                \
+                STORAGE_TRACE(                                                \
                     "Forward " << #name << " from " << Primary.DiskId.Quote() \
                                << " to " << Secondary.DiskId.Quote());        \
                 SetDiskIdIfExists(*request, Secondary.DiskId);                \
