@@ -499,14 +499,17 @@ public:
             auto tenantPoolConfig = MakeIntrusive<TTenantPoolConfig>(localConfig);
 
             NKikimrTabletBase::TMetrics resourceLimit;
-            if (StorageConfig->GetCpuResourceLimit()) {
-                resourceLimit.SetCPU(StorageConfig->GetCpuResourceLimit());
+            if (StorageConfig->GetHiveLocalServiceCpuResourceLimit()) {
+                resourceLimit.SetCPU(
+                    StorageConfig->GetHiveLocalServiceCpuResourceLimit());
             }
-            if (StorageConfig->GetMemoryResourceLimit()) {
-                resourceLimit.SetMemory(StorageConfig->GetMemoryResourceLimit());
+            if (StorageConfig->GetHiveLocalServiceMemoryResourceLimit()) {
+                resourceLimit.SetMemory(
+                    StorageConfig->GetHiveLocalServiceMemoryResourceLimit());
             }
-            if (StorageConfig->GetNetworkResourceLimit()) {
-                resourceLimit.SetNetwork(StorageConfig->GetNetworkResourceLimit());
+            if (StorageConfig->GetHiveLocalServiceNetworkResourceLimit()) {
+                resourceLimit.SetNetwork(
+                    StorageConfig->GetHiveLocalServiceNetworkResourceLimit());
             }
 
             tenantPoolConfig->AddStaticSlot(

@@ -1326,7 +1326,7 @@ message TStorageServiceConfig
 
     // These parameters are used to configure resource limits (CPU, RAM, network)
     // for the local service in the tenant pool.
-    optional uint64 CpuResourceLimit = 456;
-    optional uint64 MemoryResourceLimit = 457;
-    optional uint64 NetworkResourceLimit = 458;
+    optional uint64 HiveLocalServiceCpuResourceLimit = 456;
+    optional uint64 HiveLocalServiceMemoryResourceLimit = 457;
+    optional uint64 HiveLocalServiceNetworkResourceLimit = 458;
 }

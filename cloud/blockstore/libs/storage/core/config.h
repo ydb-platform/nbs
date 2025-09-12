@@ -724,9 +724,9 @@ public:
 
     [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
 
-    [[nodiscard]] ui64 GetCpuResourceLimit() const;
-    [[nodiscard]] ui64 GetMemoryResourceLimit() const;
-    [[nodiscard]] ui64 GetNetworkResourceLimit() const;
+    [[nodiscard]] ui64 GetHiveLocalServiceCpuResourceLimit() const;
+    [[nodiscard]] ui64 GetHiveLocalServiceMemoryResourceLimit() const;
+    [[nodiscard]] ui64 GetHiveLocalServiceNetworkResourceLimit() const;
 };
 
 ui64 GetAllocationUnit(
