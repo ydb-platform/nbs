@@ -44,13 +44,13 @@ class CoredumpCrashProcessor(CrashProcessor):
 
     def _get_server(self, crash: CrashInfo):
         from_metadata = crash.metadata.get("server")
-        from_env = getenv("BREAKPAD_SERVER")
+        from_env = getenv("NODE_NAME")
 
         return from_metadata or from_env or getfqdn() or "unknown"
 
     def _get_cluster(self, crash: CrashInfo):
         from_metadata = crash.metadata.get("cluster")
-        from_env = getenv("BREAKPAD_CLUSTER")
+        from_env = getenv("CLUSTER_NAME")
         from_conductor = \
             Conductor().primary_group if self._conductor_enabled else None
 
