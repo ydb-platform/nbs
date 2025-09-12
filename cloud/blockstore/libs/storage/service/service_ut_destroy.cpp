@@ -2,8 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
-
-#include <chrono>
+#include <cloud/blockstore/libs/storage/core/volume_label.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -13,7 +12,55 @@ using namespace NKikimr;
 
 using namespace std::chrono_literals;
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
+
+void CreateSimpleSsdDisk(TServiceClient& service, const TString& diskId)
+{
+    service.CreateVolume(
+        diskId,
+        2_GB / DefaultBlockSize,
+        DefaultBlockSize,
+        "",   // folderId
+        "",   // cloudId
+        NCloud::NProto::STORAGE_MEDIA_SSD,
+        NProto::TVolumePerformanceProfile(),
+        TString(),   // placementGroupId
+        0,           // placementPartitionIndex
+        0,           // partitionsCount
+        NProto::TEncryptionSpec());
+}
+
+void CreateSimpleSsdNonreplDisk(TServiceClient& service, const TString& diskId)
+{
+    service.CreateVolume(
+        diskId,
+        1_GB / DefaultBlockSize,
+        DefaultBlockSize,
+        "",   // folderId
+        "",   // cloudId
+        NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+        NProto::TVolumePerformanceProfile(),
+        TString(),   // placementGroupId
+        0,           // placementPartitionIndex
+        0,           // partitionsCount
+        NProto::TEncryptionSpec());
+}
+
+bool IsPathNotExistsError(const NProto::TError& error)
+{
+    if (HasError(error) &&
+        FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD)
+    {
+        const auto status = static_cast<NKikimrScheme::EStatus>(
+            STATUS_FROM_CODE(error.GetCode()));
+        return status == NKikimrScheme::StatusPathDoesNotExist;
+    }
+    return false;
+}
+
+}   // namespace
 
 Y_UNIT_TEST_SUITE(TServiceDestroyTest)
 {
@@ -83,23 +130,6 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
                 UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
             }
         }
-    }
-
-    void CreateSimpleSsdDisk(TServiceClient& service, const TString& diskId)
-    {
-        service.CreateVolume(
-            diskId,
-            2_GB / DefaultBlockSize,
-            DefaultBlockSize,
-            "",         // folderId
-            "",    // cloudId
-            NCloud::NProto::STORAGE_MEDIA_SSD,
-            NProto::TVolumePerformanceProfile(),
-            TString(),  // placementGroupId
-            0,          // placementPartitionIndex
-            0,          // partitionsCount
-            NProto::TEncryptionSpec()
-        );
     }
 
     Y_UNIT_TEST(ShouldDestroyAnyDiskByDefault)
@@ -374,6 +404,122 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
                 response->GetStatus(),
                 response->GetError());
         }
+    }
+
+    Y_UNIT_TEST(ShouldDestroyPrimaryAndSecondary)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(1);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString diskId = "disk1";
+
+        // Create secondary volume
+        CreateSimpleSsdNonreplDisk(service, GetSecondaryDiskId(diskId));
+
+        // Primary and secondary volume should be described as secondary
+        auto response = service.DescribeVolume(diskId);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(diskId),
+            response->Record.GetVolume().GetDiskId());
+
+        response = service.DescribeVolume(GetSecondaryDiskId(diskId));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(diskId),
+            response->Record.GetVolume().GetDiskId());
+
+        // Create primary volume
+        CreateSimpleSsdDisk(service, diskId);
+
+        // Primary and secondary volume should be described as-as
+        response = service.DescribeVolume(diskId);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            diskId,
+            response->Record.GetVolume().GetDiskId());
+
+        response = service.DescribeVolume(GetSecondaryDiskId(diskId));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(diskId),
+            response->Record.GetVolume().GetDiskId());
+
+        // Destroy primary volume
+        service.DestroyVolume(
+            diskId,
+            false,   // destroyIfBroken
+            false,   // sync
+            0,       // fillGeneration
+            false    // useStrictDiskId
+        );
+
+        // adjust time to trigger pipe connection destroy
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(1));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        // Primary and secondary volume should be described as secondary
+        response = service.DescribeVolume(diskId);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(diskId),
+            response->Record.GetVolume().GetDiskId());
+
+        response = service.DescribeVolume(GetSecondaryDiskId(diskId));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(diskId),
+            response->Record.GetVolume().GetDiskId());
+
+        // Destroying primary volume should't touch secondary volume when useStrictDiskId is set
+        service.DestroyVolume(
+            diskId,
+            false,   // destroyIfBroken
+            false,   // sync
+            0,       // fillGeneration
+            true     // useStrictDiskId
+        );
+
+        // Primary and secondary volume should be described as secondary since secondary alive
+        response = service.DescribeVolume(diskId);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(diskId),
+            response->Record.GetVolume().GetDiskId());
+
+        response = service.DescribeVolume(GetSecondaryDiskId(diskId));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(diskId),
+            response->Record.GetVolume().GetDiskId());
+
+        // Destroy secondary volume using primary diskId (UseStrictDiskId is not set)
+        service.DestroyVolume(
+            diskId,
+            false,   // destroyIfBroken
+            false,   // sync
+            0,       // fillGeneration
+            false    // useStrictDiskId
+        );
+
+        // Both volumes should be deleted and described as StatusPathDoesNotExist
+        service.SendDescribeVolumeRequest(diskId);
+        response = service.RecvDescribeVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            true,
+            IsPathNotExistsError(response->GetError()),
+            FormatError(response->GetError()));
+
+        service.SendDescribeVolumeRequest(GetSecondaryDiskId(diskId));
+        response = service.RecvDescribeVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            true,
+            IsPathNotExistsError(response->GetError()),
+            FormatError(response->GetError()));
     }
 }
 

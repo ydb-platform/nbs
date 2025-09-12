@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/volume_label.h>
 
 #include <util/generic/size_literals.h>
 
@@ -150,6 +151,95 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeTest)
                     0);
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldDescribePrimaryVolumeFirst)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(1);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        // Create primary volume
+        service.CreateVolume(
+            DefaultDiskId,
+            2_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "",   // folderId
+            "",   // cloudId
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+
+        // Create secondary volume
+        service.CreateVolume(GetSecondaryDiskId(DefaultDiskId));
+
+        // Describing primary volume when secondary exists should found
+        // primary
+        auto response = service.DescribeVolume(DefaultDiskId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultDiskId,
+            response->Record.GetVolume().GetDiskId());
+
+        // Describing secondary should found secondary
+        response = service.DescribeVolume(GetSecondaryDiskId(DefaultDiskId));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(DefaultDiskId),
+            response->Record.GetVolume().GetDiskId());
+    }
+
+    Y_UNIT_TEST(ShouldFoundSecondaryVolumeForYdbBased)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        // Create secondary volume
+        service.CreateVolume(GetSecondaryDiskId(DefaultDiskId));
+
+        // Describing primary volume should found secondary
+        auto response = service.DescribeVolume(DefaultDiskId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(DefaultDiskId),
+            response->Record.GetVolume().GetDiskId());
+
+        // Describing secondary should found secondary
+        response = service.DescribeVolume(GetSecondaryDiskId(DefaultDiskId));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(DefaultDiskId),
+            response->Record.GetVolume().GetDiskId());
+    }
+
+    Y_UNIT_TEST(ShouldFoundSecondaryVolumeForDiskRegistryBased)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(1);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        // Create secondary volume
+        service.CreateVolume(
+            GetSecondaryDiskId(DefaultDiskId),
+            2_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "",   // folderId
+            "",   // cloudId
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+
+        // Describing primary volume should found secondary
+        auto response = service.DescribeVolume(DefaultDiskId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(DefaultDiskId),
+            response->Record.GetVolume().GetDiskId());
+
+        // Describing secondary should found secondary
+        response = service.DescribeVolume(GetSecondaryDiskId(DefaultDiskId));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(DefaultDiskId),
+            response->Record.GetVolume().GetDiskId());
     }
 }
 
