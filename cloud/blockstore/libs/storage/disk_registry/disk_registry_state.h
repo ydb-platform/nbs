@@ -917,7 +917,6 @@ private:
     void ProcessAgents();
     void ProcessDisksToCleanup(TVector<TString> diskIds);
     void ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices);
-    void ProcessDisksToReallocate();
 
     void AddMigration(
         const TDiskState& disk,

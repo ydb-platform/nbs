@@ -423,11 +423,6 @@ TDiskRegistryState::TDiskRegistryState(
     ProcessDirtyDevices(std::move(dirtyDevices));
     // fills Migrations and uses both Disks and DeviceList
     FillMigrations();
-    // fills information about the master disks on which some devices are being
-    // reallocated
-    if (StorageConfig->GetLimitMirrorDisksDeviceReplacementsPerRow()) {
-        ProcessDisksToReallocate();
-    }
 
     if (Counters) {
         TVector<TString> poolNames;
@@ -603,6 +598,12 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         const auto& diskId = config.GetDiskId();
         for (const auto& deviceId: config.GetDeviceReplacementUUIDs()) {
             ReplicaTable.MarkReplacementDevice(diskId, deviceId, true);
+        }
+
+        if (StorageConfig->GetLimitMirrorDisksDeviceReplacementsPerRow() &&
+            NotificationSystem.GetDiskSeqNo(diskId))
+        {
+            ReplicaTable.BlockReplacement(diskId);
         }
     }
 }
@@ -781,16 +782,6 @@ void TDiskRegistryState::ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices)
                     {{"disk", diskId}, {"DeviceId", uuid}});
             }
         }
-    }
-}
-
-void TDiskRegistryState::ProcessDisksToReallocate()
-{
-    for (const auto& [diskId, _]: GetDisksToReallocate()) {
-        if (!IsMasterDisk(diskId)) {
-            continue;
-        }
-        ReplicaTable.BlockReplacement(diskId);
     }
 }
 
