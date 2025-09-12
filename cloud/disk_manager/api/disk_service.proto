@@ -61,6 +61,8 @@ service DiskService {
     rpc SendMigrationSignal(SendMigrationSignalRequest) returns (google.protobuf.Empty);
 
     rpc Describe(DescribeDiskRequest) returns (DiskParams) {}
+
+    rpc ListStates(ListDiskStatesRequest) returns (ListDiskStatesResponse) {}
 }
 
 message CreateDiskRequest {
@@ -177,4 +179,18 @@ message SendMigrationSignalRequest {
 
 message DescribeDiskRequest {
     DiskId disk_id = 1;
+}
+
+message ListDiskStatesRequest {
+    string zone_id = 1;
+}
+
+message ListDiskStatesResponse {
+    message Item {
+        string disk_id = 1;
+        DiskState state = 2;
+        string state_message = 3;
+    }
+
+    repeated Item items = 1;
 }

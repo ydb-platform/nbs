@@ -21,6 +21,7 @@ type Client interface {
 	MigrateDisk(ctx context.Context, req *disk_manager.MigrateDiskRequest) (*disk_manager.Operation, error)
 	SendMigrationSignal(ctx context.Context, req *disk_manager.SendMigrationSignalRequest) error
 	DescribeDisk(ctx context.Context, req *disk_manager.DescribeDiskRequest) (*disk_manager.DiskParams, error)
+	ListDiskStates(ctx context.Context, req *disk_manager.ListDiskStatesRequest) (*disk_manager.ListDiskStatesResponse, error)
 
 	// ImageService:
 	CreateImage(ctx context.Context, req *disk_manager.CreateImageRequest) (*disk_manager.Operation, error)

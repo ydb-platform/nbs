@@ -164,6 +164,14 @@ func (c *client) DescribeDisk(
 	return c.diskServiceClient.Describe(ctx, req)
 }
 
+func (c *client) ListDiskStates(
+	ctx context.Context,
+	req *disk_manager.ListDiskStatesRequest,
+) (*disk_manager.ListDiskStatesResponse, error) {
+
+	return c.diskServiceClient.ListStates(ctx, req)
+}
+
 func (c *client) CreateImage(
 	ctx context.Context,
 	req *disk_manager.CreateImageRequest,

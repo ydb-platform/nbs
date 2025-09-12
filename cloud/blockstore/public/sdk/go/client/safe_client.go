@@ -394,6 +394,19 @@ func (client *safeClient) ListVolumes(ctx context.Context) ([]string, error) {
 	return resp.GetVolumes(), nil
 }
 
+func (client *safeClient) ListDiskStates(
+	ctx context.Context,
+) ([]*protos.TDiskState, error) {
+	request := &protos.TListDiskStatesRequest{}
+
+	resp, err := client.Impl.ListDiskStates(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetDiskStates(), nil
+}
+
 func (client *safeClient) DiscoverInstances(
 	ctx context.Context,
 	limit uint32,

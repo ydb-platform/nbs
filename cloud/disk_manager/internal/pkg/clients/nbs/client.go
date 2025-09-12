@@ -116,6 +116,24 @@ func getDiskKind(
 	}
 }
 
+func getDiskState(state protos.EDiskState) (types.DiskState, error) {
+	switch state {
+	case protos.EDiskState_DISK_STATE_ONLINE:
+		return types.DiskState_DISK_STATE_ONLINE, nil
+	case protos.EDiskState_DISK_STATE_WARNING:
+		return types.DiskState_DISK_STATE_WARNING, nil
+	case protos.EDiskState_DISK_STATE_TEMPORARILY_UNAVAILABLE:
+		return types.DiskState_DISK_STATE_TEMPORARILY_UNAVAILABLE, nil
+	case protos.EDiskState_DISK_STATE_ERROR:
+		return types.DiskState_DISK_STATE_ERROR, nil
+	default:
+		return 0, errors.NewNonRetriableErrorf(
+			"unknown disk state %v",
+			state,
+		)
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func IsDiskRegistryBasedDisk(kind types.DiskKind) bool {
@@ -1220,6 +1238,33 @@ func (c *client) Describe(
 	}, nil
 }
 
+func (c *client) ListDiskStates(
+	ctx context.Context,
+) (states []DiskState, err error) {
+
+	defer c.metrics.StatRequest("ListDiskStates")(&err)
+
+	protoStates, err := c.listDiskStates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, s := range protoStates {
+		value, err := getDiskState(s.State)
+		if err != nil {
+			return nil, fmt.Errorf("invalid state: %v, %w", s, err)
+		}
+
+		states = append(states, DiskState{
+			DiskID:       s.DiskId,
+			State:        value,
+			StateMessage: s.StateMessage,
+		})
+	}
+
+	return states, nil
+}
+
 func (c *client) CreatePlacementGroup(
 	ctx context.Context,
 	groupID string,
@@ -2183,6 +2228,25 @@ func (c *client) alterPlacementGroupMembership(
 		err,
 		!IsAlterPlacementGroupMembershipPublicError(err),
 	)
+}
+
+func (c *client) listDiskStates(
+	ctx context.Context,
+) (states []*protos.TDiskState, err error) {
+
+	ctx = c.withTimeoutHeader(ctx)
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"blockstore.listDiskStates",
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	states, err = c.nbs.ListDiskStates(ctx)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return states, err
 }
 
 func (c *client) listPlacementGroups(
