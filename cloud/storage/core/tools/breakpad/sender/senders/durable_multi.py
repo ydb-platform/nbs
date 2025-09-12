@@ -92,8 +92,6 @@ class DurableMultiSender(BaseSender):
             self._logger.info("URL %s", crash.core_url)
 
     def send(self, crash: CrashInfoProcessed):
-        self._write_to_stdout(crash)
-
         if self._aggregator_sender:
             self._send_to_aggregator(crash)
 
@@ -102,3 +100,5 @@ class DurableMultiSender(BaseSender):
 
         if crash.logfile:
             self._write_to_logfile(crash)
+
+        self._write_to_stdout(crash)

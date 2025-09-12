@@ -12,7 +12,7 @@ class EmailSender(BaseSender):
         self._emails = emails
 
     def send(self, crash: CrashInfoProcessed):
-        self._logger.info("Send core to email %r", self._emails)
+        self._logger.info("Sending core to email %r", self._emails)
         mail_from = "devnull@example.com"
         mail_to = ", ".join(self._emails)
         message_body = [crash.get_header()]
@@ -30,7 +30,7 @@ class EmailSender(BaseSender):
             "[{ctype}] {crash_type} {service} on {server}".format(
                 ctype=crash.cluster,
                 crash_type=crash.crash_type,
-                service=crash.service_name,
+                service=crash.service,
                 server=crash.server,
             )
         message["From"] = "{server} <{address}>".format(
@@ -40,10 +40,12 @@ class EmailSender(BaseSender):
         message["To"] = mail_to
 
         try:
-            sendmail = subprocess.Popen(
-                ["/usr/sbin/sendmail", "-t"], stdin=subprocess.PIPE)
-            sendmail.communicate(message.as_string().encode("utf-8"))
-            sendmail.wait()
-        except Exception as e:
-            self._logger.error("sendmail error %r", e)
+            subprocess.run(args=["/usr/sbin/sendmail", "-t"],
+                           input=message.as_string().encode("utf-8"),
+                           check=True)
+            self._logger.info("Sent successfully")
+        except subprocess.CalledProcessError as e:
+            self._logger.error(f"Error occurred while sending, "
+                                f"return_code={e.returncode}, "
+                                f"stderr=\"{e.stderr}\"")
             self._logger.debug("Exception", exc_info=True)

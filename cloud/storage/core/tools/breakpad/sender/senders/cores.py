@@ -26,6 +26,6 @@ class CoresSender(BaseSender):
         url = self._aggregator_url + "/corecomes"
         return post(
             url,
-            params=self._get_metadata(),
+            params=self._get_metadata(crash),
             data=self._get_backtrace_with_info(crash),
             timeout=self._timeout)

@@ -95,7 +95,9 @@ class BreakpadSender:
                 else:
                     processor = OOMCrashProcessor()
 
+                self._logger.info(f"Processing {crash_info.corefile}")
                 crash = processor.process(crash_info)
+                self._logger.info(f"Sending {crash_info.corefile}")
                 self._sender.send(crash)
             except CrashProcessorError:
                 self._logger.exception(f"Can't process core "
