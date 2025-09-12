@@ -1,4 +1,5 @@
 #include "backend_aio.h"
+#include "backend_io_uring.h"
 #include "backend_null.h"
 #include "backend_rdma.h"
 #include "critical_event.h"
@@ -6,6 +7,7 @@
 
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryptor.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/json/json_writer.h>
@@ -150,11 +152,19 @@ IBackendPtr CreateBackend(
     auto encryptor = CreateEncryptor(options, logging);
 
     if (options.DeviceBackend == "aio") {
-        return CreateAioBackend(std::move(encryptor), logging);
-    } else if (options.DeviceBackend == "rdma") {
-        return CreateRdmaBackend(logging);
-    } else if (options.DeviceBackend == "null") {
-        return CreateNullBackend(logging);
+        return CreateAioBackend(std::move(encryptor), std::move(logging));
+    }
+
+    if (options.DeviceBackend == "rdma") {
+        return CreateRdmaBackend(std::move(logging));
+    }
+
+    if (options.DeviceBackend == "io_uring") {
+        return CreateIoUringBackend(std::move(encryptor), std::move(logging));
+    }
+
+    if (options.DeviceBackend == "null") {
+        return CreateNullBackend(std::move(logging));
     }
 
     Y_ABORT(

@@ -5,8 +5,9 @@ SRCS(
 
     backend.cpp
     backend_aio.cpp
-    backend_rdma.cpp
+    backend_io_uring.cpp
     backend_null.cpp
+    backend_rdma.cpp
     critical_event.cpp
     histogram.cpp
     options.cpp
@@ -36,6 +37,7 @@ PEERDIR(
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/io_uring
 
     contrib/ydb/library/actors/util
     library/cpp/getopt
