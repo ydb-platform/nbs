@@ -429,7 +429,7 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 		return err
 	}
 
-	bytesToReplicate, err := nbsClient.GetChangedBytes(
+	bytesToTransfer, err := nbsClient.GetChangedBytes(
 		ctx,
 		t.request.SrcDisk.DiskId,
 		t.state.BaseCheckpointId,
@@ -441,22 +441,35 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 			return err
 		}
 
-		bytesToReplicate = stats.StorageSize
+		bytesToTransfer = stats.StorageSize
 	}
 
-	logging.Info(ctx, "bytes to replicate is %v", bytesToReplicate)
-
-	replicateDuration := performance.Estimate(
-		bytesToReplicate,
+	estimatedDuration := performance.Estimate(
+		bytesToTransfer,
 		t.performanceConfig.GetTransferFromDiskToSnapshotBandwidthMiBs(),
 	)
-	shallowCopyDuration := performance.Estimate(
-		stats.StorageSize,
-		t.performanceConfig.GetSnapshotShallowCopyBandwidthMiBs(),
-	)
 
-	// Data transfer and shallow copy is performed in parallel.
-	execCtx.SetEstimatedInflightDuration(max(replicateDuration, shallowCopyDuration))
+	logging.Info(ctx, "bytes to transfer is %v, estimated duration is %v", bytesToTransfer, estimatedDuration)
+
+	if len(t.state.BaseSnapshotId) != 0 {
+		snapshotMeta, err := t.storage.GetSnapshotMeta(ctx, t.state.BaseSnapshotID)
+		if err != nil {
+			return err
+		}
+
+		// Data transfer and shallow copy is performed in parallel.
+		shallowCopyDuration := performance.Estimate(
+			snapshotMeta.StorageSize,
+			t.performanceConfig.GetSnapshotShallowCopyBandwidthMiBs(),
+		)
+		logging.Info(ctx,
+			"bytes to shallow copy is %v, estimated duration is %v",
+			snapshotMeta.StorageSize, shallowCopyDuration)
+
+		estimatedDuration = max(estimatedDuration, shallowCopyDuration)
+	}
+
+	execCtx.SetEstimatedInflightDuration(estimatedDuration)
 
 	return nil
 }
