@@ -18,10 +18,31 @@ enum class ECommand
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EScenario
+{
+    Block,
+    File
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum class EIoEngine
+{
+    AsyncIo,
+    IoUring,
+    Sync
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TOptions
 {
-    ECommand Command;
-    TString CommandName;
+    ECommand Command = ECommand::UnknownCmd;
+    EScenario Scenario = EScenario::Block;
+
+    EIoEngine Engine = EIoEngine::AsyncIo;
+    bool RunFromAnyThread = false;
+    bool NoDirect = false;
 
     TMaybe<TString> FilePath;
     TMaybe<ui64> FileSize;
@@ -36,6 +57,15 @@ struct TOptions
     TString AlternatingPhase;
 
     TString DumpPath;
+
+    ui64 MinReadSize = 0;
+    ui64 MaxReadSize = 0;
+    ui64 MinWriteSize = 0;
+    ui64 MaxWriteSize = 0;
+    ui64 MinRegionSize = 0;
+    ui64 MaxRegionSize = 0;
+
+    bool PrintDebugInfo = false;
 
     void Parse(int argc, char** argv);
 };
