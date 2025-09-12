@@ -127,7 +127,7 @@ func (t *createDRBasedDiskCheckpointTask) setEstimate(
 		return err
 	}
 
-	// Creating DR-based disk checkpoint implicitly makes a full copy of disk data
+	// Creating DR-based disk checkpoint implicitly makes a full copy of disk data.
 	execCtx.SetEstimatedStallingDuration(performance.Estimate(
 		stats.StorageSize,
 		t.performanceConfig.GetCreateDRBasedDiskCheckpointBandwidthMiBs(),
