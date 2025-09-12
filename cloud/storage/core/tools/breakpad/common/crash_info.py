@@ -70,6 +70,9 @@ class CrashInfoProcessed(CrashInfo):
                    cluster=self.cluster,
                )
 
+    def dump(self):
+        return json.dumps(self.__dict__)
+
 
 class CrashInfoStorage:
     FILETYPE = ".json"

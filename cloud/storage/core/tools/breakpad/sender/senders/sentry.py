@@ -32,7 +32,7 @@ class SentryFormatter:
             "tags": {
                 "service": crash.service,
                 "image": crash.metadata.get("image", "unknown"),
-                "cluster": crash.metadata.get("cluster", "unknown"),
+                "cluster": crash.cluster,
             },
             "extra": {
                 "backtrace": crash.formatted_backtrace,

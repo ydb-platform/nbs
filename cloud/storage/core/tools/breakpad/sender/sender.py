@@ -102,7 +102,7 @@ class BreakpadSender:
                                        f"{crash_info.corefile}")
                 continue
             except SenderError:
-                self._logger.exception(f"Can't send crash info {crash}")
+                self._logger.exception(f"Can't send crash info {crash.dump()}")
                 continue
             except Exception:
                 self._logger.exception("Unexpected error happened")

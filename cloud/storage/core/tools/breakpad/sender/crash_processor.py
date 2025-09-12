@@ -44,7 +44,7 @@ class CoredumpCrashProcessor(CrashProcessor):
 
     def _get_server(self, crash: CrashInfo):
         from_metadata = crash.metadata.get("server")
-        from_env = getenv("NODE_NAME")
+        from_env = getenv("SERVER_NAME")
 
         return from_metadata or from_env or getfqdn() or "unknown"
 
