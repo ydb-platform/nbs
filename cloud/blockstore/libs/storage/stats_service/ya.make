@@ -20,6 +20,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/protos
+    cloud/blockstore/libs/storage/stats_service/actors
     cloud/blockstore/libs/storage/volume
     cloud/blockstore/libs/ydbstats
     cloud/blockstore/private/api/protos
@@ -40,5 +41,9 @@ PEERDIR(
 )
 
 END()
+
+RECURSE(
+    actors
+)
 
 RECURSE_FOR_TESTS(ut)

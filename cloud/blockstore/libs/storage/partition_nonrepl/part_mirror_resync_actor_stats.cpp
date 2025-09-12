@@ -70,6 +70,8 @@ void TMirrorPartitionResyncActor::HandleGetDiskRegistryBasedPartCounters(
         TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    auto* msg = ev->Get();
+
     ++StatisticSeqNo;
 
     if (StatisticRequestInfo) {
@@ -86,7 +88,8 @@ void TMirrorPartitionResyncActor::HandleGetDiskRegistryBasedPartCounters(
                 0,                                         // networkBytes
                 TDuration{},                               // cpuUsage
                 SelfId(),
-                PartConfig->GetName()));
+                PartConfig->GetName(),
+                msg->VolumeStatisticSeqNo));
     }
 
     if (!MirrorActorId && Replicas.empty()) {
@@ -105,7 +108,8 @@ void TMirrorPartitionResyncActor::HandleGetDiskRegistryBasedPartCounters(
                 networkBytes,
                 cpuUsage,
                 SelfId(),
-                PartConfig->GetName()));
+                PartConfig->GetName(),
+                msg->VolumeStatisticSeqNo));
         return;
     }
 
@@ -120,13 +124,14 @@ void TMirrorPartitionResyncActor::HandleGetDiskRegistryBasedPartCounters(
     }
 
     StatisticRequestInfo =
-        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NCloud::Register<TDiskRegistryBasedPartitionStatisticsCollectorActor>(
         ctx,
         SelfId(),
         std::move(statActorIds),
-        StatisticSeqNo);
+        StatisticSeqNo,
+        msg->VolumeStatisticSeqNo);
 }
 
 void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
@@ -170,7 +175,8 @@ void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
             networkBytes,
             cpuUsage,
             SelfId(),
-            PartConfig->GetName()));
+            PartConfig->GetName(),
+            msg->VolumeStatisticSeqNo));
 
     StatisticRequestInfo = nullptr;
 }

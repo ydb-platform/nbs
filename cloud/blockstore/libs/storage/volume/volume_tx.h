@@ -436,9 +436,13 @@ struct TTxVolume
     struct TSaveMultiplePartStats
     {
         const TVector<TSavePartStats> PartStats;
+        const ui64 VolumeStatisticSeqNo;
 
-        explicit TSaveMultiplePartStats(TVector<TSavePartStats> partStats)
+        TSaveMultiplePartStats(
+                TVector<TSavePartStats> partStats,
+                ui64 volumeStatisticSeqNo)
             : PartStats(std::move(partStats))
+            , VolumeStatisticSeqNo(volumeStatisticSeqNo)
         {}
 
         void Clear()

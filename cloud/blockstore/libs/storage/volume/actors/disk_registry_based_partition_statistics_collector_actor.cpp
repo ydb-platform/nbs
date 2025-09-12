@@ -15,10 +15,11 @@ TDiskRegistryBasedPartitionStatisticsCollectorActor::
     TDiskRegistryBasedPartitionStatisticsCollectorActor(
         const TActorId& owner,
         TVector<TActorId> statActorIds,
-        ui64 seqNo)
+        ui64 seqNo,
+        ui64 volumeStatisticSeqNo)
     : Owner(owner)
     , StatActorIds(std::move(statActorIds))
-    , Response(seqNo)
+    , Response(seqNo, volumeStatisticSeqNo)
 {}
 
 void TDiskRegistryBasedPartitionStatisticsCollectorActor::Bootstrap(

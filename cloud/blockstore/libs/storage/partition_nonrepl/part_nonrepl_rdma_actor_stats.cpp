@@ -78,7 +78,8 @@ void TNonreplicatedPartitionRdmaActor::
             networkBytes,
             cpuUsage,
             SelfId(),
-            PartConfig->GetName()));
+            PartConfig->GetName(),
+            ev->Get()->VolumeStatisticSeqNo));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -386,7 +386,14 @@ struct TEvNonreplPartitionPrivate
 
     struct TGetDiskRegistryBasedPartCountersRequest
     {
+        const ui64 VolumeStatisticSeqNo = 0;
+
         TGetDiskRegistryBasedPartCountersRequest() = default;
+
+        explicit TGetDiskRegistryBasedPartCountersRequest(
+                ui64 volumeStatisticSeqNo)
+            : VolumeStatisticSeqNo(volumeStatisticSeqNo)
+        {}
     };
 
     struct TGetDiskRegistryBasedPartCountersResponse
@@ -396,18 +403,21 @@ struct TEvNonreplPartitionPrivate
         TDuration CpuUsage;
         NActors::TActorId SelfId;
         TString DiskId;
+        const ui64 VolumeStatisticSeqNo;
 
         TGetDiskRegistryBasedPartCountersResponse(
                 TPartitionDiskCountersPtr diskCounters,
                 ui64 networkBytes,
                 TDuration cpuUsage,
                 const NActors::TActorId& selfId,
-                TString diskId)
+                TString diskId,
+                ui64 volumeStatisticSeqNo)
             : DiskCounters(std::move(diskCounters))
             , NetworkBytes(networkBytes)
             , CpuUsage(cpuUsage)
             , SelfId(selfId)
             , DiskId(std::move(diskId))
+            , VolumeStatisticSeqNo(volumeStatisticSeqNo)
         {}
     };
 
@@ -418,11 +428,15 @@ struct TEvNonreplPartitionPrivate
     struct TDiskRegistryBasedPartCountersCombined
     {
         const ui64 SeqNo;
+        const ui64 VolumeStatisticSeqNo;
 
         TVector<TGetDiskRegistryBasedPartCountersResponse> Counters;
 
-        explicit TDiskRegistryBasedPartCountersCombined(ui64 seqNo)
+        TDiskRegistryBasedPartCountersCombined(
+                ui64 seqNo,
+                ui64 volumeStatisticSeqNo)
             : SeqNo(seqNo)
+            , VolumeStatisticSeqNo(volumeStatisticSeqNo)
         {}
     };
 

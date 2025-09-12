@@ -117,6 +117,8 @@ void TNonreplicatedPartitionMigrationCommonActor::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const TActorContext& ctx)
 {
+    auto* msg = ev->Get();
+
     ++StatisticSeqNo;
 
     if (StatisticRequestInfo) {
@@ -133,7 +135,8 @@ void TNonreplicatedPartitionMigrationCommonActor::
                 0,                                         // networkBytes
                 TDuration{},                               // cpuUsage
                 SelfId(),
-                DiskId));
+                DiskId,
+                msg->VolumeStatisticSeqNo));
     }
 
     TVector<TActorId> statActorIds;
@@ -162,19 +165,21 @@ void TNonreplicatedPartitionMigrationCommonActor::
                 networkBytes,
                 cpuUsage,
                 SelfId(),
-                DiskId));
+                DiskId,
+                msg->VolumeStatisticSeqNo));
 
         return;
     }
 
     StatisticRequestInfo =
-        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NCloud::Register<TDiskRegistryBasedPartitionStatisticsCollectorActor>(
         ctx,
         SelfId(),
         std::move(statActorIds),
-        StatisticSeqNo);
+        StatisticSeqNo,
+        msg->VolumeStatisticSeqNo);
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::
@@ -219,7 +224,8 @@ void TNonreplicatedPartitionMigrationCommonActor::
             networkBytes,
             cpuUsage,
             SelfId(),
-            DiskId));
+            DiskId,
+            msg->VolumeStatisticSeqNo));
 
     StatisticRequestInfo = nullptr;
 }

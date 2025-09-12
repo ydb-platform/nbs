@@ -27,7 +27,8 @@ private:
 public:
     TPartitionStatisticsCollectorActor(
         const NActors::TActorId& owner,
-        TVector<NActors::TActorId> partitions);
+        TVector<NActors::TActorId> partitions,
+        ui64 volumeStatisticSeqNo);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
