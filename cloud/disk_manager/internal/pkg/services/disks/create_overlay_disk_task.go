@@ -7,12 +7,14 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
@@ -21,12 +23,13 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createOverlayDiskTask struct {
-	storage     resources.Storage
-	scheduler   tasks.Scheduler
-	poolService pools.Service
-	nbsFactory  nbs.Factory
-	request     *protos.CreateOverlayDiskRequest
-	state       *protos.CreateOverlayDiskTaskState
+	storage      resources.Storage
+	scheduler    tasks.Scheduler
+	poolService  pools.Service
+	nbsFactory   nbs.Factory
+	request      *protos.CreateOverlayDiskRequest
+	state        *protos.CreateOverlayDiskTaskState
+	cellSelector cells.CellSelector
 }
 
 func (t *createOverlayDiskTask) Save() ([]byte, error) {
@@ -50,11 +53,35 @@ func (t *createOverlayDiskTask) Run(
 ) error {
 
 	params := t.request.Params
-	overlayDisk := params.Disk
 
-	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
-	if err != nil {
-		return err
+	var client nbs.Client
+	var err error
+
+	if len(t.state.SelectedCellId) > 0 {
+		client, err = t.nbsFactory.GetClient(ctx, t.state.SelectedCellId)
+		if err != nil {
+			return err
+		}
+	} else {
+		client, err = t.cellSelector.SelectCell(
+			ctx,
+			params.Disk.ZoneId,
+			params.FolderId,
+		)
+		if err != nil {
+			return err
+		}
+
+		t.state.SelectedCellId = client.ZoneID()
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
+	overlayDisk := &types.Disk{
+		DiskId: params.Disk.DiskId,
+		ZoneId: t.state.SelectedCellId,
 	}
 
 	selfTaskID := execCtx.GetTaskID()
@@ -141,7 +168,15 @@ func (t *createOverlayDiskTask) Cancel(
 ) error {
 
 	params := t.request.Params
-	overlayDisk := params.Disk
+
+	if len(t.state.SelectedCellId) == 0 {
+		t.state.SelectedCellId = params.Disk.ZoneId
+	}
+
+	overlayDisk := &types.Disk{
+		DiskId: params.Disk.DiskId,
+		ZoneId: t.state.SelectedCellId,
+	}
 
 	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
 	if err != nil {
