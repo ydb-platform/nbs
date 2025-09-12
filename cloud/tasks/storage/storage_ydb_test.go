@@ -3754,6 +3754,81 @@ func TestStorageYDBUpdateTaskWrongGeneration(t *testing.T) {
 	require.Equal(t, taskState.Status, TaskStatusReadyToRun)
 }
 
+func TestStorageYDBUpdateTaskAddDependency(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+	createdAt := time.Now()
+	modifiedAt := createdAt.Add(time.Minute)
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": "task1"},
+	).On("Add", int64(1)).Times(2)
+
+	taskID, err := storage.CreateTask(ctx, TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task1",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     createdAt,
+		GenerationID:   0,
+		Status:         TaskStatusRunning,
+		State:          []byte{0},
+		Dependencies:   common.NewStringSet(),
+	})
+	require.NoError(t, err)
+
+	taskIDDependent, err := storage.CreateTask(ctx, TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task1",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     createdAt,
+		GenerationID:   0,
+		Status:         TaskStatusRunning,
+		State:          []byte{},
+		Dependencies:   common.NewStringSet(),
+	})
+	require.NoError(t, err)
+
+	_, err = storage.UpdateTask(ctx, TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		ID:             taskID,
+		TaskType:       "task1",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     modifiedAt,
+		GenerationID:   0,
+		Status:         TaskStatusRunning,
+		State:          []byte{0},
+		Dependencies:   common.NewStringSet(taskIDDependent),
+	})
+	require.ErrorIs(t, err, errors.NewInterruptExecutionError())
+	metricsRegistry.AssertAllExpectations(t)
+
+	taskState, err := storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.EqualValues(t, taskState.Status, TaskStatusWaitingToRun)
+	require.EqualValues(t, taskState.GenerationID, 1)
+	require.NotEqual(t, createdAt, taskState.ChangedStateAt)
+	require.ElementsMatch(t, taskState.Dependencies.List(), []string{taskIDDependent})
+}
+
 func TestStorageYDBLockInParallel(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()

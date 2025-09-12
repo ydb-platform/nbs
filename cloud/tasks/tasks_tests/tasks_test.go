@@ -437,7 +437,13 @@ func (t *waitingTask) Load(request, state []byte) error {
 }
 
 func (t *waitingTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
-	_, err := waitTaskAsync(ctx, execCtx, t.scheduler, t.request.Value)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(2 * time.Second):
+	}
+
+	_, err := t.scheduler.WaitTask(ctx, execCtx, t.request.Value)
 	if err != nil {
 		return err
 	}
@@ -764,21 +770,6 @@ func waitTask(
 ) (uint64, error) {
 
 	return waitTaskWithTimeout(ctx, scheduler, id, defaultTimeout)
-}
-
-func waitTaskAsync(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-	scheduler tasks.Scheduler,
-	id string,
-) (uint64, error) {
-
-	response, err := scheduler.WaitTask(ctx, execCtx, id)
-	if err != nil {
-		return 0, err
-	}
-
-	return response.(*wrappers.UInt64Value).GetValue(), nil
 }
 
 func getTaskMetadata(
@@ -1878,9 +1869,16 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	// in WaitingDuration, so it can be less than expected.
 	waitingThreshold := 2 * time.Second
 
-	require.GreaterOrEqual(t, inflightDuration, 5*time.Second)
-	require.GreaterOrEqual(t, waitingDuration, 10*time.Second-waitingThreshold)
-	require.GreaterOrEqual(t, totalDuration, 15*time.Second)
+	// First waitingTask iteration: it waits for 2 seconds, then
+	// adds a dependency and interrupts.
+	// Second waitingTask iteration: it waits for 2 seconds, then
+	// skips WaitTask (as the dependency is finished) and waits for 5 seconds.
+	// Total: 2+2+5 = 9 seconds.
+	require.GreaterOrEqual(t, inflightDuration, 9*time.Second)
+	// Due to 2 seconds delay at the start, WaitingDuration will be 10-2 = 8 seconds.
+	require.GreaterOrEqual(t, waitingDuration, 8*time.Second-waitingThreshold)
+	require.GreaterOrEqual(t, totalDuration, 17*time.Second)
+	require.LessOrEqual(t, inflightDuration+waitingDuration, totalDuration)
 }
 
 func TestTaskWaitingDurationInChain(t *testing.T) {
@@ -1929,15 +1927,25 @@ func TestTaskWaitingDurationInChain(t *testing.T) {
 
 	state2, err := s.storage.GetTask(ctx, task2ID)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, state2.InflightDuration, 5*time.Second)
+	require.GreaterOrEqual(t, state2.InflightDuration, 9*time.Second)
 	require.GreaterOrEqual(
-		t, state2.WaitingDuration, 10*time.Second-waitingThreshold,
+		t, state2.WaitingDuration, 8*time.Second-waitingThreshold,
+	)
+
+	task2TotalDuration := state2.EndedAt.Sub(state2.CreatedAt)
+	require.LessOrEqual(
+		t, state2.InflightDuration+state2.WaitingDuration, task2TotalDuration,
 	)
 
 	state3, err := s.storage.GetTask(ctx, task3ID)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, state3.InflightDuration, 5*time.Second)
+	require.GreaterOrEqual(t, state3.InflightDuration, 9*time.Second)
 	require.GreaterOrEqual(
-		t, state3.WaitingDuration, 15*time.Second-waitingThreshold,
+		t, state3.WaitingDuration, 8*time.Second-waitingThreshold,
+	)
+
+	task3TotalDuration := state3.EndedAt.Sub(state3.CreatedAt)
+	require.LessOrEqual(
+		t, state3.InflightDuration+state3.WaitingDuration, task3TotalDuration,
 	)
 }
