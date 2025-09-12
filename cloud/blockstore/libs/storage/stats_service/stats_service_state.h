@@ -129,6 +129,7 @@ struct TVolumeStatsInfo
 {
     NProto::TVolume VolumeInfo;
     ui64 VolumeTabletId = 0;
+    NActors::TActorId VolumeActorId;
 
     TDiskPerfData PerfCounters;
     NBlobMetrics::TBlobLoadMetrics OffsetBlobMetrics;

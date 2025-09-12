@@ -226,7 +226,11 @@ struct TEvPartitionCommonPrivate
     {
         TVector<TGetPartCountersResponse> PartCounters;
 
-        TPartCountersCombined() = default;
+        const ui64 VolumeStatisticSeqNo;
+
+        explicit TPartCountersCombined(ui64 volumeStatisticSeqNo)
+            : VolumeStatisticSeqNo(volumeStatisticSeqNo)
+        {}
     };
 
     //

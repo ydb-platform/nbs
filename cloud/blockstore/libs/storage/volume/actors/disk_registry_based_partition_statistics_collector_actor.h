@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -10,30 +10,30 @@ namespace NCloud::NBlockStore::NStorage {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class TPartitionStatisticsCollectorActor final
-    : public NActors::TActorBootstrapped<TPartitionStatisticsCollectorActor>
+class TDiskRegistryBasedPartitionStatisticsCollectorActor final
+    : public NActors::TActorBootstrapped<
+          TDiskRegistryBasedPartitionStatisticsCollectorActor>
 {
 private:
     const NActors::TActorId Owner;
 
-    const TVector<NActors::TActorId> Partitions;
+    const TVector<NActors::TActorId> StatActorIds;
 
-    TEvPartitionCommonPrivate::TPartCountersCombined Response;
+    TEvNonreplPartitionPrivate::TDiskRegistryBasedPartCountersCombined Response;
 
     NProto::TError LastError;
 
-    ui32 FailedResponses = 0;
-
 public:
-    TPartitionStatisticsCollectorActor(
+    TDiskRegistryBasedPartitionStatisticsCollectorActor(
         const NActors::TActorId& owner,
-        TVector<NActors::TActorId> partitions,
+        TVector<NActors::TActorId> statActorIds,
+        ui64 seqNo,
         ui64 volumeStatisticSeqNo);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    void SendStatToVolume(const NActors::TActorContext& ctx);
+    void SendStatistics(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
@@ -42,12 +42,9 @@ private:
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandlePoisonPill(
-        const NActors::TEvents::TEvPoisonPill::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleGetPartCountersResponse(
-        TEvPartitionCommonPrivate::TEvGetPartCountersResponse::TPtr& ev,
+    void HandleGetDiskRegistryBasedPartCountersResponse(
+        TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

@@ -118,6 +118,18 @@ private:
     void ScheduleCleanupBackgroundSources(
         const NActors::TActorContext& ctx) const;
 
+    void RegisterStatisticsCollectorActor(
+        const NActors::TActorContext& ctx) const;
+
+    void UpdateVolumePartCounters(
+        TEvStatsService::TVolumePartCounters partCounters,
+        const NActors::TActorContext& ctx,
+        ui32 senderNodeId);
+
+    void UpdateVolumeCounters(
+        TEvStatsService::TVolumeSelfCounters volumeCounters,
+        const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateWork);
 
@@ -175,6 +187,10 @@ private:
 
     void HandleCleanupBackgroundSources(
         const TEvStatsServicePrivate::TEvCleanupBackgroundSources::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleServiceStatisticsCombined(
+        const TEvStatsService::TEvServiceStatisticsCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

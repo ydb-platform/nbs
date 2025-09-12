@@ -141,7 +141,8 @@ void RegisterVolume(
     auto registerMsg = std::make_unique<TEvStatsService::TEvRegisterVolume>(
         diskId,
         volumeTabletID,
-        std::move(volume));
+        std::move(volume),
+        TActorId{0, 0});
     runtime.Send(
         new IEventHandle(
             MakeStorageStatsServiceId(),
