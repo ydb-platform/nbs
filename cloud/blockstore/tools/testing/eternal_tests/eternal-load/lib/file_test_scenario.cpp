@@ -7,6 +7,7 @@
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/random/random.h>
+#include <util/system/mutex.h>
 
 #include <atomic>
 
@@ -24,6 +25,8 @@ constexpr ui64 DefaultMaxWriteSize = 1_MB;
 
 constexpr ui64 DefaultMinRegionSize = 3_MB;
 constexpr ui64 DefaultMaxRegionSize = 10_MB;
+
+constexpr size_t RegionBlockSize = 1_KB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -46,22 +49,94 @@ struct Y_PACKED TFileHeader
     static constexpr ui64 ExpectedSignature = 0x733c1dfaa5d2a452;
 };
 
-struct Y_PACKED TRegionMetadata
-{
-    ui64 Offset = 0;
-    ui64 Size = 0;
-    ui64 MinWriteSeqNum = 0;
-    ui64 MaxWriteSeqNum = 0;
-};
-
-struct Y_PACKED TRegionMarker
+struct Y_PACKED TRegionState
 {
     ui64 SeqNum = 0;
     ui64 TestStartTime = 0;
     ui64 WriteTime = 0;
-    ui32 RandomNumber = 0;
-    ui32 Crc32 = 0;
+
+    bool operator==(const TRegionState& rhs) const
+    {
+        return SeqNum == rhs.SeqNum && TestStartTime == rhs.TestStartTime &&
+               WriteTime == rhs.WriteTime;
+    }
 };
+
+struct Y_PACKED TRegionMetadata
+{
+    ui64 Offset = 0;
+    ui64 Size = 0;
+    TRegionState CurrentState = {};
+    TRegionState NewState = {};
+
+    ui64 End() const
+    {
+        return Offset + Size;
+    }
+};
+
+struct Y_PACKED TRegionData
+{
+    ui64 SeqNum = 0;
+    ui64 Offset = 0;
+    ui64 TestStartTime = 0;
+    ui64 WriteTime = 0;
+    std::array<ui64, (RegionBlockSize / sizeof(ui64)) - 5> Data = {};
+    ui64 Crc32 = 0;
+
+    TStringBuf AsStringBuf(size_t len) const
+    {
+        Y_ABORT_UNLESS(len <= sizeof(TRegionData));
+        return TStringBuf(reinterpret_cast<const char*>(this), len);
+    }
+};
+
+struct TReadRegionInfo
+{
+    size_t Index = 0;
+    ui64 OffsetInRegion = 0;
+    ui64 OffsetInReadBuffer = 0;
+    ui64 Length = 0;
+    TRegionMetadata BeforeRead;
+    TRegionMetadata AfterRead;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <class T>
+T RandomNumberFromRange(T min, T max)
+{
+    Y_ABORT_UNLESS(min <= max);
+    return RandomNumber(max - min + 1);
+}
+
+ui64 UpdateSeed(ui64 seed, ui64 value)
+{
+    return (seed * 397) + (value * 31) + 13;
+}
+
+void GenerateRegionData(
+    const TRegionState& state,
+    ui64 offset,
+    TRegionData* regionData)
+{
+    regionData->SeqNum = state.SeqNum;
+    regionData->Offset = offset;
+    regionData->TestStartTime = state.TestStartTime;
+    regionData->WriteTime = state.WriteTime;
+
+    ui64 seed = UpdateSeed(0, regionData->SeqNum);
+    seed = UpdateSeed(seed, regionData->Offset);
+    seed = UpdateSeed(seed, regionData->TestStartTime);
+    seed = UpdateSeed(seed, regionData->WriteTime);
+
+    for (auto& v: regionData->Data) {
+        seed = UpdateSeed(seed, 0);
+        v = seed;
+    }
+
+    regionData->Crc32 = Crc32c(regionData, offsetof(TRegionData, Crc32));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -74,9 +149,10 @@ private:
 
     IConfigHolderPtr ConfigHolder;
     TLog Log;
+    TMutex Lock;
     TVector<std::unique_ptr<ITestThread>> Threads;
     TVector<TRegionMetadata> RegionMetadata;
-    TVector<std::unique_ptr<std::atomic_bool>> RegionUseFlags;
+    TVector<bool> RegionUseFlags;
     std::atomic<ui64> NextSeqNum = 0;
     std::optional<double> PhaseDuration;
     ui32 WriteRate = 0;
@@ -109,6 +185,28 @@ private:
     bool ValidateFormat() const;
     bool Init(TFileHandle& file) override;
     ui32 GetWriteRate(double secondsSinceTestStart) const;
+
+    void Read(IContext* context, TVector<char>& readBuffer);
+    TVector<TReadRegionInfo> GetReadRegions(ui64 offset, ui64 length) const;
+    void UpdateReadRegions(TVector<TReadRegionInfo>& regions) const;
+    void ValidateReadData(
+        IContext* context,
+        TStringBuf readBuffer,
+        const TVector<TReadRegionInfo>& regions) const;
+    void ValidateReadDataRegion(
+        IContext* context,
+        TStringBuf readBuffer,
+        const TVector<TRegionState>& expectedStates,
+        ui64 offsetInRegion) const;
+    bool ValidateReadDataFragment(
+        TStringBuf readBuffer,
+        const TVector<TRegionData>& expectedData) const;
+
+    size_t WriteBegin(IContext* context);
+    void WriteBody(IContext* context, size_t index, TVector<char>& writeBuffer);
+    void WriteEnd(IContext* context, size_t index);
+    size_t AcquireRandomRegion();
+    void ReleaseRegion(size_t index);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -129,15 +227,14 @@ private:
     TVector<char> ReadBuffer;
     TVector<char> WriteBuffer;
     EOperation Operation = EOperation::Idle;
-    ui64 MetadataOffset = 0;
-    size_t MetadataIndex = 0;
+    size_t WriteRegionIndex = 0;
     TLog Log;
 
 public:
     TTestThread(TFileTestScenario* testScenario, const TLog& log)
         : TestScenario(testScenario)
         , ReadBuffer(testScenario->MaxReadSize)
-        , WriteBuffer(testScenario->MaxWriteSize)
+        , WriteBuffer(testScenario->MaxRegionSize)
         , Log(log)
     {}
 
@@ -155,124 +252,31 @@ public:
         switch (Operation)
         {
             case EOperation::Read:
-                PerformRead(context);
+                TestScenario->Read(context, ReadBuffer);
+                Operation = EOperation::Idle;
                 break;
 
             case EOperation::WriteBegin:
-                PerformWriteBegin(context);
+                WriteRegionIndex = TestScenario->WriteBegin(context);
+                Operation = EOperation::WriteBody;
                 break;
 
             case EOperation::WriteBody:
-                PerformWriteBody(context);
+                TestScenario->WriteBody(
+                    context,
+                    WriteRegionIndex,
+                    WriteBuffer);
+                Operation = EOperation::WriteEnd;
                 break;
 
             case EOperation::WriteEnd:
-                PerformWriteEnd(context);
+                TestScenario->WriteEnd(context, WriteRegionIndex);
+                Operation = EOperation::Idle;
                 break;
 
             default:
                 Y_ABORT("Invalid operation %d", Operation);
         }
-    }
-
-    void PerformRead(ITestThreadContext* context)
-    {
-        auto len =
-            Min(RandomNumber(ReadBuffer.size()) + 1, TestScenario->FileSize);
-        auto offset = RandomNumber(TestScenario->FileSize - len + 1);
-
-        context->Read(
-            ReadBuffer.begin(),
-            len,
-            offset,
-            []()
-            {
-                // TODO(nasonov): read data validation
-            });
-
-        Operation = EOperation::Idle;
-    }
-
-    void PerformWriteBegin(ITestThreadContext* context)
-    {
-        while (true) {
-            MetadataIndex = RandomNumber(TestScenario->RegionMetadata.size());
-            if (!TestScenario->RegionUseFlags[MetadataIndex]->exchange(true)) {
-                break;
-            }
-        }
-
-        auto& metadata = TestScenario->RegionMetadata[MetadataIndex];
-        metadata.MaxWriteSeqNum = TestScenario->NextSeqNum++;
-
-        MetadataOffset =
-            sizeof(TFileHeader) + MetadataIndex * sizeof(TRegionMetadata);
-
-        context->Write(
-            &metadata.MaxWriteSeqNum,
-            sizeof(metadata.MaxWriteSeqNum),
-            MetadataOffset + offsetof(TRegionMetadata, MaxWriteSeqNum),
-            []() {});
-
-        Operation = EOperation::WriteBody;
-    }
-
-    void PerformWriteBody(ITestThreadContext* context)
-    {
-        const auto& metadata = TestScenario->RegionMetadata[MetadataIndex];
-
-        TRegionMarker marker;
-        marker.SeqNum = metadata.MaxWriteSeqNum;
-        marker.TestStartTime = TestScenario->TestStartTime.GetValue();
-        marker.WriteTime = Now().GetValue();
-        marker.RandomNumber = RandomNumber<ui32>();
-        marker.Crc32 = Crc32c(&marker, offsetof(TRegionMarker, Crc32));
-
-        const char* markerBuf = reinterpret_cast<const char*>(&marker);
-
-        Y_ABORT_UNLESS(WriteBuffer.size() >= metadata.Size);
-
-        ui64 ofs = 0;
-        while (ofs < metadata.Size) {
-            ui64 len = Min(sizeof(TRegionMarker), metadata.Size - ofs);
-            MemCopy(WriteBuffer.begin() + ofs, markerBuf, len);
-            ofs += len;
-        }
-
-        ofs = 0;
-        while (ofs < metadata.Size) {
-            auto len =
-                Min(RandomNumber(
-                        TestScenario->MaxWriteSize -
-                        TestScenario->MinWriteSize + 1) +
-                        TestScenario->MinWriteSize,
-                    metadata.Size - ofs);
-
-            context->Write(
-                WriteBuffer.begin() + ofs,
-                len,
-                metadata.Offset + ofs,
-                []() {});
-            ofs += len;
-        }
-
-        Operation = EOperation::WriteEnd;
-    }
-
-    void PerformWriteEnd(ITestThreadContext* context)
-    {
-        auto& metadata = TestScenario->RegionMetadata[MetadataIndex];
-        metadata.MinWriteSeqNum = metadata.MaxWriteSeqNum;
-
-        context->Write(
-            &metadata.MinWriteSeqNum,
-            sizeof(metadata.MinWriteSeqNum),
-            MetadataOffset + offsetof(TRegionMetadata, MinWriteSeqNum),
-            [flag = TestScenario->RegionUseFlags[MetadataIndex].get()]() {
-                flag->store(false);
-            });
-
-        Operation = EOperation::Idle;
     }
 };
 
@@ -470,10 +474,7 @@ bool TFileTestScenario::Init(TFileHandle& file)
         return false;
     }
 
-    for (const auto& metadata: RegionMetadata) {
-        NextSeqNum = Max(NextSeqNum.load(), metadata.MaxWriteSeqNum + 1);
-        RegionUseFlags.push_back(std::make_unique<std::atomic_bool>(false));
-    }
+    RegionUseFlags = TVector<bool>(RegionMetadata.size(), false);
 
     STORAGE_INFO("File format: " << RegionMetadata.size() << " regions");
 
@@ -487,6 +488,281 @@ ui32 TFileTestScenario::GetWriteRate(double secondsSinceTestStart) const
         return static_cast<ui64>(iter) % 2 == 1 ? 100 - WriteRate : WriteRate;
     }
     return WriteRate;
+}
+
+void TFileTestScenario::Read(
+    ITestThreadContext* context,
+    TVector<char>& readBuffer)
+{
+    auto dataOffset = RegionMetadata.front().Offset;
+    auto dataSize = RegionMetadata.back().End() - dataOffset;
+
+    auto len =
+        Min(RandomNumberFromRange(MinReadSize, MaxReadSize),
+            readBuffer.size(),
+            dataSize);
+
+    auto offset = RandomNumber(dataSize - len + 1) + dataOffset;
+
+    auto regions = GetReadRegions(offset, len);
+    auto buffer = TStringBuf(readBuffer.data(), len);
+
+    context->Read(
+        readBuffer.begin(),
+        len,
+        offset,
+        [this, context, regions = std::move(regions), buffer]() mutable
+        {
+            UpdateReadRegions(regions);
+            ValidateReadData(context, buffer, regions);
+        });
+}
+
+TVector<TReadRegionInfo> TFileTestScenario::GetReadRegions(
+    ui64 offset,
+    ui64 length) const
+{
+    auto guard = Guard(Lock);
+
+    TVector<TReadRegionInfo> res;
+
+    for (size_t i = 0; i < RegionMetadata.size(); i++) {
+        const auto& regionMetadata = RegionMetadata[i];
+        const auto begin = Max(offset, regionMetadata.Offset);
+        const auto end = Min(offset + length, regionMetadata.End());
+        if (begin < end) {
+            res.push_back(
+                {.Index = i,
+                 .OffsetInRegion = begin - regionMetadata.Offset,
+                 .OffsetInReadBuffer = begin - offset,
+                 .Length = end - begin,
+                 .BeforeRead = regionMetadata,
+                 .AfterRead = {}});
+        }
+    }
+
+    return res;
+}
+
+void TFileTestScenario::UpdateReadRegions(
+    TVector<TReadRegionInfo>& regions) const
+{
+    auto guard = Guard(Lock);
+
+    for (auto& region: regions) {
+        region.AfterRead = RegionMetadata[region.Index];
+    }
+}
+
+void TFileTestScenario::ValidateReadData(
+    IContext* context,
+    TStringBuf readBuffer,
+    const TVector<TReadRegionInfo>& regions) const
+{
+    for (const auto& region: regions) {
+        auto readBufferFragment =
+            readBuffer.SubStr(region.OffsetInReadBuffer, region.Length);
+
+        if (region.AfterRead.CurrentState != region.BeforeRead.CurrentState &&
+            region.AfterRead.CurrentState != region.BeforeRead.NewState)
+        {
+            // We can validate the data only if we know about all writes that
+            // happened during the read
+            continue;
+        }
+
+        TVector<TRegionState> expectedStates;
+        if (region.BeforeRead.CurrentState.SeqNum != 0) {
+            expectedStates.push_back(region.BeforeRead.CurrentState);
+        }
+        if (region.BeforeRead.NewState != region.BeforeRead.CurrentState) {
+            expectedStates.push_back(region.BeforeRead.NewState);
+        }
+        if (region.AfterRead.NewState != region.BeforeRead.NewState &&
+            region.AfterRead.NewState != region.BeforeRead.CurrentState)
+        {
+            expectedStates.push_back(region.AfterRead.NewState);
+        }
+
+        ValidateReadDataRegion(
+            context,
+            readBufferFragment,
+            expectedStates,
+            region.OffsetInRegion);
+    }
+}
+
+void TFileTestScenario::ValidateReadDataRegion(
+    IContext* context,
+    TStringBuf readBuffer,
+    const TVector<TRegionState>& expectedStates,
+    ui64 offsetInRegion) const
+{
+    /* STORAGE_INFO(
+        "Validating read data at offset "
+        << offsetInRegion
+        << " (length " << readBuffer.size() << ", expected states "
+        << expectedStates.size() << ")"
+    ); */
+
+    if (expectedStates.empty()) {
+        return;
+    }
+
+    TVector<TRegionData> expectedBuffers(
+        expectedStates.size());
+
+    auto offset = ((offsetInRegion + sizeof(TRegionData) - 1) /
+                   sizeof(TRegionData) * sizeof(TRegionData)) - offsetInRegion;
+
+    while (offset < readBuffer.size()) {
+        for (size_t i = 0; i < expectedStates.size(); i++) {
+            GenerateRegionData(
+                expectedStates[i],
+                offsetInRegion + offset,
+                &expectedBuffers[i]);
+        }
+
+        auto fragment = readBuffer.SubStr(offset, sizeof(TRegionData));
+
+        if (ValidateReadDataFragment(fragment, expectedBuffers)) {
+            offset += sizeof(TRegionData);
+            continue;
+        }
+
+        context->Fail("Read validation failed");
+        break;
+    }
+}
+
+bool TFileTestScenario::ValidateReadDataFragment(
+    TStringBuf readBuffer,
+    const TVector<TRegionData>& expectedData) const
+{
+    // Optimization: compare as a whole first
+    for (const auto& expected: expectedData) {
+        if (readBuffer == expected.AsStringBuf(readBuffer.size())) {
+            return true;
+        }
+    }
+
+    if (expectedData.size() == 1) {
+        return false;
+    }
+
+    // Compare against each buffer per byte
+    TVector<TStringBuf> expectedBuffers;
+    for (const auto& expected: expectedData) {
+        expectedBuffers.push_back(expected.AsStringBuf(readBuffer.size()));
+    }
+
+    for (size_t i = 0; i < readBuffer.size(); i++) {
+        bool match = false;
+        for (const auto& expected: expectedBuffers) {
+            if (readBuffer[i] == expected[i]) {
+                match = true;
+                break;
+            }
+        }
+        if (!match) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+size_t TFileTestScenario::WriteBegin(IContext* context)
+{
+    auto guard = Guard(Lock);
+    size_t index = 0;
+
+    while (true) {
+        // The number of threads is guaranteed to be not greater than the
+        // number of regions, so this loop will eventually terminate
+        index = RandomNumber(RegionMetadata.size());
+        if (!RegionUseFlags[index]) {
+            RegionUseFlags[index] = true;
+            break;
+        }
+    }
+
+    auto& metadata = RegionMetadata[index];
+    metadata.NewState = {
+        .SeqNum = NextSeqNum++,
+        .TestStartTime = TestStartTime.GetValue(),
+        .WriteTime = Now().GetValue()
+    };
+
+    guard.Release();
+
+    auto metadataOffset = sizeof(TFileHeader) + index * sizeof(TRegionMetadata);
+
+    context->Write(
+        &metadata.NewState,
+        sizeof(metadata.NewState),
+        metadataOffset + offsetof(TRegionMetadata, NewState),
+        []() {});
+
+    return index;
+}
+
+void TFileTestScenario::WriteBody(
+    IContext* context,
+    size_t index,
+    TVector<char>& writeBuffer)
+{
+    const auto& metadata = RegionMetadata[index];
+
+    Y_ABORT_UNLESS(writeBuffer.size() >= metadata.Size);
+
+    TRegionData regionData;
+    ui64 offset = 0;
+
+    while (offset < metadata.Size) {
+        GenerateRegionData(metadata.NewState, offset, &regionData);
+
+        auto len = Min(metadata.Size - offset, sizeof(TRegionData));
+
+        MemCopy(
+            writeBuffer.begin() + offset,
+            reinterpret_cast<const char*>(&regionData),
+            len);
+
+        offset += len;
+    }
+
+    ui64 ofs = 0;
+    while (ofs < metadata.Size) {
+        auto len =
+            Min(RandomNumberFromRange(MinWriteSize, MaxWriteSize),
+                metadata.Size - ofs);
+
+        context->Write(
+            writeBuffer.begin() + ofs,
+            len,
+            metadata.Offset + ofs,
+            []() {});
+        ofs += len;
+    }
+}
+
+void TFileTestScenario::WriteEnd(IContext* context, size_t index)
+{
+    const auto& metadata = RegionMetadata[index];
+    auto metadataOffset = sizeof(TFileHeader) + index * sizeof(TRegionMetadata);
+
+    context->Write(
+        &metadata.NewState,
+        sizeof(metadata.NewState),
+        metadataOffset + offsetof(TRegionMetadata, CurrentState),
+        [this, index]()
+        {
+            auto guard = Guard(Lock);
+            Y_ABORT_UNLESS(RegionUseFlags[index]);
+            RegionUseFlags[index] = false;
+            RegionMetadata[index].CurrentState = RegionMetadata[index].NewState;
+        });
 }
 
 }   // namespace
