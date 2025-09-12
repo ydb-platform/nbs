@@ -631,6 +631,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(EnableDataIntegrityValidationForYdbBasedDisks,       bool,   false    )\
                                                                                \
     xxx(TrimFreshLogTimeout,                  TDuration,   Seconds(0)         )\
+                                                                               \
+    xxx(HiveLocalServiceCpuResourceLimit,     ui64,        0                  )\
+    xxx(HiveLocalServiceMemoryResourceLimit,  ui64,        0                  )\
+    xxx(HiveLocalServiceNetworkResourceLimit, ui64,        0                  )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

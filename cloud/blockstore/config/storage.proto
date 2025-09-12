@@ -1323,4 +1323,10 @@ message TStorageServiceConfig
     // Enables data integrity validation for the YDB-based disks.
     // See "EnableDataIntegrityClient" in server.proto for more details.
     optional bool EnableDataIntegrityValidationForYdbBasedDisks = 455;
+
+    // These parameters are used to configure resource limits (CPU, RAM, network)
+    // for the local service in the tenant pool.
+    optional uint64 HiveLocalServiceCpuResourceLimit = 456;
+    optional uint64 HiveLocalServiceMemoryResourceLimit = 457;
+    optional uint64 HiveLocalServiceNetworkResourceLimit = 458;
 }
