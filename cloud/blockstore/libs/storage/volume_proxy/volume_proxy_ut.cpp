@@ -13,6 +13,8 @@
 
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 
+#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <unordered_set>
@@ -22,6 +24,7 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NActors;
 
 using namespace NKikimr;
+using namespace NKikimr::NSchemeShard;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -376,15 +379,6 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                 DefaultDiskId,
                 volumeTabletId));
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeVolumeRequest: {
-                        UNIT_ASSERT(false);
-                        break;
-                    }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
         service.StatVolume();
 
         // adjust time to trigger pipe connection destroy
@@ -485,15 +479,10 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
             }});
     }
 
-    Y_UNIT_TEST(ShouldRunDescribeForCachedTabletsIfDurationOfFailedConnectsExceedsThreshold)
+    Y_UNIT_TEST(ShouldRunDescribeForCachedTablets)
     {
-        constexpr ui32 timeout = 3'000;
-
-        NProto::TStorageServiceConfig config;
-        config.SetVolumeProxyCacheRetryDuration(timeout);
-
         TTestEnv env;
-        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+        ui32 nodeIdx = SetupTestEnv(env);
 
         auto& runtime = env.GetRuntime();
         TServiceClient service(runtime, nodeIdx);
@@ -533,14 +522,6 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         {
             service.SendStatVolumeRequest();
             auto response = service.RecvStatVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        }
-
-        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(timeout));
-
-        {
-            service.SendStatVolumeRequest();
-            auto response = service.RecvStatVolumeResponse();
             auto code = response->GetStatus();
             UNIT_ASSERT_VALUES_EQUAL(
                 FACILITY_SCHEMESHARD,
@@ -551,13 +532,10 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldResetFailCounterIfDisconnectedCachedVolumeIsOnlineAgain)
+    Y_UNIT_TEST(ShouldAnswerIfDisconnectedCachedVolumeIsOnlineAgain)
     {
-        NProto::TStorageServiceConfig config;
-        config.SetVolumeProxyCacheRetryDuration(3'000);
-
         TTestEnv env;
-        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+        ui32 nodeIdx = SetupTestEnv(env);
 
         auto& runtime = env.GetRuntime();
         TServiceClient service(runtime, nodeIdx);
@@ -592,7 +570,6 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
         RebootTablet(runtime, volumeTabletId, service.GetSender(), nodeIdx);
 
-        TActorId proxy;
         bool failConnects = true;
         runtime.SetEventFilter([&] (auto& runtime, auto& event) {
                 Y_UNUSED(runtime);
@@ -600,18 +577,11 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                     case TEvTabletPipe::EvClientConnected: {
                         auto* msg = event->template Get<TEvTabletPipe::TEvClientConnected>();
                         if (msg->TabletId == volumeTabletId) {
-                            proxy = event->Recipient;
                             if (failConnects) {
                               auto& code =
                                 const_cast<NKikimrProto::EReplyStatus&>(msg->Status);
                               code = NKikimrProto::ERROR;
                             }
-                        }
-                        break;
-                    }
-                    case TEvSSProxy::EvDescribeVolumeResponse: {
-                        if (failConnects && event->Recipient == proxy) {
-                            UNIT_ASSERT(false);
                         }
                         break;
                     }
@@ -630,6 +600,65 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
         service.StatVolume();
         service.StatVolume();
+    }
+
+    Y_UNIT_TEST(ShouldMapBaseDiskIfSchemeShardIsNotAvailable)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume();
+        service.WaitForVolume();
+
+        ui64 volumeTabletId;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        service.DescribeVolume();
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
+                DefaultDiskId,
+                volumeTabletId));
+        service.StatVolume();
+
+        // adjust time to trigger pipe connection destroy
+        runtime.AdvanceCurrentTime(TDuration::Minutes(1));
+        // give a chance to internal messages to complete
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        bool describe = false;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const_cast<NProto::TError&>(msg->Error) =
+                                MakeError(E_REJECTED, "SS is dead");
+                        describe = true;
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        service.StatVolume();
+        UNIT_ASSERT(describe);
     }
 }
 

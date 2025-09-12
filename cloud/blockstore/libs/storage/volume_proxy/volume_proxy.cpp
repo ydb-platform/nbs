@@ -70,6 +70,7 @@ class TVolumeProxyActor final
         const TString DiskId;
 
         EConnectionState State = INITIAL;
+        bool isConnectionToBaseDisk = false;
         ui64 TabletId = 0;
         ui32 Generation = 0;
         NProto::TError Error;
@@ -576,25 +577,34 @@ void TVolumeProxyActor::HandleDescribeResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::VOLUME_PROXY,
-            "%s Could not resolve path for volume. Error: %s",
-            conn->LogTitle.GetWithTime().c_str(),
-            FormatError(error).c_str());
+        if ((conn->isConnectionToBaseDisk && msg->GetStatus() == MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist)) || !conn->isConnectionToBaseDisk) {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME_PROXY,
+                "%s Could not resolve path for volume. Error: %s",
+                conn->LogTitle.GetWithTime().c_str(),
+                FormatError(error).c_str());
 
-        DestroyConnection(*conn, error);
-        return;
+            DestroyConnection(*conn, error);
+            return;
+        }
     }
 
-    const auto& pathDescr = msg->PathDescription;
-    const auto& volumeDescr = pathDescr.GetBlockStoreVolumeDescription();
-    StartConnection(
-        ctx,
-        *conn,
-        volumeDescr.GetVolumeTabletId(),
-        msg->Path);
-
+    if (conn->isConnectionToBaseDisk) {
+        StartConnection(
+            ctx,
+            *conn,
+            conn->TabletId,
+            "PartitionConfig");
+    } else {
+        const auto& pathDescr = msg->PathDescription;
+        const auto& volumeDescr = pathDescr.GetBlockStoreVolumeDescription();
+        StartConnection(
+            ctx,
+            *conn,
+            volumeDescr.GetVolumeTabletId(),
+            msg->Path);
+    }
     SetDisconnectTs(conn->DiskId, {});
 }
 
@@ -627,24 +637,12 @@ void TVolumeProxyActor::HandleRequest(
         case INITIAL:
         case FAILED:
         {
+            conn.State = RESOLVING;
             if (auto* baseDisk = BaseDiskIdToTabletId.FindPtr(diskId)) {
-                // For base disks, we make a timeout between connections.
-                const auto deadline =
-                    baseDisk->DisconnectTs +
-                    Config->GetVolumeProxyCacheRetryDuration();
-                const bool cooldownPassed = !baseDisk->DisconnectTs || deadline > ctx.Now();
-                if (cooldownPassed) {
-                    PostponeRequest(conn, IEventHandlePtr(ev.Release()));
-                    StartConnection(
-                        ctx,
-                        conn,
-                        baseDisk->TabletId,
-                        "PartitionConfig");
-                    break;
-                }
+                conn.TabletId = baseDisk->TabletId;
+                conn.isConnectionToBaseDisk = true;
             }
 
-            conn.State = RESOLVING;
             DescribeVolume(ctx, conn);
             PostponeRequest(conn, IEventHandlePtr(ev.Release()));
             break;
