@@ -7,6 +7,7 @@
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/random/random.h>
+#include <util/string/builder.h>
 #include <util/system/mutex.h>
 
 #include <atomic>
@@ -630,7 +631,30 @@ void TFileTestScenario::ValidateReadDataRegion(
             continue;
         }
 
-        context->Fail("Read validation failed");
+        TStringBuilder sb;
+        sb << "Read validation failed at offset " << offsetInRegion + offset;
+        sb << ", expected one of " << expectedStates.size() << " patterns:";
+
+        for (size_t i = 0; i < expectedStates.size(); i++) {
+            sb << "\nPattern #" << (i + 1) << ": "
+               << expectedStates[i].SeqNum << ", "
+               << expectedStates[i].TestStartTime << ", "
+               << expectedStates[i].WriteTime;
+        }
+
+        if (fragment.size() >= offsetof(TRegionData, Data)) {
+            TRegionData regionData;
+            MemCopy(
+                reinterpret_cast<char*>(&regionData),
+                fragment.data(),
+                fragment.size());
+            sb << "\nRead data: "
+               << regionData.SeqNum << ", "
+               << regionData.TestStartTime << ", "
+               << regionData.WriteTime;
+        }
+
+        context->Fail(sb);
         break;
     }
 }
@@ -688,11 +712,17 @@ size_t TFileTestScenario::WriteBegin(IContext* context)
     }
 
     auto& metadata = RegionMetadata[index];
-    metadata.NewState = {
-        .SeqNum = NextSeqNum++,
-        .TestStartTime = TestStartTime.GetValue(),
-        .WriteTime = Now().GetValue()
-    };
+    if (metadata.NewState == metadata.CurrentState) {
+        metadata.NewState = {
+            .SeqNum = NextSeqNum++,
+            .TestStartTime = TestStartTime.GetValue(),
+            .WriteTime = Now().GetValue()
+        };
+    } else {
+        STORAGE_DEBUG(
+            "Writing to region #"
+            << index << " was interrupted in the previous test run, restoring");
+    }
 
     guard.Release();
 

@@ -55,7 +55,11 @@ private:
 
 void TTest::InitLogger()
 {
-    Logging = CreateLoggingService("console", TLogSettings{});
+    TLogSettings logSettings;
+    logSettings.FiltrationLevel =
+        logSettings.FiltrationLevel ? TLOG_DEBUG : TLOG_INFO;
+
+    Logging = CreateLoggingService("console", logSettings);
     Logging->Start();
     Log = Logging->CreateLog("ETERNAL_MAIN");
 }
