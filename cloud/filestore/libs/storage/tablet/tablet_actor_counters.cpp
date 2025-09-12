@@ -27,7 +27,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const NProtoPrivate::TGetStorageStatsRequest Request;
     TString MainFileSystemId;
-    bool PollMainFileSystem;
+    bool FetchStatsFromMain;
     const google::protobuf::RepeatedPtrField<TString> ShardIds;
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> Response;
     TVector<TShardStats> ShardStats;
@@ -40,7 +40,7 @@ public:
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TGetStorageStatsRequest request,
         TString mainFileSystemId,
-        bool pollMainFileSystem,
+        bool fetchStatsFromMain,
         google::protobuf::RepeatedPtrField<TString> shardIds,
         std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response);
 
@@ -76,7 +76,7 @@ TGetShardStatsActor::TGetShardStatsActor(
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TGetStorageStatsRequest request,
         TString mainFileSystemId,
-        bool pollMainFileSystem,
+        bool fetchStatsFromMain,
         google::protobuf::RepeatedPtrField<TString> shardIds,
         std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response)
     : LogTag(std::move(logTag))
@@ -84,7 +84,7 @@ TGetShardStatsActor::TGetShardStatsActor(
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , MainFileSystemId(std::move(mainFileSystemId))
-    , PollMainFileSystem(pollMainFileSystem)
+    , FetchStatsFromMain(fetchStatsFromMain)
     , ShardIds(std::move(shardIds))
     , Response(std::move(response))
     , ShardStats(ShardIds.size())
@@ -117,7 +117,7 @@ void TGetShardStatsActor::SendRequests(const TActorContext& ctx)
         SendRequestToFileSystem(ctx, shardId, cookie++);
     }
 
-    if (PollMainFileSystem) {
+    if (FetchStatsFromMain) {
         SendRequestToFileSystem(ctx, MainFileSystemId, cookie);
     }
 }
@@ -154,7 +154,7 @@ void TGetShardStatsActor::HandleGetStorageStatsResponse(
     const auto* msg = ev->Get();
 
     const int requestsCount =
-        PollMainFileSystem ? ShardIds.size() + 1 : ShardIds.size();
+        FetchStatsFromMain ? ShardIds.size() + 1 : ShardIds.size();
     TABLET_VERIFY(ev->Cookie < static_cast<ui64>(requestsCount));
     const TString& fileSystemId =
         ev->Cookie < static_cast<ui64>(ShardIds.size()) ? ShardIds[ev->Cookie]
@@ -1018,7 +1018,9 @@ void TIndexTabletActor::HandleGetStorageStats(
         ? GetFileSystem().GetShardFileSystemIds()
         : Default<google::protobuf::RepeatedPtrField<TString>>();
 
-    const bool useCache = req.GetAllowCache() && req.GetMode() != NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF;
+    const bool useCache =
+        req.GetAllowCache() &&
+        req.GetMode() != NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF;
     if (useCache) {
         *stats = CachedAggregateStats;
         const ui32 shardMetricsCount =

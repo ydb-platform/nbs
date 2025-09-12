@@ -184,7 +184,7 @@ message TGetStorageStatsRequest
     // Statitics fetching mode: DEFAULT/FORCE_FETCH_SHARDS/GET_ONLY_SELF.
     // By default requests to shards do not fetch other shards, requests
     // to the main tablet fetch all the shards.
-    StatsRequestMode Mode = 7;
+    StatsRequestMode Mode = 8;
 }
 
 message TGetStorageStatsResponse

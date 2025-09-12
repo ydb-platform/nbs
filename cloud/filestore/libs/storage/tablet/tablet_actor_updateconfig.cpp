@@ -164,8 +164,8 @@ void TIndexTabletActor::HandleUpdateConfig(
     newConfig.SetShardAllocationUnit(oldConfig.GetShardAllocationUnit());
     newConfig.SetDirectoryCreationInShardsEnabled(
         oldConfig.GetDirectoryCreationInShardsEnabled());
-    newConfig.SetDirectoryCreationInShardsEnabled(
-        oldConfig.GetDirectoryCreationInShardsEnabled());
+    newConfig.SetStrictFileSystemSizeEnforcementEnabled(
+        oldConfig.GetStrictFileSystemSizeEnforcementEnabled());
 
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
