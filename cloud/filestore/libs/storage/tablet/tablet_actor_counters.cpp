@@ -98,6 +98,20 @@ void TGetShardStatsActor::Bootstrap(const TActorContext& ctx)
 
 void TGetShardStatsActor::SendRequests(const TActorContext& ctx)
 {
+    TString shardsStr;
+    for(const auto& shardId: ShardIds) {
+        (shardsStr += ' ') += shardId;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s TGetShardStatsActor, FsId: %s, Sards: %s",
+        LogTag.c_str(),
+        Request.GetFileSystemId().c_str(),
+        shardsStr.c_str()
+    );
+
     ui32 cookie = 0;
     for (const auto& shardId: ShardIds) {
         SendRequestToFileSystem(ctx, shardId, cookie++);
@@ -230,6 +244,14 @@ void TGetShardStatsActor::ReplyAndDie(
         std::move(statsForTablet),
         std::move(ShardStats),
         startedTs);
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s TGetShardStatsActor::ReplyAndDie, Shards count: %d",
+        LogTag.c_str(),
+        response->ShardStats.size());
+
     NCloud::Send(ctx, Tablet, std::move(response));
 
     Die(ctx);
@@ -758,6 +780,8 @@ void TIndexTabletActor::TMetrics::UpdatePerformanceMetrics(
 
 void TIndexTabletActor::RegisterCounters(const TActorContext& ctx)
 {
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER, "%s TIndexTabletActor::RegisterCounters", LogTag.c_str());
+    
     if (!Counters) {
         auto counters = CreateIndexTabletCounters();
 
@@ -848,6 +872,11 @@ void TIndexTabletActor::HandleUpdateCounters(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER, 
+        "%s TIndexTabletActor::HandleUpdateCounters:", LogTag.c_str());
+
+
+    PrintBackTrace();
 
     UpdateCounters();
     Metrics.Update(
@@ -1078,9 +1107,10 @@ void TIndexTabletActor::HandleGetShardStatsCompleted(
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
-            "%s Background shard stats fetch completed in %s",
+            "%s Background shard stats fetch completed in %s, ShardsCount: %lu",
             LogTag.c_str(),
-            (ctx.Now() - CachedStatsFetchingStartTs).ToString().c_str());
+            (ctx.Now() - CachedStatsFetchingStartTs).ToString().c_str(),
+            msg->ShardStats.size());
         CachedStatsFetchingStartTs = TInstant::Zero();
     }
     if (!HasError(msg->Error)) {

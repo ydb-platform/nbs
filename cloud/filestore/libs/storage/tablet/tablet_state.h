@@ -490,13 +490,6 @@ public:
         ui64 maxCommitId,
         const NProto::TNode& attrs);
 
-    bool HasSpaceLeft(
-        const NProto::TNode& attrs,
-        ui64 newSize) const;
-
-    bool HasBlocksLeft(
-        ui32 blocks) const;
-
     void WriteOrphanNode(
         TIndexTabletDatabase& db,
         const TString& message,

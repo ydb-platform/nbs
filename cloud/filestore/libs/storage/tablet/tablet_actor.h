@@ -843,6 +843,9 @@ private:
     void UnregisterFileStore(const NActors::TActorContext& ctx);
 
     void UpdateLogTag();
+
+    bool HasBlocksLeft(i64 blocksRequired) const;
+    bool HasSpaceLeft(ui64 prevSize, ui64 newSize) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
