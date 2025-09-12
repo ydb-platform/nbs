@@ -8,6 +8,8 @@ SECURE_SERVER_PORT=${SECURE_SERVER_PORT:-9788}
 MON_PORT=${MON_PORT:-8786}
 source ./prepare_binaries.sh || exit 1
 
+echo "Second NBS http://localhost:$MON_PORT/blockstore/service"
+
 nbsd \
     --domain             Root \
     --node-broker        localhost:$GRPC_PORT \
@@ -32,4 +34,4 @@ nbsd \
     --service            kikimr \
     --load-configs-from-cms \
     --profile-file       logs/profile-log2.bin \
-    $@ 2>&1 | tee logs/nbs.2.log
+    $@ > logs/nbs.2.log 2>&1
