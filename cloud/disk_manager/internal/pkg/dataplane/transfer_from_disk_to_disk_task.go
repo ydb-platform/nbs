@@ -10,6 +10,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -17,10 +19,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type transferFromDiskToDiskTask struct {
-	nbsFactory nbs_client.Factory
-	config     *config.DataplaneConfig
-	request    *protos.TransferFromDiskToDiskRequest
-	state      *protos.TransferFromDiskToDiskTaskState
+	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
+	nbsFactory        nbs_client.Factory
+	request           *protos.TransferFromDiskToDiskRequest
+	state             *protos.TransferFromDiskToDiskTaskState
 }
 
 func (t *transferFromDiskToDiskTask) Save() ([]byte, error) {
@@ -42,6 +45,11 @@ func (t *transferFromDiskToDiskTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	err := t.setEstimate(ctx, execCtx)
+	if err != nil {
+		return err
+	}
 
 	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
 	if err != nil {
@@ -145,6 +153,29 @@ func (t *transferFromDiskToDiskTask) GetResponse() proto.Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (t *transferFromDiskToDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	if err != nil {
+		return err
+	}
+
+	stats, err := client.Stat(ctx, t.request.SrcDisk.DiskId)
+	if err != nil {
+		return err
+	}
+
+	execCtx.SetEstimatedInflightDuration(performance.Estimate(
+		stats.StorageSize,
+		t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
+	))
+
+	return nil
+}
 
 func (t *transferFromDiskToDiskTask) saveProgress(
 	ctx context.Context,

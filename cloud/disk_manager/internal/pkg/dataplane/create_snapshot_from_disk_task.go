@@ -11,6 +11,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -18,11 +20,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromDiskTask struct {
-	nbsFactory nbs_client.Factory
-	storage    storage.Storage
-	config     *config.DataplaneConfig
-	request    *protos.CreateSnapshotFromDiskRequest
-	state      *protos.CreateSnapshotFromDiskTaskState
+	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
+	nbsFactory        nbs_client.Factory
+	storage           storage.Storage
+	request           *protos.CreateSnapshotFromDiskRequest
+	state             *protos.CreateSnapshotFromDiskTaskState
 }
 
 func (t *createSnapshotFromDiskTask) Save() ([]byte, error) {
@@ -252,6 +255,13 @@ func (t *createSnapshotFromDiskTask) run(
 	t.state.BaseSnapshotId = baseSnapshotID
 	t.state.BaseCheckpointId = baseCheckpointID
 
+	incremental := len(t.state.BaseSnapshotId) != 0
+
+	err = t.setEstimate(ctx, execCtx)
+	if err != nil {
+		return err
+	}
+
 	nbsClient, err := t.getNbsClient(ctx)
 	if err != nil {
 		return err
@@ -266,8 +276,6 @@ func (t *createSnapshotFromDiskTask) run(
 	if err != nil {
 		return err
 	}
-
-	incremental := len(t.state.BaseSnapshotId) != 0
 
 	source, err := nbs.NewDiskSource(
 		ctx,
@@ -402,6 +410,68 @@ func (t *createSnapshotFromDiskTask) run(
 		t.state.ChunkCount,
 		diskParams.EncryptionDesc,
 	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *createSnapshotFromDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	nbsClient, err := t.getNbsClient(ctx)
+	if err != nil {
+		return err
+	}
+
+	stats, err := nbsClient.Stat(ctx, t.request.SrcDisk.DiskId)
+	if err != nil {
+		return err
+	}
+
+	bytesToTransfer, err := nbsClient.GetChangedBytes(
+		ctx,
+		t.request.SrcDisk.DiskId,
+		t.state.BaseCheckpointId,
+		t.request.SrcDiskCheckpointId,
+		false, // ignoreBaseDisk
+	)
+	if err != nil {
+		if !nbs_client.IsGetChangedBlocksNotSupportedError(err) {
+			return err
+		}
+
+		bytesToTransfer = stats.StorageSize
+	}
+
+	estimatedDuration := performance.Estimate(
+		bytesToTransfer,
+		t.performanceConfig.GetTransferFromDiskToSnapshotBandwidthMiBs(),
+	)
+
+	logging.Info(ctx, "bytes to transfer is %v, estimated duration is %v", bytesToTransfer, estimatedDuration)
+
+	if len(t.state.BaseSnapshotId) != 0 {
+		snapshotMeta, err := t.storage.GetSnapshotMeta(ctx, t.state.BaseSnapshotID)
+		if err != nil {
+			return err
+		}
+
+		// Data transfer and shallow copy is performed in parallel.
+		shallowCopyDuration := performance.Estimate(
+			snapshotMeta.StorageSize,
+			t.performanceConfig.GetSnapshotShallowCopyBandwidthMiBs(),
+		)
+		logging.Info(ctx,
+			"bytes to shallow copy is %v, estimated duration is %v",
+			snapshotMeta.StorageSize, shallowCopyDuration)
+
+		estimatedDuration = max(estimatedDuration, shallowCopyDuration)
+	}
+
+	execCtx.SetEstimatedInflightDuration(estimatedDuration)
+
+	return nil
 }
 
 func (t *createSnapshotFromDiskTask) createProxyOverlayDiskIfNeeded(

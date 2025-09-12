@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -18,7 +17,6 @@ import (
 func RegisterForExecution(
 	ctx context.Context,
 	config *disks_config.DisksConfig,
-	performanceConfig *performance_config.PerformanceConfig,
 	resourceStorage resources.Storage,
 	poolStorage storage.Storage,
 	taskRegistry *tasks.Registry,
@@ -66,10 +64,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromImage", func() tasks.Task {
 		return &createDiskFromImageTask{
-			performanceConfig: performanceConfig,
-			storage:           resourceStorage,
-			scheduler:         taskScheduler,
-			nbsFactory:        nbsFactory,
+			storage:    resourceStorage,
+			scheduler:  taskScheduler,
+			nbsFactory: nbsFactory,
 		}
 	})
 	if err != nil {
@@ -78,10 +75,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromSnapshot", func() tasks.Task {
 		return &createDiskFromSnapshotTask{
-			performanceConfig: performanceConfig,
-			storage:           resourceStorage,
-			scheduler:         taskScheduler,
-			nbsFactory:        nbsFactory,
+			storage:    resourceStorage,
+			scheduler:  taskScheduler,
+			nbsFactory: nbsFactory,
 		}
 	})
 	if err != nil {
@@ -149,13 +145,12 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.MigrateDisk", func() tasks.Task {
 		return &migrateDiskTask{
-			disksConfig:       config,
-			performanceConfig: performanceConfig,
-			scheduler:         taskScheduler,
-			poolService:       poolService,
-			resourceStorage:   resourceStorage,
-			poolStorage:       poolStorage,
-			nbsFactory:        nbsFactory,
+			disksConfig:     config,
+			scheduler:       taskScheduler,
+			poolService:     poolService,
+			resourceStorage: resourceStorage,
+			poolStorage:     poolStorage,
+			nbsFactory:      nbsFactory,
 		}
 	})
 	if err != nil {

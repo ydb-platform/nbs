@@ -11,7 +11,6 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	pools_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/mocks"
@@ -41,14 +40,13 @@ func TestMigrateDiskTaskProgress(t *testing.T) {
 	}
 
 	task := &migrateDiskTask{
-		performanceConfig: &performance_config.PerformanceConfig{},
-		scheduler:         scheduler,
-		poolService:       poolService,
-		resourceStorage:   resourceStorage,
-		poolStorage:       poolStorage,
-		nbsFactory:        nbsFactory,
-		request:           request,
-		state:             &protos.MigrateDiskTaskState{},
+		scheduler:       scheduler,
+		poolService:     poolService,
+		resourceStorage: resourceStorage,
+		poolStorage:     poolStorage,
+		nbsFactory:      nbsFactory,
+		request:         request,
+		state:           &protos.MigrateDiskTaskState{},
 	}
 
 	metadataRaw, err := task.GetMetadata(ctx)
