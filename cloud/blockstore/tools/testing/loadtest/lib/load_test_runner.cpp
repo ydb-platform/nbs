@@ -535,18 +535,18 @@ void TLoadTestRunner::TeardownTest(
         STORAGE_INFO("Stop endpoint"
             << ", socket: " << request->GetUnixSocketPath());
 
-        if (EndpointStorage) {
-            auto error = EndpointStorage->RemoveEndpoint(EndpointSocketPath);
-            Y_ABORT_UNLESS(!HasError(error));
-            EndpointsDir.reset();
-        }
-
         WaitForCompletion(
             "StopEndpoint",
             TestContext.Client->StopEndpoint(
                 MakeIntrusive<TCallContext>(),
                 request),
             successOnError);
+
+        if (EndpointStorage) {
+            auto error = EndpointStorage->RemoveEndpoint(EndpointSocketPath);
+            Y_ABORT_UNLESS(!HasError(error));
+            EndpointsDir.reset();
+        }
     }
 
     auto isAliased = AliasedVolumes.IsAliased(diskId);
