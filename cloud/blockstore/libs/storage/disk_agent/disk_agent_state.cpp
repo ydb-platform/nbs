@@ -73,6 +73,23 @@ void ToDeviceStats(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TReadDeviceBlocksResponse ConvertToReadDeviceBlocksResponse(
+    TFuture<NProto::TReadBlocksResponse> future)
+{
+    auto data = future.ExtractValue();
+    NProto::TReadDeviceBlocksResponse response;
+
+    response.MutableError()->Swap(data.MutableError());
+    response.MutableBlocks()->Swap(data.MutableBlocks());
+    if (data.HasChecksum()) {
+        response.MutableChecksum()->Swap(data.MutableChecksum());
+    }
+
+    return response;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TCollectStatsContext
 {
     TPromise<NProto::TAgentStats> Promise = NewPromise<NProto::TAgentStats>();
@@ -161,6 +178,28 @@ struct TCollectStatsContext
 
 TVector<IProfileLog::TBlockInfo> ComputeDigest(
     const IBlockDigestGenerator& generator,
+    const TSgList& sglist,
+    const ui64 startIndex)
+{
+    TVector<IProfileLog::TBlockInfo> blockInfos;
+    blockInfos.reserve(sglist.size());
+
+    ui64 blockIndex = startIndex;
+    for (TBlockDataRef ref: sglist) {
+        const auto digest = generator.ComputeDigest(blockIndex, ref);
+
+        if (digest.Defined()) {
+            blockInfos.push_back({blockIndex, *digest});
+        }
+
+        ++blockIndex;
+    }
+
+    return blockInfos;
+}
+
+TVector<IProfileLog::TBlockInfo> ComputeDigest(
+    const IBlockDigestGenerator& generator,
     const NProto::TWriteBlocksRequest& req,
     ui32 blockSize,
     TStringBuf buffer)
@@ -193,23 +232,10 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
         return {};
     }
 
-    sglist = sglistOrError.ExtractResult();
-
-    TVector<IProfileLog::TBlockInfo> blockInfos;
-    blockInfos.reserve(sglist.size());
-
-    ui64 blockIndex = req.GetStartIndex();
-    for (const auto& ref: sglist) {
-        const auto digest = generator.ComputeDigest(blockIndex, ref);
-
-        if (digest.Defined()) {
-            blockInfos.push_back({blockIndex, *digest});
-        }
-
-        ++blockIndex;
-    }
-
-    return blockInfos;
+    return ComputeDigest(
+        generator,
+        sglistOrError.GetResult(),
+        req.GetStartIndex());
 }
 
 TVector<IProfileLog::TBlockInfo> ComputeDigest(
@@ -240,6 +266,23 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
     }
 
     return blockInfos;
+}
+
+TVector<IProfileLog::TBlockInfo> ComputeDigest(
+    const IBlockDigestGenerator& generator,
+    const NProto::TReadDeviceBlocksRequest& req,
+    const TSgList& sglist)
+{
+    const bool shouldCalcDigests = generator.ShouldProcess(
+        req.GetStartIndex(),
+        req.GetBlocksCount(),
+        req.GetBlockSize());
+
+    if (!shouldCalcDigests) {
+        return {};
+    }
+
+    return ComputeDigest(generator, sglist, req.GetStartIndex());
 }
 
 }   // namespace
@@ -634,15 +677,35 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
         {} // no data buffer
     );
 
-    return result.Apply(
-        [] (auto future) {
-            auto data = future.ExtractValue();
-            NProto::TReadDeviceBlocksResponse response;
+    if (!StorageConfig->GetUseTestBlockDigestGenerator()) {
+        return result.Apply(ConvertToReadDeviceBlocksResponse);
+    }
 
-            *response.MutableError() = data.GetError();
-            response.MutableBlocks()->Swap(data.MutableBlocks());
-            if (data.HasChecksum()) {
-                response.MutableChecksum()->CopyFrom(data.GetChecksum());
+    return result.Apply(
+        [request, generator = BlockDigestGenerator, profileLog = ProfileLog](
+            auto future)
+        {
+            auto response =
+                ConvertToReadDeviceBlocksResponse(std::move(future));
+
+            auto blockInfos = ComputeDigest(
+                *generator,
+                request,
+                GetSgList(response.GetBlocks()));
+
+            Y_DEBUG_ABORT_UNLESS(blockInfos);
+
+            if (blockInfos) {
+                profileLog->Write({
+                    .DiskId = request.GetDeviceUUID(),
+                    .Ts = Now(),
+                    .Request =
+                        IProfileLog::TSysReadWriteRequestBlockInfos{
+                            .RequestType = ESysRequestType::ReadDeviceBlocks,
+                            .BlockInfos = std::move(blockInfos),
+                            .CommitId = 0,
+                        },
+                });
             }
 
             return response;

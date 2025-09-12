@@ -186,6 +186,7 @@ enum class ESysRequestType
     ZeroDeviceBlocks = 10007,
     Resync = 10008,
     ConfirmBlobs = 10009,
+    ReadDeviceBlocks = 10010,
     MAX
 };
 
