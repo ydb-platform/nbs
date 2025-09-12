@@ -57,6 +57,7 @@ class _TestCase(object):
             allocation_unit_size=1,
             agent_count=1,
             storage_pool_name=None,
+            storage_pool_kind=None,
             dump_block_digests=False,
             reject_late_requests_at_disk_agent=False,
             encryption_at_rest=False):
@@ -71,6 +72,7 @@ class _TestCase(object):
         self.allocation_unit_size = allocation_unit_size
         self.agent_count = agent_count
         self.storage_pool_name = storage_pool_name
+        self.storage_pool_kind = storage_pool_kind
         self.dump_block_digests = dump_block_digests
         self.reject_late_requests_at_disk_agent = reject_late_requests_at_disk_agent
         self.encryption_at_rest = encryption_at_rest
@@ -137,6 +139,7 @@ TESTS = [
         "load-hdd",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-hdd.txt",
         storage_pool_name="rot",
+        storage_pool_kind="global",
     ),
     _TestCase(
         "load-encryption-at-rest",
@@ -328,7 +331,8 @@ def __run_test(test_case, backend, use_rdma):
 
         wait_for_secure_erase(
             nbs.mon_port,
-            test_case.storage_pool_name or "default")
+            test_case.storage_pool_name or "default",
+            test_case.storage_pool_kind or "default")
 
         if test_case.restart_interval:
             for agent in disk_agents:

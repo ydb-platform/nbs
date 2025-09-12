@@ -558,4 +558,21 @@ TMap<TString, TString> ParseTags(const TString& tags)
     return result;
 }
 
+TString PoolKindToString(const NProto::EDevicePoolKind poolKind)
+{
+    switch (poolKind) {
+        case NProto::DEVICE_POOL_KIND_DEFAULT:
+            return "default";
+        case NProto::DEVICE_POOL_KIND_LOCAL:
+            return "local";
+        case NProto::DEVICE_POOL_KIND_GLOBAL:
+            return "global";
+        case NProto::EDevicePoolKind_INT_MIN_SENTINEL_DO_NOT_USE_:
+        case NProto::EDevicePoolKind_INT_MAX_SENTINEL_DO_NOT_USE_:
+            break;
+    }
+    Y_ABORT("unknown pool kind: %d", static_cast<int>(poolKind));
+    return "unknown";
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

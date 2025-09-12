@@ -227,9 +227,7 @@ TString GetPoolNameForCounters(
     const TString& poolName,
     const NProto::EDevicePoolKind poolKind)
 {
-    if (poolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
-        return "local";
-    } else if (poolKind == NProto::DEVICE_POOL_KIND_DEFAULT) {
+    if (poolKind == NProto::DEVICE_POOL_KIND_DEFAULT) {
         return "default";
     }
 
@@ -425,13 +423,14 @@ TDiskRegistryState::TDiskRegistryState(
     FillMigrations();
 
     if (Counters) {
-        TVector<TString> poolNames;
+        TVector<std::pair<TString, NProto::EDevicePoolKind>> pools;
         for (const auto& x: DevicePoolConfigs) {
             const auto& pool = x.second;
-            poolNames.push_back(
-                GetPoolNameForCounters(pool.GetName(), pool.GetKind()));
+            pools.emplace_back(
+                GetPoolNameForCounters(pool.GetName(), pool.GetKind()),
+                pool.GetKind());
         }
-        SelfCounters.Init(poolNames, Counters);
+        SelfCounters.Init(pools, Counters);
     }
 }
 
@@ -3781,6 +3780,7 @@ NProto::TError TDiskRegistryState::UpdateConfig(
         for (const auto& pool: newConfig.GetDevicePoolConfigs()) {
             SelfCounters.RegisterPool(
                 GetPoolNameForCounters(pool.GetName(), pool.GetKind()),
+                PoolKindToString(pool.GetKind()),
                 Counters);
         }
     }
@@ -4230,10 +4230,9 @@ void TDiskRegistryState::PublishCounters(TInstant now)
             const bool dirty = DeviceList.IsDirtyDevice(device.GetDeviceUUID());
             const bool suspended = DeviceList.IsSuspendedDevice(device.GetDeviceUUID());
 
-            const auto poolName = GetPoolNameForCounters(
+            auto& pool = poolName2Counters[GetPoolNameForCounters(
                 device.GetPoolName(),
-                device.GetPoolKind());
-            auto& pool = poolName2Counters[poolName];
+                device.GetPoolKind())];
 
             pool.TotalBytes += deviceBytes;
 
