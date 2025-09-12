@@ -155,6 +155,8 @@ func root(children ...node) node {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const rootNodeID = uint64(1)
+
 type fileSystemModel struct {
 	root          node
 	t             *testing.T
@@ -210,7 +212,7 @@ func (f *fileSystemModel) create() {
 		},
 	)
 	for _, child := range f.root.children {
-		f.createNodes(1, child)
+		f.createNodes(rootNodeID, child)
 	}
 }
 
@@ -277,7 +279,7 @@ func (f *fileSystemModel) listNodesRecursively(parentNodeID uint64) []nfs.Node {
 }
 
 func (f *fileSystemModel) listAllNodesRecursively() []nfs.Node {
-	return f.listNodesRecursively(1)
+	return f.listNodesRecursively(rootNodeID)
 }
 
 func newFileSystemModel(
