@@ -455,7 +455,7 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 		t.performanceConfig.GetSnapshotShallowCopyBandwidthMiBs(),
 	)
 
-	// Data transfer and shallow copy is performed in parallel
+	// Data transfer and shallow copy is performed in parallel.
 	execCtx.SetEstimatedInflightDuration(max(replicateDuration, shallowCopyDuration))
 
 	return nil
