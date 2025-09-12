@@ -1617,17 +1617,6 @@ func (s *storageYDB) updateTaskTx(
 	state.ChangedStateAt = lastState.ChangedStateAt
 	state.EndedAt = lastState.EndedAt
 
-	now := state.ModifiedAt
-
-	if lastState.Status != state.Status {
-		state.ChangedStateAt = now
-
-		if IsEnded(state.Status) {
-			state.EndedAt = now
-		}
-
-		state.GenerationID++
-	}
 	// Always inherit dependants from previous state.
 	state.dependants = lastState.dependants.DeepCopy()
 
@@ -1647,14 +1636,24 @@ func (s *storageYDB) updateTaskTx(
 		switch state.Status {
 		case TaskStatusRunning:
 			state.Status = TaskStatusWaitingToRun
-			state.GenerationID++
 			shouldInterruptTaskExecution = true
 
 		case TaskStatusCancelling:
 			state.Status = TaskStatusWaitingToCancel
-			state.GenerationID++
 			shouldInterruptTaskExecution = true
 		}
+	}
+
+	now := state.ModifiedAt
+
+	if lastState.Status != state.Status {
+		state.ChangedStateAt = now
+
+		if IsEnded(state.Status) {
+			state.EndedAt = now
+		}
+
+		state.GenerationID++
 	}
 
 	if HasResult(state.Status) {
