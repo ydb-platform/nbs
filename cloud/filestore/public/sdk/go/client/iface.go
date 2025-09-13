@@ -62,6 +62,31 @@ type ClientIface interface {
 		ctx context.Context,
 		req *protos.TDescribeFileStoreModelRequest,
 	) (*protos.TDescribeFileStoreModelResponse, error)
+
+	CreateSession(
+		ctx context.Context,
+		req *protos.TCreateSessionRequest,
+	) (*protos.TCreateSessionResponse, error)
+
+	DestroySession(
+		ctx context.Context,
+		req *protos.TDestroySessionRequest,
+	) (*protos.TDestroySessionResponse, error)
+
+	ListNodes(
+		ctx context.Context,
+		req *protos.TListNodesRequest,
+	) (*protos.TListNodesResponse, error)
+
+	CreateNode(
+		ctx context.Context,
+		req *protos.TCreateNodeRequest,
+	) (*protos.TCreateNodeResponse, error)
+
+	ReadLink(
+		ctx context.Context,
+		req *protos.TReadLinkRequest,
+	) (*protos.TReadLinkResponse, error)
 }
 
 type EndpointClientIface interface {
