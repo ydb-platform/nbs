@@ -93,10 +93,10 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         auto list = TBlockList::EncodeBlocks(blocks, TDefaultAllocator::Instance());
 
         auto stats = list.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(stats.BlockEntries, 0);
-        UNIT_ASSERT_VALUES_EQUAL(stats.BlockGroups, 0);
-        UNIT_ASSERT_VALUES_EQUAL(stats.DeletionMarkers, 0);
-        UNIT_ASSERT_VALUES_EQUAL(stats.DeletionGroups, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.BlockEntries);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.BlockGroups);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.DeletionMarkers);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.DeletionGroups);
 
         auto iter = list.FindBlocks(0, 0, 0, 0);
         UNIT_ASSERT(!iter.Next());
@@ -116,10 +116,10 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         auto list = TBlockList::EncodeBlocks(block, blocksCount, TDefaultAllocator::Instance());
 
         auto stats = list.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(stats.BlockEntries, blocksCount);
-        UNIT_ASSERT_VALUES_EQUAL(stats.BlockGroups, 1);
-        UNIT_ASSERT_VALUES_EQUAL(stats.DeletionMarkers, 0);
-        UNIT_ASSERT_VALUES_EQUAL(stats.DeletionGroups, 0);
+        UNIT_ASSERT_VALUES_EQUAL(blocksCount, stats.BlockEntries);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.BlockGroups);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.DeletionMarkers);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.DeletionGroups);
 
         auto iter = list.FindBlocks(
             nodeId,
@@ -129,11 +129,11 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         for (size_t i = 0; i < blocksCount; ++i) {
             UNIT_ASSERT(iter.Next());
 
-            UNIT_ASSERT_VALUES_EQUAL(iter.BlobOffset, i);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.NodeId, nodeId);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.BlockIndex, blockIndex + i);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.MinCommitId, minCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.MaxCommitId, maxCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(i, iter.BlobOffset);
+            UNIT_ASSERT_VALUES_EQUAL(nodeId, iter.Block.NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(blockIndex + i, iter.Block.BlockIndex);
+            UNIT_ASSERT_VALUES_EQUAL(minCommitId, iter.Block.MinCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(maxCommitId, iter.Block.MaxCommitId);
         }
 
         UNIT_ASSERT(!iter.Next());
@@ -148,10 +148,10 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         auto list = TBlockList::EncodeBlocks(blocks, TDefaultAllocator::Instance());
 
         auto stats = list.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(stats.BlockEntries, blocksCount);
-        UNIT_ASSERT_VALUES_EQUAL(stats.BlockGroups, groupsCount);
-        UNIT_ASSERT_VALUES_EQUAL(stats.DeletionMarkers, 0);
-        UNIT_ASSERT_VALUES_EQUAL(stats.DeletionGroups, 0);
+        UNIT_ASSERT_VALUES_EQUAL(blocksCount, stats.BlockEntries);
+        UNIT_ASSERT_VALUES_EQUAL(groupsCount, stats.BlockGroups);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.DeletionMarkers);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.DeletionGroups);
 
         auto iter = list.FindBlocks(
             NodeId,
@@ -162,11 +162,11 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
             UNIT_ASSERT(iter.Next());
 
             const auto& block = blocks[i];
-            UNIT_ASSERT_VALUES_EQUAL(iter.BlobOffset, i);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.NodeId, block.NodeId);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.BlockIndex, block.BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.MinCommitId, block.MinCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.MaxCommitId, block.MaxCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(i, iter.BlobOffset);
+            UNIT_ASSERT_VALUES_EQUAL(block.NodeId, iter.Block.NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(block.BlockIndex, iter.Block.BlockIndex);
+            UNIT_ASSERT_VALUES_EQUAL(block.MinCommitId, iter.Block.MinCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(block.MaxCommitId, iter.Block.MaxCommitId);
         }
 
         UNIT_ASSERT(!iter.Next());
@@ -182,9 +182,9 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         size_t deletionMarkers = GetDeletionMarkersCount(blocks);
 
         auto stats = list.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(stats.BlockEntries, blocksCount);
+        UNIT_ASSERT_VALUES_EQUAL(blocksCount, stats.BlockEntries);
         UNIT_ASSERT(stats.BlockGroups > 0);
-        UNIT_ASSERT_VALUES_EQUAL(stats.DeletionMarkers, deletionMarkers);
+        UNIT_ASSERT_VALUES_EQUAL(deletionMarkers, stats.DeletionMarkers);
         UNIT_ASSERT(stats.DeletionGroups > 0);
 
         size_t expectedBlocksToFind = 0;
@@ -203,10 +203,10 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
             UNIT_ASSERT(iter.Next());
 
             const auto& block = blocks[iter.BlobOffset];
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.NodeId, block.NodeId);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.BlockIndex, block.BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.MinCommitId, block.MinCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(iter.Block.MaxCommitId, block.MaxCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(block.NodeId, iter.Block.NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(block.BlockIndex, iter.Block.BlockIndex);
+            UNIT_ASSERT_VALUES_EQUAL(block.MinCommitId, iter.Block.MinCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(block.MaxCommitId, iter.Block.MaxCommitId);
         }
 
         UNIT_ASSERT(!iter.Next());
@@ -226,10 +226,10 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         for (size_t i = 0; i < blocksCount; ++i) {
             const auto& block = blocks[i];
             const auto& decodedBlock = decodedBlocks[i];
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.NodeId, block.NodeId);
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.BlockIndex, block.BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.MinCommitId, block.MinCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.MaxCommitId, block.MaxCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(block.NodeId, decodedBlock.NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(block.BlockIndex, decodedBlock.BlockIndex);
+            UNIT_ASSERT_VALUES_EQUAL(block.MinCommitId, decodedBlock.MinCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(block.MaxCommitId, decodedBlock.MaxCommitId);
         }
     }
 
@@ -246,10 +246,10 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         for (size_t i = 0; i < blocksCount; ++i) {
             const auto& block = blocks[i];
             const auto& decodedBlock = decodedBlocks[i];
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.NodeId, block.NodeId);
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.BlockIndex, block.BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.MinCommitId, block.MinCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(decodedBlock.MaxCommitId, block.MaxCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(block.NodeId, decodedBlock.NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(block.BlockIndex, decodedBlock.BlockIndex);
+            UNIT_ASSERT_VALUES_EQUAL(block.MinCommitId, decodedBlock.MinCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(block.MaxCommitId, decodedBlock.MaxCommitId);
         }
     }
 }
