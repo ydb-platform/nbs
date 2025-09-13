@@ -6,10 +6,9 @@ import datetime
 logger = logging.getLogger(__name__)
 
 
-class Limiter(object):
+class Limiter:
 
     def __init__(self, window_seconds, limit):
-        super(Limiter, self).__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self.window_duration = datetime.timedelta(seconds=window_seconds)
         self.items_limit = limit
