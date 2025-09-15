@@ -55,7 +55,11 @@ private:
 
 void TTest::InitLogger()
 {
-    Logging = CreateLoggingService("console", TLogSettings{});
+    TLogSettings logSettings;
+    logSettings.FiltrationLevel =
+        Options->PrintDebugStats ? TLOG_DEBUG : TLOG_INFO;
+
+    Logging = CreateLoggingService("console", logSettings);
     Logging->Start();
     Log = Logging->CreateLog("ETERNAL_MAIN");
 }
@@ -166,6 +170,7 @@ TTestExecutorSettings TTest::ConfigureTest() const
     STORAGE_INFO("Using O_DIRECT: " << !settings.NoDirect);
 
     settings.Log = log;
+    settings.PrintDebugStats = Options->PrintDebugStats;
 
     return settings;
 }
