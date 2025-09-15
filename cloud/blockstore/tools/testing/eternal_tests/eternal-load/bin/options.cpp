@@ -6,10 +6,58 @@ namespace NCloud::NBlockStore {
 
 using namespace NLastGetopt;
 
-const THashMap<TString, ECommand> NameToCommand = {
+namespace {
+
+const THashMap<TString, ECommand> nameToCommand = {
     {"file", ECommand::ReadConfigCmd},
     {"generated", ECommand::GenerateConfigCmd},
 };
+
+const THashMap<TString, EIoEngine> nameToEngine = {
+    {"asyncio", EIoEngine::AsyncIo},
+    {"uring", EIoEngine::IoUring},
+    {"sync", EIoEngine::Sync}
+};
+
+template <class T>
+struct TMapOption
+{
+    T* Target;
+    const THashMap<TString, T>& Map;
+    const T DefaultValue;
+
+    TMapOption(T* target, const THashMap<TString, T>& map, T defaultValue)
+        : Target(target)
+        , Map(map)
+        , DefaultValue(defaultValue)
+    {}
+};
+
+template <class T>
+TOpt& operator|(TOpt& opt, const TMapOption<T>& map)
+{
+    THashSet<TString> choices;
+    TString defaultValue;
+    for (const auto& [key, value]: map.Map) {
+        choices.insert(key);
+        if (value == map.DefaultValue) {
+            defaultValue = key;
+        }
+    }
+
+    opt.RequiredArgument("STR");
+    opt.Choices(choices);
+
+    if (defaultValue) {
+        opt.DefaultValue(defaultValue);
+    }
+
+    return opt.StoreMappedResultT<TString>(
+        map.Target,
+        [map = map.Map](const TString& v) { return map.at(v); });
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -20,20 +68,29 @@ void TOptions::Parse(int argc, char** argv)
 
     opts.AddLongOption(
         "config-type",
-        R"(specify type of config:
-            file - reads config from specified file
-            generated - run test with generated config from specified parameters)")
-        .RequiredArgument("STR")
+        "specify type of config:\n"
+        "- file: reads config from specified file\n"
+        "- generated: run test with generated config from specified parameters")
         .Required()
-        .StoreResult(&CommandName)
-        .Handler0([this] {
-            auto it = NameToCommand.find(CommandName);
-            if (it == NameToCommand.end()) {
-                Command = ECommand::UnknownCmd;
-            } else {
-                Command = it->second;
-            }
-        });
+        | TMapOption(&Command, nameToCommand, ECommand::UnknownCmd);
+
+    opts.AddLongOption(
+        "engine",
+        "specify the IO engine:\n"
+        "- asyncio: AsyncIO\n"
+        "- uring: io_uring\n"
+        "- sync: synchronous IO + threads")
+        | TMapOption(&Engine, nameToEngine, EIoEngine::AsyncIo);
+
+    opts.AddLongOption(
+        "no-direct",
+        "Do not set O_DIRECT flag")
+        .StoreTrue(&NoDirect);
+
+    opts.AddLongOption(
+        "run-in-callbacks",
+        "Run test logic in callbacks")
+        .StoreTrue(&RunInCallbacks);
 
     opts.AddLongOption("file", "path to file or block device")
         .RequiredArgument("STR")

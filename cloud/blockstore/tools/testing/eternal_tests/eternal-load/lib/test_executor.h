@@ -105,12 +105,24 @@ using ITestScenarioPtr = std::shared_ptr<ITestScenario>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ETestExecutorFileService
+{
+    AsyncIo,
+    IoUring,
+    Sync
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TTestExecutorSettings
 {
     ITestScenarioPtr TestScenario;
+    ETestExecutorFileService FileService;
     TString FilePath;
     ui64 FileSize = 0;
     TLog Log;
+    bool RunInCallbacks = false;
+    bool NoDirect = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -119,8 +131,6 @@ ITestScenarioPtr CreateAlignedBlockTestScenario(
     IConfigHolderPtr configHolder,
     const TLog& log);
 
-ITestExecutorPtr CreateTestExecutor(
-    IConfigHolderPtr configHolder,
-    const TLog& log);
+ITestExecutorPtr CreateTestExecutor(TTestExecutorSettings settings);
 
 }   // namespace NCloud::NBlockStore::NTesting
