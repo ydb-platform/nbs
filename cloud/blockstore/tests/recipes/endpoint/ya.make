@@ -4,7 +4,7 @@ PY_SRCS(__main__.py)
 
 PEERDIR(
     cloud/blockstore/public/sdk/python/client
-
+    cloud/blockstore/tests/python/lib
     library/python/testing/recipe
 )
 
