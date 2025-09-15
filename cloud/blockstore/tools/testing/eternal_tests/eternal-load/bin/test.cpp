@@ -2,6 +2,7 @@
 
 #include "options.h"
 
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -9,6 +10,8 @@
 #include <util/system/file.h>
 
 namespace NCloud::NBlockStore {
+
+using namespace NTesting;
 
 namespace {
 
