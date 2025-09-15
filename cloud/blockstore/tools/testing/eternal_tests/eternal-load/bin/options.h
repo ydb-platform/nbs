@@ -49,6 +49,8 @@ struct TOptions
 
     TString DumpPath;
 
+    bool PrintDebugInfo = false;
+
     void Parse(int argc, char** argv);
 };
 

@@ -151,6 +151,11 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResult(&RestorePath);
 
+    opts.AddLongOption(
+        "debug",
+        "print debug statistics")
+        .StoreTrue(&PrintDebugInfo);
+
     TOptsParseResultException(&opts, argc, argv);
 }
 
