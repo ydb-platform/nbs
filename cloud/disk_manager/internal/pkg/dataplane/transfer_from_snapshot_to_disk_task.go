@@ -58,7 +58,7 @@ func (t *transferFromSnapshotToDiskTask) Run(
 
 	execCtx.SetEstimatedInflightDuration(performance.Estimate(
 		srcMeta.StorageSize,
-		t.performanceConfig.GetTransferFromSnapshotToDiskBandwidthMiBs(),
+		t.performanceConfig.GetTransferBetweenDiskAndSnapshotBandwidthMiBs(),
 	))
 
 	source := snapshot.NewSnapshotSource(t.request.SrcSnapshotId, t.storage)

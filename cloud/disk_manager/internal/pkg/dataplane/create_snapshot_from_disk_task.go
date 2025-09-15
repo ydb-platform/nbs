@@ -260,8 +260,6 @@ func (t *createSnapshotFromDiskTask) run(
 		return err
 	}
 
-	incremental := len(t.state.BaseSnapshotId) != 0
-
 	nbsClient, err := t.getNbsClient(ctx)
 	if err != nil {
 		return err
@@ -276,6 +274,8 @@ func (t *createSnapshotFromDiskTask) run(
 	if err != nil {
 		return err
 	}
+
+	incremental := len(t.state.BaseSnapshotId) != 0
 
 	source, err := nbs.NewDiskSource(
 		ctx,
@@ -446,7 +446,7 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 
 	estimatedDuration := performance.Estimate(
 		bytesToTransfer,
-		t.performanceConfig.GetTransferFromDiskToSnapshotBandwidthMiBs(),
+		t.performanceConfig.GetTransferBetweenDiskAndSnapshotBandwidthMiBs(),
 	)
 
 	logging.Info(ctx, "bytes to transfer is %v, estimated duration is %v", bytesToTransfer, estimatedDuration)
