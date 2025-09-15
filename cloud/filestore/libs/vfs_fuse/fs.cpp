@@ -2,7 +2,9 @@
 
 #include "fs_impl.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/vfs/probes.h>
+
 #include <cloud/storage/core/libs/common/helpers.h>
 
 namespace NCloud::NFileStore::NFuse {
@@ -67,6 +69,13 @@ int ReplyError(
         ts.ExecutionTime.MicroSeconds(),
         errorCode,
         res);
+
+    if (errorCode == EIO) {
+        ReportErrorWasSentToTheGuest(
+            TStringBuilder() << "EIO error was sent to the guest (fsID = "
+                             << callContext.FileSystemId << ", requestId = "
+                             << callContext.RequestId << ")");
+    }
 
     return res;
 }

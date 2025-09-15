@@ -1,4 +1,5 @@
 #include "fs.h"
+
 #include "log.h"
 #include "loop.h"
 #include "node_cache.h"
@@ -6,6 +7,7 @@
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -2371,6 +2373,54 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         scheduler->RunAllScheduledTasks();
 
         UNIT_ASSERT_EXCEPTION(future.GetValue(WaitTimeout), yexception);
+    }
+
+    Y_UNIT_TEST(ShouldRaiseCritEventWhenErrorWasSentToGuest)
+    {
+        TBootstrap bootstrap;
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+        const ui64 size = 789;
+
+        bootstrap.Service->ReadDataHandler =
+            [&](auto callContext, auto request) {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            NProto::TReadDataResponse result = TErrorResponse(E_IO);
+            return MakeFuture(result);
+        };
+
+        bootstrap.Service->WriteDataHandler =
+            [&](auto callContext, auto request) {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            NProto::TWriteDataResponse result = TErrorResponse(E_IO);
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handleId, 0, size);
+
+        UNIT_ASSERT_EXCEPTION(read.GetValueSync(), yexception);
+
+        auto errorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter("AppCriticalEvents/ErrorWasSentToTheGuest", true);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, errorCounter->Val());
+
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+
+        UNIT_ASSERT_EXCEPTION(write.GetValue(WaitTimeout), yexception);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, errorCounter->Val());
     }
 }
 
