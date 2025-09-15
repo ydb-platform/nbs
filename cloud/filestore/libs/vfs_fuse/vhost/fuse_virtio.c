@@ -470,6 +470,8 @@ void virtio_session_exit(struct fuse_session* se)
         sched_yield();
     }
 
+    se->exited = 1;
+
     VHD_LOG_INFO("finished unregister device");
 }
 
@@ -496,7 +498,6 @@ int virtio_session_loop(struct fuse_session* se, int queue_index)
         }
     }
 
-    se->exited = 1;
     return res;
 }
 

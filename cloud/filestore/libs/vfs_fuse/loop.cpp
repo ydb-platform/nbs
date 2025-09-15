@@ -5,7 +5,6 @@
 #include "fuse.h"
 #include "handle_ops_queue.h"
 #include "log.h"
-#include "util/system/file_lock.h"
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -31,6 +30,7 @@
 #include <util/folder/path.h>
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
+#include "util/system/file_lock.h"
 #include <util/system/fs.h>
 #include <util/system/info.h>
 #include <util/system/rwlock.h>
