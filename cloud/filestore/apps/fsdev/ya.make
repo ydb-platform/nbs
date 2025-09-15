@@ -23,6 +23,9 @@ ADDINCL(
 )
 
 PEERDIR(
+    cloud/filestore/libs/spdk/iface
+    cloud/filestore/libs/spdk/impl
+
     cloud/storage/core/libs/common
 )
 

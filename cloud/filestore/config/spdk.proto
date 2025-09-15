@@ -1,0 +1,16 @@
+syntax = "proto2";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TSpdkEnvConfig
+{
+    // CPU core mask.
+    optional string CpuMask = 1;
+
+    // Hugetlbfs mount point
+    optional string HugeDir = 2;
+}

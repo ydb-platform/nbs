@@ -10,6 +10,7 @@ SRCS(
     http_proxy.proto
     nfs_gateway.proto
     server.proto
+    spdk.proto
     storage.proto
     vfs.proto
     vhost.proto
