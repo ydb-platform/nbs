@@ -1003,7 +1003,7 @@ message TStorageServiceConfig
 
     // Duration of attempts to connect to tablet for cached tablets before
     // switching to describe volume (in ms).
-    optional uint32 VolumeProxyCacheRetryDuration = 360;
+    optional uint32 VolumeProxyCacheRetryDuration = 360; // deprecated
 
     // Service actor self ping measurement interval. Used to evaluate
     // service actor load. Set in ms.

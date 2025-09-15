@@ -614,8 +614,6 @@ public:
 
     TDuration GetWaitDependentDisksRetryRequestDelay() const;
 
-    TDuration GetVolumeProxyCacheRetryDuration() const;
-
     TDuration GetServiceSelfPingInterval() const;
 
     bool GetDataScrubbingEnabled() const;
