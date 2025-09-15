@@ -396,33 +396,35 @@ def get_sensor_by_name(sensors, component, name, def_value=None):
         sensor=name)
 
 
-def __get_free_bytes(sensors, pool, default_value=0):
+def __get_free_bytes(sensors, pool, kind, default_value=0):
     bytes = get_sensor(
         sensors,
         default_value=default_value,
         component='disk_registry',
         sensor='FreeBytes',
-        pool=pool)
+        pool=pool,
+        kind=kind)
 
     return bytes if bytes is not None else default_value
 
 
-def __get_dirty_devices(sensors, pool, default_value=0):
+def __get_dirty_devices(sensors, pool, kind, default_value=0):
     return get_sensor(
         sensors,
         default_value=default_value,
         component='disk_registry',
         sensor='DirtyDevices',
-        pool=pool)
+        pool=pool,
+        kind=kind)
 
 
 # wait for DiskAgent registration & secure erase
-def wait_for_free_bytes(mon_port, pool='default'):
+def wait_for_free_bytes(mon_port, pool='default', kind='default'):
     while True:
         logging.info("Wait for agents...")
         time.sleep(1)
         sensors = get_nbs_counters(mon_port)['sensors']
-        bytes = __get_free_bytes(sensors, pool)
+        bytes = __get_free_bytes(sensors, pool, kind)
 
         if bytes > 0:
             logging.info("Bytes: {}".format(bytes))
@@ -430,7 +432,7 @@ def wait_for_free_bytes(mon_port, pool='default'):
 
 
 # wait for DA & secure erase of all available devices
-def wait_for_secure_erase(mon_port, pool='default', expectedAgents=1):
+def wait_for_secure_erase(mon_port, pool='default', kind='default', expectedAgents=1):
     if expectedAgents == 0:
         return
 
@@ -445,13 +447,13 @@ def wait_for_secure_erase(mon_port, pool='default', expectedAgents=1):
 
         logging.info("Agents: {}".format(agents))
 
-        dd = __get_dirty_devices(sensors, pool)
+        dd = __get_dirty_devices(sensors, pool, kind)
         logging.info("Dirty devices: {}".format(dd))
 
         if dd:
             continue
 
-        bytes = __get_free_bytes(sensors, pool)
+        bytes = __get_free_bytes(sensors, pool, kind)
         logging.info("Bytes: {}".format(bytes))
 
         if not bytes:

@@ -248,4 +248,6 @@ NProto::TVolumePerformanceProfile VolumeConfigToVolumePerformanceProfile(
 
 TMap<TString, TString> ParseTags(const TString& tags);
 
+TString PoolKindToString(const NProto::EDevicePoolKind poolKind);
+
 }   // namespace NCloud::NBlockStore::NStorage

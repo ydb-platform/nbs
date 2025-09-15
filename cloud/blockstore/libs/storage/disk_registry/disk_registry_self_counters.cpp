@@ -1,13 +1,13 @@
 #include "disk_registry_self_counters.h"
 
-#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistrySelfCounters::Init(
-    const TVector<TString>& poolNames,
+    const TVector<std::pair<TString, NProto::EDevicePoolKind>>& pools,
     NMonitoring::TDynamicCountersPtr counters)
 {
     FreeBytes = counters->GetCounter("FreeBytes");
@@ -63,16 +63,18 @@ void TDiskRegistrySelfCounters::Init(
 
     QueryAvailableStorageErrors.Register(counters, "QueryAvailableStorageErrors");
 
-    for (const auto& poolName: poolNames) {
-        RegisterPool(poolName, counters);
+    for (const auto& [poolName, poolKind]: pools) {
+        RegisterPool(poolName, PoolKindToString(poolKind), counters);
     }
 }
 
 void TDiskRegistrySelfCounters::RegisterPool(
     const TString& poolName,
+    const TString& poolKind,
     NMonitoring::TDynamicCountersPtr counters)
 {
-    PoolName2Counters[poolName].Init(counters->GetSubgroup("pool", poolName));
+    PoolName2Counters[poolName].Init(
+        counters->GetSubgroup("pool", poolName)->GetSubgroup("kind", poolKind));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

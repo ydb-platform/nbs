@@ -1432,8 +1432,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         TDiskRegistrySelfCounters::TDevicePoolCounters defaultPool;
         TDiskRegistrySelfCounters::TDevicePoolCounters localPool;
 
-        defaultPool.Init(diskRegistryGroup->GetSubgroup("pool", "default"));
-        localPool.Init(diskRegistryGroup->GetSubgroup("pool", "local"));
+        defaultPool.Init(diskRegistryGroup->GetSubgroup("pool", "default")
+                             ->GetSubgroup("kind", "default"));
+        localPool.Init(diskRegistryGroup->GetSubgroup("pool", "local-ssd")
+                           ->GetSubgroup("kind", "local"));
 
         auto freeBytes = diskRegistryGroup->GetCounter("FreeBytes");
         auto totalBytes = diskRegistryGroup->GetCounter("TotalBytes");
