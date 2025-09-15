@@ -35,11 +35,8 @@ func getEndpoint() string {
 	)
 }
 
-func newFactory(
-	t *testing.T,
-	ctx context.Context,
-	clientTimeout string,
-) nfs.Factory {
+func newFactory(t *testing.T, ctx context.Context) nfs.Factory {
+	clientTimeout := "60s"
 	rootCertsFile := os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE")
 	return nfs.NewFactory(
 		ctx,
@@ -57,19 +54,7 @@ func newFactory(
 }
 
 func newClient(t *testing.T, ctx context.Context) nfs.Client {
-	factory := newFactory(t, ctx, "20s")
-	client, err := factory.NewClient(ctx, "zone")
-	require.NoError(t, err)
-	return client
-}
-
-func newClientWithTimeout(
-	t *testing.T,
-	ctx context.Context,
-	timeout string,
-) nfs.Client {
-
-	factory := newFactory(t, ctx, timeout)
+	factory := newFactory(t, ctx)
 	client, err := factory.NewClient(ctx, "zone")
 	require.NoError(t, err)
 	return client
@@ -337,7 +322,7 @@ func TestListNodesFileSystem(t *testing.T) {
 	ctx := newContext()
 	// With high CPU consumption on test vm createsession can take longer than
 	// default timeout.
-	client := newClientWithTimeout(t, ctx, "60s")
+	client := newClient(t, ctx)
 
 	filesystemID := t.Name()
 	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
