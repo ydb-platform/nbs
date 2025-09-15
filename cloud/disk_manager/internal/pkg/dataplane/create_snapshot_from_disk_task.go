@@ -255,12 +255,12 @@ func (t *createSnapshotFromDiskTask) run(
 	t.state.BaseSnapshotId = baseSnapshotID
 	t.state.BaseCheckpointId = baseCheckpointID
 
-	incremental := len(t.state.BaseSnapshotId) != 0
-
 	err = t.setEstimate(ctx, execCtx)
 	if err != nil {
 		return err
 	}
+
+	incremental := len(t.state.BaseSnapshotId) != 0
 
 	nbsClient, err := t.getNbsClient(ctx)
 	if err != nil {
