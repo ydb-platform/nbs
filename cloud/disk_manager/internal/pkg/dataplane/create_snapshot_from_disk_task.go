@@ -452,7 +452,7 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 	logging.Info(ctx, "bytes to transfer is %v, estimated duration is %v", bytesToTransfer, estimatedDuration)
 
 	if len(t.state.BaseSnapshotId) != 0 {
-		snapshotMeta, err := t.storage.GetSnapshotMeta(ctx, t.state.BaseSnapshotID)
+		snapshotMeta, err := t.storage.GetSnapshotMeta(ctx, t.state.BaseSnapshotId)
 		if err != nil {
 			return err
 		}
