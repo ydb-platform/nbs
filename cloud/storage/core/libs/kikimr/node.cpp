@@ -85,7 +85,7 @@ NGRpcProxy::TGRpcClientConfig CreateKikimrConfig(
 {
     NGRpcProxy::TGRpcClientConfig config(
         nodeBrokerAddress,
-        options.Settings.RegistrationTimeout);
+        options.Settings.LegacyRegistrationTimeout);
 
     if (options.UseNodeBrokerSsl) {
         config.EnableSsl = true;

@@ -78,27 +78,26 @@ class ProxyInterceptor(grpc.ServerInterceptor):
             response_serializer=lambda x: x,
         )
 
+
 # This server simulates a hanging connection. It proxies all requests to the YDB server,
 # except for NodeRegistration requests which are handled specially:
-# - For the first max_node_reg_count NodeRegistration attempts, the server receives
+# - For the first max_node_registration_count NodeRegistration attempts, the server receives
 # the request but deliberately does not respond
 # - After these initial attempts, all subsequent NodeRegistration requests
 # are proxied normally to the YDB server.
 # Names of methods ListEndpoints, WhoAmI, and NodeRegistration are written in camel case.
 # This naming style is used because these methods override the corresponding methods of the
 # interface ydb_discovery_v1_pb2_grpc.DiscoveryServiceServicer.
-
-
-class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceServicer):
+class DiscoverService(ydb_discovery_v1_pb2_grpc.DiscoveryServiceServicer):
 
     def __init__(
         self,
-        max_node_reg_count=1,
+        max_node_registration_count=1,
         stop_event=threading.Event(),
         ydb=None,
     ):
         self.node_registration_count = 0
-        self.max_node_reg_count = max_node_reg_count
+        self.max_node_registration_count = max_node_registration_count
         self.secondary_host = "localhost"
         self.secondary_port = list(ydb.nodes.values())[0].grpc_ssl_port
         self.lock = threading.Lock()
@@ -158,7 +157,7 @@ class DiscoveryServiceServicer(ydb_discovery_v1_pb2_grpc.DiscoveryServiceService
             self.node_registration_count += 1
             current_count = self.node_registration_count
 
-        if current_count <= self.max_node_reg_count:
+        if current_count <= self.max_node_registration_count:
             try:
                 while not self.stop_event.is_set():
                     time.sleep(0.5)
@@ -248,8 +247,8 @@ def serve(not_responding_server_port, ydb):
     stop_event = threading.Event()
 
     ydb_discovery_v1_pb2_grpc.add_DiscoveryServiceServicer_to_server(
-        DiscoveryServiceServicer(
-            max_node_reg_count=2,
+        DiscoverService(
+            max_node_registration_count=2,
             stop_event=stop_event,
             ydb=ydb,
         ),
