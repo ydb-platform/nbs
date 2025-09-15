@@ -168,7 +168,7 @@ void TPartitionActor::HandleWriteBlocksRequest(
                     TStringBuilder()
                         << "WriteBlocks: incorrect number of checksums: "
                         << msg->Record.ChecksumsSize() << " (expected 1)",
-                    {{"diskId", State->GetConfig().GetDiskId().Quote()},
+                    {{"diskId", State->GetConfig().GetDiskId()},
                      {"range",
                       TBlockRange64::WithLength(
                           msg->Record.GetStartIndex(),
