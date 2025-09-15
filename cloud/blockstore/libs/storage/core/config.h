@@ -727,6 +727,8 @@ public:
     [[nodiscard]] ui64 GetHiveLocalServiceCpuResourceLimit() const;
     [[nodiscard]] ui64 GetHiveLocalServiceMemoryResourceLimit() const;
     [[nodiscard]] ui64 GetHiveLocalServiceNetworkResourceLimit() const;
+
+    [[nodiscard]] TDuration GetDynamicNodeRegistrationTimeout() const;
 };
 
 ui64 GetAllocationUnit(

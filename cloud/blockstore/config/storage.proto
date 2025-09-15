@@ -1329,4 +1329,8 @@ message TStorageServiceConfig
     optional uint64 HiveLocalServiceCpuResourceLimit = 456;
     optional uint64 HiveLocalServiceMemoryResourceLimit = 457;
     optional uint64 HiveLocalServiceNetworkResourceLimit = 458;
+
+    // Timeout for dynamic node registration via discovery service
+    // (in milliseconds).
+    optional uint32 DynamicNodeRegistrationTimeout = 459;
 }

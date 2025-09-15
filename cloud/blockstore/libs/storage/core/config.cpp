@@ -632,6 +632,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(TrimFreshLogTimeout,                  TDuration,   Seconds(0)         )\
                                                                                \
+    xxx(DynamicNodeRegistrationTimeout,       TDuration,   Seconds(5)         )\
     xxx(HiveLocalServiceCpuResourceLimit,     ui64,        0                  )\
     xxx(HiveLocalServiceMemoryResourceLimit,  ui64,        0                  )\
     xxx(HiveLocalServiceNetworkResourceLimit, ui64,        0                  )\
