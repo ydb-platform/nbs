@@ -42,8 +42,17 @@ private:
     TVector<std::unique_ptr<TWorkerService>> WorkerServices;
     TLockFreeStack<TWorkerService*> ReadyWorkerServices;
 
+    std::atomic_uint64_t BytesRead = 0;
+    std::atomic_uint64_t BytesWritten = 0;
+    ui64 PreviousBytesRead = 0;
+    ui64 PreviousBytesWritten = 0;
+    TInstant PreviousStatsTimestamp;
+
     const TLog Log;
     const bool RunInCallbacks = false;
+    const bool PrintDebugInfo = false;
+
+    static constexpr TDuration PrintStatsInterval = TDuration::Seconds(5);
 
 public:
     TTestExecutor(TTestExecutorSettings settings, IFileIOServicePtr service);
@@ -54,6 +63,7 @@ public:
 private:
     void RunMainThread();
     void RunAnyThread();
+    void PrintStatistics();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -111,8 +121,10 @@ TTestExecutor::TTestExecutor(
     , TestScenario(std::move(settings.TestScenario))
     , FileService(std::move(service))
     , File(settings.FilePath, GetFileOpenMode(settings.NoDirect))
+    , PreviousStatsTimestamp(TestStartTimestamp)
     , Log(settings.Log)
     , RunInCallbacks(settings.RunInCallbacks)
+    , PrintDebugInfo(settings.PrintDebugInfo)
 {
     File.Resize(static_cast<i64>(settings.FileSize));
 
@@ -176,6 +188,12 @@ void TTestExecutor::RunMainThread()
         for (auto* service: servicesToRun) {
             service->Run();
         }
+
+        if (PrintDebugInfo) {
+            if (Now() - PreviousStatsTimestamp > PrintStatsInterval) {
+                PrintStatistics();
+            }
+        }
     }
 
     while (servicesToRun.size() < WorkerServices.size()) {
@@ -185,11 +203,38 @@ void TTestExecutor::RunMainThread()
 
 void TTestExecutor::RunAnyThread()
 {
-    StopPromise.GetFuture().Wait();
+    auto stopFuture = StopPromise.GetFuture();
+
+    if (PrintDebugInfo) {
+        while (!stopFuture.Wait(PrintStatsInterval)) {
+            PrintStatistics();
+        }
+    } else {
+        stopFuture.Wait();
+    }
 
     for (auto& service: WorkerServices) {
         service->Wait();
     }
+}
+
+void TTestExecutor::PrintStatistics()
+{
+    auto now = Now();
+    auto currentBytesRead = BytesRead.load();
+    auto currentBytesWritten = BytesWritten.load();
+
+    auto elapsedSeconds = (now - PreviousStatsTimestamp).SecondsFloat();
+    auto bytesRead = currentBytesRead - PreviousBytesRead;
+    auto bytesWritten = currentBytesWritten - PreviousBytesWritten;
+
+    STORAGE_DEBUG(
+        "Read: " << bytesRead / elapsedSeconds / 1_MB << " MiB/s, "
+        "Write: " << bytesWritten / elapsedSeconds / 1_MB << " MiB/s");
+
+    PreviousStatsTimestamp = now;
+    PreviousBytesRead = currentBytesRead;
+    PreviousBytesWritten = currentBytesWritten;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -288,6 +333,7 @@ void TTestExecutor::TWorkerService::Read(
                     TStringBuilder() << "Read less than expected: " << value
                                      << " < " << count);
             } else {
+                TestExecutor.BytesRead += count;
                 callback();
             }
             if (HandleRequest()) {
@@ -321,6 +367,7 @@ void TTestExecutor::TWorkerService::Write(
                     TStringBuilder() << "Written less than expected: " << value
                                      << " < " << count);
             } else {
+                TestExecutor.BytesWritten += count;
                 callback();
             }
             if (HandleRequest()) {
