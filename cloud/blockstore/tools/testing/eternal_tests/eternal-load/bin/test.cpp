@@ -2,7 +2,9 @@
 
 #include "options.h"
 
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/aligned_block_test_scenario.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/file_test_scenario.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -75,7 +77,14 @@ int TTest::Run()
                 Options->WriteRate,
                 Options->RequestBlockCount,
                 Options->WriteParts,
-                Options->AlternatingPhase);
+                Options->AlternatingPhase,
+                0,
+                Options->MinReadSize,
+                Options->MaxReadSize,
+                Options->MinWriteSize,
+                Options->MaxWriteSize,
+                Options->MinRegionSize,
+                Options->MaxRegionSize);
             DumpConfiguration();
             break;
         case ECommand::ReadConfigCmd:
@@ -102,7 +111,23 @@ TTestExecutorSettings TTest::ConfigureTest() const
     auto log = Logging->CreateLog("ETERNAL_EXECUTOR");
 
     TTestExecutorSettings settings;
-    settings.TestScenario = CreateAlignedBlockTestScenario(ConfigHolder, log);
+
+    switch (Options->Scenario) {
+        case EScenario::Block:
+            settings.TestScenario =
+                CreateAlignedBlockTestScenario(ConfigHolder, log);
+            STORAGE_INFO("Using test scenario: Block");
+            break;
+
+        case EScenario::File:
+            settings.TestScenario =
+                CreateFileTestScenario(ConfigHolder, log);
+            STORAGE_INFO("Using test scenario: File");
+            break;
+
+        default:
+            Y_ABORT("Unsupported Scenario value %d", Options->Engine);
+    }
 
     switch (Options->Engine) {
         case EIoEngine::AsyncIo:

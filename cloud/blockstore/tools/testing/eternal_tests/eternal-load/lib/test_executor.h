@@ -127,10 +127,6 @@ struct TTestExecutorSettings
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITestScenarioPtr CreateAlignedBlockTestScenario(
-    IConfigHolderPtr configHolder,
-    const TLog& log);
-
 ITestExecutorPtr CreateTestExecutor(TTestExecutorSettings settings);
 
 }   // namespace NCloud::NBlockStore::NTesting
