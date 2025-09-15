@@ -10,6 +10,8 @@ find_bin_dir() {
 BIN_DIR=`find_bin_dir`
 source ./prepare_binaries.sh || exit 1
 
+export ASAN_SYMBOLIZER_PATH=$(../ya tool llvm-symbolizer --print-path)
+
 blockstore-client ExecuteAction --action DiskRegistrySetWritableState --verbose error --input-bytes '{"State":true}'
 if [ $? -ne 0 ]; then
     echo "Can't set writable state for disk registry"

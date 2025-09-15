@@ -8,6 +8,8 @@ SECURE_SERVER_PORT=${SECURE_SERVER_PORT:-9788}
 MON_PORT=${MON_PORT:-8786}
 source ./prepare_binaries.sh || exit 1
 
+export ASAN_SYMBOLIZER_PATH=$(../ya tool llvm-symbolizer --print-path)
+
 echo "Second NBS http://localhost:$MON_PORT/blockstore/service"
 
 nbsd \
