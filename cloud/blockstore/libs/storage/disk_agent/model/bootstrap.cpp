@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_local.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
+#include <cloud/blockstore/libs/service_local/storage_nvme.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
@@ -79,6 +80,7 @@ IFileIOServiceFactoryPtr CreateFileIOServiceFactory(
             return CreateAIOServiceFactory(config);
         case NProto::DISK_AGENT_BACKEND_IO_URING:
         case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
+        case NProto::DISK_AGENT_BACKEND_IO_URING_NVME:
             return CreateIoUringServiceFactory(config);
     }
 
@@ -104,6 +106,7 @@ NServer::IFileIOServiceProviderPtr CreateFileIOServiceProvider(
 }
 
 IStorageProviderPtr CreateStorageProvider(
+    ILoggingServicePtr logging,
     const TDiskAgentConfig& config,
     NServer::IFileIOServiceProviderPtr provider,
     NNvme::INvmeManagerPtr nvmeManager)
@@ -126,9 +129,10 @@ IStorageProviderPtr CreateStorageProvider(
             return NServer::CreateNullStorageProvider();
         case NProto::DISK_AGENT_BACKEND_IO_URING:
         case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
-            return CreateLocalStorageProvider(
+        case NProto::DISK_AGENT_BACKEND_IO_URING_NVME: {
+            auto storageProvider = CreateLocalStorageProvider(
                 std::move(provider),
-                std::move(nvmeManager),
+                nvmeManager,
                 {
                     .DirectIO = !config.GetDirectIoFlagDisabled(),
                     // Each io_uring service already has its own submission
@@ -137,6 +141,17 @@ IStorageProviderPtr CreateStorageProvider(
                     .EnableDataIntegrityValidation =
                         config.GetEnableDataIntegrityValidationForDrBasedDisks(),
                 });
+
+            if (config.GetBackend() == NProto::DISK_AGENT_BACKEND_IO_URING_NVME)
+            {
+                storageProvider = NServer::CreateNvmeStorageProvider(
+                    std::move(logging),
+                    std::move(storageProvider),
+                    std::move(nvmeManager));
+            }
+
+            return storageProvider;
+        }
     }
 
     return nullptr;
@@ -151,6 +166,7 @@ NNvme::INvmeManagerPtr CreateNvmeManager(const TDiskAgentConfig& config)
         case NProto::DISK_AGENT_BACKEND_NULL:
         case NProto::DISK_AGENT_BACKEND_IO_URING:
         case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
+        case NProto::DISK_AGENT_BACKEND_IO_URING_NVME:
             return NNvme::CreateNvmeManager(config.GetSecureEraseTimeout());
     }
 
@@ -162,6 +178,7 @@ NNvme::INvmeManagerPtr CreateNvmeManager(const TDiskAgentConfig& config)
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateDiskAgentBackendComponentsResult CreateDiskAgentBackendComponents(
+    ILoggingServicePtr logging,
     const TDiskAgentConfig& config)
 {
     if (config.GetBackend() == NProto::DISK_AGENT_BACKEND_SPDK) {
@@ -174,7 +191,11 @@ TCreateDiskAgentBackendComponentsResult CreateDiskAgentBackendComponents(
     return {
         .NvmeManager = nvmeManager,
         .FileIOServiceProvider = provider,
-        .StorageProvider = CreateStorageProvider(config, provider, nvmeManager),
+        .StorageProvider = CreateStorageProvider(
+            std::move(logging),
+            config,
+            provider,
+            nvmeManager),
     };
 }
 

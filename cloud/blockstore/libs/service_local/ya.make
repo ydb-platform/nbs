@@ -9,6 +9,7 @@ SRCS(
     service_local.cpp
     storage_local.cpp
     storage_null.cpp
+    storage_nvme.cpp
     storage_rdma.cpp
     storage_spdk.cpp
     zero_extent.cpp
@@ -24,6 +25,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/protos
 
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/io_uring
 
     library/cpp/aio
     library/cpp/deprecated/atomic
