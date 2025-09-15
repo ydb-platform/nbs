@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     yql_s3_datasink.cpp
     yql_s3_datasink_execution.cpp

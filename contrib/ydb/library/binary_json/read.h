@@ -54,8 +54,8 @@ private:
     template <typename T>
     T ReadPOD(ui32 offset) const {
         static_assert(std::is_pod_v<T>, "Type must be POD");
-        Y_ENSURE(offset + sizeof(T) <= Buffer.Size(),
-            TStringBuilder() << "Not enough space in buffer to read value (" << offset << " + " << sizeof(T) << " > " << Buffer.Size() << ")");
+        Y_ENSURE(offset + sizeof(T) <= Buffer.size(),
+            TStringBuilder() << "Not enough space in buffer to read value (" << offset << " + " << sizeof(T) << " > " << Buffer.size() << ")");
         return ReadUnaligned<T>(Buffer.Data() + offset);
     }
 
