@@ -722,6 +722,8 @@ public:
 
     [[nodiscard]] TDuration GetTrimFreshLogTimeout() const;
 
+    [[nodiscard]] bool GetLimitMirrorDisksDeviceReplacementsPerRow() const;
+
     [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
 
     [[nodiscard]] ui64 GetHiveLocalServiceCpuResourceLimit() const;
