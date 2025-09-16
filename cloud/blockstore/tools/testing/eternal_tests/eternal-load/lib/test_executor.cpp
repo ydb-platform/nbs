@@ -49,7 +49,7 @@ public:
     TTestExecutor(TTestExecutorSettings settings, IFileIOServicePtr service);
     bool Run() override;
     void Stop() override;
-    void Fail(TStringBuf message);
+    void Fail(const TString& message);
 
 private:
     void RunMainThread();
@@ -89,7 +89,7 @@ private:
 
     void Stop() override;
 
-    void Fail(TStringBuf message) override;
+    void Fail(const TString& message) override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,7 +146,7 @@ void TTestExecutor::Stop()
     }
 }
 
-void TTestExecutor::Fail(TStringBuf message)
+void TTestExecutor::Fail(const TString& message)
 {
     Stop();
     Failed.store(true);
@@ -226,7 +226,7 @@ void TTestExecutor::TWorkerService::Stop()
     Executor.Stop();
 }
 
-void TTestExecutor::TWorkerService::Fail(TStringBuf message)
+void TTestExecutor::TWorkerService::Fail(const TString& message)
 {
     Executor.Fail(message);
 }

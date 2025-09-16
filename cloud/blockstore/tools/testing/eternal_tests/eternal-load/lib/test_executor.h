@@ -68,7 +68,7 @@ struct ITestExecutorIOService
     virtual void Stop() = 0;
 
     // Stop and write the error message
-    virtual void Fail(TStringBuf message) = 0;
+    virtual void Fail(const TString& message) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
