@@ -105,7 +105,8 @@ public:
         const TString& diskId = DefaultDiskId,
         bool destroyIfBroken = false,
         bool sync = false,
-        ui64 fillGeneration = 0);
+        ui64 fillGeneration = 0,
+        bool exactDiskIdMatch = false);
 
     std::unique_ptr<TEvService::TEvAssignVolumeRequest> CreateAssignVolumeRequest(
         const TString& diskId = DefaultDiskId,

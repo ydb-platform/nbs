@@ -1,11 +1,13 @@
 #include "service_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/volume_label.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -24,17 +26,33 @@ namespace {
 class TDestroyVolumeActor final
     : public TActorBootstrapped<TDestroyVolumeActor>
 {
+public:
+    enum class EDiskIdTolerance
+    {
+        AllowMangled,   // Allows the deletion of a copied disk whose name
+                        // differs by a suffix. For example, disk-1 was copied
+                        // and disk1-copy is now replacing disk-1, then
+                        // disk-1-copy will be deleted.
+
+        StrictMatch,   // Deletes only the disk that exactly matches the name.
+                       // For example, disk-1 was copied and disk1-copy is now
+                       // replacing disk-1, then disk-1-copy will not be
+                       // deleted. To delete disk-1-copy, you need to pass
+                       // disk-1-copy.
+    };
+
 private:
     const TActorId Sender;
     const ui64 Cookie;
 
     const TDuration AttachedDiskDestructionTimeout;
     const TVector<TString> DestructionAllowedOnlyForDisksWithIdPrefixes;
-    const TString DiskId;
+    TString DiskId;
     const bool DestroyIfBroken;
     const bool Sync;
     const ui64 FillGeneration;
     const TDuration Timeout;
+    const EDiskIdTolerance DiskIdTolerance = EDiskIdTolerance::AllowMangled;
 
     bool IsDiskRegistryBased = false;
     bool VolumeNotFoundInSS = false;
@@ -46,6 +64,7 @@ public:
         TDuration attachedDiskDestructionTimeout,
         TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
         TString diskId,
+        EDiskIdTolerance diskIdTolerance,
         bool destroyIfBroken,
         bool sync,
         ui64 fillGeneration,
@@ -105,6 +124,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
         TDuration attachedDiskDestructionTimeout,
         TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
         TString diskId,
+        EDiskIdTolerance diskIdTolerance,
         bool destroyIfBroken,
         bool sync,
         ui64 fillGeneration,
@@ -119,6 +139,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     , Sync(sync)
     , FillGeneration(fillGeneration)
     , Timeout(timeout)
+    , DiskIdTolerance(diskIdTolerance)
 {}
 
 void TDestroyVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -367,6 +388,45 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
+    const auto foundDiskId = msg->Record.GetVolume().GetDiskId();
+    if (foundDiskId && foundDiskId != DiskId) {
+        switch (DiskIdTolerance) {
+            case EDiskIdTolerance::AllowMangled: {
+                if (GetLogicalDiskId(foundDiskId) != DiskId) {
+                    ReportLogicalDiskIdMismatch(
+                        {{"DiskId", DiskId}, {"substitute", foundDiskId}});
+
+                    ReplyAndDie(
+                        ctx,
+                        MakeError(
+                            S_FALSE,
+                            TStringBuilder()
+                                << "Strange secondary disk "
+                                << foundDiskId.Quote() << " has been found for "
+                                << DiskId.Quote()));
+                    return;
+                }
+                LOG_WARN(
+                    ctx,
+                    TBlockStoreComponents::SERVICE,
+                    "Volume %s does not exist. Delete secondary %s instead",
+                    DiskId.Quote().c_str(),
+                    foundDiskId.Quote().c_str());
+                DiskId = foundDiskId;
+                break;
+            }
+            case EDiskIdTolerance::StrictMatch: {
+                ReplyAndDie(
+                    ctx,
+                    MakeError(
+                        S_ALREADY,
+                        TStringBuilder() << "Volume not found (but "
+                                         << foundDiskId.Quote() << " exists)"));
+                return;
+            }
+        }
+    }
+
     if (auto error = CheckIfDestructionIsAllowed(); HasError(error)) {
         ReplyAndDie(ctx, std::move(error));
         return;
@@ -506,6 +566,10 @@ void TServiceActor::HandleDestroyVolume(
     const auto* msg = ev->Get();
     const auto& request = msg->Record;
     const auto& diskId = request.GetDiskId();
+    auto diskIdTolerance =
+        request.GetHeaders().GetExactDiskIdMatch()
+            ? TDestroyVolumeActor::EDiskIdTolerance::StrictMatch
+            : TDestroyVolumeActor::EDiskIdTolerance::AllowMangled;
     const bool destroyIfBroken = request.GetDestroyIfBroken();
     const bool sync = request.GetSync();
     const ui64 fillGeneration = request.GetFillGeneration();
@@ -524,6 +588,7 @@ void TServiceActor::HandleDestroyVolume(
         Config->GetAttachedDiskDestructionTimeout(),
         Config->GetDestructionAllowedOnlyForDisksWithIdPrefixes(),
         diskId,
+        diskIdTolerance,
         destroyIfBroken,
         sync,
         fillGeneration,

@@ -135,6 +135,8 @@ Y_UNIT_TEST_SUITE(TDiskIdTest)
         UNIT_ASSERT_VALUES_EQUAL("disk-copy", GetSecondaryDiskId("disk"));
         UNIT_ASSERT_VALUES_EQUAL("disk", GetLogicalDiskId("disk"));
         UNIT_ASSERT_VALUES_EQUAL("disk", GetLogicalDiskId("disk-copy"));
+        UNIT_ASSERT_VALUES_EQUAL(false, IsSecondaryDiskId("disk"));
+        UNIT_ASSERT_VALUES_EQUAL(true, IsSecondaryDiskId("disk-copy"));
     }
 }
 

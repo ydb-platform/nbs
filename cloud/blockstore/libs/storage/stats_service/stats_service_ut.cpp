@@ -12,6 +12,8 @@
 #include <cloud/blockstore/libs/ydbstats/ydbrow.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 
+#include <cloud/blockstore/libs/diagnostics/hostname.h>
+
 #include <cloud/storage/core/config/features.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -92,7 +94,7 @@ NMonitoring::TDynamicCounters::TCounterPtr GetCounterToCheck(
 {
     auto volumeCounters = counters.GetSubgroup("counters", "blockstore")
         ->GetSubgroup("component", "service_volume")
-        ->GetSubgroup("host", "cluster")
+        ->GetSubgroup("host", GetShortHostName())
         ->GetSubgroup("volume", DefaultDiskId)
         ->GetSubgroup("cloud", DefaultCloudId)
         ->GetSubgroup("folder", DefaultFolderId);
@@ -103,7 +105,7 @@ bool VolumeMetricsExists(NMonitoring::TDynamicCounters& counters)
 {
     auto volumeCounters = counters.GetSubgroup("counters", "blockstore")
         ->GetSubgroup("component", "service_volume")
-        ->GetSubgroup("host", "cluster");
+        ->GetSubgroup("host", GetShortHostName());
 
     return (bool)volumeCounters->FindSubgroup("volume", DefaultDiskId);
 }
@@ -208,6 +210,7 @@ void SendDiskStats(
 
     auto volumeMsg = std::make_unique<TEvStatsService::TEvVolumeSelfCounters>(
         diskId,
+        true, // isLocalMount
         volumeOptions & EVolumeTestOptions::VOLUME_HASCLIENTS,
         false,
         std::move(volumeCounters));
@@ -1347,7 +1350,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             ui64 actual = *runtime.GetAppData(0).Counters
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service_volume")
-                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("host", GetShortHostName())
                 ->GetSubgroup("volume", "vol0")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
@@ -1360,7 +1363,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             ui64 actual = *runtime.GetAppData(0).Counters
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service_volume")
-                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("host", GetShortHostName())
                 ->GetSubgroup("volume", "vol0")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
