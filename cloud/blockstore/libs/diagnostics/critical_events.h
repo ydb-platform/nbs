@@ -121,6 +121,7 @@ using TValue =
     xxx(UnexpectedCookie)                                                      \
     xxx(MultiAgentRequestAffectsTwoDevices)                                    \
     xxx(ChecksumCalculationError)                                              \
+    xxx(LogicalDiskIdMismatch)                                                 \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

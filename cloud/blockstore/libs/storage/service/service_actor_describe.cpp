@@ -90,7 +90,7 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
 void TDescribeVolumeActor::DescribeDiskRegistryVolume(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvDiskRegistry::TEvDescribeDiskRequest>();
-    request->Record.SetDiskId(DiskId);
+    request->Record.SetDiskId(Volume.GetDiskId());
 
     NCloud::Send(
         ctx,

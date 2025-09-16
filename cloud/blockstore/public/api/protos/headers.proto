@@ -96,4 +96,9 @@ message THeaders
 
     // Id of the cell request came from
     string CellId = 15;
+
+    // It requires an exact match of the DiskId.
+    // When set it does not allow the execution of request on a disk that is a
+    // copy with a mangled name with an additional suffix.
+    bool ExactDiskIdMatch = 16;
 }
