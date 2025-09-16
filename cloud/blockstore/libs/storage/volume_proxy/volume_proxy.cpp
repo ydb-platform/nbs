@@ -199,6 +199,11 @@ private:
         TEvTabletPipe::TEvClientDestroyed::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleBaseDiskDescribeResponse(
+        TConnection* conn,
+        const NProto::TError& error,
+        const TActorContext& ctx);
+
     void HandleDescribeResponse(
         const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
         const TActorContext& ctx);
@@ -544,6 +549,30 @@ void TVolumeProxyActor::HandleDisconnect(
     OnDisconnect(ctx, *conn);
 }
 
+void TVolumeProxyActor::HandleBaseDiskDescribeResponse(
+    TConnection* conn,
+    const NProto::TError& error,
+    const TActorContext& ctx)
+{
+    if (error.GetCode() == MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME_PROXY,
+            "%s Could not resolve path for base disk volume. Error: %s",
+            conn->LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
+
+        DestroyConnection(*conn, error);
+        return;
+    }
+
+    StartConnection(
+        ctx,
+        *conn,
+        conn->TabletId,
+        "PartitionConfig");
+}
+
 void TVolumeProxyActor::HandleDescribeResponse(
     const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -556,35 +585,31 @@ void TVolumeProxyActor::HandleDescribeResponse(
     }
 
     const auto& error = msg->GetError();
-    if (FAILED(error.GetCode())) {
-        if (!conn->IsConnectionToBaseDisk || msg->GetStatus() == MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist)) {
-            LOG_ERROR(
-                ctx,
-                TBlockStoreComponents::VOLUME_PROXY,
-                "%s Could not resolve path for volume. Error: %s",
-                conn->LogTitle.GetWithTime().c_str(),
-                FormatError(error).c_str());
-
-            DestroyConnection(*conn, error);
-            return;
-        }
-    }
 
     if (conn->IsConnectionToBaseDisk) {
-        StartConnection(
-            ctx,
-            *conn,
-            conn->TabletId,
-            "PartitionConfig");
-    } else {
-        const auto& pathDescr = msg->PathDescription;
-        const auto& volumeDescr = pathDescr.GetBlockStoreVolumeDescription();
-        StartConnection(
-            ctx,
-            *conn,
-            volumeDescr.GetVolumeTabletId(),
-            msg->Path);
+        HandleBaseDiskDescribeResponse(conn, error, ctx);
+        return;
     }
+
+    if (FAILED(error.GetCode())) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME_PROXY,
+            "%s Could not resolve path for volume. Error: %s",
+            conn->LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
+
+        DestroyConnection(*conn, error);
+        return;
+    }
+
+    const auto& pathDescr = msg->PathDescription;
+    const auto& volumeDescr = pathDescr.GetBlockStoreVolumeDescription();
+    StartConnection(
+        ctx,
+        *conn,
+        volumeDescr.GetVolumeTabletId(),
+        msg->Path);
 }
 
 template <typename TMethod>
