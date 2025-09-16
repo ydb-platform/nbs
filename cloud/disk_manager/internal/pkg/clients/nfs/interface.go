@@ -52,6 +52,33 @@ type Client interface {
 		blockSize uint32,
 		kind types.FilesystemKind,
 	) (FilesystemModel, error)
+
+	CreateSession(
+		ctx context.Context,
+		fileSystemID string,
+		readonly bool,
+	) (Session, error)
+
+	DestroySession(ctx context.Context, session Session) error
+
+	ListNodes(
+		ctx context.Context,
+		session Session,
+		parentNodeID uint64,
+		cookie string,
+	) ([]Node, string, error)
+
+	CreateNode(
+		ctx context.Context,
+		session Session,
+		node Node,
+	) (uint64, error)
+
+	ReadLink(
+		ctx context.Context,
+		session Session,
+		nodeID uint64,
+	) ([]byte, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

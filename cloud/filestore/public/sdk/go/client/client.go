@@ -3,6 +3,8 @@ package client
 import (
 	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+
 	"golang.org/x/net/context"
 )
 
@@ -27,6 +29,52 @@ type AlterFileStoreOpts struct {
 type CreateCheckpointOpts struct {
 	CheckpointID string
 	NodeID       uint64
+}
+
+type Session struct {
+	SessionID    string
+	SessionSeqNo uint64
+	FileSystemID string
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type NodeType uint32
+
+func (t NodeType) IsDirectory() bool {
+	return t == NODE_KIND_DIR
+}
+
+func (t NodeType) IsSymlink() bool {
+	return t == NODE_KIND_SYMLINK
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+const (
+	NODE_KIND_INVALID NodeType = iota
+	NODE_KIND_FILE
+	NODE_KIND_DIR
+	NODE_KIND_SYMLINK
+	NODE_KIND_LINK
+	NODE_KIND_SOCK
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
+type Node struct {
+	ParentID   uint64
+	NodeID     uint64
+	Name       string
+	Atime      uint64
+	Mtime      uint64
+	Ctime      uint64
+	Size       uint64
+	Mode       uint32
+	UID        uint64
+	GID        uint64
+	Type       NodeType
+	LinkTarget string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -192,6 +240,179 @@ func (client *Client) DescribeFileStoreModel(
 	}
 
 	return model.FileStoreModel, nil
+}
+
+func (client *Client) CreateSession(
+	ctx context.Context,
+	fileSystemID string,
+	readonly bool,
+) (Session, error) {
+
+	req := &protos.TCreateSessionRequest{
+		FileSystemId:         fileSystemID,
+		ReadOnly:             readonly,
+		RestoreClientSession: false,
+	}
+	resp, err := client.Impl.CreateSession(ctx, req)
+	if err != nil {
+		return Session{}, err
+	}
+
+	session := resp.GetSession()
+	return Session{
+		SessionID:    session.GetSessionId(),
+		SessionSeqNo: session.GetSessionSeqNo(),
+		FileSystemID: fileSystemID,
+	}, nil
+}
+
+func (client *Client) DestroySession(
+	ctx context.Context,
+	session Session,
+) error {
+
+	req := &protos.TDestroySessionRequest{
+		FileSystemId: session.FileSystemID,
+		Headers: &protos.THeaders{
+			SessionSeqNo: session.SessionSeqNo,
+			SessionId:    []byte(session.SessionID),
+		},
+	}
+	_, err := client.Impl.DestroySession(ctx, req)
+	return err
+}
+
+func (client *Client) ListNodes(
+	ctx context.Context,
+	session Session,
+	nodeID uint64,
+	cookie string,
+) ([]Node, string, error) {
+
+	req := &protos.TListNodesRequest{
+		FileSystemId: session.FileSystemID,
+		NodeId:       nodeID,
+		Cookie:       []byte(cookie),
+		Headers: &protos.THeaders{
+			SessionSeqNo: session.SessionSeqNo,
+			SessionId:    []byte(session.SessionID),
+		},
+	}
+
+	resp, err := client.Impl.ListNodes(ctx, req)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if len(resp.GetNames()) != len(resp.GetNodes()) {
+		return nil, "", errors.NewNonRetriableErrorf(
+			"ListNodes: got %d names, but only %d nodes",
+			len(resp.GetNames()),
+			len(resp.GetNodes()),
+		)
+	}
+
+	nodes := resp.GetNodes()
+	result := make([]Node, len(nodes))
+	for idx, name := range resp.GetNames() {
+		result[idx] = Node{
+			ParentID: nodeID,
+			NodeID:   nodes[idx].GetId(),
+			Name:     string(name),
+			Atime:    nodes[idx].GetATime(),
+			Mtime:    nodes[idx].GetMTime(),
+			Ctime:    nodes[idx].GetCTime(),
+			Size:     nodes[idx].GetSize(),
+			Mode:     nodes[idx].GetMode(),
+			UID:      uint64(nodes[idx].GetUid()),
+			GID:      uint64(nodes[idx].GetGid()),
+			Type:     NodeType(nodes[idx].GetType()),
+		}
+	}
+
+	return result, string(resp.GetCookie()), nil
+}
+
+func (client *Client) CreateNode(
+	ctx context.Context,
+	session Session,
+	node Node,
+) (uint64, error) {
+
+	req := &protos.TCreateNodeRequest{
+		NodeId:       node.ParentID,
+		Name:         []byte(node.Name),
+		FileSystemId: session.FileSystemID,
+		Uid:          node.UID,
+		Gid:          node.GID,
+		Headers: &protos.THeaders{
+			SessionSeqNo: session.SessionSeqNo,
+			SessionId:    []byte(session.SessionID),
+		},
+	}
+
+	switch node.Type {
+	case NODE_KIND_FILE:
+		req.Params = &protos.TCreateNodeRequest_File{
+			File: &protos.TCreateNodeRequest_TFile{
+				Mode: node.Mode,
+			},
+		}
+	case NODE_KIND_DIR:
+		req.Params = &protos.TCreateNodeRequest_Directory{
+			Directory: &protos.TCreateNodeRequest_TDirectory{
+				Mode: node.Mode,
+			},
+		}
+	case NODE_KIND_SOCK:
+		req.Params = &protos.TCreateNodeRequest_Socket{
+			Socket: &protos.TCreateNodeRequest_TSocket{
+				Mode: node.Mode,
+			},
+		}
+	case NODE_KIND_SYMLINK:
+		req.Params = &protos.TCreateNodeRequest_SymLink{
+			SymLink: &protos.TCreateNodeRequest_TSymLink{
+				TargetPath: []byte(node.LinkTarget),
+			},
+		}
+	case NODE_KIND_LINK:
+		req.Params = &protos.TCreateNodeRequest_Link{
+			Link: &protos.TCreateNodeRequest_TLink{
+				TargetNode: node.NodeID,
+			},
+		}
+	}
+
+	resp, err := client.Impl.CreateNode(ctx, req)
+	if err != nil {
+		return 0, err
+	}
+
+	return resp.GetNode().GetId(), nil
+}
+
+func (client *Client) ReadLink(
+	ctx context.Context,
+	session Session,
+	nodeID uint64,
+) ([]byte, error) {
+
+	req := &protos.TReadLinkRequest{
+		NodeId:       nodeID,
+		FileSystemId: session.FileSystemID,
+		Headers: &protos.THeaders{
+			SessionSeqNo: session.SessionSeqNo,
+			SessionId:    []byte(session.SessionID),
+		},
+	}
+
+	resp, err := client.Impl.ReadLink(ctx, req)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return resp.GetSymLink(), nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
