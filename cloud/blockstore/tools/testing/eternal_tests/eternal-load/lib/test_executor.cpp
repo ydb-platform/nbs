@@ -1,7 +1,5 @@
 #include "test_executor.h"
 
-#include <atomic>
-
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
@@ -18,6 +16,8 @@
 #include <util/system/info.h>
 #include <util/thread/lfstack.h>
 
+#include <atomic>
+
 namespace NCloud::NBlockStore::NTesting {
 
 namespace {
@@ -29,7 +29,7 @@ using namespace NThreading;
 class TTestExecutor: public ITestExecutor
 {
 private:
-    class TContext;
+    class TWorkerService;
 
     const TInstant TestStartTimestamp;
     ITestScenarioPtr TestScenario;
@@ -40,8 +40,8 @@ private:
     std::atomic_bool Failed = false;
     TPromise<void> StopPromise = NewPromise();
 
-    TVector<std::unique_ptr<TContext>> Contexts;
-    TLockFreeStack<TContext*> ReadyContexts;
+    TVector<std::unique_ptr<TWorkerService>> WorkerServices;
+    TLockFreeStack<TWorkerService*> ReadyWorkerServices;
 
     const TLog Log;
 
@@ -57,17 +57,17 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestExecutor::TContext: public ITestThreadContext
+class TTestExecutor::TWorkerService: public ITestExecutorIOService
 {
 private:
-    TTestExecutor& TestExecutor;
-    ITestScenarioThread& TestThread;
+    TTestExecutor& Executor;
+    ITestScenarioWorker& Worker;
     TPromise<void> StopPromise = NewPromise();
     std::atomic_int PendingRequestCount = 0;
     int RequestCount = 0;
 
 public:
-    TContext(TTestExecutor& testExecutor, ITestScenarioThread& testThread);
+    TWorkerService(TTestExecutor& executor, ITestScenarioWorker& worker);
 
     void Run();
     void Wait();
@@ -107,9 +107,11 @@ TTestExecutor::TTestExecutor(
 {
     File.Resize(static_cast<i64>(settings.FileSize));
 
-    for (ui32 i = 0; i < TestScenario->GetThreadCount(); i++) {
-        Contexts.push_back(
-            std::make_unique<TContext>(*this, TestScenario->GetThread(i)));
+    for (ui32 i = 0; i < TestScenario->GetWorkerCount(); i++) {
+        WorkerServices.push_back(
+            std::make_unique<TWorkerService>(
+                *this,
+                TestScenario->GetWorker(i)));
     }
 }
 
@@ -123,8 +125,8 @@ bool TTestExecutor::Run()
 
     FileService->Start();
 
-    for (auto& context: Contexts) {
-        context->Run();
+    for (auto& service: WorkerServices) {
+        service->Run();
     }
 
     RunMainThread();
@@ -153,33 +155,33 @@ void TTestExecutor::Fail(TStringBuf message)
 
 void TTestExecutor::RunMainThread()
 {
-    TVector<TContext*> contextsToRun;
+    TVector<TWorkerService*> servicesToRun;
 
     while (!ShouldStop) {
-        contextsToRun.clear();
-        ReadyContexts.DequeueAllSingleConsumer(&contextsToRun);
-        for (auto* context: contextsToRun) {
-            context->Run();
+        servicesToRun.clear();
+        ReadyWorkerServices.DequeueAllSingleConsumer(&servicesToRun);
+        for (auto* service: servicesToRun) {
+            service->Run();
         }
     }
 
-    while (contextsToRun.size() < Contexts.size()) {
-        ReadyContexts.DequeueAllSingleConsumer(&contextsToRun);
+    while (servicesToRun.size() < WorkerServices.size()) {
+        ReadyWorkerServices.DequeueAllSingleConsumer(&servicesToRun);
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TTestExecutor::TContext::TContext(
-        TTestExecutor& testExecutor,
-        ITestScenarioThread& testThread)
-    : TestExecutor(testExecutor)
-    , TestThread(testThread)
+TTestExecutor::TWorkerService::TWorkerService(
+        TTestExecutor& executor,
+        ITestScenarioWorker& worker)
+    : Executor(executor)
+    , Worker(worker)
 {}
 
-void TTestExecutor::TContext::Run()
+void TTestExecutor::TWorkerService::Run()
 {
-    if (TestExecutor.ShouldStop) {
+    if (Executor.ShouldStop) {
         StopPromise.SetValue();
         return;
     }
@@ -192,22 +194,22 @@ void TTestExecutor::TContext::Run()
     RequestCount = 0;
     PendingRequestCount = 1;
 
-    auto testDuration = Now() - TestExecutor.TestStartTimestamp;
-    TestThread.Run(testDuration.SecondsFloat(), *this);
+    auto testDuration = Now() - Executor.TestStartTimestamp;
+    Worker.Run(testDuration.SecondsFloat(), *this);
 
     Y_ABORT_UNLESS(
         RequestCount > 0,
-        "Test thread should make at least one request");
+        "Test worker should make at least one request");
 
     HandleRequest();
 }
 
-void TTestExecutor::TContext::Wait()
+void TTestExecutor::TWorkerService::Wait()
 {
     StopPromise.GetFuture().Wait();
 }
 
-void TTestExecutor::TContext::HandleRequest()
+void TTestExecutor::TWorkerService::HandleRequest()
 {
     auto prev = PendingRequestCount--;
     Y_ABORT_UNLESS(prev > 0, "There are no unhandled requests");
@@ -216,20 +218,20 @@ void TTestExecutor::TContext::HandleRequest()
         return;
     }
 
-    TestExecutor.ReadyContexts.Enqueue(this);
+    Executor.ReadyWorkerServices.Enqueue(this);
 }
 
-void TTestExecutor::TContext::Stop()
+void TTestExecutor::TWorkerService::Stop()
 {
-    TestExecutor.Stop();
+    Executor.Stop();
 }
 
-void TTestExecutor::TContext::Fail(TStringBuf message)
+void TTestExecutor::TWorkerService::Fail(TStringBuf message)
 {
-    TestExecutor.Fail(message);
+    Executor.Fail(message);
 }
 
-void TTestExecutor::TContext::Read(
+void TTestExecutor::TWorkerService::Read(
     void* buffer,
     ui32 count,
     ui64 offset,
@@ -238,8 +240,8 @@ void TTestExecutor::TContext::Read(
     RequestCount++;
     PendingRequestCount++;
 
-    TestExecutor.FileService->AsyncRead(
-        TestExecutor.File,
+    Executor.FileService->AsyncRead(
+        Executor.File,
         static_cast<i64>(offset),
         TArrayRef(static_cast<char*>(buffer), count),
         [this, count, callback = std::move(callback)](
@@ -247,10 +249,10 @@ void TTestExecutor::TContext::Read(
             ui32 value)
         {
             if (HasError(error)) {
-                TestExecutor.Fail(
+                Executor.Fail(
                     "Can't read from file: " + error.GetMessage());
             } else if (value < count) {
-                TestExecutor.Fail(
+                Executor.Fail(
                     TStringBuilder() << "Read less than expected: " << value
                                      << " < " << count);
             } else {
@@ -260,7 +262,7 @@ void TTestExecutor::TContext::Read(
         });
 }
 
-void TTestExecutor::TContext::Write(
+void TTestExecutor::TWorkerService::Write(
     const void* buffer,
     ui32 count,
     ui64 offset,
@@ -269,8 +271,8 @@ void TTestExecutor::TContext::Write(
     RequestCount++;
     PendingRequestCount++;
 
-    TestExecutor.FileService->AsyncWrite(
-        TestExecutor.File,
+    Executor.FileService->AsyncWrite(
+        Executor.File,
         static_cast<i64>(offset),
         TArrayRef(static_cast<const char*>(buffer), count),
         [this, count, callback = std::move(callback)](
@@ -278,10 +280,10 @@ void TTestExecutor::TContext::Write(
             ui32 value)
         {
             if (HasError(error)) {
-                TestExecutor.Fail(
+                Executor.Fail(
                     "Can't write to file: " + error.GetMessage());
             } else if (value < count) {
-                TestExecutor.Fail(
+                Executor.Fail(
                     TStringBuilder() << "Written less than expected: " << value
                                      << " < " << count);
             } else {
@@ -493,7 +495,7 @@ struct TRange {
 class TAlignedBlockTestScenario: public ITestScenario
 {
 private:
-    using IContext = ITestThreadContext;
+    using IService = ITestExecutorIOService;
 
     const TInstant TestStartTimestamp;
     IConfigHolderPtr ConfigHolder;
@@ -502,7 +504,7 @@ private:
     ui32 WriteRate;
 
     TVector<TRange> Ranges;
-    TVector<std::unique_ptr<ITestScenarioThread>> Threads;
+    TVector<std::unique_ptr<ITestScenarioWorker>> Workers;
 
     TLog Log;
 
@@ -512,30 +514,30 @@ private:
     void DoRequest(
         ui16 rangeIdx,
         double secondsSinceTestStart,
-        IContext& context);
+        IService& service);
 
-    void DoWriteRequest(ui16 rangeIdx, IContext& context);
-    void DoReadRequest(ui16 rangeIdx, IContext& context);
+    void DoWriteRequest(ui16 rangeIdx, IService& service);
+    void DoReadRequest(ui16 rangeIdx, IService& service);
 
     void OnResponse(
         TInstant startTs,
         ui16 rangeIdx,
         TStringBuf reqType,
-        IContext& context);
+        IService& service);
 
-    struct TThread: public ITestScenarioThread
+    struct TWorker: public ITestScenarioWorker
     {
         TAlignedBlockTestScenario* Scenario;
         ui32 Index;
 
-        TThread(TAlignedBlockTestScenario* testExecutor, ui32 index)
-            : Scenario(testExecutor)
+        TWorker(TAlignedBlockTestScenario* scenario, ui32 index)
+            : Scenario(scenario)
             , Index(index)
         {}
 
-        void Run(double secondsSinceTestStart, IContext& context) final
+        void Run(double secondsSinceTestStart, IService& service) final
         {
-            Scenario->DoRequest(Index, secondsSinceTestStart, context);
+            Scenario->DoRequest(Index, secondsSinceTestStart, service);
         }
     };
 
@@ -551,7 +553,7 @@ public:
             Ranges.emplace_back(
                 rangeConfig,
                 rangeConfig.GetRequestBlockCount() * config.GetBlockSize());
-            Threads.push_back(std::make_unique<TThread>(this, i));
+            Workers.push_back(std::make_unique<TWorker>(this, i));
         }
 
         SlowRequestThreshold = TDuration::Parse(config.GetSlowRequestThreshold());
@@ -564,14 +566,14 @@ public:
         WriteRate = config.GetWriteRate();
     }
 
-    ui32 GetThreadCount() const final
+    ui32 GetWorkerCount() const final
     {
-        return static_cast<ui32>(Threads.size());
+        return static_cast<ui32>(Workers.size());
     }
 
-    ITestScenarioThread& GetThread(ui32 index) const final
+    ITestScenarioWorker& GetWorker(ui32 index) const final
     {
-        return *Threads[index];
+        return *Workers[index];
     }
 };
 
@@ -580,7 +582,7 @@ public:
 void TAlignedBlockTestScenario::DoRequest(
     ui16 rangeIdx,
     double secondsSinceTestStart,
-    IContext& context)
+    IService& service)
 {
     auto writeRate = WriteRate;
     if (PhaseDuration) {
@@ -591,9 +593,9 @@ void TAlignedBlockTestScenario::DoRequest(
     }
 
     if (RandomNumber(100u) >= writeRate) {
-        DoReadRequest(rangeIdx, context);
+        DoReadRequest(rangeIdx, service);
     } else {
-        DoWriteRequest(rangeIdx, context);
+        DoWriteRequest(rangeIdx, service);
     }
 }
 
@@ -601,7 +603,7 @@ void TAlignedBlockTestScenario::OnResponse(
     TInstant startTs,
     ui16 rangeIdx,
     TStringBuf reqType,
-    IContext& context)
+    IService& service)
 {
     if (reqType == "write") {
         const i64 maxRequestCount =
@@ -609,7 +611,7 @@ void TAlignedBlockTestScenario::OnResponse(
         if (maxRequestCount &&
             AtomicIncrement(WriteRequestsCompleted) >= maxRequestCount)
         {
-            context.Stop();
+            service.Stop();
         }
     }
 
@@ -623,7 +625,7 @@ void TAlignedBlockTestScenario::OnResponse(
 
 void TAlignedBlockTestScenario::DoReadRequest(
     ui16 rangeIdx,
-    IContext& context)
+    IService& service)
 {
     auto& range = Ranges[rangeIdx];
     // https://stackoverflow.com/questions/46114214/lambda-implicit-capture-fails-with-variable-declared-from-structured-binding
@@ -636,9 +638,9 @@ void TAlignedBlockTestScenario::DoReadRequest(
     const auto startTs = Now();
 
     auto readHandler =
-        [this, startTs, blockIdx, rangeIdx, expected, &context]() mutable
+        [this, startTs, blockIdx, rangeIdx, expected, &service]() mutable
     {
-        OnResponse(startTs, rangeIdx, "read", context);
+        OnResponse(startTs, rangeIdx, "read", service);
 
         if (!expected) {
             return;
@@ -654,7 +656,7 @@ void TAlignedBlockTestScenario::DoReadRequest(
             if (blockData.RequestNumber != *expected ||
                 blockData.PartNumber != part)
             {
-                context.Fail(
+                service.Fail(
                     TStringBuilder()
                     << "[" << rangeIdx << "] Wrong data in block "
                     << blockIdx
@@ -665,7 +667,7 @@ void TAlignedBlockTestScenario::DoReadRequest(
         }
     };
 
-    context.Read(
+    service.Read(
         range.Data(),
         range.DataSize(),
         blockIdx * blockSize,
@@ -674,7 +676,7 @@ void TAlignedBlockTestScenario::DoReadRequest(
 
 void TAlignedBlockTestScenario::DoWriteRequest(
     ui16 rangeIdx,
-    IContext& context)
+    IService& service)
 {
     auto& range = Ranges[rangeIdx];
 
@@ -698,13 +700,13 @@ void TAlignedBlockTestScenario::DoWriteRequest(
         blockData.Checksum = Crc32c(&blockData, sizeof(blockData));
         ui64 partOffset = part * partSize;
         memcpy(range.Data(partOffset), &blockData, sizeof(blockData));
-        context.Write(
+        service.Write(
             range.Data(partOffset),
             partSize,
             blockIdx * blockSize + partOffset,
-            [this, startTs, rangeIdx, &context]() mutable
+            [this, startTs, rangeIdx, &service]() mutable
             {
-                OnResponse(startTs, rangeIdx, "write", context);
+                OnResponse(startTs, rangeIdx, "write", service);
             });
     }
 }
@@ -735,7 +737,7 @@ ITestExecutorPtr CreateTestExecutor(
         std::move(settings),
         std::make_shared<TAsyncIoFileService>(
             0,
-            settings.TestScenario->GetThreadCount()));
+            settings.TestScenario->GetWorkerCount()));
 }
 
 }   // namespace NCloud::NBlockStore::NTesting

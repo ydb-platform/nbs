@@ -2,13 +2,13 @@
 
 #include "public.h"
 
-#include <functional>
-
 #include <library/cpp/logger/log.h>
 
 #include <util/generic/string.h>
 #include <util/system/file.h>
 #include <util/system/types.h>
+
+#include <functional>
 
 namespace NCloud::NBlockStore::NTesting {
 
@@ -18,12 +18,12 @@ namespace NCloud::NBlockStore::NTesting {
 * Runs a test scenario until Stop is requested.
 *
 * A test scenario is represented by a collection of concurrently executed
-* logical threads.
+* workers.
 *
-* Each thread is executed repeatedly by calling ITestThread::Run.
+* Each worker is executed repeatedly by calling ITestScenarioWorker::Run.
 * It should initiate one or several read or write requests via the provided
-* context object.
-* Next call of ITestThread::Run is made when all the requests are handled.
+* service object. Next call of ITestScenarioWorker::Run is made when all
+* the requests are completed and handled.
 */
 struct ITestExecutor
 {
@@ -40,11 +40,11 @@ using ITestExecutorPtr = std::shared_ptr<ITestExecutor>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ITestThreadContext
+struct ITestExecutorIOService
 {
     using TCallback = std::function<void()>;
 
-    virtual ~ITestThreadContext() = default;
+    virtual ~ITestExecutorIOService() = default;
 
     // Initiates an asynchronous read operation and calls the callback when
     // the operation is completed successfully.
@@ -64,22 +64,24 @@ struct ITestThreadContext
         ui64 offset,
         TCallback callback) = 0;
 
+    // Gracefully stop the scenario
     virtual void Stop() = 0;
 
+    // Stop and write the error message
     virtual void Fail(TStringBuf message) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// It doesn't necessary correspond to a real thread and instead is considered
-// as a logical thread. The Run method can be called from any thread.
-struct ITestScenarioThread
+// Workers are run concurrently - Run method and callbacks passed to
+// ITestExecutorIOService::Read and Write can be called from any thread.
+struct ITestScenarioWorker
 {
-    virtual ~ITestScenarioThread() = default;
+    virtual ~ITestScenarioWorker() = default;
 
     virtual void Run(
         double secondsSinceTestStart,
-        ITestThreadContext& context) = 0;
+        ITestExecutorIOService& service) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -94,9 +96,9 @@ struct ITestScenario
         return true;
     }
 
-    virtual ui32 GetThreadCount() const = 0;
+    virtual ui32 GetWorkerCount() const = 0;
 
-    virtual ITestScenarioThread& GetThread(ui32 index) const = 0;
+    virtual ITestScenarioWorker& GetWorker(ui32 index) const = 0;
 };
 
 using ITestScenarioPtr = std::shared_ptr<ITestScenario>;
