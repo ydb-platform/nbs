@@ -497,9 +497,6 @@ message TDestroyVolumeRequest
 
     // Delete requests with incorrect FillGeneration will be rejected.
     uint64 FillGeneration = 6;
-
-    // Use the exact name, do not delete the copied volume with a mangled name.
-    bool UseStrictDiskId = 7;
 }
 
 message TDestroyVolumeResponse

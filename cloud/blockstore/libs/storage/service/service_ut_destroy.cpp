@@ -48,7 +48,7 @@ void CreateSimpleSsdNonreplDisk(TServiceClient& service, const TString& diskId)
         NProto::TEncryptionSpec());
 }
 
-bool IsPathNotExistsError(const NProto::TError& error)
+bool IsPathDoesNotExistsError(const NProto::TError& error)
 {
     if (HasError(error) &&
         FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD)
@@ -455,7 +455,7 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             false,   // destroyIfBroken
             false,   // sync
             0,       // fillGeneration
-            false    // useStrictDiskId
+            false    // exactDiskIdMatch
         );
 
         // adjust time to trigger pipe connection destroy
@@ -475,16 +475,18 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             GetSecondaryDiskId(diskId),
             response->Record.GetVolume().GetDiskId());
 
-        // Destroying primary volume should't touch secondary volume when useStrictDiskId is set
+        // Destroying primary volume should't touch secondary volume when
+        // exactDiskIdMatch is set
         service.DestroyVolume(
             diskId,
             false,   // destroyIfBroken
             false,   // sync
             0,       // fillGeneration
-            true     // useStrictDiskId
+            true     // exactDiskIdMatch
         );
 
-        // Primary and secondary volume should be described as secondary since secondary alive
+        // Primary and secondary volume should be described as secondary since
+        // secondary alive
         response = service.DescribeVolume(diskId);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -497,28 +499,30 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             GetSecondaryDiskId(diskId),
             response->Record.GetVolume().GetDiskId());
 
-        // Destroy secondary volume using primary diskId (UseStrictDiskId is not set)
+        // Destroy secondary volume using primary diskId (exactDiskIdMatch is
+        // not set)
         service.DestroyVolume(
             diskId,
             false,   // destroyIfBroken
             false,   // sync
             0,       // fillGeneration
-            false    // useStrictDiskId
+            false    // exactDiskIdMatch
         );
 
-        // Both volumes should be deleted and described as StatusPathDoesNotExist
+        // Both volumes should be deleted and described as
+        // StatusPathDoesNotExist
         service.SendDescribeVolumeRequest(diskId);
         response = service.RecvDescribeVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             true,
-            IsPathNotExistsError(response->GetError()),
+            IsPathDoesNotExistsError(response->GetError()),
             FormatError(response->GetError()));
 
         service.SendDescribeVolumeRequest(GetSecondaryDiskId(diskId));
         response = service.RecvDescribeVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             true,
-            IsPathNotExistsError(response->GetError()),
+            IsPathDoesNotExistsError(response->GetError()),
             FormatError(response->GetError()));
     }
 }

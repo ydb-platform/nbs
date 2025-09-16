@@ -27,8 +27,16 @@ class TDestroyVolumeActor final
 public:
     enum class EDiskIdTolerance
     {
-        AllowMangled,
-        StrictMatch,
+        AllowMangled,   // Allows the deletion of a copied disk whose name
+                        // differs by a suffix. For example, disk-1 was copied
+                        // and disk1-copy is now replacing disk-1, then
+                        // disk-1-copy will be deleted.
+
+        StrictMatch,   // Deletes only the disk that exactly matches the name.
+                       // For example, disk-1 was copied and disk1-copy is now
+                       // replacing disk-1, then disk-1-copy will not be
+                       // deleted. To delete disk-1-copy, you need to pass
+                       // disk-1-copy.
     };
 
 private:
@@ -378,18 +386,29 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
-    if (msg->Record.GetVolume().GetDiskId() &&
-        msg->Record.GetVolume().GetDiskId() != DiskId)
-    {
+    const auto diskId = msg->Record.GetVolume().GetDiskId();
+    if (diskId && diskId != DiskId) {
         switch (DiskIdTolerance) {
             case EDiskIdTolerance::AllowMangled: {
+                if (!diskId.StartsWith(DiskId)) {
+                    auto message = TStringBuilder()
+                                   << "Strange substituted disk "
+                                   << diskId.Quote() << " has been found for "
+                                   << DiskId.Quote();
+                    LOG_ERROR(
+                        ctx,
+                        TBlockStoreComponents::SERVICE,
+                        message.c_str());
+                    ReplyAndDie(ctx, MakeError(S_FALSE, message));
+                    return;
+                }
                 LOG_WARN(
                     ctx,
                     TBlockStoreComponents::SERVICE,
-                    "Volume %s is not exist. Substituted by %s",
+                    "Volume %s does not exist. Delete substituted %s instead",
                     DiskId.Quote().c_str(),
-                    msg->Record.GetVolume().GetDiskId().Quote().c_str());
-                DiskId = msg->Record.GetVolume().GetDiskId();
+                    diskId.Quote().c_str());
+                DiskId = diskId;
                 break;
             }
             case EDiskIdTolerance::StrictMatch: {
@@ -397,10 +416,8 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
                     ctx,
                     MakeError(
                         S_ALREADY,
-                        TStringBuilder()
-                            << "volume not found (but "
-                            << msg->Record.GetVolume().GetDiskId().Quote()
-                            << " exists)"));
+                        TStringBuilder() << "Volume not found (but "
+                                         << diskId.Quote() << " exists)"));
                 return;
             }
         }
@@ -546,7 +563,7 @@ void TServiceActor::HandleDestroyVolume(
     const auto& request = msg->Record;
     const auto& diskId = request.GetDiskId();
     auto diskIdTolerance =
-        request.GetUseStrictDiskId()
+        request.GetHeaders().GetExactDiskIdMatch()
             ? TDestroyVolumeActor::EDiskIdTolerance::StrictMatch
             : TDestroyVolumeActor::EDiskIdTolerance::AllowMangled;
     const bool destroyIfBroken = request.GetDestroyIfBroken();
