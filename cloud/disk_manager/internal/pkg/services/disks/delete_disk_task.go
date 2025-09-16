@@ -65,19 +65,10 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	if diskMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			diskID,
-		)
+		return nil
 	}
 
 	zoneID := diskMeta.ZoneID
-	if len(zoneID) == 0 {
-		zoneID = t.request.Disk.ZoneId
-	}
-	if len(zoneID) == 0 {
-		return t.storage.DiskDeleted(ctx, diskID, time.Now())
-	}
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
@@ -117,7 +108,7 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	// Only overlay disks (created from image) should be released.
-	if len(diskMeta.SrcImageID) != 0 {
+	if diskMeta != nil && len(diskMeta.SrcImageID) != 0 {
 		taskID, err = t.poolService.ReleaseBaseDisk(
 			headers.SetIncomingIdempotencyKey(
 				ctx,

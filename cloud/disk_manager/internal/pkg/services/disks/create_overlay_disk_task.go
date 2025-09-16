@@ -150,7 +150,7 @@ func (t *createOverlayDiskTask) Cancel(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	disk, err := t.storage.DeleteDisk(
+	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		overlayDisk.DiskId,
 		selfTaskID,
@@ -160,11 +160,8 @@ func (t *createOverlayDiskTask) Cancel(
 		return err
 	}
 
-	if disk == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			overlayDisk.DiskId,
-		)
+	if diskMeta == nil {
+		return nil
 	}
 
 	err = client.Delete(ctx, overlayDisk.DiskId)
