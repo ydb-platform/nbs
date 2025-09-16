@@ -539,10 +539,12 @@ void TStorageServiceActor::HandleWriteData(
         msg->Record.GetBuffer().size(),
         blockSize);
     const bool threeStageWriteEnabled =
-        range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold()
-        && threeStageWriteAllowed
-        && (range.IsAligned()
-                || StorageConfig->GetUnalignedThreeStageWriteEnabled());
+        range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold() &&
+        threeStageWriteAllowed &&
+        (range.IsAligned() ||
+         StorageConfig->GetUnalignedThreeStageWriteEnabled()) &&
+        range.AlignedSubRange().Length > 0;
+
     if (threeStageWriteEnabled) {
         auto logTag = filestore.GetFileSystemId();
         LOG_DEBUG(
