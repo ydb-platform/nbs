@@ -643,6 +643,8 @@ void TVolumeProxyActor::HandleRequest(
         {
             conn.State = RESOLVING;
             if (auto* baseDisk = BaseDiskIdToTabletId.FindPtr(diskId)) {
+                Y_ABORT_UNLESS(baseDisk->TabletId);
+
                 conn.TabletId = baseDisk->TabletId;
                 conn.IsConnectionToBaseDisk = true;
             }
