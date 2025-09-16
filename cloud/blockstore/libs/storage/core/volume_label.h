@@ -31,4 +31,7 @@ TString GetSecondaryDiskId(const TString& diskId);
 // Remove suffix of secondary disk if needed.
 TString GetLogicalDiskId(const TString& diskId);
 
+// Returns whether the diskId has a secondary disk suffix.
+bool IsSecondaryDiskId(const TString& diskId);
+
 }   // namespace NCloud::NBlockStore::NStorage

@@ -1,11 +1,13 @@
 #include "service_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/volume_label.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -386,29 +388,31 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
-    const auto diskId = msg->Record.GetVolume().GetDiskId();
-    if (diskId && diskId != DiskId) {
+    const auto foundDiskId = msg->Record.GetVolume().GetDiskId();
+    if (foundDiskId && foundDiskId != DiskId) {
         switch (DiskIdTolerance) {
             case EDiskIdTolerance::AllowMangled: {
-                if (!diskId.StartsWith(DiskId)) {
-                    auto message = TStringBuilder()
-                                   << "Strange substituted disk "
-                                   << diskId.Quote() << " has been found for "
-                                   << DiskId.Quote();
-                    LOG_ERROR(
+                if (GetLogicalDiskId(foundDiskId) != DiskId) {
+                    ReportLogicalDiskIdMismatch(
+                        {{"DiskId", DiskId}, {"substitute", foundDiskId}});
+
+                    ReplyAndDie(
                         ctx,
-                        TBlockStoreComponents::SERVICE,
-                        message.c_str());
-                    ReplyAndDie(ctx, MakeError(S_FALSE, message));
+                        MakeError(
+                            S_FALSE,
+                            TStringBuilder()
+                                << "Strange secondary disk "
+                                << foundDiskId.Quote() << " has been found for "
+                                << DiskId.Quote()));
                     return;
                 }
                 LOG_WARN(
                     ctx,
                     TBlockStoreComponents::SERVICE,
-                    "Volume %s does not exist. Delete substituted %s instead",
+                    "Volume %s does not exist. Delete secondary %s instead",
                     DiskId.Quote().c_str(),
-                    diskId.Quote().c_str());
-                DiskId = diskId;
+                    foundDiskId.Quote().c_str());
+                DiskId = foundDiskId;
                 break;
             }
             case EDiskIdTolerance::StrictMatch: {
@@ -417,7 +421,7 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
                     MakeError(
                         S_ALREADY,
                         TStringBuilder() << "Volume not found (but "
-                                         << diskId.Quote() << " exists)"));
+                                         << foundDiskId.Quote() << " exists)"));
                 return;
             }
         }

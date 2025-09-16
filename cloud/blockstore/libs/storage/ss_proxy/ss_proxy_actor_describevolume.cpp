@@ -24,15 +24,23 @@ constexpr TDuration Timeout = TDuration::Seconds(20);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Finds a disk in the SchemaShard by DiskId. The search starts with the
+// deprecated path naming scheme and then performed with the actual path naming
+// scheme. If a disk is not found, a disk with a "-copy" suffix in its name is
+// searched for.
 class TDescribeVolumeActor final
     : public TActorBootstrapped<TDescribeVolumeActor>
 {
 private:
     enum class EState
     {
-        DescribePrimaryDeprecated,
-        DescribePrimary,
-        DescribeSecondary,
+        DescribePrimaryDeprecated,   // Search in SchemeShard with an deprecated
+                                     // path
+
+        DescribePrimary,   // Search in SchemeShard with an actual path
+
+        DescribeSecondary,   // Describe SchemeShard for a disk with an actual
+                             // path and name with suffix "-copy"
     };
 
     const TRequestInfoPtr RequestInfo;
@@ -178,6 +186,9 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
                         return;
                     }
                     case EState::DescribePrimary: {
+                        if (IsSecondaryDiskId(DiskId)) {
+                            break;
+                        }
                         State = EState::DescribeSecondary;
                         DescribeVolume(ctx);
                         return;
