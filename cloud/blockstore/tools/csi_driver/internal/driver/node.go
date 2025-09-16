@@ -831,6 +831,8 @@ func (s *nodeService) GetGrpcErrorCode(err error) codes.Code {
 			return codes.Unavailable
 		case nbsclient.E_GRPC_DEADLINE_EXCEEDED, nfsclient.E_GRPC_DEADLINE_EXCEEDED:
 			return codes.DeadlineExceeded
+		case nbsclient.E_REJECTED, nfsclient.E_REJECTED:
+			return codes.Unavailable
 		}
 	}
 
