@@ -318,6 +318,8 @@ void InitProfileLogRequestInfo(
         nodeInfo->SetType(NProto::E_SOCK_NODE);
     } else if (request.HasSymLink()) {
         nodeInfo->SetType(NProto::E_SYMLINK_NODE);
+    } else if (request.HasFifo()) {
+        nodeInfo->SetType(NProto::E_FIFO_NODE);
     } else {
         nodeInfo->SetType(NProto::E_INVALID_NODE);
     }
