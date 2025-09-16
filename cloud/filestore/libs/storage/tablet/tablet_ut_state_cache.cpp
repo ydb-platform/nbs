@@ -98,7 +98,9 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         state.UpdateState(
             {TInMemoryIndexState::TDeleteNodeRequest{.NodeId = nodeId1}});
 
+        node.Clear();
         UNIT_ASSERT(!state.ReadNode(1, commitId1, node));
+        UNIT_ASSERT(node.Empty());
     }
 
     const TString attrName1 = "name1";
@@ -186,7 +188,9 @@ Y_UNIT_TEST_SUITE(TInMemoryIndexStateTest)
         state.UpdateState(
             {TInMemoryIndexState::TDeleteNodeAttrsRequest{nodeId1, attrName1}});
 
+        attr.Clear();
         UNIT_ASSERT(!state.ReadNodeAttr(nodeId1, commitId1, attrName1, attr));
+        UNIT_ASSERT(attr.Empty());
     }
 
     const TVector<TString> nodeNames = {"node1", "node2", "node3", "node4"};
@@ -421,9 +425,17 @@ namespace {
         };
 
         state.UpdateState({request});
-        state.MarkNodeRefsLoadComplete();
 
         TMaybe<IIndexTabletDatabase::TNodeRef> ref;
+        UNIT_ASSERT(state.ReadNodeRef(
+            request.NodeRefsKey.NodeId,
+            request.NodeRefsRow.CommitId,
+            request.NodeRefsKey.Name,
+            ref));
+        UNIT_ASSERT(ref.Defined());
+
+        state.MarkNodeRefsLoadComplete();
+
         UNIT_ASSERT(state.ReadNodeRef(
             request.NodeRefsKey.NodeId,
             request.NodeRefsRow.CommitId,
@@ -435,11 +447,13 @@ namespace {
             request.NodeRefsKey.NodeId,
             request.NodeRefsKey.Name}});
 
-        UNIT_ASSERT(!state.ReadNodeRef(
+        ref.Clear();
+        UNIT_ASSERT(state.ReadNodeRef(
             request.NodeRefsKey.NodeId,
             request.NodeRefsRow.CommitId,
             request.NodeRefsKey.Name,
             ref));
+        UNIT_ASSERT(ref.Empty());
     }
 }
 

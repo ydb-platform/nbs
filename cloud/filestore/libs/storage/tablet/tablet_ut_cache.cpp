@@ -1241,6 +1241,114 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         }
     }
 
+    Y_UNIT_TEST(ShouldUseCacheForNonExistentChildrenOfExhaustiveParents)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(10);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(10);
+        storageConfig.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(1);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test1"));
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test2"));
+        auto directoryId =
+            tablet.CreateNode(TCreateNodeArgs::Directory(RootNodeId, "test3"))
+                ->Record.GetNode()
+                .GetId();
+
+        tablet.InitSession("client", "session");
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // The first call to a non-existent child should be a cache miss since
+        // we do not know if its parent is exhaustive
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_FS_NOENT,
+                tablet.AssertGetNodeAttrFailed(RootNodeId, "non_existent")
+                    ->GetError()
+                    .GetCode());
+
+            // A single list should set the exhaustiveness flag for the
+            // RootNodeId node
+            UNIT_ASSERT_VALUES_EQUAL(
+                3,
+                tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodeRefsExhaustivenessCount);
+            statsBefore = statsAfter;
+        }
+
+        // All following calls to non-existent children should be cache hits as
+        // long as we know the parent is exhaustive
+        {
+            for (int i = 0; i < 10; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_FS_NOENT,
+                    tablet
+                        .AssertGetNodeAttrFailed(
+                            RootNodeId,
+                            "non_existent" + std::to_string(i))
+                        ->GetError()
+                        .GetCode());
+            }
+
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                10,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodeRefsExhaustivenessCount);
+            statsBefore = statsAfter;
+        }
+
+        // The second listing should evict the cache and all the following calls
+        // will be misses
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                tablet.ListNodes(directoryId)->Record.NodesSize());
+
+            for (int i = 0; i < 10; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_FS_NOENT,
+                    tablet
+                        .AssertGetNodeAttrFailed(
+                            RootNodeId,
+                            "non_existent" + std::to_string(i))
+                        ->GetError()
+                        .GetCode());
+            }
+
+            auto statsAfter = GetTxStats(env, tablet);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                11,
+                statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, statsAfter.NodeRefsExhaustivenessCount);
+            statsBefore = statsAfter;
+        }
+    }
+
     Y_UNIT_TEST(ShouldCalculateCacheCapacityBasedOnRatio)
     {
         NProto::TStorageConfig storageConfig;
