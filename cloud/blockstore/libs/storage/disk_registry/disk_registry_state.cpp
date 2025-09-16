@@ -4295,6 +4295,8 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
     placementGroups = PlacementGroups.size();
 
+    ui64 freshDevices = 0;
+
     for (auto& [_, pg]: PlacementGroups) {
         allocatedDisksInGroups += pg.Config.DisksSize();
 
@@ -4340,6 +4342,8 @@ void TDiskRegistryState::PublishCounters(TInstant now)
                 pg.BiggestDiskId = diskInfo.GetDiskId();
                 pg.BiggestDiskSize = diskSize;
             }
+
+            freshDevices += ReplicaTable.GetDevicesReplacementsCount(diskInfo.GetDiskId());
         }
 
         if (!logicalBlockSize) {
@@ -4449,6 +4453,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.AllocatedBytes->Set(allocatedBytes);
     SelfCounters.AllocatedDevices->Set(allocatedDevices);
     SelfCounters.DirtyDevices->Set(dirtyDevices);
+    SelfCounters.FreshDevices->Set(freshDevices);
     SelfCounters.UnknownDevices->Set(unknownDevices);
     SelfCounters.DevicesInOnlineState->Set(devicesInOnlineState);
     SelfCounters.DevicesInWarningState->Set(devicesInWarningState);

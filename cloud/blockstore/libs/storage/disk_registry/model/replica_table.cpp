@@ -277,6 +277,26 @@ TVector<TString> TReplicaTable::GetDevicesReplacements(
     return devicesReplacements;
 }
 
+ui32 TReplicaTable::GetDevicesReplacementsCount(const TDiskId& diskId) const
+{
+    const auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        return 0;
+    }
+
+    ui32 devicesReplacementsCount = 0;
+
+    for (const auto& row: disk->Rows) {
+        for (const auto& deviceInfo: row) {
+            if (deviceInfo.IsReplacement) {
+                devicesReplacementsCount++;
+            }
+        }
+    }
+
+    return devicesReplacementsCount;
+}
+
 bool TReplicaTable::IsReplacementDevice(
     const TDiskId& diskId,
     const TDeviceId& deviceId) const
