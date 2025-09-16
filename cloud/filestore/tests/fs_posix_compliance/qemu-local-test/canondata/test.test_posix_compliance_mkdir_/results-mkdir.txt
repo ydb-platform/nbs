@@ -108,9 +108,9 @@ ok 6 (line: 19)
 ok 7 (line: 21)
 ok 8 (line: 22)
 ok 9 (line: 23)
-ok 10 (line: 25)
-ok 11 (line: 26)
-ok 12 (line: 27)
+not ok 10 (line: 25)
+not ok 11 (line: 26)
+not ok 12 (line: 27)
 TEST SUITE[mkdir, 11.t] 1..1
 ok 1
 TEST SUITE[mkdir, 12.t] 1..2

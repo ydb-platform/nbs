@@ -437,8 +437,6 @@ static unsigned int call_syscall(struct syscall_desc* scall, char* argv[])
                 rval = open(STR(0), flags);
             }
             break;
-        case ACTION_MKFIFO:
-        // So far not supported by NFS
         case ACTION_CREATE:
             rval = open(STR(0), O_CREAT | O_EXCL, NUM(1));
             if (rval >= 0) {
@@ -462,6 +460,9 @@ static unsigned int call_syscall(struct syscall_desc* scall, char* argv[])
             break;
         case ACTION_RENAME:
             rval = rename(STR(0), STR(1));
+            break;
+        case ACTION_MKFIFO:
+            rval = mkfifo(STR(0), NUM(1));
             break;
         case ACTION_CHMOD:
             rval = chmod(STR(0), NUM(1));
