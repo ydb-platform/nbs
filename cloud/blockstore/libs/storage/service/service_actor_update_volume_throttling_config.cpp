@@ -20,11 +20,13 @@ class TUpdateVolumeThrottlingConfigActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const NProto::TUpdateVolumeThrottlingConfigRequest Request;
+    const TDuration RequestTimeout;
 
 public:
     TUpdateVolumeThrottlingConfigActor(
         TRequestInfoPtr requestInfo,
-        NProto::TUpdateVolumeThrottlingConfigRequest request);
+        NProto::TUpdateVolumeThrottlingConfigRequest request,
+        TDuration requestTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -49,9 +51,11 @@ private:
 
 TUpdateVolumeThrottlingConfigActor::TUpdateVolumeThrottlingConfigActor(
     TRequestInfoPtr requestInfo,
-    NProto::TUpdateVolumeThrottlingConfigRequest request)
+    NProto::TUpdateVolumeThrottlingConfigRequest request,
+    TDuration requestTimeout)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
+    , RequestTimeout(requestTimeout)
 {}
 
 void TUpdateVolumeThrottlingConfigActor::Bootstrap(const TActorContext& ctx)
@@ -68,6 +72,8 @@ void TUpdateVolumeThrottlingConfigActor::Bootstrap(const TActorContext& ctx)
         MakeVolumeThrottlingManagerServiceId(),
         std::move(request),
         RequestInfo->Cookie);
+
+    NCloud::Schedule<TEvents::TEvWakeup>(ctx, RequestTimeout);
 }
 
 void TUpdateVolumeThrottlingConfigActor::ReplyAndDie(
@@ -142,15 +148,29 @@ void TServiceActor::HandleUpdateVolumeThrottlingConfig(
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
+    if (!Config->GetVolumeThrottlingManagerEnabled()) {
+        auto error = MakeError(E_FAIL, "VolumeThrottlingManager is disabled");
+        auto response = std::make_unique<
+            TEvService::TEvUpdateVolumeThrottlingConfigResponse>(
+            std::move(error));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::SERVICE,
         "Update Volume Throttling Manager config");
 
+    // Volume Throttling Manager notification period serves as request timeout
+    auto requestTimeout =
+        Config->GetVolumeThrottlingManagerNotificationPeriodSeconds();
+
     NCloud::Register<TUpdateVolumeThrottlingConfigActor>(
         ctx,
         std::move(requestInfo),
-        msg->Record);
+        msg->Record,
+        requestTimeout);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
