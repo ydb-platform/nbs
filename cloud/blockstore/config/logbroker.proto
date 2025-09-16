@@ -14,7 +14,18 @@ message TLogbrokerConfig
         PROTOCOL_PQ0 = 1;
         PROTOCOL_TOPIC_API = 2;
     };
-    
+
+    message TIamJwtFile
+    {
+        optional string IamEndpoint = 1;
+        optional string JwtFilename = 2;
+    }
+
+    message TIamMetadataServer
+    {
+        optional string Endpoint = 1;
+    };
+
     optional string Address = 1;
     optional uint32 Port = 2;
     optional string Database = 3;
@@ -24,7 +35,13 @@ message TLogbrokerConfig
     optional string Topic = 6;
     optional string SourceId = 7;
 
-    optional string MetadataServerAddress = 8;
+    // use AuthConfig.IamMetadataServer instead
+    optional string MetadataServerAddress = 8 [deprecated = true];
 
     optional EProtocol Protocol = 9;
+
+    oneof AuthConfig {
+        TIamJwtFile IamJwtFile = 10;
+        TIamMetadataServer IamMetadataServer = 11;
+    };
 }
