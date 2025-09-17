@@ -152,8 +152,6 @@ The backup process should be separated into the following stages:
 * Checkpoint creation
 * Database record creation
 * Node hierarсhy backup
-* Node hierarchy topological sort
-* File attributes backup
 * Data backup.
 
 
@@ -192,105 +190,40 @@ After the controlplane record is created, almost identical database entry for co
 ### 🌳 Node hierarсhy backup
 
 
-Since `NodeRefs` table is indexed by the pair of (`NodeId`, `Name`), we can't efficiently parallel `NodeRefs` backup (we can't split data by some value, since names can vary greatly and to know names distribution we still will need to scan the whole table).
-The proposed approach for the `dataplane.BackupNodeReferences` task would be to implement `readnoderefs` action, which would have the following protobuf spec:
-```proto
-
-message TReadNodeRefsRequest
-{
-    // FileSystem identifier.
-    string FileSystemId = 1;
-    // Parent node ID, we select nodes with parent node id greater
-    // to the one in the request.
-    uint64 NodeId = 2;
-    // File name, we obtain nodes with file name greater alphabetically.
-    string Cookie = 3;
-    // Limit on the number of entries within the response.
-    uint32 Limit = 4;
-}
-
-
-message TReadNodeRefsResponse
-{
-    NCloud.NProto.TError Error = 1;
-    // List of node refs.
-    repeated TNodeRef NodeRefs = 2;
-    // Parent node ID to start the next request from.
-    uint64 NextNodeId = 3;
-    // File name to start the next request from.
-    string NextCookie = 4;
-}
-
-message TNodeRef
-{
-    // Parent node ID.
-    uint64 NodeId = 1;
-    // Commit ID (id of the checkpoint the file is present in).
-    uint64 CommitId = 2;
-    // File name.
-    string Name = 3;
-    // File node ID.
-    uint64 ChildId = 4;
-    // ID of a shard.
-    string ShardId = 5;
-    // Node ID within the shard.
-    string ShardNodeName = 6;
-}
+Since `NodeRefs` table is indexed by the pair of (`NodeId`, `Name`), we can't efficiently process  `NodeRefs` backup in parallel (we can't split data by some value, since names can vary greatly and to know names distribution we still will need to scan the whole table). Sharded directories mechanism does not allow us to implement a linear NodeRefs table traversal, so we need to use standard ListNodes API for directories listing. This way we do not depend on the internal structure of the filestore.
+The proposed approach for the `dataplane.BackupNodeReferences` is to perform a BFS traversal of the filesystem tree in several parallel workers, whilst utilizing a ydb table as a persistent queue.
+For that we will need the folowing `node_references` table:
 ```
-The task will sequentially read `NodeRefsPaginationLimit` entries each time and save them to the database.
-After each read, the `NextNodeId` and `NextCookie` are stored to the task state.
-To store node metadata, `node_references` table will be used:
-
-```
-backup_id: Utf8
+filesystem_backup_id: Utf8
+depth: Uint64
 parent_node_id: Uint64
+name: Utf8
 node_id: Uint64
-name: Utf8
-tree_depth: Uint64
-shard_id: Utf8
-shard_node_id: Utf8
-```
-primarey key is (`backup_id`, `parent_node_id`, `name`).
-additional index is (`tree_depth`, `parent_node_id`, `name`),
-additional index is `node_id`.
-
-
-### 📶Node hierarchy topological sort
-To restore the filesystem it is required to sort nodes by their height from the tree root, in order to avoid moving files after creation. Since the backup is restored to a newly created filesystem, there is a requirement to create file tree using standart mechanisms.
-
-#### Algorithm:
-* Select all records with `parent=root` with limit.
-* For each record, set `tree_depth=0`, save it to the database, save the tuple of (`tree_depth`, `last_seen_parent_node_id`, `last_seen_node_name`) to the task state.
-* When iteration is finished
-  * Select all records with `parent=previous_parent` with limit.
-  * For each record, set `tree_depth=previous_tree_depth+1`, save it to the database, save the tuple of (`last_tree_depth`, `last_parent_node_id`, `last_node_name`) to the task state.
-* Repeat until all records are processed.
-
-### 🗂️ File attributes backup
-File attributes backup will consist of reading `Nodes` and `NodeAttrs` tables and saving them to the database. For node attributes, `TGetNodeAttrBatchRequest` can be used, for node attributes additional API handle need to be implemented, which seems optional for now.
-Attributes backup can be performed in parallel with the node hierarchy topological sort.
-Attributes backup can be performed in parallel using the approach used in transfer.go, where channel with inflight queue is used.
-Attributes backup will follow this algorithm:
-* A separate goroutine reads node refs from the database (either directories or files, files should be read in separate tasks per shard).
-* Node refs are read in batches.
-* For each batch, reader will read attributes using `TGetNodeAttrBatchRequest` and save them to the database, for each node attributes record, chunk_map entries are created (file size is split into 4MB chunks, so if file size is 10MB, there will be 3 chunks). Chunk indices are extracted from batch index and the index of the node within the batch + index of the chunk within the file. This way there will be no contention.
-* Milestone is updated to be equal the biggest batch number, all batches before that are processed.
-File attributes are saved to the `node_attributes` table:
-```
-backup_id: Utf8
-parent_node_id: Uint64
-name: Utf8
+node_type: Uint32
+mode: Uint32
+uid: Uint32
+gid: Uint32
+atime: Uint64
+mtime: Uint64
+ctime: Uint64
 size: Uint64
-mtime: Timestamp
-atime: Timestamp
-ctime: Timestamp
-uid: Uint64
-gid: Uint64
-mode: Uint64
+symlink_target: Utf8
+refcnt: Uint32
 ```
-primary key is (`backup_id`, `node_id`).
 
-For chunks there must be a separate table `chunk_maps`, which will store the mapping of chunks to files:
+The primary key should be (`filesystem_backup_id`, `depth`, `parent_node_id`, `name`).
+
+For the queue we will use the following table:
+```
+filesystem_backup_id: Utf8
+finished: Bool
+node_id: Uint64
+cookie: Utf8
+depth: Uint64
+```
+The primary key should be (`filesystem_backup_id`, `finished`, `node_id`, `cookie`).
+
+For data chunks there must be a separate table `chunk_maps`, which will store the mapping of chunks to files:
 ```
 shard_id: Uint64
 backup_id: Utf8
@@ -300,6 +233,30 @@ chunk_id: Utf8
 stored_in_s3: Bool
 ```
 primary key is (`shard_id`, `backup_id`, `node_id`, `chunk_index`).
+
+###### Hard links:
+Hard links are retrieved from the filestore as a regular files with refcnt > 1.
+
+#### Algorithm:
+First we emplace the root node into the queue table and then we start several `DirectoryLister`'s and a single `DirectoryListingScheduler`.
+`DirectoryListingScheduler` does the following:
+1. Reads several records from the queue table with `finished == false` sorted by primary key.
+2. For each record checks if there are more records in the queue with the same `node_id` and `finished == true`, or a greater cookie, in that case, it removes records from the table.
+3. Puts records in a channel for processing while there are records to process.
+
+`DirectoryLister` does the following:
+1. Reads a record from the channel.
+2. Performs ListNodes API call for the `node_id` from the record, using the `cookie` from the record if it is not empty.
+3. Performs upsert of all the nodes to `node_references` table. (By incrementing depth by one).
+4. Puts all the directories into the queue table with `finished == false` and cookie as empty.
+5. For all the symlinks, performs `ReadLink` API call and updates the `symlink_target` field in the `node_references` table.
+6. For all regular files, generate chunk entries and put them into the `chunk_maps` table.
+7. On success, updates the cookie in the queue table and sets `finished == true` if listing did not return anything.
+
+Steps 3,4,5 CAN be performed in parallel.
+
+After all the metadata is backed up, delete all the records from the queue table.
+
 
 ### 💽 Data backup
 Data backup will use channel with inflight queue and milestone to store the progress, but there be a slight modification to the inflight queue algorithm, since we will maintain not the number of goroutines, but rather the amount of data being processed. Data is saved to the `chunk_blobs` table.
@@ -317,22 +274,37 @@ primary key is (`shard_id`, `chunk_id`, `referer`).
 
 ### 🌳↩️ Filesystem hierarchy restoration
 
-For filesystem hierarchy restoration, we are going to use the separate restoration table (`filesystem_backup_restore_mapping`), which will store from source ids to destination ids:
+We will use channel with inflight queue and milestone to store the process of the restoration of the filesystem hierarchy. We will process the `node_references` table ordered by the primary key.
+For the restoration we will use channel with inflight queue and a milestone to store the progress.
+We will read the `node_references` table ordered by the primary key.
+
+
+For the mapping of source node ids to destination node ids we will need the following `filesystem_restore_links_mapping` table:
 ```
+source_filesystem_id: Utf8
 destination_filesystem_id: Utf8
-parent_node_id: Uint64
-name: Utf8
-destination_shard_id: Utf8
-destination_shard_node_name: Utf8
+source_node_id: Uint64
 destination_node_id: Uint64
 ```
-primary key is (`destination_filesystem_id`, `node_id`).
+with primary key (`source_filesystem_id`, `destination_filesystem_id`, `source_node_id`).
+We will initially prepend the table with the root node mapping (1 -> 1).
 
-To properly restore the filesystem hierarchy, we will read the `node_references` table and create the filesystem tree using the following steps:
-1. Read all records from the `node_references` table ordered by `tree_depth`, `parent_node_id`, and `name`.
-2. For each record, create a new node in the filesystem, take the parent id in `filesystem_backup_restore_mapping`, create `filesystem_backup_restore_mapping` entry after the node is created.
-3. Create the next level of nodes the same way.
-At each iteration, store the tuple of (`last_tree_depth`, `last_parent_node_id`, `last_node_name`) to the task state to allow resuming from the last processed node.
+##### Algorithm:
+1. Read a record from the database
+2. Put it into the channel with inflight queue.
+3. If the node parent does not exist in the mapping table, put the record back into the channel.
+4. Create A file. If node is a link (reference count > 2), check if node itself was created, if not, create it as a regular, otherwise create a link.
+5. Put the mapping of source node id to destination node id into the mapping table.
+6. On success, notify the channel that the record is processed.
+7. update milestone.
 
-### ↩️ Attributes and data restoration
-For file attributes and data restoration, the same approach as in the attributes and data backup can be used, but for each node, we will read the destination node id from the `filesystem_backup_restore_mapping` table and restore attributes and data to the destination node.
+### ↩️ Data restoration
+For file the  data restoration, the same approach as in the attributes and data backup can be used, but for each node, we will read the destination node id from the `filesystem_backup_restore_mapping` table and restore the data to the destination node.
+
+#### Small files chunking
+If the performance would be insuffficient, the smart thing here would be to:
+1) Read several node refs records from the database as a single chunk, each chunk would be a limit & offset within the table.
+2) Implement a method to create several files in a single API call whilst specifying attributes like atime, mtime, mode, uid, gid, etc.
+3) Write small files in a single API call.
+4) Add additional shard id to the `node_references` and launch different workers for different shards, whilst implementing a shard locking mechanism.
+
