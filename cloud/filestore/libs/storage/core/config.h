@@ -338,6 +338,8 @@ public:
     ui32 GetMaxFuseLoopThreads() const;
 
     bool GetStrictFileSystemSizeEnforcementEnabled() const;
+
+    bool GetDirectoryHandlesStorageEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

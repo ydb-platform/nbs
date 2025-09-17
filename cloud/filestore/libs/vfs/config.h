@@ -51,6 +51,10 @@ public:
     ui32 GetWriteBackCacheFlushMaxWriteRequestsCount() const;
     ui32 GetWriteBackCacheFlushMaxSumWriteRequestsSize() const;
 
+    TString GetDirectoryHandlesStoragePath() const;
+    ui64 GetDirectoryHandlesTableSize() const;
+    ui64 GetDirectoryHandlesInitialDataSize() const;
+
     bool GetGuestKeepCacheAllowed() const;
 
     void Dump(IOutputStream& out) const;
