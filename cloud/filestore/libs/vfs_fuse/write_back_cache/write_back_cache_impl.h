@@ -6,6 +6,8 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 
+#include <util/datetime/base.h>
+
 #include <util/generic/intrlist.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
@@ -14,52 +16,8 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class TWriteBackCache::EWriteDataRequestStatus
-{
-    // The object has just been created and does not hold a request.
-    Initial,
-
-    // Restoration from the persisent buffer was failed.
-    // The request will not be processed further.
-    Corrupted,
-
-    // Write request is waiting for the conditions:
-    // - enough space in the persistent buffer to store the request;
-    // - no overlapping read requests in progress.
-    Pending,
-
-    // Write request has been stored in the persistent buffer
-    // The caller code observes the request as completed
-    Cached,
-
-    // Flush has been requested for the write request
-    FlushRequested,
-
-    // Write request is being flushed
-    Flushing,
-
-    // Write request has been written to the session and can be removed from
-    // the persistent buffer
-    Flushed
-};
-
-/**
- * WriteData request life cycle:
- * Initial -> Pending -> Cached -> (FlushRequested) -> Flushing -> Flushed
- *
- * Status FlushRequested may be skipped — Flush takes as much WriteData requests
- * as possible from |TWriteBackCache::TNodeState::CachedEntries|.
- *
- * A request restored from the persistent queue starts with Cached status.
- *
- * For each NodeId it is guaranteed that there are no requests with out-of-order
- * statuses: if two requests A and B have the same NodeId, and the request A was
- * added to the queue later than B, then A.Status <= B.Status.
- */
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TWriteBackCache::TWriteDataEntry
+    : public TIntrusiveListItem<TWriteDataEntry>
 {
 private:
     // Store request metadata and request buffer separately
@@ -77,13 +35,18 @@ private:
 
     NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
     NThreading::TPromise<void> FlushPromise;
+
     EWriteDataRequestStatus Status = EWriteDataRequestStatus::Initial;
+    TInstant StatusChangeTime = TInstant::Zero();
 
 public:
     explicit TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    TWriteDataEntry(ui32 checksum, TStringBuf serializedRequest);
+    TWriteDataEntry(
+        ui32 checksum,
+        TStringBuf serializedRequest,
+        TImpl* impl);
 
     const NProto::TWriteDataRequest* GetRequest() const
     {
@@ -115,11 +78,6 @@ public:
         return Request->GetOffset() + BufferRef.size();
     }
 
-    EWriteDataRequestStatus GetStatus() const
-    {
-        return Status;
-    }
-
     bool IsCached() const
     {
         return Status == EWriteDataRequestStatus::Cached ||
@@ -143,16 +101,23 @@ public:
 
     size_t GetSerializedSize() const;
 
+    void SetPending(TImpl* impl);
+
     void SerializeAndMoveRequestBuffer(
         char* allocationPtr,
-        TPendingOperations& pendingOperations);
+        TPendingOperations& pendingOperations,
+        TImpl* impl);
 
-    bool RequestFlush();
-    void StartFlush();
-    void FinishFlush(TPendingOperations& pendingOperations);
+    bool RequestFlush(TImpl* impl);
+    void StartFlush(TImpl* impl);
+    void FinishFlush(TPendingOperations& pendingOperations, TImpl* impl);
+    void Complete(TImpl* impl);
 
     NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
     NThreading::TFuture<void> GetFlushFuture();
+
+private:
+    void SetStatus(EWriteDataRequestStatus status, TImpl* impl);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
