@@ -291,7 +291,7 @@ We will initially prepend the table with the root node mapping (1 -> 1).
 1. Read a record from the database
 2. Put it into the channel with inflight queue.
 3. If the node parent does not exist in the mapping table, put the record back into the channel.
-4. Create A file. If node is a link (reference count > 2), check if node itself was created, if not, create it as a regular, otherwise create a link.
+4. Create a file. If node is a link (reference count > 2), check if node itself was created, if not, create it as a regular, otherwise create a link.
 5. Put the mapping of source node id to destination node id into the mapping table.
 6. On success, notify the channel that the record is processed.
 7. update milestone.
