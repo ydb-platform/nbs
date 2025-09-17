@@ -397,6 +397,7 @@ func (client *safeClient) ListVolumes(ctx context.Context) ([]string, error) {
 func (client *safeClient) ListDiskStates(
 	ctx context.Context,
 ) ([]*protos.TDiskState, error) {
+
 	request := &protos.TListDiskStatesRequest{}
 
 	resp, err := client.Impl.ListDiskStates(ctx, request)

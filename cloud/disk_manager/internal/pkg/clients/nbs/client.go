@@ -1252,7 +1252,7 @@ func (c *client) ListDiskStates(
 	for _, s := range protoStates {
 		value, err := getDiskState(s.State)
 		if err != nil {
-			return nil, fmt.Errorf("invalid state: %v, %w", s, err)
+			return nil, err
 		}
 
 		states = append(states, DiskState{

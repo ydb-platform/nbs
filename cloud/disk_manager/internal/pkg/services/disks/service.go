@@ -878,10 +878,7 @@ func (s *service) ListDiskStates(
 	for _, s := range states {
 		value, err := getDiskState(s.State)
 		if err != nil {
-			return nil, task_errors.NewNonRetriableErrorf(
-				"Invalid disk state %v",
-				s,
-			)
+			return nil, err
 		}
 
 		response.Items = append(
