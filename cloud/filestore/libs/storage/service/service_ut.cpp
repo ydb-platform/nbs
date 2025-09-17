@@ -2768,6 +2768,72 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data.size() + offset, stat.GetSize());
     }
 
+    Y_UNIT_TEST(ShouldFallbackToWriteIfNoAlignedForAtLeastOneBlock)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetThreeStageWriteThreshold(64_KB);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        const auto profileLog = std::make_shared<TTestProfileLog>();
+        TTestEnv env({}, config, {}, profileLog);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+
+        const ui32 blockSize = 128_KB;
+        const ui64 blocksCount = 12;
+        service.CreateFileStore(fs, blocksCount, blockSize);
+
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        auto& runtime = env.GetRuntime();
+
+        const ui64 offset = 64_KB;
+
+        auto data = GenerateValidateData(blockSize);
+
+        service.WriteData(headers, fs, nodeId, handle, offset, data);
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, offset, data.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            profileLog
+                ->Requests[static_cast<ui32>(EFileStoreRequest::WriteData)]
+                .size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            profileLog
+                ->Requests[static_cast<ui32>(
+                    EFileStoreRequest::GenerateBlobIds)]
+                .size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsRequest));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            runtime.GetCounter(TEvIndexTablet::EvAddDataRequest));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            runtime.GetCounter(TEvService::EvWriteDataRequest));
+        runtime.ClearCounters();
+    }
+
     Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)
     {
         TTestEnv env;
