@@ -80,6 +80,30 @@ TString GetBufferFromIovecs(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TIoVecContiguousChunk: public IContiguousChunk {
+
+    ui64 Base = 0;
+    ui64 Size = 0;
+
+
+    TIoVecContiguousChunk(ui64 base, ui64 size)
+    : Base(base), Size(size)
+    {
+    }
+
+    TContiguousSpan GetData() const override {
+        return TContiguousSpan(reinterpret_cast<const char*>(Base), Size);
+    }
+
+    virtual TMutableContiguousSpan GetDataMut() override {
+        return TMutableContiguousSpan(reinterpret_cast<char*>(Base), Size);
+    }
+
+    virtual size_t GetOccupiedMemorySize() const override { return Size; }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
 {
 private:
@@ -246,7 +270,6 @@ private:
 
         const auto& iovecs = WriteRequest.GetIovecs();
         int iovecIndex = 0;
-        TString putData;
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
             NKikimr::TLogoBlobID blobId =
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
@@ -269,18 +292,18 @@ private:
             std::unique_ptr<TEvBlobStorage::TEvPut> request;
 
             if (!iovecs.empty()) {
-                // TODO(myagkov): Implement TEvPut with TRope as a buffer
-                // to remove unnecessary memcpy
+                TRope rope;
                 ui64 bytesToCopy = blobId.BlobSize();
-                putData.ReserveAndResize(bytesToCopy);
                 for (; iovecIndex < iovecs.size(); ++iovecIndex)
                 {
                     const auto& iovec = iovecs[iovecIndex];
                     auto size = std::min(bytesToCopy, iovec.GetLength());
-                    memcpy(
-                        &putData[offset],
-                        reinterpret_cast<const char*>(iovec.GetBase()),
-                        size);
+                    rope.Insert(
+                        rope.End(),
+                        TRope(TRcBuf(
+                            MakeIntrusive<TIoVecContiguousChunk>(
+                                iovec.GetBase(),
+                                size))));
 
                     offset += size;
                     bytesToCopy -= size;
@@ -294,7 +317,7 @@ private:
 
                 request = std::make_unique<TEvBlobStorage::TEvPut>(
                     blobId,
-                    std::move(putData),
+                    std::move(rope),
                     TInstant::Max(),
                     NKikimrBlobStorage::UserData);
             } else {
