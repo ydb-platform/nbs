@@ -97,9 +97,12 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
         mixedBlocks.RefRange(rangeId);
         mixedBlocks.AddBlocks(rangeId, TPartialBlobId(), std::move(list));
 
+        constexpr ui32 deletionOffset = 60;
+        constexpr ui32 deletedBlocksCount = 20;
+
         mixedBlocks.AddDeletionMarker(
             rangeId,
-            {nodeId, minCommitId + 2, blockIndex,blocksCount}
+            {nodeId, minCommitId + 2, blockIndex + deletionOffset, deletedBlocksCount}
         );
 
         {
@@ -115,11 +118,55 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
             auto blocks = visitor.Finish();
             UNIT_ASSERT_VALUES_EQUAL(blocks.size(), blocksCount);
 
-            for (size_t i = 0; i < blocksCount; ++i) {
+            for (size_t i = 0; i < deletionOffset; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, InvalidCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
+            }
+
+            for (size_t i = deletionOffset; i < deletionOffset + deletedBlocksCount; ++i) {
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, minCommitId + 2);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
+            }
+
+            Y_ABORT_UNLESS(deletionOffset + deletedBlocksCount < blocksCount);
+            for (size_t i = deletionOffset + deletedBlocksCount; i < blocksCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, InvalidCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
+            }
+        }
+
+        {
+            TMixedBlockVisitor visitor;
+            mixedBlocks.FindBlocks(
+                visitor,
+                rangeId,
+                nodeId,
+                minCommitId + 2, // commit id of the deletion
+                blockIndex,
+                blocksCount);
+
+            auto blocks = visitor.Finish();
+            // Deletion should not be seen
+            UNIT_ASSERT_VALUES_EQUAL(blocks.size(), blocksCount - deletedBlocksCount);
+
+            for (size_t i = 0; i < deletionOffset; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, InvalidCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
+            }
+
+            for (size_t i = deletionOffset; i < blocksCount - deletedBlocksCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, InvalidCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i + deletedBlocksCount);
             }
         }
     }

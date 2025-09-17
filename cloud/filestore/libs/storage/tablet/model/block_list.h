@@ -33,6 +33,9 @@ public:
 
     TBlock Block;
     ui32 BlobOffset = 0;
+    // Can be greater than 1 (for merged blocks), meaning that same |Block| is
+    // copy-pasted |BlocksInCurrentIteration| times
+    ui32 BlocksInCurrentIteration = 0;
 
 private:
     TBinaryReader Reader;
