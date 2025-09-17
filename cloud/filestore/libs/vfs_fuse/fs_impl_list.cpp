@@ -1,5 +1,7 @@
 #include "fs_impl.h"
 
+#include "fs_directory_handle.h"
+
 #include <util/generic/buffer.h>
 #include <util/generic/map.h>
 #include <util/random/random.h>
@@ -11,108 +13,6 @@ namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-using TBufferPtr = std::shared_ptr<TBuffer>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TDirectoryContent
-{
-    TBufferPtr Content = nullptr;
-    size_t Offset = 0;
-    size_t Size = 0;
-
-    const char* GetData() const
-    {
-        return Content ? Content->Data() + Offset : nullptr;
-    }
-
-    size_t GetSize() const
-    {
-        return Content ? Min(Size, Content->Size() - Offset) : 0;
-    }
-};
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TDirectoryHandle
-{
-private:
-    TMap<ui64, TBufferPtr> Content;
-    TMutex Lock;
-
-public:
-    const fuse_ino_t Index;
-    TString Cookie;
-
-    explicit TDirectoryHandle(fuse_ino_t ino)
-        : Index(ino)
-    {}
-
-    TDirectoryContent UpdateContent(
-        size_t size,
-        size_t offset,
-        const TBufferPtr& content,
-        TString cookie)
-    {
-        with_lock (Lock) {
-            size_t end = offset + content->size();
-            Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
-            Content[end] = content;
-            Cookie = std::move(cookie);
-        }
-
-        return TDirectoryContent{content, 0, size};
-    }
-
-    TMaybe<TDirectoryContent> ReadContent(size_t size, size_t offset, TLog& Log)
-    {
-        size_t end = 0;
-        TBufferPtr content = nullptr;
-
-        with_lock (Lock) {
-            auto it = Content.upper_bound(offset);
-            if (it != Content.end()) {
-                end = it->first;
-                content = it->second;
-            } else if (Cookie) {
-                return Nothing();
-            }
-        }
-
-        TDirectoryContent result;
-        if (content) {
-            offset = offset - (end - content->size());
-            if (offset >= content->size()) {
-                STORAGE_ERROR("off %lu size %lu", offset, content->size());
-                return Nothing();
-            }
-            result = {content, offset, size};
-        }
-
-        return result;
-    }
-
-    void ResetContent()
-    {
-        with_lock (Lock) {
-            Content.clear();
-            Cookie.clear();
-        }
-    }
-
-    TString GetCookie()
-    {
-        with_lock (Lock) {
-            return Cookie;
-        }
-    }
-};
 
 namespace {
 
@@ -237,6 +137,10 @@ void TFileSystem::OpenDir(
         do {
             id = RandomNumber<ui64>();
         } while (!DirectoryHandles.try_emplace(id, handle).second);
+
+        if (DirectoryHandlesStorage) {
+            DirectoryHandlesStorage->StoreHandle(id, *handle);
+        }
     }
 
     fuse_file_info info = {};
@@ -248,6 +152,9 @@ void TFileSystem::OpenDir(
         // syscall was interrupted
         with_lock (DirectoryHandlesLock) {
             DirectoryHandles.erase(id);
+            if (DirectoryHandlesStorage) {
+                DirectoryHandlesStorage->RemoveHandle(id);
+            }
         }
     }
 }
@@ -262,7 +169,8 @@ void TFileSystem::ReadDir(
 {
     STORAGE_DEBUG("ReadDir #" << ino
         << " offset:" << offset
-        << " size:" << size);
+        << " size:" << size
+        << " fh:" << fi->fh);
 
     std::shared_ptr<TDirectoryHandle> handle;
     with_lock (DirectoryHandlesLock) {
@@ -375,6 +283,10 @@ void TFileSystem::ReadDir(
                 << " actual size " << content.GetSize());
 
             reply(*self, content);
+
+            if (DirectoryHandlesStorage) {
+                DirectoryHandlesStorage->UpdateHandle(fi->fh, *handle);
+            }
         });
 }
 
@@ -391,6 +303,10 @@ void TFileSystem::ReleaseDir(
         if (it != DirectoryHandles.end()) {
             CheckDirectoryHandle(req, ino, *it->second, Log, __func__);
             DirectoryHandles.erase(it);
+            
+            if (DirectoryHandlesStorage) {
+                DirectoryHandlesStorage->RemoveHandle(fi->fh);
+            }
         }
     }
 
