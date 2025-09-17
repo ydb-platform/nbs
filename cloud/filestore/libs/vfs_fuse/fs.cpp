@@ -442,6 +442,7 @@ IFileSystemPtr CreateFileSystem(
     IRequestStatsPtr stats,
     ICompletionQueuePtr queue,
     THandleOpsQueuePtr handleOpsQueue,
+    TDirectoryHandlesStoragePtr directoryHandlesStorage,
     TWriteBackCache writeBackCache)
 {
     return std::make_shared<TFileSystem>(
@@ -454,6 +455,7 @@ IFileSystemPtr CreateFileSystem(
         std::move(stats),
         std::move(queue),
         std::move(handleOpsQueue),
+        std::move(directoryHandlesStorage),
         std::move(writeBackCache));
 }
 
