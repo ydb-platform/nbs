@@ -14,6 +14,10 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IWriteBackCacheStatsReporter;
+using IWriteBackCacheStatsReporterPtr =
+    std::shared_ptr<IWriteBackCacheStatsReporter>;
+
 class TWriteBackCache final
 {
 private:
@@ -28,6 +32,7 @@ public:
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
+        IWriteBackCacheStatsReporterPtr statsReporter,
         const TString& filePath,
         ui32 capacityBytes,
         TDuration automaticFlushPeriod,
@@ -55,6 +60,9 @@ public:
 
     NThreading::TFuture<void> FlushAllData();
 
+    struct TPersistentQueueStats;
+    struct TWriteDataStats;
+
 private:
     // Only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
@@ -68,6 +76,50 @@ private:
     struct TPendingOperations;
     class TContiguousWriteDataEntryPartsReader;
     class TWriteDataEntryIntervalMap;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TWriteBackCache::TPersistentQueueStats
+{
+    ui64 Capacity = 0;
+    ui64 UsedBytesCount = 0;
+    ui64 MaxAllocationSize = 0;
+    bool IsCorrupted = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TWriteBackCache::TWriteDataStats
+{
+    // Time spent in the pending queue
+    TDuration PendingDuration;
+
+    // Time spent in the cache before the request started to flush
+    TDuration WaitingDuration;
+
+    // Time spent in the cache while the request was flushing
+    TDuration FlushDuration;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IWriteBackCacheStatsReporter
+{
+    virtual ~IWriteBackCacheStatsReporter() = default;
+
+    virtual void IncrementCompletedFlushCount() = 0;
+    virtual void IncrementFailedFlushCount() = 0;
+
+    virtual void SetNodeCount(ui64 value) = 0;
+    virtual void SetCachedWriteRequestCount(ui64 value) = 0;
+    virtual void SetPendingWriteRequestCount(ui64 value) = 0;
+
+    virtual void SetPersistentQueueStats(
+        const TWriteBackCache::TPersistentQueueStats& stats) = 0;
+
+    virtual void AddWriteRequestStats(
+        const TWriteBackCache::TWriteDataStats& stats) = 0;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

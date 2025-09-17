@@ -291,6 +291,7 @@ private:
     const IFileStorePtr Session;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
+    const IWriteBackCacheStatsReporterPtr StatsReporter;
     const TFlushConfig FlushConfig;
 
     // All fields below should be protected by this lock
@@ -319,12 +320,14 @@ public:
             IFileStorePtr session,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
+            IWriteBackCacheStatsReporterPtr statsReporter,
             const TString& filePath,
             ui32 capacityBytes,
             TFlushConfig flushConfig)
         : Session(std::move(session))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
+        , StatsReporter(std::move(statsReporter))
         , FlushConfig(flushConfig)
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
@@ -1200,6 +1203,7 @@ TWriteBackCache::TWriteBackCache(
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
+        IWriteBackCacheStatsReporterPtr statsReporter,
         const TString& filePath,
         ui32 capacityBytes,
         TDuration automaticFlushPeriod,
@@ -1212,6 +1216,7 @@ TWriteBackCache::TWriteBackCache(
             std::move(session),
             std::move(scheduler),
             std::move(timer),
+            std::move(statsReporter),
             filePath,
             capacityBytes,
             {.AutomaticFlushPeriod = automaticFlushPeriod,
