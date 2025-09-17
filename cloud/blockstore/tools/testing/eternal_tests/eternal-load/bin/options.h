@@ -27,9 +27,19 @@ enum class EIoEngine
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EScenario
+{
+    Block,
+    File
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TOptions
 {
     ECommand Command = ECommand::UnknownCmd;
+
+    EScenario Scenario = EScenario::Block;
 
     EIoEngine Engine = EIoEngine::AsyncIo;
     bool RunInCallbacks = false;
@@ -48,6 +58,13 @@ struct TOptions
     TString AlternatingPhase;
 
     TString DumpPath;
+
+    ui64 MinReadSize = 0;
+    ui64 MaxReadSize = 0;
+    ui64 MinWriteSize = 0;
+    ui64 MaxWriteSize = 0;
+    ui64 MinRegionSize = 0;
+    ui64 MaxRegionSize = 0;
 
     void Parse(int argc, char** argv);
 };
