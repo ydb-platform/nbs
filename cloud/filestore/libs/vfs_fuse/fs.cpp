@@ -71,9 +71,8 @@ int ReplyError(
         res);
 
     if (errorCode == EIO) {
-        ReportErrorWasSentToTheGuest(
-            TStringBuilder() << callContext.LogString()
-                << " EIO error was sent to the guest (fsID");
+        ReportErrorWasSentToTheGuest(TStringBuilder()
+            << callContext.LogString() << " EIO error was sent to the guest");
     }
     return res;
 }

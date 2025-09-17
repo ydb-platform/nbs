@@ -2385,14 +2385,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Service->ReadDataHandler = [&](auto, auto)
         {
-            NProto::TReadDataResponse result = TErrorResponse(E_IO);
-            return MakeFuture(result);
+            return MakeFuture(NProto::TReadDataResponse(TErrorResponse(E_IO)));
         };
 
         bootstrap.Service->WriteDataHandler = [&](auto, auto)
         {
-            NProto::TWriteDataResponse result = TErrorResponse(E_IO);
-            return MakeFuture(result);
+            return MakeFuture(NProto::TWriteDataResponse(TErrorResponse(E_IO)));
         };
 
         bootstrap.Start();
