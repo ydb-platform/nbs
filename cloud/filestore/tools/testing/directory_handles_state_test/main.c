@@ -13,7 +13,6 @@
 #define NUM_TEST_POSITIONS 5
 #define MIN_DIRECTORIES 10000
 #define MAX_FILENAME_LEN 256
-#define TIMESTAMP_BUFFER_SIZE 64
 #define SLEEP_INTERVAL_MS 100
 #define MS_TO_US 1000
 
@@ -42,22 +41,6 @@ typedef struct
     int entry_count;
     int test_positions[NUM_TEST_POSITIONS];
 } test_state_t;
-
-static bool get_timestamp(char* buffer, size_t size)
-{
-    if (!buffer || size < TIMESTAMP_BUFFER_SIZE) {
-        return false;
-    }
-
-    time_t current_time = time(NULL);
-    struct tm* tm_info = localtime(&current_time);
-
-    if (strftime(buffer, size, "%Y-%m-%d %H:%M:%S", tm_info) == 0) {
-        return false;
-    }
-
-    return true;
-}
 
 static void string_copy(char* dest, const char* src, size_t dest_size)
 {
@@ -178,13 +161,8 @@ static bool cache_directory_entries(
 
 static bool wait_for_file(const char* filepath, int timeout_ms)
 {
-    char timestamp[TIMESTAMP_BUFFER_SIZE];
-
-    get_timestamp(timestamp, sizeof(timestamp));
-
     printf(
-        "[%s] Waiting for file '%s' to be created after filehost restart...\n",
-        timestamp,
+        "Waiting for file '%s' to be created after filehost restart...\n",
         filepath);
     fflush(stdout);
 
@@ -194,19 +172,13 @@ static bool wait_for_file(const char* filepath, int timeout_ms)
         timeout_ms -= SLEEP_INTERVAL_MS;
     }
 
-    get_timestamp(timestamp, sizeof(timestamp));
-
     if (timeout_ms <= 0) {
-        printf(
-            "[%s] File '%s' not detected, continuing...\n",
-            timestamp,
-            filepath);
+        printf("File '%s' not detected, continuing...\n", filepath);
         return false;
     }
 
     printf(
-        "[%s] File '%s' detected, restart was successful, continuing...\n",
-        timestamp,
+        "File '%s' detected, restart was successful, continuing...\n",
         filepath);
     fflush(stdout);
     return true;
