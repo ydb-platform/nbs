@@ -114,6 +114,8 @@ struct TInFlightRequestTracker
 
 struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
 {
+    TWriteBackCache::TPersistentQueueStats PersistentQueue;
+
     void IncrementCompletedFlushCount() override
     {}
 
@@ -138,7 +140,7 @@ struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
     void SetPersistentQueueStats(
         const TWriteBackCache::TPersistentQueueStats& stats) override
     {
-        Y_UNUSED(stats);
+        PersistentQueue = stats;
     }
 
     void AddWriteRequestStats(
@@ -1163,6 +1165,54 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "ade",
             readFuture.GetValue().GetBuffer());
+    }
+
+    Y_UNIT_TEST(ShouldReportPersistentQueueStats)
+    {
+        TBootstrap b;
+        auto& stats = b.StatsReporter->PersistentQueue;
+
+        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.Capacity);
+        UNIT_ASSERT_EQUAL(0, stats.UsedBytesCount);
+        UNIT_ASSERT_LT(0, stats.MaxAllocationSize);
+        UNIT_ASSERT_GT(CacheCapacityBytes, stats.MaxAllocationSize);
+        UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
+
+        b.WriteToCacheSync(1, 0, "abc");
+
+        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.Capacity);
+        UNIT_ASSERT_LT(0, stats.UsedBytesCount);
+        UNIT_ASSERT_LT(0, stats.MaxAllocationSize);
+        UNIT_ASSERT_GT(CacheCapacityBytes, stats.MaxAllocationSize);
+        UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
+
+        auto prevUsedBytesCount = stats.UsedBytesCount;
+        auto prevMaxAllocationSize = stats.MaxAllocationSize;
+
+        b.RecreateCache();
+
+        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.Capacity);
+        UNIT_ASSERT_EQUAL(prevUsedBytesCount, stats.UsedBytesCount);
+        UNIT_ASSERT_EQUAL(prevMaxAllocationSize, stats.MaxAllocationSize);
+        UNIT_ASSERT_GT(CacheCapacityBytes, stats.MaxAllocationSize);
+        UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
+
+        b.FlushCache();
+
+        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.Capacity);
+        UNIT_ASSERT_EQUAL(0, stats.UsedBytesCount);
+        UNIT_ASSERT_LT(0, stats.MaxAllocationSize);
+        UNIT_ASSERT_GT(CacheCapacityBytes, stats.MaxAllocationSize);
+        UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
+
+        b.WriteToCacheSync(1, 0, "abc");
+
+        b.TempFileHandle.Pwrite("Corrupt cache", 13, 41);
+        b.TempFileHandle.Flush();
+
+        b.RecreateCache();
+
+        UNIT_ASSERT_EQUAL(true, stats.IsCorrupted);
     }
 
     /* TODO(svartmetal): fix tests with automatic flush
