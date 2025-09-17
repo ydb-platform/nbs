@@ -22,7 +22,7 @@
 * ⏳ Disk Manager should be able to back up, or restore file systems up to 1Pib size within a reasonable timeframe (24h).
 * ⚙️ Backup creation and restoration MUST be resilient to node downtime, failure and network errors.
 * 📈 Loss of some progress is acceptable as long as filestore backup is finished within a reasonable amount of time.
-* ⏱️ Lattency < .1 sec for 99% for all api methods (filesystem backup creation is asynchronous, but we do not slow request for task state or operation).
+* ⏱️ Latency < .1 sec for 99% for all api methods (filesystem backup creation is asynchronous, but we do not slow request for task state or operation).
 * 🔢 The system should handle up to 100000 file system backups per datacenter (assuming worst case scenario where clients create small file systems sized several tens of Gib's, the number is derived from order of magnitude of snapshots count in some installations).
 * 🔄Idempotency: Filesystem backup creation and deletion must be idempotent.
 * 🪨 Consistency (filesystem backup should capture a consistent state of the filesystem at some point in time).
