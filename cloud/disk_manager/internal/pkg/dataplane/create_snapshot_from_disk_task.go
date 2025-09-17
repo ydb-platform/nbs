@@ -255,11 +255,6 @@ func (t *createSnapshotFromDiskTask) run(
 	t.state.BaseSnapshotId = baseSnapshotID
 	t.state.BaseCheckpointId = baseCheckpointID
 
-	err = t.setEstimate(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
 	nbsClient, err := t.getNbsClient(ctx)
 	if err != nil {
 		return err
@@ -301,6 +296,11 @@ func (t *createSnapshotFromDiskTask) run(
 	}
 
 	t.state.ChunkCount = chunkCount
+
+	err = t.setEstimate(ctx, execCtx, source)
+	if err != nil {
+		return err
+	}
 
 	ignoreZeroChunks := true
 
@@ -417,31 +417,12 @@ func (t *createSnapshotFromDiskTask) run(
 func (t *createSnapshotFromDiskTask) setEstimate(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
+	diskSource common.Source,
 ) error {
 
-	nbsClient, err := t.getNbsClient(ctx)
+	bytesToTransfer, err := nbs.GetDiskSourceBytesToRead(ctx, diskSource)
 	if err != nil {
 		return err
-	}
-
-	bytesToTransfer, err := nbsClient.GetChangedBytes(
-		ctx,
-		t.request.SrcDisk.DiskId,
-		t.state.BaseCheckpointId,
-		t.request.SrcDiskCheckpointId,
-		false, // ignoreBaseDisk
-	)
-	if err != nil {
-		if !nbs_client.IsGetChangedBlocksNotSupportedError(err) {
-			return err
-		}
-
-		diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
-		if err != nil {
-			return err
-		}
-
-		bytesToTransfer = diskParams.BlocksCount * uint64(diskParams.BlockSize)
 	}
 
 	estimatedDuration := performance.Estimate(

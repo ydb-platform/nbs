@@ -46,11 +46,6 @@ func (t *transferFromDiskToDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	err := t.setEstimate(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
 	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
 	if err != nil {
 		return err
@@ -85,6 +80,11 @@ func (t *transferFromDiskToDiskTask) Run(
 	}
 
 	t.state.ChunkCount = chunkCount
+
+	err = t.setEstimate(ctx, execCtx, source)
+	if err != nil {
+		return err
+	}
 
 	ignoreZeroChunks := true
 
@@ -157,31 +157,12 @@ func (t *transferFromDiskToDiskTask) GetResponse() proto.Message {
 func (t *transferFromDiskToDiskTask) setEstimate(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
+	diskSource common.Source,
 ) error {
 
-	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	bytesToTransfer, err := nbs.GetDiskSourceBytesToRead(ctx, diskSource)
 	if err != nil {
 		return err
-	}
-
-	bytesToTransfer, err := nbsClient.GetChangedBytes(
-		ctx,
-		t.request.SrcDisk.DiskId,
-		t.request.SrcDiskBaseCheckpointId,
-		t.request.SrcDiskCheckpointId,
-		false, // ignoreBaseDisk
-	)
-	if err != nil {
-		if !nbs_client.IsGetChangedBlocksNotSupportedError(err) {
-			return err
-		}
-
-		diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
-		if err != nil {
-			return err
-		}
-
-		bytesToTransfer = diskParams.BlocksCount * uint64(diskParams.BlockSize)
 	}
 
 	logging.Info(ctx, "bytes to transfer is %v", bytesToTransfer)

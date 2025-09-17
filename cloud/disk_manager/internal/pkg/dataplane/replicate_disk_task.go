@@ -52,11 +52,6 @@ func (t *replicateDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	err := t.setEstimate(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
 	useLightCheckpoint, err := t.useLightCheckpoint(ctx)
 	if err != nil {
 		return err
@@ -263,6 +258,11 @@ func (t *replicateDiskTask) replicate(
 
 	t.state.ChunkCount = chunkCount
 
+	err = t.setEstimate(ctx, execCtx, source)
+	if err != nil {
+		return err
+	}
+
 	target, err := nbs.NewDiskTarget(
 		ctx,
 		t.nbsFactory,
@@ -412,6 +412,7 @@ func (t *replicateDiskTask) getBytesToReplicate(
 func (t *replicateDiskTask) setEstimate(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
+	diskSource common.Source,
 ) error {
 
 	bytesToReplicate, err := t.getBytesToReplicate(ctx, execCtx)

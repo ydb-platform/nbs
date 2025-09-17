@@ -310,3 +310,40 @@ func NewDiskSource(
 		dontReadFromCheckpoint: dontReadFromCheckpoint,
 	}, nil
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func GetDiskSourceBytesToRead(
+	ctx context.Context,
+	source dataplane_common.Source,
+) (uint64, error) {
+
+	diskSource, ok := source.(*diskSource)
+	if !ok {
+		return 0, task_errors.NewNonRetriableErrorf(
+			"GetDiskSourceBytesToRead argument must be of type diskSource",
+		)
+	}
+
+	bytesToRead, err := diskSource.client.GetChangedBytes(
+		ctx,
+		diskSource.diskID,
+		diskSource.baseCheckpointID,
+		diskSource.checkpointID,
+		diskSource.ignoreBaseDisk,
+	)
+	if err != nil {
+		if !nbs.IsGetChangedBlocksNotSupportedError(err) {
+			return 0, err
+		}
+
+		diskParams, err := diskSource.client.Describe(ctx, diskSource.diskID)
+		if err != nil {
+			return 0, err
+		}
+
+		bytesToRead = diskParams.BlocksCount * uint64(diskParams.BlockSize)
+	}
+
+	return bytesToRead, nil
+}
