@@ -552,7 +552,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldReportRawCapacity)
+    Y_UNIT_TEST(ShouldGetRawCapacity)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 42;
@@ -560,7 +560,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_EQUAL(len, rb.GetRawCapacity());
     }
 
-    Y_UNIT_TEST(ShouldReportRawUsedBytesCount)
+    Y_UNIT_TEST(ShouldGetRawUsedBytesCount)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 36;
@@ -581,7 +581,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_EQUAL(0, rb.GetRawUsedBytesCount());
     }
 
-    Y_UNIT_TEST(ShouldReportMaxAllocationBytesCount)
+    Y_UNIT_TEST(ShouldGetMaxAllocationBytesCount)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 36;
