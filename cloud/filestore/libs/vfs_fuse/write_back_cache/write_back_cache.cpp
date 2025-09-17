@@ -358,6 +358,8 @@ public:
                     AddCachedEntry(nodeState, std::move(entry));
                 }
             });
+
+        ReportPersistentQueueStats();
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -794,6 +796,8 @@ private:
             nodeState->PendingEntriesCount--;
             PendingEntries.pop_front();
         }
+
+        ReportPersistentQueueStats();
     }
 
     TVector<TWriteDataEntryPart> CalculateDataPartsToReadAndFillBuffer(
@@ -1000,6 +1004,8 @@ private:
             PendingEntries.push_back(std::move(entry));
             ScheduleFlushAll();
         }
+
+        ReportPersistentQueueStats();
     }
 
     // |nodeState| becomes unusable if the function returns false
@@ -1147,6 +1153,8 @@ private:
             PendingOperations.ShouldProcessPendingEntries = true;
         }
 
+        ReportPersistentQueueStats();
+
         nodeState->FlushState.Executing = false;
 
         ScheduleFlushIfNeeded(nodeState);
@@ -1192,6 +1200,20 @@ private:
         nodeState->CachedEntryIntervalMap.Remove(entry);
 
         return entry;
+    }
+
+    // Persistent queue stats should be reported after a call (or a series of
+    // calls) to CachedEntriesPersistentQueue.AllocateBack or .PopFront
+    void ReportPersistentQueueStats() const
+    {
+        StatsReporter->SetPersistentQueueStats(
+            {.Capacity =
+                CachedEntriesPersistentQueue.GetRawCapacity(),
+             .UsedBytesCount =
+                CachedEntriesPersistentQueue.GetRawUsedBytesCount(),
+             .MaxAllocationSize =
+                 CachedEntriesPersistentQueue.MaxAllocationSize(),
+             .IsCorrupted = CachedEntriesPersistentQueue.IsCorrupted()});
     }
 };
 
