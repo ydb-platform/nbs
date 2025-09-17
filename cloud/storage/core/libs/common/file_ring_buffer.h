@@ -39,6 +39,11 @@ public:
     TVector<TBrokenFileEntry> Validate();
     void Visit(const TVisitor& visitor);
     bool IsCorrupted() const;
+    ui64 GetRawCapacity() const;
+    ui64 GetRawUsedBytesCount() const;
+    // Returns the maximum data size that is guaranteed to be successfully
+    // allocated by PushBack. Returns zero if the buffer is corrupted.
+    ui64 GetMaxAllocationBytesCount() const;
 };
 
 }   // namespace NCloud
