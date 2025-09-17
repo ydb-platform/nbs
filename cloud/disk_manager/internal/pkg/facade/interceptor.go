@@ -86,7 +86,7 @@ var (
 
 func convertError(err error) error {
 	if errors.CanRetry(err) {
-		return grpc_status.Errorf(grpc_codes.Unavailable, err.Error())
+		return grpc_status.Errorf(grpc_codes.Unavailable, "%s", err.Error())
 	}
 
 	return err

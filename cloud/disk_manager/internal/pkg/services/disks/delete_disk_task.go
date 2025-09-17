@@ -108,7 +108,7 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	// Only overlay disks (created from image) should be released.
-	if diskMeta != nil && len(diskMeta.SrcImageID) != 0 {
+	if len(diskMeta.SrcImageID) != 0 {
 		taskID, err = t.poolService.ReleaseBaseDisk(
 			headers.SetIncomingIdempotencyKey(
 				ctx,
