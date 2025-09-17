@@ -151,7 +151,7 @@ Then it will wait for the dataplane task and finalize snapshot creation afterwar
 The backup process should be separated into the following stages:
 * Checkpoint creation
 * Database record creation
-* Node hierarсhy backup
+* Node hierarchy backup
 * Data backup.
 
 
