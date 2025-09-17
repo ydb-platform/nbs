@@ -424,11 +424,6 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 		return err
 	}
 
-	stats, err := nbsClient.Stat(ctx, t.request.SrcDisk.DiskId)
-	if err != nil {
-		return err
-	}
-
 	bytesToTransfer, err := nbsClient.GetChangedBytes(
 		ctx,
 		t.request.SrcDisk.DiskId,
@@ -441,7 +436,12 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 			return err
 		}
 
-		bytesToTransfer = stats.StorageSize
+		diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
+		if err != nil {
+			return err
+		}
+
+		bytesToTransfer = diskParams.BlocksCount * uint64(diskParams.BlockSize)
 	}
 
 	estimatedDuration := performance.Estimate(

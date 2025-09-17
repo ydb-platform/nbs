@@ -122,14 +122,15 @@ func (t *createDRBasedDiskCheckpointTask) setEstimate(
 		return err
 	}
 
-	stats, err := client.Stat(ctx, t.request.Disk.DiskId)
+	diskParams, err := client.Describe(ctx, t.request.Disk.DiskId)
 	if err != nil {
 		return err
 	}
 
 	// Creating DR-based disk checkpoint implicitly makes a full copy of disk data.
+	diskSize := diskParams.BlocksCount * uint64(diskParams.BlockSize)
 	execCtx.SetEstimatedStallingDuration(performance.Estimate(
-		stats.StorageSize,
+		diskSize,
 		t.performanceConfig.GetCreateDRBasedDiskCheckpointBandwidthMiBs(),
 	))
 

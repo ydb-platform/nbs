@@ -159,18 +159,35 @@ func (t *transferFromDiskToDiskTask) setEstimate(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	stats, err := client.Stat(ctx, t.request.SrcDisk.DiskId)
+	bytesToTransfer, err := nbsClient.GetChangedBytes(
+		ctx,
+		t.request.SrcDisk.DiskId,
+		t.request.SrcDiskBaseCheckpointId,
+		t.request.SrcDiskCheckpointId,
+		false, // ignoreBaseDisk
+	)
 	if err != nil {
-		return err
+		if !nbs_client.IsGetChangedBlocksNotSupportedError(err) {
+			return err
+		}
+
+		diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
+		if err != nil {
+			return err
+		}
+
+		bytesToTransfer = diskParams.BlocksCount * uint64(diskParams.BlockSize)
 	}
+
+	logging.Info(ctx, "bytes to transfer is %v", bytesToTransfer)
 
 	execCtx.SetEstimatedInflightDuration(performance.Estimate(
-		stats.StorageSize,
+		bytesToTransfer,
 		t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
 	))
 
