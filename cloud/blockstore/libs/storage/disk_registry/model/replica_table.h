@@ -77,6 +77,7 @@ public:
         bool isReplacement);
     [[nodiscard]] TVector<TString> GetDevicesReplacements(
         const TDiskId& diskId) const;
+    [[nodiscard]] ui32 GetDevicesReplacementsCount(const TDiskId& diskId) const;
     [[nodiscard]] bool IsReplacementDevice(
         const TDiskId& diskId,
         const TDeviceId& deviceId) const;
