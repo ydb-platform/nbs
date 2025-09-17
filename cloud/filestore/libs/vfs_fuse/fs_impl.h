@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "config.h"
+#include "directory_handles_storage.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
 #include "node_cache.h"
@@ -89,6 +90,8 @@ private:
     THandleOpsQueuePtr HandleOpsQueue;
     TMutex HandleOpsQueueLock;
 
+    TDirectoryHandlesStoragePtr DirectoryHandlesStorage;
+
     TQueue<TReleaseRequest> DelayedReleaseQueue;
     TMutex DelayedReleaseQueueLock;
 
@@ -105,6 +108,7 @@ public:
         IRequestStatsPtr stats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
+        TDirectoryHandlesStoragePtr directoryHandlesStorage,
         TWriteBackCache writeBackCache);
 
     ~TFileSystem();
