@@ -72,11 +72,9 @@ int ReplyError(
 
     if (errorCode == EIO) {
         ReportErrorWasSentToTheGuest(
-            TStringBuilder() << "EIO error was sent to the guest (fsID = "
-                             << callContext.FileSystemId << ", requestId = "
-                             << callContext.RequestId << ")");
+            TStringBuilder() << callContext.LogString()
+                << " EIO error was sent to the guest (fsID");
     }
-
     return res;
 }
 

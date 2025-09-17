@@ -2383,18 +2383,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 handleId = 456;
         const ui64 size = 789;
 
-        bootstrap.Service->ReadDataHandler =
-            [&](auto callContext, auto request) {
-            Y_UNUSED(callContext);
-            Y_UNUSED(request);
+        bootstrap.Service->ReadDataHandler = [&](auto, auto)
+        {
             NProto::TReadDataResponse result = TErrorResponse(E_IO);
             return MakeFuture(result);
         };
 
-        bootstrap.Service->WriteDataHandler =
-            [&](auto callContext, auto request) {
-            Y_UNUSED(callContext);
-            Y_UNUSED(request);
+        bootstrap.Service->WriteDataHandler = [&](auto, auto)
+        {
             NProto::TWriteDataResponse result = TErrorResponse(E_IO);
             return MakeFuture(result);
         };
