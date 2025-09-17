@@ -1474,6 +1474,12 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
 
         DIV_CLASS("row") {
             DIV_CLASS("col-md-6") {
+                RenderAppliedVolumeThrottlingRule(out);
+            }
+        }
+
+        DIV_CLASS("row") {
+            DIV_CLASS("col-md-6") {
                 RenderCommonButtons(out);
             }
         }
@@ -2194,6 +2200,218 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
                             blockSize,
                             dirtyBlocks,
                             out);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void TVolumeActor::RenderAppliedVolumeThrottlingRule(IOutputStream& out) const
+{
+    const auto& rule = State->GetThrottlingPolicy().GetVolatileThrottlingRule();
+
+    if (!rule.HasCoefficients() &&
+        rule.GetSelectorCase() == NCloud::NBlockStore::NProto::
+                                      TVolumeThrottlingRule::SELECTOR_NOT_SET)
+    {
+        HTML (out) {
+            TAG (TH3) {
+                out << "Applied Throttling Rule";
+            }
+            DIV () {
+                out << "No throttling rule applied";
+            }
+        }
+        return;
+    }
+
+    HTML (out) {
+        TAG (TH3) {
+            out << "Applied Throttling Rule";
+        }
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            // Render Selector
+            switch (rule.GetSelectorCase()) {
+                case NCloud::NBlockStore::NProto::TVolumeThrottlingRule::
+                    kDisks: {
+                    const auto& disks = rule.GetDisks();
+                    TABLER () {
+                        TABLED () {
+                            out << "Selector";
+                        }
+                        TABLED () {
+                            out << "Specific Disks: ";
+                            if (disks.DiskIdsSize() == 0) {
+                                out << "<i>no disks</i>";
+                            } else {
+                                out << JoinSeq(", ", disks.GetDiskIds());
+                            }
+                        }
+                    }
+                    break;
+                }
+                case NCloud::NBlockStore::NProto::TVolumeThrottlingRule::
+                    kFilter: {
+                    const auto& filter = rule.GetFilter();
+                    TABLER () {
+                        TABLED () {
+                            out << "Selector";
+                        }
+                        TABLED () {
+                            out << "Disk Filter: ";
+                            bool hasConditions = false;
+
+                            if (filter.CloudIdsSize() > 0) {
+                                out << "CloudIds=["
+                                    << JoinSeq(", ", filter.GetCloudIds())
+                                    << "]";
+                                hasConditions = true;
+                            }
+                            if (filter.FolderIdsSize() > 0) {
+                                if (hasConditions) {
+                                    out << ", ";
+                                }
+                                out << "FolderIds=["
+                                    << JoinSeq(", ", filter.GetFolderIds())
+                                    << "]";
+                                hasConditions = true;
+                            }
+                            if (filter.MediaKindsSize() > 0) {
+                                if (hasConditions) {
+                                    out << ", ";
+                                }
+                                TVector<TString> mediaNames;
+                                for (auto kind: filter.GetMediaKinds()) {
+                                    mediaNames.push_back(
+                                        NProto::EStorageMediaKind_Name(kind));
+                                }
+                                out << "MediaKinds=["
+                                    << JoinSeq(", ", mediaNames) << "]";
+                            }
+
+                            if (!hasConditions) {
+                                out << "<i>matches any disk</i>";
+                            }
+                        }
+                    }
+                    break;
+                }
+                default:
+                    TABLER () {
+                        TABLED () {
+                            out << "Selector";
+                        }
+                        TABLED () {
+                            out << "None";
+                        }
+                    }
+                    break;
+            }
+
+            const auto& coeffs = rule.GetCoefficients();
+
+            // Render Coefficients as percentages (0.0-1.0 range)
+            if (coeffs.HasMaxReadBandwidth()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxReadBandwidth";
+                    }
+                    TABLED () {
+                        out << (coeffs.GetMaxReadBandwidth() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coeffs.HasMaxWriteBandwidth()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxWriteBandwidth";
+                    }
+                    TABLED () {
+                        out << (coeffs.GetMaxWriteBandwidth() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coeffs.HasMaxReadIops()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxReadIops";
+                    }
+                    TABLED () {
+                        out << (coeffs.GetMaxReadIops() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coeffs.HasMaxWriteIops()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxWriteIops";
+                    }
+                    TABLED () {
+                        out << (coeffs.GetMaxWriteIops() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coeffs.HasBoostTime()) {
+                TABLER () {
+                    TABLED () {
+                        out << "BoostTime";
+                    }
+                    TABLED () {
+                        out << (coeffs.GetBoostTime() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coeffs.HasBoostRefillTime()) {
+                TABLER () {
+                    TABLED () {
+                        out << "BoostRefillTime";
+                    }
+                    TABLED () {
+                        out << (coeffs.GetBoostRefillTime() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coeffs.HasBoostPercentage()) {
+                TABLER () {
+                    TABLED () {
+                        out << "BoostPercentage";
+                    }
+                    TABLED () {
+                        out << (coeffs.GetBoostPercentage() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coeffs.HasBurstPercentage()) {
+                TABLER () {
+                    TABLED () {
+                        out << "BurstPercentage";
+                    }
+                    TABLED () {
+                        out << (coeffs.GetBurstPercentage() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coeffs.HasMaxPostponedWeight()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxPostponedWeight";
+                    }
+                    TABLED () {
+                        out << (coeffs.GetMaxPostponedWeight() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coeffs.HasThrottlingEnabled()) {
+                TABLER () {
+                    TABLED () {
+                        out << "ThrottlingEnabled";
+                    }
+                    TABLED () {
+                        out
+                            << (coeffs.GetThrottlingEnabled() ? "true"
+                                                              : "false");
                     }
                 }
             }
