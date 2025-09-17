@@ -149,7 +149,9 @@ void TServiceActor::HandleUpdateVolumeThrottlingConfig(
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     if (!Config->GetVolumeThrottlingManagerEnabled()) {
-        auto error = MakeError(E_FAIL, "VolumeThrottlingManager is disabled");
+        auto error = MakeError(
+            E_PRECONDITION_FAILED,
+            "VolumeThrottlingManager is disabled");
         auto response = std::make_unique<
             TEvService::TEvUpdateVolumeThrottlingConfigResponse>(
             std::move(error));
