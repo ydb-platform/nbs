@@ -7,7 +7,7 @@ extern "C" {
 
 /* #include <spdk/bdev.h> */
 /* #include <spdk/bdev_module.h> */
-/* #include <spdk/env.h> */
+#include <spdk/env.h>
 #include <spdk/event.h>
 /* #include <spdk/histogram_data.h> */
 #include <spdk/log.h>
