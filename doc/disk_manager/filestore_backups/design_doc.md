@@ -263,13 +263,11 @@ Data backup will use channel with inflight queue and milestone to store the prog
 ```
 shard_id: Uint64
 chunk_id: Utf8
-referer_backup_id: Utf8
+referrer_backup_id: Utf8
 data: String
 compression: Utf8
 checksum: Uint32
 refcnt: Uint32
-```
-primary key is (`shard_id`, `chunk_id`, `referer`).
 
 
 ### 🌳↩️ Filesystem hierarchy restoration
