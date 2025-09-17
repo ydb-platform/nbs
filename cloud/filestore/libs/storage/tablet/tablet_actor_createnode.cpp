@@ -66,6 +66,12 @@ void InitAttrs(NProto::TNode& attrs, const NProto::TCreateNodeRequest& request)
             sock.GetMode(),
             request.GetUid(),
             request.GetGid());
+    } else if (request.HasFifo()) {
+        const auto& fifo = request.GetFifo();
+        attrs = CreateFifoAttrs(
+            fifo.GetMode(),
+            request.GetUid(),
+            request.GetGid());
     }
 }
 

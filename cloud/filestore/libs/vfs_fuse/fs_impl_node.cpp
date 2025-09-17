@@ -186,6 +186,9 @@ void TFileSystem::MkNode(
         // null file type for unix sockets
         auto* socket = request->MutableSocket();
         socket->SetMode(mode & ~(S_IFMT));
+    } else if (S_ISFIFO(mode)) {
+        auto* fifo = request->MutableFifo();
+        fifo->SetMode(mode & ~(S_IFMT));
     } else {
         ReplyError(*callContext, ErrorNotSupported(""), req, ENOTSUP);
         return;
