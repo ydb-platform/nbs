@@ -41,6 +41,8 @@ namespace {
                                                                                \
     xxx(ServerWriteBackCacheEnabled,  bool,     false                         )\
                                                                                \
+    xxx(DirectoryHandlesStorageEnabled, bool,   false                         )\
+                                                                               \
     xxx(GuestKeepCacheAllowed,        bool,     false                         )\
     xxx(MaxBackground,                ui32,     0                             )\
     xxx(MaxFuseLoopThreads,           ui32,     1                             )\
