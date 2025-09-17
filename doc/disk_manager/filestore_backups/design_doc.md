@@ -19,7 +19,7 @@
 
 ### Non functional
 
-* ⏳ Disk Manager should be able to back up, or restore up file systems up to 1Pib size within a reasonable timeframe (24h).
+* ⏳ Disk Manager should be able to back up, or restore file systems up to 1Pib size within a reasonable timeframe (24h).
 * ⚙️ Backup creation and restoration MUST be resilient to node downtime, failure and network errors.
 * 📈 Loss of some progress is acceptable as long as filestore backup is finished within a reasonable amount of time.
 * ⏱️ Lattency < .1 sec for 99% for all api methods (filesystem backup creation is asynchronous, but we do not slow request for task state or operation).
