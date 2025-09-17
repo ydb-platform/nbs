@@ -163,6 +163,11 @@ struct TBootstrap
             proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
             proto.SetHandleOpsQueueSize(handleOpsQueueSize);
         }
+
+        if (featuresConfig.GetDirectoryHandlesStorageEnabled()) {
+            proto.SetDirectoryHandlesStoragePath(TempDir.Path() / "DirectoryHandles");
+        }
+
         if (featuresConfig.GetServerWriteBackCacheEnabled()) {
             proto.SetWriteBackCachePath(TempDir.Path() / "WriteBackCache");
             // minimum possible capacity
@@ -259,6 +264,12 @@ struct TBootstrap
         auto interrupt = Fuse->SendRequest<TInterruptRequest>(Fuse->GetLastRequestId() + 2);
         UNIT_ASSERT_NO_EXCEPTION(interrupt.GetValueSync());
     };
+
+    static TBootstrap CreateWithHandlesStorage() {
+        NProto::TFileStoreFeatures features;
+        features.SetDirectoryHandlesStorageEnabled(true);
+        return TBootstrap(CreateWallClockTimer(), CreateScheduler(), features);
+    }
 };
 
 }   // namespace
@@ -749,7 +760,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         TBootstrap bootstrap;
 
         std::atomic<ui32> numCalls = 0;
-        bootstrap.Service->ListNodesHandler = [&] (auto callContext, auto request) {
+        bootstrap.Service->ListNodesHandler =
+            [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
 
             static ui64 id = 1;
@@ -783,28 +796,200 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto handleId = handle.GetValue();
 
         // read dir consists of sequantial reading until empty resposne
-        auto read = bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
         UNIT_ASSERT(read.Wait(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 1);
 
         auto size1 = read.GetValue();
         UNIT_ASSERT(size1 > 0);
 
-        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId, size1);
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size1 / 2);
         UNIT_ASSERT(read.Wait(WaitTimeout));
-        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 1);
 
         auto size2 = read.GetValue();
         UNIT_ASSERT(size2 > 0);
 
-        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId, size1 + size2);
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size1);
         UNIT_ASSERT(read.Wait(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 2);
 
         auto size3 = read.GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(size3, 0);
+        UNIT_ASSERT(size3 > 0);
 
-        auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size1 + size2);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 2);
+
+        auto size4 = read.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(size4, 0);
+
+        auto close =
+            bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldHandleReadDirLargeDataWithHandlesStoragePaging)
+    {
+        auto bootstrap = TBootstrap::CreateWithHandlesStorage();
+
+        std::atomic<ui32> numCalls = 0;
+        bootstrap.Service->ListNodesHandler =
+            [&](auto callContext, auto request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            ++numCalls;
+
+            NProto::TListNodesResponse result;
+
+            if (!request->GetCookie()) {
+                for (ui32 i = 1; i <= 20000; ++i) {
+                    result.AddNames()->assign(
+                        "first_chunk_file_" + ToString(i) + ".txt");
+                    auto* node = result.AddNodes();
+                    node->SetId(100 + i);
+                    node->SetType(NProto::E_REGULAR_NODE);
+                }
+                result.SetCookie("has_more_data");
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL("has_more_data", request->GetCookie());
+                for (ui32 i = 20001; i <= 25100; ++i) {
+                    result.AddNames()->assign(
+                        "second_chunk_file_" + ToString(i) + ".txt");
+                    auto* node = result.AddNodes();
+                    node->SetId(100 + i);
+                    node->SetType(NProto::E_REGULAR_NODE);
+                }
+            }
+
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        const ui64 nodeId = 123;
+
+        auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        auto handleId = handle.GetValue();
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 1);
+
+        auto size1 = read.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(size1, 4096);
+
+        read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId, 0);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 2);
+
+        auto size2 = read.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(size2, 4096);
+
+        auto partialOffset = size1 / 2;
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            partialOffset);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 2);
+
+        auto size3 = read.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(size3, 4096);
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size1);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 2);
+
+        auto size4 = read.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(size4, 4096);
+
+        read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId, 0);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 3);
+
+        auto size5 = read.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(size5, 4096);
+
+        auto largeOffset = size1 + 3700000;   // Go beyond the first chunk
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            largeOffset);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 4);
+
+        auto size6 = read.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(size6, 4096);
+
+        auto firstChunkOffset = size1 / 3;
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            firstChunkOffset);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 4);
+
+        auto size7 = read.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(size7, 4096);
+
+        auto secondChunkOffset = largeOffset + 200;
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            secondChunkOffset);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 4);
+
+        auto size8 = read.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(size8, 4096);
+
+        // Open second directory handle for the same nodeId
+        auto handle2 = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(handle2.Wait(WaitTimeout));
+        auto handleId2 = handle2.GetValue();
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId2);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 5);
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId2,
+            size1);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 5);
+
+        auto size9 = read.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(size9, 4096);
+
+        auto close2 =
+            bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId2);
+        UNIT_ASSERT_NO_EXCEPTION(close2.GetValue(WaitTimeout));
+
+        auto close =
+            bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
     }
 
