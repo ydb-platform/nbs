@@ -8,7 +8,47 @@
 #include <util/generic/string.h>
 #include <util/stream/output.h>
 
+#include <variant>
+
 namespace NCloud::NBlockStore::NLogbroker {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TIamJwtFile
+{
+private:
+    NProto::TLogbrokerConfig::TIamJwtFile Config;
+
+public:
+    explicit TIamJwtFile(
+            NProto::TLogbrokerConfig::TIamJwtFile config = {})
+        : Config(std::move(config))
+    {}
+
+    [[nodiscard]] TString GetIamEndpoint() const;
+    [[nodiscard]] TString GetJwtFilename() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TIamMetadataServer
+{
+private:
+    NProto::TLogbrokerConfig::TIamMetadataServer Config;
+
+public:
+    explicit TIamMetadataServer(
+            NProto::TLogbrokerConfig::TIamMetadataServer config = {})
+        : Config(std::move(config))
+    {}
+
+    [[nodiscard]] TString GetEndpoint() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TAuthConfig =
+    std::variant<std::monostate, TIamMetadataServer, TIamJwtFile>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -32,6 +72,8 @@ public:
     TString GetMetadataServerAddress() const;
 
     NProto::TLogbrokerConfig::EProtocol GetProtocol() const;
+
+    TAuthConfig GetAuthConfig() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

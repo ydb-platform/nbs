@@ -1,8 +1,6 @@
 #pragma once
 
-#include <cloud/blockstore/libs/logbroker/iface/public.h>
-
-#include <cloud/storage/core/libs/diagnostics/public.h>
+#include <memory>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -14,16 +12,11 @@ namespace NYdb {
 
 namespace NCloud::NBlockStore::NLogbroker {
 
+class TLogbrokerConfig;
+
 ////////////////////////////////////////////////////////////////////////////////
 
-IServicePtr CreateTopicAPIService(
-    TLogbrokerConfigPtr config,
-    ILoggingServicePtr logging,
-    std::shared_ptr<NYdb::ICredentialsProviderFactory>
-        credentialsProviderFactory);
-
-IServicePtr CreateTopicAPIService(
-    TLogbrokerConfigPtr config,
-    ILoggingServicePtr logging);
+std::shared_ptr<NYdb::ICredentialsProviderFactory>
+CreateCredentialsProviderFactory(const TLogbrokerConfig& config);
 
 }   // namespace NCloud::NBlockStore::NLogbroker
