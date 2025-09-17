@@ -302,7 +302,7 @@ We will initially prepend the table with the root node mapping (1 -> 1).
 For file the  data restoration, the same approach as in the attributes and data backup can be used, but for each node, we will read the destination node id from the `filesystem_backup_restore_mapping` table and restore the data to the destination node.
 
 #### Small files chunking
-If the performance would be insuffficient, the smart thing here would be to:
+If the performance would be insufficient, the smart thing here would be to:
 1) Read several node refs records from the database as a single chunk, each chunk would be a limit & offset within the table.
 2) Implement a method to create several files in a single API call whilst specifying attributes like atime, mtime, mode, uid, gid, etc.
 3) Write small files in a single API call.
