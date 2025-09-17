@@ -112,6 +112,44 @@ struct TInFlightRequestTracker
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
+{
+    void IncrementCompletedFlushCount() override
+    {}
+
+    void IncrementFailedFlushCount() override
+    {}
+
+    void SetNodeCount(ui64 value) override
+    {
+        Y_UNUSED(value);
+    }
+
+    void SetCachedWriteRequestCount(ui64 value) override
+    {
+        Y_UNUSED(value);
+    }
+
+    void SetPendingWriteRequestCount(ui64 value) override
+    {
+        Y_UNUSED(value);
+    }
+
+    void SetPersistentQueueStats(
+        const TWriteBackCache::TPersistentQueueStats& stats) override
+    {
+        Y_UNUSED(stats);
+    }
+
+    void AddWriteRequestStats(
+        const TWriteBackCache::TWriteDataStats& stats) override
+    {
+        Y_UNUSED(stats);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TBootstrap
 {
     ILoggingServicePtr Logging;
@@ -120,6 +158,7 @@ struct TBootstrap
     std::shared_ptr<TFileStoreTest> Session;
     ITimerPtr Timer;
     std::shared_ptr<TTestScheduler> Scheduler;
+    std::shared_ptr<TWriteBackCacheStatsReporter> StatsReporter;
     TDuration CacheAutomaticFlushPeriod;
     TDuration CacheFlushRetryPeriod;
     TTempFileHandle TempFileHandle;
@@ -177,6 +216,8 @@ struct TBootstrap
         Timer = CreateWallClockTimer();
         Scheduler = std::make_shared<TTestScheduler>();
         Scheduler->Start();
+
+        StatsReporter = std::make_shared<TWriteBackCacheStatsReporter>();
 
         Session = std::make_shared<TFileStoreTest>();
 
@@ -295,6 +336,7 @@ struct TBootstrap
             Session,
             Scheduler,
             Timer,
+            StatsReporter,
             TempFileHandle.GetName(),
             CacheCapacityBytes,
             CacheAutomaticFlushPeriod,
