@@ -192,7 +192,7 @@ After the controlplane record is created, almost identical database entry for co
 
 Since `NodeRefs` table is indexed by the pair of (`NodeId`, `Name`), we can't efficiently process  `NodeRefs` backup in parallel (we can't split data by some value, since names can vary greatly and to know names distribution we still will need to scan the whole table). Sharded directories mechanism does not allow us to implement a linear NodeRefs table traversal, so we need to use standard ListNodes API for directories listing. This way we do not depend on the internal structure of the filestore.
 The proposed approach for the `dataplane.BackupNodeReferences` is to perform a BFS traversal of the filesystem tree in several parallel workers, whilst utilizing a ydb table as a persistent queue.
-For that we will need the folowing `node_references` table:
+For that we will need the following `node_references` table:
 ```
 filesystem_backup_id: Utf8
 depth: Uint64
