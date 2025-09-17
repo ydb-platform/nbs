@@ -159,7 +159,7 @@ The restoration would consist of the following stages:
 * Filesystem entry creation
 * Filesystem creation
 * Filesystem hierarchy restoration
-* Attribues restoration and data restoration (can be done in parallel).
+* Attributes restoration and data restoration (can be done in parallel).
 
 
 ### 🏁 Checkpoint creation
