@@ -69,6 +69,89 @@ TVector<TBlock> GenerateRandomBlocks(size_t blocksCount)
     return blocks;
 }
 
+TVector<TBlock> GenerateRandomBlockGroups(
+    size_t blockGroups,
+    size_t deletionGroups)
+{
+    Y_UNUSED(deletionGroups);
+
+    TVector<TBlock> blocks;
+    auto blockIndex = FirstBlockIndex;
+
+    auto writeNewBlock = [&]()
+    {
+        blocks.emplace_back(
+            NodeId,
+            blockIndex,
+            InitialCommitId,
+            InvalidCommitId);
+    };
+
+    for (size_t i = 0; i < blockGroups; ++i) {
+        const auto maxBlocksInGroup = 1 + RandomNumber(50u);
+
+        if (RandomNumber(2u) == 0) {
+            // Merged block group
+            for (size_t j = 0; j < maxBlocksInGroup; ++j) {
+                writeNewBlock();
+                blockIndex++;
+            }
+        } else {
+            // Mixed block group
+            for (size_t j = 0; j < maxBlocksInGroup; ++j) {
+                if (RandomNumber(2u) == 0){
+                    writeNewBlock();
+                }
+                blockIndex++;
+            }
+        }
+
+        blockIndex += 1 + RandomNumber(10000u);
+    }
+
+    ui16 blobOffset = 0;
+
+    auto rewriteBlock = [&]()
+    {
+        Y_ABORT_UNLESS(blobOffset < blocks.size());
+        auto& block = blocks[blobOffset];
+        block.MaxCommitId = block.MinCommitId + 1 + RandomNumber(100u);
+
+        auto b = block;
+        b.MinCommitId = b.MaxCommitId;
+        b.MaxCommitId = InvalidCommitId;
+        blocks.push_back(std::move(b));
+    };
+
+    for (size_t i = 0; i < deletionGroups; ++i) {
+        const auto maxDeletionsInGroup = 1 + RandomNumber(70u);
+        Y_ABORT_UNLESS(blobOffset + maxDeletionsInGroup < blocks.size());
+
+        if (RandomNumber(2u) == 0) {
+            // Merged deletion group
+            for (size_t j = 0; j < maxDeletionsInGroup; ++j) {
+                rewriteBlock();
+                blobOffset++;
+            }
+
+        } else {
+            // Mixed deletion group
+            for (size_t j = 0; j < maxDeletionsInGroup; ++j) {
+                if (RandomNumber(2u) == 0) {
+                    rewriteBlock();
+                }
+
+                blobOffset++;
+            }
+        }
+
+        blobOffset += 1 + RandomNumber(10u);
+    }
+
+    Sort(blocks, TBlockCompare());
+    return blocks;
+}
+
 size_t GetDeletionMarkersCount(const TVector<TBlock>& blocks)
 {
     size_t count = 0;
@@ -126,14 +209,19 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
             minCommitId,
             blockIndex,
             blocksCount);
-        for (size_t i = 0; i < blocksCount; ++i) {
+        for (size_t i = 0; i < blocksCount; i += iter.BlocksInCurrentIteration) {
             UNIT_ASSERT(iter.Next());
+            UNIT_ASSERT(iter.BlocksInCurrentIteration > 0);
 
-            UNIT_ASSERT_VALUES_EQUAL(i, iter.BlobOffset);
-            UNIT_ASSERT_VALUES_EQUAL(nodeId, iter.Block.NodeId);
-            UNIT_ASSERT_VALUES_EQUAL(blockIndex + i, iter.Block.BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(minCommitId, iter.Block.MinCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(maxCommitId, iter.Block.MaxCommitId);
+            for (ui32 j = 0; j < iter.BlocksInCurrentIteration; j++) {
+                UNIT_ASSERT_VALUES_EQUAL(i + j, iter.BlobOffset + j);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, iter.Block.NodeId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blockIndex + i + j,
+                    iter.Block.BlockIndex + j);
+                UNIT_ASSERT_VALUES_EQUAL(minCommitId, iter.Block.MinCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(maxCommitId, iter.Block.MaxCommitId);
+            }
         }
 
         UNIT_ASSERT(!iter.Next());
@@ -158,58 +246,98 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
             InitialCommitId,
             FirstBlockIndex,
             Max<ui32>() - FirstBlockIndex);
-        for (size_t i = 0; i < blocksCount; ++i) {
+        for (size_t i = 0; i < blocksCount; i += iter.BlocksInCurrentIteration) {
             UNIT_ASSERT(iter.Next());
+            UNIT_ASSERT(iter.BlocksInCurrentIteration > 0);
 
-            const auto& block = blocks[i];
-            UNIT_ASSERT_VALUES_EQUAL(i, iter.BlobOffset);
-            UNIT_ASSERT_VALUES_EQUAL(block.NodeId, iter.Block.NodeId);
-            UNIT_ASSERT_VALUES_EQUAL(block.BlockIndex, iter.Block.BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(block.MinCommitId, iter.Block.MinCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(block.MaxCommitId, iter.Block.MaxCommitId);
+            for (ui32 j = 0; j < iter.BlocksInCurrentIteration; j++) {
+                const auto& block = blocks[i];
+                UNIT_ASSERT_VALUES_EQUAL(i + j, iter.BlobOffset + j);
+                UNIT_ASSERT_VALUES_EQUAL(block.NodeId, iter.Block.NodeId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    block.BlockIndex + j,
+                    iter.Block.BlockIndex + j);
+                UNIT_ASSERT_VALUES_EQUAL(block.MinCommitId, iter.Block.MinCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(block.MaxCommitId, iter.Block.MaxCommitId);
+            }
         }
 
         UNIT_ASSERT(!iter.Next());
     }
 
-    Y_UNIT_TEST(ShouldEncodeRandomBlocks)
+    void CheckFindBlocks(
+        const TBlockList& list,
+        const TVector<TBlock>& blocks,
+        ui64 minCommitId)
     {
-        constexpr size_t blocksCount = 1000;
-
-        auto blocks = GenerateRandomBlocks(blocksCount);
-        auto list = TBlockList::EncodeBlocks(blocks, TDefaultAllocator::Instance());
-
-        size_t deletionMarkers = GetDeletionMarkersCount(blocks);
-
-        auto stats = list.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(blocksCount, stats.BlockEntries);
-        UNIT_ASSERT(stats.BlockGroups > 0);
-        UNIT_ASSERT_VALUES_EQUAL(deletionMarkers, stats.DeletionMarkers);
-        UNIT_ASSERT(stats.DeletionGroups > 0);
-
         size_t expectedBlocksToFind = 0;
         for (const auto& block: blocks) {
-            if (block.MinCommitId <= InitialCommitId) {
+            if (block.MinCommitId <= minCommitId &&
+                minCommitId < block.MaxCommitId)
+            {
                 expectedBlocksToFind++;
             }
         }
 
         auto iter = list.FindBlocks(
             NodeId,
-            InitialCommitId,
+            minCommitId,
             FirstBlockIndex,
             Max<ui32>() - FirstBlockIndex);
-        for (size_t i = 0; i < expectedBlocksToFind; ++i) {
+        for (size_t i = 0; i < expectedBlocksToFind; i += iter.BlocksInCurrentIteration) {
             UNIT_ASSERT(iter.Next());
+            UNIT_ASSERT(iter.BlocksInCurrentIteration > 0);
 
-            const auto& block = blocks[iter.BlobOffset];
-            UNIT_ASSERT_VALUES_EQUAL(block.NodeId, iter.Block.NodeId);
-            UNIT_ASSERT_VALUES_EQUAL(block.BlockIndex, iter.Block.BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(block.MinCommitId, iter.Block.MinCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(block.MaxCommitId, iter.Block.MaxCommitId);
+            for (ui32 j = 0; j < iter.BlocksInCurrentIteration; j++) {
+                const auto& block = blocks[iter.BlobOffset + j];
+                UNIT_ASSERT_VALUES_EQUAL(block.NodeId, iter.Block.NodeId);
+                UNIT_ASSERT_VALUES_EQUAL(block.BlockIndex, iter.Block.BlockIndex + j);
+                UNIT_ASSERT_VALUES_EQUAL(block.MinCommitId, iter.Block.MinCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(block.MaxCommitId, iter.Block.MaxCommitId);
+            }
         }
 
         UNIT_ASSERT(!iter.Next());
+    }
+
+    void TestEncodeBlocks(TVector<TBlock> blocks)
+    {
+        auto list = TBlockList::EncodeBlocks(blocks, TDefaultAllocator::Instance());
+        size_t deletionMarkers = GetDeletionMarkersCount(blocks);
+
+        auto stats = list.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(blocks.size(), stats.BlockEntries);
+        UNIT_ASSERT(stats.BlockGroups > 0);
+        UNIT_ASSERT_VALUES_EQUAL(deletionMarkers, stats.DeletionMarkers);
+        if (deletionMarkers > 0) {
+            UNIT_ASSERT(stats.DeletionGroups > 0);
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.DeletionGroups);
+        }
+
+        CheckFindBlocks(list, blocks, InitialCommitId);
+        CheckFindBlocks(list, blocks, InitialCommitId + 1);
+    }
+
+    Y_UNIT_TEST(ShouldEncodeRandomBlocks)
+    {
+        TestEncodeBlocks(GenerateRandomBlocks(1000));
+    }
+
+    Y_UNIT_TEST(ShouldEncodeRandomBlockGroupsWithoutDeletions)
+    {
+        TestEncodeBlocks(
+            GenerateRandomBlockGroups(
+                /*blockGroups=*/10,
+                /*deletionGroups=*/0));
+    }
+
+    Y_UNIT_TEST(ShouldEncodeRandomBlockGroupsWithDeletions)
+    {
+        TestEncodeBlocks(
+            GenerateRandomBlockGroups(
+                /*blockGroups=*/10,
+                /*deletionGroups=*/4));
     }
 
     Y_UNIT_TEST(ShouldDecodeExactSeqBlocks)
