@@ -32,6 +32,9 @@ using IRetryPolicyPtr = std::shared_ptr<IRetryPolicy>;
 struct ISession;
 using ISessionPtr = std::shared_ptr<ISession>;
 
+struct ISwitchableSession;
+using ISwitchableSessionPtr = std::shared_ptr<ISwitchableSession>;
+
 struct TSessionConfig;
 
 struct IMetricClient;

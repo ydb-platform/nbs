@@ -7,6 +7,7 @@ SRCS(
     durable_ut.cpp
     session_ut.cpp
     switchable_client_ut.cpp
+    switchable_session_ut.cpp
 )
 
 PEERDIR(

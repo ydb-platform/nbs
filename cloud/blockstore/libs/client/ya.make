@@ -8,6 +8,7 @@ SRCS(
     multiclient_endpoint.cpp
     session.cpp
     switchable_client.cpp
+    switchable_session.cpp
     throttling.cpp
 )
 
