@@ -49,9 +49,6 @@ void ConvertAttr(ui32 blockSize, const NProto::TNodeAttr& attr, struct stat& st)
         case NProto::E_SOCK_NODE:
             st.st_mode |= S_IFSOCK;
             break;
-        case NProto::E_FIFO_NODE:
-            st.st_mode |= S_IFIFO;
-            break;
     }
 
     st.st_blksize = blockSize;

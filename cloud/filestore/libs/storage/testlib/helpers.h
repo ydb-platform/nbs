@@ -32,7 +32,6 @@ enum class ENodeType
     Link,
     SymLink,
     Sock,
-    Fifo,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,16 +89,9 @@ struct TCreateNodeArgs
                 link->SetTargetPath(TargetPath);
                 break;
             }
-
             case ENodeType::Sock: {
                 auto* sock = request.MutableSocket();
                 sock->SetMode(Mode);
-                break;
-            }
-
-            case ENodeType::Fifo: {
-                auto* fifo = request.MutableFifo();
-                fifo->SetMode(Mode);
                 break;
             }
         }
@@ -141,13 +133,6 @@ struct TCreateNodeArgs
     {
         TCreateNodeArgs args(ENodeType::SymLink, parent, name);
         args.TargetPath = targetPath;
-        return args;
-    }
-
-    static TCreateNodeArgs Fifo(ui64 parent, const TString& name, ui32 mode = 0)
-    {
-        TCreateNodeArgs args(ENodeType::Fifo, parent, name);
-        args.Mode = mode;
         return args;
     }
 };

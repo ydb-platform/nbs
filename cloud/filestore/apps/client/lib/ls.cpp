@@ -96,8 +96,6 @@ TString NodeTypeToString(NProto::ENodeType nodeType)
             return "s";
         case NProto::E_SYMLINK_NODE:
             return "L";
-        case NProto::E_FIFO_NODE:
-            return "p";
         default:
             ythrow yexception() << "must be unreachable";
     }

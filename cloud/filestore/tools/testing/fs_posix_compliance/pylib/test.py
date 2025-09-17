@@ -29,7 +29,7 @@ def get_all_suites(exclude=[]):
 
 
 def get_kikimr_service_suites(exclude=[]):
-    return dict().fromkeys(get_all_suites(exclude=exclude), [])
+    return dict().fromkeys(get_all_suites(exclude=["mkfifo"] + exclude), [])
 
 
 def get_local_service_suites():

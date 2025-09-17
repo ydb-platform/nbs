@@ -759,12 +759,6 @@ private:
                     Started,
                     MakeError(E_NOT_IMPLEMENTED, "sock not implemented")});
             }
-            case NProto::E_FIFO_NODE: {
-                return MakeFuture(TCompletedRequest{
-                    NProto::ACTION_CREATE_NODE,
-                    Started,
-                    MakeError(E_NOT_IMPLEMENTED, "fifo not implemented")});
-            }
             case NProto::E_INVALID_NODE: {
                 return MakeFuture(TCompletedRequest{
                     NProto::ACTION_CREATE_NODE,

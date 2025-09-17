@@ -63,11 +63,6 @@ NProto::TNode CreateSocketAttrs(ui32 mode, ui32 uid, ui32 gid)
     return CreateAttrs(NProto::E_SOCK_NODE, mode, 0, uid, gid);
 }
 
-NProto::TNode CreateFifoAttrs(ui32 mode, ui32 uid, ui32 gid)
-{
-    return CreateAttrs(NProto::E_FIFO_NODE, mode, 0, uid, gid);
-}
-
 NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode)
 {
     ui64 now = MicroSeconds();
