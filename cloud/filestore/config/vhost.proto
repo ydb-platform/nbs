@@ -75,6 +75,17 @@ message TVhostServiceConfig
     // operation. If this limit is exceeded, flush will be split into
     // a sequence of multiple flush operations.
     optional uint64 WriteBackCacheFlushMaxSumWriteRequestsSize = 18;
+
+    // Path to the directory where DirectoryHandles storage is stored for all sessions.
+    // Will create a directory with filesystem id as name
+    // (and a subdirectory with session id as name) if not present.
+    optional string DirectoryHandlesStoragePath = 19;
+
+    // Capacity for DirectoryHandles persistent table.
+    optional uint64 DirectoryHandlesTableSize = 20;
+
+    // Initial data area size for DirectoryHandles persistent table.
+    optional uint64 DirectoryHandlesInitialDataSize = 21;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

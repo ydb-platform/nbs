@@ -35,6 +35,15 @@ struct TWriteBackCacheConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TDirectoryHandlesStorageConfig
+{
+    TString PathPrefix;
+    ui64 TableSize = 0;
+    ui64 InitialDataSize = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IEndpointListenerPtr CreateEndpointListener(
     ILoggingServicePtr logging,
     ITimerPtr timer,
@@ -42,6 +51,7 @@ IEndpointListenerPtr CreateEndpointListener(
     IFileStoreEndpointsPtr filestoreEndpoints,
     NVFS::IFileSystemLoopFactoryPtr loopFactory,
     THandleOpsQueueConfig handleOpsQueueConfig,
-    TWriteBackCacheConfig writeBackCacheConfig);
+    TWriteBackCacheConfig writeBackCacheConfig,
+    TDirectoryHandlesStorageConfig directoryHandlesStorageConfig);
 
 }   // namespace NCloud::NFileStore::NVhost

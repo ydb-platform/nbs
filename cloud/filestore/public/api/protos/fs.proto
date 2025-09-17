@@ -41,6 +41,7 @@ message TFileStoreFeatures
     bool ZeroCopyWriteEnabled = 26;
     bool FSyncQueueDisabled = 27;
     uint32 XAttrCacheTimeout = 28;
+    bool DirectoryHandlesStorageEnabled = 29;
 }
 
 message TFileStore
