@@ -11,7 +11,7 @@
     - Filesystem backups listing
     - Filesystem backups deletion with data deletion in the background.
 * Disk Manager MUST restore the filesystem backup only to a new (non-existent from the disk-manager point of view) filesystem.
-* Backups storage should be data storage type agnostic (Disk Manager should be able to store data either in YDB or in S3).
+* Backups storage should be data (not metadata) storage type agnostic (Disk Manager should be able to store file data either in YDB or in S3). Metadata MUST be stored in YDB.
 * There should be an alert on filesystem backup creation estimate exceeded.
 * Filesystem backups should support incrementality (if two backups were created from the same filesystem at different points in time, they must not contain duplicate data). **Note:** this is the last priority
 * Filesystem backups must support cancellation (if the backup is in progress and the task is cancelled, the backup should be stopped and the data should eventually be deleted).
@@ -40,7 +40,7 @@ which would adhere to the following requirements:
 
 ## Filestore Metadata structure
 
-Filestore metadata consists of various inode (file) attributes and relations between inodes (which inode is a parent of which), it also contains information about which shard stores required file system. Filestore metadata is served by a single tablet (replicated state machine). Tablet stores it's state in several tables which allows indexing by primary key only (local db).
+Filestore metadata consists of various inode (file) attributes and relations between inodes (which inode is a parent of which), it also contains information about which shard stores required file system. Filestore metadata is served by a single tablet (replicated state machine), whilst data is served by multiple tablets. Tablet stores it's state in several tables which allows indexing by primary key only (local db).
 Filestore has code to support checkpoint implementation, but for now, checkpoint creation is not supported.
 
 ### Node refs
@@ -71,9 +71,9 @@ struct NodeRefs: TTableSchema<9>
 ```
 Note, that `NodeId` here is the id of a parent node, whereas `ChildId` is id of a child node,
 in the Disk Manager terminology we would prefer the terminology parent id and child id.
-For sharded filesystems, `ShardId` is the name of the shard, which is a separate filesystem, which stores files in plain structure (files are named by uids).
+For sharded filesystems, `ShardId` is the id of the shard, which is a separate filesystem, which stores files in plain structure (files are named by uids).
 
-**IMPORTANT** IDs of inodes do not provide any information about which file was created earlier. The ID of the shard is encoded into the ID of the inode.
+**IMPORTANT** IDs of inodes do not provide any information about which file was created earlier. The index of the shard is encoded into the ID of the inode, the id of the shard id of the filesystem + "_" + index of the shard (0..N).
 
 
 **IMPORTANT** YDB tablet API does not support querying a table simply by a limit and offset.
@@ -185,7 +185,7 @@ storage_size: Uint64
 status: Int64
 ```
 
-After the controlplane record is created, almost identical database entry for controlplane is created.
+After the controlplane record is created, almost identical database entry for dataplane is created.
 
 ### 🌳 Node hierarchy backup
 
@@ -286,13 +286,23 @@ destination_node_id: Uint64
 ```
 with primary key (`source_filesystem_id`, `destination_filesystem_id`, `source_node_id`).
 We will initially prepend the table with the root node mapping (1 -> 1).
-
+To avoid race condition in links restoration, we need to create additional table `filesystem_restore_links`:
+```
+source_filesystem_id: Utf8
+destination_filesystem_id: Utf8
+source_node_id: Uint64
+parent_node_id: Uint64
+name: Utf8
+status: Uint32 // creating, created
+```
+with primary key (`source_filesystem_id`, `destination_filesystem_id`, `source_node_id`, `parent_node_id`, `name`).
 ##### Algorithm:
 1. Read a record from the database
 2. Put it into the channel with inflight queue.
 3. If the node parent does not exist in the mapping table, put the record back into the channel.
-# todo rethink this, too complicated, where to place?
-4. Create a file. If node is a link (reference count > 1), check if the node was created (present in the `filesystem_restore_mapping` table), if not, create it as a regular, otherwise create a link to the existing file.
+4. Create a file. If node is a link (reference count > 1), check if the node was created (present in the `filesystem_restore_mapping` table), if not, create it as a regular, otherwise create a link to the existing file. **Note: ** before creating the link, try and lock the link in `filesystem_restore_links` table, if the lock is not acquired, put the record back into the channel. After the link is created, update the `filesystem_restore_links` table entry to `created`. If the "locked" link is the same as the one we are trying to create (same parent, same name), we can proceed with link creation, since this situation can only occur in case of task restart.
+There is no way two threads try to write the same file.
+
 5. In case of node creation, put the mapping of source node id to destination node id into the `filesystem_restore_mapping` table.
 6. On success, notify the channel that the record is processed.
 7. update milestone.
