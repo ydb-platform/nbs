@@ -12,8 +12,6 @@
 #include <cloud/blockstore/libs/ydbstats/ydbrow.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 
-#include <cloud/blockstore/libs/diagnostics/hostname.h>
-
 #include <cloud/storage/core/config/features.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -94,7 +92,6 @@ NMonitoring::TDynamicCounters::TCounterPtr GetCounterToCheck(
 {
     auto volumeCounters = counters.GetSubgroup("counters", "blockstore")
         ->GetSubgroup("component", "service_volume")
-        ->GetSubgroup("host", GetShortHostName())
         ->GetSubgroup("volume", DefaultDiskId)
         ->GetSubgroup("cloud", DefaultCloudId)
         ->GetSubgroup("folder", DefaultFolderId);
@@ -104,8 +101,7 @@ NMonitoring::TDynamicCounters::TCounterPtr GetCounterToCheck(
 bool VolumeMetricsExists(NMonitoring::TDynamicCounters& counters)
 {
     auto volumeCounters = counters.GetSubgroup("counters", "blockstore")
-        ->GetSubgroup("component", "service_volume")
-        ->GetSubgroup("host", GetShortHostName());
+        ->GetSubgroup("component", "service_volume");
 
     return (bool)volumeCounters->FindSubgroup("volume", DefaultDiskId);
 }
@@ -193,6 +189,7 @@ void PartitionBootExternalCompleted(
 void SendDiskStats(
     TTestActorRuntime& runtime,
     const TString& diskId,
+    const bool isLocalMount,
     TPartitionDiskCountersPtr diskCounters,
     TVolumeSelfCountersPtr volumeCounters,
     EVolumeTestOptions volumeOptions,
@@ -210,7 +207,7 @@ void SendDiskStats(
 
     auto volumeMsg = std::make_unique<TEvStatsService::TEvVolumeSelfCounters>(
         diskId,
-        true, // isLocalMount
+        isLocalMount,
         volumeOptions & EVolumeTestOptions::VOLUME_HASCLIENTS,
         false,
         std::move(volumeCounters));
@@ -254,6 +251,7 @@ TVector<ui64> BroadcastVolumeCounters(
         SendDiskStats(
             runtime,
             DefaultDiskId,
+            false, // isLocalMount
             std::move(counters),
             std::move(volume),
             volumeOptions,
@@ -304,6 +302,7 @@ void ForceYdbStatsUpdate(
         SendDiskStats(
             runtime,
             volumes[i],
+            false, // isLocalMount
             std::move(counters),
             std::move(volume),
             {},
@@ -493,23 +492,13 @@ public:
 
 Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 {
-    Y_UNIT_TEST(ShouldNotReportSolomonMetricsIfNotMounted)
+    Y_UNIT_TEST(ShouldReportSolomonMetrics)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
         RegisterVolume(runtime, DefaultDiskId);
         auto counters = BroadcastVolumeCounters(runtime, {0}, {});
-        UNIT_ASSERT(counters[0]== 0);
-    }
-
-    Y_UNIT_TEST(ShouldReportSolomonMetricsIfVolumeRunsLocallyAndMounted)
-    {
-        TTestBasicRuntime runtime;
-        TTestEnv env(runtime);
-
-        RegisterVolume(runtime, DefaultDiskId);
-        auto counters = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCLIENTS);
         UNIT_ASSERT(counters[0]== 1);
     }
 
@@ -535,6 +524,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             DefaultDiskId,
+            false, // isLocalMount
             std::move(counters),
             std::move(volume),
             EVolumeTestOptions::VOLUME_HASCLIENTS,
@@ -557,14 +547,132 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(false, VolumeMetricsExists(*runtime.GetAppData(0).Counters));
     }
 
-    Y_UNIT_TEST(ShouldReportSolomonMetricsIfVolumeRunsLocallyAndHasCheckpoint)
+    Y_UNIT_TEST(ShouldReportIsStartedCounter)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
         RegisterVolume(runtime, DefaultDiskId);
-        auto counters = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCHECKPOINT);
-        UNIT_ASSERT(counters[0] == 1);
+
+        SendDiskStats(
+            runtime,
+            DefaultDiskId,
+            false, // isLocalMount
+            CreatePartitionDiskCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
+            CreateVolumeSelfCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
+            EVolumeTestOptions::VOLUME_HASCLIENTS,
+            0);
+
+        auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
+        runtime.Send(
+            new IEventHandle(
+                MakeStorageStatsServiceId(),
+                MakeStorageStatsServiceId(),
+                updateMsg.release(),
+                0, // flags
+                0),
+            0);
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
+        runtime.DispatchEvents(options);
+
+        ui64 actual = *runtime.GetAppData(0).Counters
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "service_volume")
+            ->GetSubgroup("volume", DefaultDiskId)
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetCounter("IsStarted");
+        UNIT_ASSERT_VALUES_EQUAL(1, actual);
+    }
+
+    Y_UNIT_TEST(ShouldReportIsLocalMountCounter)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        RegisterVolume(runtime, DefaultDiskId);
+
+        SendDiskStats(
+            runtime,
+            DefaultDiskId,
+            false, // isLocalMount
+            CreatePartitionDiskCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
+            CreateVolumeSelfCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
+            EVolumeTestOptions::VOLUME_HASCLIENTS,
+            0);
+
+        {
+            auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
+            runtime.Send(
+                new IEventHandle(
+                    MakeStorageStatsServiceId(),
+                    MakeStorageStatsServiceId(),
+                    updateMsg.release(),
+                    0, // flags
+                    0),
+                0);
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
+            runtime.DispatchEvents(options);
+
+            ui64 actual = *runtime.GetAppData(0).Counters
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service_volume")
+                ->GetSubgroup("volume", DefaultDiskId)
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetCounter("IsLocalMount");
+            UNIT_ASSERT_VALUES_EQUAL(0, actual);
+        }
+
+        SendDiskStats(
+            runtime,
+            DefaultDiskId,
+            true, // isLocalMount
+            CreatePartitionDiskCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
+            CreateVolumeSelfCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
+            EVolumeTestOptions::VOLUME_HASCLIENTS,
+            0);
+
+        {
+            auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
+            runtime.Send(
+                new IEventHandle(
+                    MakeStorageStatsServiceId(),
+                    MakeStorageStatsServiceId(),
+                    updateMsg.release(),
+                    0, // flags
+                    0),
+                0);
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
+            runtime.DispatchEvents(options);
+
+            ui64 actual = *runtime.GetAppData(0).Counters
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service_volume")
+                ->GetSubgroup("volume", DefaultDiskId)
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetCounter("IsLocalMount");
+            UNIT_ASSERT_VALUES_EQUAL(1, actual);
+        }
     }
 
     Y_UNIT_TEST(ShouldReportMaximumsForCompactionScore)
@@ -584,6 +692,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             "vol0",
+            false, // isLocalMount
             std::move(counters1),
             CreateVolumeSelfCounters(
                 EPublishingPolicy::Repl,
@@ -598,6 +707,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             "vol1",
+            false, // isLocalMount
             std::move(counters2),
             CreateVolumeSelfCounters(
                 EPublishingPolicy::Repl,
@@ -645,6 +755,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             DefaultDiskId,
+            false, // isLocalMount
             std::move(counters),
             CreateVolumeSelfCounters(
                 policy,
@@ -867,6 +978,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             SendDiskStats(
                 runtime,
                 diskInfo.DiskId,
+                false, // isLocalMount
                 CreatePartitionDiskCounters(
                     EPublishingPolicy::Repl,
                     EHistogramCounterOption::ReportMultipleCounters),
@@ -1326,6 +1438,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         SendDiskStats(
             runtime,
             "vol0",
+            false, // isLocalMount
             std::move(counters),
             CreateVolumeSelfCounters(
                 publishingPolicy,
@@ -1350,7 +1463,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             ui64 actual = *runtime.GetAppData(0).Counters
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service_volume")
-                ->GetSubgroup("host", GetShortHostName())
                 ->GetSubgroup("volume", "vol0")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
@@ -1363,7 +1475,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             ui64 actual = *runtime.GetAppData(0).Counters
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service_volume")
-                ->GetSubgroup("host", GetShortHostName())
                 ->GetSubgroup("volume", "vol0")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
