@@ -77,7 +77,7 @@ For sharded filesystems, `ShardId` is the name of the shard, which is a separate
 
 
 **IMPORTANT** YDB tablet API does not support querying a table simply by a limit and offset.
-The table allows querying only by the id ot the parent and by the name of the file.
+The table allows querying only by the id of the parent and by the name of the file.
 
 
 Information about inode (atime, ctime, mtime, mod, uid, gid, etc. ) are stored in the `Nodes` [table](https://github.com/ydb-platform/nbs/blob/40d2878cd3c878c53f8a4946ede2ee47ff43e8f6/cloud/filestore/libs/storage/tablet/tablet_schema.h#L137)
