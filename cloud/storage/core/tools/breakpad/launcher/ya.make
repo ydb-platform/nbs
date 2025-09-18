@@ -1,5 +1,7 @@
 PY2_PROGRAM(yc-storage-breakpad-launcher)
 
+ALLOCATOR(TCMALLOC_TC)
+
 PEERDIR(
     cloud/storage/core/tools/breakpad/common
 )
