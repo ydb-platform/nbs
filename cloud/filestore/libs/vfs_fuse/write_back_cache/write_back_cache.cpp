@@ -1117,8 +1117,10 @@ private:
         state.WriteRequests.clear();
 
         if (state.FailedWriteRequests.empty()) {
+            StatsReporter->IncrementCompletedFlushCount();
             CompleteFlush(nodeState);
         } else {
+            StatsReporter->IncrementFailedFlushCount();
             ScheduleRetryFlush(nodeState);
         }
     }
