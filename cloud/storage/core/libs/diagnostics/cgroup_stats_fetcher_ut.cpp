@@ -54,9 +54,7 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
 
         auto fetcher = CreateCgroupStatsFetcher(
             ComponentName,
-            CreateLoggingService("console"),
             statsFile.Name());
-        fetcher->Start();
 
         auto cpuWait = fetcher->GetCpuWait();
         UNIT_ASSERT_C(!HasError(cpuWait), cpuWait.GetError());
@@ -70,8 +68,6 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MicroSeconds(10),
             cpuWait.GetResult());
-
-        fetcher->Stop();
     }
 
     Y_UNIT_TEST(ShouldReportErrorIfFileIsMissing)
@@ -81,16 +77,12 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
 
         auto fetcher = CreateCgroupStatsFetcher(
             ComponentName,
-            CreateLoggingService("console"),
             "noname");
-        fetcher->Start();
 
         auto cpuWait = fetcher->GetCpuWait();
         UNIT_ASSERT_C(HasError(cpuWait), cpuWait.GetError());
         cpuWait = fetcher->GetCpuWait();
         UNIT_ASSERT_C(HasError(cpuWait), cpuWait.GetError());
-
-        fetcher->Stop();
     }
 
     Y_UNIT_TEST(ShouldReportErrorIfNewValueIsLowerThanPrevious)
@@ -101,9 +93,7 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
 
         auto fetcher = CreateCgroupStatsFetcher(
             ComponentName,
-            CreateLoggingService("console"),
             "test");
-        fetcher->Start();
 
         UpdateCGroupWaitDuration(statsFile, TDuration::MicroSeconds(80));
         auto cpuWait = fetcher->GetCpuWait();
@@ -115,8 +105,6 @@ Y_UNIT_TEST_SUITE(TCGroupStatFetcherTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MicroSeconds(20),
             cpuWait.GetResult());
-
-        fetcher->Stop();
     }
 }
 

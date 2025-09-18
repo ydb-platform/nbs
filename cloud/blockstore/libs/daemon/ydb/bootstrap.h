@@ -131,7 +131,6 @@ protected:
     ITraceSerializerPtr GetTraceSerializer() override;
     IStartable* GetLogbrokerService() override;
     IStartable* GetNotifyService() override;
-    IStartable* GetStatsFetcher() override;
     IStartable* GetIamTokenClient() override;
     IStartable* GetComputeClient() override;
     IStartable* GetKmsClient() override;

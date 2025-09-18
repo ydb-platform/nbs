@@ -113,7 +113,6 @@ protected:
     virtual ITraceSerializerPtr GetTraceSerializer() = 0;
     virtual IStartable* GetLogbrokerService() = 0;
     virtual IStartable* GetNotifyService() = 0;
-    virtual IStartable* GetStatsFetcher() = 0;
     virtual IStartable* GetIamTokenClient() = 0;
     virtual IStartable* GetComputeClient() = 0;
     virtual IStartable* GetKmsClient() = 0;
