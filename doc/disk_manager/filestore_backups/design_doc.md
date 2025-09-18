@@ -13,7 +13,7 @@
 * Disk Manager MUST restore the filesystem backup only to a new (non-existent from the disk-manager point of view) filesystem.
 * Backups storage should be data storage type agnostic (Disk Manager should be able to store data either in YDB or in S3).
 * There should be an alert on filesystem backup creation estimate exceeded.
-* Filesystem backups should support incrementality (if two backups were created from the same filesystem at different points in time, they must not contain duplicate data). // this is the last priority
+* Filesystem backups should support incrementality (if two backups were created from the same filesystem at different points in time, they must not contain duplicate data). **Note:** this is the last priority
 * Filesystem backups must support cancellation (if the backup is in progress and the task is cancelled, the backup should be stopped and the data should eventually be deleted).
 * Filesystem backup can't be restored to the filesystem which is being restored from another backup.
 
@@ -23,7 +23,7 @@
 * ⚙️ Backup creation and restoration MUST be resilient to node downtime, failure and network errors.
 * 📈 Loss of some progress is acceptable as long as filestore backup is finished within a reasonable amount of time.
 * ⏱️ Latency < .1 sec for 99% for all api methods (filesystem backup creation is asynchronous, but we do not slow request for task state or operation).
-* 🔢 The system should handle up to 100000 file system backups per datacenter (assuming worst case scenario where clients create small file systems sized several tens of Gib's, the number is derived from order of magnitude of snapshots count in some installations).
+* 🔢 The system should handle up to 100000 file system backups per datacenter (assuming worst case scenario where clients create small file systems sized several tens of Gib's, the number is derived from order of magnitude of disk snapshots count in some installations).
 * 🔄Idempotency: Filesystem backup creation and deletion must be idempotent.
 * 🪨 Consistency (filesystem backup should capture a consistent state of the filesystem at some point in time).
 
@@ -44,7 +44,7 @@ Filestore metadata consists of various inode (file) attributes and relations bet
 Filestore has code to support checkpoint implementation, but for now, checkpoint creation is not supported.
 
 ### Node refs
-Information about the directory structure is stored in the `NodeRefs` [table](link_to_table)
+Information about the directory structure is stored in the `NodeRefs` [table](https://github.com/ydb-platform/nbs/blob/40d2878cd3c878c53f8a4946ede2ee47ff43e8f6/cloud/filestore/libs/storage/tablet/tablet_schema.h#L218)
 ```cpp
 struct NodeRefs: TTableSchema<9>
 {
@@ -80,7 +80,7 @@ For sharded filesystems, `ShardId` is the name of the shard, which is a separate
 The table allows querying only by the id ot the parent and by the name of the file.
 
 
-Information about inode (atime, ctime, mtime, mod, uid, gid, etc. ) are stored in the `Nodes` [table](link_to_table)
+Information about inode (atime, ctime, mtime, mod, uid, gid, etc. ) are stored in the `Nodes` [table](https://github.com/ydb-platform/nbs/blob/40d2878cd3c878c53f8a4946ede2ee47ff43e8f6/cloud/filestore/libs/storage/tablet/tablet_schema.h#L137)
 ```cpp
 struct Nodes: TTableSchema<5>
     {
@@ -100,7 +100,7 @@ struct Nodes: TTableSchema<5>
     };
 ```
 
-To support extended attributes backup we will also need to back up the `NodeAttrs` [table](link_to_table)
+To support extended attributes backup we will also need to back up the `NodeAttrs` [table](https://github.com/ydb-platform/nbs/blob/40d2878cd3c878c53f8a4946ede2ee47ff43e8f6/cloud/filestore/libs/storage/tablet/tablet_schema.h#L174)
 ```cpp
 struct NodeAttrs: TTableSchema<7>
 {
@@ -147,7 +147,7 @@ Both approaches have advantages and disadvantages:
 ## Proposed solution
 We propose creation of two separate tasks for controlplane and dataplane respectively.
 The controlplane task will create a checkpoint and a record about pending filesystem in the database.
-Then it will wait for the dataplane task and finalize snapshot creation afterwards.
+Then it will wait for the dataplane task and finalize backup creation afterwards.
 The backup process should be separated into the following stages:
 * Checkpoint creation
 * Database record creation
@@ -216,12 +216,12 @@ The primary key should be (`filesystem_backup_id`, `depth`, `parent_node_id`, `n
 For the queue we will use the following table:
 ```
 filesystem_backup_id: Utf8
-finished: Bool
+status: Uint32 // e.g. pending, listing, finished
 node_id: Uint64
 cookie: Utf8
 depth: Uint64
 ```
-The primary key should be (`filesystem_backup_id`, `finished`, `node_id`, `cookie`).
+The primary key should be (`filesystem_backup_id`, `status`, `node_id`, `cookie`).
 
 For data chunks there must be a separate table `chunk_maps`, which will store the mapping of chunks to files:
 ```
@@ -240,23 +240,23 @@ Hard links are retrieved from the filestore as a regular files with refcnt > 1.
 #### Algorithm:
 First we emplace the root node into the queue table and then we start several `DirectoryLister`'s and a single `DirectoryListingScheduler`.
 `DirectoryListingScheduler` does the following:
-1. Reads several records from the queue table with `finished == false` sorted by primary key.
-2. For each record checks if there are more records in the queue with the same `node_id` and `finished == true`, or a greater cookie, in that case, it removes records from the table.
-3. Puts records in a channel for processing while there are records to process.
+1. Reads all the records from the queue table with `status == listing` and puts them into the channel.
+2. While pending records are present, reads several records from the queue table with `status == pending` sorted by primary key.
+3. For each record checks if there are more records in the queue with the same `node_id` and `status != pending`, in that case, it removes records from the table.
+4. Puts records in a channel for processing while there are records to process.
 
 `DirectoryLister` does the following:
 1. Reads a record from the channel.
 2. Performs ListNodes API call for the `node_id` from the record, using the `cookie` from the record if it is not empty.
-3. Performs upsert of all the nodes to `node_references` table. (By incrementing depth by one).
-4. Puts all the directories into the queue table with `finished == false` and cookie as empty.
+3. Performs upsert of all the nodes to `node_references` table. (By incrementing depth by one). For this we can use the `BulkUpsert` API call.
+4. Puts all the directories into the queue table with `status = pending` and cookie as empty.
 5. For all the symlinks, performs `ReadLink` API call and updates the `symlink_target` field in the `node_references` table.
 6. For all regular files, generate chunk entries and put them into the `chunk_maps` table.
-7. On success, updates the cookie in the queue table and sets `finished == true` if listing did not return anything.
+7. On success, updates the cookie in the queue table and sets `status == finished` if listing did not return anything.
 
 Steps 3,4,5 CAN be performed in parallel.
 
-After all the metadata is backed up, delete all the records from the queue table.
-
+After all the metadata is backed up, delete all the records from the queue table by the given `filesystem_backup_id`.
 
 ### 💽 Data backup
 Data backup will use channel with inflight queue and milestone to store the progress, but there be a slight modification to the inflight queue algorithm, since we will maintain not the number of goroutines, but rather the amount of data being processed. Data is saved to the `chunk_blobs` table.
@@ -268,16 +268,16 @@ data: String
 compression: Utf8
 checksum: Uint32
 refcnt: Uint32
-
+```
+with primary key (`shard_id`, `chunk_id`, `referrer_backup_id`).
+Chunk blob data can also be stored in S3.
+# todo see how it is implemented for snapshots
 
 ### 🌳↩️ Filesystem hierarchy restoration
 
 We will use channel with inflight queue and milestone to store the process of the restoration of the filesystem hierarchy. We will process the `node_references` table ordered by the primary key.
-For the restoration we will use channel with inflight queue and a milestone to store the progress.
-We will read the `node_references` table ordered by the primary key.
 
-
-For the mapping of source node ids to destination node ids we will need the following `filesystem_restore_links_mapping` table:
+For the mapping of source node ids to destination node ids we will need the following `filesystem_restore_mapping` table:
 ```
 source_filesystem_id: Utf8
 destination_filesystem_id: Utf8
@@ -291,18 +291,17 @@ We will initially prepend the table with the root node mapping (1 -> 1).
 1. Read a record from the database
 2. Put it into the channel with inflight queue.
 3. If the node parent does not exist in the mapping table, put the record back into the channel.
-4. Create a file. If node is a link (reference count > 2), check if node itself was created, if not, create it as a regular, otherwise create a link.
-5. Put the mapping of source node id to destination node id into the mapping table.
+# todo rethink this, too complicated, where to place?
+4. Create a file. If node is a link (reference count > 1), check if the node was created (present in the `filesystem_restore_mapping` table), if not, create it as a regular, otherwise create a link to the existing file.
+5. In case of node creation, put the mapping of source node id to destination node id into the `filesystem_restore_mapping` table.
 6. On success, notify the channel that the record is processed.
 7. update milestone.
 
 ### ↩️ Data restoration
-For file the  data restoration, the same approach as in the attributes and data backup can be used, but for each node, we will read the destination node id from the `filesystem_backup_restore_mapping` table and restore the data to the destination node.
+For file the  data restoration, the same approach as in the data backup can be used, we will process the `chunk_maps`, using a channel with inflight queue whilst maintaining a fixed amount of data in-flight. The destination file to write data to can be retrieved from the `filesystem_restore_mapping` table.
 
-#### Small files chunking
+#### Potential optimizations
 If the performance would be insufficient, the smart thing here would be to:
-1) Read several node refs records from the database as a single chunk, each chunk would be a limit & offset within the table.
-2) Implement a method to create several files in a single API call whilst specifying attributes like atime, mtime, mode, uid, gid, etc.
-3) Write small files in a single API call.
-4) Add additional shard id to the `node_references` and launch different workers for different shards, whilst implementing a shard locking mechanism.
+* Implement a method to create several files in a single API call whilst specifying attributes like atime, mtime, mode, uid, gid, etc.
+* Write small files in a single API call.
 
