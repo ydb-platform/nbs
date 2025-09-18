@@ -37,7 +37,7 @@ Y_UNIT_TEST_SUITE(ValidateTest)
             "0",    // alternatingPhase
             maxWriteRequestCount);
 
-        auto executor = CreateTestExecutor(
+        auto executor = NTesting::CreateTestExecutor(
             configHolder,
             logging->CreateLog("ETERNAL_EXECUTOR")
         );
