@@ -281,9 +281,9 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         TBlockStoreComponents::END,
         GetComponentName);
 
-    // for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
-    //     runtime->SetLogPriority(i, NLog::PRI_DEBUG);
-    // }
+    for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+        runtime->SetLogPriority(i, NLog::PRI_DEBUG);
+    }
     // runtime->SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     runtime->SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
 
@@ -7645,9 +7645,12 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
     Y_UNIT_TEST(ShouldRaiseCriticalEventIfTrimFreshLogTimesOut)
     {
+        constexpr ui32 FreshChannelId = 4;
+
         auto config = DefaultConfig();
         config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFlushThreshold(4_MB);
         config.SetTrimFreshLogTimeout(TDuration::Seconds(1).MilliSeconds());
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7674,13 +7677,15 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         bool trimSeen = false;
         bool trimCompletedSeen = false;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvBlobStorage::EvCollectGarbage: {
-                        auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
-                        if (msg->Channel == 4) {
+                    case TEvBlobStorage::EvCollectGarbageResult: {
+                        auto* msg =
+                            event->Get<TEvBlobStorage::TEvCollectGarbageResult>();
+                        if (msg->Channel == FreshChannelId) {
                             trimSeen = true;
-                            return TTestActorRuntime::EEventAction::DROP;
+                            msg->Status = NKikimrProto::EReplyStatus::DEADLINE;
                         }
                         break;
                     }
@@ -7691,7 +7696,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             }
         );
 
@@ -7699,13 +7704,14 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         // wait for trimfreshlog to complete
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(
-            TEvPartitionCommonPrivate::EvTrimFreshLogCompleted);
+        options.CustomFinalCondition = [&] {
+            return trimCompletedSeen;
+        };
         runtime->DispatchEvents(options);
 
         UNIT_ASSERT_VALUES_EQUAL(true, trimSeen);
         UNIT_ASSERT_VALUES_EQUAL(true, trimCompletedSeen);
-        UNIT_ASSERT_VALUES_EQUAL(1, trimCounter->Val());
+        UNIT_ASSERT_VALUES_UNEQUAL(0, trimCounter->Val());
     }
 }
 

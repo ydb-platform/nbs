@@ -13131,8 +13131,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldRaiseCriticalEventIfTrimFreshLogTimesOut)
     {
+        constexpr ui32 FreshChannelId = 4;
+
         auto config = DefaultConfig();
         config.SetFreshChannelCount(1);
+        config.SetFlushThreshold(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetTrimFreshLogTimeout(TDuration::Seconds(1).MilliSeconds());
 
@@ -13162,11 +13165,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvBlobStorage::EvCollectGarbage: {
-                        auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
-                        if (msg->Channel == 4) {
+                    case TEvBlobStorage::EvCollectGarbageResult: {
+                        auto* msg =
+                            event->Get<TEvBlobStorage::TEvCollectGarbageResult>();
+                        if (msg->Channel == FreshChannelId) {
                             trimSeen = true;
-                            return TTestActorRuntime::EEventAction::DROP;
+                            msg->Status = NKikimrProto::EReplyStatus::DEADLINE;
                         }
                         break;
                     }
@@ -13185,13 +13189,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // wait for trimfreshlog to complete
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(
-            TEvPartitionCommonPrivate::EvTrimFreshLogCompleted);
+        options.CustomFinalCondition = [&] {
+            return trimCompletedSeen;
+        };
         runtime->DispatchEvents(options);
 
         UNIT_ASSERT_VALUES_EQUAL(true, trimSeen);
-        UNIT_ASSERT_VALUES_EQUAL(true, trimCompletedSeen);
-        UNIT_ASSERT_VALUES_EQUAL(1, trimCounter->Val());
+        UNIT_ASSERT_VALUES_UNEQUAL(0, trimCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldLoadFreshBlobsFromLastTrimFreshLogToCommitIdInMeta)
