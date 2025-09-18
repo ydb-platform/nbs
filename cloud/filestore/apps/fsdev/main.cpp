@@ -5,9 +5,14 @@
 int main(int argc, char** argv)
 {
     Y_UNUSED(argc);
+    Y_UNUSED(argc);
+
+    Y_UNUSED(argc);
     Y_UNUSED(argv);
 
+    if (0) {
     NCloud::NFileStore::NSpdk::TSpdkEnvConfigPtr config;
     NCloud::NFileStore::NSpdk::CreateEnv(config);
+    }
     return 0;
 }
