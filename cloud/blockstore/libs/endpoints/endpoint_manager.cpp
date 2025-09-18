@@ -1368,6 +1368,9 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         return TErrorResponse(getSessionError);
     }
 
+    it->second->Volume.SetBlocksCount(sessionInfo.Volume.GetBlocksCount());
+    it->second->Volume.SetBlockSize(sessionInfo.Volume.GetBlockSize());
+
     auto error = it->second->Device->Resize(
         sessionInfo.Volume.GetBlocksCount() *
         sessionInfo.Volume.GetBlockSize()).GetValueSync();
