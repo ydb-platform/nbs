@@ -14,11 +14,11 @@ import signal
 import subprocess
 import sys
 
-from cloud.storage.core.tools.breakpad.common.crash_info import CrashInfo, CrashInfoStorage
+from ..common.crash_info import CrashInfo, CrashInfoStorage
 
-from core_checker import CoreChecker
-from error_collector import StreamErrorCollector, FileErrorCollector
-from oom_checker import OOMChecker
+from .core_checker import CoreChecker
+from .error_collector import StreamErrorCollector, FileErrorCollector
+from .oom_checker import OOMChecker
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +27,9 @@ class LauncherError(Exception):
     pass
 
 
-class Executer(object):
+class Executer:
 
     def __init__(self, command):
-        super(Executer, self).__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self.command = command
         self.environ = dict()
@@ -67,12 +66,11 @@ class Executer(object):
     def nb_read(self, stream):
         try:
             return stream.read()
-        except IOError as e:
-            # Read can return: "IOError: [Errno 11] Resource temporarily unavailable"
-            if e.errno != 11:
-                self._logger.debug("Error read stream %r", e)
         except OSError as e:
-            self._logger.debug("Unknown error occured during not block read %r", e)
+            # Read can return: "OSError: [Errno 11] Resource temporarily unavailable"
+            if e.errno != errno.EAGAIN:
+                self._logger.debug(
+                    "Error occured during non-blocking read %r", e)
         return ""
 
     def tee_stream(self, stream):
@@ -147,10 +145,9 @@ class Executer(object):
         return self.err_err.errors + self.err_out.errors
 
 
-class Launcher(object):
+class Launcher:
 
     def __init__(self):
-        super(Launcher, self).__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self.launcher = None
         self.errors = ""
@@ -210,11 +207,8 @@ class Launcher(object):
 
     def ensure_directory(self, path):
         try:
-            os.makedirs(path, 0o700)
+            os.makedirs(path, 0o700, exist_ok=True)
         except OSError as e:
-            if e.errno != os.errno.EEXIST:
-                raise
-        except IOError as e:
             self._logger.error("Can't create directory %s %r", path, e)
             self._logger.debug("Exception", exc_info=True)
             raise LauncherError("Error create directory")
