@@ -15,9 +15,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr auto CheckDrainCompleteTimeout = TDuration::Seconds(1);
+constexpr auto CheckDrainCompletedPeriod = TDuration::Seconds(1);
 
 ////////////////////////////////////////////////////////////////////////////////
+
 struct TEnsureVolumeMountedArgs
 {
 };
@@ -122,7 +123,7 @@ auto DoExecute(
 
 struct TSharedCounter: std::enable_shared_from_this<TSharedCounter>
 {
-    std::atomic<size_t> Count{0};
+    std::atomic<i64> Count{0};
 };
 using TSharedCounterPtr = std::shared_ptr<TSharedCounter>;
 
@@ -173,7 +174,7 @@ public:
         TCallContextPtr callContext,
         TRequest request)
     {
-        auto& current = GetCurrent();
+        auto& current = GetCurrentSessionInfo();
         auto counter = current.InflightRequestCounter;
         ++counter->Count;
 
@@ -187,19 +188,20 @@ public:
             {
                 Y_UNUSED(f);
 
-                --counter->Count;
+                i64 current = --counter->Count;
+                Y_DEBUG_ABORT_UNLESS(current >= 0);
             });
         return future;
     }
 
-    // Implement ISwitchableSession
+    // Implements ISwitchableSession
     TFuture<void> SwitchSession(
         const TString& newDiskId,
         const TString& newSessionId,
         ISessionPtr newSession,
         ISwitchableBlockStorePtr newSwitchableClient) override
     {
-        auto& oldSession = GetCurrent();
+        auto& oldSession = GetCurrentSessionInfo();
         size_t activeSession = ActiveSession.load();
         STORAGE_INFO(
             "Switch #" << activeSession << " session from "
@@ -222,7 +224,7 @@ public:
         return oldSession.DrainPromise;
     }
 
-    // Implement ISession
+    // Implements ISession
     ui32 GetMaxTransfer() const override
     {
         return GetCurrentSession()->GetMaxTransfer();
@@ -315,7 +317,7 @@ public:
     }
 
 private:
-    TSessionInfo& GetCurrent()
+    TSessionInfo& GetCurrentSessionInfo()
     {
         return Sessions[ActiveSession.load(std::memory_order_acquire)];
     }
@@ -329,7 +331,7 @@ private:
     void ScheduleCheckAllRequestsDrained(size_t sessionIndex)
     {
         Scheduler->Schedule(
-            TInstant::Now() + CheckDrainCompleteTimeout,
+            TInstant::Now() + CheckDrainCompletedPeriod,
             [sessionIndex, weakSelf = weak_from_this()]
             {
                 if (auto self = weakSelf.lock()) {
