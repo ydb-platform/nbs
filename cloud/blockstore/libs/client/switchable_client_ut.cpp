@@ -27,17 +27,10 @@ enum class EHandledOn
 };
 
 template <typename T>
-concept HasDiskId = requires(T& obj) {
-    {
-        obj.GetDiskId()
-    } -> std::same_as<void>;
-};
-
-template <typename T>
 concept HasSessionId = requires(T& obj) {
     {
         obj.GetSessionId()
-    } -> std::same_as<void>;
+    } -> std::convertible_to<TString>;
 };
 
 template <typename TRequest, typename TResponse>
@@ -64,9 +57,8 @@ public:
         TFunc primaryHandler = [&](std::shared_ptr<TRequest> request)
 
         {
-            if constexpr (HasDiskId<TRequest>) {
-                UNIT_ASSERT_VALUES_EQUAL(PrimaryDiskId, request->GetDiskId());
-            }
+            UNIT_ASSERT_VALUES_EQUAL(PrimaryDiskId, request->GetDiskId());
+
             if constexpr (HasSessionId<TRequest>) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     PrimarySessionId,
@@ -82,9 +74,8 @@ public:
 
         TFunc secondaryHandler = [&](std::shared_ptr<TRequest> request)
         {
-            if constexpr (HasDiskId<TRequest>) {
-                UNIT_ASSERT_VALUES_EQUAL(SecondaryDiskId, request->GetDiskId());
-            }
+            UNIT_ASSERT_VALUES_EQUAL(SecondaryDiskId, request->GetDiskId());
+
             if constexpr (HasSessionId<TRequest>) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     SecondarySessionId,
@@ -111,12 +102,8 @@ public:
     }
 };
 
-}   // namespace
-
-namespace Details {
-
 #define BLOCKSTORE_DECLARE_EXECUTE(name, ...)                                \
-    NThreading::TFuture<NProto::T##name##Response> Execute(                  \
+    [[maybe_unused]] NThreading::TFuture<NProto::T##name##Response> Execute( \
         IBlockStorePtr blockstore,                                           \
         TCallContextPtr callContext,                                         \
         std::shared_ptr<NProto::T##name##Request> request)                   \
@@ -162,7 +149,7 @@ void Check(
         FormatError(response.GetError()));
 }
 
-}   // namespace Details
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -178,43 +165,42 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
             PrimaryDiskId,
             client1);
 
-        Details::Check<NProto::TReadBlocksRequest, NProto::TReadBlocksResponse>(
+        Check<NProto::TReadBlocksRequest, NProto::TReadBlocksResponse>(
             client1,
             client2,
             switchableClient,
             EHandledOn::Primary);
-        Details::Check<
+        Check<
             NProto::TReadBlocksLocalRequest,
             NProto::TReadBlocksLocalResponse>(
             client1,
             client2,
             switchableClient,
             EHandledOn::Primary);
-        Details::
-            Check<NProto::TWriteBlocksRequest, NProto::TWriteBlocksResponse>(
-                client1,
-                client2,
-                switchableClient,
-                EHandledOn::Primary);
-        Details::Check<
+
+        Check<NProto::TWriteBlocksRequest, NProto::TWriteBlocksResponse>(
+            client1,
+            client2,
+            switchableClient,
+            EHandledOn::Primary);
+        Check<
             NProto::TWriteBlocksLocalRequest,
             NProto::TWriteBlocksLocalResponse>(
             client1,
             client2,
             switchableClient,
             EHandledOn::Primary);
-        Details::Check<NProto::TZeroBlocksRequest, NProto::TZeroBlocksResponse>(
+        Check<NProto::TZeroBlocksRequest, NProto::TZeroBlocksResponse>(
             client1,
             client2,
             switchableClient,
             EHandledOn::Primary);
 
-        Details::
-            Check<NProto::TMountVolumeRequest, NProto::TMountVolumeResponse>(
-                client1,
-                client2,
-                switchableClient,
-                EHandledOn::Primary);
+        Check<NProto::TMountVolumeRequest, NProto::TMountVolumeResponse>(
+            client1,
+            client2,
+            switchableClient,
+            EHandledOn::Primary);
     }
 
     Y_UNIT_TEST(ShouldForwardRequestsToSecondaryClient)
@@ -230,44 +216,43 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
         // Switch client to secondary client.
         switchableClient->Switch(client2, SecondaryDiskId, SecondarySessionId);
 
-        Details::Check<NProto::TReadBlocksRequest, NProto::TReadBlocksResponse>(
+        Check<NProto::TReadBlocksRequest, NProto::TReadBlocksResponse>(
             client1,
             client2,
             switchableClient,
             EHandledOn::Secondary);
-        Details::Check<
+        Check<
             NProto::TReadBlocksLocalRequest,
             NProto::TReadBlocksLocalResponse>(
             client1,
             client2,
             switchableClient,
             EHandledOn::Secondary);
-        Details::
-            Check<NProto::TWriteBlocksRequest, NProto::TWriteBlocksResponse>(
-                client1,
-                client2,
-                switchableClient,
-                EHandledOn::Secondary);
-        Details::Check<
+
+        Check<NProto::TWriteBlocksRequest, NProto::TWriteBlocksResponse>(
+            client1,
+            client2,
+            switchableClient,
+            EHandledOn::Secondary);
+        Check<
             NProto::TWriteBlocksLocalRequest,
             NProto::TWriteBlocksLocalResponse>(
             client1,
             client2,
             switchableClient,
             EHandledOn::Secondary);
-        Details::Check<NProto::TZeroBlocksRequest, NProto::TZeroBlocksResponse>(
+        Check<NProto::TZeroBlocksRequest, NProto::TZeroBlocksResponse>(
             client1,
             client2,
             switchableClient,
             EHandledOn::Secondary);
 
         // Only Read/Write/Zero requests switched to secondary client
-        Details::
-            Check<NProto::TMountVolumeRequest, NProto::TMountVolumeResponse>(
-                client1,
-                client2,
-                switchableClient,
-                EHandledOn::Primary);
+        Check<NProto::TMountVolumeRequest, NProto::TMountVolumeResponse>(
+            client1,
+            client2,
+            switchableClient,
+            EHandledOn::Primary);
     }
 }
 
