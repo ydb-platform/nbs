@@ -17,6 +17,9 @@
     "test.test_posix_compliance[mkdir]": {
         "uri": "file://test.test_posix_compliance_mkdir_/results-mkdir.txt"
     },
+    "test.test_posix_compliance[mkfifo]": {
+        "uri": "file://test.test_posix_compliance_mkfifo_/results-mkfifo.txt"
+    },
     "test.test_posix_compliance[open]": {
         "uri": "file://test.test_posix_compliance_open_/results-open.txt"
     },

@@ -1,21 +1,21 @@
-TEST SUITE[mkdir, 00.t] 1..36
+TEST SUITE[mkfifo, 00.t] 1..36
 ok 1 (line: 14)
-ok 2 (line: 21)
-ok 3 (line: 22)
-ok 4 (line: 23)
-ok 5 (line: 24)
-ok 6 (line: 25)
-ok 7 (line: 26)
-ok 8 (line: 27)
-ok 9 (line: 28)
-ok 10 (line: 29)
-ok 11 (line: 30)
-ok 12 (line: 31)
-ok 13 (line: 32)
-ok 14 (line: 33)
-ok 15 (line: 34)
-ok 16 (line: 35)
-ok 17 (line: 40)
+not ok 2 (line: 21)
+not ok 3 (line: 22)
+not ok 4 (line: 23)
+not ok 5 (line: 24)
+not ok 6 (line: 25)
+not ok 7 (line: 26)
+not ok 8 (line: 27)
+not ok 9 (line: 28)
+not ok 10 (line: 29)
+not ok 11 (line: 30)
+not ok 12 (line: 31)
+not ok 13 (line: 32)
+not ok 14 (line: 33)
+not ok 15 (line: 34)
+not ok 16 (line: 35)
+not ok 17 (line: 40)
 not ok 18 (line: 41)
 not ok 19 (line: 42)
 not ok 20 (line: 43)
@@ -26,45 +26,45 @@ ok 24 (line: 47)
 not ok 25 (line: 48)
 not ok 26 (line: 49)
 not ok 27 (line: 50)
-ok 28 (line: 56)
-ok 29 (line: 59)
-ok 30 (line: 61)
-ok 31 (line: 63)
-ok 32 (line: 65)
-ok 33 (line: 67)
-ok 34 (line: 69)
-ok 35 (line: 70)
+not ok 28 (line: 56)
+not ok 29 (line: 59)
+not ok 30 (line: 61)
+not ok 31 (line: 63)
+not ok 32 (line: 65)
+not ok 33 (line: 67)
+not ok 34 (line: 69)
+not ok 35 (line: 70)
 ok 36 (line: 73)
-TEST SUITE[mkdir, 01.t] 1..5
+TEST SUITE[mkfifo, 01.t] 1..5
 ok 1 (line: 14)
 ok 2 (line: 15)
 ok 3 (line: 16)
 ok 4 (line: 17)
 ok 5 (line: 18)
-TEST SUITE[mkdir, 02.t] 1..3
-ok 1 (line: 11)
-ok 2 (line: 12)
+TEST SUITE[mkfifo, 02.t] 1..3
+not ok 1 (line: 11)
+not ok 2 (line: 12)
 ok 3 (line: 13)
-TEST SUITE[mkdir, 03.t] 1..11
+TEST SUITE[mkfifo, 03.t] 1..11
 ok 1 (line: 11)
 ok 2 (line: 12)
 ok 3 (line: 13)
 ok 4 (line: 14)
-ok 5 (line: 15)
-ok 6 (line: 16)
+not ok 5 (line: 15)
+not ok 6 (line: 16)
 ok 7 (line: 18)
 ok 8 (line: 20)
 ok 9 (line: 21)
 ok 10 (line: 22)
 ok 11 (line: 23)
-TEST SUITE[mkdir, 04.t] 1..3
+TEST SUITE[mkfifo, 04.t] 1..3
 ok 1 (line: 14)
 ok 2 (line: 15)
 ok 3 (line: 16)
-TEST SUITE[mkdir, 05.t] 1..12
+TEST SUITE[mkfifo, 05.t] 1..12
 ok 1 (line: 15)
 ok 2 (line: 18)
-ok 3 (line: 19)
+not ok 3 (line: 19)
 not ok 4 (line: 20)
 not ok 5 (line: 21)
 ok 6 (line: 22)
@@ -74,10 +74,10 @@ not ok 9 (line: 25)
 not ok 10 (line: 26)
 ok 11 (line: 27)
 ok 12 (line: 29)
-TEST SUITE[mkdir, 06.t] 1..12
+TEST SUITE[mkfifo, 06.t] 1..12
 ok 1 (line: 15)
 ok 2 (line: 18)
-ok 3 (line: 19)
+not ok 3 (line: 19)
 not ok 4 (line: 20)
 not ok 5 (line: 21)
 ok 6 (line: 22)
@@ -87,18 +87,16 @@ not ok 9 (line: 25)
 not ok 10 (line: 26)
 ok 11 (line: 27)
 ok 12 (line: 29)
-TEST SUITE[mkdir, 07.t] 1..6
+TEST SUITE[mkfifo, 07.t] 1..6
 ok 1 (line: 14)
 ok 2 (line: 15)
 ok 3 (line: 16)
 ok 4 (line: 17)
 ok 5 (line: 18)
 ok 6 (line: 19)
-TEST SUITE[mkdir, 08.t] 1..1
+TEST SUITE[mkfifo, 08.t] 1..1
 ok 1
-TEST SUITE[mkdir, 09.t] 1..1
-ok 1
-TEST SUITE[mkdir, 10.t] 1..12
+TEST SUITE[mkfifo, 09.t] 1..12
 ok 1 (line: 13)
 ok 2 (line: 14)
 ok 3 (line: 15)
@@ -108,11 +106,13 @@ ok 6 (line: 19)
 ok 7 (line: 21)
 ok 8 (line: 22)
 ok 9 (line: 23)
-ok 10 (line: 25)
-ok 11 (line: 26)
-ok 12 (line: 27)
-TEST SUITE[mkdir, 11.t] 1..1
+not ok 10 (line: 25)
+not ok 11 (line: 26)
+not ok 12 (line: 27)
+TEST SUITE[mkfifo, 10.t] 1..1
 ok 1
-TEST SUITE[mkdir, 12.t] 1..2
+TEST SUITE[mkfifo, 11.t] 1..1
+ok 1
+TEST SUITE[mkfifo, 12.t] 1..2
 ok 1 (line: 11)
 ok 2 (line: 12)
