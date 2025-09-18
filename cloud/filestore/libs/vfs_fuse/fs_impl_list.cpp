@@ -139,7 +139,7 @@ void TFileSystem::OpenDir(
         } while (!DirectoryHandles.try_emplace(id, handle).second);
 
         if (DirectoryHandlesStorage) {
-            DirectoryHandlesStorage->StoreHandle(id, *handle);
+            DirectoryHandlesStorage->StoreHandle(id, TDirectoryHandleChunk{.Index = ino});
         }
     }
 
@@ -271,7 +271,7 @@ void TFileSystem::ReadDir(
                 builder.Add(req, name, entry, offset);
             }
 
-            auto content = handle->UpdateContent(
+            auto handleChunk = handle->UpdateContent(
                 size,
                 offset,
                 builder.Finish(),
@@ -280,12 +280,12 @@ void TFileSystem::ReadDir(
             STORAGE_TRACE("# " << fuse_req_unique(req)
                 << " offset: " << offset
                 << " limit: " << size
-                << " actual size " << content.GetSize());
+                << " actual size " << handleChunk.DirectoryContent.GetSize());
 
-            reply(*self, content);
+            reply(*self, handleChunk.DirectoryContent);
 
             if (DirectoryHandlesStorage) {
-                DirectoryHandlesStorage->UpdateHandle(fi->fh, *handle);
+                DirectoryHandlesStorage->UpdateHandle(fi->fh, handleChunk);
             }
         });
 }
