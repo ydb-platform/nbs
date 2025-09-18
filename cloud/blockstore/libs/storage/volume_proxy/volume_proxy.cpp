@@ -70,6 +70,7 @@ class TVolumeProxyActor final
         const TString DiskId;
 
         EConnectionState State = INITIAL;
+        bool IsConnectionToBaseDisk = false;
         ui64 TabletId = 0;
         ui32 Generation = 0;
         NProto::TError Error;
@@ -136,7 +137,6 @@ private:
             , RefCount(refCount)
         {}
 
-        TInstant DisconnectTs;
         ui64 TabletId = 0;
         int RefCount = 0;
     };
@@ -173,8 +173,6 @@ private:
 
     void PostponeRequest(TConnection& conn, IEventHandlePtr ev);
 
-    void SetDisconnectTs(const TString& diskId, TInstant disconnectTs);
-
     TConnection* GetConnectionByTabletId(ui64 tabletId);
     TConnection* GetConnectionById(ui64 id);
 
@@ -199,6 +197,11 @@ private:
 
     void HandleDisconnect(
         TEvTabletPipe::TEvClientDestroyed::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleBaseDiskDescribeResponse(
+        TConnection* conn,
+        const NProto::TError& error,
         const TActorContext& ctx);
 
     void HandleDescribeResponse(
@@ -358,19 +361,6 @@ void TVolumeProxyActor::PostponeRequest(
     conn.Requests.emplace_back(std::move(ev));
 }
 
-void TVolumeProxyActor::SetDisconnectTs(
-    const TString& diskId,
-    TInstant disconnectTs)
-{
-    if (auto* baseTablet = BaseDiskIdToTabletId.FindPtr(diskId)) {
-        if (!disconnectTs) {
-            baseTablet->DisconnectTs = disconnectTs;
-        } else if (!baseTablet->DisconnectTs) {
-            baseTablet->DisconnectTs = disconnectTs;
-        }
-    }
-}
-
 TVolumeProxyActor::TConnection* TVolumeProxyActor::GetConnectionByTabletId(
     ui64 tabletId)
 {
@@ -525,14 +515,10 @@ void TVolumeProxyActor::HandleConnect(
             conn->LogTitle.GetWithTime().c_str(),
             FormatError(error).data());
 
-        SetDisconnectTs(conn->DiskId, ctx.Now());
-
         CancelActiveRequests(ctx, *conn);
         DestroyConnection(*conn, std::move(error));
         return;
     }
-
-    SetDisconnectTs(conn->DiskId, {});
 
     if (conn->State == FAILED) {
         // Tablet recovered
@@ -563,6 +549,30 @@ void TVolumeProxyActor::HandleDisconnect(
     OnDisconnect(ctx, *conn);
 }
 
+void TVolumeProxyActor::HandleBaseDiskDescribeResponse(
+    TConnection* conn,
+    const NProto::TError& error,
+    const TActorContext& ctx)
+{
+    if (error.GetCode() == MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME_PROXY,
+            "%s Could not resolve path for base disk volume. Error: %s",
+            conn->LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
+
+        DestroyConnection(*conn, error);
+        return;
+    }
+
+    StartConnection(
+        ctx,
+        *conn,
+        conn->TabletId,
+        "PartitionConfig");
+}
+
 void TVolumeProxyActor::HandleDescribeResponse(
     const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -575,6 +585,12 @@ void TVolumeProxyActor::HandleDescribeResponse(
     }
 
     const auto& error = msg->GetError();
+
+    if (conn->IsConnectionToBaseDisk) {
+        HandleBaseDiskDescribeResponse(conn, error, ctx);
+        return;
+    }
+
     if (FAILED(error.GetCode())) {
         LOG_ERROR(
             ctx,
@@ -594,8 +610,6 @@ void TVolumeProxyActor::HandleDescribeResponse(
         *conn,
         volumeDescr.GetVolumeTabletId(),
         msg->Path);
-
-    SetDisconnectTs(conn->DiskId, {});
 }
 
 template <typename TMethod>
@@ -627,24 +641,22 @@ void TVolumeProxyActor::HandleRequest(
         case INITIAL:
         case FAILED:
         {
+            conn.State = RESOLVING;
             if (auto* baseDisk = BaseDiskIdToTabletId.FindPtr(diskId)) {
-                // For base disks, we make a timeout between connections.
-                const auto deadline =
-                    baseDisk->DisconnectTs +
-                    Config->GetVolumeProxyCacheRetryDuration();
-                const bool cooldownPassed = !baseDisk->DisconnectTs || deadline > ctx.Now();
-                if (cooldownPassed) {
-                    PostponeRequest(conn, IEventHandlePtr(ev.Release()));
-                    StartConnection(
-                        ctx,
-                        conn,
-                        baseDisk->TabletId,
-                        "PartitionConfig");
-                    break;
-                }
+                LOG_INFO(
+                    ctx,
+                    TBlockStoreComponents::VOLUME_PROXY,
+                    "%s Base disk %s is mapped to tablet id %lu",
+                    conn.LogTitle.GetWithTime().c_str(),
+                    diskId.c_str(),
+                    baseDisk->TabletId);
+
+                Y_ABORT_UNLESS(baseDisk->TabletId);
+
+                conn.TabletId = baseDisk->TabletId;
+                conn.IsConnectionToBaseDisk = true;
             }
 
-            conn.State = RESOLVING;
             DescribeVolume(ctx, conn);
             PostponeRequest(conn, IEventHandlePtr(ev.Release()));
             break;
