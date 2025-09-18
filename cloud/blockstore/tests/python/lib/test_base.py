@@ -126,7 +126,8 @@ class LoadTest(Daemon):
             "--secure-port" if enable_tls else "--port", str(nbs_port),
             "--config", config_path,
             "--results", self.__results_path,
-            "--verbose", "info"
+            "--verbose", "info",
+            "--test-name", self.__test_name,
         ]
 
         if client_config is not None:

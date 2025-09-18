@@ -15,6 +15,10 @@ void TOptions::Parse(int argc, char** argv)
     TOpts opts;
     opts.AddHelpOption();
 
+    opts.AddLongOption("test-name")
+        .RequiredArgument("STR")
+        .StoreResult(&TestName);
+
     opts.AddLongOption("client-config")
         .RequiredArgument("STR")
         .StoreResult(&ClientConfig);
