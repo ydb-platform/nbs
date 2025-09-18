@@ -415,10 +415,17 @@ func (t *replicateDiskTask) setEstimate(
 	diskSource common.Source,
 ) error {
 
-	bytesToReplicate, err := t.getBytesToReplicate(ctx, execCtx)
+	bytesToReplicate, err := nbs.GetDiskSourceBytesToRead(ctx, diskSource)
 	if err != nil {
 		return err
 	}
+
+	t.logInfo(
+		ctx,
+		execCtx,
+		"bytes to replicate is %v",
+		bytesToReplicate,
+	)
 
 	execCtx.SetEstimatedInflightDuration(performance.Estimate(
 		bytesToReplicate,
