@@ -118,6 +118,8 @@ struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
     std::atomic_uint64_t CompletedFlushCount = 0;
     std::atomic_uint64_t FailedFlushCount = 0;
     std::atomic_uint64_t NodeCount = 0;
+    std::atomic_uint64_t CachedWriteRequestCount = 0;
+    std::atomic_uint64_t PendingWriteRequestCount = 0;
 
     void IncrementCompletedFlushCount() override
     {
@@ -136,12 +138,12 @@ struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
 
     void SetCachedWriteRequestCount(ui64 value) override
     {
-        Y_UNUSED(value);
+        CachedWriteRequestCount.store(value);
     }
 
     void SetPendingWriteRequestCount(ui64 value) override
     {
-        Y_UNUSED(value);
+        PendingWriteRequestCount.store(value);
     }
 
     void SetPersistentQueueStats(
@@ -591,6 +593,25 @@ struct TWriteRequestLogger
         return sb;
     }
 };
+
+template <class T>
+TFuture<T> CompleteFutureOnTrigger(TFuture<T> future, TFuture<void> trigger)
+{
+    auto promise = NewPromise<T>();
+    auto result = promise.GetFuture();
+
+    trigger.Subscribe(
+        [future = std::move(future), promise = std::move(promise)](auto) mutable
+        {
+            future.Subscribe(
+                [promise = std::move(promise)](auto f) mutable
+                {
+                    promise.SetValue(f.GetValue());
+                });
+        });
+
+    return result;
+}
 
 }   // namespace
 
@@ -1292,6 +1313,80 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.FlushCache(2);
 
         UNIT_ASSERT_EQUAL(0, stats.NodeCount);
+    }
+
+    Y_UNIT_TEST(ShouldReportRequestCount)
+    {
+        TBootstrap b;
+        auto& stats = *b.StatsReporter;
+
+        // Reaching the capacity will trigger Flush
+        // Need to prevent it from completing immediately
+        TDeque<TPromise<void>> pendingWriteRequestTriggers;
+        auto prevWriteDataHandler = std::move(b.Session->WriteDataHandler);
+        b.Session->WriteDataHandler = [&](auto context, auto request)
+        {
+            auto promise = NewPromise();
+
+            auto result = CompleteFutureOnTrigger(
+                prevWriteDataHandler(std::move(context), std::move(request)),
+                promise.GetFuture());
+
+            pendingWriteRequestTriggers.push_back(std::move(promise));
+            return result;
+        };
+
+        UNIT_ASSERT_EQUAL(0, stats.CachedWriteRequestCount);
+        UNIT_ASSERT_EQUAL(0, stats.PendingWriteRequestCount);
+
+        b.WriteToCacheSync(1, 0, "abc");
+
+        UNIT_ASSERT_EQUAL(1, stats.CachedWriteRequestCount);
+        UNIT_ASSERT_EQUAL(0, stats.PendingWriteRequestCount);
+
+        b.WriteToCacheSync(2, 0, "def");
+        b.WriteToCacheSync(2, 1, "xyz");
+
+        UNIT_ASSERT_EQUAL(3, stats.CachedWriteRequestCount);
+        UNIT_ASSERT_EQUAL(0, stats.PendingWriteRequestCount);
+
+        b.RecreateCache();
+
+        UNIT_ASSERT_EQUAL(3, stats.CachedWriteRequestCount);
+        UNIT_ASSERT_EQUAL(0, stats.PendingWriteRequestCount);
+
+        ui64 cachedRequestCount = 3;
+        while (true) {
+            auto future = b.WriteToCache(3, 0, "01234567");
+            if (future.HasValue()) {
+                cachedRequestCount++;
+            } else {
+                break;
+            }
+        }
+
+        UNIT_ASSERT_LT(0, pendingWriteRequestTriggers.size());
+        UNIT_ASSERT_EQUAL(cachedRequestCount, stats.CachedWriteRequestCount);
+        UNIT_ASSERT_EQUAL(1, stats.PendingWriteRequestCount);
+
+        // Proceed with write requests initiated by Flush
+        while (!pendingWriteRequestTriggers.empty()) {
+            pendingWriteRequestTriggers.front().SetValue();
+            pendingWriteRequestTriggers.pop_front();
+        }
+
+        UNIT_ASSERT_EQUAL(0, stats.PendingWriteRequestCount);
+        UNIT_ASSERT_LT(0, stats.CachedWriteRequestCount);
+
+        b.Cache.FlushAllData();
+
+        while (!pendingWriteRequestTriggers.empty()) {
+            pendingWriteRequestTriggers.front().SetValue();
+            pendingWriteRequestTriggers.pop_front();
+        }
+
+        UNIT_ASSERT_EQUAL(0, stats.PendingWriteRequestCount);
+        UNIT_ASSERT_EQUAL(0, stats.CachedWriteRequestCount);
     }
 
     /* TODO(svartmetal): fix tests with automatic flush
