@@ -510,6 +510,41 @@ public:
     {
         return Corrupted;
     }
+
+    ui64 GetRawCapacity() const
+    {
+        return Header()->Capacity;
+    }
+
+    ui64 GetRawUsedBytesCount() const
+    {
+        ui64 res =
+            Header()->ReadPos > Header()->WritePos ? Header()->Capacity : 0;
+
+        return res + Header()->WritePos - Header()->ReadPos;
+    }
+
+    ui64 GetMaxAllocationBytesCount() const
+    {
+        if (IsCorrupted()) {
+            return 0;
+        }
+
+        ui64 maxRawSize = 0;
+        if (Empty()) {
+            maxRawSize = Header()->Capacity;
+        } else if (Header()->ReadPos <= Header()->WritePos) {
+            maxRawSize = Header()->Capacity - Header()->WritePos;
+            if (Header()->ReadPos > 0) {
+                maxRawSize = Max(maxRawSize, Header()->ReadPos - 1);
+            }
+        } else {
+            maxRawSize = Header()->ReadPos - Header()->WritePos - 1;
+        }
+        return maxRawSize > sizeof(TEntryHeader)
+                   ? maxRawSize - sizeof(TEntryHeader)
+                   : 0;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -565,6 +600,21 @@ void TFileRingBuffer::Visit(const TVisitor& visitor)
 bool TFileRingBuffer::IsCorrupted() const
 {
     return Impl->IsCorrupted();
+}
+
+ui64 TFileRingBuffer::GetRawCapacity() const
+{
+    return Impl->GetRawCapacity();
+}
+
+ui64 TFileRingBuffer::GetRawUsedBytesCount() const
+{
+    return Impl->GetRawUsedBytesCount();
+}
+
+ui64 TFileRingBuffer::GetMaxAllocationBytesCount() const
+{
+    return Impl->GetMaxAllocationBytesCount();
 }
 
 }   // namespace NCloud
