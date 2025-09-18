@@ -67,7 +67,7 @@ func (s *cellSelector) isFolderAllowed(folderID string) bool {
 		slices.Contains(s.config.GetFolderAllowList(), folderID)
 }
 
-func (s *cellSelector) isOneOfCells(zoneID string) bool {
+func (s *cellSelector) isCell(zoneID string) bool {
 	for _, cells := range s.config.Cells {
 		if slices.Contains(cells.Cells, zoneID) {
 			return true
@@ -93,7 +93,7 @@ func (s *cellSelector) selectCell(
 	cells := s.getCells(zoneID)
 
 	if len(cells) == 0 {
-		if s.isOneOfCells(zoneID) {
+		if s.isCell(zoneID) {
 			return zoneID, nil
 		}
 
