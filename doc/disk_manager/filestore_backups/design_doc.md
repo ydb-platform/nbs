@@ -73,7 +73,7 @@ Note, that `NodeId` here is the id of a parent node, whereas `ChildId` is id of 
 in the Disk Manager terminology we would prefer the terminology parent id and child id.
 For sharded filesystems, `ShardId` is the name of the shard, which is a separate filesystem, which stores files in plain structure (files are named by uids).
 
-**IMPORTANT** ID of inodes do not provide any information about which file was created earlier. Id of the shard is encoded into the id of inode.
+**IMPORTANT** IDs of inodes do not provide any information about which file was created earlier. The ID of the shard is encoded into the ID of the inode.
 
 
 **IMPORTANT** YDB tablet API does not support querying a table simply by a limit and offset.
