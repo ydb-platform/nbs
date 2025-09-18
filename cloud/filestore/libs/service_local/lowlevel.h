@@ -113,6 +113,7 @@ TFileHandle OpenAt(
 
 void MkDirAt(const TFileHandle& handle, const TString& name, int mode);
 void MkSockAt(const TFileHandle& handle, const TString& name, int mode);
+void MkFifoAt(const TFileHandle& handle, const TString& name, int mode);
 
 void RenameAt(
     const TFileHandle& handle,

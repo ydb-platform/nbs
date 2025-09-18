@@ -65,6 +65,7 @@ enum class ENodeType
     Link,
     SymLink,
     Sock,
+    Fifo
 };
 
 struct TCreateNodeArgs
@@ -105,6 +106,12 @@ struct TCreateNodeArgs
             case ENodeType::Sock: {
                 auto* socket = request.MutableSocket();
                 socket->SetMode(Mode);
+                break;
+            }
+
+            case ENodeType::Fifo: {
+                auto* fifo = request.MutableFifo();
+                fifo->SetMode(Mode);
                 break;
             }
 
@@ -153,6 +160,13 @@ struct TCreateNodeArgs
     static TCreateNodeArgs Sock(ui64 parent, const TString& name, ui32 mode = 0)
     {
         TCreateNodeArgs args(ENodeType::Sock, parent, name);
+        args.Mode = mode;
+        return args;
+    }
+
+    static TCreateNodeArgs Fifo(ui64 parent, const TString& name, ui32 mode = 0)
+    {
+        TCreateNodeArgs args(ENodeType::Fifo, parent, name);
         args.Mode = mode;
         return args;
     }
@@ -926,6 +940,11 @@ ui64 CreateSock(TTestBootstrap& bootstrap, ui64 parent, const TString& name, int
     return bootstrap.CreateNode(TCreateNodeArgs::Sock(parent, name, mode)).GetNode().GetId();
 }
 
+ui64 CreateFifo(TTestBootstrap& bootstrap, ui64 parent, const TString& name, int mode = 0)
+{
+    return bootstrap.CreateNode(TCreateNodeArgs::Fifo(parent, name, mode)).GetNode().GetId();
+}
+
 TVector<TString> ListNames(TTestBootstrap& bootstrap, ui64 node)
 {
     auto all = bootstrap.ListNodes(node).GetNames();
@@ -1397,6 +1416,20 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames().size(), 1);
         UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames(0), "file1");
         UNIT_ASSERT_VALUES_EQUAL(nodes.GetNodes(0).GetType(), (ui32)NProto::E_SOCK_NODE);
+    }
+
+    Y_UNIT_TEST(ShouldCreateFifoNode)
+    {
+        TTestBootstrap bootstrap("fs");
+        auto ctx = MakeIntrusive<TCallContext>();
+
+        CreateFifo(bootstrap, RootNodeId, "file1", 0755);
+
+        auto nodes = bootstrap.ListNodes(RootNodeId);
+
+        UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames().size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames(0), "file1");
+        UNIT_ASSERT_VALUES_EQUAL(nodes.GetNodes(0).GetType(), (ui32)NProto::E_FIFO_NODE);
     }
 
     Y_UNIT_TEST(ShouldCreateDirNode)
