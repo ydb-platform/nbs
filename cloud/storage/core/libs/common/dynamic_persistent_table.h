@@ -20,6 +20,30 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * TDynamicPersistentTable - A crash-resilient, file-based table for storing
+ * variable-sized data records with automatic memory management.
+ *
+ * Key Features/Guarantees:
+ * - Variable-sized records with automatic data area expansion
+ * - Crash-safe operations with operation journaling and recovery
+ * - Data integrity protection using CRC32 checksums
+ * - Automatic space reclamation through record and data area compaction
+ * - Automatic data area expansion if required
+ * - Doubly-linked list organization for efficient traversal during compaction
+ * - Thread Safety: NOT thread-safe - external synchronization required for
+ *   concurrent access.
+ *
+ * Usage Pattern:
+ * 1. AllocRecord() - Reserve space for a new record
+ * 2. WriteRecordData() - Write data to the allocated record
+ * 3. CommitRecord() - Make the record visible to readers
+ * 4. DeleteRecord() - Mark record for deletion and space reclamation
+ *
+ * Template Parameter H: Header data type stored in the file header for
+ * application-specific metadata.
+ */
+
 template <typename H>
 class TDynamicPersistentTable
 {
@@ -73,7 +97,7 @@ public:
         ui64 PrevDataIndex = InvalidIndex;
         ui64 NextDataIndex = InvalidIndex;
         ERecordState State = ERecordState::Free;
-        ui32 CRC32 = 0;
+        ui32 Crc32 = 0;
     };
 
 private:
@@ -347,7 +371,7 @@ public:
             DescriptorsPtr[index].DataSize = size;
         }
 
-        DescriptorsPtr[index].CRC32 =
+        DescriptorsPtr[index].Crc32 =
             Crc32c(recordData, DescriptorsPtr[index].DataSize);
 
         return true;
@@ -539,10 +563,10 @@ private:
                 continue;
             }
 
-            ui64 calculatedCRC = Crc32c(
+            ui64 calculatedCrc = Crc32c(
                 DataPtr + DescriptorsPtr[readRecordIndex].DataOffset,
                 DescriptorsPtr[readRecordIndex].DataSize);
-            if (calculatedCRC != DescriptorsPtr[readRecordIndex].CRC32) {
+            if (calculatedCrc != DescriptorsPtr[readRecordIndex].Crc32) {
                 PrepareRemoveRecord(readRecordIndex);
                 FinishRemoveRecord();
                 ++readRecordIndex;
@@ -627,14 +651,15 @@ private:
         HeaderPtr->CompactedRecordDstIndex = InvalidIndex;
     }
 
-    void TryCompactDataArea(ui64 requiredSize)
+    void TryCompactDataArea(ui64 requiredRecordDataSize)
     {
         uint64_t threshold = (InitialDataAreaSize / 100) *
                                  GapSpacePercentageCompactionThreshold +
                              ((InitialDataAreaSize % 100) *
                               GapSpacePercentageCompactionThreshold) /
                                  100;
-        if (GapSpaceSize > threshold && GapSpaceSize >= requiredSize) {
+        if (GapSpaceSize > threshold && GapSpaceSize >= requiredRecordDataSize)
+        {
             CompactDataArea();
         }
     }
@@ -668,6 +693,10 @@ private:
                     DataPtr + oldOffset,
                     dataSize);
 
+                // We can omit handling the case where a crash occurs after
+                // currentIndex but before setting newOffset, since in that
+                // scenario the data will simply be copied back to the old
+                // location.
                 HeaderPtr->DataCompactionRecordIndex = currentIndex;
 
                 DescriptorsPtr[currentIndex].DataOffset = newOffset;
@@ -705,10 +734,10 @@ private:
         HeaderPtr->DataCompactionBufferSize = InitialDataCompactionBufferSize;
     }
 
-    void ExpandDataArea(ui64 requiredSize)
+    void ExpandDataArea(ui64 requiredRecordDataSize)
     {
         ui64 newDataAreaSize = DataAreaSize;
-        while (NextDataOffset + requiredSize > newDataAreaSize) {
+        while (NextDataOffset + requiredRecordDataSize > newDataAreaSize) {
             newDataAreaSize *= 2;
         }
 
@@ -741,8 +770,8 @@ private:
             DescriptorsPtr[index].DataSize);
 
         if (mode == EDataRetrievalMode::WithValidation) {
-            ui32 calculatedCRC = Crc32c(buf.data(), buf.size());
-            if (calculatedCRC != DescriptorsPtr[index].CRC32) {
+            ui32 calculatedCrc = Crc32c(buf.data(), buf.size());
+            if (calculatedCrc != DescriptorsPtr[index].Crc32) {
                 return TStringBuf();
             }
         }
