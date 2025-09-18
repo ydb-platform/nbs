@@ -541,8 +541,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(UnconfirmedBlobCountHardLimit,             ui32,      1000            )\
                                                                                \
-    xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
-                                                                               \
     xxx(UseDirectCopyRange,                             bool,      false         )\
     xxx(NonReplicatedVolumeDirectAcquireEnabled,        bool,      false         )\
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
