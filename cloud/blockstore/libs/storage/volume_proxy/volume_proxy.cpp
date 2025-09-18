@@ -643,15 +643,10 @@ void TVolumeProxyActor::HandleRequest(
         {
             conn.State = RESOLVING;
             if (auto* baseDisk = BaseDiskIdToTabletId.FindPtr(diskId)) {
-                LOG_INFO(
-                    ctx,
-                    TBlockStoreComponents::VOLUME_PROXY,
-                    "%s Base disk %s is mapped to tablet id %lu",
+                Y_ABORT_UNLESS(baseDisk->TabletId,
+                    "%s Base disk %s tablet id is not set",
                     conn.LogTitle.GetWithTime().c_str(),
-                    diskId.c_str(),
-                    baseDisk->TabletId);
-
-                Y_ABORT_UNLESS(baseDisk->TabletId);
+                    diskId.c_str());
 
                 conn.TabletId = baseDisk->TabletId;
                 conn.IsConnectionToBaseDisk = true;
