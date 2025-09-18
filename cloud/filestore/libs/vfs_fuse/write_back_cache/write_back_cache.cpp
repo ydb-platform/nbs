@@ -360,6 +360,7 @@ public:
             });
 
         ReportPersistentQueueStats();
+        ReportNodeCount();
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -684,6 +685,7 @@ private:
         auto& ptr = NodeStates[nodeId];
         if (!ptr) {
             ptr = std::make_unique<TNodeState>(nodeId);
+            ReportNodeCount();
         }
         return ptr.get();
     }
@@ -700,6 +702,7 @@ private:
         if (nodeState != nullptr && nodeState->Empty()) {
             auto erased = NodeStates.erase(nodeState->NodeId);
             Y_DEBUG_ABORT_UNLESS(erased);
+            ReportNodeCount();
         }
     }
 
@@ -1216,6 +1219,11 @@ private:
              .MaxAllocationSize =
                  CachedEntriesPersistentQueue.MaxAllocationSize(),
              .IsCorrupted = CachedEntriesPersistentQueue.IsCorrupted()});
+    }
+
+    void ReportNodeCount() const
+    {
+        StatsReporter->SetNodeCount(NodeStates.size());
     }
 };
 

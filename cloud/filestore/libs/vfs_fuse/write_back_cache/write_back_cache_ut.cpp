@@ -117,6 +117,7 @@ struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
     TWriteBackCache::TPersistentQueueStats PersistentQueue;
     std::atomic_uint64_t CompletedFlushCount = 0;
     std::atomic_uint64_t FailedFlushCount = 0;
+    std::atomic_uint64_t NodeCount = 0;
 
     void IncrementCompletedFlushCount() override
     {
@@ -130,7 +131,7 @@ struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
 
     void SetNodeCount(ui64 value) override
     {
-        Y_UNUSED(value);
+        NodeCount.store(value);
     }
 
     void SetCachedWriteRequestCount(ui64 value) override
@@ -1262,6 +1263,35 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(flushFuture.HasValue());
         UNIT_ASSERT_EQUAL(1, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
+    }
+
+    Y_UNIT_TEST(ShouldReportNodeCount)
+    {
+        TBootstrap b;
+        auto& stats = *b.StatsReporter;
+
+        UNIT_ASSERT_EQUAL(0, stats.NodeCount);
+
+        b.WriteToCacheSync(1, 0, "abc");
+
+        UNIT_ASSERT_EQUAL(1, stats.NodeCount);
+
+        b.WriteToCacheSync(2, 0, "def");
+        b.WriteToCacheSync(2, 1, "xyz");
+
+        UNIT_ASSERT_EQUAL(2, stats.NodeCount);
+
+        b.RecreateCache();
+
+        UNIT_ASSERT_EQUAL(2, stats.NodeCount);
+
+        b.FlushCache(1);
+
+        UNIT_ASSERT_EQUAL(1, stats.NodeCount);
+
+        b.FlushCache(2);
+
+        UNIT_ASSERT_EQUAL(0, stats.NodeCount);
     }
 
     /* TODO(svartmetal): fix tests with automatic flush
