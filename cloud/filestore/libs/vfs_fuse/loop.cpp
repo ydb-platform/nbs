@@ -1055,7 +1055,8 @@ private:
                     Log,
                     path / DirectoryHandlesStorageFileName,
                     Config->GetDirectoryHandlesTableSize(),
-                    Config->GetDirectoryHandlesInitialDataSize());
+                    Config->GetDirectoryHandlesInitialDataSize(),
+                    FileSystemConfig->GetMaxBufferSize());
 
                 DirectoryHandlesStorageInitialized = true;
             }
