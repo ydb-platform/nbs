@@ -325,16 +325,11 @@ func GetDiskSourceBytesToRead(
 		)
 	}
 
-	bytesToRead, err := diskSource.client.GetChangedBytes(
+	return diskSource.client.GetChangedBytes(
 		ctx,
 		diskSource.diskID,
 		diskSource.baseCheckpointID,
 		diskSource.checkpointID,
 		diskSource.ignoreBaseDisk,
 	)
-	if err != nil {
-		return 0, err
-	}
-
-	return bytesToRead, nil
 }
