@@ -130,6 +130,11 @@ struct TVolumeStatsInfo
     NProto::TVolume VolumeInfo;
     ui64 VolumeTabletId = 0;
 
+    NMonitoring::TDynamicCounters::TCounterPtr IsStartedCounter;
+
+    bool IsLocalMount;
+    NMonitoring::TDynamicCounters::TCounterPtr IsLocalMountCounter;
+
     TDiskPerfData PerfCounters;
     NBlobMetrics::TBlobLoadMetrics OffsetBlobMetrics;
     TInstant ApproximateStartTs;
