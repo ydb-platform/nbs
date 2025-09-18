@@ -361,6 +361,7 @@ public:
 
         ReportPersistentQueueStats();
         ReportNodeCount();
+        ReportCachedRequestCount();
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -801,6 +802,8 @@ private:
         }
 
         ReportPersistentQueueStats();
+        ReportCachedRequestCount();
+        ReportPendingRequestCount();
     }
 
     TVector<TWriteDataEntryPart> CalculateDataPartsToReadAndFillBuffer(
@@ -985,6 +988,7 @@ private:
         {
             nodeState->PendingEntriesCount++;
             PendingEntries.push_back(std::move(entry));
+            ReportPendingRequestCount();
             return;
         }
 
@@ -1002,9 +1006,11 @@ private:
 
             CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
             AddCachedEntry(nodeState, std::move(entry));
+            ReportCachedRequestCount();
         } else {
             nodeState->PendingEntriesCount++;
             PendingEntries.push_back(std::move(entry));
+            ReportPendingRequestCount();
             ScheduleFlushAll();
         }
 
@@ -1159,6 +1165,7 @@ private:
         }
 
         ReportPersistentQueueStats();
+        ReportCachedRequestCount();
 
         nodeState->FlushState.Executing = false;
 
@@ -1224,6 +1231,16 @@ private:
     void ReportNodeCount() const
     {
         StatsReporter->SetNodeCount(NodeStates.size());
+    }
+
+    void ReportCachedRequestCount() const
+    {
+        StatsReporter->SetCachedWriteRequestCount(CachedEntries.size());
+    }
+
+    void ReportPendingRequestCount() const
+    {
+        StatsReporter->SetPendingWriteRequestCount(PendingEntries.size());
     }
 };
 
