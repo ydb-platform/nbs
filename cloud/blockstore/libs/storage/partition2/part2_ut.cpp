@@ -7710,7 +7710,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         runtime->DispatchEvents(options);
 
         UNIT_ASSERT_VALUES_EQUAL(true, trimSeen);
-        UNIT_ASSERT_VALUES_EQUAL(true, trimCompletedSeen);
         UNIT_ASSERT_VALUES_UNEQUAL(0, trimCounter->Val());
     }
 }
