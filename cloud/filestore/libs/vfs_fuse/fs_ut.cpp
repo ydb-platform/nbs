@@ -60,6 +60,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
+constexpr TDuration ExceptionWaitTimeout = TDuration::Seconds(1);
 
 static const TString FileSystemId = "fs1";
 static const TString SessionId = CreateGuidAsString();
@@ -91,6 +92,8 @@ struct TBootstrap
     TString SocketPath;
 
     TPromise<void> StopTriggered = NewPromise<void>();
+
+    TString DirectoryHandlesStoragePath;
 
     TBootstrap(
             ITimerPtr timer = CreateWallClockTimer(),
@@ -166,6 +169,7 @@ struct TBootstrap
 
         if (featuresConfig.GetDirectoryHandlesStorageEnabled()) {
             proto.SetDirectoryHandlesStoragePath(TempDir.Path() / "DirectoryHandles");
+            DirectoryHandlesStoragePath = proto.GetDirectoryHandlesStoragePath();
         }
 
         if (featuresConfig.GetServerWriteBackCacheEnabled()) {
@@ -991,6 +995,116 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto close =
             bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldLoadDirectoryHandlesStorageWithoutErrors)
+    {
+        const TString sessionId = CreateGuidAsString();
+        NProto::TFileStoreFeatures features;
+        features.SetDirectoryHandlesStorageEnabled(true);
+
+        auto createSessionHandler = [&](auto, auto)
+        {
+            NProto::TCreateSessionResponse result;
+            result.MutableSession()->SetSessionId(sessionId);
+            result.MutableFileStore()->MutableFeatures()->CopyFrom(features);
+            result.MutableFileStore()->SetFileSystemId(FileSystemId);
+            return MakeFuture(result);
+        };
+
+        std::atomic<ui32> numCalls1 = 0;
+        std::atomic<ui32> numCalls2 = 0;
+
+        TFsPath tmpPathForCache(
+            TFsPath(GetSystemTempDir()) / "directory_handles_storage.dump");
+
+        TString pathToCache;
+
+        {
+            auto bootstrap = TBootstrap::CreateWithHandlesStorage();
+
+            bootstrap.Service->CreateSessionHandler = createSessionHandler;
+
+            bootstrap.Service->ListNodesHandler =
+                [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+
+                NProto::TListNodesResponse result;
+
+                if (!request->GetCookie()) {
+                    for (ui32 i = 1; i <= 20000; ++i) {
+                        result.AddNames()->assign(
+                            "first_chunk_file_" + ToString(i) + ".txt");
+                        auto* node = result.AddNodes();
+                        node->SetId(100 + i);
+                        node->SetType(NProto::E_REGULAR_NODE);
+                    }
+                    ++numCalls1;
+                    result.SetCookie("has_more_data");
+                } else {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        "has_more_data",
+                        request->GetCookie());
+                    for (ui32 i = 20001; i <= 25100; ++i) {
+                        result.AddNames()->assign(
+                            "second_chunk_file_" + ToString(i) + ".txt");
+                        auto* node = result.AddNodes();
+                        node->SetId(100 + i);
+                        node->SetType(NProto::E_REGULAR_NODE);
+                    }
+                    ++numCalls2;
+                }
+
+                return MakeFuture(result);
+            };
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            pathToCache = TFsPath(bootstrap.DirectoryHandlesStoragePath) /
+                          FileSystemId / sessionId /
+                          "directory_handles_storage";
+
+            const ui64 nodeId = 123;
+
+            auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+            UNIT_ASSERT(handle.Wait(WaitTimeout));
+            auto handleId = handle.GetValue();
+
+            auto read =
+                bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(numCalls1.load(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(numCalls2.load(), 0);
+
+            auto largeOffset = 3700000;   // Go beyond the first chunk
+            read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+                nodeId,
+                handleId,
+                largeOffset);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(numCalls1.load(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(numCalls2.load(), 1);
+
+            TFsPath(pathToCache).CopyTo(tmpPathForCache.GetPath(), true);
+        }
+
+        {
+            auto bootstrap = TBootstrap::CreateWithHandlesStorage();
+
+            tmpPathForCache.CopyTo(pathToCache, true);
+
+            bootstrap.Service->CreateSessionHandler = createSessionHandler;
+
+            bootstrap.Start();
+            bootstrap.Stop();
+        }
     }
 
     Y_UNIT_TEST(ShouldHandleForgetRequestsForUnknownNodes)
@@ -2033,7 +2147,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId2, handle2);
 
         // Second request should wait until the first request is processed.
-        UNIT_ASSERT_EXCEPTION(future.GetValue(WaitTimeout), yexception);
+        UNIT_ASSERT_EXCEPTION(
+            future.GetValue(ExceptionWaitTimeout),
+            yexception);
         UNIT_ASSERT_EQUAL(
             1,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));

@@ -2,20 +2,118 @@
 
 namespace NCloud::NFileStore::NFuse {
 
-TDirectoryContent TDirectoryHandle::UpdateContent(
+void TDirectoryHandleChunk::Serialize(TBufferOutput& output) const
+{
+    output.Write(&Index, sizeof(Index));
+    output.Write(&UpdateVersion, sizeof(UpdateVersion));
+
+    ui32 cookieLen = Cookie.size();
+    output.Write(&cookieLen, sizeof(cookieLen));
+    if (cookieLen > 0) {
+        output.Write(Cookie.data(), cookieLen);
+    }
+
+    if (!Key) {
+        return;
+    }
+
+    ui64 keyValue = Key.value();
+
+    output.Write(&keyValue, sizeof(keyValue));
+    ui32 bufferSize = DirectoryContent.Content != nullptr
+                          ? DirectoryContent.Content->Size()
+                          : 0;
+    output.Write(&bufferSize, sizeof(bufferSize));
+    if (bufferSize > 0) {
+        output.Write(DirectoryContent.Content->Data(), bufferSize);
+    }
+}
+
+std::optional<TDirectoryHandleChunk> TDirectoryHandleChunk::Deserialize(
+    TMemoryInput& input)
+{
+    if (input.Avail() < sizeof(fuse_ino_t)) {
+        return std::nullopt;
+    }
+
+    TDirectoryHandleChunk chunk;
+
+    if (input.Load(&chunk.Index, sizeof(chunk.Index)) != sizeof(chunk.Index)) {
+        return std::nullopt;
+    }
+
+    if (input.Load(&chunk.UpdateVersion, sizeof(chunk.UpdateVersion)) !=
+        sizeof(chunk.UpdateVersion))
+    {
+        return std::nullopt;
+    }
+
+    ui32 cookieLen = 0;
+    if (input.Load(&cookieLen, sizeof(cookieLen)) != sizeof(cookieLen)) {
+        return std::nullopt;
+    }
+
+    if (cookieLen > 0) {
+        if (input.Avail() < cookieLen) {
+            return std::nullopt;
+        }
+        chunk.Cookie.resize(cookieLen);
+        if (input.Load(chunk.Cookie.begin(), cookieLen) != cookieLen) {
+            return std::nullopt;
+        }
+    }
+
+    if (input.Avail() > 0) {
+        ui64 key = 0;
+        if (input.Load(&key, sizeof(key)) != sizeof(key)) {
+            return std::nullopt;
+        }
+        chunk.Key = key;
+
+        ui32 bufferSize = 0;
+        if (input.Load(&bufferSize, sizeof(bufferSize)) != sizeof(bufferSize)) {
+            return std::nullopt;
+        }
+
+        if (bufferSize > 0) {
+            if (input.Avail() < bufferSize) {
+                return std::nullopt;
+            }
+            chunk.DirectoryContent.Content = std::make_shared<TBuffer>();
+            chunk.DirectoryContent.Content->Resize(bufferSize);
+            if (input.Load(
+                    chunk.DirectoryContent.Content->Data(),
+                    bufferSize) != bufferSize)
+            {
+                return std::nullopt;
+            }
+        }
+    }
+
+    return chunk;
+}
+
+TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
     size_t size,
     size_t offset,
     const TBufferPtr& content,
     TString cookie)
 {
+    size_t end = offset + content->size();
+    TDirectoryHandleChunk chunk{
+        .Key = end,
+        .Index = Index,
+        .DirectoryContent = {content, 0, size}};
+
     with_lock (Lock) {
-        size_t end = offset + content->size();
         Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
         Content[end] = content;
         Cookie = std::move(cookie);
+        chunk.Cookie = Cookie;
+        chunk.UpdateVersion = ++UpdateVersion;
     }
 
-    return TDirectoryContent{content, 0, size};
+    return chunk;
 }
 
 TMaybe<TDirectoryContent>
@@ -52,6 +150,7 @@ void TDirectoryHandle::ResetContent()
     with_lock (Lock) {
         Content.clear();
         Cookie.clear();
+        UpdateVersion = 0;
     }
 }
 
@@ -62,96 +161,20 @@ TString TDirectoryHandle::GetCookie()
     }
 }
 
-void TDirectoryHandle::Serialize(TBufferOutput& output) const
+void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk)
 {
-    with_lock (Lock) {
-        output.Write(&Index, sizeof(Index));
+    Y_ABORT_UNLESS(Index == chunk.Index);
 
-        ui32 cookieLen = Cookie.size();
-        output.Write(&cookieLen, sizeof(cookieLen));
-        if (cookieLen > 0) {
-            output.Write(Cookie.data(), cookieLen);
-        }
-
-        ui32 contentSize = Content.size();
-        output.Write(&contentSize, sizeof(contentSize));
-
-        for (const auto& [key, value]: Content) {
-            output.Write(&key, sizeof(key));
-
-            ui32 bufferSize = value ? value->Size() : 0;
-            output.Write(&bufferSize, sizeof(bufferSize));
-            if (bufferSize > 0) {
-                output.Write(value->Data(), bufferSize);
-            }
-        }
-    }
-}
-
-std::shared_ptr<TDirectoryHandle> TDirectoryHandle::Deserialize(
-    TMemoryInput& input)
-{
-    if (input.Avail() < sizeof(fuse_ino_t)) {
-        return nullptr;
+    if (chunk.UpdateVersion > UpdateVersion) {
+        UpdateVersion = chunk.UpdateVersion;
+        Cookie = std::move(chunk.Cookie);
     }
 
-    fuse_ino_t index;
-    if (input.Load(&index, sizeof(index)) != sizeof(index)) {
-        return nullptr;
+    if (chunk.Key) {
+        Content.emplace(
+            chunk.Key.value(),
+            std::move(chunk.DirectoryContent.Content));
     }
-
-    auto handle = std::make_shared<TDirectoryHandle>(index);
-
-    ui32 cookieLen = 0;
-    if (input.Load(&cookieLen, sizeof(cookieLen)) != sizeof(cookieLen)) {
-        return nullptr;
-    }
-
-    TString cookie;
-    if (cookieLen > 0) {
-        if (input.Avail() < cookieLen) {
-            return nullptr;
-        }
-        cookie.resize(cookieLen);
-        if (input.Load(cookie.begin(), cookieLen) != cookieLen) {
-            return nullptr;
-        }
-    }
-
-    ui32 contentSize = 0;
-    if (input.Load(&contentSize, sizeof(contentSize)) != sizeof(contentSize)) {
-        return nullptr;
-    }
-
-    handle->Cookie = std::move(cookie);
-
-    for (ui32 i = 0; i < contentSize; ++i) {
-        ui64 key = 0;
-        if (input.Load(&key, sizeof(key)) != sizeof(key)) {
-            return nullptr;
-        }
-
-        ui32 bufferSize = 0;
-        if (input.Load(&bufferSize, sizeof(bufferSize)) != sizeof(bufferSize)) {
-            return nullptr;
-        }
-
-        if (bufferSize > 0) {
-            if (input.Avail() < bufferSize) {
-                return nullptr;
-            }
-            auto buffer = std::make_shared<TBuffer>();
-            buffer->Resize(bufferSize);
-            if (input.Load(buffer->Data(), bufferSize) != bufferSize) {
-                return nullptr;
-            }
-            handle->Content[key] = buffer;
-        } else {
-            handle->Content[key] = nullptr;
-        }
-    }
-
-    return handle;
 }
 
 }   // namespace NCloud::NFileStore::NFuse

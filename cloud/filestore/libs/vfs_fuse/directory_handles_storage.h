@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "fs_directory_handle.h"
+
 #include <cloud/storage/core/libs/common/dynamic_persistent_table.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -18,7 +20,8 @@ namespace NCloud::NFileStore::NFuse {
 class TDirectoryHandle;
 
 using TDirectoryHandleMap = THashMap<ui64, std::shared_ptr<TDirectoryHandle>>;
-using TDirectoryHandlePair = std::pair<ui64, std::shared_ptr<TDirectoryHandle>>;
+using TDirectoryHandleChunkPair =
+    std::pair<ui64, std::optional<TDirectoryHandleChunk>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -34,20 +37,23 @@ private:
 
     TLog Log;
 
-    // Mutex for Table and HandleIdToIndex
+    // Mutex for Table and HandleIdToIndices
     TMutex TableLock;
     std::unique_ptr<TDirectoryHandleTable> Table;
-    THashMap<ui64, ui64> HandleIdToIndex;
+    THashMap<ui64, std::vector<ui64>> HandleIdToIndices;
 
 public:
     explicit TDirectoryHandlesStorage(
         TLog& log,
         const TString& filePath,
         ui64 recordsCount,
-        ui64 initialDataAreaSize);
+        ui64 initialDataAreaSize,
+        ui64 initialDataCompactionBufferSize);
 
-    void StoreHandle(ui64 handleId, const TDirectoryHandle& handle);
-    void UpdateHandle(ui64 handleId, const TDirectoryHandle& handle);
+    void StoreHandle(
+        ui64 handleId,
+        const TDirectoryHandleChunk& initialHandleChunk);
+    void UpdateHandle(ui64 handleId, const TDirectoryHandleChunk& handleChunk);
     void RemoveHandle(ui64 handleId);
     void LoadHandles(TDirectoryHandleMap& handles);
     void Clear();
@@ -55,8 +61,8 @@ public:
 private:
     TBuffer SerializeHandle(
         ui64 handleId,
-        const TDirectoryHandle& handle) const;
-    TDirectoryHandlePair DeserializeHandle(const TStringBuf& buffer) const;
+        const TDirectoryHandleChunk& handleChunk) const;
+    TDirectoryHandleChunkPair DeserializeHandleChunk(const TStringBuf& buffer);
 
     ui64 CreateRecord(const TBuffer& record);
     ui64 UpdateRecord(ui64 index, const TBuffer& record);
@@ -66,8 +72,9 @@ private:
 
 TDirectoryHandlesStoragePtr CreateDirectoryHandlesStorage(
     TLog& log,
-    const TString& fileName,
-    ui64 recordsCount = 1000,
-    ui64 initialDataAreaSize = 1024 * 1024);
+    const TString& filePath,
+    ui64 recordsCount,
+    ui64 initialDataAreaSize,
+    ui64 initialDataCompactionBufferSize);
 
 }   // namespace NCloud::NFileStore::NFuse
