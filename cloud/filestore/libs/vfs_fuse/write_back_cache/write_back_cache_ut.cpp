@@ -115,12 +115,18 @@ struct TInFlightRequestTracker
 struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
 {
     TWriteBackCache::TPersistentQueueStats PersistentQueue;
+    std::atomic_uint64_t CompletedFlushCount = 0;
+    std::atomic_uint64_t FailedFlushCount = 0;
 
     void IncrementCompletedFlushCount() override
-    {}
+    {
+        CompletedFlushCount++;
+    }
 
     void IncrementFailedFlushCount() override
-    {}
+    {
+        FailedFlushCount++;
+    }
 
     void SetNodeCount(ui64 value) override
     {
@@ -1213,6 +1219,49 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.RecreateCache();
 
         UNIT_ASSERT_EQUAL(true, stats.IsCorrupted);
+    }
+
+    Y_UNIT_TEST(ShouldReportFlushStats)
+    {
+        TBootstrap b;
+        auto& stats = *b.StatsReporter;
+
+        constexpr int WriteAttemptsThreshold = 3;
+        std::atomic_int writeAttempts = 0;
+
+        auto prevWriteDataHandler = std::move(b.Session->WriteDataHandler);
+        b.Session->WriteDataHandler = [&](auto context, auto request) {
+            writeAttempts++;
+            if (writeAttempts < WriteAttemptsThreshold) {
+                NProto::TWriteDataResponse response;
+                *response.MutableError() = MakeError(E_REJECTED);
+                return MakeFuture(std::move(response));
+            }
+            return prevWriteDataHandler(std::move(context), std::move(request));
+        };
+
+        b.WriteToCacheSync(1, 0, "abc");
+
+        UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
+        UNIT_ASSERT_EQUAL(0, stats.FailedFlushCount);
+
+        auto flushFuture = b.Cache.FlushNodeData(1);
+
+        UNIT_ASSERT(!flushFuture.HasValue());
+        UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
+        UNIT_ASSERT_EQUAL(1, stats.FailedFlushCount);
+
+        b.Scheduler->RunAllScheduledTasks();
+
+        UNIT_ASSERT(!flushFuture.HasValue());
+        UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
+        UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
+
+        b.Scheduler->RunAllScheduledTasks();
+
+        UNIT_ASSERT(flushFuture.HasValue());
+        UNIT_ASSERT_EQUAL(1, stats.CompletedFlushCount);
+        UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
     }
 
     /* TODO(svartmetal): fix tests with automatic flush
