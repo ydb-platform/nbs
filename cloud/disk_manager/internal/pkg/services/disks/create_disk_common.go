@@ -14,7 +14,7 @@ type CreateDiskTaskState interface {
 	GetSelectedCellId() string
 }
 
-func SelectZone(
+func SelectCell(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	nbsFactory nbs.Factory,
