@@ -29,7 +29,7 @@ def check_for_fail(paths: List[str]):
         for t, fn in error_list:
             print(f"error: {t} ({fn})")
         if len(build_failed_list) > 0:
-            os.environ["BUILD_FAILED_COUNT"] = len(build_failed_list)
+            os.environ["BUILD_FAILED_COUNT"] = str(len(build_failed_list))
             raise SystemExit(237)
 
         raise SystemExit(1)
