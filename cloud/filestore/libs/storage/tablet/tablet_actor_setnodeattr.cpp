@@ -110,7 +110,7 @@ bool TIndexTabletActor::PrepareTx_SetNodeAttr(
     auto flags = args.Request.GetFlags();
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) {
         const auto& update = args.Request.GetUpdate();
-        if (!HasSpaceLeft(args.Node->Attrs, update.GetSize())) {
+        if (!HasSpaceLeft(args.Node->Attrs.GetSize(), update.GetSize())) {
             args.Error = ErrorNoSpaceLeft();
             return true;
         }

@@ -4,5 +4,8 @@
     },
     "test.test_shard_autoaddition": {
         "uri": "file://test.test_shard_autoaddition/results.txt"
+    },
+    "test.test_turn_on_strict": {
+        "uri": "file://test.test_turn_on_strict/results.txt"
     }
 }

@@ -349,10 +349,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     void DoShouldGetStorageStats(
         const bool strictFileSystemSizeEnforcementEnabled)
     {
+        const ui64 filestoreSize = 2_GB;
+        const ui64 autoShardsSize = 1_GB;
+        const ui64 blockSize = 4_KB;
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetAutomaticShardCreationEnabled(true);
         storageConfig.SetShardAllocationUnit(1_GB);
-        storageConfig.SetAutomaticallyCreatedShardSize(1_GB);
+        storageConfig.SetAutomaticallyCreatedShardSize(autoShardsSize);
         storageConfig.SetMultiTabletForwardingEnabled(true);
         storageConfig.SetStrictFileSystemSizeEnforcementEnabled(
             strictFileSystemSizeEnforcementEnabled);
@@ -375,7 +379,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         const TString fsId = "test";
-        service.CreateFileStore(fsId, 2_GB / 4_KB);
+        service.CreateFileStore(fsId, filestoreSize / blockSize);
         // waiting for IndexTablet start after the restart triggered by
         // configureshards
         WaitForTabletStart(service);
@@ -441,11 +445,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     fsInfo.Id,
                     shardStats.GetShardId());
+                const ui64 shardTotalBlocksCount =
+                    (strictFileSystemSizeEnforcementEnabled ? filestoreSize
+                                                            : autoShardsSize) /
+                    blockSize;
                 UNIT_ASSERT_VALUES_EQUAL(
-                    1_GB / 4_KB,
+                    shardTotalBlocksCount,
                     shardStats.GetTotalBlocksCount());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    fsInfo.Size / 4_KB,
+                    fsInfo.Size / blockSize,
                     shardStats.GetUsedBlocksCount());
                 UNIT_ASSERT_VALUES_UNEQUAL(
                     0,

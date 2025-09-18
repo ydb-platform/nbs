@@ -22,6 +22,11 @@ struct TShardedFileSystemConfig
     const TString Shard2Id = FsId + "_s2";
     const ui64 ShardBlockCount = 1'000;
 
+    ui64 MainFsBlockCount() const
+    {
+        return ShardBlockCount * 2;
+    }
+
     bool DirectoryCreationInShardsEnabled = false;
 
     TVector<TString> ShardIds() const
@@ -106,7 +111,7 @@ static TFileSystemInfo CreateFileSystem(
             return false;
         });
 
-    service.CreateFileStore(fsConfig.FsId, fsConfig.ShardBlockCount * 2);
+    service.CreateFileStore(fsConfig.FsId, fsConfig.MainFsBlockCount());
 
     service.AccessRuntime().DispatchEvents(
         {.CustomFinalCondition = [&]() -> bool

@@ -242,11 +242,14 @@ message TResizeFileStoreRequest
     // File system performance profile.
     TFileStorePerformanceProfile PerformanceProfile = 5;
 
-    // Bypass some checks.
+    // Allowes to decrease the size of the filesystem.
     bool Force = 6;
 
     // Explicitly specified shard count.
     uint32 ShardCount = 7;
+
+    // Turn on strict size enforcement mode for the whole filesystem.
+    bool TurnOnStrictFileSystemSizeEnforcement = 8;
 }
 
 message TResizeFileStoreResponse

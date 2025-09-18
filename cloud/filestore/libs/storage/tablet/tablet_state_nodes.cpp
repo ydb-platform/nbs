@@ -24,25 +24,6 @@ ui64 SizeDiff(const TString& v1, const TString& v2)
 ////////////////////////////////////////////////////////////////////////////////
 // Nodes
 
-bool TIndexTabletState::HasSpaceLeft(const NProto::TNode& attrs, ui64 newSize) const
-{
-    i64 delta = GetBlocksDifference(attrs.GetSize(), newSize, GetBlockSize());
-    if (delta > 0 && GetUsedBlocksCount() + delta > GetBlocksCount()) {
-        return false;
-    }
-
-    return true;
-}
-
-bool TIndexTabletState::HasBlocksLeft(ui32 blocks) const
-{
-    if (blocks && GetUsedBlocksCount() + blocks > GetBlocksCount()) {
-        return false;
-    }
-
-    return true;
-}
-
 void TIndexTabletState::UpdateUsedBlocksCount(
     TIndexTabletDatabase& db,
     ui64 currentSize,
