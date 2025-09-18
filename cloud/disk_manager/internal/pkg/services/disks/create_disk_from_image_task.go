@@ -59,7 +59,7 @@ func (t *createDiskFromImageTask) Run(
 		)
 	}
 
-	client, err := SelectZone(
+	client, err := SelectCell(
 		ctx,
 		execCtx,
 		t.nbsFactory,
