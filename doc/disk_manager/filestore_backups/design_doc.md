@@ -23,7 +23,7 @@
 * ⚙️ Backup creation and restoration MUST be resilient to node downtime, failure and network errors.
 * 📈 Loss of some progress is acceptable as long as filestore backup is finished within a reasonable amount of time.
 * ⏱️ Latency < .1 sec for 99% for all api methods (filesystem backup creation is asynchronous, but we do not slow request for task state or operation).
-* 🔢 The system should handle up to 100000 file system backups per datacenter (assuming worst case scenario where clients create small file systems sized several tens of Gib's, the number is derived from order of magnitude of disk snapshots count in some installations).
+* 🔢 The system should handle up to 100000 file system backups per datacenter (assuming worst case scenario where clients create small file systems sized several tens of GiB's, the number is derived from order of magnitude of disk snapshots count in some installations).
 * 🔄Idempotency: Filesystem backup creation and deletion must be idempotent.
 * 🪨 Consistency (filesystem backup should capture a consistent state of the filesystem at some point in time).
 
@@ -71,7 +71,7 @@ struct NodeRefs: TTableSchema<9>
 ```
 Note, that `NodeId` here is the id of a parent node, whereas `ChildId` is id of a child node,
 in the Disk Manager terminology we would prefer the terminology parent id and child id.
-For sharded filesystems, `ShardId` is the id of the shard, which is a separate filesystem, which stores files in plain structure (files are named by uids).
+For sharded filesystems, `ShardId` is the id of the shard, which is a separate filesystem, which stores files in plain structure (files are named by uids).`ShardName` is a name of the file in the shard fs.
 
 **IMPORTANT** IDs of inodes do not provide any information about which file was created earlier. The index of the shard is encoded into the ID of the inode, the id of the shard id of the filesystem + "_" + index of the shard (0..N).
 
@@ -238,12 +238,14 @@ primary key is (`shard_id`, `backup_id`, `node_id`, `chunk_index`).
 Hard links are retrieved from the filestore as a regular files with refcnt > 1.
 
 #### Algorithm:
-First we emplace the root node into the queue table and then we start several `DirectoryLister`'s and a single `DirectoryListingScheduler`.
+First we emplace the root node into the queue table if it does not exist with pending status and then we start several `DirectoryLister`'s and a single `DirectoryListingScheduler`.
 `DirectoryListingScheduler` does the following:
-1. Reads all the records from the queue table with `status == listing` and puts them into the channel.
-2. While pending records are present, reads several records from the queue table with `status == pending` sorted by primary key.
-3. For each record checks if there are more records in the queue with the same `node_id` and `status != pending`, in that case, it removes records from the table.
-4. Puts records in a channel for processing while there are records to process.
+1. At the start of the task (it can be restarted multiple times),
+2. Reads all the listing records and puts them into a channel.
+3. In a loop reads pending directory records.
+4. Marks all the pending record as listing in the same transaction, if there are no listing records with the same `node_id`, otherwise delete pending duplicates.
+5. Puts locked records into the channel for processing.
+6. Finishes if there are not records left to process.
 
 `DirectoryLister` does the following:
 1. Reads a record from the channel.
@@ -253,8 +255,6 @@ First we emplace the root node into the queue table and then we start several `D
 5. For all the symlinks, performs `ReadLink` API call and updates the `symlink_target` field in the `node_references` table.
 6. For all regular files, generate chunk entries and put them into the `chunk_maps` table.
 7. On success, updates the cookie in the queue table and sets `status == finished` if listing did not return anything.
-
-Steps 3,4,5 CAN be performed in parallel.
 
 After all the metadata is backed up, delete all the records from the queue table by the given `filesystem_backup_id`.
 
@@ -285,7 +285,7 @@ source_node_id: Uint64
 destination_node_id: Uint64
 ```
 with primary key (`source_filesystem_id`, `destination_filesystem_id`, `source_node_id`).
-We will initially prepend the table with the root node mapping (1 -> 1).
+We will initially prepend the table with the root node mapping (1 -> 1). (Root node id is always 1).
 To avoid race condition in links restoration, we need to create additional table `filesystem_restore_links`:
 ```
 source_filesystem_id: Utf8
@@ -294,14 +294,14 @@ source_node_id: Uint64
 parent_node_id: Uint64
 name: Utf8
 status: Uint32 // creating, created
+idempotency_key: Utf8
 ```
-with primary key (`source_filesystem_id`, `destination_filesystem_id`, `source_node_id`, `parent_node_id`, `name`).
+with primary key (`source_filesystem_id`, `destination_filesystem_id`, `source_node_id`).
 ##### Algorithm:
 1. Read a record from the database
 2. Put it into the channel with inflight queue.
 3. If the node parent does not exist in the mapping table, put the record back into the channel.
-4. Create a file. If node is a link (reference count > 1), check if the node was created (present in the `filesystem_restore_mapping` table), if not, create it as a regular, otherwise create a link to the existing file. **Note: ** before creating the link, try and lock the link in `filesystem_restore_links` table, if the lock is not acquired, put the record back into the channel. After the link is created, update the `filesystem_restore_links` table entry to `created`. If the "locked" link is the same as the one we are trying to create (same parent, same name), we can proceed with link creation, since this situation can only occur in case of task restart.
-There is no way two threads try to write the same file.
+4. Create a file. If node is a link (reference count > 1), check if the node was created (present in the `filesystem_restore_mapping` table), if not, create it as a regular, otherwise create a link to the existing file. **Note: ** before creating the link in the filesystem, try and lock the inode (transactionally create if not exists and fill the idempotency key) in `filesystem_restore_links` table, if the lock is not acquired, put the record back into the channel. After the link is created, update the `filesystem_restore_links` table entry to `created`. If the "locked" link is the same as the one we are trying to create (same parent, same name), we can proceed with link creation, since this situation can only occur in case of task restart.
 
 5. In case of node creation, put the mapping of source node id to destination node id into the `filesystem_restore_mapping` table.
 6. On success, notify the channel that the record is processed.
