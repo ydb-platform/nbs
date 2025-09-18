@@ -32,7 +32,6 @@ void TDiskRegistrySelfCounters::Init(
 
     DisksInWarningState = counters->GetCounter("DisksInWarningState");
     MaxWarningTime = counters->GetCounter("MaxWarningTime");
-    DisksInMigrationState = counters->GetCounter("DisksInMigrationState");
     MaxMigrationTime = counters->GetCounter("MaxMigrationTime");
 
     DevicesInMigrationState = counters->GetCounter("DevicesInMigrationState");

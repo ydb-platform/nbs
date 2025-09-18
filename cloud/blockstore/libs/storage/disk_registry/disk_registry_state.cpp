@@ -4467,8 +4467,6 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
     SelfCounters.DisksInWarningState->Set(disksInWarningState);
     SelfCounters.MaxWarningTime->Set(maxWarningTime.Seconds());
-    // XXX for backward compat with alerts
-    SelfCounters.DisksInMigrationState->Set(disksInWarningState);
     SelfCounters.MaxMigrationTime->Set(maxMigrationTime.Seconds());
 
     ui32 migratingDeviceCount = 0;

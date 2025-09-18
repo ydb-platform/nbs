@@ -64,8 +64,6 @@ struct TDiskRegistrySelfCounters
 
     TCounterPtr DisksInWarningState;
     TCounterPtr MaxWarningTime;
-    // XXX for backward compat with alerts
-    TCounterPtr DisksInMigrationState;
     TCounterPtr MaxMigrationTime;
 
     TCounterPtr DevicesInMigrationState;
