@@ -52,7 +52,6 @@ void RegisterVolumeSelfCounters(
         volume.PerfCounters.VolumeSelfCounters.Register(volumeCounters, false);
         volume.PerfCounters.VolumeBindingCounter =
             volumeCounters->GetCounter("LocalVolume", false);
-        volume.PerfCounters.CountersRegistered = true;
 
         NUserCounter::RegisterServiceVolume(
             *userCounters,
@@ -60,6 +59,8 @@ void RegisterVolumeSelfCounters(
             volume.VolumeInfo.GetFolderId(),
             volume.VolumeInfo.GetDiskId(),
             volumeCounters);
+
+        volume.CountersRegistered = true;
     }
 }
 
@@ -76,13 +77,13 @@ void UnregisterVolumeSelfCounters(
             ->RemoveSubgroup("volume", diskId);
     }
 
-    volume.PerfCounters.CountersRegistered = false;
-
     NUserCounter::UnregisterServiceVolume(
         *userCounters,
         volume.VolumeInfo.GetCloudId(),
         volume.VolumeInfo.GetFolderId(),
         volume.VolumeInfo.GetDiskId());
+
+    volume.CountersRegistered = false;
 }
 
 }    // namespace
@@ -159,14 +160,14 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
             }
         }
 
-        if (!vol.PerfCounters.CountersRegistered) {
+        if (!vol.CountersRegistered) {
             RegisterVolumeSelfCounters(
                 UserCounters,
                 AppData(ctx)->Counters,
                 vol);
         }
 
-        Y_ABORT_UNLESS(vol.PerfCounters.CountersRegistered);
+        Y_ABORT_UNLESS(vol.CountersRegistered);
         *vol.IsStartedCounter = 1;
         *vol.IsLocalMountCounter = vol.IsLocalMount;
 
