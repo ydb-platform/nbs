@@ -162,6 +162,8 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 		"toplevel_task_id",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
+		ID:           "disk",
+		ZoneID:       "zone",
 		DeleteTaskID: "toplevel_task_id",
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
@@ -206,6 +208,8 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		"toplevel_task_id",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
+		ID:           "disk",
+		ZoneID:       "zone",
 		DeleteTaskID: "toplevel_task_id",
 	}, nil)
 
@@ -221,7 +225,6 @@ func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
 	ctx := context.Background()
 	storage := storage_mocks.NewStorageMock()
 	nbsFactory := nbs_mocks.NewFactoryMock()
-	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
 
 	params := &protos.CreateDiskParams{
@@ -251,9 +254,7 @@ func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
 		mock.Anything,
 	).Return((*resources.DiskMeta)(nil), nil)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
-
 	err := task.Cancel(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(t, storage, nbsFactory, execCtx)
 	require.NoError(t, err)
 }

@@ -307,6 +307,8 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 		"toplevel_task_id",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
+		ID:           "disk",
+		ZoneID:       "zone",
 		DeleteTaskID: "toplevel_task_id",
 	}, nil)
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
@@ -336,7 +338,6 @@ func TestCancelCreateOverlayDiskTaskBeforeRunIsCalled(t *testing.T) {
 	scheduler := tasks_mocks.NewSchedulerMock()
 	poolService := pools_mocks.NewServiceMock()
 	nbsFactory := nbs_mocks.NewFactoryMock()
-	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
 
 	request := &protos.CreateOverlayDiskRequest{
@@ -372,9 +373,7 @@ func TestCancelCreateOverlayDiskTaskBeforeRunIsCalled(t *testing.T) {
 		mock.Anything,
 	).Return((*resources.DiskMeta)(nil), nil)
 
-	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
-
 	err := task.Cancel(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
+	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, execCtx)
 	require.NoError(t, err)
 }

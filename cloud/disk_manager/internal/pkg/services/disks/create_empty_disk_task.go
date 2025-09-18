@@ -126,15 +126,6 @@ func (t *createEmptyDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	if len(t.state.SelectedCellId) == 0 {
-		t.state.SelectedCellId = t.params.Disk.ZoneId
-	}
-
-	client, err := t.nbsFactory.GetClient(ctx, t.state.SelectedCellId)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
 
 	diskMeta, err := t.storage.DeleteDisk(
@@ -151,12 +142,17 @@ func (t *createEmptyDiskTask) Cancel(
 		return nil
 	}
 
-	err = client.Delete(ctx, t.params.Disk.DiskId)
+	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
 	if err != nil {
 		return err
 	}
 
-	return t.storage.DiskDeleted(ctx, t.params.Disk.DiskId, time.Now())
+	err = client.Delete(ctx, diskMeta.ID)
+	if err != nil {
+		return err
+	}
+
+	return t.storage.DiskDeleted(ctx, diskMeta.ID, time.Now())
 }
 
 func (t *createEmptyDiskTask) GetMetadata(
