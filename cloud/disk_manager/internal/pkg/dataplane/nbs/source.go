@@ -333,16 +333,7 @@ func GetDiskSourceBytesToRead(
 		diskSource.ignoreBaseDisk,
 	)
 	if err != nil {
-		if !nbs.IsGetChangedBlocksNotSupportedError(err) {
-			return 0, err
-		}
-
-		diskParams, err := diskSource.client.Describe(ctx, diskSource.diskID)
-		if err != nil {
-			return 0, err
-		}
-
-		bytesToRead = diskParams.BlocksCount * uint64(diskParams.BlockSize)
+		return 0, err
 	}
 
 	return bytesToRead, nil
