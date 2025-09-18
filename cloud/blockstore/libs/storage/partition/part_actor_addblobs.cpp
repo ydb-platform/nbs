@@ -154,6 +154,12 @@ public:
         for (const auto& blob: Args.FreshBlobs) {
             ProcessNewBlob(ctx, db, blob);
             UpdateCompactionCounters(blob);
+
+            for (const auto& block: blob.Blocks) {
+                if (!block.IsStoredInDb) {
+                    State.GetTrimFreshLogBarriers().ReleaseBarrier(block.CommitId);
+                }
+            }
         }
 
         if (Args.Mode == ADD_COMPACTION_RESULT) {

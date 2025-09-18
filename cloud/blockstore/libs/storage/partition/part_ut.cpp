@@ -13217,8 +13217,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
         }
 
-        bool saveBlobs = false;
-        TSet<ui64> expectedBlobs;
+        TSet<ui64> rangeBlobs;
 
         auto eventFilter =
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
@@ -13234,31 +13233,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     case TEvBlobStorage::EvRangeResult: {
                         using TEvent = TEvBlobStorage::TEvRangeResult;
                         auto* msg = ev->Get<TEvent>();
-                        bool isRangeResponseFromFresh = false;
                         for (const auto& r: msg->Responses) {
                             if (r.Id.Channel() == FreshChannelId) {
-                                isRangeResponseFromFresh = true;
                                 auto commitId = MakeCommitId(
-                                        r.Id.Generation(),
-                                        r.Id.Step());
-                                UNIT_ASSERT_VALUES_EQUAL(
-                                    1,
-                                    expectedBlobs.count(commitId));
+                                    r.Id.Generation(),
+                                    r.Id.Step());
+                                rangeBlobs.emplace(commitId);
                             }
-                        }
-                        if (isRangeResponseFromFresh) {
-                            UNIT_ASSERT_VALUES_EQUAL(
-                                expectedBlobs.size(),
-                                msg->Responses.size());
-                        }
-                        break;
-                    }
-                    case TEvPartitionPrivate::EvWriteBlobCompleted: {
-                        using TEvent = TEvPartitionPrivate::TEvWriteBlobCompleted;
-                        auto* msg = ev->Get<TEvent>();
-                        if (msg->BlobId.Channel() == 4 && saveBlobs)
-                        {
-                            expectedBlobs.emplace(msg->BlobId.CommitId());
                         }
                         break;
                     }
@@ -13269,29 +13250,36 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         runtime->SetEventFilter(eventFilter);
 
-        // update TrimFreshLogToCommitId in meta to gen:step = 0:0
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        // flush was not executed, expect to read all fresh blobs at startup
+        UNIT_ASSERT_VALUES_EQUAL(3, rangeBlobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, rangeBlobs.count(MakeCommitId(2, 1)));
+        UNIT_ASSERT_VALUES_EQUAL(1, rangeBlobs.count(MakeCommitId(2, 2)));
+        UNIT_ASSERT_VALUES_EQUAL(1, rangeBlobs.count(MakeCommitId(2, 3)));
+        rangeBlobs.clear();
+
+        // update TrimFreshLogToCommitId in meta to gen:step = 3:1
         partition.Flush();
 
         runtime->DispatchEvents(TDispatchOptions{}, TDuration::Seconds(1));
+        partition.RebootTablet();
+        partition.WaitReady();
 
-        saveBlobs = true;
+        UNIT_ASSERT_VALUES_EQUAL(0, rangeBlobs.size());
 
         partition.WriteBlocks(4, 4);
         partition.WriteBlocks(5, 5);
         partition.WriteBlocks(6, 6);
 
-        // update TrimFreshLogToCommitId in meta to gen:step = 2:4
+        // update TrimFreshLogToCommitId in meta to gen:step = 4:4
         partition.Flush();
 
         partition.RebootTablet();
         partition.WaitReady();
 
-        // expect to read last 3 blobs ([2:5], [2:6], [2:7])
-
-        UNIT_ASSERT_VALUES_EQUAL(3, expectedBlobs.size());
-        UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 5)));
-        UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 6)));
-        UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 7)));
+        UNIT_ASSERT_VALUES_EQUAL(0, rangeBlobs.size());
     }
 }
 
