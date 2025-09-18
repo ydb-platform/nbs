@@ -227,17 +227,9 @@ func (t *createDiskFromImageTask) Cancel(
 
 	params := t.request.Params
 
-	if len(t.state.SelectedCellId) == 0 {
-		t.state.SelectedCellId = params.Disk.ZoneId
-	}
-
-	client, err := t.nbsFactory.GetClient(ctx, t.state.SelectedCellId)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
 
+	// Idempotently retrieve zone, where should be located.
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		params.Disk.DiskId,
@@ -252,12 +244,17 @@ func (t *createDiskFromImageTask) Cancel(
 		return nil
 	}
 
-	err = client.Delete(ctx, params.Disk.DiskId)
+	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
 	if err != nil {
 		return err
 	}
 
-	return t.storage.DiskDeleted(ctx, params.Disk.DiskId, time.Now())
+	err = client.Delete(ctx, diskMeta.ID)
+	if err != nil {
+		return err
+	}
+
+	return t.storage.DiskDeleted(ctx, diskMeta.ID, time.Now())
 }
 
 func (t *createDiskFromImageTask) GetMetadata(

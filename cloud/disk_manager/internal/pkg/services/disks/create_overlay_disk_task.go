@@ -169,25 +169,12 @@ func (t *createOverlayDiskTask) Cancel(
 
 	params := t.request.Params
 
-	if len(t.state.SelectedCellId) == 0 {
-		t.state.SelectedCellId = params.Disk.ZoneId
-	}
-
-	overlayDisk := &types.Disk{
-		DiskId: params.Disk.DiskId,
-		ZoneId: t.state.SelectedCellId,
-	}
-
-	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
 
+	// Idempotently retrieve zone, where should be located.
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
-		overlayDisk.DiskId,
+		params.Disk.DiskId,
 		selfTaskID,
 		time.Now(),
 	)
@@ -197,6 +184,16 @@ func (t *createOverlayDiskTask) Cancel(
 
 	if diskMeta == nil {
 		return nil
+	}
+
+	overlayDisk := &types.Disk{
+		DiskId: diskMeta.ID,
+		ZoneId: diskMeta.ZoneID,
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
+	if err != nil {
+		return err
 	}
 
 	err = client.Delete(ctx, overlayDisk.DiskId)
