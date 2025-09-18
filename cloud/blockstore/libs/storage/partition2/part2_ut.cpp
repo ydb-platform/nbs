@@ -281,9 +281,9 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         TBlockStoreComponents::END,
         GetComponentName);
 
-    for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
-        runtime->SetLogPriority(i, NLog::PRI_DEBUG);
-    }
+    // for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+    //     runtime->SetLogPriority(i, NLog::PRI_DEBUG);
+    // }
     // runtime->SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     runtime->SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
 
