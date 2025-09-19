@@ -366,6 +366,12 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         if (msg->CollectGarbageBarrierAcquired) {
             State->GetGarbageQueue().ReleaseBarrier(commitId);
         }
+
+        if (msg->TrimFreshLogBarrierAcquired && HasError(msg->GetError())) {
+            State->GetTrimFreshLogBarriers().ReleaseBarrierN(
+                commitId,
+                blocksCount);
+        }
     }
 
     Actors.Erase(ev->Sender);

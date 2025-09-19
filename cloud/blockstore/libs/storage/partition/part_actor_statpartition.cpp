@@ -100,6 +100,9 @@ void TPartitionActor::HandleStatPartition(
     response->Record.MutableStats()->SetConfirmedBlobCount(
         State->GetConfirmedBlobCount());
 
+    response->Record.MutableStats()->SetTrimFreshLogToCommitId(
+        State->GetTrimFreshLogToCommitId());
+
     LWTRACK(
         ResponseSent_Partition,
         requestInfo->CallContext->LWOrbit,
