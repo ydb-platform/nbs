@@ -150,6 +150,10 @@ func (s *urlSource) ChunkCount(ctx context.Context) (uint32, error) {
 	return s.chunkMapReader.chunkCount(), nil
 }
 
+func (s *urlSource) Size(ctx context.Context) (uint64, error) {
+	return s.chunkMapReader.size(), nil
+}
+
 func (s *urlSource) Close(ctx context.Context) {
 }
 

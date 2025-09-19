@@ -225,6 +225,16 @@ func (s *diskSource) ChunkCount(ctx context.Context) (uint32, error) {
 	return s.chunkCount, nil
 }
 
+func (s *diskSource) Size(ctx context.Context) (uint64, error) {
+	return s.client.GetChangedBytes(
+		ctx,
+		s.diskID,
+		s.baseCheckpointID,
+		s.checkpointID,
+		s.ignoreBaseDisk,
+	)
+}
+
 func (s *diskSource) Close(ctx context.Context) {
 	s.session.Close(ctx)
 }
@@ -309,27 +319,4 @@ func NewDiskSource(
 		ignoreBaseDisk:         ignoreBaseDisk,
 		dontReadFromCheckpoint: dontReadFromCheckpoint,
 	}, nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func GetDiskSourceBytesToRead(
-	ctx context.Context,
-	source dataplane_common.Source,
-) (uint64, error) {
-
-	diskSource, ok := source.(*diskSource)
-	if !ok {
-		return 0, task_errors.NewNonRetriableErrorf(
-			"GetDiskSourceBytesToRead argument must be of type diskSource",
-		)
-	}
-
-	return diskSource.client.GetChangedBytes(
-		ctx,
-		diskSource.diskID,
-		diskSource.baseCheckpointID,
-		diskSource.checkpointID,
-		diskSource.ignoreBaseDisk,
-	)
 }
