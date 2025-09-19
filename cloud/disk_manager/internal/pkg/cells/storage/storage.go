@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -148,20 +147,20 @@ type Storage interface {
 
 func CreateYDBTables(
 	ctx context.Context,
-	config *cells_config.CellsConfig,
+	folder string,
 	db *persistence.YDBClient,
 	dropUnusedColumns bool,
 ) error {
 
 	logging.Info(
 		ctx,
-		"Createing tables for shards in %v",
-		db.AbsolutePath(config.GetStorageFolder()),
+		"Createing tables for cells in %v",
+		db.AbsolutePath(folder),
 	)
 
 	err := db.CreateOrAlterTable(
 		ctx,
-		config.GetStorageFolder(),
+		folder,
 		"cluster_capacity",
 		clusterCapacityStateTableDescription(),
 		dropUnusedColumns,
@@ -177,17 +176,17 @@ func CreateYDBTables(
 
 func DropYDBTables(
 	ctx context.Context,
-	config *cells_config.CellsConfig,
+	folder string,
 	db *persistence.YDBClient,
 ) error {
 
 	logging.Info(
 		ctx,
 		"Dropping tables for shards in %v",
-		db.AbsolutePath(config.GetStorageFolder()),
+		db.AbsolutePath(folder),
 	)
 
-	err := db.DropTable(ctx, config.GetStorageFolder(), "cluster_capacity")
+	err := db.DropTable(ctx, folder, "cluster_capacity")
 	if err != nil {
 		return err
 	}
