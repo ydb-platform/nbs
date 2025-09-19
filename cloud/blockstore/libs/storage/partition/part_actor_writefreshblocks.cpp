@@ -391,19 +391,28 @@ void TPartitionActor::WriteFreshBlocks(
         return;
     }
 
-    if (State->GetUnflushedFreshBlobByteCount()
-            >= Config->GetFreshByteCountHardLimit())
-    {
+    const bool freshLimitExceeded = State->GetUnflushedFreshBlobByteCount() >=
+                                    Config->GetFreshByteCountHardLimit();
+    const bool untrimmedLimitExceeded =
+        State->GetUntrimmedFreshBlobByteCount() >=
+        Config->GetUntrimmedFreshByteCountHardLimit();
+    if (freshLimitExceeded || untrimmedLimitExceeded) {
+        TString errorString;
+        if (freshLimitExceeded) {
+            errorString = TStringBuilder()
+                          << "FreshByteCountHardLimit exceeded: "
+                          << State->GetUnflushedFreshBlobByteCount();
+        } else {
+            errorString = TStringBuilder()
+                          << "UntrimmedFreshByteCountHardLimit exceeded: "
+                          << State->GetUntrimmedFreshBlobByteCount();
+        }
         for (auto& r: requestsInBuffer) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_SILENT);
             auto response = CreateWriteBlocksResponse(
                 r.Data.ReplyLocal,
-                MakeError(E_REJECTED,
-                          TStringBuilder()
-                              << "FreshByteCountHardLimit exceeded: "
-                              << State->GetUnflushedFreshBlobByteCount(),
-                          flags));
+                MakeError(E_REJECTED, errorString, flags));
 
             LWTRACK(
                 ResponseSent_Partition,

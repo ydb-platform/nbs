@@ -13293,6 +13293,52 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 6)));
         UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 7)));
     }
+
+    Y_UNIT_TEST(ShouldRejectSmallWritesAfterReachingUntrimmedFreshByteCountHardLimit)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetFreshByteCountHardLimit(8_KB);
+        config.SetUntrimmedFreshByteCountHardLimit(8_KB);
+        config.SetFlushThreshold(4_MB);
+        config.SetFreshChannelCount(1);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 2);
+
+        bool trimFreshCompletedReceived = false;
+
+        auto eventFilter =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted: {
+                        UNIT_ASSERT(!trimFreshCompletedReceived);
+                        trimFreshCompletedReceived = true;
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+        runtime->SetEventFilter(eventFilter);
+
+        partition.Flush();
+
+        partition.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(0), 1);
+        auto response = partition.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT(response->GetErrorReason().StartsWith("UntrimmedFreshByteCountHardLimit"));
+        UNIT_ASSERT(
+            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -1333,4 +1333,7 @@ message TStorageServiceConfig
     // Timeout for dynamic node registration via discovery service
     // (in milliseconds).
     optional uint32 DynamicNodeRegistrationTimeout = 459;
+
+    // Maximum allowed untrimmed fresh byte count after which we start to reject writes.
+    optional uint32 UntrimmedFreshByteCountHardLimit = 460;
 }
