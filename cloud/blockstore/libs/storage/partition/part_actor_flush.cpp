@@ -56,7 +56,6 @@ private:
 
     const TActorId Tablet;
     const ui64 CommitId;
-    TFlushedCommitIds FlushedCommitIdsFromChannel;
     const ui32 FlushedFreshBlobCount;
     const ui64 FlushedFreshBlobByteCount;
     const TDuration BlobStorageAsyncRequestTimeout;
@@ -78,7 +77,6 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         const TActorId& tablet,
         ui64 commitId,
-        TFlushedCommitIds flushedCommitIdsFromChannel,
         ui32 flushedFreshBlobCount,
         ui64 flushedFreshBlobByteCount,
         TDuration blobStorageAsyncRequestTimeout,
@@ -121,7 +119,6 @@ TFlushActor::TFlushActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         const TActorId& tablet,
         ui64 commitId,
-        TFlushedCommitIds flushedCommitIdsFromChannel,
         ui32 flushedFreshBlobCount,
         ui64 flushedFreshBlobByteCount,
         TDuration blobStorageAsyncRequestTimeout,
@@ -131,7 +128,6 @@ TFlushActor::TFlushActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , Tablet(tablet)
     , CommitId(commitId)
-    , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
     , FlushedFreshBlobCount(flushedFreshBlobCount)
     , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
     , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
@@ -258,8 +254,7 @@ void TFlushActor::NotifyCompleted(
     auto ev = std::make_unique<TEvent>(
         error,
         FlushedFreshBlobCount,
-        FlushedFreshBlobByteCount,
-        std::move(FlushedCommitIdsFromChannel));
+        FlushedFreshBlobByteCount);
 
     ev->ExecCycles = RequestInfo->GetExecCycles();
     ev->TotalCycles = RequestInfo->GetTotalCycles();
@@ -535,45 +530,6 @@ private:
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-TFlushedCommitIds BuildFlushedCommitIdsFromChannel(const TVector<TBlob>& blobs)
-{
-    TFlushedCommitIds result;
-    TVector<ui64> commitIds;
-
-    for (const auto& blob: blobs) {
-        for (const auto& block: blob.Blocks) {
-            if (!block.IsStoredInDb) {
-                commitIds.push_back(block.CommitId);
-            }
-        }
-    }
-
-    if (!commitIds) {
-        return {};
-    }
-
-    Sort(commitIds);
-
-    ui64 cur = commitIds.front();
-    ui32 cnt = 0;
-
-    for (const auto commitId: commitIds) {
-        if (commitId == cur) {
-            ++cnt;
-        } else {
-            result.emplace_back(cur, cnt);
-            cur = commitId;
-            cnt = 1;
-        }
-    }
-
-    result.emplace_back(cur, cnt);
-
-    return result;
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -706,8 +662,6 @@ void TPartitionActor::HandleFlush(
         visitor.Finish();
     }
 
-    auto flushedCommitIdsFromChannel = BuildFlushedCommitIdsFromChannel(blobs);
-
     {
         auto& flushedCommitIdsInProgress = State->GetFlushedCommitIdsInProgress();
         Y_ABORT_UNLESS(flushedCommitIdsInProgress.empty());
@@ -761,7 +715,6 @@ void TPartitionActor::HandleFlush(
             BlockDigestGenerator,
             SelfId(),
             commitId,
-            std::move(flushedCommitIdsFromChannel),
             State->GetUnflushedFreshBlobCount(),
             State->GetUnflushedFreshBlobByteCount(),
             GetBlobStorageAsyncRequestTimeout(),
@@ -835,10 +788,6 @@ void TPartitionActor::HandleFlushCompleted(
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
     if (!HasError(msg->Error)) {
-        for (const auto& i: msg->FlushedCommitIdsFromChannel) {
-            State->GetTrimFreshLogBarriers().ReleaseBarrierN(i.CommitId, i.BlockCount);
-        }
-
         State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);
         State->DecrementUnflushedFreshBlobByteCount(msg->FlushedFreshBlobByteCount);
     }

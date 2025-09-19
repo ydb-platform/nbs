@@ -148,21 +148,6 @@ struct TBlobCompactionInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFlushedCommitId
-{
-    ui64 CommitId;
-    ui32 BlockCount;
-
-    TFlushedCommitId(ui64 commitId, ui32 blockCount)
-        : CommitId(commitId)
-        , BlockCount(blockCount)
-    {}
-};
-
-using TFlushedCommitIds = TVector<TFlushedCommitId>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 #define BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(xxx, ...)                        \
     xxx(WriteBlob,                 __VA_ARGS__)                                \
     xxx(AddBlobs,                  __VA_ARGS__)                                \
@@ -774,15 +759,12 @@ struct TEvPartitionPrivate
     {
         ui32 FlushedFreshBlobCount;
         ui64 FlushedFreshBlobByteCount;
-        TFlushedCommitIds FlushedCommitIdsFromChannel;
 
         TFlushCompleted(
                 ui32 flushedFreshBlobCount,
-                ui64 flushedFreshBlobByteCount,
-                TFlushedCommitIds flushedCommitIdsFromChannel)
+                ui64 flushedFreshBlobByteCount)
             : FlushedFreshBlobCount(flushedFreshBlobCount)
             , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
-            , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
         {
         }
     };
