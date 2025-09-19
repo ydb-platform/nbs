@@ -43,8 +43,6 @@ void RegisterVolumeSelfCounters(
             ->GetSubgroup("cloud", volume.VolumeInfo.GetCloudId())
             ->GetSubgroup("folder", volume.VolumeInfo.GetFolderId());
 
-        volume.IsStartedCounter =
-            volumeCounters->GetCounter("IsStarted", false);
         volume.IsLocalMountCounter =
             volumeCounters->GetCounter("IsLocalMount", false);
 
@@ -168,7 +166,6 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
         }
 
         Y_ABORT_UNLESS(vol.CountersRegistered);
-        *vol.IsStartedCounter = 1;
         *vol.IsLocalMountCounter = vol.IsLocalMount;
 
         vol.PerfCounters.DiskCounters.Publish(ctx.Now());

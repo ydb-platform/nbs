@@ -131,8 +131,6 @@ struct TVolumeStatsInfo
 
     bool CountersRegistered = false;
 
-    NMonitoring::TDynamicCounters::TCounterPtr IsStartedCounter;
-
     bool IsLocalMount;
     NMonitoring::TDynamicCounters::TCounterPtr IsLocalMountCounter;
 
