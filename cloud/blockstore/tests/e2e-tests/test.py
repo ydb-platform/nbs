@@ -189,6 +189,39 @@ def test_free_device_allocation(nbd_netlink):
         cleanup_after_test(env)
 
 
+def force_nbd_reconnect(
+        env,
+        filename,
+        runtime,
+        downtime,
+        block_size=4096,
+        iodepth=1024,
+):
+    proc = subprocess.Popen(
+        [
+            "fio",
+            "--name=fio",
+            "--ioengine=libaio",
+            "--direct=1",
+            "--time_based=1",
+            "--rw=randrw",
+            "--rwmixread=50",
+            "--filename=" + filename,
+            "--runtime=" + str(runtime),
+            "--blocksize=" + str(block_size),
+            "--iodepth=" + str(iodepth),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+
+    os.kill(env.nbs.pid, signal.SIGSTOP)
+    time.sleep(downtime)
+    os.kill(env.nbs.pid, signal.SIGCONT)
+
+    proc.communicate(timeout=60)
+    assert proc.returncode == 0
+
+
 def test_nbd_reconnect():
     disk_id = "disk0"
     block_size = 4096
@@ -233,29 +266,13 @@ def test_nbd_reconnect():
         assert result.returncode == 0
 
         for i in range(0, reconnects):
-            proc = subprocess.Popen(
-                [
-                    "fio",
-                    "--name=fio",
-                    "--ioengine=libaio",
-                    "--direct=1",
-                    "--time_based=1",
-                    "--rw=randrw",
-                    "--rwmixread=50",
-                    "--filename=" + nbd_device,
-                    "--runtime=" + str(runtime),
-                    "--blocksize=" + str(block_size),
-                    "--iodepth=" + str(iodepth),
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT)
-
-            os.kill(env.nbs.pid, signal.SIGSTOP)
-            time.sleep(nbs_downtime)
-            os.kill(env.nbs.pid, signal.SIGCONT)
-
-            proc.communicate(timeout=60)
-            assert proc.returncode == 0
+            force_nbd_reconnect(
+                env,
+                nbd_device,
+                runtime,
+                nbs_downtime,
+                block_size,
+                iodepth)
 
             time.sleep(nbs_runtime_between_reconnects)
 
@@ -282,17 +299,23 @@ def test_nbd_reconnect():
 
 @pytest.mark.parametrize('nbd_netlink', [True, False])
 def test_resize_device(nbd_netlink):
-    env, run = init(
-        nbd_netlink=nbd_netlink,
-        max_zero_blocks_sub_request_size=512 * 1024 * 1024
-    )
-
     volume_name = "example-disk"
     block_size = 4096
     blocks_count = 1310720
     volume_size = blocks_count * block_size
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
+    iodepth = 1024
+    request_timeout = 2
+    runtime = request_timeout * 2
+    nbs_downtime = request_timeout + 2
+
+    env, run = init(
+        nbd_netlink=nbd_netlink,
+        nbd_request_timeout=request_timeout,
+        max_zero_blocks_sub_request_size=512 * 1024 * 1024
+    )
+
     try:
         result = run(
             "createvolume",
@@ -367,6 +390,23 @@ def test_resize_device(nbd_netlink):
         assert result.returncode == 0
         disk_size = int(result.stdout)
         assert new_volume_size == disk_size
+
+        # check if reconnected device didn't shrink back
+        if nbd_netlink:
+            force_nbd_reconnect(
+                env,
+                nbd_device,
+                runtime,
+                nbs_downtime,
+                block_size,
+                iodepth)
+
+            try:
+                fd = os.open(nbd_device, os.O_RDWR | os.O_SYNC)
+                os.lseek(fd, volume_size, os.SEEK_SET)
+                os.write(fd, b"foobar")
+            finally:
+                os.close(fd)
 
         result = common.execute(
             ["resize2fs", nbd_device],
