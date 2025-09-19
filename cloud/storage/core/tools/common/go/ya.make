@@ -1,5 +1,4 @@
 RECURSE(
     configurator
-    log
     ssh
 )
