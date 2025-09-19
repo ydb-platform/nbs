@@ -751,7 +751,6 @@ bool TPartitionActor::PrepareAddBlobs(
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
-    Y_UNUSED(args);
 
     args.FlushedCommitIdsFromChannel = BuildFlushedCommitIdsFromChannel(
         args.FreshBlobs);
