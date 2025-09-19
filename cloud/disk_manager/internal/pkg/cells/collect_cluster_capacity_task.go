@@ -20,11 +20,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type collectClusterCapacityTask struct {
-	config            *cells_config.CellsConfig
-	storage           storage.Storage
-	nbsFactory        nbs.Factory
-	expirationTimeout time.Duration
-	state             *protos.GetClusterCapacityState
+	config     *cells_config.CellsConfig
+	storage    storage.Storage
+	nbsFactory nbs.Factory
+	state      *protos.GetClusterCapacityState
 }
 
 func (t *collectClusterCapacityTask) Save() ([]byte, error) {
@@ -84,7 +83,14 @@ func (t *collectClusterCapacityTask) Run(
 						})
 					}
 
-					deleteBefore := time.Now().Add(-t.expirationTimeout)
+					expirationTimeout, err := time.ParseDuration(
+						t.config.GetClusterCapacityExpirationTimeout(),
+					)
+					if err != nil {
+						return err
+					}
+
+					deleteBefore := time.Now().Add(-expirationTimeout)
 					err = t.storage.UpdateClusterCapacities(
 						ctx,
 						capacities,

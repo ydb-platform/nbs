@@ -21,13 +21,6 @@ func RegisterForExecution(
 	nbsFactory nbs.Factory,
 ) error {
 
-	clusterCapacityExpirationTimeout, err := time.ParseDuration(
-		config.GetClusterCapacityExpirationTimeout(),
-	)
-	if err != nil {
-		return err
-	}
-
 	collectClusterCapacityTaskScheduleInterval, err := time.ParseDuration(
 		config.GetCollectClusterCapacityTaskScheduleInterval(),
 	)
