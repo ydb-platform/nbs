@@ -80,6 +80,34 @@ TString GetBufferFromIovecs(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TIoVecContiguousChunk: public IContiguousChunk
+{
+    ui64 Base = 0;
+    ui64 Size = 0;
+
+    TIoVecContiguousChunk(ui64 base, ui64 size)
+        : Base(base)
+        , Size(size)
+    {}
+
+    TContiguousSpan GetData() const override
+    {
+        return TContiguousSpan(reinterpret_cast<const char*>(Base), Size);
+    }
+
+    TMutableContiguousSpan GetDataMut() override
+    {
+        return TMutableContiguousSpan(reinterpret_cast<char*>(Base), Size);
+    }
+
+    size_t GetOccupiedMemorySize() const override
+    {
+        return Size;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
 {
 private:
@@ -245,9 +273,19 @@ private:
         ApproximateFreeSpaceShares.resize(GenerateBlobIdsResponse.BlobsSize());
 
         const auto& iovecs = WriteRequest.GetIovecs();
-        int iovecIndex = 0;
-        ui64 iovecOffset = 0;
-        TString putData;
+        TRope rope;
+        for (const auto& iovec: iovecs) {
+            rope.Insert(
+                rope.End(),
+                TRope(TRcBuf(
+                    MakeIntrusive<TIoVecContiguousChunk>(
+                        iovec.GetBase(),
+                        iovec.GetLength()))));
+        }
+        auto ropeIt = rope.Begin();
+        if (!rope.empty()) {
+            ropeIt += offset;
+        }
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
             NKikimr::TLogoBlobID blobId =
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
@@ -272,41 +310,19 @@ private:
             if (!iovecs.empty()) {
                 // TODO(myagkov): Implement TEvPut with TRope as a buffer
                 // to remove unnecessary memcpy
-                ui64 bytesToCopy = blobId.BlobSize();
-                putData.ReserveAndResize(bytesToCopy);
-                while (iovecIndex < iovecs.size()) {
-                    const auto& iovec = iovecs[iovecIndex];
-                    const auto iovecRemainingLength =
-                        iovec.GetLength() - iovecOffset;
-                    const auto size =
-                        std::min(bytesToCopy, iovecRemainingLength);
-                    memcpy(
-                        &putData[offset],
-                        reinterpret_cast<const char*>(iovec.GetBase()) +
-                            iovecOffset,
-                        size);
-
-                    offset += size;
-                    bytesToCopy -= size;
-
-                    if (iovecRemainingLength - size > 0) {
-                        iovecOffset += size;
-                    } else {
-                        iovecIndex++;
-                        iovecOffset = 0;
-                    }
-
-                    if (bytesToCopy == 0) {
-                        offset = 0;
-                        break;
-                    }
-                }
-
+                TString putData;
+                putData.ReserveAndResize(blobId.BlobSize());
+                auto bytesCopied = TRopeUtils::SafeMemcpy(
+                    &putData[0],
+                    ropeIt,
+                    blobId.BlobSize());
+                Y_ABORT_UNLESS(bytesCopied == blobId.BlobSize());
                 request = std::make_unique<TEvBlobStorage::TEvPut>(
                     blobId,
                     std::move(putData),
                     TInstant::Max(),
                     NKikimrBlobStorage::UserData);
+                ropeIt += blobId.BlobSize();
             } else {
                 if (GenerateBlobIdsResponse.BlobsSize() == 1 &&
                     Range == BlobRange)
@@ -328,6 +344,7 @@ private:
                 }
                 offset += blobId.BlobSize();
             }
+
             NKikimr::TActorId proxy =
                 MakeBlobStorageProxyID(blob.GetBSGroupId());
             LOG_DEBUG(
