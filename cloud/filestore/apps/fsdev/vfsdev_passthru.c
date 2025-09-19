@@ -212,6 +212,7 @@ struct vfsdev_passthru_reset_ctx {
 static void
 vfsdev_passthru_reset_completion_cb(struct spdk_fsdev_desc *desc, bool success, void *cb_arg)
 {
+    (void)desc;
 	struct vfsdev_passthru_reset_ctx *reset_ctx = (struct vfsdev_passthru_reset_ctx *)cb_arg;
 
 	reset_ctx->cb(reset_ctx->cb_arg, success ? 0 : -1);
@@ -292,6 +293,7 @@ pt_fsdev_ch_create_cb(void *io_device, void *ctx_buf)
 static void
 pt_fsdev_ch_destroy_cb(void *io_device, void *ctx_buf)
 {
+    (void)io_device;
 	struct pt_io_channel *pt_ch = ctx_buf;
 
 	spdk_put_io_channel(pt_ch->base_ch);
@@ -375,6 +377,8 @@ vfsdev_passthru_get_ctx_size(void)
 static void
 vfsdev_passthru_write_config_json(struct spdk_fsdev *fsdev, struct spdk_json_write_ctx *w)
 {
+    (void)fsdev;
+    (void)w;
 	/* No config per fsdev needed */
 }
 
@@ -405,6 +409,7 @@ static void
 vfsdev_passthru_base_fsdev_event_cb(enum spdk_fsdev_event_type type, struct spdk_fsdev *fsdev,
 				    void *event_ctx)
 {
+    (void)event_ctx;
 	switch (type) {
 	case SPDK_FSDEV_EVENT_REMOVE:
 		vfsdev_passthru_base_fsdev_hotremove_cb(fsdev);
