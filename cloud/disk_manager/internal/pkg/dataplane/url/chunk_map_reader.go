@@ -34,8 +34,12 @@ func newChunkMapReader(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (r *chunkMapReader) size() uint64 {
+	return r.imageMapReader.Size()
+}
+
 func (r *chunkMapReader) chunkCount() uint32 {
-	size := r.imageMapReader.Size()
+	size := r.size()
 
 	if size%r.chunkSize == 0 {
 		return uint32(size / r.chunkSize)

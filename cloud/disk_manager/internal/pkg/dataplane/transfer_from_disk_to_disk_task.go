@@ -160,7 +160,7 @@ func (t *transferFromDiskToDiskTask) setEstimate(
 	diskSource common.Source,
 ) error {
 
-	bytesToTransfer, err := nbs.GetDiskSourceBytesToRead(ctx, diskSource)
+	bytesToTransfer, err := diskSource.Size(ctx)
 	if err != nil {
 		return err
 	}

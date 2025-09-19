@@ -56,13 +56,18 @@ func (t *transferFromSnapshotToDiskTask) Run(
 
 	t.state.ChunkCount = srcMeta.ChunkCount
 
-	execCtx.SetEstimatedInflightDuration(performance.Estimate(
-		srcMeta.StorageSize,
-		t.performanceConfig.GetTransferBetweenDiskAndSnapshotBandwidthMiBs(),
-	))
-
 	source := snapshot.NewSnapshotSource(t.request.SrcSnapshotId, t.storage)
 	defer source.Close(ctx)
+
+	sourceSize, err := source.Size(ctx)
+	if err != nil {
+		return err
+	}
+
+	execCtx.SetEstimatedInflightDuration(performance.Estimate(
+		sourceSize,
+		t.performanceConfig.GetTransferBetweenDiskAndSnapshotBandwidthMiBs(),
+	))
 
 	target, err := nbs.NewDiskTarget(
 		ctx,

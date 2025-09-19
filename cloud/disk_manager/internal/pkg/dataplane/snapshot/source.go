@@ -151,6 +151,16 @@ func (s *snapshotSource) ChunkCount(ctx context.Context) (uint32, error) {
 	return meta.ChunkCount, nil
 }
 
+// Not thread-safe.
+func (s *snapshotSource) Size(ctx context.Context) (uint64, error) {
+	meta, err := s.getSnapshotMeta(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	return meta.StorageSize, nil
+}
+
 func (s *snapshotSource) Close(ctx context.Context) {
 }
 
