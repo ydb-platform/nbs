@@ -114,8 +114,12 @@ class FilestoreCliClient:
         return pid
 
     def resize(
-        self, fs, blk_count,
-        force=False, shard_count=None, turn_on_strict=False
+        self,
+        fs,
+        blk_count,
+        force=False,
+        shard_count=None,
+        turn_on_strict=False
     ):
         cmd = [
             self.__binary_path, "resize",
@@ -128,7 +132,7 @@ class FilestoreCliClient:
 
         if shard_count is not None:
             cmd += ["--shard-count", str(shard_count)]
-        
+
         if turn_on_strict:
             cmd.append("--turn-on-strict")
 
