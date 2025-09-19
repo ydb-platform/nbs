@@ -8,7 +8,7 @@
 #include "spdk/string.h"
 #include "spdk/log.h"
 
-/* Structure to hold the parameters for this RPC method. */
+ /* Structure to hold the parameters for this RPC method. */
 struct rpc_fsdev_passthru_create {
 	char *base_fsdev_name;
 	char *name;
@@ -24,8 +24,8 @@ free_rpc_fsdev_passthru_create(struct rpc_fsdev_passthru_create *r)
 
 /* Structure to decode the input parameters for this RPC method. */
 static const struct spdk_json_object_decoder rpc_fsdev_passthru_create_decoders[] = {
-	{"base_fsdev_name", offsetof(struct rpc_fsdev_passthru_create, base_fsdev_name), spdk_json_decode_string},
-	{"name", offsetof(struct rpc_fsdev_passthru_create, name), spdk_json_decode_string},
+	{"base_fsdev_name", offsetof(struct rpc_fsdev_passthru_create, base_fsdev_name), spdk_json_decode_string, false},
+	{"name", offsetof(struct rpc_fsdev_passthru_create, name), spdk_json_decode_string, false},
 };
 
 /* Decode the parameters for this RPC method and properly construct the passthru
@@ -35,7 +35,7 @@ static void
 rpc_fsdev_passthru_create(struct spdk_jsonrpc_request *request,
 			  const struct spdk_json_val *params)
 {
-	struct rpc_fsdev_passthru_create req = {NULL};
+	struct rpc_fsdev_passthru_create req = {NULL, NULL};
 	struct spdk_json_write_ctx *w;
 	int rc;
 
@@ -74,7 +74,7 @@ free_rpc_fsdev_passthru_delete(struct rpc_fsdev_passthru_delete *req)
 }
 
 static const struct spdk_json_object_decoder rpc_fsdev_passthru_delete_decoders[] = {
-	{"name", offsetof(struct rpc_fsdev_passthru_delete, name), spdk_json_decode_string},
+	{"name", offsetof(struct rpc_fsdev_passthru_delete, name), spdk_json_decode_string, false},
 };
 
 static void
@@ -95,7 +95,6 @@ rpc_fsdev_passthru_delete(struct spdk_jsonrpc_request *request,
 			  const struct spdk_json_val *params)
 {
 	struct rpc_fsdev_passthru_delete req = {NULL};
-	struct spdk_fsdev *fsdev;
 
 	if (spdk_json_decode_object(params, rpc_fsdev_passthru_delete_decoders,
 				    SPDK_COUNTOF(rpc_fsdev_passthru_delete_decoders),
