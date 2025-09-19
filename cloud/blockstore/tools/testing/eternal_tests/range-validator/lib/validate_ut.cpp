@@ -34,7 +34,7 @@ Y_UNIT_TEST_SUITE(ValidateTest)
             100,  // writeRage
             1,    // requestBlockCount
             1,    // writeParts
-            "0",    // alternatingPhase
+            "",   // alternatingPhase
             maxWriteRequestCount);
 
         auto executor = NTesting::CreateTestExecutor(
