@@ -564,7 +564,7 @@ public:
 
             Y_ENSURE(
                 PhaseDuration > 0,
-                "Alternating phase duration should be positive non-zero value");
+                "Alternating phase duration should be a positive non-zero value");
         }
 
         WriteRate = config.GetWriteRate();
