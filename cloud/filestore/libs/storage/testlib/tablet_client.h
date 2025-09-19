@@ -620,6 +620,7 @@ public:
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
         request->Record.SetBuffer(CreateBuffer(len, fill));
+        request->Record.SetDataSize(len);
         if (node != InvalidNodeId) {
             request->Record.SetNodeId(node);
         }

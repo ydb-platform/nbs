@@ -338,6 +338,8 @@ public:
     ui32 GetMaxFuseLoopThreads() const;
 
     bool GetStrictFileSystemSizeEnforcementEnabled() const;
+
+    bool GetZeroCopyWriteEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
