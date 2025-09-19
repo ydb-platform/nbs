@@ -506,6 +506,7 @@ private:
     void RenderMigrationStatus(IOutputStream& out) const;
     void RenderResyncStatus(IOutputStream& out) const;
     void RenderLaggingStatus(IOutputStream& out) const;
+    void RenderAppliedVolumeThrottlingRule(IOutputStream& out) const;
     void RenderLaggingStateForDevice(
         IOutputStream& out,
         const NProto::TDeviceConfig& d);
