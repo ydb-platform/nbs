@@ -83,6 +83,13 @@ struct TFlushConfig
     ui32 MaxSumWriteRequestsSize = 0;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+TDuration GetDuration(TInstant start, TInstant end)
+{
+    return start <= end ? end - start : TDuration::Zero();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -291,6 +298,7 @@ private:
     const IFileStorePtr Session;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
+    const IWriteBackCacheStatsReporterPtr StatsReporter;
     const TFlushConfig FlushConfig;
 
     // All fields below should be protected by this lock
@@ -319,12 +327,14 @@ public:
             IFileStorePtr session,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
+            IWriteBackCacheStatsReporterPtr statsReporter,
             const TString& filePath,
             ui32 capacityBytes,
             TFlushConfig flushConfig)
         : Session(std::move(session))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
+        , StatsReporter(std::move(statsReporter))
         , FlushConfig(flushConfig)
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
@@ -352,9 +362,14 @@ public:
                     CachedEntries.push_back(std::move(entry));
                 } else {
                     auto* nodeState = GetOrCreateNodeState(entry->GetNodeId());
+                    entry->SetRequestTime(Timer->Now());
                     AddCachedEntry(nodeState, std::move(entry));
                 }
             });
+
+        ReportPersistentQueueStats();
+        ReportNodeCount();
+        ReportCachedRequestCount();
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -483,6 +498,8 @@ public:
                 MakeError(E_ARGUMENT, "WriteData request has zero length");
             return MakeFuture(std::move(response));
         }
+
+        entry->SetRequestTime(Timer->Now());
 
         auto serializedSize = entry->GetSerializedSize();
 
@@ -679,6 +696,7 @@ private:
         auto& ptr = NodeStates[nodeId];
         if (!ptr) {
             ptr = std::make_unique<TNodeState>(nodeId);
+            ReportNodeCount();
         }
         return ptr.get();
     }
@@ -695,6 +713,7 @@ private:
         if (nodeState != nullptr && nodeState->Empty()) {
             auto erased = NodeStates.erase(nodeState->NodeId);
             Y_DEBUG_ABORT_UNLESS(erased);
+            ReportNodeCount();
         }
     }
 
@@ -791,6 +810,10 @@ private:
             nodeState->PendingEntriesCount--;
             PendingEntries.pop_front();
         }
+
+        ReportPersistentQueueStats();
+        ReportCachedRequestCount();
+        ReportPendingRequestCount();
     }
 
     TVector<TWriteDataEntryPart> CalculateDataPartsToReadAndFillBuffer(
@@ -975,6 +998,7 @@ private:
         {
             nodeState->PendingEntriesCount++;
             PendingEntries.push_back(std::move(entry));
+            ReportPendingRequestCount();
             return;
         }
 
@@ -992,11 +1016,15 @@ private:
 
             CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
             AddCachedEntry(nodeState, std::move(entry));
+            ReportCachedRequestCount();
         } else {
             nodeState->PendingEntriesCount++;
             PendingEntries.push_back(std::move(entry));
+            ReportPendingRequestCount();
             ScheduleFlushAll();
         }
+
+        ReportPersistentQueueStats();
     }
 
     // |nodeState| becomes unusable if the function returns false
@@ -1015,6 +1043,7 @@ private:
 
         TVector<TWriteDataEntryPart> parts;
         ui64 handle = InvalidHandle;
+        auto now = Timer->Now();
 
         with_lock (Lock) {
             // Flush cannot be scheduled when CachedEntries is empty
@@ -1033,6 +1062,10 @@ private:
                 // Even a single entry is too large to flush
                 // TODO(nasonov): report and try to flush it anyway
                 entryCount = 1;
+            }
+
+            for (size_t i = 0; i < entryCount; i++) {
+                nodeState->CachedEntries[i]->SetFlushTime(now);
             }
 
             parts = TUtil::CalculateDataPartsToFlush(
@@ -1108,8 +1141,10 @@ private:
         state.WriteRequests.clear();
 
         if (state.FailedWriteRequests.empty()) {
+            StatsReporter->IncrementCompletedFlushCount();
             CompleteFlush(nodeState);
         } else {
+            StatsReporter->IncrementFailedFlushCount();
             ScheduleRetryFlush(nodeState);
         }
     }
@@ -1121,6 +1156,7 @@ private:
         Y_ABORT_UNLESS(nodeState->FlushState.FailedWriteRequests.empty());
         Y_ABORT_UNLESS(nodeState->FlushState.InFlightWriteRequestsCount == 0);
 
+        auto now = Timer->Now();
         auto guard = Guard(Lock);
 
         while (nodeState->FlushState.AffectedWriteDataEntriesCount > 0) {
@@ -1134,6 +1170,9 @@ private:
             }
 
             entry->FinishFlush(PendingOperations);
+
+            auto stats = entry->GetStats(now);
+            StatsReporter->AddWriteRequestStats(stats);
         }
 
         // Clear flushed entries from the persistent queue
@@ -1143,6 +1182,9 @@ private:
             CachedEntriesPersistentQueue.PopFront();
             PendingOperations.ShouldProcessPendingEntries = true;
         }
+
+        ReportPersistentQueueStats();
+        ReportCachedRequestCount();
 
         nodeState->FlushState.Executing = false;
 
@@ -1173,6 +1215,8 @@ private:
         Y_ABORT_UNLESS(nodeState != nullptr);
         Y_ABORT_UNLESS(nodeState->NodeId == entry->GetNodeId());
 
+        entry->SetCachedTime(Timer->Now());
+
         nodeState->CachedEntryIntervalMap.Add(entry.get());
         nodeState->CachedEntries.push_back(entry.get());
         NodesWithNewCachedEntries.insert(nodeState->NodeId);
@@ -1190,6 +1234,35 @@ private:
 
         return entry;
     }
+
+    // Persistent queue stats should be reported after a call (or a series of
+    // calls) to CachedEntriesPersistentQueue.AllocateBack or .PopFront
+    void ReportPersistentQueueStats() const
+    {
+        StatsReporter->SetPersistentQueueStats(
+            {.Capacity =
+                CachedEntriesPersistentQueue.GetRawCapacity(),
+             .UsedBytesCount =
+                CachedEntriesPersistentQueue.GetRawUsedBytesCount(),
+             .MaxAllocationSize =
+                 CachedEntriesPersistentQueue.MaxAllocationSize(),
+             .IsCorrupted = CachedEntriesPersistentQueue.IsCorrupted()});
+    }
+
+    void ReportNodeCount() const
+    {
+        StatsReporter->SetNodeCount(NodeStates.size());
+    }
+
+    void ReportCachedRequestCount() const
+    {
+        StatsReporter->SetCachedWriteRequestCount(CachedEntries.size());
+    }
+
+    void ReportPendingRequestCount() const
+    {
+        StatsReporter->SetPendingWriteRequestCount(PendingEntries.size());
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1200,6 +1273,7 @@ TWriteBackCache::TWriteBackCache(
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
+        IWriteBackCacheStatsReporterPtr statsReporter,
         const TString& filePath,
         ui32 capacityBytes,
         TDuration automaticFlushPeriod,
@@ -1212,6 +1286,7 @@ TWriteBackCache::TWriteBackCache(
             std::move(session),
             std::move(scheduler),
             std::move(timer),
+            std::move(statsReporter),
             filePath,
             capacityBytes,
             {.AutomaticFlushPeriod = automaticFlushPeriod,
@@ -1388,6 +1463,32 @@ TFuture<void> TWriteBackCache::TWriteDataEntry::GetFlushFuture()
         FlushPromise = NewPromise();
     }
     return FlushPromise.GetFuture();
+}
+
+void TWriteBackCache::TWriteDataEntry::SetRequestTime(TInstant time)
+{
+    RequestTime = time;
+}
+
+void TWriteBackCache::TWriteDataEntry::SetCachedTime(TInstant time)
+{
+    CachedTime = time;
+}
+
+void TWriteBackCache::TWriteDataEntry::SetFlushTime(TInstant time)
+{
+    FlushTime = time;
+}
+
+auto TWriteBackCache::TWriteDataEntry::GetStats(TInstant time) const
+    -> TWriteBackCache::TWriteDataStats
+{
+    Y_DEBUG_ABORT_UNLESS(RequestTime && CachedTime && FlushTime);
+
+    return {
+        .PendingDuration = GetDuration(RequestTime, CachedTime),
+        .WaitingDuration = GetDuration(CachedTime, FlushTime),
+        .FlushDuration = GetDuration(FlushTime, time)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

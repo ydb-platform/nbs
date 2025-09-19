@@ -6,6 +6,8 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 
+#include <util/datetime/base.h>
+
 #include <util/generic/intrlist.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
@@ -55,6 +57,10 @@ private:
     NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
     NThreading::TPromise<void> FlushPromise;
     EWriteDataEntryStatus Status = EWriteDataEntryStatus::Corrupted;
+
+    TInstant RequestTime;
+    TInstant CachedTime;
+    TInstant FlushTime;
 
 public:
     explicit TWriteDataEntry(
@@ -125,6 +131,11 @@ public:
 
     NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
     NThreading::TFuture<void> GetFlushFuture();
+
+    void SetRequestTime(TInstant time);
+    void SetCachedTime(TInstant time);
+    void SetFlushTime(TInstant time);
+    TWriteBackCache::TWriteDataStats GetStats(TInstant time) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
