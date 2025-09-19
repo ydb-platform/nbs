@@ -94,6 +94,17 @@ public:
 private:
     void RegisterCounters(const NActors::TActorContext& ctx);
 
+    void RegisterVolumeSelfCounters(
+        std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
+        NMonitoring::TDynamicCounterPtr& counters,
+        TVolumeStatsInfo& volume);
+
+    void UnregisterVolumeSelfCounters(
+        std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
+        NMonitoring::TDynamicCounterPtr& counters,
+        const TString& diskId,
+        TVolumeStatsInfo& volume);
+
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
 
     void UpdateVolumeSelfCounters(const NActors::TActorContext& ctx);

@@ -166,6 +166,8 @@ public:
     [[nodiscard]] NCloud::NProto::TOpentelemetryTraceConfig
     GetOpentelemetryTraceConfig() const;
 
+    [[nodiscard]] bool GetAddHostLabelInServiceVolumeMetrics() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

@@ -22,7 +22,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 struct TDiskPerfData
 {
-    bool CountersRegistered = false;
     bool HasCheckpoint = false;
     bool HasClients = false;
     bool IsPreempted = false;
@@ -129,6 +128,11 @@ struct TVolumeStatsInfo
 {
     NProto::TVolume VolumeInfo;
     ui64 VolumeTabletId = 0;
+
+    bool CountersRegistered = false;
+
+    bool IsLocalMount = false;
+    NMonitoring::TDynamicCounters::TCounterPtr IsLocalMountCounter;
 
     TDiskPerfData PerfCounters;
     NBlobMetrics::TBlobLoadMetrics OffsetBlobMetrics;

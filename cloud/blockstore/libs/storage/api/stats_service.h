@@ -138,6 +138,7 @@ struct TEvStatsService
     struct TVolumeSelfCounters
     {
         const TString DiskId;
+        const bool IsLocalMount;
         const bool HasClients;
         const bool IsPreempted;
         TVolumeSelfCountersPtr VolumeSelfCounters;
@@ -145,11 +146,13 @@ struct TEvStatsService
 
         TVolumeSelfCounters(
                 TString diskId,
+                bool isLocalMount,
                 bool hasClients,
                 bool isPreempted,
                 TVolumeSelfCountersPtr volumeCounters,
                 ui32 failedBoots)
             : DiskId(std::move(diskId))
+            , IsLocalMount(isLocalMount)
             , HasClients(hasClients)
             , IsPreempted(isPreempted)
             , VolumeSelfCounters(std::move(volumeCounters))
@@ -158,11 +161,13 @@ struct TEvStatsService
 
         TVolumeSelfCounters(
                 TString diskId,
+                bool isLocalMount,
                 bool hasClients,
                 bool isPreempted,
                 TVolumeSelfCountersPtr volumeCounters)
             : TVolumeSelfCounters(
                 std::move(diskId),
+                isLocalMount,
                 hasClients,
                 isPreempted,
                 std::move(volumeCounters),
