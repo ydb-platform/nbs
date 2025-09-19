@@ -33,6 +33,7 @@ type getChangedBlocksHandlerFunc func(ctx context.Context, req *protos.TGetChang
 type describeVolumeHandlerFunc func(ctx context.Context, req *protos.TDescribeVolumeRequest) (*protos.TDescribeVolumeResponse, error)
 type describeVolumeModelHandlerFunc func(ctx context.Context, req *protos.TDescribeVolumeModelRequest) (*protos.TDescribeVolumeModelResponse, error)
 type listVolumesHandlerFunc func(ctx context.Context, req *protos.TListVolumesRequest) (*protos.TListVolumesResponse, error)
+type listDiskStatesHandlerFunc func(ctx context.Context, req *protos.TListDiskStatesRequest) (*protos.TListDiskStatesResponse, error)
 type discoverInstancesHandlerFunc func(ctx context.Context, req *protos.TDiscoverInstancesRequest) (*protos.TDiscoverInstancesResponse, error)
 type queryAvailableStorageHandler func(ctx context.Context, req *protos.TQueryAvailableStorageRequest) (*protos.TQueryAvailableStorageResponse, error)
 type resumeDeviceHandler func(ctx context.Context, req *protos.TResumeDeviceRequest) (*protos.TResumeDeviceResponse, error)
@@ -76,6 +77,7 @@ type testClient struct {
 	DescribeVolumeHandler                describeVolumeHandlerFunc
 	DescribeVolumeModelHandler           describeVolumeModelHandlerFunc
 	ListVolumesHandler                   listVolumesHandlerFunc
+	ListDiskStatesHandler                listDiskStatesHandlerFunc
 	DiscoverInstancesHandler             discoverInstancesHandlerFunc
 	QueryAvailableStorageHandler         queryAvailableStorageHandler
 	ResumeDeviceHandler                  resumeDeviceHandler
@@ -445,6 +447,18 @@ func (client *testClient) ListVolumes(
 	}
 
 	return &protos.TListVolumesResponse{}, nil
+}
+
+func (client *testClient) ListDiskStates(
+	ctx context.Context,
+	req *protos.TListDiskStatesRequest,
+) (*protos.TListDiskStatesResponse, error) {
+
+	if client.ListDiskStatesHandler != nil {
+		return client.ListDiskStatesHandler(ctx, req)
+	}
+
+	return &protos.TListDiskStatesResponse{}, nil
 }
 
 func (client *testClient) DiscoverInstances(
