@@ -67,6 +67,21 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TFlushedCommitId
+{
+    ui64 CommitId;
+    ui32 BlockCount;
+
+    TFlushedCommitId(ui64 commitId, ui32 blockCount)
+        : CommitId(commitId)
+        , BlockCount(blockCount)
+    {}
+};
+
+using TFlushedCommitIds = TVector<TFlushedCommitId>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TTxPartition
 {
     using TBlockMark = NBlobMarkers::TBlockMark;
@@ -315,6 +330,9 @@ struct TTxPartition
         const TAffectedBlocks AffectedBlocks;
         const TVector<TBlobCompactionInfo> MixedBlobCompactionInfos;
         const TVector<TBlobCompactionInfo> MergedBlobCompactionInfos;
+
+        // fresh
+        TFlushedCommitIds FlushedCommitIdsFromChannel;
 
         ui64 DeletionCommitId = 0;
 

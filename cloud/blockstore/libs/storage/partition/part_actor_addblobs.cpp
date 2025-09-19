@@ -51,6 +51,46 @@ bool HasDuplicates(const TVector<ui32>& items)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
+    const TVector<TAddFreshBlob>& blobs)
+{
+    TFlushedCommitIds result;
+    TVector<ui64> commitIds;
+
+    for (const auto& blob: blobs) {
+        for (const auto& block: blob.Blocks) {
+            if (!block.IsStoredInDb) {
+                commitIds.push_back(block.CommitId);
+            }
+        }
+    }
+
+    if (!commitIds) {
+        return {};
+    }
+
+    Sort(commitIds);
+
+    ui64 cur = commitIds.front();
+    ui32 cnt = 0;
+
+    for (const auto commitId: commitIds) {
+        if (commitId == cur) {
+            ++cnt;
+        } else {
+            result.emplace_back(cur, cnt);
+            cur = commitId;
+            cnt = 1;
+        }
+    }
+
+    result.emplace_back(cur, cnt);
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TAddBlobsExecutor
 {
 private:
@@ -154,12 +194,12 @@ public:
         for (const auto& blob: Args.FreshBlobs) {
             ProcessNewBlob(ctx, db, blob);
             UpdateCompactionCounters(blob);
+        }
 
-            for (const auto& block: blob.Blocks) {
-                if (!block.IsStoredInDb) {
-                    State.GetTrimFreshLogBarriers().ReleaseBarrier(block.CommitId);
-                }
-            }
+        for (const auto& i: Args.FlushedCommitIdsFromChannel) {
+            State.GetTrimFreshLogBarriers().ReleaseBarrierN(
+                i.CommitId,
+                i.BlockCount);
         }
 
         if (Args.Mode == ADD_COMPACTION_RESULT) {
@@ -712,6 +752,9 @@ bool TPartitionActor::PrepareAddBlobs(
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
     Y_UNUSED(args);
+
+    args.FlushedCommitIdsFromChannel = BuildFlushedCommitIdsFromChannel(
+        args.FreshBlobs);
 
     // we really want to keep the writes blind
     return true;
