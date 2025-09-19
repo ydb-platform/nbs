@@ -11,6 +11,5 @@ echo "1..3"
 n0=`namegen`
 
 expect 0 mkfifo ${n0} 0644
-# ENOTSUP
-# expect ENXIO open ${n0} O_WRONLY,O_NONBLOCK
+expect ENXIO open ${n0} O_WRONLY,O_NONBLOCK
 expect 0 unlink ${n0}
