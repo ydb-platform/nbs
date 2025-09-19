@@ -83,6 +83,13 @@ struct TFlushConfig
     ui32 MaxSumWriteRequestsSize = 0;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+TDuration GetDuration(TInstant start, TInstant end)
+{
+    return start <= end ? end - start : TDuration::Zero();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -355,6 +362,7 @@ public:
                     CachedEntries.push_back(std::move(entry));
                 } else {
                     auto* nodeState = GetOrCreateNodeState(entry->GetNodeId());
+                    entry->SetRequestTime(Timer->Now());
                     AddCachedEntry(nodeState, std::move(entry));
                 }
             });
@@ -490,6 +498,8 @@ public:
                 MakeError(E_ARGUMENT, "WriteData request has zero length");
             return MakeFuture(std::move(response));
         }
+
+        entry->SetRequestTime(Timer->Now());
 
         auto serializedSize = entry->GetSerializedSize();
 
@@ -1033,6 +1043,7 @@ private:
 
         TVector<TWriteDataEntryPart> parts;
         ui64 handle = InvalidHandle;
+        auto now = Timer->Now();
 
         with_lock (Lock) {
             // Flush cannot be scheduled when CachedEntries is empty
@@ -1051,6 +1062,10 @@ private:
                 // Even a single entry is too large to flush
                 // TODO(nasonov): report and try to flush it anyway
                 entryCount = 1;
+            }
+
+            for (size_t i = 0; i < entryCount; i++) {
+                nodeState->CachedEntries[i]->SetFlushTime(now);
             }
 
             parts = TUtil::CalculateDataPartsToFlush(
@@ -1141,6 +1156,7 @@ private:
         Y_ABORT_UNLESS(nodeState->FlushState.FailedWriteRequests.empty());
         Y_ABORT_UNLESS(nodeState->FlushState.InFlightWriteRequestsCount == 0);
 
+        auto now = Timer->Now();
         auto guard = Guard(Lock);
 
         while (nodeState->FlushState.AffectedWriteDataEntriesCount > 0) {
@@ -1154,6 +1170,9 @@ private:
             }
 
             entry->FinishFlush(PendingOperations);
+
+            auto stats = entry->GetStats(now);
+            StatsReporter->AddWriteRequestStats(stats);
         }
 
         // Clear flushed entries from the persistent queue
@@ -1195,6 +1214,8 @@ private:
     {
         Y_ABORT_UNLESS(nodeState != nullptr);
         Y_ABORT_UNLESS(nodeState->NodeId == entry->GetNodeId());
+
+        entry->SetCachedTime(Timer->Now());
 
         nodeState->CachedEntryIntervalMap.Add(entry.get());
         nodeState->CachedEntries.push_back(entry.get());
@@ -1442,6 +1463,32 @@ TFuture<void> TWriteBackCache::TWriteDataEntry::GetFlushFuture()
         FlushPromise = NewPromise();
     }
     return FlushPromise.GetFuture();
+}
+
+void TWriteBackCache::TWriteDataEntry::SetRequestTime(TInstant time)
+{
+    RequestTime = time;
+}
+
+void TWriteBackCache::TWriteDataEntry::SetCachedTime(TInstant time)
+{
+    CachedTime = time;
+}
+
+void TWriteBackCache::TWriteDataEntry::SetFlushTime(TInstant time)
+{
+    FlushTime = time;
+}
+
+auto TWriteBackCache::TWriteDataEntry::GetStats(TInstant time) const
+    -> TWriteBackCache::TWriteDataStats
+{
+    Y_DEBUG_ABORT_UNLESS(RequestTime && CachedTime && FlushTime);
+
+    return {
+        .PendingDuration = GetDuration(RequestTime, CachedTime),
+        .WaitingDuration = GetDuration(CachedTime, FlushTime),
+        .FlushDuration = GetDuration(FlushTime, time)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
