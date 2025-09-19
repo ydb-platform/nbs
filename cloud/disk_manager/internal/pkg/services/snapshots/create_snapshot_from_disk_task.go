@@ -9,8 +9,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	internal_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
@@ -22,12 +20,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromDiskTask struct {
-	performanceConfig *performance_config.PerformanceConfig
-	scheduler         tasks.Scheduler
-	storage           resources.Storage
-	nbsFactory        nbs.Factory
-	request           *protos.CreateSnapshotFromDiskRequest
-	state             *protos.CreateSnapshotFromDiskTaskState
+	scheduler  tasks.Scheduler
+	storage    resources.Storage
+	nbsFactory nbs.Factory
+	request    *protos.CreateSnapshotFromDiskRequest
+	state      *protos.CreateSnapshotFromDiskTaskState
 }
 
 func (t *createSnapshotFromDiskTask) Save() ([]byte, error) {
@@ -132,12 +129,6 @@ func (t *createSnapshotFromDiskTask) run(
 			response,
 		)
 	}
-
-	// TODO: estimate should be applied before resource creation, not after.
-	execCtx.SetEstimatedInflightDuration(performance.Estimate(
-		typedResponse.TransferredDataSize,
-		t.performanceConfig.GetCreateSnapshotFromDiskBandwidthMiBs(),
-	))
 
 	t.state.SnapshotSize = int64(typedResponse.SnapshotSize)
 	t.state.SnapshotStorageSize = int64(typedResponse.SnapshotStorageSize)

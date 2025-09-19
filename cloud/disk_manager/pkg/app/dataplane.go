@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
@@ -29,6 +30,11 @@ func initDataplane(
 
 	dataplaneConfig := config.GetDataplaneConfig()
 	snapshotConfig := dataplaneConfig.GetSnapshotConfig()
+
+	performanceConfig := config.PerformanceConfig
+	if performanceConfig == nil {
+		performanceConfig = &performance_config.PerformanceConfig{}
+	}
 
 	snapshotMetricsRegistry := mon.NewRegistry("snapshot_storage")
 
@@ -67,12 +73,13 @@ func initDataplane(
 
 	return dataplane.RegisterForExecution(
 		ctx,
+		dataplaneConfig,
+		performanceConfig,
 		taskRegistry,
 		taskScheduler,
 		nbsFactory,
 		snapshotStorage,
 		snapshotLegacyStorage,
-		dataplaneConfig,
 		snapshotMetricsRegistry,
 		migrationDstStorage,
 		useS3InSnapshotMigration,

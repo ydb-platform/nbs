@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	snapshots_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -16,7 +15,6 @@ import (
 func RegisterForExecution(
 	ctx context.Context,
 	config *snapshots_config.SnapshotsConfig,
-	performanceConfig *performance_config.PerformanceConfig,
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	storage resources.Storage,
@@ -39,10 +37,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("snapshots.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
-			performanceConfig: performanceConfig,
-			scheduler:         taskScheduler,
-			storage:           storage,
-			nbsFactory:        nbsFactory,
+			scheduler:  taskScheduler,
+			storage:    storage,
+			nbsFactory: nbsFactory,
 		}
 	})
 	if err != nil {

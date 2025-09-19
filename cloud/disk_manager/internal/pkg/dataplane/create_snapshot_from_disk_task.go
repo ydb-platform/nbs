@@ -11,6 +11,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -18,11 +20,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromDiskTask struct {
-	nbsFactory nbs_client.Factory
-	storage    storage.Storage
-	config     *config.DataplaneConfig
-	request    *protos.CreateSnapshotFromDiskRequest
-	state      *protos.CreateSnapshotFromDiskTaskState
+	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
+	nbsFactory        nbs_client.Factory
+	storage           storage.Storage
+	request           *protos.CreateSnapshotFromDiskRequest
+	state             *protos.CreateSnapshotFromDiskTaskState
 }
 
 func (t *createSnapshotFromDiskTask) Save() ([]byte, error) {
@@ -294,6 +297,11 @@ func (t *createSnapshotFromDiskTask) run(
 
 	t.state.ChunkCount = chunkCount
 
+	err = t.setEstimate(ctx, execCtx, source)
+	if err != nil {
+		return err
+	}
+
 	ignoreZeroChunks := true
 
 	if incremental {
@@ -402,6 +410,49 @@ func (t *createSnapshotFromDiskTask) run(
 		t.state.ChunkCount,
 		diskParams.EncryptionDesc,
 	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *createSnapshotFromDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	diskSource common.Source,
+) error {
+
+	bytesToTransfer, err := nbs.GetDiskSourceBytesToRead(ctx, diskSource)
+	if err != nil {
+		return err
+	}
+
+	estimatedDuration := performance.Estimate(
+		bytesToTransfer,
+		t.performanceConfig.GetTransferBetweenDiskAndSnapshotBandwidthMiBs(),
+	)
+
+	logging.Info(ctx, "bytes to transfer is %v, estimated duration is %v", bytesToTransfer, estimatedDuration)
+
+	if len(t.state.BaseSnapshotId) != 0 {
+		snapshotMeta, err := t.storage.GetSnapshotMeta(ctx, t.state.BaseSnapshotId)
+		if err != nil {
+			return err
+		}
+
+		// Data transfer and shallow copy is performed in parallel.
+		shallowCopyDuration := performance.Estimate(
+			snapshotMeta.StorageSize,
+			t.performanceConfig.GetSnapshotShallowCopyBandwidthMiBs(),
+		)
+		logging.Info(ctx,
+			"bytes to shallow copy is %v, estimated duration is %v",
+			snapshotMeta.StorageSize, shallowCopyDuration)
+
+		estimatedDuration = max(estimatedDuration, shallowCopyDuration)
+	}
+
+	execCtx.SetEstimatedInflightDuration(estimatedDuration)
+
+	return nil
 }
 
 func (t *createSnapshotFromDiskTask) createProxyOverlayDiskIfNeeded(
