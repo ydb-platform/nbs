@@ -561,6 +561,10 @@ public:
         if (config.HasAlternatingPhase()) {
             PhaseDuration =
                 TDuration::Parse(config.GetAlternatingPhase()).SecondsFloat();
+
+            Y_ENSURE(
+                PhaseDuration > 0,
+                "Alternating phase duration should be a positive non-zero value");
         }
 
         WriteRate = config.GetWriteRate();
