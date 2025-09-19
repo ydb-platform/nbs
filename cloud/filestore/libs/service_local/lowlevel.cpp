@@ -187,6 +187,16 @@ void MkSockAt(const TFileHandle& handle, const TString& name, int mode)
         << ": " << LastSystemErrorText());
 }
 
+void MkFifoAt(const TFileHandle& handle, const TString& name, int mode)
+{
+    int res = mkfifoat(Fd(handle), name.data(), mode);
+    Y_ENSURE_EX(
+        res != -1,
+        TServiceError(GetSystemErrorCode())
+            << "failed to create fifo: " << name.Quote() << ": "
+            << LastSystemErrorText());
+}
+
 void LinkAt(
     const TFileHandle& node,
     const TFileHandle& parent,

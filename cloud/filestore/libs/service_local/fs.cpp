@@ -103,6 +103,8 @@ void ConvertStats(const TFileStat& stat, NProto::TNodeAttr& node)
         node.SetType(NProto::E_LINK_NODE);
     } else if (S_ISSOCK(stat.Mode)) {
         node.SetType(NProto::E_SOCK_NODE);
+    } else if (S_ISFIFO(stat.Mode)) {
+        node.SetType(NProto::E_FIFO_NODE);
     } else {
         ythrow TServiceError(E_IO) << "invalid stats";
     }

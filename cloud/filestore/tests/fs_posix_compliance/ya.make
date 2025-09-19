@@ -5,6 +5,7 @@ RECURSE_FOR_TESTS(
     qemu-kikimr-multishard2-test
     qemu-kikimr-nemesis-test
     qemu-kikimr-test
+    qemu-local-noserver-test
     qemu-local-test
     qemu_xattrs_test
 )
