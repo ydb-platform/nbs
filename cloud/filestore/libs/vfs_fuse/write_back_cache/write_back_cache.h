@@ -92,13 +92,13 @@ struct TWriteBackCache::TPersistentQueueStats
 
 struct TWriteBackCache::TWriteDataStats
 {
-    // Time spent in the pending queue
+    // Time spent in the pending state
     TDuration PendingDuration;
 
-    // Time spent in the cache before the request started to flush
+    // Time spent in the cache before the request is started to flush
     TDuration WaitingDuration;
 
-    // Time spent in the cache while the request was flushing
+    // Time spent in the cache while the request was being flushed
     TDuration FlushDuration;
 };
 
