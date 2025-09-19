@@ -648,4 +648,7 @@ message TStorageConfig
     // all the shards. These counters are used to strictly enforce the
     // filesystem size.
     optional bool StrictFileSystemSizeEnforcementEnabled = 440;
+
+    // Enable zero-copy for write operations in FUSE server
+    optional bool ZeroCopyWriteEnabled = 441;
 }
