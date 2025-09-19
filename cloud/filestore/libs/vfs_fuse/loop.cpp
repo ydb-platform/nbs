@@ -10,6 +10,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
+#include <cloud/filestore/libs/diagnostics/write_back_cache_stats.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/vfs/config.h>
@@ -635,7 +636,7 @@ private:
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
 
     std::shared_ptr<TCompletionQueue> CompletionQueue;
-    IRequestStatsPtr RequestStats;
+    IFileSystemStatsPtr RequestStats;
     IFileSystemPtr FileSystem;
     TFileSystemConfigPtr FileSystemConfig;
 
@@ -996,7 +997,7 @@ private:
                         Session,
                         Scheduler,
                         Timer,
-                        /* stats = */ nullptr,
+                        RequestStats->GetWriteBackCacheStats(),
                         path / WriteBackCacheFileName,
                         Config->GetWriteBackCacheCapacity(),
                         Config->GetWriteBackCacheAutomaticFlushPeriod(),
