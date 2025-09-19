@@ -1454,7 +1454,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto agentsInWarningState = diskRegistryGroup->GetCounter("AgentsInWarningState");
         auto agentsInUnavailableState = diskRegistryGroup->GetCounter("AgentsInUnavailableState");
         auto disksInOnlineState = diskRegistryGroup->GetCounter("DisksInOnlineState");
-        auto disksInMigrationState = diskRegistryGroup->GetCounter("DisksInMigrationState");
         auto disksInTemporarilyUnavailableState =
             diskRegistryGroup->GetCounter("DisksInTemporarilyUnavailableState");
         auto disksInErrorState = diskRegistryGroup->GetCounter("DisksInErrorState");
@@ -1608,7 +1607,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInOnlineState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, placementGroups->Val());
@@ -1661,7 +1659,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInOnlineState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
@@ -1712,7 +1709,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, disksInOnlineState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
@@ -1763,7 +1759,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, agentsInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInOnlineState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
@@ -1804,7 +1799,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, agentsInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInOnlineState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
@@ -1843,7 +1837,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, agentsInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInOnlineState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
@@ -8287,7 +8280,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
         auto disksInWarningState = diskRegistryGroup->GetCounter("DisksInWarningState");
-        auto disksInMigrationState = diskRegistryGroup->GetCounter("DisksInMigrationState");
         auto devicesInMigrationState = diskRegistryGroup->GetCounter("DevicesInMigrationState");
         auto maxWarningTime = diskRegistryGroup->GetCounter("MaxWarningTime");
         auto maxMigrationTime = diskRegistryGroup->GetCounter("MaxMigrationTime");
@@ -8350,7 +8342,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         state.PublishCounters(TInstant::Zero());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInWarningState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxWarningTime->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());
@@ -8366,7 +8357,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto now1 = TInstant::Seconds(1000);
         state.PublishCounters(now1);
         UNIT_ASSERT_VALUES_EQUAL(3, disksInWarningState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(3, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(3, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             (now1 - disk1WarningTs).Seconds(),
@@ -8409,7 +8399,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto now2 = TInstant::Seconds(3000);
         state.PublishCounters(now2);
         UNIT_ASSERT_VALUES_EQUAL(2, disksInWarningState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             (now2 - disk1WarningTs).Seconds(),
@@ -8427,7 +8416,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto now3 = TInstant::Seconds(4000);
         state.PublishCounters(now3);
         UNIT_ASSERT_VALUES_EQUAL(2, disksInWarningState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             (now3 - disk2WarningTs).Seconds(),
@@ -8442,7 +8430,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto now4 = TInstant::Seconds(5000);
         state.PublishCounters(now4);
         UNIT_ASSERT_VALUES_EQUAL(1, disksInWarningState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             (now4 - disk1WarningTs).Seconds(),
@@ -8453,7 +8440,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         errorDevice(1, TInstant::Seconds(5100));
         state.PublishCounters(TInstant::Seconds(6000));
         UNIT_ASSERT_VALUES_EQUAL(0, disksInWarningState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxWarningTime->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());
