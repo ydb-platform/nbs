@@ -112,6 +112,7 @@ func CreateCheckpoint(
 
 func CancelCheckpointCreation(
 	ctx context.Context,
+	execCtx tasks.ExecutionContext,
 	scheduler tasks.Scheduler,
 	nbsClient nbs.Client,
 	disk *types.Disk,
@@ -154,7 +155,7 @@ func CancelCheckpointCreation(
 		return "", err
 	}
 
-	err = scheduler.WaitTaskEnded(ctx, checkpointTaskID)
+	_, err = scheduler.WaitTask(ctx, execCtx, checkpointTaskID)
 	if err != nil {
 		return "", err
 	}
