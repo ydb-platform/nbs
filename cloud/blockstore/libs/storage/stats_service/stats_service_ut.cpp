@@ -94,14 +94,16 @@ NMonitoring::TDynamicCounters::TCounterPtr GetCounterToCheck(
         ->GetSubgroup("component", "service_volume")
         ->GetSubgroup("volume", DefaultDiskId)
         ->GetSubgroup("cloud", DefaultCloudId)
-        ->GetSubgroup("folder", DefaultFolderId);
+        ->GetSubgroup("folder", DefaultFolderId)
+        ->GetSubgroup("host", "cluster");
     return volumeCounters->GetCounter("MixedBytesCount");
 }
 
 bool VolumeMetricsExists(NMonitoring::TDynamicCounters& counters)
 {
     auto volumeCounters = counters.GetSubgroup("counters", "blockstore")
-        ->GetSubgroup("component", "service_volume");
+        ->GetSubgroup("component", "service_volume")
+        ->GetSubgroup("host", "cluster");
 
     return (bool)volumeCounters->FindSubgroup("volume", DefaultDiskId);
 }
@@ -588,6 +590,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", DefaultDiskId)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("host", "cluster")
                 ->GetCounter("IsLocalMount");
             UNIT_ASSERT_VALUES_EQUAL(0, actual);
         }
@@ -626,6 +629,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", DefaultDiskId)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("host", "cluster")
                 ->GetCounter("IsLocalMount");
             UNIT_ASSERT_VALUES_EQUAL(1, actual);
         }
@@ -1422,6 +1426,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", "vol0")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("request", "ReadBlocks")
                 ->GetCounter("Count");
             UNIT_ASSERT_VALUES_EQUAL(42, actual);
@@ -1434,6 +1439,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", "vol0")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("request", "ReadBlocks")
                 ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(100500, actual);

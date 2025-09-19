@@ -27,9 +27,11 @@ bool IsRecentlyStarted(TInstant now, const TVolumeStatsInfo& v)
     return now <= v.ApproximateStartTs + TDuration::Minutes(5);
 }
 
+}    // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
-void RegisterVolumeSelfCounters(
+void TStatsServiceActor::RegisterVolumeSelfCounters(
     std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
     NMonitoring::TDynamicCounterPtr& counters,
     TVolumeStatsInfo& volume)
@@ -42,6 +44,10 @@ void RegisterVolumeSelfCounters(
             ->GetSubgroup("volume", volume.VolumeInfo.GetDiskId())
             ->GetSubgroup("cloud", volume.VolumeInfo.GetCloudId())
             ->GetSubgroup("folder", volume.VolumeInfo.GetFolderId());
+
+        if (!DiagnosticsConfig->GetAddHostLabelInServiceVolumeMetrics()) {
+            volumeCounters = volumeCounters->GetSubgroup("host", "cluster");
+        }
 
         volume.IsLocalMountCounter =
             volumeCounters->GetCounter("IsLocalMount", false);
@@ -62,17 +68,23 @@ void RegisterVolumeSelfCounters(
     }
 }
 
-void UnregisterVolumeSelfCounters(
+void TStatsServiceActor::UnregisterVolumeSelfCounters(
     std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
     NMonitoring::TDynamicCounterPtr& counters,
     const TString& diskId,
     TVolumeStatsInfo& volume)
 {
     if (counters) {
-        counters
+        auto volumeCounters =
+            counters
             ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service_volume")
-            ->RemoveSubgroup("volume", diskId);
+            ->GetSubgroup("component", "service_volume");
+
+        if (!DiagnosticsConfig->GetAddHostLabelInServiceVolumeMetrics()) {
+            volumeCounters = volumeCounters->GetSubgroup("host", "cluster");
+        }
+
+        volumeCounters->RemoveSubgroup("volume", diskId);
     }
 
     NUserCounter::UnregisterServiceVolume(
@@ -83,10 +95,6 @@ void UnregisterVolumeSelfCounters(
 
     volume.CountersRegistered = false;
 }
-
-}    // namespace
-
-////////////////////////////////////////////////////////////////////////////////
 
 void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
 {
