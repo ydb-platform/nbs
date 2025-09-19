@@ -30,10 +30,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("cells.CollectClusterCapacity", func() tasks.Task {
 		return &collectClusterCapacityTask{
-			config:            config,
-			storage:           storage,
-			nbsFactory:        nbsFactory,
-			expirationTimeout: clusterCapacityExpirationTimeout,
+			config:     config,
+			storage:    storage,
+			nbsFactory: nbsFactory,
 		}
 	})
 	if err != nil {
