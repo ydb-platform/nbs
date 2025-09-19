@@ -43,7 +43,7 @@ func initControlplane(
 	if config.GetCellsConfig() != nil {
 		cells_storage.CreateYDBTables(
 			ctx,
-			config.GetCellsConfig().GetStorageFolder(),
+			config.GetCellsConfig(),
 			db,
 			dropUnusedColumns,
 		)
