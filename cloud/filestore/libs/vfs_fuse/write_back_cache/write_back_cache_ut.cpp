@@ -120,6 +120,7 @@ struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
     std::atomic_uint64_t NodeCount = 0;
     std::atomic_uint64_t CachedWriteRequestCount = 0;
     std::atomic_uint64_t PendingWriteRequestCount = 0;
+    TVector<TWriteBackCache::TWriteDataStats> WriteDataStats;
 
     void IncrementCompletedFlushCount() override
     {
@@ -155,7 +156,24 @@ struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
     void AddWriteRequestStats(
         const TWriteBackCache::TWriteDataStats& stats) override
     {
-        Y_UNUSED(stats);
+        WriteDataStats.push_back(stats);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestTimer: ITimer
+{
+    TInstant Current = ::Now();
+
+    TInstant Now() override
+    {
+        return Current;
+    }
+
+    void Sleep(TDuration duration) override
+    {
+        Current += duration;
     }
 };
 
@@ -167,7 +185,7 @@ struct TBootstrap
     TLog Log;
 
     std::shared_ptr<TFileStoreTest> Session;
-    ITimerPtr Timer;
+    std::shared_ptr<TTestTimer> Timer;
     std::shared_ptr<TTestScheduler> Scheduler;
     std::shared_ptr<TWriteBackCacheStatsReporter> StatsReporter;
     TDuration CacheAutomaticFlushPeriod;
@@ -224,7 +242,7 @@ struct TBootstrap
         Logging->Start();
         Log = Logging->CreateLog("WRITE_BACK_CACHE");
 
-        Timer = CreateWallClockTimer();
+        Timer = std::make_shared<TTestTimer>();
         Scheduler = std::make_shared<TTestScheduler>();
         Scheduler->Start();
 
@@ -612,6 +630,44 @@ TFuture<T> CompleteFutureOnTrigger(TFuture<T> future, TFuture<void> trigger)
 
     return result;
 }
+
+template <class T, class... TArgs>
+class TManualProceedHandlers: TNonCopyable
+{
+private:
+    std::function<T(TArgs...)> PrevHandler;
+    TDeque<TPromise<void>> Triggers;
+
+public:
+    explicit TManualProceedHandlers(std::function<T(TArgs...)>& handler)
+        : PrevHandler(std::move(handler))
+    {
+        handler = [this](TArgs... args)
+        {
+            auto promise = NewPromise();
+
+            auto result = CompleteFutureOnTrigger(
+                PrevHandler(std::forward<TArgs>(args)...),
+                promise.GetFuture());
+
+            Triggers.push_back(std::move(promise));
+            return result;
+        };
+    }
+
+    bool empty() const
+    {
+        return Triggers.empty();
+    }
+
+    void ProceedAll()
+    {
+        while (!Triggers.empty()) {
+            Triggers.front().SetValue();
+            Triggers.pop_front();
+        }
+    }
+};
 
 }   // namespace
 
@@ -1322,19 +1378,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         // Reaching the capacity will trigger Flush
         // Need to prevent it from completing immediately
-        TDeque<TPromise<void>> pendingWriteRequestTriggers;
-        auto prevWriteDataHandler = std::move(b.Session->WriteDataHandler);
-        b.Session->WriteDataHandler = [&](auto context, auto request)
-        {
-            auto promise = NewPromise();
-
-            auto result = CompleteFutureOnTrigger(
-                prevWriteDataHandler(std::move(context), std::move(request)),
-                promise.GetFuture());
-
-            pendingWriteRequestTriggers.push_back(std::move(promise));
-            return result;
-        };
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
 
         UNIT_ASSERT_EQUAL(0, stats.CachedWriteRequestCount);
         UNIT_ASSERT_EQUAL(0, stats.PendingWriteRequestCount);
@@ -1365,28 +1409,73 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             }
         }
 
-        UNIT_ASSERT_LT(0, pendingWriteRequestTriggers.size());
+        UNIT_ASSERT(!writeRequests.empty());
         UNIT_ASSERT_EQUAL(cachedRequestCount, stats.CachedWriteRequestCount);
         UNIT_ASSERT_EQUAL(1, stats.PendingWriteRequestCount);
 
-        // Proceed with write requests initiated by Flush
-        while (!pendingWriteRequestTriggers.empty()) {
-            pendingWriteRequestTriggers.front().SetValue();
-            pendingWriteRequestTriggers.pop_front();
-        }
+        writeRequests.ProceedAll();
 
         UNIT_ASSERT_EQUAL(0, stats.PendingWriteRequestCount);
         UNIT_ASSERT_LT(0, stats.CachedWriteRequestCount);
 
         b.Cache.FlushAllData();
 
-        while (!pendingWriteRequestTriggers.empty()) {
-            pendingWriteRequestTriggers.front().SetValue();
-            pendingWriteRequestTriggers.pop_front();
-        }
+        writeRequests.ProceedAll();
 
         UNIT_ASSERT_EQUAL(0, stats.PendingWriteRequestCount);
         UNIT_ASSERT_EQUAL(0, stats.CachedWriteRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldReportRequestStats)
+    {
+        TBootstrap b;
+        auto& stats = b.StatsReporter->WriteDataStats;
+
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        b.WriteToCacheSync(1, 0, "abc");
+        b.Timer->Sleep(TDuration::Seconds(1));
+
+        ui64 requestCount = 1;
+
+        while (true) {
+            requestCount++;
+            auto future = b.WriteToCache(1, 0, "01234567");
+            if (!future.HasValue()) {
+                break;
+            }
+        }
+
+        b.Timer->Sleep(TDuration::Seconds(2));
+
+        writeRequests.ProceedAll();
+
+        b.Timer->Sleep(TDuration::Seconds(4));
+
+        b.Cache.FlushAllData();
+
+        b.Timer->Sleep(TDuration::Seconds(8));
+
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT_EQUAL(requestCount, stats.size());
+
+        auto& first = stats.front();
+        UNIT_ASSERT_EQUAL(0, first.PendingDuration.Seconds());
+        UNIT_ASSERT_EQUAL(1, first.WaitingDuration.Seconds());
+        UNIT_ASSERT_EQUAL(2, first.FlushDuration.Seconds());
+
+        for (size_t i = 1; i + 1 < stats.size(); i++) {
+            auto& mid = stats[i];
+            UNIT_ASSERT_EQUAL(0, mid.PendingDuration.Seconds());
+            UNIT_ASSERT_EQUAL(0, mid.WaitingDuration.Seconds());
+            UNIT_ASSERT_EQUAL(2, mid.FlushDuration.Seconds());
+        }
+
+        auto& last = stats.back();
+        UNIT_ASSERT_EQUAL(2, last.PendingDuration.Seconds());
+        UNIT_ASSERT_EQUAL(4, last.WaitingDuration.Seconds());
+        UNIT_ASSERT_EQUAL(8, last.FlushDuration.Seconds());
     }
 
     /* TODO(svartmetal): fix tests with automatic flush
