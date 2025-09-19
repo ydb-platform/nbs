@@ -22,7 +22,7 @@ func RegisterForExecution(
 ) error {
 
 	clusterCapacityExpirationTimeout, err := time.ParseDuration(
-		config.CollectClusterCapacityExpirationTimeout(),
+		config.GetClusterCapacityExpirationTimeout(),
 	)
 	if err != nil {
 		return err
@@ -47,7 +47,7 @@ func RegisterForExecution(
 		return err
 	}
 
-	if config.GetScheduleCollectClusterCapacityTasks() {
+	if config.GetScheduleCollectClusterCapacityTask() {
 		taskScheduler.ScheduleRegularTasks(
 			ctx,
 			"cells.CollectClusterCapacity",

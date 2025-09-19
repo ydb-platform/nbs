@@ -46,7 +46,7 @@ func (t *collectClusterCapacityTask) Run(
 	completedCells := make(chan string)
 
 	for zoneID, cells := range t.config.Cells {
-		logging.Debug(ctx, "Getting cluster capacity for zone %s", zoneID)
+		logging.Info(ctx, "Getting cluster capacity for zone %s", zoneID)
 
 		for _, cellID := range cells.Cells {
 			group.Go(func(zoneID string, cellID string) func() error {
@@ -54,6 +54,8 @@ func (t *collectClusterCapacityTask) Run(
 					if slices.Contains(t.state.ProcessedCells, cellID) {
 						return nil
 					}
+
+					logging.Info(ctx, "Getting cluster capacity for cell %s", cellID)
 
 					client, err := t.nbsFactory.GetClient(ctx, cellID)
 					if err != nil {
@@ -92,7 +94,7 @@ func (t *collectClusterCapacityTask) Run(
 						return err
 					}
 
-					logging.Debug(
+					logging.Info(
 						ctx,
 						"Successfully finished getting capacity for cell: %v",
 						cellID,
