@@ -23,7 +23,7 @@ type collectClusterCapacityTask struct {
 	config     *cells_config.CellsConfig
 	storage    storage.Storage
 	nbsFactory nbs.Factory
-	state      *protos.GetClusterCapacityState
+	state      *protos.CollectClusterCapacityState
 }
 
 func (t *collectClusterCapacityTask) Save() ([]byte, error) {
@@ -31,7 +31,7 @@ func (t *collectClusterCapacityTask) Save() ([]byte, error) {
 }
 
 func (t *collectClusterCapacityTask) Load(_, state []byte) error {
-	t.state = &protos.GetClusterCapacityState{}
+	t.state = &protos.CollectClusterCapacityState{}
 	return proto.Unmarshal(state, t.state)
 }
 

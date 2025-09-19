@@ -68,7 +68,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 		config:     config,
 		storage:    storage,
 		nbsFactory: nbsFactory,
-		state:      &protos.GetClusterCapacityState{},
+		state:      &protos.CollectClusterCapacityState{},
 	}
 
 	err := task.Run(ctx, execCtx)
