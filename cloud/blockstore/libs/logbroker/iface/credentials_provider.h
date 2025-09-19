@@ -12,11 +12,13 @@ namespace NYdb {
 
 namespace NCloud::NBlockStore::NLogbroker {
 
+using NYdbICredentialsProviderFactory = NYdb::ICredentialsProviderFactory;
+
 class TLogbrokerConfig;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::shared_ptr<NYdb::ICredentialsProviderFactory>
+std::shared_ptr<NYdbICredentialsProviderFactory>
 CreateCredentialsProviderFactory(const TLogbrokerConfig& config);
 
 }   // namespace NCloud::NBlockStore::NLogbroker
