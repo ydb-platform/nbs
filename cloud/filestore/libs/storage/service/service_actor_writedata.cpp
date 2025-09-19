@@ -33,51 +33,6 @@ bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
     return !disabledAsHdd && fs.GetFeatures().GetThreeStageWriteEnabled();
 }
 
-void CopyIovecs(
-    const NProto::TWriteDataRequest& request,
-    TString& buffer,
-    ui64 dataOffset,
-    ui64 length)
-{
-    const auto& iovecs = request.GetIovecs();
-    if (iovecs.empty()) {
-        return;
-    }
-    buffer.ReserveAndResize(request.GetDataSize());
-    ui64 offset = 0;
-    for (const auto& iovec: iovecs) {
-        if (iovec.GetLength() <= dataOffset) {
-            dataOffset -= iovec.GetLength();
-            continue;
-        }
-
-        auto lenToCopy = std::min(iovec.GetLength() - dataOffset, length);
-        memcpy(
-            &buffer[offset],
-            reinterpret_cast<char*>(iovec.GetBase() + dataOffset),
-            lenToCopy);
-        dataOffset = 0;
-        offset += iovec.GetLength();
-        length -= lenToCopy;
-    }
-}
-
-void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
-{
-    CopyIovecs(request, *request.MutableBuffer(), 0, request.GetDataSize());
-    request.MutableIovecs()->Clear();
-}
-
-TString GetBufferFromIovecs(
-    const NProto::TWriteDataRequest& request,
-    ui64 dataOffset,
-    ui64 length)
-{
-    TString buffer;
-    CopyIovecs(request, buffer, dataOffset, length);
-    return buffer;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TIoVecContiguousChunk: public IContiguousChunk
@@ -105,6 +60,56 @@ struct TIoVecContiguousChunk: public IContiguousChunk
         return Size;
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
+{
+    const auto& iovecs = request.GetIovecs();
+    TRope rope;
+    for (const auto& iovec: iovecs) {
+        rope.Insert(
+            rope.End(),
+            TRope(TRcBuf(
+                MakeIntrusive<TIoVecContiguousChunk>(
+                    iovec.GetBase(),
+                    iovec.GetLength()))));
+    }
+    return rope;
+}
+
+TString GetBufferFromRope(TRope& rope, ui64 offset, ui64 length)
+{
+    TString buffer;
+    buffer.ReserveAndResize(length);
+    auto bytesCopied =
+        TRopeUtils::SafeMemcpy(&buffer[0], rope.Begin() + offset, length);
+    Y_ABORT_UNLESS(bytesCopied == length);
+    return buffer;
+}
+
+void CopyIovecs(
+    const NProto::TWriteDataRequest& request,
+    TString& buffer,
+    ui64 offset,
+    ui64 length)
+{
+    if (request.GetIovecs().empty()) {
+        return;
+    }
+
+    auto rope = CreateRopeFromIovecs(request);
+    buffer.ReserveAndResize(request.GetDataSize());
+    auto bytesCopied =
+        TRopeUtils::SafeMemcpy(&buffer[0], rope.Begin() + offset, length);
+    Y_ABORT_UNLESS(bytesCopied == length);
+}
+
+void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
+{
+    CopyIovecs(request, *request.MutableBuffer(), 0, request.GetDataSize());
+    request.MutableIovecs()->Clear();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -137,6 +142,7 @@ private:
     TVector<ui32> StorageStatusFlags;
     TVector<double> ApproximateFreeSpaceShares;
     const NCloud::NProto::EStorageMediaKind MediaKind;
+    TRope Rope;
 
 public:
     TWriteDataActor(
@@ -159,6 +165,8 @@ public:
 
     void Bootstrap(const TActorContext& ctx)
     {
+        Rope = CreateRopeFromIovecs(WriteRequest);
+
         auto request =
             std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsRequest>();
 
@@ -273,17 +281,8 @@ private:
         ApproximateFreeSpaceShares.resize(GenerateBlobIdsResponse.BlobsSize());
 
         const auto& iovecs = WriteRequest.GetIovecs();
-        TRope rope;
-        for (const auto& iovec: iovecs) {
-            rope.Insert(
-                rope.End(),
-                TRope(TRcBuf(
-                    MakeIntrusive<TIoVecContiguousChunk>(
-                        iovec.GetBase(),
-                        iovec.GetLength()))));
-        }
-        auto ropeIt = rope.Begin();
-        if (!rope.empty()) {
+        auto ropeIt = Rope.Begin();
+        if (!Rope.empty()) {
             ropeIt += offset;
         }
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
@@ -447,8 +446,7 @@ private:
                 unalignedHead.SetContent(
                     WriteRequest.GetBuffer().substr(0, length));
             } else {
-                unalignedHead.SetContent(
-                    GetBufferFromIovecs(WriteRequest, 0, length));
+                unalignedHead.SetContent(GetBufferFromRope(Rope, 0, length));
             }
         }
 
@@ -462,7 +460,7 @@ private:
                     WriteRequest.GetBuffer().substr(offset, length));
             } else {
                 unalignedTail.SetContent(
-                    GetBufferFromIovecs(WriteRequest, offset, length));
+                    GetBufferFromRope(Rope, offset, length));
             }
         }
 
