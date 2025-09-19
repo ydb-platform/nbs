@@ -8,8 +8,8 @@ DestroyHandle
 GetNodeAttr
 GetNodeXAttr
 ListNodes
-ReadData
 PingSession
+ReadData
 ReadLink
 RenameNode
 ResetSession
