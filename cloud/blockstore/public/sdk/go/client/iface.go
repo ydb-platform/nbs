@@ -66,6 +66,11 @@ type ClientIface interface {
 		req *protos.TListVolumesRequest,
 	) (*protos.TListVolumesResponse, error)
 
+	ListDiskStates(
+		ctx context.Context,
+		req *protos.TListDiskStatesRequest,
+	) (*protos.TListDiskStatesResponse, error)
+
 	DescribeVolume(
 		ctx context.Context,
 		req *protos.TDescribeVolumeRequest,

@@ -64,3 +64,12 @@ enum FilesystemKind {
     FILESYSTEM_KIND_SSD = 0;
     FILESYSTEM_KIND_HDD = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum DiskState {
+    DISK_STATE_ONLINE = 0;
+    DISK_STATE_WARNING = 1;
+    DISK_STATE_TEMPORARILY_UNAVAILABLE = 2;
+    DISK_STATE_ERROR = 3;
+}

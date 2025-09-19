@@ -51,6 +51,25 @@ func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 	}
 }
 
+func getDiskState(state types.DiskState) (disk_manager.DiskState, error) {
+
+	switch state {
+	case types.DiskState_DISK_STATE_ONLINE:
+		return disk_manager.DiskState_DISK_STATE_ONLINE, nil
+	case types.DiskState_DISK_STATE_WARNING:
+		return disk_manager.DiskState_DISK_STATE_WARNING, nil
+	case types.DiskState_DISK_STATE_TEMPORARILY_UNAVAILABLE:
+		return disk_manager.DiskState_DISK_STATE_TEMPORARILY_UNAVAILABLE, nil
+	case types.DiskState_DISK_STATE_ERROR:
+		return disk_manager.DiskState_DISK_STATE_ERROR, nil
+	default:
+		return 0, common.NewInvalidArgumentError(
+			"unknown disk state %v",
+			state,
+		)
+	}
+}
+
 func isLocalDiskKind(kind disk_manager.DiskKind) bool {
 	return (kind == disk_manager.DiskKind_DISK_KIND_HDD_LOCAL ||
 		kind == disk_manager.DiskKind_DISK_KIND_SSD_LOCAL)
@@ -830,6 +849,48 @@ func (s *service) DescribeDisk(
 		CloudId:   params.CloudID,
 		FolderId:  params.FolderID,
 	}, nil
+}
+
+func (s *service) ListDiskStates(
+	ctx context.Context,
+	req *disk_manager.ListDiskStatesRequest,
+) (*disk_manager.ListDiskStatesResponse, error) {
+
+	if len(req.ZoneId) == 0 {
+		return nil, common.NewInvalidArgumentError(
+			"zone_id parameter is empty, req=%v",
+			req,
+		)
+	}
+
+	client, err := s.nbsFactory.GetClient(ctx, req.ZoneId)
+	if err != nil {
+		return nil, err
+	}
+
+	states, err := client.ListDiskStates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &disk_manager.ListDiskStatesResponse{}
+
+	for _, s := range states {
+		value, err := getDiskState(s.State)
+		if err != nil {
+			return nil, err
+		}
+
+		response.Items = append(
+			response.Items,
+			&disk_manager.ListDiskStatesResponse_Item{
+				DiskId:       s.DiskID,
+				State:        value,
+				StateMessage: s.StateMessage,
+			})
+	}
+
+	return response, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
