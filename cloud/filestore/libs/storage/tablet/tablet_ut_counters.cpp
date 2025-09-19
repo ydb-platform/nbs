@@ -882,6 +882,156 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
              }},
         });
     }
+
+    Y_UNIT_TEST(ShouldReportDirectHandleMetrics)
+    {
+        TTestEnv env;
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        const auto nodeId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "DirectHandles"}, {"filesystem", "test"}}, 0},
+                {{{"sensor", "TotalHandles"}, {"filesystem", "test"}}, 0},
+            });
+        }
+
+        const auto handleWithoutDirect =
+            CreateHandle(tablet, nodeId, {}, TCreateHandleArgs::RDWR);
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        {
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvIndexTabletPrivate::EvUpdateCounters);
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "DirectHandles"}, {"filesystem", "test"}}, 0},
+                {{{"sensor", "TotalHandles"}, {"filesystem", "test"}}, 1},
+            });
+        }
+
+        const auto handleWithDirect = CreateHandle(
+            tablet,
+            nodeId,
+            {},
+            TCreateHandleArgs::RDWR |
+                ProtoFlag(NProto::TCreateHandleRequest::E_DIRECT));
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        {
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvIndexTabletPrivate::EvUpdateCounters);
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "DirectHandles"}, {"filesystem", "test"}}, 1},
+                {{{"sensor", "TotalHandles"}, {"filesystem", "test"}}, 2},
+            });
+        }
+
+        const auto anotherDirectHandle = CreateHandle(
+            tablet,
+            nodeId,
+            {},
+            TCreateHandleArgs::RDWR |
+                ProtoFlag(NProto::TCreateHandleRequest::E_DIRECT));
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        {
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvIndexTabletPrivate::EvUpdateCounters);
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "DirectHandles"}, {"filesystem", "test"}}, 2},
+                {{{"sensor", "TotalHandles"}, {"filesystem", "test"}}, 3},
+            });
+        }
+
+        tablet.DestroyHandle(handleWithoutDirect);
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        {
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvIndexTabletPrivate::EvUpdateCounters);
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "DirectHandles"}, {"filesystem", "test"}}, 2},
+                {{{"sensor", "TotalHandles"}, {"filesystem", "test"}}, 2},
+            });
+        }
+
+        tablet.DestroyHandle(handleWithDirect);
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        {
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvIndexTabletPrivate::EvUpdateCounters);
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "DirectHandles"}, {"filesystem", "test"}}, 1},
+                {{{"sensor", "TotalHandles"}, {"filesystem", "test"}}, 1},
+            });
+        }
+
+        tablet.DestroyHandle(anotherDirectHandle);
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        {
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvIndexTabletPrivate::EvUpdateCounters);
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "DirectHandles"}, {"filesystem", "test"}}, 0},
+                {{{"sensor", "TotalHandles"}, {"filesystem", "test"}}, 0},
+            });
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
