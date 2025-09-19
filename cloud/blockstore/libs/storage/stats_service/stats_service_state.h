@@ -131,7 +131,7 @@ struct TVolumeStatsInfo
 
     bool CountersRegistered = false;
 
-    bool IsLocalMount;
+    bool IsLocalMount = false;
     NMonitoring::TDynamicCounters::TCounterPtr IsLocalMountCounter;
 
     TDiskPerfData PerfCounters;
