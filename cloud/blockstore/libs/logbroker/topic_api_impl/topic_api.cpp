@@ -89,14 +89,14 @@ private:
     std::unique_ptr<TBatch> Batch;
     std::optional<TContinuationToken> ContinuationToken;
 
-    std::shared_ptr<NYdb::ICredentialsProviderFactory>
+    std::shared_ptr<NYdbICredentialsProviderFactory>
         CredentialsProviderFactory;
 
 public:
     TService(
             TLogbrokerConfigPtr config,
             ILoggingServicePtr logging,
-            std::shared_ptr<NYdb::ICredentialsProviderFactory>
+            std::shared_ptr<NYdbICredentialsProviderFactory>
             credentialsProviderFactory)
         : Config(std::move(config))
         , Logging(std::move(logging))
@@ -306,7 +306,7 @@ private:
 IServicePtr CreateTopicAPIService(
     TLogbrokerConfigPtr config,
     ILoggingServicePtr logging,
-    std::shared_ptr<NYdb::ICredentialsProviderFactory>
+    std::shared_ptr<NYdbICredentialsProviderFactory>
         credentialsProviderFactory)
 {
     return std::make_shared<TService>(
