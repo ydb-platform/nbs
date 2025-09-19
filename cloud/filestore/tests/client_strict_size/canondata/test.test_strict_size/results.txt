@@ -1,0 +1,10 @@
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3","fs0_s4"],"StrictFileSystemSizeEnforcementEnabled":true}
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3","fs0_s4"],"ShardNo":1,"StrictFileSystemSizeEnforcementEnabled":true}
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3","fs0_s4"],"ShardNo":2,"StrictFileSystemSizeEnforcementEnabled":true}
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3","fs0_s4"],"ShardNo":3,"StrictFileSystemSizeEnforcementEnabled":true}
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3","fs0_s4"],"ShardNo":4,"StrictFileSystemSizeEnforcementEnabled":true}
+[{'ShardId': 'fs0_s1', 'UsedBlocksCount': '2524', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s2', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s3', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s4', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}]
+[{'ShardId': 'fs0_s1', 'UsedBlocksCount': '2524', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s2', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s3', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s4', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}]
+[{'ShardId': 'fs0_s1', 'UsedBlocksCount': '2524', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s2', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s3', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s4', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}]
+[{'ShardId': 'fs0_s1', 'UsedBlocksCount': '2524', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s2', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s3', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s4', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}]
+[{'ShardId': 'fs0_s1', 'UsedBlocksCount': '2524', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s2', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s3', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}, {'ShardId': 'fs0_s4', 'UsedBlocksCount': '1893', 'TotalBlocksCount': '8192'}]

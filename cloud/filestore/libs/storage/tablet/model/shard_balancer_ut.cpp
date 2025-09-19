@@ -49,7 +49,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         ASSERT_NO_SB_ERROR(0, "s4");
         ASSERT_NO_SB_ERROR(0, "s5");
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
@@ -72,7 +72,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // order changed: s1, s2, s3, s4, s5
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
@@ -94,7 +94,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // one of the shard has less than desired free space
         // order changed: s1, s2, s3, s4
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
@@ -115,7 +115,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // order changed: s1, s4
         // tier 2: s3, s5
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, (4_TB + 300_GB) / 4_KB, 0, 0},
@@ -131,7 +131,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // 3 close to full shards, 2 full shards
         // order changed: s3, s1, s5
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, (4_TB + 400_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB + 100_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (4_TB + 300_GB) / 4_KB, 0, 0},
@@ -148,7 +148,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // 1 close to full shard left: s3
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, (5_TB - 512_KB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB + 100_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (4_TB + 300_GB) / 4_KB, 0, 0},
@@ -161,7 +161,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // out of space
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, (5_TB - 512_KB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB + 100_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB + 300_GB) / 4_KB, 0, 0},
@@ -182,7 +182,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             1_MB,
             {"s1", "s2", "s3", "s4", "s5"});
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, 512_GB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
@@ -259,7 +259,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         UNIT_ASSERT_LE(count, iterations / shardCount + rangeToleration);
 
         // Now let's fill up last 3 shards to their limits
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, 0, 0, 0},
             {5_TB / 4_KB, 0, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
@@ -325,7 +325,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // Now let's fill up last 2 shards to their limits and leave first 3
         // shards 1:2:3 free space
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, (5_TB - 1_TB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 2_TB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 3_TB) / 4_KB, 0, 0},
@@ -364,7 +364,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // If we fill up all the shards with less than 1 TiB left it should not
         // be possible to select any shard
-        balancer.UpdateShardStats(
+        balancer.Update(
             TVector<TShardStats>(
                 shardCount,
                 TShardStats{
@@ -382,7 +382,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // For a situation where in every shard there is less than 1 TiB left,
         // we should disregard additional 1 TiB reserve
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, (5_TB - 1_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 2_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 3_GB) / 4_KB, 0, 0},

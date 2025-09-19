@@ -1100,7 +1100,7 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         }
         CachedAggregateStats = std::move(msg->AggregateStats);
         CachedShardStats = std::move(msg->ShardStats);
-        UpdateShardStats(CachedShardStats);
+        UpdateShardBalancer(CachedShardStats);
 
         Store(
             Metrics.AggregateUsedBytesCount,

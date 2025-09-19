@@ -358,7 +358,7 @@ public:
 
     NProto::TError SelectShard(ui64 fileSize, TString* shardId);
 
-    void UpdateShardStats(const TVector<TShardStats>& stats);
+    void UpdateShardBalancer(const TVector<TShardStats>& stats);
 
     //
     // FileSystem Stats
