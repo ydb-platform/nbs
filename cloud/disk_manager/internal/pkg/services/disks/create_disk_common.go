@@ -10,6 +10,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
 type CreateDiskTaskState interface {
 	GetSelectedCellId() string
 }
