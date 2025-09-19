@@ -226,7 +226,7 @@ func (t *createDiskFromImageTask) Cancel(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	// Idempotently retrieve zone, where should be located.
+	// Idempotently retrieve zone, where disk should be located.
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		params.Disk.DiskId,

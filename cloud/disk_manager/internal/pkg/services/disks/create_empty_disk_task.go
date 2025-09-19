@@ -47,7 +47,7 @@ func (t *createEmptyDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := SelectZone(
+	client, err := SelectCell(
 		ctx,
 		execCtx,
 		t.nbsFactory,

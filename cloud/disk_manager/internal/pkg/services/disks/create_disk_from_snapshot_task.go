@@ -62,7 +62,7 @@ func (t *createDiskFromSnapshotTask) Run(
 		)
 	}
 
-	client, err := SelectZone(
+	client, err := SelectCell(
 		ctx,
 		execCtx,
 		t.nbsFactory,
@@ -226,7 +226,7 @@ func (t *createDiskFromSnapshotTask) Cancel(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	// Idempotently retrieve zone, where should be located.
+	// Idempotently retrieve zone, where disk should be located.
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		params.Disk.DiskId,
