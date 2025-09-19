@@ -242,7 +242,7 @@ message TResizeFileStoreRequest
     // File system performance profile.
     TFileStorePerformanceProfile PerformanceProfile = 5;
 
-    // Allowes to decrease the size of the filesystem.
+    // Allows to decrease the size of the filesystem.
     bool Force = 6;
 
     // Explicitly specified shard count.

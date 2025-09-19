@@ -114,7 +114,7 @@ class FilestoreCliClient:
         return pid
 
     def resize(
-        self, fs, blk_count, 
+        self, fs, blk_count,
         force=False, shard_count=None, turn_on_strict=False
     ):
         cmd = [
