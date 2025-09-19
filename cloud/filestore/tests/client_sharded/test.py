@@ -134,3 +134,42 @@ def test_explicit_shard_count_addition():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_turn_on_strict():
+    client, results_path = __init_test()
+    out = client.create(
+        "fs0",
+        "test_cloud",
+        "test_folder",
+        BLOCK_SIZE,
+        int(SHARD_SIZE / BLOCK_SIZE))
+
+    out = client.create_session("fs0", "session0", "client0")
+    out += client.execute_action(
+        "getfilesystemtopology", {"FileSystemId": "fs0"})
+    out += client.resize(
+        "fs0", int(SHARD_SIZE / BLOCK_SIZE), shard_count=3, force=False,
+        turn_on_strict=True)
+    out += client.execute_action(
+        "getfilesystemtopology", {"FileSystemId": "fs0"})
+    out += client.execute_action(
+        "getfilesystemtopology", {"FileSystemId": "fs0_s1"})
+    out += client.execute_action(
+        "getfilesystemtopology", {"FileSystemId": "fs0_s2"})
+    out += client.execute_action(
+        "getfilesystemtopology", {"FileSystemId": "fs0_s3"})
+    out += client.destroy_session("fs0", "session0", "client0")
+
+    out += client.destroy("fs0")
+    out += client.destroy("fs0_s1")
+    out += client.destroy("fs0_s2")
+    out += client.destroy("fs0_s3")
+
+    print(str(out, 'utf-8'))
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
