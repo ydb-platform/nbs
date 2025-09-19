@@ -279,13 +279,13 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
             cpuLack /= intervalUs;
             *CpuWaitCounter = cpuLack;
 
-            LastCpuWaitTs = now;
-
             if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
                 LOG_WARN_S(ctx, TBlockStoreComponents::VOLUME_BALANCER,
                     "Cpu wait is " << cpuLack);
             }
         }
+
+        LastCpuWaitTs = now;
 
         ui64 numManuallyPreempted = 0;
         ui64 numBalancerPreempted = 0;

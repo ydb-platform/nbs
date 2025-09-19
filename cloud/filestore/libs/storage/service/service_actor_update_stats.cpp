@@ -78,8 +78,6 @@ void TStorageServiceActor::HandleUpdateStats(
             cpuLack /= intervalUs;
             *CpuWaitCounter = cpuLack;
 
-            LastCpuWaitTs = now;
-
             if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
                 LOG_WARN_S(
                     ctx,
@@ -87,6 +85,8 @@ void TStorageServiceActor::HandleUpdateStats(
                     "Cpu wait is " << cpuLack);
             }
         }
+
+        LastCpuWaitTs = now;
     }
 
     StatsRegistry->UpdateStats(true);
