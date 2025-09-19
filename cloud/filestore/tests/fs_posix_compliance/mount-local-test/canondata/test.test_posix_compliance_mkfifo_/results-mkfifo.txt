@@ -116,3 +116,10 @@ ok 1
 TEST SUITE[mkfifo, 12.t] 1..2
 ok 1 (line: 11)
 ok 2 (line: 12)
+TEST SUITE[mkfifo, 13.t] 1..6
+ok 1 (line: 15)
+ok 2 (line: 19)
+ok 3 (line: 34)
+ok 4 (line: 37)
+ok 5 (line: 38)
+ok 6 (line: 40)

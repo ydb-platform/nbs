@@ -9,6 +9,7 @@ GetNodeAttr
 GetNodeXAttr
 ListNodes
 PingSession
+ReadData
 ReadLink
 RenameNode
 ResetSession
