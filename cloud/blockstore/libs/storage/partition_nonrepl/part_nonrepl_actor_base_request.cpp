@@ -107,7 +107,13 @@ void TDiskAgentBaseRequestActor::Done(
             {.DeviceIndex = dr.DeviceIdx, .Error = {}});
     }
 
-    NCloud::Send(ctx, Part, std::move(completion.Event));
+    if (auto* readCompletion = dynamic_cast<TEvNonreplPartitionPrivate::TEvReadBlocksCompleted*>(completion.Event.get())) {
+        LOG_INFO(ctx, TBlockStoreComponents::PARTITION_WORKER,
+            "Sending completion with DeviceUUID: '%s'",
+            readCompletion->DeviceUUID.c_str());
+    }
+
+    NCloud::Send(ctx, Part, std::move(completion.Event)); // to part
 
     Die(ctx);
 }
