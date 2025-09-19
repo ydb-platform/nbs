@@ -44,6 +44,7 @@ private:
     const ui64 CollectCommitId;
     const ui32 RecordGeneration;
     const ui32 PerGenerationCounter;
+    const TDuration Timeout;
     TChildLogTitle LogTitle;
 
     TVector<TPartialBlobId> NewBlobs;
@@ -70,7 +71,8 @@ public:
         TVector<TPartialBlobId> garbageBlobs,
         TVector<ui32> mixedAndMergedChannels,
         bool cleanupWholeHistory,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        TDuration timeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -113,7 +115,8 @@ TCollectGarbageActor::TCollectGarbageActor(
         TVector<TPartialBlobId> garbageBlobs,
         TVector<ui32> mixedAndMergedChannels,
         bool cleanupWholeHistory,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        TDuration timeout)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , DiskId(std::move(diskId))
@@ -122,6 +125,7 @@ TCollectGarbageActor::TCollectGarbageActor(
     , CollectCommitId(collectCommitId)
     , RecordGeneration(recordGeneration)
     , PerGenerationCounter(perGenerationCounter)
+    , Timeout(timeout)
     , LogTitle(std::move(logTitle))
     , NewBlobs(std::move(newBlobs))
     , GarbageBlobs(std::move(garbageBlobs))
@@ -169,6 +173,7 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
     auto collect = ParseCommitId(CollectCommitId);
     for (ui32 channel: MixedAndMergedChannels) {
         for (auto& kv: requests.GetRequests(channel)) {
+            auto deadline = Timeout ? ctx.Now() + Timeout : TInstant::Max();
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
                 TabletInfo->TabletID,               // tablet
                 RecordGeneration,                   // record generation
@@ -179,7 +184,7 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
                 collect.second,                     // collect step
                 kv.second.Keep.release(),           // keep
                 kv.second.DoNotKeep.release(),      // do not keep
-                TInstant::Max(),                    // deadline
+                deadline,                           // deadline
                 false,                              // multi collect not allowed
                 false);                             // soft barrier
 
@@ -332,6 +337,7 @@ private:
     const ui64 CollectCommitId;
     const ui32 RecordGeneration;
     const ui32 PerGenerationCounter;
+    const TDuration Timeout;
     TChildLogTitle LogTitle;
 
     TVector<TPartialBlobId> KnownBlobIds;
@@ -352,7 +358,8 @@ public:
         ui32 perGenerationCounter,
         TVector<TPartialBlobId> knownBlobIds,
         TVector<ui32> mixedAndMergedChannels,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        TDuration timeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -388,7 +395,8 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
         ui32 perGenerationCounter,
         TVector<TPartialBlobId> knownBlobIds,
         TVector<ui32> mixedAndMergedChannels,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        TDuration timeout)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , DiskId(std::move(diskId))
@@ -396,6 +404,7 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
     , CollectCommitId(collectCommitId)
     , RecordGeneration(recordGeneration)
     , PerGenerationCounter(perGenerationCounter)
+    , Timeout(timeout)
     , LogTitle(std::move(logTitle))
     , KnownBlobIds(std::move(knownBlobIds))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
@@ -429,7 +438,7 @@ void TCollectGarbageHardActor::CollectGarbage(const TActorContext& ctx)
     for (ui32 channel: MixedAndMergedChannels) {
         for (auto& kv: requests.GetRequests(channel)) {
             auto barrier = ParseCommitId(kv.second.CollectCommitId);
-
+            auto deadline = Timeout ? ctx.Now() + Timeout : TInstant::Max();
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
                 TabletInfo->TabletID,               // tablet
                 RecordGeneration,                   // record generation
@@ -440,7 +449,7 @@ void TCollectGarbageHardActor::CollectGarbage(const TActorContext& ctx)
                 barrier.second,                     // collect step
                 nullptr,                            // keep
                 nullptr,                            // do not keep
-                TInstant::Max(),                    // deadline
+                deadline,                           // deadline
                 false,                              // multi collect not allowed
                 true);                              // hard barrier
 
@@ -715,7 +724,10 @@ void TPartitionActor::HandleCollectGarbage(
         std::move(garbageBlobs),
         std::move(mixedAndMergedChannels),
         !State->GetStartupGcExecuted(),
-        LogTitle.GetChild(GetCycleCount()));
+        LogTitle.GetChild(GetCycleCount()),
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD ?
+            Config->GetCollectGarbageTimeoutSSD() :
+            Config->GetCollectGarbageTimeoutHDD());
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -823,7 +835,10 @@ void TPartitionActor::CompleteCollectGarbage(
         nextPerGenerationCounter,
         std::move(args.KnownBlobIds),
         std::move(mixedAndMergedChannels),
-        LogTitle.GetChild(GetCycleCount()));
+        LogTitle.GetChild(GetCycleCount()),
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD ?
+            Config->GetCollectGarbageTimeoutSSD() :
+            Config->GetCollectGarbageTimeoutHDD());
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,

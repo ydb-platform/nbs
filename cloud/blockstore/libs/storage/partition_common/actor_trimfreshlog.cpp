@@ -52,10 +52,6 @@ void TTrimFreshLogActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     TrimFreshLog(ctx);
-
-    if (Timeout) {
-        ctx.Schedule(Timeout, new TEvents::TEvWakeup());
-    }
 }
 
 void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
@@ -72,6 +68,8 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
         for (const auto& [bsProxyId, barrier]: barriers.GetRequests(channelId)) {
             auto [barrierGen, barrierStep] = ParseCommitId(barrier.CollectCommitId);
 
+            auto deadline = Timeout ? ctx.Now() + Timeout : TInstant::Max();
+
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
                 tabletId,               // tabletId
                 RecordGeneration,       // record generation
@@ -82,7 +80,7 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
                 barrierStep,            // barrier step
                 nullptr,                // keep
                 nullptr,                // do not keep
-                TInstant::Max(),        // deadline
+                deadline,               // deadline
                 false,                  // multicollect not allowed
                 false);                 // soft barrier
 
@@ -139,9 +137,13 @@ void TTrimFreshLogActor::HandleCollectGarbageResult(
     if (auto error = MakeKikimrError(msg->Status, msg->ErrorReason);
         HasError(error))
     {
-        ReportTrimFreshLogError(
-            FormatError(error),
-            {{"disk", DiskId}, {"TabletId", TabletInfo->TabletID}});
+        TCritEventParams critEventParams =
+             {{"disk", DiskId}, {"TabletId", TabletInfo->TabletID}};
+        if (msg->Status == NKikimrProto::EReplyStatus::DEADLINE) {
+            ReportTrimFreshLogTimeout(FormatError(error), critEventParams);
+        } else {
+            ReportTrimFreshLogError(FormatError(error), critEventParams);
+        }
         Error = std::move(error);
     }
 
@@ -163,29 +165,12 @@ void TTrimFreshLogActor::HandlePoisonPill(
     Die(ctx);
 }
 
-void TTrimFreshLogActor::HandleWakeup(
-    const NActors::TEvents::TEvWakeup::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-
-    Error = MakeError(E_TIMEOUT, "TrimFreshLog timed out");
-
-    ReportTrimFreshLogTimeout(
-        FormatError(Error),
-        {{"disk", DiskId}, {"TabletId", TabletInfo->TabletID}});
-
-    NotifyCompleted(ctx);
-    ReplyAndDie(ctx);
-}
-
 STFUNC(TTrimFreshLogActor::StateWork)
 {
     TRequestScope timer(*RequestInfo);
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         HFunc(TEvBlobStorage::TEvCollectGarbageResult, HandleCollectGarbageResult);
 

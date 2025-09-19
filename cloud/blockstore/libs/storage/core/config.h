@@ -719,6 +719,8 @@ public:
     GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() const;
 
     [[nodiscard]] TDuration GetTrimFreshLogTimeout() const;
+    [[nodiscard]] TDuration GetCollectGarbageTimeoutSSD() const;
+    [[nodiscard]] TDuration GetCollectGarbageTimeoutHDD() const;
 
     [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
 

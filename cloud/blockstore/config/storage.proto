@@ -1333,4 +1333,10 @@ message TStorageServiceConfig
     // Timeout for dynamic node registration via discovery service
     // (in milliseconds).
     optional uint32 DynamicNodeRegistrationTimeout = 459;
+
+    // Timeout for collect garbage on SSD (in milliseconds).
+    optional uint32 CollectGarbageTimeoutSSD = 460;
+
+    // Timeout for collect garbage on HDD (in milliseconds).
+    optional uint32 CollectGarbageTimeoutHDD = 461;
 }
