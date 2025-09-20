@@ -28,9 +28,7 @@ Y_UNIT_TEST_SUITE(TaskStatsFetcherTest)
     {
         auto fetcher = CreateTaskStatsFetcher(
             ComponentName,
-            CreateLoggingService("console"),
             getpid());
-        fetcher->Start();
         auto [cpuWait, error] = fetcher->GetCpuWait();
         UNIT_ASSERT_C(!HasError(error), error);
     }
