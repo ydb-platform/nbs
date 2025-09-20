@@ -21,21 +21,17 @@ void TNonreplicatedPartitionRdmaActor::UpdateStats(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNonreplicatedPartitionRdmaActor::SendStats(const TActorContext& ctx)
+TPartNonreplCountersData TNonreplicatedPartitionRdmaActor::ExtractPartCounters()
 {
     PartCounters->Simple.IORequestsInFlight.Set(
         RequestsInProgress.GetRequestCount());
     PartCounters->Simple.BytesCount.Set(
-        PartConfig->GetBlockCount() * PartConfig->GetBlockSize()
-    );
+        PartConfig->GetBlockCount() * PartConfig->GetBlockSize());
 
-    auto request =
-        std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
-            MakeIntrusive<TCallContext>(),
-            std::move(PartCounters),
-            PartConfig->GetName(),
-            NetworkBytes,
-            CpuUsage);
+    TPartNonreplCountersData counters(
+        NetworkBytes,
+        CpuUsage,
+        std::move(PartCounters));
 
     NetworkBytes = 0;
     CpuUsage = {};
@@ -44,7 +40,46 @@ void TNonreplicatedPartitionRdmaActor::SendStats(const TActorContext& ctx)
         EPublishingPolicy::DiskRegistryBased,
         DiagnosticsConfig->GetHistogramCounterOptions());
 
+    return counters;
+}
+
+void TNonreplicatedPartitionRdmaActor::SendStats(const TActorContext& ctx)
+{
+    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
+
+    auto request =
+        std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
+            MakeIntrusive<TCallContext>(),
+            std::move(diskCounters),
+            PartConfig->GetName(),
+            networkBytes,
+            cpuUsage);
+
     NCloud::Send(ctx, StatActorId, std::move(request));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TNonreplicatedPartitionRdmaActor::
+    HandleGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const TActorContext& ctx)
+{
+    auto&& [networkBytes, cpuUsage, diskCounters] = ExtractPartCounters();
+
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvNonreplPartitionPrivate::
+                             TEvGetDiskRegistryBasedPartCountersResponse>(
+            MakeError(S_OK),
+            std::move(diskCounters),
+            networkBytes,
+            cpuUsage,
+            SelfId(),
+            PartConfig->GetName(),
+            ev->Get()->VolumeStatisticSeqNo));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

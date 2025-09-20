@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
@@ -380,6 +381,66 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
+    //  GetDiskRegistryBasedPartCounters
+    //
+
+    struct TGetDiskRegistryBasedPartCountersRequest
+    {
+        const ui64 VolumeStatisticSeqNo = 0;
+
+        TGetDiskRegistryBasedPartCountersRequest() = default;
+
+        explicit TGetDiskRegistryBasedPartCountersRequest(
+                ui64 volumeStatisticSeqNo)
+            : VolumeStatisticSeqNo(volumeStatisticSeqNo)
+        {}
+    };
+
+    struct TGetDiskRegistryBasedPartCountersResponse
+    {
+        TPartitionDiskCountersPtr DiskCounters;
+        ui64 NetworkBytes;
+        TDuration CpuUsage;
+        NActors::TActorId SelfId;
+        TString DiskId;
+        const ui64 VolumeStatisticSeqNo;
+
+        TGetDiskRegistryBasedPartCountersResponse(
+                TPartitionDiskCountersPtr diskCounters,
+                ui64 networkBytes,
+                TDuration cpuUsage,
+                const NActors::TActorId& selfId,
+                TString diskId,
+                ui64 volumeStatisticSeqNo)
+            : DiskCounters(std::move(diskCounters))
+            , NetworkBytes(networkBytes)
+            , CpuUsage(cpuUsage)
+            , SelfId(selfId)
+            , DiskId(std::move(diskId))
+            , VolumeStatisticSeqNo(volumeStatisticSeqNo)
+        {}
+    };
+
+    //
+    // DiskRegistryBasedPartCountersCombined
+    //
+
+    struct TDiskRegistryBasedPartCountersCombined
+    {
+        const ui64 SeqNo;
+        const ui64 VolumeStatisticSeqNo;
+
+        TVector<TGetDiskRegistryBasedPartCountersResponse> Counters;
+
+        TDiskRegistryBasedPartCountersCombined(
+                ui64 seqNo,
+                ui64 volumeStatisticSeqNo)
+            : SeqNo(seqNo)
+            , VolumeStatisticSeqNo(volumeStatisticSeqNo)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -412,6 +473,10 @@ struct TEvNonreplPartitionPrivate
         EvLaggingMigrationDisabled,
         EvLaggingMigrationEnabled,
         EvInconsistentDiskAgent,
+        EvGetDiskRegistryBasedPartCountersRequest,
+        EvGetDiskRegistryBasedPartCountersResponse,
+        EvDiskRegistryBasedPartCountersCombined,
+
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -512,6 +577,18 @@ struct TEvNonreplPartitionPrivate
 
     using TEvInconsistentDiskAgent =
         TRequestEvent<TInconsistentDiskAgent, EvInconsistentDiskAgent>;
+
+    using TEvGetDiskRegistryBasedPartCountersRequest = TRequestEvent<
+        TGetDiskRegistryBasedPartCountersRequest,
+        EvGetDiskRegistryBasedPartCountersRequest>;
+
+    using TEvGetDiskRegistryBasedPartCountersResponse = TResponseEvent<
+        TGetDiskRegistryBasedPartCountersResponse,
+        EvGetDiskRegistryBasedPartCountersResponse>;
+
+    using TEvDiskRegistryBasedPartCountersCombined = TResponseEvent<
+        TDiskRegistryBasedPartCountersCombined,
+        EvDiskRegistryBasedPartCountersCombined>;
 
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
 

@@ -13,9 +13,11 @@ namespace NCloud::NBlockStore::NStorage {
 
 TPartitionStatisticsCollectorActor::TPartitionStatisticsCollectorActor(
         const TActorId& owner,
-        TVector<TActorId> partitions)
+        TVector<TActorId> partitions,
+        ui64 volumeStatisticSeqNo)
     : Owner(owner)
     , Partitions(std::move(partitions))
+    , Response(volumeStatisticSeqNo)
 {}
 
 void TPartitionStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
