@@ -118,6 +118,7 @@ struct TEvServicePrivate
     struct TMountRequestProcessed
     {
         const NProto::TVolume Volume;
+        const TString TabletHost;
         const ui64 MountStartTick;
         const NProto::TMountVolumeRequest Request;
 
@@ -131,6 +132,7 @@ struct TEvServicePrivate
 
         TMountRequestProcessed(
                 NProto::TVolume volume,
+                TString tabletHost,
                 NProto::TMountVolumeRequest request,
                 ui64 mountStartTick,
                 TRequestInfoPtr requestInfo,
@@ -140,6 +142,7 @@ struct TEvServicePrivate
                 NProto::EPreemptionSource preemptionSource,
                 bool volumeSessionRestartRequired)
             : Volume(std::move(volume))
+            , TabletHost(std::move(tabletHost))
             , MountStartTick(mountStartTick)
             , Request(std::move(request))
             , RequestInfo(std::move(requestInfo))

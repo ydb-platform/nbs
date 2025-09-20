@@ -136,6 +136,11 @@ struct TTestSession final
         return nullptr;
     }
 
+    void OnMountChange(TMountChangeListener fn) override
+    {
+        Y_UNUSED(fn);
+    }
+
     void ReportIOError() override
     {}
 };

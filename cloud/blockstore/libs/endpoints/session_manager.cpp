@@ -426,6 +426,7 @@ private:
         ui32 port);
 
     TResultOrError<IBlockStorePtr> CreateStorageDataClient(
+        const NProto::TStartEndpointRequest& request,
         const TString& cellId,
         const TClientAppConfigPtr& clientConfig,
         const NProto::TVolume& volume,
@@ -672,6 +673,7 @@ TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
 }
 
 TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
+    const NProto::TStartEndpointRequest& request,
     const TString& cellId,
     const TClientAppConfigPtr& clientConfig,
     const NProto::TVolume& volume,
@@ -698,40 +700,13 @@ TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
         storage = Executor->ResultOrError(future).GetResult();
     }
 
-    return {
-        std::make_shared<TStorageDataClient>(
-            std::move(storage),
-            std::move(service),
-            ServerStats,
-            clientId,
-            clientConfig->GetRequestTimeout(),
-            volume.GetBlockSize())
-    };
-}
-
-TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
-    const NProto::TStartEndpointRequest& request,
-    const NProto::TVolume& volume,
-    const TString& cellId)
-{
-    const auto& clientId = request.GetClientId();
-    auto accessMode = request.GetVolumeAccessMode();
-
-    auto service = Service;
-    IStoragePtr storage;
-
-    auto clientConfig = CreateClientConfig(request);
-
-    auto [client, error] = CreateStorageDataClient(
-        cellId,
-        clientConfig,
-        volume,
+    IBlockStorePtr client = std::make_shared<TStorageDataClient>(
+        std::move(storage),
+        std::move(service),
+        ServerStats,
         clientId,
-        accessMode);
-
-    if (HasError(error)) {
-        return error;
-    }
+        clientConfig->GetRequestTimeout(),
+        volume.GetBlockSize());
 
     if (Options.TemporaryServer) {
         client = CreateErrorTransformService(
@@ -801,6 +776,34 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             Monitoring,
             std::move(client),
             CreateCrcDigestCalculator());
+    }
+
+    return client;
+}
+
+TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
+    const NProto::TStartEndpointRequest& request,
+    const NProto::TVolume& volume,
+    const TString& cellId)
+{
+    const auto& clientId = request.GetClientId();
+    auto accessMode = request.GetVolumeAccessMode();
+
+    auto service = Service;
+    IStoragePtr storage;
+
+    auto clientConfig = CreateClientConfig(request);
+
+    auto [client, error] = CreateStorageDataClient(
+        request,
+        cellId,
+        clientConfig,
+        volume,
+        clientId,
+        accessMode);
+
+    if (HasError(error)) {
+        return error;
     }
 
     auto session = NClient::CreateSession(
