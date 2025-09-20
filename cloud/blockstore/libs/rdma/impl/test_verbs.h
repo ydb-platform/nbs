@@ -20,6 +20,7 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     bool AllowConnect = false;
     TSpinLock ConnectionLock;
     ui8 ToS = 0;
+    TString BindAddress;
 
     TEventHandle CompletionHandle;
     TDeque<ibv_send_wr*> SendEvents;
