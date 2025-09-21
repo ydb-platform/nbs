@@ -90,8 +90,7 @@ public:
         , DeletionCommitId(deletionCommitId)
         , MaxBlocksInBlob(maxBlocksInBlob)
         , LogTitle(std::move(logTitle))
-    {
-    }
+    {}
 
     void Execute(const TActorContext& ctx, TPartitionDatabase& db)
     {
