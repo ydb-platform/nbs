@@ -67,21 +67,6 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFlushedCommitId
-{
-    ui64 CommitId;
-    ui32 BlockCount;
-
-    TFlushedCommitId(ui64 commitId, ui32 blockCount)
-        : CommitId(commitId)
-        , BlockCount(blockCount)
-    {}
-};
-
-using TFlushedCommitIds = TVector<TFlushedCommitId>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TTxPartition
 {
     using TBlockMark = NBlobMarkers::TBlockMark;
@@ -317,6 +302,17 @@ struct TTxPartition
 
     struct TAddBlobs
     {
+        struct TFlushedCommitId
+        {
+            ui64 CommitId;
+            ui32 BlockCount;
+
+            TFlushedCommitId(ui64 commitId, ui32 blockCount)
+                : CommitId(commitId)
+                , BlockCount(blockCount)
+            {}
+        };
+
         const TRequestInfoPtr RequestInfo;
 
         const ui64 CommitId;
@@ -332,7 +328,7 @@ struct TTxPartition
         const TVector<TBlobCompactionInfo> MergedBlobCompactionInfos;
 
         // fresh
-        TFlushedCommitIds FlushedCommitIdsFromChannel;
+        TVector<TFlushedCommitId> FlushedCommitIdsFromChannel;
 
         ui64 DeletionCommitId = 0;
 
@@ -357,12 +353,17 @@ struct TTxPartition
             , AffectedBlocks(std::move(affectedBlocks))
             , MixedBlobCompactionInfos(std::move(mixedBlobCompactionInfos))
             , MergedBlobCompactionInfos(std::move(mergedBlobCompactionInfos))
-        {}
+        {
+            BuildFlushedCommitIdsFromChannel();
+        }
 
         void Clear()
         {
             // nothing to do
         }
+
+    private:
+        void BuildFlushedCommitIdsFromChannel();
     };
 
     //

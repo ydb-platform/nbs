@@ -51,46 +51,6 @@ bool HasDuplicates(const TVector<ui32>& items)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
-    const TVector<TAddFreshBlob>& blobs)
-{
-    TFlushedCommitIds result;
-    TVector<ui64> commitIds;
-
-    for (const auto& blob: blobs) {
-        for (const auto& block: blob.Blocks) {
-            if (!block.IsStoredInDb) {
-                commitIds.push_back(block.CommitId);
-            }
-        }
-    }
-
-    if (!commitIds) {
-        return {};
-    }
-
-    Sort(commitIds);
-
-    ui64 cur = commitIds.front();
-    ui32 cnt = 0;
-
-    for (const auto commitId: commitIds) {
-        if (commitId == cur) {
-            ++cnt;
-        } else {
-            result.emplace_back(cur, cnt);
-            cur = commitId;
-            cnt = 1;
-        }
-    }
-
-    result.emplace_back(cur, cnt);
-
-    return result;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TAddBlobsExecutor
 {
 private:
@@ -130,7 +90,8 @@ public:
         , DeletionCommitId(deletionCommitId)
         , MaxBlocksInBlob(maxBlocksInBlob)
         , LogTitle(std::move(logTitle))
-    {}
+    {
+    }
 
     void Execute(const TActorContext& ctx, TPartitionDatabase& db)
     {
@@ -751,9 +712,7 @@ bool TPartitionActor::PrepareAddBlobs(
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
-
-    args.FlushedCommitIdsFromChannel = BuildFlushedCommitIdsFromChannel(
-        args.FreshBlobs);
+    Y_UNUSED(args);
 
     // we really want to keep the writes blind
     return true;
