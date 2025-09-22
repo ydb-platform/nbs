@@ -79,6 +79,20 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
     return rope;
 }
 
+/**
+ * @brief Copies a slice of data from the iovecs in the request into the buffer
+ *        and returns the buffer with data
+ *
+ * @param request      The write request containing iovecs as the source of data
+ * @param byteOffset   The starting offset (in bytes) from the beginning of the
+ *                     iovecs
+ * @param byteLength   The number of bytes to copy from the offset
+ *
+ * @return The destination buffer to copy data into
+ *
+ * @note It is assumed that byteOffset + byteLength does not exceed the total
+ *       size of the data in the iovecs.
+ */
 TString GetBufferFromRope(TRope& rope, ui64 byteOffset, ui64 bufferLength)
 {
     TString buffer;
@@ -91,25 +105,43 @@ TString GetBufferFromRope(TRope& rope, ui64 byteOffset, ui64 bufferLength)
     return buffer;
 }
 
+/**
+ * @brief Copies a slice of data from the iovecs in the request into the buffer.
+ *
+ * @param request      The write request containing iovecs as the source of data
+ * @param buffer       The destination buffer to copy data into
+ * @param byteOffset   The starting offset (in bytes) from the beginning of the
+ *                     iovecs
+ * @param byteLength   The number of bytes to copy from the offset
+ *
+ * @note It is assumed that byteOffset + byteLength does not exceed the total
+ *       size of the data in the iovecs.
+ */
 void CopyIovecs(
     const NProto::TWriteDataRequest& request,
     TString& buffer,
     ui64 byteOffset,
-    ui64 bufferLength)
+    ui64 byteLength)
 {
     if (request.GetIovecs().empty()) {
         return;
     }
 
     auto rope = CreateRopeFromIovecs(request);
-    buffer.ReserveAndResize(bufferLength);
+    buffer.ReserveAndResize(byteLength);
     auto bytesCopied = TRopeUtils::SafeMemcpy(
         &buffer[0],
         rope.Begin() + byteOffset,
-        bufferLength);
-    Y_ABORT_UNLESS(bytesCopied == bufferLength);
+        byteLength);
+    Y_ABORT_UNLESS(bytesCopied == byteLength);
 }
 
+/**
+ * @brief Copies a slice of data from the iovecs in the request into the buffer
+ *         in the same request and cleanup iovecs.
+ *
+ * @param request      The write request containing iovecs as the source of data
+ */
 void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
 {
     CopyIovecs(
