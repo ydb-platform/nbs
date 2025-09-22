@@ -73,7 +73,9 @@ void TNonreplicatedPartitionRdmaActor::Bootstrap(const TActorContext& ctx)
     }
 
     Become(&TThis::StateWork);
-    ScheduleCountersUpdate(ctx);
+    if (!Config->GetUsePullSchemeForVolumeStatistics()) {
+        ScheduleCountersUpdate(ctx);
+    }
     ctx.Schedule(
         Config->GetNonReplicatedMinRequestTimeoutSSD(),
         new TEvents::TEvWakeup());
@@ -890,6 +892,11 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
             TEvVolumePrivate::TEvDeviceTimedOutResponse,
             HandleDeviceTimedOutResponse);
 
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            HandleGetDiskRegistryBasedPartCounters);
+
         default:
             if (!HandleRequests(ev)) {
                 HandleUnexpectedEvent(
@@ -947,6 +954,9 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateZombie)
         IgnoreFunc(TEvents::TEvPoisonPill);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse);
+
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvGetDiskRegistryBasedPartCountersRequest);
 
         default:
             if (!HandleRequests(ev)) {

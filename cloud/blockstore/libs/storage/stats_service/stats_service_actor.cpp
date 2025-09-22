@@ -1,6 +1,7 @@
 #include "stats_service_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/storage/stats_service/actors/service_statistics_collector_actor.h>
 
 #include <cloud/storage/core/libs/api/user_stats.h>
 
@@ -98,6 +99,20 @@ void TStatsServiceActor::ScheduleCountersUpdate(const TActorContext& ctx)
     ctx.Schedule(UpdateCountersInterval, new TEvents::TEvWakeup());
 }
 
+void TStatsServiceActor::RegisterStatisticsCollectorActor(
+    const TActorContext& ctx) const
+{
+    TVector<TActorId> volumeActorIds;
+    for (const auto& [_, volumeInfo]: State.GetVolumes()) {
+        volumeActorIds.push_back(volumeInfo.VolumeActorId);
+    }
+
+    NCloud::Register<TServiceStatisticsCollectorActor>(
+        ctx,
+        SelfId(),
+        std::move(volumeActorIds));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TStatsServiceActor::HandleWakeup(
@@ -105,6 +120,14 @@ void TStatsServiceActor::HandleWakeup(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
+
+    if (Config->GetUsePullSchemeForVolumeStatistics() &&
+        State.GetVolumes().size())
+    {
+        ScheduleCountersUpdate(ctx);
+        RegisterStatisticsCollectorActor(ctx);
+        return;
+    }
 
     UpdateVolumeSelfCounters(ctx);
     ScheduleCountersUpdate(ctx);
@@ -140,6 +163,10 @@ STFUNC(TStatsServiceActor::StateWork)
         HFunc(
             TEvStatsServicePrivate::TEvCleanupBackgroundSources,
             HandleCleanupBackgroundSources);
+
+        HFunc(
+            TEvStatsService::TEvServiceStatisticsCombined,
+            HandleServiceStatisticsCombined);
 
         default:
             HandleUnexpectedEvent(
