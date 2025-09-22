@@ -1,0 +1,4 @@
+ZeroCopyWriteEnabled: true
+ThreeStageWriteEnabled: true
+UnalignedThreeStageWriteEnabled: true
+MultiTabletForwardingEnabled: true
