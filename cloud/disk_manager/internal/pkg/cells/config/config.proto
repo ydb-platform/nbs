@@ -28,7 +28,7 @@ message CellsConfig {
     // CollectClusterCapacity is a heavy request, so we should use it rarely.
     optional string CollectClusterCapacityTaskScheduleInterval = 6 [default = "1h"];
 
-    // Default is 90 days. Can set it only in hours, because time.ParseDuration
+    // Default is 90 days. Can be set only in hours, because time.ParseDuration
     // can't parse days.
     optional string ClusterCapacityExpirationTimeout = 7 [default = "2160h"];
 }

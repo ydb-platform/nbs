@@ -131,7 +131,12 @@ func (t *collectClusterCapacityTask) updateCellCapacity(
 	deleteBefore time.Time,
 ) error {
 
-	logging.Info(ctx, "Getting cluster capacity for cell %s", cellID)
+	logging.Info(
+		ctx,
+		"Getting cluster capacity for cell %s of zone %s",
+		cellID,
+		zoneID,
+	)
 
 	client, err := t.nbsFactory.GetClient(ctx, cellID)
 	if err != nil {
