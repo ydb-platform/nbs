@@ -6,16 +6,22 @@ from cloud.filestore.tests.python.lib.common import get_filestore_mount_path
 
 SCENARIOS = ["randwrite", "randrw"]
 
+BLOCK_SIZE = 4096
+
+SIZES = [BLOCK_SIZE - 1, BLOCK_SIZE, BLOCK_SIZE + 1, 2 * BLOCK_SIZE - 1,
+         2 * BLOCK_SIZE, 2 * BLOCK_SIZE + 1, 4 * fio.KB, 16 * fio.KB,
+         64 * fio.KB, 256 * fio.KB, 1 * fio.MB]
+
 UNALIGNED_TESTS = fio.generate_tests(
     offset=100,
-    sizes=[1 * fio.MB],
+    sizes=SIZES,
     iodepths=[1],
     numjobs=[4],
     scenarios=SCENARIOS)
 
 ALIGNED_TESTS = fio.generate_tests(
     offset=0,
-    sizes=[1 * fio.MB],
+    sizes=SIZES,
     iodepths=[1],
     numjobs=[4],
     scenarios=SCENARIOS)
