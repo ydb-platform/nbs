@@ -200,6 +200,13 @@ parent_node_id: Uint64
 name: Utf8
 node_id: Uint64
 node_type: Uint32
+```
+
+The primary key should be (`filesystem_backup_id`, `depth`, `parent_node_id`, `name`).
+Node attributes should be stored in the `node_attributes` table:
+```
+filesystem_backup_id: Utf8
+node_id: Uint64
 mode: Uint32
 uid: Uint32
 gid: Uint32
@@ -210,8 +217,7 @@ size: Uint64
 symlink_target: Utf8
 refcnt: Uint32
 ```
-
-The primary key should be (`filesystem_backup_id`, `depth`, `parent_node_id`, `name`).
+with primary key (`node_id`).
 
 For the queue we will use the following table:
 ```
