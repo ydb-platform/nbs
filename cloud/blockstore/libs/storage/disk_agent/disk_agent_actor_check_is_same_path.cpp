@@ -15,7 +15,12 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NThreading;
 
+////////////////////////////////////////////////////////////////////////////////
+
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TError MakeDeviceChangedError(
     const TString& path,
     const TString& reason)
@@ -222,6 +227,7 @@ private:
         Die(ctx);
     }
 };
+
 }   // namespace
 
 void TDiskAgentActor::CheckIsSamePath(

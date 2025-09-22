@@ -47,15 +47,15 @@ private:
 private:
     STFUNC(StateWaitRegisterResponse);
 
-    STFUNC(StateWaitDisksDetach);
+    STFUNC(StateWaitPathsDetach);
 
-    STFUNC(StateWaitDisksAttach);
+    STFUNC(StateWaitPathsAttach);
 
     void HandleRegisterAgentResponse(
         const TEvDiskRegistry::TEvRegisterAgentResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleDisksDetached(
+    void HandlePathsDetached(
         const TEvDiskAgent::TEvDetachPathResponse::TPtr& ev,
         const TActorContext& ctx)
     {
@@ -67,7 +67,7 @@ private:
         AttachPathsIfNeeded(ctx);
     }
 
-    void HandleDisksAttached(
+    void HandlePathsAttached(
         const TEvDiskAgent::TEvAttachPathResponse::TPtr& ev,
         const TActorContext& ctx)
     {
@@ -84,11 +84,11 @@ private:
 
 TRegisterActor::TRegisterActor(
         const TActorId& owner,
-        bool openCloseDevicesEnabled,
+        bool attachDetachPathsEnabled,
         TRequestInfoPtr requestInfo,
         NProto::TAgentConfig config)
     : Owner(owner)
-    , AttachDetachPathsEnabled(openCloseDevicesEnabled)
+    , AttachDetachPathsEnabled(attachDetachPathsEnabled)
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
 {}
@@ -136,8 +136,8 @@ void TRegisterActor::HandleRegisterAgentResponse(
         msg->Record.GetDevicesToDisableIO().cend());
     Error = msg->GetError();
 
-    if (!AttachDetachPathsEnabled || (msg->Record.GetUnknownDisks().empty() &&
-                                     msg->Record.GetAllowedDisks().empty()))
+    if (!AttachDetachPathsEnabled || (msg->Record.GetUnknownPaths().empty() &&
+                                      msg->Record.GetAllowedPaths().empty()))
     {
         ReplyAndDie(ctx);
         return;
@@ -149,7 +149,7 @@ void TRegisterActor::HandleRegisterAgentResponse(
 
 void TRegisterActor::DetachPathsIfNeeded(const TActorContext& ctx)
 {
-    if (RegisterResponse.GetUnknownDisks().empty()) {
+    if (RegisterResponse.GetUnknownPaths().empty()) {
         AttachPathsIfNeeded(ctx);
         return;
     }
@@ -158,18 +158,18 @@ void TRegisterActor::DetachPathsIfNeeded(const TActorContext& ctx)
     detachRequest->Record.SetDiskRegistryGeneration(
         RegisterResponse.GetDiskRegistryTabletGeneration());
 
-    for (auto& pathToGeneration: *RegisterResponse.MutableUnknownDisks()) {
-        *detachRequest->Record.AddDisksToDetach() = std::move(pathToGeneration);
+    for (auto& pathToGeneration: *RegisterResponse.MutableUnknownPaths()) {
+        *detachRequest->Record.AddPathsToDetach() = std::move(pathToGeneration);
     }
 
     NCloud::Send(ctx, Owner, std::move(detachRequest));
 
-    Become(&TThis::StateWaitDisksDetach);
+    Become(&TThis::StateWaitPathsDetach);
 }
 
 void TRegisterActor::AttachPathsIfNeeded(const TActorContext& ctx)
 {
-    if (RegisterResponse.GetAllowedDisks().empty()) {
+    if (RegisterResponse.GetAllowedPaths().empty()) {
         ReplyAndDie(ctx);
         return;
     }
@@ -178,13 +178,13 @@ void TRegisterActor::AttachPathsIfNeeded(const TActorContext& ctx)
     attachRequest->Record.SetDiskRegistryGeneration(
         RegisterResponse.GetDiskRegistryTabletGeneration());
 
-    for (auto& pathToGeneration: *RegisterResponse.MutableAllowedDisks()) {
-        *attachRequest->Record.AddDisksToAttach() = std::move(pathToGeneration);
+    for (auto& pathToGeneration: *RegisterResponse.MutableAllowedPaths()) {
+        *attachRequest->Record.AddPathsToAttach() = std::move(pathToGeneration);
     }
 
     NCloud::Send(ctx, Owner, std::move(attachRequest));
 
-    Become(&TThis::StateWaitDisksAttach);
+    Become(&TThis::StateWaitPathsAttach);
 }
 
 void TRegisterActor::ReplyAndDie(const TActorContext& ctx)
@@ -212,10 +212,10 @@ STFUNC(TRegisterActor::StateWaitRegisterResponse)
     }
 }
 
-STFUNC(TRegisterActor::StateWaitDisksDetach)
+STFUNC(TRegisterActor::StateWaitPathsDetach)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvDiskAgent::TEvDetachPathResponse, HandleDisksDetached);
+        HFunc(TEvDiskAgent::TEvDetachPathResponse, HandlePathsDetached);
 
         default:
             HandleUnexpectedEvent(
@@ -226,10 +226,10 @@ STFUNC(TRegisterActor::StateWaitDisksDetach)
     }
 }
 
-STFUNC(TRegisterActor::StateWaitDisksAttach)
+STFUNC(TRegisterActor::StateWaitPathsAttach)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvDiskAgent::TEvAttachPathResponse, HandleDisksAttached);
+        HFunc(TEvDiskAgent::TEvAttachPathResponse, HandlePathsAttached);
 
         default:
             HandleUnexpectedEvent(

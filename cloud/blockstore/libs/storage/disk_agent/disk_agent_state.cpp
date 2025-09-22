@@ -676,7 +676,7 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
 
     if (!device.IsOpen()) {
         NProto::TReadDeviceBlocksResponse response;
-        *response.MutableError() = MakeError(E_REJECTED, "device closed");
+        *response.MutableError() = MakeError(E_REJECTED, "path detached");
         return MakeFuture(response);
     }
 
@@ -816,7 +816,7 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::WriteBlocks(
 
     if (!device.IsOpen()) {
         NProto::TWriteDeviceBlocksResponse response;
-        *response.MutableError() = MakeError(E_REJECTED, "device closed");
+        *response.MutableError() = MakeError(E_REJECTED, "path detached");
         return MakeFuture(response);
     }
 
@@ -862,7 +862,7 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
 
     if (!device.IsOpen()) {
         NProto::TZeroDeviceBlocksResponse response;
-        *response.MutableError() = MakeError(E_REJECTED, "device closed");
+        *response.MutableError() = MakeError(E_REJECTED, "path detached");
         return MakeFuture(response);
     }
 
@@ -915,7 +915,7 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
     };
 
     if (!device.IsOpen()) {
-        return MakeFuture(MakeError(E_REJECTED, "device closed"));
+        return MakeFuture(MakeError(E_REJECTED, "path detached"));
     }
 
     if (RdmaTarget) {
@@ -953,7 +953,7 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
 
     if (!device.IsOpen()) {
         NProto::TChecksumDeviceBlocksResponse response;
-        *response.MutableError() = MakeError(E_REJECTED, "device closed");
+        *response.MutableError() = MakeError(E_REJECTED, "path detached");
         return MakeFuture(response);
     }
 
@@ -1118,7 +1118,7 @@ EDeviceStateFlags TDiskAgentState::GetDeviceStateFlags(
             : (IsDeviceSuspended(uuid) ? EDeviceStateFlags::SUSPENDED
                                        : EDeviceStateFlags::NONE);
     if (!IsDeviceAttached(uuid)) {
-        flags |= EDeviceStateFlags::CLOSED;
+        flags |= EDeviceStateFlags::DETACHED;
     }
     return flags;
 }
@@ -1288,7 +1288,7 @@ void TDiskAgentState::PathAttached(
         d->StorageAdapter = std::move(storageAdapter);
 
         if (RdmaTarget) {
-            RdmaTarget->OpenDevice(uuid, std::move(storageAdapter));
+            RdmaTarget->AttachDevice(uuid, std::move(storageAdapter));
         }
     }
 
@@ -1332,7 +1332,7 @@ NProto::TError TDiskAgentState::DetachPath(
             d->StorageAdapter.reset();
 
             if (RdmaTarget) {
-                RdmaTarget->CloseDevice(uuid);
+                RdmaTarget->DetachDevice(uuid);
             }
         }
 
@@ -1351,7 +1351,7 @@ NProto::TError TDiskAgentState::CheckDiskRegistryGenerationAndUpdateItIfNeeded(
     }
 
     if (diskRegistryGeneration > LastDiskRegistryGenerationSeen) {
-        ResetDiskGenerations();
+        ResetPathGenerations();
     }
 
     LastDiskRegistryGenerationSeen = diskRegistryGeneration;
@@ -1359,7 +1359,7 @@ NProto::TError TDiskAgentState::CheckDiskRegistryGenerationAndUpdateItIfNeeded(
     return {};
 }
 
-void TDiskAgentState::ResetDiskGenerations()
+void TDiskAgentState::ResetPathGenerations()
 {
     for (auto& [path, state]: PathAttachStates) {
         state.Generation = 0;

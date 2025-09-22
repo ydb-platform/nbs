@@ -8,6 +8,8 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NThreading;
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TDiskAgentActor::HandleAttachPath(
     const TEvDiskAgent::TEvAttachPathRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -30,7 +32,7 @@ void TDiskAgentActor::HandleAttachPath(
 
     TVector<TString> paths;
 
-    for (const auto& pathToGeneration: record.GetDisksToAttach()) {
+    for (const auto& pathToGeneration: record.GetPathsToAttach()) {
         auto error = State->CheckCanAttachPath(
             record.GetDiskRegistryGeneration(),
             pathToGeneration.GetDiskPath(),
@@ -102,7 +104,7 @@ void TDiskAgentActor::HandleDetachPath(
     }
 
     THashMap<TString, ui64> pathToGeneration;
-    for (const auto& diskToDetach: record.GetDisksToDetach()) {
+    for (const auto& diskToDetach: record.GetPathsToDetach()) {
         pathToGeneration[diskToDetach.GetDiskPath()] =
             diskToDetach.GetGeneration();
     }

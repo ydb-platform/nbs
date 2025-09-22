@@ -182,16 +182,6 @@ private:
 
     TDuration GetMaxRequestTimeout() const;
 
-    NProto::TError AddOpenDetachPathRequest(
-        const NActors::TActorContext& ctx,
-        const TString& path,
-        TRequestInfoPtr requestInfo);
-
-    void ReplyToOpenDetachPathRequest(
-        const NActors::TActorContext& ctx,
-        const TString& path,
-        NActors::IEventBasePtr response);
-
     void CheckIsSamePath(
         const NActors::TActorContext& ctx,
         TVector<TString> paths);
