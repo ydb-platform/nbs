@@ -11,6 +11,8 @@ namespace NCloud::NBlockStore {
 using TValue =
     std::variant<TString, int, ui16, ui32, ui64, TBlockRange64, TStringBuf>;
 
+using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_CRITICAL_EVENTS(xxx)                                        \
@@ -132,9 +134,9 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
     TString Report##name(const TString& message = "");                         \
     TString Report##name(                                                      \
         const TString& message,                                                \
-        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
+        const TCritEventParams& keyValues);                                    \
     TString Report##name(                                                      \
-        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
+        const TCritEventParams& keyValues);                                    \
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE
 
@@ -145,9 +147,9 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
     TString Report##name(const TString& message = "");                         \
     TString Report##name(                                                      \
         const TString& message,                                                \
-        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
+        const TCritEventParams& keyValues);                                    \
     TString Report##name(                                                      \
-        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
+        const TCritEventParams& keyValues);                                    \
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
 
@@ -159,9 +161,9 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
     TString Report##name(const TString& message = "");                         \
     TString Report##name(                                                      \
         const TString& message,                                                \
-        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
+        const TCritEventParams& keyValues);                                    \
     TString Report##name(                                                      \
-        const TVector<std::pair<TStringBuf, TValue>>& keyValues);              \
+        const TCritEventParams& keyValues);                                    \
     const TString GetCriticalEventFor##name();                                 \
 // BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
     BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE)

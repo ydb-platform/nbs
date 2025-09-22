@@ -629,6 +629,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(EnableDataIntegrityValidationForYdbBasedDisks,       bool,   false    )\
                                                                                \
     xxx(TrimFreshLogTimeout,                  TDuration,   Seconds(0)         )\
+    xxx(CollectGarbageTimeoutSSD,             TDuration,   Seconds(0)         )\
+    xxx(CollectGarbageTimeoutHDD,             TDuration,   Seconds(0)         )\
                                                                                \
     xxx(DynamicNodeRegistrationTimeout,       TDuration,   Seconds(5)         )\
     xxx(HiveLocalServiceCpuResourceLimit,     ui64,        0                  )\
