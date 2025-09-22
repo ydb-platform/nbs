@@ -54,7 +54,7 @@ class TDiskAgentActor final
 
     struct TPendingAttachRequest
     {
-        THashMap<TString, ui64> DevicePathToDeviceGeneration;
+        THashMap<TString, ui64> PathToGeneration;
         TRequestInfoPtr RequestInfo;
     };
 

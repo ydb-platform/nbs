@@ -217,7 +217,7 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                     TABLEH() { out << "Rdma endpoint"; }
                     TABLEH() { out << "Writer session"; }
                     TABLEH() { out << "Reader sessions"; }
-                    TABLEH() { out << "Device generation"; }
+                    TABLEH() { out << "Path generation"; }
                     TABLEH () {
                         out << "Open close device";
                     }
