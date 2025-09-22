@@ -14,9 +14,9 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IWriteBackCacheStatsReporter;
-using IWriteBackCacheStatsReporterPtr =
-    std::shared_ptr<IWriteBackCacheStatsReporter>;
+struct IWriteBackCacheStats;
+using IWriteBackCacheStatsPtr =
+    std::shared_ptr<IWriteBackCacheStats>;
 
 class TWriteBackCache final
 {
@@ -32,7 +32,7 @@ public:
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
-        IWriteBackCacheStatsReporterPtr statsReporter,
+        IWriteBackCacheStatsPtr stats,
         const TString& filePath,
         ui32 capacityBytes,
         TDuration automaticFlushPeriod,
@@ -104,9 +104,9 @@ struct TWriteBackCache::TWriteDataStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IWriteBackCacheStatsReporter
+struct IWriteBackCacheStats
 {
-    virtual ~IWriteBackCacheStatsReporter() = default;
+    virtual ~IWriteBackCacheStats() = default;
 
     virtual void IncrementCompletedFlushCount() = 0;
     virtual void IncrementFailedFlushCount() = 0;
@@ -118,7 +118,7 @@ struct IWriteBackCacheStatsReporter
     virtual void SetPersistentQueueStats(
         const TWriteBackCache::TPersistentQueueStats& stats) = 0;
 
-    virtual void AddWriteRequestStats(
+    virtual void PostWriteRequestStats(
         const TWriteBackCache::TWriteDataStats& stats) = 0;
 };
 
