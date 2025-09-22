@@ -52,10 +52,10 @@ type Source interface {
 	baseSource
 
 	Read(ctx context.Context, chunk *Chunk) error
-	// Represents total chunk count in the source.
+	// Returns total chunk count in the source.
 	ChunkCount(ctx context.Context) (uint32, error)
-	// Represents the actual data size to read. May be less
-	// than ChunkCount * chunkSize. Useful for estimating.
+	// Returns data size to read. Might be less than ChunkCount * chunkSize.
+	// Used to calculate the estimated transfer time.
 	Size(ctx context.Context) (uint64, error)
 }
 
