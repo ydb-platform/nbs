@@ -50,10 +50,10 @@ func (t *createEmptyDiskTask) Run(
 	client, err := SelectCell(
 		ctx,
 		execCtx,
-		t.nbsFactory,
-		t.cellSelector,
-		t.params,
 		t.state,
+		t.params,
+		t.cellSelector,
+		t.nbsFactory,
 	)
 	if err != nil {
 		return err

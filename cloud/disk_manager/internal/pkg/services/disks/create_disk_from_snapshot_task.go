@@ -62,10 +62,10 @@ func (t *createDiskFromSnapshotTask) Run(
 	client, err := SelectCell(
 		ctx,
 		execCtx,
-		t.nbsFactory,
-		t.cellSelector,
-		params,
 		t.state,
+		params,
+		t.cellSelector,
+		t.nbsFactory,
 	)
 	if err != nil {
 		return err
