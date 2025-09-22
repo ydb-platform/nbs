@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/action.pb.h>
 #include <cloud/filestore/public/api/protos/checkpoint.pb.h>
@@ -44,20 +45,6 @@ void InitProfileLogLockRequestInfo(
         lockInfo->SetType(request.GetLockType());
     }
     lockInfo->SetPid(request.GetPid());
-}
-
-ui64 CalculateByteCount(const NProto::TWriteDataRequest& request)
-{
-    if (!request.GetBuffer().empty()) {
-        return request.GetBuffer().size();
-    }
-
-    ui64 byteCount = 0;
-    for (const auto& iovec: request.GetIovecs()) {
-        byteCount += iovec.GetLength();
-    }
-
-    return byteCount;
 }
 
 } // namespace
@@ -251,7 +238,7 @@ void InitProfileLogRequestInfo(
     rangeInfo->SetNodeId(request.GetNodeId());
     rangeInfo->SetHandle(request.GetHandle());
     rangeInfo->SetOffset(request.GetOffset());
-    rangeInfo->SetBytes(CalculateByteCount(request));
+    rangeInfo->SetBytes(NStorage::CalculateByteCount(request));
 }
 
 template <>

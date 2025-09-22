@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
@@ -31,22 +32,6 @@ bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
     const auto disabledAsHdd = isHdd &&
         fs.GetFeatures().GetThreeStageWriteDisabledForHDD();
     return !disabledAsHdd && fs.GetFeatures().GetThreeStageWriteEnabled();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-ui64 CalculateByteCount(const NProto::TWriteDataRequest& request)
-{
-    if (!request.GetBuffer().empty()) {
-        return request.GetBuffer().size();
-    }
-
-    ui64 byteCount = 0;
-    for (const auto& iovec: request.GetIovecs()) {
-        byteCount += iovec.GetLength();
-    }
-
-    return byteCount;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

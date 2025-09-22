@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
 #include <cloud/filestore/libs/storage/api/service.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
@@ -14,30 +15,6 @@ using namespace NActors;
 using namespace NKikimr;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TProtoRequest>
-ui64 CalculateByteCount(const TProtoRequest& request)
-{
-    return request.GetLength();
-}
-
-template <>
-ui64 CalculateByteCount<NProto::TWriteDataRequest>(
-    const NProto::TWriteDataRequest& request)
-{
-    if (!request.GetBuffer().empty()) {
-        return request.GetBuffer().size();
-    }
-
-    ui64 byteCount = 0;
-    for (const auto& iovec: request.GetIovecs()) {
-        byteCount += iovec.GetLength();
-    }
-
-    return byteCount;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
