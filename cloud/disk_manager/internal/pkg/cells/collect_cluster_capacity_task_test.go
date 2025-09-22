@@ -4,10 +4,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/protos"
+	cells_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
@@ -40,7 +42,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 		},
 	}
 
-	capacity := nbs.ClusterCapacityInfo{
+	capacityInfo := nbs.ClusterCapacityInfo{
 		DiskKind:   types.DiskKind_DISK_KIND_SSD,
 		FreeBytes:  1024,
 		TotalBytes: 2048,
@@ -48,21 +50,55 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 
 	nbsFactory.On(
 		"GetClient",
-		mock.Anything, // Can't use ctx, because of errgroup.
-		mock.Anything,
+		ctx,
+		mock.Anything, // For each cell we return the same mock client.
 	).Return(nbsClient, nil).Times(3)
 	nbsClient.On("GetClusterCapacity", mock.Anything).Return(
-		[]nbs.ClusterCapacityInfo{capacity},
+		[]nbs.ClusterCapacityInfo{capacityInfo},
 		nil,
 	).Times(3)
 
 	storage.On("UpdateClusterCapacities",
-		mock.Anything, // Can't use ctx, because of errgroup.
-		mock.Anything,
-		mock.Anything,
-	).Return(nil).Times(3)
+		ctx,
+		[]cells_storage.ClusterCapacity{
+			{
+				ZoneID:     "zone-a",
+				CellID:     "zone-a-cell1",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
+			},
+		},
+		mock.Anything, // deleteBefore.
+	).Return(nil).Once()
+	storage.On("UpdateClusterCapacities",
+		ctx,
+		[]cells_storage.ClusterCapacity{
+			{
+				ZoneID:     "zone-a",
+				CellID:     "zone-a",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
+			},
+		},
+		mock.Anything, // deleteBefore.
+	).Return(nil).Once()
+	storage.On("UpdateClusterCapacities",
+		ctx,
+		[]cells_storage.ClusterCapacity{
+			{
+				ZoneID:     "zone-b",
+				CellID:     "zone-b",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
+			},
+		},
+		mock.Anything, // deleteBefore.
+	).Return(nil).Once()
 
-	execCtx.On("SaveState", mock.Anything).Return(nil).Once()
+	execCtx.On("SaveState", ctx).Return(nil).Once()
 
 	task := collectClusterCapacityTask{
 		config:     config,
@@ -73,6 +109,173 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 
 	err := task.Run(ctx, execCtx)
 	require.NoError(t, err)
+	require.ElementsMatch(
+		t,
+		[]string{"zone-a-cell1", "zone-a", "zone-b"},
+		task.state.ProcessedCells,
+	)
+
+	mock.AssertExpectationsForObjects(
+		t,
+		execCtx,
+		storage,
+		nbsFactory,
+		nbsClient,
+	)
+}
+
+func TestCollectClusterCapacityFailureBecauseOfGetClusterCapacityHandler(
+	t *testing.T,
+) {
+
+	ctx := newContext()
+	execCtx := tasks_mocks.NewExecutionContextMock()
+	storage := storage_mocks.NewStorageMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient1 := nbs_mocks.NewClientMock()
+	nbsClient2 := nbs_mocks.NewClientMock()
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			"zone-a": {Cells: []string{"zone-a-cell1", "zone-a"}},
+		},
+	}
+
+	capacityInfo := nbs.ClusterCapacityInfo{
+		DiskKind:   types.DiskKind_DISK_KIND_SSD,
+		FreeBytes:  1024,
+		TotalBytes: 2048,
+	}
+
+	nbsFactory.On("GetClient", ctx, "zone-a").Return(nbsClient1, nil).Once()
+	nbsFactory.On(
+		"GetClient",
+		ctx,
+		"zone-a-cell1",
+	).Return(nbsClient2, nil).Once()
+
+	nbsClient1.On("GetClusterCapacity", ctx).Return(
+		[]nbs.ClusterCapacityInfo{capacityInfo},
+		nil,
+	).Once()
+	nbsClient2.On("GetClusterCapacity", ctx).Return(
+		[]nbs.ClusterCapacityInfo{},
+		assert.AnError,
+	).Once()
+
+	// Only the successful cell should be updated
+	storage.On("UpdateClusterCapacities",
+		ctx,
+		[]cells_storage.ClusterCapacity{
+			{
+				ZoneID:     "zone-a",
+				CellID:     "zone-a",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
+			},
+		},
+		mock.Anything, // deleteBefore.
+	).Return(nil).Once()
+
+	execCtx.On("SaveState", ctx).Return(nil).Once()
+
+	task := collectClusterCapacityTask{
+		config:     config,
+		storage:    storage,
+		nbsFactory: nbsFactory,
+		state:      &protos.CollectClusterCapacityState{},
+	}
+
+	err := task.Run(ctx, execCtx)
+	require.Error(t, err)
+	require.Equal(t, err, assert.AnError)
+	// Only the successful cell should be in ProcessedCells.
+	require.ElementsMatch(t, []string{"zone-a"}, task.state.ProcessedCells)
+
+	mock.AssertExpectationsForObjects(
+		t,
+		execCtx,
+		storage,
+		nbsFactory,
+		nbsClient1,
+		nbsClient2,
+	)
+}
+
+func TestCollectClusterCapacityFailureBecauseOfStorageError(
+	t *testing.T,
+) {
+
+	ctx := newContext()
+	execCtx := tasks_mocks.NewExecutionContextMock()
+	storage := storage_mocks.NewStorageMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient := nbs_mocks.NewClientMock()
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			"zone-a": {Cells: []string{"zone-a-cell1", "zone-a"}},
+		},
+	}
+
+	capacityInfo := nbs.ClusterCapacityInfo{
+		DiskKind:   types.DiskKind_DISK_KIND_SSD,
+		FreeBytes:  1024,
+		TotalBytes: 2048,
+	}
+
+	nbsFactory.On(
+		"GetClient",
+		ctx,
+		mock.Anything, // For each cell we return the same mock client.
+	).Return(nbsClient, nil).Twice()
+
+	nbsClient.On("GetClusterCapacity", ctx).Return(
+		[]nbs.ClusterCapacityInfo{capacityInfo},
+		nil,
+	).Twice()
+
+	storage.On("UpdateClusterCapacities",
+		ctx,
+		[]cells_storage.ClusterCapacity{
+			{
+				ZoneID:     "zone-a",
+				CellID:     "zone-a",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
+			},
+		},
+		mock.Anything, // deleteBefore.
+	).Return(nil).Once()
+	storage.On("UpdateClusterCapacities",
+		ctx,
+		[]cells_storage.ClusterCapacity{
+			{
+				ZoneID:     "zone-a",
+				CellID:     "zone-a-cell1",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
+			},
+		},
+		mock.Anything, // deleteBefore.
+	).Return(assert.AnError).Once()
+
+	execCtx.On("SaveState", ctx).Return(nil).Once()
+
+	task := collectClusterCapacityTask{
+		config:     config,
+		storage:    storage,
+		nbsFactory: nbsFactory,
+		state:      &protos.CollectClusterCapacityState{},
+	}
+
+	err := task.Run(ctx, execCtx)
+	require.Error(t, err)
+	require.Equal(t, err, assert.AnError)
+	// Only the successful cell should be in ProcessedCells.
+	require.ElementsMatch(t, []string{"zone-a"}, task.state.ProcessedCells)
+
 	mock.AssertExpectationsForObjects(
 		t,
 		execCtx,

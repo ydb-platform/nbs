@@ -40,14 +40,10 @@ func (t *collectClusterCapacityTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	group, ctx := errgroup.WithContext(ctx)
+	group := errgroup.Group{}
 
-	type cellLocation struct {
-		zoneID string
-		cellID string
-	}
-
-	var cellsToCollect []cellLocation
+	var cellsToCollect []string
+	cellIDToZoneID := make(map[string]string)
 
 	for zoneID, cells := range t.config.Cells {
 		for _, cellID := range cells.Cells {
@@ -55,31 +51,34 @@ func (t *collectClusterCapacityTask) Run(
 				continue
 			}
 
-			cellsToCollect = append(cellsToCollect, cellLocation{
-				zoneID: zoneID,
-				cellID: cellID,
-			})
+			cellsToCollect = append(cellsToCollect, cellID)
+			cellIDToZoneID[cellID] = zoneID
 		}
 	}
 
+	expirationTimeout, err := time.ParseDuration(
+		t.config.GetClusterCapacityExpirationTimeout(),
+	)
+	if err != nil {
+		return err
+	}
+
+	deleteBefore := time.Now().Add(-expirationTimeout)
 	completedCells := make(chan string)
 
-	for _, cellInfo := range cellsToCollect {
+	for _, cellID := range cellsToCollect {
 		group.Go(func(zoneID string, cellID string) func() error {
 			return func() error {
-				err := t.updateCellCapacity(ctx, zoneID, cellID)
+				err := t.updateCellCapacity(ctx, zoneID, cellID, deleteBefore)
 				if err != nil {
 					return err
 				}
 
-				select {
-				case completedCells <- cellID:
-				case <-ctx.Done():
-					return ctx.Err()
-				}
+				completedCells <- cellID
+
 				return nil
 			}
-		}(cellInfo.zoneID, cellInfo.cellID))
+		}(cellIDToZoneID[cellID], cellID))
 	}
 
 	go func() {
@@ -91,7 +90,7 @@ func (t *collectClusterCapacityTask) Run(
 		t.state.ProcessedCells = append(t.state.ProcessedCells, cell)
 	}
 
-	err := execCtx.SaveState(ctx)
+	err = execCtx.SaveState(ctx)
 	if err != nil {
 		return err
 	}
@@ -129,6 +128,7 @@ func (t *collectClusterCapacityTask) updateCellCapacity(
 	ctx context.Context,
 	zoneID string,
 	cellID string,
+	deleteBefore time.Time,
 ) error {
 
 	logging.Info(ctx, "Getting cluster capacity for cell %s", cellID)
@@ -160,14 +160,6 @@ func (t *collectClusterCapacityTask) updateCellCapacity(
 		})
 	}
 
-	expirationTimeout, err := time.ParseDuration(
-		t.config.GetClusterCapacityExpirationTimeout(),
-	)
-	if err != nil {
-		return err
-	}
-
-	deleteBefore := time.Now().Add(-expirationTimeout)
 	err = t.storage.UpdateClusterCapacities(
 		ctx,
 		capacities,
