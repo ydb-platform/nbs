@@ -2,7 +2,6 @@ package cells
 
 import (
 	"context"
-	"slices"
 	"time"
 
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
@@ -10,6 +9,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"golang.org/x/sync/errgroup"
 
@@ -43,24 +43,22 @@ func (t *collectClusterCapacityTask) Run(
 
 	group := errgroup.Group{}
 
-	var cellsToCollect []string
+	cellsToCollect := tasks_common.NewStringSet()
 	cellIDToZoneID := make(map[string]string)
 
 	for zoneID, cells := range t.config.Cells {
 		for _, cellID := range cells.Cells {
-			if slices.Contains(t.state.ProcessedCells, cellID) {
-				continue
-			}
-
-			cellsToCollect = append(cellsToCollect, cellID)
+			cellsToCollect.Add(cellID)
 			cellIDToZoneID[cellID] = zoneID
 		}
 	}
 
+	cellsToCollect.Subtract(tasks_common.NewStringSet(t.state.ProcessedCells...))
+
 	deleteOlderThan := time.Now().Add(-t.expirationTimeout)
 	completedCells := make(chan string)
 
-	for _, cellID := range cellsToCollect {
+	for _, cellID := range cellsToCollect.List() {
 		group.Go(func(zoneID string, cellID string) func() error {
 			return func() error {
 				err := t.updateCellCapacity(ctx, zoneID, cellID, deleteOlderThan)
@@ -75,6 +73,7 @@ func (t *collectClusterCapacityTask) Run(
 		}(cellIDToZoneID[cellID], cellID))
 	}
 
+	// Need to close channel only after end of all goroutines.
 	go func() {
 		_ = group.Wait()
 		close(completedCells)
@@ -89,6 +88,7 @@ func (t *collectClusterCapacityTask) Run(
 		return err
 	}
 
+	// Processing group error after saving task progress.
 	err = group.Wait()
 	if err != nil {
 		return err
