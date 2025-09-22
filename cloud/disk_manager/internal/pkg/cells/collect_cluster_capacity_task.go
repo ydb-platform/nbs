@@ -20,10 +20,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type collectClusterCapacityTask struct {
-	config     *cells_config.CellsConfig
-	storage    storage.Storage
-	nbsFactory nbs.Factory
-	state      *protos.CollectClusterCapacityState
+	config            *cells_config.CellsConfig
+	storage           storage.Storage
+	nbsFactory        nbs.Factory
+	state             *protos.CollectClusterCapacityState
+	expirationTimeout time.Duration
 }
 
 func (t *collectClusterCapacityTask) Save() ([]byte, error) {
@@ -56,20 +57,13 @@ func (t *collectClusterCapacityTask) Run(
 		}
 	}
 
-	expirationTimeout, err := time.ParseDuration(
-		t.config.GetClusterCapacityExpirationTimeout(),
-	)
-	if err != nil {
-		return err
-	}
-
-	deleteBefore := time.Now().Add(-expirationTimeout)
+	deleteOlderThan := time.Now().Add(-t.expirationTimeout)
 	completedCells := make(chan string)
 
 	for _, cellID := range cellsToCollect {
 		group.Go(func(zoneID string, cellID string) func() error {
 			return func() error {
-				err := t.updateCellCapacity(ctx, zoneID, cellID, deleteBefore)
+				err := t.updateCellCapacity(ctx, zoneID, cellID, deleteOlderThan)
 				if err != nil {
 					return err
 				}
@@ -90,7 +84,7 @@ func (t *collectClusterCapacityTask) Run(
 		t.state.ProcessedCells = append(t.state.ProcessedCells, cell)
 	}
 
-	err = execCtx.SaveState(ctx)
+	err := execCtx.SaveState(ctx)
 	if err != nil {
 		return err
 	}
@@ -128,7 +122,7 @@ func (t *collectClusterCapacityTask) updateCellCapacity(
 	ctx context.Context,
 	zoneID string,
 	cellID string,
-	deleteBefore time.Time,
+	deleteOlderThan time.Time,
 ) error {
 
 	logging.Info(
@@ -168,7 +162,7 @@ func (t *collectClusterCapacityTask) updateCellCapacity(
 	err = t.storage.UpdateClusterCapacities(
 		ctx,
 		capacities,
-		deleteBefore,
+		deleteOlderThan,
 	)
 	if err != nil {
 		return err

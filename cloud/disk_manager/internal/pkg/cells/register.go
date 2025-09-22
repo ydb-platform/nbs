@@ -28,11 +28,19 @@ func RegisterForExecution(
 		return err
 	}
 
+	clusterCapacityExpirationTimeout, err := time.ParseDuration(
+		config.GetClusterCapacityExpirationTimeout(),
+	)
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("cells.CollectClusterCapacity", func() tasks.Task {
 		return &collectClusterCapacityTask{
-			config:     config,
-			storage:    storage,
-			nbsFactory: nbsFactory,
+			config:            config,
+			storage:           storage,
+			nbsFactory:        nbsFactory,
+			expirationTimeout: clusterCapacityExpirationTimeout,
 		}
 	})
 	if err != nil {

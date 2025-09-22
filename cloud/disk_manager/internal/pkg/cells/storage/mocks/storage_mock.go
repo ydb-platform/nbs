@@ -18,10 +18,10 @@ type StorageMock struct {
 func (s *StorageMock) UpdateClusterCapacities(
 	ctx context.Context,
 	capacities []storage.ClusterCapacity,
-	deleteBefore time.Time,
+	deleteOlderThan time.Time,
 ) error {
 
-	args := s.Called(ctx, capacities, deleteBefore)
+	args := s.Called(ctx, capacities, deleteOlderThan)
 	return args.Error(0)
 }
 

@@ -3,6 +3,7 @@ package cells
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -69,7 +70,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 				TotalBytes: 2048,
 			},
 		},
-		mock.Anything, // deleteBefore.
+		mock.Anything, // deleteOlderThan.
 	).Return(nil).Once()
 	storage.On("UpdateClusterCapacities",
 		ctx,
@@ -82,7 +83,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 				TotalBytes: 2048,
 			},
 		},
-		mock.Anything, // deleteBefore.
+		mock.Anything, // deleteOlderThan.
 	).Return(nil).Once()
 	storage.On("UpdateClusterCapacities",
 		ctx,
@@ -95,16 +96,17 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 				TotalBytes: 2048,
 			},
 		},
-		mock.Anything, // deleteBefore.
+		mock.Anything, // deleteOlderThan.
 	).Return(nil).Once()
 
 	execCtx.On("SaveState", ctx).Return(nil).Once()
 
 	task := collectClusterCapacityTask{
-		config:     config,
-		storage:    storage,
-		nbsFactory: nbsFactory,
-		state:      &protos.CollectClusterCapacityState{},
+		config:            config,
+		storage:           storage,
+		nbsFactory:        nbsFactory,
+		state:             &protos.CollectClusterCapacityState{},
+		expirationTimeout: time.Hour, // Can be any, storage is mocked.
 	}
 
 	err := task.Run(ctx, execCtx)
@@ -174,16 +176,17 @@ func TestCollectClusterCapacityFailureBecauseOfGetClusterCapacityHandler(
 				TotalBytes: 2048,
 			},
 		},
-		mock.Anything, // deleteBefore.
+		mock.Anything, // deleteOlderThan.
 	).Return(nil).Once()
 
 	execCtx.On("SaveState", ctx).Return(nil).Once()
 
 	task := collectClusterCapacityTask{
-		config:     config,
-		storage:    storage,
-		nbsFactory: nbsFactory,
-		state:      &protos.CollectClusterCapacityState{},
+		config:            config,
+		storage:           storage,
+		nbsFactory:        nbsFactory,
+		state:             &protos.CollectClusterCapacityState{},
+		expirationTimeout: time.Hour, // Can be any, storage is mocked.
 	}
 
 	err := task.Run(ctx, execCtx)
@@ -245,7 +248,7 @@ func TestCollectClusterCapacityFailureBecauseOfStorageError(
 				TotalBytes: 2048,
 			},
 		},
-		mock.Anything, // deleteBefore.
+		mock.Anything, // deleteOlderThan.
 	).Return(nil).Once()
 	storage.On("UpdateClusterCapacities",
 		ctx,
@@ -258,16 +261,17 @@ func TestCollectClusterCapacityFailureBecauseOfStorageError(
 				TotalBytes: 2048,
 			},
 		},
-		mock.Anything, // deleteBefore.
+		mock.Anything, // deleteOlderThan.
 	).Return(assert.AnError).Once()
 
 	execCtx.On("SaveState", ctx).Return(nil).Once()
 
 	task := collectClusterCapacityTask{
-		config:     config,
-		storage:    storage,
-		nbsFactory: nbsFactory,
-		state:      &protos.CollectClusterCapacityState{},
+		config:            config,
+		storage:           storage,
+		nbsFactory:        nbsFactory,
+		state:             &protos.CollectClusterCapacityState{},
+		expirationTimeout: time.Hour, // Can be any, storage is mocked.
 	}
 
 	err := task.Run(ctx, execCtx)

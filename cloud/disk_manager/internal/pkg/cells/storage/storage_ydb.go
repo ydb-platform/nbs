@@ -37,7 +37,7 @@ func NewStorage(
 func (s *storageYDB) UpdateClusterCapacities(
 	ctx context.Context,
 	capacities []ClusterCapacity,
-	deleteBefore time.Time,
+	deleteOlderThan time.Time,
 ) error {
 
 	return s.db.Execute(
@@ -47,7 +47,7 @@ func (s *storageYDB) UpdateClusterCapacities(
 				ctx,
 				session,
 				capacities,
-				deleteBefore,
+				deleteOlderThan,
 			)
 		},
 	)
@@ -80,7 +80,7 @@ func (s *storageYDB) GetRecentClusterCapacities(
 func (s *storageYDB) updateClusterCapacities(ctx context.Context,
 	session *persistence.Session,
 	capacities []ClusterCapacity,
-	deleteBefore time.Time,
+	deleteOlderThan time.Time,
 ) error {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -92,13 +92,13 @@ func (s *storageYDB) updateClusterCapacities(ctx context.Context,
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
-		declare $delete_before as Timestamp;
+		declare $delete_older_than as Timestamp;
 
 		delete from cluster_capacity
-		where created_at < $delete_before
+		where created_at < $delete_older_than
 	`, s.tablesPath),
-		persistence.ValueParam("$delete_before",
-			persistence.TimestampValue(deleteBefore)),
+		persistence.ValueParam("$delete_older_than",
+			persistence.TimestampValue(deleteOlderThan)),
 	)
 	if err != nil {
 		return err
