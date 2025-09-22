@@ -33,6 +33,16 @@ enum ECheckpointState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TPathToGeneration
+{
+    // Path to disk we want to attach.
+    string DiskPath = 1;
+
+    //  Monotonously increasing counter, need to order attach detach requests.
+    uint64 Generation = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Mean time between failures.
 message TMeanTimeBetweenFailures
 {
@@ -596,17 +606,13 @@ message TRegisterAgentResponse
     // List of device IDs to which Disk Agent should disable IO operations.
     repeated string DevicesToDisableIO = 2;
 
-    message TDeviceToGeneration
-    {
-        string DevicePath = 1;
-        uint64 DeviceGeneration = 2;
-    }
+    uint32 DiskRegistryTabletGeneration = 3;
 
     // Allowed devices attached to the agent.
-    repeated TDeviceToGeneration AllowedDevices = 3;
+    repeated TPathToGeneration AllowedDisks = 4;
 
     // Unallowed devices attached to the agent.
-    repeated TDeviceToGeneration UnknownDevices = 4;
+    repeated TPathToGeneration UnknownDisks = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1866,43 +1872,43 @@ message TGetClusterCapacityResponse
 ////////////////////////////////////////////////////////////////////////////////
 // OpenDevice
 
-message TOpenDeviceRequest
+message TAttachPathRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
 
-    // Path to device we want to open.
-    string DevicePath = 2;
+    // List of paths to disks we want to attach.
+    repeated TPathToGeneration DisksToAttach = 2;
 
-    //  Monotonously increasing counter, need to order open close requests.
-    uint64 DeviceGeneration = 3;
+    // Generation of DR tablet.
+    uint32 DiskRegistryGeneration = 3;
 }
 
-message TOpenDeviceResponse
+message TAttachPathResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // List of opened devices.
-    repeated TDeviceConfig OpenedDevices = 2;
+    // List of attached devices.
+    repeated TDeviceConfig AttachedDevices = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // CloseDevice
 
-message TCloseDeviceRequest
+message TDetachPathRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
 
-    // Path to device we want to open.
-    string DevicePath = 2;
+    // List of paths to disks we want to detach.
+    repeated TPathToGeneration DisksToDetach = 2;
 
-    //  Monotonously increasing counter, need to order open close requests.
-    uint64 DeviceGeneration = 3;
+    // Generation of DR tablet.
+    uint32 DiskRegistryGeneration = 3;
 }
 
-message TCloseDeviceResponse
+message TDetachPathResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
