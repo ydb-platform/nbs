@@ -415,7 +415,7 @@ func (t *replicateDiskTask) setEstimate(
 	diskSource common.Source,
 ) error {
 
-	bytesToReplicate, err := nbs.GetDiskSourceBytesToRead(ctx, diskSource)
+	bytesToReplicate, err := diskSource.EstimatedBytesToRead(ctx)
 	if err != nil {
 		return err
 	}
