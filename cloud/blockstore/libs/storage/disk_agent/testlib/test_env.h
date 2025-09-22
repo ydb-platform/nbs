@@ -316,10 +316,10 @@ public:
         auto request = std::make_unique<TEvDiskAgent::TEvAttachPathRequest>();
         request->Record.SetDiskRegistryGeneration(drGeneration);
 
-        for (auto& [path, gen]: pathToGeneration) {
-            auto* device = request->Record.AddDisksToAttach();
-            device->SetDiskPath(path);
-            device->SetGeneration(gen);
+        for (const auto& [path, gen]: pathToGeneration) {
+            auto* pathToAttach = request->Record.AddDisksToAttach();
+            pathToAttach->SetDiskPath(path);
+            pathToAttach->SetGeneration(gen);
         }
 
         return request;
@@ -332,10 +332,10 @@ public:
         auto request = std::make_unique<TEvDiskAgent::TEvDetachPathRequest>();
         request->Record.SetDiskRegistryGeneration(drGeneration);
 
-        for (auto& [path, gen]: pathToGeneration) {
-            auto* device = request->Record.AddDisksToDetach();
-            device->SetDiskPath(path);
-            device->SetGeneration(gen);
+        for (const auto& [path, gen]: pathToGeneration) {
+            auto* pathToDetach = request->Record.AddDisksToDetach();
+            pathToDetach->SetDiskPath(path);
+            pathToDetach->SetGeneration(gen);
         }
 
         return request;
