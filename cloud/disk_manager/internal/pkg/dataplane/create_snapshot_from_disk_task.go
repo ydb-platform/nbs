@@ -420,7 +420,7 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 	diskSource common.Source,
 ) error {
 
-	bytesToTransfer, err := diskSource.Size(ctx)
+	bytesToTransfer, err := diskSource.EstimatedBytesToRead(ctx)
 	if err != nil {
 		return err
 	}

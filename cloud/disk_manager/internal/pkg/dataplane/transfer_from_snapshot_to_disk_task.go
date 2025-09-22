@@ -59,13 +59,13 @@ func (t *transferFromSnapshotToDiskTask) Run(
 	source := snapshot.NewSnapshotSource(t.request.SrcSnapshotId, t.storage)
 	defer source.Close(ctx)
 
-	sourceSize, err := source.Size(ctx)
+	bytesToTransfer, err := source.EstimatedBytesToRead(ctx)
 	if err != nil {
 		return err
 	}
 
 	execCtx.SetEstimatedInflightDuration(performance.Estimate(
-		sourceSize,
+		bytesToTransfer,
 		t.performanceConfig.GetTransferBetweenDiskAndSnapshotBandwidthMiBs(),
 	))
 

@@ -150,7 +150,7 @@ func (s *urlSource) ChunkCount(ctx context.Context) (uint32, error) {
 	return s.chunkMapReader.chunkCount(), nil
 }
 
-func (s *urlSource) Size(ctx context.Context) (uint64, error) {
+func (s *urlSource) EstimatedBytesToRead(ctx context.Context) (uint64, error) {
 	return s.chunkMapReader.size(), nil
 }
 

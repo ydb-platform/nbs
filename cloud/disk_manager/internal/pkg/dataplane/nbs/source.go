@@ -225,7 +225,7 @@ func (s *diskSource) ChunkCount(ctx context.Context) (uint32, error) {
 	return s.chunkCount, nil
 }
 
-func (s *diskSource) Size(ctx context.Context) (uint64, error) {
+func (s *diskSource) EstimatedBytesToRead(ctx context.Context) (uint64, error) {
 	return s.client.GetChangedBytes(
 		ctx,
 		s.diskID,

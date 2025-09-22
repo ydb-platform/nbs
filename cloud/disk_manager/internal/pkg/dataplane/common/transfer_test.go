@@ -52,7 +52,7 @@ func (m *sourceMock) ChunkCount(ctx context.Context) (uint32, error) {
 	return args.Get(0).(uint32), args.Error(1)
 }
 
-func (m *sourceMock) Size(ctx context.Context) (uint64, error) {
+func (m *sourceMock) EstimatedBytesToRead(ctx context.Context) (uint64, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(uint64), args.Error(1)
 }

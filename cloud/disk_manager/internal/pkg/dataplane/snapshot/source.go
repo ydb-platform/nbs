@@ -152,7 +152,7 @@ func (s *snapshotSource) ChunkCount(ctx context.Context) (uint32, error) {
 }
 
 // Not thread-safe.
-func (s *snapshotSource) Size(ctx context.Context) (uint64, error) {
+func (s *snapshotSource) EstimatedBytesToRead(ctx context.Context) (uint64, error) {
 	meta, err := s.getSnapshotMeta(ctx)
 	if err != nil {
 		return 0, err
