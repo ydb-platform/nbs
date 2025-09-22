@@ -391,11 +391,11 @@ private:
                 ctx,
                 TFileStoreComponents::SERVICE,
                 "%s Sending TEvPut request to blob storage, blobId: %s, proxy: "
-                "%s zero-copy: %s",
+                "%s iovecs size: %ul",
                 LogTag.c_str(),
                 blobId.ToString().c_str(),
                 proxy.ToString().c_str(),
-                WriteRequest.GetIovecs().size() != 0 ? "true" : "false");
+                WriteRequest.GetIovecs().size());
             SendToBSProxy(ctx, proxy, request.release(), blobId.Cookie());
         }
     }
