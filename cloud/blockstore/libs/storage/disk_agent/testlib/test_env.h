@@ -317,7 +317,7 @@ public:
         request->Record.SetDiskRegistryGeneration(drGeneration);
 
         for (const auto& [path, gen]: pathToGeneration) {
-            auto* pathToAttach = request->Record.AddDisksToAttach();
+            auto* pathToAttach = request->Record.AddPathsToAttach();
             pathToAttach->SetDiskPath(path);
             pathToAttach->SetGeneration(gen);
         }
@@ -333,7 +333,7 @@ public:
         request->Record.SetDiskRegistryGeneration(drGeneration);
 
         for (const auto& [path, gen]: pathToGeneration) {
-            auto* pathToDetach = request->Record.AddDisksToDetach();
+            auto* pathToDetach = request->Record.AddPathsToDetach();
             pathToDetach->SetDiskPath(path);
             pathToDetach->SetGeneration(gen);
         }

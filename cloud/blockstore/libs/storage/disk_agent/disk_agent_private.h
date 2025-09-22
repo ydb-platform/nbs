@@ -211,7 +211,6 @@ struct TEvDiskAgentPrivate
     struct TPathAttached
     {
         THashMap<TString, TResultOrError<IStoragePtr>> Devices;
-        TString Path;
     };
 
     //

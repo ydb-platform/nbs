@@ -55,12 +55,12 @@ public:
             auto attachRequest =
                 std::make_unique<TEvDiskAgent::TEvAttachPathRequest>();
 
-            *attachRequest->Record.AddDisksToAttach() = std::move(pathToGen);
+            *attachRequest->Record.AddPathsToAttach() = std::move(pathToGen);
             request = std::move(attachRequest);
         } else {
             auto detachRequest =
                 std::make_unique<TEvDiskAgent::TEvDetachPathRequest>();
-            *detachRequest->Record.AddDisksToDetach() = std::move(pathToGen);
+            *detachRequest->Record.AddPathsToDetach() = std::move(pathToGen);
             request = std::move(detachRequest);
         }
 
