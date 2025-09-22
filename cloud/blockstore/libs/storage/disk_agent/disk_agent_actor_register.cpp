@@ -18,7 +18,7 @@ class TRegisterActor final: public TActorBootstrapped<TRegisterActor>
 {
 private:
     const TActorId Owner;
-    const bool OpenCloseDevicesEnabled;
+    const bool AttachDetachPathsEnabled;
     TRequestInfoPtr RequestInfo;
     NProto::TAgentConfig Config;
 
@@ -88,7 +88,7 @@ TRegisterActor::TRegisterActor(
         TRequestInfoPtr requestInfo,
         NProto::TAgentConfig config)
     : Owner(owner)
-    , OpenCloseDevicesEnabled(openCloseDevicesEnabled)
+    , AttachDetachPathsEnabled(openCloseDevicesEnabled)
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
 {}
@@ -136,7 +136,7 @@ void TRegisterActor::HandleRegisterAgentResponse(
         msg->Record.GetDevicesToDisableIO().cend());
     Error = msg->GetError();
 
-    if (!OpenCloseDevicesEnabled || (msg->Record.GetUnknownDisks().empty() &&
+    if (!AttachDetachPathsEnabled || (msg->Record.GetUnknownDisks().empty() &&
                                      msg->Record.GetAllowedDisks().empty()))
     {
         ReplyAndDie(ctx);
@@ -311,7 +311,7 @@ void TDiskAgentActor::HandleRegisterAgent(
     NCloud::Register<TRegisterActor>(
         ctx,
         ctx.SelfID,
-        AgentConfig->GetOpenCloseDevicesEnabled(),
+        AgentConfig->GetAttachDetachPathsEnabled(),
         std::move(requestInfo),
         std::move(config));
 }

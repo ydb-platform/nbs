@@ -320,8 +320,8 @@ message TDiskAgentConfig
     // See "EnableDataIntegrityClient" in server.proto for more details.
     optional bool EnableDataIntegrityValidationForDrBasedDisks = 44;
 
-    // Enable to open or close devices in runtime.
-    optional bool OpenCloseDevicesEnabled = 45;
+    // Enable to attach or detach hardware devices in runtime.
+    optional bool AttachDetachPathsEnabled = 45;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

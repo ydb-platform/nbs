@@ -143,7 +143,7 @@ public:
 
     bool GetEnableDataIntegrityValidationForDrBasedDisks() const;
 
-    [[nodiscard]] bool GetOpenCloseDevicesEnabled() const;
+    [[nodiscard]] bool GetAttachDetachPathsEnabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
