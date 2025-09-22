@@ -233,7 +233,7 @@ void TVolumeActor::HandleHttpInfo_CreateCheckpoint(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    const auto checkpointId = params.Get("checkpointid");
+    const auto& checkpointId = params.Get("checkpointid");
 
     if (!checkpointId) {
         RejectHttpRequest(
@@ -248,7 +248,7 @@ void TVolumeActor::HandleHttpInfo_CreateCheckpoint(
         std::move(requestInfo),
         SelfId(),
         TabletID(),
-        std::move(checkpointId),
+        checkpointId,
         THttpCheckpointActor::CreateCheckpoint,
         LogTitle.GetChildWithTags(GetCycleCount(), {{"cp", checkpointId}}));
 }
@@ -258,7 +258,7 @@ void TVolumeActor::HandleHttpInfo_DeleteCheckpoint(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    const auto checkpointId = params.Get("checkpointid");
+    const auto& checkpointId = params.Get("checkpointid");
 
     if (!checkpointId) {
         RejectHttpRequest(
@@ -273,7 +273,7 @@ void TVolumeActor::HandleHttpInfo_DeleteCheckpoint(
         std::move(requestInfo),
         SelfId(),
         TabletID(),
-        std::move(checkpointId),
+        checkpointId,
         THttpCheckpointActor::DeleteCheckpoint,
         LogTitle.GetChildWithTags(GetCycleCount(), {{"cp", checkpointId}}));
 }

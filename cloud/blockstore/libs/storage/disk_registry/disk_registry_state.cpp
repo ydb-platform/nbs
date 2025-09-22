@@ -5073,7 +5073,8 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
         m.SetDeviceId(uuid);
     }
 
-    for (const auto& id: ReplicaTable.GetDevicesReplacements(diskId)) {
+    for (const auto& id: ReplicaTable.GetDevicesReplacements(config.GetDiskId()))
+    {
         *config.AddDeviceReplacementUUIDs() = id;
     }
 
@@ -6457,11 +6458,11 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
     Y_DEBUG_ABORT_UNLESS(masterDiskState);
     if (masterDiskState) {
         masterDiskState->History.push_back(std::move(historyItem));
+        db.UpdateDisk(BuildDiskConfig(diskId, disk));
+        db.UpdateDisk(BuildDiskConfig(disk.MasterDiskId, *masterDiskState));
+        UpdatePlacementGroup(db, diskId, disk, "AbortMigrationAndReplaceDevice");
     }
 
-    db.UpdateDisk(BuildDiskConfig(diskId, disk));
-    db.UpdateDisk(BuildDiskConfig(disk.MasterDiskId, *masterDiskState));
-    UpdatePlacementGroup(db, diskId, disk, "AbortMigrationAndReplaceDevice");
     return {};
 }
 
