@@ -309,19 +309,35 @@ public:
         return request;
     }
 
-    auto CreateOpenDeviceRequest(const TString& path, ui64 deviceGeneration)
+    auto CreateAttachPathRequest(
+        ui64 drGeneration,
+        const THashMap<TString, ui64>& pathToGeneration)
     {
-        auto request = std::make_unique<TEvDiskAgent::TEvOpenDeviceRequest>();
-        request->Record.SetDevicePath(path);
-        request->Record.SetDeviceGeneration(deviceGeneration);
+        auto request = std::make_unique<TEvDiskAgent::TEvAttachPathRequest>();
+        request->Record.SetDiskRegistryGeneration(drGeneration);
+
+        for (auto& [path, gen]: pathToGeneration) {
+            auto* device = request->Record.AddDisksToAttach();
+            device->SetDiskPath(path);
+            device->SetGeneration(gen);
+        }
+
         return request;
     }
 
-    auto CreateCloseDeviceRequest(const TString& path, ui64 deviceGeneration)
+    auto CreateDetachPathRequest(
+        ui64 drGeneration,
+        const THashMap<TString, ui64>& pathToGeneration)
     {
-        auto request = std::make_unique<TEvDiskAgent::TEvCloseDeviceRequest>();
-        request->Record.SetDevicePath(path);
-        request->Record.SetDeviceGeneration(deviceGeneration);
+        auto request = std::make_unique<TEvDiskAgent::TEvDetachPathRequest>();
+        request->Record.SetDiskRegistryGeneration(drGeneration);
+
+        for (auto& [path, gen]: pathToGeneration) {
+            auto* device = request->Record.AddDisksToDetach();
+            device->SetDiskPath(path);
+            device->SetGeneration(gen);
+        }
+
         return request;
     }
 
