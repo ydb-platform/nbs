@@ -35,8 +35,8 @@ enum ECheckpointState
 
 message TPathToGeneration
 {
-    // Path to disk we want to attach.
-    string DiskPath = 1;
+    // Path to HW device.
+    string Path = 1;
 
     //  Monotonously increasing counter, need to order attach detach requests.
     uint64 Generation = 2;
@@ -172,9 +172,6 @@ message TDeviceConfig
 
     // Physical offset in bytes.
     uint64 PhysicalOffset = 19;
-
-    // Monotonously increasing counter, need to order open close requests.
-    uint64 Generation = 20;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -609,10 +606,10 @@ message TRegisterAgentResponse
     uint32 DiskRegistryTabletGeneration = 3;
 
     // Allowed devices attached to the agent.
-    repeated TPathToGeneration AllowedDisks = 4;
+    repeated TPathToGeneration AllowedPaths = 4;
 
     // Unallowed devices attached to the agent.
-    repeated TPathToGeneration UnknownDisks = 5;
+    repeated TPathToGeneration UnknownPaths = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1877,8 +1874,8 @@ message TAttachPathRequest
     // Optional request headers.
     THeaders Headers = 1;
 
-    // List of paths to disks we want to attach.
-    repeated TPathToGeneration DisksToAttach = 2;
+    // List of paths we want to attach.
+    repeated TPathToGeneration PathsToAttach = 2;
 
     // Generation of DR tablet.
     uint32 DiskRegistryGeneration = 3;
@@ -1901,8 +1898,8 @@ message TDetachPathRequest
     // Optional request headers.
     THeaders Headers = 1;
 
-    // List of paths to disks we want to detach.
-    repeated TPathToGeneration DisksToDetach = 2;
+    // List of paths we want to detach.
+    repeated TPathToGeneration PathsToDetach = 2;
 
     // Generation of DR tablet.
     uint32 DiskRegistryGeneration = 3;
