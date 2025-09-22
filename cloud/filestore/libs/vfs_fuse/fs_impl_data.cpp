@@ -561,11 +561,9 @@ void TFileSystem::WriteBuf(
             return;
         }
         Y_ABORT_UNLESS((size_t)res == size);
-        request->SetDataSize(alignedBuffer.Size());
         request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
         request->SetBuffer(alignedBuffer.TakeBuffer());
     } else {
-        ui64 dataSize = 0;
         request->MutableIovecs()->Reserve(bufv->count);
         for (size_t index = 0; index < bufv->count; ++index) {
             const auto* srcFuseBuf = &bufv->buf[index];
@@ -576,9 +574,7 @@ void TFileSystem::WriteBuf(
             auto* iovec = request->MutableIovecs()->Add();
             iovec->SetBase(reinterpret_cast<ui64>(srcFuseBuf->mem));
             iovec->SetLength(srcFuseBuf->size);
-            dataSize += srcFuseBuf->size;
         }
-        request->SetDataSize(dataSize);
     }
     request->SetHandle(fi->fh);
     request->SetOffset(offset);

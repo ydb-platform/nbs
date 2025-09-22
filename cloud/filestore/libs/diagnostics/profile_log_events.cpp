@@ -46,6 +46,20 @@ void InitProfileLogLockRequestInfo(
     lockInfo->SetPid(request.GetPid());
 }
 
+ui64 CalculateByteCount(const NProto::TWriteDataRequest& request)
+{
+    if (!request.GetBuffer().empty()) {
+        return request.GetBuffer().size();
+    }
+
+    ui64 byteCount = 0;
+    for (const auto& iovec: request.GetIovecs()) {
+        byteCount += iovec.GetLength();
+    }
+
+    return byteCount;
+}
+
 } // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -237,7 +251,7 @@ void InitProfileLogRequestInfo(
     rangeInfo->SetNodeId(request.GetNodeId());
     rangeInfo->SetHandle(request.GetHandle());
     rangeInfo->SetOffset(request.GetOffset());
-    rangeInfo->SetBytes(request.GetDataSize());
+    rangeInfo->SetBytes(CalculateByteCount(request));
 }
 
 template <>

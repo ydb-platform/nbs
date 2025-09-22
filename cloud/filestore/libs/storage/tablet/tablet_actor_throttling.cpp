@@ -27,7 +27,16 @@ template <>
 ui64 CalculateByteCount<NProto::TWriteDataRequest>(
     const NProto::TWriteDataRequest& request)
 {
-    return request.GetDataSize();
+    if (!request.GetBuffer().empty()) {
+        return request.GetBuffer().size();
+    }
+
+    ui64 byteCount = 0;
+    for (const auto& iovec: request.GetIovecs()) {
+        byteCount += iovec.GetLength();
+    }
+
+    return byteCount;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

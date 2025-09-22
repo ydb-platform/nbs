@@ -142,7 +142,6 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         req.SetHandle(handle);
         req.SetOffset(offset);
         req.SetBuffer(buffer);
-        req.SetDataSize(buffer.size());
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         InitProfileLogRequestInfo(profileLogRequest, req);

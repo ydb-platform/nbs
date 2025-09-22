@@ -35,6 +35,22 @@ bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui64 CalculateByteCount(const NProto::TWriteDataRequest& request)
+{
+    if (!request.GetBuffer().empty()) {
+        return request.GetBuffer().size();
+    }
+
+    ui64 byteCount = 0;
+    for (const auto& iovec: request.GetIovecs()) {
+        byteCount += iovec.GetLength();
+    }
+
+    return byteCount;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TIoVecContiguousChunk: public IContiguousChunk
 {
     ui64 Base = 0;
@@ -99,7 +115,7 @@ void CopyIovecs(
     }
 
     auto rope = CreateRopeFromIovecs(request);
-    buffer.ReserveAndResize(request.GetDataSize());
+    buffer.ReserveAndResize(length);
     auto bytesCopied =
         TRopeUtils::SafeMemcpy(&buffer[0], rope.Begin() + offset, length);
     Y_ABORT_UNLESS(bytesCopied == length);
@@ -107,7 +123,11 @@ void CopyIovecs(
 
 void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
 {
-    CopyIovecs(request, *request.MutableBuffer(), 0, request.GetDataSize());
+    CopyIovecs(
+        request,
+        *request.MutableBuffer(),
+        0,
+        CalculateByteCount(request));
     request.MutableIovecs()->Clear();
 }
 
@@ -201,7 +221,7 @@ public:
             "%s WriteDataActor started, data size: %lu, offset: %lu, aligned "
             "size: %lu, aligned offset: %lu",
             LogTag.c_str(),
-            WriteRequest.GetDataSize(),
+            CalculateByteCount(WriteRequest),
             WriteRequest.GetOffset(),
             BlobRange.Length,
             BlobRange.Offset);
@@ -422,7 +442,7 @@ private:
         request->Record.SetNodeId(WriteRequest.GetNodeId());
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
-        request->Record.SetLength(WriteRequest.GetDataSize());
+        request->Record.SetLength(CalculateByteCount(WriteRequest));
         for (auto& blob: *GenerateBlobIdsResponse.MutableBlobs()) {
             request->Record.AddBlobIds()->Swap(blob.MutableBlobId());
         }
@@ -530,7 +550,7 @@ private:
             WriteRequest.GetNodeId(),
             WriteRequest.GetHandle(),
             WriteRequest.GetOffset(),
-            WriteRequest.GetDataSize(),
+            CalculateByteCount(WriteRequest),
             FormatError(error).Quote().c_str());
 
         MoveIovecsToBuffer(WriteRequest);
@@ -658,9 +678,10 @@ void TStorageServiceActor::HandleWriteData(
 
     ui32 blockSize = filestore.GetBlockSize();
 
+    const auto bytesCount = CalculateByteCount(msg->Record);
     const TByteRange range(
         msg->Record.GetOffset(),
-        msg->Record.GetDataSize(),
+        bytesCount,
         blockSize);
     const bool threeStageWriteEnabled =
         range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold() &&
@@ -676,7 +697,7 @@ void TStorageServiceActor::HandleWriteData(
             TFileStoreComponents::SERVICE,
             "%s Using three-stage write for request, size: %lu",
             logTag.c_str(),
-            msg->Record.GetDataSize());
+            bytesCount);
 
         auto [cookie, inflight] = CreateInFlightRequest(
             TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
