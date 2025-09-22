@@ -132,10 +132,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 	)
 }
 
-func TestCollectClusterCapacityFailureNbsReturnsError(
-	t *testing.T,
-) {
-
+func TestCollectClusterCapacityFailureNbsReturnsError(t *testing.T) {
 	ctx := newContext()
 	execCtx := tasks_mocks.NewExecutionContextMock()
 	storage := storage_mocks.NewStorageMock()
@@ -211,10 +208,7 @@ func TestCollectClusterCapacityFailureNbsReturnsError(
 	)
 }
 
-func TestCollectClusterCapacityFailureStorageReturnsError(
-	t *testing.T,
-) {
-
+func TestCollectClusterCapacityFailureStorageReturnsError(t *testing.T) {
 	ctx := newContext()
 	execCtx := tasks_mocks.NewExecutionContextMock()
 	storage := storage_mocks.NewStorageMock()
