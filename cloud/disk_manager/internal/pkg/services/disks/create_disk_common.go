@@ -19,15 +19,16 @@ type CreateDiskTaskState interface {
 func SelectCell(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	nbsFactory nbs.Factory,
-	cellSelector cells.CellSelector,
-	params *protos.CreateDiskParams,
 	state CreateDiskTaskState,
+	params *protos.CreateDiskParams,
+	cellSelector cells.CellSelector,
+	nbsFactory nbs.Factory,
 ) (nbs.Client, error) {
 
 	var client nbs.Client
 	var err error
 
+	// Idempotently retrieve cell, where disk should be created.
 	if len(state.GetSelectedCellId()) > 0 {
 		client, err = nbsFactory.GetClient(ctx, state.GetSelectedCellId())
 		if err != nil {
