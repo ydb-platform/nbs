@@ -49,6 +49,12 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 		TotalBytes: 2048,
 	}
 
+	deleteOlderThan := time.Now().Add(-time.Hour)
+	deleteOlderThanExpectation := mock.MatchedBy(func(t time.Time) bool {
+		return t.After(deleteOlderThan.Add(-15*time.Minute)) &&
+			t.Before(deleteOlderThan.Add(15*time.Minute))
+	})
+
 	nbsFactory.On(
 		"GetClient",
 		ctx,
@@ -70,7 +76,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 				TotalBytes: 2048,
 			},
 		},
-		mock.Anything, // deleteOlderThan.
+		deleteOlderThanExpectation,
 	).Return(nil).Once()
 	storage.On("UpdateClusterCapacities",
 		ctx,
@@ -83,7 +89,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 				TotalBytes: 2048,
 			},
 		},
-		mock.Anything, // deleteOlderThan.
+		deleteOlderThanExpectation,
 	).Return(nil).Once()
 	storage.On("UpdateClusterCapacities",
 		ctx,
@@ -96,7 +102,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 				TotalBytes: 2048,
 			},
 		},
-		mock.Anything, // deleteOlderThan.
+		deleteOlderThanExpectation,
 	).Return(nil).Once()
 
 	execCtx.On("SaveState", ctx).Return(nil).Once()
@@ -126,7 +132,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 	)
 }
 
-func TestCollectClusterCapacityFailureBecauseOfGetClusterCapacityHandler(
+func TestCollectClusterCapacityFailureNbsReturnsError(
 	t *testing.T,
 ) {
 
@@ -205,7 +211,7 @@ func TestCollectClusterCapacityFailureBecauseOfGetClusterCapacityHandler(
 	)
 }
 
-func TestCollectClusterCapacityFailureBecauseOfStorageError(
+func TestCollectClusterCapacityFailureStorageReturnsError(
 	t *testing.T,
 ) {
 
