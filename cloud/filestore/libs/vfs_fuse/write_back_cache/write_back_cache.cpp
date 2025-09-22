@@ -1134,10 +1134,10 @@ private:
         state.WriteRequests.clear();
 
         if (state.FailedWriteRequests.empty()) {
-            Stats->IncrementCompletedFlushCount();
+            ReportCompletedFlush();
             CompleteFlush(nodeState);
         } else {
-            Stats->IncrementFailedFlushCount();
+            ReportFailedFlush();
             ScheduleRetryFlush(nodeState);
         }
     }
@@ -1164,8 +1164,10 @@ private:
 
             entry->FinishFlush(PendingOperations);
 
-            auto stats = entry->GetStats(now);
-            Stats->PostWriteRequestStats(stats);
+            if (Stats) {
+                auto stats = entry->GetStats(now);
+                Stats->PostWriteRequestStats(stats);
+            }
         }
 
         // Clear flushed entries from the persistent queue
@@ -1228,33 +1230,54 @@ private:
         return entry;
     }
 
+    void ReportCompletedFlush() const
+    {
+        if (Stats) {
+            Stats->IncrementCompletedFlushCount();
+        }
+    }
+
+    void ReportFailedFlush() const
+    {
+        if (Stats) {
+            Stats->IncrementFailedFlushCount();
+        }
+    }
+
     // Persistent queue stats should be reported after a call (or a series of
     // calls) to CachedEntriesPersistentQueue.AllocateBack or .PopFront
     void ReportPersistentQueueStats() const
     {
-        Stats->SetPersistentQueueStats(
-            {.Capacity =
-                CachedEntriesPersistentQueue.GetRawCapacity(),
-             .UsedBytesCount =
-                CachedEntriesPersistentQueue.GetRawUsedBytesCount(),
-             .MaxAllocationSize =
-                 CachedEntriesPersistentQueue.MaxAllocationSize(),
-             .IsCorrupted = CachedEntriesPersistentQueue.IsCorrupted()});
+        if (Stats) {
+            Stats->SetPersistentQueueStats(
+                {.Capacity = CachedEntriesPersistentQueue.GetRawCapacity(),
+                 .UsedBytesCount =
+                     CachedEntriesPersistentQueue.GetRawUsedBytesCount(),
+                 .MaxAllocationSize =
+                     CachedEntriesPersistentQueue.MaxAllocationSize(),
+                 .IsCorrupted = CachedEntriesPersistentQueue.IsCorrupted()});
+        }
     }
 
     void ReportNodeCount() const
     {
-        Stats->SetNodeCount(NodeStates.size());
+        if (Stats) {
+            Stats->SetNodeCount(NodeStates.size());
+        }
     }
 
     void ReportCachedRequestCount() const
     {
-        Stats->SetCachedWriteRequestCount(CachedEntries.size());
+        if (Stats) {
+            Stats->SetCachedWriteRequestCount(CachedEntries.size());
+        }
     }
 
     void ReportPendingRequestCount() const
     {
-        Stats->SetPendingWriteRequestCount(PendingEntries.size());
+        if (Stats) {
+            Stats->SetPendingWriteRequestCount(PendingEntries.size());
+        }
     }
 };
 
