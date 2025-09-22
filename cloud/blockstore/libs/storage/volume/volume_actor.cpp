@@ -535,6 +535,7 @@ void TVolumeActor::SendVolumeSelfCounters(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvStatsService::TEvVolumeSelfCounters>(
         State->GetConfig().GetDiskId(),
+        /*IsLocalMount=*/!State->GetLocalMountClientId().empty(),
         State->HasActiveClients(ctx.Now()),
         State->IsPreempted(SelfId()),
         std::move(VolumeSelfCounters),

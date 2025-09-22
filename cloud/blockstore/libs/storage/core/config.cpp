@@ -632,10 +632,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CollectGarbageTimeoutSSD,             TDuration,   Seconds(0)         )\
     xxx(CollectGarbageTimeoutHDD,             TDuration,   Seconds(0)         )\
                                                                                \
-    xxx(DynamicNodeRegistrationTimeout,       TDuration,   Seconds(5)         )\
     xxx(HiveLocalServiceCpuResourceLimit,     ui64,        0                  )\
     xxx(HiveLocalServiceMemoryResourceLimit,  ui64,        0                  )\
     xxx(HiveLocalServiceNetworkResourceLimit, ui64,        0                  )\
+    xxx(DynamicNodeRegistrationTimeout,       TDuration,   Seconds(5)         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
