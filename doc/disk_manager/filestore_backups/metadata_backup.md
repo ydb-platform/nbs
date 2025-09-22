@@ -181,7 +181,7 @@ After backing up the metadata, we will traverse this table sorted by the primary
 First, we emplace the root node into the queue table if it does not exist with pending status, and then we start several `DirectoryLister`'s and a single `DirectoryListingScheduler`.
 `DirectoryListingScheduler` does the following:
 1. At the start of the task (it can be restarted multiple times),
-2. Reads all the `listing` records (from task's  previous run) and puts them into a channel (`fetchListingDirectories()`).
+2. Reads all the `listing` records (from task's previous run) and puts them into a channel (`fetchListingDirectories()`).
 3. In a loop, reads pending directory records, mark all the pending records as listing in the same transaction. (`lockDirectoriesToList()`). If there are currently `listing` records, remove `pending` duplicates with the same node id.
 4. Puts locked records into the channel for processing.
 5. Finishes if there are no unfinished records in the queue table.
