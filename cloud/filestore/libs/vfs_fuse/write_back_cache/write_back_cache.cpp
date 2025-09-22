@@ -83,13 +83,6 @@ struct TFlushConfig
     ui32 MaxSumWriteRequestsSize = 0;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-TDuration GetDuration(TInstant start, TInstant end)
-{
-    return start <= end ? end - start : TDuration::Zero();
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1486,9 +1479,9 @@ auto TWriteBackCache::TWriteDataEntry::GetStats(TInstant time) const
     Y_DEBUG_ABORT_UNLESS(RequestTime && CachedTime && FlushTime);
 
     return {
-        .PendingDuration = GetDuration(RequestTime, CachedTime),
-        .WaitingDuration = GetDuration(CachedTime, FlushTime),
-        .FlushDuration = GetDuration(FlushTime, time)};
+        .PendingDuration = CachedTime - RequestTime,
+        .WaitingDuration = FlushTime - CachedTime,
+        .FlushDuration = time - FlushTime};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
