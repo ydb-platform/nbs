@@ -31,11 +31,16 @@ IConfigHolderPtr CreateTestConfig(
     ui16 writeRate,
     ui64 requestBlockCount,
     ui64 writeParts,
-    TString alternatingPhase = "",
-    ui64 maxWriteRequestCount = 0
+    TString alternatingPhase,
+    ui64 maxWriteRequestCount,
+    ui64 minReadSize,
+    ui64 maxReadSize,
+    ui64 minWriteSize,
+    ui64 maxWriteSize,
+    ui64 minRegionSize,
+    ui64 maxRegionSize
 );
 
 IConfigHolderPtr CreateTestConfig(const TString& filePath);
 
 }   // namespace NCloud::NBlockStore
-
