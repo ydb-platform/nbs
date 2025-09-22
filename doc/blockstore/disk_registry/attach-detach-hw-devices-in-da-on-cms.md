@@ -16,7 +16,7 @@ We can add the ability to attach and detach Paths in the Disk Agent in runtime a
 
 ### Concurrent attach detach requests
 
-To avoid bugs, when the Disk Registry thinks that the Disk Agent has attached Path, but because of a race condition, the Path is detached, we should handle all attach or detach requests with some generation number. We can keep a counter in RAM for all Paths lets call it Path Generation, and increment it with each CMS action like AddHost/AddDevice or RemoveDevice/RemoveHost. When attaching or closing Path via TEvAttachPathRequest/TEvDetachDiskRequest, or as a result of registration, we should pass Path and Disk Registry tablet generations. A Path Generation needs to order attach and detach requests sent in one DR generation. In this way, we can order all attach and detach requests and reject outdated ones.
+To avoid bugs, when the Disk Registry thinks that the Disk Agent has attached Path, but because of a race condition, the Path is detached, we should handle all attach or detach requests with some generation number. We can keep a counter in RAM for all Paths lets call it Path Generation, and increment it with each CMS action like AddHost/AddDevice or RemoveDevice/RemoveHost. When attaching or closing Path via TEvAttachPathRequest/TEvDetachPathRequest, or as a result of registration, we should pass Path and Disk Registry tablet generations. A Path Generation needs to order attach and detach requests sent in one DR generation. In this way, we can order all attach and detach requests and reject outdated ones.
 
 ### Agent start and registration
 
@@ -43,7 +43,7 @@ This also guarantees that Disk Agent will eventually receive the right configura
 First of all, we should introduce some new states for the device.
 - AttachingPath: Disk Agent should attach Path under this device. Disk Registry should try to send AttachPathRequest to the Disk Agent. Disk Registry can't allocate disks on this device.
 - AttachedPath: Disk Agent should attach Path under this device. Disk Registry can allocate disks on this device.
-- DetachingPath: Disk Agent should detach Path under this device. Disk Registry should try to send DetachDiskRequest to the Disk Agent. Disk Registry can't allocate disks on this device.
+- DetachingPath: Disk Agent should detach Path under this device. Disk Registry should try to send DetachPathRequest to the Disk Agent. Disk Registry can't allocate disks on this device.
 - DetachedPath: Disk Agent should detach Path under this device. Disk Registry can't allocate disks on this device.
 
 So, Add actions will be executed in two stages:
@@ -78,7 +78,7 @@ sequenceDiagram
 In the same way, we execute RemoveDevice/RemoveHost in two stages:
 
 - In the first stage, we perform a transaction to check that all devices have been migrated, and if so, we increase the PathGeneration and mark them as DetachingPath. After that, no disks will be allocated on these devices.
-- In the second stage, we try to send a DetachDiskRequest to the disk agent. Only after receiving a successful response, do we mark the device as a DetachedPath.
+- In the second stage, we try to send a DetachPathRequest to the disk agent. Only after receiving a successful response, do we mark the device as a DetachedPath.
 - After this, we can respond to subsequent RemoveDevice/RemoveHost requests with S_OK.
 
 Right now, we respond with E_TRY_AGAIN to RemoveDevice/RemovedHost requests until all devices are migrated. After adding Attach Detach Paths feature, we should respond with E_TRY_AGAIN until all the Paths are detached.
@@ -102,8 +102,8 @@ sequenceDiagram
     Infra ->>+ DiskRegistry: RemoveDevice/RemoveHost Request
     DiskRegistry ->>- Infra: RemoveDevice/RemoveHost Response E_TRY_AGAIN
 
-    DiskRegistry ->>+ DiskAgent: DetachDiskRequest
-    DiskAgent ->>- DiskRegistry: DetachDiskResponse
+    DiskRegistry ->>+ DiskAgent: DetachPathRequest
+    DiskAgent ->>- DiskRegistry: DetachPathResponse
   end
 
   rect rgb(191, 223, 255)
