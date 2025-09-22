@@ -52,6 +52,12 @@ class TDiskAgentActor final
         Registered,
     };
 
+    struct TPendingAttachRequest
+    {
+        THashMap<TString, ui64> DevicePathToDeviceGeneration;
+        TRequestInfoPtr RequestInfo;
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiskAgentConfigPtr AgentConfig;
@@ -97,7 +103,8 @@ private:
 
     NActors::TActorId HealthCheckActor;
 
-    THashMap<TString, TRequestInfoPtr> OpenCloseDevicesInProgress;
+    ui32 LastDiskRegistryGenerationSeen = 0;
+    std::optional<TPendingAttachRequest> PendingAttachPathRequest;
 
 public:
     TDiskAgentActor(
@@ -175,15 +182,19 @@ private:
 
     TDuration GetMaxRequestTimeout() const;
 
-    NProto::TError AddOpenCloseDeviceRequest(
+    NProto::TError AddOpenDetachPathRequest(
         const NActors::TActorContext& ctx,
         const TString& path,
         TRequestInfoPtr requestInfo);
 
-    void ReplyToOpenCloseDeviceRequest(
+    void ReplyToOpenDetachPathRequest(
         const NActors::TActorContext& ctx,
         const TString& path,
         NActors::IEventBasePtr response);
+
+    void CheckIsSamePath(
+        const NActors::TActorContext& ctx,
+        TVector<TString> paths);
 
 private:
     STFUNC(StateInit);
@@ -252,8 +263,12 @@ private:
             ev,
         const NActors::TActorContext& ctx);
 
-    void HandleDeviceOpened(
-        const TEvDiskAgentPrivate::TEvDeviceOpened::TPtr& ev,
+    void HandlePathAttached(
+        const TEvDiskAgentPrivate::TEvPathAttached::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleCheckIsSamePathResult(
+        const TEvDiskAgentPrivate::TEvCheckIsSamePathResult::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
