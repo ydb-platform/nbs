@@ -4,6 +4,7 @@
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/io_uring/service.h>
 
 #include <library/cpp/aio/aio.h>
 #include <library/cpp/digest/crc32c/crc32c.h>
@@ -15,6 +16,7 @@
 #include <util/system/file.h>
 #include <util/system/info.h>
 #include <util/thread/lfstack.h>
+#include <util/thread/pool.h>
 
 #include <atomic>
 
@@ -44,6 +46,7 @@ private:
     TLockFreeStack<TWorkerService*> ReadyWorkerServices;
 
     const TLog Log;
+    const bool RunInCallbacks = false;
 
 public:
     TTestExecutor(TTestExecutorSettings settings, IFileIOServicePtr service);
@@ -53,6 +56,7 @@ public:
 
 private:
     void RunMainThread();
+    void RunAnyThread();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,7 +77,7 @@ public:
     void Wait();
 
 private:
-    void HandleRequest();
+    bool HandleRequest();
 
     void Read(
         void* buffer,
@@ -94,16 +98,24 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+EOpenMode GetFileOpenMode(bool noDirect)
+{
+    constexpr auto CommonFileOpenMode =
+        EOpenModeFlag::OpenAlways | EOpenModeFlag::RdWr;
+
+    return noDirect ? CommonFileOpenMode
+                    : EOpenModeFlag::DirectAligned | CommonFileOpenMode;
+}
+
 TTestExecutor::TTestExecutor(
         TTestExecutorSettings settings,
         IFileIOServicePtr service)
     : TestStartTimestamp(Now())
     , TestScenario(std::move(settings.TestScenario))
     , FileService(std::move(service))
-    , File(
-        settings.FilePath,
-        EOpenModeFlag::DirectAligned | EOpenModeFlag::RdWr)
+    , File(settings.FilePath, GetFileOpenMode(settings.NoDirect))
     , Log(settings.Log)
+    , RunInCallbacks(settings.RunInCallbacks)
 {
     File.Resize(static_cast<i64>(settings.FileSize));
 
@@ -129,7 +141,11 @@ bool TTestExecutor::Run()
         service->Run();
     }
 
-    RunMainThread();
+    if (RunInCallbacks) {
+        RunAnyThread();
+    } else {
+        RunMainThread();
+    }
 
     FileService->Stop();
     File.Close();
@@ -170,6 +186,15 @@ void TTestExecutor::RunMainThread()
     }
 }
 
+void TTestExecutor::RunAnyThread()
+{
+    StopPromise.GetFuture().Wait();
+
+    for (auto& service: WorkerServices) {
+        service->Wait();
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestExecutor::TWorkerService::TWorkerService(
@@ -181,27 +206,32 @@ TTestExecutor::TWorkerService::TWorkerService(
 
 void TTestExecutor::TWorkerService::Run()
 {
-    if (Executor.ShouldStop) {
-        StopPromise.SetValue();
-        return;
+    while (true) {
+        if (Executor.ShouldStop) {
+            StopPromise.SetValue();
+            return;
+        }
+
+        Y_ABORT_UNLESS(
+            PendingRequestCount == 0,
+            "New iteration can be run only after requests from the previous "
+            "iteration are handled");
+
+        RequestCount = 0;
+        PendingRequestCount = 1;
+
+        auto testDuration = Now() - Executor.TestStartTimestamp;
+        Worker.Run(testDuration.SecondsFloat(), *this);
+
+        Y_ABORT_UNLESS(
+            RequestCount > 0,
+            "Test worker should make at least one request");
+
+        if (!HandleRequest()) {
+             // Run() will be called from somewhere else
+            break;
+        }
     }
-
-    Y_ABORT_UNLESS(
-        PendingRequestCount == 0,
-        "New iteration can be run only after requests from the previous "
-        "iteration are handled");
-
-    RequestCount = 0;
-    PendingRequestCount = 1;
-
-    auto testDuration = Now() - Executor.TestStartTimestamp;
-    Worker.Run(testDuration.SecondsFloat(), *this);
-
-    Y_ABORT_UNLESS(
-        RequestCount > 0,
-        "Test worker should make at least one request");
-
-    HandleRequest();
 }
 
 void TTestExecutor::TWorkerService::Wait()
@@ -209,16 +239,21 @@ void TTestExecutor::TWorkerService::Wait()
     StopPromise.GetFuture().Wait();
 }
 
-void TTestExecutor::TWorkerService::HandleRequest()
+bool TTestExecutor::TWorkerService::HandleRequest()
 {
     auto prev = PendingRequestCount--;
     Y_ABORT_UNLESS(prev > 0, "There are no unhandled requests");
 
     if (prev > 1) {
-        return;
+        return false;
+    }
+
+    if (Executor.RunInCallbacks) {
+        return true;
     }
 
     Executor.ReadyWorkerServices.Enqueue(this);
+    return false;
 }
 
 void TTestExecutor::TWorkerService::Stop()
@@ -258,7 +293,9 @@ void TTestExecutor::TWorkerService::Read(
             } else {
                 callback();
             }
-            HandleRequest();
+            if (HandleRequest()) {
+                Run();
+            }
         });
 }
 
@@ -289,7 +326,9 @@ void TTestExecutor::TWorkerService::Write(
             } else {
                 callback();
             }
-            HandleRequest();
+            if (HandleRequest()) {
+                Run();
+            }
         });
 }
 
@@ -715,6 +754,138 @@ void TAlignedBlockTestScenario::DoWriteRequest(
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TThreadPoolFileService: public IFileIOService
+{
+private:
+    TThreadPool ThreadPool;
+    const ui32 ThreadCount = 0;
+
+public:
+    explicit TThreadPoolFileService(ui32 threadCount)
+        : ThreadCount(threadCount)
+    {}
+
+    void Start() override
+    {
+        ThreadPool.Start(ThreadCount);
+    }
+
+    void Stop() override
+    {
+        ThreadPool.Stop();
+    }
+
+    void AsyncRead(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<char> buffer,
+        TFileIOCompletion* completion) override
+    {
+        auto added = ThreadPool.AddFunc(
+            [&file, buffer, offset, completion]()
+            {
+                auto value = file.Pread(
+                    buffer.data(),
+                    static_cast<ui32>(buffer.size()),
+                    offset);
+
+                RunCompletion(value, completion);
+            });
+
+        Y_ABORT_UNLESS(added, "Cannot add function to a thread pool");
+    }
+
+    void AsyncWrite(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<const char> buffer,
+        TFileIOCompletion* completion) override
+    {
+        auto added = ThreadPool.AddFunc(
+            [&file, buffer, offset, completion]()
+            {
+                auto value = file.Pwrite(
+                    buffer.data(),
+                    static_cast<ui32>(buffer.size()),
+                    offset);
+
+                RunCompletion(value, completion);
+            });
+
+        Y_ABORT_UNLESS(added, "Cannot add function to a thread pool");
+    }
+
+    void AsyncReadV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        Y_UNUSED(file);
+        Y_UNUSED(offset);
+        Y_UNUSED(buffers);
+        Y_UNUSED(completion);
+        Y_ABORT("Not supported");
+    }
+
+    void AsyncWriteV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<const char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        Y_UNUSED(file);
+        Y_UNUSED(offset);
+        Y_UNUSED(buffers);
+        Y_UNUSED(completion);
+        Y_ABORT("Not supported");
+    }
+
+    static void RunCompletion(i32 value, TFileIOCompletion* completion)
+    {
+        if (value >= 0) {
+            completion->Func(completion, {}, static_cast<ui32>(value));
+        } else {
+            completion->Func(completion, MakeError(E_FAIL), value);
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+IFileIOServicePtr CreateUringFileService()
+{
+    auto factory = CreateIoUringServiceFactory({
+        .SubmissionQueueEntries = 1024,
+        .MaxKernelWorkersCount = 1,
+        .ShareKernelWorkers = true,
+        .ForceAsyncIO = true,
+    });
+
+    return factory->CreateFileIOService();
+}
+
+IFileIOServicePtr CreateFileService(
+    ETestExecutorFileService fileService,
+    ui32 threadCount)
+{
+    switch (fileService) {
+        case ETestExecutorFileService::AsyncIo:
+            return std::make_shared<TAsyncIoFileService>(0, threadCount);
+
+        case ETestExecutorFileService::Sync:
+            return std::make_unique<TThreadPoolFileService>(threadCount);
+
+        case ETestExecutorFileService::IoUring:
+            return CreateUringFileService();
+
+        default:
+            Y_ABORT("Not supported type - %d", fileService);
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -727,21 +898,15 @@ ITestScenarioPtr CreateAlignedBlockTestScenario(
         new TAlignedBlockTestScenario(std::move(configHolder), log));
 }
 
-ITestExecutorPtr CreateTestExecutor(
-    IConfigHolderPtr configHolder,
-    const TLog& log)
+ITestExecutorPtr CreateTestExecutor(TTestExecutorSettings settings)
 {
-    TTestExecutorSettings settings;
-    settings.FilePath = configHolder->GetConfig().GetFilePath();
-    settings.FileSize = configHolder->GetConfig().GetFileSize();
-    settings.Log = log;
-    settings.TestScenario = CreateAlignedBlockTestScenario(configHolder, log);
+    auto fileService = CreateFileService(
+        settings.FileService,
+        settings.TestScenario->GetWorkerCount());
 
     return std::make_shared<TTestExecutor>(
         std::move(settings),
-        std::make_shared<TAsyncIoFileService>(
-            0,
-            settings.TestScenario->GetWorkerCount()));
+        std::move(fileService));
 }
 
 }   // namespace NCloud::NBlockStore::NTesting

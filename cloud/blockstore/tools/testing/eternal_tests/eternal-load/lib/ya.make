@@ -9,6 +9,7 @@ PEERDIR(
     cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config
 
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/io_uring
 
     library/cpp/aio
     library/cpp/deprecated/atomic
