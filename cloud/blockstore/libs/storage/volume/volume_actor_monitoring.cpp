@@ -709,6 +709,198 @@ void RenderSizeTable(IOutputStream& out, ui32 blockSize)
     }
 }
 
+void RenderSpecificDiskFilter(
+    IOutputStream& out,
+    const NProto::TSpecificDiskFilter& disks)
+{
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLER () {
+                TABLED () {
+                    out << "Selector";
+                }
+                TABLED () {
+                    out << "Specific Disks: ";
+                    if (disks.DiskIdsSize() == 0) {
+                        out << "<i>no disks</i>";
+                    } else {
+                        out << JoinSeq(", ", disks.GetDiskIds());
+                    }
+                }
+            }
+        }
+    }
+}
+
+void RenderDiskFilter(IOutputStream& out, const NProto::TDiskFilter& filter)
+{
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLER () {
+                TABLED () {
+                    out << "Selector";
+                }
+                TABLED () {
+                    out << "Disk Filter: ";
+                    bool hasConditions = false;
+
+                    if (filter.CloudIdsSize() > 0) {
+                        out << "CloudIds=["
+                            << JoinSeq(", ", filter.GetCloudIds()) << "]";
+                        hasConditions = true;
+                    }
+                    if (filter.FolderIdsSize() > 0) {
+                        if (hasConditions) {
+                            out << ", ";
+                        }
+                        out << "FolderIds=["
+                            << JoinSeq(", ", filter.GetFolderIds()) << "]";
+                        hasConditions = true;
+                    }
+                    if (filter.MediaKindsSize() > 0) {
+                        if (hasConditions) {
+                            out << ", ";
+                        }
+                        TVector<TString> mediaNames;
+                        for (auto kind: filter.GetMediaKinds()) {
+                            mediaNames.push_back(
+                                NProto::EStorageMediaKind_Name(kind));
+                        }
+                        out << "MediaKinds=[" << JoinSeq(", ", mediaNames)
+                            << "]";
+                    }
+
+                    if (!hasConditions) {
+                        out << "<i>matches any disk</i>";
+                    }
+                }
+            }
+        }
+    }
+}
+
+void RenderVolumePerformanceProfileCoefficients(
+    IOutputStream& out,
+    const NProto::TVolumePerformanceProfileCoefficients& coefficients)
+{
+    HTML (out) {
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            // Render Coefficients as percentages (0.0-1.0 range)
+            if (coefficients.HasMaxReadBandwidth()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxReadBandwidth";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetMaxReadBandwidth() * 100.0)
+                            << " %";
+                    }
+                }
+            }
+            if (coefficients.HasMaxWriteBandwidth()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxWriteBandwidth";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetMaxWriteBandwidth() * 100.0)
+                            << " %";
+                    }
+                }
+            }
+            if (coefficients.HasMaxReadIops()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxReadIops";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetMaxReadIops() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coefficients.HasMaxWriteIops()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxWriteIops";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetMaxWriteIops() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coefficients.HasBoostTime()) {
+                TABLER () {
+                    TABLED () {
+                        out << "BoostTime";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetBoostTime() * 100.0) << " %";
+                    }
+                }
+            }
+            if (coefficients.HasBoostRefillTime()) {
+                TABLER () {
+                    TABLED () {
+                        out << "BoostRefillTime";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetBoostRefillTime() * 100.0)
+                            << " %";
+                    }
+                }
+            }
+            if (coefficients.HasBoostPercentage()) {
+                TABLER () {
+                    TABLED () {
+                        out << "BoostPercentage";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetBoostPercentage() * 100.0)
+                            << " %";
+                    }
+                }
+            }
+            if (coefficients.HasBurstPercentage()) {
+                TABLER () {
+                    TABLED () {
+                        out << "BurstPercentage";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetBurstPercentage() * 100.0)
+                            << " %";
+                    }
+                }
+            }
+            if (coefficients.HasMaxPostponedWeight()) {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxPostponedWeight";
+                    }
+                    TABLED () {
+                        out << (coefficients.GetMaxPostponedWeight() * 100.0)
+                            << " %";
+                    }
+                }
+            }
+            if (coefficients.HasThrottlingEnabled()) {
+                TABLER () {
+                    TABLED () {
+                        out << "ThrottlingEnabled";
+                    }
+                    TABLED () {
+                        out
+                            << (coefficients.GetThrottlingEnabled() ? "true"
+                                                                    : "false");
+                    }
+                }
+            }
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool IsSetDefaultThrottlingPolicy(const TVolumeState* state)
@@ -2211,14 +2403,17 @@ void TVolumeActor::RenderAppliedVolumeThrottlingRule(IOutputStream& out) const
 {
     const auto& rule = State->GetThrottlingPolicy().GetVolatileThrottlingRule();
 
+    HTML (out) {
+        TAG (TH3) {
+            out << "Applied Throttling Rule";
+        }
+    }
+
     if (!rule.HasCoefficients() &&
         rule.GetSelectorCase() == NCloud::NBlockStore::NProto::
                                       TVolumeThrottlingRule::SELECTOR_NOT_SET)
     {
         HTML (out) {
-            TAG (TH3) {
-                out << "Applied Throttling Rule";
-            }
             DIV () {
                 out << "No throttling rule applied";
             }
@@ -2226,197 +2421,20 @@ void TVolumeActor::RenderAppliedVolumeThrottlingRule(IOutputStream& out) const
         return;
     }
 
-    HTML (out) {
-        TAG (TH3) {
-            out << "Applied Throttling Rule";
+    switch (rule.GetSelectorCase()) {
+        case NProto::TVolumeThrottlingRule::kDisks: {
+            RenderSpecificDiskFilter(out, rule.GetDisks());
+            break;
         }
-        TABLE_SORTABLE_CLASS("table table-condensed")
-        {
-            // Render Selector
-            switch (rule.GetSelectorCase()) {
-                case NCloud::NBlockStore::NProto::TVolumeThrottlingRule::
-                    kDisks: {
-                    const auto& disks = rule.GetDisks();
-                    TABLER () {
-                        TABLED () {
-                            out << "Selector";
-                        }
-                        TABLED () {
-                            out << "Specific Disks: ";
-                            if (disks.DiskIdsSize() == 0) {
-                                out << "<i>no disks</i>";
-                            } else {
-                                out << JoinSeq(", ", disks.GetDiskIds());
-                            }
-                        }
-                    }
-                    break;
-                }
-                case NCloud::NBlockStore::NProto::TVolumeThrottlingRule::
-                    kFilter: {
-                    const auto& filter = rule.GetFilter();
-                    TABLER () {
-                        TABLED () {
-                            out << "Selector";
-                        }
-                        TABLED () {
-                            out << "Disk Filter: ";
-                            bool hasConditions = false;
-
-                            if (filter.CloudIdsSize() > 0) {
-                                out << "CloudIds=["
-                                    << JoinSeq(", ", filter.GetCloudIds())
-                                    << "]";
-                                hasConditions = true;
-                            }
-                            if (filter.FolderIdsSize() > 0) {
-                                if (hasConditions) {
-                                    out << ", ";
-                                }
-                                out << "FolderIds=["
-                                    << JoinSeq(", ", filter.GetFolderIds())
-                                    << "]";
-                                hasConditions = true;
-                            }
-                            if (filter.MediaKindsSize() > 0) {
-                                if (hasConditions) {
-                                    out << ", ";
-                                }
-                                TVector<TString> mediaNames;
-                                for (auto kind: filter.GetMediaKinds()) {
-                                    mediaNames.push_back(
-                                        NProto::EStorageMediaKind_Name(kind));
-                                }
-                                out << "MediaKinds=["
-                                    << JoinSeq(", ", mediaNames) << "]";
-                            }
-
-                            if (!hasConditions) {
-                                out << "<i>matches any disk</i>";
-                            }
-                        }
-                    }
-                    break;
-                }
-                default:
-                    TABLER () {
-                        TABLED () {
-                            out << "Selector";
-                        }
-                        TABLED () {
-                            out << "None";
-                        }
-                    }
-                    break;
-            }
-
-            const auto& coeffs = rule.GetCoefficients();
-
-            // Render Coefficients as percentages (0.0-1.0 range)
-            if (coeffs.HasMaxReadBandwidth()) {
-                TABLER () {
-                    TABLED () {
-                        out << "MaxReadBandwidth";
-                    }
-                    TABLED () {
-                        out << (coeffs.GetMaxReadBandwidth() * 100.0) << " %";
-                    }
-                }
-            }
-            if (coeffs.HasMaxWriteBandwidth()) {
-                TABLER () {
-                    TABLED () {
-                        out << "MaxWriteBandwidth";
-                    }
-                    TABLED () {
-                        out << (coeffs.GetMaxWriteBandwidth() * 100.0) << " %";
-                    }
-                }
-            }
-            if (coeffs.HasMaxReadIops()) {
-                TABLER () {
-                    TABLED () {
-                        out << "MaxReadIops";
-                    }
-                    TABLED () {
-                        out << (coeffs.GetMaxReadIops() * 100.0) << " %";
-                    }
-                }
-            }
-            if (coeffs.HasMaxWriteIops()) {
-                TABLER () {
-                    TABLED () {
-                        out << "MaxWriteIops";
-                    }
-                    TABLED () {
-                        out << (coeffs.GetMaxWriteIops() * 100.0) << " %";
-                    }
-                }
-            }
-            if (coeffs.HasBoostTime()) {
-                TABLER () {
-                    TABLED () {
-                        out << "BoostTime";
-                    }
-                    TABLED () {
-                        out << (coeffs.GetBoostTime() * 100.0) << " %";
-                    }
-                }
-            }
-            if (coeffs.HasBoostRefillTime()) {
-                TABLER () {
-                    TABLED () {
-                        out << "BoostRefillTime";
-                    }
-                    TABLED () {
-                        out << (coeffs.GetBoostRefillTime() * 100.0) << " %";
-                    }
-                }
-            }
-            if (coeffs.HasBoostPercentage()) {
-                TABLER () {
-                    TABLED () {
-                        out << "BoostPercentage";
-                    }
-                    TABLED () {
-                        out << (coeffs.GetBoostPercentage() * 100.0) << " %";
-                    }
-                }
-            }
-            if (coeffs.HasBurstPercentage()) {
-                TABLER () {
-                    TABLED () {
-                        out << "BurstPercentage";
-                    }
-                    TABLED () {
-                        out << (coeffs.GetBurstPercentage() * 100.0) << " %";
-                    }
-                }
-            }
-            if (coeffs.HasMaxPostponedWeight()) {
-                TABLER () {
-                    TABLED () {
-                        out << "MaxPostponedWeight";
-                    }
-                    TABLED () {
-                        out << (coeffs.GetMaxPostponedWeight() * 100.0) << " %";
-                    }
-                }
-            }
-            if (coeffs.HasThrottlingEnabled()) {
-                TABLER () {
-                    TABLED () {
-                        out << "ThrottlingEnabled";
-                    }
-                    TABLED () {
-                        out
-                            << (coeffs.GetThrottlingEnabled() ? "true"
-                                                              : "false");
-                    }
-                }
-            }
+        case NProto::TVolumeThrottlingRule::kFilter: {
+            RenderDiskFilter(out, rule.GetFilter());
+            break;
         }
+        default:
+            break;
     }
+
+    RenderVolumePerformanceProfileCoefficients(out, rule.GetCoefficients());
 }
 
 void TVolumeActor::RenderLaggingStateForDevice(
