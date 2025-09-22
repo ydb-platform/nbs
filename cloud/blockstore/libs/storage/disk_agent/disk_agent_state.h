@@ -259,7 +259,7 @@ private:
 
     NProto::TError CheckDiskRegistryGenerationAndUpdateItIfNeeded(
         ui64 diskRegistryGeneration);
-    void ResetDiskGenerations();
+    void ResetPathGenerations();
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
