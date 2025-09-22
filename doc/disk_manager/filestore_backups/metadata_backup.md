@@ -20,7 +20,7 @@ The filestore backup creation should consist of the following steps:
 ## Filestore Metadata structure
 
 Filestore metadata consists of various inode (file) attributes and relations between inodes (which inode is a parent of which), it also contains information about which shard stores the required file system. Filestore metadata is served by a single tablet (replicated state machine), whilst data is served by multiple tablets. Tablet stores its state in several tables, which allows indexing by primary key only (local db).
-Filestore does not a production-ready checkpoint support, but it is expected to be implemented soon. Until then, backups are expected to be inconsistent with future critical alerts on errors caused by inconsistencies.
+Filestore does not have production-ready checkpoint support, but it is expected to be implemented soon. Until then, backups are expected to be inconsistent with future critical alerts on errors caused by inconsistencies.
 
 ### Node refs
 Information about the directory structure is stored in the `NodeRefs` [table](https://github.com/ydb-platform/nbs/blob/40d2878cd3c878c53f8a4946ede2ee47ff43e8f6/cloud/filestore/libs/storage/tablet/tablet_schema.h#L218)
