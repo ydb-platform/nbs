@@ -61,10 +61,10 @@ struct IRdmaTarget: IStartable
         const TString& deviceUUID,
         const NProto::TError& error) = 0;
 
-    virtual void OpenDevice(
+    virtual void AttachDevice(
         const TString& deviceUUID,
         TStorageAdapterPtr device) = 0;
-    virtual void CloseDevice(const TString& deviceUUID) = 0;
+    virtual void DetachDevice(const TString& deviceUUID) = 0;
 };
 
 using IRdmaTargetPtr = std::shared_ptr<IRdmaTarget>;
