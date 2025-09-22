@@ -121,11 +121,12 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CommonOverlayPrefixPoolKind,   TString,      "overlay"                )\
     xxx(NonReplicatedHDDPoolName,      TString,      "rot"                    )\
                                                                                \
-    xxx(TabletBootInfoBackupFilePath,   TString,     ""                       )\
-    xxx(PathDescriptionBackupFilePath,  TString,     ""                       )\
-    xxx(DiskRegistrySplitTransactionCounter, ui32,   10000                    )\
-    xxx(DiskRegistryBackupPeriod,      TDuration,    Days(1)                  )\
-    xxx(DiskRegistryBackupDirPath,     TString,      ""                       )\
+    xxx(TabletBootInfoBackupFilePath,                TString,      ""         )\
+    xxx(PathDescriptionBackupFilePath,               TString,      ""         )\
+    xxx(UseBinaryFormatForPathDescriptionBackup,     bool,         false      )\
+    xxx(DiskRegistrySplitTransactionCounter,         ui32,         10000      )\
+    xxx(DiskRegistryBackupPeriod,                    TDuration,    Days(1)    )\
+    xxx(DiskRegistryBackupDirPath,                   TString,      ""         )\
                                                                                \
     xxx(DiskRegistryMetricsCachePeriod, TDuration,   Days(14)                 )\
     xxx(DiskRegistryCountersHost,       TString,     ""                       )\

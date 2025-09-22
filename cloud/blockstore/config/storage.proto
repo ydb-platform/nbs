@@ -1339,4 +1339,6 @@ message TStorageServiceConfig
 
     // Timeout for collect garbage on HDD (in milliseconds).
     optional uint32 CollectGarbageTimeoutHDD = 461;
+
+    optional bool UseBinaryFormatForPathDescriptionBackup = 462;
 }

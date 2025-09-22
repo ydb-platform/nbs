@@ -11,7 +11,7 @@ from cloud.blockstore.tests.python.lib.test_base import run_test
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 
-def default_storage_config(backups_folder):
+def default_storage_config(backups_folder, use_binary_format_for_path_description_backup):
     storage = storage_config_with_default_limits()
     storage.SSDSystemChannelPoolKind = "ssd"
     storage.SSDLogChannelPoolKind = "ssd"
@@ -24,11 +24,13 @@ def default_storage_config(backups_folder):
     storage.PathDescriptionBackupFilePath = \
         backups_folder + "/path_description_backup.txt"
 
+    storage.UseBinaryFormatForPathDescriptionBackup = use_binary_format_for_path_description_backup
+
     return storage
 
 
-def storage_config_with_emergency_mode(backups_folder):
-    storage = default_storage_config(backups_folder)
+def storage_config_with_emergency_mode(backups_folder, use_binary_format_for_path_description_backup):
+    storage = default_storage_config(backups_folder, use_binary_format_for_path_description_backup)
     storage.HiveProxyFallbackMode = True
     storage.SSProxyFallbackMode = True
     storage.DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode = True
@@ -64,15 +66,22 @@ def format_static_pdisks(kikimr_cluster):
 
 class TestCase(object):
 
-    def __init__(self, name, config_path):
+    def __init__(self, name, config_path, use_binary_format_for_path_description_backup):
         self.name = name
         self.config_path = config_path
+        self.use_binary_format_for_path_description_backup = use_binary_format_for_path_description_backup
 
 
 TESTS = [
     TestCase(
         "default",
         "cloud/blockstore/tests/loadtest/local-emergency/local-tablet-version-default.txt",
+        False,  # UseBinaryFormatForPathDescriptionBackup
+    ),
+    TestCase(
+        "default",
+        "cloud/blockstore/tests/loadtest/local-emergency/local-tablet-version-default.txt",
+        True,  # UseBinaryFormatForPathDescriptionBackup
     ),
 ]
 
@@ -86,7 +95,7 @@ def __run_test(test_case):
 
     env = LocalLoadTest(
         "",
-        storage_config_patches=[default_storage_config(backups_folder)],
+        storage_config_patches=[default_storage_config(backups_folder, test_case.use_binary_format_for_path_description_backup)],
         dynamic_pdisks=[dict(user_kind=1)],
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="system", pdisk_user_kind=0),
@@ -112,7 +121,7 @@ def __run_test(test_case):
     spoil_bs_controller_config(env.kikimr_cluster)
     env.kikimr_cluster.restart_nodes()
 
-    env.nbs.storage_config_patches = [storage_config_with_emergency_mode(backups_folder)]
+    env.nbs.storage_config_patches = [storage_config_with_emergency_mode(backups_folder, test_case.use_binary_format_for_path_description_backup)]
     env.nbs.restart()
 
     data = session.read_blocks(100499, 3, "")

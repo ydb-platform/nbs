@@ -28,13 +28,14 @@ class TPathDescriptionBackup final
 {
 private:
     const TFsPath BackupFilePath;
+    const bool UseBinaryFormat = false;
     const bool ReadOnlyMode = false;
 
     NSSProxy::NProto::TPathDescriptionBackup BackupProto;
     const TFsPath TmpBackupFilePath;
 
 public:
-    TPathDescriptionBackup(TString backupFilePath, bool readOnlyMode);
+    TPathDescriptionBackup(TString backupFilePath, bool useBinaryFormat, bool readOnlyMode);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

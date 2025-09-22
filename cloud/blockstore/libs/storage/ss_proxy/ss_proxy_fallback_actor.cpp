@@ -156,9 +156,13 @@ void TSSProxyFallbackActor::Bootstrap(const TActorContext& ctx)
     TThis::Become(&TThis::StateWork);
 
     const auto& filepath = Config->GetPathDescriptionBackupFilePath();
+    const auto& useBinaryFormat = Config->GetUseBinaryFormatForPathDescriptionBackup();
     if (filepath) {
         auto cache = std::make_unique<TPathDescriptionBackup>(
-            filepath, true /* readOnlyMode */);
+            filepath,
+            useBinaryFormat,
+            /*readOnlyMode=*/true);
+
         PathDescriptionBackup = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }

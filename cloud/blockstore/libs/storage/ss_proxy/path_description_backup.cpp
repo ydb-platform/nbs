@@ -30,8 +30,10 @@ constexpr TDuration BackupInterval = TDuration::Seconds(10);
 
 TPathDescriptionBackup::TPathDescriptionBackup(
         TString backupFilePath,
+        bool useBinaryFormat,
         bool readOnlyMode)
     : BackupFilePath(std::move(backupFilePath))
+    , UseBinaryFormat(useBinaryFormat)
     , ReadOnlyMode(readOnlyMode)
     , TmpBackupFilePath(BackupFilePath.GetPath() + ".tmp")
 {}
@@ -68,8 +70,15 @@ NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
             Y_DEFER {
                 lock.Release();
             };
-            TFileOutput output(TmpBackupFilePath);
-            SerializeToTextFormat(BackupProto, output);
+
+            if (UseBinaryFormat) {
+                TOFStream output(TmpBackupFilePath);
+                BackupProto.SerializeToArcadiaStream(&output);
+            } else {
+                TFileOutput output(TmpBackupFilePath);
+                SerializeToTextFormat(BackupProto, output);
+            }
+
             TmpBackupFilePath.RenameTo(BackupFilePath);
         } else {
             auto message = TStringBuilder()
