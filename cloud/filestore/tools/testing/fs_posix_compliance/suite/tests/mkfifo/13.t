@@ -26,8 +26,8 @@ expect 0 mkfifo ${n0} 0644
 # write test string to fifo
 TEST_STRING="fifo_test_message_123"
 echo "$TEST_STRING" > "$n0"
-# wait for reader to finish
-wait $reader_pid
+# wait for the reader (a single child) to finish
+wait
 # read captured data
 read_output=$(cat "$n2")
 # compare read data with test string
