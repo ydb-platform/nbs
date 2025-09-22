@@ -84,12 +84,15 @@ void TOptions::Parse(int argc, char** argv)
 
     opts.AddLongOption(
         "no-direct",
-        "Do not set O_DIRECT flag")
+        "do not set O_DIRECT flag")
         .StoreTrue(&NoDirect);
 
     opts.AddLongOption(
         "run-in-callbacks",
-        "Run test logic in callbacks")
+        "run test workers and post IO requests in completion "
+        "callbacks instead of the single submitter thread - "
+        "this may improve performance for engines that use "
+        "multiple threads (like sync)")
         .StoreTrue(&RunInCallbacks);
 
     opts.AddLongOption("file", "path to file or block device")

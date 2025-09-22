@@ -110,14 +110,14 @@ TTestExecutorSettings TTest::ConfigureTest() const
             STORAGE_INFO("Using file service: AsyncIo");
             break;
 
-        case EIoEngine::Sync:
-            settings.FileService = ETestExecutorFileService::Sync;
-            STORAGE_INFO("Using file service: Sync");
-            break;
-
         case EIoEngine::IoUring:
             settings.FileService = ETestExecutorFileService::IoUring;
             STORAGE_INFO("Using file service: IoUring");
+            break;
+
+        case EIoEngine::Sync:
+            settings.FileService = ETestExecutorFileService::Sync;
+            STORAGE_INFO("Using file service: Sync");
             break;
 
         default:
