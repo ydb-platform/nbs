@@ -121,7 +121,7 @@ storage_size: Uint64
 status: Int64
 ```
 
-After the controlplane record is created,an almost identical database entry for dataplane is created.
+After the controlplane record is created, an almost identical database entry for dataplane is created.
 
 ## Dataplane metadata backup
 
