@@ -17,7 +17,7 @@ TEST_SRCS(
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/common_configs/nfs-storage-zero-copy-write-patch.txt
+    cloud/filestore/tests/fio/qemu-kikimr-zero-copy-write-test/nfs-storage-zero-copy-write-patch.txt
 )
 
 SET(FILESTORE_VHOST_QUEUE_COUNT 8)
