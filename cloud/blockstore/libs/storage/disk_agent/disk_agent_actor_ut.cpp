@@ -6885,7 +6885,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.CloseDevice(filePath, 1);
+        diskAgent.DetachPath(0, THashMap<TString, ui64>{{filePath, 1}});
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
     }
@@ -6941,11 +6941,12 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.CloseDevice(filePath, 1);
+        diskAgent.DetachPath(0, THashMap<TString, ui64>{{filePath, 1}});
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.OpenDevice(filePath, 2);
+        diskAgent.AttachPath(0, THashMap<TString, ui64>{{filePath, 2}});
+
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
     }
 
@@ -7000,19 +7001,33 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.CloseDevice(filePath, 10);
+        diskAgent.DetachPath(5, THashMap<TString, ui64>{{filePath, 10}});
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.SendOpenDeviceRequest(filePath, 1);
+        diskAgent.SendAttachPathRequest(5, THashMap<TString, ui64>{{filePath, 1}});
 
-        auto resp = diskAgent.RecvOpenDeviceResponse();
+        auto resp = diskAgent.RecvAttachPathResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, resp->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "outdated device generation",
+            resp->GetError().GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.SendAttachPathRequest(4, THashMap<TString, ui64>{{filePath, 100}});
+
+        resp = diskAgent.RecvAttachPathResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, resp->GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             "outdated request",
             resp->GetError().GetMessage());
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.AttachPath(6, THashMap<TString, ui64>{{filePath, 1}});
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
     }
 
     Y_UNIT_TEST(ShouldDetectDeviceChange)
@@ -7066,7 +7081,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.CloseDevice(filePath, 10);
+        diskAgent.DetachPath(5, THashMap<TString, ui64>{{filePath, 10}});
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
@@ -7075,15 +7090,15 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             fileData.Resize(1_MB);
         }
 
-        diskAgent.SendOpenDeviceRequest(filePath, 11);
+        diskAgent.SendAttachPathRequest(
+            5,
+            THashMap<TString, ui64>{{filePath, 11}});
 
-        auto resp = diskAgent.RecvOpenDeviceResponse();
+        auto resp = diskAgent.RecvAttachPathResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, resp->GetError().GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
     }
-
-
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -95,17 +95,6 @@ NProto::TReadDeviceBlocksResponse ConvertToReadDeviceBlocksResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError MakeDeviceChangedError(
-    const TString& path,
-    const TString& reason)
-{
-    return MakeError(
-        E_INVALID_STATE,
-        Sprintf("device %s changed: %s", path.c_str(), reason.c_str()));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TCollectStatsContext
 {
     TPromise<NProto::TAgentStats> Promise = NewPromise<NProto::TAgentStats>();
@@ -925,7 +914,6 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         }
     };
 
-
     if (!device.IsOpen()) {
         return MakeFuture(MakeError(E_REJECTED, "device closed"));
     }
@@ -1093,14 +1081,21 @@ bool TDiskAgentState::IsDeviceDisabled(const TString& uuid) const
     return DeviceClient->IsDeviceDisabled(uuid);
 }
 
-bool TDiskAgentState::IsDeviceClosed(const TString& uuid) const
+bool TDiskAgentState::IsDeviceAttached(const TString& uuid) const
 {
     const auto* d = Devices.FindPtr(uuid);
     if (!d) {
-        return true;
+        return false;
     }
 
-    return !d->IsOpen();
+    return IsPathAttached(d->Config.GetDeviceName());
+}
+
+bool TDiskAgentState::IsPathAttached(const TString& path) const
+{
+    const auto* PathAttachState = PathAttachStates.FindPtr(path);
+    return !PathAttachState ||
+           PathAttachState->State == EPathAttachState::Attached;
 }
 
 ui64 TDiskAgentState::DeviceGeneration(const TString& uuid) const
@@ -1109,7 +1104,9 @@ ui64 TDiskAgentState::DeviceGeneration(const TString& uuid) const
     if (!d) {
         return 0;
     }
-    return d->Config.GetGeneration();
+    const auto& path = d->Config.GetDeviceName();
+    const auto* PathAttachState = PathAttachStates.FindPtr(path);
+    return PathAttachState ? PathAttachState->Generation : 0;
 }
 
 EDeviceStateFlags TDiskAgentState::GetDeviceStateFlags(
@@ -1120,7 +1117,7 @@ EDeviceStateFlags TDiskAgentState::GetDeviceStateFlags(
             ? EDeviceStateFlags::DISABLED
             : (IsDeviceSuspended(uuid) ? EDeviceStateFlags::SUSPENDED
                                        : EDeviceStateFlags::NONE);
-    if (IsDeviceClosed(uuid)) {
+    if (!IsDeviceAttached(uuid)) {
         flags |= EDeviceStateFlags::CLOSED;
     }
     return flags;
@@ -1159,120 +1156,6 @@ bool TDiskAgentState::GetPartiallySuspended() const
     return PartiallySuspended;
 }
 
-NProto::TError TDiskAgentState::CheckIsSameDevice(const TString& path)
-{
-    try {
-        TFile{path, EOpenModeFlag::RdOnly};
-    } catch (...) {
-        // device is broken, not config mismatch
-        return {};
-    }
-
-    auto [serialNumber, error] = NvmeManager->GetSerialNumber(path);
-
-    if (HasError(error)) {
-        STORAGE_INFO(
-            "Failed to get serial number for device " << path << ": "
-                                                      << error.GetMessage());
-    }
-
-    for (const auto& [uuid, device]: Devices) {
-        if (device.Config.GetDeviceName() != path) {
-            continue;
-        }
-        if (device.Config.GetSerialNumber() != serialNumber) {
-            return MakeDeviceChangedError(path, "serial number mismatch");
-        }
-    }
-
-    TVector<NProto::TFileDeviceArgs> files;
-
-    if (!AgentConfig->GetFileDevices().empty()) {
-        files.assign(
-            AgentConfig->GetFileDevices().begin(),
-            AgentConfig->GetFileDevices().end());
-    } else {
-        TDeviceGenerator gen{Log, AgentConfig->GetAgentId()};
-
-        if (auto error = FindDevices(
-                AgentConfig->GetStorageDiscoveryConfig(),
-                std::ref(gen));
-            HasError(error))
-        {
-            return error;
-        }
-
-        files = gen.ExtractResult();
-    }
-
-    return CheckIsSameDevice(path, files);
-}
-
-NProto::TError TDiskAgentState::CheckIsSameDevice(
-    const TString& path,
-    const TVector<NProto::TFileDeviceArgs>& files)
-{
-    THashMap<TString, NProto::TFileDeviceArgs> uuidToFileDeviceArgs;
-    for (const auto& file: files) {
-        if (file.GetPath() != path) {
-            continue;
-        }
-        uuidToFileDeviceArgs[file.GetDeviceId()] = file;
-    }
-
-    THashMap<TString, NProto::TDeviceConfig> uuidToDeviceConfigExpected;
-
-    for (const auto& [uuid, device]: Devices) {
-        if (device.Config.GetDeviceName() != path) {
-            continue;
-        }
-        uuidToDeviceConfigExpected[uuid] = device.Config;
-    }
-
-    if (uuidToDeviceConfigExpected.size() != uuidToFileDeviceArgs.size()) {
-        return MakeDeviceChangedError(path, "device count mismatch");
-    }
-
-    ui64 actualLength = GetFileLength(path);
-
-    for (const auto& [uuid, device]: uuidToDeviceConfigExpected) {
-        auto* fileDeviceArgs = uuidToFileDeviceArgs.FindPtr(uuid);
-        if (!fileDeviceArgs) {
-            return MakeDeviceChangedError(
-                path,
-                Sprintf("device with uuid %s not found", uuid.c_str()));
-        }
-
-        const ui32 blockSize = fileDeviceArgs->GetBlockSize();
-
-        if (device.GetPhysicalOffset() != fileDeviceArgs->GetOffset()) {
-            return MakeDeviceChangedError(path, "offset mismatch");
-        }
-
-        if (device.GetBlockSize() != blockSize) {
-            return MakeDeviceChangedError(path, "block size mismatch");
-        }
-
-        ui64 len = fileDeviceArgs->GetFileSize();
-        if (!len) {
-            len = actualLength;
-        }
-
-        if (device.GetBlocksCount() != len / blockSize) {
-            return MakeDeviceChangedError(path, "size mismatch");
-        }
-
-        if (fileDeviceArgs->GetOffset() && fileDeviceArgs->GetFileSize() &&
-            (actualLength <
-             fileDeviceArgs->GetOffset() + fileDeviceArgs->GetFileSize()))
-        {
-            return MakeDeviceChangedError(path, "file size mismatch");
-        }
-    }
-
-    return {};
-}
-
 TVector<TString> TDiskAgentState::GetAllDeviceUUIDsForPath(const TString& path)
 {
     TVector<TString> result;
@@ -1284,31 +1167,27 @@ TVector<TString> TDiskAgentState::GetAllDeviceUUIDsForPath(const TString& path)
     return result;
 }
 
-TVector<NProto::TDeviceConfig> TDiskAgentState::GetAllDevicesForPath(
-    const TString& path)
+TVector<NProto::TDeviceConfig> TDiskAgentState::GetAllDevicesForPaths(
+    const THashSet<TString>& paths)
 {
     TVector<NProto::TDeviceConfig> result;
     for (const auto& [uuid, device]: Devices) {
-        if (device.Config.GetDeviceName() == path) {
+        if (paths.contains(device.Config.GetDeviceName())) {
             result.emplace_back(device.Config);
         }
     }
     return result;
 }
 
-TResultOrError<THashMap<TString, NThreading::TFuture<IStoragePtr>>>
-TDiskAgentState::OpenDevice(const TString& path, ui64 deviceGeneration)
+NProto::TError TDiskAgentState::CheckCanAttachPath(
+    ui64 diskRegistryGeneration,
+    const TString& path,
+    ui64 deviceGeneration)
 {
-    if (Spdk) {
-        return MakeError(E_ARGUMENT, "Not supported in SPDK mode");
-    }
-
-    if (!AgentConfig->GetOpenCloseDevicesEnabled()) {
-        return MakeError(E_ARGUMENT, "open device feature disabled");
-    }
-
-    if (auto error = CheckIsSameDevice(path); HasError(error)) {
-        ReportDiskConfigChangedAfterStart(error.GetMessage());
+    if (auto error = CheckDiskRegistryGenerationAndUpdateItIfNeeded(
+            diskRegistryGeneration);
+        HasError(error))
+    {
         return error;
     }
 
@@ -1323,16 +1202,24 @@ TDiskAgentState::OpenDevice(const TString& path, ui64 deviceGeneration)
         if (memoryDevices.contains(uuid)) {
             return MakeError(E_ARGUMENT, "Not supported for memory devices");
         }
-
-        auto* d = Devices.FindPtr(uuid);
-        auto& config = d->Config;
-
-        if (deviceGeneration < config.GetGeneration() ||
-            (deviceGeneration == config.GetGeneration() && !d->IsOpen()))
-        {
-            return MakeError(E_FAIL, "outdated request");
-        }
     }
+
+    if (IsPathAttached(path)) {
+        return MakeError(S_ALREADY, "Disk is already attached");
+    }
+
+    auto* d = PathAttachStates.FindPtr(path);
+    if (deviceGeneration <= d->Generation) {
+        return MakeError(E_FAIL, "outdated device generation");
+    }
+
+    return {};
+}
+
+THashMap<TString, NThreading::TFuture<IStoragePtr>> TDiskAgentState::AttachPath(
+    const TString& path)
+{
+    auto uuids = GetAllDeviceUUIDsForPath(path);
 
     THashMap<TString, TFuture<IStoragePtr>> storages;
 
@@ -1340,11 +1227,6 @@ TDiskAgentState::OpenDevice(const TString& path, ui64 deviceGeneration)
         auto* d = Devices.FindPtr(uuid);
         auto& config = d->Config;
         TFuture<IStoragePtr> storage;
-        config.SetGeneration(deviceGeneration);
-
-        if (d->IsOpen()) {
-            continue;
-        }
 
         try {
             storage = CreateFileStorage(
@@ -1361,103 +1243,127 @@ TDiskAgentState::OpenDevice(const TString& path, ui64 deviceGeneration)
         storages[uuid] = std::move(storage);
     }
 
-    if (storages.empty()) {
-        return MakeError(S_ALREADY, "already opened");
-    }
-
     return storages;
 }
 
-void TDiskAgentState::DeviceOpened(
-    NProto::TError error,
-    const TString& uuid,
-    IStoragePtr storage)
+void TDiskAgentState::PathAttached(
+    THashMap<TString, TResultOrError<IStoragePtr>> devices,
+    const THashMap<TString, ui64>& pathToGeneration)
 {
-    Y_DEBUG_ABORT_UNLESS(
-        !Spdk,
-        "Open close device requests not supported in SPDK mode");
-    if (Spdk) {
-        return;
+    for (auto& [uuid, errorOrDevice]: devices) {
+        auto [storage, error] = std::move(errorOrDevice);
+        Cerr << "PathAttached: " << uuid << " " << FormatError(error) << Endl;
+        auto* d = Devices.FindPtr(uuid);
+        if (!d) {
+            continue;
+        }
+
+        auto& config = d->Config;
+
+        if (HasError(error)) {
+            config.SetState(NProto::DEVICE_STATE_ERROR);
+            config.SetStateMessage(std::move(*error.MutableMessage()));
+            storage = CreateBrokenStorage();
+            storage = CreateStorageWithIoStats(
+                storage,
+                d->Stats,
+                d->Config.GetBlockSize());
+        } else {
+            config.SetState(NProto::DEVICE_STATE_ONLINE);
+            config.ClearStateMessage();
+        }
+
+        TDuration ioTimeout;
+        if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
+            ioTimeout = AgentConfig->GetDeviceIOTimeout();
+        }
+
+        auto storageAdapter = std::make_shared<TStorageAdapter>(
+            std::move(storage),
+            d->Config.GetBlockSize(),
+            false,   // normalize
+            ioTimeout,
+            AgentConfig->GetShutdownTimeout());
+
+        d->StorageAdapter = std::move(storageAdapter);
+
+        if (RdmaTarget) {
+            RdmaTarget->OpenDevice(uuid, std::move(storageAdapter));
+        }
     }
 
-    auto* d = Devices.FindPtr(uuid);
-
-    if (!d) {
-        return;
-    }
-
-    auto& config = d->Config;
-
-    if (HasError(error)) {
-        config.SetState(NProto::DEVICE_STATE_ERROR);
-        config.SetStateMessage(std::move(*error.MutableMessage()));
-        storage = CreateBrokenStorage();
-        storage = CreateStorageWithIoStats(
-            storage,
-            d->Stats,
-            d->Config.GetBlockSize());
-    } else {
-        config.SetState(NProto::DEVICE_STATE_ONLINE);
-        config.ClearStateMessage();
-    }
-
-    TDuration ioTimeout;
-    if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
-        ioTimeout = AgentConfig->GetDeviceIOTimeout();
-    }
-
-    auto storageAdapter = std::make_shared<TStorageAdapter>(
-        std::move(storage),
-        d->Config.GetBlockSize(),
-        false,   // normalize
-        ioTimeout,
-        AgentConfig->GetShutdownTimeout());
-
-    d->StorageAdapter = std::move(storageAdapter);
-
-    if (RdmaTarget) {
-        RdmaTarget->OpenDevice(uuid, std::move(storageAdapter));
+    for (const auto& [path, deviceGeneration]: pathToGeneration) {
+        PathAttachStates[path] = {
+            .State = EPathAttachState::Attached,
+            .Generation = deviceGeneration};
     }
 }
 
-NProto::TError TDiskAgentState::CloseDevice(
-    const TString& path,
-    ui64 deviceGeneration)
+NProto::TError TDiskAgentState::DetachPath(
+    ui64 diskRegistryGeneration,
+    const THashMap<TString, ui64>& pathToGeneration)
 {
-    if (Spdk) {
-        return MakeError(E_ARGUMENT, "Not supported in SPDK mode");
+    if (auto error = CheckDiskRegistryGenerationAndUpdateItIfNeeded(
+            diskRegistryGeneration);
+        HasError(error))
+    {
+        return error;
     }
 
-    if (!AgentConfig->GetOpenCloseDevicesEnabled()) {
-        return MakeError(E_ARGUMENT, "close device feature disabled");
-    }
+    for (const auto& [path, deviceGeneration]: pathToGeneration) {
+        auto& PathAttachState = PathAttachStates[path];
 
-    auto uuids = GetAllDeviceUUIDsForPath(path);
-
-    for (const auto& uuid: uuids) {
-        auto* d = Devices.FindPtr(uuid);
-        if (!d) {
-            return MakeError(E_NOT_FOUND, "device not found");
+        if (PathAttachState.State == EPathAttachState::Detached) {
+            return MakeError(S_ALREADY, "disk is already detached");
         }
 
-        if (deviceGeneration < d->Config.GetGeneration() ||
-            (deviceGeneration == d->Config.GetGeneration() && d->IsOpen()))
-        {
+        if (deviceGeneration <= PathAttachState.Generation) {
             return MakeError(E_FAIL, "outdated request");
         }
     }
 
-    for (const auto& uuid: uuids) {
-        auto* d = Devices.FindPtr(uuid);
-        d->Config.SetGeneration(deviceGeneration);
-        d->StorageAdapter.reset();
+    for (const auto& [path, deviceGeneration]: pathToGeneration) {
+        auto& PathAttachState = PathAttachStates[path];
+        auto uuids = GetAllDeviceUUIDsForPath(path);
 
-        if (RdmaTarget) {
-            RdmaTarget->CloseDevice(uuid);
+        for (const auto& uuid: uuids) {
+            auto* d = Devices.FindPtr(uuid);
+            d->Config.SetGeneration(deviceGeneration);
+            d->StorageAdapter.reset();
+
+            if (RdmaTarget) {
+                RdmaTarget->CloseDevice(uuid);
+            }
         }
+
+        PathAttachState.State = EPathAttachState::Detached;
+        PathAttachState.Generation = deviceGeneration;
     }
 
     return {};
+}
+
+NProto::TError TDiskAgentState::CheckDiskRegistryGenerationAndUpdateItIfNeeded(
+    ui64 diskRegistryGeneration)
+{
+    if (diskRegistryGeneration < LastDiskRegistryGenerationSeen) {
+        return MakeError(E_FAIL, "outdated request");
+    }
+
+    if (diskRegistryGeneration > LastDiskRegistryGenerationSeen) {
+        ResetDiskGenerations();
+    }
+
+    LastDiskRegistryGenerationSeen = diskRegistryGeneration;
+
+    return {};
+}
+
+void TDiskAgentState::ResetDiskGenerations()
+{
+    for (auto& [path, state]: PathAttachStates) {
+        state.Generation = 0;
+    }
 }
 
 void TDiskAgentState::RestoreSessions(
