@@ -566,6 +566,7 @@ void TFileSystem::WriteBuf(
         request->SetBuffer(alignedBuffer.TakeBuffer());
     } else {
         ui64 dataSize = 0;
+        request->MutableIovecs()->Reserve(bufv->count);
         for (size_t index = 0; index < bufv->count; ++index) {
             const auto* srcFuseBuf = &bufv->buf[index];
             if (srcFuseBuf->size == 0) {
