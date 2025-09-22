@@ -8,7 +8,10 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -22,12 +25,13 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteDiskTask struct {
-	storage     resources.Storage
-	scheduler   tasks.Scheduler
-	poolService pools.Service
-	nbsFactory  nbs.Factory
-	request     *protos.DeleteDiskRequest
-	state       *protos.DeleteDiskTaskState
+	performanceConfig *performance_config.PerformanceConfig
+	storage           resources.Storage
+	scheduler         tasks.Scheduler
+	poolService       pools.Service
+	nbsFactory        nbs.Factory
+	request           *protos.DeleteDiskRequest
+	state             *protos.DeleteDiskTaskState
 }
 
 func (t *deleteDiskTask) Save() ([]byte, error) {
@@ -66,6 +70,29 @@ func (t *deleteDiskTask) deleteDisk(
 
 	if diskMeta == nil {
 		return nil
+	}
+
+	if sync {
+		diskKind, err := common.DiskKindFromString(diskMeta.Kind)
+		if err != nil {
+			return err
+		}
+
+		diskSize := diskMeta.BlocksCount * uint64(diskMeta.BlockSize)
+
+		switch diskKind {
+		case types.DiskKind_DISK_KIND_SSD_LOCAL:
+			execCtx.SetEstimatedInflightDuration(performance.Estimate(
+				diskSize,
+				t.performanceConfig.GetEraseSSDLocalDiskBandwidthMiBs(),
+			))
+
+		case types.DiskKind_DISK_KIND_HDD_LOCAL:
+			execCtx.SetEstimatedInflightDuration(performance.Estimate(
+				diskSize,
+				t.performanceConfig.GetEraseHDDLocalDiskBandwidthMiBs(),
+			))
+		}
 	}
 
 	zoneID := diskMeta.ZoneID
