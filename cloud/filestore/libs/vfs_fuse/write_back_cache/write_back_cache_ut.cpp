@@ -112,14 +112,14 @@ struct TInFlightRequestTracker
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
+struct TWriteBackCacheStats: public IWriteBackCacheStats
 {
     TWriteBackCache::TPersistentQueueStats PersistentQueue;
-    std::atomic_uint64_t CompletedFlushCount = 0;
-    std::atomic_uint64_t FailedFlushCount = 0;
-    std::atomic_uint64_t NodeCount = 0;
-    std::atomic_uint64_t CachedWriteRequestCount = 0;
-    std::atomic_uint64_t PendingWriteRequestCount = 0;
+    ui64 CompletedFlushCount = 0;
+    ui64 FailedFlushCount = 0;
+    ui64 NodeCount = 0;
+    ui64 CachedWriteRequestCount = 0;
+    ui64 PendingWriteRequestCount = 0;
     TVector<TWriteBackCache::TWriteDataStats> WriteDataStats;
 
     void IncrementCompletedFlushCount() override
@@ -134,17 +134,17 @@ struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
 
     void SetNodeCount(ui64 value) override
     {
-        NodeCount.store(value);
+        NodeCount = value;
     }
 
     void SetCachedWriteRequestCount(ui64 value) override
     {
-        CachedWriteRequestCount.store(value);
+        CachedWriteRequestCount = value;
     }
 
     void SetPendingWriteRequestCount(ui64 value) override
     {
-        PendingWriteRequestCount.store(value);
+        PendingWriteRequestCount = value;
     }
 
     void SetPersistentQueueStats(
@@ -153,7 +153,7 @@ struct TWriteBackCacheStatsReporter: public IWriteBackCacheStatsReporter
         PersistentQueue = stats;
     }
 
-    void AddWriteRequestStats(
+    void PostWriteRequestStats(
         const TWriteBackCache::TWriteDataStats& stats) override
     {
         WriteDataStats.push_back(stats);
@@ -187,7 +187,7 @@ struct TBootstrap
     std::shared_ptr<TFileStoreTest> Session;
     std::shared_ptr<TTestTimer> Timer;
     std::shared_ptr<TTestScheduler> Scheduler;
-    std::shared_ptr<TWriteBackCacheStatsReporter> StatsReporter;
+    std::shared_ptr<TWriteBackCacheStats> StatsReporter;
     TDuration CacheAutomaticFlushPeriod;
     TDuration CacheFlushRetryPeriod;
     TTempFileHandle TempFileHandle;
@@ -246,7 +246,7 @@ struct TBootstrap
         Scheduler = std::make_shared<TTestScheduler>();
         Scheduler->Start();
 
-        StatsReporter = std::make_shared<TWriteBackCacheStatsReporter>();
+        StatsReporter = std::make_shared<TWriteBackCacheStats>();
 
         Session = std::make_shared<TFileStoreTest>();
 
