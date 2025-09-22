@@ -58,9 +58,9 @@ private:
     NThreading::TPromise<void> FlushPromise;
     EWriteDataEntryStatus Status = EWriteDataEntryStatus::Corrupted;
 
-    TInstant RequestTime;
+    TInstant PendingTime;
     TInstant CachedTime;
-    TInstant FlushTime;
+    TInstant FlushStartedTime;
 
 public:
     explicit TWriteDataEntry(
@@ -132,9 +132,9 @@ public:
     NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
     NThreading::TFuture<void> GetFlushFuture();
 
-    void SetRequestTime(TInstant time);
+    void SetPendingTime(TInstant time);
     void SetCachedTime(TInstant time);
-    void SetFlushTime(TInstant time);
+    void SetFlushStartedTime(TInstant time);
     TWriteBackCache::TWriteDataStats GetStats(TInstant time) const;
 };
 

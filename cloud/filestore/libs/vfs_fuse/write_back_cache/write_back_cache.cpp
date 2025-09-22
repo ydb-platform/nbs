@@ -355,7 +355,7 @@ public:
                     CachedEntries.push_back(std::move(entry));
                 } else {
                     auto* nodeState = GetOrCreateNodeState(entry->GetNodeId());
-                    entry->SetRequestTime(Timer->Now());
+                    entry->SetPendingTime(Timer->Now());
                     AddCachedEntry(nodeState, std::move(entry));
                 }
             });
@@ -492,7 +492,7 @@ public:
             return MakeFuture(std::move(response));
         }
 
-        entry->SetRequestTime(Timer->Now());
+        entry->SetPendingTime(Timer->Now());
 
         auto serializedSize = entry->GetSerializedSize();
 
@@ -1058,7 +1058,7 @@ private:
             }
 
             for (size_t i = 0; i < entryCount; i++) {
-                nodeState->CachedEntries[i]->SetFlushTime(now);
+                nodeState->CachedEntries[i]->SetFlushStartedTime(now);
             }
 
             parts = TUtil::CalculateDataPartsToFlush(
@@ -1458,9 +1458,9 @@ TFuture<void> TWriteBackCache::TWriteDataEntry::GetFlushFuture()
     return FlushPromise.GetFuture();
 }
 
-void TWriteBackCache::TWriteDataEntry::SetRequestTime(TInstant time)
+void TWriteBackCache::TWriteDataEntry::SetPendingTime(TInstant time)
 {
-    RequestTime = time;
+    PendingTime = time;
 }
 
 void TWriteBackCache::TWriteDataEntry::SetCachedTime(TInstant time)
@@ -1468,20 +1468,20 @@ void TWriteBackCache::TWriteDataEntry::SetCachedTime(TInstant time)
     CachedTime = time;
 }
 
-void TWriteBackCache::TWriteDataEntry::SetFlushTime(TInstant time)
+void TWriteBackCache::TWriteDataEntry::SetFlushStartedTime(TInstant time)
 {
-    FlushTime = time;
+    FlushStartedTime = time;
 }
 
 auto TWriteBackCache::TWriteDataEntry::GetStats(TInstant time) const
     -> TWriteBackCache::TWriteDataStats
 {
-    Y_DEBUG_ABORT_UNLESS(RequestTime && CachedTime && FlushTime);
+    Y_DEBUG_ABORT_UNLESS(PendingTime && CachedTime && FlushStartedTime);
 
     return {
-        .PendingDuration = CachedTime - RequestTime,
-        .WaitingDuration = FlushTime - CachedTime,
-        .FlushDuration = time - FlushTime};
+        .PendingDuration = CachedTime - PendingTime,
+        .WaitingDuration = FlushStartedTime - CachedTime,
+        .FlushDuration = time - FlushStartedTime};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
