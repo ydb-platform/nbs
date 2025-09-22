@@ -42,79 +42,44 @@ func (t *collectClusterCapacityTask) Run(
 
 	group, ctx := errgroup.WithContext(ctx)
 
-	completedCells := make(chan string)
+	type cellLocation struct {
+		zoneID string
+		cellID string
+	}
+
+	var cellsToCollect []cellLocation
 
 	for zoneID, cells := range t.config.Cells {
-		logging.Info(ctx, "Getting cluster capacity for zone %s", zoneID)
-
 		for _, cellID := range cells.Cells {
-			group.Go(func(zoneID string, cellID string) func() error {
-				return func() error {
-					if slices.Contains(t.state.ProcessedCells, cellID) {
-						return nil
-					}
+			if slices.Contains(t.state.ProcessedCells, cellID) {
+				continue
+			}
 
-					logging.Info(ctx, "Getting cluster capacity for cell %s", cellID)
-
-					client, err := t.nbsFactory.GetClient(ctx, cellID)
-					if err != nil {
-						return err
-					}
-
-					capacityInfos, err := client.GetClusterCapacity(ctx)
-					if err != nil {
-						logging.Error(
-							ctx,
-							"Failed to get cluster capacity from cell %s: %v",
-							cellID,
-							err,
-						)
-						return err
-					}
-
-					var capacities []storage.ClusterCapacity
-					for _, info := range capacityInfos {
-						capacities = append(capacities, storage.ClusterCapacity{
-							ZoneID:     zoneID,
-							CellID:     cellID,
-							Kind:       info.DiskKind,
-							FreeBytes:  info.FreeBytes,
-							TotalBytes: info.TotalBytes,
-						})
-					}
-
-					expirationTimeout, err := time.ParseDuration(
-						t.config.GetClusterCapacityExpirationTimeout(),
-					)
-					if err != nil {
-						return err
-					}
-
-					deleteBefore := time.Now().Add(-expirationTimeout)
-					err = t.storage.UpdateClusterCapacities(
-						ctx,
-						capacities,
-						deleteBefore,
-					)
-					if err != nil {
-						return err
-					}
-
-					logging.Info(
-						ctx,
-						"Successfully finished getting capacity for cell: %v",
-						cellID,
-					)
-
-					select {
-					case completedCells <- cellID:
-					case <-ctx.Done():
-						return ctx.Err()
-					}
-					return nil
-				}
-			}(zoneID, cellID))
+			cellsToCollect = append(cellsToCollect, cellLocation{
+				zoneID: zoneID,
+				cellID: cellID,
+			})
 		}
+	}
+
+	completedCells := make(chan string)
+
+	for _, cellInfo := range cellsToCollect {
+		group.Go(func(zoneID string, cellID string) func() error {
+			return func() error {
+				err := t.updateCellCapacity(ctx, zoneID, cellID)
+				if err != nil {
+					return err
+				}
+
+				select {
+				case completedCells <- cellID:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+				return nil
+			}
+		}(cellInfo.zoneID, cellInfo.cellID))
 	}
 
 	go func() {
@@ -156,4 +121,66 @@ func (t *collectClusterCapacityTask) GetMetadata(
 
 func (t *collectClusterCapacityTask) GetResponse() proto.Message {
 	return &empty.Empty{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *collectClusterCapacityTask) updateCellCapacity(
+	ctx context.Context,
+	zoneID string,
+	cellID string,
+) error {
+
+	logging.Info(ctx, "Getting cluster capacity for cell %s", cellID)
+
+	client, err := t.nbsFactory.GetClient(ctx, cellID)
+	if err != nil {
+		return err
+	}
+
+	capacityInfos, err := client.GetClusterCapacity(ctx)
+	if err != nil {
+		logging.Error(
+			ctx,
+			"Failed to get cluster capacity from cell %s: %v",
+			cellID,
+			err,
+		)
+		return err
+	}
+
+	var capacities []storage.ClusterCapacity
+	for _, info := range capacityInfos {
+		capacities = append(capacities, storage.ClusterCapacity{
+			ZoneID:     zoneID,
+			CellID:     cellID,
+			Kind:       info.DiskKind,
+			FreeBytes:  info.FreeBytes,
+			TotalBytes: info.TotalBytes,
+		})
+	}
+
+	expirationTimeout, err := time.ParseDuration(
+		t.config.GetClusterCapacityExpirationTimeout(),
+	)
+	if err != nil {
+		return err
+	}
+
+	deleteBefore := time.Now().Add(-expirationTimeout)
+	err = t.storage.UpdateClusterCapacities(
+		ctx,
+		capacities,
+		deleteBefore,
+	)
+	if err != nil {
+		return err
+	}
+
+	logging.Info(
+		ctx,
+		"Successfully finished getting capacity for cell: %v",
+		cellID,
+	)
+	return nil
 }

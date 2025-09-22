@@ -48,7 +48,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 
 	nbsFactory.On(
 		"GetClient",
-		mock.Anything,
+		mock.Anything, // Can't use ctx, because of errgroup.
 		mock.Anything,
 	).Return(nbsClient, nil).Times(3)
 	nbsClient.On("GetClusterCapacity", mock.Anything).Return(
@@ -57,7 +57,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 	).Times(3)
 
 	storage.On("UpdateClusterCapacities",
-		mock.Anything,
+		mock.Anything, // Can't use ctx, because of errgroup.
 		mock.Anything,
 		mock.Anything,
 	).Return(nil).Times(3)
