@@ -248,7 +248,7 @@ public:
         token->RecentBlocksTracker.Reset();
     }
 
-    void OpenDevice(const TString& deviceUUID, TStorageAdapterPtr device)
+    void AttachDevice(const TString& deviceUUID, TStorageAdapterPtr device)
     {
         auto* d = Devices.FindPtr(deviceUUID);
         if (!d) {
@@ -258,7 +258,7 @@ public:
         d->Device = std::move(device);
     }
 
-    void CloseDevice(const TString& deviceUUID)
+    void DetachDevice(const TString& deviceUUID)
     {
         auto* d = Devices.FindPtr(deviceUUID);
         if (!d) {
@@ -1222,14 +1222,14 @@ public:
         Handler->DeviceSecureEraseFinish(deviceUUID, error);
     }
 
-    void OpenDevice(const TString& deviceUUID, TStorageAdapterPtr device) override
+    void AttachDevice(const TString& deviceUUID, TStorageAdapterPtr device) override
     {
-        Handler->OpenDevice(deviceUUID, device);
+        Handler->AttachDevice(deviceUUID, device);
     }
 
-    void CloseDevice(const TString& deviceUUID) override
+    void DetachDevice(const TString& deviceUUID) override
     {
-        Handler->CloseDevice(deviceUUID);
+        Handler->DetachDevice(deviceUUID);
     }
 };
 
