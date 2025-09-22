@@ -272,7 +272,7 @@ void TDiskAgentActor::HandleCheckIsSamePathResult(
 
     THashMap<TString, TFuture<IStoragePtr>> storageFutures;
     for (auto& [path, _]:
-         PendingAttachPathRequest->DevicePathToDeviceGeneration)
+         PendingAttachPathRequest->PathToGeneration)
     {
         auto storagesToAdd = State->AttachPath(path);
         storageFutures.insert(storagesToAdd.begin(), storagesToAdd.end());

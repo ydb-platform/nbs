@@ -44,7 +44,7 @@ void TDiskAgentActor::HandleAttachPath(
             return;
         }
 
-        request.DevicePathToDeviceGeneration[pathToGeneration.GetDiskPath()] =
+        request.PathToGeneration[pathToGeneration.GetDiskPath()] =
             pathToGeneration.GetGeneration();
         paths.emplace_back(pathToGeneration.GetDiskPath());
     }
@@ -62,11 +62,11 @@ void TDiskAgentActor::HandlePathAttached(
 
     State->PathAttached(
         std::move(msg->Devices),
-        PendingAttachPathRequest->DevicePathToDeviceGeneration);
+        PendingAttachPathRequest->PathToGeneration);
 
     THashSet<TString> paths;
     for (const auto& [path, _]:
-         PendingAttachPathRequest->DevicePathToDeviceGeneration)
+         PendingAttachPathRequest->PathToGeneration)
     {
         paths.emplace(path);
     }
