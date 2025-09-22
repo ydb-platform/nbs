@@ -6836,7 +6836,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             FormatError(response.ReplicationResponses[1]));
     }
 
-    Y_UNIT_TEST(ShouldCloseDevice)
+    Y_UNIT_TEST(ShouldDetachPath)
     {
         auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
@@ -6892,7 +6892,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
     }
 
-    Y_UNIT_TEST(ShouldOpenDevice)
+    Y_UNIT_TEST(ShouldAttachPath)
     {
         auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
@@ -6952,7 +6952,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
     }
 
-    Y_UNIT_TEST(ShouldRejectOldOpenCloseRequests)
+    Y_UNIT_TEST(ShouldRejectOldattachDetachRequests)
     {
         auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
@@ -7032,7 +7032,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
     }
 
-    Y_UNIT_TEST(ShouldDetectDeviceChange)
+    Y_UNIT_TEST(ShouldDetectDeviceFileChange)
     {
         auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
