@@ -10,6 +10,8 @@
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -3861,7 +3863,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
         service.WriteData(headers, fs, nodeId, handle, offset, data);
         for (auto i = 0; i < iovecsNum; ++i) {
-            std::cerr << "MYAGKOV: test index: " << i << std::endl;
             auto readDataResult = service.ReadData(
                 headers,
                 fs,
@@ -3910,6 +3911,46 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
         TestZeroCopyWrite(config, 111, 4_KB);
+    }
+
+    Y_UNIT_TEST(TestZeroCopyWriteRandomIovecSize)
+    {
+        ILoggingServicePtr Logging(
+            CreateLoggingService("console", {TLOG_DEBUG}));
+        TLog Log(Logging->CreateLog("NFS_TEST"));
+
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+
+        const auto seed = time(0);
+        STORAGE_INFO("Seed: %lu", seed);
+        srand(seed);
+        const auto iovecSize = rand() % 16_KB + 1;
+        STORAGE_INFO("iovec size: %lu", iovecSize);
+
+        TestZeroCopyWrite(config, 0, iovecSize);
+    }
+
+    Y_UNIT_TEST(TestZeroCopyWriteFallbackRandomIovecSize)
+    {
+        ILoggingServicePtr Logging(
+            CreateLoggingService("console", {TLOG_DEBUG}));
+        TLog Log(Logging->CreateLog("NFS_TEST"));
+
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(false);
+        config.SetUnalignedThreeStageWriteEnabled(false);
+        config.SetZeroCopyWriteEnabled(true);
+
+        const auto seed = time(0);
+        STORAGE_INFO("Seed: %lu", seed);
+        srand(seed);
+        const auto iovecSize = rand() % 16_KB + 1;
+        STORAGE_INFO("iovec size: %lu", iovecSize);
+
+        TestZeroCopyWrite(config, 0, iovecSize);
     }
 }
 
