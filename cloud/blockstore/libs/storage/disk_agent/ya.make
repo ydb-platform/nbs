@@ -4,12 +4,13 @@ GENERATE_ENUM_SERIALIZATION(recent_blocks_tracker.h)
 
 SRCS(
     disk_agent_actor_acquire.cpp
+    disk_agent_actor_attach_detach_path.cpp
+    disk_agent_actor_check_is_same_path.cpp
     disk_agent_actor_direct_copy.cpp
     disk_agent_actor_disable.cpp
     disk_agent_actor_init.cpp
     disk_agent_actor_io.cpp
     disk_agent_actor_monitoring.cpp
-    disk_agent_actor_open_close_devices.cpp
     disk_agent_actor_partial_suspend.cpp
     disk_agent_actor_register.cpp
     disk_agent_actor_release.cpp
