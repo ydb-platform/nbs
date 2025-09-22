@@ -79,31 +79,35 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
     return rope;
 }
 
-TString GetBufferFromRope(TRope& rope, ui64 offset, ui64 length)
+TString GetBufferFromRope(TRope& rope, ui64 byteOffset, ui64 bufferLength)
 {
     TString buffer;
-    buffer.ReserveAndResize(length);
-    auto bytesCopied =
-        TRopeUtils::SafeMemcpy(&buffer[0], rope.Begin() + offset, length);
-    Y_ABORT_UNLESS(bytesCopied == length);
+    buffer.ReserveAndResize(bufferLength);
+    auto bytesCopied = TRopeUtils::SafeMemcpy(
+        &buffer[0],
+        rope.Begin() + byteOffset,
+        bufferLength);
+    Y_ABORT_UNLESS(bytesCopied == bufferLength);
     return buffer;
 }
 
 void CopyIovecs(
     const NProto::TWriteDataRequest& request,
     TString& buffer,
-    ui64 offset,
-    ui64 length)
+    ui64 byteOffset,
+    ui64 bufferLength)
 {
     if (request.GetIovecs().empty()) {
         return;
     }
 
     auto rope = CreateRopeFromIovecs(request);
-    buffer.ReserveAndResize(length);
-    auto bytesCopied =
-        TRopeUtils::SafeMemcpy(&buffer[0], rope.Begin() + offset, length);
-    Y_ABORT_UNLESS(bytesCopied == length);
+    buffer.ReserveAndResize(bufferLength);
+    auto bytesCopied = TRopeUtils::SafeMemcpy(
+        &buffer[0],
+        rope.Begin() + byteOffset,
+        bufferLength);
+    Y_ABORT_UNLESS(bytesCopied == bufferLength);
 }
 
 void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
@@ -645,6 +649,14 @@ void TStorageServiceActor::HandleWriteData(
 
     if (fsId) {
         msg->Record.SetFileSystemId(fsId);
+    }
+
+    if (!msg->Record.GetIovecs().empty() && msg->Record.GetBufferOffset() != 0)
+    {
+        auto response = std::make_unique<TEvService::TEvWriteDataResponse>(
+            ErrorInvalidArgument(
+                "The BufferOffset option is not compatible with Iovecs"));
+        return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
     const auto threeStageWriteAllowed = IsThreeStageWriteEnabled(filestore);
