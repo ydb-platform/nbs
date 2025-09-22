@@ -20,8 +20,6 @@ SET(
     cloud/filestore/tests/fio/qemu-kikimr-zero-copy-write-test-fallback/nfs-storage-zero-copy-write-fallback-patch.txt
 )
 
-SET(FILESTORE_VHOST_QUEUE_COUNT 8)
-
 SET(QEMU_VIRTIO fs)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
