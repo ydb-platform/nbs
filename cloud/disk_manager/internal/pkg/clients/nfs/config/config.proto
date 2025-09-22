@@ -15,6 +15,6 @@ message ClientConfig {
     optional string RootCertsFile = 2;
     optional bool Insecure = 3;
     optional bool DisableAuthentication = 4;
-    optional string DurableClientTimeout = 5 [default = "20s"];
+    optional string DurableClientTimeout = 5 [default = "60s"];
     optional string GrpcClientTimeout = 6 [default = "30s"];
 }
