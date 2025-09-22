@@ -6840,7 +6840,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetAcquireRequired(true);
         agentConfig.SetEnabled(true);
-        agentConfig.SetOpenCloseDevicesEnabled(true);
+        agentConfig.SetAttachDetachPathsEnabled(true);
 
         const auto workingDir = TryGetRamDrivePath();
         const auto filePath =
@@ -6896,7 +6896,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetAcquireRequired(true);
         agentConfig.SetEnabled(true);
-        agentConfig.SetOpenCloseDevicesEnabled(true);
+        agentConfig.SetAttachDetachPathsEnabled(true);
 
         const auto workingDir = TryGetRamDrivePath();
         const auto filePath =
@@ -6956,7 +6956,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetAcquireRequired(true);
         agentConfig.SetEnabled(true);
-        agentConfig.SetOpenCloseDevicesEnabled(true);
+        agentConfig.SetAttachDetachPathsEnabled(true);
 
         const auto workingDir = TryGetRamDrivePath();
         const auto filePath =
@@ -7036,7 +7036,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         agentConfig.SetAcquireRequired(true);
         agentConfig.SetEnabled(true);
-        agentConfig.SetOpenCloseDevicesEnabled(true);
+        agentConfig.SetAttachDetachPathsEnabled(true);
 
         const auto workingDir = TryGetRamDrivePath();
         const auto filePath =
