@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRegisterActor final
-    : public TActorBootstrapped<TRegisterActor>
+class TRegisterActor final: public TActorBootstrapped<TRegisterActor>
 {
 private:
     const TActorId Owner;
@@ -25,8 +24,9 @@ private:
 
     TVector<TString> DevicesToDisableIO;
 
-    ui64 PendingOpenCloseDevices = 0;
     NProto::TError Error;
+
+    NProto::TRegisterAgentResponse RegisterResponse;
 
 public:
     TRegisterActor(
@@ -38,32 +38,45 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
+    void DetachPathsIfNeeded(const TActorContext& ctx);
+
+    void AttachPathsIfNeeded(const TActorContext& ctx);
+
+    void ReplyAndDie(const TActorContext& ctx);
+
+private:
     STFUNC(StateWaitRegisterResponse);
 
-    STFUNC(StateWaitDevicesOpenClose);
+    STFUNC(StateWaitDisksDetach);
+
+    STFUNC(StateWaitDisksAttach);
 
     void HandleRegisterAgentResponse(
         const TEvDiskRegistry::TEvRegisterAgentResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    template <typename TEvent>
-    void HandleDeviceOpenClosed(const TEvent& ev, const TActorContext& ctx)
+    void HandleDisksDetached(
+        const TEvDiskAgent::TEvDetachPathResponse::TPtr& ev,
+        const TActorContext& ctx)
     {
-        --PendingOpenCloseDevices;
         auto error = ev->Get()->Record.GetError();
         if (HasError(error)) {
             Error = error;
         }
 
-        if (PendingOpenCloseDevices == 0) {
-            auto response =
-                std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(
-                    Error);
-            response->DevicesToDisableIO = std::move(DevicesToDisableIO);
+        AttachPathsIfNeeded(ctx);
+    }
 
-            NCloud::Reply(ctx, *RequestInfo, std::move(response));
-            Die(ctx);
+    void HandleDisksAttached(
+        const TEvDiskAgent::TEvAttachPathResponse::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto error = ev->Get()->Record.GetError();
+        if (HasError(error)) {
+            Error = error;
         }
+
+        ReplyAndDie(ctx);
     }
 };
 
@@ -116,53 +129,79 @@ void TRegisterActor::HandleRegisterAgentResponse(
     const TEvDiskRegistry::TEvRegisterAgentResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
     DevicesToDisableIO.assign(
         msg->Record.GetDevicesToDisableIO().cbegin(),
         msg->Record.GetDevicesToDisableIO().cend());
     Error = msg->GetError();
 
-    if (!OpenCloseDevicesEnabled || (msg->Record.GetUnknownDevices().empty() &&
-                                     msg->Record.GetAllowedDevices().empty()))
+    if (!OpenCloseDevicesEnabled || (msg->Record.GetUnknownDisks().empty() &&
+                                     msg->Record.GetAllowedDisks().empty()))
     {
-        auto response =
-            std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(
-                msg->GetError());
-        response->DevicesToDisableIO = std::move(DevicesToDisableIO);
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
-        Die(ctx);
+        ReplyAndDie(ctx);
         return;
     }
 
-    for (const auto& device: msg->Record.GetAllowedDevices()) {
-        auto openRequest =
-            std::make_unique<TEvDiskAgent::TEvOpenDeviceRequest>();
-        openRequest->Record.SetDevicePath(device.GetDevicePath());
-        openRequest->Record.SetDeviceGeneration(device.GetDeviceGeneration());
+    RegisterResponse = std::move(msg->Record);
+    DetachPathsIfNeeded(ctx);
+}
 
-        NCloud::Send(ctx, Owner, std::move(openRequest));
-        ++PendingOpenCloseDevices;
+void TRegisterActor::DetachPathsIfNeeded(const TActorContext& ctx)
+{
+    if (RegisterResponse.GetUnknownDisks().empty()) {
+        AttachPathsIfNeeded(ctx);
+        return;
     }
 
-    for (const auto& device: msg->Record.GetUnknownDevices()) {
-        auto closeRequest =
-            std::make_unique<TEvDiskAgent::TEvCloseDeviceRequest>();
-        closeRequest->Record.SetDevicePath(device.GetDevicePath());
-        closeRequest->Record.SetDeviceGeneration(device.GetDeviceGeneration());
+    auto detachRequest = std::make_unique<TEvDiskAgent::TEvDetachPathRequest>();
+    detachRequest->Record.SetDiskRegistryGeneration(
+        RegisterResponse.GetDiskRegistryTabletGeneration());
 
-        NCloud::Send(ctx, Owner, std::move(closeRequest));
-
-        ++PendingOpenCloseDevices;
+    for (auto& pathToGeneration: *RegisterResponse.MutableUnknownDisks()) {
+        *detachRequest->Record.AddDisksToDetach() = std::move(pathToGeneration);
     }
 
-    Become(&TThis::StateWaitDevicesOpenClose);
+    NCloud::Send(ctx, Owner, std::move(detachRequest));
+
+    Become(&TThis::StateWaitDisksDetach);
+}
+
+void TRegisterActor::AttachPathsIfNeeded(const TActorContext& ctx)
+{
+    if (RegisterResponse.GetAllowedDisks().empty()) {
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    auto attachRequest = std::make_unique<TEvDiskAgent::TEvAttachPathRequest>();
+    attachRequest->Record.SetDiskRegistryGeneration(
+        RegisterResponse.GetDiskRegistryTabletGeneration());
+
+    for (auto& pathToGeneration: *RegisterResponse.MutableAllowedDisks()) {
+        *attachRequest->Record.AddDisksToAttach() = std::move(pathToGeneration);
+    }
+
+    NCloud::Send(ctx, Owner, std::move(attachRequest));
+
+    Become(&TThis::StateWaitDisksAttach);
+}
+
+void TRegisterActor::ReplyAndDie(const TActorContext& ctx)
+{
+    auto response =
+        std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(Error);
+    response->DevicesToDisableIO = std::move(DevicesToDisableIO);
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    Die(ctx);
 }
 
 STFUNC(TRegisterActor::StateWaitRegisterResponse)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvDiskRegistry::TEvRegisterAgentResponse, HandleRegisterAgentResponse);
+        HFunc(
+            TEvDiskRegistry::TEvRegisterAgentResponse,
+            HandleRegisterAgentResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -173,11 +212,24 @@ STFUNC(TRegisterActor::StateWaitRegisterResponse)
     }
 }
 
-STFUNC(TRegisterActor::StateWaitDevicesOpenClose)
+STFUNC(TRegisterActor::StateWaitDisksDetach)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvDiskAgent::TEvOpenDeviceResponse, HandleDeviceOpenClosed);
-        HFunc(TEvDiskAgent::TEvCloseDeviceResponse, HandleDeviceOpenClosed);
+        HFunc(TEvDiskAgent::TEvDetachPathResponse, HandleDisksDetached);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_AGENT_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+STFUNC(TRegisterActor::StateWaitDisksAttach)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvDiskAgent::TEvAttachPathResponse, HandleDisksAttached);
 
         default:
             HandleUnexpectedEvent(
