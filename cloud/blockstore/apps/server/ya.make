@@ -29,6 +29,10 @@ PEERDIR(
 
 IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG" AND BUILD_TYPE != "RELWITHDEBINFO")
     SPLIT_DWARF()
+ELSE()
+    PEERDIR(
+        library/cpp/terminate_handler
+    )
 ENDIF()
 
 IF (SANITIZER_TYPE)
