@@ -291,7 +291,7 @@ private:
     const IFileStorePtr Session;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
-    const IWriteBackCacheStatsReporterPtr StatsReporter;
+    const IWriteBackCacheStatsPtr Stats;
     const TFlushConfig FlushConfig;
 
     // All fields below should be protected by this lock
@@ -320,14 +320,14 @@ public:
             IFileStorePtr session,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
-            IWriteBackCacheStatsReporterPtr statsReporter,
+            IWriteBackCacheStatsPtr stats,
             const TString& filePath,
             ui32 capacityBytes,
             TFlushConfig flushConfig)
         : Session(std::move(session))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
-        , StatsReporter(std::move(statsReporter))
+        , Stats(std::move(stats))
         , FlushConfig(flushConfig)
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
@@ -1134,10 +1134,10 @@ private:
         state.WriteRequests.clear();
 
         if (state.FailedWriteRequests.empty()) {
-            StatsReporter->IncrementCompletedFlushCount();
+            Stats->IncrementCompletedFlushCount();
             CompleteFlush(nodeState);
         } else {
-            StatsReporter->IncrementFailedFlushCount();
+            Stats->IncrementFailedFlushCount();
             ScheduleRetryFlush(nodeState);
         }
     }
@@ -1165,7 +1165,7 @@ private:
             entry->FinishFlush(PendingOperations);
 
             auto stats = entry->GetStats(now);
-            StatsReporter->AddWriteRequestStats(stats);
+            Stats->PostWriteRequestStats(stats);
         }
 
         // Clear flushed entries from the persistent queue
@@ -1232,7 +1232,7 @@ private:
     // calls) to CachedEntriesPersistentQueue.AllocateBack or .PopFront
     void ReportPersistentQueueStats() const
     {
-        StatsReporter->SetPersistentQueueStats(
+        Stats->SetPersistentQueueStats(
             {.Capacity =
                 CachedEntriesPersistentQueue.GetRawCapacity(),
              .UsedBytesCount =
@@ -1244,17 +1244,17 @@ private:
 
     void ReportNodeCount() const
     {
-        StatsReporter->SetNodeCount(NodeStates.size());
+        Stats->SetNodeCount(NodeStates.size());
     }
 
     void ReportCachedRequestCount() const
     {
-        StatsReporter->SetCachedWriteRequestCount(CachedEntries.size());
+        Stats->SetCachedWriteRequestCount(CachedEntries.size());
     }
 
     void ReportPendingRequestCount() const
     {
-        StatsReporter->SetPendingWriteRequestCount(PendingEntries.size());
+        Stats->SetPendingWriteRequestCount(PendingEntries.size());
     }
 };
 
@@ -1266,7 +1266,7 @@ TWriteBackCache::TWriteBackCache(
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
-        IWriteBackCacheStatsReporterPtr statsReporter,
+        IWriteBackCacheStatsPtr stats,
         const TString& filePath,
         ui32 capacityBytes,
         TDuration automaticFlushPeriod,
@@ -1279,7 +1279,7 @@ TWriteBackCache::TWriteBackCache(
             std::move(session),
             std::move(scheduler),
             std::move(timer),
-            std::move(statsReporter),
+            std::move(stats),
             filePath,
             capacityBytes,
             {.AutomaticFlushPeriod = automaticFlushPeriod,
