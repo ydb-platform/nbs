@@ -8,7 +8,6 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
@@ -192,7 +191,9 @@ func (t *deleteDiskTask) setEstimate(
 		return nil
 	}
 
-	diskMeta, err := t.storage.GetDiskMeta(ctx, t.request.Disk.DiskId)
+	diskID := t.request.Disk.DiskId
+
+	diskMeta, err := t.storage.GetDiskMeta(ctx, diskID)
 	if err != nil {
 		return err
 	}
@@ -202,14 +203,24 @@ func (t *deleteDiskTask) setEstimate(
 		return nil
 	}
 
-	diskKind, err := common.DiskKindFromString(diskMeta.Kind)
+	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
 	if err != nil {
 		return err
 	}
 
-	diskSize := diskMeta.BlocksCount * uint64(diskMeta.BlockSize)
+	diskParams, err := client.Describe(ctx, diskID)
+	if err != nil {
+		if nbs.IsDiskNotFoundError(err) {
+			// Should be idempotent.
+			return nil
+		}
 
-	switch diskKind {
+		return err
+	}
+
+	diskSize := diskParams.BlocksCount * uint64(diskParams.BlockSize)
+
+	switch diskParams.Kind {
 	case types.DiskKind_DISK_KIND_SSD_LOCAL:
 		execCtx.SetEstimatedInflightDuration(performance.Estimate(
 			diskSize,

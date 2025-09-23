@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -65,6 +66,7 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 	if sync {
+		nbsClient.On("Describe", ctx, "disk").Return(nbs.DiskParams{}, nil)
 		nbsClient.On("DeleteSync", ctx, "disk").Return(nil)
 	} else {
 		nbsClient.On("Delete", ctx, "disk").Return(nil)
@@ -251,7 +253,7 @@ func TestDeleteDiskTaskWithNonExistentDisk(t *testing.T) {
 func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 	t *testing.T,
 	sync bool,
-	diskKind string,
+	diskKind types.DiskKind,
 	expectedEstimatedInflightDuration time.Duration,
 ) {
 	ctx := context.Background()
@@ -284,18 +286,22 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 
 	diskMeta := &resources.DiskMeta{
 		ZoneID:       "zone",
-		Kind:         diskKind,
-		BlocksCount:  100 * 256, // 100 MiB
-		BlockSize:    4096,
 		DeleteTaskID: "toplevel_task_id",
 	}
+
 	if sync {
 		storage.On(
 			"GetDiskMeta",
 			ctx,
 			"disk",
 		).Return(diskMeta, nil).Once()
+		nbsClient.On("Describe", ctx, "disk").Return(nbs.DiskParams{
+			Kind:        diskKind,
+			BlocksCount: 100 * 256, // 100 MiB
+			BlockSize:   4096,
+		}, nil)
 	}
+
 	storage.On(
 		"DeleteDisk",
 		ctx,
@@ -332,13 +338,58 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 }
 
 func TestDeleteDiskTaskEstimatedInflightDurationForLocalDisks(t *testing.T) {
-	// Should have no estimate for any disks except local.
-	testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(t, false, "ssd", 0)
-	testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(t, true, "ssd", 0)
+	testCases := []struct {
+		name                              string
+		sync                              bool
+		diskKind                          types.DiskKind
+		expectedEstimatedInflightDuration time.Duration
+	}{
+		{
+			name:                              "No estimate for any disks except local; Sync=false",
+			sync:                              false,
+			diskKind:                          types.DiskKind_DISK_KIND_SSD,
+			expectedEstimatedInflightDuration: 0,
+		},
+		{
+			name:                              "No estimate for any disks except local; Sync=true",
+			sync:                              true,
+			diskKind:                          types.DiskKind_DISK_KIND_SSD,
+			expectedEstimatedInflightDuration: 0,
+		},
+		{
+			name:                              "No estimate for Sync=false; Kind=ssd-local",
+			sync:                              false,
+			diskKind:                          types.DiskKind_DISK_KIND_SSD_LOCAL,
+			expectedEstimatedInflightDuration: 0,
+		},
+		{
+			name:                              "Estimate set for Sync=true; Kind=ssd-local",
+			sync:                              true,
+			diskKind:                          types.DiskKind_DISK_KIND_SSD_LOCAL,
+			expectedEstimatedInflightDuration: 1 * time.Second,
+		},
+		{
+			name:                              "No estimate for Sync=false; Kind=hdd-local",
+			sync:                              false,
+			diskKind:                          types.DiskKind_DISK_KIND_HDD_LOCAL,
+			expectedEstimatedInflightDuration: 0,
+		},
+		{
+			name:                              "Estimate set for Sync=true; Kind=hdd-local",
+			sync:                              true,
+			diskKind:                          types.DiskKind_DISK_KIND_HDD_LOCAL,
+			expectedEstimatedInflightDuration: 10 * time.Second,
+		},
+	}
 
-	// Should have no estimate if sync is false.
-	testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(t, false, "hdd-local", 0)
-	testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(t, true, "ssd-local", 1*time.Second)
-	testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(t, false, "hdd-local", 0)
-	testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(t, true, "hdd-local", 10*time.Second)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
+				t,
+				testCase.sync,
+				testCase.diskKind,
+				testCase.expectedEstimatedInflightDuration,
+			)
+		})
+	}
 }
