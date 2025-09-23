@@ -36,11 +36,13 @@ bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIoVecContiguousChunk: public IContiguousChunk
+class TIoVecContiguousChunk: public IContiguousChunk
 {
+private:
     ui64 Base = 0;
     ui64 Size = 0;
 
+public:
     TIoVecContiguousChunk(ui64 base, ui64 size)
         : Base(base)
         , Size(size)
@@ -66,9 +68,8 @@ struct TIoVecContiguousChunk: public IContiguousChunk
 
 TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
 {
-    const auto& iovecs = request.GetIovecs();
     TRope rope;
-    for (const auto& iovec: iovecs) {
+    for (const auto& iovec: request.GetIovecs()) {
         rope.Insert(
             rope.End(),
             TRope(TRcBuf(
@@ -80,10 +81,10 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
 }
 
 /**
- * @brief Copies a slice of data from the iovecs in the request into the buffer
+ * @brief Copies a slice of data from the rope in the request into the buffer
  *        and returns the buffer with data
  *
- * @param request      The write request containing iovecs as the source of data
+ * @param rope         The rope as the source of data
  * @param byteOffset   The starting offset (in bytes) from the beginning of the
  *                     iovecs
  * @param byteLength   The number of bytes to copy from the offset
@@ -91,7 +92,7 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
  * @return The destination buffer to copy data into
  *
  * @note It is assumed that byteOffset + byteLength does not exceed the total
- *       size of the data in the iovecs.
+ *       size of the data in the rope.
  */
 TString GetBufferFromRope(TRope& rope, ui64 byteOffset, ui64 bufferLength)
 {
