@@ -15,8 +15,6 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NThreading;
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -38,6 +36,15 @@ TResultOrError<T> UnpackFuture(TFuture<T> f)
     } catch (...) {
         return MakeError(E_FAIL, CurrentExceptionMessage());
     }
+}
+
+TString DescribePaths(const THashMap<TString, ui64>& pathToGeneration)
+{
+    TStringBuilder sb;
+    for (const auto& [path, generation]: pathToGeneration) {
+        sb << path << ":" << generation << " ";
+    }
+    return sb;
 }
 
 class TCheckIsSameDiskActor: public TActorBootstrapped<TCheckIsSameDiskActor>
@@ -230,6 +237,8 @@ private:
 
 }   // namespace
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TDiskAgentActor::CheckIsSamePath(
     const NActors::TActorContext& ctx,
     TVector<TString> paths)
@@ -276,6 +285,14 @@ void TDiskAgentActor::HandleCheckIsSamePathResult(
         ReportPathConfigChangedAfterStart(FormatError(ev->Get()->Error));
         auto response = std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(
             ev->Get()->Error);
+
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "Failed to attach paths [%s]: %s",
+            DescribePaths(PendingAttachPathRequest->PathToGenerationToAttach)
+                .c_str(),
+            FormatError(ev->Get()->Error).c_str());
         NCloud::Reply(
             ctx,
             *PendingAttachPathRequest->RequestInfo,
