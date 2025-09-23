@@ -202,14 +202,15 @@ public:
     NProto::TError CheckCanAttachPath(
         ui64 diskRegistryGeneration,
         const TString& path,
-        ui64 deviceGeneration);
+        ui64 pathGeneration);
 
     THashMap<TString, NThreading::TFuture<IStoragePtr>> AttachPath(
         const TString& path);
 
     void PathAttached(
         THashMap<TString, TResultOrError<IStoragePtr>> devices,
-        const THashMap<TString, ui64>& pathToGeneration);
+        const THashMap<TString, ui64>& pathToGeneration,
+        const THashMap<TString, ui64>& alreadyAttachedPaths);
 
     NProto::TError DetachPath(
         ui64 diskRegistryGeneration,

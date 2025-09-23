@@ -576,6 +576,12 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
                     r.LostDevicesIds.begin(),
                     r.LostDevicesIds.end()});
 
+            for (const auto& [uuid, deviceState]: this->Devices) {
+                this->PathAttachStates[deviceState.Config.GetDeviceName()] = {
+                    .State = EPathAttachState::Attached,
+                    .Generation = 0};
+            }
+
             return r;
         });
 }
@@ -1093,9 +1099,9 @@ bool TDiskAgentState::IsDeviceAttached(const TString& uuid) const
 
 bool TDiskAgentState::IsPathAttached(const TString& path) const
 {
-    const auto* PathAttachState = PathAttachStates.FindPtr(path);
-    return !PathAttachState ||
-           PathAttachState->State == EPathAttachState::Attached;
+    const auto* pathAttachState = PathAttachStates.FindPtr(path);
+    return pathAttachState &&
+           pathAttachState->State == EPathAttachState::Attached;
 }
 
 ui64 TDiskAgentState::DeviceGeneration(const TString& uuid) const
@@ -1105,8 +1111,8 @@ ui64 TDiskAgentState::DeviceGeneration(const TString& uuid) const
         return 0;
     }
     const auto& path = d->Config.GetDeviceName();
-    const auto* PathAttachState = PathAttachStates.FindPtr(path);
-    return PathAttachState ? PathAttachState->Generation : 0;
+    const auto* pathAttachState = PathAttachStates.FindPtr(path);
+    return pathAttachState ? pathAttachState->Generation : 0;
 }
 
 EDeviceStateFlags TDiskAgentState::GetDeviceStateFlags(
@@ -1182,7 +1188,7 @@ TVector<NProto::TDeviceConfig> TDiskAgentState::GetAllDevicesForPaths(
 NProto::TError TDiskAgentState::CheckCanAttachPath(
     ui64 diskRegistryGeneration,
     const TString& path,
-    ui64 deviceGeneration)
+    ui64 pathGeneration)
 {
     if (auto error = CheckDiskRegistryGenerationAndUpdateItIfNeeded(
             diskRegistryGeneration);
@@ -1204,13 +1210,17 @@ NProto::TError TDiskAgentState::CheckCanAttachPath(
         }
     }
 
-    if (IsPathAttached(path)) {
-        return MakeError(S_ALREADY, "Disk is already attached");
+    auto* p = PathAttachStates.FindPtr(path);
+    if (!p) {
+        return MakeError(E_NOT_FOUND, "Path not found");
     }
 
-    auto* d = PathAttachStates.FindPtr(path);
-    if (deviceGeneration <= d->Generation) {
-        return MakeError(E_FAIL, "outdated device generation");
+    if (p->State == EPathAttachState::Attached) {
+        return MakeError(S_ALREADY, "Path is already attached");
+    }
+
+    if (pathGeneration <= p->Generation) {
+        return MakeError(E_FAIL, "outdated path generation");
     }
 
     return {};
@@ -1248,7 +1258,8 @@ THashMap<TString, NThreading::TFuture<IStoragePtr>> TDiskAgentState::AttachPath(
 
 void TDiskAgentState::PathAttached(
     THashMap<TString, TResultOrError<IStoragePtr>> devices,
-    const THashMap<TString, ui64>& pathToGeneration)
+    const THashMap<TString, ui64>& pathToGenerationToAttach,
+    const THashMap<TString, ui64>& alreadyAttachedPaths)
 {
     for (auto& [uuid, errorOrDevice]: devices) {
         auto [storage, error] = std::move(errorOrDevice);
@@ -1291,10 +1302,17 @@ void TDiskAgentState::PathAttached(
         }
     }
 
-    for (const auto& [path, deviceGeneration]: pathToGeneration) {
+    for (const auto& [path, deviceGeneration]: pathToGenerationToAttach) {
         PathAttachStates[path] = {
             .State = EPathAttachState::Attached,
             .Generation = deviceGeneration};
+    }
+
+    for (const auto& [path, generation]: alreadyAttachedPaths) {
+        auto& pathAttachState = PathAttachStates[path];
+        Y_ABORT_UNLESS(pathAttachState.State == EPathAttachState::Attached);
+        pathAttachState.Generation =
+            Max(pathAttachState.Generation, generation);
     }
 }
 
@@ -1310,20 +1328,30 @@ NProto::TError TDiskAgentState::DetachPath(
     }
 
     for (const auto& [path, gen]: pathToGeneration) {
-        auto& PathAttachState = PathAttachStates[path];
-
-        if (PathAttachState.State == EPathAttachState::Detached) {
-            return MakeError(S_ALREADY, "disk is already detached");
+        auto* pathAttachState = PathAttachStates.FindPtr(path);
+        if (!pathAttachState) {
+            MakeError(E_NOT_FOUND, "Path not found");
         }
 
-        if (gen <= PathAttachState.Generation) {
-            return MakeError(E_FAIL, "outdated request");
+        if (pathAttachState->State == EPathAttachState::Detached) {
+            continue;
+        }
+
+        if (gen <= pathAttachState->Generation) {
+            return MakeError(E_FAIL, "outdated path generation");
         }
     }
 
-    for (const auto& [path, deviceGeneration]: pathToGeneration) {
-        auto& PathAttachState = PathAttachStates[path];
+    for (const auto& [path, pathGeneration]: pathToGeneration) {
+        auto& pathAttachState = PathAttachStates[path];
         auto uuids = GetAllDeviceUUIDsForPath(path);
+
+        pathAttachState.Generation =
+            Max(pathAttachState.Generation, pathGeneration);
+
+        if (pathAttachState.State == EPathAttachState::Detached) {
+            continue;
+        }
 
         for (const auto& uuid: uuids) {
             auto* d = Devices.FindPtr(uuid);
@@ -1334,8 +1362,7 @@ NProto::TError TDiskAgentState::DetachPath(
             }
         }
 
-        PathAttachState.State = EPathAttachState::Detached;
-        PathAttachState.Generation = deviceGeneration;
+        pathAttachState.State = EPathAttachState::Detached;
     }
 
     return {};
@@ -1345,7 +1372,7 @@ NProto::TError TDiskAgentState::CheckDiskRegistryGenerationAndUpdateItIfNeeded(
     ui64 diskRegistryGeneration)
 {
     if (diskRegistryGeneration < LastDiskRegistryGenerationSeen) {
-        return MakeError(E_FAIL, "outdated request");
+        return MakeError(E_FAIL, "outdated disk registry generation");
     }
 
     if (diskRegistryGeneration > LastDiskRegistryGenerationSeen) {

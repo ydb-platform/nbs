@@ -148,8 +148,6 @@ public:
     [[nodiscard]] bool HasChaosConfig() const;
     [[nodiscard]] const NProto::TChaosConfig& GetChaosConfig() const;
 
-    [[nodiscard]] bool GetAttachDetachPathsEnabled() const;
-
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
