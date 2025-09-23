@@ -37,10 +37,15 @@ Y_UNIT_TEST_SUITE(ValidateTest)
             "",   // alternatingPhase
             maxWriteRequestCount);
 
+        auto log = logging->CreateLog("ETERNAL_EXECUTOR");
+
         auto executor = NTesting::CreateTestExecutor(
-            configHolder,
-            logging->CreateLog("ETERNAL_EXECUTOR")
-        );
+            {.TestScenario =
+                 NTesting::CreateAlignedBlockTestScenario(configHolder, log),
+             .FileService = NTesting::ETestExecutorFileService::AsyncIo,
+             .FilePath = filePath,
+             .Log = log});
+
         UNIT_ASSERT(executor->Run());
 
         TFile file(filePath, EOpenModeFlag::RdOnly | EOpenModeFlag::DirectAligned);
