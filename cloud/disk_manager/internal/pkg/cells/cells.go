@@ -4,22 +4,26 @@ import (
 	"context"
 	"slices"
 
-	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type cellSelector struct {
-	config *cells_config.CellsConfig
+	config     *cells_config.CellsConfig
+	nbsFactory nbs.Factory
 }
 
 func NewCellSelector(
 	config *cells_config.CellsConfig,
+	nbsFactory nbs.Factory,
 ) CellSelector {
 
 	return &cellSelector{
-		config: config,
+		config:     config,
+		nbsFactory: nbsFactory,
 	}
 }
 
@@ -27,22 +31,16 @@ func NewCellSelector(
 
 func (s *cellSelector) SelectCell(
 	ctx context.Context,
-	req *disk_manager.CreateDiskRequest,
-) string {
+	zoneID string,
+	folderID string,
+) (nbs.Client, error) {
 
-	if !s.isFolderAllowed(req.FolderId) {
-		return req.DiskId.ZoneId
+	cellID, err := s.selectCell(zoneID, folderID)
+	if err != nil {
+		return nil, err
 	}
 
-	cells := s.getCells(req.DiskId.ZoneId)
-
-	if len(cells) == 0 {
-		// We end up here if a zone not divided into cells or a cell
-		// of a zone is provided as ZoneId.
-		return req.DiskId.ZoneId
-	}
-
-	return cells[0]
+	return s.nbsFactory.GetClient(ctx, cellID)
 }
 
 func (s *cellSelector) IsCellOfZone(cellID string, zoneID string) bool {
@@ -67,4 +65,43 @@ func (s *cellSelector) isFolderAllowed(folderID string) bool {
 
 	return len(s.config.GetFolderAllowList()) == 0 ||
 		slices.Contains(s.config.GetFolderAllowList(), folderID)
+}
+
+func (s *cellSelector) isCell(zoneID string) bool {
+	for _, cells := range s.config.Cells {
+		if slices.Contains(cells.Cells, zoneID) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *cellSelector) selectCell(
+	zoneID string,
+	folderID string,
+) (string, error) {
+
+	if s.config == nil {
+		return zoneID, nil
+	}
+
+	if !s.isFolderAllowed(folderID) {
+		return zoneID, nil
+	}
+
+	cells := s.getCells(zoneID)
+
+	if len(cells) == 0 {
+		if s.isCell(zoneID) {
+			return zoneID, nil
+		}
+
+		return "", errors.NewNonCancellableErrorf(
+			"incorrect zone ID provided: %q",
+			zoneID,
+		)
+	}
+
+	return cells[0], nil
 }
