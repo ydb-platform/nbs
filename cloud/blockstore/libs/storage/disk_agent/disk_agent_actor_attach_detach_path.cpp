@@ -17,6 +17,15 @@ void TDiskAgentActor::HandleAttachPath(
     auto* msg = ev->Get();
     const auto& record = msg->Record;
 
+    if (!AgentConfig->GetAttachDetachPathsEnabled() || Spdk) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(
+                MakeError(E_ARGUMENT, "attach/detach paths is disabled")));
+        return;
+    }
+
     if (PendingAttachPathRequest) {
         NCloud::Reply(
             ctx,
@@ -35,7 +44,7 @@ void TDiskAgentActor::HandleAttachPath(
     for (const auto& pathToGeneration: record.GetPathsToAttach()) {
         auto error = State->CheckCanAttachPath(
             record.GetDiskRegistryGeneration(),
-            pathToGeneration.GetDiskPath(),
+            pathToGeneration.GetPath(),
             pathToGeneration.GetGeneration());
 
         if (HasError(error)) {
@@ -46,9 +55,9 @@ void TDiskAgentActor::HandleAttachPath(
             return;
         }
 
-        request.PathToGeneration[pathToGeneration.GetDiskPath()] =
+        request.PathToGeneration[pathToGeneration.GetPath()] =
             pathToGeneration.GetGeneration();
-        paths.emplace_back(pathToGeneration.GetDiskPath());
+        paths.emplace_back(pathToGeneration.GetPath());
     }
 
     PendingAttachPathRequest = std::move(request);
@@ -94,6 +103,15 @@ void TDiskAgentActor::HandleDetachPath(
     auto* msg = ev->Get();
     const auto& record = msg->Record;
 
+    if (!AgentConfig->GetAttachDetachPathsEnabled() || Spdk) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(
+                MakeError(E_ARGUMENT, "attach/detach paths is disabled")));
+        return;
+    }
+
     if (PendingAttachPathRequest) {
         NCloud::Reply(
             ctx,
@@ -105,7 +123,7 @@ void TDiskAgentActor::HandleDetachPath(
 
     THashMap<TString, ui64> pathToGeneration;
     for (const auto& diskToDetach: record.GetPathsToDetach()) {
-        pathToGeneration[diskToDetach.GetDiskPath()] =
+        pathToGeneration[diskToDetach.GetPath()] =
             diskToDetach.GetGeneration();
     }
 
