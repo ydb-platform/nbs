@@ -2410,8 +2410,8 @@ void TVolumeActor::RenderAppliedVolumeThrottlingRule(IOutputStream& out) const
     }
 
     if (!rule.HasCoefficients() &&
-        rule.GetSelectorCase() == NCloud::NBlockStore::NProto::
-                                      TVolumeThrottlingRule::SELECTOR_NOT_SET)
+        rule.GetSelectorCase() ==
+            NProto::TVolumeThrottlingRule::SELECTOR_NOT_SET)
     {
         HTML (out) {
             DIV () {
