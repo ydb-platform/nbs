@@ -1,5 +1,4 @@
 #include "disk_agent_actor.h"
-#include "library/cpp/protobuf/json/proto2json.h"
 
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
