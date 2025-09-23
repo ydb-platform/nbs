@@ -54,6 +54,11 @@ func (t *deleteDiskTask) deleteDisk(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	err := t.setEstimate(ctx, execCtx)
+	if err != nil {
+		return err
+	}
+
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
 	sync := t.request.Sync
@@ -70,29 +75,6 @@ func (t *deleteDiskTask) deleteDisk(
 
 	if diskMeta == nil {
 		return nil
-	}
-
-	if sync {
-		diskKind, err := common.DiskKindFromString(diskMeta.Kind)
-		if err != nil {
-			return err
-		}
-
-		diskSize := diskMeta.BlocksCount * uint64(diskMeta.BlockSize)
-
-		switch diskKind {
-		case types.DiskKind_DISK_KIND_SSD_LOCAL:
-			execCtx.SetEstimatedInflightDuration(performance.Estimate(
-				diskSize,
-				t.performanceConfig.GetEraseSSDLocalDiskBandwidthMiBs(),
-			))
-
-		case types.DiskKind_DISK_KIND_HDD_LOCAL:
-			execCtx.SetEstimatedInflightDuration(performance.Estimate(
-				diskSize,
-				t.performanceConfig.GetEraseHDDLocalDiskBandwidthMiBs(),
-			))
-		}
 	}
 
 	zoneID := diskMeta.ZoneID
@@ -196,4 +178,50 @@ func (t *deleteDiskTask) GetMetadata(
 
 func (t *deleteDiskTask) GetResponse() proto.Message {
 	return &empty.Empty{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *deleteDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	// Only sync requests are blocking.
+	if !t.request.Sync {
+		return nil
+	}
+
+	diskMeta, err := t.storage.GetDiskMeta(ctx, t.request.Disk.DiskId)
+	if err != nil {
+		return err
+	}
+
+	if diskMeta == nil {
+		// Should be idempotent.
+		return nil
+	}
+
+	diskKind, err := common.DiskKindFromString(diskMeta.Kind)
+	if err != nil {
+		return err
+	}
+
+	diskSize := diskMeta.BlocksCount * uint64(diskMeta.BlockSize)
+
+	switch diskKind {
+	case types.DiskKind_DISK_KIND_SSD_LOCAL:
+		execCtx.SetEstimatedInflightDuration(performance.Estimate(
+			diskSize,
+			t.performanceConfig.GetSSDLocalDiskDeletingBandwidthMiBs(),
+		))
+
+	case types.DiskKind_DISK_KIND_HDD_LOCAL:
+		execCtx.SetEstimatedInflightDuration(performance.Estimate(
+			diskSize,
+			t.performanceConfig.GetHDDLocalDiskDeletingBandwidthMiBs(),
+		))
+	}
+
+	return nil
 }

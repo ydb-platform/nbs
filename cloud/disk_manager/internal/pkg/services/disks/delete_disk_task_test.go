@@ -42,17 +42,25 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		state:       &protos.DeleteDiskTaskState{},
 	}
 
+	diskMeta := &resources.DiskMeta{
+		ZoneID:       "zone",
+		Kind:         "ssd",
+		DeleteTaskID: "toplevel_task_id",
+	}
+	if sync {
+		storage.On(
+			"GetDiskMeta",
+			ctx,
+			"disk",
+		).Return(diskMeta, nil).Once()
+	}
 	storage.On(
 		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return(&resources.DiskMeta{
-		ZoneID:       "zone",
-		Kind:         "ssd",
-		DeleteTaskID: "toplevel_task_id",
-	}, nil)
+	).Return(diskMeta, nil).Once()
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
@@ -244,15 +252,15 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 	t *testing.T,
 	sync bool,
 	diskKind string,
-	estimatedInflightDuration time.Duration,
+	expectedEstimatedInflightDuration time.Duration,
 ) {
 	ctx := context.Background()
 
-	eraseSSDLocalDiskBandwidthMiBs := uint64(100)
-	eraseHDDLocalDiskBandwidthMiBs := uint64(10)
+	SSDLocalDiskDeletingBandwidthMiBs := uint64(100)
+	HDDLocalDiskDeletingBandwidthMiBs := uint64(10)
 	performanceConfig := &performance_config.PerformanceConfig{
-		EraseSSDLocalDiskBandwidthMiBs: &eraseSSDLocalDiskBandwidthMiBs,
-		EraseHDDLocalDiskBandwidthMiBs: &eraseHDDLocalDiskBandwidthMiBs,
+		SSDLocalDiskDeletingBandwidthMiBs: &SSDLocalDiskDeletingBandwidthMiBs,
+		HDDLocalDiskDeletingBandwidthMiBs: &HDDLocalDiskDeletingBandwidthMiBs,
 	}
 	storage := storage_mocks.NewStorageMock()
 	scheduler := tasks_mocks.NewSchedulerMock()
@@ -274,23 +282,31 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 		state:             &protos.DeleteDiskTaskState{},
 	}
 
+	diskMeta := &resources.DiskMeta{
+		ZoneID:       "zone",
+		Kind:         diskKind,
+		BlocksCount:  100 * 256, // 100 MiB
+		BlockSize:    4096,
+		DeleteTaskID: "toplevel_task_id",
+	}
+	if sync {
+		storage.On(
+			"GetDiskMeta",
+			ctx,
+			"disk",
+		).Return(diskMeta, nil).Once()
+	}
 	storage.On(
 		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return(&resources.DiskMeta{
-		ZoneID:       "zone",
-		Kind:         diskKind,
-		BlocksCount:  100 * 256, // 100 MiB
-		BlockSize:    4096,
-		DeleteTaskID: "toplevel_task_id",
-	}, nil)
+	).Return(diskMeta, nil).Once()
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
-	if estimatedInflightDuration > 0 {
-		execCtx.On("SetEstimatedInflightDuration", estimatedInflightDuration)
+	if expectedEstimatedInflightDuration > 0 {
+		execCtx.On("SetEstimatedInflightDuration", expectedEstimatedInflightDuration)
 	}
 
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
