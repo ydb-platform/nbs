@@ -35,7 +35,10 @@ private:
     const TFsPath TmpBackupFilePath;
 
 public:
-    TPathDescriptionBackup(TString backupFilePath, bool useBinaryFormat, bool readOnlyMode);
+    TPathDescriptionBackup(
+        TString backupFilePath,
+        bool useBinaryFormat,
+        bool readOnlyMode);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

@@ -95,7 +95,12 @@ def __run_test(test_case):
 
     env = LocalLoadTest(
         "",
-        storage_config_patches=[default_storage_config(backups_folder, test_case.use_binary_format_for_path_description_backup)],
+        storage_config_patches=[
+            default_storage_config(
+                backups_folder,
+                test_case.use_binary_format_for_path_description_backup,
+            ),
+        ],
         dynamic_pdisks=[dict(user_kind=1)],
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="system", pdisk_user_kind=0),
@@ -121,7 +126,12 @@ def __run_test(test_case):
     spoil_bs_controller_config(env.kikimr_cluster)
     env.kikimr_cluster.restart_nodes()
 
-    env.nbs.storage_config_patches = [storage_config_with_emergency_mode(backups_folder, test_case.use_binary_format_for_path_description_backup)]
+    env.nbs.storage_config_patches = [
+        storage_config_with_emergency_mode(
+            backups_folder,
+            test_case.use_binary_format_for_path_description_backup,
+        ),
+    ]
     env.nbs.restart()
 
     data = session.read_blocks(100499, 3, "")

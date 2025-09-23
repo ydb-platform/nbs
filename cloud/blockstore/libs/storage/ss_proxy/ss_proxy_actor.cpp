@@ -57,11 +57,10 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
     TThis::Become(&TThis::StateWork);
 
     const auto& filepath = Config->GetPathDescriptionBackupFilePath();
-    const auto& useBinaryFormat = Config->GetUseBinaryFormatForPathDescriptionBackup();
     if (filepath) {
         auto cache = std::make_unique<TPathDescriptionBackup>(
             filepath,
-            useBinaryFormat,
+            Config->GetUseBinaryFormatForPathDescriptionBackup(),
             /*readOnlyMode=*/false);
 
         PathDescriptionBackup = ctx.Register(
