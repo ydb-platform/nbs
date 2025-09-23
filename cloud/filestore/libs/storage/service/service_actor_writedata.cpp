@@ -85,56 +85,29 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
  *        and returns the buffer with data
  *
  * @param rope         The rope as the source of data
+ *
+ * @param buffer       The destination buffer to copy data into
+ *
  * @param byteOffset   The starting offset (in bytes) from the beginning of the
  *                     iovecs
  * @param byteLength   The number of bytes to copy from the offset
  *
- * @return The destination buffer to copy data into
- *
- * @note It is assumed that byteOffset + byteLength does not exceed the total
- *       size of the data in the rope.
+ * @return The number of bytes actually copied. Fewer bytes than `byteLength`
+ *         may be copied if `byteOffset + byteLength` exceeds the total size
+ *         of the data in the rope.
  */
-TString GetBufferFromRope(TRope& rope, ui64 byteOffset, ui64 bufferLength)
+ui64 GetBufferFromRope(
+    TRope& rope,
+    TString& buffer,
+    ui64 byteOffset,
+    ui64 bufferLength)
 {
-    TString buffer;
     buffer.ReserveAndResize(bufferLength);
     auto bytesCopied = TRopeUtils::SafeMemcpy(
         &buffer[0],
         rope.Begin() + byteOffset,
         bufferLength);
-    Y_ABORT_UNLESS(bytesCopied == bufferLength);
-    return buffer;
-}
-
-/**
- * @brief Copies a slice of data from the iovecs in the request into the buffer.
- *
- * @param request      The write request containing iovecs as the source of data
- * @param buffer       The destination buffer to copy data into
- * @param byteOffset   The starting offset (in bytes) from the beginning of the
- *                     iovecs
- * @param byteLength   The number of bytes to copy from the offset
- *
- * @note It is assumed that byteOffset + byteLength does not exceed the total
- *       size of the data in the iovecs.
- */
-void CopyIovecs(
-    const NProto::TWriteDataRequest& request,
-    TString& buffer,
-    ui64 byteOffset,
-    ui64 byteLength)
-{
-    if (request.GetIovecs().empty()) {
-        return;
-    }
-
-    auto rope = CreateRopeFromIovecs(request);
-    buffer.ReserveAndResize(byteLength);
-    auto bytesCopied = TRopeUtils::SafeMemcpy(
-        &buffer[0],
-        rope.Begin() + byteOffset,
-        byteLength);
-    Y_ABORT_UNLESS(bytesCopied == byteLength);
+    return bytesCopied;
 }
 
 /**
@@ -142,15 +115,18 @@ void CopyIovecs(
  *         in the same request and cleanup iovecs.
  *
  * @param request      The write request containing iovecs as the source of data
+ *
  */
 void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
 {
-    CopyIovecs(
-        request,
-        *request.MutableBuffer(),
-        0,
-        CalculateByteCount(request));
+    auto rope = CreateRopeFromIovecs(request);
+    auto* buffer = request.MutableBuffer();
+    const auto byteLength = CalculateByteCount(request);
+    buffer->ReserveAndResize(byteLength);
+    auto bytesCopied =
+        TRopeUtils::SafeMemcpy(&(*buffer)[0], rope.Begin(), byteLength);
     request.MutableIovecs()->Clear();
+    Y_ABORT_UNLESS(bytesCopied == byteLength);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -357,7 +333,7 @@ private:
                     &putData[0],
                     ropeIt,
                     blobId.BlobSize());
-                Y_ABORT_UNLESS(bytesCopied == blobId.BlobSize());
+                TABLET_VERIFY(bytesCopied == blobId.BlobSize());
                 request = std::make_unique<TEvBlobStorage::TEvPut>(
                     blobId,
                     std::move(putData),
@@ -488,7 +464,10 @@ private:
                 unalignedHead.SetContent(
                     WriteRequest.GetBuffer().substr(0, length));
             } else {
-                unalignedHead.SetContent(GetBufferFromRope(Rope, 0, length));
+                TString buffer;
+                auto bytesCopied = GetBufferFromRope(Rope, buffer, 0, length);
+                TABLET_VERIFY(bytesCopied == length);
+                unalignedHead.SetContent(std::move(buffer));
             }
         }
 
@@ -501,8 +480,11 @@ private:
                 unalignedTail.SetContent(
                     WriteRequest.GetBuffer().substr(offset, length));
             } else {
-                unalignedTail.SetContent(
-                    GetBufferFromRope(Rope, offset, length));
+                TString buffer;
+                auto bytesCopied =
+                    GetBufferFromRope(Rope, buffer, offset, length);
+                TABLET_VERIFY(bytesCopied == length);
+                unalignedTail.SetContent(std::move(buffer));
             }
         }
 
@@ -562,7 +544,7 @@ private:
     void WriteData(const TActorContext& ctx, const NProto::TError& error)
     {
         WriteDataFallbackEnabled = true;
-
+        MoveIovecsToBuffer(WriteRequest);
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -575,7 +557,7 @@ private:
             CalculateByteCount(WriteRequest),
             FormatError(error).Quote().c_str());
 
-        MoveIovecsToBuffer(WriteRequest);
+
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
         request->Record.MutableHeaders()->SetThrottlingDisabled(true);
