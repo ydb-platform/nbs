@@ -111,7 +111,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 		config:            config,
 		storage:           storage,
 		nbsFactory:        nbsFactory,
-		state:             &protos.CollectClusterCapacityState{},
+		state:             &protos.CollectClusterCapacityTaskState{},
 		expirationTimeout: time.Hour, // Can be any, storage is mocked.
 	}
 
@@ -188,7 +188,7 @@ func TestCollectClusterCapacityFailureNbsReturnsError(t *testing.T) {
 		config:            config,
 		storage:           storage,
 		nbsFactory:        nbsFactory,
-		state:             &protos.CollectClusterCapacityState{},
+		state:             &protos.CollectClusterCapacityTaskState{},
 		expirationTimeout: time.Hour, // Can be any, storage is mocked.
 	}
 
@@ -270,7 +270,7 @@ func TestCollectClusterCapacityFailureStorageReturnsError(t *testing.T) {
 		config:            config,
 		storage:           storage,
 		nbsFactory:        nbsFactory,
-		state:             &protos.CollectClusterCapacityState{},
+		state:             &protos.CollectClusterCapacityTaskState{},
 		expirationTimeout: time.Hour, // Can be any, storage is mocked.
 	}
 

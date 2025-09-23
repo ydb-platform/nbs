@@ -23,7 +23,7 @@ type collectClusterCapacityTask struct {
 	config            *cells_config.CellsConfig
 	storage           storage.Storage
 	nbsFactory        nbs.Factory
-	state             *protos.CollectClusterCapacityState
+	state             *protos.CollectClusterCapacityTaskState
 	expirationTimeout time.Duration
 }
 
@@ -32,7 +32,7 @@ func (t *collectClusterCapacityTask) Save() ([]byte, error) {
 }
 
 func (t *collectClusterCapacityTask) Load(_, state []byte) error {
-	t.state = &protos.CollectClusterCapacityState{}
+	t.state = &protos.CollectClusterCapacityTaskState{}
 	return proto.Unmarshal(state, t.state)
 }
 
@@ -81,15 +81,14 @@ func (t *collectClusterCapacityTask) Run(
 
 	for cell := range completedCells {
 		t.state.ProcessedCells = append(t.state.ProcessedCells, cell)
-	}
-
-	err := execCtx.SaveState(ctx)
-	if err != nil {
-		return err
+		err := execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Processing group error after saving task progress.
-	err = group.Wait()
+	err := group.Wait()
 	if err != nil {
 		return err
 	}
