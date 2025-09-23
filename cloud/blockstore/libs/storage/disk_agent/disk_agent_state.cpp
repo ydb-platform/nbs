@@ -10,7 +10,6 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
-#include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
@@ -19,8 +18,6 @@
 #include <cloud/blockstore/libs/spdk/iface/target.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/device_generator.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -34,7 +31,6 @@
 
 #include <util/string/join.h>
 #include <util/system/fs.h>
-#include <util/system/fstat.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
