@@ -17,7 +17,7 @@ void TDiskAgentActor::HandleAttachPath(
     auto* msg = ev->Get();
     const auto& record = msg->Record;
 
-    if (!AgentConfig->GetAttachDetachPathsEnabled() || Spdk) {
+    if (!Config->GetAttachDetachPathsEnabled() || Spdk) {
         NCloud::Reply(
             ctx,
             *ev,
@@ -55,9 +55,15 @@ void TDiskAgentActor::HandleAttachPath(
             return;
         }
 
-        request.PathToGeneration[pathToGeneration.GetPath()] =
-            pathToGeneration.GetGeneration();
-        paths.emplace_back(pathToGeneration.GetPath());
+        if (error.GetCode() == S_ALREADY) {
+            request
+                .AlreadyAttachedPathsToGeneration[pathToGeneration.GetPath()] =
+                pathToGeneration.GetGeneration();
+        } else {
+            request.PathToGenerationToAttach[pathToGeneration.GetPath()] =
+                pathToGeneration.GetGeneration();
+            paths.emplace_back(pathToGeneration.GetPath());
+        }
     }
 
     PendingAttachPathRequest = std::move(request);
@@ -73,11 +79,17 @@ void TDiskAgentActor::HandlePathAttached(
 
     State->PathAttached(
         std::move(msg->Devices),
-        PendingAttachPathRequest->PathToGeneration);
+        PendingAttachPathRequest->PathToGenerationToAttach,
+        PendingAttachPathRequest->AlreadyAttachedPathsToGeneration);
 
     THashSet<TString> paths;
     for (const auto& [path, _]:
-         PendingAttachPathRequest->PathToGeneration)
+         PendingAttachPathRequest->PathToGenerationToAttach)
+    {
+        paths.emplace(path);
+    }
+    for (const auto& [path, _]:
+         PendingAttachPathRequest->AlreadyAttachedPathsToGeneration)
     {
         paths.emplace(path);
     }
@@ -103,7 +115,7 @@ void TDiskAgentActor::HandleDetachPath(
     auto* msg = ev->Get();
     const auto& record = msg->Record;
 
-    if (!AgentConfig->GetAttachDetachPathsEnabled() || Spdk) {
+    if (!Config->GetAttachDetachPathsEnabled() || Spdk) {
         NCloud::Reply(
             ctx,
             *ev,
