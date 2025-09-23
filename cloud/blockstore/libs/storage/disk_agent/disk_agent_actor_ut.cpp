@@ -7099,6 +7099,79 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
     }
+
+    Y_UNIT_TEST(ShouldBrokeFailedToAttachDevices)
+    {
+        auto agentConfig = CreateDefaultAgentConfig();
+        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetAcquireRequired(true);
+        agentConfig.SetEnabled(true);
+        agentConfig.SetAttachDetachPathsEnabled(true);
+
+        const auto workingDir = TryGetRamDrivePath();
+        const auto filePath =
+            workingDir / ("test" + ToString(RandomNumber<ui64>()));
+
+        {
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(16_MB);
+        }
+
+        auto prepareFileDevice = [&](const TString& deviceName)
+        {
+            NProto::TFileDeviceArgs device;
+            device.SetPath(filePath);
+            device.SetBlockSize(DefaultDeviceBlockSize);
+            device.SetDeviceId(deviceName);
+            return device;
+        };
+
+        {
+            auto* d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-1");
+
+            d->SetOffset(1_MB);
+            d->SetFileSize(4_MB);
+
+            d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-2");
+
+            d->SetOffset(5_MB);
+            d->SetFileSize(4_MB);
+        }
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime).With(agentConfig).Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.DetachPath(0, THashMap<TString, ui64>{{filePath, 10}});
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+
+        Chmod(filePath.c_str(), 0);
+
+        auto response =
+            diskAgent.AttachPath(0, THashMap<TString, ui64>{{filePath, 11}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            response->Record.GetAttachedDevices().size());
+        UNIT_ASSERT(AllOf(
+            response->Record.GetAttachedDevices(),
+            [&](const auto& device)
+            {
+                return device.GetDeviceName() == filePath &&
+                       device.GetState() == NProto::DEVICE_STATE_ERROR;
+            }));
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

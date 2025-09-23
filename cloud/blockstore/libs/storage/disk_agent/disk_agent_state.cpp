@@ -1252,7 +1252,6 @@ void TDiskAgentState::PathAttached(
 {
     for (auto& [uuid, errorOrDevice]: devices) {
         auto [storage, error] = std::move(errorOrDevice);
-        Cerr << "PathAttached: " << uuid << " " << FormatError(error) << Endl;
         auto* d = Devices.FindPtr(uuid);
         if (!d) {
             continue;
@@ -1310,14 +1309,14 @@ NProto::TError TDiskAgentState::DetachPath(
         return error;
     }
 
-    for (const auto& [path, deviceGeneration]: pathToGeneration) {
+    for (const auto& [path, gen]: pathToGeneration) {
         auto& PathAttachState = PathAttachStates[path];
 
         if (PathAttachState.State == EPathAttachState::Detached) {
             return MakeError(S_ALREADY, "disk is already detached");
         }
 
-        if (deviceGeneration <= PathAttachState.Generation) {
+        if (gen <= PathAttachState.Generation) {
             return MakeError(E_FAIL, "outdated request");
         }
     }
@@ -1328,7 +1327,6 @@ NProto::TError TDiskAgentState::DetachPath(
 
         for (const auto& uuid: uuids) {
             auto* d = Devices.FindPtr(uuid);
-            d->Config.SetGeneration(deviceGeneration);
             d->StorageAdapter.reset();
 
             if (RdmaTarget) {
