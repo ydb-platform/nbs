@@ -318,7 +318,7 @@ public:
 
         for (const auto& [path, gen]: pathToGeneration) {
             auto* pathToAttach = request->Record.AddPathsToAttach();
-            pathToAttach->SetDiskPath(path);
+            pathToAttach->SetPath(path);
             pathToAttach->SetGeneration(gen);
         }
 
@@ -334,7 +334,7 @@ public:
 
         for (const auto& [path, gen]: pathToGeneration) {
             auto* pathToDetach = request->Record.AddPathsToDetach();
-            pathToDetach->SetDiskPath(path);
+            pathToDetach->SetPath(path);
             pathToDetach->SetGeneration(gen);
         }
 
