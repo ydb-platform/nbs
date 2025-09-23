@@ -266,6 +266,7 @@ void TDiskAgentActor::HandleCheckIsSamePathResult(
     }
 
     if (HasError(ev->Get()->Error)) {
+        ReportDiskConfigChangedAfterStart(FormatError(ev->Get()->Error));
         auto response = std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(
             ev->Get()->Error);
         NCloud::Reply(
