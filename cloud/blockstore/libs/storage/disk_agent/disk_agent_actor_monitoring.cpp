@@ -16,135 +16,6 @@ using namespace NActors;
 
 using namespace NKikimr;
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TProcessActionActor: public TActorBootstrapped<TProcessActionActor>
-{
-private:
-    const NActors::TActorId OwnerId;
-    const bool IsOpen;
-    const TString DeviceName;
-    const ui64 DeviceGeneration;
-
-    TRequestInfoPtr RequestInfo;
-
-public:
-    TProcessActionActor(
-            NActors::TActorId ownerId,
-            bool isOpen,
-            TString deviceName,
-            ui64 deviceGeneration,
-            TRequestInfoPtr requestInfo)
-        : OwnerId(ownerId)
-        , IsOpen(isOpen)
-        , DeviceName(std::move(deviceName))
-        , DeviceGeneration(deviceGeneration)
-        , RequestInfo(std::move(requestInfo))
-    {}
-
-    void Bootstrap(const TActorContext& ctx)
-    {
-        IEventBasePtr request;
-
-        NProto::TPathToGeneration pathToGen;
-        pathToGen.SetDiskPath(DeviceName);
-        pathToGen.SetGeneration(DeviceGeneration);
-        if (IsOpen) {
-            auto attachRequest =
-                std::make_unique<TEvDiskAgent::TEvAttachPathRequest>();
-
-            *attachRequest->Record.AddPathsToAttach() = std::move(pathToGen);
-            request = std::move(attachRequest);
-        } else {
-            auto detachRequest =
-                std::make_unique<TEvDiskAgent::TEvDetachPathRequest>();
-            *detachRequest->Record.AddPathsToDetach() = std::move(pathToGen);
-            request = std::move(detachRequest);
-        }
-
-        NCloud::Send(ctx, OwnerId, std::move(request));
-        Become(&TThis::StateWork);
-    }
-
-private:
-    template <typename TEvent>
-    void HandleResult(const TEvent& ev, const TActorContext& ctx)
-    {
-        auto record = ev->Get()->Record;
-
-        TStringStream out;
-
-        NProtobufJson::Proto2Json(record, out);
-
-        NCloud::Reply(
-            ctx,
-            *RequestInfo,
-            std::make_unique<NMon::TEvHttpInfoRes>(out.Str()));
-        Die(ctx);
-    }
-
-    STFUNC(StateWork)
-    {
-        switch (ev->GetTypeRewrite()) {
-            HFunc(TEvDiskAgent::TEvAttachPathResponse, HandleResult);
-            HFunc(TEvDiskAgent::TEvDetachPathResponse, HandleResult);
-
-            default:
-                HandleUnexpectedEvent(
-                    ev,
-                    TBlockStoreComponents::DISK_AGENT_WORKER,
-                    __PRETTY_FUNCTION__);
-                break;
-        }
-    }
-};
-
-bool ProcessHttpActon(
-    const NActors::NMon::TEvHttpInfo::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    Y_UNUSED(ctx);
-    const auto& request = ev->Get()->Request;
-
-    auto methodType = request.GetMethod();
-    auto params = request.GetPostParams();
-    const auto& action = params.Get("action");
-
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        MakeIntrusive<TCallContext>());
-
-    static auto gen = 1;
-
-    if (action == "closeDevice" && methodType == HTTP_METHOD_POST) {
-        NCloud::Register<TProcessActionActor>(
-            ctx,
-            ctx.SelfID,
-            false,
-            params.Get("deviceName"),
-            ++gen,
-            std::move(requestInfo));
-        return true;
-    }
-    if (action == "openDevice" && methodType == HTTP_METHOD_POST) {
-        NCloud::Register<TProcessActionActor>(
-            ctx,
-            ctx.SelfID,
-            true,
-            params.Get("deviceName"),
-            ++gen,
-            std::move(requestInfo));
-        return true;
-    }
-
-    return false;
-}
-
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskAgentActor::HandleHttpInfo(
@@ -158,10 +29,6 @@ void TDiskAgentActor::HandleHttpInfo(
         "HTTP request: %s", uri.c_str());
 
     TStringStream out;
-
-    if (ProcessHttpActon(ev, ctx)) {
-        return;
-    }
 
     HTML(out) {
         if (CurrentStateFunc() == &TThis::StateIdle) {
@@ -218,9 +85,6 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                     TABLEH() { out << "Writer session"; }
                     TABLEH() { out << "Reader sessions"; }
                     TABLEH() { out << "Path generation"; }
-                    TABLEH () {
-                        out << "Open close device";
-                    }
                 }
             }
 
@@ -285,28 +149,6 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
 
                     TABLED () {
                         out << State->DeviceGeneration(uuid);
-                    }
-
-                    if (State->IsDeviceAttached(uuid)) {
-                        TABLED () {
-                            out << Sprintf(
-                                R"(<form name="openDevice" method="POST">
-                                <input type='hidden' name='action' value='openDevice'/>
-                                <input type='hidden' name='deviceName' value='%s'/>
-                                <button type="submit">Open device</button>
-                            </form>)",
-                                config.GetDeviceName().c_str());
-                        }
-                    } else {
-                        TABLED () {
-                            out << Sprintf(
-                                R"(<form name="closeDevice" method="POST">
-                                <input type='hidden' name='action' value='closeDevice'/>
-                                <input type='hidden' name='deviceName' value='%s'/>
-                                <button type="submit">Close device</button>
-                            </form>)",
-                                config.GetDeviceName().c_str());
-                        }
                     }
                 }
             }
