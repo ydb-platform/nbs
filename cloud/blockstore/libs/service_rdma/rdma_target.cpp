@@ -127,7 +127,7 @@ private:
         return Handle##name##Request(                                          \
             context,                                                           \
             std::move(callContext),                                            \
-            static_cast<NProto::T##name##Request&>(*parseResult.Proto),        \
+            static_cast<NProto::T##name##Request*>(&*parseResult.Proto),       \
             parseResult.Data,                                                  \
             out);                                                              \
         // BLOCKSTORE_HANDLE_REQUEST
@@ -191,36 +191,36 @@ private:
     NProto::TError HandleReadBlocksRequest(
         void* context,
         TCallContextPtr callContext,
-        NProto::TReadBlocksRequest& request,
+        NProto::TReadBlocksRequest* request,
         TStringBuf requestData,
         TStringBuf out) const
     {
         if (TraceSerializer->HandleTraceRequest(
-                request.GetHeaders().GetInternal().GetTrace(),
+                request->GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
         {
-            request.MutableHeaders()->MutableInternal()->SetTraceTs(
+            request->MutableHeaders()->MutableInternal()->SetTraceTs(
                 GetCycleCount());
         }
 
         LWTRACK(RequestReceived_RdmaTarget, callContext->LWOrbit);
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
-        Y_ENSURE_RETURN(request.GetBlockSize() != 0, "empty BlockSize");
+        Y_ENSURE_RETURN(request->GetBlockSize() != 0, "empty BlockSize");
 
         TGuardedBuffer buffer(TString::Uninitialized(
-            static_cast<size_t>(request.GetBlockSize()) * request.GetBlocksCount()));
+            static_cast<size_t>(request->GetBlockSize()) * request->GetBlocksCount()));
 
         auto [sglist, error] = SgListNormalize(
             TBlockDataRef{buffer.Get().data(), buffer.Get().length()},
-            request.GetBlockSize());
+            request->GetBlockSize());
         Y_ENSURE_RETURN(error.GetCode() == 0, "cannot create sgList");
 
         TGuardedSgList guardedSgList(sglist);
 
         auto req = std::make_shared<NProto::TReadBlocksLocalRequest>();
-        req->CopyFrom(request);
-        req->BlockSize = request.GetBlockSize();
+        req->CopyFrom(*request);
+        req->BlockSize = request->GetBlockSize();
 
         req->Sglist = guardedSgList;
 
@@ -230,7 +230,7 @@ private:
             [=,
              buffer = std::move(buffer),
              guardedSgList = std::move(guardedSgList),
-             blockSize = request.GetBlockSize(),
+             blockSize = request->GetBlockSize(),
              taskQueue = TaskQueue,
              endpoint = Endpoint](auto future) mutable
             {
@@ -285,15 +285,15 @@ private:
     NProto::TError HandleWriteBlocksRequest(
         void* context,
         TCallContextPtr callContext,
-        NProto::TWriteBlocksRequest& request,
+        NProto::TWriteBlocksRequest* request,
         TStringBuf requestData,
         TStringBuf out) const
     {
         if (TraceSerializer->HandleTraceRequest(
-                request.GetHeaders().GetInternal().GetTrace(),
+                request->GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
         {
-            request.MutableHeaders()->MutableInternal()->SetTraceTs(
+            request->MutableHeaders()->MutableInternal()->SetTraceTs(
                 GetCycleCount());
         }
 
@@ -302,16 +302,16 @@ private:
         Y_ENSURE_RETURN(requestData.length() > 0, "invalid request");
         auto [sglist, error] = SgListNormalize(
             { requestData.data(), requestData.length() },
-            request.GetBlockSize());
+            request->GetBlockSize());
         Y_ENSURE_RETURN(error.GetCode() == 0, "cannot create sgList");
 
         TGuardedSgList guardedSgList(sglist);
 
         auto req = std::make_shared<NProto::TWriteBlocksLocalRequest>();
-        req->CopyFrom(request);
+        req->CopyFrom(*request);
 
         req->Sglist = guardedSgList;
-        req->BlockSize = request.GetBlockSize();
+        req->BlockSize = request->GetBlockSize();
         req->BlocksCount = requestData.length() / req->BlockSize;
 
         auto future = Service->WriteBlocksLocal(callContext, std::move(req));
@@ -347,15 +347,15 @@ private:
     NProto::TError HandleZeroBlocksRequest(
         void* context,
         TCallContextPtr callContext,
-        NProto::TZeroBlocksRequest& request,
+        NProto::TZeroBlocksRequest* request,
         TStringBuf requestData,
         TStringBuf out) const
     {
         if (TraceSerializer->HandleTraceRequest(
-                request.GetHeaders().GetInternal().GetTrace(),
+                request->GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
         {
-            request.MutableHeaders()->MutableInternal()->SetTraceTs(
+            request->MutableHeaders()->MutableInternal()->SetTraceTs(
                 GetCycleCount());
         }
 
@@ -363,7 +363,7 @@ private:
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
-        auto req = std::make_shared<NProto::TZeroBlocksRequest>(std::move(request));
+        auto req = std::make_shared<NProto::TZeroBlocksRequest>(std::move(*request));
 
         auto future = Service->ZeroBlocks(callContext, std::move(req));
 
@@ -403,7 +403,7 @@ private:
     NProto::TError HandlePingRequest(
         void* context,
         TCallContextPtr callContext,
-        NProto::TPingRequest& request,
+        NProto::TPingRequest* request,
         TStringBuf requestData,
         TStringBuf out) const
     {
@@ -433,15 +433,15 @@ private:
     NProto::TError HandleMountVolumeRequest(
         void* context,
         TCallContextPtr callContext,
-        NProto::TMountVolumeRequest& request,
+        NProto::TMountVolumeRequest* request,
         TStringBuf requestData,
         TStringBuf out) const
     {
         if (TraceSerializer->HandleTraceRequest(
-                request.GetHeaders().GetInternal().GetTrace(),
+                request->GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
         {
-            request.MutableHeaders()->MutableInternal()->SetTraceTs(
+            request->MutableHeaders()->MutableInternal()->SetTraceTs(
                 GetCycleCount());
         }
 
@@ -450,7 +450,7 @@ private:
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
         auto req = std::make_shared<NProto::TMountVolumeRequest>(
-            std::move(request));
+            std::move(*request));
 
         auto future = Service->MountVolume(callContext, std::move(req));
 
@@ -481,15 +481,15 @@ private:
     NProto::TError HandleUnmountVolumeRequest(
         void* context,
         TCallContextPtr callContext,
-        NProto::TUnmountVolumeRequest& request,
+        NProto::TUnmountVolumeRequest* request,
         TStringBuf requestData,
         TStringBuf out) const
     {
         if (TraceSerializer->HandleTraceRequest(
-                request.GetHeaders().GetInternal().GetTrace(),
+                request->GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
         {
-            request.MutableHeaders()->MutableInternal()->SetTraceTs(
+            request->MutableHeaders()->MutableInternal()->SetTraceTs(
                 GetCycleCount());
         }
 
@@ -498,7 +498,7 @@ private:
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
         auto req = std::make_shared<NProto::TUnmountVolumeRequest>(
-            std::move(request));
+            std::move(*request));
 
         auto future = Service->UnmountVolume(callContext, std::move(req));
 

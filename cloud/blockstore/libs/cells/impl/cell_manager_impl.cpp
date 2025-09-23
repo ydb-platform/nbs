@@ -59,7 +59,7 @@ TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
         Cells.emplace(cell.first, CreateCell(Bootstrap, cell.second));
     }
 
-    if (bootstrap.Monitoring) {
+    if (Bootstrap.Monitoring) {
         auto rootPage =
             Bootstrap.Monitoring->RegisterIndexPage("blockstore", "BlockStore");
         static_cast<TIndexMonPage&>(*rootPage).Register(

@@ -240,7 +240,7 @@ struct TCellsConfig::TImpl
 
     explicit TImpl(NProto::TCellsConfig config)
         : Config(std::move(config))
-        , GrpcClientConfig(CreateClientAppConfig(config.GetGrpcClientConfig()))
+        , GrpcClientConfig(CreateClientAppConfig(Config.GetGrpcClientConfig()))
     {
         for (const auto& cell: Config.GetCells()) {
             ConfiguredCells.emplace(
