@@ -22,7 +22,6 @@
 
 #include <util/folder/tempdir.h>
 
-#include <chrono>
 #include <filesystem>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -216,7 +215,6 @@ public:
 
     void ApplyDrGenerationIfNeeded()
     {
-        auto was = DrGeneration;
         DrGeneration = Max(DrGeneration, GeneratedDrGeneration);
     }
 
@@ -7152,7 +7150,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         auto resp = diskAgent.RecvAttachPathResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, resp->GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
-            "outdated device generation",
+            "outdated path generation",
             resp->GetError().GetMessage());
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
@@ -7162,7 +7160,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         resp = diskAgent.RecvAttachPathResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, resp->GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
-            "outdated request",
+            "outdated disk registry generation",
             resp->GetError().GetMessage());
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
