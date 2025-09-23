@@ -5719,6 +5719,54 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             fillGeneration - 1,
             E_PRECONDITION_FAILED);
     }
+
+    Y_UNIT_TEST(ShouldGetEmptyPrincipalDiskIdDuringMountPrincipal)
+    {
+        TTestEnv env(1, 2);
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume("Disk-1");
+
+        auto response = service.MountVolume("Disk-1");
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            response->Record.GetVolume().GetPrincipalDiskId());
+    }
+
+    Y_UNIT_TEST(ShouldGetPrincipalDiskIdDuringMountDiskThatIsNotReadyYet)
+    {
+        TTestEnv env(1, 2);
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume("Disk-1");
+
+        {
+            NPrivateProto::TModifyTagsRequest request;
+            request.SetDiskId("Disk-1");
+            *request.AddTagsToAdd() = "source-disk-id=Disk-1-copy";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("ModifyTags", buf);
+        }
+
+        auto response = service.MountVolume("Disk-1");
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Disk-1-copy",
+            response->Record.GetVolume().GetPrincipalDiskId());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -396,6 +396,7 @@ void TVolumeState::Reset()
     }
     if (const auto* value = tags.FindPtr(SourceDiskIdTagName)) {
         SourceDiskId = *value;
+        UpdatePrincipalDiskId();
     }
 
     UseMirrorResync = StorageConfig->GetUseMirrorResync();
@@ -1005,6 +1006,11 @@ void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
 {
     Y_DEBUG_ABORT_UNLESS(follower.Link.LinkUUID);
 
+    Y_DEFER
+    {
+        UpdatePrincipalDiskId();
+    };
+
     for (auto& followerInfo: FollowerDisks) {
         if (followerInfo.Link.Match(follower.Link)) {
             followerInfo = std::move(follower);
@@ -1016,6 +1022,11 @@ void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
 
 void TVolumeState::RemoveFollower(const TLeaderFollowerLink& link)
 {
+    Y_DEFER
+    {
+        UpdatePrincipalDiskId();
+    };
+
     EraseIf(
         FollowerDisks,
         [&](const TFollowerDiskInfo& follower)
@@ -1038,8 +1049,23 @@ std::optional<TLeaderDiskInfo> TVolumeState::FindLeader(
     return std::nullopt;
 }
 
+std::optional<TLeaderDiskInfo> TVolumeState::FindLeaderByHash(ui64 hash) const
+{
+    for (const auto& leader: LeaderDisks) {
+        if (leader.Link.GetHash() == hash) {
+            return leader;
+        }
+    }
+    return std::nullopt;
+}
+
 void TVolumeState::AddOrUpdateLeader(TLeaderDiskInfo leader)
 {
+    Y_DEFER
+    {
+        UpdatePrincipalDiskId();
+    };
+
     for (auto& leaderInfo: LeaderDisks) {
         if (leaderInfo.Link.Match(leader.Link)) {
             leaderInfo = std::move(leader);
@@ -1051,6 +1077,11 @@ void TVolumeState::AddOrUpdateLeader(TLeaderDiskInfo leader)
 
 void TVolumeState::RemoveLeader(const TLeaderFollowerLink& link)
 {
+    Y_DEFER
+    {
+        UpdatePrincipalDiskId();
+    };
+
     EraseIf(
         LeaderDisks,
         [&](const TLeaderDiskInfo& leader) { return leader.Link.Match(link); });
@@ -1059,6 +1090,41 @@ void TVolumeState::RemoveLeader(const TLeaderFollowerLink& link)
 const TLeaderDisks& TVolumeState::GetAllLeaders() const
 {
     return LeaderDisks;
+}
+
+TString TVolumeState::GetPrincipalDiskId() const
+{
+    return PrincipalDiskId;
+}
+
+void TVolumeState::UpdatePrincipalDiskId()
+{
+    // We need to return the diskId of the disk that is currently the principal.
+    // The principal changes when all data is transferred to the follower. At
+    // this point, the follower is appointed as the new principal.
+    // If the disk is not involved in copying, or it is the principal, it should
+    // return an empty string.
+
+    // If this is the source disk (leader), then we are look at FollowerDisks.
+    for (const auto& followerInfo: FollowerDisks) {
+        if (followerInfo.State == TFollowerDiskInfo::EState::DataReady) {
+            PrincipalDiskId = followerInfo.Link.FollowerDiskId;
+            return;
+        }
+    }
+
+    // If this is the destination disk (follower), then we are look at LeaderDisks.
+    for (const auto& leaderInfo: LeaderDisks) {
+        if (leaderInfo.State == TLeaderDiskInfo::EState::Leader ||
+            leaderInfo.State == TLeaderDiskInfo::EState::Principal)
+        {
+            PrincipalDiskId = {};
+            return;
+        }
+    }
+
+    // If the disk was created as a follower, then it has the SourceDiskId set.
+    PrincipalDiskId = SourceDiskId;
 }
 
 void TVolumeState::UpdateScrubberCounters(TScrubbingInfo counters)
