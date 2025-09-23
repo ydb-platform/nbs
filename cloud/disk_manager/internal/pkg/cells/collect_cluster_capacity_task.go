@@ -46,36 +46,30 @@ func (t *collectClusterCapacityTask) Run(
 
 	group := errgroup.Group{}
 
-	cellsToCollect := tasks_common.NewStringSet()
-	cellIDToZoneID := make(map[string]string)
-
-	for zoneID, cells := range t.config.Cells {
-		for _, cellID := range cells.Cells {
-			cellsToCollect.Add(cellID)
-			cellIDToZoneID[cellID] = zoneID
-		}
-	}
-
-	cellsToCollect = cellsToCollect.Subtract(
-		tasks_common.NewStringSet(t.state.ProcessedCells...),
-	)
+	processedCells := tasks_common.NewStringSet(t.state.ProcessedCells...)
 
 	deleteOlderThan := time.Now().Add(-t.expirationTimeout)
 	completedCells := make(chan string)
 
-	for _, cellID := range cellsToCollect.List() {
-		group.Go(func(zoneID string, cellID string) func() error {
-			return func() error {
-				err := t.updateCellCapacity(ctx, zoneID, cellID, deleteOlderThan)
-				if err != nil {
-					return err
-				}
-
-				completedCells <- cellID
-
-				return nil
+	for zoneID, cells := range t.config.Cells {
+		for _, cellID := range cells.Cells {
+			if processedCells.Has(cellID) {
+				continue
 			}
-		}(cellIDToZoneID[cellID], cellID))
+
+			group.Go(func(zoneID string, cellID string) func() error {
+				return func() error {
+					err := t.updateCellCapacity(ctx, zoneID, cellID, deleteOlderThan)
+					if err != nil {
+						return err
+					}
+
+					completedCells <- cellID
+
+					return nil
+				}
+			}(zoneID, cellID))
+		}
 	}
 
 	// Need to close channel only after end of all goroutines.

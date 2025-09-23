@@ -57,7 +57,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 
 	nbsFactory.On(
 		"GetClient",
-		ctx,
+		mock.Anything, // ctx.
 		mock.Anything, // For each cell we return the same mock client.
 	).Return(nbsClient, nil).Times(3)
 	nbsClient.On("GetClusterCapacity", mock.Anything).Return(
@@ -66,7 +66,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 	).Times(3)
 
 	storage.On("UpdateClusterCapacities",
-		ctx,
+		mock.Anything, // ctx.
 		[]cells_storage.ClusterCapacity{
 			{
 				ZoneID:     "zone-a",
@@ -79,7 +79,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 		deleteOlderThanExpectation,
 	).Return(nil).Once()
 	storage.On("UpdateClusterCapacities",
-		ctx,
+		mock.Anything, // ctx.
 		[]cells_storage.ClusterCapacity{
 			{
 				ZoneID:     "zone-a",
@@ -92,7 +92,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 		deleteOlderThanExpectation,
 	).Return(nil).Once()
 	storage.On("UpdateClusterCapacities",
-		ctx,
+		mock.Anything, // ctx.
 		[]cells_storage.ClusterCapacity{
 			{
 				ZoneID:     "zone-b",
@@ -105,7 +105,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 		deleteOlderThanExpectation,
 	).Return(nil).Once()
 
-	execCtx.On("SaveState", ctx).Return(nil).Times(3)
+	execCtx.On("SaveState", mock.Anything).Return(nil).Times(3)
 
 	task := collectClusterCapacityTask{
 		config:            config,
@@ -151,25 +151,29 @@ func TestCollectClusterCapacityFailureNbsReturnsError(t *testing.T) {
 		TotalBytes: 2048,
 	}
 
-	nbsFactory.On("GetClient", ctx, "zone-a").Return(nbsClient1, nil).Once()
 	nbsFactory.On(
 		"GetClient",
-		ctx,
+		mock.Anything, // ctx.
+		"zone-a",
+	).Return(nbsClient1, nil).Once()
+	nbsFactory.On(
+		"GetClient",
+		mock.Anything, // ctx.
 		"zone-a-cell1",
 	).Return(nbsClient2, nil).Once()
 
-	nbsClient1.On("GetClusterCapacity", ctx).Return(
+	nbsClient1.On("GetClusterCapacity", mock.Anything).Return(
 		[]nbs.ClusterCapacityInfo{capacityInfo},
 		nil,
 	).Once()
-	nbsClient2.On("GetClusterCapacity", ctx).Return(
+	nbsClient2.On("GetClusterCapacity", mock.Anything).Return(
 		[]nbs.ClusterCapacityInfo{},
 		assert.AnError,
 	).Once()
 
 	// Only the successful cell should be updated
 	storage.On("UpdateClusterCapacities",
-		ctx,
+		mock.Anything, // ctx.
 		[]cells_storage.ClusterCapacity{
 			{
 				ZoneID:     "zone-a",
@@ -182,7 +186,7 @@ func TestCollectClusterCapacityFailureNbsReturnsError(t *testing.T) {
 		mock.Anything, // deleteOlderThan.
 	).Return(nil).Once()
 
-	execCtx.On("SaveState", ctx).Return(nil).Once()
+	execCtx.On("SaveState", mock.Anything).Return(nil).Once()
 
 	task := collectClusterCapacityTask{
 		config:            config,
@@ -228,17 +232,17 @@ func TestCollectClusterCapacityFailureStorageReturnsError(t *testing.T) {
 
 	nbsFactory.On(
 		"GetClient",
-		ctx,
+		mock.Anything, // ctx.
 		mock.Anything, // For each cell we return the same mock client.
 	).Return(nbsClient, nil).Twice()
 
-	nbsClient.On("GetClusterCapacity", ctx).Return(
+	nbsClient.On("GetClusterCapacity", mock.Anything).Return(
 		[]nbs.ClusterCapacityInfo{capacityInfo},
 		nil,
 	).Twice()
 
 	storage.On("UpdateClusterCapacities",
-		ctx,
+		mock.Anything, // ctx.
 		[]cells_storage.ClusterCapacity{
 			{
 				ZoneID:     "zone-a",
@@ -251,7 +255,7 @@ func TestCollectClusterCapacityFailureStorageReturnsError(t *testing.T) {
 		mock.Anything, // deleteOlderThan.
 	).Return(nil).Once()
 	storage.On("UpdateClusterCapacities",
-		ctx,
+		mock.Anything,
 		[]cells_storage.ClusterCapacity{
 			{
 				ZoneID:     "zone-a",
@@ -264,7 +268,7 @@ func TestCollectClusterCapacityFailureStorageReturnsError(t *testing.T) {
 		mock.Anything, // deleteOlderThan.
 	).Return(assert.AnError).Once()
 
-	execCtx.On("SaveState", ctx).Return(nil).Once()
+	execCtx.On("SaveState", mock.Anything).Return(nil).Once()
 
 	task := collectClusterCapacityTask{
 		config:            config,
@@ -309,17 +313,17 @@ func TestCollectClusterCapacityOneCellHasAlreadyBeenProcessed(t *testing.T) {
 
 	nbsFactory.On(
 		"GetClient",
-		ctx,
+		mock.Anything, // ctx.
 		"zone-a",
 	).Return(nbsClient, nil).Once()
 
-	nbsClient.On("GetClusterCapacity", ctx).Return(
+	nbsClient.On("GetClusterCapacity", mock.Anything).Return(
 		[]nbs.ClusterCapacityInfo{capacityInfo},
 		nil,
 	).Once()
 
 	storage.On("UpdateClusterCapacities",
-		ctx,
+		mock.Anything, // ctx.
 		[]cells_storage.ClusterCapacity{
 			{
 				ZoneID:     "zone-a",
@@ -332,7 +336,7 @@ func TestCollectClusterCapacityOneCellHasAlreadyBeenProcessed(t *testing.T) {
 		mock.Anything, // deleteOlderThan.
 	).Return(nil).Once()
 
-	execCtx.On("SaveState", ctx).Return(nil).Once()
+	execCtx.On("SaveState", mock.Anything).Return(nil).Once()
 
 	task := collectClusterCapacityTask{
 		config:     config,
@@ -347,7 +351,11 @@ func TestCollectClusterCapacityOneCellHasAlreadyBeenProcessed(t *testing.T) {
 	err := task.Run(ctx, execCtx)
 	require.NoError(t, err)
 	// Only the successful cell should be in ProcessedCells.
-	require.ElementsMatch(t, []string{"zone-a", "zone-a-cell1"}, task.state.ProcessedCells)
+	require.ElementsMatch(
+		t,
+		[]string{"zone-a", "zone-a-cell1"},
+		task.state.ProcessedCells,
+	)
 
 	mock.AssertExpectationsForObjects(
 		t,
