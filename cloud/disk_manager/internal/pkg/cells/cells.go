@@ -8,6 +8,7 @@ import (
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"golang.org/x/sync/errgroup"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -65,9 +66,8 @@ func (s *cellSelector) SelectCellForLocalDisk(
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	resultChan := make(chan string, 1)
+	resultClient := make(chan nbs.Client, 1)
 
-	// Mutex to ensure only one result is sent
 	var once sync.Once
 
 	for _, cellID := range cells {
@@ -97,15 +97,14 @@ func (s *cellSelector) SelectCellForLocalDisk(
 				// Found a valid cell - send it once and cancel other goroutines.
 				once.Do(func() {
 					select {
-					case resultChan <- cellID:
+					case resultClient <- client:
 					default:
 					}
 				})
 
 				return nil
 			}
-
-		})
+		}(cellID))
 	}
 
 	// Wait for either a result or all goroutines to complete
@@ -115,13 +114,17 @@ func (s *cellSelector) SelectCellForLocalDisk(
 	}()
 
 	select {
-	case cellID := <-resultChan:
-		return s.nbsFactory.GetClient(ctx, cellID)
+	case client := <-resultClient:
+		return client, nil
 	case err := <-done:
 		if err != nil {
 			return nil, err
 		}
-		return nil, errors.NewRetriableErrorf("There are no cells with such agents available: %v", agentIDs)
+
+		return nil, errors.NewRetriableErrorf(
+			"There are no cells with such agents available: %v",
+			agentIDs,
+		)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}

@@ -18,5 +18,11 @@ type CellSelector interface {
 		folderID string,
 	) (nbs.Client, error)
 
+	SelectCellForLocalDisk(
+		ctx context.Context,
+		zoneID string,
+		agentIDs []string,
+	) (nbs.Client, error)
+
 	IsCellOfZone(cellID string, zoneID string) bool
 }

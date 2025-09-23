@@ -5,6 +5,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -35,11 +36,19 @@ func SelectCell(
 			return nil, err
 		}
 	} else {
-		client, err = cellSelector.SelectCell(
-			ctx,
-			params.Disk.ZoneId,
-			params.FolderId,
-		)
+		if common.IsLocalDiskKind(params.Kind) {
+			client, err = cellSelector.SelectCellForLocalDisk(
+				ctx,
+				params.Disk.ZoneId,
+				params.AgentIds,
+			)
+		} else {
+			client, err = cellSelector.SelectCell(
+				ctx,
+				params.Disk.ZoneId,
+				params.FolderId,
+			)
+		}
 		if err != nil {
 			return nil, err
 		}

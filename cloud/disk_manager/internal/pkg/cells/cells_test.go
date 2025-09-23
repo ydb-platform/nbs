@@ -1,10 +1,14 @@
 package cells
 
 import (
+	"context"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,4 +100,58 @@ func TestCellSelectorReturnsCorrectNBSClientIfConfigsIsNotSet(t *testing.T) {
 	selectedCell, err := cellSelector.selectCell("zone", "folder")
 	require.NoError(t, err)
 	require.Equal(t, "zone", selectedCell)
+}
+
+func TestCellSelectorReturnsCorrectNBSClientForLocalDisk(t *testing.T) {
+	ctx := context.Background()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient1 := nbs_mocks.NewClientMock()
+	nbsClient2 := nbs_mocks.NewClientMock()
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			"zone-a": {Cells: []string{"zone-a", "zone-a-cell1"}},
+		},
+	}
+	agent := []string{"agent1"}
+
+	nbsFactory.On("GetClient", mock.Anything, "zone-a").Return(nbsClient1, nil)
+	nbsFactory.On(
+		"GetClient",
+		mock.Anything,
+		"zone-a-cell1",
+	).Return(nbsClient2, nil)
+
+	nbsClient1.On("QueryAvailableStorage", mock.Anything, agent).Return(
+		[]nbs.AvailableStorageInfo{
+			{
+				AgentID:    "agent1",
+				ChunkSize:  4096,
+				ChunkCount: 10,
+			},
+		},
+		nil,
+	)
+	nbsClient2.On("QueryAvailableStorage", mock.Anything, agent).Return(
+		[]nbs.AvailableStorageInfo{
+			{
+				AgentID:    "agent1",
+				ChunkSize:  0,
+				ChunkCount: 0,
+			},
+		},
+		nil,
+	)
+
+	cellSelector := cellSelector{
+		config:     config,
+		nbsFactory: nbsFactory,
+	}
+
+	selectedClient, err := cellSelector.SelectCellForLocalDisk(
+		ctx,
+		"zone-a",
+		agent,
+	)
+	require.NoError(t, err)
+	require.Equal(t, nbsClient1, selectedClient)
 }
