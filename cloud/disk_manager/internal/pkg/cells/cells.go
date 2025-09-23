@@ -3,6 +3,7 @@ package cells
 import (
 	"context"
 	"slices"
+	"sync"
 
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -41,6 +42,90 @@ func (s *cellSelector) SelectCell(
 	}
 
 	return s.nbsFactory.GetClient(ctx, cellID)
+}
+
+func (s *cellSelector) SelectCellForLocalDisk(
+	ctx context.Context,
+	zoneID string,
+	agentIDs []string,
+) (nbs.Client, error) {
+
+	cells := s.getCells(zoneID)
+
+	if len(cells) == 0 {
+		if s.isCell(zoneID) {
+			return s.nbsFactory.GetClient(ctx, zoneID)
+		}
+
+		return nil, errors.NewNonCancellableErrorf(
+			"incorrect zone ID provided: %q",
+			zoneID,
+		)
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	resultChan := make(chan string, 1)
+
+	// Mutex to ensure only one result is sent
+	var once sync.Once
+
+	for _, cellID := range cells {
+		g.Go(func(cellID string) func() error {
+			return func() error {
+				client, err := s.nbsFactory.GetClient(ctx, cellID)
+				if err != nil {
+					return err
+				}
+
+				infos, err := client.QueryAvailableStorage(ctx, agentIDs)
+				if err != nil {
+					return err
+				}
+
+				if len(infos) == 0 {
+					return nil
+				}
+
+				// If the only available storage info is empty, agent is unavailable.
+				if len(infos) == 1 &&
+					infos[0].ChunkSize == 0 &&
+					infos[0].ChunkCount == 0 {
+					return nil
+				}
+
+				// Found a valid cell - send it once and cancel other goroutines.
+				once.Do(func() {
+					select {
+					case resultChan <- cellID:
+					default:
+					}
+				})
+
+				return nil
+			}
+
+		})
+	}
+
+	// Wait for either a result or all goroutines to complete
+	done := make(chan error, 1)
+	go func() {
+		done <- g.Wait()
+	}()
+
+	select {
+	case cellID := <-resultChan:
+		return s.nbsFactory.GetClient(ctx, cellID)
+	case err := <-done:
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.NewRetriableErrorf("There are no cells with such agents available: %v", agentIDs)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
 }
 
 func (s *cellSelector) IsCellOfZone(cellID string, zoneID string) bool {
