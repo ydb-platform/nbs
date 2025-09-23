@@ -55,6 +55,15 @@ message TCellConfig
     // If cell ids in request and response do not match, an error is
     // returned.
     optional bool StrictCellIdCheckInDescribeVolume = 11;
+
+    // Interval of sending pings to remote host in milliseconds
+    optional uint32 HeartbeatInterval = 12;
+
+    // Heartbeat timeout in milliseconds
+    optional uint32 HeartbeatTimeout = 13;
+
+    // The number of failed heartbeats before we consider peer as dead
+    optional uint32 HeartbeatFailCount = 14;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -23,6 +23,11 @@ namespace {
         NProto::ECellDataTransport,                                            \
         NProto::CELL_DATA_TRANSPORT_GRPC                                      )\
     xxx(StrictCellIdCheckInDescribeVolume,   bool,           false            )\
+                                                                               \
+    xxx(HeartbeatFailCount,          ui32,           5                        )\
+    xxx(HeartbeatTimeout,            TDuration,      TDuration::Seconds(1)    )\
+    xxx(HeartbeatInterval,           TDuration,      TDuration::Seconds(1)    )\
+
 // BLOCKSTORE_CELL_DEFAULT_CONFIG
 
 #define BLOCKSTORE_CELL_DECLARE_CONFIG(name, type, value)                      \
@@ -137,6 +142,9 @@ TCellHostConfig::TCellHostConfig(
     , Transport(hostConfig.GetTransport() ?
         hostConfig.GetTransport():
         cellConfig.GetTransport())
+    , HeartbeatInterval(cellConfig.GetHeartbeatInterval())
+    , HeartbeatTimeout(cellConfig.GetHeartbeatTimeout())
+    , HeartbeatFailCount(cellConfig.GetHeartbeatFailCount())
 {
 }
 

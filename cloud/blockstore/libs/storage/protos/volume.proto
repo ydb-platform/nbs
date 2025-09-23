@@ -129,6 +129,9 @@ message TAddClientResponse
 
     // Signal that volume tablet should be restarted.
     bool ForceTabletRestart = 7;
+
+    // Host the tablet currentlu running attempted
+    string HostName = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
