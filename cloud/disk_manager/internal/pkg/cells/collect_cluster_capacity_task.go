@@ -41,6 +41,9 @@ func (t *collectClusterCapacityTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	group := errgroup.Group{}
 
 	cellsToCollect := tasks_common.NewStringSet()
