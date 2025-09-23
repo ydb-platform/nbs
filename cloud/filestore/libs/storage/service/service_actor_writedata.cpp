@@ -85,9 +85,7 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
  *        and returns the buffer with data
  *
  * @param rope         The rope as the source of data
- *
  * @param buffer       The destination buffer to copy data into
- *
  * @param bytesToSkip  The starting offset (in bytes) from the beginning of the
  *                     iovecs
  * @param bytesToCopy  The number of bytes to copy from the offset
@@ -119,6 +117,10 @@ ui64 GetBufferFromRope(
  */
 void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
 {
+    if (request.GetIovecs().empty()) {
+        return;
+    }
+
     auto rope = CreateRopeFromIovecs(request);
     auto* buffer = request.MutableBuffer();
     const auto bytesToCopy = CalculateByteCount(request);
@@ -556,7 +558,6 @@ private:
             WriteRequest.GetOffset(),
             CalculateByteCount(WriteRequest),
             FormatError(error).Quote().c_str());
-
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
