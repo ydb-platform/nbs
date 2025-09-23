@@ -8,6 +8,21 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NThreading;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString DescribePaths(const THashMap<TString, ui64>& pathToGeneration)
+{
+    TStringBuilder sb;
+    for (const auto& [path, generation]: pathToGeneration) {
+        sb << path << ":" << generation << " ";
+    }
+    return sb;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskAgentActor::HandleAttachPath(
@@ -48,6 +63,13 @@ void TDiskAgentActor::HandleAttachPath(
             pathToGeneration.GetGeneration());
 
         if (HasError(error)) {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::DISK_AGENT,
+                "Can't attach path %s with generation %lu: %s",
+                pathToGeneration.GetPath().c_str(),
+                pathToGeneration.GetGeneration(),
+                FormatError(error).c_str());
             NCloud::Reply(
                 ctx,
                 *ev,
@@ -101,6 +123,13 @@ void TDiskAgentActor::HandlePathAttached(
         *response->Record.AddAttachedDevices() = std::move(deviceConfig);
     }
 
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
+        "Attached paths [%s]",
+        DescribePaths(PendingAttachPathRequest->PathToGenerationToAttach)
+            .c_str());
+
     NCloud::Reply(
         ctx,
         *PendingAttachPathRequest->RequestInfo,
@@ -139,10 +168,26 @@ void TDiskAgentActor::HandleDetachPath(
             diskToDetach.GetGeneration();
     }
 
+    auto error =
+        State->DetachPath(record.GetDiskRegistryGeneration(), pathToGeneration);
+
+    if (HasError(error)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "Failed to detach paths [%s]: %s",
+            DescribePaths(pathToGeneration).c_str(),
+            FormatError(error).c_str());
+    } else {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "Detached paths [%s]",
+            DescribePaths(pathToGeneration).c_str());
+    }
+
     auto response =
-        std::make_unique<TEvDiskAgent::TEvDetachPathResponse>(State->DetachPath(
-            record.GetDiskRegistryGeneration(),
-            pathToGeneration));
+        std::make_unique<TEvDiskAgent::TEvDetachPathResponse>(error);
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
