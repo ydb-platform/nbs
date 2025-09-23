@@ -232,15 +232,22 @@ private:
 
 void TDiskAgentActor::CheckIsSamePath(
     const NActors::TActorContext& ctx,
-    TVector<TString> diskPaths)
+    TVector<TString> paths)
 {
-    THashSet<TString> paths(diskPaths.begin(), diskPaths.end());
+    if (!paths) {
+        auto response =
+            std::make_unique<TEvDiskAgentPrivate::TEvCheckIsSamePathResult>();
+        NCloud::Send(ctx, ctx.SelfID, std::move(response));
+        return;
+    }
+
+    THashSet<TString> pathsSet(paths.begin(), paths.end());
     TVector<NProto::TDeviceConfig> devices =
-        State->GetAllDevicesForPaths(paths);
+        State->GetAllDevicesForPaths(pathsSet);
 
     auto actorToCheck = std::make_unique<TCheckIsSameDiskActor>(
         ctx.SelfID,
-        std::move(diskPaths),
+        std::move(paths),
         AgentConfig,
         std::move(devices),
         NvmeManager,
@@ -266,7 +273,7 @@ void TDiskAgentActor::HandleCheckIsSamePathResult(
     }
 
     if (HasError(ev->Get()->Error)) {
-        ReportDiskConfigChangedAfterStart(FormatError(ev->Get()->Error));
+        ReportPathConfigChangedAfterStart(FormatError(ev->Get()->Error));
         auto response = std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(
             ev->Get()->Error);
         NCloud::Reply(
@@ -278,9 +285,7 @@ void TDiskAgentActor::HandleCheckIsSamePathResult(
     }
 
     THashMap<TString, TFuture<IStoragePtr>> storageFutures;
-    for (auto& [path, _]:
-         PendingAttachPathRequest->PathToGeneration)
-    {
+    for (auto& [path, _]: PendingAttachPathRequest->PathToGenerationToAttach) {
         auto storagesToAdd = State->AttachPath(path);
         storageFutures.insert(storagesToAdd.begin(), storagesToAdd.end());
     }

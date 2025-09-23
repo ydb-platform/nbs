@@ -54,7 +54,8 @@ class TDiskAgentActor final
 
     struct TPendingAttachRequest
     {
-        THashMap<TString, ui64> PathToGeneration;
+        THashMap<TString, ui64> AlreadyAttachedPathsToGeneration;
+        THashMap<TString, ui64> PathToGenerationToAttach;
         TRequestInfoPtr RequestInfo;
     };
 
@@ -103,7 +104,6 @@ private:
 
     NActors::TActorId HealthCheckActor;
 
-    ui32 LastDiskRegistryGenerationSeen = 0;
     std::optional<TPendingAttachRequest> PendingAttachPathRequest;
 
 public:
