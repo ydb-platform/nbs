@@ -29,10 +29,12 @@ constexpr TDuration BackupInterval = TDuration::Seconds(10);
 ////////////////////////////////////////////////////////////////////////////////
 
 TPathDescriptionBackup::TPathDescriptionBackup(
+        int logComponent,
         TString backupFilePath,
         bool useBinaryFormat,
         bool readOnlyMode)
-    : BackupFilePath(std::move(backupFilePath))
+    : LogComponent(logComponent)
+    , BackupFilePath(std::move(backupFilePath))
     , UseBinaryFormat(useBinaryFormat)
     , ReadOnlyMode(readOnlyMode)
     , TmpBackupFilePath(BackupFilePath.GetPath() + ".tmp")
@@ -44,7 +46,11 @@ void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
 
     if (ReadOnlyMode) {
         if (!LoadFromTextFormat(ctx)) {
-            LoadFromBinaryFormat(ctx);
+            if (!LoadFromBinaryFormat(ctx)) {
+                LOG_WARN_S(ctx, LogComponent,
+                    "PathDescriptionBackup: can't load backup file: "
+                        << BackupFilePath.GetPath().Quote());
+            }
         }
     } else {
         ScheduleBackup(ctx);
@@ -90,20 +96,20 @@ NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
     }
 
     if (SUCCEEDED(error.GetCode())) {
-        LOG_DEBUG_S(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_DEBUG_S(ctx, LogComponent,
             "PathDescriptionBackup: backup completed");
     } else {
         ReportBackupPathDescriptionsFailure(
             {{"BackupFilePath", BackupFilePath.GetPath()}});
 
-        LOG_ERROR_S(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR_S(ctx, LogComponent,
             "PathDescriptionBackup: backup failed: "
             << error);
 
         try {
             TmpBackupFilePath.DeleteIfExists();
         } catch (...) {
-            LOG_WARN_S(ctx, TBlockStoreComponents::SS_PROXY,
+            LOG_WARN_S(ctx, LogComponent,
                 "PathDescriptionBackup: failed to delete temporary file: "
                 << CurrentExceptionMessage());
         }
@@ -117,7 +123,7 @@ bool TPathDescriptionBackup::LoadFromTextFormat(
 {
     LOG_WARN_S(
         ctx,
-        TBlockStoreComponents::SS_PROXY,
+        LogComponent,
         "PathDescriptionBackup: loading from text format: "
             << BackupFilePath.GetPath().Quote());
     try {
@@ -126,14 +132,14 @@ bool TPathDescriptionBackup::LoadFromTextFormat(
 
         LOG_WARN_S(
             ctx,
-            TBlockStoreComponents::SS_PROXY,
+            LogComponent,
             "PathDescriptionBackup: loading from text format finished "
                 << FormatDuration(TInstant::Now() - start));
         return true;
     } catch (...) {
         LOG_WARN_S(
             ctx,
-            TBlockStoreComponents::SS_PROXY,
+            LogComponent,
             "PathDescriptionBackup: can't load text format file: "
                 << CurrentExceptionMessage());
     }
@@ -145,30 +151,30 @@ bool TPathDescriptionBackup::LoadFromBinaryFormat(
 {
     LOG_WARN_S(
         ctx,
-        TBlockStoreComponents::SS_PROXY,
+        LogComponent,
         "PathDescriptionBackup: loading from binary format: "
             << BackupFilePath.GetPath().Quote());
+    try {
+        TInstant start = TInstant::Now();
+        TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
+        TUnbufferedFileInput input(file);
+        const bool succ = BackupProto.MergeFromString(input.ReadAll());
 
-    TInstant start = TInstant::Now();
-    TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
-    TUnbufferedFileInput input(file);
-    const bool succ = BackupProto.MergeFromString(input.ReadAll());
-    if (!succ) {
         LOG_WARN_S(
             ctx,
-            TBlockStoreComponents::SS_PROXY,
+            LogComponent,
+            "PathDescriptionBackup: loading from binary format finished "
+                << FormatDuration(TInstant::Now() - start));
+
+        return succ;
+    } catch (...) {
+        LOG_WARN_S(
+            ctx,
+            LogComponent,
             "PathDescriptionBackup: can't load from binary format: "
-                << BackupFilePath.GetPath().Quote());
-        return false;
+                << CurrentExceptionMessage());
     }
-
-    LOG_WARN_S(
-        ctx,
-        TBlockStoreComponents::SS_PROXY,
-        "PathDescriptionBackup: loading from binary format finished "
-            << FormatDuration(TInstant::Now() - start));
-
-    return true;
+    return false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -205,12 +211,13 @@ void TPathDescriptionBackup::HandleReadPathDescriptionBackup(
     std::unique_ptr<TResponse> response;
 
     if (found) {
-        LOG_DEBUG_S(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_DEBUG_S(ctx, LogComponent,
             "PathDescriptionBackup: found data for path " << msg->Path);
+
         response = std::make_unique<TResponse>(
             std::move(msg->Path), std::move(pathDescription));
     } else {
-        LOG_DEBUG_S(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_DEBUG_S(ctx, LogComponent,
             "PathDescriptionBackup: no data for path " << msg->Path);
         response = std::make_unique<TResponse>(MakeError(E_NOT_FOUND));
     }
@@ -224,9 +231,10 @@ void TPathDescriptionBackup::HandleUpdatePathDescriptionBackup(
 {
     auto* msg = ev->Get();
     auto& data = *BackupProto.MutableData();
+
     data[msg->Path] = std::move(msg->PathDescription);
 
-    LOG_DEBUG_S(ctx, TBlockStoreComponents::SS_PROXY,
+    LOG_DEBUG_S(ctx, LogComponent,
         "PathDescriptionBackup: updated data for path " << msg->Path);
 }
 
@@ -258,10 +266,7 @@ STFUNC(TPathDescriptionBackup::StateWork)
         HFunc(TEvSSProxy::TEvBackupPathDescriptionsRequest, HandleBackupPathDescriptions);
 
         default:
-            HandleUnexpectedEvent(
-                ev,
-                TBlockStoreComponents::SS_PROXY,
-                __PRETTY_FUNCTION__);
+            HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
             break;
     }
 }
