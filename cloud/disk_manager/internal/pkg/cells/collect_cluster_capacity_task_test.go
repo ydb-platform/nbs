@@ -105,7 +105,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 		deleteOlderThanExpectation,
 	).Return(nil).Once()
 
-	execCtx.On("SaveState", ctx).Return(nil).Once()
+	execCtx.On("SaveState", ctx).Return(nil).Times(3)
 
 	task := collectClusterCapacityTask{
 		config:            config,
