@@ -88,9 +88,9 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
  *
  * @param buffer       The destination buffer to copy data into
  *
- * @param byteOffset   The starting offset (in bytes) from the beginning of the
+ * @param bytesToSkip  The starting offset (in bytes) from the beginning of the
  *                     iovecs
- * @param byteLength   The number of bytes to copy from the offset
+ * @param bytesToCopy  The number of bytes to copy from the offset
  *
  * @return The number of bytes actually copied. Fewer bytes than `byteLength`
  *         may be copied if `byteOffset + byteLength` exceeds the total size
@@ -99,14 +99,14 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
 ui64 GetBufferFromRope(
     TRope& rope,
     TString& buffer,
-    ui64 byteOffset,
-    ui64 bufferLength)
+    ui64 bytesToSkip,
+    ui64 bytesToCopy)
 {
-    buffer.ReserveAndResize(bufferLength);
+    buffer.ReserveAndResize(bytesToCopy);
     auto bytesCopied = TRopeUtils::SafeMemcpy(
         &buffer[0],
-        rope.Begin() + byteOffset,
-        bufferLength);
+        rope.Begin() + bytesToSkip,
+        bytesToCopy);
     return bytesCopied;
 }
 
@@ -121,12 +121,12 @@ void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
 {
     auto rope = CreateRopeFromIovecs(request);
     auto* buffer = request.MutableBuffer();
-    const auto byteLength = CalculateByteCount(request);
-    buffer->ReserveAndResize(byteLength);
+    const auto bytesToCopy = CalculateByteCount(request);
+    buffer->ReserveAndResize(bytesToCopy);
     auto bytesCopied =
-        TRopeUtils::SafeMemcpy(&(*buffer)[0], rope.Begin(), byteLength);
+        TRopeUtils::SafeMemcpy(&(*buffer)[0], rope.Begin(), bytesToCopy);
     request.MutableIovecs()->Clear();
-    Y_ABORT_UNLESS(bytesCopied == byteLength);
+    Y_ABORT_UNLESS(bytesCopied == bytesToCopy);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
