@@ -288,3 +288,72 @@ func TestCollectClusterCapacityFailureStorageReturnsError(t *testing.T) {
 		nbsClient,
 	)
 }
+
+func TestCollectClusterCapacityOneCellHasAlreadyBeenProcessed(t *testing.T) {
+	ctx := newContext()
+	execCtx := tasks_mocks.NewExecutionContextMock()
+	storage := storage_mocks.NewStorageMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient := nbs_mocks.NewClientMock()
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			"zone-a": {Cells: []string{"zone-a-cell1", "zone-a"}},
+		},
+	}
+
+	capacityInfo := nbs.ClusterCapacityInfo{
+		DiskKind:   types.DiskKind_DISK_KIND_SSD,
+		FreeBytes:  1024,
+		TotalBytes: 2048,
+	}
+
+	nbsFactory.On(
+		"GetClient",
+		ctx,
+		"zone-a",
+	).Return(nbsClient, nil).Once()
+
+	nbsClient.On("GetClusterCapacity", ctx).Return(
+		[]nbs.ClusterCapacityInfo{capacityInfo},
+		nil,
+	).Once()
+
+	storage.On("UpdateClusterCapacities",
+		ctx,
+		[]cells_storage.ClusterCapacity{
+			{
+				ZoneID:     "zone-a",
+				CellID:     "zone-a",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
+			},
+		},
+		mock.Anything, // deleteOlderThan.
+	).Return(nil).Once()
+
+	execCtx.On("SaveState", ctx).Return(nil).Once()
+
+	task := collectClusterCapacityTask{
+		config:     config,
+		storage:    storage,
+		nbsFactory: nbsFactory,
+		state: &protos.CollectClusterCapacityTaskState{
+			ProcessedCells: []string{"zone-a-cell1"},
+		},
+		expirationTimeout: time.Hour, // Can be any, storage is mocked.
+	}
+
+	err := task.Run(ctx, execCtx)
+	require.NoError(t, err)
+	// Only the successful cell should be in ProcessedCells.
+	require.ElementsMatch(t, []string{"zone-a", "zone-a-cell1"}, task.state.ProcessedCells)
+
+	mock.AssertExpectationsForObjects(
+		t,
+		execCtx,
+		storage,
+		nbsFactory,
+		nbsClient,
+	)
+}

@@ -53,7 +53,9 @@ func (t *collectClusterCapacityTask) Run(
 		}
 	}
 
-	cellsToCollect.Subtract(tasks_common.NewStringSet(t.state.ProcessedCells...))
+	cellsToCollect = cellsToCollect.Subtract(
+		tasks_common.NewStringSet(t.state.ProcessedCells...),
+	)
 
 	deleteOlderThan := time.Now().Add(-t.expirationTimeout)
 	completedCells := make(chan string)
