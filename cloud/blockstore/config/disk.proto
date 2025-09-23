@@ -319,9 +319,6 @@ message TDiskAgentConfig
     // Enables data integrity validation for the DR-based disks.
     // See "EnableDataIntegrityClient" in server.proto for more details.
     optional bool EnableDataIntegrityValidationForDrBasedDisks = 44;
-
-    // Enable to attach or detach hardware devices in runtime.
-    optional bool AttachDetachPathsEnabled = 45;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
