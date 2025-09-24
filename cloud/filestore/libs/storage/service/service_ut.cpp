@@ -3938,7 +3938,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         std::vector<ui64> iovecSizes;
         iovecSizes.reserve(numIovecs);
         for(size_t i = 0; i < numIovecs; ++i) {
-            const auto iovecSize = rand() % 16_KB + 1;
+            const auto iovecSize = rand() % 16_KB;
             STORAGE_INFO("iovec size with index: %lu: %lu", i, iovecSize);
             iovecSizes.push_back(iovecSize);
         }
@@ -3964,7 +3964,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         std::vector<ui64> iovecSizes;
         iovecSizes.reserve(numIovecs);
         for (size_t i = 0; i < numIovecs; ++i) {
-            const auto iovecSize = rand() % 16_KB + 1;
+            const auto iovecSize = rand() % 16_KB;
             STORAGE_INFO("iovec size with index: %lu: %lu", i, iovecSize);
             iovecSizes.push_back(iovecSize);
         }
