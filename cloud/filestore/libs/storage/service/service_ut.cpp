@@ -3829,7 +3829,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data2, buffer.substr(3_KB, 1_KB));
     }
 
-    void TestZeroCopyWrite(const NProto::TStorageConfig& config, ui64 offset, ui64 iovecSize) {
+    void TestZeroCopyWrite(const NProto::TStorageConfig& config, ui64 offset, const std::vector<ui64>& iovecSizes) {
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -3854,24 +3854,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-
-        const auto iovecsNum = 64;
         std::vector<TString> data;
-        data.reserve(iovecsNum);
-        for(auto i = 0; i < iovecsNum; ++i) {
-            data.push_back(GenerateValidateData(iovecSize, i));
+
+        ui64 dataSize = 0;
+        for(auto iovecSize : iovecSizes) {
+            dataSize += iovecSize;
+        }
+        data.reserve(dataSize);
+        for(size_t i = 0; i < iovecSizes.size(); ++i) {
+            data.push_back(GenerateValidateData(iovecSizes[i], i));
         }
         service.WriteData(headers, fs, nodeId, handle, offset, data);
-        for (auto i = 0; i < iovecsNum; ++i) {
+        for (size_t i = 0; i < iovecSizes.size(); ++i) {
             auto readDataResult = service.ReadData(
                 headers,
                 fs,
                 nodeId,
                 handle,
-                offset + i * iovecSize,
-                iovecSize);
+                offset,
+                iovecSizes[i]);
             const auto& buffer = readDataResult->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL_C(data[i], buffer, i);
+            offset += iovecSizes[i];
         }
     }
 
@@ -3881,8 +3885,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
-        TestZeroCopyWrite(config, 4_KB, 4_KB);
-        TestZeroCopyWrite(config, 4_KB, 8_KB);
+        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
+        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 8_KB));
     }
 
     Y_UNIT_TEST(TestAlignedZeroCopyWriteFallback)
@@ -3891,7 +3895,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(false);
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
-        TestZeroCopyWrite(config, 4_KB, 4_KB);
+        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
     }
 
     Y_UNIT_TEST(TestUnalignedZeroCopyWrite)
@@ -3900,8 +3904,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
-        TestZeroCopyWrite(config, 111, 4_KB);
-        TestZeroCopyWrite(config, 0, 5000);
+        TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
+        TestZeroCopyWrite(config, 0, std::vector<ui64>(64, 5000));
     }
 
     Y_UNIT_TEST(TestUnalignedZeroCopyWriteFallback)
@@ -3910,7 +3914,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
-        TestZeroCopyWrite(config, 111, 4_KB);
+        TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
     }
 
     Y_UNIT_TEST(TestZeroCopyWriteRandomIovecSize)
@@ -3927,10 +3931,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const auto seed = time(0);
         STORAGE_INFO("Seed: %lu", seed);
         srand(seed);
-        const auto iovecSize = rand() % 16_KB + 1;
-        STORAGE_INFO("iovec size: %lu", iovecSize);
+        size_t numIovecs = 64;
+        std::vector<ui64> iovecSizes;
+        iovecSizes.reserve(numIovecs);
+        for(size_t i = 0; i < numIovecs; ++i) {
+            const auto iovecSize = rand() % 16_KB + 1;
+            STORAGE_INFO("iovec size with index: %lu: %lu", i, iovecSize);
+            iovecSizes.push_back(iovecSize);
+        }
 
-        TestZeroCopyWrite(config, 0, iovecSize);
+        TestZeroCopyWrite(config, 0, iovecSizes);
     }
 
     Y_UNIT_TEST(TestZeroCopyWriteFallbackRandomIovecSize)
@@ -3947,10 +3957,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const auto seed = time(0);
         STORAGE_INFO("Seed: %lu", seed);
         srand(seed);
-        const auto iovecSize = rand() % 16_KB + 1;
-        STORAGE_INFO("iovec size: %lu", iovecSize);
+        size_t numIovecs = 64;
+        std::vector<ui64> iovecSizes;
+        iovecSizes.reserve(numIovecs);
+        for (size_t i = 0; i < numIovecs; ++i) {
+            const auto iovecSize = rand() % 16_KB + 1;
+            STORAGE_INFO("iovec size with index: %lu: %lu", i, iovecSize);
+            iovecSizes.push_back(iovecSize);
+        }
 
-        TestZeroCopyWrite(config, 0, iovecSize);
+        TestZeroCopyWrite(config, 0, iovecSizes);
     }
 }
 
