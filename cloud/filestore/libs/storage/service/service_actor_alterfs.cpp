@@ -18,6 +18,23 @@ using namespace NKikimr;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+// This class actually performs two different actions: alter and resize
+// In order not mix them we have two different state functions: AlterStateWork,
+// ResizeStateWork. Alter mode is quite simple and consits of the following
+// steps: Describe main filestore, Alter main filestore
+// The steps of the resize mode:
+// 1. Describe main filestore. Gets main file system size, config version,
+// calculates desired number of shards
+// 2. Get filesystem topology. Gets number of exsitingshards, calculates number
+// of shards too be created.
+// 3. Describe shards. We need this step to get config version of shards in case
+// we need to resize them.
+// 4. Alter (actually resize) main filestore.
+// 5. Alter shards (if we resize them)
+// 6. Create shards if nedded.
+// 7. Configure shards if we created some new ones.
+// 8. Configure main filestore if new shards were created.
+// The end!
 
 class TAlterFileStoreActor final
     : public TActorBootstrapped<TAlterFileStoreActor>
@@ -43,7 +60,7 @@ private:
     // These flags are set by HandleGetFileSystemTopologyResponse.
     bool DirectoryCreationInShardsEnabled = false;
     bool StrictFileSystemSizeEnforcementEnabled = false;
-    bool TurnOnStrictFileSystemSizeEnforcement = false;
+    bool EnableStrictFileSystemSizeEnforcement = false;
     ui32 BlockSize = 0;
     bool IsToConfigureMainFileStore = false;
 
@@ -119,6 +136,8 @@ private:
         const TActorContext& ctx,
         const NProto::TError& error = {});
 
+    void ReportInvaildCookieAndDie(const TActorContext& ctx, ui64 cookie);
+
     const char* GetOperationString() const
     {
         return !Alter ? "resize" : "alter";
@@ -126,12 +145,19 @@ private:
 
     const TString& GetFileSytemIdByCookie(const ui64 cookie) const
     {
-        if(cookie == MainFileStoreCookie) {
+        if (cookie == MainFileStoreCookie) {
             return FileSystemId;
         } else {
             return FileStoreConfig.ShardConfigs[cookie].GetFileSystemId();
         }
     }
+
+    bool IsCookieValid(const ui64 cookie) const
+    {
+        return cookie == MainFileStoreCookie ||
+               cookie < FileStoreConfig.ShardConfigs.size();
+    }
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -154,9 +180,9 @@ TAlterFileStoreActor::TAlterFileStoreActor(
 }
 
 TAlterFileStoreActor::TAlterFileStoreActor(
-    TStorageConfigPtr storageConfig,
-    TRequestInfoPtr requestInfo,
-    const NProto::TResizeFileStoreRequest& request)
+        TStorageConfigPtr storageConfig,
+        TRequestInfoPtr requestInfo,
+        const NProto::TResizeFileStoreRequest& request)
     : StorageConfig(std::move(storageConfig))
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(request.GetFileSystemId())
@@ -164,8 +190,8 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , Alter(false)
     , Force(request.GetForce())
     , ExplicitShardCount(request.GetShardCount())
-    , TurnOnStrictFileSystemSizeEnforcement(
-          request.GetTurnOnStrictFileSystemSizeEnforcement())
+    , EnableStrictFileSystemSizeEnforcement(
+          request.GetEnableStrictFileSystemSizeEnforcement())
 {
     DesiredConfig.SetBlocksCount(request.GetBlocksCount());
     DesiredConfig.SetVersion(request.GetConfigVersion());
@@ -186,9 +212,8 @@ void TAlterFileStoreActor::Bootstrap(const TActorContext& ctx)
 
 void TAlterFileStoreActor::DescribeMainFileStore(const TActorContext& ctx)
 {
-    auto request =
-        std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(FileSystemId);
-
+    auto request = std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
+        FileSystemId);
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
@@ -218,8 +243,23 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
 {
     const auto* msg = ev->Get();
 
+    const bool isCookieValid = IsCookieValid(ev->Cookie);
     if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Describing filestore %s failed: %s",
+            FileSystemId.c_str(),
+            isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
+                          : "\"UNKNOWN\"",
+            FormatError(msg->GetError()).c_str());
+
         ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    if (!isCookieValid) {
+        ReportInvaildCookieAndDie(ctx, ev->Cookie);
         return;
     }
 
@@ -325,24 +365,33 @@ void TAlterFileStoreActor::HandleAlterFileStoreResponse(
 {
     const auto* msg = ev->Get();
 
-    NProto::TError error = msg->GetError();
-    if (HasError(error)) {
-        LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
-            "altering of filestore %s failed: %s",
-            GetFileSytemIdByCookie(ev->Cookie).Quote().c_str(),
-            msg->GetErrorReason().c_str());
+    const bool isCookieValid = IsCookieValid(ev->Cookie);
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Altering of filestore %s failed: %s",
+            FileSystemId.c_str(),
+            isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
+                          : "\"UNKNOWN\"",
+            FormatError(msg->GetError()).Quote().c_str());
 
-        ReplyAndDie(ctx, error);
+        ReplyAndDie(ctx, msg->GetError());
         return;
     }
 
-    if(ev->Cookie == MainFileStoreCookie) {
+    if (!isCookieValid) {
+        ReportInvaildCookieAndDie(ctx, ev->Cookie);
+        return;
+    }
+
+    if (ev->Cookie == MainFileStoreCookie) {
         AlterShards(ctx);
         return;
     }
 
     Y_ABORT_UNLESS(ShardsToAlter);
-    if(--ShardsToAlter == 0) {
+    if (--ShardsToAlter == 0) {
         CreateShards(ctx);
     }
 }
@@ -369,10 +418,10 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
 {
     auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
-        LOG_WARN(
+        LOG_ERROR(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] GetFileSystemTopology error: %s",
+            "[%s] Getting file system topology failed: %s",
             FileSystemId.c_str(),
             FormatError(msg->GetError()).Quote().c_str());
 
@@ -383,9 +432,8 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
     DirectoryCreationInShardsEnabled =
         msg->Record.GetDirectoryCreationInShardsEnabled();
     StrictFileSystemSizeEnforcementEnabled =
-        TurnOnStrictFileSystemSizeEnforcement ||
+        EnableStrictFileSystemSizeEnforcement ||
         msg->Record.GetStrictFileSystemSizeEnforcementEnabled();
-
 
     for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
         ExistingShardIds.push_back(std::move(shardId));
@@ -472,7 +520,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             FileStoreConfig.ShardConfigs.size());
         ShardsToCreate =
             FileStoreConfig.ShardConfigs.size() - ExistingShardIds.size();
-        if(ShardsToCreate || TurnOnStrictFileSystemSizeEnforcement) {
+        if (ShardsToCreate || EnableStrictFileSystemSizeEnforcement) {
             IsToConfigureMainFileStore = true;
             ShardsToConfigure = FileStoreConfig.ShardConfigs.size();
         }
@@ -493,10 +541,10 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
 
 void TAlterFileStoreActor::CreateShards(const TActorContext& ctx)
 {
-    if(ShardsToCreate == 0) {
+    if (ShardsToCreate == 0) {
         ConfigureShards(ctx);
     }
-    
+
     for (ui32 i = ExistingShardIds.size();
             i < FileStoreConfig.ShardConfigs.size(); ++i)
     {
@@ -525,19 +573,20 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
 {
     const auto* msg = ev->Get();
 
+    const bool isCookieValid = ev->Cookie < FileStoreConfig.ShardConfigs.size();
     if (HasError(msg->GetError())) {
-        LOG_WARN(
+        LOG_ERROR(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] Filesystem creation error: %s",
+            "[%s] Shard %s creation failed: %s",
             FileSystemId.c_str(),
+            isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
+                          : "\"UNKNOWN\"",
             FormatError(msg->GetError()).Quote().c_str());
 
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
-
-    Y_ABORT_UNLESS(ev->Cookie < FileStoreConfig.ShardConfigs.size());
 
     LOG_INFO(
         ctx,
@@ -556,7 +605,7 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
 
 void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
 {
-    if(ShardsToConfigure == 0) {
+    if (ShardsToConfigure == 0) {
         ConfigureMainFileStore(ctx);
         return;
     }
@@ -602,19 +651,25 @@ void TAlterFileStoreActor::HandleConfigureShardResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    const bool isCookieValid = ev->Cookie < FileStoreConfig.ShardConfigs.size();
     if (HasError(msg->GetError())) {
-        LOG_WARN(
+        LOG_ERROR(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] Shard configuration error: %s",
+            "[%s] Shard %s configuration failed: %s",
             FileSystemId.c_str(),
+            isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
+                          : "\"UNKNOWN\"",
             FormatError(msg->GetError()).Quote().c_str());
 
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
 
-    Y_ABORT_UNLESS(ev->Cookie < FileStoreConfig.ShardConfigs.size());
+    if (!isCookieValid) {
+        ReportInvaildCookieAndDie(ctx, ev->Cookie);
+        return;
+    }
 
     LOG_INFO(
         ctx,
@@ -671,6 +726,13 @@ void TAlterFileStoreActor::HandleConfigureMainFileStoreResponse(
 {
     const auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Configuring main filesystem failed: %s",
+            FileSystemId.c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
+
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
@@ -693,6 +755,13 @@ void TAlterFileStoreActor::HandleDescribeFileStoreForAlterResponse(
     const auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Configuring main filesystem failed: %s",
+            FileSystemId.c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
+
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
@@ -730,10 +799,10 @@ void TAlterFileStoreActor::HandleAlterFileStoreForAlterResponse(
     NProto::TError error = msg->GetError();
     if (HasError(error)) {
         LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
-            "alter of filestore %s failed: %s",
+            "[%s] Altering of main filestore failed: %s",
             GetOperationString(),
             FileSystemId.Quote().c_str(),
-            msg->GetErrorReason().c_str());
+            FormatError(msg->GetError()).Quote().c_str());
 
         return;
     }
@@ -766,6 +835,15 @@ void TAlterFileStoreActor::ReplyAndDie(
     }
 
     Die(ctx);
+}
+
+void TAlterFileStoreActor::ReportInvaildCookieAndDie(const TActorContext& ctx, ui64 cookie)
+{
+    ReplyAndDie(
+        ctx,
+        MakeError(
+            E_INVALID_STATE,
+            TStringBuilder() << "invalid coockie: " << cookie));
 }
 
 STFUNC(TAlterFileStoreActor::AlterStateWork)

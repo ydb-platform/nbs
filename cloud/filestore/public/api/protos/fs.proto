@@ -249,7 +249,7 @@ message TResizeFileStoreRequest
     uint32 ShardCount = 7;
 
     // Turn on strict size enforcement mode for the whole filesystem.
-    bool TurnOnStrictFileSystemSizeEnforcement = 8;
+    bool EnableStrictFileSystemSizeEnforcement = 8;
 }
 
 message TResizeFileStoreResponse

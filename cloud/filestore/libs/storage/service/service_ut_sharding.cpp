@@ -2449,7 +2449,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
-    SERVICE_TEST_SIMPLE(ShouldTurnOnStrictFileSystemSizeEnforcement)
+    SERVICE_TEST_SIMPLE(ShouldEnableStrictFileSystemSizeEnforcement)
     {
         // Create file system with two shards 1000 * 4 * 1024 bytes each
         config.SetMultiTabletForwardingEnabled(true);
@@ -2525,7 +2525,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             fsConfig.MainFsBlockCount(),
             /*force=*/false,
             /*shardCount=*/0,
-            /*turnOnStrictSizeMode=*/true);
+            /*enableStrictSizeMode=*/true);
 
         {
             // check topology after turning strict mode on

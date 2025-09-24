@@ -169,15 +169,15 @@ public:
         ui64 blocksCount,
         bool force = false,
         ui32 shardCount = 0,
-        bool turnOnStrictSizeMode = false)
+        bool enableStrictSizeMode = false)
     {
         auto request = std::make_unique<TEvService::TEvResizeFileStoreRequest>();
         request->Record.SetFileSystemId(fileSystemId);
         request->Record.SetBlocksCount(blocksCount);
         request->Record.SetForce(force);
         request->Record.SetShardCount(shardCount);
-        request->Record.SetTurnOnStrictFileSystemSizeEnforcement(
-            turnOnStrictSizeMode);
+        request->Record.SetEnableStrictFileSystemSizeEnforcement(
+            enableStrictSizeMode);
         return request;
     }
 

@@ -166,8 +166,6 @@ def test_turn_on_strict():
     out += client.destroy("fs0_s2")
     out += client.destroy("fs0_s3")
 
-    print(str(out, 'utf-8'))
-
     with open(results_path, "wb") as results_file:
         results_file.write(out)
 

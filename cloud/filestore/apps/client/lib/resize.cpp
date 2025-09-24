@@ -17,7 +17,7 @@ private:
     ui64 BlocksCount = 0;
     bool Force = false;
     ui32 ShardCount = 0;
-    bool TurnOnStrictFileSystemSizeEnforcement = false;
+    bool EnableStrictFileSystemSizeEnforcement = false;
 
 public:
     TResizeCommand()
@@ -38,8 +38,8 @@ public:
             .StoreResult(&ShardCount);
 
         Opts.AddLongOption("turn-on-strict")
-            .StoreTrue(&TurnOnStrictFileSystemSizeEnforcement)
-            .Help("turn on strict file system size enforcement");
+            .StoreTrue(&EnableStrictFileSystemSizeEnforcement)
+            .Help("enable strict file system size enforcement");
     }
 
     bool Execute() override
@@ -51,8 +51,8 @@ public:
         request->SetBlocksCount(BlocksCount);
         request->SetForce(Force);
         request->SetShardCount(ShardCount);
-        request->SetTurnOnStrictFileSystemSizeEnforcement(
-            TurnOnStrictFileSystemSizeEnforcement);
+        request->SetEnableStrictFileSystemSizeEnforcement(
+            EnableStrictFileSystemSizeEnforcement);
 
         PerformanceProfileParams.FillRequest(*request);
 
