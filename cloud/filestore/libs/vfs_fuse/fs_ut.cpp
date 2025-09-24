@@ -128,6 +128,7 @@ struct TBootstrap
             UNIT_ASSERT(request->GetRestoreClientSession());
             NProto::TCreateSessionResponse result;
             result.MutableSession()->SetSessionId(SessionId);
+            result.MutableFileStore()->SetBlockSize(4096);
             result.MutableFileStore()->MutableFeatures()->CopyFrom(
                 featuresConfig);
             result.MutableFileStore()->SetFileSystemId(FileSystemId);
