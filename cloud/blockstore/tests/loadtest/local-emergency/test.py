@@ -11,7 +11,7 @@ from cloud.blockstore.tests.python.lib.test_base import run_test
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 
-def default_storage_config(backups_folder, use_binary_format_for_path_description_backup):
+def default_storage_config(backups_folder, use_binary_format_for_backups):
     storage = storage_config_with_default_limits()
     storage.SSDSystemChannelPoolKind = "ssd"
     storage.SSDLogChannelPoolKind = "ssd"
@@ -24,13 +24,13 @@ def default_storage_config(backups_folder, use_binary_format_for_path_descriptio
     storage.PathDescriptionBackupFilePath = \
         backups_folder + "/path_description_backup.txt"
 
-    storage.UseBinaryFormatForPathDescriptionBackup = use_binary_format_for_path_description_backup
+    storage.UseBinaryFormatForPathDescriptionBackup = use_binary_format_for_backups
 
     return storage
 
 
-def storage_config_with_emergency_mode(backups_folder, use_binary_format_for_path_description_backup):
-    storage = default_storage_config(backups_folder, use_binary_format_for_path_description_backup)
+def storage_config_with_emergency_mode(backups_folder, use_binary_format_for_backups):
+    storage = default_storage_config(backups_folder, use_binary_format_for_backups)
     storage.HiveProxyFallbackMode = True
     storage.SSProxyFallbackMode = True
     storage.DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode = True
@@ -66,22 +66,22 @@ def format_static_pdisks(kikimr_cluster):
 
 class TestCase(object):
 
-    def __init__(self, name, config_path, use_binary_format_for_path_description_backup):
+    def __init__(self, name, config_path, use_binary_format_for_backups):
         self.name = name
         self.config_path = config_path
-        self.use_binary_format_for_path_description_backup = use_binary_format_for_path_description_backup
+        self.use_binary_format_for_backups = use_binary_format_for_backups
 
 
 TESTS = [
     TestCase(
         "default",
         "cloud/blockstore/tests/loadtest/local-emergency/local-tablet-version-default.txt",
-        False,  # UseBinaryFormatForPathDescriptionBackup
+        False,  # UseBinaryFormatForBackups
     ),
     TestCase(
         "default",
         "cloud/blockstore/tests/loadtest/local-emergency/local-tablet-version-default.txt",
-        True,  # UseBinaryFormatForPathDescriptionBackup
+        True,  # UseBinaryFormatForBackups
     ),
 ]
 
@@ -98,7 +98,7 @@ def __run_test(test_case):
         storage_config_patches=[
             default_storage_config(
                 backups_folder,
-                test_case.use_binary_format_for_path_description_backup,
+                test_case.use_binary_format_for_backups,
             ),
         ],
         dynamic_pdisks=[dict(user_kind=1)],
@@ -129,7 +129,7 @@ def __run_test(test_case):
     env.nbs.storage_config_patches = [
         storage_config_with_emergency_mode(
             backups_folder,
-            test_case.use_binary_format_for_path_description_backup,
+            test_case.use_binary_format_for_backups,
         ),
     ]
     env.nbs.restart()
