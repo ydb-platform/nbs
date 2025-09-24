@@ -64,33 +64,37 @@ func (s *cellSelector) SelectCellForLocalDisk(
 		)
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
+	errorGroup, ctx := errgroup.WithContext(ctx)
 
 	resultClient := make(chan nbs.Client, 1)
 
 	var once sync.Once
 
 	for _, cellID := range cells {
-		g.Go(func(cellID string) func() error {
+		errorGroup.Go(func(cellID string) func() error {
 			return func() error {
 				client, err := s.nbsFactory.GetClient(ctx, cellID)
 				if err != nil {
 					return err
 				}
 
-				infos, err := client.QueryAvailableStorage(ctx, agentIDs)
+				availableStorageInfos, err := client.QueryAvailableStorage(
+					ctx,
+					agentIDs,
+				)
 				if err != nil {
 					return err
 				}
 
-				if len(infos) == 0 {
+				if len(availableStorageInfos) == 0 {
 					return nil
 				}
 
-				// If the only available storage info is empty, agent is unavailable.
-				if len(infos) == 1 &&
-					infos[0].ChunkSize == 0 &&
-					infos[0].ChunkCount == 0 {
+				// If the only available storage info is empty, agent is
+				// unavailable.
+				if len(availableStorageInfos) == 1 &&
+					availableStorageInfos[0].ChunkSize == 0 &&
+					availableStorageInfos[0].ChunkCount == 0 {
 					return nil
 				}
 
@@ -110,7 +114,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 	// Wait for either a result or all goroutines to complete
 	done := make(chan error, 1)
 	go func() {
-		done <- g.Wait()
+		done <- errorGroup.Wait()
 	}()
 
 	select {

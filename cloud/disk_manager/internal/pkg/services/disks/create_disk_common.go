@@ -37,6 +37,8 @@ func SelectCell(
 		}
 	} else {
 		if common.IsLocalDiskKind(params.Kind) {
+			// There is an agent, where local disk should be created. Can't use
+			// default cell selection mechanism.
 			client, err = cellSelector.SelectCellForLocalDisk(
 				ctx,
 				params.Disk.ZoneId,

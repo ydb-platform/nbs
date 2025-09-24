@@ -1684,13 +1684,13 @@ func (c *client) QueryAvailableStorage(
 	defer span.End()
 	defer tracing.SetError(span, &err)
 
-	resp, err := c.nbs.QueryAvailableStorage(ctx, agentIDs)
+	response, err := c.nbs.QueryAvailableStorage(ctx, agentIDs)
 
 	if err != nil {
 		return nil, err
 	}
 
-	for _, info := range resp {
+	for _, info := range response {
 		infos = append(infos, fromAvailableStorageInfo(info))
 	}
 
