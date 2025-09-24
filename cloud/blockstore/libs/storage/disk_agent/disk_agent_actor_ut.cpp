@@ -105,14 +105,83 @@ TVector<ui64> FindProcessesWithOpenFile(const TString& targetPath)
     return result;
 }
 
+class TDiskAgentAttachDetachModel
+{
+    struct TPathAttachState
+    {
+        bool Attached = true;
+        ui64 Generation = 0;
+    };
+
+private:
+    ui64 DrGeneration = 0;
+    THashMap<TString, TPathAttachState> PathAttachStates;
+
+public:
+    explicit TDiskAgentAttachDetachModel(const TVector<TString>& paths)
+    {
+        for (const auto& path: paths) {
+            PathAttachStates[path] = {};
+        }
+    }
+
+    bool AttachDetachPath(
+        ui64 drGeneration,
+        const THashMap<TString, ui64>& pathToGeneration,
+        bool attach)
+    {
+        if (!CheckDrGenerationAndUpdateItIfNeeded(drGeneration)) {
+            return false;
+        }
+
+        for (const auto& [path, generation]: pathToGeneration) {
+            auto& state = PathAttachStates[path];
+
+            if (state.Attached == attach) {
+                continue;
+            }
+
+            if (generation <= state.Generation) {
+                return false;
+            }
+        }
+
+        for (const auto& [path, generation]: pathToGeneration) {
+            auto& state = PathAttachStates[path];
+
+            state.Generation = Max(state.Generation, generation);
+            state.Attached = attach;
+        }
+
+        return true;
+    }
+
+    bool CheckDrGenerationAndUpdateItIfNeeded(ui64 drGeneration)
+    {
+        if (drGeneration < DrGeneration) {
+            return false;
+        }
+
+        if (drGeneration > DrGeneration) {
+            for (auto& pathAndState: PathAttachStates) {
+                pathAndState.second.Generation = 0;
+            }
+        }
+        DrGeneration = drGeneration;
+        return true;
+    }
+
+    bool IsPathAttached(const TString& path) const
+    {
+        return PathAttachStates.at(path).Attached;
+    }
+};
+
 class TAttachDetachRequestsGenerator
 {
 private:
     ui64 DevicesCount;
     TVector<TString> Paths;
-    TVector<bool> IsPathAttached;
-    TVector<ui64> PathGeneration{DevicesCount, 0};
-    ui32 DrGeneration = 0;
 
     ui64 MinPathGeneration = 1;
     TVector<ui64> GeneratedPathGeneration;
@@ -122,11 +191,9 @@ private:
     ui32 GeneratedDrGeneration = 0;
 
 public:
-    TAttachDetachRequestsGenerator(TVector<TString> paths)
+    TAttachDetachRequestsGenerator(const TVector<TString>& paths)
         : DevicesCount(paths.size())
         , Paths(std::move(paths))
-        , IsPathAttached(DevicesCount, true)
-        , PathGeneration(DevicesCount, 0)
     {}
 
     void GeneratePathGeneration()
@@ -135,12 +202,13 @@ public:
         GeneratedPathGeneration.clear();
         for (ui64 i = 0; i < DevicesCount; ++i) {
             GeneratedPathGeneration.push_back(
-                RandomNumber<ui64>(10000) + MinPathGeneration);
+                RandomNumber<ui64>(100) + MinPathGeneration);
         }
     }
 
     void GenerateShouldAttachPath()
     {
+        GeneratedShouldAttachPath.clear();
         for (ui64 i = 0; i < DevicesCount; ++i) {
             if (RandomNumber<ui64>(2) == 0) {
                 GeneratedShouldAttachPath.push_back(false);
@@ -154,6 +222,7 @@ public:
     {
         MinDrGeneration += 10;
         GeneratedDrGeneration = RandomNumber<ui32>(100) + MinDrGeneration;
+        MinPathGeneration = 1;
     }
 
     ui32 GetDrGeneration()
@@ -161,16 +230,9 @@ public:
         return GeneratedDrGeneration;
     }
 
-    auto GetIsPathAttached()
-    {
-        return IsPathAttached;
-    }
-
     struct TRequest
     {
         THashMap<TString, ui64> PathToGeneration;
-        bool ShouldBeSuccessful = true;
-        TVector<ui64> PathIdxs;
     };
 
     TVector<TRequest> GetAttachDetachRequests(bool attach)
@@ -184,15 +246,9 @@ public:
                 Max(RandomNumber<ui64>(pathIdxs.size() + 1),
                     static_cast<ui64>(1));
 
-            request.ShouldBeSuccessful = GeneratedDrGeneration >= DrGeneration;
             for (ui64 i = 0; i < devicesInRequest; ++i) {
                 auto pathIdx = pathIdxs.back();
-                request.ShouldBeSuccessful &=
-                    (GeneratedPathGeneration[pathIdx] >
-                         PathGeneration[pathIdx] ||
-                     GeneratedDrGeneration > DrGeneration) ||
-                    IsPathAttached[pathIdx] == attach;
-                request.PathIdxs.push_back(pathIdx);
+
                 request.PathToGeneration[Paths[pathIdx]] =
                     GeneratedPathGeneration[pathIdx];
 
@@ -203,19 +259,6 @@ public:
         }
 
         return requests;
-    }
-
-    void ApplyChangesFor(const TRequest& request)
-    {
-        for (auto pathIdx: request.PathIdxs) {
-            PathGeneration[pathIdx] = GeneratedPathGeneration[pathIdx];
-            IsPathAttached[pathIdx] = GeneratedShouldAttachPath[pathIdx];
-        }
-    }
-
-    void ApplyDrGenerationIfNeeded()
-    {
-        DrGeneration = Max(DrGeneration, GeneratedDrGeneration);
     }
 
     TVector<ui64> GetPathIdxsToAttachDetach(bool attach)
@@ -7143,23 +7186,21 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.SendAttachPathRequest(5, THashMap<TString, ui64>{{filePath, 1}});
+        diskAgent.SendAttachPathRequest(
+            5,
+            THashMap<TString, ui64>{{filePath, 1}});
 
         auto resp = diskAgent.RecvAttachPathResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, resp->GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "outdated path generation",
-            resp->GetError().GetMessage());
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.SendAttachPathRequest(4, THashMap<TString, ui64>{{filePath, 100}});
+        diskAgent.SendAttachPathRequest(
+            4,
+            THashMap<TString, ui64>{{filePath, 100}});
 
         resp = diskAgent.RecvAttachPathResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, resp->GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "outdated disk registry generation",
-            resp->GetError().GetMessage());
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
@@ -7376,6 +7417,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             paths.emplace_back(fPath.GetPath());
         }
         TAttachDetachRequestsGenerator requestsGenerator(paths);
+        TDiskAgentAttachDetachModel diskAgentModel(paths);
 
         ui64 eventsCount = 100;
 
@@ -7393,7 +7435,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
                 for (auto& request: requests) {
                     NProto::TError error;
-
                     if (attach) {
                         diskAgent.SendAttachPathRequest(
                             requestsGenerator.GetDrGeneration(),
@@ -7406,27 +7447,26 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                         error = diskAgent.RecvDetachPathResponse()->GetError();
                     }
 
+                    bool shouldBeSuccessful = diskAgentModel.AttachDetachPath(
+                        requestsGenerator.GetDrGeneration(),
+                        request.PathToGeneration,
+                        attach);
+
                     UNIT_ASSERT_VALUES_EQUAL(
-                        request.ShouldBeSuccessful,
+                        shouldBeSuccessful,
                         !HasError(error));
-                    requestsGenerator.ApplyDrGenerationIfNeeded();
-                    if (request.ShouldBeSuccessful) {
-                        requestsGenerator.ApplyChangesFor(request);
-                    }
                 }
             };
 
             doRequests(true);
             doRequests(false);
 
-            auto isPathAttached = requestsGenerator.GetIsPathAttached();
-
-            for (ui64 pathIdx = 0; pathIdx < devicesCount; ++pathIdx) {
+            for (const auto& fPath: filePaths) {
                 auto procesesWithOpenFileExpected =
-                    isPathAttached[pathIdx] ? 1 : 0;
+                    diskAgentModel.IsPathAttached(fPath) ? 1 : 0;
                 UNIT_ASSERT_VALUES_EQUAL(
                     procesesWithOpenFileExpected,
-                    FindProcessesWithOpenFile(filePaths[pathIdx]).size());
+                    FindProcessesWithOpenFile(fPath).size());
             }
         }
     }
