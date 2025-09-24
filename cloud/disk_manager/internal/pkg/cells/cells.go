@@ -125,10 +125,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 			"There are no cells with such agents available: %v",
 			agentIDs,
 		)
-	case <-ctx.Done():
-		return nil, ctx.Err()
 	}
-
 }
 
 func (s *cellSelector) IsCellOfZone(cellID string, zoneID string) bool {

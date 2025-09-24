@@ -155,3 +155,58 @@ func TestCellSelectorReturnsCorrectNBSClientForLocalDisk(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, nbsClient1, selectedClient)
 }
+
+func TestCellSelectorReturnsErrorIfNoAvailableAgentsFound(t *testing.T) {
+	ctx := context.Background()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient1 := nbs_mocks.NewClientMock()
+	nbsClient2 := nbs_mocks.NewClientMock()
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			"zone-a": {Cells: []string{"zone-a", "zone-a-cell1"}},
+		},
+	}
+	agent := []string{"agent1"}
+
+	nbsFactory.On("GetClient", mock.Anything, "zone-a").Return(nbsClient1, nil)
+	nbsFactory.On(
+		"GetClient",
+		mock.Anything, // ctx.
+		"zone-a-cell1",
+	).Return(nbsClient2, nil)
+
+	// Agent is unavailable.
+	nbsClient1.On("QueryAvailableStorage", mock.Anything, agent).Return(
+		[]nbs.AvailableStorageInfo{
+			{
+				AgentID:    "agent1",
+				ChunkSize:  0,
+				ChunkCount: 0,
+			},
+		},
+		nil,
+	)
+	// No such agent in cell.
+	nbsClient2.On("QueryAvailableStorage", mock.Anything, agent).Return(
+		[]nbs.AvailableStorageInfo{},
+		nil,
+	)
+
+	cellSelector := cellSelector{
+		config:     config,
+		nbsFactory: nbsFactory,
+	}
+
+	selectedClient, err := cellSelector.SelectCellForLocalDisk(
+		ctx,
+		"zone-a",
+		agent,
+	)
+	require.Nil(t, selectedClient)
+	require.Error(t, err)
+	require.ErrorContains(
+		t,
+		err,
+		"There are no cells with such agents available",
+	)
+}
