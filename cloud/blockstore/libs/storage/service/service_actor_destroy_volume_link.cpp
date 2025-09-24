@@ -89,6 +89,7 @@ void TDestroyVolumeLinkActor::RemoveLinkOnFollower(
 {
     auto request =
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
     request->Record.SetDiskId(FollowerDiskId);
     request->Record.SetFollowerShardId({});
     request->Record.SetLeaderDiskId(LeaderDiskId);
