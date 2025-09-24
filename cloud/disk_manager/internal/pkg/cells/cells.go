@@ -51,6 +51,9 @@ func (s *cellSelector) SelectCellForLocalDisk(
 	agentIDs []string,
 ) (nbs.Client, error) {
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	cells := s.getCells(zoneID)
 
 	if len(cells) == 0 {
@@ -64,7 +67,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 		)
 	}
 
-	errorGroup, ctx := errgroup.WithContext(ctx)
+	errorGroup := errgroup.Group{}
 
 	resultClient := make(chan nbs.Client, 1)
 
