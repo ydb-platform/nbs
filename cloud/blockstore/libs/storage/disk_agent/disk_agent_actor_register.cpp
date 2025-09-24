@@ -57,27 +57,11 @@ private:
 
     void HandlePathsDetached(
         const TEvDiskAgent::TEvDetachPathResponse::TPtr& ev,
-        const TActorContext& ctx)
-    {
-        auto error = ev->Get()->Record.GetError();
-        if (HasError(error)) {
-            Error = error;
-        }
-
-        AttachPathsIfNeeded(ctx);
-    }
+        const TActorContext& ctx);
 
     void HandlePathsAttached(
         const TEvDiskAgent::TEvAttachPathResponse::TPtr& ev,
-        const TActorContext& ctx)
-    {
-        auto error = ev->Get()->Record.GetError();
-        if (HasError(error)) {
-            Error = error;
-        }
-
-        ReplyAndDie(ctx);
-    }
+        const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -194,6 +178,30 @@ void TRegisterActor::ReplyAndDie(const TActorContext& ctx)
     response->DevicesToDisableIO = std::move(DevicesToDisableIO);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
+}
+
+void TRegisterActor::HandlePathsDetached(
+    const TEvDiskAgent::TEvDetachPathResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto error = ev->Get()->Record.GetError();
+    if (HasError(error)) {
+        Error = error;
+    }
+
+    AttachPathsIfNeeded(ctx);
+}
+
+void TRegisterActor::HandlePathsAttached(
+    const TEvDiskAgent::TEvAttachPathResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto error = ev->Get()->Record.GetError();
+    if (HasError(error)) {
+        Error = error;
+    }
+
+    ReplyAndDie(ctx);
 }
 
 STFUNC(TRegisterActor::StateWaitRegisterResponse)
