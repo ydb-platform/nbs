@@ -3984,6 +3984,41 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         iovecSizes[30] = 0;
         TestZeroCopyWrite(config, 0, iovecSizes);
     }
+
+    Y_UNIT_TEST(TestZeroCopyWriteWithEmptyIovecs)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        std::vector<TString> data(64);
+        service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
