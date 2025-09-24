@@ -88,6 +88,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 	selectedCell, err = selector.selectCell("zone3", "folder")
 	require.Error(t, err)
 	require.ErrorContains(t, err, "incorrect zone ID provided")
+	require.Empty(t, selectedCell)
 }
 
 func TestCellSelectorReturnsCorrectNBSClientIfConfigsIsNotSet(t *testing.T) {
