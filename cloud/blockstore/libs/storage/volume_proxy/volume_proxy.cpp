@@ -702,14 +702,16 @@ void TVolumeProxyActor::HandleDescribeResponse(
     const auto& realDiskId = volumeDescr.GetName();
 
     if (conn->RequireExactDiskIdMatch && conn->DiskId != realDiskId) {
-        TString message = TStringBuilder()
-                          << "DiskID doesn't exactly match. Wanted "
-                          << conn->DiskId.Quote() << " got "
-                          << realDiskId.Quote();
+        TString message =
+            TStringBuilder()
+            << "Copy " << realDiskId.Quote() << " of the disk "
+            << conn->DiskId.Quote()
+            << " was found, when an exact match of the DiskId was required. "
+               "Pretend that we haven't found anything.";
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME_PROXY,
-            "%s  %s",
+            "%s %s",
             conn->LogTitle.GetWithTime().c_str(),
             message.c_str());
 
