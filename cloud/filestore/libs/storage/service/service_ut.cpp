@@ -10,6 +10,7 @@
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
@@ -3968,7 +3969,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             STORAGE_INFO("iovec size with index: %lu: %lu", i, iovecSize);
             iovecSizes.push_back(iovecSize);
         }
+    }
 
+    Y_UNIT_TEST(TestZeroCopyWriteWithPartiallyEmptyIovecs)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+
+        auto iovecSizes = std::vector<ui64>(32, 4_KB);
+        iovecSizes[10] = 0;
+        iovecSizes[20] = 0;
+        iovecSizes[30] = 0;
         TestZeroCopyWrite(config, 0, iovecSizes);
     }
 }

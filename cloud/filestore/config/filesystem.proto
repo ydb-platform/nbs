@@ -83,6 +83,6 @@ message TFileSystemConfig
     // Limits max threads used in fuse loop per mount (vhost frontend queues)
     optional uint32 MaxFuseLoopThreads = 24;
 
-    // Enable zero-copy for write operations in VFS FUSE layer
+    // Enable zero-copy for write operations in the VFS FUSE layer
     optional bool ZeroCopyWriteEnabled = 25;
 }

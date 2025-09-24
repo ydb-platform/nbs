@@ -649,6 +649,6 @@ message TStorageConfig
     // filesystem size.
     optional bool StrictFileSystemSizeEnforcementEnabled = 440;
 
-    // Enable zero-copy for write operations in VFS FUSE layer
+    // Enable zero-copy for write operations in the VFS FUSE layer
     optional bool ZeroCopyWriteEnabled = 441;
 }
