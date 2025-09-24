@@ -126,8 +126,11 @@ void TDiskAgentActor::HandlePathAttached(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
-        "Attached paths [%s]",
+        "Attached paths [%s] Already attached paths [%s]",
         DescribePaths(PendingAttachPathRequest->PathToGenerationToAttach)
+            .c_str(),
+        DescribePaths(
+            PendingAttachPathRequest->AlreadyAttachedPathsToGeneration)
             .c_str());
 
     NCloud::Reply(
