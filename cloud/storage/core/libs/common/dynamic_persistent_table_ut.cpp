@@ -61,14 +61,15 @@ struct TTestData
         if (size < sizeof(ui64)) {
             return result;
         }
-        result.Id = *reinterpret_cast<const ui64*>(ptr);
+        std::memcpy(&result.Id, ptr, sizeof(ui64));
         ptr += sizeof(ui64);
         size -= sizeof(ui64);
 
         if (size < sizeof(ui32)) {
             return result;
         }
-        ui32 nameLen = *reinterpret_cast<const ui32*>(ptr);
+        ui32 nameLen;
+        std::memcpy(&nameLen, ptr, sizeof(ui32));
         ptr += sizeof(ui32);
         size -= sizeof(ui32);
 
@@ -82,7 +83,8 @@ struct TTestData
         if (size < sizeof(ui32)) {
             return result;
         }
-        ui32 valuesCount = *reinterpret_cast<const ui32*>(ptr);
+        ui32 valuesCount;
+        std::memcpy(&valuesCount, ptr, sizeof(ui32));
         ptr += sizeof(ui32);
         size -= sizeof(ui32);
 
