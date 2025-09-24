@@ -688,10 +688,6 @@ void TStorageServiceActor::HandleWriteData(
         return;
     }
 
-    if (!filestore.GetFeatures().GetZeroCopyWriteEnabled()) {
-        MoveIovecsToBuffer(msg->Record);
-    }
-
     ui32 blockSize = filestore.GetBlockSize();
 
     const auto bytesCount = CalculateByteCount(msg->Record);
