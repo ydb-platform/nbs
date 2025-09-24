@@ -2137,6 +2137,170 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, followers.size());
     }
 
+    Y_UNIT_TEST(LeaderDisk)
+    {
+        auto volumeState = CreateVolumeState();
+
+        const auto link = TLeaderFollowerLink{
+            .LinkUUID = "uuid1",
+            .LeaderDiskId = "vol0",
+            .LeaderShardId = "su0",
+            .FollowerDiskId = "vol1",
+            .FollowerShardId = "su1"};
+
+        // Add leader
+        volumeState.AddOrUpdateLeader(
+            TLeaderDiskInfo{
+                .Link = link,
+                .State = TLeaderDiskInfo::EState::Following});
+
+        const auto& leaders = volumeState.GetAllLeaders();
+        UNIT_ASSERT_VALUES_EQUAL(1, leaders.size());
+        UNIT_ASSERT_C(link.Match(leaders[0].Link), leaders[0].Link.Describe());
+        UNIT_ASSERT_EQUAL(TLeaderDiskInfo::EState::Following, leaders[0].State);
+        UNIT_ASSERT_VALUES_EQUAL("", leaders[0].ErrorMessage);
+
+        // Update leader
+        volumeState.AddOrUpdateLeader(
+            TLeaderDiskInfo{
+                .Link = link,
+                .State = TLeaderDiskInfo::EState::Leader});
+        UNIT_ASSERT_VALUES_EQUAL(1, leaders.size());
+        UNIT_ASSERT_C(link.Match(leaders[0].Link), leaders[0].Link.Describe());
+        UNIT_ASSERT_EQUAL(TLeaderDiskInfo::EState::Leader, leaders[0].State);
+        UNIT_ASSERT_VALUES_EQUAL("", leaders[0].ErrorMessage);
+
+        // Update leader
+        volumeState.AddOrUpdateLeader(
+            TLeaderDiskInfo{
+                .Link = link,
+                .State = TLeaderDiskInfo::EState::Principal});
+        UNIT_ASSERT_VALUES_EQUAL(1, leaders.size());
+        UNIT_ASSERT_C(link.Match(leaders[0].Link), leaders[0].Link.Describe());
+        UNIT_ASSERT_EQUAL(TLeaderDiskInfo::EState::Principal, leaders[0].State);
+        UNIT_ASSERT_VALUES_EQUAL("", leaders[0].ErrorMessage);
+    }
+
+    Y_UNIT_TEST(PrincipalDiskIdOnLeader)
+    {
+        auto volumeState = CreateVolumeState();
+
+        UNIT_ASSERT_VALUES_EQUAL("", volumeState.GetPrincipalDiskId());
+
+        auto link = TLeaderFollowerLink{
+            .LinkUUID = "uuid1",
+            .LeaderDiskId = "vol0",
+            .LeaderShardId = "",
+            .FollowerDiskId = "vol0-copy",
+            .FollowerShardId = ""};
+
+        // Add follower
+        volumeState.AddOrUpdateFollower(
+            TFollowerDiskInfo{
+                .Link = link,
+                .State = TFollowerDiskInfo::EState::None,
+                .MediaKind = NProto::STORAGE_MEDIA_SSD});
+        UNIT_ASSERT_VALUES_EQUAL("", volumeState.GetPrincipalDiskId());
+
+        // Update state to Preparing
+        volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
+            .Link = link,
+            .State = TFollowerDiskInfo::EState::Preparing,
+            .MediaKind = NProto::STORAGE_MEDIA_SSD,
+            .MigratedBytes = 100});
+        UNIT_ASSERT_VALUES_EQUAL("", volumeState.GetPrincipalDiskId());
+
+        // Update state to DataReady
+        volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
+            .Link = link,
+            .State = TFollowerDiskInfo::EState::DataReady,
+            .MediaKind = NProto::STORAGE_MEDIA_SSD});
+        UNIT_ASSERT_VALUES_EQUAL("vol0-copy", volumeState.GetPrincipalDiskId());
+
+        // Update state to Error
+        volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
+            .Link = link,
+            .State = TFollowerDiskInfo::EState::Error,
+            .MediaKind = NProto::STORAGE_MEDIA_SSD,
+            .MigratedBytes = 100});
+        UNIT_ASSERT_VALUES_EQUAL("", volumeState.GetPrincipalDiskId());
+    }
+
+    Y_UNIT_TEST(PrincipalDiskIdOnFollower)
+    {
+        auto volumeState = CreateVolumeState();
+
+        UNIT_ASSERT_VALUES_EQUAL("", volumeState.GetPrincipalDiskId());
+
+        // When follower disk just created we need to point to the source disk
+        // as the PrincipalDiskId.
+        NProto::TVolumeMeta meta;
+        *meta.MutableVolumeConfig()->MutableTagsStr() = "source-disk-id=disk-1";
+        volumeState.ResetMeta(meta);
+        UNIT_ASSERT_VALUES_EQUAL("disk-1", volumeState.GetPrincipalDiskId());
+
+        const auto link = TLeaderFollowerLink{
+            .LinkUUID = "uuid1",
+            .LeaderDiskId = "disk-1",
+            .LeaderShardId = "su0",
+            .FollowerDiskId = "disk-1-copy",
+            .FollowerShardId = "su0"};
+
+        // When a follower disk is following a leader, we refer to it as the PrincipalDiskId.
+        volumeState.AddOrUpdateLeader(
+            TLeaderDiskInfo{
+                .Link = link,
+                .State = TLeaderDiskInfo::EState::Following});
+        UNIT_ASSERT_VALUES_EQUAL("disk-1", volumeState.GetPrincipalDiskId());
+
+        // When a follower disk becomes the new leader, we don't need to refer
+        // to it old leader as the PrincipalDiskId.
+        volumeState.AddOrUpdateLeader(
+            TLeaderDiskInfo{
+                .Link = link,
+                .State = TLeaderDiskInfo::EState::Leader});
+        UNIT_ASSERT_VALUES_EQUAL("", volumeState.GetPrincipalDiskId());
+
+        // When a follower disk becomes the new principal, we don't need to refer
+        // to old leader as the PrincipalDiskId.
+        volumeState.AddOrUpdateLeader(
+            TLeaderDiskInfo{
+                .Link = link,
+                .State = TLeaderDiskInfo::EState::Principal});
+        UNIT_ASSERT_VALUES_EQUAL("", volumeState.GetPrincipalDiskId());
+    }
+
+    Y_UNIT_TEST(FindLeaderByHash)
+    {
+        auto volumeState = CreateVolumeState();
+
+        const auto link = TLeaderFollowerLink{
+            .LinkUUID = "uuid1",
+            .LeaderDiskId = "disk-1",
+            .LeaderShardId = "su0",
+            .FollowerDiskId = "disk-1-copy",
+            .FollowerShardId = "su0"};
+
+        const auto linkWithEmptyUUID = TLeaderFollowerLink{
+            .LinkUUID = "",
+            .LeaderDiskId = "disk-1",
+            .LeaderShardId = "su0",
+            .FollowerDiskId = "disk-1-copy",
+            .FollowerShardId = "su0"};
+
+        UNIT_ASSERT_VALUES_EQUAL(link.GetHash(), linkWithEmptyUUID.GetHash());
+
+        volumeState.AddOrUpdateLeader(
+            TLeaderDiskInfo{
+                .Link = link,
+                .State = TLeaderDiskInfo::EState::Following});
+
+        auto leader = volumeState.FindLeaderByHash(linkWithEmptyUUID.GetHash());
+
+        UNIT_ASSERT(leader.has_value());
+        UNIT_ASSERT_VALUES_EQUAL("uuid1", leader->Link.LinkUUID);
+    }
+
     Y_UNIT_TEST(ShouldRdmaDisabledIfUsedRdmaDisableTag)
     {
         NProto::TStorageServiceConfig config;

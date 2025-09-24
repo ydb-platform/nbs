@@ -270,6 +270,7 @@ private:
     TString SourceDiskId;
     TFollowerDisks FollowerDisks;
     TLeaderDisks LeaderDisks;
+    TString PrincipalDiskId;
 
     struct TLaggingAgentMigrationInfo
     {
@@ -823,9 +824,11 @@ public:
 
     std::optional<TLeaderDiskInfo> FindLeader(
         const TLeaderFollowerLink& link) const;
+    std::optional<TLeaderDiskInfo> FindLeaderByHash(ui64 hash) const;
     void AddOrUpdateLeader(TLeaderDiskInfo leader);
     void RemoveLeader(const TLeaderFollowerLink& link);
     const TLeaderDisks& GetAllLeaders() const;
+    TString GetPrincipalDiskId() const;
 
     //
     // Scrubbing
@@ -853,6 +856,8 @@ private:
     THashSet<TString> MakeFilteredDeviceIds() const;
 
     [[nodiscard]] bool ShouldTrackUsedBlocks() const;
+
+    void UpdatePrincipalDiskId();
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

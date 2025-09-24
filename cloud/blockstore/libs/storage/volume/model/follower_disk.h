@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
@@ -21,6 +22,7 @@ struct TLeaderFollowerLink
     TString FollowerDiskId;
     TString FollowerShardId;
 
+    ui64 GetHash() const;
     TString LeaderDiskIdForPrint() const;
     TString FollowerDiskIdForPrint() const;
     TString Describe() const;
@@ -40,6 +42,9 @@ struct TLeaderDiskInfo
 
         Leader = 20,   // The link is broken, the disk has become the new
                        // leader. All writes from old leader rejected.
+                       // Need to destroy previous leader.
+
+        Principal = 30,   // Previous leader destroyed.
     };
 
     TLeaderFollowerLink Link;
