@@ -429,8 +429,10 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
 #define FILESTORE_CONFIG_GETTER(name, type, ...)                               \
 type TStorageConfig::Get##name() const                                         \
 {                                                                              \
-    const auto value = ProtoConfig.Get##name();                                \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : Default##name;        \
+    if (ProtoConfig.Has##name()) {                                             \
+        return ConvertValue<type>(ProtoConfig.Get##name());                    \
+    }                                                                          \
+    return Default##name;                                                      \     
 }                                                                              \
 // FILESTORE_CONFIG_GETTER
 
