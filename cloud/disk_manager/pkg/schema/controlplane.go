@@ -41,12 +41,15 @@ func initControlplane(
 	}
 
 	if config.GetCellsConfig() != nil {
-		cells_storage.CreateYDBTables(
+		err = cells_storage.CreateYDBTables(
 			ctx,
 			config.GetCellsConfig(),
 			db,
 			dropUnusedColumns,
 		)
+		if err != nil {
+			return err
+		}
 	}
 
 	filesystemStorageFolder := ""
