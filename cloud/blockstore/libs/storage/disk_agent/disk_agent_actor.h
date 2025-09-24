@@ -52,6 +52,13 @@ class TDiskAgentActor final
         Registered,
     };
 
+    struct TPendingAttachRequest
+    {
+        THashMap<TString, ui64> AlreadyAttachedPathsToGeneration;
+        THashMap<TString, ui64> PathToGenerationToAttach;
+        TRequestInfoPtr RequestInfo;
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiskAgentConfigPtr AgentConfig;
@@ -96,6 +103,8 @@ private:
     ui32 ParserActorIdx = 0;
 
     NActors::TActorId HealthCheckActor;
+
+    std::optional<TPendingAttachRequest> PendingAttachPathRequest;
 
 public:
     TDiskAgentActor(
@@ -173,6 +182,10 @@ private:
 
     TDuration GetMaxRequestTimeout() const;
 
+    void CheckIsSamePath(
+        const NActors::TActorContext& ctx,
+        TVector<TString> paths);
+
 private:
     STFUNC(StateInit);
     STFUNC(StateWork);
@@ -238,6 +251,14 @@ private:
     void HandleMultiAgentWriteDeviceBlocks(
         const TEvDiskAgentPrivate::TEvMultiAgentWriteDeviceBlocksRequest::TPtr&
             ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePathAttached(
+        const TEvDiskAgentPrivate::TEvPathAttached::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleCheckIsSamePathResult(
+        const TEvDiskAgentPrivate::TEvCheckIsSamePathResult::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

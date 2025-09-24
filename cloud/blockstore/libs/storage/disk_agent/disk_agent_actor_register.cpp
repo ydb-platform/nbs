@@ -14,27 +14,53 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRegisterActor final
-    : public TActorBootstrapped<TRegisterActor>
+class TRegisterActor final: public TActorBootstrapped<TRegisterActor>
 {
 private:
     const TActorId Owner;
+    const bool AttachDetachPathsEnabled;
     TRequestInfoPtr RequestInfo;
     NProto::TAgentConfig Config;
+
+    TVector<TString> DevicesToDisableIO;
+
+    NProto::TError Error;
+
+    NProto::TRegisterAgentResponse RegisterResponse;
 
 public:
     TRegisterActor(
         const TActorId& owner,
+        bool openCloseDevicesEnabled,
         TRequestInfoPtr requestInfo,
         NProto::TAgentConfig config);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    STFUNC(StateWork);
+    void DetachPathsIfNeeded(const TActorContext& ctx);
+
+    void AttachPathsIfNeeded(const TActorContext& ctx);
+
+    void ReplyAndDie(const TActorContext& ctx);
+
+private:
+    STFUNC(StateWaitRegisterResponse);
+
+    STFUNC(StateWaitPathsDetach);
+
+    STFUNC(StateWaitPathsAttach);
 
     void HandleRegisterAgentResponse(
         const TEvDiskRegistry::TEvRegisterAgentResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandlePathsDetached(
+        const TEvDiskAgent::TEvDetachPathResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandlePathsAttached(
+        const TEvDiskAgent::TEvAttachPathResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -42,16 +68,18 @@ private:
 
 TRegisterActor::TRegisterActor(
         const TActorId& owner,
+        bool attachDetachPathsEnabled,
         TRequestInfoPtr requestInfo,
         NProto::TAgentConfig config)
     : Owner(owner)
+    , AttachDetachPathsEnabled(attachDetachPathsEnabled)
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
 {}
 
 void TRegisterActor::Bootstrap(const TActorContext& ctx)
 {
-    Become(&TThis::StateWork);
+    Become(&TThis::StateWaitRegisterResponse);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
         "Send RegisterAgent request: NodeId=%u, AgentId=%s"
@@ -85,20 +113,131 @@ void TRegisterActor::HandleRegisterAgentResponse(
     const TEvDiskRegistry::TEvRegisterAgentResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
-    auto response = std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(
-        msg->GetError());
-    response->DevicesToDisableIO.assign(
+    DevicesToDisableIO.assign(
         msg->Record.GetDevicesToDisableIO().cbegin(),
         msg->Record.GetDevicesToDisableIO().cend());
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    Error = msg->GetError();
+
+    if (!AttachDetachPathsEnabled || (msg->Record.GetUnknownPaths().empty() &&
+                                      msg->Record.GetAllowedPaths().empty()))
+    {
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    RegisterResponse = std::move(msg->Record);
+    DetachPathsIfNeeded(ctx);
 }
 
-STFUNC(TRegisterActor::StateWork)
+void TRegisterActor::DetachPathsIfNeeded(const TActorContext& ctx)
+{
+    if (RegisterResponse.GetUnknownPaths().empty()) {
+        AttachPathsIfNeeded(ctx);
+        return;
+    }
+
+    auto detachRequest = std::make_unique<TEvDiskAgent::TEvDetachPathRequest>();
+    detachRequest->Record.SetDiskRegistryGeneration(
+        RegisterResponse.GetDiskRegistryTabletGeneration());
+
+    for (auto& pathToGeneration: *RegisterResponse.MutableUnknownPaths()) {
+        *detachRequest->Record.AddPathsToDetach() = std::move(pathToGeneration);
+    }
+
+    NCloud::Send(ctx, Owner, std::move(detachRequest));
+
+    Become(&TThis::StateWaitPathsDetach);
+}
+
+void TRegisterActor::AttachPathsIfNeeded(const TActorContext& ctx)
+{
+    if (RegisterResponse.GetAllowedPaths().empty()) {
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    auto attachRequest = std::make_unique<TEvDiskAgent::TEvAttachPathRequest>();
+    attachRequest->Record.SetDiskRegistryGeneration(
+        RegisterResponse.GetDiskRegistryTabletGeneration());
+
+    for (auto& pathToGeneration: *RegisterResponse.MutableAllowedPaths()) {
+        *attachRequest->Record.AddPathsToAttach() = std::move(pathToGeneration);
+    }
+
+    NCloud::Send(ctx, Owner, std::move(attachRequest));
+
+    Become(&TThis::StateWaitPathsAttach);
+}
+
+void TRegisterActor::ReplyAndDie(const TActorContext& ctx)
+{
+    auto response =
+        std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(Error);
+    response->DevicesToDisableIO = std::move(DevicesToDisableIO);
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    Die(ctx);
+}
+
+void TRegisterActor::HandlePathsDetached(
+    const TEvDiskAgent::TEvDetachPathResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto error = ev->Get()->Record.GetError();
+    if (HasError(error)) {
+        Error = error;
+    }
+
+    AttachPathsIfNeeded(ctx);
+}
+
+void TRegisterActor::HandlePathsAttached(
+    const TEvDiskAgent::TEvAttachPathResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto error = ev->Get()->Record.GetError();
+    if (HasError(error)) {
+        Error = error;
+    }
+
+    ReplyAndDie(ctx);
+}
+
+STFUNC(TRegisterActor::StateWaitRegisterResponse)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvDiskRegistry::TEvRegisterAgentResponse, HandleRegisterAgentResponse);
+        HFunc(
+            TEvDiskRegistry::TEvRegisterAgentResponse,
+            HandleRegisterAgentResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_AGENT_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+STFUNC(TRegisterActor::StateWaitPathsDetach)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvDiskAgent::TEvDetachPathResponse, HandlePathsDetached);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_AGENT_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+STFUNC(TRegisterActor::StateWaitPathsAttach)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvDiskAgent::TEvAttachPathResponse, HandlePathsAttached);
 
         default:
             HandleUnexpectedEvent(
@@ -180,6 +319,7 @@ void TDiskAgentActor::HandleRegisterAgent(
     NCloud::Register<TRegisterActor>(
         ctx,
         ctx.SelfID,
+        Config->GetAttachDetachPathsEnabled(),
         std::move(requestInfo),
         std::move(config));
 }
