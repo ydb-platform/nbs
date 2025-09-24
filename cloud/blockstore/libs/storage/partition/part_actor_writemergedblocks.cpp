@@ -278,6 +278,7 @@ void TWriteMergedBlocksActor::NotifyCompleted(
     const NProto::TError& error)
 {
     using TEvent = TEvPartitionPrivate::TEvWriteBlocksCompleted;
+    using TCompleted = TEvPartitionPrivate::TWriteBlocksCompleted;
     if (!BlockSizeForChecksums) {
         // this structure is needed only to transfer block checksums to
         // PartState - passing it without checksums will trigger a couple
@@ -287,9 +288,9 @@ void TWriteMergedBlocksActor::NotifyCompleted(
     }
     auto ev = std::make_unique<TEvent>(
         error,
-        true,   // collectGarbageBarrierAcquired
-        UnconfirmedBlobsAdded,
-        std::move(BlobsToConfirm));
+        TCompleted::CreateMergedBlocksCompleted(
+            UnconfirmedBlobsAdded,
+            std::move(BlobsToConfirm)));
 
     ev->ExecCycles = RequestInfo->GetExecCycles();
     ev->TotalCycles = RequestInfo->GetTotalCycles();

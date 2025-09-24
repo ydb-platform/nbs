@@ -749,19 +749,43 @@ struct TEvPartitionPrivate
     struct TWriteBlocksCompleted
         : TOperationCompleted
     {
-        bool CollectGarbageBarrierAcquired = false;
-        bool UnconfirmedBlobsAdded = false;
+        const bool CollectGarbageBarrierAcquired = false;
+        const bool UnconfirmedBlobsAdded = false;
+        const bool TrimFreshLogBarrierAcquired = false;
         // needed to pass block checksums to PartState
         TVector<TBlobToConfirm> BlobsToConfirm;
 
         TWriteBlocksCompleted(
                 bool collectGarbageBarrierAcquired,
                 bool unconfirmedBlobsAdded,
+                bool trimFreshLogBarrierAcquired,
                 TVector<TBlobToConfirm> blobsToConfirm)
             : CollectGarbageBarrierAcquired(collectGarbageBarrierAcquired)
             , UnconfirmedBlobsAdded(unconfirmedBlobsAdded)
+            , TrimFreshLogBarrierAcquired(trimFreshLogBarrierAcquired)
             , BlobsToConfirm(std::move(blobsToConfirm))
         {
+        }
+
+        static TWriteBlocksCompleted CreateFreshBlocksCompleted()
+        {
+            return TWriteBlocksCompleted(false, false, true, {});
+        }
+
+        static TWriteBlocksCompleted CreateMixedBlocksCompleted()
+        {
+            return TWriteBlocksCompleted(true, false, false, {});
+        }
+
+        static TWriteBlocksCompleted CreateMergedBlocksCompleted(
+            bool unconfirmedBlobsAdded,
+            TVector<TBlobToConfirm>&& blobsToConfirm)
+        {
+            return TWriteBlocksCompleted(
+                true,
+                unconfirmedBlobsAdded,
+                false,
+                std::move(blobsToConfirm));
         }
     };
 

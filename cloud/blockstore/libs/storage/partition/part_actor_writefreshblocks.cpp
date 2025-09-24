@@ -250,12 +250,10 @@ void TWriteFreshBlocksActor::NotifyCompleted(
     const NProto::TError& error)
 {
     using TEvent = TEvPartitionPrivate::TEvWriteBlocksCompleted;
+    using TCompleted = TEvPartitionPrivate::TWriteBlocksCompleted;
     auto ev = std::make_unique<TEvent>(
         error,
-        false,                      // collectGarbageBarrierAcquired
-        false,                      // unconfirmedBlobsAdded
-        TVector<TBlobToConfirm>{}   // blobsToConfirm
-    );
+        TCompleted::CreateFreshBlocksCompleted());
 
     ev->ExecCycles = Requests.front().RequestInfo->GetExecCycles();
     ev->TotalCycles = Requests.front().RequestInfo->GetTotalCycles();

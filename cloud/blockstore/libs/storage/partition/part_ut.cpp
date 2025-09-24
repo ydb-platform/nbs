@@ -13297,6 +13297,106 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 6)));
         UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 7)));
     }
+
+    Y_UNIT_TEST(ShouldReleaseTrimFreshLogBarrierInCaseOfWriteBlobError)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelCount(1);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui64 trimFreshLogToCommitId = 0llu;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            trimFreshLogToCommitId = stats.GetTrimFreshLogToCommitId();
+        }
+
+        bool shouldRejectWriteBlob = false;
+        auto eventFilter =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+        {
+            switch (ev->GetTypeRewrite()) {
+                case TEvPartitionPrivate::EvWriteBlobResponse: {
+                    if (shouldRejectWriteBlob) {
+                        auto* msg = ev->Get<
+                            TEvPartitionPrivate::TEvWriteBlobResponse>();
+                        auto& e = const_cast<NProto::TError&>(msg->Error);
+                        e.SetCode(E_REJECTED);
+                    }
+                    break;
+                }
+                case TEvPartitionPrivate::EvWriteBlocksCompleted: {
+                    auto* msg =
+                        ev->Get<TEvPartitionPrivate::TEvWriteBlocksCompleted>();
+                    UNIT_ASSERT_EQUAL(shouldRejectWriteBlob, HasError(msg->GetError()));
+                    break;
+                }
+            }
+            return false;
+        };
+
+        runtime->SetEventFilter(eventFilter);
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+
+        partition.Flush();
+        trimFreshLogToCommitId += 4llu;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+
+        shouldRejectWriteBlob = true;
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(4, 1), 4);
+        {
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(5, 1), 5);
+        {
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+
+        trimFreshLogToCommitId += 2llu;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+
+        shouldRejectWriteBlob = false;
+
+        partition.Flush();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+
+        partition.WriteBlocks(6, 6);
+        partition.Flush();
+        trimFreshLogToCommitId += 2llu;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
