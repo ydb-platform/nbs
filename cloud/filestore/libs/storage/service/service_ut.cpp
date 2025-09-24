@@ -3866,16 +3866,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
         service.WriteData(headers, fs, nodeId, handle, offset, data);
         for (size_t i = 0; i < iovecSizes.size(); ++i) {
+            if (data[i].size() == 0) {
+                continue;
+            }
             auto readDataResult = service.ReadData(
                 headers,
                 fs,
                 nodeId,
                 handle,
                 offset,
-                iovecSizes[i]);
+                data[i].size());
             const auto& buffer = readDataResult->Record.GetBuffer();
             UNIT_ASSERT_VALUES_EQUAL_C(data[i], buffer, i);
-            offset += iovecSizes[i];
+            offset += data[i].size();
         }
     }
 

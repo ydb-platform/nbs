@@ -70,6 +70,9 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
 {
     TRope rope;
     for (const auto& iovec: request.GetIovecs()) {
+        if (iovec.GetLength() == 0) {
+            continue;
+        }
         rope.Insert(
             rope.End(),
             TRope(TRcBuf(

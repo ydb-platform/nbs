@@ -346,8 +346,13 @@ public:
         Y_ASSUME(!buffers.empty());
         for (const auto& buf: buffers) {
             auto* iovec = request->Record.AddIovecs();
-            iovec->SetBase(reinterpret_cast<ui64>(&buf[0]));
-            iovec->SetLength(buf.size());
+            if (buf.empty()) {
+                iovec->SetBase(0);
+                iovec->SetLength(0);
+            } else {
+                iovec->SetBase(reinterpret_cast<ui64>(&buf[0]));
+                iovec->SetLength(buf.size());
+            }
         }
         return request;
     }
