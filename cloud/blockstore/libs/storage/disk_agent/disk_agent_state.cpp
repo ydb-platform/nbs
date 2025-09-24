@@ -1216,7 +1216,12 @@ NProto::TError TDiskAgentState::CheckCanAttachPath(
     }
 
     if (pathGeneration <= p->Generation) {
-        return MakeError(E_FAIL, "outdated path generation");
+        return MakeError(
+            E_FAIL,
+            Sprintf(
+                "outdated path generation %lu vs %lu",
+                pathGeneration,
+                p->Generation));
     }
 
     return {};
@@ -1334,7 +1339,12 @@ NProto::TError TDiskAgentState::DetachPath(
         }
 
         if (gen <= pathAttachState->Generation) {
-            return MakeError(E_FAIL, "outdated path generation");
+            return MakeError(
+                E_FAIL,
+                Sprintf(
+                    "outdated path generation %lu vs %lu",
+                    gen,
+                    pathAttachState->Generation));
         }
     }
 
