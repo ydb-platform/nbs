@@ -36,14 +36,14 @@ bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TIoVecContiguousChunk: public IContiguousChunk
+class TIovecContiguousChunk: public IContiguousChunk
 {
 private:
     ui64 Base = 0;
     ui64 Size = 0;
 
 public:
-    TIoVecContiguousChunk(ui64 base, ui64 size)
+    TIovecContiguousChunk(ui64 base, ui64 size)
         : Base(base)
         , Size(size)
     {}
@@ -76,7 +76,7 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
         rope.Insert(
             rope.End(),
             TRope(TRcBuf(
-                MakeIntrusive<TIoVecContiguousChunk>(
+                MakeIntrusive<TIovecContiguousChunk>(
                     iovec.GetBase(),
                     iovec.GetLength()))));
     }
@@ -97,7 +97,7 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
  *         may be copied if `byteOffset + byteLength` exceeds the total size
  *         of the data in the rope.
  */
-ui64 GetBufferFromRope(
+ui64 CopyBufferFromRope(
     TRope& rope,
     TString& buffer,
     ui64 bytesToSkip,
@@ -113,10 +113,9 @@ ui64 GetBufferFromRope(
 
 /**
  * @brief Copies a slice of data from the iovecs in the request into the buffer
- *         in the same request and cleanup iovecs.
+ *        in the same request and cleanup iovecs.
  *
- * @param request      The write request containing iovecs as the source of data
- *
+ * @param request The write request containing iovecs as the source of data
  */
 void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
 {
@@ -470,7 +469,7 @@ private:
                     WriteRequest.GetBuffer().substr(0, length));
             } else {
                 TString buffer;
-                auto bytesCopied = GetBufferFromRope(Rope, buffer, 0, length);
+                auto bytesCopied = CopyBufferFromRope(Rope, buffer, 0, length);
                 TABLET_VERIFY(bytesCopied == length);
                 unalignedHead.SetContent(std::move(buffer));
             }
@@ -487,7 +486,7 @@ private:
             } else {
                 TString buffer;
                 auto bytesCopied =
-                    GetBufferFromRope(Rope, buffer, offset, length);
+                    CopyBufferFromRope(Rope, buffer, offset, length);
                 TABLET_VERIFY(bytesCopied == length);
                 unalignedTail.SetContent(std::move(buffer));
             }

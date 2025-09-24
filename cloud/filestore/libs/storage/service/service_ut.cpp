@@ -3830,7 +3830,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data2, buffer.substr(3_KB, 1_KB));
     }
 
-    void TestZeroCopyWrite(const NProto::TStorageConfig& config, ui64 offset, const std::vector<ui64>& iovecSizes) {
+    void TestZeroCopyWrite(
+        const NProto::TStorageConfig& config,
+        ui64 offset,
+        const std::vector<ui64>& iovecSizes)
+    {
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
@@ -3858,11 +3862,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         std::vector<TString> data;
 
         ui64 dataSize = 0;
-        for(auto iovecSize : iovecSizes) {
+        for (auto iovecSize: iovecSizes) {
             dataSize += iovecSize;
         }
         data.reserve(dataSize);
-        for(size_t i = 0; i < iovecSizes.size(); ++i) {
+        for (size_t i = 0; i < iovecSizes.size(); ++i) {
             data.push_back(GenerateValidateData(iovecSizes[i], i));
         }
         service.WriteData(headers, fs, nodeId, handle, offset, data);
@@ -3938,7 +3942,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         size_t numIovecs = 64;
         std::vector<ui64> iovecSizes;
         iovecSizes.reserve(numIovecs);
-        for(size_t i = 0; i < numIovecs; ++i) {
+        for (size_t i = 0; i < numIovecs; ++i) {
             const auto iovecSize = rand() % 16_KB;
             STORAGE_INFO("iovec size with index: %lu: %lu", i, iovecSize);
             iovecSizes.push_back(iovecSize);

@@ -197,7 +197,7 @@ message TWriteDataRequest
     uint32 BufferOffset = 7;
 
     // Vector I/O data structure
-    // Data can be passed Iovecs instead of Buffer to void excess copy
+    // Data can be passed via Iovecs instead of Buffer to avoid excess copy
     repeated TIovec Iovecs = 8;
 }
 
