@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"k8s.io/mount-utils"
 	executils "k8s.io/utils/exec"
 )
@@ -35,7 +37,11 @@ func (m *mounter) IsMountPoint(file string) (bool, error) {
 }
 
 func (m *mounter) CleanupMountPoint(target string) error {
-	return mount.CleanupMountPoint(target, m.mnt, true)
+	err := mount.CleanupMountPoint(target, m.mnt, true)
+	if err != nil && strings.Contains(err.Error(), "target is busy") {
+		return status.Error(codes.Unavailable, err.Error())
+	}
+	return err
 }
 
 func (m *mounter) HasBlockDevice(ctx context.Context, device string) (bool, error) {
