@@ -1,199 +1,173 @@
 # -*- coding: UTF-8 -*-
 
+import argparse
+import json
 import logging
-import socket
-import subprocess
-from email.mime.text import MIMEText
+import os
+import signal
+import sys
+import time
 
-import requests
-from library.python.retry import retry
-
-from .conductor import Conductor
-from .coredump_formatter import CoredumpFormatter
-from .sentry import SentrySender, SentryFormatter
+from ..common.crash_info import CrashInfoStorage
+from .crash_processor import (
+    CrashProcessorError, CoredumpCrashProcessor, OOMCrashProcessor)
+from .limiter import Limiter
+from .senders.durable_multi import (
+    AggregatorType, DurableMultiSender, SenderError)
 
 logger = logging.getLogger(__name__)
 
 
-class SenderError(Exception):
-    pass
+class BreakpadSender:
+    EMPTY_QUEUE_WAIT_TIME = 5.0
 
-
-class Sender(object):
-    CRASH_TYPE_CORE = "crash"
-    CRASH_TYPE_OOM = "oom"
-    AGGREGATOR_TYPE_CORES = 'cores'
-    AGGREGATOR_TYPE_SENTRY = 'sentry'
-    AGGREGATOR_TIMEOUT = 60  # Seconds
-
-    def __init__(self, aggregator_type, aggregator_url, project, emails,
-                 ca_file):
-        super(Sender, self).__init__()
+    def __init__(self):
         self._logger = logger.getChild(self.__class__.__name__)
-        self.aggregator_type = aggregator_type
-        self.aggregator_url = aggregator_url
-        self.project = project
-        self.emails = emails
-        self.ca_file = ca_file
+        self._storage = None
+        self._stopping = False
+        self._sender = None
+        self._limiter = None
+        self._args = None
+        self._config = {}
 
-        self._formatted_coredump = None
-        self._formatted_current_thread = None
-        self._core_url = None
-        self._metadata = None
-        self.core_file = None
-        self.coredump = None
-        self.info = None
-        self.service_name = None
-        self.crash_type = None
-        self.timestamp = None
-        self.logfile = None
-        self.server = socket.getfqdn() or "unknown"
+    def _parse_args(self):
+        parser = argparse.ArgumentParser(
+            description="Crash dump processor",
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        parser.add_argument("--datadir", type=str, default="/var/tmp/breakpad",
+                            metavar="DIR",
+                            help="breakpad-launcher data directory")
+        parser.add_argument("--aggregator-type", type=AggregatorType,
+                            metavar="TYPE",
+                            choices=list(AggregatorType),
+                            default=AggregatorType.Cores,
+                            help="Aggregator type, one of: [%(choices)s]")
+        parser.add_argument("--aggregator-url", type=str,
+                            default="http://cores.cloud-preprod.yandex.net",
+                            metavar="URL")
+        parser.add_argument("--prj", type=str, default="nbs",
+                            help="Project tag")
+        parser.add_argument("--limit-window", type=int, default=10*60,
+                            help="Limit window, seconds")
+        parser.add_argument("--limit-cores", type=int, default=5,
+                            help="Limit cores per window")
+        parser.add_argument("--config", type=str, metavar="PATH")
+        parser.add_argument("--verbose", action="store_true")
+        parser.add_argument("--ca-file", type=str,
+                            help="Optional certificate authority file (*.pem)")
+        parser.add_argument("--gdb-timeout", type=int, default=300,
+                            help="GDB timeout in seconds")
+        parser.add_argument("--gdb-disabled", action="store_true",
+                            help="Disable running gdb (just send minidump)")
 
-    def _collect_metadata(self):
-        cgroup = Conductor().primary_group \
-            if self.aggregator_type == self.AGGREGATOR_TYPE_CORES else None
-        self._metadata = dict(
-            ctype=cgroup if cgroup else "unknown",
-            server=self.server,
-            service=self.service_name,
-            time=str(self.timestamp),
-        )
+        # TODO: remove, kept for backward compatibility
+        parser.add_argument("--nbs-config", type=str, metavar="PATH")
+        self._args = parser.parse_args()
 
-    def _format_coredump(self):
-        formatter = CoredumpFormatter(self.coredump)
-        self._formatted_coredump = formatter.format()
-        self._formatted_current_thread = formatter.format_current_thread()
+    def set_signals(self):
+        signal.signal(signal.SIGINT, self.on_signal)
+        signal.signal(signal.SIGTERM, self.on_signal)
+        signal.signal(signal.SIGHUP, self.on_signal)
 
-    def _header(self):
-        return "Process {service} {crash_type}ed" \
-               "on {server} cluster {ctype}".format(
-                   crash_type=self.crash_type,
-                   **self._metadata
-               )
+    def on_signal(self, signum, _):
+        self._logger.info("signal %s received", signum)
+        self._stopping = True
 
-    def _get_coredump_with_info(self):
-        if not self.info:
-            return self.coredump
-        return self.info + "\n" + self.coredump
+    def run_crash_queue_loop(self):
+        while not self._stopping:
+            crash_info = self._storage.get()
+            if not crash_info:
+                time.sleep(self.EMPTY_QUEUE_WAIT_TIME)
+                continue
 
-    def _post_crash_to_cores(self):
-        url = self.aggregator_url + "/corecomes"
-        return requests.post(
-            url, params=self._metadata, data=self._get_coredump_with_info(),
-            timeout=self.AGGREGATOR_TIMEOUT)
+            if not self._limiter.check():
+                self._logger.info("cores limit exceeded, skip core %r",
+                                  crash_info.time)
+                continue
 
-    def _post_crash_to_sentry(self):
-        timestamp = int(self.timestamp)
-        formatter = SentryFormatter()
-        event_envelope = formatter.create_event_envelope(
-            self.service_name, timestamp, self.server,
-            self.core_file, self._formatted_current_thread)
-        sender = SentrySender(self.aggregator_url, self.ca_file)
-        return sender.send(event_envelope, timeout=self.AGGREGATOR_TIMEOUT)
+            try:
+                if crash_info.corefile:
+                    conductor_enabled = \
+                        self._args.aggregator_type == AggregatorType.Cores
+                    processor = CoredumpCrashProcessor(self._args.gdb_timeout,
+                                                       self._args.gdb_disabled,
+                                                       conductor_enabled)
+                else:
+                    processor = OOMCrashProcessor()
 
-    @retry(max_times=10, delay=60)
-    def _do_send_to_aggregator(self):
-        url = self.aggregator_url
-        self._logger.info("Sending crash info to aggregator %s", url)
+                self._logger.info(f"Processing {crash_info.corefile}")
+                crash = processor.process(crash_info)
+                self._logger.info(f"Sending {crash_info.corefile}")
+                self._sender.send(crash)
+            except CrashProcessorError:
+                self._logger.exception(f"Can't process core "
+                                       f"{crash_info.corefile}")
+                continue
+            except SenderError:
+                self._logger.exception(f"Can't send crash info {crash.dump()}")
+                continue
+            except Exception:
+                self._logger.exception("Unexpected error happened")
+                continue
 
-        if self.aggregator_type == self.AGGREGATOR_TYPE_CORES:
-            response = self._post_crash_to_cores()
-        elif self.aggregator_type == self.AGGREGATOR_TYPE_SENTRY:
-            response = self._post_crash_to_sentry()
-        else:
-            raise SenderError(f"Unknown aggregator: {self.aggregator_type}")
+            processor.cleanup()
 
-        if response.status_code != 200:
-            msg = f"Error sending crash to aggregator {url}: \
-                code {response.status_code}, {response.text}"
-            self._logger.error(msg)
-            raise SenderError(msg)
+    def load_config(self):
+        if not self._args.nbs_config and not self._args.config:
+            return
 
-        self._logger.info("Get response from aggregator: %r", response.text)
-
-    def _send_to_aggregator(self):
         try:
-            self._do_send_to_aggregator()
+            config = self._args.nbs_config if self._args.nbs_config \
+                else self._args.config
+            self._logger.info("Load config from %s", config)
+            with open(config, "r") as fd:
+                self._config = json.load(fd)
+        except (IOError, OSError) as e:
+            self._logger.error("Error reading config %r", e)
+
+    def get_config_emails(self):
+        notify_emails = self._config.get("notify_email")
+        emails = notify_emails.split(',') if notify_emails else list()
+
+        unique_emails = list(set(emails))
+        if unique_emails:
+            self._logger.info("Notify emails: %r", unique_emails)
+
+        return unique_emails
+
+    def init(self):
+        self.set_signals()
+        self._storage = \
+            CrashInfoStorage(os.path.join(self._args.datadir, "queue"))
+
+        self.load_config()
+        emails = self.get_config_emails()
+        type = self._config.get("aggregator_type", self._args.aggregator_type)
+        url = self._config.get("aggregator_url", self._args.aggregator_url)
+        ca_file = self._config.get("ca_file", self._args.ca_file)
+
+        self._sender = DurableMultiSender(type, url, self._args.prj, emails, ca_file)
+        self._limiter = Limiter(
+            window_seconds=self._args.limit_window,
+            limit=self._args.limit_cores)
+
+    def run(self):
+        logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s",
+                            level=logging.INFO)
+        self._parse_args()
+
+        if self._args.verbose:
+            logging.getLogger().setLevel(logging.DEBUG)
+        try:
+            self.init()
+            self.run_crash_queue_loop()
+        except KeyboardInterrupt:
+            return 0
         except Exception as e:
-            self._logger.error(
-                "gave up on sending core dump to the aggregator: %r", e)
-            pass
+            self._logger.exception(e)
+            return 1
+        return 0
 
-    @retry(max_times=10, delay=60)
-    def _send_email(self):
-        self._logger.info("Send core to email %r", self.emails)
-        mail_from = "devnull@example.com"
-        mail_to = ", ".join(self.emails)
-        message_body = [self._header()]
-        if self._core_url:
-            message_body.append("URL: " + self._core_url)
-        if self.info:
-            message_body.append("")
-            message_body.append(self.info)
-        if self.crash_type != self.CRASH_TYPE_OOM:
-            message_body.append("")
-            message_body.append(self._formatted_coredump)
 
-        message = MIMEText("\n".join(message_body))
-        message["Subject"] = \
-            "[{ctype}] {crash_type} {service} on {server}".format(
-                crash_type=self.crash_type,
-                **self._metadata
-            )
-        message["From"] = "{server} <{address}>".format(
-            server=self._metadata.get("server", "unknown"),
-            address=mail_from
-        )
-        message["To"] = mail_to
-
-        try:
-            sendmail = subprocess.Popen(
-                ["/usr/sbin/sendmail", "-t"], stdin=subprocess.PIPE)
-            sendmail.communicate(message.as_string().encode("utf-8"))
-            sendmail.wait()
-        except Exception as e:
-            self._logger.error("sendmail error %r", e)
-            self._logger.debug("Exception", exc_info=True)
-
-    def _write_to_logfile(self):
-        try:
-            self._logger.info("Write crash info to logfile %r", self.logfile)
-            with open(self.logfile, "a+") as fd:
-                fd.write("\n" + self._header() + "\n")
-                if self._core_url:
-                    fd.write("URL: " + self._core_url + "\n")
-                fd.write(self._formatted_coredump + "\n")
-        except IOError as e:
-            self._logger.error(
-                "Can't write info to file %s %r", self.logfile, e)
-            self._logger.debug("Exception", exc_info=True)
-
-    def _write_to_stdout(self):
-        self._logger.info("%s", self._header())
-        if self._core_url:
-            self._logger.info("URL %s", self._core_url)
-
-    def send(self, timestamp, core_file, coredump, info, service_name,
-             crash_type, logfile):
-        self._core_url = None
-        self.timestamp = timestamp
-        self.core_file = core_file
-        self.coredump = coredump
-        self.info = info
-        self.service_name = service_name or "unknown"
-        self.crash_type = crash_type
-        self.logfile = logfile
-
-        self._collect_metadata()
-        self._format_coredump()
-
-        if self.aggregator_url:
-            self._send_to_aggregator()
-
-        if self.emails:
-            self._send_email()
-
-        if self.logfile:
-            self._write_to_logfile()
-
-        self._write_to_stdout()
+def main():
+    sys.exit(BreakpadSender().run())

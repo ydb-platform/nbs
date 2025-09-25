@@ -6,10 +6,9 @@ import os
 logger = logging.getLogger(__name__)
 
 
-class CoreChecker(object):
+class CoreChecker:
 
     def __init__(self):
-        super(CoreChecker, self).__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self._coredir = None
         self._pid = None

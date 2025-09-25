@@ -1,10 +1,10 @@
 # -*- coding: UTF-8 -*-
 
-import StringIO
+from io import StringIO
 import os
 
 
-class ErrorCollector(object):
+class ErrorCollector:
     # https://github.com/ydb-platform/nbs/blob/main/util/system/yassert.cpp
     ERROR_LINES = 3  # Message consist of three lines
     ERROR_PREFIXES = ["VERIFY failed:", "FAIL:", "VERIFY failed (", "FAIL ("]
@@ -33,7 +33,7 @@ class ErrorCollector(object):
 class StreamErrorCollector(ErrorCollector):
 
     def __init__(self):
-        super(StreamErrorCollector, self).__init__()
+        super().__init__()
         self.buf = StringIO.StringIO()
 
     def write(self, data):
@@ -53,7 +53,7 @@ class StreamErrorCollector(ErrorCollector):
 class FileErrorCollector(ErrorCollector):
 
     def __init__(self, filename):
-        super(FileErrorCollector, self).__init__()
+        super().__init__()
         self.filename = filename
         self.load()
 
