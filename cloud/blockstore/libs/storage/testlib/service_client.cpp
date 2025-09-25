@@ -112,11 +112,14 @@ std::unique_ptr<TEvService::TEvAssignVolumeRequest> TServiceClient::CreateAssign
     return request;
 }
 
-std::unique_ptr<TEvService::TEvDescribeVolumeRequest> TServiceClient::CreateDescribeVolumeRequest(
-    const TString& diskId)
+std::unique_ptr<TEvService::TEvDescribeVolumeRequest>
+TServiceClient::CreateDescribeVolumeRequest(
+    const TString& diskId,
+    bool exactDiskIdMatch)
 {
     auto request = std::make_unique<TEvService::TEvDescribeVolumeRequest>();
     PrepareRequestHeaders(*request);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(exactDiskIdMatch);
     request->Record.SetDiskId(diskId);
     return request;
 }
