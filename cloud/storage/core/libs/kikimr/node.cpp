@@ -4,6 +4,7 @@
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/core/base/event_filter.h>
 #include <contrib/ydb/core/base/location.h>
@@ -171,8 +172,11 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
         // metric for updates. We should start using yaml config: ISSUE
         cmsConfig.MutableBlockstoreConfig()->CopyFrom(
             yamlConfig.GetBlockstoreConfig());
-    } catch (const std::exception& e){
-        STORAGE_WARN("Failed to parse YAML config from CMS: " << e.what());
+    } catch (const std::exception& e) {
+        auto message = ReportGetConfigsFromCmsYamlParseError(
+            TStringBuilder() << "Failed to parse YAML config from CMS: "
+            << e.what());
+        STORAGE_WARN(message);
     }
 
     return cmsConfig;
