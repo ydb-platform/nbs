@@ -24,3 +24,4 @@ ServerWriteBackCacheEnabled: true
 MaxBackground: 16384
 MaxFuseLoopThreads: 4
 StrictFileSystemSizeEnforcementEnabled: true
+ZeroCopyWriteEnabled: true

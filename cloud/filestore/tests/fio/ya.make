@@ -4,6 +4,8 @@ RECURSE_FOR_TESTS(
     qemu-kikimr-nemesis-test
     qemu-kikimr-newfeatures-test
     qemu-kikimr-test
+    qemu-kikimr-zero-copy-write-test
+    qemu-kikimr-zero-copy-write-fallback-test
     qemu-local-noserver-direct-io-test
     qemu-local-noserver-test
     qemu-local-test

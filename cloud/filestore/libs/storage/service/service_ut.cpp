@@ -10,6 +10,9 @@
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -3825,6 +3828,200 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data1, buffer.substr(1_KB, 1_KB));
         UNIT_ASSERT_VALUES_EQUAL(zeroBuffer, buffer.substr(2_KB, 1_KB));
         UNIT_ASSERT_VALUES_EQUAL(data2, buffer.substr(3_KB, 1_KB));
+    }
+
+    void TestZeroCopyWrite(
+        const NProto::TStorageConfig& config,
+        ui64 offset,
+        const std::vector<ui64>& iovecSizes)
+    {
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        std::vector<TString> data;
+
+        ui64 dataSize = 0;
+        for (auto iovecSize: iovecSizes) {
+            dataSize += iovecSize;
+        }
+        data.reserve(dataSize);
+        for (size_t i = 0; i < iovecSizes.size(); ++i) {
+            data.push_back(GenerateValidateData(iovecSizes[i], i));
+        }
+        service.WriteData(headers, fs, nodeId, handle, offset, data);
+        for (size_t i = 0; i < iovecSizes.size(); ++i) {
+            if (data[i].size() == 0) {
+                continue;
+            }
+            auto readDataResult = service.ReadData(
+                headers,
+                fs,
+                nodeId,
+                handle,
+                offset,
+                data[i].size());
+            const auto& buffer = readDataResult->Record.GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL_C(data[i], buffer, i);
+            offset += data[i].size();
+        }
+    }
+
+    Y_UNIT_TEST(TestAlignedZeroCopyWrite)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
+        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 8_KB));
+    }
+
+    Y_UNIT_TEST(TestAlignedZeroCopyWriteFallback)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(false);
+        config.SetUnalignedThreeStageWriteEnabled(false);
+        config.SetZeroCopyWriteEnabled(true);
+        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
+    }
+
+    Y_UNIT_TEST(TestUnalignedZeroCopyWrite)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+        TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
+        TestZeroCopyWrite(config, 0, std::vector<ui64>(64, 5000));
+    }
+
+    Y_UNIT_TEST(TestUnalignedZeroCopyWriteFallback)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(false);
+        config.SetZeroCopyWriteEnabled(true);
+        TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
+    }
+
+    Y_UNIT_TEST(TestZeroCopyWriteRandomIovecSize)
+    {
+        ILoggingServicePtr Logging(
+            CreateLoggingService("console", {TLOG_DEBUG}));
+        TLog Log(Logging->CreateLog("NFS_TEST"));
+
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+
+        const auto seed = time(0);
+        STORAGE_INFO("Seed: %lu", seed);
+        srand(seed);
+        size_t numIovecs = 64;
+        std::vector<ui64> iovecSizes;
+        iovecSizes.reserve(numIovecs);
+        for (size_t i = 0; i < numIovecs; ++i) {
+            const auto iovecSize = rand() % 16_KB;
+            STORAGE_INFO("iovec size with index: %lu: %lu", i, iovecSize);
+            iovecSizes.push_back(iovecSize);
+        }
+
+        TestZeroCopyWrite(config, 0, iovecSizes);
+    }
+
+    Y_UNIT_TEST(TestZeroCopyWriteFallbackRandomIovecSize)
+    {
+        ILoggingServicePtr Logging(
+            CreateLoggingService("console", {TLOG_DEBUG}));
+        TLog Log(Logging->CreateLog("NFS_TEST"));
+
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(false);
+        config.SetUnalignedThreeStageWriteEnabled(false);
+        config.SetZeroCopyWriteEnabled(true);
+
+        const auto seed = time(0);
+        STORAGE_INFO("Seed: %lu", seed);
+        srand(seed);
+        size_t numIovecs = 64;
+        std::vector<ui64> iovecSizes;
+        iovecSizes.reserve(numIovecs);
+        for (size_t i = 0; i < numIovecs; ++i) {
+            const auto iovecSize = rand() % 16_KB;
+            STORAGE_INFO("iovec size with index: %lu: %lu", i, iovecSize);
+            iovecSizes.push_back(iovecSize);
+        }
+    }
+
+    Y_UNIT_TEST(TestZeroCopyWriteWithPartiallyEmptyIovecs)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+
+        auto iovecSizes = std::vector<ui64>(32, 4_KB);
+        iovecSizes[10] = 0;
+        iovecSizes[20] = 0;
+        iovecSizes[30] = 0;
+        TestZeroCopyWrite(config, 0, iovecSizes);
+    }
+
+    Y_UNIT_TEST(TestZeroCopyWriteWithEmptyIovecs)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        std::vector<TString> data(64);
+        service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
     }
 }
 
