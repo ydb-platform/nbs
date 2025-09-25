@@ -33,7 +33,7 @@ struct TMockRegistrant: public INodeRegistrant
     MOCK_METHOD(
         TResultOrError<NKikimrConfig::TAppConfig>,
         GetConfigs,
-        (const TString&, ui32, TLog&));
+        (const TString&, ui32));
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -87,7 +87,7 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
             .WillOnce(
                 Return(TRegistrationResult{DefaultNodeId, DefaultScopeId}));
 
-        EXPECT_CALL(registrantRef, GetConfigs(_, DefaultNodeId, _))
+        EXPECT_CALL(registrantRef, GetConfigs(_, DefaultNodeId))
             .WillOnce(Return(NKikimrConfig::TAppConfig{}));
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(true);
@@ -115,7 +115,7 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
             .WillOnce(
                 Return(TRegistrationResult{DefaultNodeId, DefaultScopeId}));
 
-        EXPECT_CALL(registrantRef, GetConfigs(_, DefaultNodeId, _))
+        EXPECT_CALL(registrantRef, GetConfigs(_, DefaultNodeId))
             .WillOnce(Return(NKikimrConfig::TAppConfig{}));
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(true);
@@ -172,7 +172,7 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
             .WillOnce(
                 Return(TRegistrationResult{DefaultNodeId, DefaultScopeId}));
 
-        EXPECT_CALL(registrantRef, GetConfigs(_, DefaultNodeId, _))
+        EXPECT_CALL(registrantRef, GetConfigs(_, DefaultNodeId))
             .WillRepeatedly(Return(MakeError(E_FAIL, "Configure failed")));
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(true);

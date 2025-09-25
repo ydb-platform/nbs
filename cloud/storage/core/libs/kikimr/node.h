@@ -33,8 +33,7 @@ struct INodeRegistrant
 
     virtual TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
         const TString& nodeBrokerAddress,
-        ui32 nodeId,
-        TLog& Log) = 0;
+        ui32 nodeId) = 0;
 };
 
 using INodeRegistrantPtr = std::unique_ptr<INodeRegistrant>;

@@ -135,8 +135,7 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     const TString& nodeBrokerAddress,
     const TRegisterDynamicNodeOptions& options,
     NClient::TKikimr& kikimr,
-    NKikimrConfig::TStaticNameserviceConfig& nsConfig,
-    TLog& Log)
+    NKikimrConfig::TStaticNameserviceConfig& nsConfig)
 {
     auto configurator = kikimr.GetNodeConfigurator();
     // Token is a rudimentary parameter
@@ -173,10 +172,9 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
         cmsConfig.MutableBlockstoreConfig()->CopyFrom(
             yamlConfig.GetBlockstoreConfig());
     } catch (const std::exception& e) {
-        auto message = ReportGetConfigsFromCmsYamlParseError(
+        ReportGetConfigsFromCmsYamlParseError(
             TStringBuilder() << "Failed to parse YAML config from CMS: "
             << e.what());
-        STORAGE_WARN(message);
     }
 
     return cmsConfig;
@@ -298,8 +296,7 @@ struct TLegacyNodeRegistrant
 
     TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
         const TString& nodeBrokerAddress,
-        ui32 nodeId,
-        TLog& Log) override
+        ui32 nodeId) override
     {
         NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
 
@@ -309,8 +306,7 @@ struct TLegacyNodeRegistrant
             nodeBrokerAddress,
             Options,
             kikimr,
-            NsConfig,
-            Log);
+            NsConfig);
     }
 };
 
@@ -406,8 +402,7 @@ struct TDiscoveryNodeRegistrant
 
     TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
         const TString& nodeBrokerAddress,
-        ui32 nodeId,
-        TLog& Log) override
+        ui32 nodeId) override
     {
         NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
 
@@ -417,8 +412,7 @@ struct TDiscoveryNodeRegistrant
             nodeBrokerAddress,
             Options,
             kikimr,
-            NsConfig,
-            Log);
+            NsConfig);
     }
 };
 
@@ -570,7 +564,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         timer->Now() + options.Settings.LoadConfigsFromCmsTotalTimeout;
     for (;;) {
         auto [config, error] =
-            registrant->GetConfigs(registeredNodeBrokerAddress, nodeId, Log);
+            registrant->GetConfigs(registeredNodeBrokerAddress, nodeId);
 
         if (HasError(error)) {
             const auto& msg = error.GetMessage();
