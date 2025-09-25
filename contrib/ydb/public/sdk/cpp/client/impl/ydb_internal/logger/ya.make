@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     log.cpp
 )

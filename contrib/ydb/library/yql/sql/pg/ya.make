@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 PROVIDES(
     yql_pg_sql_translator
 )

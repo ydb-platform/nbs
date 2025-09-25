@@ -5,6 +5,10 @@ OWNER(
 
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     mkql_block_builder.cpp
     mkql_block_impl.cpp

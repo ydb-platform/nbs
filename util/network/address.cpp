@@ -209,7 +209,7 @@ socklen_t NAddr::SockAddrLength(const sockaddr* addr) {
 }
 
 TUnixSocketAddr::TUnixSocketAddr(TStringBuf path) {
-    Y_ENSURE(path.Size() <= UNIX_PATH_LIMIT - 1,
+    Y_ENSURE(path.size() <= UNIX_PATH_LIMIT - 1,
              "Unix path \"" << path << "\" is longer than " << UNIX_PATH_LIMIT);
     SockAddr_.Set(path);
 }

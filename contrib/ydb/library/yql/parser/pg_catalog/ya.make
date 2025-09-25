@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 RESOURCE(../pg_wrapper/postgresql/src/include/catalog/pg_operator.dat pg_operator.dat)
 RESOURCE(../pg_wrapper/postgresql/src/include/catalog/pg_proc.dat pg_proc.dat)
 RESOURCE(../pg_wrapper/postgresql/src/include/catalog/pg_type.dat pg_type.dat)

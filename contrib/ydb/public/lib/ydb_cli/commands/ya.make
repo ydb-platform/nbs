@@ -1,5 +1,9 @@
 LIBRARY(clicommands)
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     interactive/interactive_cli.cpp
     interactive/line_reader.cpp

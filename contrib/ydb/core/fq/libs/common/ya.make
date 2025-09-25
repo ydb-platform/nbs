@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 GENERATE_ENUM_SERIALIZATION(util.h)
 
 SRCS(
