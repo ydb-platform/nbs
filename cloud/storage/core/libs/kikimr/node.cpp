@@ -4,6 +4,7 @@
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/core/base/event_filter.h>
 #include <contrib/ydb/core/base/location.h>
@@ -158,19 +159,23 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
 
     auto cmsConfig = configResult.GetConfig();
 
-    auto yamlConfig =
-        GetYamlConfigFromResult(configResult, options.Labels);
-
     if (cmsConfig.HasNameserviceConfig()) {
         cmsConfig.MutableNameserviceConfig()->SetSuppressVersionCheck(
             nsConfig.GetSuppressVersionCheck());
     }
+    try {
+        auto yamlConfig = GetYamlConfigFromResult(configResult, options.Labels);
 
-    // TODO: this is an adapted version of GetActualDynConfig function from ydb24-3
-    // Here we ignore YAML config except for our section and don't provide
-    // metric for updates. We should start using yaml config: ISSUE
-    cmsConfig.MutableBlockstoreConfig()->CopyFrom(
-        yamlConfig.GetBlockstoreConfig());
+        // TODO: this is an adapted version of GetActualDynConfig function from ydb24-3
+        // Here we ignore YAML config except for our section and don't provide
+        // metric for updates. We should start using yaml config: ISSUE
+        cmsConfig.MutableBlockstoreConfig()->CopyFrom(
+            yamlConfig.GetBlockstoreConfig());
+    } catch (const std::exception& e) {
+        ReportGetConfigsFromCmsYamlParseError(
+            TStringBuilder() << "Failed to parse YAML config from CMS: "
+            << e.what());
+    }
 
     return cmsConfig;
 }
