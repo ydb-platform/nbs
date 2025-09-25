@@ -71,7 +71,8 @@ func deleteImage(
 
 	// Hack for NBS-2225.
 	if imageMeta.DeleteTaskID != selfTaskID {
-		return scheduler.WaitTaskEnded(ctx, imageMeta.DeleteTaskID)
+		_, err := scheduler.WaitTask(ctx, execCtx, imageMeta.DeleteTaskID)
+		return err
 	}
 
 	taskID, err = scheduler.ScheduleTask(

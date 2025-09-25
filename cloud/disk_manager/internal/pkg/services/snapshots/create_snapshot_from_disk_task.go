@@ -197,6 +197,7 @@ func (t *createSnapshotFromDiskTask) Cancel(
 
 	checkpointID, err := common.CancelCheckpointCreation(
 		ctx,
+		execCtx,
 		t.scheduler,
 		nbsClient,
 		disk,
@@ -232,7 +233,8 @@ func (t *createSnapshotFromDiskTask) Cancel(
 
 	// Hack for NBS-2225.
 	if snapshotMeta.DeleteTaskID != selfTaskID {
-		return t.scheduler.WaitTaskEnded(ctx, snapshotMeta.DeleteTaskID)
+		_, err := t.scheduler.WaitTask(ctx, execCtx, snapshotMeta.DeleteTaskID)
+		return err
 	}
 
 	taskID, err := t.scheduler.ScheduleTask(

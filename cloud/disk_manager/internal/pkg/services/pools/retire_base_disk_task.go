@@ -88,7 +88,7 @@ func (t *retireBaseDiskTask) Run(
 	}
 
 	for _, taskID := range rebaseTasks {
-		err := t.scheduler.WaitTaskEnded(ctx, taskID)
+		_, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
 		if err != nil {
 			return err
 		}

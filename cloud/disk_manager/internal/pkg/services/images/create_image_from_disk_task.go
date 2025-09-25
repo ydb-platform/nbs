@@ -219,6 +219,7 @@ func (t *createImageFromDiskTask) Cancel(
 
 	checkpointID, err := common.CancelCheckpointCreation(
 		ctx,
+		execCtx,
 		t.scheduler,
 		nbsClient,
 		disk,
