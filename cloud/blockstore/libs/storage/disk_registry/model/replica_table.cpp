@@ -288,7 +288,7 @@ ui32 TReplicaTable::GetDevicesReplacementsCount(const TDiskId& diskId) const
     ui32 devicesReplacementsCount = 0;
 
     for (const auto& row: disk->Rows) {
-        for (const auto& deviceInfo: row) {
+        for (const auto& deviceInfo: row.DeviceInfos) {
             if (deviceInfo.IsReplacement) {
                 devicesReplacementsCount++;
             }
@@ -327,7 +327,7 @@ bool TReplicaTable::IsRecentlyReplacedDevice(
     const TDeviceId& deviceId) const
 {
     const auto* diskState = Disks.FindPtr(diskId);
-    if (!diskState) {
+    if (!diskState || diskState->ReplacementsBlocked) {
         return true;
     }
 
@@ -336,7 +336,7 @@ bool TReplicaTable::IsRecentlyReplacedDevice(
         return true;
     }
 
-    return (*row)->IsRecentlyReplacedDevice || diskState->BlockReplacements;
+    return (*row)->IsRecentlyReplacedDevice;
 }
 
 void TReplicaTable::SetRecentlyReplacedDevice(
@@ -367,7 +367,7 @@ void TReplicaTable::ResetRecentlyReplacedDevices(
         return;
     }
 
-    diskState->BlockReplacements = false;
+    diskState->ReplacementsBlocked = false;
 
     for (auto& row: diskState->Rows) {
         if (!row.IsRecentlyReplacedDevice || row.SeqNo > seqNo) {
@@ -378,14 +378,14 @@ void TReplicaTable::ResetRecentlyReplacedDevices(
     }
 }
 
-void TReplicaTable::BlockReplacement(const TDiskId& diskId)
+void TReplicaTable::BlockReplacements(const TDiskId& diskId)
 {
     auto* diskState = Disks.FindPtr(diskId);
     if (!diskState) {
         return;
     }
 
-    diskState->BlockReplacements = true;
+    diskState->ReplacementsBlocked = true;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
