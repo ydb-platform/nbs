@@ -25,6 +25,8 @@ from cloud.blockstore.public.sdk.python.client.grpc_client import GrpcClient
 from cloud.blockstore.public.sdk.python.client.error import ClientError
 from cloud.blockstore.public.sdk.python.client.error_codes import EFacility
 
+from library.python.testing.recipe import set_env
+
 from google.protobuf import text_format
 
 
@@ -367,12 +369,12 @@ def get_file_size(filename):
         os.close(fd)
 
 
-def get_nbs_device_path(path=None):
+def get_nbs_device_path(path=None, index=0):
     if not path:
-        path = os.getenv("NBS_DEVICE_PATH")
+        path = os.getenv(env_with_guest_index("NBS_DEVICE_PATH", index))
 
     if not path:
-        raise RuntimeError("Invalid path")
+        raise RuntimeError("Path is not set")
 
     if not os.path.exists(path):
         raise RuntimeError("Path does not exist: {}".format(path))
@@ -539,3 +541,12 @@ def file_parse(file_path, proto_type):
 def file_parse_as_json(file_path):
     with open(file_path, 'r') as file:
         return json.load(file)
+
+def env_with_guest_index(env: str, guest_index: int) -> str:
+    if guest_index == 0:
+        return env
+
+    return "{}__{}".format(env, guest_index)
+
+def recipe_set_env(key: str, val: str, guest_index=0):
+    set_env(env_with_guest_index(key, guest_index), val)
