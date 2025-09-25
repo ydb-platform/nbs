@@ -1487,10 +1487,10 @@ struct TTxDiskRegistry
 
     struct TReplaceBrokenDevicesAfterRestart
     {
-        TReplaceBrokenDevicesAfterRestart() = default;
-
         void Clear()
-        {}
+        {
+            // nothing to do
+        }
     };
 };
 

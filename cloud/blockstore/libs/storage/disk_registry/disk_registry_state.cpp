@@ -602,7 +602,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         if (StorageConfig->GetLimitMirrorDisksDeviceReplacementsPerRow() &&
             NotificationSystem.GetDiskSeqNo(diskId))
         {
-            ReplicaTable.BlockReplacement(diskId);
+            ReplicaTable.BlockReplacements(diskId);
         }
     }
 }

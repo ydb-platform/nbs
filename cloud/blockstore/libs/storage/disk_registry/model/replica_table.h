@@ -90,7 +90,7 @@ public:
         const TDeviceId& deviceId,
         ui64 seqNo);
     void ResetRecentlyReplacedDevices(const TDiskId& diskId, ui64 seqNo);
-    void BlockReplacement(const TDiskId& diskId);
+    void BlockReplacements(const TDiskId& diskId);
 
     // for tests and monpages
     TVector<TVector<TDeviceInfo>> AsMatrix(const TString& diskId) const;
@@ -122,7 +122,7 @@ private:
 
     struct TDiskState
     {
-        bool BlockReplacements = false;
+        bool ReplacementsBlocked = false;
         TDeque<TRow> Rows;
         THashMap<TString, TRow*> DeviceId2Row;
     };
