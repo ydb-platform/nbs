@@ -1,5 +1,6 @@
 #include "resync_range.h"
 
+#include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -30,6 +31,25 @@ TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus GetResyncStatus(
         return EStatus::Healthy;
     }
     return errorFixed ? EStatus::HealedAll : EStatus::HealedNone;
+}
+
+IProfileLog::TReplicaChecksums MakeChecksums(
+    ui32 replicaId,
+    const TGuardedSgList& guard)
+{
+    IProfileLog::TReplicaChecksums result{
+        .ReplicaId = replicaId,
+        .Checksums = {}};
+
+    if (auto sgList = guard.Acquire()) {
+        for (const auto& block: sgList.Get()) {
+            TBlockChecksum checksum;
+            checksum.Extend(block.data(), block.size());
+            result.Checksums.push_back(checksum.GetValue());
+        }
+    }
+
+    return result;
 }
 
 }   // namespace
@@ -187,8 +207,10 @@ void TResyncRangeActor::ReadBlocks(const TActorContext& ctx)
     ReadStartTs = ctx.Now();
 }
 
-void TResyncRangeActor::WriteBlocks(const TActorContext& ctx) {
+void TResyncRangeActor::WriteBlocks(const TActorContext& ctx)
+{
     for (int idx: ActorsToResync) {
+        WriteRangeInfo.ReplicaChecksums.push_back(MakeChecksums(idx, SgList));
         WriteReplicaBlocks(ctx, idx);
     }
 
@@ -211,7 +233,8 @@ void TResyncRangeActor::WriteReplicaBlocks(const TActorContext& ctx, int idx)
     headers->SetClientId(std::move(clientId));
 
     for (const auto blockIndex: xrange(Range)) {
-        auto* data = Buffer.Get().data() + (blockIndex - Range.Start) * BlockSize;
+        const auto* data =
+            Buffer.Get().data() + (blockIndex - Range.Start) * BlockSize;
 
         const auto digest = BlockDigestGenerator->ComputeDigest(
             blockIndex,
@@ -249,10 +272,13 @@ void TResyncRangeActor::Done(const TActorContext& ctx)
             Range,
             ChecksumRangeActorCompanion.GetChecksumStartTs(),
             ChecksumRangeActorCompanion.GetChecksumDuration(),
+            ChecksumRangeActorCompanion.GetRangeInfo(),
             ReadStartTs,
             ReadDuration,
+            std::move(ReadRangeInfo),
             WriteStartTs,
             WriteDuration,
+            std::move(WriteRangeInfo),
             RequestInfo->ExecCycles,
             std::move(AffectedBlockInfos),
             GetResyncStatus(ErrorFixed, ErrorFound));
@@ -341,6 +367,9 @@ void TResyncRangeActor::HandleReadResponse(
         Done(ctx);
         return;
     }
+
+    ReadRangeInfo.ReplicaChecksums.push_back(
+        MakeChecksums(ReplicaIndexToReadFrom, SgList));
 
     WriteBlocks(ctx);
 }

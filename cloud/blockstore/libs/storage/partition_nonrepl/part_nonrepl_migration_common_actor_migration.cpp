@@ -254,32 +254,32 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     ProfileLog->Write({
         .DiskId = DiskId,
         .Ts = msg->ReadStartTs,
-        .Request = IProfileLog::TSysReadWriteRequest{
-            .RequestType = ESysRequestType::Migration,
-            .Duration = msg->ReadDuration,
-            .Ranges = {msg->Range},
-        },
+        .Request =
+            IProfileLog::TSysReadWriteRequest{
+                .RequestType = ESysRequestType::MigrationRead,
+                .Duration = msg->ReadDuration,
+                .Ranges = {{.Range = msg->Range, .ReplicaChecksums = {}}}},
     });
 
     ProfileLog->Write({
         .DiskId = DiskId,
         .Ts = msg->WriteStartTs,
-        .Request = IProfileLog::TSysReadWriteRequest{
-            .RequestType = ESysRequestType::Migration,
-            .Duration = msg->WriteDuration,
-            .Ranges = {msg->Range},
-        },
+        .Request =
+            IProfileLog::TSysReadWriteRequest{
+                .RequestType = ESysRequestType::MigrationWrite,
+                .Duration = msg->WriteDuration,
+                .Ranges = {{.Range = msg->Range, .ReplicaChecksums = {}}}},
     });
 
     if (msg->AffectedBlockInfos) {
         ProfileLog->Write({
             .DiskId = DiskId,
             .Ts = msg->WriteStartTs,
-            .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
-                .RequestType = ESysRequestType::Migration,
-                .BlockInfos = std::move(msg->AffectedBlockInfos),
-                .CommitId = 0,
-            },
+            .Request =
+                IProfileLog::TSysReadWriteRequestBlockInfos{
+                    .RequestType = ESysRequestType::MigrationWrite,
+                    .BlockInfos = std::move(msg->AffectedBlockInfos),
+                    .CommitId = 0},
         });
     }
 
