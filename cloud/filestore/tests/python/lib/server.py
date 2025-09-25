@@ -26,7 +26,6 @@ class FilestoreServer(Daemon):
         if dynamic_storage_pools is not None:
             assert len(dynamic_storage_pools) >= 2
             self.__dynamic_storage_pools = dynamic_storage_pools
-            print("Using dynamic storage pools:", self.__dynamic_storage_pools)
         else:
             self.__dynamic_storage_pools = [
                 dict(name="dynamic_storage_pool:1", kind="rot"),
@@ -67,28 +66,15 @@ ModifyScheme {{
     }
 }
 """
-        print(scheme_op)
         command = [
             self.__kikimr_binary_path,
             "--server",
             "grpc://localhost:" + str(self.__configurator.kikimr_port),
             "db", "schema", "exec", scheme_op
         ]
-        cm = [
-            self.__kikimr_binary_path,
-            "--server",
-            "grpc://localhost:" + str(self.__configurator.kikimr_port),
-            "db", "schema"
-        ]
         output = yatest_common.output_path("nfs_ydbd_output.log")
         with open(output, "w") as ydbd_output:
             subprocess.check_call(command, stdout=ydbd_output, stderr=ydbd_output)
-        print(
-            subprocess.check_output([*cm, "ls", "/Root/nfs"])
-        )
-        print(
-            subprocess.check_output([*cm, "describe", "/Root/nfs", "-P"])
-        )
 
 @retrying.retry(stop_max_delay=60000, wait_fixed=1000, retry_on_exception=is_grpc_error)
 def wait_for_filestore_server(daemon, port):

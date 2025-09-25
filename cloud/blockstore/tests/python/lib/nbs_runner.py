@@ -239,8 +239,6 @@ ModifyScheme {
 }
 """
 
-        print("NBS")
-        print(scheme_op)
 
         if self.__kikimr_binary_path is None:
             self.__kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
