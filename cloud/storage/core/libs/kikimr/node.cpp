@@ -134,7 +134,8 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
     const TString& nodeBrokerAddress,
     const TRegisterDynamicNodeOptions& options,
     NClient::TKikimr& kikimr,
-    NKikimrConfig::TStaticNameserviceConfig& nsConfig)
+    NKikimrConfig::TStaticNameserviceConfig& nsConfig,
+    TLog& Log)
 {
     auto configurator = kikimr.GetNodeConfigurator();
     // Token is a rudimentary parameter
@@ -158,19 +159,21 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
 
     auto cmsConfig = configResult.GetConfig();
 
-    auto yamlConfig =
-        GetYamlConfigFromResult(configResult, options.Labels);
-
     if (cmsConfig.HasNameserviceConfig()) {
         cmsConfig.MutableNameserviceConfig()->SetSuppressVersionCheck(
             nsConfig.GetSuppressVersionCheck());
     }
+    try {
+        auto yamlConfig = GetYamlConfigFromResult(configResult, options.Labels);
 
-    // TODO: this is an adapted version of GetActualDynConfig function from ydb24-3
-    // Here we ignore YAML config except for our section and don't provide
-    // metric for updates. We should start using yaml config: ISSUE
-    cmsConfig.MutableBlockstoreConfig()->CopyFrom(
-        yamlConfig.GetBlockstoreConfig());
+        // TODO: this is an adapted version of GetActualDynConfig function from ydb24-3
+        // Here we ignore YAML config except for our section and don't provide
+        // metric for updates. We should start using yaml config: ISSUE
+        cmsConfig.MutableBlockstoreConfig()->CopyFrom(
+            yamlConfig.GetBlockstoreConfig());
+    } catch (const std::exception& e){
+        STORAGE_WARN("Failed to parse YAML config from CMS: " << e.what());
+    }
 
     return cmsConfig;
 }
@@ -291,7 +294,8 @@ struct TLegacyNodeRegistrant
 
     TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
         const TString& nodeBrokerAddress,
-        ui32 nodeId) override
+        ui32 nodeId,
+        TLog& Log) override
     {
         NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
 
@@ -301,7 +305,8 @@ struct TLegacyNodeRegistrant
             nodeBrokerAddress,
             Options,
             kikimr,
-            NsConfig);
+            NsConfig,
+            Log);
     }
 };
 
@@ -397,7 +402,8 @@ struct TDiscoveryNodeRegistrant
 
     TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
         const TString& nodeBrokerAddress,
-        ui32 nodeId) override
+        ui32 nodeId,
+        TLog& Log) override
     {
         NClient::TKikimr kikimr(CreateKikimrConfig(Options, nodeBrokerAddress));
 
@@ -407,7 +413,8 @@ struct TDiscoveryNodeRegistrant
             nodeBrokerAddress,
             Options,
             kikimr,
-            NsConfig);
+            NsConfig,
+            Log);
     }
 };
 
@@ -559,7 +566,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         timer->Now() + options.Settings.LoadConfigsFromCmsTotalTimeout;
     for (;;) {
         auto [config, error] =
-            registrant->GetConfigs(registeredNodeBrokerAddress, nodeId);
+            registrant->GetConfigs(registeredNodeBrokerAddress, nodeId, Log);
 
         if (HasError(error)) {
             const auto& msg = error.GetMessage();
