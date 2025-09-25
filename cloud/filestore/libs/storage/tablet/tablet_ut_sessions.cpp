@@ -953,6 +953,55 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             tablet.DestroySession();
         }
     }
+
+    Y_UNIT_TEST(ShouldCorrectlyDeleteSubsessionsAfterTabletRestart)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        {
+            TIndexTabletClient tclient1(env.GetRuntime(), nodeIdx, tabletId);
+            TIndexTabletClient tclient2(env.GetRuntime(), nodeIdx, tabletId);
+
+            tclient1.InitSession("client1", "session", "", 1, false, false);
+            tclient2.InitSession("client1", "session", "", 2, true, true);
+
+            tclient1.RebootTablet();
+            tclient2.ReconnectPipe();
+
+            tclient2.InitSession("client1", "session", "", 2, true, false);
+            tclient1.WithSessionSeqNo(1);
+            tclient1.DestroySession();
+
+            tclient2.DestroySession();
+
+            auto response = tclient1.DescribeSessions();
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.SessionsSize());
+        }
+
+        {
+            TIndexTabletClient tclient1(env.GetRuntime(), nodeIdx, tabletId);
+            TIndexTabletClient tclient2(env.GetRuntime(), nodeIdx, tabletId);
+
+            tclient1.InitSession("client1", "session", "", 1, false, false);
+            tclient2.InitSession("client1", "session", "", 2, true, true);
+
+            tclient1.RebootTablet();
+            tclient2.ReconnectPipe();
+
+            tclient1.InitSession("client1", "session", "", 1, false, false);
+            tclient2.WithSessionSeqNo(2);
+            tclient2.DestroySession();
+
+            tclient1.DestroySession();
+
+            auto response = tclient1.DescribeSessions();
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.SessionsSize());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

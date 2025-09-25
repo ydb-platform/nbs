@@ -25,13 +25,13 @@ struct TSubSession
 class TSubSessions
 {
     TVector<TSubSession> SubSessions;
-    ui64 MaxSeenSeqNo = 0;
-    ui64 MaxSeenRwSeqNo = 0;
+    ui64 MaxRoSeqNo = 0; // ro sequence number (set during vm migration)
+    ui64 MaxRwSeqNo = 0; // rw sequence number
 
 public:
-    explicit TSubSessions(ui64 maxSeenSeqNo, ui64 maxSeenRwSeqNo)
-        : MaxSeenSeqNo(maxSeenSeqNo)
-        , MaxSeenRwSeqNo(maxSeenRwSeqNo)
+    explicit TSubSessions(ui64 maxRoSeqNo, ui64 maxRwSeqNo)
+        : MaxRoSeqNo(maxRoSeqNo)
+        , MaxRwSeqNo(maxRwSeqNo)
     {}
 
     NActors::TActorId AddSubSession(
@@ -44,8 +44,9 @@ public:
         bool readOnly,
         const NActors::TActorId& owner);
 
-    ui32 DeleteSubSession(const NActors::TActorId& owner);
-    ui32 DeleteSubSession(ui64 sessionSeqNo);
+    bool DeleteSubSession(const NActors::TActorId& owner);
+    bool DeleteSubSession(ui64 sessionSeqNo);
+    void UpdateSeqNoAfterDelete(ui64 seqNo);
 
     TVector<NActors::TActorId> GetSubSessions() const;
     TVector<TSubSession> GetAllSubSessions() const;
@@ -59,19 +60,17 @@ public:
         return SubSessions.size();
     }
 
-    ui64 GetMaxSeenSeqNo() const
+    ui64 GetMaxRoSeqNo() const
     {
-        return MaxSeenSeqNo;
+        return MaxRoSeqNo;
     }
 
-    ui64 GetMaxSeenRwSeqNo() const
+    ui64 GetMaxRwSeqNo() const
     {
-        return MaxSeenRwSeqNo;
+        return MaxRwSeqNo;
     }
 
     std::optional<TSubSession> GetSubSessionBySeqNo(ui64 seqNo) const;
-
-    bool ReadyToDestroy(ui64 seqNo) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

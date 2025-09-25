@@ -241,8 +241,8 @@ public:
 
     void UpdateSeqNo()
     {
-        SetMaxSeqNo(SubSessions.GetMaxSeenSeqNo());
-        SetMaxRwSeqNo(SubSessions.GetMaxSeenRwSeqNo());
+        SetMaxSeqNo(SubSessions.GetMaxRoSeqNo());
+        SetMaxRwSeqNo(SubSessions.GetMaxRwSeqNo());
     }
 
     NActors::TActorId UpdateSubSession(
@@ -365,12 +365,12 @@ public:
 
     ui64 GetSessionSeqNo() const
     {
-        return SubSessions.GetMaxSeenSeqNo();
+        return SubSessions.GetMaxRoSeqNo();
     }
 
     ui64 GetSessionRwSeqNo() const
     {
-        return SubSessions.GetMaxSeenRwSeqNo();
+        return SubSessions.GetMaxRwSeqNo();
     }
 
     static NProto::TSessionOptions CreateSessionOptions(
