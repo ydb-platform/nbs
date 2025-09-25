@@ -128,7 +128,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 			return nil, err
 		}
 
-		return nil, errors.NewRetriableErrorf(
+		return nil, errors.NewNonRetriableErrorf(
 			"There are no cells with such agents available: %v",
 			agentIDs,
 		)
