@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/volume_label.h>
 
 #include <util/generic/size_literals.h>
@@ -237,6 +238,37 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeTest)
 
         // Describing secondary should found secondary
         response = service.DescribeVolume(GetSecondaryDiskId(DefaultDiskId));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetSecondaryDiskId(DefaultDiskId),
+            response->Record.GetVolume().GetDiskId());
+    }
+
+    Y_UNIT_TEST(ShouldActLikeSecondaryVolumeDoesNotExistWhenExactDiskIdMatchIsRequired)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        // Create secondary volume
+        service.CreateVolume(
+            GetSecondaryDiskId(DefaultDiskId),
+            2_GB / DefaultBlockSize,
+            DefaultBlockSize);
+
+        // Describing primary volume should not found secondary
+        {
+            service.SendDescribeVolumeRequest(DefaultDiskId, true);
+            auto response = service.RecvDescribeVolumeResponse();
+            UNIT_ASSERT_C(
+                IsNotFoundSchemeShardError(response->GetError()),
+                FormatError(response->GetError()));
+        }
+
+        // Describing secondary should found secondary
+        auto response =
+            service.DescribeVolume(GetSecondaryDiskId(DefaultDiskId), true);
         UNIT_ASSERT_VALUES_EQUAL(
             GetSecondaryDiskId(DefaultDiskId),
             response->Record.GetVolume().GetDiskId());

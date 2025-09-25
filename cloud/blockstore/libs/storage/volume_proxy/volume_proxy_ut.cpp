@@ -692,7 +692,8 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
             statResponse->Record.GetVolume().GetDiskId());
     }
 
-    Y_UNIT_TEST(ShouldFailRequestToSecondaryVolumeWithExactDiskIdMatch)
+    Y_UNIT_TEST(
+        ShouldActLikeSecondaryVolumeDoesNotExistWhenExactDiskIdMatchIsRequired)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);

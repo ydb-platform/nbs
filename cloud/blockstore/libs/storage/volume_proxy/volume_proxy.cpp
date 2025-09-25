@@ -1,5 +1,6 @@
 #include "volume_proxy.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
@@ -52,17 +53,17 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// VolumeProxy discovered the volume specified in the DiskId field of request,
+// VolumeProxy discovers the volume specified in the DiskId field of request,
 // establishes a connection to the tablet of this volume and redirects the
 // request to it. VolumeProxy keeps the pipe to the volume tablet and ensures
-// that the requests is sent to the tablet. When pipe to volume broke the
+// that the requests is sent to the tablet. When pipe to volume breaks the
 // response "E_REJECTED Tablet is dead" sent to client. If the client stops
 // sending messages to the volume, the connection is terminated after a
 // PipeInactivityTimeout (1 minute).
 //
-// Additionally, it tracks the list of base disks tablets. The connection to the
-// base disks occurs even if the describe returned an error, since the tablet id
-// is already known.
+// Additionally, VolumeProxy tracks the list of base disks tablets. The
+// connection to the base disks occurs even if the describe returned an error,
+// since the tablet id is already known.
 
 class TVolumeProxyActor final
     : public TActor<TVolumeProxyActor>
@@ -87,8 +88,9 @@ class TVolumeProxyActor final
         // disk.
         const TString DiskId;
 
-        // If the disk was copied and the name of the real disk differs from the
-        // DiskId.
+        // Id of the disk that was found by the SchemeShard describe.
+        // Note: If the disk was a copy the name of the real disk differs
+        // from the DiskId.
         TString RealDiskId;
 
         // An exact name match is required. It is forbidden to connect to a
@@ -533,7 +535,9 @@ void TVolumeProxyActor::DescribeVolume(
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(conn.DiskId),
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            conn.DiskId,
+            conn.RequireExactDiskIdMatch),
         conn.Id);
 }
 
@@ -702,24 +706,18 @@ void TVolumeProxyActor::HandleDescribeResponse(
     const auto& realDiskId = volumeDescr.GetName();
 
     if (conn->RequireExactDiskIdMatch && conn->DiskId != realDiskId) {
-        TString message =
-            TStringBuilder()
-            << "Copy " << realDiskId.Quote() << " of the disk "
-            << conn->DiskId.Quote()
-            << " was found, when an exact match of the DiskId was required. "
-               "Pretend that we haven't found anything.";
-        LOG_INFO(
-            ctx,
-            TBlockStoreComponents::VOLUME_PROXY,
-            "%s %s",
-            conn->LogTitle.GetWithTime().c_str(),
-            message.c_str());
+        ReportLogicalDiskIdMismatch(
+            {{"DiskId", conn->DiskId}, {"RealDiskid", realDiskId}});
 
         DestroyConnection(
             *conn,
             MakeError(
                 MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist),
-                std::move(message)));
+                TStringBuilder() << "Copy " << realDiskId.Quote()
+                                 << " of the disk " << conn->DiskId.Quote()
+                                 << " was found, when an exact match of the "
+                                    "DiskId was required. Pretend that we "
+                                    "haven't found anything."));
         return;
     }
 

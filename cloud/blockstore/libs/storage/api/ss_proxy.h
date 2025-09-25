@@ -171,9 +171,15 @@ struct TEvSSProxy
     struct TDescribeVolumeRequest
     {
         const TString DiskId;
+        const bool ExactDiskIdMatch = false;
 
         explicit TDescribeVolumeRequest(TString diskId)
             : DiskId(std::move(diskId))
+        {}
+
+        TDescribeVolumeRequest(TString diskId, bool exactDiskIdMatch)
+            : DiskId(std::move(diskId))
+            , ExactDiskIdMatch(exactDiskIdMatch)
         {}
     };
 

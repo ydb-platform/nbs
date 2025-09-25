@@ -250,4 +250,6 @@ TMap<TString, TString> ParseTags(const TString& tags);
 
 TString PoolKindToString(const NProto::EDevicePoolKind poolKind);
 
+bool IsNotFoundSchemeShardError(const NProto::TError& error);
+
 }   // namespace NCloud::NBlockStore::NStorage

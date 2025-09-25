@@ -46,6 +46,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TStorageConfigPtr Config;
     const TString DiskId;
+    const bool ExactDiskIdMatch = false;
 
     EState State = EState::DescribePrimaryDeprecated;
 
@@ -53,7 +54,8 @@ public:
     TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
-        TString diskId);
+        TString diskId,
+        bool exactDiskIdMatch);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -87,10 +89,12 @@ private:
 TDescribeVolumeActor::TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
-        TString diskId)
+        TString diskId,
+        bool exactDiskIdMatch)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
+    , ExactDiskIdMatch(exactDiskIdMatch)
 {}
 
 void TDescribeVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -186,7 +190,7 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
                         return;
                     }
                     case EState::DescribePrimary: {
-                        if (IsSecondaryDiskId(DiskId)) {
+                        if (ExactDiskIdMatch || IsSecondaryDiskId(DiskId)) {
                             break;
                         }
                         State = EState::DescribeSecondary;
@@ -331,7 +335,8 @@ void TSSProxyActor::HandleDescribeVolume(
         ctx,
         std::move(requestInfo),
         Config,
-        msg->DiskId);
+        msg->DiskId,
+        msg->ExactDiskIdMatch);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

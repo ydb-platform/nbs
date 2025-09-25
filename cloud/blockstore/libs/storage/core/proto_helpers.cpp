@@ -575,4 +575,11 @@ TString PoolKindToString(const NProto::EDevicePoolKind poolKind)
     return "unknown";
 }
 
+bool IsNotFoundSchemeShardError(const NProto::TError& error)
+{
+    return FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD &&
+           static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(
+               error.GetCode())) == NKikimrScheme::StatusPathDoesNotExist;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
