@@ -125,6 +125,10 @@ class FilestoreDaemonConfigGenerator:
     def ic_port(self):
         return self.__ic_port
 
+    @property
+    def kikimr_port(self):
+        return self.__kikimr_port
+
     def __generate_domains_txt(self, domains_txt):
         config = TDomainsConfig()
         if domains_txt is not None:
@@ -385,6 +389,10 @@ class FilestoreDaemonConfigGenerator:
 
         return command
 
+    def get_domain(self):
+        if not self.__storage_config.HasField('SchemeShardDir'):
+            return None
+        return self.__storage_config.SchemeShardDir
 
 class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
     def __init__(
