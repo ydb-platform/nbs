@@ -74,7 +74,7 @@ ModifyScheme {{
             "grpc://localhost:" + str(self.__configurator.kikimr_port),
             "db", "schema", "exec", scheme_op
         ]
-        cm = command = [
+        cm = [
             self.__kikimr_binary_path,
             "--server",
             "grpc://localhost:" + str(self.__configurator.kikimr_port),
