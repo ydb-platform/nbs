@@ -62,7 +62,8 @@ void TAliasedVolumes::DestroyAliasedVolumesUnsafe(IClientFactory& clientFactory)
 
             const auto requestId = GetRequestId(*request);
 
-            auto client = clientFactory.CreateClient({});
+            auto client =
+                clientFactory.CreateClient({}, "destroy-aliased-volumes");
             client->Start();
 
             STORAGE_INFO("Destroy volume: " << volume.Name);

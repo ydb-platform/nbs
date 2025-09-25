@@ -171,7 +171,8 @@ void TLoadTestRunner::SetupTest(
         TestContext.Client = ClientFactory.CreateAndStartFilesystemClient();
         volumeName = std::move(volumeFile);
     } else {
-        TestContext.Client = ClientFactory.CreateClient(successOnError);
+        TestContext.Client =
+            ClientFactory.CreateClient(successOnError, test.GetName());
         TestContext.Client->Start();
     }
 
