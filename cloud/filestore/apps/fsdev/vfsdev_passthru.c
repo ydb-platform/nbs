@@ -34,7 +34,16 @@ static struct spdk_fsdev_module passthru_if = {
 	.get_ctx_size = vfsdev_passthru_get_ctx_size
 };
 
-SPDK_FSDEV_MODULE_REGISTER(ext_passthru, &passthru_if)
+/* SPDK_FSDEV_MODULE_REGISTER(ext_passthru, &passthru_if) */
+
+static void __attribute__((constructor)) _spdk_fsdev_module_register_ext_passthru(void) \
+{
+    /* int* p=0; */
+    /* *p = 1234; */
+    SPDK_NOTICELOG("xxx construct\n");
+	spdk_fsdev_module_list_add(&passthru_if);
+}
+
 
 /* List of passthru fsdev names and their base fsdevs via configuration file.
  * Used so we can parse the conf once at init and use this list in examine().
@@ -343,6 +352,7 @@ vfsdev_passthru_insert_name(const char *base_name, const char *passthru_name)
 static int
 vfsdev_passthru_init(void)
 {
+    SPDK_NOTICELOG("xxx init\n");
 	return 0;
 }
 
@@ -350,6 +360,7 @@ vfsdev_passthru_init(void)
 static void
 vfsdev_passthru_finish(void)
 {
+    SPDK_NOTICELOG("xxx fini\n");
 	struct passthru_associations *assoc;
 
 	while ((assoc = TAILQ_FIRST(&g_passthru_associations))) {
