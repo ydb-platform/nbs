@@ -59,10 +59,7 @@ int main(int argc, const char** argv)
     auto Log = logging->CreateLog(options.ComponentName);
     auto statsFetcher = NCloud::NStorage::CreateCgroupStatsFetcher(
         options.ComponentName,
-        logging,
         options.Path);
-
-    statsFetcher->Start();
 
     TDuration pollInterval = TDuration::Seconds(options.PollPeriod);
 

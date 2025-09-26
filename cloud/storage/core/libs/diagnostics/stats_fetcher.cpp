@@ -14,14 +14,6 @@ namespace {
 struct TStatsFetcherStub final
     : public IStatsFetcher
 {
-    void Start() override
-    {
-    }
-
-    void Stop() override
-    {
-    }
-
     TResultOrError<TDuration> GetCpuWait() override
     {
         return TDuration::Zero();
@@ -50,14 +42,13 @@ TString BuildCpuWaitStatsFilename(const TString& serviceName)
 IStatsFetcherPtr BuildStatsFetcher(
     NProto::EStatsFetcherType statsFetcherType,
     const TString& cpuWaitFilename,
-    const TLog& log,
-    ILoggingServicePtr logging)
+    const TLog& log)
 {
     switch (statsFetcherType) {
         case NCloud::NProto::CGROUP: {
             if (cpuWaitFilename.empty()) {
                 const auto& Log = log;
-                STORAGE_INFO(
+                STORAGE_WARN(
                     "CpuWaitFilename is empty, can't build "
                     "CgroupStatsFetcher");
                 return CreateStatsFetcherStub();
@@ -65,13 +56,11 @@ IStatsFetcherPtr BuildStatsFetcher(
 
             return CreateCgroupStatsFetcher(
                 "STORAGE_STATS",
-                std::move(logging),
                 cpuWaitFilename);
         }
         case NCloud::NProto::TASKSTATS:
             return CreateTaskStatsFetcher(
                 "STORAGE_STATS",
-                std::move(logging),
                 getpid());
     }
 }

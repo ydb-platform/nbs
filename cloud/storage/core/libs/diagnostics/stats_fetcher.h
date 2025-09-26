@@ -19,7 +19,6 @@ namespace NCloud::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct IStatsFetcher
-    : public IStartable
 {
     virtual ~IStatsFetcher() = default;
 
@@ -32,12 +31,10 @@ using IStatsFetcherPtr = std::shared_ptr<IStatsFetcher>;
 
 IStatsFetcherPtr CreateCgroupStatsFetcher(
     TString componentName,
-    ILoggingServicePtr logging,
     TString statsFile);
 
 IStatsFetcherPtr CreateTaskStatsFetcher(
     TString componentName,
-    ILoggingServicePtr logging,
     int pid);
 
 IStatsFetcherPtr CreateStatsFetcherStub();
@@ -47,7 +44,6 @@ TString BuildCpuWaitStatsFilename(const TString& serviceName);
 IStatsFetcherPtr BuildStatsFetcher(
     NProto::EStatsFetcherType statsFetcherType,
     const TString& cpuWaitFilename,
-    const TLog& log,
-    ILoggingServicePtr logging);
+    const TLog& log);
 
 }   // namespace NCloud::NStorage

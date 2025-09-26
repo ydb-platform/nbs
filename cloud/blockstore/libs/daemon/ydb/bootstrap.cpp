@@ -378,7 +378,6 @@ IStartable* TBootstrapYdb::GetStatsUploader()      { return StatsUploader.get();
 IStartable* TBootstrapYdb::GetYdbStorage()         { return AsStartable(YdbStorage); }
 IStartable* TBootstrapYdb::GetLogbrokerService()   { return LogbrokerService.get(); }
 IStartable* TBootstrapYdb::GetNotifyService()      { return NotifyService.get(); }
-IStartable* TBootstrapYdb::GetStatsFetcher()       { return StatsFetcher.get(); }
 IStartable* TBootstrapYdb::GetIamTokenClient()     { return IamTokenClient.get(); }
 IStartable* TBootstrapYdb::GetComputeClient()      { return ComputeClient.get(); }
 IStartable* TBootstrapYdb::GetKmsClient()          { return KmsClient.get(); }
@@ -769,8 +768,7 @@ void TBootstrapYdb::InitKikimrService()
     StatsFetcher = NCloud::NStorage::BuildStatsFetcher(
         Configs->DiagnosticsConfig->GetStatsFetcherType(),
         Configs->DiagnosticsConfig->GetCpuWaitFilename(),
-        Log,
-        logging);
+        Log);
 
     STORAGE_INFO("StatsFetcher initialized");
 
