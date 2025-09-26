@@ -5,6 +5,9 @@
 #include <util/generic/size_literals.h>
 #include <util/system/sysstat.h>
 
+#include <type_traits>
+#include <utility>
+
 namespace NCloud::NFileStore::NVhost {
 
 namespace {
@@ -74,11 +77,6 @@ TTarget ConvertValue(
     return v;
 }
 
-template <typename T>
-bool IsEmpty(const T& t)
-{
-    return !t;
-}
 
 template <typename T>
 bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
@@ -123,16 +121,47 @@ void DumpImpl(
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+#define DECLARE_FIELD_CHECKER(name, type, ...)                               \
+    template <typename TProtoConfig, typename = void>                        \
+    struct Has##name##Method: std::false_type                                \
+    {                                                                        \
+    };                                                                       \
+                                                                             \
+    template <typename TProtoConfig>                                         \
+    struct Has##name##Method<                                                \
+        TProtoConfig,                                                        \
+        std::void_t<decltype(std::declval<TProtoConfig>().Has##name())>>     \
+        : std::true_type                                                     \
+    {                                                                        \
+    };                                                                       \
+                                                                             \
+    template <typename TProtoConfig, typename TProtoValue>                   \
+    bool IsEmpty##name(const TProtoConfig& config, const TProtoValue& value) \
+    {                                                                        \
+        if constexpr (Has##name##Method<TProtoConfig>::value) {              \
+            return !config.Has##name();                                      \
+        } else {                                                             \
+            return IsEmpty(value);                                           \
+        }                                                                    \
+    }
+
+VHOST_SERVICE_CONFIG(DECLARE_FIELD_CHECKER)
+
+#undef DECLARE_FIELD_CHECKER
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define VHOST_CONFIG_GETTER(name, type, ...)                                   \
-type TVhostServiceConfig::Get##name() const                                    \
-{                                                                              \
-    const auto value = ProtoConfig.Get##name();                                \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : Default##name;        \
-}                                                                              \
+#define VHOST_CONFIG_GETTER(name, type, ...)                                  \
+    type TVhostServiceConfig::Get##name() const                               \
+    {                                                                         \
+        const auto& value = ProtoConfig.Get##name();                          \
+        return IsEmpty##name(ProtoConfig, value) ? Default##name              \
+                                                 : ConvertValue<type>(value); \
+    }                                                                         \
 // VHOST_CONFIG_GETTER
 
 VHOST_SERVICE_CONFIG(VHOST_CONFIG_GETTER)
