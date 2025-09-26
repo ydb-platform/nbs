@@ -332,6 +332,39 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
                 /*deletionGroups=*/4));
     }
 
+    Y_UNIT_TEST(ShouldDecodeMergedBlocksWithDeletionMarkerInTheMiddle)
+    {
+        constexpr size_t blocksCount = 100;
+
+        TVector<TBlock> blocks;
+
+        {
+            ui32 blockIndex = FirstBlockIndex;
+            for (size_t i = 0; i < blocksCount; ++i) {
+                blocks.emplace_back(
+                    NodeId,
+                    blockIndex++,
+                    InitialCommitId,
+                    InvalidCommitId);
+            }
+
+            blocks[blocksCount/2].MaxCommitId = InitialCommitId + 1;
+        }
+
+        auto list = TBlockList::EncodeBlocks(blocks, TDefaultAllocator::Instance());
+
+        auto stats = list.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.DeletionMarkers);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.DeletionGroups);
+
+        auto iter = list.FindBlocks(
+            NodeId,
+            InitialCommitId,
+            FirstBlockIndex,
+            blocksCount);
+        CheckFindBlocksIterator(iter, blocksCount, blocks);
+    }
+
     Y_UNIT_TEST(ShouldDecodeExactSeqBlocks)
     {
         constexpr size_t blocksCount = 100;
