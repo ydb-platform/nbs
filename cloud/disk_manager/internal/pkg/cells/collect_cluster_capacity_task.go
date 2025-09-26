@@ -41,10 +41,7 @@ func (t *collectClusterCapacityTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	group := errgroup.Group{}
+	errGroup := errgroup.Group{}
 
 	processedCells := tasks_common.NewStringSet(t.state.ProcessedCells...)
 
@@ -57,7 +54,7 @@ func (t *collectClusterCapacityTask) Run(
 				continue
 			}
 
-			group.Go(func(zoneID string, cellID string) func() error {
+			errGroup.Go(func(zoneID string, cellID string) func() error {
 				return func() error {
 					err := t.updateCellCapacity(ctx, zoneID, cellID, deleteOlderThan)
 					if err != nil {
@@ -74,7 +71,7 @@ func (t *collectClusterCapacityTask) Run(
 
 	// Need to close channel only after end of all goroutines.
 	go func() {
-		_ = group.Wait()
+		_ = errGroup.Wait()
 		close(completedCells)
 	}()
 
@@ -87,7 +84,7 @@ func (t *collectClusterCapacityTask) Run(
 	}
 
 	// Processing group error after saving task progress.
-	err := group.Wait()
+	err := errGroup.Wait()
 	if err != nil {
 		return err
 	}
