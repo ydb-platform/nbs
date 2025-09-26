@@ -100,9 +100,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 
 				// Found a valid cell - send it once.
 				once.Do(func() {
-					select {
-					case selectedClient <- client:
-					}
+					selectedClient <- client
 				})
 
 				return nil
@@ -111,22 +109,21 @@ func (s *cellSelector) SelectCellForLocalDisk(
 	}
 
 	err := errGroup.Wait()
-	close(selectedClient)
 
-	client := <-selectedClient
-	if client != nil {
+	select {
+	case client := <-selectedClient:
 		return client, nil
-	}
+	default:
+		if err != nil {
+			return nil, err
+		}
 
-	if err != nil {
-		return nil, err
+		return nil, errors.NewNonRetriableErrorf(
+			"no cells with such agents in zone %v available: %v",
+			zoneID,
+			agentIDs,
+		)
 	}
-
-	return nil, errors.NewNonRetriableErrorf(
-		"no cells with such agents in zone %v available: %v",
-		zoneID,
-		agentIDs,
-	)
 }
 
 func (s *cellSelector) IsCellOfZone(cellID string, zoneID string) bool {
