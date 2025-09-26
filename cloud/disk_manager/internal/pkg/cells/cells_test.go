@@ -118,7 +118,7 @@ func TestSelectCellForLocalDiskReturnsCorrectNBSClient(t *testing.T) {
 			"zone-a": {Cells: []string{"zone-a", "zone-a-cell1"}},
 		},
 	}
-	agent := []string{"agent1"}
+	agentIDs := []string{"agent1"}
 
 	nbsFactory.On("GetClient", mock.Anything, "zone-a").Return(nbsClient1, nil)
 	nbsFactory.On(
@@ -127,7 +127,7 @@ func TestSelectCellForLocalDiskReturnsCorrectNBSClient(t *testing.T) {
 		"zone-a-cell1",
 	).Return(nbsClient2, nil)
 
-	nbsClient1.On("QueryAvailableStorage", mock.Anything, agent).Return(
+	nbsClient1.On("QueryAvailableStorage", mock.Anything, agentIDs).Return(
 		[]nbs.AvailableStorageInfo{
 			{
 				AgentID:    "agent1",
@@ -137,7 +137,7 @@ func TestSelectCellForLocalDiskReturnsCorrectNBSClient(t *testing.T) {
 		},
 		nil,
 	)
-	nbsClient2.On("QueryAvailableStorage", mock.Anything, agent).Return(
+	nbsClient2.On("QueryAvailableStorage", mock.Anything, agentIDs).Return(
 		[]nbs.AvailableStorageInfo{
 			{
 				AgentID:    "agent1",
@@ -156,7 +156,7 @@ func TestSelectCellForLocalDiskReturnsCorrectNBSClient(t *testing.T) {
 	selectedClient, err := cellSelector.SelectCellForLocalDisk(
 		ctx,
 		"zone-a",
-		agent,
+		agentIDs,
 	)
 	require.NoError(t, err)
 	require.Equal(t, nbsClient1, selectedClient)
@@ -176,7 +176,7 @@ func TestSelectCellForLocalDiskShouldReturnErrorIfNoAvailableAgentsFound(
 			"zone-a": {Cells: []string{"zone-a", "zone-a-cell1"}},
 		},
 	}
-	agent := []string{"agent1"}
+	agentIDs := []string{"agent1"}
 
 	nbsFactory.On("GetClient", mock.Anything, "zone-a").Return(nbsClient1, nil)
 	nbsFactory.On(
@@ -186,7 +186,7 @@ func TestSelectCellForLocalDiskShouldReturnErrorIfNoAvailableAgentsFound(
 	).Return(nbsClient2, nil)
 
 	// Agent is unavailable.
-	nbsClient1.On("QueryAvailableStorage", mock.Anything, agent).Return(
+	nbsClient1.On("QueryAvailableStorage", mock.Anything, agentIDs).Return(
 		[]nbs.AvailableStorageInfo{
 			{
 				AgentID:    "agent1",
@@ -197,7 +197,7 @@ func TestSelectCellForLocalDiskShouldReturnErrorIfNoAvailableAgentsFound(
 		nil,
 	)
 	// No such agent in cell.
-	nbsClient2.On("QueryAvailableStorage", mock.Anything, agent).Return(
+	nbsClient2.On("QueryAvailableStorage", mock.Anything, agentIDs).Return(
 		[]nbs.AvailableStorageInfo{},
 		nil,
 	)
@@ -210,7 +210,7 @@ func TestSelectCellForLocalDiskShouldReturnErrorIfNoAvailableAgentsFound(
 	selectedClient, err := cellSelector.SelectCellForLocalDisk(
 		ctx,
 		"zone-a",
-		agent,
+		agentIDs,
 	)
 	require.Nil(t, selectedClient)
 	require.Error(t, err)
