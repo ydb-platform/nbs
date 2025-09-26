@@ -163,6 +163,49 @@ size_t GetDeletionMarkersCount(const TVector<TBlock>& blocks)
     return count;
 }
 
+void CheckFindBlocksIterator(
+    TBlockIterator& iter,
+    size_t expectedBlocksToFind,
+    const TVector<TBlock>& expectedBlocks)
+{
+    for (size_t i = 0; i < expectedBlocksToFind; i += iter.BlocksInCurrentIteration) {
+        UNIT_ASSERT(iter.Next());
+        UNIT_ASSERT(iter.BlocksInCurrentIteration > 0);
+
+        for (ui32 j = 0; j < iter.BlocksInCurrentIteration; j++) {
+            const auto& block = expectedBlocks[iter.BlobOffset + j];
+            UNIT_ASSERT_VALUES_EQUAL(block.NodeId, iter.Block.NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(block.BlockIndex, iter.Block.BlockIndex + j);
+            UNIT_ASSERT_VALUES_EQUAL(block.MinCommitId, iter.Block.MinCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(block.MaxCommitId, iter.Block.MaxCommitId);
+        }
+    }
+
+    UNIT_ASSERT(!iter.Next());
+}
+
+void CheckFindBlocks(
+    const TBlockList& list,
+    const TVector<TBlock>& expectedBlocks,
+    ui64 minCommitId)
+{
+    size_t expectedBlocksToFind = 0;
+    for (const auto& block: expectedBlocks) {
+        if (block.MinCommitId <= minCommitId &&
+            minCommitId < block.MaxCommitId)
+        {
+            expectedBlocksToFind++;
+        }
+    }
+
+    auto iter = list.FindBlocks(
+        NodeId,
+        minCommitId,
+        FirstBlockIndex,
+        Max<ui32>() - FirstBlockIndex);
+    CheckFindBlocksIterator(iter, expectedBlocksToFind, expectedBlocks);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -246,58 +289,7 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
             InitialCommitId,
             FirstBlockIndex,
             Max<ui32>() - FirstBlockIndex);
-        for (size_t i = 0; i < blocksCount; i += iter.BlocksInCurrentIteration) {
-            UNIT_ASSERT(iter.Next());
-            UNIT_ASSERT(iter.BlocksInCurrentIteration > 0);
-
-            for (ui32 j = 0; j < iter.BlocksInCurrentIteration; j++) {
-                const auto& block = blocks[i];
-                UNIT_ASSERT_VALUES_EQUAL(i + j, iter.BlobOffset + j);
-                UNIT_ASSERT_VALUES_EQUAL(block.NodeId, iter.Block.NodeId);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    block.BlockIndex + j,
-                    iter.Block.BlockIndex + j);
-                UNIT_ASSERT_VALUES_EQUAL(block.MinCommitId, iter.Block.MinCommitId);
-                UNIT_ASSERT_VALUES_EQUAL(block.MaxCommitId, iter.Block.MaxCommitId);
-            }
-        }
-
-        UNIT_ASSERT(!iter.Next());
-    }
-
-    void CheckFindBlocks(
-        const TBlockList& list,
-        const TVector<TBlock>& blocks,
-        ui64 minCommitId)
-    {
-        size_t expectedBlocksToFind = 0;
-        for (const auto& block: blocks) {
-            if (block.MinCommitId <= minCommitId &&
-                minCommitId < block.MaxCommitId)
-            {
-                expectedBlocksToFind++;
-            }
-        }
-
-        auto iter = list.FindBlocks(
-            NodeId,
-            minCommitId,
-            FirstBlockIndex,
-            Max<ui32>() - FirstBlockIndex);
-        for (size_t i = 0; i < expectedBlocksToFind; i += iter.BlocksInCurrentIteration) {
-            UNIT_ASSERT(iter.Next());
-            UNIT_ASSERT(iter.BlocksInCurrentIteration > 0);
-
-            for (ui32 j = 0; j < iter.BlocksInCurrentIteration; j++) {
-                const auto& block = blocks[iter.BlobOffset + j];
-                UNIT_ASSERT_VALUES_EQUAL(block.NodeId, iter.Block.NodeId);
-                UNIT_ASSERT_VALUES_EQUAL(block.BlockIndex, iter.Block.BlockIndex + j);
-                UNIT_ASSERT_VALUES_EQUAL(block.MinCommitId, iter.Block.MinCommitId);
-                UNIT_ASSERT_VALUES_EQUAL(block.MaxCommitId, iter.Block.MaxCommitId);
-            }
-        }
-
-        UNIT_ASSERT(!iter.Next());
+        CheckFindBlocksIterator(iter, blocksCount, blocks);
     }
 
     void TestEncodeBlocks(TVector<TBlock> blocks)
