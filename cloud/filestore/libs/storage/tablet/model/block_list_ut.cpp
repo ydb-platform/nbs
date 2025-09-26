@@ -71,14 +71,11 @@ TVector<TBlock> GenerateRandomBlocks(size_t blocksCount)
 
 TVector<TBlock> GenerateRandomBlockGroups(
     size_t blockGroups,
-    size_t deletionGroups)
+    size_t maxDeletionGroups)
 {
-    Y_UNUSED(deletionGroups);
-
-    TVector<TBlock> blocks;
     auto blockIndex = FirstBlockIndex;
 
-    auto writeNewBlock = [&]()
+    auto writeNewBlock = [&](TVector<TBlock>& blocks)
     {
         blocks.emplace_back(
             NodeId,
@@ -87,65 +84,88 @@ TVector<TBlock> GenerateRandomBlockGroups(
             InvalidCommitId);
     };
 
+    auto deleteOrRewriteBlock = [&](TVector<TBlock>& blocks, size_t index)
+    {
+        auto& block = blocks[index];
+        block.MaxCommitId = block.MinCommitId + 1 + RandomNumber(100u);
+
+        if (RandomNumber(2u) == 0) {
+            // Rewrite block
+            auto b = block;
+            b.MinCommitId = b.MaxCommitId;
+            b.MaxCommitId = InvalidCommitId;
+            blocks.push_back(std::move(b));
+        }
+    };
+
+    TVector<TBlock> blocks;
+
+    size_t deletionGroups = 0;
+
     for (size_t i = 0; i < blockGroups; ++i) {
-        const auto maxBlocksInGroup = 1 + RandomNumber(50u);
+        TVector<TBlock> group;
+
+        const auto maxBlocksInGroup = 1 + RandomNumber(20u);
 
         if (RandomNumber(2u) == 0) {
             // Merged block group
             for (size_t j = 0; j < maxBlocksInGroup; ++j) {
-                writeNewBlock();
+                writeNewBlock(group);
                 blockIndex++;
             }
         } else {
             // Mixed block group
-            for (size_t j = 0; j < maxBlocksInGroup; ++j) {
+            //
+            // Need at least one block in a group
+            writeNewBlock(group);
+            blockIndex++;
+
+            // Fill the rest
+            for (size_t j = 0; j < maxBlocksInGroup - 1; ++j) {
                 if (RandomNumber(2u) == 0){
-                    writeNewBlock();
+                    writeNewBlock(group);
                 }
                 blockIndex++;
             }
         }
 
-        blockIndex += 1 + RandomNumber(10000u);
-    }
+        if (deletionGroups < maxDeletionGroups) {
+            Y_ABORT_UNLESS(group.size() > 0);
 
-    ui16 blobOffset = 0;
+            size_t deletionOffset = RandomNumber(group.size() + 1);
 
-    auto rewriteBlock = [&]()
-    {
-        Y_ABORT_UNLESS(blobOffset < blocks.size());
-        auto& block = blocks[blobOffset];
-        block.MaxCommitId = block.MinCommitId + 1 + RandomNumber(100u);
+            if (deletionOffset == group.size()) {
+                // No deletions in group
+            } else {
+                const auto maxDeletionsInGroup =
+                    1 + RandomNumber(group.size() - deletionOffset);
 
-        auto b = block;
-        b.MinCommitId = b.MaxCommitId;
-        b.MaxCommitId = InvalidCommitId;
-        blocks.push_back(std::move(b));
-    };
-
-    for (size_t i = 0; i < deletionGroups; ++i) {
-        const auto maxDeletionsInGroup = 1 + RandomNumber(70u);
-        Y_ABORT_UNLESS(blobOffset + maxDeletionsInGroup < blocks.size());
-
-        if (RandomNumber(2u) == 0) {
-            // Merged deletion group
-            for (size_t j = 0; j < maxDeletionsInGroup; ++j) {
-                rewriteBlock();
-                blobOffset++;
-            }
-
-        } else {
-            // Mixed deletion group
-            for (size_t j = 0; j < maxDeletionsInGroup; ++j) {
                 if (RandomNumber(2u) == 0) {
-                    rewriteBlock();
-                }
+                    // Merged deletion group
+                    for (size_t j = 0; j < maxDeletionsInGroup; ++j) {
+                        deleteOrRewriteBlock(group, deletionOffset);
+                        deletionOffset++;
+                    }
+                } else {
+                    // Mixed deletion group
+                    for (size_t j = 0; j < maxDeletionsInGroup; ++j) {
+                        if (RandomNumber(2u) == 0) {
+                            deleteOrRewriteBlock(group, deletionOffset);
+                        }
 
-                blobOffset++;
+                        deletionOffset++;
+                    }
+                }
             }
+
+            deletionGroups++;
         }
 
-        blobOffset += 1 + RandomNumber(10u);
+        // Append block group
+        blocks.insert(blocks.end(), group.begin(), group.end());
+
+        // Adding space between block groups
+        blockIndex += 1 + RandomNumber(10000u);
     }
 
     Sort(blocks, TBlockCompare());
@@ -318,18 +338,55 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
 
     Y_UNIT_TEST(ShouldEncodeRandomBlockGroupsWithoutDeletions)
     {
-        TestEncodeBlocks(
-            GenerateRandomBlockGroups(
-                /*blockGroups=*/10,
-                /*deletionGroups=*/0));
+        for (size_t i = 0; i < 10; i++) {
+            TestEncodeBlocks(
+                GenerateRandomBlockGroups(
+                    /*blockGroups=*/40,
+                    /*deletionGroups=*/0));
+        }
     }
 
     Y_UNIT_TEST(ShouldEncodeRandomBlockGroupsWithDeletions)
     {
-        TestEncodeBlocks(
-            GenerateRandomBlockGroups(
-                /*blockGroups=*/10,
-                /*deletionGroups=*/4));
+        for (size_t i = 0; i < 10; i++) {
+            TestEncodeBlocks(
+                GenerateRandomBlockGroups(
+                    /*blockGroups=*/30,
+                    /*deletionGroups=*/8));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDecodeMergedBlocksWithDeletionMarkerInTheMiddle)
+    {
+        constexpr size_t blocksCount = 100;
+
+        TVector<TBlock> blocks;
+
+        {
+            ui32 blockIndex = FirstBlockIndex;
+            for (size_t i = 0; i < blocksCount; ++i) {
+                blocks.emplace_back(
+                    NodeId,
+                    blockIndex++,
+                    InitialCommitId,
+                    InvalidCommitId);
+            }
+
+            blocks[blocksCount/2].MaxCommitId = InitialCommitId + 1;
+        }
+
+        auto list = TBlockList::EncodeBlocks(blocks, TDefaultAllocator::Instance());
+
+        auto stats = list.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.DeletionMarkers);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.DeletionGroups);
+
+        auto iter = list.FindBlocks(
+            NodeId,
+            InitialCommitId,
+            FirstBlockIndex,
+            blocksCount);
+        CheckFindBlocksIterator(iter, blocksCount, blocks);
     }
 
     Y_UNIT_TEST(ShouldDecodeExactSeqBlocks)

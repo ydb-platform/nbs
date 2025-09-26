@@ -183,6 +183,9 @@ ui32 FindDeletionMarkers(
     ui64* maxCommitId)
 {
     Y_ABORT_UNLESS(maxCommitId);
+    Y_ABORT_UNLESS(maxBlocksToFind);
+
+    ui16 minSeenBlobOffset = Max<ui16>();
 
     TBinaryReader reader(encodedDeletionMarkers);
 
@@ -196,6 +199,12 @@ ui32 FindDeletionMarkers(
             if (entry.BlobOffset == blobOffset) {
                 *maxCommitId = group.CommitId;
                 return 1;
+            }
+
+            if (blobOffset <= entry.BlobOffset &&
+                entry.BlobOffset < blobOffset + maxBlocksToFind)
+            {
+                minSeenBlobOffset = Min<ui16>(minSeenBlobOffset, entry.BlobOffset);
             }
         } else {
             const auto& multi = reader.Read<NBlockListSpec::TMultiGroupHeader>();
@@ -222,6 +231,12 @@ ui32 FindDeletionMarkers(
                         *maxCommitId = group.CommitId;
                         return 1;
                     }
+
+                    if (blobOffset <= blobOffsets[0] &&
+                        blobOffsets[0] < blobOffset + maxBlocksToFind)
+                    {
+                        minSeenBlobOffset = Min<ui16>(minSeenBlobOffset, blobOffsets[0]);
+                    }
                     break;
                 }
             }
@@ -229,7 +244,16 @@ ui32 FindDeletionMarkers(
     }
 
     *maxCommitId = InvalidCommitId;
-    return maxBlocksToFind;
+
+    if (minSeenBlobOffset == Max<ui16>()) {
+        return maxBlocksToFind;
+    }
+
+    if (minSeenBlobOffset <= blobOffset) {
+        return 1;
+    }
+
+    return Min<ui16>(minSeenBlobOffset - blobOffset, maxBlocksToFind);
 }
 
 ui64 FindDeletionMarker(
