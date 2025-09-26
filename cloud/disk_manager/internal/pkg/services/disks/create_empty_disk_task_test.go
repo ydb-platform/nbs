@@ -258,3 +258,71 @@ func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
 	mock.AssertExpectationsForObjects(t, storage, nbsFactory, execCtx)
 	require.NoError(t, err)
 }
+
+func TestCreateEmptyLocalDiskTask(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient := nbs_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
+
+	params := &protos.CreateDiskParams{
+		BlocksCount: 123,
+		Disk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		BlockSize: 456,
+		Kind:      types.DiskKind_DISK_KIND_SSD_LOCAL,
+		CloudId:   "cloud",
+		FolderId:  "folder",
+		AgentIds:  []string{"agent"},
+	}
+	task := &createEmptyDiskTask{
+		storage:      storage,
+		nbsFactory:   nbsFactory,
+		params:       params,
+		state:        &protos.CreateEmptyDiskTaskState{},
+		cellSelector: cellSelector,
+	}
+
+	storage.On("CreateDisk", ctx, mock.Anything).Return(
+		&resources.DiskMeta{
+			ID: "disk",
+		},
+		nil,
+	)
+	storage.On("DiskCreated", ctx, mock.Anything).Return(nil)
+
+	cellSelector.On(
+		"SelectCellForLocalDisk",
+		ctx,
+		"zone",
+		[]string{"agent"},
+	).Return(nbsClient, nil)
+
+	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
+		ID:          "disk",
+		BlocksCount: 123,
+		BlockSize:   456,
+		Kind:        types.DiskKind_DISK_KIND_SSD_LOCAL,
+		CloudID:     "cloud",
+		FolderID:    "folder",
+		AgentIds:    []string{"agent"},
+	}).Return(nil)
+	nbsClient.On("ZoneID").Return("zone")
+
+	execCtx.On("SaveState", ctx).Return(nil)
+
+	err := task.Run(ctx, execCtx)
+	require.NoError(t, err)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
+}
