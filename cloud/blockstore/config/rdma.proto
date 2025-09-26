@@ -40,6 +40,9 @@ message TRdmaClient
     uint64 AdaptiveWaitSleepDuration = 6;   // in microseconds
     bool AlignedDataEnabled = 7;
     uint32 IpTypeOfService = 8;
+
+    // use first non local address of this interface as a source
+    string SourceInterface = 9;
 }
 
 message TRdmaTarget
