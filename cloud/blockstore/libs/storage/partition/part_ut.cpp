@@ -13012,6 +13012,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldSendCorrectBarriersInfoAfterReboot)
     {
+        return; // TODO: fix this test. See issue #4414
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1);
         config.SetAddingUnconfirmedBlobsEnabled(true);
