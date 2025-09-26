@@ -190,6 +190,18 @@ NRdma::IServerEndpointPtr TRdmaAsyncTestServer::StartEndpoint(
     return ep;
 }
 
+NRdma::IServerEndpointPtr TRdmaAsyncTestServer::StartEndpointOnInterface(
+    TString interface,
+    ui32 port,
+    NRdma::IServerHandlerPtr handler)
+{
+    auto& ep = Endpoints[MakeKey(interface, port)];
+    if (!ep) {
+        ep = std::make_shared<TRdmaAsyncTestEndpoint>(handler);
+    }
+    return ep;
+}
+
 NThreading::TFuture<NProto::TWriteDeviceBlocksResponse> TRdmaAsyncTestServer::
     Run(TString host, ui32 port, NProto::TWriteDeviceBlocksRequest request)
 {

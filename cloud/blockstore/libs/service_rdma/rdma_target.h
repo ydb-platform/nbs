@@ -16,6 +16,7 @@ namespace NCloud::NBlockStore::NStorage {
 struct TBlockstoreServerRdmaTargetConfig
 {
     TString Host = "localhost";
+    TString Interface;
     ui32 Port = 10088;
     ui32 WorkerThreads = 1;
 
@@ -27,6 +28,8 @@ struct TBlockstoreServerRdmaTargetConfig
         if (const auto& host = endpoint.GetHost()) {
             Host = host;
         }
+
+        Interface = endpoint.GetInterface();
 
         if (auto port = endpoint.GetPort()) {
             Port = port;
