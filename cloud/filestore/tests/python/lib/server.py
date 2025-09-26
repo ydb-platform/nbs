@@ -76,6 +76,7 @@ ModifyScheme {{
         with open(output, "w") as ydbd_output:
             subprocess.check_call(command, stdout=ydbd_output, stderr=ydbd_output)
 
+
 @retrying.retry(stop_max_delay=60000, wait_fixed=1000, retry_on_exception=is_grpc_error)
 def wait_for_filestore_server(daemon, port):
     '''

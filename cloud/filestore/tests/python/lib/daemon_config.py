@@ -395,6 +395,7 @@ class FilestoreDaemonConfigGenerator:
             return None
         return self.__storage_config.SchemeShardDir
 
+
 class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
     def __init__(
         self,
