@@ -293,7 +293,7 @@ func testSelectCellForLocalDiskCellReturnsAnError(
 		"GetClient",
 		mock.Anything,
 		"zone-a-cell1",
-	).Return(nbsClientEmptyCell, nil).Maybe()
+	).Return(nbsClientEmptyCell, nil)
 
 	correctCellError := error(nil)
 	emptyCellError := assert.AnError
@@ -319,7 +319,7 @@ func testSelectCellForLocalDiskCellReturnsAnError(
 		Return(
 			[]nbs.AvailableStorageInfo(nil),
 			emptyCellError,
-		).Maybe() // If got a result, don't wait for other cells.
+		)
 
 	cellSelector := cellSelector{
 		config:     config,
