@@ -15,4 +15,6 @@ message PerformanceConfig {
     optional uint64 TransferFromURLToSnapshotBandwidthMiBs = 4 [default = 200];
 
     optional uint64 CreateDRBasedDiskCheckpointBandwidthMiBs = 5 [default = 300];
+    optional uint64 SSDLocalDiskDeletingBandwidthMiBs = 6 [default = 500];
+    optional uint64 HDDLocalDiskDeletingBandwidthMiBs = 7 [default = 100];
 }
