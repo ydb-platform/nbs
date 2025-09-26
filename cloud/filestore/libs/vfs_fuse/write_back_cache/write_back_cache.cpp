@@ -10,6 +10,7 @@
 
 #include <util/generic/hash_set.h>
 #include <util/generic/mem_copy.h>
+#include <util/generic/set.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/vector.h>
 #include <util/system/mutex.h>
@@ -94,6 +95,7 @@ struct TWriteBackCache::TFlushState
     TVector<std::shared_ptr<NProto::TWriteDataRequest>> FailedWriteRequests;
     size_t AffectedWriteDataEntriesCount = 0;
     size_t InFlightWriteRequestsCount = 0;
+    TInstant StartTime = TInstant::Zero();
     bool Executing = false;
 };
 
@@ -314,6 +316,9 @@ private:
 
     // Operations to execute after completing the main operation
     TPendingOperations PendingOperations;
+
+    // Used to track the earliest Flush start time to detect hanging Flush
+    TMultiSet<TInstant> FlushStartTimeSet;
 
 public:
     TImpl(
@@ -631,6 +636,8 @@ public:
     {
         if (nodeState->ShouldFlush() && !nodeState->FlushState.Executing) {
             nodeState->FlushState.Executing = true;
+            nodeState->FlushState.StartTime = Timer->Now();
+            ReportScheduledFlush(nodeState->FlushState.StartTime);
             PendingOperations.Flush.push_back(nodeState);
         }
     }
@@ -1134,7 +1141,7 @@ private:
         state.WriteRequests.clear();
 
         if (state.FailedWriteRequests.empty()) {
-            ReportCompletedFlush();
+            ReportCompletedFlush(state.StartTime);
             CompleteFlush(nodeState);
         } else {
             ReportFailedFlush();
@@ -1230,9 +1237,28 @@ private:
         return entry;
     }
 
-    void ReportCompletedFlush() const
+    void ReportScheduledFlush(TInstant startTime)
     {
         if (Stats) {
+            FlushStartTimeSet.insert(startTime);
+            Stats->SetExecutingFlushCount(FlushStartTimeSet.size());
+            Stats->SetEarliestFlushTime(*FlushStartTimeSet.begin());
+        }
+    }
+
+    void ReportCompletedFlush(TInstant startTime)
+    {
+        if (Stats) {
+            auto it = FlushStartTimeSet.find(startTime);
+            Y_DEBUG_ABORT_UNLESS(it != FlushStartTimeSet.end());
+            FlushStartTimeSet.erase(it);
+            if (FlushStartTimeSet.empty()) {
+                Stats->SetEarliestFlushTime(TInstant::Zero());
+            } else {
+                Stats->SetEarliestFlushTime(*FlushStartTimeSet.begin());
+            }
+
+            Stats->SetExecutingFlushCount(FlushStartTimeSet.size());
             Stats->IncrementCompletedFlushCount();
         }
     }

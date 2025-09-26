@@ -110,6 +110,8 @@ struct IWriteBackCacheStats
 
     virtual void IncrementCompletedFlushCount() = 0;
     virtual void IncrementFailedFlushCount() = 0;
+    virtual void SetExecutingFlushCount(ui64 value) = 0;
+    virtual void SetEarliestFlushTime(TInstant time) = 0;
 
     virtual void SetNodeCount(ui64 value) = 0;
     virtual void SetCachedWriteRequestCount(ui64 value) = 0;

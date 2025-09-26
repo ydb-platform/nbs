@@ -117,10 +117,14 @@ struct TWriteBackCacheStats: public IWriteBackCacheStats
     TWriteBackCache::TPersistentQueueStats PersistentQueue;
     ui64 CompletedFlushCount = 0;
     ui64 FailedFlushCount = 0;
+    ui64 ExecutingFlushCount = 0;
+    TInstant EarliestFlushTime = TInstant::Zero();
     ui64 NodeCount = 0;
     ui64 CachedWriteRequestCount = 0;
     ui64 PendingWriteRequestCount = 0;
     TVector<TWriteBackCache::TWriteDataStats> WriteDataStats;
+    TVector<ui64> ExecutingFlushCountLog;
+    TVector<TInstant> EarliestFlushTimeLog;
 
     void IncrementCompletedFlushCount() override
     {
@@ -130,6 +134,18 @@ struct TWriteBackCacheStats: public IWriteBackCacheStats
     void IncrementFailedFlushCount() override
     {
         FailedFlushCount++;
+    }
+
+    void SetExecutingFlushCount(ui64 value) override
+    {
+        ExecutingFlushCount = value;
+        ExecutingFlushCountLog.push_back(value);
+    }
+
+    void SetEarliestFlushTime(TInstant time) override
+    {
+        EarliestFlushTime = time;
+        EarliestFlushTimeLog.push_back(time);
     }
 
     void SetNodeCount(ui64 value) override
@@ -1319,27 +1335,54 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         };
 
         b.WriteToCacheSync(1, 0, "abc");
+        b.WriteToCacheSync(2, 0, "def");
 
         UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.FailedFlushCount);
+        UNIT_ASSERT_EQUAL(0, stats.ExecutingFlushCount);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats.EarliestFlushTime);
 
-        auto flushFuture = b.Cache.FlushNodeData(1);
+        b.Timer->Sleep(TDuration::Seconds(1));
+        auto now = b.Timer->Now();
+        auto flushFuture1 = b.Cache.FlushNodeData(1);
 
-        UNIT_ASSERT(!flushFuture.HasValue());
+        UNIT_ASSERT(!flushFuture1.HasValue());
         UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.FailedFlushCount);
+        UNIT_ASSERT_EQUAL(1, stats.ExecutingFlushCount);
+        UNIT_ASSERT_EQUAL(now, stats.EarliestFlushTime);
 
+        b.Timer->Sleep(TDuration::Seconds(1));
         b.Scheduler->RunAllScheduledTasks();
+        auto flushFuture2 = b.Cache.FlushNodeData(2);
 
-        UNIT_ASSERT(!flushFuture.HasValue());
-        UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
-        UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
-
-        b.Scheduler->RunAllScheduledTasks();
-
-        UNIT_ASSERT(flushFuture.HasValue());
+        UNIT_ASSERT(!flushFuture1.HasValue());
+        UNIT_ASSERT(flushFuture2.HasValue());
         UNIT_ASSERT_EQUAL(1, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
+        UNIT_ASSERT_EQUAL(1, stats.ExecutingFlushCount);
+        UNIT_ASSERT_EQUAL(now, stats.EarliestFlushTime);
+
+        b.Timer->Sleep(TDuration::Seconds(1));
+        b.Scheduler->RunAllScheduledTasks();
+
+        UNIT_ASSERT(flushFuture1.HasValue());
+        UNIT_ASSERT_EQUAL(2, stats.CompletedFlushCount);
+        UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
+        UNIT_ASSERT_EQUAL(0, stats.ExecutingFlushCount);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats.EarliestFlushTime);
+
+        UNIT_ASSERT_EQUAL(4, stats.ExecutingFlushCountLog.size());
+        UNIT_ASSERT_EQUAL(1, stats.ExecutingFlushCountLog[0]);
+        UNIT_ASSERT_EQUAL(2, stats.ExecutingFlushCountLog[1]);
+        UNIT_ASSERT_EQUAL(1, stats.ExecutingFlushCountLog[2]);
+        UNIT_ASSERT_EQUAL(0, stats.ExecutingFlushCountLog[3]);
+
+        UNIT_ASSERT_EQUAL(4, stats.EarliestFlushTimeLog.size());
+        UNIT_ASSERT_EQUAL(now, stats.EarliestFlushTimeLog[0]);
+        UNIT_ASSERT_EQUAL(now, stats.EarliestFlushTimeLog[1]);
+        UNIT_ASSERT_EQUAL(now, stats.EarliestFlushTimeLog[2]);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats.EarliestFlushTimeLog[3]);
     }
 
     Y_UNIT_TEST(ShouldReportNodeCount)
