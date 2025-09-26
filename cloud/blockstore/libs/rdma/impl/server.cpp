@@ -25,6 +25,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>
+#include <util/network/interface.h>
 #include <util/random/random.h>
 #include <util/stream/format.h>
 #include <util/system/mutex.h>
@@ -1564,6 +1565,20 @@ IServerEndpointPtr TServer::StartEndpoint(
 
 void TServer::Listen(TServerEndpoint* endpoint)
 {
+    endpoint->Connection.get();
+
+    // find the first non local address of the specified interface
+    for (auto& interface: NAddr::GetNetworkInterfaces()) {
+        auto& addr = static_cast<NAddr::TOpaqueAddr&>(*interface.Address);
+
+        if (interface.Name == Config->SourceInterface &&
+            GetScopeId(addr.Addr()) == 0)
+        {
+            endpoint->Host = NAddr::PrintHost(*interface.Address);
+            break;
+        }
+    }
+
     rdma_addrinfo hints = {
         .ai_flags = RAI_PASSIVE,
         .ai_port_space = RDMA_PS_TCP,
@@ -1574,8 +1589,8 @@ void TServer::Listen(TServerEndpoint* endpoint)
         endpoint->Port,
         &hints);
 
-    RDMA_INFO("listen on address "
-        << NVerbs::PrintAddress(addrinfo->ai_src_addr));
+    RDMA_INFO("listen on "
+        << NAddr::PrintHostAndPort(NAddr::TOpaqueAddr(addrinfo->ai_src_addr)));
 
     Verbs->BindAddress(endpoint->Connection.get(), addrinfo->ai_src_addr);
     Verbs->Listen(endpoint->Connection.get(), Config->Backlog);

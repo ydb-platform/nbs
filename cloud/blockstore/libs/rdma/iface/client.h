@@ -37,6 +37,7 @@ struct TClientConfig
     TDuration AdaptiveWaitSleepDuration = TDuration::MicroSeconds(100);
     bool AlignedDataEnabled = false;
     ui8 IpTypeOfService = 0;
+    TString SourceInterface;
 
     TClientConfig() = default;
 

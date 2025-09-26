@@ -64,6 +64,14 @@ void TOptions::Parse(int argc, char** argv)
         .DefaultValue(ToString(ConnectTimeout))
         .StoreResult(&ConnectTimeout);
 
+    opts.AddLongOption("tos")
+        .RequiredArgument("NUM")
+        .StoreResult(&Tos);
+
+    opts.AddLongOption("source-interface")
+        .RequiredArgument()
+        .StoreResult(&SourceInterface);
+
     // device geometry
     opts.AddLongOption("storage")
         .RequiredArgument("{" + GetEnumAllNames<EStorageKind>() + "}")
@@ -123,7 +131,7 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&TracePath);
 
     opts.AddLongOption("trace-rate")
-        .RequiredArgument("PATH")
+        .RequiredArgument("NUM")
         .DefaultValue(ToString(TraceRate))
         .StoreResult(&TraceRate);
 
