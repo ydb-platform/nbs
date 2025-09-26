@@ -3,6 +3,7 @@ package cells
 import (
 	"context"
 	"slices"
+	"sync"
 
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -67,7 +68,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 
 	selectedClient := make(chan nbs.Client, 1)
 
-	var sendClientOnce sync.sendClientOnce
+	var sendClientOnce sync.Once
 
 	for _, cellID := range cells {
 		errGroup.Go(func(cellID string) func() error {
@@ -89,7 +90,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 					return nil
 				}
 
-				// Found a valid cell - send its client sendClientOnce.
+				// Found a valid cell - send its client once.
 				sendClientOnce.Do(func() {
 					selectedClient <- client
 				})
