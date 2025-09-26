@@ -2,6 +2,8 @@ syntax = "proto2";
 
 package cells;
 
+import "google/protobuf/duration.proto";
+
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -20,4 +22,13 @@ message CellsConfig {
     repeated string FolderAllowList = 3;
 
     optional string StorageFolder = 4 [default = "cells"];
+
+    optional bool ScheduleCollectClusterCapacityTask = 5 [default = false];
+
+    // CollectClusterCapacity is a heavy request, so we should use it rarely.
+    optional string CollectClusterCapacityTaskScheduleInterval = 6 [default = "1h"];
+
+    // Default is 90 days. Can be set only in hours, because time.ParseDuration
+    // can't parse days.
+    optional string ClusterCapacityExpirationTimeout = 7 [default = "2160h"];
 }

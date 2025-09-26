@@ -134,7 +134,7 @@ type Storage interface {
 	UpdateClusterCapacities(
 		ctx context.Context,
 		capacities []ClusterCapacity,
-		deleteBefore time.Time,
+		deleteOlderThan time.Time,
 	) error
 
 	GetRecentClusterCapacities(
