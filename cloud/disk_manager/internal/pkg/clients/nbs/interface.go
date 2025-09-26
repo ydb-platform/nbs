@@ -339,7 +339,7 @@ type Client interface {
 
 	QueryAvailableStorage(
 		ctx context.Context,
-		agenstIDs []string,
+		agentIDs []string,
 	) ([]AvailableStorageInfo, error)
 }
 

@@ -3,7 +3,6 @@ package cells
 import (
 	"context"
 	"slices"
-	"sync"
 
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -68,7 +67,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 
 	selectedClient := make(chan nbs.Client, 1)
 
-	var once sync.Once
+	var sendClientOnce sync.sendClientOnce
 
 	for _, cellID := range cells {
 		errGroup.Go(func(cellID string) func() error {
@@ -86,20 +85,12 @@ func (s *cellSelector) SelectCellForLocalDisk(
 					return err
 				}
 
-				if len(availableStorageInfos) == 0 {
+				if !s.isAgentAvailable(availableStorageInfos) {
 					return nil
 				}
 
-				// If the only available storage info is empty, agent is
-				// unavailable.
-				if len(availableStorageInfos) == 1 &&
-					availableStorageInfos[0].ChunkSize == 0 &&
-					availableStorageInfos[0].ChunkCount == 0 {
-					return nil
-				}
-
-				// Found a valid cell - send it once.
-				once.Do(func() {
+				// Found a valid cell - send its client sendClientOnce.
+				sendClientOnce.Do(func() {
 					selectedClient <- client
 				})
 
@@ -158,6 +149,25 @@ func (s *cellSelector) isCell(zoneID string) bool {
 	}
 
 	return false
+}
+
+func (s *cellSelector) isAgentAvailable(
+	availableStorageInfos []nbs.AvailableStorageInfo,
+) bool {
+
+	if len(availableStorageInfos) == 0 {
+		return false
+	}
+
+	// If the only available storage info is empty, agent is
+	// unavailable.
+	if len(availableStorageInfos) == 1 &&
+		availableStorageInfos[0].ChunkSize == 0 &&
+		availableStorageInfos[0].ChunkCount == 0 {
+		return false
+	}
+
+	return true
 }
 
 func (s *cellSelector) selectCell(
