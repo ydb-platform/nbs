@@ -217,7 +217,7 @@ func TestSelectCellForLocalDiskShouldReturnErrorIfNoAvailableAgentsFound(
 	require.ErrorContains(
 		t,
 		err,
-		"There are no cells with such agents available",
+		"no cells with such agents in zone",
 	)
 	mock.AssertExpectationsForObjects(t, nbsFactory, nbsClient1, nbsClient2)
 }
@@ -249,7 +249,7 @@ func TestSelectCellForLocalDiskCellReturnsAnError(t *testing.T) {
 		for _, correctCellReturnsError := range []bool{false, true} {
 			testCaseName := testCase.name
 			if correctCellReturnsError {
-				testCaseName += " correct cell is returns error"
+				testCaseName += " correct cell returns error"
 			}
 
 			t.Run(testCaseName, func(t *testing.T) {
@@ -280,7 +280,7 @@ func testSelectCellForLocalDiskCellReturnsAnError(
 			"zone-a": {Cells: []string{"zone-a", "zone-a-cell1"}},
 		},
 	}
-	agent := []string{"agent1"}
+	agentIDs := []string{"agent1"}
 
 	nbsFactory.On(
 		"GetClient",
@@ -302,11 +302,8 @@ func testSelectCellForLocalDiskCellReturnsAnError(
 		emptyCellError = nil
 	}
 
-	nbsClientCorrectCell.On("QueryAvailableStorage", mock.Anything, agent).
-		Run(
-			func(_ mock.Arguments) {
-				time.Sleep(correctCellResponceLatency)
-			}).
+	nbsClientCorrectCell.On("QueryAvailableStorage", mock.Anything, agentIDs).
+		After(correctCellResponceLatency).
 		Return(
 			[]nbs.AvailableStorageInfo{
 				{
@@ -317,11 +314,8 @@ func testSelectCellForLocalDiskCellReturnsAnError(
 			},
 			correctCellError,
 		)
-	nbsClientEmptyCell.On("QueryAvailableStorage", mock.Anything, agent).
-		Run(
-			func(_ mock.Arguments) {
-				time.Sleep(emptyCellResponceLatency)
-			}).
+	nbsClientEmptyCell.On("QueryAvailableStorage", mock.Anything, agentIDs).
+		After(emptyCellResponceLatency).
 		Return(
 			[]nbs.AvailableStorageInfo(nil),
 			emptyCellError,
@@ -335,7 +329,7 @@ func testSelectCellForLocalDiskCellReturnsAnError(
 	selectedClient, err := cellSelector.SelectCellForLocalDisk(
 		ctx,
 		"zone-a",
-		agent,
+		agentIDs,
 	)
 	if correctCellReturnsError {
 		require.Error(t, err)
@@ -344,5 +338,6 @@ func testSelectCellForLocalDiskCellReturnsAnError(
 		require.NoError(t, err)
 		require.Equal(t, nbsClientCorrectCell, selectedClient)
 	}
+
 	mock.AssertExpectationsForObjects(t, nbsFactory, nbsClientCorrectCell, nbsClientEmptyCell)
 }

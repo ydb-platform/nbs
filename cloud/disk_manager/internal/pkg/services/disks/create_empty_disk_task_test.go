@@ -287,10 +287,12 @@ func TestCreateEmptyLocalDiskTask(t *testing.T) {
 		cellSelector: cellSelector,
 	}
 
-	// TODO: Improve this expectations.
-	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{
-		ID: "disk",
-	}, nil)
+	storage.On("CreateDisk", ctx, mock.Anything).Return(
+		&resources.DiskMeta{
+			ID: "disk",
+		},
+		nil,
+	)
 	storage.On("DiskCreated", ctx, mock.Anything).Return(nil)
 
 	cellSelector.On(
@@ -314,6 +316,7 @@ func TestCreateEmptyLocalDiskTask(t *testing.T) {
 	execCtx.On("SaveState", ctx).Return(nil)
 
 	err := task.Run(ctx, execCtx)
+	require.NoError(t, err)
 	mock.AssertExpectationsForObjects(
 		t,
 		storage,
@@ -322,5 +325,4 @@ func TestCreateEmptyLocalDiskTask(t *testing.T) {
 		execCtx,
 		cellSelector,
 	)
-	require.NoError(t, err)
 }

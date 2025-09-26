@@ -51,9 +51,6 @@ func (s *cellSelector) SelectCellForLocalDisk(
 	agentIDs []string,
 ) (nbs.Client, error) {
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	cells := s.getCells(zoneID)
 
 	if len(cells) == 0 {
@@ -67,14 +64,14 @@ func (s *cellSelector) SelectCellForLocalDisk(
 		)
 	}
 
-	errorGroup := errgroup.Group{}
+	errGroup := errgroup.Group{}
 
-	resultClient := make(chan nbs.Client, 1)
+	selectedClient := make(chan nbs.Client, 1)
 
 	var once sync.Once
 
 	for _, cellID := range cells {
-		errorGroup.Go(func(cellID string) func() error {
+		errGroup.Go(func(cellID string) func() error {
 			return func() error {
 				client, err := s.nbsFactory.GetClient(ctx, cellID)
 				if err != nil {
@@ -101,11 +98,10 @@ func (s *cellSelector) SelectCellForLocalDisk(
 					return nil
 				}
 
-				// Found a valid cell - send it once and cancel other goroutines.
+				// Found a valid cell - send it once.
 				once.Do(func() {
 					select {
-					case resultClient <- client:
-					default:
+					case selectedClient <- client:
 					}
 				})
 
@@ -114,25 +110,23 @@ func (s *cellSelector) SelectCellForLocalDisk(
 		}(cellID))
 	}
 
-	// Wait for either a result or all goroutines to complete
-	done := make(chan error, 1)
-	go func() {
-		done <- errorGroup.Wait()
-	}()
+	err := errGroup.Wait()
+	close(selectedClient)
 
-	select {
-	case client := <-resultClient:
+	client := <-selectedClient
+	if client != nil {
 		return client, nil
-	case err := <-done:
-		if err != nil {
-			return nil, err
-		}
-
-		return nil, errors.NewNonRetriableErrorf(
-			"There are no cells with such agents available: %v",
-			agentIDs,
-		)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, errors.NewNonRetriableErrorf(
+		"no cells with such agents in zone %v available: %v",
+		zoneID,
+		agentIDs,
+	)
 }
 
 func (s *cellSelector) IsCellOfZone(cellID string, zoneID string) bool {

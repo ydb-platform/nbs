@@ -1685,7 +1685,6 @@ func (c *client) QueryAvailableStorage(
 	defer tracing.SetError(span, &err)
 
 	response, err := c.nbs.QueryAvailableStorage(ctx, agentIDs)
-
 	if err != nil {
 		return nil, err
 	}

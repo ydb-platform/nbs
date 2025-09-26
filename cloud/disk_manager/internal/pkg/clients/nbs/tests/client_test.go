@@ -1983,20 +1983,20 @@ func TestQueryAvailableStorage(t *testing.T) {
 	client := newTestingClient(t, ctx)
 
 	// Searching for an agent without any local disks.
-	storageInfos, err := client.QueryAvailableStorage(
+	availableStorageInfos, err := client.QueryAvailableStorage(
 		ctx,
 		[]string{"localhost"},
 	)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(storageInfos))
-	require.Equal(t, "localhost", storageInfos[0].AgentID)
-	require.Equal(t, uint32(0), storageInfos[0].ChunkCount)
-	require.Equal(t, uint64(0), storageInfos[0].ChunkSize)
+	require.Equal(t, 1, len(availableStorageInfos))
+	require.Equal(t, "localhost", availableStorageInfos[0].AgentID)
+	require.EqualValues(t, 0, availableStorageInfos[0].ChunkCount)
+	require.EqualValues(t, 0, availableStorageInfos[0].ChunkSize)
 
-	storageInfos, err = client.QueryAvailableStorage(
+	availableStorageInfos, err = client.QueryAvailableStorage(
 		ctx,
 		[]string{"unknown-agent"},
 	)
 	require.NoError(t, err)
-	require.Empty(t, storageInfos)
+	require.Empty(t, availableStorageInfos)
 }
