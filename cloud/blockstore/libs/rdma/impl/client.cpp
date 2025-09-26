@@ -32,12 +32,12 @@
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
+#include <util/network/interface.h>
 #include <util/random/random.h>
 #include <util/stream/format.h>
 #include <util/system/datetime.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
-#include <util/network/interface.h>
 
 namespace NCloud::NBlockStore::NRdma {
 
@@ -2085,17 +2085,16 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
             .ai_port_space = RDMA_PS_TCP,
         };
 
-        // find first non local address
+        // find the first non local address of the specified interface
         for (auto& interface: NAddr::GetNetworkInterfaces()) {
             auto& addr = static_cast<NAddr::TOpaqueAddr&>(*interface.Address);
 
             if (interface.Name == Config->SourceInterface &&
                 GetScopeId(addr.Addr()) == 0)
             {
-                RDMA_INFO(
-                    endpoint->Log,
-                    "using " << interface.Name << " address "
-                             << NAddr::PrintHost(addr) << " as a source");
+                RDMA_INFO(endpoint->Log, "bind to " << interface.Name
+                    << " address " << NAddr::PrintHost(addr));
+
                 hints.ai_src_addr = addr.MutableAddr();
                 hints.ai_src_len = addr.Len();
                 break;
