@@ -125,6 +125,10 @@ class FilestoreDaemonConfigGenerator:
     def ic_port(self):
         return self.__ic_port
 
+    @property
+    def kikimr_port(self):
+        return self.__kikimr_port
+
     def __generate_domains_txt(self, domains_txt):
         config = TDomainsConfig()
         if domains_txt is not None:
@@ -226,24 +230,25 @@ class FilestoreDaemonConfigGenerator:
 
         config.DisableLocalService = disableLocalService
 
-        config.HDDSystemChannelPoolKind = "hdd"
-        config.HDDLogChannelPoolKind = "hdd"
-        config.HDDIndexChannelPoolKind = "hdd"
-        config.HDDFreshChannelPoolKind = "hdd"
-        config.HDDMixedChannelPoolKind = "hdd"
+        if not self.__storage_config.HasField('SchemeShardDir'):
+            # We do not set storage pools for subdomain
+            config.HDDSystemChannelPoolKind = "hdd"
+            config.HDDLogChannelPoolKind = "hdd"
+            config.HDDIndexChannelPoolKind = "hdd"
+            config.HDDFreshChannelPoolKind = "hdd"
+            config.HDDMixedChannelPoolKind = "hdd"
 
-        # FIXME: no ssd in the recipe
-        config.SSDSystemChannelPoolKind = "hdd"
-        config.SSDLogChannelPoolKind = "hdd"
-        config.SSDIndexChannelPoolKind = "hdd"
-        config.SSDFreshChannelPoolKind = "hdd"
-        config.SSDMixedChannelPoolKind = "hdd"
+            config.SSDSystemChannelPoolKind = "hdd"
+            config.SSDLogChannelPoolKind = "hdd"
+            config.SSDIndexChannelPoolKind = "hdd"
+            config.SSDFreshChannelPoolKind = "hdd"
+            config.SSDMixedChannelPoolKind = "hdd"
 
-        config.HybridSystemChannelPoolKind = "hdd"
-        config.HybridLogChannelPoolKind = "hdd"
-        config.HybridIndexChannelPoolKind = "hdd"
-        config.HybridFreshChannelPoolKind = "hdd"
-        config.HybridMixedChannelPoolKind = "hdd"
+            config.HybridSystemChannelPoolKind = "hdd"
+            config.HybridLogChannelPoolKind = "hdd"
+            config.HybridIndexChannelPoolKind = "hdd"
+            config.HybridFreshChannelPoolKind = "hdd"
+            config.HybridMixedChannelPoolKind = "hdd"
 
         return config
 
@@ -384,6 +389,11 @@ class FilestoreDaemonConfigGenerator:
             ] + (["--allow-restart-flag", self.__restart_flag] if self.__restart_flag else [])
 
         return command
+
+    def get_domain(self):
+        if not self.__storage_config.HasField('SchemeShardDir'):
+            return None
+        return self.__storage_config.SchemeShardDir
 
 
 class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):

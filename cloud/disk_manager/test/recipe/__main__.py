@@ -190,10 +190,14 @@ def start(argv):
         return
 
     nfs = NfsLauncher(
+        dynamic_storage_pools=ydb.dynamic_storage_pools,
+        ydb_domain=ydb.domain,
         ydb_port=ydb.port,
         domains_txt=ydb.domains_txt,
         names_txt=ydb.names_txt,
-        nfs_binary_path=nfs_binary_path)
+        nfs_binary_path=nfs_binary_path,
+        ydb_binary_path=ydb_binary_path,
+    )
     nfs.start()
     set_env("DISK_MANAGER_RECIPE_NFS_PORT", str(nfs.port))
 
