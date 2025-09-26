@@ -50,7 +50,7 @@ namespace NCloud::NFileStore::NStorage {
 
 #define FILESTORE_VALIDATE_DUPTX_SESSION(event, args)                          \
     FILESTORE_VALIDATE_TX_SESSION(event, args)                                 \
-    else if (auto entry = session->LookupDupEntry(args.RequestId)) {           \
+    else if (session->LookupDupEntry(args.RequestId)) {                        \
         args.Error = ErrorDuplicate();                                         \
         return true;                                                           \
     }                                                                          \

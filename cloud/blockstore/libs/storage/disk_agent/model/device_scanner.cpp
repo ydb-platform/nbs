@@ -24,7 +24,7 @@ ui32 GetBlockSize(const std::string& path)
 {
     struct stat s {};
 
-    if (int r = ::stat(path.c_str(), &s)) {
+    if (::stat(path.c_str(), &s)) {
         const int ec = errno;
         ythrow TServiceError {MAKE_SYSTEM_ERROR(ec)}
             << "can't get information about a file " << path << ": "
