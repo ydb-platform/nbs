@@ -137,6 +137,7 @@ NActors::IEventBasePtr TDiskAgentReadLocalActor::MakeResponse(
         response->Record.FailInfo.FailedRanges.push_back(
             DescribeRange(BlockRange));
     }
+    response->Record.DeviceUUID = DeviceRequests[0].Device.GetDeviceUUID(); // new
     return response;
 }
 
@@ -149,6 +150,7 @@ TDiskAgentReadLocalActor::MakeCompletionResponse(ui32 blocks)
     completion->Stats.MutableUserReadCounters()->SetBlocksCount(blocks);
     completion->NonVoidBlockCount = NonVoidBlockCount;
     completion->VoidBlockCount = VoidBlockCount;
+    completion->DeviceUUID = DeviceRequests[0].Device.GetDeviceUUID();
 
     return TCompletionEventAndBody(std::move(completion));
 }
@@ -218,11 +220,23 @@ void TDiskAgentReadLocalActor::HandleReadDeviceBlocksResponse(
 
     auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>();
     response->Record.SetAllZeroes(VoidBlockCount == Request.GetBlocksCount());
+
+    response->Record.DeviceUUID = DeviceRequests[ev->Cookie].Device.GetDeviceUUID();
+
     if (auto checksum = CombineChecksums(Checksums);
         checksum.GetByteCount() > 0)
     {
         *response->Record.MutableChecksum() = std::move(checksum);
     }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "%s Sending ReadBlocksLocal response with DeviceUUID: %s to actor: %s",
+        LogTitle.GetWithTime().c_str(),
+        response->Record.DeviceUUID.c_str(),
+        ToString(RequestInfo->Sender).c_str()
+    );
 
     Done(ctx, std::move(response), EStatus::Success);
 }

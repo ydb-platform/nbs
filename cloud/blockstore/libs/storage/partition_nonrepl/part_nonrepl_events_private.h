@@ -239,6 +239,8 @@ struct TEvNonreplPartitionPrivate
 
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;
+
+        TString DeviceUUID;
     };
 
     //
