@@ -161,10 +161,13 @@ struct TEvNonreplPartitionPrivate
         TBlockRange64 Range;
         TInstant ChecksumStartTs;
         TDuration ChecksumDuration;
+        IProfileLog::TRangeInfo ChecksumRangeInfo;
         TInstant ReadStartTs;
         TDuration ReadDuration;
+        IProfileLog::TRangeInfo ReadRangeInfo;
         TInstant WriteStartTs;
         TDuration WriteDuration;
+        IProfileLog::TRangeInfo WriteRangeInfo;
         ui64 ExecCycles;
         TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
         EStatus Status;
@@ -173,20 +176,26 @@ struct TEvNonreplPartitionPrivate
                 TBlockRange64 range,
                 TInstant checksumStartTs,
                 TDuration checksumDuration,
+                IProfileLog::TRangeInfo checksumRangeInfo,
                 TInstant readStartTs,
                 TDuration readDuration,
+                IProfileLog::TRangeInfo readRangeInfo,
                 TInstant writeStartTs,
                 TDuration writeDuration,
+                IProfileLog::TRangeInfo writeRangeInfo,
                 ui64 execCycles,
                 TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
                 EStatus status)
             : Range(range)
             , ChecksumStartTs(checksumStartTs)
             , ChecksumDuration(checksumDuration)
+            , ChecksumRangeInfo(std::move(checksumRangeInfo))
             , ReadStartTs(readStartTs)
             , ReadDuration(readDuration)
+            , ReadRangeInfo(std::move(readRangeInfo))
             , WriteStartTs(writeStartTs)
             , WriteDuration(writeDuration)
+            , WriteRangeInfo(std::move(writeRangeInfo))
             , ExecCycles(execCycles)
             , AffectedBlockInfos(std::move(affectedBlockInfos))
             , Status(status)

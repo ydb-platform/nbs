@@ -43,6 +43,21 @@ TDuration TChecksumRangeActorCompanion::GetChecksumDuration() const
     return ChecksumDuration;
 }
 
+IProfileLog::TRangeInfo TChecksumRangeActorCompanion::GetRangeInfo() const
+{
+    IProfileLog::TRangeInfo result;
+    result.Range = Range;
+    result.ReplicaChecksums.reserve(Checksums.size());
+
+    for (size_t i = 0; i < Checksums.size(); ++i) {
+        result.ReplicaChecksums.emplace_back(
+            IProfileLog::TReplicaChecksums{
+                .ReplicaId = static_cast<ui32>(i),
+                .Checksums{static_cast<ui32>(Checksums[i])}});
+    }
+    return result;
+}
+
 void TChecksumRangeActorCompanion::CalculateChecksums(
     const TActorContext& ctx,
     TBlockRange64 range)
@@ -51,6 +66,7 @@ void TChecksumRangeActorCompanion::CalculateChecksums(
         CalculateReplicaChecksum(ctx, range, i);
     }
     ChecksumStartTs = ctx.Now();
+    Range = range;
 }
 
 void TChecksumRangeActorCompanion::CalculateReplicaChecksum(

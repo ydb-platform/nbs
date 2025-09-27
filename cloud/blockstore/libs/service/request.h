@@ -181,16 +181,20 @@ enum class ESysRequestType
     ConvertToMixedIndex = 10002,
     ConvertToRangeMap = 10003,
     Cleanup = 10004,
-    Migration = 10005,
+    MigrationRead = 10005,
     WriteDeviceBlocks = 10006,
     ZeroDeviceBlocks = 10007,
-    Resync = 10008,
+    ResyncChecksum = 10008,
     ConfirmBlobs = 10009,
     ReadDeviceBlocks = 10010,
+    ResyncRead = 10011,
+    ResyncWrite = 10012,
+    Scrubbing = 10013,
+    MigrationWrite = 10014,
     MAX
 };
 
-TStringBuf GetSysRequestName(ESysRequestType requestType);
+TString GetSysRequestName(ESysRequestType requestType);
 
 enum class EPrivateRequestType
 {

@@ -164,7 +164,7 @@ void TPartitionActor::CompleteUpdateIndexStructures(
         IProfileLog::TSysReadWriteRequest request;
         request.RequestType = ESysRequestType::ConvertToMixedIndex;
         request.Duration = d;
-        request.Ranges = std::move(args.ConvertedToMixedIndex);
+        request.Ranges = MakeRangesInfo(args.ConvertedToMixedIndex);
 
         IProfileLog::TRecord record;
         record.DiskId = State->GetConfig().GetDiskId();
@@ -178,7 +178,7 @@ void TPartitionActor::CompleteUpdateIndexStructures(
         IProfileLog::TSysReadWriteRequest request;
         request.RequestType = ESysRequestType::ConvertToRangeMap;
         request.Duration = d;
-        request.Ranges = std::move(args.ConvertedToRangeMap);
+        request.Ranges = MakeRangesInfo(args.ConvertedToRangeMap);
 
         IProfileLog::TRecord record;
         record.DiskId = State->GetConfig().GetDiskId();

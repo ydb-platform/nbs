@@ -41,8 +41,10 @@ private:
 
     TInstant ReadStartTs;
     TDuration ReadDuration;
+    IProfileLog::TRangeInfo ReadRangeInfo{.Range = Range};
     TInstant WriteStartTs;
     TDuration WriteDuration;
+    IProfileLog::TRangeInfo WriteRangeInfo{.Range = Range};
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     ui64 VolumeRequestId = 0;
     int ReplicaIndexToReadFrom = 0;

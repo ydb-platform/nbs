@@ -308,14 +308,17 @@ void TPartitionActor::CompleteConfirmBlobs(
 
     for (const auto& [_, blobs]: State->GetConfirmedBlobs()) {
         for (const auto& blob: blobs) {
-            request.Ranges.push_back(ConvertRangeSafe(blob.BlockRange));
+            request.Ranges.push_back(
+                IProfileLog::TRangeInfo{
+                    .Range = ConvertRangeSafe(blob.BlockRange),
+                    .ReplicaChecksums = {}});
         }
     }
 
     IProfileLog::TRecord record;
     record.DiskId = State->GetConfig().GetDiskId();
     record.Ts = ctx.Now() - duration;
-    record.Request = request;
+    record.Request = std::move(request);
     ProfileLog->Write(std::move(record));
 }
 

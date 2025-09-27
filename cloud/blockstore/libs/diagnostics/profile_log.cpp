@@ -1,6 +1,7 @@
 #include "profile_log.h"
 
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
+
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
@@ -21,6 +22,24 @@ void AddRange(const TBlockRange64& r, NProto::TProfileLogRequestInfo& ri)
     auto* range = ri.AddRanges();
     range->SetBlockIndex(r.Start);
     range->SetBlockCount(r.Size());
+}
+
+void AddRangeWithChecksums(
+    const TBlockRange64& r,
+    const TVector<IProfileLog::TReplicaChecksums>& replicaChecksums,
+    NProto::TProfileLogRequestInfo& ri)
+{
+    auto* range = ri.AddRanges();
+    range->SetBlockIndex(r.Start);
+    range->SetBlockCount(r.Size());
+
+    for (const auto& checksums: replicaChecksums) {
+        auto* c = range->AddChecksums();
+        c->SetReplicaId(checksums.ReplicaId);
+        c->MutableChecksum()->Assign(
+            checksums.Checksums.begin(),
+            checksums.Checksums.end());
+    }
 }
 
 template <typename TRequest>
@@ -204,7 +223,7 @@ void TProfileLog::DoFlush()
                 } else if (auto* srw = std::get_if<TSysReadWriteRequest>(&record.Request)) {
                     auto* ri = AddRequest(record, srw->Duration, pb);
                     for (const auto& r: srw->Ranges) {
-                        AddRange(r, *ri);
+                        AddRangeWithChecksums(r.Range, r.ReplicaChecksums, *ri);
                     }
                     ri->SetRequestType(static_cast<ui32>(srw->RequestType));
                 } else if (auto* misc = std::get_if<TMiscRequest>(&record.Request)) {
@@ -297,6 +316,18 @@ IProfileLogPtr CreateProfileLog(
 IProfileLogPtr CreateProfileLogStub()
 {
     return std::make_shared<TProfileLogStub>();
+}
+
+TVector<IProfileLog::TRangeInfo> MakeRangesInfo(
+    const TVector<TBlockRange64>& ranges)
+{
+    TVector<IProfileLog::TRangeInfo> result;
+    result.reserve(ranges.size());
+    for (auto range: ranges) {
+        result.emplace_back(
+            IProfileLog::TRangeInfo{.Range = range, .ReplicaChecksums = {}});
+    }
+    return result;
 }
 
 }   // namespace NCloud::NBlockStore
