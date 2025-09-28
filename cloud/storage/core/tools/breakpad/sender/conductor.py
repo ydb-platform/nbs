@@ -13,13 +13,12 @@ class ConductorError(Exception):
     pass
 
 
-class Conductor(object):
+class Conductor:
     HTTP_TIMEOUT = 5
     API_URL = ""
     FILTERED_GROUPS = list()
 
     def __init__(self, hostname=None):
-        super(Conductor, self).__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self.hostname = hostname
         if self.hostname is None:

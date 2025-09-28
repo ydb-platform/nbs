@@ -13,10 +13,9 @@ class CrashInfoStorageError(Exception):
     pass
 
 
-class CrashInfo(object):
+class CrashInfo:
 
     def __init__(self):
-        super(CrashInfo, self).__init__()
         self.corefile = None
         self.is_minidump = False
         self.time = None
@@ -47,11 +46,38 @@ class CrashInfo(object):
         self.metadata = obj.get("metadata", dict())
 
 
-class CrashInfoStorage(object):
+class CrashInfoProcessed(CrashInfo):
+    CRASH_TYPE_CORE = "crash"
+    CRASH_TYPE_OOM = "oom"
+
+    def __init__(self, crash: CrashInfo):
+        super().__init__()
+        self.__dict__.update(crash.__dict__)
+
+        self.crash_type = None
+        self.backtrace = None
+        self.formatted_backtrace = None
+        self.server = None
+        self.cluster = None
+        self.core_url = None
+
+    def get_header(self):
+        return "Process {service} {crash_type}ed " \
+               "on server={server}, cluster={cluster}".format(
+                   service=self.service,
+                   crash_type=self.crash_type,
+                   server=self.server,
+                   cluster=self.cluster,
+               )
+
+    def dump(self):
+        return json.dumps(self.__dict__)
+
+
+class CrashInfoStorage:
     FILETYPE = ".json"
 
     def __init__(self, queue_dir):
-        super(CrashInfoStorage, self).__init__()
         self._logger = logger.getChild(self.__class__.__name__)
         self._queue_dir = queue_dir
         self._ensure_queuedir()
@@ -91,7 +117,7 @@ class CrashInfoStorage(object):
                     crash_info.load(fd.read())
                 os.unlink(filename)
                 return crash_info
-        except IOError as e:
+        except Exception as e:
             self._logger.error("Can't get crash info %r", e)
             self._logger.debug("Exception", exc_info=True)
             raise CrashInfoStorageError("Error read crash info")
