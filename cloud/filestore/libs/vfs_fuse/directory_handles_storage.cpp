@@ -156,26 +156,6 @@ ui64 TDirectoryHandlesStorage::CreateRecord(const TBuffer& record)
     return index;
 }
 
-ui64 TDirectoryHandlesStorage::UpdateRecord(ui64 index, const TBuffer& record)
-{
-    TStringBuf currentRecord = Table->GetRecord(index);
-    if (currentRecord.empty()) {
-        return TDirectoryHandleTable::InvalidIndex;
-    }
-
-    if (record.Size() <= currentRecord.size()) {
-        if (!Table->WriteRecordData(index, record.Data(), record.Size())) {
-            return TDirectoryHandleTable::InvalidIndex;
-        }
-
-        return index;
-    }
-
-    Table->DeleteRecord(index);
-
-    return CreateRecord(record);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TDirectoryHandlesStoragePtr CreateDirectoryHandlesStorage(

@@ -216,78 +216,90 @@ void TFileSystem::ReadDir(
     request->SetMaxBytes(Config->GetMaxBufferSize());
 
     Session->ListNodes(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) -> void {
-            auto self = ptr.lock();
-            const auto& response = future.GetValue();
-            if (!CheckResponse(self, *callContext, req, response)) {
-                return;
-            }
+        .Subscribe(
+            [=, fh = fi->fh, ptr = weak_from_this()](const auto& future) -> void
+            {
+                auto self = ptr.lock();
+                const auto& response = future.GetValue();
+                if (!CheckResponse(self, *callContext, req, response)) {
+                    return;
+                }
 
-            if (response.NodesSize() != response.NamesSize()) {
-                STORAGE_ERROR("listnodes #" << fuse_req_unique(req)
-                    << " names/nodes count mismatch");
+                if (response.NodesSize() != response.NamesSize()) {
+                    STORAGE_ERROR(
+                        "listnodes #" << fuse_req_unique(req)
+                                      << " names/nodes count mismatch");
 
-                self->ReplyError(
-                    *callContext,
-                    response.GetError(),
-                    req,
-                    EIO);
-                return;
-            }
-
-            TDirectoryBuilder builder(size);
-            if (offset == 0) {
-                builder.Add(req, ".", { .attr = {.st_ino = MissingNodeId}}, offset);
-                builder.Add(req, "..", { .attr = {.st_ino = MissingNodeId}}, offset);
-            }
-
-            for (size_t i = 0; i < response.NodesSize(); ++i) {
-                const auto& attr = response.GetNodes(i);
-                const auto& name = response.GetNames(i);
-
-                fuse_entry_param entry = {
-                    .ino = attr.GetId(),
-                    .attr_timeout = Config->GetAttrTimeout().SecondsFloat(),
-                    .entry_timeout = Config->GetEntryTimeout().SecondsFloat(),
-                };
-
-                ConvertAttr(Config->GetPreferredBlockSize(), attr, entry.attr);
-                if (!entry.attr.st_ino) {
-                    const auto error = MakeError(
-                        E_IO,
-                        TStringBuilder() << "#" << fuse_req_unique(req)
-                        << " listed invalid entry: parent " << ino << ", name "
-                        << name.Quote() << ", stat " << DumpMessage(attr));
-
-                    STORAGE_ERROR(error.GetMessage());
                     self->ReplyError(
                         *callContext,
-                        error,
+                        response.GetError(),
                         req,
                         EIO);
                     return;
                 }
 
-                builder.Add(req, name, entry, offset);
-            }
+                TDirectoryBuilder builder(size);
+                if (offset == 0) {
+                    builder.Add(
+                        req,
+                        ".",
+                        {.attr = {.st_ino = MissingNodeId}},
+                        offset);
+                    builder.Add(
+                        req,
+                        "..",
+                        {.attr = {.st_ino = MissingNodeId}},
+                        offset);
+                }
 
-            auto handleChunk = handle->UpdateContent(
-                size,
-                offset,
-                builder.Finish(),
-                response.GetCookie());
+                for (size_t i = 0; i < response.NodesSize(); ++i) {
+                    const auto& attr = response.GetNodes(i);
+                    const auto& name = response.GetNames(i);
 
-            STORAGE_TRACE("# " << fuse_req_unique(req)
-                << " offset: " << offset
-                << " limit: " << size
-                << " actual size " << handleChunk.DirectoryContent.GetSize());
+                    fuse_entry_param entry = {
+                        .ino = attr.GetId(),
+                        .attr_timeout = Config->GetAttrTimeout().SecondsFloat(),
+                        .entry_timeout =
+                            Config->GetEntryTimeout().SecondsFloat(),
+                    };
 
-            reply(*self, handleChunk.DirectoryContent);
+                    ConvertAttr(
+                        Config->GetPreferredBlockSize(),
+                        attr,
+                        entry.attr);
+                    if (!entry.attr.st_ino) {
+                        const auto error = MakeError(
+                            E_IO,
+                            TStringBuilder() << "#" << fuse_req_unique(req)
+                                             << " listed invalid entry: parent "
+                                             << ino << ", name " << name.Quote()
+                                             << ", stat " << DumpMessage(attr));
 
-            if (DirectoryHandlesStorage) {
-                DirectoryHandlesStorage->UpdateHandle(fi->fh, handleChunk);
-            }
-        });
+                        STORAGE_ERROR(error.GetMessage());
+                        self->ReplyError(*callContext, error, req, EIO);
+                        return;
+                    }
+
+                    builder.Add(req, name, entry, offset);
+                }
+
+                auto handleChunk = handle->UpdateContent(
+                    size,
+                    offset,
+                    builder.Finish(),
+                    response.GetCookie());
+
+                STORAGE_TRACE(
+                    "# " << fuse_req_unique(req) << " offset: " << offset
+                         << " limit: " << size << " actual size "
+                         << handleChunk.DirectoryContent.GetSize());
+
+                reply(*self, handleChunk.DirectoryContent);
+
+                if (DirectoryHandlesStorage) {
+                    DirectoryHandlesStorage->UpdateHandle(fh, handleChunk);
+                }
+            });
 }
 
 void TFileSystem::ReleaseDir(
