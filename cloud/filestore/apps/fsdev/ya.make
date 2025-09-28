@@ -1,7 +1,10 @@
 DLL(filestore-fsdev)
 
 SRCS(
-    fsdev.cpp
+    bootstrap.cpp
+    logging.cpp
+    malloc_info.cpp
+    module.cpp
 )
 
 ADDINCL(
@@ -9,6 +12,10 @@ ADDINCL(
 )
 
 PEERDIR(
+    cloud/storage/core/libs/common
+    cloud/storage/core/libs/diagnostics
+
+    library/cpp/malloc/api
 )
 
 END()
