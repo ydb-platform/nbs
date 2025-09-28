@@ -55,7 +55,6 @@ class NfsLauncher:
         return self.__nfs_server
 
     def start(self):
-
         self.__nfs_server.start()
         wait_for_filestore_server(self.__nfs_server, self.__nfs_configurator.port)
         register_process(SERVICE_NAME, self.__nfs_server.pid)

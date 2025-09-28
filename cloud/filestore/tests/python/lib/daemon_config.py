@@ -231,7 +231,11 @@ class FilestoreDaemonConfigGenerator:
         config.DisableLocalService = disableLocalService
 
         if not self.__storage_config.HasField('SchemeShardDir'):
-            # We do not set storage pools for subdomain
+            # Root domain has hdd pools configured,
+            # subdomains use dynamic pools obtained from kikimr python wrapper,
+            # which are either 'ssd' or 'rot'.
+            # SchemeShardDir presence means that the subdomain is used.
+            # We do not expect SchemeShardDir to be /Root.
             config.HDDSystemChannelPoolKind = "hdd"
             config.HDDLogChannelPoolKind = "hdd"
             config.HDDIndexChannelPoolKind = "hdd"
