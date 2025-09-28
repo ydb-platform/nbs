@@ -32,6 +32,8 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     std::function<void(ibv_qp* qp, ibv_recv_wr* wr)> PostRecv;
     std::function<void(rdma_cm_id* id, int backlog)> Listen;
     std::function<void(ibv_wc* wc)> HandleCompletionEvent;
+    std::function<void(rdma_cm_id* id, ibv_qp_init_attr* attr)> CreateQP;
+    std::function<void(rdma_cm_id* id, const void* data, ui8 size)> Reject;
 };
 
 using TTestContextPtr = TIntrusivePtr<TTestContext>;
@@ -40,6 +42,7 @@ using TTestContextPtr = TIntrusivePtr<TTestContext>;
 
 IVerbsPtr CreateTestVerbs(TTestContextPtr context);
 
+void CreateConnection(TTestContextPtr context);
 void Disconnect(TTestContextPtr context);
 
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs

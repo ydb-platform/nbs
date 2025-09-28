@@ -2,6 +2,8 @@
 #include "server.h"
 #include "test_verbs.h"
 
+#include <cstring>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -147,6 +149,67 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
 
         server->Stop();
     }
+
+    Y_UNIT_TEST(ShouldHandleSessionError)
+    {
+        NThreading::TPromise<void> done = NThreading::NewPromise<void>();
+        auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+        context->CreateQP = [](rdma_cm_id* id, ibv_qp_init_attr* attr) {
+            Y_UNUSED(id);
+            Y_UNUSED(attr);
+            throw TServiceError(MAKE_SYSTEM_ERROR(EINVAL));
+        };
+
+        context->Reject = [&](rdma_cm_id* id, const void* data, ui8 size) {
+            Y_UNUSED(id);
+            Y_UNUSED(data);
+            Y_UNUSED(size);
+
+            // test implementation of rdma_destroy_id just fills id with FF's
+            rdma_cm_id reference;
+            rdma_destroy_id(&reference);
+
+            // make sure rdma_destroy_id hasn't been called before Reject
+            UNIT_ASSERT(memcmp(
+                reinterpret_cast<void*>(&reference),
+                reinterpret_cast<void*>(id),
+                sizeof(rdma_cm_id)));
+
+            done.SetValue();
+        };
+
+        auto verbs = NVerbs::CreateTestVerbs(context);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverConfig = std::make_shared<TServerConfig>();
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto server = CreateServer(
+            verbs,
+            logging,
+            monitoring,
+            serverConfig);
+
+        server->Start();
+
+        auto serverEndpoint = server->StartEndpoint(
+            "::",
+            10020,
+            std::make_shared<TServerHandler>());
+
+        NVerbs::CreateConnection(context);
+
+        done.GetFuture().Wait();
+        server->Stop();
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NRdma
+
+int rdma_destroy_id(struct rdma_cm_id *id) {
+    memset(id, 0xFF, sizeof(rdma_cm_id));
+    return 0;
+}
