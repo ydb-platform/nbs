@@ -65,7 +65,6 @@ private:
     TDirectoryHandleChunkPair DeserializeHandleChunk(const TStringBuf& buffer);
 
     ui64 CreateRecord(const TBuffer& record);
-    ui64 UpdateRecord(ui64 index, const TBuffer& record);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
