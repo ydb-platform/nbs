@@ -178,6 +178,7 @@ public:
     bool GetThrottlingEnabled() const;
 
     TString GetTabletBootInfoBackupFilePath() const;
+    bool GetUseBinaryFormatForTabletBootInfoBackup() const;
     bool GetHiveProxyFallbackMode() const;
 
     ui32 GetMaxBlocksPerTruncateTx() const;

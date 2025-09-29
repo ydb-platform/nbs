@@ -164,8 +164,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(DisableLocalService,           bool,      false                       )\
     xxx(EnableCollectGarbageAtStart,   bool,      false                       )\
                                                                                \
-    xxx(TabletBootInfoBackupFilePath,  TString,   ""                          )\
-    xxx(HiveProxyFallbackMode,         bool,      false                       )\
+    xxx(TabletBootInfoBackupFilePath,             TString,   ""               )\
+    xxx(UseBinaryFormatForTabletBootInfoBackup,   bool,      false            )\
+    xxx(HiveProxyFallbackMode,                    bool,      false            )\
                                                                                \
     xxx(ThrottlingEnabled,             bool,      false                       )\
                                                                                \
