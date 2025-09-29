@@ -431,13 +431,12 @@ func initControlplane(
 		return nil, err
 	}
 
-	cellsConfig := config.GetCellsConfig()
-	cellSelector := cells.NewCellSelector(cellsConfig, nbsFactory)
-
 	var cellStorage cells_storage.Storage
 	if config.GetCellsConfig() != nil {
 		cellStorage = cells_storage.NewStorage(config.GetCellsConfig(), db)
 	}
+
+	cellSelector := cells.NewCellSelector(config.GetCellsConfig(), nbsFactory)
 
 	err = registerControlplaneTasks(
 		ctx,
