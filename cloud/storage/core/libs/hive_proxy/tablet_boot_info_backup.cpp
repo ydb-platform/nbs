@@ -83,8 +83,8 @@ NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
             };
 
             if (UseBinaryFormat) {
-                // TOFStream output(TmpBackupFilePath);
-                // BackupProto.SerializeToArcadiaStream(&output);
+                TOFStream output(TmpBackupFilePath);
+                BackupProto.SerializeToArcadiaStream(&output);
             } else {
                 TFileOutput output(TmpBackupFilePath);
                 SerializeToTextFormat(BackupProto, output);
