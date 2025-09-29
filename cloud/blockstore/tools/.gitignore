@@ -29,6 +29,7 @@ debug/featureconfig/blockstore-debug-featureconfig
 debug/formatter/blockstore-debug-formatter
 debug/readbdev/blockstore-readbdev
 disaster_recovery/merge_path_description_backups/merge_path_description_backups
+disaster_recovery/merge_tablet_boot_info_backups/merge_tablet_boot_info_backups
 fs/cleanup-ext4-meta/cleanup-ext4-meta
 fs/cleanup-ext4-meta/ut/cloud-blockstore-tools-fs-cleanup-ext4-meta-ut
 fs/cleanup-fs/cleanup-fs
