@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
+	cells_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
@@ -241,6 +242,7 @@ func registerControlplaneTasks(
 	poolService pools.Service,
 	filesystemService filesystem.Service,
 	resourceStorage resources.Storage,
+	cellStorage cells_storage.Storage,
 	cellSelector cells.CellSelector,
 ) error {
 
@@ -342,6 +344,23 @@ func registerControlplaneTasks(
 		return err
 	}
 
+	if config.GetCellsConfig() != nil {
+		logging.Info(ctx, "Registering cells tasks")
+
+		err = cells.RegisterForExecution(
+			ctx,
+			config.GetCellsConfig(),
+			taskScheduler,
+			taskRegistry,
+			cellStorage,
+			nbsFactory,
+		)
+		if err != nil {
+			logging.Error(ctx, "Failed to register cells tasks: %v", err)
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -415,6 +434,11 @@ func initControlplane(
 	cellsConfig := config.GetCellsConfig()
 	cellSelector := cells.NewCellSelector(cellsConfig, nbsFactory)
 
+	var cellStorage cells_storage.Storage
+	if config.GetCellsConfig() != nil {
+		cellStorage = cells_storage.NewStorage(config.GetCellsConfig(), db)
+	}
+
 	err = registerControlplaneTasks(
 		ctx,
 		config,
@@ -430,6 +454,7 @@ func initControlplane(
 		poolService,
 		filesystemService,
 		resourceStorage,
+		cellStorage,
 		cellSelector,
 	)
 	if err != nil {

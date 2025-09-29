@@ -15,9 +15,9 @@ import (
 func RegisterForExecution(
 	ctx context.Context,
 	config *cells_config.CellsConfig,
-	storage storage.Storage,
-	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
+	taskRegistry *tasks.Registry,
+	storage storage.Storage,
 	nbsFactory nbs.Factory,
 ) error {
 
