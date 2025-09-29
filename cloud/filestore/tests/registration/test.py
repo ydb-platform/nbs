@@ -108,7 +108,7 @@ def setup_kikimr(is_secure_kikimr):
         use_in_memory_pdisks=True,
         grpc_ssl_enable=is_secure_kikimr,
         dynamic_storage_pools=[
-            dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
+            dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
         ])
 

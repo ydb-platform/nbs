@@ -125,7 +125,11 @@ def start(argv):
     )
     filestore_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
 
-    filestore_server = FilestoreServer(configurator=filestore_configurator)
+    filestore_server = FilestoreServer(
+        configurator=filestore_configurator,
+        kikimr_binary_path=kikimr_binary_path,
+        dynamic_storage_pools=kikimr_configurator.dynamic_storage_pools,
+    )
     filestore_server.start()
 
     append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, filestore_server.stderr_file_name)

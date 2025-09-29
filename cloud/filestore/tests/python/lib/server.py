@@ -24,7 +24,6 @@ class FilestoreServer(Daemon):
         self.__configurator = configurator
         self.__kikimr_binary_path = kikimr_binary_path
         if dynamic_storage_pools is not None:
-            assert len(dynamic_storage_pools) >= 2
             self.__dynamic_storage_pools = dynamic_storage_pools
         else:
             self.__dynamic_storage_pools = [
