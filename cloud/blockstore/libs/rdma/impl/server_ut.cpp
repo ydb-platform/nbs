@@ -176,6 +176,7 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
                 reinterpret_cast<void*>(id),
                 sizeof(rdma_cm_id)));
 
+            free(id);
             done.SetValue();
         };
 
