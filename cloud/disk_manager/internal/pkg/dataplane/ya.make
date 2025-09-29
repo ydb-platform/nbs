@@ -20,14 +20,14 @@ SRCS(
     transfer_from_snapshot_to_disk_task.go
 )
 
+SET_APPEND(RECIPE_ARGS --nbs-only)
+INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
+
 GO_TEST_SRCS(
     collect_snapshots_task_test.go
     delete_snapshot_data_task_test.go
     replicate_disk_task_test.go
 )
-
-SET_APPEND(RECIPE_ARGS --nbs-only)
-INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
 IF (RACE)
     SIZE(LARGE)
