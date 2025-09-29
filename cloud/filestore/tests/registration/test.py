@@ -25,6 +25,7 @@ import yatest.common as yatest_common
 logger = logging.getLogger(__name__)
 
 CFG_PREFIX = 'Cloud.Filestore.'
+kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
 
 def enable_custom_cms_configs(client):
@@ -100,8 +101,6 @@ def wait_for_process(wait_function, process, port, check_function):
 
 
 def setup_kikimr(is_secure_kikimr):
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
-
     configurator = KikimrConfigGenerator(
         erasure=None,
         binary_path=kikimr_binary_path,
@@ -191,7 +190,11 @@ def run_filestore(
         kikimr_configurator.domains_txt,
         kikimr_configurator.names_txt)
 
-    filestore_server = FilestoreServer(configurator=filestore_configurator)
+    filestore_server = FilestoreServer(
+        kikimr_binary_path=kikimr_binary_path,
+        configurator=filestore_configurator,
+        dynamic_storage_pools=kikimr_configurator.dynamic_storage_pools,
+    )
     filestore_server.start()
 
     ic_port = filestore_configurator.ic_port
