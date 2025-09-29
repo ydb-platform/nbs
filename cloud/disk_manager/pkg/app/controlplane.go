@@ -350,9 +350,9 @@ func registerControlplaneTasks(
 		err = cells.RegisterForExecution(
 			ctx,
 			config.GetCellsConfig(),
-			cellStorage,
 			taskRegistry,
 			taskScheduler,
+			cellStorage,
 			nbsFactory,
 		)
 		if err != nil {
