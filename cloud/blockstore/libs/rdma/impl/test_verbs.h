@@ -6,6 +6,7 @@
 #include <library/cpp/deprecated/atomic/atomic.h>
 
 #include <util/generic/deque.h>
+#include <util/generic/vector.h>
 #include <util/system/spinlock.h>
 
 namespace NCloud::NBlockStore::NRdma::NVerbs {
@@ -16,6 +17,7 @@ struct TTestContext: TAtomicRefCount<TTestContext>
 {
     rdma_cm_id* Connection = nullptr;
     TEventHandle ConnectionHandle;
+    TVector<std::unique_ptr<rdma_cm_id>> ClientConnections;
     TDeque<NVerbs::TConnectionEventPtr> ConnectionEvents;
     bool AllowConnect = false;
     TSpinLock ConnectionLock;
@@ -44,5 +46,9 @@ IVerbsPtr CreateTestVerbs(TTestContextPtr context);
 
 void CreateConnection(TTestContextPtr context);
 void Disconnect(TTestContextPtr context);
+
+////////////////////////////////////////////////////////////////////////////////
+
+int TestRdmaDestroyId(struct rdma_cm_id *id);
 
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs

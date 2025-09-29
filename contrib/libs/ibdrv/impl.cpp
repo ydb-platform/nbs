@@ -269,7 +269,7 @@ int rdma_set_option(struct rdma_cm_id *id, int level, int optname, void *optval,
     return Call(RDSym()->rdma_set_option, id, level, optname, optval, optlen);
 }
 
-Y_HIDDEN Y_WEAK
+Y_HIDDEN
 int rdma_destroy_id(struct rdma_cm_id *id) {
     return Call(RDSym()->rdma_destroy_id, id);
 }

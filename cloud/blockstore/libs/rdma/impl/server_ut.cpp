@@ -7,6 +7,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <contrib/libs/ibdrv/symbols.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/stream/printf.h>
@@ -152,6 +154,13 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
 
     Y_UNIT_TEST(ShouldHandleSessionError)
     {
+        auto* symbols = const_cast<TRdmaSymbols*>(RDSym());
+        auto* RdmaDestroyId = symbols->rdma_destroy_id;
+        symbols->rdma_destroy_id = NVerbs::TestRdmaDestroyId;
+        Y_DEFER {
+            symbols->rdma_destroy_id = RdmaDestroyId;
+        };
+
         NThreading::TPromise<void> done = NThreading::NewPromise<void>();
         auto context = MakeIntrusive<NVerbs::TTestContext>();
 
@@ -162,13 +171,13 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
         };
 
         context->Reject = [&](rdma_cm_id* id, const void* data, ui8 size) {
-            Y_UNUSED(id);
             Y_UNUSED(data);
             Y_UNUSED(size);
 
-            // test implementation of rdma_destroy_id just fills id with FF's
+            // TestRdmaDestroyId doesn't free anything, just fills rdma_cm_id
+            // with FF's
             rdma_cm_id reference;
-            rdma_destroy_id(&reference);
+            memset(&reference, 0xFF, sizeof(rdma_cm_id));
 
             // make sure rdma_destroy_id hasn't been called before Reject
             UNIT_ASSERT(memcmp(
@@ -176,7 +185,6 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
                 reinterpret_cast<void*>(id),
                 sizeof(rdma_cm_id)));
 
-            free(id);
             done.SetValue();
         };
 
@@ -209,8 +217,3 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
 };
 
 }   // namespace NCloud::NBlockStore::NRdma
-
-int rdma_destroy_id(struct rdma_cm_id *id) {
-    memset(id, 0xFF, sizeof(rdma_cm_id));
-    return 0;
-}

@@ -547,15 +547,17 @@ void CreateConnection(TTestContextPtr context)
         .private_data_len = sizeof(TConnectMessage),
     };
 
-    auto* id = new rdma_cm_id();
-    memset(id, 0, sizeof(rdma_cm_id));
+    auto id = std::make_unique<rdma_cm_id>();
+    memset(id.get(), 0, sizeof(rdma_cm_id));
 
     EnqueueConnectionEvent(
         context,
         RDMA_CM_EVENT_CONNECT_REQUEST,
-        id,
+        id.get(),
         context->Connection,    // listenId
         &param);
+
+    context->ClientConnections.push_back(std::move(id));
 }
 
 void Disconnect(TTestContextPtr context)
@@ -581,6 +583,13 @@ void Disconnect(TTestContextPtr context)
     }
 
     context->CompletionHandle.Set();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+int TestRdmaDestroyId(struct rdma_cm_id *id) {
+    memset(id, 0xFF, sizeof(rdma_cm_id));
+    return 0;
 }
 
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs
