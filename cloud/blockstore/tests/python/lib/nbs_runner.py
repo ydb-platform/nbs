@@ -63,6 +63,7 @@ class LocalNbs(Daemon):
             grpc_ssl_port=None,
             access_service_type=AccessService,
             log_config=None,
+            cells_config=None,
     ):
 
         if dynamic_storage_pools is not None:
@@ -153,6 +154,12 @@ class LocalNbs(Daemon):
 
         if self.__server_app_config is None or self.__server_app_config.HasField('KikimrServiceConfig'):
             self.init_scheme()
+
+        if cells_config is not None:
+            self.__proto_configs["cells_config.txt"] = cells_config
+            self.__use_cells = True
+        else:
+            self.__use_cells = False
 
         root_kms_port = os.environ.get("FAKE_ROOT_KMS_PORT")
         if root_kms_port is not None:
@@ -476,7 +483,8 @@ ModifyScheme {
             'ic.txt': 'InterconnectConfig',
             'server-sys.txt': 'ActorSystemConfig',
             'server-log.txt': 'LogConfig',
-            'features.txt': 'FeaturesConfig'
+            'features.txt': 'FeaturesConfig',
+            'cells_config.txt': 'CellsConfig'
         }
 
         req = msgbus.TConsoleRequest()
@@ -563,6 +571,8 @@ ModifyScheme {
             }
             if self.__use_discovery:
                 config_files["--discovery-file"] = "discovery.txt"
+            if self.__use_cells:
+                config_files["--cells-file"] = "cells_config.txt"
 
             for option, filename in config_files.items():
                 append_conf_file_arg(command, self.config_path(), option,
@@ -615,6 +625,11 @@ ModifyScheme {
                              "--location-file", "location.txt")
         append_conf_file_arg(command, self.config_path(),
                              "--client-file", "client.txt")
+        if self.__use_cells:
+            append_conf_file_arg(command, self.config_path(),
+                                 "--cells-file",
+                                 "cells_config.txt")
+
 
         if not self.__load_configs_from_cms:
             config_files = {

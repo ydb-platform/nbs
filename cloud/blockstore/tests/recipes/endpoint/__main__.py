@@ -3,8 +3,9 @@ import os
 import uuid
 
 from cloud.blockstore.public.sdk.python import client
+from cloud.blockstore.tests.python.lib.test_base import recipe_set_env, env_with_guest_index
 
-from library.python.testing.recipe import declare_recipe, set_env
+from library.python.testing.recipe import declare_recipe
 
 
 BLOCK_SIZE = 4*1024
@@ -25,12 +26,12 @@ def _get_ipc_type(ipc_type_name):
         raise RuntimeError("Invalid ipc type: {}".format(ipc_type_name))
 
 
-def _get_nbs_port():
-    port = os.getenv("LOCAL_KIKIMR_INSECURE_NBS_SERVER_PORT")
+def _get_nbs_port(index):
+    port = os.getenv(env_with_guest_index("LOCAL_KIKIMR_INSECURE_NBS_SERVER_PORT", index))
     if port is None:
-        port = os.getenv("SERVICE_LOCAL_INSECURE_NBS_SERVER_PORT")
+        port = os.getenv(env_with_guest_index("SERVICE_LOCAL_INSECURE_NBS_SERVER_PORT", index))
     if port is None:
-        port = os.getenv("LOCAL_NULL_INSECURE_NBS_SERVER_PORT")
+        port = os.getenv(env_with_guest_index("LOCAL_NULL_INSECURE_NBS_SERVER_PORT", index))
 
     return port
 
@@ -43,43 +44,53 @@ def start(argv):
     parser.add_argument("--verbose", action="store_true", default=False)
     args = parser.parse_args(argv)
 
-    disk_id = uuid.uuid4().hex[:20]
-    set_env("NBS_DISK_ID", disk_id)
+    if os.getenv("NBS_INSTANCE_COUNT") == None:
+        clusters_count = 1
+        recipe_set_env("NBS_INSTANCE_COUNT", clusters_count)
+    else:
+        clusters_count = int(os.getenv("NBS_INSTANCE_COUNT"))
 
-    socket = os.path.join(args.socket_dir, disk_id + ".socket")
-    socket = os.path.abspath(socket)
-    set_env("NBS_VHOST_SOCKET", socket)
+    for cluster_index in range(clusters_count):
+        disk_id = uuid.uuid4().hex[:20]
+        recipe_set_env("NBS_DISK_ID", disk_id, cluster_index)
 
-    port = _get_nbs_port()
+        socket = os.path.join(args.socket_dir, disk_id + ".socket")
+        socket = os.path.abspath(socket)
+        recipe_set_env("NBS_VHOST_SOCKET", socket, cluster_index)
 
-    with client.CreateClient('localhost:' + port) as nbs_client:
-        nbs_client.create_volume(
-            disk_id=disk_id,
-            block_size=BLOCK_SIZE,
-            blocks_count=BLOCKS_COUNT)
+        port = _get_nbs_port(cluster_index)
 
-        nbs_client.start_endpoint(
-            unix_socket_path=socket,
-            disk_id=disk_id,
-            ipc_type=_get_ipc_type(args.ipc_type),
-            client_id='test_client_id',
-            vhost_queues=args.vhost_queues)
+        with client.CreateClient('localhost:' + port) as nbs_client:
+            nbs_client.create_volume(
+                disk_id=disk_id,
+                block_size=BLOCK_SIZE,
+                blocks_count=BLOCKS_COUNT)
+
+            nbs_client.start_endpoint(
+                unix_socket_path=socket,
+                disk_id=disk_id,
+                ipc_type=_get_ipc_type(args.ipc_type),
+                client_id='test_client_id',
+                vhost_queues=args.vhost_queues)
 
 
 def stop(argv):
-    port = _get_nbs_port()
-    socket = os.getenv("NBS_VHOST_SOCKET")
-    disk_id = os.getenv("NBS_DISK_ID")
+    clusters_count = int(os.getenv("NBS_INSTANCE_COUNT"))
 
-    if not port:
-        return
+    for cluster_index in range(clusters_count):
+        port = _get_nbs_port(cluster_index)
+        socket = os.getenv(env_with_guest_index("NBS_VHOST_SOCKET", cluster_index))
+        disk_id = os.getenv(env_with_guest_index("NBS_DISK_ID", cluster_index))
 
-    with client.CreateClient('localhost:' + port) as nbs_client:
-        if socket and os.path.exists(socket):
-            nbs_client.stop_endpoint(unix_socket_path=socket)
+        if not port:
+            return
 
-        if disk_id:
-            nbs_client.destroy_volume(disk_id=disk_id)
+        with client.CreateClient('localhost:' + port) as nbs_client:
+            if socket and os.path.exists(socket):
+                nbs_client.stop_endpoint(unix_socket_path=socket)
+
+            if disk_id:
+                nbs_client.destroy_volume(disk_id=disk_id)
 
 
 if __name__ == "__main__":
