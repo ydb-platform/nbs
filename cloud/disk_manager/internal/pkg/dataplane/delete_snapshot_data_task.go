@@ -76,9 +76,14 @@ func (t *deleteSnapshotDataTask) deleteSnapshotData(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	snapshotMeta, err := t.storage.CheckSnapshotReady(ctx, t.request.SnapshotId)
+	snapshotMeta, err := t.storage.GetSnapshotMeta(ctx, t.request.SnapshotId)
 	if err != nil {
 		return err
+	}
+
+	if snapshotMeta == nil {
+		// Nothing to do.
+		return nil
 	}
 
 	// Shallow copy means creating references for chunks.
