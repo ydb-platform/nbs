@@ -22,7 +22,25 @@ SRCS(
 
 GO_TEST_SRCS(
     collect_snapshots_task_test.go
+    delete_snapshot_data_task_test.go
     replicate_disk_task_test.go
+)
+
+SET_APPEND(RECIPE_ARGS --nbs-only)
+INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
+
+IF (RACE)
+    SIZE(LARGE)
+    TAG(ya:fat ya:force_sandbox ya:sandbox_coverage)
+ELSE()
+    SIZE(MEDIUM)
+ENDIF()
+
+TAG(sb:ssd)
+
+REQUIREMENTS(
+    cpu:4
+    ram:32
 )
 
 END()
