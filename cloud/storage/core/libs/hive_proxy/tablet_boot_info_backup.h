@@ -27,6 +27,7 @@ class TTabletBootInfoBackup final
 private:
     int LogComponent;
     const TFsPath BackupFilePath;
+    const bool UseBinaryFormat = false;
     const bool ReadOnlyMode = false;
 
     NHiveProxy::NProto::TTabletBootInfoBackup BackupProto;
@@ -36,6 +37,7 @@ public:
     TTabletBootInfoBackup(
         int logComponent,
         TString backupFilePath,
+        bool useBinaryFormat,
         bool readOnlyMode);
 
     void Bootstrap(const NActors::TActorContext& ctx);

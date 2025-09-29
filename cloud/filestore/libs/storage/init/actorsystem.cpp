@@ -132,6 +132,7 @@ public:
                 .HiveLockExpireTimeout = TDuration::Seconds(1),
                 .LogComponent = TFileStoreComponents::HIVE_PROXY,
                 .TabletBootInfoBackupFilePath = Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
+                .UseBinaryFormatForTabletBootInfoBackup = Args.StorageConfig->GetUseBinaryFormatForTabletBootInfoBackup(),
                 .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
                 .TenantHiveTabletId = Args.StorageConfig->GetTenantHiveTabletId(),
             },

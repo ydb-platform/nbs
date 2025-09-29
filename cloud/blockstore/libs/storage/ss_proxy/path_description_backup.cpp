@@ -56,7 +56,7 @@ void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
         ScheduleBackup(ctx);
     }
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::SS_PROXY,
+    LOG_INFO_S(ctx, LogComponent,
         "PathDescriptionBackup: started with ReadOnlyMode=" << ReadOnlyMode);
 }
 
@@ -67,6 +67,8 @@ void TPathDescriptionBackup::ScheduleBackup(const TActorContext& ctx)
 
 NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
 {
+    Y_DEBUG_ABORT_UNLESS(!ReadOnlyMode);
+
     NProto::TError error;
 
     try {

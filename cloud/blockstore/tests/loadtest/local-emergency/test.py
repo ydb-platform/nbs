@@ -25,6 +25,7 @@ def default_storage_config(backups_folder, use_binary_format_for_backups):
         backups_folder + "/path_description_backup.txt"
 
     storage.UseBinaryFormatForPathDescriptionBackup = use_binary_format_for_backups
+    storage.UseBinaryFormatForTabletBootInfoBackup = use_binary_format_for_backups
 
     return storage
 

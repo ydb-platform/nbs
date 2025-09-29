@@ -270,8 +270,9 @@ ui32 TTestEnv::CreateNode(const TString& name)
         StorageConfig->GetPipeClientMinRetryTime(),
         TDuration::Seconds(1),  // HiveLockExpireTimeout - does not matter
         TFileStoreComponents::HIVE_PROXY,
-        "",     // TabletBootInfoBackupFilePath
-        false,  // FallbackMode
+        /*TabletBootInfoBackupFilePath=*/"",
+        /*UseBinaryFormatForTabletBootInfoBackup=*/false,
+        /*FallbackMode=*/false,
     });
     auto hiveProxyId = Runtime.Register(
         hiveProxy.release(),
@@ -318,8 +319,9 @@ ui32 TTestEnv::CreateNode(const TString& name)
         StorageConfig->GetPipeClientMinRetryTime(),
         TDuration::Seconds(1),  // HiveLockExpireTimeout - does not matter
         TFileStoreComponents::HIVE_PROXY,
-        "",     // TabletBootInfoBackupFilePath
-        false,  // FallbackMode
+        /*TabletBootInfoBackupFilePath=*/"",
+        /*UseBinaryFormatForTabletBootInfoBackup=*/false,
+        /*FallbackMode=*/false,
     });
     auto localHiveProxyId = Runtime.Register(
         localHiveProxy.release(),
