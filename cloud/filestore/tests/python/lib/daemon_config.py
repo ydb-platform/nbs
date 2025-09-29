@@ -100,6 +100,8 @@ class FilestoreDaemonConfigGenerator:
             if self.__app_config:
                 config_file.write(MessageToString(self.__app_config))
                 config_file.flush()
+        if self.__is_storage_kikimr():
+            self.__storage_config.SchemeShardDir = "/Root/nfs"
 
     @property
     def port(self):
@@ -229,31 +231,6 @@ class FilestoreDaemonConfigGenerator:
         config.MergeFrom(self.__storage_config)
 
         config.DisableLocalService = disableLocalService
-
-        if not self.__storage_config.HasField('SchemeShardDir'):
-            # Root domain has hdd pools configured,
-            # subdomains use dynamic pools obtained from kikimr python wrapper,
-            # which are either 'ssd' or 'rot'.
-            # SchemeShardDir presence means that the subdomain is used.
-            # We do not expect SchemeShardDir to be /Root.
-            config.HDDSystemChannelPoolKind = "hdd"
-            config.HDDLogChannelPoolKind = "hdd"
-            config.HDDIndexChannelPoolKind = "hdd"
-            config.HDDFreshChannelPoolKind = "hdd"
-            config.HDDMixedChannelPoolKind = "hdd"
-
-            config.SSDSystemChannelPoolKind = "hdd"
-            config.SSDLogChannelPoolKind = "hdd"
-            config.SSDIndexChannelPoolKind = "hdd"
-            config.SSDFreshChannelPoolKind = "hdd"
-            config.SSDMixedChannelPoolKind = "hdd"
-
-            config.HybridSystemChannelPoolKind = "hdd"
-            config.HybridLogChannelPoolKind = "hdd"
-            config.HybridIndexChannelPoolKind = "hdd"
-            config.HybridFreshChannelPoolKind = "hdd"
-            config.HybridMixedChannelPoolKind = "hdd"
-
         return config
 
     def __generate_diag_txt(self):
@@ -301,7 +278,7 @@ class FilestoreDaemonConfigGenerator:
 
     def generate_configs(self, domains_txt, names_txt):
         self.__proto_configs = {}
-        if self.__service_type == "kikimr":
+        if self.__is_storage_kikimr():
             self.__proto_configs.update(
                 {
                     "domains.txt": self.__generate_domains_txt(domains_txt),
@@ -394,7 +371,10 @@ class FilestoreDaemonConfigGenerator:
 
         return command
 
-    def get_domain(self):
+    def __is_storage_kikimr(self):
+        return self.__service_type == "kikimr"
+
+    def get_schemeshard_dir(self):
         if not self.__storage_config.HasField('SchemeShardDir'):
             return None
         return self.__storage_config.SchemeShardDir

@@ -31,7 +31,6 @@ class NfsLauncher:
             "cloud/filestore/tests/certs/server.key"
         )
         storage_config = TStorageConfig()
-        storage_config.SchemeShardDir = "/Root/nfs"
         self.__nfs_configurator = FilestoreServerConfigGenerator(
             binary_path=nfs_binary_path,
             app_config=server_config,

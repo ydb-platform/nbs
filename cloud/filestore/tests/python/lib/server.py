@@ -30,7 +30,7 @@ class FilestoreServer(Daemon):
             self.__dynamic_storage_pools = [
                 dict(name="dynamic_storage_pool:1", kind="rot"),
                 dict(name="dynamic_storage_pool:2", kind="ssd")]
-        self.__subdomain = configurator.get_domain()
+        self.__subdomain = configurator.get_schemeshard_dir()
         if self.__subdomain is None:
             return
         if self.__kikimr_binary_path is None:
