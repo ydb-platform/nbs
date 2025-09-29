@@ -15,6 +15,86 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func testSelectCellForLocalDiskCellReturnsAnError(
+	t *testing.T,
+	correctCellResponceLatency time.Duration,
+	emptyCellResponceLatency time.Duration,
+	correctCellReturnsError bool,
+) {
+
+	ctx := context.Background()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClientCorrectCell := nbs_mocks.NewClientMock()
+	nbsClientEmptyCell := nbs_mocks.NewClientMock()
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			"zone-a": {Cells: []string{"zone-a", "zone-a-cell1"}},
+		},
+	}
+	agentIDs := []string{"agent1"}
+
+	nbsFactory.On(
+		"GetClient",
+		mock.Anything,
+		"zone-a",
+	).Return(nbsClientCorrectCell, nil)
+
+	// If got a result, don't wait for other cells.
+	nbsFactory.On(
+		"GetClient",
+		mock.Anything,
+		"zone-a-cell1",
+	).Return(nbsClientEmptyCell, nil)
+
+	correctCellError := error(nil)
+	emptyCellError := assert.AnError
+	if correctCellReturnsError {
+		correctCellError = assert.AnError
+		emptyCellError = nil
+	}
+
+	nbsClientCorrectCell.On("QueryAvailableStorage", mock.Anything, agentIDs).
+		After(correctCellResponceLatency).
+		Return(
+			[]nbs.AvailableStorageInfo{
+				{
+					AgentID:    "agent1",
+					ChunkSize:  4096,
+					ChunkCount: 10,
+				},
+			},
+			correctCellError,
+		)
+	nbsClientEmptyCell.On("QueryAvailableStorage", mock.Anything, agentIDs).
+		After(emptyCellResponceLatency).
+		Return(
+			[]nbs.AvailableStorageInfo(nil),
+			emptyCellError,
+		)
+
+	cellSelector := cellSelector{
+		config:     config,
+		nbsFactory: nbsFactory,
+	}
+
+	selectedClient, err := cellSelector.SelectCellForLocalDisk(
+		ctx,
+		"zone-a",
+		agentIDs,
+	)
+	if correctCellReturnsError {
+		require.Error(t, err)
+		require.Nil(t, selectedClient)
+	} else {
+		require.NoError(t, err)
+		require.Equal(t, nbsClientCorrectCell, selectedClient)
+	}
+
+	mock.AssertExpectationsForObjects(t, nbsFactory, nbsClientCorrectCell, nbsClientEmptyCell)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestCellsIsFolderAllowed(t *testing.T) {
 	testCases := []struct {
 		name            string
@@ -262,82 +342,4 @@ func TestSelectCellForLocalDiskCellReturnsAnError(t *testing.T) {
 			})
 		}
 	}
-}
-
-func testSelectCellForLocalDiskCellReturnsAnError(
-	t *testing.T,
-	correctCellResponceLatency time.Duration,
-	emptyCellResponceLatency time.Duration,
-	correctCellReturnsError bool,
-) {
-
-	ctx := context.Background()
-	nbsFactory := nbs_mocks.NewFactoryMock()
-	nbsClientCorrectCell := nbs_mocks.NewClientMock()
-	nbsClientEmptyCell := nbs_mocks.NewClientMock()
-	config := &cells_config.CellsConfig{
-		Cells: map[string]*cells_config.ZoneCells{
-			"zone-a": {Cells: []string{"zone-a", "zone-a-cell1"}},
-		},
-	}
-	agentIDs := []string{"agent1"}
-
-	nbsFactory.On(
-		"GetClient",
-		mock.Anything,
-		"zone-a",
-	).Return(nbsClientCorrectCell, nil)
-
-	// If got a result, don't wait for other cells.
-	nbsFactory.On(
-		"GetClient",
-		mock.Anything,
-		"zone-a-cell1",
-	).Return(nbsClientEmptyCell, nil)
-
-	correctCellError := error(nil)
-	emptyCellError := assert.AnError
-	if correctCellReturnsError {
-		correctCellError = assert.AnError
-		emptyCellError = nil
-	}
-
-	nbsClientCorrectCell.On("QueryAvailableStorage", mock.Anything, agentIDs).
-		After(correctCellResponceLatency).
-		Return(
-			[]nbs.AvailableStorageInfo{
-				{
-					AgentID:    "agent1",
-					ChunkSize:  4096,
-					ChunkCount: 10,
-				},
-			},
-			correctCellError,
-		)
-	nbsClientEmptyCell.On("QueryAvailableStorage", mock.Anything, agentIDs).
-		After(emptyCellResponceLatency).
-		Return(
-			[]nbs.AvailableStorageInfo(nil),
-			emptyCellError,
-		)
-
-	cellSelector := cellSelector{
-		config:     config,
-		nbsFactory: nbsFactory,
-	}
-
-	selectedClient, err := cellSelector.SelectCellForLocalDisk(
-		ctx,
-		"zone-a",
-		agentIDs,
-	)
-	if correctCellReturnsError {
-		require.Error(t, err)
-		require.Nil(t, selectedClient)
-	} else {
-		require.NoError(t, err)
-		require.Equal(t, nbsClientCorrectCell, selectedClient)
-	}
-
-	mock.AssertExpectationsForObjects(t, nbsFactory, nbsClientCorrectCell, nbsClientEmptyCell)
 }
