@@ -71,7 +71,7 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 }
 
 var stateProtoByTaskType = map[string]func() proto.Message{
-	"cells.CollectClusterCapacity":                  func() proto.Message { return &cells_protos.CollectSnapshotsTaskState{} },
+	"cells.CollectClusterCapacity":                  func() proto.Message { return &cells_protos.CollectClusterCapacityTaskState{} },
 	"dataplane.CollectSnapshots":                    func() proto.Message { return &dataplane_protos.CollectSnapshotsTaskState{} },
 	"dataplane.CreateSnapshotFromDisk":              func() proto.Message { return &dataplane_protos.CreateSnapshotFromDiskTaskState{} },
 	"dataplane.CreateSnapshotFromSnapshot":          func() proto.Message { return &dataplane_protos.CreateSnapshotFromSnapshotTaskState{} },
