@@ -1801,7 +1801,7 @@ void TServer::Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept
         Verbs->Accept(event->id, &acceptParams);
 
         // transfer session ownership to the poller
-        session->CompletionPoller->Acquire(std::move(session));
+        session->CompletionPoller->Acquire(session);
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(e.what())
