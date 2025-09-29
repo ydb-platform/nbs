@@ -32,6 +32,7 @@
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
+#include <util/network/interface.h>
 #include <util/random/random.h>
 #include <util/stream/format.h>
 #include <util/system/datetime.h>
@@ -2084,10 +2085,26 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
             .ai_port_space = RDMA_PS_TCP,
         };
 
+        // find the first non local address of the specified interface
+        for (auto& interface: NAddr::GetNetworkInterfaces()) {
+            auto& addr = static_cast<NAddr::TOpaqueAddr&>(*interface.Address);
+
+            if (interface.Name == Config->SourceInterface &&
+                GetScopeId(addr.Addr()) == 0)
+            {
+                RDMA_INFO(endpoint->Log, "bind to " << interface.Name
+                    << " address " << NAddr::PrintHost(addr));
+
+                hints.ai_src_addr = addr.MutableAddr();
+                hints.ai_src_len = addr.Len();
+                break;
+            }
+        }
+
         auto addrinfo = Verbs->GetAddressInfo(
             endpoint->Host, endpoint->Port, &hints);
 
-        RDMA_DEBUG(endpoint->Log, "resolve rdma address");
+        RDMA_DEBUG(endpoint->Log, "resolve server address");
 
         endpoint->ChangeState(
             EEndpointState::Disconnected,

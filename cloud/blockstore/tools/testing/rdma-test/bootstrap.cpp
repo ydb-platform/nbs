@@ -66,6 +66,8 @@ void TBootstrap::Init()
         config->QueueSize = Options->QueueSize;
         config->PollerThreads = Options->PollerThreads;
         config->WaitMode = NRdma::EWaitMode(Options->WaitMode);
+        config->IpTypeOfService = Options->Tos;
+        config->SourceInterface = Options->SourceInterface;
 
         Verbs = NRdma::NVerbs::CreateVerbs();
 
@@ -79,6 +81,8 @@ void TBootstrap::Init()
         config->QueueSize = Options->QueueSize;
         config->PollerThreads = Options->PollerThreads;
         config->WaitMode = NRdma::EWaitMode(Options->WaitMode);
+        config->IpTypeOfService = Options->Tos;
+        config->SourceInterface = Options->SourceInterface;
 
         Verbs = NRdma::NVerbs::CreateVerbs();
 

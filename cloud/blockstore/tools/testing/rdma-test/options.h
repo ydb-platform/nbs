@@ -51,6 +51,8 @@ struct TOptions
     ui32 PollerThreads = 1;
     EWaitMode WaitMode = EWaitMode::Poll;
     ui32 ConnectTimeout = 5;
+    ui8 Tos = 0;
+    TString SourceInterface;
 
     // storage options
     EStorageKind StorageKind = EStorageKind::Null;
