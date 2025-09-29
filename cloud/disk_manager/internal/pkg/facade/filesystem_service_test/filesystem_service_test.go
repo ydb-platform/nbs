@@ -35,6 +35,7 @@ func TestFilesystemServiceCreateEmptyFilesystem(t *testing.T) {
 			Size:      4096000,
 			Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD,
 			CloudId:   "cloud",
+			FolderId:  "folder",
 		},
 	)
 	require.NoError(t, err)
