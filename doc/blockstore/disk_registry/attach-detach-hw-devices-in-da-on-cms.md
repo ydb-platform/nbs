@@ -2,7 +2,7 @@
 
 ## Problem
 
-The Path is an hardware device file.
+The Path is a hardware device file.
 
 Right now, the Disk Agent attaches all Path's at startup and holds a file descriptor until the process stops. Some infrastructure automation doesn't work because our process holds a file descriptor on non-allowed files. Because of this, infrastructure has to restart the agent to manipulate these devices (which are not placed into operation by CMS actions).
 
