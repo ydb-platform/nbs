@@ -17,15 +17,15 @@ from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerato
 import yatest.common as yatest_common
 
 
-def setup_kikimr():
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
+def setup_kikimr():
     configurator = KikimrConfigGenerator(
         erasure=None,
         binary_path=kikimr_binary_path,
         use_in_memory_pdisks=True,
         dynamic_storage_pools=[
-            dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
+            dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
         ])
 
@@ -118,7 +118,11 @@ def setup_and_run_test(filestore_binary_path, filestore_config_generator, wait_f
         kikimr_configurator.domains_txt,
         kikimr_configurator.names_txt)
 
-    filestore_process = FilestoreServer(configurator=filestore_configurator)
+    filestore_process = FilestoreServer(
+        configurator=filestore_configurator,
+        kikimr_binary_path=kikimr_binary_path,
+        dynamic_storage_pools=kikimr_configurator.dynamic_storage_pools,
+    )
     filestore_process.start()
 
     try:

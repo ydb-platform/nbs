@@ -56,6 +56,10 @@ def start(argv):
         static_pdisk_size=PDISK_SIZE,
         use_log_files=args.use_log_files,
         bs_cache_file_path=args.bs_cache_file_path,
+        dynamic_storage_pools=[
+            dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
+            dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0),
+        ],
     )
 
     kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
