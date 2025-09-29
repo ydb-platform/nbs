@@ -61,6 +61,10 @@ struct TSessionConfig
     ui64 MountSeqNumber = 0;
 
     NProto::TEncryptionSpec EncryptionSpec;
+
+    bool RetryFailed = false;
+    TDuration RetryTimeout = TDuration::Zero();
+    TDuration BackoffIncrement = TDuration::Zero();
 };
 
 ////////////////////////////////////////////////////////////////////////////////

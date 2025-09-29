@@ -1,6 +1,7 @@
 #include "session.h"
 
 #include "config.h"
+#include "retry_context.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
@@ -178,15 +179,34 @@ public:
 private:
     void SendMountRequest(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TMountVolumeRequest> request);
+        std::shared_ptr<NProto::TMountVolumeRequest> request,
+        NRetryContext::TRetryContextPtr<
+            NProto::TMountVolumeRequest,
+            NProto::TMountVolumeResponse> retryCtx);
+    void SendUnmountRequest(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TUnmountVolumeRequest> request,
+        NRetryContext::TRetryContextPtr<
+            NProto::TUnmountVolumeRequest,
+            NProto::TUnmountVolumeResponse> retryCtx);
     std::shared_ptr<NProto::TMountVolumeRequest> PrepareMountRequest(
         const NProto::THeaders& headers,
         EMountKind mountKind = EMountKind::INITIAL) const;
     std::shared_ptr<NProto::TUnmountVolumeRequest> PrepareUnmountRequest(
         const NProto::THeaders& headers) const;
 
-    void ProcessMountResponse(ui64 requestId, NProto::TMountVolumeResponse response);
-    void ProcessUnmountResponse(ui64 requestId, NProto::TUnmountVolumeResponse response);
+    void ProcessMountResponse(
+        ui64 requestId,
+        NProto::TMountVolumeResponse response,
+        NRetryContext::TRetryContextPtr<
+            NProto::TMountVolumeRequest,
+            NProto::TMountVolumeResponse> retryCtx);
+    void ProcessUnmountResponse(
+        ui64 requestId,
+        NProto::TUnmountVolumeResponse response,
+        NRetryContext::TRetryContextPtr<
+            NProto::TUnmountVolumeRequest,
+            NProto::TUnmountVolumeResponse> retryCtx);
 
     void ForceVolumeRemount(const TString& sessionId);
 
@@ -212,7 +232,10 @@ private:
         typename T::TRequest request,
         const TString& sessionId,
         const TFuture<typename T::TResponse>& future,
-        TPromise<typename T::TResponse> response);
+        TPromise<typename T::TResponse> response,
+        NRetryContext::TRetryContextPtr<
+            typename T::TRequest::element_type,
+            typename T::TResponse> retryCtx);
 
     template <typename T>
     TFuture<typename T::TResponse> SendRequest(
@@ -261,7 +284,14 @@ TSession::TSession(
     , Config(std::move(config))
     , SessionConfig(sessionConfig)
     , Log(Logging->CreateLog("BLOCKSTORE_CLIENT"))
-{}
+{
+    if (SessionConfig.RetryTimeout == TDuration::Zero()) {
+        SessionConfig.RetryTimeout = Config->GetRetryTimeout();
+    }
+    if (SessionConfig.BackoffIncrement == TDuration::Zero()) {
+        SessionConfig.BackoffIncrement = Config->GetRetryTimeoutIncrement();
+    }
+}
 
 ui32 TSession::GetMaxTransfer() const
 {
@@ -277,6 +307,10 @@ TFuture<NProto::TMountVolumeResponse> TSession::MountVolume(
 {
     std::shared_ptr<NProto::TMountVolumeRequest> request;
     TFuture<NProto::TMountVolumeResponse> response;
+    NRetryContext::TRetryContextPtr<
+        NProto::TMountVolumeRequest,
+        NProto::TMountVolumeResponse>
+        retryCtx;
 
     with_lock (SessionInfo.MountLock) {
         if (SessionInfo.MountState == EMountState::MountInProgress) {
@@ -326,9 +360,26 @@ TFuture<NProto::TMountVolumeResponse> TSession::MountVolume(
 
         request = PrepareMountRequest(SessionInfo.MountHeaders);
         response = SessionInfo.MountResponse;
+
+        retryCtx = NRetryContext::CreateRetryContext(
+            SessionConfig.RetryFailed,
+            callContext,
+            request,
+            SessionInfo.MountResponse,
+            [smk = VolumeStats->GetStorageMediaKind(request->GetDiskId())](
+                auto& err)
+            {
+                return (smk != NProto::EStorageMediaKind::
+                                   STORAGE_MEDIA_SSD_NONREPLICATED &&
+                        smk != NProto::EStorageMediaKind::
+                                   STORAGE_MEDIA_HDD_NONREPLICATED) ||
+                       err.GetCode() != E_IO;
+            },
+            SessionConfig.RetryTimeout,
+            SessionConfig.BackoffIncrement);
     }
 
-    SendMountRequest(std::move(callContext), std::move(request));
+    SendMountRequest(std::move(callContext), std::move(request), std::move(retryCtx));
     return response;
 }
 
@@ -338,6 +389,10 @@ TFuture<NProto::TMountVolumeResponse> TSession::MountVolume(
 {
     std::shared_ptr<NProto::TMountVolumeRequest> request;
     TFuture<NProto::TMountVolumeResponse> response;
+    NRetryContext::TRetryContextPtr<
+        NProto::TMountVolumeRequest,
+        NProto::TMountVolumeResponse>
+        retryCtx;
 
     with_lock (SessionInfo.MountLock) {
         if (SessionInfo.MountState == EMountState::MountInProgress) {
@@ -374,9 +429,29 @@ TFuture<NProto::TMountVolumeResponse> TSession::MountVolume(
 
         request = PrepareMountRequest(SessionInfo.MountHeaders);
         response = SessionInfo.MountResponse;
+
+        retryCtx = NRetryContext::CreateRetryContext(
+            SessionConfig.RetryFailed,
+            callContext,
+            request,
+            SessionInfo.MountResponse,
+            [smk = VolumeStats->GetStorageMediaKind(request->GetDiskId())](
+                auto& err)
+            {
+                return (smk != NProto::EStorageMediaKind::
+                                   STORAGE_MEDIA_SSD_NONREPLICATED &&
+                        smk != NProto::EStorageMediaKind::
+                                   STORAGE_MEDIA_HDD_NONREPLICATED) ||
+                       err.GetCode() != E_IO;
+            },
+            SessionConfig.RetryTimeout,
+            SessionConfig.BackoffIncrement);
     }
 
-    SendMountRequest(std::move(callContext), std::move(request));
+    SendMountRequest(
+        std::move(callContext),
+        std::move(request),
+        std::move(retryCtx));
     return response;
 }
 
@@ -386,6 +461,10 @@ TFuture<NProto::TUnmountVolumeResponse> TSession::UnmountVolume(
 {
     std::shared_ptr<NProto::TUnmountVolumeRequest> request;
     TFuture<NProto::TUnmountVolumeResponse> response;
+    NRetryContext::TRetryContextPtr<
+        NProto::TUnmountVolumeRequest,
+        NProto::TUnmountVolumeResponse>
+        retryCtx;
 
     with_lock (SessionInfo.MountLock) {
         if (SessionInfo.MountState == EMountState::Uninitialized) {
@@ -424,29 +503,27 @@ TFuture<NProto::TUnmountVolumeResponse> TSession::UnmountVolume(
 
         request = PrepareUnmountRequest(headers);
         response = SessionInfo.UnmountResponse;
+
+        retryCtx = NRetryContext::CreateRetryContext(
+            SessionConfig.RetryFailed,
+            callContext,
+            request,
+            SessionInfo.UnmountResponse,
+            [smk = VolumeStats->GetStorageMediaKind(request->GetDiskId())](
+                auto& err)
+            {
+                return (smk != NProto::EStorageMediaKind::
+                                   STORAGE_MEDIA_SSD_NONREPLICATED &&
+                        smk != NProto::EStorageMediaKind::
+                                   STORAGE_MEDIA_HDD_NONREPLICATED) ||
+                       err.GetCode() != E_IO;
+            },
+            SessionConfig.RetryTimeout,
+            SessionConfig.BackoffIncrement
+        );
     }
 
-    auto requestId = GetRequestId(*request);
-    if (!callContext->RequestId) {
-        callContext->RequestId = requestId;
-    }
-
-    STORAGE_INFO(
-        TRequestInfo(
-            EBlockStoreRequest::UnmountVolume,
-            requestId,
-            request->GetDiskId(),
-            {},
-            SessionConfig.InstanceId)
-        << " submit request");
-
-    auto weak_ptr = weak_from_this();
-    Client->UnmountVolume(std::move(callContext), std::move(request))
-        .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) {
-            if (auto p = weak_ptr.lock()) {
-                p->ProcessUnmountResponse(requestId, future.GetValue());
-            }
-        });
+    SendUnmountRequest(callContext, request, std::move(retryCtx));
 
     return response;
 }
@@ -511,7 +588,10 @@ void TSession::ReportIOError()
 
 void TSession::SendMountRequest(
     TCallContextPtr callContext,
-    std::shared_ptr<NProto::TMountVolumeRequest> request)
+    std::shared_ptr<NProto::TMountVolumeRequest> request,
+    NRetryContext::TRetryContextPtr<
+        NProto::TMountVolumeRequest,
+        NProto::TMountVolumeResponse> retryCtx)
 {
     auto requestId = GetRequestId(*request);
     if (!callContext->RequestId) {
@@ -536,7 +616,37 @@ void TSession::SendMountRequest(
     Client->MountVolume(std::move(callContext), std::move(request))
         .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) {
             if (auto p = weak_ptr.lock()) {
-                p->ProcessMountResponse(requestId, future.GetValue());
+                p->ProcessMountResponse(requestId, future.GetValue(), retryCtx);
+            }
+        });
+}
+
+void TSession::SendUnmountRequest(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TUnmountVolumeRequest> request,
+    NRetryContext::TRetryContextPtr<
+        NProto::TUnmountVolumeRequest,
+        NProto::TUnmountVolumeResponse> retryCtx)
+{
+    const auto requestId = GetRequestId(*request);
+    if (!callContext->RequestId) {
+        callContext->RequestId = requestId;
+    }
+
+    STORAGE_INFO(
+        TRequestInfo(
+            EBlockStoreRequest::UnmountVolume,
+            requestId,
+            request->GetDiskId(),
+            {},
+            SessionConfig.InstanceId)
+        << " submit request");
+
+    auto weak_ptr = weak_from_this();
+    Client->UnmountVolume(std::move(callContext), std::move(request))
+        .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) {
+            if (auto p = weak_ptr.lock()) {
+                p->ProcessUnmountResponse(requestId, future.GetValue(), retryCtx);
             }
         });
 }
@@ -581,7 +691,10 @@ std::shared_ptr<NProto::TUnmountVolumeRequest> TSession::PrepareUnmountRequest(
 
 void TSession::ProcessMountResponse(
     ui64 requestId,
-    NProto::TMountVolumeResponse response)
+    NProto::TMountVolumeResponse response,
+    NRetryContext::TRetryContextPtr<
+        NProto::TMountVolumeRequest,
+        NProto::TMountVolumeResponse> retryCtx)
 {
     TPromise<NProto::TMountVolumeResponse> promise;
 
@@ -596,6 +709,39 @@ void TSession::ProcessMountResponse(
         }
 
         if (HasError(response)) {
+            if (retryCtx) {
+                auto retry_err = retryCtx->Retry(
+                    response.GetError(),
+                    Scheduler,
+                    Timer,
+                    [weak_ptr = this->weak_from_this()](auto ctx)
+                    {
+                        if (const auto p = weak_ptr.lock()) {
+                            p->SendMountRequest(
+                                ctx->CallContext,
+                                ctx->Request,
+                                ctx);
+                        } else {
+                            ctx->Response.SetValue(
+                                ErrorResponse<NProto::TMountVolumeResponse>(
+                                    E_REJECTED,
+                                    "Session is destroyed"));
+                        }
+                    });
+                if (SUCCEEDED(retry_err.GetCode())) {
+                    STORAGE_WARN(
+                        TRequestInfo(
+                            EBlockStoreRequest::MountVolume,
+                            requestId,
+                            SessionConfig.DiskId,
+                            {},
+                            SessionConfig.InstanceId)
+                        << " retrying request: "
+                        << FormatError(response.GetError()));
+                    return;
+                }
+                response.MutableError()->CopyFrom(retry_err);
+            }
             STORAGE_ERROR(
                 TRequestInfo(
                     EBlockStoreRequest::MountVolume,
@@ -658,7 +804,10 @@ void TSession::ProcessMountResponse(
 
 void TSession::ProcessUnmountResponse(
     ui64 requestId,
-    NProto::TUnmountVolumeResponse response)
+    NProto::TUnmountVolumeResponse response,
+    NRetryContext::TRetryContextPtr<
+        NProto::TUnmountVolumeRequest,
+        NProto::TUnmountVolumeResponse> retryCtx)
 {
     TPromise<NProto::TUnmountVolumeResponse> promise;
 
@@ -666,6 +815,40 @@ void TSession::ProcessUnmountResponse(
         promise = SessionInfo.UnmountResponse;
 
         if (HasError(response)) {
+            if (retryCtx) {
+                auto retry_err = retryCtx->Retry(
+                    response.GetError(),
+                    Scheduler,
+                    Timer,
+                    [weak_ptr = this->weak_from_this()](auto ctx)
+                    {
+                        if (const auto p = weak_ptr.lock()) {
+                            p->SendUnmountRequest(
+                                ctx->CallContext,
+                                ctx->Request,
+                                ctx);
+                        } else {
+                            ctx->Response.SetValue(
+                                ErrorResponse<NProto::TUnmountVolumeResponse>(
+                                    E_REJECTED,
+                                    "Session is destroyed"));
+                        }
+                    });
+                if (SUCCEEDED(retry_err.GetCode())) {
+                    STORAGE_WARN(
+                        TRequestInfo(
+                            EBlockStoreRequest::UnmountVolume,
+                            requestId,
+                            SessionConfig.DiskId,
+                            {},
+                            SessionConfig.InstanceId)
+                        << " retrying request: "
+                        << FormatError(response.GetError()));
+                    return;
+                }
+                response.MutableError()->CopyFrom(retry_err);
+            }
+
             STORAGE_ERROR(
                 TRequestInfo(
                     EBlockStoreRequest::UnmountVolume,
@@ -674,6 +857,7 @@ void TSession::ProcessUnmountResponse(
                     {},
                     SessionConfig.InstanceId)
                 << " request failed: " << FormatError(response.GetError()));
+
             SessionInfo.MountState = EMountState::MountCompleted;
         } else {
             STORAGE_TRACE(
@@ -707,6 +891,10 @@ TFuture<NProto::TMountVolumeResponse> TSession::EnsureVolumeMounted()
 {
     std::shared_ptr<NProto::TMountVolumeRequest> request;
     TFuture<NProto::TMountVolumeResponse> response;
+    NRetryContext::TRetryContextPtr<
+        NProto::TMountVolumeRequest,
+        NProto::TMountVolumeResponse>
+        retryCtx;
 
     with_lock (SessionInfo.MountLock) {
         if (SessionInfo.MountState == EMountState::Uninitialized) {
@@ -728,6 +916,23 @@ TFuture<NProto::TMountVolumeResponse> TSession::EnsureVolumeMounted()
         auto requestId = GetRequestId(*request);
         auto callContext = MakeIntrusive<TCallContext>(requestId);
 
+        retryCtx = NRetryContext::CreateRetryContext(
+            SessionConfig.RetryFailed,
+            callContext,
+            request,
+            SessionInfo.MountResponse,
+            [smk = VolumeStats->GetStorageMediaKind(request->GetDiskId())](
+                auto& err)
+            {
+                return (smk != NProto::EStorageMediaKind::
+                                   STORAGE_MEDIA_SSD_NONREPLICATED &&
+                        smk != NProto::EStorageMediaKind::
+                                   STORAGE_MEDIA_HDD_NONREPLICATED) ||
+                       err.GetCode() != E_IO;
+            },
+            SessionConfig.RetryTimeout,
+            SessionConfig.BackoffIncrement);
+
         STORAGE_WARN(
             TRequestInfo(
                 EBlockStoreRequest::MountVolume,
@@ -741,7 +946,7 @@ TFuture<NProto::TMountVolumeResponse> TSession::EnsureVolumeMounted()
         Client->MountVolume(std::move(callContext), std::move(request))
             .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) {
                 if (auto p = weak_ptr.lock()) {
-                    p->ProcessMountResponse(requestId, future.GetValue());
+                    p->ProcessMountResponse(requestId, future.GetValue(), std::move(retryCtx));
                 }
             });
     }
@@ -779,6 +984,10 @@ void TSession::ScheduleVolumeRemount(
 void TSession::RemountVolume(ui64 epoch)
 {
     std::shared_ptr<NProto::TMountVolumeRequest> request;
+    NRetryContext::TRetryContextPtr<
+        NProto::TMountVolumeRequest,
+        NProto::TMountVolumeResponse>
+        retryCtx;
 
     with_lock (SessionInfo.MountLock) {
         if (epoch == SessionInfo.RemountTimerEpoch &&
@@ -810,6 +1019,23 @@ void TSession::RemountVolume(ui64 epoch)
         auto requestId = GetRequestId(*request);
         auto callContext = MakeIntrusive<TCallContext>(requestId);
 
+        retryCtx = NRetryContext::CreateRetryContext(
+            SessionConfig.RetryFailed,
+            callContext,
+            request,
+            SessionInfo.MountResponse,
+            [smk = VolumeStats->GetStorageMediaKind(request->GetDiskId())](
+                auto& err)
+            {
+                return (smk != NProto::EStorageMediaKind::
+                                   STORAGE_MEDIA_SSD_NONREPLICATED &&
+                        smk != NProto::EStorageMediaKind::
+                                   STORAGE_MEDIA_HDD_NONREPLICATED) ||
+                       err.GetCode() != E_IO;
+            },
+            SessionConfig.RetryTimeout,
+            SessionConfig.BackoffIncrement);
+
         STORAGE_DEBUG(
             TRequestInfo(
                 EBlockStoreRequest::MountVolume,
@@ -823,7 +1049,7 @@ void TSession::RemountVolume(ui64 epoch)
         Client->MountVolume(std::move(callContext), std::move(request))
             .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) {
                 if (auto p = weak_ptr.lock()) {
-                    p->ProcessMountResponse(requestId, future.GetValue());
+                    p->ProcessMountResponse(requestId, future.GetValue(), retryCtx);
                 }
             });
     }
@@ -884,16 +1110,37 @@ void TSession::HandleRequestAfterMount(
             const auto& sessionId = mountRes.GetSessionId();
             request->SetSessionId(sessionId);
 
+            auto retryCtx = NRetryContext::CreateRetryContext(
+                SessionConfig.RetryFailed,
+                callContext,
+                request,
+                response,
+                [smk = VolumeStats->GetStorageMediaKind(request->GetDiskId())](
+                    auto& err)
+                {
+                    return smk == NProto::EStorageMediaKind::
+                                      STORAGE_MEDIA_SSD_NONREPLICATED ||
+                           smk == NProto::EStorageMediaKind::
+                                      STORAGE_MEDIA_HDD_NONREPLICATED ||
+                           err.GetCode() != E_IO;
+                },
+                SessionConfig.RetryTimeout,
+                SessionConfig.BackoffIncrement);
+
             auto weak_ptr = weak_from_this();
             SendRequest<T>(callContext, request).Subscribe(
-                [=, weak_ptr = std::move(weak_ptr)] (const auto& future) mutable {
-                    if (auto p = weak_ptr.lock()) {
-                        p->HandleResponse<T>(
-                            std::move(callContext),
-                            std::move(request),
-                            sessionId,
-                            future,
-                            response);
+                    [=,
+                     weak_ptr = std::move(weak_ptr),
+                     retryCtx = std::move(retryCtx)](const auto& future) mutable
+                    {
+                        if (auto p = weak_ptr.lock()) {
+                            p->HandleResponse<T>(
+                                std::move(callContext),
+                                std::move(request),
+                                sessionId,
+                                future,
+                                response,
+                                retryCtx);
                     }
                 });
             return;
@@ -916,7 +1163,10 @@ void TSession::HandleResponse(
     typename T::TRequest request,
     const TString& sessionId,
     const TFuture<typename T::TResponse>& future,
-    TPromise<typename T::TResponse> response)
+    TPromise<typename T::TResponse> response,
+    NRetryContext::TRetryContextPtr<
+        typename T::TRequest::element_type,
+        typename T::TResponse> retryCtx)
 {
     NProto::TError error;
     try {
@@ -965,6 +1215,37 @@ void TSession::HandleResponse(
         ForceVolumeRemount(sessionId);
         HandleRequest<T>(std::move(callContext), std::move(request), response);
         return;
+    }
+
+    if (retryCtx) {
+        auto retry_err = retryCtx->Retry(
+            error,
+            Scheduler,
+            Timer,
+            [weak_ptr = this->weak_from_this()](auto ctx)
+            {
+                if (const auto p = weak_ptr.lock()) {
+                    p->HandleRequest<T>(
+                        std::move(ctx->CallContext),
+                        std::move(ctx->Request),
+                        ctx->Response);
+                    return;
+                }
+                ctx->Response.SetValue(
+                    TErrorResponse(E_REJECTED, "Session is destroyed"));
+            });
+        if (SUCCEEDED(retry_err.GetCode())) {
+            STORAGE_WARN(
+                TRequestInfo(
+                    T::RequestType,
+                    GetRequestId(*request),
+                    request->GetDiskId(),
+                    {},
+                    SessionConfig.InstanceId)
+                << " retrying request: " << FormatError(error));
+            return;
+        }
+        error.CopyFrom(retry_err);
     }
 
     response.SetValue(TErrorResponse(error));
