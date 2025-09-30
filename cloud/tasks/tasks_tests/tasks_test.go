@@ -1963,23 +1963,26 @@ func testTaskWithEstimatedDurationOverride(
 	defer db.Close(ctx)
 
 	runnersCount := uint64(2)
+	// Schedule long task so pinger will have time to update tasks state in storage.
+	overrideTaskType := "long"
 
 	config := newDefaultConfig()
 	config.RunnersCount = &runnersCount
+
 	if overrideEstimatedInflightDuration {
 		config.OverrideEstimatedInflightDurationByTaskType = map[string]string{
-			"long": "42h",
+			overrideTaskType: "42h",
 		}
 	}
+
 	if overrideEstimatedStallingDuration {
 		config.OverrideEstimatedStallingDurationByTaskType = map[string]string{
-			"long": "42s",
+			overrideTaskType: "42s",
 		}
 	}
 
 	s := createServicesWithConfig(t, ctx, db, config, metrics_empty.NewRegistry())
 
-	// Schedule long task so pinger will have time to update tasks state in storage.
 	err := registerLongTask(s.registry)
 	require.NoError(t, err)
 

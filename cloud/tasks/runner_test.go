@@ -1652,8 +1652,8 @@ func testTryExecutingTaskWithEstimatedDurationOverride(
 		time.Hour,      // inflightHangingTaskTimeout
 		30*time.Minute, // stallingHangingTaskTimeout
 		2,              // missedEstimatesUntilTaskIsHanging
-		overrideEstimatedInflightDurationByTaskType, // overrideEstimatedInflightDurationByTaskType
-		overrideEstimatedStallingDurationByTaskType, // overrideEstimatedStallingDurationByTaskType
+		overrideEstimatedInflightDurationByTaskType,
+		overrideEstimatedStallingDurationByTaskType,
 		100, // maxSampledTaskGeneration
 	)
 	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
