@@ -151,6 +151,19 @@ func matchesStateCallback(
 	}
 }
 
+func waitForContextCancelCallback(t *testing.T) func(mock.Arguments) {
+	return func(args mock.Arguments) {
+		ctx := args.Get(0).(context.Context)
+
+		timeout := 5 * time.Second
+		select {
+		case <-ctx.Done():
+		case <-time.After(timeout):
+			require.FailNow(t, "expected context to cancel")
+		}
+	}
+}
+
 func toCallback(function func()) func(mock.Arguments) {
 	return func(mock.Arguments) { function() }
 }
@@ -1493,8 +1506,10 @@ func TestTryExecutingTask(t *testing.T) {
 		24*time.Hour,   // hangingTaskTimeout
 		time.Hour,      // inflightHangingTaskTimeout
 		30*time.Minute, // stallingHangingTaskTimeout
-		2,              // missedEstimatesUntilTaskIsHanging
-		100,
+		2,              // missedEstimatesUntilTaskIsHanging,
+		nil,            // estimatedInflightDurationOverrides
+		nil,            // estimatedStallingDurationOverrides
+		100,            // maxSampledTaskGeneration
 	)
 	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
 	require.NoError(t, err)
@@ -1536,16 +1551,9 @@ func TestTryExecutingTaskFailToPing(t *testing.T) {
 	).Once()
 
 	runnerMetrics.On("OnExecutionStarted", mock.Anything)
-	runner.On("executeTask", mock.Anything, mock.Anything, task).Run(func(args mock.Arguments) {
-		ctx := args.Get(0).(context.Context)
-
-		timeout := 5 * time.Second
-		select {
-		case <-ctx.Done():
-		case <-time.After(timeout):
-			require.FailNow(t, "expected context to cancel")
-		}
-	})
+	runner.On(
+		"executeTask", mock.Anything, mock.Anything, task,
+	).Run(waitForContextCancelCallback(t))
 	runnerMetrics.On("OnExecutionStopped")
 
 	err = lockAndExecuteTask(
@@ -1561,10 +1569,101 @@ func TestTryExecutingTaskFailToPing(t *testing.T) {
 		time.Hour,      // inflightHangingTaskTimeout
 		30*time.Minute, // stallingHangingTaskTimeout
 		2,              // missedEstimatesUntilTaskIsHanging
-		100,
+		nil,            // estimatedInflightDurationOverrides
+		nil,            // estimatedStallingDurationOverrides
+		100,            // maxSampledTaskGeneration
 	)
 	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
 	require.NoError(t, err)
+}
+
+func testTryExecutingTaskWithEstimatedDurationOverride(
+	t *testing.T,
+	overrideEstimatedInflightDuration bool,
+	overrideEstimatedStallingDuration bool,
+) {
+	pingPeriod := 100 * time.Millisecond
+	pingTimeout := 100 * time.Second
+	ctx, cancel := context.WithCancel(newContext())
+	taskStorage := mocks.NewStorageMock()
+	registry := NewRegistry()
+	runner := &mockRunner{}
+	runnerMetrics := &mockRunnerMetrics{}
+
+	task := NewTaskMock()
+	err := registry.RegisterForExecution("task", func() Task { return task })
+	require.NoError(t, err)
+
+	taskInfo := storage.TaskInfo{
+		ID:           taskID,
+		GenerationID: 2,
+	}
+
+	estimatedInflightDuration := 42 * time.Hour
+	estimatedStallingDuration := 42 * time.Minute
+
+	state := storage.TaskState{
+		ID:           taskID,
+		TaskType:     "task",
+		GenerationID: 3,
+	}
+	runner.On("lockTask", ctx, taskInfo).Return(state, nil)
+	task.On("Load", state.Request, state.State).Return(nil)
+
+	updatedState := state.DeepCopy()
+	if overrideEstimatedInflightDuration {
+		updatedState.EstimatedInflightDuration = estimatedInflightDuration
+	}
+	if overrideEstimatedStallingDuration {
+		updatedState.EstimatedStallingDuration = estimatedStallingDuration
+	}
+
+	taskStorage.On(
+		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, updatedState)),
+	).Run(toCallback(cancel)).Return(updatedState, nil)
+
+	runnerMetrics.On("OnExecutionStarted", mock.Anything)
+	runner.On(
+		"executeTask", mock.Anything, mock.Anything, task,
+	).Run(waitForContextCancelCallback(t))
+	runnerMetrics.On("OnExecutionStopped")
+
+	estimatedInflightDurationOverrides := map[string]time.Duration{}
+	if overrideEstimatedInflightDuration {
+		estimatedInflightDurationOverrides["task"] = estimatedInflightDuration
+	}
+
+	estimatedStallingDurationOverrides := map[string]time.Duration{}
+	if overrideEstimatedStallingDuration {
+		estimatedStallingDurationOverrides["task"] = estimatedStallingDuration
+	}
+
+	err = lockAndExecuteTask(
+		ctx,
+		taskStorage,
+		registry,
+		runnerMetrics,
+		pingPeriod,
+		pingTimeout,
+		runner,
+		taskInfo,
+		24*time.Hour,                       // hangingTaskTimeout
+		time.Hour,                          // inflightHangingTaskTimeout
+		30*time.Minute,                     // stallingHangingTaskTimeout
+		2,                                  // missedEstimatesUntilTaskIsHanging
+		estimatedInflightDurationOverrides, // estimatedInflightDurationOverrides
+		estimatedStallingDurationOverrides, // estimatedStallingDurationOverrides
+		100,                                // maxSampledTaskGeneration
+	)
+	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
+	require.NoError(t, err)
+}
+
+func TestTryExecutingTaskWithEstimatedDurationOverride(t *testing.T) {
+	testTryExecutingTaskWithEstimatedDurationOverride(t, false, false)
+	testTryExecutingTaskWithEstimatedDurationOverride(t, true, false)
+	testTryExecutingTaskWithEstimatedDurationOverride(t, false, true)
+	testTryExecutingTaskWithEstimatedDurationOverride(t, true, true)
 }
 
 func TestRunnerLoopReceiveTaskFailure(t *testing.T) {

@@ -1949,3 +1949,68 @@ func TestTaskWaitingDurationInChain(t *testing.T) {
 		t, state3.InflightDuration+state3.WaitingDuration, task3TotalDuration,
 	)
 }
+
+func testTaskWithEstimatedDurationOverride(
+	t *testing.T,
+	overrideEstimatedInflightDuration bool,
+	overrideEstimatedStallingDuration bool,
+) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	runnersCount := uint64(2)
+
+	config := newDefaultConfig()
+	config.RunnersCount = &runnersCount
+	if overrideEstimatedInflightDuration {
+		config.EstimatedInflightDurationOverrides = map[string]string{
+			"long": "42h",
+		}
+	}
+	if overrideEstimatedStallingDuration {
+		config.EstimatedStallingDurationOverrides = map[string]string{
+			"long": "42s",
+		}
+	}
+
+	s := createServicesWithConfig(t, ctx, db, config, metrics_empty.NewRegistry())
+
+	// Schedule long task so pinger will have time to update tasks state in storage.
+	err := registerLongTask(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	id, err := scheduleLongTask(reqCtx, s.scheduler)
+	require.NoError(t, err)
+
+	_, err = waitTask(ctx, s.scheduler, id)
+	require.NoError(t, err)
+
+	taskState, err := s.storage.GetTask(ctx, id)
+	require.NoError(t, err)
+
+	if overrideEstimatedInflightDuration {
+		require.Equal(t, 42*time.Hour, taskState.EstimatedInflightDuration)
+	} else {
+		require.EqualValues(t, 0, taskState.EstimatedInflightDuration)
+	}
+
+	if overrideEstimatedStallingDuration {
+		require.Equal(t, 42*time.Second, taskState.EstimatedStallingDuration)
+	} else {
+		require.EqualValues(t, 0, taskState.EstimatedStallingDuration)
+	}
+}
+
+func TestTaskWithEstimatedDurationOverride(t *testing.T) {
+	testTaskWithEstimatedDurationOverride(t, false, false)
+	testTaskWithEstimatedDurationOverride(t, true, false)
+	testTaskWithEstimatedDurationOverride(t, false, true)
+	testTaskWithEstimatedDurationOverride(t, true, true)
+}
