@@ -183,9 +183,15 @@ TVector<NProto::TDiskConfig> MirrorDisk(
     TVector<TVector<TString>> uuids,
     NProto::EDiskState state)
 {
-    Y_DEBUG_ABORT_UNLESS(uuids.size() > 0, "Mirror disk must have replicas");
+    Y_DEBUG_ABORT_UNLESS(
+        uuids.size() == 2 || uuids.size() == 3,
+        "Mirror disk must have 2 or 3 replicas; size=%lu",
+        uuids.size());
 
     TVector<NProto::TDiskConfig> result;
+
+    const auto mediaKind = uuids.size() == 2 ? NProto::STORAGE_MEDIA_SSD_MIRROR2
+                          : NProto::STORAGE_MEDIA_SSD_MIRROR3;
 
     //Base disk
     NProto::TDiskConfig config;
@@ -193,6 +199,7 @@ TVector<NProto::TDiskConfig> MirrorDisk(
     config.SetBlockSize(DefaultLogicalBlockSize);
     config.SetState(state);
     config.SetReplicaCount(uuids.size() - 1);
+    config.SetStorageMediaKind(mediaKind);
     result.push_back(std::move(config));
 
     //Replicas
@@ -201,6 +208,7 @@ TVector<NProto::TDiskConfig> MirrorDisk(
         replicaConfig.SetMasterDiskId(diskId);
         replicaConfig.SetDiskId(TStringBuilder() << diskId << "/" << i);
         replicaConfig.SetBlockSize(DefaultLogicalBlockSize);
+        replicaConfig.SetStorageMediaKind(mediaKind);
         replicaConfig.SetState(state);
         for (const auto& uuid: uuids[i]) {
             *replicaConfig.AddDeviceUUIDs() = uuid;

@@ -636,7 +636,8 @@ private:
     bool CheckAllocationResult(
         const NActors::TActorContext& ctx,
         const TDevices& devices,
-        const TVector<TDevices>& replicas);
+        const TVector<TDevices>& replicas,
+        const TVector<TString>& freshDeviceIds);
 
     void CopyCachedStatsToPartCounters(
         const NProto::TCachedPartStats& src,
