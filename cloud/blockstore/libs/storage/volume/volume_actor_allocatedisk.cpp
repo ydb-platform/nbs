@@ -47,6 +47,7 @@ bool ValidateDevices(
     const TDevices& oldDevs,
     const TDevices& newDevs,
     const TVector<TString>& freshDeviceIds,
+    const TMigrations& oldMigrations,
     NProto::EStorageMediaKind mediaKind,
     bool checkDeviceId)
 {
@@ -55,6 +56,16 @@ bool ValidateDevices(
     auto isFreshDeviceId = [&](const TString& deviceId) -> bool
     {
         return FindPtr(freshDeviceIds, deviceId) != nullptr;
+    };
+
+    auto isMigrationTarget = [&](const TString& deviceId) -> bool
+    {
+        for (const auto& m: oldMigrations) {
+            if (m.GetTargetDevice().GetDeviceUUID() == deviceId) {
+                return true;
+            }
+        }
+        return false;
     };
 
     auto newDeviceIt = newDevs.begin();
@@ -89,7 +100,8 @@ bool ValidateDevices(
                 newDeviceIt->GetDeviceUUID().Quote().c_str());
 
             if (IsReliableDiskRegistryMediaKind(mediaKind) &&
-                !isFreshDeviceId(newDeviceIt->GetDeviceUUID()))
+                !isFreshDeviceId(newDeviceIt->GetDeviceUUID()) &&
+                !isMigrationTarget(newDeviceIt->GetDeviceUUID()))
             {
                 ReportDeviceReplacementContractBroken(
                     TStringBuilder() << logTitle << " ",
@@ -430,7 +442,12 @@ void TVolumeActor::HandleAllocateDiskResponse(
         unavailableDeviceIds.push_back(std::move(deviceId));
     }
 
-    if (!CheckAllocationResult(ctx, devices, replicas, freshDeviceIds)) {
+    if (!CheckAllocationResult(
+            ctx,
+            devices,
+            replicas,
+            freshDeviceIds))
+    {
         return;
     }
 
@@ -530,6 +547,7 @@ bool TVolumeActor::CheckAllocationResult(
         State->GetMeta().GetDevices(),
         devices,
         freshDeviceIds,
+        State->GetMeta().GetMigrations(),
         State->GetStorageMediaKind(),
         /*checkDeviceId=*/true);
 
@@ -555,6 +573,7 @@ bool TVolumeActor::CheckAllocationResult(
             State->GetMeta().GetReplicas(i).GetDevices(),
             replicas[i],
             freshDeviceIds,
+            State->GetMeta().GetMigrations(),
             State->GetStorageMediaKind(),
             /*checkDeviceId=*/true);
 
@@ -565,6 +584,7 @@ bool TVolumeActor::CheckAllocationResult(
             devices,
             replicas[i],
             freshDeviceIds,
+            State->GetMeta().GetMigrations(),
             State->GetStorageMediaKind(),
             /*checkDeviceId=*/false);
 
