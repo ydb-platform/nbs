@@ -27,6 +27,7 @@ class TPathDescriptionBackup final
     : public NActors::TActorBootstrapped<TPathDescriptionBackup>
 {
 private:
+    int LogComponent;
     const TFsPath BackupFilePath;
     const bool UseBinaryFormat = false;
     const bool ReadOnlyMode = false;
@@ -36,6 +37,7 @@ private:
 
 public:
     TPathDescriptionBackup(
+        int logComponent,
         TString backupFilePath,
         bool useBinaryFormat,
         bool readOnlyMode);

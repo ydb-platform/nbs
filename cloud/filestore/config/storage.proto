@@ -651,4 +651,6 @@ message TStorageConfig
 
     // Enable zero-copy for write operations in the VFS FUSE layer
     optional bool ZeroCopyWriteEnabled = 441;
+
+    optional bool UseBinaryFormatForTabletBootInfoBackup = 442;
 }

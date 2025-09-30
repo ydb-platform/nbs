@@ -173,6 +173,7 @@ private:
     const int LogComponent;
 
     TString TabletBootInfoBackupFilePath;
+    bool UseBinaryFormatForTabletBootInfoBackup;
     NActors::TActorId TabletBootInfoBackup;
 
     const ui64 TenantHiveTabletId;

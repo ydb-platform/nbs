@@ -153,6 +153,8 @@ public:
                     Args.TemporaryServer
                         ? ""
                         : Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
+                .UseBinaryFormatForTabletBootInfoBackup =
+                    Args.StorageConfig->GetUseBinaryFormatForTabletBootInfoBackup(),
                 .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
                 .TenantHiveTabletId =
                     Args.StorageConfig->GetTenantHiveTabletId(),
