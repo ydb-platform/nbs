@@ -114,8 +114,8 @@ struct TInFlightRequestTracker
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TWriteBackCacheStats:
-    public IWriteBackCacheStats
+struct TWriteBackCacheStats
+    : public IWriteBackCacheStats
 {
     TWriteBackCache::TPersistentQueueStats PersistentQueue;
     ui64 CompletedFlushCount = 0;
@@ -945,6 +945,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         int flushesRemaining = 10;
         int writesRemaining = 333;
 
+        std::array<ui64, 3> expectedCachedRequestCount = {};
+        ui64 expectedWriteDataCount = 0;
+        ui64 expectedFlushCount = 0;
+
         while (writesRemaining--) {
             const ui64 offset = RandomNumber(alphabet.length());
             const ui64 length = Max(
@@ -953,17 +957,32 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
             auto data = TStringBuf(alphabet).SubString(offset, length);
 
+            ui32 nodeId = RandomNumber(3u);
+
             b.WriteToCacheSync(
-                RandomNumber(3u),
+                nodeId,
                 offset + RandomNumber(11u),
                 TString(data));
+
+            expectedWriteDataCount++;
+            expectedCachedRequestCount.at(nodeId)++;
 
             if (RandomNumber(10u) == 0 && flushesRemaining > 0) {
                 if (auto nodeId = RandomNumber(4u)) {
                     if (nodeId == 3) {
                         b.FlushCache();
+                        for (ui32 i = 0; i < 3; i++) {
+                            if (expectedCachedRequestCount.at(i) > 0) {
+                                expectedCachedRequestCount.at(i) = 0;
+                                expectedFlushCount++;
+                            }
+                        }
                     } else {
                         b.FlushCache(nodeId);
+                        if (expectedCachedRequestCount.at(nodeId) > 0) {
+                            expectedCachedRequestCount.at(nodeId) = 0;
+                            expectedFlushCount++;
+                        }
                     }
                 }
                 flushesRemaining--;
@@ -974,6 +993,31 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             }
 
             b.ValidateCache();
+
+            ui64 expectedCachedRequestCountSum = 0;
+            ui64 expectedNodeCount = 0;
+
+            for (auto v: expectedCachedRequestCount) {
+                if (v > 0) {
+                    expectedNodeCount++;
+                    expectedCachedRequestCountSum += v;
+                }
+            }
+
+            ui64 expectedFlushedWriteDataCount =
+                expectedWriteDataCount - expectedCachedRequestCountSum;
+
+            UNIT_ASSERT_EQUAL(0, b.Stats->PendingWriteRequestCount);
+            // Flushed requests may still remain in the ring buffer and are
+            // counted as cached requests
+            UNIT_ASSERT_LE(
+                expectedCachedRequestCountSum,
+                b.Stats->CachedWriteRequestCount);
+            UNIT_ASSERT_EQUAL(
+                expectedFlushedWriteDataCount,
+                b.Stats->WriteDataStatsCount);
+            UNIT_ASSERT_EQUAL(expectedNodeCount, b.Stats->NodeCount);
+            UNIT_ASSERT_EQUAL(expectedFlushCount, b.Stats->CompletedFlushCount);
         }
 
         if (withRecreation) {
