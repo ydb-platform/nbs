@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -23,9 +24,10 @@ func (s *CellSelectorMock) SelectCell(
 	ctx context.Context,
 	zoneID string,
 	folderID string,
+	kind types.DiskKind,
 ) (nbs.Client, error) {
 
-	args := s.Called(ctx, zoneID, folderID)
+	args := s.Called(ctx, zoneID, folderID, kind)
 	return args.Get(0).(nbs.Client), args.Error(1)
 }
 

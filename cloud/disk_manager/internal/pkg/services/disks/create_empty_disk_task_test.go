@@ -49,7 +49,13 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 	}, nil)
 	storage.On("DiskCreated", ctx, mock.Anything).Return(nil)
 
-	cellSelector.On("SelectCell", ctx, "zone", "folder").Return(nbsClient, nil)
+	cellSelector.On(
+		"SelectCell",
+		ctx,
+		"zone",
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+	).Return(nbsClient, nil)
 
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
 		ID:          "disk",
@@ -105,7 +111,13 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 	// TODO: Improve this expectation.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{}, nil)
 
-	cellSelector.On("SelectCell", ctx, "zone", "folder").Return(nbsClient, nil)
+	cellSelector.On(
+		"SelectCell",
+		ctx,
+		"zone",
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+	).Return(nbsClient, nil)
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
 		ID:          "disk",
 		BlocksCount: 123,

@@ -9,8 +9,8 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 enum CellSelectionPolicy {
-    CELL_SELECTION_POLICY_FIRST_IN_CONFIG = 0;
-    CELL_SELECTION_POLICY_LEAST_OCCUPIED = 1;
+    FIRST_IN_CONFIG = 0;
+    LEAST_OCCUPIED = 1;
 }
 
 message ZoneCells {
@@ -37,5 +37,5 @@ message CellsConfig {
     // can't parse days.
     optional string ClusterCapacityExpirationTimeout = 7 [default = "2160h"];
     
-    optional CellSelectionPolicy CellSelectionPolicy = 8;
+    optional CellSelectionPolicy CellSelectionPolicy = 8 [default = FIRST_IN_CONFIG];
 }

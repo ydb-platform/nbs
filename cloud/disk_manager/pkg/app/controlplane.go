@@ -436,7 +436,11 @@ func initControlplane(
 		cellStorage = cells_storage.NewStorage(config.GetCellsConfig(), db)
 	}
 
-	cellSelector := cells.NewCellSelector(config.GetCellsConfig(), nbsFactory)
+	cellSelector := cells.NewCellSelector(
+		config.GetCellsConfig(),
+		cellStorage,
+		nbsFactory,
+	)
 
 	err = registerControlplaneTasks(
 		ctx,
