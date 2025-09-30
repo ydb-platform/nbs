@@ -1582,6 +1582,7 @@ func testTryExecutingTaskWithEstimatedDurationOverride(
 	overrideEstimatedInflightDuration bool,
 	overrideEstimatedStallingDuration bool,
 ) {
+
 	pingPeriod := 100 * time.Millisecond
 	pingTimeout := 100 * time.Second
 	ctx, cancel := context.WithCancel(newContext())
