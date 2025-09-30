@@ -11,6 +11,7 @@ import (
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -82,7 +83,11 @@ func (t *deleteSnapshotDataTask) deleteSnapshotData(
 	}
 
 	if snapshotMeta == nil {
-		// Nothing to do.
+		logging.Warn(
+			ctx,
+			"attempted to delete snapshot data for unexisting snapshot %v",
+			t.request.SnapshotId,
+		)
 		return nil
 	}
 
