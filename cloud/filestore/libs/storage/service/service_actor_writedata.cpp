@@ -73,12 +73,10 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
         if (iovec.GetLength() == 0) {
             continue;
         }
-        rope.Insert(
-            rope.End(),
-            TRope(TRcBuf(
-                MakeIntrusive<TIovecContiguousChunk>(
-                    iovec.GetBase(),
-                    iovec.GetLength()))));
+        rope.PushBack(TRcBuf(
+            MakeIntrusive<TIovecContiguousChunk>(
+                iovec.GetBase(),
+                iovec.GetLength())));
     }
     return rope;
 }
