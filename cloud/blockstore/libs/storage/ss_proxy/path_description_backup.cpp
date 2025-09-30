@@ -160,7 +160,7 @@ bool TPathDescriptionBackup::LoadFromBinaryFormat(
         TInstant start = TInstant::Now();
         TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
         TUnbufferedFileInput input(file);
-        const bool succ = BackupProto.MergeFromString(input.ReadAll());
+        const bool success = BackupProto.MergeFromString(input.ReadAll());
 
         LOG_WARN_S(
             ctx,
@@ -168,7 +168,7 @@ bool TPathDescriptionBackup::LoadFromBinaryFormat(
             "PathDescriptionBackup: loading from binary format finished "
                 << FormatDuration(TInstant::Now() - start));
 
-        return succ;
+        return success;
     } catch (...) {
         LOG_WARN_S(
             ctx,
