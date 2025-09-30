@@ -33,12 +33,12 @@ void AddRangeWithChecksums(
     range->SetBlockIndex(r.Start);
     range->SetBlockCount(r.Size());
 
-    for (const auto& checksums: replicaChecksums) {
-        auto* c = range->AddChecksums();
-        c->SetReplicaId(checksums.ReplicaId);
-        c->MutableChecksum()->Assign(
-            checksums.Checksums.begin(),
-            checksums.Checksums.end());
+    for (const auto& replicaChecksums: replicaChecksums) {
+        auto* c = range->AddReplicaChecksums();
+        c->SetReplicaId(replicaChecksums.ReplicaId);
+        c->MutableChecksums()->Assign(
+            replicaChecksums.Checksums.begin(),
+            replicaChecksums.Checksums.end());
     }
 }
 

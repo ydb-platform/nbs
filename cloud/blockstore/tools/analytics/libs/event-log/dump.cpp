@@ -39,9 +39,9 @@ void OutputChecksums(
         out << ToString(replicaChecksum.GetReplicaId()).Quote();
 
         out << ":[";
-        for (int j = 0; j < replicaChecksum.GetChecksum().size(); ++j) {
+        for (int j = 0; j < replicaChecksum.GetChecksums().size(); ++j) {
             out << (j ? "," : "");
-            out << replicaChecksum.GetChecksum(j);
+            out << replicaChecksum.GetChecksums(j);
         }
         out << "]";
     }
@@ -53,7 +53,7 @@ void OutputRanges(const TRanges& ranges, IOutputStream& out)
     for (int i = 0; i < ranges.size(); ++i) {
         out << (i ? "," : "");
         out << ranges[i].GetBlockIndex() << "," << ranges[i].GetBlockCount();
-        OutputChecksums(ranges[i].GetChecksums(), out);
+        OutputChecksums(ranges[i].GetReplicaChecksums(), out);
     }
 }
 
