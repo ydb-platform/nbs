@@ -49,7 +49,9 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
 
     // Load backup even if in read-only mode to warm up BS group connections.
     if (!LoadFromTextFormat(ctx) && !LoadFromBinaryFormat(ctx)) {
-        LOG_WARN_S(ctx, LogComponent,
+        LOG_WARN_S(
+            ctx,
+            LogComponent,
             "TabletBootInfoBackup: can't load backup file: "
                 << BackupFilePath.GetPath().Quote());
     }

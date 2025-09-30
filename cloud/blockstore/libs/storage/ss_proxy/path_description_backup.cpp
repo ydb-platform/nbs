@@ -46,7 +46,9 @@ void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
 
     if (ReadOnlyMode) {
         if (!LoadFromTextFormat(ctx) && !LoadFromBinaryFormat(ctx)) {
-            LOG_WARN_S(ctx, LogComponent,
+            LOG_WARN_S(
+                ctx,
+                LogComponent,
                 "PathDescriptionBackup: can't load backup file: "
                     << BackupFilePath.GetPath().Quote());
         }
