@@ -352,7 +352,7 @@ void TFollowerDiskActor::HandlePropagateLeadershipToFollowerResponse(
 
         if (IsNotFoundSchemeShardError(error)) {
             // If it is not possible to transfer leadership because there is no
-            // follower disk, then we can go into an error state.
+            // follower disk, then we should go into an error state.
             auto newFollowerInfo = FollowerDiskInfo;
             newFollowerInfo.State = TFollowerDiskInfo::EState::Error;
             newFollowerInfo.ErrorMessage = FormatError(msg->GetError());
