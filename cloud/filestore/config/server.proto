@@ -88,6 +88,9 @@ message TIoUringConfig
 
     // Force offloading IO to the kernel thread pool.
     optional bool ForceAsyncIO = 4;
+
+    // Poll submission queue from kernel thread (enables submit without system call)
+    optional bool SQKernelPollingEnabled = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

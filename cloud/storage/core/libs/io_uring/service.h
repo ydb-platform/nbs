@@ -18,6 +18,7 @@ struct TIoUringServiceParams
     ui32 MaxKernelWorkersCount = 0;
     bool ShareKernelWorkers = false;
     bool ForceAsyncIO = false;
+    bool SQKernelPollingEnabled = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

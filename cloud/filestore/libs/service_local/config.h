@@ -55,6 +55,7 @@ public:
     [[nodiscard]] bool GetShareKernelWorkers() const;
     [[nodiscard]] ui32 GetMaxKernelWorkersCount() const;
     [[nodiscard]] bool GetForceAsyncIO() const;
+    [[nodiscard]] bool GetSQKernelPollingEnabled() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
