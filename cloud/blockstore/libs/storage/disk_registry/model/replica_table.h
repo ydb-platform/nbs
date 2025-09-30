@@ -75,12 +75,22 @@ public:
         const TDiskId& diskId,
         const TDeviceId& deviceId,
         bool isReplacement);
-    [[nodiscard]] TVector<TString> GetDevicesReplacements(
+    [[nodiscard]] TVector<TString> GetDeviceReplacements(
         const TDiskId& diskId) const;
     [[nodiscard]] ui32 GetDevicesReplacementsCount(const TDiskId& diskId) const;
     [[nodiscard]] bool IsReplacementDevice(
         const TDiskId& diskId,
         const TDeviceId& deviceId) const;
+
+    bool IsRecentlyReplacedDevice(
+        const TDiskId& diskId,
+        const TDeviceId& deviceId) const;
+    void SetRecentlyReplacedDevice(
+        const TDiskId& diskId,
+        const TDeviceId& deviceId,
+        ui64 seqNo);
+    void ResetRecentlyReplacedDevices(const TDiskId& diskId, ui64 seqNo);
+    void BlockReplacements(const TDiskId& diskId);
 
     // for tests and monpages
     TVector<TVector<TDeviceInfo>> AsMatrix(const TString& diskId) const;
@@ -100,10 +110,19 @@ private:
 private:
     // a transposed view of disk config
 
-    using TRow = TVector<TDeviceInfo>;
+    struct TRow
+    {
+        // Set to true when some device is replacing now.
+        bool IsRecentlyReplacedDevice = false;
+
+        ui64 SeqNo = 0;
+
+        TVector<TDeviceInfo> DeviceInfos;
+    };
 
     struct TDiskState
     {
+        bool ReplacementsBlocked = false;
         TDeque<TRow> Rows;
         THashMap<TString, TRow*> DeviceId2Row;
     };
