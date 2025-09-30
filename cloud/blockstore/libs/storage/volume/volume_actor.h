@@ -1253,8 +1253,8 @@ private:
 
     // Destroy old leader after leadership transferred to follower (happens on
     // the follower's side).
-    void DestroyOldLeaderIfNeeded(const NActors::TActorContext& ctx);
-    void HandleDestroyLeaderVolumeResponse(
+    void DestroyOutdatedLeaderIfNeeded(const NActors::TActorContext& ctx);
+    void HandleDestroyOutdatedLeaderVolumeResponse(
         const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 

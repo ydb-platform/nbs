@@ -122,7 +122,7 @@ void TVolumeActor::OnStarted(const TActorContext& ctx)
     }
 
     ProcessCheckpointRequests(ctx);
-    DestroyOldLeaderIfNeeded(ctx);
+    DestroyOutdatedLeaderIfNeeded(ctx);
 }
 
 void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)

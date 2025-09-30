@@ -19,7 +19,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
-constexpr auto RebootDelayWhenBornWithDataReady = TDuration::Seconds(30);
+constexpr auto RebootVolumeTabletDelay = TDuration::Seconds(30);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -74,10 +74,6 @@ TFollowerDiskActor::TFollowerDiskActor(
     , LeaderVolumeActorId(params.LeaderVolumeActorId)
     , LeaderPartitionActorId(params.LeaderPartitionActorId)
     , TakePartitionOwnership(params.TakePartitionOwnership)
-    , InitialState(
-          params.FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady
-              ? EState::DataReady
-              : EState::DataTransfer)
     , ClientId(params.ClientId)
     , FollowerDiskInfo(params.FollowerDiskInfo)
 {
@@ -253,19 +249,15 @@ void TFollowerDiskActor::PropagateLeadershipToFollower(
 
 void TFollowerDiskActor::RebootLeaderVolume(const NActors::TActorContext& ctx)
 {
-    TDuration rebootDelay = InitialState == EState::DataReady
-                                ? RebootDelayWhenBornWithDataReady
-                                : TDuration();
-
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s  Scheduling reboot for leader volume after %s",
         LogTitle.GetWithTime().c_str(),
-        FormatDuration(rebootDelay).c_str());
+        FormatDuration(RebootVolumeTabletDelay).c_str());
 
     ctx.Schedule(
-        rebootDelay,
+        RebootVolumeTabletDelay,
         std::make_unique<IEventHandle>(
             LeaderVolumeActorId,
             ctx.SelfID,

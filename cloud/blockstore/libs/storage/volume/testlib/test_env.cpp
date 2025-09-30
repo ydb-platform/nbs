@@ -832,6 +832,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
             0
         )
     );
+    runtime->EnableScheduleForActor(MakeStorageServiceId());
 
     runtime->AddLocalService(
         MakeSSProxyServiceId(),

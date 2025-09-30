@@ -1075,7 +1075,7 @@ STFUNC(TVolumeActor::StateWork)
 
         HFunc(
             TEvService::TEvDestroyVolumeResponse,
-            HandleDestroyLeaderVolumeResponse);
+            HandleDestroyOutdatedLeaderVolumeResponse);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 

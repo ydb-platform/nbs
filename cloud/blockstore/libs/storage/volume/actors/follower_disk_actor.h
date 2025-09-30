@@ -63,7 +63,6 @@ private:
     const NActors::TActorId LeaderVolumeActorId;
     const NActors::TActorId LeaderPartitionActorId;
     const bool TakePartitionOwnership = false;
-    const EState InitialState = EState::DataTransfer;
 
     TString ClientId;
 

@@ -55,7 +55,7 @@ void TVolumeActor::CompleteUpdateLeader(
             MakeError(S_OK));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    DestroyOldLeaderIfNeeded(ctx);
+    DestroyOutdatedLeaderIfNeeded(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -197,7 +197,8 @@ void TVolumeActor::UpdateLeaderLink(
         std::move(leaderInfo));
 }
 
-void TVolumeActor::DestroyOldLeaderIfNeeded(const NActors::TActorContext& ctx)
+void TVolumeActor::DestroyOutdatedLeaderIfNeeded(
+    const NActors::TActorContext& ctx)
 {
     for (const auto& leader: State->GetAllLeaders()) {
         if (leader.State != TLeaderDiskInfo::EState::Leader) {
@@ -214,32 +215,50 @@ void TVolumeActor::DestroyOldLeaderIfNeeded(const NActors::TActorContext& ctx)
         }
 
         ++OutdatedLeaderDestruction->TryCount;
-        LOG_INFO(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s Schedule destroying old leader DiskId=%s, try# %lu after %s",
-            LogTitle.GetWithTime().c_str(),
-            leader.Link.LeaderDiskId.Quote().c_str(),
-            OutdatedLeaderDestruction->TryCount,
-            FormatDuration(OutdatedLeaderDestruction->DelayProvider.GetDelay()).c_str());
 
         auto request = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
         request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
         request->Record.SetDiskId(leader.Link.LeaderDiskId);
 
-        ctx.Schedule(
-            OutdatedLeaderDestruction->DelayProvider.GetDelay(),
-            std::make_unique<IEventHandle>(
-                MakeStorageServiceId(),
-                SelfId(),
-                request.release(),
-                0,                      // flags
-                leader.Link.GetHash()   // cookie
-                ));
+        auto event = std::make_unique<IEventHandle>(
+            MakeStorageServiceId(),
+            SelfId(),
+            request.release(),
+            0,                      // flags
+            leader.Link.GetHash()   // cookie
+        );
+
+        if (OutdatedLeaderDestruction->TryCount > 1) {
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Schedule destroying old leader DiskId=%s, try# %lu after "
+                "%s",
+                LogTitle.GetWithTime().c_str(),
+                leader.Link.LeaderDiskId.Quote().c_str(),
+                OutdatedLeaderDestruction->TryCount,
+                FormatDuration(
+                    OutdatedLeaderDestruction->DelayProvider.GetDelay())
+                    .c_str());
+
+            ctx.Schedule(
+                OutdatedLeaderDestruction->DelayProvider.GetDelay(),
+                std::move(event));
+        } else {
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s destroying old leader DiskId=%s, try# %lu",
+                LogTitle.GetWithTime().c_str(),
+                leader.Link.LeaderDiskId.Quote().c_str(),
+                OutdatedLeaderDestruction->TryCount);
+
+            ctx.Send(std::move(event));
+        }
     }
 }
 
-void TVolumeActor::HandleDestroyLeaderVolumeResponse(
+void TVolumeActor::HandleDestroyOutdatedLeaderVolumeResponse(
     const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
@@ -259,7 +278,7 @@ void TVolumeActor::HandleDestroyLeaderVolumeResponse(
 
         if (leader) {
             OutdatedLeaderDestruction->DelayProvider.IncreaseDelay();
-            DestroyOldLeaderIfNeeded(ctx);
+            DestroyOutdatedLeaderIfNeeded(ctx);
         }
         return;
     }
