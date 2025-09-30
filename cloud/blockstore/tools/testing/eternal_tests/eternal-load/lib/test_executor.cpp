@@ -53,10 +53,6 @@ public:
     bool Run() override;
     void Stop() override;
     void Fail(const TString& message);
-
-private:
-    void RunMainThread();
-    void RunAnyThread();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -74,7 +70,7 @@ public:
     TWorkerService(TTestExecutor& executor, ITestScenarioWorker& worker);
 
     void Run();
-    void Wait();
+    TFuture<void> GetFuture() const;
 
 private:
     bool HandleRequest();
@@ -137,14 +133,26 @@ bool TTestExecutor::Run()
 
     FileService->Start();
 
-    for (auto& service: WorkerServices) {
-        service->Run();
+    TVector<TFuture<void>> workerFutures;
+
+    for (auto& worker: WorkerServices) {
+        worker->Run();
+        workerFutures.push_back(worker->GetFuture());
     }
 
+    auto workersFuture = WaitAll(workerFutures);
+
     if (RunInCallbacks) {
-        RunAnyThread();
+        workersFuture.Wait();
     } else {
-        RunMainThread();
+        TVector<TWorkerService*> workersToRun;
+        while (!workersFuture.HasValue()) {
+            workersToRun.clear();
+            ReadyWorkerServices.DequeueAllSingleConsumer(&workersToRun);
+            for (auto* worker: workersToRun) {
+                worker->Run();
+            }
+        }
     }
 
     FileService->Stop();
@@ -167,32 +175,6 @@ void TTestExecutor::Fail(const TString& message)
     Stop();
     Failed.store(true);
     STORAGE_ERROR(message);
-}
-
-void TTestExecutor::RunMainThread()
-{
-    TVector<TWorkerService*> servicesToRun;
-
-    while (!ShouldStop) {
-        servicesToRun.clear();
-        ReadyWorkerServices.DequeueAllSingleConsumer(&servicesToRun);
-        for (auto* service: servicesToRun) {
-            service->Run();
-        }
-    }
-
-    while (servicesToRun.size() < WorkerServices.size()) {
-        ReadyWorkerServices.DequeueAllSingleConsumer(&servicesToRun);
-    }
-}
-
-void TTestExecutor::RunAnyThread()
-{
-    StopPromise.GetFuture().Wait();
-
-    for (auto& service: WorkerServices) {
-        service->Wait();
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -234,11 +216,12 @@ void TTestExecutor::TWorkerService::Run()
     }
 }
 
-void TTestExecutor::TWorkerService::Wait()
+TFuture<void> TTestExecutor::TWorkerService::GetFuture() const
 {
-    StopPromise.GetFuture().Wait();
+    return StopPromise.GetFuture();
 }
 
+// Returns true if Run() method should be called immediately
 bool TTestExecutor::TWorkerService::HandleRequest()
 {
     auto prev = PendingRequestCount--;
