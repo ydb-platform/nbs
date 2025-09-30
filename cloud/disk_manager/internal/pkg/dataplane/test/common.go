@@ -14,7 +14,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
-	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,25 +45,6 @@ func NewS3Key(config *snapshot_config.SnapshotConfig, chunkID string) string {
 		"%v/%v",
 		config.GetChunkBlobsS3KeyPrefix(),
 		chunkID,
-	)
-}
-
-func NewYDB(ctx context.Context) (*persistence.YDBClient, error) {
-	endpoint := fmt.Sprintf(
-		"localhost:%v",
-		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
-	)
-	database := "/Root"
-	rootPath := "disk_manager"
-
-	return persistence.NewYDBClient(
-		ctx,
-		&persistence_config.PersistenceConfig{
-			Endpoint: &endpoint,
-			Database: &database,
-			RootPath: &rootPath,
-		},
-		metrics.NewEmptyRegistry(),
 	)
 }
 

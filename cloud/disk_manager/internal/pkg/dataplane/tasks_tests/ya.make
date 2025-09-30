@@ -3,8 +3,8 @@ GO_TEST_FOR(cloud/disk_manager/internal/pkg/dataplane)
 SET_APPEND(RECIPE_ARGS --nbs-only)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
-GO_XTEST_SRCS(
-    transfer_test.go
+GO_TEST_SRCS(
+    ../delete_snapshot_data_task_test.go
 )
 
 IF (RACE)
@@ -13,12 +13,5 @@ IF (RACE)
 ELSE()
     SIZE(MEDIUM)
 ENDIF()
-
-TAG(sb:ssd)
-
-REQUIREMENTS(
-    cpu:4
-    ram:32
-)
 
 END()
