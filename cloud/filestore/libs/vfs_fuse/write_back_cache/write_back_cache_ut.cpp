@@ -1,5 +1,7 @@
 #include "write_back_cache.h"
 
+#include "write_back_cache_stats_processor.h"
+
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
 
@@ -112,7 +114,8 @@ struct TInFlightRequestTracker
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TWriteBackCacheStats: public IWriteBackCacheStats
+struct TWriteBackCacheStats:
+    public IWriteBackCacheStats
 {
     TWriteBackCache::TPersistentQueueStats PersistentQueue;
     ui64 CompletedFlushCount = 0;
@@ -123,8 +126,11 @@ struct TWriteBackCacheStats: public IWriteBackCacheStats
     ui64 CachedWriteRequestCount = 0;
     ui64 PendingWriteRequestCount = 0;
     TVector<TWriteBackCache::TWriteDataStats> WriteDataStats;
+    ui64 WriteDataStatsCount = 0;
     TVector<ui64> ExecutingFlushCountLog;
     TVector<TInstant> EarliestFlushTimeLog;
+
+    ui64 MaxLogItems = 0;
 
     void IncrementCompletedFlushCount() override
     {
@@ -169,10 +175,13 @@ struct TWriteBackCacheStats: public IWriteBackCacheStats
         PersistentQueue = stats;
     }
 
-    void PostWriteRequestStats(
+    void AddWriteRequestStats(
         const TWriteBackCache::TWriteDataStats& stats) override
     {
-        WriteDataStats.push_back(stats);
+        WriteDataStatsCount++;
+        if (WriteDataStats.size() < MaxLogItems) {
+            WriteDataStats.push_back(stats);
+        }
     }
 };
 
@@ -203,7 +212,7 @@ struct TBootstrap
     std::shared_ptr<TFileStoreTest> Session;
     std::shared_ptr<TTestTimer> Timer;
     std::shared_ptr<TTestScheduler> Scheduler;
-    std::shared_ptr<TWriteBackCacheStats> StatsReporter;
+    std::shared_ptr<TWriteBackCacheStats> Stats;
     TDuration CacheAutomaticFlushPeriod;
     TDuration CacheFlushRetryPeriod;
     TTempFileHandle TempFileHandle;
@@ -262,7 +271,7 @@ struct TBootstrap
         Scheduler = std::make_shared<TTestScheduler>();
         Scheduler->Start();
 
-        StatsReporter = std::make_shared<TWriteBackCacheStats>();
+        Stats = std::make_shared<TWriteBackCacheStats>();
 
         Session = std::make_shared<TFileStoreTest>();
 
@@ -381,7 +390,7 @@ struct TBootstrap
             Session,
             Scheduler,
             Timer,
-            StatsReporter,
+            Stats,
             TempFileHandle.GetName(),
             CacheCapacityBytes,
             CacheAutomaticFlushPeriod,
@@ -580,6 +589,16 @@ struct TBootstrap
         std::unique_lock lock3(FlushedDataMutex);
 
         UNIT_ASSERT_VALUES_EQUAL(ExpectedData, FlushedData);
+    }
+
+    void CheckForEmptyness() const
+    {
+        UNIT_ASSERT_EQUAL(0, Stats->PersistentQueue.RawUsedBytesCount);
+        UNIT_ASSERT_EQUAL(0, Stats->ExecutingFlushCount);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->EarliestFlushTime);
+        UNIT_ASSERT_EQUAL(0, Stats->NodeCount);
+        UNIT_ASSERT_EQUAL(0, Stats->CachedWriteRequestCount);
+        UNIT_ASSERT_EQUAL(0, Stats->PendingWriteRequestCount);
     }
 };
 
@@ -962,6 +981,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         }
 
         b.ValidateCache();
+
+        b.FlushCache();
+        b.CheckForEmptyness();
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomized)
@@ -1086,6 +1108,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.RecreateCache();
         b.ValidateCache();
+
+        b.FlushCache();
+        b.CheckForEmptyness();
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteConcurrently)
@@ -1270,37 +1295,37 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldReportPersistentQueueStats)
     {
         TBootstrap b;
-        auto& stats = b.StatsReporter->PersistentQueue;
+        auto& stats = b.Stats->PersistentQueue;
 
-        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.Capacity);
-        UNIT_ASSERT_EQUAL(0, stats.UsedBytesCount);
+        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacity);
+        UNIT_ASSERT_EQUAL(0, stats.RawUsedBytesCount);
         UNIT_ASSERT_LT(0, stats.MaxAllocationSize);
         UNIT_ASSERT_GT(CacheCapacityBytes, stats.MaxAllocationSize);
         UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
 
         b.WriteToCacheSync(1, 0, "abc");
 
-        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.Capacity);
-        UNIT_ASSERT_LT(0, stats.UsedBytesCount);
+        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacity);
+        UNIT_ASSERT_LT(0, stats.RawUsedBytesCount);
         UNIT_ASSERT_LT(0, stats.MaxAllocationSize);
         UNIT_ASSERT_GT(CacheCapacityBytes, stats.MaxAllocationSize);
         UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
 
-        auto prevUsedBytesCount = stats.UsedBytesCount;
+        auto prevUsedBytesCount = stats.RawUsedBytesCount;
         auto prevMaxAllocationSize = stats.MaxAllocationSize;
 
         b.RecreateCache();
 
-        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.Capacity);
-        UNIT_ASSERT_EQUAL(prevUsedBytesCount, stats.UsedBytesCount);
+        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacity);
+        UNIT_ASSERT_EQUAL(prevUsedBytesCount, stats.RawUsedBytesCount);
         UNIT_ASSERT_EQUAL(prevMaxAllocationSize, stats.MaxAllocationSize);
         UNIT_ASSERT_GT(CacheCapacityBytes, stats.MaxAllocationSize);
         UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
 
         b.FlushCache();
 
-        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.Capacity);
-        UNIT_ASSERT_EQUAL(0, stats.UsedBytesCount);
+        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacity);
+        UNIT_ASSERT_EQUAL(0, stats.RawUsedBytesCount);
         UNIT_ASSERT_LT(0, stats.MaxAllocationSize);
         UNIT_ASSERT_GT(CacheCapacityBytes, stats.MaxAllocationSize);
         UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
@@ -1318,7 +1343,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldReportFlushStats)
     {
         TBootstrap b;
-        auto& stats = *b.StatsReporter;
+        auto& stats = *b.Stats;
 
         constexpr int WriteAttemptsThreshold = 3;
         std::atomic_int writeAttempts = 0;
@@ -1388,7 +1413,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldReportNodeCount)
     {
         TBootstrap b;
-        auto& stats = *b.StatsReporter;
+        auto& stats = *b.Stats;
 
         UNIT_ASSERT_EQUAL(0, stats.NodeCount);
 
@@ -1417,7 +1442,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldReportRequestCount)
     {
         TBootstrap b;
-        auto& stats = *b.StatsReporter;
+        auto& stats = *b.Stats;
 
         // Reaching the capacity will trigger Flush
         // Need to prevent it from completing immediately
@@ -1472,7 +1497,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldReportRequestStats)
     {
         TBootstrap b;
-        auto& stats = b.StatsReporter->WriteDataStats;
+        b.Stats->MaxLogItems = 1000000;
+        auto& stats = b.Stats->WriteDataStats;
 
         TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
 
@@ -1519,6 +1545,85 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(2, last.PendingDuration.Seconds());
         UNIT_ASSERT_EQUAL(4, last.WaitingDuration.Seconds());
         UNIT_ASSERT_EQUAL(8, last.FlushDuration.Seconds());
+    }
+
+    Y_UNIT_TEST(WriteBackCacheStatsProcessorShouldCalculateFlushStats)
+    {
+        constexpr int FlushCount = 50;
+        constexpr ui32 MaxTime = 100;
+
+        auto stats = std::make_shared<TWriteBackCacheStats>();
+        TWriteBackCacheStatsProcessor processor(stats);
+
+        TInstant now = Now();
+
+        struct TFlushInfo
+        {
+            ui32 Start = 0;
+            ui32 End = 0;
+        };
+
+        TVector<TFlushInfo> data;
+
+        for (auto i = 0; i < FlushCount; i++) {
+            TFlushInfo flushInfo;
+            flushInfo.Start = RandomNumber(MaxTime);
+            flushInfo.End =
+                flushInfo.Start + RandomNumber(MaxTime + 1 - flushInfo.Start);
+            data.push_back(flushInfo);
+        }
+
+        for (ui32 i = 0; i <= MaxTime; i++) {
+            for (const auto& flushInfo: data) {
+                if (flushInfo.Start == i) {
+                    processor.FlushScheduled(
+                        now + TDuration::Seconds(flushInfo.Start));
+                }
+            }
+            for (const auto& flushInfo: data) {
+                if (flushInfo.End == i) {
+                    processor.FlushCompleted(
+                        now + TDuration::Seconds(flushInfo.Start));
+                }
+            }
+
+            auto expectedEarliestFlushTime = TInstant::Zero();
+            ui32 expectedExecutingFlushCount = 0;
+            ui32 expectedCompletedFlushCount = 0;
+
+            for (const auto& flushInfo: data) {
+                if (flushInfo.Start > i) {
+                    continue;
+                }
+                if (flushInfo.End > i) {
+                    expectedExecutingFlushCount++;
+                    auto startTime = now + TDuration::Seconds(flushInfo.Start);
+                    if (expectedEarliestFlushTime == TInstant::Zero() ||
+                        expectedEarliestFlushTime > startTime)
+                    {
+                        expectedEarliestFlushTime = startTime;
+                    }
+                } else {
+                    expectedCompletedFlushCount++;
+                }
+            }
+
+            UNIT_ASSERT_EQUAL(
+                expectedExecutingFlushCount,
+                stats->ExecutingFlushCount);
+
+            UNIT_ASSERT_EQUAL(
+                expectedCompletedFlushCount,
+                stats->CompletedFlushCount);
+
+            UNIT_ASSERT_EQUAL(
+                expectedEarliestFlushTime,
+                stats->EarliestFlushTime);
+        }
+
+        UNIT_ASSERT_EQUAL(0, stats->ExecutingFlushCount);
+        UNIT_ASSERT_EQUAL(FlushCount, stats->CompletedFlushCount);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats->EarliestFlushTime);
     }
 
     /* TODO(svartmetal): fix tests with automatic flush

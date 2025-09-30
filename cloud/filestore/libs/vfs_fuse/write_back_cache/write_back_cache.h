@@ -82,8 +82,8 @@ private:
 
 struct TWriteBackCache::TPersistentQueueStats
 {
-    ui64 Capacity = 0;
-    ui64 UsedBytesCount = 0;
+    ui64 RawCapacity = 0;
+    ui64 RawUsedBytesCount = 0;
     ui64 MaxAllocationSize = 0;
     bool IsCorrupted = false;
 };
@@ -120,7 +120,7 @@ struct IWriteBackCacheStats
     virtual void SetPersistentQueueStats(
         const TWriteBackCache::TPersistentQueueStats& stats) = 0;
 
-    virtual void PostWriteRequestStats(
+    virtual void AddWriteRequestStats(
         const TWriteBackCache::TWriteDataStats& stats) = 0;
 };
 

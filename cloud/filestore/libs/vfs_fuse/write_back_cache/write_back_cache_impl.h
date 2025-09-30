@@ -58,11 +58,11 @@ private:
     NThreading::TPromise<void> FlushPromise;
     EWriteDataEntryStatus Status = EWriteDataEntryStatus::Corrupted;
 
-    TInstant PendingTime;
-    TInstant CachedTime;
-    TInstant FlushStartedTime;
-
 public:
+    TInstant PendingTime = TInstant::Zero();
+    TInstant CachedTime = TInstant::Zero();
+    TInstant FlushStartedTime = TInstant::Zero();
+
     explicit TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
@@ -131,11 +131,6 @@ public:
 
     NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
     NThreading::TFuture<void> GetFlushFuture();
-
-    void SetPendingTime(TInstant time);
-    void SetCachedTime(TInstant time);
-    void SetFlushStartedTime(TInstant time);
-    TWriteBackCache::TWriteDataStats GetStats(TInstant time) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
