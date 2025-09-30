@@ -68,6 +68,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             .MaxKernelWorkersCount = 1,
             .ShareKernelWorkers = true,
             .ForceAsyncIO = true,
+            .SQKernelPollingEnabled = false,
         });
 
         Services.reserve(ServicesCount);

@@ -862,6 +862,7 @@ IFileIOServicePtr CreateUringFileService()
         .MaxKernelWorkersCount = 1,
         .ShareKernelWorkers = true,
         .ForceAsyncIO = true,
+        .SQKernelPollingEnabled = true,
     });
 
     return factory->CreateFileIOService();
