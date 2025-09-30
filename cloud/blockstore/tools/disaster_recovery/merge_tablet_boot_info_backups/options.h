@@ -9,7 +9,7 @@
 
 struct TOptions
 {
-    TString SrcRoot;
+    TString SrcBackupsFilePath;
     TString TextOutputPath;
     TString BinaryOutputPath;
     TString TabletBootInfoBackupFileName;

@@ -112,16 +112,16 @@ void Dump(
 
 void Run(const TOptions& options)
 {
-    TFsPath srcRoot{options.SrcRoot};
+    TFsPath srcBackupsFilePath{options.SrcBackupsFilePath};
 
     TVector<TString> children;
-    srcRoot.ListNames(children);
+    srcBackupsFilePath.ListNames(children);
     TSchemeShardData allData;
     size_t dirIndex = 0;
     for (const auto& child: children) {
         ProcessDir(
             options,
-            srcRoot / child,
+            srcBackupsFilePath / child,
             &allData,
             ++dirIndex,
             children.size());
