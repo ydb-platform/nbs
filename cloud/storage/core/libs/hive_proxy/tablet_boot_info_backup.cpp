@@ -1,8 +1,9 @@
 #include "tablet_boot_info_backup.h"
-#include "cloud/storage/core/libs/common/format.h"
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/kikimr/components.h>
+
+#include <cloud/storage/core/libs/common/format.h>
 
 #include <contrib/ydb/core/base/tablet.h>
 
@@ -47,12 +48,10 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     // Load backup even if in read-only mode to warm up BS group connections.
-    if (!LoadFromTextFormat(ctx)) {
-        if (!LoadFromBinaryFormat(ctx)) {
-            LOG_WARN_S(ctx, LogComponent,
-                "TabletBootInfoBackup: can't load backup file: "
-                    << BackupFilePath.GetPath().Quote());
-        }
+    if (!LoadFromTextFormat(ctx) && !LoadFromBinaryFormat(ctx)) {
+        LOG_WARN_S(ctx, LogComponent,
+            "TabletBootInfoBackup: can't load backup file: "
+                << BackupFilePath.GetPath().Quote());
     }
 
     if (!ReadOnlyMode) {
@@ -133,7 +132,7 @@ bool TTabletBootInfoBackup::LoadFromTextFormat(const NActors::TActorContext& ctx
         TInstant start = TInstant::Now();
         MergeFromTextFormat(BackupFilePath, BackupProto);
 
-        LOG_WARN_S(
+        LOG_INFO_S(
             ctx,
             LogComponent,
             "TabletBootInfoBackup: loading from text format finished "

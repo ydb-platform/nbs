@@ -45,12 +45,10 @@ void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     if (ReadOnlyMode) {
-        if (!LoadFromTextFormat(ctx)) {
-            if (!LoadFromBinaryFormat(ctx)) {
-                LOG_WARN_S(ctx, LogComponent,
-                    "PathDescriptionBackup: can't load backup file: "
-                        << BackupFilePath.GetPath().Quote());
-            }
+        if (!LoadFromTextFormat(ctx) && !LoadFromBinaryFormat(ctx)) {
+            LOG_WARN_S(ctx, LogComponent,
+                "PathDescriptionBackup: can't load backup file: "
+                    << BackupFilePath.GetPath().Quote());
         }
     } else {
         ScheduleBackup(ctx);
@@ -132,7 +130,7 @@ bool TPathDescriptionBackup::LoadFromTextFormat(
         TInstant start = TInstant::Now();
         MergeFromTextFormat(BackupFilePath, BackupProto);
 
-        LOG_WARN_S(
+        LOG_INFO_S(
             ctx,
             LogComponent,
             "PathDescriptionBackup: loading from text format finished "
