@@ -37,6 +37,8 @@ public:
 
         // Share kernel worker threads with `WqOwner`
         TContext* WqOwner = nullptr;
+
+        ui32 Flags = 0;
     };
 
     explicit TContext(TParams params);
