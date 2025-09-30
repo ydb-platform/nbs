@@ -187,7 +187,8 @@ struct TWriteBackCacheStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestTimer: ITimer
+struct TTestTimer
+    : public ITimer
 {
     TInstant Current = ::Now();
 
