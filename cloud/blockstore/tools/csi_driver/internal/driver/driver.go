@@ -190,6 +190,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 	monintoring := monitoring.NewMonitoring(&monintoringCfg)
 	monintoring.StartListening()
 	monintoring.ReportVersion(cfg.VendorVersion)
+	monintoring.ReportExternalFsMountExpirationTimes(externalFsOverrides.GetMountExpirationTimes())
 
 	errInterceptor := func(
 		ctx context.Context,
