@@ -121,7 +121,7 @@ struct TWriteBackCacheStats
     ui64 CompletedFlushCount = 0;
     ui64 FailedFlushCount = 0;
     ui64 ExecutingFlushCount = 0;
-    TInstant EarliestFlushTime = TInstant::Zero();
+    TInstant EarliestExecutingFlushTime = TInstant::Zero();
     ui64 NodeCount = 0;
     ui64 CachedWriteRequestCount = 0;
     ui64 PendingWriteRequestCount = 0;
@@ -148,9 +148,9 @@ struct TWriteBackCacheStats
         ExecutingFlushCountLog.push_back(value);
     }
 
-    void SetEarliestFlushTime(TInstant time) override
+    void SetEarliestExecutingFlushTime(TInstant time) override
     {
-        EarliestFlushTime = time;
+        EarliestExecutingFlushTime = time;
         EarliestFlushTimeLog.push_back(time);
     }
 
@@ -595,7 +595,7 @@ struct TBootstrap
     {
         UNIT_ASSERT_EQUAL(0, Stats->PersistentQueue.RawUsedBytesCount);
         UNIT_ASSERT_EQUAL(0, Stats->ExecutingFlushCount);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->EarliestFlushTime);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->EarliestExecutingFlushTime);
         UNIT_ASSERT_EQUAL(0, Stats->NodeCount);
         UNIT_ASSERT_EQUAL(0, Stats->CachedWriteRequestCount);
         UNIT_ASSERT_EQUAL(0, Stats->PendingWriteRequestCount);
@@ -1409,7 +1409,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.ExecutingFlushCount);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats.EarliestFlushTime);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats.EarliestExecutingFlushTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
         auto now = b.Timer->Now();
@@ -1419,7 +1419,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.ExecutingFlushCount);
-        UNIT_ASSERT_EQUAL(now, stats.EarliestFlushTime);
+        UNIT_ASSERT_EQUAL(now, stats.EarliestExecutingFlushTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
         b.Scheduler->RunAllScheduledTasks();
@@ -1430,7 +1430,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(1, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.ExecutingFlushCount);
-        UNIT_ASSERT_EQUAL(now, stats.EarliestFlushTime);
+        UNIT_ASSERT_EQUAL(now, stats.EarliestExecutingFlushTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
         b.Scheduler->RunAllScheduledTasks();
@@ -1439,7 +1439,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(2, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.ExecutingFlushCount);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats.EarliestFlushTime);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats.EarliestExecutingFlushTime);
 
         UNIT_ASSERT_EQUAL(4, stats.ExecutingFlushCountLog.size());
         UNIT_ASSERT_EQUAL(1, stats.ExecutingFlushCountLog[0]);
@@ -1662,12 +1662,12 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
             UNIT_ASSERT_EQUAL(
                 expectedEarliestFlushTime,
-                stats->EarliestFlushTime);
+                stats->EarliestExecutingFlushTime);
         }
 
         UNIT_ASSERT_EQUAL(0, stats->ExecutingFlushCount);
         UNIT_ASSERT_EQUAL(FlushCount, stats->CompletedFlushCount);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats->EarliestFlushTime);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats->EarliestExecutingFlushTime);
     }
 
     /* TODO(svartmetal): fix tests with automatic flush

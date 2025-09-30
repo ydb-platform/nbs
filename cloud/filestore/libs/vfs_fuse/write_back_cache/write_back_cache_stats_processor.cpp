@@ -14,7 +14,7 @@ void TWriteBackCacheStatsProcessor::FlushScheduled(TInstant startTime)
     if (Stats) {
         FlushStartTimeSet.insert(startTime);
         Stats->SetExecutingFlushCount(FlushStartTimeSet.size());
-        Stats->SetEarliestFlushTime(*FlushStartTimeSet.begin());
+        Stats->SetEarliestExecutingFlushTime(*FlushStartTimeSet.begin());
     }
 }
 
@@ -25,9 +25,9 @@ void TWriteBackCacheStatsProcessor::FlushCompleted(TInstant startTime)
         Y_DEBUG_ABORT_UNLESS(it != FlushStartTimeSet.end());
         FlushStartTimeSet.erase(it);
         if (FlushStartTimeSet.empty()) {
-            Stats->SetEarliestFlushTime(TInstant::Zero());
+            Stats->SetEarliestExecutingFlushTime(TInstant::Zero());
         } else {
-            Stats->SetEarliestFlushTime(*FlushStartTimeSet.begin());
+            Stats->SetEarliestExecutingFlushTime(*FlushStartTimeSet.begin());
         }
 
         Stats->SetExecutingFlushCount(FlushStartTimeSet.size());
