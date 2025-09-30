@@ -379,6 +379,10 @@ class FilestoreDaemonConfigGenerator:
             return None
         return self.__storage_config.SchemeShardDir
 
+    def get_kikimr_ca(self):
+        if not self.__storage_config.HasField('NodeRegistrationRootCertsFile'):
+            return None
+        return self.__storage_config.NodeRegistrationRootCertsFile
 
 class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
     def __init__(

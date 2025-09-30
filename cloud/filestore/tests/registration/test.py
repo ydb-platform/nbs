@@ -51,7 +51,7 @@ def update_cms_config(client, name, config, node_type):
 
     s = action.AddConfigItem.ConfigItem.UsageScope
 
-    s.TenantAndNodeTypeFilter.Tenant = '/Root'
+    s.TenantAndNodeTypeFilter.Tenant = '/Root/nfs'
     s.TenantAndNodeTypeFilter.NodeType = node_type
 
     action.AddConfigItem.ConfigItem.MergeStrategy = 1  # OVERWRITE
@@ -66,21 +66,21 @@ def setup_cms_configs(kikimr_client):
     # filestore-server
     storage = TStorageConfig()
     storage.NodeIndexCacheMaxNodes = 100
-    storage.SchemeShardDir = "/Root"
+    storage.SchemeShardDir = "/Root/nfs"
 
     update_cms_config(kikimr_client, 'StorageConfig', storage, 'filestore_server')
 
     # vhost
     storage = TStorageConfig()
     storage.NodeIndexCacheMaxNodes = 200
-    storage.SchemeShardDir = "/Root"
+    storage.SchemeShardDir = "/Root/nfs"
 
     update_cms_config(kikimr_client, 'StorageConfig', storage, 'filestore_vhost')
 
     # global
     storage = TStorageConfig()
     storage.NodeIndexCacheMaxNodes = 300
-    storage.SchemeShardDir = "/Root"
+    storage.SchemeShardDir = "/Root/nfs"
 
     update_cms_config(kikimr_client, 'StorageConfig', storage, '')
 
@@ -129,7 +129,7 @@ def setup_filestore(
     server_config = TServerAppConfig()
 
     storage_config = TStorageConfig()
-    if secure_filestore and secure_kikimr:
+    if secure_kikimr:
         storage_config.NodeRegistrationRootCertsFile = configurator.grpc_tls_ca_path
         storage_config.NodeRegistrationCert.CertFile = configurator.grpc_tls_cert_path
         storage_config.NodeRegistrationCert.CertPrivateKeyFile = configurator.grpc_tls_key_path
@@ -138,7 +138,7 @@ def setup_filestore(
     domain = configurator.domains_txt.Domain[0].Name
 
     port = kikimr_port
-    if secure_filestore and kikimr_ssl_port is not None:
+    if secure_kikimr and kikimr_ssl_port is not None:
         port = kikimr_ssl_port
 
     filestore_configurator = configurator_type(
@@ -194,6 +194,7 @@ def run_filestore(
         kikimr_binary_path=kikimr_binary_path,
         configurator=filestore_configurator,
         dynamic_storage_pools=kikimr_configurator.dynamic_storage_pools,
+        secure_kikimr=is_secure_kikimr,
     )
     filestore_server.start()
 
