@@ -321,6 +321,7 @@ public:
     ~TServerSession();
 
     // called from CM thread
+    void CreateQP();
     void Start();
     void Stop() noexcept;
     void Flush();
@@ -381,7 +382,10 @@ TServerSession::TServerSession(
     RDMA_INFO("start session " << Verbs->GetPeer(Connection.get())
         << " [send_magic=" << Hex(SendMagic, HF_FULL)
         << " recv_magic=" << Hex(RecvMagic, HF_FULL) << "]");
+}
 
+void TServerSession::CreateQP()
+{
     CompletionChannel = Verbs->CreateCompletionChannel(Connection->verbs);
     SetNonBlock(CompletionChannel->fd, true);
 
@@ -1779,15 +1783,17 @@ void TServer::HandleConnectRequest(
 
 void TServer::Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept
 {
+    auto session = std::make_shared<TServerSession>(
+        Verbs,
+        NVerbs::WrapPtr(event->id),
+        PickPoller(),
+        endpoint->Handler,
+        Config,
+        Counters,
+        Log);
+
     try {
-        auto session = std::make_shared<TServerSession>(
-            Verbs,
-            NVerbs::WrapPtr(event->id),
-            PickPoller(),
-            endpoint->Handler,
-            Config,
-            Counters,
-            Log);
+        session->CreateQP();
 
         TAcceptMessage acceptMsg = {
             .KeepAliveTimeout = SafeCast<ui16>(Config->KeepAliveTimeout.MilliSeconds()),
@@ -1810,7 +1816,7 @@ void TServer::Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept
         Verbs->Accept(event->id, &acceptParams);
 
         // transfer session ownership to the poller
-        session->CompletionPoller->Acquire(std::move(session));
+        session->CompletionPoller->Acquire(session);
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(e.what())
