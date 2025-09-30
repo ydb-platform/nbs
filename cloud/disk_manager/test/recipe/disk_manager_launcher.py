@@ -144,6 +144,7 @@ NbsConfig: <
     UseGZIPCompression: true
 >
 CellsConfig: <
+    CellSelectionPolicy: {cell_selection_policy}
     Cells: <
         key: "zone-a"
         value: <
@@ -185,6 +186,7 @@ CellsConfig: <
             ]
         >
     >
+    ScheduleCollectClusterCapacityTask: false
 >
 DisksConfig: <
     DeletedDiskExpirationTimeout: "1s"
@@ -508,6 +510,7 @@ class DiskManagerLauncher:
         migration_dst_s3_credentials_file=None,
         migrating_snapshots_inflight_limit=None,
         retry_broken_disk_registry_based_disk_checkpoint=False,
+        cell_selection_policy=None,
     ):
         self.__idx = idx
 
@@ -596,6 +599,7 @@ class DiskManagerLauncher:
                     disable_disk_registry_based_disks="true" if disable_disk_registry_based_disks else "false",
                     use_s3_percentage="0" if s3_port is None else "100",
                     retry_broken_disk_registry_based_disk_checkpoint=retry_broken_disk_registry_based_disk_checkpoint,
+                    cell_selection_policy=cell_selection_policy,
                 )
                 f.write(self.__server_config)
 
