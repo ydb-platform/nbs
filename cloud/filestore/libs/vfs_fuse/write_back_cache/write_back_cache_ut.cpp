@@ -704,6 +704,81 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TStatsCalculator
+{
+    ui64 WriteDataFlushCount = 0;
+    ui64 FlushCount = 0;
+
+    struct TState
+    {
+        ui32 NodeId = 0;
+        bool Flushed = false;
+    };
+
+    TDeque<TState> Queue;
+    THashMap<ui32, ui64> UnflushedRequestCount;
+
+    void Write(ui32 nodeId)
+    {
+        Queue.push_back({.NodeId = nodeId, .Flushed = false});
+        UnflushedRequestCount[nodeId]++;
+    }
+
+    void Flush(ui32 nodeId)
+    {
+        for (auto& stats: Queue) {
+            if (stats.NodeId != nodeId || stats.Flushed) {
+                continue;
+            }
+            stats.Flushed = true;
+        }
+
+        auto it = UnflushedRequestCount.find(nodeId);
+        if (it != UnflushedRequestCount.end()) {
+            WriteDataFlushCount += it->second;
+            FlushCount++;
+            UnflushedRequestCount.erase(it);
+        }
+
+        while (!Queue.empty() && Queue.front().Flushed) {
+            Queue.pop_front();
+        }
+    }
+
+    void FlushAll()
+    {
+        FlushCount += UnflushedRequestCount.size();
+        for (const auto& pair: UnflushedRequestCount) {
+            WriteDataFlushCount += pair.second;
+        }
+
+        Queue.clear();
+        UnflushedRequestCount.clear();
+    }
+
+    void Unflush()
+    {
+        for (auto& stats: Queue) {
+            if (stats.Flushed) {
+                stats.Flushed = false;
+                UnflushedRequestCount[stats.NodeId]++;
+            }
+        }
+    }
+
+    ui64 GetCachedRequestCount() const
+    {
+        return Queue.size();
+    }
+
+    ui64 GetNodeCount() const
+    {
+        return UnflushedRequestCount.size();
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -945,9 +1020,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         int flushesRemaining = 10;
         int writesRemaining = 333;
 
-        std::array<ui64, 3> expectedCachedRequestCount = {};
-        ui64 expectedWriteDataCount = 0;
-        ui64 expectedFlushCount = 0;
+        TStatsCalculator stats;
 
         while (writesRemaining--) {
             const ui64 offset = RandomNumber(alphabet.length());
@@ -964,25 +1037,16 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 offset + RandomNumber(11u),
                 TString(data));
 
-            expectedWriteDataCount++;
-            expectedCachedRequestCount.at(nodeId)++;
+            stats.Write(nodeId);
 
             if (RandomNumber(10u) == 0 && flushesRemaining > 0) {
                 if (auto nodeId = RandomNumber(4u)) {
                     if (nodeId == 3) {
                         b.FlushCache();
-                        for (ui32 i = 0; i < 3; i++) {
-                            if (expectedCachedRequestCount.at(i) > 0) {
-                                expectedCachedRequestCount.at(i) = 0;
-                                expectedFlushCount++;
-                            }
-                        }
+                        stats.FlushAll();
                     } else {
                         b.FlushCache(nodeId);
-                        if (expectedCachedRequestCount.at(nodeId) > 0) {
-                            expectedCachedRequestCount.at(nodeId) = 0;
-                            expectedFlushCount++;
-                        }
+                        stats.Flush(nodeId);
                     }
                 }
                 flushesRemaining--;
@@ -990,34 +1054,18 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
             if (withRecreation && RandomNumber(20u) == 0) {
                 b.RecreateCache();
+                stats.Unflush();
             }
 
             b.ValidateCache();
 
-            ui64 expectedCachedRequestCountSum = 0;
-            ui64 expectedNodeCount = 0;
-
-            for (auto v: expectedCachedRequestCount) {
-                if (v > 0) {
-                    expectedNodeCount++;
-                    expectedCachedRequestCountSum += v;
-                }
-            }
-
-            ui64 expectedFlushedWriteDataCount =
-                expectedWriteDataCount - expectedCachedRequestCountSum;
-
             UNIT_ASSERT_EQUAL(0, b.Stats->PendingWriteRequestCount);
-            // Flushed requests may still remain in the ring buffer and are
-            // counted as cached requests
-            UNIT_ASSERT_LE(
-                expectedCachedRequestCountSum,
-                b.Stats->CachedWriteRequestCount);
-            UNIT_ASSERT_EQUAL(
-                expectedFlushedWriteDataCount,
-                b.Stats->WriteDataStatsCount);
-            UNIT_ASSERT_EQUAL(expectedNodeCount, b.Stats->NodeCount);
-            UNIT_ASSERT_EQUAL(expectedFlushCount, b.Stats->CompletedFlushCount);
+            UNIT_ASSERT_EQUAL_C(
+                stats.GetCachedRequestCount(),
+                b.Stats->CachedWriteRequestCount,
+                "Expected " << stats.GetCachedRequestCount() << " Actual " << b.Stats->CachedWriteRequestCount);
+            UNIT_ASSERT_EQUAL(stats.GetNodeCount(), b.Stats->NodeCount);
+            UNIT_ASSERT_EQUAL(stats.FlushCount, b.Stats->CompletedFlushCount);
         }
 
         if (withRecreation) {
