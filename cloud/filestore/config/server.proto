@@ -103,6 +103,9 @@ message TIoUringConfig
 
     // Propagate parent thread affinity to io_uring kernel threads.
     optional bool PropagateAffinityToKernelWorkers = 5;
+
+    // Poll submission queue from kernel thread (enables submit without system call)
+    optional bool SQKernelPollingEnabled = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

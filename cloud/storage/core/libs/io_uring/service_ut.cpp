@@ -74,6 +74,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             .ShareKernelWorkers = true,
             .ForceAsyncIO = true,
             .PropagateAffinityToKernelWorkers = true,
+            .SQKernelPollingEnabled = false,
         });
 
         SelectIoWqThreadAffinity();

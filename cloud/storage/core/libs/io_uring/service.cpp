@@ -203,6 +203,7 @@ public:
             .WqOwner = WqOwner.get(),
             .PropagateAffinityToKernelWorkers =
                 Params.PropagateAffinityToKernelWorkers,
+            .Flags = Params.SQKernelPollingEnabled ? IORING_SETUP_SQPOLL : 0,
         };
 
         const ui32 sqeFlags = Params.ForceAsyncIO ? IOSQE_ASYNC : 0;

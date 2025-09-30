@@ -271,6 +271,7 @@ IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
                     .ForceAsyncIO = ring.GetForceAsyncIO(),
                     .PropagateAffinityToKernelWorkers =
                         ring.GetPropagateAffinityToKernelWorkers(),
+                    .SQKernelPollingEnabled = ring.GetSQKernelPollingEnabled(),
                 });
 
                 if (config.GetNumThreads() <= 1) {

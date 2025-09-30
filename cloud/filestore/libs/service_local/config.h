@@ -58,6 +58,7 @@ public:
     [[nodiscard]] ui32 GetMaxKernelWorkersCount() const;
     [[nodiscard]] bool GetForceAsyncIO() const;
     [[nodiscard]] bool GetPropagateAffinityToKernelWorkers() const;
+    [[nodiscard]] bool GetSQKernelPollingEnabled() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
