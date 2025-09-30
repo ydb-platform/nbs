@@ -25,8 +25,6 @@ GO_TEST_SRCS(
     replicate_disk_task_test.go
 )
 
-SIZE(MEDIUM)
-
 END()
 
 RECURSE(
