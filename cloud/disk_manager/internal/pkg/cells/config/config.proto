@@ -10,7 +10,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 enum CellSelectionPolicy {
     FIRST_IN_CONFIG = 0;
-    LEAST_OCCUPIED = 1;
+    MAX_FREE_BYTES = 1;
 }
 
 message ZoneCells {

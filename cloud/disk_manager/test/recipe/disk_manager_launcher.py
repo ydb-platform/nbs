@@ -510,7 +510,7 @@ class DiskManagerLauncher:
         migration_dst_s3_credentials_file=None,
         migrating_snapshots_inflight_limit=None,
         retry_broken_disk_registry_based_disk_checkpoint=False,
-        cell_selection_policy=None,
+        cell_selection_policy="FIRST_IN_CONFIG",
     ):
         self.__idx = idx
 

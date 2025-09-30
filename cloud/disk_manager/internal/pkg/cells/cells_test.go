@@ -13,6 +13,15 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const (
+	shardedZoneID = "zone-a"
+	cellID1       = "zone-a"
+	cellID2       = "zone-a-shard1"
+	otherZoneID   = "zone-b"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestCellsIsFolderAllowed(t *testing.T) {
 	testCases := []struct {
 		name            string
@@ -71,8 +80,8 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 	policy := cells_config.CellSelectionPolicy_FIRST_IN_CONFIG
 	config := &cells_config.CellsConfig{
 		Cells: map[string]*cells_config.ZoneCells{
-			"zone1": {Cells: []string{"zone1-cell1", "zone1"}},
-			"zone2": {Cells: []string{"zone2"}},
+			shardedZoneID: {Cells: []string{cellID2, cellID1}},
+			otherZoneID:   {Cells: []string{otherZoneID}},
 		},
 		CellSelectionPolicy: &policy,
 	}
@@ -83,34 +92,34 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 
 	selectedCell, err := selector.selectCell(
 		ctx,
-		"zone1",
+		shardedZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
 	)
 	require.NoError(t, err)
-	require.Equal(t, "zone1-cell1", selectedCell) // First in the config.
+	require.Equal(t, cellID2, selectedCell) // First in the config.
 
 	selectedCell, err = selector.selectCell(
 		ctx,
-		"zone1-cell1",
+		cellID2,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
 	)
 	require.NoError(t, err)
-	require.Equal(t, "zone1-cell1", selectedCell)
+	require.Equal(t, cellID2, selectedCell)
 
 	selectedCell, err = selector.selectCell(
 		ctx,
-		"zone2",
+		otherZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
 	)
 	require.NoError(t, err)
-	require.Equal(t, "zone2", selectedCell)
+	require.Equal(t, otherZoneID, selectedCell)
 
 	selectedCell, err = selector.selectCell(
 		ctx,
-		"zone3",
+		"incorrectZoneID",
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
 	)
@@ -137,11 +146,11 @@ func TestCellSelectorReturnsCorrectCellLeastOccupiedPolicy(t *testing.T) {
 	ctx := context.Background()
 	cellStorage := storage_mocks.NewStorageMock()
 
-	policy := cells_config.CellSelectionPolicy_LEAST_OCCUPIED
+	policy := cells_config.CellSelectionPolicy_MAX_FREE_BYTES
 	config := &cells_config.CellsConfig{
 		Cells: map[string]*cells_config.ZoneCells{
-			"zone-a": {Cells: []string{"zone-a-cell1", "zone-a"}},
-			"zone-b": {Cells: []string{"zone-b"}},
+			shardedZoneID: {Cells: []string{cellID2, cellID1}},
+			otherZoneID:   {Cells: []string{otherZoneID}},
 		},
 		CellSelectionPolicy: &policy,
 	}
@@ -149,11 +158,11 @@ func TestCellSelectorReturnsCorrectCellLeastOccupiedPolicy(t *testing.T) {
 	cellStorage.On(
 		"GetRecentClusterCapacities",
 		ctx,
-		"zone-a",
+		shardedZoneID,
 		types.DiskKind_DISK_KIND_SSD,
 	).Return([]storage.ClusterCapacity{
-		{FreeBytes: 1024, CellID: "zone-a-cell1"},
-		{FreeBytes: 2048, CellID: "zone-a"},
+		{FreeBytes: 2048, CellID: cellID1},
+		{FreeBytes: 1024, CellID: cellID2},
 	}, nil)
 
 	selector := cellSelector{
@@ -163,10 +172,10 @@ func TestCellSelectorReturnsCorrectCellLeastOccupiedPolicy(t *testing.T) {
 
 	selectedCell, err := selector.selectCell(
 		ctx,
-		"zone-a",
+		shardedZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
 	)
 	require.NoError(t, err)
-	require.Equal(t, "zone-a", selectedCell)
+	require.Equal(t, cellID1, selectedCell)
 }

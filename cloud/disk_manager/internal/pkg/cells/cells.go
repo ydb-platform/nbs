@@ -115,7 +115,7 @@ func (s *cellSelector) selectCell(
 	switch s.config.GetCellSelectionPolicy() {
 	case cells_config.CellSelectionPolicy_FIRST_IN_CONFIG:
 		return cells[0], nil
-	case cells_config.CellSelectionPolicy_LEAST_OCCUPIED:
+	case cells_config.CellSelectionPolicy_MAX_FREE_BYTES:
 		capacities, err := s.storage.GetRecentClusterCapacities(ctx, zoneID, kind)
 		if err != nil {
 			return "", err
