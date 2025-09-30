@@ -1,12 +1,10 @@
 #include "tablet_boot_info_backup.h"
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/kikimr/components.h>
 
-#include <cloud/storage/core/libs/common/format.h>
-
 #include <contrib/ydb/core/base/tablet.h>
-
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
