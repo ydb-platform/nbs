@@ -76,6 +76,7 @@ private:
     struct TPendingOperations;
     class TContiguousWriteDataEntryPartsReader;
     class TWriteDataEntryIntervalMap;
+    class TStatsProcessor;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -111,6 +112,7 @@ struct IWriteBackCacheStats
     virtual void IncrementCompletedFlushCount() = 0;
     virtual void IncrementFailedFlushCount() = 0;
     virtual void SetExecutingFlushCount(ui64 value) = 0;
+
     virtual void SetEarliestExecutingFlushTime(TInstant time) = 0;
 
     virtual void SetNodeCount(ui64 value) = 0;

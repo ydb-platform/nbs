@@ -4,10 +4,27 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TWriteBackCacheStatsProcessor::TWriteBackCacheStatsProcessor(
+TWriteBackCache::TStatsProcessor::TStatsProcessor(
         IWriteBackCacheStatsPtr stats)
     : Stats(std::move(stats))
 {}
+
+void TWriteBackCache::TStatsProcessor::FlushStarted(
+    ui64 writeDataRequestCount,
+    TInstant startTime)
+{}
+
+void TWriteBackCache::TStatsProcessor::FlushCompleted(
+    ui64 writeDataRequestCount,
+    TInstant startTime)
+{}
+
+void TWriteBackCache::TStatsProcessor::FlushFailed()
+{}
+
+
+
+
 
 void TWriteBackCacheStatsProcessor::FlushScheduled(TInstant startTime)
 {

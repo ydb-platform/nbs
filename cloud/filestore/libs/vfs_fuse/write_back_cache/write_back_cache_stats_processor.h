@@ -12,7 +12,7 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBackCacheStatsProcessor
+class TWriteBackCache::TStatsProcessor
 {
 private:
     const IWriteBackCacheStatsPtr Stats;
@@ -21,25 +21,27 @@ private:
     TMultiSet<TInstant> FlushStartTimeSet;
 
 public:
-    explicit TWriteBackCacheStatsProcessor(IWriteBackCacheStatsPtr stats);
+    explicit TStatsProcessor(IWriteBackCacheStatsPtr stats);
 
-    void FlushScheduled(TInstant startTime);
-    void FlushCompleted(TInstant startTime);
+    void FlushStarted(ui64 writeDataRequestCount, TInstant startTime);
+    void FlushCompleted(ui64 writeDataRequestCount, TInstant startTime);
     void FlushFailed();
+
+    void UpdateNodeCount(ui64 value);
+
+    void UpdatePendingQueueStatus(
+        const TDeque<std::unique_ptr<TWriteDataEntry>>& pendingEntries);
+
+    void UpdateCachedQueueStatus(
+        const TDeque<std::unique_ptr<TWriteDataEntry>>& cachedEntries);
+
+    void AddWriteDataRequestPendingTime(TDuration pendingTime);
+    void AddWriteDataRequestCachedTime(TDuration cachedTime);
+    void AddWriteDataRequestFlushTime(TDuration flushTime);
 
     // Persistent queue stats should be reported after a call (or a series of
     // calls) to AllocateBack or PopFront
     void UpdatePersistentQueueStats(const TFileRingBuffer& buffer);
-
-    void UpdateNodeCount(ui64 value);
-    void UpdateCachedRequestCount(ui64 value);
-    void UpdatePendingRequestCount(ui64 value);
-
-    void AddWriteDataRequestStats(
-        TInstant pendingTime,
-        TInstant cachedTime,
-        TInstant startFlushTime,
-        TInstant completeFlushTime) const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse
