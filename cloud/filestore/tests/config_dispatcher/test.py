@@ -19,6 +19,7 @@ import yatest.common as yatest_common
 
 kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
+
 def setup_kikimr():
     configurator = KikimrConfigGenerator(
         erasure=None,
