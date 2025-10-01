@@ -30,13 +30,11 @@ class FilestoreServer(Daemon):
             self.__dynamic_storage_pools = [
                 dict(name="dynamic_storage_pool:1", kind="rot"),
                 dict(name="dynamic_storage_pool:2", kind="ssd")]
-        self.__subdomain = configurator.get_schemeshard_dir()
+        self.__schemeshard_dir = configurator.get_schemeshard_dir()
         self.__secure_kikimr = secure_kikimr
-        if self.__subdomain is None:
-            return
-        if self.__kikimr_binary_path is None:
-            return
-        self.init_scheme()
+        if self.__schemeshard_dir is not None:
+            assert self.__kikimr_binary_path is not None:
+            self.init_scheme()
 
     @property
     def pid(self):
@@ -48,7 +46,7 @@ ModifyScheme {{
     WorkingDir: "/Root"
     OperationType: ESchemeOpCreateSubDomain
     SubDomain {{
-        Name: "{self.__subdomain.lstrip('/Root/')}"
+        Name: "{self.__schemeshard_dir.lstrip('/Root/')}"
         Coordinators: 0
         Mediators: 0
         PlanResolution: 50
