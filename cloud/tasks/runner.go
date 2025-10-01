@@ -86,8 +86,8 @@ type runnerForRun struct {
 	inflightHangingTaskTimeout                  time.Duration
 	stallingHangingTaskTimeout                  time.Duration
 	missedEstimatesUntilTaskIsHanging           uint64
-	overrideEstimatedInflightDurationByTaskType map[string]time.Duration
-	overrideEstimatedStallingDurationByTaskType map[string]time.Duration
+	estimatedInflightDurationOverrideByTaskType map[string]time.Duration
+	estimatedStallingDurationOverrideByTaskType map[string]time.Duration
 	maxSampledTaskGeneration                    uint64
 }
 
@@ -339,8 +339,8 @@ func (r *runnerForRun) lockAndExecuteTask(
 		r.inflightHangingTaskTimeout,
 		r.stallingHangingTaskTimeout,
 		r.missedEstimatesUntilTaskIsHanging,
-		r.overrideEstimatedInflightDurationByTaskType,
-		r.overrideEstimatedStallingDurationByTaskType,
+		r.estimatedInflightDurationOverrideByTaskType,
+		r.estimatedStallingDurationOverrideByTaskType,
 		r.maxSampledTaskGeneration,
 	)
 }
@@ -361,8 +361,8 @@ type runnerForCancel struct {
 	inflightHangingTaskTimeout                  time.Duration
 	stallingHangingTaskTimeout                  time.Duration
 	missedEstimatesUntilTaskIsHanging           uint64
-	overrideEstimatedInflightDurationByTaskType map[string]time.Duration
-	overrideEstimatedStallingDurationByTaskType map[string]time.Duration
+	estimatedInflightDurationOverrideByTaskType map[string]time.Duration
+	estimatedStallingDurationOverrideByTaskType map[string]time.Duration
 	maxSampledTaskGeneration                    uint64
 }
 
@@ -476,8 +476,8 @@ func (r *runnerForCancel) lockAndExecuteTask(
 		r.inflightHangingTaskTimeout,
 		r.stallingHangingTaskTimeout,
 		r.missedEstimatesUntilTaskIsHanging,
-		r.overrideEstimatedInflightDurationByTaskType,
-		r.overrideEstimatedStallingDurationByTaskType,
+		r.estimatedInflightDurationOverrideByTaskType,
+		r.estimatedStallingDurationOverrideByTaskType,
 		r.maxSampledTaskGeneration,
 	)
 }
@@ -548,8 +548,8 @@ func lockAndExecuteTask(
 	inflightHangingTaskTimeout time.Duration,
 	stallingHangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
-	overrideEstimatedInflightDurationByTaskType map[string]time.Duration,
-	overrideEstimatedStallingDurationByTaskType map[string]time.Duration,
+	estimatedInflightDurationOverrideByTaskType map[string]time.Duration,
+	estimatedStallingDurationOverrideByTaskType map[string]time.Duration,
 	maxSampledTaskGeneration uint64,
 ) error {
 
@@ -626,12 +626,12 @@ func lockAndExecuteTask(
 		missedEstimatesUntilTaskIsHanging,
 	)
 
-	estimatedInflightDurationOverride, ok := overrideEstimatedInflightDurationByTaskType[taskState.TaskType]
+	estimatedInflightDurationOverride, ok := estimatedInflightDurationOverrideByTaskType[taskState.TaskType]
 	if ok {
 		execCtx.SetEstimatedInflightDuration(estimatedInflightDurationOverride)
 	}
 
-	estimatedStallingDurationOverride, ok := overrideEstimatedStallingDurationByTaskType[taskState.TaskType]
+	estimatedStallingDurationOverride, ok := estimatedStallingDurationOverrideByTaskType[taskState.TaskType]
 	if ok {
 		execCtx.SetEstimatedStallingDuration(estimatedStallingDurationOverride)
 	}
@@ -693,8 +693,8 @@ func startRunner(
 	stallingHangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
 	exceptHangingTaskTypes []string,
-	overrideEstimatedInflightDurationByTaskType map[string]time.Duration,
-	overrideEstimatedStallingDurationByTaskType map[string]time.Duration,
+	estimatedInflightDurationOverrideByTaskType map[string]time.Duration,
+	estimatedStallingDurationOverrideByTaskType map[string]time.Duration,
 	host string,
 	idForRun string,
 	idForCancel string,
@@ -729,8 +729,8 @@ func startRunner(
 		inflightHangingTaskTimeout:                  inflightHangingTaskTimeout,
 		stallingHangingTaskTimeout:                  stallingHangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging:           missedEstimatesUntilTaskIsHanging,
-		overrideEstimatedInflightDurationByTaskType: overrideEstimatedInflightDurationByTaskType,
-		overrideEstimatedStallingDurationByTaskType: overrideEstimatedStallingDurationByTaskType,
+		estimatedInflightDurationOverrideByTaskType: estimatedInflightDurationOverrideByTaskType,
+		estimatedStallingDurationOverrideByTaskType: estimatedStallingDurationOverrideByTaskType,
 		maxSampledTaskGeneration:                    maxSampledTaskGeneration,
 	})
 
@@ -754,8 +754,8 @@ func startRunner(
 		inflightHangingTaskTimeout:                  inflightHangingTaskTimeout,
 		stallingHangingTaskTimeout:                  stallingHangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging:           missedEstimatesUntilTaskIsHanging,
-		overrideEstimatedInflightDurationByTaskType: overrideEstimatedInflightDurationByTaskType,
-		overrideEstimatedStallingDurationByTaskType: overrideEstimatedStallingDurationByTaskType,
+		estimatedInflightDurationOverrideByTaskType: estimatedInflightDurationOverrideByTaskType,
+		estimatedStallingDurationOverrideByTaskType: estimatedStallingDurationOverrideByTaskType,
 		maxSampledTaskGeneration:                    maxSampledTaskGeneration,
 	})
 
@@ -777,8 +777,8 @@ func startRunners(
 	stallingHangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
 	exceptHangingTaskTypes []string,
-	overrideEstimatedInflightDurationByTaskType map[string]time.Duration,
-	overrideEstimatedStallingDurationByTaskType map[string]time.Duration,
+	estimatedInflightDurationOverrideByTaskType map[string]time.Duration,
+	estimatedStallingDurationOverrideByTaskType map[string]time.Duration,
 	host string,
 	maxRetriableErrorCountDefault uint64,
 	maxRetriableErrorCountByTaskType map[string]uint64,
@@ -801,8 +801,8 @@ func startRunners(
 			stallingHangingTaskTimeout,
 			missedEstimatesUntilTaskIsHanging,
 			exceptHangingTaskTypes,
-			overrideEstimatedInflightDurationByTaskType,
-			overrideEstimatedStallingDurationByTaskType,
+			estimatedInflightDurationOverrideByTaskType,
+			estimatedStallingDurationOverrideByTaskType,
 			host,
 			fmt.Sprintf("run_%v", i),
 			fmt.Sprintf("cancel_%v", i),
@@ -834,8 +834,8 @@ func startStalkingRunners(
 	stallingHangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
 	exceptHangingTaskTypes []string,
-	overrideEstimatedInflightDurationByTaskType map[string]time.Duration,
-	overrideEstimatedStallingDurationByTaskType map[string]time.Duration,
+	estimatedInflightDurationOverrideByTaskType map[string]time.Duration,
+	estimatedStallingDurationOverrideByTaskType map[string]time.Duration,
 	host string,
 	maxRetriableErrorCountDefault uint64,
 	maxRetriableErrorCountByTaskType map[string]uint64,
@@ -858,8 +858,8 @@ func startStalkingRunners(
 			stallingHangingTaskTimeout,
 			missedEstimatesUntilTaskIsHanging,
 			exceptHangingTaskTypes,
-			overrideEstimatedInflightDurationByTaskType,
-			overrideEstimatedStallingDurationByTaskType,
+			estimatedInflightDurationOverrideByTaskType,
+			estimatedStallingDurationOverrideByTaskType,
 			host,
 			fmt.Sprintf("stalker_run_%v", i),
 			fmt.Sprintf("stalker_cancel_%v", i),
@@ -994,15 +994,15 @@ func StartRunners(
 		return err
 	}
 
-	overrideEstimatedInflightDurationByTaskType, err := parseEstimatedDurationOverrides(
-		config.GetOverrideEstimatedInflightDurationByTaskType(),
+	estimatedInflightDurationOverrideByTaskType, err := parseEstimatedDurationOverrides(
+		config.GetEstimatedInflightDurationOverrideByTaskType(),
 	)
 	if err != nil {
 		return err
 	}
 
-	overrideEstimatedStallingDurationByTaskType, err := parseEstimatedDurationOverrides(
-		config.GetOverrideEstimatedStallingDurationByTaskType(),
+	estimatedStallingDurationOverrideByTaskType, err := parseEstimatedDurationOverrides(
+		config.GetEstimatedStallingDurationOverrideByTaskType(),
 	)
 	if err != nil {
 		return err
@@ -1058,8 +1058,8 @@ func StartRunners(
 		stallingHangingTaskTimeout,
 		config.GetMissedEstimatesUntilTaskIsHanging(),
 		config.GetExceptHangingTaskTypes(),
-		overrideEstimatedInflightDurationByTaskType,
-		overrideEstimatedStallingDurationByTaskType,
+		estimatedInflightDurationOverrideByTaskType,
+		estimatedStallingDurationOverrideByTaskType,
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxRetriableErrorCountByTaskType(),
@@ -1118,8 +1118,8 @@ func StartRunners(
 		stallingHangingTaskTimeout,
 		config.GetMissedEstimatesUntilTaskIsHanging(),
 		config.GetExceptHangingTaskTypes(),
-		overrideEstimatedInflightDurationByTaskType,
-		overrideEstimatedStallingDurationByTaskType,
+		estimatedInflightDurationOverrideByTaskType,
+		estimatedStallingDurationOverrideByTaskType,
 		host,
 		config.GetMaxRetriableErrorCount(),
 		config.GetMaxRetriableErrorCountByTaskType(),

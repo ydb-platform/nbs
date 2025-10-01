@@ -1507,8 +1507,8 @@ func TestTryExecutingTask(t *testing.T) {
 		time.Hour,      // inflightHangingTaskTimeout
 		30*time.Minute, // stallingHangingTaskTimeout
 		2,              // missedEstimatesUntilTaskIsHanging,
-		nil,            // overrideEstimatedInflightDurationByTaskType
-		nil,            // overrideEstimatedStallingDurationByTaskType
+		nil,            // estimatedInflightDurationOverrideByTaskType
+		nil,            // estimatedStallingDurationOverrideByTaskType
 		100,            // maxSampledTaskGeneration
 	)
 	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
@@ -1569,12 +1569,13 @@ func TestTryExecutingTaskFailToPing(t *testing.T) {
 		time.Hour,      // inflightHangingTaskTimeout
 		30*time.Minute, // stallingHangingTaskTimeout
 		2,              // missedEstimatesUntilTaskIsHanging
-		nil,            // overrideEstimatedInflightDurationByTaskType
-		nil,            // overrideEstimatedStallingDurationByTaskType
+		nil,            // estimatedInflightDurationOverrideByTaskType
+		nil,            // estimatedStallingDurationOverrideByTaskType
 		100,            // maxSampledTaskGeneration
 	)
-	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
 	require.NoError(t, err)
+
+	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
 }
 
 func testTryExecutingTaskWithEstimatedDurationOverride(
@@ -1629,14 +1630,14 @@ func testTryExecutingTaskWithEstimatedDurationOverride(
 	).Run(waitForContextCancelCallback(t))
 	runnerMetrics.On("OnExecutionStopped")
 
-	overrideEstimatedInflightDurationByTaskType := map[string]time.Duration{}
+	estimatedInflightDurationOverrideByTaskType := map[string]time.Duration{}
 	if overrideEstimatedInflightDuration {
-		overrideEstimatedInflightDurationByTaskType["task"] = estimatedInflightDuration
+		estimatedInflightDurationOverrideByTaskType["task"] = estimatedInflightDuration
 	}
 
-	overrideEstimatedStallingDurationByTaskType := map[string]time.Duration{}
+	estimatedStallingDurationOverrideByTaskType := map[string]time.Duration{}
 	if overrideEstimatedStallingDuration {
-		overrideEstimatedStallingDurationByTaskType["task"] = estimatedStallingDuration
+		estimatedStallingDurationOverrideByTaskType["task"] = estimatedStallingDuration
 	}
 
 	err = lockAndExecuteTask(
@@ -1652,12 +1653,13 @@ func testTryExecutingTaskWithEstimatedDurationOverride(
 		time.Hour,      // inflightHangingTaskTimeout
 		30*time.Minute, // stallingHangingTaskTimeout
 		2,              // missedEstimatesUntilTaskIsHanging
-		overrideEstimatedInflightDurationByTaskType,
-		overrideEstimatedStallingDurationByTaskType,
+		estimatedInflightDurationOverrideByTaskType,
+		estimatedStallingDurationOverrideByTaskType,
 		100, // maxSampledTaskGeneration
 	)
-	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
 	require.NoError(t, err)
+
+	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
 }
 
 func TestTryExecutingTaskWithEstimatedDurationOverride(t *testing.T) {

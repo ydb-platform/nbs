@@ -1970,13 +1970,13 @@ func testTaskWithEstimatedDurationOverride(
 	config.RunnersCount = &runnersCount
 
 	if overrideEstimatedInflightDuration {
-		config.OverrideEstimatedInflightDurationByTaskType = map[string]string{
+		config.EstimatedInflightDurationOverrideByTaskType = map[string]string{
 			overrideTaskType: "42h",
 		}
 	}
 
 	if overrideEstimatedStallingDuration {
-		config.OverrideEstimatedStallingDurationByTaskType = map[string]string{
+		config.EstimatedStallingDurationOverrideByTaskType = map[string]string{
 			overrideTaskType: "42s",
 		}
 	}
