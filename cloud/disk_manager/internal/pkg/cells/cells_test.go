@@ -134,12 +134,12 @@ func TestCellSelectorReturnsCorrectNBSClientIfConfigsIsNotSet(t *testing.T) {
 
 	selectedCell, err := cellSelector.selectCell(
 		ctx,
-		"zone",
+		otherZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
 	)
 	require.NoError(t, err)
-	require.Equal(t, "zone", selectedCell)
+	require.Equal(t, otherZoneID, selectedCell)
 }
 
 func TestCellSelectorReturnsCorrectCellLeastOccupiedPolicy(t *testing.T) {
