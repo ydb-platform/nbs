@@ -384,6 +384,7 @@ class FilestoreDaemonConfigGenerator:
             return None
         return self.__storage_config.NodeRegistrationRootCertsFile
 
+
 class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
     def __init__(
         self,
