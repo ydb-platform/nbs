@@ -208,6 +208,16 @@ until [ $exit_code -eq 0 ] || [ $i -gt 3 ]; do
     [ $exit_code -eq 0 ] || find /actions-runner -name *.log -print -exec cat {{}} \; # noqa: W605
 done
 # true to skip the error and to boot vm correctly
+sed -i \\
+  '/^\[Install\]/i \\
+OOMPolicy=continue \\
+OOMScoreAdjust=-900 \\
+Delegate=yes \\
+TasksMax=infinity \\
+Restart=on-failure \\
+RestartSec=5s \\
+Slice=actions-runner.slice' \
+  ./bin/actions.runner.service.template
 ./svc.sh install || true
 ./svc.sh start || true
 """
