@@ -118,6 +118,7 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
 	).Return(nbsClient, nil)
+
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
 		ID:          "disk",
 		BlocksCount: 123,

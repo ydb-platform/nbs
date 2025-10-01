@@ -22,7 +22,7 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestCreateEmptyDiskWithLeastOccupiedPolicy(t *testing.T) {
+func TestCreateEmptyDiskWithMaxFreeBytesPolicy(t *testing.T) {
 	ctx := testcommon.NewContext()
 
 	deleteOlderThan := time.Now()

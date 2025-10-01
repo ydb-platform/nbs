@@ -142,7 +142,7 @@ func TestCellSelectorReturnsCorrectNBSClientIfConfigsIsNotSet(t *testing.T) {
 	require.Equal(t, otherZoneID, selectedCell)
 }
 
-func TestCellSelectorReturnsCorrectCellLeastOccupiedPolicy(t *testing.T) {
+func TestCellSelectorReturnsCorrectCellMaxFreeBytesPolicy(t *testing.T) {
 	ctx := context.Background()
 	cellStorage := storage_mocks.NewStorageMock()
 
