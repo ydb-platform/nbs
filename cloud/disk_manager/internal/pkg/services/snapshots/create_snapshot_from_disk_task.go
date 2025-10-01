@@ -48,7 +48,9 @@ func (t *createSnapshotFromDiskTask) run(
 	nbsClient nbs.Client,
 ) (string, error) {
 
+	// Disk cell may differ from the zone presented in the request.
 	disk := t.request.SrcDisk
+	disk.ZoneId = nbsClient.ZoneID()
 
 	selfTaskID := execCtx.GetTaskID()
 
@@ -88,7 +90,7 @@ func (t *createSnapshotFromDiskTask) run(
 		execCtx,
 		t.scheduler,
 		nbsClient,
-		t.request.SrcDisk,
+		disk,
 		t.request.DstSnapshotId,
 		selfTaskID,
 		diskParams.IsDiskRegistryBasedDisk,
@@ -158,7 +160,14 @@ func (t *createSnapshotFromDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	// Disk cell may differ from the zone presented in the request.
 	disk := t.request.SrcDisk
+	diskMeta, err := t.storage.GetDiskMeta(ctx, disk.DiskId)
+	if err != nil {
+		return err
+	}
+
+	disk.ZoneId = diskMeta.ZoneID
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
@@ -170,7 +179,7 @@ func (t *createSnapshotFromDiskTask) Run(
 		return err
 	}
 
-	diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
+	diskParams, err := nbsClient.Describe(ctx, disk.DiskId)
 	if err != nil {
 		return err
 	}
@@ -188,7 +197,14 @@ func (t *createSnapshotFromDiskTask) Cancel(
 ) error {
 
 	disk := t.request.SrcDisk
-	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	// Disk cell may differ from the zone presented in the request.
+	diskMeta, err := t.storage.GetDiskMeta(ctx, disk.DiskId)
+	if err != nil {
+		return err
+	}
+
+	disk.ZoneId = diskMeta.ZoneID
+	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
 		return err
 	}
