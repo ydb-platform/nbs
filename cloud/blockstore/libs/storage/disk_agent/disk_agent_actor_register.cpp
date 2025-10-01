@@ -319,7 +319,7 @@ void TDiskAgentActor::HandleRegisterAgent(
     NCloud::Register<TRegisterActor>(
         ctx,
         ctx.SelfID,
-        Config->GetAttachDetachPathsEnabled(),
+        Config->GetAttachDetachPathsEnabled() && !Spdk,
         std::move(requestInfo),
         std::move(config));
 }
