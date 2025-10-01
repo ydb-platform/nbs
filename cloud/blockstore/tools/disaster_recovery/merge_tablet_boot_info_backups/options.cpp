@@ -12,8 +12,8 @@ TOptions::TOptions(int argc, char** argv)
         .Required()
         .StoreResult(&SrcBackupsFilePath)
         .Help(
-            "Path to the directory containing subdirectories with path "
-            "description (schemeshard) backups.");
+            "Path to the directory containing subdirectories with tablet boot "
+            "info (hive) backups.");
 
     opts.AddLongOption("text-output")
         .RequiredArgument("STR")
@@ -23,10 +23,10 @@ TOptions::TOptions(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResult(&BinaryOutputPath);
 
-    opts.AddLongOption("path-description-backup-file-name")
+    opts.AddLongOption("tablet-boot-info-backup-file-name")
         .RequiredArgument("STR")
-        .DefaultValue("nbs-path-description-backup.txt")
-        .StoreResult(&PathDescriptionBackupFileName);
+        .DefaultValue("nbs-tablet-boot-info-backup.txt")
+        .StoreResult(&TabletBootInfoBackupFileName);
 
     TOptsParseResultException(&opts, argc, argv);
 }

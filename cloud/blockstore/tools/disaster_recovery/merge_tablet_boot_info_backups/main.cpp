@@ -1,7 +1,7 @@
 #include "options.h"
 
 #include <cloud/storage/core/libs/common/format.h>
-#include <cloud/storage/core/libs/ss_proxy/protos/path_description_backup.pb.h>
+#include "cloud/storage/core/libs/hive_proxy/protos/tablet_boot_info_backup.pb.h"
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -20,22 +20,22 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 bool operator<(
-    const NKikimrSchemeOp::TPathDescription& lhs,
-    const NKikimrSchemeOp::TPathDescription& rhs)
+    const NHiveProxy::NProto::TTabletBootInfo& lhs,
+    const NHiveProxy::NProto::TTabletBootInfo& rhs)
 {
-    return lhs.GetSelf().GetPathVersion() < rhs.GetSelf().GetPathVersion();
+    return lhs.GetSuggestedGeneration() < rhs.GetSuggestedGeneration();
 }
 
-using TSchemeShardData = TMap<TString, NKikimrSchemeOp::TPathDescription>;
+using THiveProxyData = TMap<ui64, NHiveProxy::NProto::TTabletBootInfo>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool LoadPathDescriptionBackup(
+bool LoadTabletBootInfoBackup(
     const TOptions& options,
     const TFsPath& path,
-    NSSProxy::NProto::TPathDescriptionBackup* backupProto)
+    NHiveProxy::NProto::TTabletBootInfoBackup* backupProto)
 {
-    auto backupPath = path / options.PathDescriptionBackupFileName;
+    auto backupPath = path / options.TabletBootInfoBackupFileName;
     if (!backupPath.Exists()) {
         return false;
     }
@@ -53,20 +53,20 @@ bool LoadPathDescriptionBackup(
 void ProcessDir(
     const TOptions& options,
     const TFsPath& path,
-    TSchemeShardData* allData,
+    THiveProxyData* allData,
     size_t dirIndex,
     size_t totalDirCount)
 {
     const TInstant start = TInstant::Now();
 
-    NSSProxy::NProto::TPathDescriptionBackup pathDescriptionProto;
+    NHiveProxy::NProto::TTabletBootInfoBackup tabletBootInfoProto;
 
-    if (!LoadPathDescriptionBackup(options, path, &pathDescriptionProto)) {
+    if (!LoadTabletBootInfoBackup(options, path, &tabletBootInfoProto)) {
         Cerr << path.GetPath().Quote() << " Failed" << Endl;
         return;
     }
 
-    for (auto& [key, value]: *pathDescriptionProto.MutableData()) {
+    for (auto& [key, value]: *tabletBootInfoProto.MutableData()) {
         auto* exist = allData->FindPtr(key);
         if (exist) {
             if (*exist < value) {
@@ -78,17 +78,17 @@ void ProcessDir(
     }
 
     Cout << dirIndex << "/" << totalDirCount << " " << path.GetPath().Quote()
-         << " OK, file count: " << pathDescriptionProto.GetData().size()
+         << " OK, file count: " << tabletBootInfoProto.GetData().size()
          << ", total count: " << allData->size()
          << ", time: " << FormatDuration(TInstant::Now() - start) << Endl;
 }
 
 void Dump(
-    TSchemeShardData allData,
+    THiveProxyData allData,
     const TFsPath& textOutputPath,
     const TFsPath& binaryOutputPath)
 {
-    NSSProxy::NProto::TPathDescriptionBackup allProto;
+    NHiveProxy::NProto::TTabletBootInfoBackup allProto;
     for (auto& [key, value]: allData) {
         (*allProto.MutableData())[key] = std::move(value);
     }
@@ -116,7 +116,7 @@ void Run(const TOptions& options)
 
     TVector<TString> children;
     srcBackupsFilePath.ListNames(children);
-    TSchemeShardData allData;
+    THiveProxyData allData;
     size_t dirIndex = 0;
     for (const auto& child: children) {
         ProcessDir(

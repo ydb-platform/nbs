@@ -12,7 +12,7 @@ struct TOptions
     TString SrcBackupsFilePath;
     TString TextOutputPath;
     TString BinaryOutputPath;
-    TString PathDescriptionBackupFileName;
+    TString TabletBootInfoBackupFileName;
 
     TOptions(int argc, char** argv);
 };
