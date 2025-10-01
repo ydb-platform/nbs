@@ -1331,7 +1331,7 @@ NProto::TError TDiskAgentState::DetachPath(
     for (const auto& [path, gen]: pathToGeneration) {
         auto* pathAttachState = PathAttachStates.FindPtr(path);
         if (!pathAttachState) {
-            MakeError(E_NOT_FOUND, "Path not found");
+            continue;
         }
 
         if (pathAttachState->State == EPathAttachState::Detached) {
@@ -1349,13 +1349,16 @@ NProto::TError TDiskAgentState::DetachPath(
     }
 
     for (const auto& [path, pathGeneration]: pathToGeneration) {
-        auto& pathAttachState = PathAttachStates[path];
+        auto* pathAttachState = PathAttachStates.FindPtr(path);
+        if (!pathAttachState) {
+            continue;
+        }
         auto uuids = GetAllDeviceUUIDsForPath(path);
 
-        pathAttachState.Generation =
-            Max(pathAttachState.Generation, pathGeneration);
+        pathAttachState->Generation =
+            Max(pathAttachState->Generation, pathGeneration);
 
-        if (pathAttachState.State == EPathAttachState::Detached) {
+        if (pathAttachState->State == EPathAttachState::Detached) {
             continue;
         }
 
@@ -1368,7 +1371,7 @@ NProto::TError TDiskAgentState::DetachPath(
             }
         }
 
-        pathAttachState.State = EPathAttachState::Detached;
+        pathAttachState->State = EPathAttachState::Detached;
     }
 
     return {};
