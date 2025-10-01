@@ -1808,7 +1808,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
     }
 
-    Y_UNIT_TEST(ShouldKek)
+    Y_UNIT_TEST(ShouldUpdateDiskInDBAfterDeviceReplacement)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
