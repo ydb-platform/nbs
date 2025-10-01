@@ -62,7 +62,7 @@ void TDiskAgentActor::HandleAttachPath(
             pathToGeneration.GetPath(),
             pathToGeneration.GetGeneration());
 
-        if (HasError(error)) {
+        if (HasError(error) && error.GetCode() != E_NOT_FOUND) {
             LOG_ERROR(
                 ctx,
                 TBlockStoreComponents::DISK_AGENT,
@@ -77,7 +77,7 @@ void TDiskAgentActor::HandleAttachPath(
             return;
         }
 
-        if (error.GetCode() == S_ALREADY) {
+        if (error.GetCode() == S_ALREADY || error.GetCode() == E_NOT_FOUND) {
             request
                 .AlreadyAttachedPathsToGeneration[pathToGeneration.GetPath()] =
                 pathToGeneration.GetGeneration();
