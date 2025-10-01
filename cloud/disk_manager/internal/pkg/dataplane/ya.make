@@ -38,6 +38,7 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
+    tasks_tests
     tests
     transfer_tests
 )

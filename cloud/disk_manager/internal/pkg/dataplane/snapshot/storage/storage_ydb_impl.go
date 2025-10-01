@@ -1413,10 +1413,7 @@ func (s *storageYDB) getSnapshotMeta(
 	}
 
 	if len(states) == 0 {
-		return nil, task_errors.NewNonRetriableErrorf(
-			"snapshot with id %v does not exist",
-			snapshotID,
-		)
+		return nil, nil
 	}
 
 	return states[0].toSnapshotMeta(), nil
