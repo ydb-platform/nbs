@@ -1,7 +1,10 @@
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+
 #include <cloud/storage/core/libs/common/media.h>
+
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -202,12 +205,13 @@ void TDiskRegistryActor::CompleteAddDisk(
 
         LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] AddDisk success. DiskId=%s Devices=%s Replicas=%s"
-            " Migrations=%s",
+            " Migrations=%s DeviceReplacementUUIDs=[%s]",
             TabletID(),
             args.DiskId.Quote().c_str(),
             devices.c_str(),
             replicas.c_str(),
-            migrations.c_str()
+            migrations.c_str(),
+            JoinSeq(", ", args.DeviceReplacementUUIDs).c_str()
         );
 
         auto onDevice = [&] (NProto::TDeviceConfig& d, ui32 blockSize) {

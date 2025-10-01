@@ -67,6 +67,7 @@ bool TDiskRegistryState::ReplaceDevice(
     }
 
     *device = *newDevice;
+    DeviceReplacementUUIDs.insert(newDevice->GetDeviceUUID());
     return true;
 }
 

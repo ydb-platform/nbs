@@ -1469,17 +1469,16 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
             Y_DEBUG_ABORT_UNLESS(masterDisk);
             if (masterDisk) {
                 *historyItem.MutableMessage() += TStringBuilder()
-                    << ", replica=" << diskId;
+                                                 << ", replica=" << diskId;
                 masterDisk->History.push_back(historyItem);
-
-                db.UpdateDisk(BuildDiskConfig(disk.MasterDiskId, *masterDisk));
 
                 const bool replaced = ReplicaTable.ReplaceDevice(
                     disk.MasterDiskId,
                     deviceId,
                     targetDevice.GetDeviceUUID());
-
                 Y_DEBUG_ABORT_UNLESS(replaced);
+
+                db.UpdateDisk(BuildDiskConfig(disk.MasterDiskId, *masterDisk));
             }
         }
 
@@ -6458,11 +6457,11 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
     Y_DEBUG_ABORT_UNLESS(masterDiskState);
     if (masterDiskState) {
         masterDiskState->History.push_back(std::move(historyItem));
-        db.UpdateDisk(BuildDiskConfig(diskId, disk));
         db.UpdateDisk(BuildDiskConfig(disk.MasterDiskId, *masterDiskState));
-        UpdatePlacementGroup(db, diskId, disk, "AbortMigrationAndReplaceDevice");
     }
 
+    db.UpdateDisk(BuildDiskConfig(diskId, disk));
+    UpdatePlacementGroup(db, diskId, disk, "AbortMigrationAndReplaceDevice");
     return {};
 }
 
