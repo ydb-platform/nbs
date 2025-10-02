@@ -47,12 +47,20 @@ constexpr ui32 DefaultLogicalBlockSize = 4_KB;
 enum ETestEvents
 {
     EvRegisterAgent = EventSpaceBegin(NKikimr::TEvents::ES_USERSPACE + 1),
+    EvBrokeDevice = EvRegisterAgent + 1,
 };
 
 struct TEvRegisterAgent
     : public NActors::TEventBase<TEvRegisterAgent, ETestEvents::EvRegisterAgent>
 {
     DEFINE_SIMPLE_NONLOCAL_EVENT(TEvRegisterAgent, "TEvRegisterAgent");
+};
+
+struct TEvBrokeDevice
+    : public NActors::TEventBase<TEvBrokeDevice, ETestEvents::EvBrokeDevice>
+{
+    TString DeviceUUID;
+    DEFINE_SIMPLE_NONLOCAL_EVENT(TEvBrokeDevice, "TEvBrokeDevice");
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -168,7 +176,12 @@ private:
             HFunc(TEvDiskAgent::TEvSecureEraseDeviceRequest, HandleSecureEraseDevice);
             HFunc(TEvDiskAgent::TEvEnableAgentDeviceRequest, HandleEnableAgentDevice);
 
+            HFunc(TEvDiskAgent::TEvAttachPathRequest, HandleAttachPath);
+            HFunc(TEvDiskAgent::TEvDetachPathRequest, HandleDetachPath);
+
+
             HFunc(TEvRegisterAgent, HandleRegisterAgent)
+            HFunc(TEvBrokeDevice, HandleBrokeDevice)
 
             default:
                 //HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
@@ -194,6 +207,21 @@ private:
     {
         Y_UNUSED(ev);
         RegisterAgent(ctx);
+    }
+
+    void HandleBrokeDevice(
+        const TEvBrokeDevice::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        Y_UNUSED(ctx);
+        auto& uuid = ev->Get()->DeviceUUID;
+        auto* device = FindIfPtr(
+            *Config.MutableDevices(),
+            [&](auto& device) { return device.GetDeviceUUID() == uuid; });
+
+        if (device) {
+            device->SetState(NProto::DEVICE_STATE_ERROR);
+        }
     }
 
     void HandleRegisterAgent(
@@ -271,6 +299,34 @@ private:
             *ev,
             std::make_unique<TEvDiskAgent::TEvEnableAgentDeviceResponse>());
     }
+
+    void HandleAttachPath(
+        const TEvDiskAgent::TEvAttachPathRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        auto& record = ev->Get()->Record;
+        THashSet<TString> paths;
+        for (auto& pathToGen: record.GetPathsToAttach()) {
+            paths.emplace(pathToGen.GetPath());
+        }
+
+        auto response = std::make_unique<TEvDiskAgent::TEvAttachPathResponse>();
+        for (auto& device : Config.GetDevices()) {
+            if (paths.contains(device.GetDeviceName())) {
+                *response->Record.AddAttachedDevices() = device;
+            }
+        }
+        NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
+    void HandleDetachPath(
+        const TEvDiskAgent::TEvDetachPathRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        auto response = std::make_unique<TEvDiskAgent::TEvDetachPathResponse>();
+
+        NCloud::Reply(ctx, *ev, std::move(response));
+    }
 };
 
 inline TTestDiskAgent* CreateTestDiskAgent(NProto::TAgentConfig config)
@@ -321,6 +377,7 @@ struct TCreateDeviceConfigParams
     TString Rack = "the-rack";
     ui64 TotalSize = 10_GB;
     ui32 BlockSize = DefaultBlockSize;
+    NProto::EDeviceState DeviceState = NProto::DEVICE_STATE_ONLINE;
 };
 
 inline NProto::TDeviceConfig CreateDeviceConfig(
@@ -337,6 +394,7 @@ inline NProto::TDeviceConfig CreateDeviceConfig(
     device.SetTransportId(params.Id);
     device.MutableRdmaEndpoint()->SetHost(std::move(params.Id));
     device.MutableRdmaEndpoint()->SetPort(10020);
+    device.SetState(params.DeviceState);
 
     return device;
 }
@@ -346,14 +404,16 @@ inline NProto::TDeviceConfig Device(
     TString uuid,
     TString rack = "the-rack",
     ui64 totalSize = 10_GB,
-    ui32 blockSize = DefaultBlockSize)
+    ui32 blockSize = DefaultBlockSize,
+    NProto::EDeviceState deviceState = NProto::DEVICE_STATE_ONLINE)
 {
     return CreateDeviceConfig({
         .Name = std::move(name),
         .Id = std::move(uuid),
         .Rack = std::move(rack),
         .TotalSize = totalSize,
-        .BlockSize = blockSize
+        .BlockSize = blockSize,
+        .DeviceState = deviceState
     });
 }
 

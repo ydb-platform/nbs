@@ -739,6 +739,7 @@ public:
     [[nodiscard]] bool GetComputeDigestForEveryBlockOnCompaction() const;
 
     [[nodiscard]] bool GetAttachDetachPathsEnabled() const;
+    [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
 };
 
 ui64 GetAllocationUnit(

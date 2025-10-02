@@ -33,6 +33,16 @@ enum ECheckpointState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EPathAttachState
+{
+    PATH_ATTACH_STATE_ATTACHED = 0;
+    PATH_ATTACH_STATE_ATTACHING = 1;
+    PATH_ATTACH_STATE_DETACHED = 2;
+    PATH_ATTACH_STATE_DETACHING = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TPathToGeneration
 {
     // Path to HW device.
@@ -96,6 +106,9 @@ message TAgentConfig
     // Flag which indicates that the agent was launched as a temporary one
     // during blue-green deployment.
     bool TemporaryAgent = 13;
+
+    // Attach state for each path.
+    map<string, EPathAttachState> PathAttachStates = 14;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -564,6 +577,14 @@ message TDiskRegistryStateBackup
     repeated TUserNotification UserNotifications = 17;
 
     repeated TSuspendedDevice SuspendedDevices = 18;
+
+    message TPathId
+    {
+        string AgentId = 1;
+        string Path = 2;
+    }
+
+    repeated TPathId PathsToAttachDetach = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1867,7 +1888,7 @@ message TGetClusterCapacityResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// OpenDevice
+// AttachPath
 
 message TAttachPathRequest
 {
@@ -1891,7 +1912,7 @@ message TAttachPathResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// CloseDevice
+// DetachPath
 
 message TDetachPathRequest
 {

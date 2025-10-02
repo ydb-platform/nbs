@@ -130,6 +130,9 @@ private:
 
     TTransactionTimeTracker TransactionTimeTracker;
 
+    THashMap<TString, NActors::TActorId>
+        AgentsWithAttachDetachRequestsInProgress;
+
 public:
     TDiskRegistryActor(
         const NActors::TActorId& owner,
@@ -292,6 +295,9 @@ private:
     void RenderDeviceHtmlInfo(IOutputStream& out, const TString& id) const;
     void RenderAgentHtmlInfo(IOutputStream& out, const TString& id) const;
     void RenderDiskHtmlInfo(IOutputStream& out, const TString& id) const;
+    void RenderPathAttachStates(
+        IOutputStream& out,
+        const NProto::TAgentConfig& agent) const;
 
     void SendHttpResponse(
         const NActors::TActorContext& ctx,
@@ -325,6 +331,13 @@ private:
     void InitializeState(TDiskRegistryStateSnapshot snapshot);
 
     void ProcessInitialAgentRejectionPhase(const NActors::TActorContext& ctx);
+
+    void ProcessPathsToAttachDetachOnAgent(
+        const NActors::TActorContext& ctx,
+        const NProto::TAgentConfig* agent,
+        const THashSet<TString>& paths);
+
+    void ProcessPathsToAttachDetach(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateBoot);
@@ -366,6 +379,11 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_ChangeAgentState(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_UpdatePathAttachState(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
@@ -516,6 +534,11 @@ private:
 
     void HandleSwitchAgentDisksToReadOnlyReshedule(
         const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAttachDetachPathOperationCompleted(
+        const TEvDiskRegistryPrivate::TEvAttachDetachPathOperationCompleted::
+            TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskRegistry)

@@ -43,6 +43,8 @@ class TAgentList
     using TDeviceId = TString;
     using TNodeId = ui32;
 
+    using TPathGenerations = THashMap<TString, ui64>;
+
 private:
     const TAgentListConfig Config;
     const NMonitoring::TDynamicCountersPtr ComponentGroup;
@@ -59,6 +61,10 @@ private:
     THashMap<TNodeId, size_t> NodeIdToIdx;
 
     THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
+
+    THashMap<TAgentId, TPathGenerations> PathGenerations;
+
+    THashMap<TAgentId, THashSet<TString>> PathsToAttachDetach;
 
     TLog Log;
 
@@ -133,6 +139,15 @@ public:
         const TString& agentId, const NProto::TDiskRegistryAgentParams& params);
     TVector<TString> CleanupExpiredAgentListParams(TInstant now);
     TVector<TString> GetAgentIdsWithOverriddenListParams() const;
+
+    ui64 GetPathGeneration(const TString& agentId, const TString& path) const;
+    ui64 InrementAndGetPathGeneration(
+        const TString& agentId,
+        const TString& path);
+
+    const THashMap<TAgentId, THashSet<TString>>& GetPathsToAttachDetach() const;
+    void AddPathToAttachDetach(const TString& agentId, const TString& path);
+    void DeletePathToAttachDetach(const TString& agentId, const TString& path);
 
 private:
     NProto::TAgentConfig& AddAgent(NProto::TAgentConfig config);

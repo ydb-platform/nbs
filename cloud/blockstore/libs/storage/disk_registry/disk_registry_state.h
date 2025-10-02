@@ -370,6 +370,8 @@ public:
         TVector<TDiskId> AffectedDisks;
         TVector<TDiskId> DisksToReallocate;
         TVector<TString> DevicesToDisableIO;
+        THashMap<TString, ui64> PathsToAttach;
+        THashMap<TString, ui64> PathsToDetach;
     };
 
     auto RegisterAgent(
@@ -787,7 +789,30 @@ public:
         const TDiskId& diskId,
         TVector<NProto::TLaggingDevice> outdatedDevices);
 
-    NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
+    [[nodiscard]] NProto::TError UpdatePathAttachState(
+        TDiskRegistryDatabase& db,
+        const TAgentId& agentId,
+        const TString& path,
+        NProto::EPathAttachState state,
+        ui64 knownGeneration);
+
+    void AttachPathIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path,
+        bool force);
+
+    void DetachPathIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path,
+        bool force);
+
+    const THashMap<TString, THashSet<TString>>& GetPathsToAttachDetach() const;
+
+    NProto::TError SuspendDevice(
+        TDiskRegistryDatabase& db,
+        const TDeviceId& id);
 
     void SuspendDeviceIfNeeded(
         TDiskRegistryDatabase& db,
@@ -803,6 +828,9 @@ public:
         const TVector<TDeviceId>& ids);
     bool IsSuspendedDevice(const TDeviceId& id) const;
     bool IsDirtyDevice(const TDeviceId& id) const;
+
+    bool IsAttachedDevice(const TDeviceId& id) const;
+
     TVector<NProto::TSuspendedDevice> GetSuspendedDevices() const;
 
     const TDeque<TAutomaticallyReplacedDeviceInfo>& GetAutomaticallyReplacedDevices() const
@@ -904,6 +932,13 @@ public:
 
     THashSet<TDeviceId> GetUnavailableDevicesForDisk(
         const TString& diskId) const;
+
+    ui64 GetPathGeneration(const TString& agentId, const TString& path) const;
+
+    auto ResolveDevices(const TAgentId& agentId, const TString& path)
+        -> std::pair<NProto::TAgentConfig*, TVector<NProto::TDeviceConfig*>>;
+
+    bool HasDependentDisks(const TAgentId& agentId, const TString& path);
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
@@ -1306,9 +1341,6 @@ private:
 
     NProto::EVolumeIOMode GetIoMode(TDiskState& disk, TInstant now) const;
 
-    auto ResolveDevices(const TAgentId& agentId, const TString& path)
-        -> std::pair<NProto::TAgentConfig*, TVector<NProto::TDeviceConfig*>>;
-
     NProto::TError CmsAddDevice(
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
@@ -1377,6 +1409,18 @@ private:
     void ReallocateDisksWithLostOrReappearedDevices(
         const TAgentList::TAgentRegistrationResult& r,
         THashSet<TDiskId>& disksToReallocate);
+
+    void ProcessPathAttachStatesOnRegistration(
+        NProto::TAgentConfig& agent,
+        THashMap<TString, ui64>& pathsToAttach,
+        THashMap<TString, ui64>& pathsToDetach);
+
+    void AttachDetachPathIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path,
+        bool force,
+        bool attach);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
