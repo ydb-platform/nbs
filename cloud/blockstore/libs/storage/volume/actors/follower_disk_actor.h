@@ -28,14 +28,14 @@ struct TFollowerDiskActorParams
 
 ///////////////////////////////////////////////////////////////////////////////
 
-//   DataTransfer (migration in progress)
+//   DataTransferring (migration in progress)
 //        |
-//        |                          /----------------------------\
-//        v                          v                            |
-//    DataReady -> [Propagate follower state (CopyCompleted)]     |
-//                              |        |                        |
-//                 OK           |        |  On other Error repeat |
-//            /-----------------/        |------------------------/
+//        |                          /------------------------------\
+//        v                          v                              |
+//   DataTransferred -> [Propagate follower state (CopyCompleted)]  |
+//                              |        |                          |
+//                 OK           |        |  On other Error repeat   |
+//            /-----------------/        |--------------------------/
 //            |                          |
 //            |                          |  On NotFoundSchemeShardError
 //            v                          v
@@ -49,8 +49,8 @@ class TFollowerDiskActor final
 public:
     enum class EState
     {
-        DataTransfer,
-        DataReady,
+        DataTransferring,
+        DataTransferred,
         LeadershipTransferred,
     };
 
@@ -66,7 +66,7 @@ private:
 
     TString ClientId;
 
-    EState State = EState::DataTransfer;
+    EState State = EState::DataTransferring;
     TFollowerDiskInfo FollowerDiskInfo;
     NActors::TActorId FollowerPartitionActorId;
 
@@ -128,7 +128,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandlePropagateLeadershipToFollowerResponse(
-        const TEvVolumePrivate::TEvLinkOnFollowerCompleted::TPtr& ev,
+        const TEvVolumePrivate::TEvLinkOnFollowerDataTransferred::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

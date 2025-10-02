@@ -20,9 +20,9 @@ class TPropagateLinkToFollowerActor final
 public:
     enum class EReason
     {
-        Creation,      // Need to propagate to follower link creation
-        Destruction,   // Need to propagate to follower link destruction
-        Completion,    // Need to propagate to follower copy completion
+        Creation,          // Need to propagate to follower link creation
+        Destruction,       // Need to propagate to follower link destruction
+        DataTransferred,   // Need to propagate to follower DataTransferred
     };
 
 private:

@@ -19,7 +19,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
-constexpr auto RebootVolumeTabletDelay = TDuration::Seconds(30);
+constexpr auto RestartVolumeTabletDelay = TDuration::Seconds(30);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -130,7 +130,7 @@ bool TFollowerDiskActor::OnMessage(
             TEvVolumePrivate::TEvUpdateFollowerStateResponse,
             HandleUpdateFollowerStateResponse);
         HFunc(
-            TEvVolumePrivate::TEvLinkOnFollowerCompleted,
+            TEvVolumePrivate::TEvLinkOnFollowerDataTransferred,
             HandlePropagateLeadershipToFollowerResponse);
 
         // Intercepting the message to block the sending of statistics by the
@@ -222,10 +222,10 @@ void TFollowerDiskActor::AdvanceState(
     State = newState;
 
     switch (State) {
-        case EState::DataTransfer: {
+        case EState::DataTransferring: {
             break;
         }
-        case EState::DataReady:{
+        case EState::DataTransferred:{
             PropagateLeadershipToFollower(ctx);
             break;
         }
@@ -244,7 +244,7 @@ void TFollowerDiskActor::PropagateLeadershipToFollower(
         LogTitle.GetWithTime(),
         CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
         FollowerDiskInfo.Link,
-        TPropagateLinkToFollowerActor::EReason::Completion);
+        TPropagateLinkToFollowerActor::EReason::DataTransferred);
 }
 
 void TFollowerDiskActor::RebootLeaderVolume(const NActors::TActorContext& ctx)
@@ -254,10 +254,10 @@ void TFollowerDiskActor::RebootLeaderVolume(const NActors::TActorContext& ctx)
         TBlockStoreComponents::VOLUME,
         "%s  Scheduling reboot for leader volume after %s",
         LogTitle.GetWithTime().c_str(),
-        FormatDuration(RebootVolumeTabletDelay).c_str());
+        FormatDuration(RestartVolumeTabletDelay).c_str());
 
     ctx.Schedule(
-        RebootVolumeTabletDelay,
+        RestartVolumeTabletDelay,
         std::make_unique<IEventHandle>(
             LeaderVolumeActorId,
             ctx.SelfID,
@@ -321,7 +321,7 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     FollowerDiskInfo = msg->Follower;
 
     if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady) {
-        AdvanceState(ctx, EState::DataReady);
+        AdvanceState(ctx, EState::DataTransferred);
     } else if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::Error) {
         LOG_WARN(
             ctx,
@@ -336,7 +336,7 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
 }
 
 void TFollowerDiskActor::HandlePropagateLeadershipToFollowerResponse(
-    const TEvVolumePrivate::TEvLinkOnFollowerCompleted::TPtr& ev,
+    const TEvVolumePrivate::TEvLinkOnFollowerDataTransferred::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();

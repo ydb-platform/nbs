@@ -8,8 +8,10 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration OutdatedLeaderDestructionDelay = TDuration::Seconds(5);
-constexpr TDuration OutdatedLeaderDestructionMaxDelay = TDuration::Seconds(60);
+constexpr TDuration OutdatedLeaderDestructionBackoffDelay =
+    TDuration::Seconds(5);
+constexpr TDuration OutdatedLeaderDestructionMaxBackoffDelay =
+    TDuration::Seconds(60);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -135,8 +137,8 @@ void TVolumeActor::DestroyLeaderLink(
     TLeaderFollowerLink link,
     const NActors::TActorContext& ctx)
 {
-    auto currenLeader = State->FindLeader(link);
-    if (!currenLeader) {
+    auto currentLeader = State->FindLeader(link);
+    if (!currentLeader) {
         NCloud::Reply(
             ctx,
             *requestInfo,
@@ -154,9 +156,9 @@ void TVolumeActor::UpdateLeaderLink(
     TLeaderDiskInfo::EState state,
     const NActors::TActorContext& ctx)
 {
-    auto currenLeader = State->FindLeader(link);
+    auto currentLeader = State->FindLeader(link);
 
-    if (!currenLeader) {
+    if (!currentLeader) {
         NCloud::Reply(
             ctx,
             *requestInfo,
@@ -165,7 +167,7 @@ void TVolumeActor::UpdateLeaderLink(
         return;
     }
 
-    if (currenLeader->State > state) {
+    if (currentLeader->State > state) {
         NCloud::Reply(
             ctx,
             *requestInfo,
@@ -173,11 +175,11 @@ void TVolumeActor::UpdateLeaderLink(
                 MakeError(
                     S_FALSE,
                     TStringBuilder() << "Leader state already "
-                                     << ToString(currenLeader->State))));
+                                     << ToString(currentLeader->State))));
         return;
     }
 
-    if (currenLeader->State == state) {
+    if (currentLeader->State == state) {
         NCloud::Reply(
             ctx,
             *requestInfo,
@@ -210,8 +212,8 @@ void TVolumeActor::DestroyOutdatedLeaderIfNeeded(
                 TOutdatedLeaderDestruction{
                     .TryCount = 0,
                     .DelayProvider = TBackoffDelayProvider(
-                        OutdatedLeaderDestructionDelay,
-                        OutdatedLeaderDestructionMaxDelay)});
+                        OutdatedLeaderDestructionBackoffDelay,
+                        OutdatedLeaderDestructionMaxBackoffDelay)});
         }
 
         ++OutdatedLeaderDestruction->TryCount;

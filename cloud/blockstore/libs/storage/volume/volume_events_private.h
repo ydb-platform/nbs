@@ -435,11 +435,11 @@ struct TEvVolumePrivate
         {}
     };
 
-    struct TLinkOnFollowerCompleted
+    struct TLinkOnFollowerDataTransferred
     {
         TLeaderFollowerLink Link;
 
-        explicit TLinkOnFollowerCompleted(TLeaderFollowerLink link)
+        explicit TLinkOnFollowerDataTransferred(TLeaderFollowerLink link)
             : Link(std::move(link))
         {}
     };
@@ -510,7 +510,7 @@ struct TEvVolumePrivate
         EvLaggingAgentMigrationFinished,
         EvLinkOnFollowerCreated,
         EvLinkOnFollowerDestroyed,
-        EvLinkOnFollowerCompleted,
+        EvLinkOnFollowerDataTransferred,
         EvCreateLinkFinished,
 
         EvEnd
@@ -602,8 +602,9 @@ struct TEvVolumePrivate
     using TEvLinkOnFollowerDestroyed =
         TResponseEvent<TLinkOnFollowerDestroyed, EvLinkOnFollowerDestroyed>;
 
-    using TEvLinkOnFollowerCompleted =
-        TResponseEvent<TLinkOnFollowerCompleted, EvLinkOnFollowerCompleted>;
+    using TEvLinkOnFollowerDataTransferred = TResponseEvent<
+        TLinkOnFollowerDataTransferred,
+        EvLinkOnFollowerDataTransferred>;
 
     using TEvCreateLinkFinished =
         TResponseEvent<TCreateLinkFinished, EvCreateLinkFinished>;
