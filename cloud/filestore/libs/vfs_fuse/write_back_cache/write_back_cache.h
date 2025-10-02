@@ -66,6 +66,7 @@ public:
 private:
     // Only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
+    friend struct TWriteBackCacheExposePrivateIdentifiers;
 
     enum class EWriteDataEntryStatus;
     class TWriteDataEntry;
@@ -91,39 +92,34 @@ struct TWriteBackCache::TPersistentQueueStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TWriteBackCache::TWriteDataStats
-{
-    // Time spent in the pending state
-    TDuration PendingDuration;
-
-    // Time spent in the cache before the request is started to flush
-    TDuration WaitingDuration;
-
-    // Time spent in the cache while the request was being flushed
-    TDuration FlushDuration;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct IWriteBackCacheStats
 {
     virtual ~IWriteBackCacheStats() = default;
 
     virtual void IncrementCompletedFlushCount() = 0;
     virtual void IncrementFailedFlushCount() = 0;
-    virtual void SetExecutingFlushCount(ui64 value) = 0;
-
-    virtual void SetEarliestExecutingFlushTime(TInstant time) = 0;
 
     virtual void SetNodeCount(ui64 value) = 0;
-    virtual void SetCachedWriteRequestCount(ui64 value) = 0;
-    virtual void SetPendingWriteRequestCount(ui64 value) = 0;
+
+    virtual void SetExecutingFlushStats(
+        ui64 executingFlushCount,
+        ui64 writeDataRequestCount,
+        TInstant minTime) = 0;
+
+    virtual void SetPendingWriteDataRequestStats(
+        ui64 writeDataRequestCount,
+        TInstant minTime) = 0;
+
+    virtual void SetCachedWriteDataRequestStats(
+        ui64 writeDataRequestCount,
+        TInstant minTime) = 0;
 
     virtual void SetPersistentQueueStats(
         const TWriteBackCache::TPersistentQueueStats& stats) = 0;
 
-    virtual void AddWriteRequestStats(
-        const TWriteBackCache::TWriteDataStats& stats) = 0;
+    virtual void AddWriteDataRequestPendingDuration(TDuration pendingTime) = 0;
+    virtual void AddWriteDataRequestWaitingDuration(TDuration waitingTime) = 0;
+    virtual void AddWriteDataRequestFlushDuration(TDuration flushTime) = 0;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

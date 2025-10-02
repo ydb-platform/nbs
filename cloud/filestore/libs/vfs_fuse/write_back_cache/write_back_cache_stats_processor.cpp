@@ -1,5 +1,7 @@
 #include "write_back_cache_stats_processor.h"
 
+#include "write_back_cache_impl.h"
+
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -7,59 +9,109 @@ namespace NCloud::NFileStore::NFuse {
 TWriteBackCache::TStatsProcessor::TStatsProcessor(
         IWriteBackCacheStatsPtr stats)
     : Stats(std::move(stats))
-{}
+{
+    if (Stats) {
+        Stats->SetExecutingFlushStats(0, 0, TInstant::Zero());
+    }
+}
 
 void TWriteBackCache::TStatsProcessor::FlushStarted(
     ui64 writeDataRequestCount,
     TInstant startTime)
-{}
+{
+    FlushStartTimeSet.insert(startTime);
+    FlushWriteDataRequestCount += writeDataRequestCount;
+
+    if (Stats) {
+        Stats->SetExecutingFlushStats(
+            /* executingFlushCount = */ FlushStartTimeSet.size(),
+            /* writeDataRequestCount = */ FlushWriteDataRequestCount,
+            /* minTime = */ *FlushStartTimeSet.begin());
+    }
+}
 
 void TWriteBackCache::TStatsProcessor::FlushCompleted(
     ui64 writeDataRequestCount,
     TInstant startTime)
-{}
-
-void TWriteBackCache::TStatsProcessor::FlushFailed()
-{}
-
-
-
-
-
-void TWriteBackCacheStatsProcessor::FlushScheduled(TInstant startTime)
 {
-    if (Stats) {
-        FlushStartTimeSet.insert(startTime);
-        Stats->SetExecutingFlushCount(FlushStartTimeSet.size());
-        Stats->SetEarliestExecutingFlushTime(*FlushStartTimeSet.begin());
-    }
-}
+    auto it = FlushStartTimeSet.find(startTime);
+    Y_DEBUG_ABORT_UNLESS(it != FlushStartTimeSet.end());
+    FlushStartTimeSet.erase(it);
+    Y_DEBUG_ABORT_UNLESS(FlushWriteDataRequestCount >= writeDataRequestCount);
+    FlushWriteDataRequestCount -= writeDataRequestCount;
 
-void TWriteBackCacheStatsProcessor::FlushCompleted(TInstant startTime)
-{
     if (Stats) {
-        auto it = FlushStartTimeSet.find(startTime);
-        Y_DEBUG_ABORT_UNLESS(it != FlushStartTimeSet.end());
-        FlushStartTimeSet.erase(it);
-        if (FlushStartTimeSet.empty()) {
-            Stats->SetEarliestExecutingFlushTime(TInstant::Zero());
-        } else {
-            Stats->SetEarliestExecutingFlushTime(*FlushStartTimeSet.begin());
-        }
-
-        Stats->SetExecutingFlushCount(FlushStartTimeSet.size());
+        auto minTime = FlushStartTimeSet.empty() ? TInstant::Zero()
+                                                 : *FlushStartTimeSet.begin();
+        Stats->SetExecutingFlushStats(
+            /* executingFlushCount = */ FlushStartTimeSet.size(),
+            /* writeDataRequestCount = */ FlushWriteDataRequestCount,
+            /* minTime = */ minTime);
         Stats->IncrementCompletedFlushCount();
     }
 }
 
-void TWriteBackCacheStatsProcessor::FlushFailed()
+void TWriteBackCache::TStatsProcessor::FlushFailed()
 {
     if (Stats) {
         Stats->IncrementFailedFlushCount();
     }
 }
 
-void TWriteBackCacheStatsProcessor::UpdatePersistentQueueStats(
+void TWriteBackCache::TStatsProcessor::UpdateNodeCount(ui64 value)
+{
+    if (Stats) {
+        Stats->SetNodeCount(value);
+    }
+}
+
+void TWriteBackCache::TStatsProcessor::UpdatePendingQueueStats(
+    const TDeque<std::unique_ptr<TWriteDataEntry>>& pendingEntries)
+{
+    if (Stats) {
+        auto minTime = pendingEntries.empty()
+                           ? TInstant::Zero()
+                           : pendingEntries.front()->PendingTime;
+        Stats->SetPendingWriteDataRequestStats(pendingEntries.size(), minTime);
+    }
+}
+
+void TWriteBackCache::TStatsProcessor::UpdateCachedQueueStats(
+    const TDeque<std::unique_ptr<TWriteDataEntry>>& cachedEntries)
+{
+    if (Stats) {
+        auto minTime = cachedEntries.empty()
+                           ? TInstant::Zero()
+                           : cachedEntries.front()->PendingTime;
+        Stats->SetCachedWriteDataRequestStats(cachedEntries.size(), minTime);
+    }
+}
+
+void TWriteBackCache::TStatsProcessor::AddWriteDataRequestPendingDuration(
+    TDuration pendingDuration)
+{
+    if (Stats) {
+        Stats->AddWriteDataRequestPendingDuration(pendingDuration);
+    }
+}
+
+void TWriteBackCache::TStatsProcessor::AddWriteDataRequestWaitingDuration(
+    TDuration waitingDuration)
+{
+    if (Stats) {
+        Stats->AddWriteDataRequestWaitingDuration(waitingDuration);
+    }
+}
+
+void TWriteBackCache::TStatsProcessor::AddWriteDataRequestFlushDuration(
+    TDuration flushDuration)
+{
+    if (Stats) {
+        Stats->AddWriteDataRequestFlushDuration(flushDuration);
+    }
+}
+
+void TWriteBackCache::TStatsProcessor::UpdatePersistentQueueStats(
     const TFileRingBuffer& buffer)
 {
     if (Stats) {
@@ -68,44 +120,6 @@ void TWriteBackCacheStatsProcessor::UpdatePersistentQueueStats(
              .RawUsedBytesCount = buffer.GetRawUsedBytesCount(),
              .MaxAllocationSize = buffer.GetMaxAllocationBytesCount(),
              .IsCorrupted = buffer.IsCorrupted()});
-    }
-}
-
-void TWriteBackCacheStatsProcessor::UpdateNodeCount(ui64 value)
-{
-    if (Stats) {
-        Stats->SetNodeCount(value);
-    }
-}
-
-void TWriteBackCacheStatsProcessor::UpdateCachedRequestCount(ui64 value)
-{
-    if (Stats) {
-        Stats->SetCachedWriteRequestCount(value);
-    }
-}
-
-void TWriteBackCacheStatsProcessor::UpdatePendingRequestCount(ui64 value)
-{
-    if (Stats) {
-        Stats->SetPendingWriteRequestCount(value);
-    }
-}
-
-void TWriteBackCacheStatsProcessor::AddWriteDataRequestStats(
-    TInstant pendingTime,
-    TInstant cachedTime,
-    TInstant startFlushTime,
-    TInstant completeFlushTime) const
-{
-    Y_DEBUG_ABORT_UNLESS(
-        pendingTime && cachedTime && startFlushTime && completeFlushTime);
-
-    if (Stats) {
-        Stats->AddWriteRequestStats(
-            {.PendingDuration = cachedTime - pendingTime,
-             .WaitingDuration = startFlushTime - cachedTime,
-             .FlushDuration = completeFlushTime - startFlushTime});
     }
 }
 

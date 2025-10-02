@@ -293,7 +293,7 @@ private:
     const IFileStorePtr Session;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
-    TWriteBackCacheStatsProcessor Stats;
+    TStatsProcessor Stats;
     const TFlushConfig FlushConfig;
 
     // All fields below should be protected by this lock
@@ -364,7 +364,8 @@ public:
 
         Stats.UpdatePersistentQueueStats(CachedEntriesPersistentQueue);
         Stats.UpdateNodeCount(NodeStates.size());
-        Stats.UpdateCachedRequestCount(CachedEntries.size());
+        Stats.UpdatePendingQueueStats(PendingEntries);
+        Stats.UpdateCachedQueueStats(CachedEntries);
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -633,8 +634,6 @@ public:
     {
         if (nodeState->ShouldFlush() && !nodeState->FlushState.Executing) {
             nodeState->FlushState.Executing = true;
-            nodeState->FlushState.StartTime = Timer->Now();
-            Stats.FlushScheduled(nodeState->FlushState.StartTime);
             PendingOperations.Flush.push_back(nodeState);
         }
     }
@@ -809,8 +808,8 @@ private:
         }
 
         Stats.UpdatePersistentQueueStats(CachedEntriesPersistentQueue);
-        Stats.UpdateCachedRequestCount(CachedEntries.size());
-        Stats.UpdatePendingRequestCount(PendingEntries.size());
+        Stats.UpdateCachedQueueStats(CachedEntries);
+        Stats.UpdatePendingQueueStats(PendingEntries);
     }
 
     TVector<TWriteDataEntryPart> CalculateDataPartsToReadAndFillBuffer(
@@ -995,7 +994,7 @@ private:
         {
             nodeState->PendingEntriesCount++;
             PendingEntries.push_back(std::move(entry));
-            Stats.UpdatePendingRequestCount(PendingEntries.size());
+            Stats.UpdatePendingQueueStats(PendingEntries);
             return;
         }
 
@@ -1013,11 +1012,11 @@ private:
 
             CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
             AddCachedEntry(nodeState, std::move(entry));
-            Stats.UpdateCachedRequestCount(CachedEntries.size());
+            Stats.UpdateCachedQueueStats(CachedEntries);
         } else {
             nodeState->PendingEntriesCount++;
             PendingEntries.push_back(std::move(entry));
-            Stats.UpdatePendingRequestCount(PendingEntries.size());
+            Stats.UpdatePendingQueueStats(PendingEntries);
             ScheduleFlushAll();
         }
 
@@ -1062,7 +1061,10 @@ private:
             }
 
             for (size_t i = 0; i < entryCount; i++) {
-                nodeState->CachedEntries[i]->FlushStartedTime = now;
+                auto* entry = nodeState->CachedEntries[i];
+                entry->FlushStartedTime = now;
+                Stats.AddWriteDataRequestWaitingDuration(
+                    entry->FlushStartedTime - entry->CachedTime);
             }
 
             parts = TUtil::CalculateDataPartsToFlush(
@@ -1073,6 +1075,11 @@ private:
             Y_ABORT_UNLESS(!parts.empty());
 
             nodeState->FlushState.AffectedWriteDataEntriesCount = entryCount;
+            nodeState->FlushState.StartTime = now;
+
+            Stats.FlushStarted(
+                nodeState->FlushState.AffectedWriteDataEntriesCount,
+                nodeState->FlushState.StartTime);
         }
 
         nodeState->FlushState.WriteRequests =
@@ -1138,7 +1145,9 @@ private:
         state.WriteRequests.clear();
 
         if (state.FailedWriteRequests.empty()) {
-            Stats.FlushCompleted(state.StartTime);
+            Stats.FlushCompleted(
+                state.AffectedWriteDataEntriesCount,
+                state.StartTime);
             CompleteFlush(nodeState);
         } else {
             Stats.FlushFailed();
@@ -1168,11 +1177,8 @@ private:
 
             entry->FinishFlush(PendingOperations);
 
-            Stats.AddWriteDataRequestStats(
-                entry->PendingTime,
-                entry->CachedTime,
-                entry->FlushStartedTime,
-                now);
+            Stats.AddWriteDataRequestFlushDuration(
+                now - entry->FlushStartedTime);
         }
 
         // Clear flushed entries from the persistent queue
@@ -1184,7 +1190,7 @@ private:
         }
 
         Stats.UpdatePersistentQueueStats(CachedEntriesPersistentQueue);
-        Stats.UpdateCachedRequestCount(CachedEntries.size());
+        Stats.UpdateCachedQueueStats(CachedEntries);
 
         nodeState->FlushState.Executing = false;
 
@@ -1216,6 +1222,8 @@ private:
         Y_ABORT_UNLESS(nodeState->NodeId == entry->GetNodeId());
 
         entry->CachedTime = Timer->Now();
+        Stats.AddWriteDataRequestPendingDuration(
+            entry->CachedTime - entry->PendingTime);
 
         nodeState->CachedEntryIntervalMap.Add(entry.get());
         nodeState->CachedEntries.push_back(entry.get());
