@@ -84,7 +84,13 @@ private:
         const auto& computeResponse = Executor->WaitFor(computeFuture);
         if (HasError(computeResponse)) {
             const auto& err = computeResponse.GetError();
-            return MakeError(err.GetCode(), TStringBuilder()
+            // Disk Manager interprets E_GRPC_NOT_FOUND as retriable error,
+            // resulting in a retry loop if the disk gets deleted.
+            // See https://github.com/ydb-platform/nbs/issues/4167.
+            const ui32 code = err.GetCode() == E_GRPC_NOT_FOUND
+                ? E_NOT_FOUND
+                : err.GetCode();
+            return MakeError(code, TStringBuilder()
                 << "failed to create token for disk " << diskId
                 << ", error: " << err.GetMessage());
         }
