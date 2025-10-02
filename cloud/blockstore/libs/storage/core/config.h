@@ -732,6 +732,9 @@ public:
     [[nodiscard]] ui64 GetHiveLocalServiceNetworkResourceLimit() const;
 
     [[nodiscard]] TDuration GetDynamicNodeRegistrationTimeout() const;
+
+    [[nodiscard]] bool GetAttachDetachPathsEnabled() const;
+    [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
 };
 
 ui64 GetAllocationUnit(
