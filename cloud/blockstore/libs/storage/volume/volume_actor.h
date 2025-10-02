@@ -22,6 +22,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/device_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
@@ -330,6 +331,7 @@ private:
 
     TRequestsTimeTracker RequestTimeTracker{StartTime};
     TTransactionTimeTracker TransactionTimeTracker;
+    TDeviceOperationTracker DeviceOperationTracker;
 
     // inflight VolumeRequestId -> duplicate request queue
     // we respond to duplicate requests as soon as our original request is completed
@@ -523,6 +525,7 @@ private:
     void RenderLinks(IOutputStream& out) const;
     void RenderLatency(IOutputStream& out) const;
     void RenderTransactions(IOutputStream& out) const;
+    void RenderDeviceLatency(IOutputStream& out) const;
     void RenderTraces(IOutputStream& out) const;
     void RenderStorageConfig(IOutputStream& out) const;
     void RenderRawVolumeConfig(IOutputStream& out) const;
@@ -758,6 +761,11 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_GetRequestsInflight(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetDeviceLatency(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
@@ -1265,6 +1273,16 @@ private:
     void HandlePartCountersCombined(
         const TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void InitializeDeviceOperationTracker();
+
+    void HandleDeviceOperationStarted(
+        const TEvVolumePrivate::TEvDeviceOperationStarted::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleDeviceOperationFinished(
+        const TEvVolumePrivate::TEvDeviceOperationFinished::TPtr& ev,
+        const TActorContext& ctx);
 
     // Restart partitions. If these were partition of DiskRegistry-based disk,
     // then the onPartitionStopped callback will be called after the partition

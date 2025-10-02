@@ -94,6 +94,7 @@ TVolumeActor::TVolumeActor(
                   time);
           })
     , TransactionTimeTracker(VolumeTransactions)
+    , DeviceOperationTracker({})
 {}
 
 TVolumeActor::~TVolumeActor()
@@ -813,6 +814,72 @@ void TVolumeActor::HandleTakeVolumeRequestId(
     NCloud::Reply(ctx, *ev, std::move(resp));
 }
 
+void TVolumeActor::InitializeDeviceOperationTracker()
+{
+    if (!State) {
+        return;
+    }
+
+    TVector<TDeviceOperationTracker::TDeviceInfo> deviceInfos;
+    TSet<TString> seenDevices;
+
+    for (const auto& device: State->GetMeta().GetDevices()) {
+        const TString deviceUUID = device.GetDeviceUUID();
+        if (seenDevices.insert(deviceUUID).second) {
+            deviceInfos.push_back(
+                {.DeviceUUID = deviceUUID, .AgentId = device.GetAgentId()});
+        }
+    }
+
+    for (const auto& replica: State->GetMeta().GetReplicas()) {
+        for (const auto& device: replica.GetDevices()) {
+            const TString deviceUUID = device.GetDeviceUUID();
+            if (seenDevices.insert(deviceUUID).second) {
+                deviceInfos.push_back(
+                    {.DeviceUUID = deviceUUID, .AgentId = device.GetAgentId()});
+            }
+        }
+    }
+
+    DeviceOperationTracker.UpdateDevices(deviceInfos);
+}
+
+void TVolumeActor::HandleDeviceOperationStarted(
+    const TEvVolumePrivate::TEvDeviceOperationStarted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& record = ev->Get();
+    Y_UNUSED(ctx);
+
+    TString requestTypeStr =
+        (record->RequestType ==
+         TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Read)
+            ? "read"
+            : "write";
+
+    auto requestType =
+        (record->RequestType ==
+         TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Read)
+            ? TDeviceOperationTracker::ERequestType::Read
+            : TDeviceOperationTracker::ERequestType::Write;
+
+    DeviceOperationTracker.OnStarted(
+        record->OperationId,
+        record->DeviceUUID,
+        requestType,
+        GetCycleCount());
+}
+
+void TVolumeActor::HandleDeviceOperationFinished(
+    const TEvVolumePrivate::TEvDeviceOperationFinished::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& record = ev->Get();
+    Y_UNUSED(ctx);
+
+    DeviceOperationTracker.OnFinished(record->OperationId, GetCycleCount());
+}
+
 bool TVolumeActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
@@ -1082,6 +1149,14 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvService::TEvDestroyVolumeResponse,
             HandleDestroyOutdatedLeaderVolumeResponse);
+
+        HFunc(
+            TEvVolumePrivate::TEvDeviceOperationStarted,
+            HandleDeviceOperationStarted);
+
+        HFunc(
+            TEvVolumePrivate::TEvDeviceOperationFinished,
+            HandleDeviceOperationFinished);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 

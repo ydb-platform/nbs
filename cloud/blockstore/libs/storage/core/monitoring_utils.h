@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
+#include <cloud/blockstore/libs/storage/core/device_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
@@ -244,4 +245,9 @@ void RenderStyledPostButton(
     const TString& url,
     const TString& text,
     TStringBuf style = DefaultButtonStyle);
+
+void DumpDeviceOperationLatency(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TDeviceOperationTracker& tracker);
 }   // namespace NCloud::NBlockStore::NStorage::NMonitoringUtils
