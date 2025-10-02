@@ -62,6 +62,11 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
             request->Record.SetAction(NProto::ELinkAction::LINK_ACTION_DESTROY);
             break;
         }
+        case EReason::DataTransferred: {
+            request->Record.SetAction(
+                NProto::ELinkAction::LINK_ACTION_COMPLETED);
+            break;
+        }
     }
 
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
@@ -105,6 +110,15 @@ void TPropagateLinkToFollowerActor::HandleWakeup(
 {
     Y_UNUSED(ev);
 
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Propagate link %s %s to follower timed out (try #%lu)",
+        LogPrefix.c_str(),
+        ToString(Reason).c_str(),
+        Link.Describe().c_str(),
+        TryCount);
+
     PersistOnFollower(ctx);
 }
 
@@ -127,6 +141,14 @@ void TPropagateLinkToFollowerActor::ReplyAndDie(
                 std::make_unique<TEvVolumePrivate::TEvLinkOnFollowerDestroyed>(
                     error,
                     Link);
+            NCloud::Reply(ctx, *RequestInfo, std::move(response));
+            break;
+        }
+        case EReason::DataTransferred: {
+            auto response = std::make_unique<
+                TEvVolumePrivate::TEvLinkOnFollowerDataTransferred>(
+                error,
+                Link);
             NCloud::Reply(ctx, *RequestInfo, std::move(response));
             break;
         }

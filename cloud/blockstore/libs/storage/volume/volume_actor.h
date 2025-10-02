@@ -398,6 +398,8 @@ private:
 
     TVector<ui64> GCCompletedPartitions;
 
+    std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
+
     struct TPartCountersData
     {
         NActors::TActorId Sender;
@@ -1242,6 +1244,20 @@ private:
     void DestroyLeaderLink(
         TRequestInfoPtr requestInfo,
         TLeaderFollowerLink link,
+        const NActors::TActorContext& ctx);
+
+    // Update link to leader volume on follower side
+    void UpdateLeaderLink(
+        TRequestInfoPtr requestInfo,
+        TLeaderFollowerLink link,
+        TLeaderDiskInfo::EState state,
+        const NActors::TActorContext& ctx);
+
+    // Destroy old leader after leadership transferred to follower (happens on
+    // the follower's side).
+    void DestroyOutdatedLeaderIfNeeded(const NActors::TActorContext& ctx);
+    void HandleDestroyOutdatedLeaderVolumeResponse(
+        const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePartCountersCombined(

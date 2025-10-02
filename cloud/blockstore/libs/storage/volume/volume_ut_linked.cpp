@@ -927,6 +927,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         TTestActorRuntimeBase::TEventFilter prevFilter;
         std::optional<TFollowerDiskInfo::EState> followerState;
         std::optional<ui64> migratedBytes;
+        bool deletionOfTheSourceHasBeenInitiated = false;
         auto followerStateFilter =
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
@@ -950,6 +951,12 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                             << msg->Follower.MigratedBytes);
                     migratedBytes = msg->Follower.MigratedBytes;
                 }
+            }
+
+            if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeRequest) {
+                auto* msg = event->Get<TEvService::TEvDestroyVolumeRequest>();
+                UNIT_ASSERT_VALUES_EQUAL("vol1", msg->Record.GetDiskId());
+                deletionOfTheSourceHasBeenInitiated = true;
             }
 
             return prevFilter(runtime, event);
@@ -1066,6 +1073,8 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
 
         // Check volumes content match.
         fixture.CheckVolumesDataMatch();
+
+        UNIT_ASSERT_VALUES_EQUAL(true, deletionOfTheSourceHasBeenInitiated);
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_SSD_NRD_WithReboot, TFixture)
@@ -1090,6 +1099,415 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             *this,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldPropagateCompleteOnDataReadyAndDestroyOutdatedLeader,
+        TFixture)
+    {
+        // Intercept leader state changes
+        TTestActorRuntimeBase::TEventFilter prevFilter;
+        std::optional<TFollowerDiskInfo::EState> followerState;
+        std::optional<NProto::ELinkAction> propagatedAction;
+        size_t volumeDestructionRequestCount = 0;
+        NActors::TActorId leaderVolumeActorId;
+        bool leaderPoisoned = false;
+        auto followerStateFilter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvUpdateFollowerStateResponse)
+            {
+                auto* msg = event->Get<
+                    TEvVolumePrivate::TEvUpdateFollowerStateResponse>();
+                followerState = msg->Follower.State;
+                leaderVolumeActorId = event->Sender;
+            }
+
+            if (event->GetTypeRewrite() ==
+                TEvVolume::EvUpdateLinkOnFollowerRequest)
+            {
+                auto* msg =
+                    event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+                propagatedAction = msg->Record.GetAction();
+            }
+
+            if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeRequest) {
+                ++volumeDestructionRequestCount;
+                auto* msg = event->Get<TEvService::TEvDestroyVolumeRequest>();
+                UNIT_ASSERT_VALUES_EQUAL("vol1", msg->Record.GetDiskId());
+
+                auto response =
+                    std::make_unique<TEvService::TEvDestroyVolumeResponse>(
+                        MakeError(
+                            volumeDestructionRequestCount == 1 ? E_REJECTED
+                                                            : S_OK));
+
+                auto responseEvent = std::make_unique<IEventHandle>(
+                    event->Sender,
+                    event->Recipient,
+                    response.release(),
+                    0, // flags
+                    event->Cookie);
+                runtime.SendAsync(responseEvent.release());
+
+                return true;
+            }
+
+            if (event->GetTypeRewrite() == NActors::TEvents::TSystem::Poison) {
+                if (event->Recipient == leaderVolumeActorId) {
+                    leaderPoisoned = true;
+                }
+            }
+            return prevFilter(runtime, event);
+        };
+        prevFilter = Runtime->SetEventFilter(followerStateFilter);
+
+        // Create leader volume
+        TVolumeClient volume1(*Runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            VolumeBlockCount,   // block count per partition
+            "vol1"));
+        volume1.WaitReady();
+
+        // registering a writer
+        auto clientInfo1 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume1.AddClient(clientInfo1);
+        Volumes["vol1"] = {
+            .VolumeClient = &volume1,
+            .VolumeClientInfo = &clientInfo1};
+
+        // Create follower volume
+        TVolumeClient volume2(*Runtime, 0, TestVolumeTablets[1]);
+        Volumes["vol2"] = {
+            .VolumeClient = &volume2,
+            .VolumeClientInfo = nullptr};
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            VolumeBlockCount,   // block count per partition
+            "vol2"));
+        volume2.WaitReady();
+
+        // Link volumes
+        {
+            TLeaderFollowerLink link{
+                .LinkUUID = "",
+                .LeaderDiskId = "vol1",
+                .LeaderShardId = "su1",
+                .FollowerDiskId = "vol2",
+                .FollowerShardId = "su2"};
+
+            auto response = volume1.LinkLeaderVolumeToFollower(link);
+            link.LinkUUID = response->Record.GetLinkUUID();
+
+            UNIT_ASSERT_EQUAL(
+                TFollowerDiskInfo::EState::Preparing,
+                followerState);
+
+            // It is necessary to reconnect the pipe as the previous one broke
+            // when the partition was restarted.
+            volume1.ReconnectPipe();
+            volume1.AddClient(clientInfo1);
+        };
+
+        // Waiting for the follower disk to fill up.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return followerState == TFollowerDiskInfo::EState::DataReady;
+            };
+            Runtime->DispatchEvents(options, TDuration::Seconds(10));
+            UNIT_ASSERT_EQUAL(
+                TFollowerDiskInfo::EState::DataReady,
+                followerState);
+        }
+
+        // Waiting for the follower disk to become a leader.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return propagatedAction ==
+                       NProto::ELinkAction::LINK_ACTION_COMPLETED;
+            };
+            Runtime->DispatchEvents(options, TDuration::Seconds(10));
+            UNIT_ASSERT_EQUAL(
+                NProto::ELinkAction::LINK_ACTION_COMPLETED,
+                propagatedAction);
+        }
+
+        // Waiting for the leader disk destruction initiated and retried after
+        // reject.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return volumeDestructionRequestCount == 1;
+            };
+            Runtime->DispatchEvents(options, TDuration::Seconds(10));
+            UNIT_ASSERT_VALUES_EQUAL(1, volumeDestructionRequestCount);
+        }
+
+        // Waiting for the leader disk destruction retried after reject.
+        {
+            TDispatchOptions options;
+            Runtime->AdvanceCurrentTime(TDuration::Seconds(10));
+            options.CustomFinalCondition = [&]
+            {
+                return volumeDestructionRequestCount == 2;
+            };
+            Runtime->DispatchEvents(options, TDuration::Seconds(10));
+
+            UNIT_ASSERT_VALUES_EQUAL(2, volumeDestructionRequestCount);
+        }
+
+        // Waiting for the leader volume actor poisoned by
+        // FollowerPartitionActor.
+        {
+            UNIT_ASSERT_VALUES_EQUAL(false, leaderPoisoned);
+            TDispatchOptions options;
+            Runtime->AdvanceCurrentTime(TDuration::Seconds(30));
+            options.CustomFinalCondition = [&]
+            {
+                return leaderPoisoned;
+            };
+            Runtime->DispatchEvents(options, TDuration::Seconds(10));
+
+            UNIT_ASSERT_VALUES_EQUAL(false, leaderPoisoned);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldImmediatelyRestartVolumeOnError, TFixture)
+    {
+        // Intercept leader state changes
+        TTestActorRuntimeBase::TEventFilter prevFilter;
+        NActors::TActorId leaderVolumeActorId;
+        bool leaderPoisoned = false;
+
+        auto followerStateFilter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvUpdateFollowerStateRequest)
+            {
+                auto* msg = event->Get<
+                    TEvVolumePrivate::TEvUpdateFollowerStateRequest>();
+
+                if (msg->Follower.State == TFollowerDiskInfo::EState::DataReady)
+                {   // Force error state.
+                    UNIT_ASSERT_VALUES_EQUAL(false, leaderPoisoned);
+                    msg->Follower.State = TFollowerDiskInfo::EState::Error;
+                }
+                leaderVolumeActorId = event->Recipient;
+            }
+
+            if (event->GetTypeRewrite() == NActors::TEvents::TSystem::Poison) {
+                if (event->Recipient == leaderVolumeActorId) {
+                    leaderPoisoned = true;
+                }
+            }
+            return prevFilter(runtime, event);
+        };
+        prevFilter = Runtime->SetEventFilter(followerStateFilter);
+
+        // Create leader volume
+        TVolumeClient volume1(*Runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            VolumeBlockCount,   // block count per partition
+            "vol1"));
+        volume1.WaitReady();
+
+        // Create follower volume
+        TVolumeClient volume2(*Runtime, 0, TestVolumeTablets[1]);
+        Volumes["vol2"] = {
+            .VolumeClient = &volume2,
+            .VolumeClientInfo = nullptr};
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            VolumeBlockCount,   // block count per partition
+            "vol2"));
+        volume2.WaitReady();
+
+        // Link volumes
+        {
+            TLeaderFollowerLink link{
+                .LinkUUID = "",
+                .LeaderDiskId = "vol1",
+                .LeaderShardId = "su1",
+                .FollowerDiskId = "vol2",
+                .FollowerShardId = "su2"};
+
+            auto response = volume1.LinkLeaderVolumeToFollower(link);
+            link.LinkUUID = response->Record.GetLinkUUID();
+        };
+
+        // Waiting for the leader volume actor poisoned by
+        // FollowerPartitionActor.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return leaderPoisoned;
+            };
+            Runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+            UNIT_ASSERT_VALUES_EQUAL(true, leaderPoisoned);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldGoIntoErrorStateIfTheFollowerDiskDisappears, TFixture)
+    {
+       // Intercept leader state changes
+        TTestActorRuntimeBase::TEventFilter prevFilter;
+        std::optional<TFollowerDiskInfo::EState> followerState;
+        NActors::TActorId leaderVolumeActorId;
+        bool leaderPoisoned = false;
+        auto followerStateFilter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvUpdateFollowerStateResponse)
+            {
+                const auto* msg = event->Get<
+                    TEvVolumePrivate::TEvUpdateFollowerStateResponse>();
+                followerState = msg->Follower.State;
+                leaderVolumeActorId = event->Sender;
+            }
+
+            if (event->GetTypeRewrite() ==
+                TEvVolume::EvUpdateLinkOnFollowerRequest)
+            {
+                const auto* msg =
+                    event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+
+                if (msg->Record.GetAction() ==
+                    NProto::ELinkAction::LINK_ACTION_COMPLETED)
+                {
+                    auto response = std::make_unique<
+                        TEvVolume::TEvUpdateLinkOnFollowerResponse>(
+                        MakeSchemeShardError(
+                            NKikimrScheme::StatusPathDoesNotExist,
+                            "path does not exist"));
+                    auto responseEvent = std::make_unique<IEventHandle>(
+                        event->Sender,
+                        event->Recipient,
+                        response.release(),
+                        0,   // flags
+                        event->Cookie);
+                    runtime.SendAsync(responseEvent.release());
+
+                    return true;
+                }
+            }
+
+            if (event->GetTypeRewrite() == NActors::TEvents::TSystem::Poison) {
+                if (event->Recipient == leaderVolumeActorId) {
+                    leaderPoisoned = true;
+                }
+            }
+            return prevFilter(runtime, event);
+        };
+        prevFilter = Runtime->SetEventFilter(followerStateFilter);
+
+        // Create leader volume
+        TVolumeClient volume1(*Runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            VolumeBlockCount,   // block count per partition
+            "vol1"));
+        volume1.WaitReady();
+
+        // Create follower volume
+        TVolumeClient volume2(*Runtime, 0, TestVolumeTablets[1]);
+        Volumes["vol2"] = {
+            .VolumeClient = &volume2,
+            .VolumeClientInfo = nullptr};
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            VolumeBlockCount,   // block count per partition
+            "vol2"));
+        volume2.WaitReady();
+
+        // Link volumes
+        {
+            TLeaderFollowerLink link{
+                .LinkUUID = "",
+                .LeaderDiskId = "vol1",
+                .LeaderShardId = "su1",
+                .FollowerDiskId = "vol2",
+                .FollowerShardId = "su2"};
+
+            auto response = volume1.LinkLeaderVolumeToFollower(link);
+            link.LinkUUID = response->Record.GetLinkUUID();
+        };
+
+        // Waiting for the link with follower going to error state.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return followerState == TFollowerDiskInfo::EState::Error;
+            };
+            Runtime->DispatchEvents(options, TDuration::Seconds(10));
+            UNIT_ASSERT_EQUAL(
+                TFollowerDiskInfo::EState::Error,
+                followerState);
+        }
+
+        // Waiting for the leader volume actor poisoned by
+        // FollowerPartitionActor.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return leaderPoisoned;
+            };
+            Runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+            UNIT_ASSERT_VALUES_EQUAL(true, leaderPoisoned);
+        }
     }
 }
 
