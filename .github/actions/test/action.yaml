@@ -314,9 +314,14 @@ runs:
               BUILD_FAILED_COUNT=0
             fi
             BUILD_FAILED_COUNT_TMP=$BUILD_FAILED_COUNT
+            FAIL_CHECKER_TEMP_FILE=$(mktemp -p /home/github)
             set +e
             (sudo -E -H -u github .github/scripts/tests/fail-checker.py "${JUNIT_REPORT_XML}.${i}"; echo $? > fail_checker_exit_code) |& tee fail-checker-output.log
             set -e
+            if [ -f "$FAIL_CHECKER_TEMP_FILE" ]; then
+              BUILD_FAILED_COUNT=$(grep -E '^BUILD_FAILED_COUNT=' "$FAIL_CHECKER_TEMP_FILE" | cut -d '=' -f2) || true
+              rm "$FAIL_CHECKER_TEMP_FILE"
+            fi
             if [ "$BUILD_FAILED_COUNT" -gt "$BUILD_FAILED_COUNT_TMP" ]; then
               echo "BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT" | tee -a "$GITHUB_ENV"
             else

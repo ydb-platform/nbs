@@ -5,6 +5,29 @@ from typing import List
 from junit_utils import iter_xml_files
 
 
+def write_to_env(key: str, value: str, is_secret: bool = False):
+    GITHUB_ENV = os.environ.get("GITHUB_ENV")
+    FAIL_CHECKER_TEMP_FILE = os.environ.get("FAIL_CHECKER_TEMP_FILE")
+    if GITHUB_ENV:
+        with open(GITHUB_ENV, "a") as fp:
+            fp.write(f"{key}={value}\n")
+        print(
+            'echo "%s=%s" >> $GITHUB_ENV (%s)',
+            key,
+            "******" if is_secret else value,
+            GITHUB_ENV,
+        )
+    if FAIL_CHECKER_TEMP_FILE:
+        with open(FAIL_CHECKER_TEMP_FILE, "a") as fp:
+            fp.write(f"{key}={value}\n")
+        print(
+            'echo "%s=%s" >> $FAIL_CHECKER_TEMP_FILE (%s)',
+            key,
+            "******" if is_secret else value,
+            FAIL_CHECKER_TEMP_FILE,
+        )
+
+
 def check_for_fail(paths: List[str]):
     failed_list = []
     build_failed_list = []
@@ -30,6 +53,7 @@ def check_for_fail(paths: List[str]):
             print(f"error: {t} ({fn})")
         if len(build_failed_list) > 0:
             os.environ["BUILD_FAILED_COUNT"] = str(len(build_failed_list))
+            write_to_env("BUILD_FAILED_COUNT", str(len(build_failed_list)))
             raise SystemExit(237)
 
         raise SystemExit(1)
