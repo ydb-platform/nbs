@@ -33,6 +33,10 @@ EDeviceStateFlags GetDeviceStateFlags(
     if (state.IsSuspendedDevice(deviceUUID)) {
         deviceStateFlags |= EDeviceStateFlags::SUSPENDED;
     }
+    if (!state.IsAttachedDevice(deviceUUID)) {
+        deviceStateFlags |= EDeviceStateFlags::DETACHED;
+    }
+
     return deviceStateFlags;
 }
 
@@ -635,6 +639,10 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
                 out,
                 unknownDevices,
                 "Unknown devices");
+        }
+
+        if (Config->GetAttachDetachPathsEnabled()) {
+            RenderPathAttachStates(out, *agent);
         }
     }
 }
@@ -2420,16 +2428,17 @@ void TDiskRegistryActor::HandleHttpInfo(
 
     using THttpHandlers = THashMap<TString, THttpHandler>;
 
-    static const THttpHandlers postActions{{
-        {"volumeRealloc", &TDiskRegistryActor::HandleHttpInfo_VolumeRealloc},
-        {"replaceDevice", &TDiskRegistryActor::HandleHttpInfo_ReplaceDevice},
-        {"changeDeviceState",
-         &TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState},
-        {"changeAgentState",
-         &TDiskRegistryActor::HandleHttpInfo_ChangeAgentState},
-        {"resetTransactionLatencyStats",
-         &TDiskRegistryActor::HandleHttpInfo_ResetTransactionLatencyStats},
-    }};
+    static const THttpHandlers postActions{
+        {{"volumeRealloc", &TDiskRegistryActor::HandleHttpInfo_VolumeRealloc},
+         {"replaceDevice", &TDiskRegistryActor::HandleHttpInfo_ReplaceDevice},
+         {"changeDeviceState",
+          &TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState},
+         {"changeAgentState",
+          &TDiskRegistryActor::HandleHttpInfo_ChangeAgentState},
+         {"resetTransactionLatencyStats",
+          &TDiskRegistryActor::HandleHttpInfo_ResetTransactionLatencyStats},
+         {"updatePathAttachState",
+          &TDiskRegistryActor::HandleHttpInfo_UpdatePathAttachState}}};
 
     static const THttpHandlers getActions{{
         {"dev", &TDiskRegistryActor::HandleHttpInfo_RenderDeviceHtmlInfo},

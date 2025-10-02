@@ -83,13 +83,15 @@ auto FindDeviceRange(
 
 TDeviceList::TDeviceList()
     : AlwaysAllocateLocalDisks(false)
+    , AttachDetachPathsEnabled(false)
 {}
 
 TDeviceList::TDeviceList(
         TVector<TDeviceId> dirtyDevices,
         TVector<NProto::TSuspendedDevice> suspendedDevices,
         TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices,
-        bool alwaysAllocateLocalDisks)
+        bool alwaysAllocateLocalDisks,
+        bool attachDetachPathsEnabled)
     : AllocatedDevices(
           std::make_move_iterator(allocatedDevices.begin()),
           std::make_move_iterator(allocatedDevices.end()))
@@ -97,6 +99,7 @@ TDeviceList::TDeviceList(
           std::make_move_iterator(dirtyDevices.begin()),
           std::make_move_iterator(dirtyDevices.end()))
     , AlwaysAllocateLocalDisks(alwaysAllocateLocalDisks)
+    , AttachDetachPathsEnabled(attachDetachPathsEnabled)
 {
     for (auto& device: suspendedDevices) {
         auto id = device.GetId();
@@ -162,11 +165,20 @@ void TDeviceList::UpdateDevices(
 
         const ui64 deviceSize = device.GetBlockSize() * device.GetBlocksCount();
 
+        bool isDeviceAttached = true;
+        if (AttachDetachPathsEnabled) {
+            auto it = agent.GetPathAttachStates().find(device.GetDeviceName());
+            if (it != agent.GetPathAttachStates().end()) {
+                isDeviceAttached =
+                    it->second == NProto::PATH_ATTACH_STATE_ATTACHED;
+            }
+        }
+
         const bool isFree =
             DevicesAllocationAllowed(device.GetPoolKind(), agent.GetState()) &&
             device.GetState() == NProto::DEVICE_STATE_ONLINE &&
             !AllocatedDevices.contains(uuid) && !DirtyDevices.contains(uuid) &&
-            !SuspendedDevices.contains(uuid);
+            !SuspendedDevices.contains(uuid) && isDeviceAttached;
 
         const auto* poolConfig = poolConfigs.FindPtr(device.GetPoolName());
         if (!poolConfig || poolConfig->GetKind() != device.GetPoolKind() ||
