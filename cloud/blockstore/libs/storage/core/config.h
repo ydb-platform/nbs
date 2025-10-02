@@ -733,6 +733,7 @@ public:
     [[nodiscard]] TDuration GetDynamicNodeRegistrationTimeout() const;
 
     [[nodiscard]] bool GetAttachDetachPathsEnabled() const;
+    [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
 };
 
 ui64 GetAllocationUnit(

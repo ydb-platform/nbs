@@ -273,6 +273,10 @@ void TDiskRegistryActor::KillActors(const TActorContext& ctx)
     for (auto& actor: Actors) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
     }
+
+    for (const auto& [agentId, actorId]: AgentsWithAttachDetachRequestsInProgress) {
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId);
+    }
 }
 
 void TDiskRegistryActor::UnregisterCounters(const TActorContext& ctx)
@@ -720,6 +724,10 @@ STFUNC(TDiskRegistryActor::StateWork)
         HFunc(
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvAttachDetachPathOperationCompleted,
+            HandleAttachDetachPathOperationCompleted);
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
