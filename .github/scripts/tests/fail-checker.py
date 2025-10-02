@@ -4,7 +4,8 @@ import argparse
 from typing import List
 from junit_utils import iter_xml_files
 
-
+# we are writing to GITHUB_ENV to propagate env variables to next steps
+# and to FAIL_CHECKER_TEMP_FILE to get variable out of subshell
 def write_to_env(key: str, value: str, is_secret: bool = False):
     GITHUB_ENV = os.environ.get("GITHUB_ENV")
     FAIL_CHECKER_TEMP_FILE = os.environ.get("FAIL_CHECKER_TEMP_FILE")
