@@ -47,7 +47,6 @@ struct TExtendedFailInfo
 struct TReadBlocksLocalResponse: public TReadBlocksResponse
 {
     TExtendedFailInfo FailInfo;
-    TString DeviceUUID;
 
     TReadBlocksLocalResponse() = default;
 

@@ -303,13 +303,6 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
         "%s Complete read blocks",
         LogTitle.GetWithTime().c_str());
 
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "%s Complete read blocks from device %s",
-        LogTitle.GetWithTime().c_str(),
-        msg->DeviceUUID.c_str());
-
     UpdateStats(msg->Stats);
 
     const auto requestBytes = msg->Stats.GetUserReadCounters().GetBlocksCount()

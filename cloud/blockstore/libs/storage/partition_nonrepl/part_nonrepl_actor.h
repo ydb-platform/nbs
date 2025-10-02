@@ -89,6 +89,8 @@ private:
         GetCycleCount(),
         TLogTitle::TPartitionNonrepl{.DiskId = PartConfig->GetName()}};
 
+    ui64 DeviceOperationId = 0;
+
 public:
     TNonreplicatedPartitionActor(
         TStorageConfigPtr config,
