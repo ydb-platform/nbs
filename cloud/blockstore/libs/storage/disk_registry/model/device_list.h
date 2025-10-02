@@ -65,6 +65,7 @@ private:
     THashMap<NProto::EDevicePoolKind, TVector<TString>> PoolKind2PoolNames;
     THashMap<TString, ui32> PoolName2DeviceCount;
     const bool AlwaysAllocateLocalDisks;
+    const bool AttachDetachPathsEnabled;
 
 public:
     struct TAllocationQuery
@@ -91,7 +92,8 @@ public:
         TVector<TDeviceId> dirtyDevices,
         TVector<NProto::TSuspendedDevice> suspendedDevices,
         TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices,
-        bool alwaysAllocateLocalDisks);
+        bool alwaysAllocateLocalDisks,
+        bool attachDetachPathsEnabled);
 
     [[nodiscard]] size_t Size() const
     {
