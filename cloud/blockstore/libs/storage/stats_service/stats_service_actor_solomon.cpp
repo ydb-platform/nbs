@@ -40,14 +40,16 @@ void TStatsServiceActor::RegisterVolumeSelfCounters(
         auto volumeCounters =
             counters
             ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service_volume")
-            ->GetSubgroup("volume", volume.VolumeInfo.GetDiskId())
-            ->GetSubgroup("cloud", volume.VolumeInfo.GetCloudId())
-            ->GetSubgroup("folder", volume.VolumeInfo.GetFolderId());
+            ->GetSubgroup("component", "service_volume");
 
         if (!DiagnosticsConfig->GetAddHostLabelInServiceVolumeMetrics()) {
             volumeCounters = volumeCounters->GetSubgroup("host", "cluster");
         }
+
+        volumeCounters =
+            volumeCounters->GetSubgroup("volume", volume.VolumeInfo.GetDiskId())
+                ->GetSubgroup("cloud", volume.VolumeInfo.GetCloudId())
+                ->GetSubgroup("folder", volume.VolumeInfo.GetFolderId());
 
         volume.IsLocalMountCounter =
             volumeCounters->GetCounter("IsLocalMount", false);
