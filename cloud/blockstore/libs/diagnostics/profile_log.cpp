@@ -223,8 +223,15 @@ void TProfileLog::DoFlush()
                 } else if (auto* srw = std::get_if<TSysReadWriteRequest>(&record.Request)) {
                     auto* ri = AddRequest(record, srw->Duration, pb);
                     for (const auto& r: srw->Ranges) {
-                        AddRangeWithChecksums(r.Range, r.ReplicaChecksums, *ri);
+                        AddRange(r, *ri);
                     }
+                    ri->SetRequestType(static_cast<ui32>(srw->RequestType));
+                } else if (auto* srw = std::get_if<TSysReadWriteRequestWithChecksums>(&record.Request)) {
+                    auto* ri = AddRequest(record, srw->Duration, pb);
+                    AddRangeWithChecksums(
+                        srw->RangeInfo.Range,
+                        srw->RangeInfo.ReplicaChecksums,
+                        *ri);
                     ri->SetRequestType(static_cast<ui32>(srw->RequestType));
                 } else if (auto* misc = std::get_if<TMiscRequest>(&record.Request)) {
                     auto* ri = AddRequest(record, misc->Duration, pb);
@@ -316,18 +323,6 @@ IProfileLogPtr CreateProfileLog(
 IProfileLogPtr CreateProfileLogStub()
 {
     return std::make_shared<TProfileLogStub>();
-}
-
-TVector<IProfileLog::TRangeInfo> MakeRangesInfo(
-    const TVector<TBlockRange64>& ranges)
-{
-    TVector<IProfileLog::TRangeInfo> result;
-    result.reserve(ranges.size());
-    for (auto range: ranges) {
-        result.emplace_back(
-            IProfileLog::TRangeInfo{.Range = range, .ReplicaChecksums = {}});
-    }
-    return result;
 }
 
 }   // namespace NCloud::NBlockStore

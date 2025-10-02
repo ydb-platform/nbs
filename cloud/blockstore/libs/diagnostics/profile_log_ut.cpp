@@ -166,10 +166,8 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
                  .Duration = TDuration::MilliSeconds(300),
                  .Ranges =
                      {
-                         {.Range = TBlockRange64::WithLength(10, 10),
-                          .ReplicaChecksums = {}},
-                         {.Range = TBlockRange64::WithLength(30, 5),
-                          .ReplicaChecksums = {}},
+                         TBlockRange64::WithLength(10, 10),
+                         TBlockRange64::WithLength(30, 5),
                      },
              }});
         env.ProfileLog->Write(
@@ -192,8 +190,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
                  .Duration = TDuration::MilliSeconds(700),
                  .Ranges =
                      {
-                         {.Range = TBlockRange64::WithLength(0, 1024),
-                          .ReplicaChecksums = {}},
+                         TBlockRange64::WithLength(0, 1024),
                      },
              }});
         env.ProfileLog->Write(
@@ -214,8 +211,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
                  .Duration = TDuration::MilliSeconds(300),
                  .Ranges =
                      {
-                         {.Range = TBlockRange64::WithLength(1024, 4096),
-                          .ReplicaChecksums = {}},
+                         TBlockRange64::WithLength(1024, 4096),
                      },
              }});
         env.ProfileLog->Write(
@@ -383,56 +379,49 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
     Y_UNIT_TEST(TestReplicaChecksums)
     {
         TEnv env;
-        env.ProfileLog->Write(
-            {.DiskId = "disk3",
-             .Ts = TInstant::Seconds(3),
-             .Request = IProfileLog::TSysReadWriteRequest{
-                 .RequestType = ESysRequestType::ResyncChecksum,
-                 .Duration = TDuration::MilliSeconds(100),
-                 .Ranges =
-                     {
-                         IProfileLog::TRangeInfo{
-                             .Range = TBlockRange64::WithLength(10, 10),
-                             .ReplicaChecksums =
-                                 {IProfileLog::TReplicaChecksums{
-                                     .ReplicaId = 2,
-                                     .Checksums = {100}}}},
-                     },
-             }});
+        env.ProfileLog->Write({
+            .DiskId = "disk3",
+            .Ts = TInstant::Seconds(3),
+            .Request =
+                IProfileLog::TSysReadWriteRequestWithChecksums{
+                    .RequestType = ESysRequestType::ResyncChecksum,
+                    .Duration = TDuration::MilliSeconds(100),
+                    .RangeInfo =
+                        {.Range = TBlockRange64::WithLength(10, 10),
+                         .ReplicaChecksums = {IProfileLog::TReplicaChecksums{
+                             .ReplicaId = 2,
+                             .Checksums = {100}}}}},
+        });
 
-        env.ProfileLog->Write(
-            {.DiskId = "disk3",
-             .Ts = TInstant::Seconds(4),
-             .Request = IProfileLog::TSysReadWriteRequest{
-                 .RequestType = ESysRequestType::ResyncRead,
-                 .Duration = TDuration::MilliSeconds(100),
-                 .Ranges =
-                     {
-                         IProfileLog::TRangeInfo{
-                             .Range = TBlockRange64::WithLength(10, 10),
-                             .ReplicaChecksums =
-                                 {IProfileLog::TReplicaChecksums{
-                                     .ReplicaId = 2,
-                                     .Checksums = {1000, 2000, 3000}}}},
-                     },
-             }});
+        env.ProfileLog->Write({
+            .DiskId = "disk3",
+            .Ts = TInstant::Seconds(4),
+            .Request =
+                IProfileLog::TSysReadWriteRequestWithChecksums{
+                    .RequestType = ESysRequestType::ResyncRead,
+                    .Duration = TDuration::MilliSeconds(100),
+                    .RangeInfo =
+                        {.Range = TBlockRange64::WithLength(10, 10),
+                         .ReplicaChecksums = {IProfileLog::TReplicaChecksums{
+                             .ReplicaId = 2,
+                             .Checksums = {1000, 2000, 3000}}}}},
+        });
 
-        env.ProfileLog->Write(
-            {.DiskId = "disk3",
-             .Ts = TInstant::Seconds(5),
-             .Request = IProfileLog::TSysReadWriteRequest{
-                 .RequestType = ESysRequestType::ResyncWrite,
-                 .Duration = TDuration::MilliSeconds(100),
-                 .Ranges =
-                     {
-                         IProfileLog::TRangeInfo{
-                             .Range = TBlockRange64::WithLength(10, 10),
-                             .ReplicaChecksums =
-                                 {IProfileLog::TReplicaChecksums{
-                                     .ReplicaId = 2,
-                                     .Checksums = {1000, 2000, 3000}}}},
-                     }
-             }});
+        env.ProfileLog->Write({
+            .DiskId = "disk3",
+            .Ts = TInstant::Seconds(5),
+            .Request =
+                IProfileLog::TSysReadWriteRequestWithChecksums{
+                    .RequestType = ESysRequestType::ResyncWrite,
+                    .Duration = TDuration::MilliSeconds(100),
+                    .RangeInfo =
+                        {.Range = TBlockRange64::WithLength(10, 10),
+                         .ReplicaChecksums = {IProfileLog::TReplicaChecksums{
+                             .ReplicaId = 2,
+                             .Checksums = {1000, 2000, 3000}}}}
+
+                },
+        });
 
         env.ProfileLog = CreateProfileLogStub();
         env.ProcessLog(false);

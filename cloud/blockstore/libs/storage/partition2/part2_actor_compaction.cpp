@@ -897,7 +897,7 @@ void TPartitionActor::HandleCompactionCompleted(
         IProfileLog::TSysReadWriteRequest request;
         request.RequestType = ESysRequestType::Compaction;
         request.Duration = d;
-        request.Ranges = MakeRangesInfo(msg->AffectedRanges);
+        request.Ranges = std::move(msg->AffectedRanges);
 
         IProfileLog::TRecord record;
         record.DiskId = State->GetConfig().GetDiskId();

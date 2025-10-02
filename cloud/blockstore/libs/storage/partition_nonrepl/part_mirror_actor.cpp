@@ -197,11 +197,10 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
     ProfileLog->Write(
         {.DiskId = DiskId,
          .Ts = ChecksumRangeActorCompanion.GetChecksumStartTs(),
-         .Request = IProfileLog::TSysReadWriteRequest{
+         .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
              .RequestType = ESysRequestType::Scrubbing,
              .Duration = ChecksumRangeActorCompanion.GetChecksumDuration(),
-             .Ranges = {{ChecksumRangeActorCompanion.GetRangeInfo()}},
-         }});
+             .RangeInfo = ChecksumRangeActorCompanion.GetRangeInfo()}});
 
     if (!equal) {
         if (ctx.Now() - ScrubbingRangeStarted <
@@ -593,19 +592,19 @@ void TMirrorPartitionActor::HandleRangeResynced(
         ProfileLog->Write(
             {.DiskId = DiskId,
              .Ts = msg->ReadStartTs,
-             .Request = IProfileLog::TSysReadWriteRequest{
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
                  .RequestType = ESysRequestType::ResyncRead,
                  .Duration = msg->ReadDuration,
-                 .Ranges = {std::move(msg->ReadRangeInfo)}}});
+                 .RangeInfo = std::move(msg->ReadRangeInfo)}});
     }
     if (msg->WriteStartTs) {
         ProfileLog->Write(
             {.DiskId = DiskId,
              .Ts = msg->WriteStartTs,
-             .Request = IProfileLog::TSysReadWriteRequest{
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
                  .RequestType = ESysRequestType::ResyncWrite,
                  .Duration = msg->WriteDuration,
-                 .Ranges = {std::move(msg->WriteRangeInfo)}}});
+                 .RangeInfo = std::move(msg->WriteRangeInfo)}});
     }
 
     ResyncRangeStarted = false;

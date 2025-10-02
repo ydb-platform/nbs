@@ -324,12 +324,10 @@ void TPartitionActor::CompleteCleanup(
         }
         SortUnique(blockIndices);
 
-        TVector<TBlockRange64> ranges;
-        TBlockRange64Builder rangeBuilder(ranges);
+        TBlockRange64Builder rangeBuilder(request.Ranges);
         for (const auto b: blockIndices) {
             rangeBuilder.OnBlock(b);
         }
-        request.Ranges = MakeRangesInfo(ranges);
 
         IProfileLog::TRecord record;
         record.DiskId = State->GetConfig().GetDiskId();

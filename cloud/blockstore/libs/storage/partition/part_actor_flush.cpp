@@ -862,7 +862,7 @@ void TPartitionActor::HandleFlushCompleted(
         IProfileLog::TSysReadWriteRequest request;
         request.RequestType = ESysRequestType::Flush;
         request.Duration = d;
-        request.Ranges = MakeRangesInfo(msg->AffectedRanges);
+        request.Ranges = std::move(msg->AffectedRanges);
 
         IProfileLog::TRecord record;
         record.DiskId = State->GetConfig().GetDiskId();

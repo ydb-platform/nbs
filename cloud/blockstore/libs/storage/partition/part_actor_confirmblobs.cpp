@@ -308,10 +308,7 @@ void TPartitionActor::CompleteConfirmBlobs(
 
     for (const auto& [_, blobs]: State->GetConfirmedBlobs()) {
         for (const auto& blob: blobs) {
-            request.Ranges.push_back(
-                IProfileLog::TRangeInfo{
-                    .Range = ConvertRangeSafe(blob.BlockRange),
-                    .ReplicaChecksums = {}});
+            request.Ranges.push_back(ConvertRangeSafe(blob.BlockRange));
         }
     }
 

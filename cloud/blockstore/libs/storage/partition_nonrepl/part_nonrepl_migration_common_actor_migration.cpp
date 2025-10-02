@@ -254,25 +254,21 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     Y_DEBUG_ABORT_UNLESS(msg->ReadStartTs);
     Y_DEBUG_ABORT_UNLESS(msg->WriteStartTs);
 
-    ProfileLog->Write({
-        .DiskId = DiskId,
-        .Ts = msg->ReadStartTs,
-        .Request =
-            IProfileLog::TSysReadWriteRequest{
-                .RequestType = ESysRequestType::MigrationRead,
-                .Duration = msg->ReadDuration,
-                .Ranges = {{.Range = msg->Range, .ReplicaChecksums = {}}}},
-    });
+    ProfileLog->Write(
+        {.DiskId = DiskId,
+         .Ts = msg->ReadStartTs,
+         .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+             .RequestType = ESysRequestType::MigrationRead,
+             .Duration = msg->ReadDuration,
+             .RangeInfo = {.Range = msg->Range, .ReplicaChecksums = {}}}});
 
-    ProfileLog->Write({
-        .DiskId = DiskId,
-        .Ts = msg->WriteStartTs,
-        .Request =
-            IProfileLog::TSysReadWriteRequest{
-                .RequestType = ESysRequestType::MigrationWrite,
-                .Duration = msg->WriteDuration,
-                .Ranges = {{.Range = msg->Range, .ReplicaChecksums = {}}}},
-    });
+    ProfileLog->Write(
+        {.DiskId = DiskId,
+         .Ts = msg->WriteStartTs,
+         .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+             .RequestType = ESysRequestType::MigrationWrite,
+             .Duration = msg->WriteDuration,
+             .RangeInfo = {.Range = msg->Range, .ReplicaChecksums = {}}}});
 
     if (msg->AffectedBlockInfos) {
         ProfileLog->Write({

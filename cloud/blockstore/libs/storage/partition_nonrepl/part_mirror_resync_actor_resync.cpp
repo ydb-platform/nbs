@@ -172,39 +172,33 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     State.FinishResyncRange(rangeId.first);
 
     if (msg->ChecksumStartTs) {
-        ProfileLog->Write({
-            .DiskId = PartConfig->GetName(),
-            .Ts = msg->ChecksumStartTs,
-            .Request =
-                IProfileLog::TSysReadWriteRequest{
-                    .RequestType = ESysRequestType::ResyncChecksum,
-                    .Duration = msg->ChecksumDuration,
-                    .Ranges = {{std::move(msg->ChecksumRangeInfo)}}},
-        });
+        ProfileLog->Write(
+            {.DiskId = PartConfig->GetName(),
+             .Ts = msg->ChecksumStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncChecksum,
+                 .Duration = msg->ChecksumDuration,
+                 .RangeInfo = std::move(msg->ChecksumRangeInfo)}});
     }
 
     if (msg->ReadStartTs) {
-        ProfileLog->Write({
-            .DiskId = PartConfig->GetName(),
-            .Ts = msg->ReadStartTs,
-            .Request =
-                IProfileLog::TSysReadWriteRequest{
-                    .RequestType = ESysRequestType::ResyncRead,
-                    .Duration = msg->ReadDuration,
-                    .Ranges = {{std::move(msg->ReadRangeInfo)}}},
-        });
+        ProfileLog->Write(
+            {.DiskId = PartConfig->GetName(),
+             .Ts = msg->ReadStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncRead,
+                 .Duration = msg->ReadDuration,
+                 .RangeInfo = std::move(msg->ReadRangeInfo)}});
     }
 
     if (msg->WriteStartTs) {
-        ProfileLog->Write({
-            .DiskId = PartConfig->GetName(),
-            .Ts = msg->WriteStartTs,
-            .Request =
-                IProfileLog::TSysReadWriteRequest{
-                    .RequestType = ESysRequestType::ResyncWrite,
-                    .Duration = msg->WriteDuration,
-                    .Ranges = {{std::move(msg->WriteRangeInfo)}}},
-        });
+        ProfileLog->Write(
+            {.DiskId = PartConfig->GetName(),
+             .Ts = msg->WriteStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncWrite,
+                 .Duration = msg->WriteDuration,
+                 .RangeInfo = std::move(msg->WriteRangeInfo)}});
     }
 
     if (msg->AffectedBlockInfos) {

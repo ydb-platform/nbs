@@ -53,7 +53,14 @@ struct IProfileLog
     {
         ESysRequestType RequestType = ESysRequestType::MAX;
         TDuration Duration;
-        TVector<TRangeInfo> Ranges;
+        TVector<TBlockRange64> Ranges;
+    };
+
+    struct TSysReadWriteRequestWithChecksums
+    {
+        ESysRequestType RequestType = ESysRequestType::MAX;
+        TDuration Duration;
+        TRangeInfo RangeInfo;
     };
 
     struct TSysReadWriteRequestBlockInfos
@@ -111,6 +118,7 @@ struct IProfileLog
         std::variant<
             TReadWriteRequest,
             TSysReadWriteRequest,
+            TSysReadWriteRequestWithChecksums,
             TReadWriteRequestBlockInfos,
             TSysReadWriteRequestBlockInfos,
             TSysReadWriteRequestBlockCommitIds,
@@ -138,8 +146,5 @@ IProfileLogPtr CreateProfileLog(
     ISchedulerPtr scheduler);
 
 IProfileLogPtr CreateProfileLogStub();
-
-TVector<IProfileLog::TRangeInfo> MakeRangesInfo(
-    const TVector<TBlockRange64>& ranges);
 
 }   // namespace NCloud::NBlockStore
