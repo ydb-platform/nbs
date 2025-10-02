@@ -33,7 +33,7 @@ class FilestoreServer(Daemon):
         self.__schemeshard_dir = configurator.get_schemeshard_dir()
         self.__secure_kikimr = secure_kikimr
         if self.__schemeshard_dir is not None:
-            assert self.__kikimr_binary_path is not None:
+            assert self.__kikimr_binary_path is not None
             self.init_scheme()
 
     @property
