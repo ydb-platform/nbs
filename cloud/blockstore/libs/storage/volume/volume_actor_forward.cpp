@@ -328,14 +328,6 @@ void TVolumeActor::SendRequestToPartition(
             TMethod::Name,
             State->GetPartitions()[partitionId].TabletId,
             ToString(partActorId).data());
-        LOG_INFO(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s Sending %s request to partition: %lu %s",
-            LogTitle.GetWithTime().c_str(),
-            TMethod::Name,
-            State->GetPartitions()[partitionId].TabletId,
-            ToString(partActorId).data());
 
         if constexpr (IsExactlyWriteMethod<TMethod>) {
             CombineChecksumsInPlace(*ev->Get()->Record.MutableChecksums());
@@ -492,15 +484,6 @@ bool TVolumeActor::ReplyToOriginalRequest(
             ctx,
             volumeRequestId,
             response->Record.GetError().GetCode());
-    }
-
-    if constexpr (std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>) {
-        LOG_INFO(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s ReadBlocksLocal response from Volume with DeviceUUID: %s",
-            LogTitle.GetWithTime().c_str(),
-            response->Record.DeviceUUID.c_str());
     }
 
     auto it = VolumeRequests.find(volumeRequestId);

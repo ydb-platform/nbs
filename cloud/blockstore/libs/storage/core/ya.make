@@ -13,6 +13,7 @@ SRCS(
     disk_validation.cpp
     forward_helpers.cpp
     bs_group_operation_tracker.cpp
+    device_operation_tracker.cpp
     manually_preempted_volumes.cpp
     metrics.cpp
     monitoring_utils.cpp

@@ -482,6 +482,48 @@ struct TEvVolumePrivate
     };
 
     //
+    //  DeviceOperationStarted
+    //
+
+    struct TDeviceOperationStarted
+    {
+        enum class ERequestType
+        {
+            Read,
+            Write
+        };
+
+        TString DeviceUUID;
+        ERequestType RequestType;
+        TString AgentId;
+        ui64 OperationId;
+
+        TDeviceOperationStarted(
+            TString deviceUUID,
+            ERequestType requestType,
+            TString agentId,
+            ui64 operationId)
+            : DeviceUUID(std::move(deviceUUID))
+            , RequestType(requestType)
+            , AgentId(std::move(agentId))
+            , OperationId(operationId)
+        {}
+    };
+
+    //
+    //  DeviceOperationFinished
+    //
+
+    struct TDeviceOperationFinished
+    {
+        ui64 OperationId;
+
+        explicit TDeviceOperationFinished(ui64 operationId)
+            : OperationId(operationId)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -512,6 +554,8 @@ struct TEvVolumePrivate
         EvLinkOnFollowerDestroyed,
         EvLinkOnFollowerDataTransferred,
         EvCreateLinkFinished,
+        EvDeviceOperationStarted,
+        EvDeviceOperationFinished,
 
         EvEnd
     };
@@ -608,6 +652,12 @@ struct TEvVolumePrivate
 
     using TEvCreateLinkFinished =
         TResponseEvent<TCreateLinkFinished, EvCreateLinkFinished>;
+
+    using TEvDeviceOperationStarted =
+        TRequestEvent<TDeviceOperationStarted, EvDeviceOperationStarted>;
+
+    using TEvDeviceOperationFinished =
+        TRequestEvent<TDeviceOperationFinished, EvDeviceOperationFinished>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

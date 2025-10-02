@@ -969,6 +969,7 @@ void TVolumeActor::HandleHttpInfo(
          &TActor::HandleHttpInfo_GetTransactionsInflight},
         {"getRequestsInflight",
          &TActor::HandleHttpInfo_GetRequestsInflight},
+        {"getDeviceLatency", &TActor::HandleHttpInfo_GetDeviceLatency},
     }};
 
     auto* msg = ev->Get();
@@ -1078,6 +1079,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* tracesTabName = "Traces";
     const char* storageConfigTabName = "StorageConfig";
     const char* rawVolumeConfigTabName = "RawVolumeConfig";
+    const char* deviceLatencyTabName = "DeviceLatency";
 
     const char* activeTab = "tab-pane active";
     const char* inactiveTab = "tab-pane";
@@ -1091,6 +1093,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* tracesTab = inactiveTab;
     const char* storageConfigTab = inactiveTab;
     const char* rawVolumeConfigTab = inactiveTab;
+    const char* deviceLatencyTab = inactiveTab;
 
     if (tabName.empty() || tabName == overviewTabName) {
         overviewTab = activeTab;
@@ -1110,6 +1113,8 @@ void TVolumeActor::HandleHttpInfo_Default(
         storageConfigTab = activeTab;
     } else if (tabName == rawVolumeConfigTabName) {
         rawVolumeConfigTab = activeTab;
+    } else if (tabName == deviceLatencyTabName) {
+        deviceLatencyTab = activeTab;
     }
 
     TStringStream out;
@@ -1156,6 +1161,11 @@ void TVolumeActor::HandleHttpInfo_Default(
 
                 DIV_CLASS_ID(rawVolumeConfigTab, rawVolumeConfigTabName) {
                     RenderRawVolumeConfig(out);
+                }
+
+                DIV_CLASS_ID(deviceLatencyTab, deviceLatencyTabName)
+                {
+                    RenderDeviceLatency(out);
                 }
             }
         }
@@ -1493,6 +1503,13 @@ void TVolumeActor::RenderTransactions(IOutputStream& out) const
             TransactionTimeTracker,
             8   // columnCount
         );
+    }
+}
+
+void TVolumeActor::RenderDeviceLatency(IOutputStream& out) const
+{
+    HTML (out) {
+        DumpDeviceOperationLatency(out, TabletID(), DeviceOperationTracker);
     }
 }
 
@@ -2917,6 +2934,20 @@ void TVolumeActor::HandleHttpInfo_GetRequestsInflight(
             RequestTimeTracker.GetInflightOperations(),
             GetCycleCount(),
             TInstant::Now())));
+}
+
+void TVolumeActor::HandleHttpInfo_GetDeviceLatency(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            DeviceOperationTracker.GetStatJson(GetCycleCount())));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
