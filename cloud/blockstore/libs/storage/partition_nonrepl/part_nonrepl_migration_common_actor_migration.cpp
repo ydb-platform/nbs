@@ -251,6 +251,9 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
 
     auto* msg = ev->Get();
 
+    Y_DEBUG_ABORT_UNLESS(msg->ReadStartTs);
+    Y_DEBUG_ABORT_UNLESS(msg->WriteStartTs);
+
     ProfileLog->Write({
         .DiskId = DiskId,
         .Ts = msg->ReadStartTs,

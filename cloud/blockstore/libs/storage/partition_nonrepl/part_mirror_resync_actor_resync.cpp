@@ -208,6 +208,8 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     }
 
     if (msg->AffectedBlockInfos) {
+        Y_DEBUG_ABORT_UNLESS(msg->WriteStartTs);
+
         ProfileLog->Write({
             .DiskId = PartConfig->GetName(),
             .Ts = msg->WriteStartTs,
