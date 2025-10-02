@@ -577,14 +577,6 @@ message TDiskRegistryStateBackup
     repeated TUserNotification UserNotifications = 17;
 
     repeated TSuspendedDevice SuspendedDevices = 18;
-
-    message TPathId
-    {
-        string AgentId = 1;
-        string Path = 2;
-    }
-
-    repeated TPathId PathsToAttachDetach = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
