@@ -4,29 +4,31 @@ import argparse
 from typing import List
 from junit_utils import iter_xml_files
 
+
+def write_to_file_from_env(key: str, value: str, env_var: str, is_secret: bool = False):
+    filename = os.environ.get(env_var)
+    if filename:
+        with open(filename, "a") as fp:
+            fp.write(f"{key}={value}\n")
+
+        print_with_secret_masked(
+            'echo "%s=%s" >> $%s (%s)', key, value, env_var, filename, is_secret
+        )
+
+
+def print_with_secret_masked(
+    msg: str, key: str, value: str, filename: str, is_secret: bool = False
+):
+    if is_secret:
+        value = "******"
+    print(f"{msg}: {key}={value} ({filename})")
+
+
 # we are writing to GITHUB_ENV to propagate env variables to next steps
 # and to FAIL_CHECKER_TEMP_FILE to get variable out of subshell
 def write_to_env(key: str, value: str, is_secret: bool = False):
-    GITHUB_ENV = os.environ.get("GITHUB_ENV")
-    FAIL_CHECKER_TEMP_FILE = os.environ.get("FAIL_CHECKER_TEMP_FILE")
-    if GITHUB_ENV:
-        with open(GITHUB_ENV, "a") as fp:
-            fp.write(f"{key}={value}\n")
-        print(
-            'echo "%s=%s" >> $GITHUB_ENV (%s)',
-            key,
-            "******" if is_secret else value,
-            GITHUB_ENV,
-        )
-    if FAIL_CHECKER_TEMP_FILE:
-        with open(FAIL_CHECKER_TEMP_FILE, "a") as fp:
-            fp.write(f"{key}={value}\n")
-        print(
-            'echo "%s=%s" >> $FAIL_CHECKER_TEMP_FILE (%s)',
-            key,
-            "******" if is_secret else value,
-            FAIL_CHECKER_TEMP_FILE,
-        )
+    write_to_file_from_env(key, value, "GITHUB_ENV", is_secret)
+    write_to_file_from_env(key, value, "FAIL_CHECKER_TEMP_FILE", is_secret)
 
 
 def check_for_fail(paths: List[str]):
