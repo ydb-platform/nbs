@@ -315,7 +315,7 @@ void TPartitionActor::CompleteConfirmBlobs(
     IProfileLog::TRecord record;
     record.DiskId = State->GetConfig().GetDiskId();
     record.Ts = ctx.Now() - duration;
-    record.Request = request;
+    record.Request = std::move(request);
     ProfileLog->Write(std::move(record));
 }
 

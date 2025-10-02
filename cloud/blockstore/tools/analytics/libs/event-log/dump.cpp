@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/service/request.h>
 
 #include <util/generic/algorithm.h>
+#include <util/string/cast.h>
 #include <util/string/printf.h>
 
 namespace NCloud::NBlockStore {
@@ -12,6 +13,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TReplicaChecksums =
+    google::protobuf::RepeatedPtrField<NProto::TReplicaChecksum>;
 using TRanges =
     google::protobuf::RepeatedPtrField<NProto::TProfileLogBlockRange>;
 using TBlockInfos =
@@ -21,15 +24,36 @@ using TBlockCommitIds =
 using TBlobUpdates =
     google::protobuf::RepeatedPtrField<NProto::TProfileLogBlobUpdate>;
 
+void OutputChecksums(
+    const TReplicaChecksums& replicaChecksums,
+    IOutputStream& out)
+{
+    if (replicaChecksums.empty()) {
+        return;
+    }
 
-void OutputRanges(const TRanges& ranges, IOutputStream* out)
+    out << "{";
+    for (int i = 0; i < replicaChecksums.size(); ++i) {
+        const auto& replicaChecksum = replicaChecksums[i];
+        out << (i ? "," : "");
+        out << ToString(replicaChecksum.GetReplicaId()).Quote();
+
+        out << ":[";
+        for (int j = 0; j < replicaChecksum.GetChecksums().size(); ++j) {
+            out << (j ? "," : "");
+            out << replicaChecksum.GetChecksums(j);
+        }
+        out << "]";
+    }
+    out << "}";
+}
+
+void OutputRanges(const TRanges& ranges, IOutputStream& out)
 {
     for (int i = 0; i < ranges.size(); ++i) {
-        if (i) {
-            (*out) << " ";
-        }
-        (*out) << ranges[i].GetBlockIndex()
-            << "," << ranges[i].GetBlockCount();
+        out << (i ? "," : "");
+        out << ranges[i].GetBlockIndex() << "," << ranges[i].GetBlockCount();
+        OutputChecksums(ranges[i].GetReplicaChecksums(), out);
     }
 }
 
@@ -154,7 +178,7 @@ void DumpRequest(
         (*out) << r.GetBlockIndex()
             << "," << r.GetBlockCount();
     } else {
-        OutputRanges(r.GetRanges(), out);
+        OutputRanges(r.GetRanges(), *out);
     }
     (*out) << "\n";
 }
