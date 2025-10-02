@@ -4,6 +4,7 @@ import argparse
 from typing import List
 from junit_utils import iter_xml_files
 
+
 def write_to_env(key: str, value: str, is_secret: bool = False):
     GITHUB_ENV = os.environ.get("GITHUB_ENV")
     FAIL_CHECKER_TEMP_FILE = os.environ.get("FAIL_CHECKER_TEMP_FILE")
@@ -12,16 +13,18 @@ def write_to_env(key: str, value: str, is_secret: bool = False):
             fp.write(f"{key}={value}\n")
         print(
             'echo "%s=%s" >> $GITHUB_ENV (%s)',
-            key, "******" if is_secret else value,
-            GITHUB_ENV
+            key,
+            "******" if is_secret else value,
+            GITHUB_ENV,
         )
     if FAIL_CHECKER_TEMP_FILE:
         with open(FAIL_CHECKER_TEMP_FILE, "a") as fp:
             fp.write(f"{key}={value}\n")
         print(
             'echo "%s=%s" >> $FAIL_CHECKER_TEMP_FILE (%s)',
-            key, "******" if is_secret else value,
-            FAIL_CHECKER_TEMP_FILE
+            key,
+            "******" if is_secret else value,
+            FAIL_CHECKER_TEMP_FILE,
         )
 
 
