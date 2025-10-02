@@ -33,6 +33,26 @@ enum ECheckpointState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EPathAttachState
+{
+    PATH_ATTACH_STATE_ATTACHED = 0;
+    PATH_ATTACH_STATE_ATTACHING = 1;
+    PATH_ATTACH_STATE_DETACHED = 2;
+    PATH_ATTACH_STATE_DETACHING = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TPathToGeneration
+{
+    // Path to HW device.
+    string Path = 1;
+
+    //  Monotonously increasing counter, need to order attach detach requests.
+    uint64 Generation = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Mean time between failures.
 message TMeanTimeBetweenFailures
 {
@@ -86,6 +106,9 @@ message TAgentConfig
     // Flag which indicates that the agent was launched as a temporary one
     // during blue-green deployment.
     bool TemporaryAgent = 13;
+
+    // Attach state for each path.
+    map<string, EPathAttachState> PathAttachStates = 14;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -554,6 +577,14 @@ message TDiskRegistryStateBackup
     repeated TUserNotification UserNotifications = 17;
 
     repeated TSuspendedDevice SuspendedDevices = 18;
+
+    message TPathId
+    {
+        string AgentId = 1;
+        string Path = 2;
+    }
+
+    repeated TPathId PathsToAttachDetach = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1846,4 +1877,49 @@ message TGetClusterCapacityResponse
 
     // List of capacities.
     repeated TClusterCapacityInfo Capacity = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AttachPath
+
+message TAttachPathRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // List of paths we want to attach.
+    repeated TPathToGeneration PathsToAttach = 2;
+
+    // Generation of DR tablet.
+    uint32 DiskRegistryGeneration = 3;
+}
+
+message TAttachPathResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of attached devices.
+    repeated TDeviceConfig AttachedDevices = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DetachPath
+
+message TDetachPathRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // List of paths we want to detach.
+    repeated TPathToGeneration PathsToDetach = 2;
+
+    // Generation of DR tablet.
+    uint32 DiskRegistryGeneration = 3;
+}
+
+message TDetachPathResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
 }

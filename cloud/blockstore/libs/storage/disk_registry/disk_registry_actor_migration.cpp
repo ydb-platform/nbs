@@ -308,6 +308,7 @@ void TDiskRegistryActor::CompleteFinishMigration(
     NotifyUsers(ctx);
     PublishDiskStates(ctx);
     SecureErase(ctx);
+    ProcessPathsToAttachDetach(ctx);
 
     auto response = std::make_unique<TEvDiskRegistry::TEvFinishMigrationResponse>(
         std::move(args.Error));

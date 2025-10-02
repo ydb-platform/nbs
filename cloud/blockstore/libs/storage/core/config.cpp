@@ -642,6 +642,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(HiveLocalServiceMemoryResourceLimit,  ui64,        0                  )\
     xxx(HiveLocalServiceNetworkResourceLimit, ui64,        0                  )\
     xxx(DynamicNodeRegistrationTimeout,       TDuration,   Seconds(5)         )\
+    xxx(AttachDetachPathsEnabled,             bool,        false              )\
+                                                                               \
+    xxx(MaxInflightAttachDetachPathRequestsProcessing,  ui64,  100            )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

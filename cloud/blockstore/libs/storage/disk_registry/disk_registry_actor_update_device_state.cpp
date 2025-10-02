@@ -93,6 +93,7 @@ void TDiskRegistryActor::CompleteUpdateDeviceState(
     PublishDiskStates(ctx);
     SecureErase(ctx);
     StartMigration(ctx);
+    ProcessPathsToAttachDetach(ctx);
 
     auto response = std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateResponse>(
         std::move(args.Error));

@@ -104,6 +104,8 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
     SecureErase(ctx);
     StartMigration(ctx);
 
+    ProcessPathsToAttachDetach(ctx);
+
     using TResponse = TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse;
 
     auto response = std::make_unique<TResponse>(

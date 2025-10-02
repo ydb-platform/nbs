@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/disk_registry/model/agent_list.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <util/generic/queue.h>
@@ -211,6 +212,7 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
     xxx(RestoreDiskRegistryPart,                    __VA_ARGS__)               \
     xxx(SwitchAgentDisksToReadOnly,                 __VA_ARGS__)               \
     xxx(PurgeHostCms,                               __VA_ARGS__)               \
+    xxx(UpdatePathAttachState,                      __VA_ARGS__)               \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -784,6 +786,32 @@ struct TEvDiskRegistryPrivate
     };
 
     //
+    // UpdatePathAttachState
+    //
+
+    struct TUpdatePathAttachStateRequest
+    {
+        TString AgentId;
+        TString Path;
+        NProto::EPathAttachState NewState;
+        ui64 KnownGeneration;
+    };
+
+    struct TUpdatePathAttachStateResponse
+    {
+    };
+
+    //
+    // AttachDetachPathOperationCompleted
+    //
+
+    struct TAttachDetachPathOperationCompleted
+    {
+        TString AgentId;
+        bool IsAttach;
+    };
+
+    //
     // Events declaration
     //
 
@@ -800,6 +828,8 @@ struct TEvDiskRegistryPrivate
         EvRestoreDiskRegistryValidationResponse,
 
         EvDiskRegistryAgentListExpiredParamsCleanup,
+
+        EvAttachDetachPathOperationCompleted,
 
         EvEnd
     };
@@ -823,6 +853,10 @@ struct TEvDiskRegistryPrivate
     using TEvDiskRegistryAgentListExpiredParamsCleanup = TRequestEvent<
         TDiskRegistryAgentListExpiredParamsCleanup,
         EvDiskRegistryAgentListExpiredParamsCleanup>;
+
+    using TEvAttachDetachPathOperationCompleted = TResponseEvent<
+        TAttachDetachPathOperationCompleted,
+        EvAttachDetachPathOperationCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
