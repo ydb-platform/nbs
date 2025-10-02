@@ -185,6 +185,7 @@ void TDiskRegistryActor::CompleteUpdateAgentState(
     PublishDiskStates(ctx);
     SecureErase(ctx);
     StartMigration(ctx);
+    ProcessPathsToAttachDetach(ctx);
 
     NActors::IEventBasePtr response;
     if (args.IsDisableAgentRequest) {
