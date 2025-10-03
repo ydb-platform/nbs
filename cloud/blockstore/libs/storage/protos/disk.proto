@@ -615,6 +615,14 @@ message TRegisterAgentResponse
 
     // List of device IDs to which Disk Agent should disable IO operations.
     repeated string DevicesToDisableIO = 2;
+
+    uint32 DiskRegistryTabletGeneration = 3;
+
+    // Allowed devices attached to the agent.
+    repeated TPathToGeneration AllowedPaths = 4;
+
+    // Unallowed devices attached to the agent.
+    repeated TPathToGeneration UnknownPaths = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
