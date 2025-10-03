@@ -118,6 +118,7 @@ struct IWriteBackCacheStats
         const TWriteBackCache::TPersistentQueueStats& stats) = 0;
 
     virtual void AddWriteDataRequestPendingDuration(TDuration pendingTime) = 0;
+    virtual void AddWriteDataRequestCachedDuration(TDuration cachedTime) = 0;
     virtual void AddWriteDataRequestWaitingDuration(TDuration waitingTime) = 0;
     virtual void AddWriteDataRequestFlushDuration(TDuration flushTime) = 0;
 };

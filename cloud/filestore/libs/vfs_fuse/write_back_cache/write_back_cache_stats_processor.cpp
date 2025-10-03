@@ -95,6 +95,14 @@ void TWriteBackCache::TStatsProcessor::AddWriteDataRequestPendingDuration(
     }
 }
 
+void TWriteBackCache::TStatsProcessor::AddWriteDataRequestCachedDuration(
+    TDuration cachedDuration)
+{
+    if (Stats) {
+        Stats->AddWriteDataRequestCachedDuration(cachedDuration);
+    }
+}
+
 void TWriteBackCache::TStatsProcessor::AddWriteDataRequestWaitingDuration(
     TDuration waitingDuration)
 {

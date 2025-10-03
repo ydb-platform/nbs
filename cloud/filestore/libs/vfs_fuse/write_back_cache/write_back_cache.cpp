@@ -1182,8 +1182,10 @@ private:
         }
 
         // Clear flushed entries from the persistent queue
-        while (!CachedEntries.empty() && CachedEntries.front()->IsFlushed())
-        {
+        while (!CachedEntries.empty() && CachedEntries.front()->IsFlushed()) {
+            Stats.AddWriteDataRequestCachedDuration(
+                now - CachedEntries.front()->CachedTime);
+
             CachedEntries.pop_front();
             CachedEntriesPersistentQueue.PopFront();
             PendingOperations.ShouldProcessPendingEntries = true;

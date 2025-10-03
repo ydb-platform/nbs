@@ -148,10 +148,12 @@ struct TWriteBackCacheStats
     ui64 MaxItems = 0;
 
     TVector<TDuration> WriteDataRequestPendingDurations;
+    TVector<TDuration> WriteDataRequestCachedDurations;
     TVector<TDuration> WriteDataRequestWaitingDurations;
     TVector<TDuration> WriteDataRequestFlushDurations;
 
     ui64 WriteDataRequestPendingDurationsCount = 0;
+    ui64 WriteDataRequestCachedDurationsCount = 0;
     ui64 WriteDataRequestWaitingDurationsCount = 0;
     ui64 WriteDataRequestFlushDurationsCount = 0;
 
@@ -217,6 +219,14 @@ struct TWriteBackCacheStats
         WriteDataRequestPendingDurationsCount++;
         if (WriteDataRequestPendingDurations.size() < MaxItems) {
             WriteDataRequestPendingDurations.push_back(pendingTime);
+        }
+    }
+
+    void AddWriteDataRequestCachedDuration(TDuration cachedTime) override
+    {
+        WriteDataRequestCachedDurationsCount++;
+        if (WriteDataRequestCachedDurations.size() < MaxItems) {
+            WriteDataRequestCachedDurations.push_back(cachedTime);
         }
     }
 
@@ -713,6 +723,7 @@ struct TBootstrap
 
     void CheckWriteDataRequestReportCount(
         ui64 expectedPendingCount,
+        ui64 expectedCachedCount,
         ui64 expectedWaitingCount,
         ui64 expectedFlushCount) const
     {
@@ -722,6 +733,13 @@ struct TBootstrap
             "WriteDataRequestPendingDurationsCount: expected = "
                 << expectedPendingCount << ", actual = "
                 << Stats->WriteDataRequestPendingDurationsCount);
+
+        UNIT_ASSERT_EQUAL_C(
+            expectedCachedCount,
+            Stats->WriteDataRequestCachedDurationsCount,
+            "WriteDataRequestCachedDurationsCount: expected = "
+                << expectedCachedCount << ", actual = "
+                << Stats->WriteDataRequestCachedDurationsCount);
 
         UNIT_ASSERT_EQUAL_C(
             expectedWaitingCount,
@@ -1695,7 +1713,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 0, "abc");
 
         b.CheckWriteDataRequestCounters(0, 1, 0);
-        b.CheckWriteDataRequestReportCount(1, 0, 0);
+        b.CheckWriteDataRequestReportCount(1, 0, 0, 0);
         b.CheckWriteDataRequestMinTime(zero, t1, zero);
 
         // --- T2
@@ -1705,25 +1723,36 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(2, 1, "xyz");
 
         b.CheckWriteDataRequestCounters(0, 3, 0);
-        b.CheckWriteDataRequestReportCount(3, 0, 0);
+        b.CheckWriteDataRequestReportCount(3, 0, 0, 0);
         b.CheckWriteDataRequestMinTime(zero, t1, zero);
 
         // --- T3
 
         b.Timer->Sleep(TDuration::Seconds(4));
-        b.Cache.FlushNodeData(1);
+        b.Cache.FlushNodeData(2);
 
-        b.CheckWriteDataRequestCounters(0, 3, 1);
-        b.CheckWriteDataRequestReportCount(3, 1, 0);
+        b.CheckWriteDataRequestCounters(0, 3, 2);
+        b.CheckWriteDataRequestReportCount(3, 0, 2, 0);
         b.CheckWriteDataRequestMinTime(zero, t1, t3);
+
+        writeRequests.ProceedAll();
+
+        // WriteData requests for node 2 are flushed but they remain cached
+        // They cannot be removed from the middle of the queue
+        b.CheckWriteDataRequestCounters(0, 3, 0);
+        b.CheckWriteDataRequestReportCount(3, 0, 2, 2);
+        b.CheckWriteDataRequestMinTime(zero, t1, zero);
 
         // --- T4
 
         b.Timer->Sleep(TDuration::Seconds(8));
+        b.Cache.FlushNodeData(1);
         b.RecreateCache();
 
+        // Cache recreation forces the requests stored in the queue to be
+        // flushed again
         b.CheckWriteDataRequestCounters(0, 3, 0);
-        b.CheckWriteDataRequestReportCount(6, 1, 0);
+        b.CheckWriteDataRequestReportCount(6, 0, 3, 2);
         b.CheckWriteDataRequestMinTime(zero, t4, zero);
 
         // --- T5
@@ -1741,7 +1770,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         // FlushAll should have been triggered by hitting cache capacity
         b.CheckWriteDataRequestCounters(1, count + 3, count + 3);
-        b.CheckWriteDataRequestReportCount(count + 6, count + 4, 0);
+        b.CheckWriteDataRequestReportCount(count + 6, 0, count + 6, 2);
         b.CheckWriteDataRequestMinTime(t5, t4, t5);
 
         // --- T6
@@ -1750,7 +1779,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         writeRequests.ProceedAll();
 
         b.CheckWriteDataRequestCounters(0, 1, 0);
-        b.CheckWriteDataRequestReportCount(count + 7, count + 4, count + 3);
+        b.CheckWriteDataRequestReportCount(count + 7, count + 3, count + 6, count + 5);
         b.CheckWriteDataRequestMinTime(zero, t5, zero);
 
         // --- T7
@@ -1761,7 +1790,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         writeRequests.ProceedAll();
 
         b.CheckWriteDataRequestCounters(0, 0, 0);
-        b.CheckWriteDataRequestReportCount(count + 7, count + 5, count + 4);
+        b.CheckWriteDataRequestReportCount(count + 7, count + 4, count + 7, count + 6);
         b.CheckWriteDataRequestMinTime(zero, zero, zero);
 
         UNIT_ASSERT_EQUAL(0, stats.PendingWriteDataRequestCount);

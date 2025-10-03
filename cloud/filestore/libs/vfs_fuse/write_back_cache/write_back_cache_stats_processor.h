@@ -37,6 +37,7 @@ public:
         const TDeque<std::unique_ptr<TWriteDataEntry>>& cachedEntries);
 
     void AddWriteDataRequestPendingDuration(TDuration pendingDuration);
+    void AddWriteDataRequestCachedDuration(TDuration cachedDuration);
     void AddWriteDataRequestWaitingDuration(TDuration waitingDuration);
     void AddWriteDataRequestFlushDuration(TDuration flushDuration);
 
