@@ -97,7 +97,7 @@ void TStatsServiceActor::RegisterVolumeSelfCounters(
             volume.VolumeInfo.GetDiskId(),
             volumeCounters);
 
-        volume.CountersRegistered = true;
+        volume.SelfCountersRegistered = true;
     }
 }
 
@@ -123,7 +123,7 @@ void TStatsServiceActor::UnregisterVolumeSelfCounters(
         volume.VolumeInfo.GetFolderId(),
         volume.VolumeInfo.GetDiskId());
 
-    volume.CountersRegistered = false;
+    volume.SelfCountersRegistered = false;
 }
 
 void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
@@ -206,18 +206,18 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
         *vol.IsLocalMountCounter = vol.IsLocalMount;
 
         if (vol.PerfCounters.HasCheckpoint || vol.PerfCounters.HasClients) {
-            if (!vol.CountersRegistered) {
+            if (!vol.SelfCountersRegistered) {
                 RegisterVolumeSelfCounters(
                     UserCounters,
                     AppData(ctx)->Counters,
                     vol);
             }
 
-            Y_ABORT_UNLESS(vol.CountersRegistered);
+            Y_ABORT_UNLESS(vol.SelfCountersRegistered);
             vol.PerfCounters.DiskCounters.Publish(ctx.Now());
             vol.PerfCounters.VolumeSelfCounters.Publish(ctx.Now());
             *vol.PerfCounters.VolumeBindingCounter = !vol.PerfCounters.IsPreempted;
-        } else if (vol.CountersRegistered) {
+        } else if (vol.SelfCountersRegistered) {
             UnregisterVolumeSelfCounters(
                 UserCounters,
                 AppData(ctx)->Counters,
