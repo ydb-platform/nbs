@@ -10,6 +10,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TString DescribePaths(const THashMap<TString, ui64>& pathToGeneration)
+{
+    TStringBuilder sb;
+    for (const auto& [path, generation]: pathToGeneration) {
+        sb << path << ":" << generation << " ";
+    }
+    return sb;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TAttachDetachPathActor: public TActorBootstrapped<TAttachDetachPathActor>
 {
 private:
@@ -117,6 +128,13 @@ void TAttachDetachPathActor::Bootstrap(const TActorContext& ctx)
 
     ctx.Send(std::move(event));
     ctx.Schedule(DiskAgentRequestTimeout, new TEvents::TEvWakeup());
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        "Sending %s paths request to disk agent with paths[%s]",
+        IsAttach ? "attach" : "detach",
+        DescribePaths(PathToGeneration).c_str());
 
     Become(&TThis::StateWaitAttachDetach);
 }
@@ -229,9 +247,9 @@ void TAttachDetachPathActor::HandleAttachDetachPathResult(
     const TEvResponse& ev,
     const TActorContext& ctx)
 {
-    using TEvAttachRequest = TEvDiskAgent::TEvAttachPathResponse::TPtr;
+    using TEvAttachResponse = TEvDiskAgent::TEvAttachPathResponse::TPtr;
 
-    if constexpr (std::is_same_v<TEvResponse, TEvAttachRequest>) {
+    if constexpr (std::is_same_v<TEvResponse, TEvAttachResponse>) {
         Y_ABORT_UNLESS(IsAttach);
     } else {
         Y_ABORT_UNLESS(!IsAttach);
@@ -253,7 +271,7 @@ void TAttachDetachPathActor::HandleAttachDetachPathResult(
             AgentId.Quote().c_str());
     }
 
-    if constexpr (std::is_same_v<TEvResponse, TEvAttachRequest>) {
+    if constexpr (std::is_same_v<TEvResponse, TEvAttachResponse>) {
         UpdateDeviceStatesIfNeeded(ctx, record);
     } else {
         UpdatePathAttachStates(ctx);
@@ -528,7 +546,9 @@ void TDiskRegistryActor::ProcessPathsToAttachDetach(const TActorContext& ctx)
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "Max inflight of attach detach requests reached, will try later");
+            "[%lu] Max inflight of attach detach requests reached, will try "
+            "later",
+            TabletID());
         return;
     }
 
@@ -537,7 +557,8 @@ void TDiskRegistryActor::ProcessPathsToAttachDetach(const TActorContext& ctx)
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "No attach detach path requests to process, will try later");
+            "[%lu] No attach detach path requests to process, will try later",
+            TabletID());
         return;
     }
 
@@ -573,7 +594,8 @@ void TDiskRegistryActor::HandleAttachDetachPathOperationCompleted(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "Failed to %s path on agent %s: %s",
+            "[%lu] Failed to %s path on agent %s: %s",
+            TabletID(),
             msg->IsAttach ? "attach" : "detach",
             msg->AgentId.Quote().c_str(),
             FormatError(msg->Error).c_str());
@@ -581,10 +603,10 @@ void TDiskRegistryActor::HandleAttachDetachPathOperationCompleted(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "Successfully %s path on agent %s: %s",
+            "[%lu] Successfully %s path on agent %s",
+            TabletID(),
             msg->IsAttach ? "attached" : "detached",
-            msg->AgentId.Quote().c_str(),
-            FormatError(msg->Error).c_str());
+            msg->AgentId.Quote().c_str());
     }
 
     AgentsWithAttachDetachRequestsInProgress.erase(msg->AgentId);

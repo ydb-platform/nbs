@@ -225,7 +225,8 @@ void TDiskRegistryActor::HandleHttpInfo_UpdatePathAttachState(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "Change state of path[%s] on agent[%s] on monitoring page to %s",
+        "[%lu] Change state of path[%s] on agent[%s] on monitoring page to %s",
+        TabletID(),
         path.Quote().c_str(),
         agentId.Quote().c_str(),
         newStateRaw.c_str());
