@@ -151,7 +151,7 @@ void TDiskAgentActor::HandleDetachPath(
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(
+            std::make_unique<TEvDiskAgent::TEvDetachPathResponse>(
                 MakeError(E_ARGUMENT, "attach/detach paths is disabled")));
         return;
     }
@@ -160,7 +160,7 @@ void TDiskAgentActor::HandleDetachPath(
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(
+            std::make_unique<TEvDiskAgent::TEvDetachPathResponse>(
                 MakeError(E_REJECTED, "another request is in progress")));
         return;
     }
