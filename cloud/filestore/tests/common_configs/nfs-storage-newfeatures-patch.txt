@@ -25,3 +25,6 @@ MaxBackground: 16384
 MaxFuseLoopThreads: 4
 StrictFileSystemSizeEnforcementEnabled: true
 ZeroCopyWriteEnabled: true
+GuestKeepCacheAllowed: true
+SessionHandleOffloadedStatsCapacity: 100
+GuestCachingType: GCT_ANY_READ
