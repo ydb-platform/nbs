@@ -20,7 +20,7 @@ UNALIGNED_TESTS = fio.generate_tests(
     scenarios=SCENARIOS)
 
 ALIGNED_TESTS = fio.generate_tests(
-    offset=0,
+    offset=100,
     sizes=SIZES,
     iodepths=[1],
     numjobs=[4],
