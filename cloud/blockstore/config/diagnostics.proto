@@ -84,6 +84,8 @@ message TMonitoringUrlData
 
 message TDiagnosticsConfig
 {
+    reserved 55;
+
     // How NBS generates name for external resources.
     optional EHostNameScheme HostNameScheme = 1;
 
