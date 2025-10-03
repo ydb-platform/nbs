@@ -200,17 +200,20 @@ private:
             }
 
             auto actualLength = pathToFileSize[path];
-            if (actualLength < 0) {
-                continue;
-            }
 
             ui64 len = fileDeviceArgs->GetFileSize();
-            if (!len) {
+            if (!len && actualLength > 0) {
                 len = actualLength;
+            } else if (!len) {
+                continue;
             }
 
             if (device.GetBlocksCount() != len / blockSize) {
                 return MakeDeviceChangedError(path, "size mismatch");
+            }
+
+            if (actualLength <= 0) {
+                continue;
             }
 
             if (fileDeviceArgs->GetOffset() && fileDeviceArgs->GetFileSize() &&
