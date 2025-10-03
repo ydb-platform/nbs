@@ -503,14 +503,15 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         auto counters = BroadcastVolumeCounters(runtime, {0}, {});
         UNIT_ASSERT(counters[0]== 0);
 
-        ui64 actual = *runtime.GetAppData(0).Counters
+        auto isLocalMountCounter = runtime.GetAppData(0).Counters
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "service_volume")
             ->GetSubgroup("volume", DefaultDiskId)
             ->GetSubgroup("cloud", DefaultCloudId)
             ->GetSubgroup("folder", DefaultFolderId)
-            ->GetCounter("IsLocalMount");
-        UNIT_ASSERT_VALUES_EQUAL(0, actual);
+            ->FindCounter("IsLocalMount");
+        UNIT_ASSERT(isLocalMountCounter);
+        UNIT_ASSERT_VALUES_EQUAL(0, isLocalMountCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldReportSolomonMetricsIfVolumeRunsLocallyAndMounted)
