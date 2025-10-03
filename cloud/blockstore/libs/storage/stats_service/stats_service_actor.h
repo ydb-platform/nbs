@@ -94,6 +94,14 @@ public:
 private:
     void RegisterCounters(const NActors::TActorContext& ctx);
 
+    void RegisterIsLocalMountCounter(
+        NMonitoring::TDynamicCounterPtr& counters,
+        TVolumeStatsInfo& volume);
+
+    void UnregisterIsLocalMountCounter(
+        NMonitoring::TDynamicCounterPtr& counters,
+        TVolumeStatsInfo& volume);
+
     void RegisterVolumeSelfCounters(
         std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
         NMonitoring::TDynamicCounterPtr& counters,

@@ -60,7 +60,6 @@ namespace {
                                                                                                          \
     xxx(SkipReportingZeroBlocksMetricsForYDBBasedDisks, bool, false                                     )\
     xxx(OpentelemetryTraceConfig,           ::NCloud::NProto::TOpentelemetryTraceConfig, {}             )\
-    xxx(AddHostLabelInServiceVolumeMetrics,             bool, false                                     )\
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
 
 #define BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)               \
