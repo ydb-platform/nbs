@@ -851,17 +851,24 @@ void TVolumeActor::HandleDeviceOperationStarted(
     const auto& record = ev->Get();
     Y_UNUSED(ctx);
 
-    TString requestTypeStr =
-        (record->RequestType ==
-         TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Read)
-            ? "read"
-            : "write";
-
     auto requestType =
         (record->RequestType ==
          TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Read)
             ? TDeviceOperationTracker::ERequestType::Read
             : TDeviceOperationTracker::ERequestType::Write;
+    switch (record->RequestType) {
+        case TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Read:
+            requestType = TDeviceOperationTracker::ERequestType::Read;
+            break;
+        case TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Write:
+            requestType = TDeviceOperationTracker::ERequestType::Write;
+            break;
+        case TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Zero:
+            requestType = TDeviceOperationTracker::ERequestType::Zero;
+            break;
+        default:
+            return;
+    }
 
     DeviceOperationTracker.OnStarted(
         record->OperationId,

@@ -490,7 +490,8 @@ struct TEvVolumePrivate
         enum class ERequestType
         {
             Read,
-            Write
+            Write,
+            Zero
         };
 
         TString DeviceUUID;
