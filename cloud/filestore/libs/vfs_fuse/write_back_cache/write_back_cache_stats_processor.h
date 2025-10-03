@@ -19,16 +19,16 @@ private:
 
     // Used to track the earliest Flush start time to calculate MaxFlushTime
     TMultiSet<TInstant> FlushStartTimeSet;
-    ui64 FlushWriteDataRequestCount = 0;
 
 public:
     explicit TStatsProcessor(IWriteBackCacheStatsPtr stats);
 
-    void FlushStarted(ui64 writeDataRequestCount, TInstant startTime);
-    void FlushCompleted(ui64 writeDataRequestCount, TInstant startTime);
+    void FlushStarted(TInstant startTime);
+    void FlushCompleted(TInstant startTime);
     void FlushFailed();
 
-    void UpdateNodeCount(ui64 value);
+    void IncrementNodeCount();
+    void DecrementNodeCount();
 
     void UpdatePendingQueueStats(
         const TDeque<std::unique_ptr<TWriteDataEntry>>& pendingEntries);
@@ -36,10 +36,12 @@ public:
     void UpdateCachedQueueStats(
         const TDeque<std::unique_ptr<TWriteDataEntry>>& cachedEntries);
 
-    void AddWriteDataRequestPendingDuration(TDuration pendingDuration);
-    void AddWriteDataRequestCachedDuration(TDuration cachedDuration);
-    void AddWriteDataRequestWaitingDuration(TDuration waitingDuration);
-    void AddWriteDataRequestFlushDuration(TDuration flushDuration);
+    void WriteDataRequestEnteredState(
+        IWriteBackCacheStats::EWriteDataRequestStats state);
+
+    void WriteDataRequestExitedState(
+        IWriteBackCacheStats::EWriteDataRequestStats state,
+        TDuration duration);
 
     // Persistent queue stats should be reported after a call (or a series of
     // calls) to AllocateBack or PopFront

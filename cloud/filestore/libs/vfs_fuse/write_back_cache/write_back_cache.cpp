@@ -21,6 +21,8 @@ namespace NCloud::NFileStore::NFuse {
 using namespace NCloud::NFileStore::NVFS;
 using namespace NThreading;
 
+using EWriteDataStats = IWriteBackCacheStats::EWriteDataRequestStats;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -358,12 +360,13 @@ public:
                 } else {
                     auto* nodeState = GetOrCreateNodeState(entry->GetNodeId());
                     entry->PendingTime = Timer->Now();
+                    Stats.WriteDataRequestEnteredState(
+                        EWriteDataStats::Pending);
                     AddCachedEntry(nodeState, std::move(entry));
                 }
             });
 
         Stats.UpdatePersistentQueueStats(CachedEntriesPersistentQueue);
-        Stats.UpdateNodeCount(NodeStates.size());
         Stats.UpdatePendingQueueStats(PendingEntries);
         Stats.UpdateCachedQueueStats(CachedEntries);
     }
@@ -496,6 +499,7 @@ public:
         }
 
         entry->PendingTime = Timer->Now();
+        Stats.WriteDataRequestEnteredState(EWriteDataStats::Pending);
 
         auto serializedSize = entry->GetSerializedSize();
 
@@ -692,7 +696,7 @@ private:
         auto& ptr = NodeStates[nodeId];
         if (!ptr) {
             ptr = std::make_unique<TNodeState>(nodeId);
-            Stats.UpdateNodeCount(NodeStates.size());
+            Stats.IncrementNodeCount();
         }
         return ptr.get();
     }
@@ -709,7 +713,7 @@ private:
         if (nodeState != nullptr && nodeState->Empty()) {
             auto erased = NodeStates.erase(nodeState->NodeId);
             Y_DEBUG_ABORT_UNLESS(erased);
-            Stats.UpdateNodeCount(NodeStates.size());
+            Stats.DecrementNodeCount();
         }
     }
 
@@ -1063,8 +1067,9 @@ private:
             for (size_t i = 0; i < entryCount; i++) {
                 auto* entry = nodeState->CachedEntries[i];
                 entry->FlushStartedTime = now;
-                Stats.AddWriteDataRequestWaitingDuration(
+                Stats.WriteDataRequestExitedState(EWriteDataStats::Waiting,
                     entry->FlushStartedTime - entry->CachedTime);
+                Stats.WriteDataRequestEnteredState(EWriteDataStats::Flush);
             }
 
             parts = TUtil::CalculateDataPartsToFlush(
@@ -1077,9 +1082,7 @@ private:
             nodeState->FlushState.AffectedWriteDataEntriesCount = entryCount;
             nodeState->FlushState.StartTime = now;
 
-            Stats.FlushStarted(
-                nodeState->FlushState.AffectedWriteDataEntriesCount,
-                nodeState->FlushState.StartTime);
+            Stats.FlushStarted(nodeState->FlushState.StartTime);
         }
 
         nodeState->FlushState.WriteRequests =
@@ -1145,9 +1148,7 @@ private:
         state.WriteRequests.clear();
 
         if (state.FailedWriteRequests.empty()) {
-            Stats.FlushCompleted(
-                state.AffectedWriteDataEntriesCount,
-                state.StartTime);
+            Stats.FlushCompleted(state.StartTime);
             CompleteFlush(nodeState);
         } else {
             Stats.FlushFailed();
@@ -1177,13 +1178,13 @@ private:
 
             entry->FinishFlush(PendingOperations);
 
-            Stats.AddWriteDataRequestFlushDuration(
+            Stats.WriteDataRequestExitedState(EWriteDataStats::Flush,
                 now - entry->FlushStartedTime);
         }
 
         // Clear flushed entries from the persistent queue
         while (!CachedEntries.empty() && CachedEntries.front()->IsFlushed()) {
-            Stats.AddWriteDataRequestCachedDuration(
+            Stats.WriteDataRequestExitedState(EWriteDataStats::Cached,
                 now - CachedEntries.front()->CachedTime);
 
             CachedEntries.pop_front();
@@ -1224,8 +1225,10 @@ private:
         Y_ABORT_UNLESS(nodeState->NodeId == entry->GetNodeId());
 
         entry->CachedTime = Timer->Now();
-        Stats.AddWriteDataRequestPendingDuration(
+        Stats.WriteDataRequestExitedState(EWriteDataStats::Pending,
             entry->CachedTime - entry->PendingTime);
+        Stats.WriteDataRequestEnteredState(EWriteDataStats::Cached);
+        Stats.WriteDataRequestEnteredState(EWriteDataStats::Waiting);
 
         nodeState->CachedEntryIntervalMap.Add(entry.get());
         nodeState->CachedEntries.push_back(entry.get());

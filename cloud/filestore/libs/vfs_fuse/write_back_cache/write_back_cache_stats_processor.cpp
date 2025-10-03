@@ -4,6 +4,8 @@
 
 namespace NCloud::NFileStore::NFuse {
 
+using EWriteDataStats = IWriteBackCacheStats::EWriteDataRequestStats;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteBackCache::TStatsProcessor::TStatsProcessor(
@@ -11,43 +13,36 @@ TWriteBackCache::TStatsProcessor::TStatsProcessor(
     : Stats(std::move(stats))
 {
     if (Stats) {
-        Stats->SetExecutingFlushStats(0, 0, TInstant::Zero());
+        Stats->Reset();
     }
 }
 
 void TWriteBackCache::TStatsProcessor::FlushStarted(
-    ui64 writeDataRequestCount,
     TInstant startTime)
 {
     FlushStartTimeSet.insert(startTime);
-    FlushWriteDataRequestCount += writeDataRequestCount;
 
     if (Stats) {
-        Stats->SetExecutingFlushStats(
-            /* executingFlushCount = */ FlushStartTimeSet.size(),
-            /* writeDataRequestCount = */ FlushWriteDataRequestCount,
-            /* minTime = */ *FlushStartTimeSet.begin());
+        Stats->IncrementInProgressFlushCount();
+        Stats->SetWriteDataRequestMinInstant(
+            EWriteDataStats::Flush,
+            *FlushStartTimeSet.begin());
     }
 }
 
 void TWriteBackCache::TStatsProcessor::FlushCompleted(
-    ui64 writeDataRequestCount,
     TInstant startTime)
 {
     auto it = FlushStartTimeSet.find(startTime);
     Y_DEBUG_ABORT_UNLESS(it != FlushStartTimeSet.end());
     FlushStartTimeSet.erase(it);
-    Y_DEBUG_ABORT_UNLESS(FlushWriteDataRequestCount >= writeDataRequestCount);
-    FlushWriteDataRequestCount -= writeDataRequestCount;
 
     if (Stats) {
         auto minTime = FlushStartTimeSet.empty() ? TInstant::Zero()
                                                  : *FlushStartTimeSet.begin();
-        Stats->SetExecutingFlushStats(
-            /* executingFlushCount = */ FlushStartTimeSet.size(),
-            /* writeDataRequestCount = */ FlushWriteDataRequestCount,
-            /* minTime = */ minTime);
+        Stats->DecrementInProgressFlushCount();
         Stats->IncrementCompletedFlushCount();
+        Stats->SetWriteDataRequestMinInstant(EWriteDataStats::Flush, minTime);
     }
 }
 
@@ -58,12 +53,20 @@ void TWriteBackCache::TStatsProcessor::FlushFailed()
     }
 }
 
-void TWriteBackCache::TStatsProcessor::UpdateNodeCount(ui64 value)
+void TWriteBackCache::TStatsProcessor::IncrementNodeCount()
 {
     if (Stats) {
-        Stats->SetNodeCount(value);
+        Stats->IncrementNodeCount();
     }
 }
+
+void TWriteBackCache::TStatsProcessor::DecrementNodeCount()
+{
+    if (Stats) {
+        Stats->DecrementNodeCount();
+    }
+}
+
 
 void TWriteBackCache::TStatsProcessor::UpdatePendingQueueStats(
     const TDeque<std::unique_ptr<TWriteDataEntry>>& pendingEntries)
@@ -72,7 +75,7 @@ void TWriteBackCache::TStatsProcessor::UpdatePendingQueueStats(
         auto minTime = pendingEntries.empty()
                            ? TInstant::Zero()
                            : pendingEntries.front()->PendingTime;
-        Stats->SetPendingWriteDataRequestStats(pendingEntries.size(), minTime);
+        Stats->SetWriteDataRequestMinInstant(EWriteDataStats::Pending, minTime);
     }
 }
 
@@ -83,39 +86,24 @@ void TWriteBackCache::TStatsProcessor::UpdateCachedQueueStats(
         auto minTime = cachedEntries.empty()
                            ? TInstant::Zero()
                            : cachedEntries.front()->PendingTime;
-        Stats->SetCachedWriteDataRequestStats(cachedEntries.size(), minTime);
+        Stats->SetWriteDataRequestMinInstant(EWriteDataStats::Cached, minTime);
     }
 }
 
-void TWriteBackCache::TStatsProcessor::AddWriteDataRequestPendingDuration(
-    TDuration pendingDuration)
+void TWriteBackCache::TStatsProcessor::WriteDataRequestEnteredState(
+    IWriteBackCacheStats::EWriteDataRequestStats state)
 {
     if (Stats) {
-        Stats->AddWriteDataRequestPendingDuration(pendingDuration);
+        Stats->IncrementWriteDataRequestCount(state);
     }
 }
 
-void TWriteBackCache::TStatsProcessor::AddWriteDataRequestCachedDuration(
-    TDuration cachedDuration)
+void TWriteBackCache::TStatsProcessor::WriteDataRequestExitedState(
+    IWriteBackCacheStats::EWriteDataRequestStats state,
+    TDuration duration)
 {
     if (Stats) {
-        Stats->AddWriteDataRequestCachedDuration(cachedDuration);
-    }
-}
-
-void TWriteBackCache::TStatsProcessor::AddWriteDataRequestWaitingDuration(
-    TDuration waitingDuration)
-{
-    if (Stats) {
-        Stats->AddWriteDataRequestWaitingDuration(waitingDuration);
-    }
-}
-
-void TWriteBackCache::TStatsProcessor::AddWriteDataRequestFlushDuration(
-    TDuration flushDuration)
-{
-    if (Stats) {
-        Stats->AddWriteDataRequestFlushDuration(flushDuration);
+        Stats->DecrementWriteDataRequestCountAndAddStats(state, duration);
     }
 }
 

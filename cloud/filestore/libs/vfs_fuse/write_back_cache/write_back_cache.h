@@ -94,33 +94,39 @@ struct TWriteBackCache::TPersistentQueueStats
 
 struct IWriteBackCacheStats
 {
+    enum class EWriteDataRequestStats
+    {
+        Pending,
+        Cached,
+        Waiting,
+        Flush
+    };
+
     virtual ~IWriteBackCacheStats() = default;
 
+    virtual void Reset() = 0;
+
+    virtual void IncrementInProgressFlushCount() = 0;
+    virtual void DecrementInProgressFlushCount() = 0;
     virtual void IncrementCompletedFlushCount() = 0;
     virtual void IncrementFailedFlushCount() = 0;
 
-    virtual void SetNodeCount(ui64 value) = 0;
+    virtual void IncrementNodeCount() = 0;
+    virtual void DecrementNodeCount() = 0;
 
-    virtual void SetExecutingFlushStats(
-        ui64 executingFlushCount,
-        ui64 writeDataRequestCount,
-        TInstant minTime) = 0;
+    virtual void SetWriteDataRequestMinInstant(
+        EWriteDataRequestStats stats,
+        TInstant value) = 0;
 
-    virtual void SetPendingWriteDataRequestStats(
-        ui64 writeDataRequestCount,
-        TInstant minTime) = 0;
+    virtual void IncrementWriteDataRequestCount(
+        EWriteDataRequestStats stats) = 0;
 
-    virtual void SetCachedWriteDataRequestStats(
-        ui64 writeDataRequestCount,
-        TInstant minTime) = 0;
+    virtual void DecrementWriteDataRequestCountAndAddStats(
+        EWriteDataRequestStats stats,
+        TDuration duration) = 0;
 
     virtual void SetPersistentQueueStats(
         const TWriteBackCache::TPersistentQueueStats& stats) = 0;
-
-    virtual void AddWriteDataRequestPendingDuration(TDuration pendingTime) = 0;
-    virtual void AddWriteDataRequestCachedDuration(TDuration cachedTime) = 0;
-    virtual void AddWriteDataRequestWaitingDuration(TDuration waitingTime) = 0;
-    virtual void AddWriteDataRequestFlushDuration(TDuration flushTime) = 0;
 };
 
 }   // namespace NCloud::NFileStore::NFuse
