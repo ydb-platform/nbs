@@ -7031,6 +7031,12 @@ void TDiskRegistryState::AttachDetachPathIfNeeded(
     }
 
     if (inserted) {
+        STORAGE_INFO(Sprintf(
+            "added path[%s] for %s on agent[%s]",
+            path.Quote().c_str(),
+            attach ? "attach" : "detach",
+            agent.GetAgentId().Quote().c_str()));
+
         AgentList.AddPathToAttachDetach(agent.GetAgentId(), path);
         AgentList.InrementAndGetPathGeneration(agent.GetAgentId(), path);
         UpdateAgent(db, agent);
