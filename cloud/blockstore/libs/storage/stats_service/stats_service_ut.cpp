@@ -494,17 +494,46 @@ public:
 
 Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 {
-    Y_UNIT_TEST(ShouldReportSolomonMetrics)
+    Y_UNIT_TEST(ShouldNotReportSolomonMetricsExceptIsLocalMountIfNotMounted)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
 
         RegisterVolume(runtime, DefaultDiskId);
         auto counters = BroadcastVolumeCounters(runtime, {0}, {});
+        UNIT_ASSERT(counters[0]== 0);
+
+        ui64 actual = *runtime.GetAppData(0).Counters
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "service_volume")
+            ->GetSubgroup("volume", DefaultDiskId)
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetCounter("IsLocalMount");
+        UNIT_ASSERT_VALUES_EQUAL(0, actual);
+    }
+
+    Y_UNIT_TEST(ShouldReportSolomonMetricsIfVolumeRunsLocallyAndMounted)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        RegisterVolume(runtime, DefaultDiskId);
+        auto counters = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCLIENTS);
         UNIT_ASSERT(counters[0]== 1);
     }
 
-    Y_UNIT_TEST(ShouldStopReportSolomonMetricsIfIsMoved)
+    Y_UNIT_TEST(ShouldReportSolomonMetricsIfVolumeRunsLocallyAndHasCheckpoint)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        RegisterVolume(runtime, DefaultDiskId);
+        auto counters = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCHECKPOINT);
+        UNIT_ASSERT(counters[0] == 1);
+    }
+
+    Y_UNIT_TEST(ShouldUnregisterCounters)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
@@ -547,6 +576,14 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         runtime.DispatchEvents(options);
 
         UNIT_ASSERT_VALUES_EQUAL(false, VolumeMetricsExists(*runtime.GetAppData(0).Counters));
+        UNIT_ASSERT(
+            !runtime.GetAppData(0).Counters
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service_volume")
+                ->GetSubgroup("volume", DefaultDiskId)
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->FindCounter("IsLocalMount"));
     }
 
     Y_UNIT_TEST(ShouldReportIsLocalMountCounter)
@@ -587,7 +624,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             ui64 actual = *runtime.GetAppData(0).Counters
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service_volume")
-                ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", DefaultDiskId)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
@@ -626,7 +662,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             ui64 actual = *runtime.GetAppData(0).Counters
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service_volume")
-                ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", DefaultDiskId)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)

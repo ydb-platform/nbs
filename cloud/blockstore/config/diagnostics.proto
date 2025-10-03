@@ -229,7 +229,4 @@ message TDiagnosticsConfig
     optional bool SkipReportingZeroBlocksMetricsForYDBBasedDisks = 53;
 
     optional NCloud.NProto.TOpentelemetryTraceConfig OpentelemetryTraceConfig = 54;
-
-    // Add host label in service volume metrics.
-    optional bool AddHostLabelInServiceVolumeMetrics = 55;
 }
