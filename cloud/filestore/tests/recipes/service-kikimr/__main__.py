@@ -56,6 +56,10 @@ def start(argv):
         static_pdisk_size=PDISK_SIZE,
         use_log_files=args.use_log_files,
         bs_cache_file_path=args.bs_cache_file_path,
+        dynamic_storage_pools=[
+            dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
+            dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0),
+        ],
     )
 
     kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
@@ -125,7 +129,11 @@ def start(argv):
     )
     filestore_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
 
-    filestore_server = FilestoreServer(configurator=filestore_configurator)
+    filestore_server = FilestoreServer(
+        configurator=filestore_configurator,
+        kikimr_binary_path=kikimr_binary_path,
+        dynamic_storage_pools=kikimr_configurator.dynamic_storage_pools,
+    )
     filestore_server.start()
 
     append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, filestore_server.stderr_file_name)
