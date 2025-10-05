@@ -126,7 +126,7 @@ private:
 
     TLog Log;
 
-    std::atomic_flag IsInitialized;
+    std::atomic_flag IsInitialized = ATOMIC_FLAG_INIT;
 
 public:
     TYdbNativeStorage(

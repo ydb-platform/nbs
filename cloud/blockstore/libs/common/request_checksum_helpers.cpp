@@ -2,6 +2,8 @@
 
 #include "block_checksum.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
+
 namespace NCloud::NBlockStore {
 
 namespace {

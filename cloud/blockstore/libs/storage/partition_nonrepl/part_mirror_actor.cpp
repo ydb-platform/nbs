@@ -7,6 +7,7 @@
 #include "part_nonrepl_migration.h"
 #include "resync_range.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>

@@ -1,18 +1,20 @@
 #include "volume_state.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 
-#include <google/protobuf/util/message_differencer.h>
-
 #include <util/stream/str.h>
 #include <util/system/hostname.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 #include <utility>
 
@@ -388,7 +390,7 @@ void TVolumeState::Reset()
     {
         TDuration::TryParse(*value, MaxTimedOutDeviceStateDuration);
     }
-    if (tags.contains("use-fastpath")) {
+    if (tags.contains(UseFastPathTagName)) {
         UseFastPath = true;
     }
     if (tags.contains(IntermediateWriteBufferTagName)) {

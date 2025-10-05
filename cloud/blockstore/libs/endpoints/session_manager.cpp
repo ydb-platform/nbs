@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/client/throttling.h>
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
@@ -15,6 +16,7 @@
 #include <cloud/blockstore/libs/service/service_error_transform.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/validation/validation.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -791,10 +793,9 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     }
 
     if (Options.StrictContractValidation &&
-        !volume.GetIsFastPathEnabled()   // switching fast path to slow path
-                                         // during migration might lead to
+        // switching fast path to slow path during migration might lead to
                                          // validation false positives
-    )
+        !volume.GetTags().contains(UseFastPathTagName))
     {
         client = CreateValidationClient(
             Logging,
