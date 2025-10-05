@@ -21,17 +21,27 @@ void TBootstrap::Init()
     Logging = CreateLoggingService(std::move(logBackend), logSettings);
     Log = Logging->CreateLog("FSDEV");
 
-    STORAGE_INFO("Init")
+    STORAGE_INFO("Init");
 }
 
 void TBootstrap::Start()
 {
-    STORAGE_INFO("Start")
+    STORAGE_INFO("Start");
 }
 
 void TBootstrap::Stop()
 {
-    STORAGE_INFO("Stop")
+    STORAGE_INFO("Stop");
+}
+
+void TBootstrap::RpcFilestoreCreate(TString name)
+{
+    STORAGE_INFO("RpcFilestoreCreate: name=" << name);
+}
+
+void TBootstrap::RpcFilestoreDelete()
+{
+    STORAGE_INFO("RpcFilestoreDelete");
 }
 
 }   // namespace NCloud::NFileStore::NFsdev

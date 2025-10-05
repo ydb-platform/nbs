@@ -28,7 +28,8 @@ public:
     void Start();
     void Stop();
 
-private:
+    void RpcFilestoreCreate(TString name);
+    void RpcFilestoreDelete();
 };
 
 }   // namespace NCloud::NFileStore::NFsdev
