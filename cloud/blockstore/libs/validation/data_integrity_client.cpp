@@ -6,12 +6,14 @@
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/protobuf/json/proto2json.h>
 
 #include <util/generic/string.h>
 #include <util/generic/utility.h>
@@ -81,14 +83,25 @@ struct TRequestCounters
     TDynamicCounters::TCounterPtr ReadChecksumMismatch;
     TDynamicCounters::TCounterPtr WriteChecksumMismatch;
 
+    TDynamicCounters::TCounterPtr EndpointsWithCopyingCount;
+    TDynamicCounters::TCounterPtr EndpointsWithoutCopyingCount;
+
     void Register(TDynamicCounters& counters)
     {
-        ReadRequests = counters.GetCounter("ReadRequests", true);
-        WriteRequests = counters.GetCounter("WriteRequests", true);
+        ReadRequests = counters.GetCounter("ReadRequests", /*derivative=*/true);
+        WriteRequests =
+            counters.GetCounter("WriteRequests", /*derivative=*/true);
         ReadChecksumMismatch =
-            counters.GetCounter("ReadChecksumMismatch", true);
+            counters.GetCounter("ReadChecksumMismatch", /*derivative=*/true);
         WriteChecksumMismatch =
-            counters.GetCounter("WriteChecksumMismatch", true);
+            counters.GetCounter("WriteChecksumMismatch", /*derivative=*/true);
+
+        EndpointsWithCopyingCount = counters.GetCounter(
+            "EndpointsWithCopyingCount",
+            /*derivative=*/false);
+        EndpointsWithoutCopyingCount = counters.GetCounter(
+            "EndpointsWithoutCopyingCount",
+            /*derivative=*/false);
     }
 };
 
@@ -102,7 +115,11 @@ private:
     TLog Log;
 
     const IBlockStorePtr Client;
+    const TString DiskId;
     const ui32 BlockSize;
+
+    // Indicates whether a checksum mismatch has been detected for a given disk.
+    std::atomic_flag ChecksumMismatchDetected;
 
     TDynamicCountersPtr Counters;
     TRequestCounters RequestCounters;
@@ -112,7 +129,9 @@ public:
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         IBlockStorePtr client,
-        ui32 blockSize);
+        TString diskId,
+        ui32 blockSize,
+        bool checksumMismatchDetected);
 
     void Start() override
     {
@@ -193,6 +212,8 @@ private:
         Y_UNUSED(response);
         return false;
     }
+
+    void SetTag();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -201,16 +222,26 @@ TDataIntegrityClient::TDataIntegrityClient(
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         IBlockStorePtr client,
-        ui32 blockSize)
+        TString diskId,
+        ui32 blockSize,
+        bool checksumMismatchDetected)
     : Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
     , Client(std::move(client))
+    , DiskId(std::move(diskId))
     , BlockSize(blockSize)
+    , ChecksumMismatchDetected(checksumMismatchDetected)
 {
     auto counters = monitoring->GetCounters();
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
     Counters = rootGroup->GetSubgroup("component", "service")
                    ->GetSubgroup("subcomponent", "data_integrity");
     RequestCounters.Register(*Counters);
+
+    if (ChecksumMismatchDetected.test()) {
+        RequestCounters.EndpointsWithCopyingCount->Inc();
+    } else {
+        RequestCounters.EndpointsWithoutCopyingCount->Inc();
+    }
 }
 
 bool TDataIntegrityClient::HandleRequest(
@@ -413,6 +444,50 @@ bool TDataIntegrityClient::HandleRequest(
     return true;
 }
 
+void TDataIntegrityClient::SetTag() {
+    if (ChecksumMismatchDetected.test()) {
+        return;
+    }
+    ChecksumMismatchDetected.test_and_set();
+
+    RequestCounters.EndpointsWithCopyingCount->Inc();
+    Y_DEBUG_ABORT_UNLESS(
+        RequestCounters.EndpointsWithoutCopyingCount->Val() > 0);
+    RequestCounters.EndpointsWithoutCopyingCount->Dec();
+
+    auto callContext = MakeIntrusive<TCallContext>(CreateRequestId());
+    auto request = std::make_shared<NProto::TExecuteActionRequest>();
+    request->SetAction("modifytags");  // todo const ?
+
+    NPrivateProto::TModifyTagsRequest input;
+    input.SetDiskId(DiskId);
+    *input.AddTagsToAdd() = DataIntegrityViolationDetectedTagName;
+    request->SetInput(NProtobufJson::Proto2Json(input));
+    auto future = Client->ExecuteAction(callContext, std::move(request));
+    future.Subscribe(
+        [future, weakPtr = weak_from_this()](
+            const TFuture<NProto::TExecuteActionResponse>&)
+        {
+            auto self = weakPtr.lock();
+            if (!self) {
+                return;
+            }
+
+            const auto& error = future.GetValue().GetError();
+            if (HasError(error)) {
+                auto& Log = self->Log;
+                STORAGE_ERROR(
+                    "[%s] Failed to add tag after data integrity violation: %s",
+                    self->DiskId.c_str(),
+                    FormatError(error).c_str());
+
+                // The errors here are probably rare and not critical. So it's
+                // ok to not retry. Retrying might be bad in case of some
+                // SchemeShard malfunctions, as they might induce a large load.
+            }
+        });
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -421,13 +496,20 @@ IBlockStorePtr CreateDataIntegrityClient(
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     IBlockStorePtr client,
-    ui32 blockSize)
+    const NProto::TVolume& volume)
 {
+    // "IntermediateWriteBufferTagName" indicates that user modfies the buffer
+    // during writes. We should also enable copying in this case.
+    const bool checksumMismatchDetected =
+        volume.GetTags().contains(DataIntegrityViolationDetectedTagName) ||
+        volume.GetTags().contains(IntermediateWriteBufferTagName);
     return std::make_unique<TDataIntegrityClient>(
         std::move(logging),
         std::move(monitoring),
         std::move(client),
-        blockSize);
+        volume.GetDiskId(),
+        volume.GetBlockSize(),
+        checksumMismatchDetected);
 }
 
 }   // namespace NCloud::NBlockStore::NClient
