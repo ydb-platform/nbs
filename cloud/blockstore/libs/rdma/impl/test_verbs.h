@@ -47,8 +47,4 @@ IVerbsPtr CreateTestVerbs(TTestContextPtr context);
 void CreateConnection(TTestContextPtr context);
 void Disconnect(TTestContextPtr context);
 
-////////////////////////////////////////////////////////////////////////////////
-
-int TestRdmaDestroyId(struct rdma_cm_id *id);
-
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs

@@ -7,8 +7,6 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
-#include <contrib/libs/ibdrv/symbols.h>
-
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/stream/printf.h>
@@ -154,13 +152,6 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
 
     Y_UNIT_TEST(ShouldHandleSessionError)
     {
-        auto* symbols = const_cast<TRdmaSymbols*>(RDSym());
-        auto* RdmaDestroyId = symbols->rdma_destroy_id;
-        symbols->rdma_destroy_id = NVerbs::TestRdmaDestroyId;
-        Y_DEFER {
-            symbols->rdma_destroy_id = RdmaDestroyId;
-        };
-
         NThreading::TPromise<void> done = NThreading::NewPromise<void>();
         auto context = MakeIntrusive<NVerbs::TTestContext>();
 
@@ -215,5 +206,11 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
         server->Stop();
     }
 };
+
+int NVerbs::DestroyId(rdma_cm_id* id)
+{
+    memset(id, 0xFF, sizeof(rdma_cm_id));
+    return 0;
+}
 
 }   // namespace NCloud::NBlockStore::NRdma

@@ -585,11 +585,4 @@ void Disconnect(TTestContextPtr context)
     context->CompletionHandle.Set();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-int TestRdmaDestroyId(struct rdma_cm_id *id) {
-    memset(id, 0xFF, sizeof(rdma_cm_id));
-    return 0;
-}
-
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs

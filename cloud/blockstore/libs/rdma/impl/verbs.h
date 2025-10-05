@@ -12,6 +12,10 @@ namespace NCloud::NBlockStore::NRdma::NVerbs {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+int __attribute__((weak)) DestroyId(rdma_cm_id* id);
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define RDMA_DECLARE_PTR(name, type, dereg)                                    \
     using T##name##Ptr = std::unique_ptr<type, decltype(&dereg)>;              \
     inline T##name##Ptr WrapPtr(type* ptr) { return { ptr, dereg }; }          \
@@ -26,7 +30,7 @@ RDMA_DECLARE_PTR(CompletionQueue, ibv_cq, ibv_destroy_cq);
 RDMA_DECLARE_PTR(AddressInfo, rdma_addrinfo, rdma_freeaddrinfo);
 RDMA_DECLARE_PTR(EventChannel, rdma_event_channel, rdma_destroy_event_channel);
 RDMA_DECLARE_PTR(ConnectionEvent, rdma_cm_event, rdma_ack_cm_event);
-RDMA_DECLARE_PTR(Connection, rdma_cm_id, rdma_destroy_id);
+RDMA_DECLARE_PTR(Connection, rdma_cm_id, DestroyId);
 
 #undef RDMA_DECLARE_PTR
 
