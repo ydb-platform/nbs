@@ -1,4 +1,5 @@
 #include "bootstrap.h"
+#include "rpc.h"
 #include "spdk/fsdev_module.h"
 #include "spdk/log.h"
 #include "spdk/rpc.h"
@@ -50,16 +51,8 @@ static int GetCtxSize()
     return 0;
 }
 
-struct rpc_filestore_create
-{
-    char* name;
-};
-
-static const struct spdk_json_object_decoder rpc_filestore_create_decoders[] = {
-    {"name", offsetof(struct rpc_filestore_create, name), spdk_json_decode_string, false},
-};
-
-static void FsdevRpcFilestoreCreate(
+template <typename TRequest>
+static void FsdevRpc(
     struct spdk_jsonrpc_request* request,
     const struct spdk_json_val* params)
 {
@@ -72,41 +65,34 @@ static void FsdevRpcFilestoreCreate(
             spdk_strerror(-EINVAL));
     }
 
-    rpc_filestore_create req = {};
+    TRequest req;
 
-	if (spdk_json_decode_object(params, rpc_filestore_create_decoders,
-				    SPDK_COUNTOF(rpc_filestore_create_decoders),
-				    &req)) {
-		SPDK_ERRLOG("spdk_json_decode_object failed\n");
-		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS,
-						 "spdk_json_decode_object failed");
+    if (!req.Decode(params)) {
+        SPDK_ERRLOG("spdk_json_decode_object failed\n");
+        spdk_jsonrpc_send_error_response(
+            request,
+            SPDK_JSONRPC_ERROR_INVALID_PARAMS,
+            "spdk_json_decode_object failed");
+        return;
+    }
 
-		free(req.name);
-		return;
-	}
+    bootstrap->FsdevRpc(req);
 
-    bootstrap->RpcFilestoreCreate(req.name);
-
-    free(req.name);
     spdk_jsonrpc_send_bool_response(request, true);
 }
 
-static void FsdevRpcFilestoreDelete(
+static void FsdevRpcCreate(
     struct spdk_jsonrpc_request* request,
     const struct spdk_json_val* params)
 {
-    Y_UNUSED(params);
-    auto* bootstrap = static_cast<TBootstrap*>(gFsdevState.Bootstrap);
-    if (!bootstrap) {
-        spdk_jsonrpc_send_error_response(
-            request,
-            SPDK_JSONRPC_ERROR_INTERNAL_ERROR,
-            spdk_strerror(-EINVAL));
-    }
+    FsdevRpc<TRpcFilestoreCreate>(request, params);
+}
 
-    bootstrap->RpcFilestoreDelete();
-
-    spdk_jsonrpc_send_bool_response(request, true);
+static void FsdevRpcDelete(
+    struct spdk_jsonrpc_request* request,
+    const struct spdk_json_val* params)
+{
+    FsdevRpc<TRpcFilestoreDelete>(request, params);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -137,13 +123,7 @@ void hello()
 {}
 
 SPDK_FSDEV_MODULE_REGISTER(filestore_fsdev, &gFsdevState.FsdevModule);
-SPDK_RPC_REGISTER(
-    "fsdev_filestore_create",
-    FsdevRpcFilestoreCreate,
-    SPDK_RPC_RUNTIME);
-SPDK_RPC_REGISTER(
-    "fsdev_filestore_delete",
-    FsdevRpcFilestoreDelete,
-    SPDK_RPC_RUNTIME);
+SPDK_RPC_REGISTER("fsdev_filestore_create", FsdevRpcCreate, SPDK_RPC_RUNTIME);
+SPDK_RPC_REGISTER("fsdev_filestore_delete", FsdevRpcDelete, SPDK_RPC_RUNTIME);
 
 }   // extern "C"

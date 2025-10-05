@@ -8,7 +8,7 @@ def fsdev_filestore_create(args):
 
 def fsdev_filestore_delete(args):
     params = {"name": args.name}
-    print_json(args.client.call("fsdev_filestore_create", params))
+    print_json(args.client.call("fsdev_filestore_delete", params))
 
 
 def spdk_rpc_plugin_initialize(subparsers):

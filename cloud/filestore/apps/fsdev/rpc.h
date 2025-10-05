@@ -1,7 +1,7 @@
 #pragma once
 
 #include "private.h"
-#include "rpc.h"
+#include "spdk/rpc.h"
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
@@ -14,23 +14,22 @@ namespace NCloud::NFileStore::NFsdev {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBootstrap
+struct TRpcFilestoreCreate
 {
-private:
-    ILoggingServicePtr Logging;
-    TLog Log;
+    char* Name = nullptr;
 
-public:
-    TBootstrap();
-    ~TBootstrap();
+    TRpcFilestoreCreate() = default;
+    ~TRpcFilestoreCreate();
+    bool Decode(const struct spdk_json_val* params);
+};
 
-    void Init();
+struct TRpcFilestoreDelete
+{
+    char* Name = nullptr;
 
-    void Start();
-    void Stop();
-
-    void FsdevRpc(const TRpcFilestoreCreate& req);
-    void FsdevRpc(const TRpcFilestoreDelete& req);
+    TRpcFilestoreDelete() = default;
+    ~TRpcFilestoreDelete();
+    bool Decode(const struct spdk_json_val* params);
 };
 
 }   // namespace NCloud::NFileStore::NFsdev

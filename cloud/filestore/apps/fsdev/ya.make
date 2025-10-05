@@ -5,6 +5,7 @@ SRCS(
     logging.cpp
     malloc_info.cpp
     module.cpp
+    rpc.cpp
 )
 
 ADDINCL(

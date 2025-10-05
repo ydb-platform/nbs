@@ -34,14 +34,14 @@ void TBootstrap::Stop()
     STORAGE_INFO("Stop");
 }
 
-void TBootstrap::RpcFilestoreCreate(TString name)
+void TBootstrap::FsdevRpc(const TRpcFilestoreCreate& req)
 {
-    STORAGE_INFO("RpcFilestoreCreate: name=" << name);
+    STORAGE_INFO("RpcFilestoreCreate, name=" << req.Name);
 }
 
-void TBootstrap::RpcFilestoreDelete()
+void TBootstrap::FsdevRpc(const TRpcFilestoreDelete& req)
 {
-    STORAGE_INFO("RpcFilestoreDelete");
+    STORAGE_INFO("RpcFilestoreDelete, name=" << req.Name);
 }
 
 }   // namespace NCloud::NFileStore::NFsdev
