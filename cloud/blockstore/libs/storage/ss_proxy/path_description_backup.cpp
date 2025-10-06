@@ -45,7 +45,7 @@ void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     if (ReadOnlyMode) {
-        if (!LoadFromTextFormat(ctx) && !LoadFromBinaryFormat(ctx)) {
+        if (!LoadFromBinaryFormat(ctx) && !LoadFromTextFormat(ctx)) {
             LOG_WARN_S(
                 ctx,
                 LogComponent,
