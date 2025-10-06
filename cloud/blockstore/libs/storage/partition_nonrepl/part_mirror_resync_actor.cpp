@@ -36,7 +36,8 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
         NActors::TActorId statActorId,
         ui64 initialResyncIndex,
         NProto::EResyncPolicy resyncPolicy,
-        bool critOnChecksumMismatch)
+        bool critOnChecksumMismatch,
+        NActors::TActorId volumeActorId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
@@ -49,6 +50,7 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , ReplicaDevices(std::move(replicaDevices))
     , RdmaClient(std::move(rdmaClient))
     , StatActorId(statActorId)
+    , VolumeActorId(volumeActorId)
     , State(Config, RWClientId, PartConfig, ReplicaDevices, initialResyncIndex)
     , BackoffProvider(
           Config->GetInitialRetryDelayForServiceRequests(),
@@ -122,7 +124,8 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             ReplicaDevices,
             RdmaClient,
             SelfId(),
-            SelfId()));
+            SelfId(),
+            VolumeActorId));
 
     GetDeviceForRangeCompanion.SetDelegate(MirrorActorId);
 
@@ -133,6 +136,7 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             DiagnosticsConfig,
             replicaInfos[i].Config,
             SelfId(),
+            VolumeActorId,
             RdmaClient);
 
         TActorId actorId = NCloud::Register(ctx, std::move(actor));

@@ -19,6 +19,7 @@ IActorPtr CreateMirrorPartition(
     TVector<TDevices> replicas,
     NRdma::IClientPtr rdmaClient,
     NActors::TActorId statActorId,
+    NActors::TActorId volumeActorId,
     NActors::TActorId resyncActorId)
 {
     return std::make_unique<TMirrorPartitionActor>(
@@ -32,7 +33,8 @@ IActorPtr CreateMirrorPartition(
         std::move(replicas),
         std::move(rdmaClient),
         statActorId,
-        resyncActorId);
+        resyncActorId,
+        volumeActorId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

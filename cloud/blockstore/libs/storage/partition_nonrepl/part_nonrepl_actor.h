@@ -84,6 +84,8 @@ private:
 
     TRequestInfoPtr Poisoner;
 
+    const NActors::TActorId VolumeActorId;
+
     TLogTitle LogTitle{
         GetCycleCount(),
         TLogTitle::TPartitionNonrepl{.DiskId = PartConfig->GetName()}};
@@ -93,7 +95,8 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
-        NActors::TActorId statActorId);
+        NActors::TActorId statActorId,
+        NActors::TActorId volumeActorId);
 
     ~TNonreplicatedPartitionActor() override;
 

@@ -51,6 +51,7 @@ private:
     TVector<TDevices> ReplicaDevices;
     NRdma::IClientPtr RdmaClient;
     NActors::TActorId StatActorId;
+    const NActors::TActorId VolumeActorId;
 
     TMirrorPartitionResyncState State;
 
@@ -106,7 +107,8 @@ public:
         NActors::TActorId statActorId,
         ui64 initialResyncIndex,
         NProto::EResyncPolicy resyncPolicy,
-        bool critOnChecksumMismatch);
+        bool critOnChecksumMismatch,
+        NActors::TActorId volumeActorId);
 
     ~TMirrorPartitionResyncActor();
 

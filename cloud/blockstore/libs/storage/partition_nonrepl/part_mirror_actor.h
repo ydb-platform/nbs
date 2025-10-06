@@ -62,6 +62,7 @@ private:
     const TString DiskId;
     const NActors::TActorId StatActorId;
     const NActors::TActorId ResyncActorId;
+    const NActors::TActorId VolumeActorId;
 
     TMirrorPartitionState State;
 
@@ -124,7 +125,8 @@ public:
         TVector<TDevices> replicas,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
-        NActors::TActorId resyncActorId);
+        NActors::TActorId resyncActorId,
+        NActors::TActorId volumeActorId);
 
     ~TMirrorPartitionActor() override;
 

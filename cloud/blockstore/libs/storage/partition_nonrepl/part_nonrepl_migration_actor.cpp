@@ -26,6 +26,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
+        NActors::TActorId volumeActorId,
         NActors::TActorId migrationSrcActorId)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
@@ -46,6 +47,7 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
     , MigrationSrcActorId(migrationSrcActorId)
+    , VolumeActorId(volumeActorId)
 {}
 
 void TNonreplicatedPartitionMigrationActor::OnBootstrap(
@@ -197,6 +199,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateSrcActor(
             GetDiagnosticsConfig(),
             SrcConfig->Fork(std::move(devices)),
             SelfId(),
+            VolumeActorId,
             RdmaClient));
 }
 
@@ -257,6 +260,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             GetDiagnosticsConfig(),
             SrcConfig->Fork(std::move(devices)),
             SelfId(),
+            VolumeActorId,
             RdmaClient));
 }
 

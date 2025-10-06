@@ -221,6 +221,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     DiagnosticsConfig,
                     nonreplicatedConfig,
                     SelfId(),
+                    SelfId(),
                     GetRdmaClient()));
         } else {
             // nonreplicated disk in migration state
@@ -236,6 +237,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     nonreplicatedConfig,
                     migrations,
                     GetRdmaClient(),
+                    SelfId(),
                     SelfId()));
         }
     } else {
@@ -266,7 +268,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     SelfId(),
                     State->GetMeta().GetResyncIndex(),
                     resyncPolicy,
-                    State->GetMeta().GetAlertResyncChecksumMismatch()));
+                    State->GetMeta().GetAlertResyncChecksumMismatch(),
+                    SelfId()));
         } else {
             // mirrored disk (may be in migration state)
             nonreplicatedActorId = NCloud::Register(
@@ -281,6 +284,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     migrations,
                     std::move(replicas),
                     GetRdmaClient(),
+                    SelfId(),
                     SelfId()));
         }
     }

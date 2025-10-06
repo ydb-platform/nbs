@@ -21,7 +21,8 @@ IActorPtr CreateMirrorPartitionResync(
     NActors::TActorId statActorId,
     ui64 initialResyncIndex,
     NProto::EResyncPolicy resyncPolicy,
-    bool critOnChecksumMismatch)
+    bool critOnChecksumMismatch,
+    NActors::TActorId volumeActorId)
 {
     return std::make_unique<TMirrorPartitionResyncActor>(
         std::move(config),
@@ -36,7 +37,8 @@ IActorPtr CreateMirrorPartitionResync(
         statActorId,
         initialResyncIndex,
         resyncPolicy,
-        critOnChecksumMismatch);
+        critOnChecksumMismatch,
+        volumeActorId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

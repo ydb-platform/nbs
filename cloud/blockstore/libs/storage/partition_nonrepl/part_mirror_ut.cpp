@@ -289,6 +289,7 @@ struct TTestEnv
             CreateDiagnosticsConfig(),
             partConfig,
             TActorId(), // do not send stats
+            VolumeActorId,
             RdmaClient);
 
         TActorId actorId(0, name);

@@ -18,6 +18,8 @@ private:
     NRdma::IClientPtr RdmaClient;
     NActors::TActorId MigrationSrcActorId;
 
+    const NActors::TActorId VolumeActorId;
+
     bool UpdatingMigrationState = false;
     bool MigrationFinished = false;
 
@@ -33,6 +35,7 @@ public:
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
+        NActors::TActorId volumeActorId,
         NActors::TActorId migrationSrcActorId);
 
     // IMigrationOwner implementation

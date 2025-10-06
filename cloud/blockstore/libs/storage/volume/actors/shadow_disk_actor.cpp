@@ -841,6 +841,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
             GetDiagnosticsConfig(),
             DstConfig,
             VolumeActorId,   // send stat to volume directly.
+            VolumeActorId,
             RdmaClient));
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
 
