@@ -62,6 +62,7 @@ public:
     TInstant PendingTime = TInstant::Zero();
     TInstant CachedTime = TInstant::Zero();
     TInstant FlushStartedTime = TInstant::Zero();
+    TInstant FlushCompletedTime = TInstant::Zero();
 
     explicit TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request);

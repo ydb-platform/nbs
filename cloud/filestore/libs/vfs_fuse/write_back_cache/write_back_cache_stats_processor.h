@@ -37,10 +37,10 @@ public:
         const TDeque<std::unique_ptr<TWriteDataEntry>>& cachedEntries);
 
     void WriteDataRequestEnteredState(
-        IWriteBackCacheStats::EWriteDataRequestStats state);
+        IWriteBackCacheStats::EWriteDataRequestState state);
 
     void WriteDataRequestExitedState(
-        IWriteBackCacheStats::EWriteDataRequestStats state,
+        IWriteBackCacheStats::EWriteDataRequestState state,
         TDuration duration);
 
     // Persistent queue stats should be reported after a call (or a series of

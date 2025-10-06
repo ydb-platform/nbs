@@ -94,16 +94,28 @@ struct TWriteBackCache::TPersistentQueueStats
 
 struct IWriteBackCacheStats
 {
-    enum class EWriteDataRequestStats
+    // Note: there is no one-by-one correspondence to EWriteDataEntryStatus
+    enum class EWriteDataRequestState
     {
+        // A request has been accepted but not yet stored in the cache
         Pending,
-        Cached,
-        Waiting,
-        Flush
+
+        // A request is stored in the cache and is waiting for a flush
+        Wait,
+
+        // A request is stored in the cached and is being flushed
+        Flush,
+
+        // A request has been flushed but still remains in the cache
+        Evict,
+
+        // Compound state: [Waiting + Flushing + Evicting]
+        Cached
     };
 
     virtual ~IWriteBackCacheStats() = default;
 
+    // Reset all non-derivative counters to zero
     virtual void Reset() = 0;
 
     virtual void IncrementInProgressFlushCount() = 0;
@@ -114,15 +126,19 @@ struct IWriteBackCacheStats
     virtual void IncrementNodeCount() = 0;
     virtual void DecrementNodeCount() = 0;
 
+    // Track the minimal time over all requests of state |state|
     virtual void SetWriteDataRequestMinInstant(
-        EWriteDataRequestStats stats,
+        EWriteDataRequestState state,
         TInstant value) = 0;
 
-    virtual void IncrementWriteDataRequestCount(
-        EWriteDataRequestStats stats) = 0;
+    virtual void IncrementInProgressWriteDataRequestCount(
+        EWriteDataRequestState state) = 0;
 
-    virtual void DecrementWriteDataRequestCountAndAddStats(
-        EWriteDataRequestStats stats,
+    virtual void DecrementInProgressWriteDataRequestCount(
+        EWriteDataRequestState state) = 0;
+
+    virtual void AddWriteDataRequestStats(
+        EWriteDataRequestState state,
         TDuration duration) = 0;
 
     virtual void SetPersistentQueueStats(

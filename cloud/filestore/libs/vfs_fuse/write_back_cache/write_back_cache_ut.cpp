@@ -126,7 +126,7 @@ struct TInFlightRequestTracker
 
 struct TWriteDataRequestStats
 {
-    ui64 Current = 0;
+    ui64 InProgressCount = 0;
     TInstant MinTime = TInstant::Zero();
     TVector<TDuration> Data;
     ui64 Count = 0;
@@ -142,9 +142,10 @@ struct TWriteBackCacheStats
     ui64 NodeCount = 0;
 
     TWriteDataRequestStats PendingStats;
-    TWriteDataRequestStats CachedStats;
-    TWriteDataRequestStats WaitingStats;
+    TWriteDataRequestStats WaitStats;
     TWriteDataRequestStats FlushStats;
+    TWriteDataRequestStats EvictStats;
+    TWriteDataRequestStats CachedStats;
 
     TWriteBackCache::TPersistentQueueStats PersistentQueueStats;
 
@@ -156,14 +157,18 @@ struct TWriteBackCacheStats
     {
         InProgressFlushCount = 0;
         NodeCount = 0;
-        PendingStats.Current = 0;
-        CachedStats.Current = 0;
-        WaitingStats.Current = 0;
-        FlushStats.Current = 0;
+
+        PendingStats.InProgressCount = 0;
+        WaitStats.InProgressCount = 0;
+        FlushStats.InProgressCount = 0;
+        EvictStats.InProgressCount = 0;
+        CachedStats.InProgressCount = 0;
+
         PendingStats.MinTime = TInstant::Zero();
-        CachedStats.MinTime = TInstant::Zero();
-        WaitingStats.MinTime = TInstant::Zero();
+        WaitStats.MinTime = TInstant::Zero();
         FlushStats.MinTime = TInstant::Zero();
+        EvictStats.MinTime = TInstant::Zero();
+        CachedStats.MinTime = TInstant::Zero();
     }
 
     void IncrementInProgressFlushCount() override
@@ -196,43 +201,51 @@ struct TWriteBackCacheStats
         NodeCount--;
     }
 
-    TWriteDataRequestStats& GetStats(EWriteDataRequestStats stats)
+    TWriteDataRequestStats& GetStats(EWriteDataRequestState state)
     {
-        switch (stats) {
-            case EWriteDataRequestStats::Pending:
+        switch (state) {
+            case EWriteDataRequestState::Pending:
                 return PendingStats;
-            case EWriteDataRequestStats::Cached:
-                return CachedStats;
-            case EWriteDataRequestStats::Waiting:
-                return WaitingStats;
-            case EWriteDataRequestStats::Flush:
+            case EWriteDataRequestState::Wait:
+                return WaitStats;
+            case EWriteDataRequestState::Flush:
                 return FlushStats;
+            case EWriteDataRequestState::Evict:
+                return EvictStats;
+            case EWriteDataRequestState::Cached:
+                return CachedStats;
             default:
                 Y_ABORT("Unknown EWriteDataRequestStats value");
         }
     }
 
     void SetWriteDataRequestMinInstant(
-        EWriteDataRequestStats stats,
+        EWriteDataRequestState state,
         TInstant value) override
     {
-        GetStats(stats).MinTime = value;
+        GetStats(state).MinTime = value;
     }
 
-    void IncrementWriteDataRequestCount(EWriteDataRequestStats stats) override
+    void IncrementInProgressWriteDataRequestCount(
+        EWriteDataRequestState state) override
     {
-        GetStats(stats).Current++;
+        GetStats(state).InProgressCount++;
     }
 
-    void DecrementWriteDataRequestCountAndAddStats(
-        EWriteDataRequestStats stats,
+    void DecrementInProgressWriteDataRequestCount(
+        EWriteDataRequestState state) override
+    {
+        GetStats(state).InProgressCount--;
+    }
+
+    void AddWriteDataRequestStats(
+        EWriteDataRequestState state,
         TDuration duration) override
     {
-        auto& s = GetStats(stats);
-        s.Current--;
-        s.Count++;
-        if (s.Data.size() < MaxItems) {
-            s.Data.push_back(duration);
+        auto& stats = GetStats(state);
+        stats.Count++;
+        if (stats.Data.size() < MaxItems) {
+            stats.Data.push_back(duration);
         }
     }
 
@@ -652,31 +665,34 @@ struct TBootstrap
 
     void CheckStatsAreEmpty() const
     {
-        UNIT_ASSERT_EQUAL(0, Stats->PersistentQueueStats.RawUsedBytesCount);
         UNIT_ASSERT_EQUAL(0, Stats->InProgressFlushCount);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->PendingStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->CachedStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->WaitingStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushStats.MinTime);
         UNIT_ASSERT_EQUAL(0, Stats->NodeCount);
-        UNIT_ASSERT_EQUAL(0, Stats->PendingStats.Current);
-        UNIT_ASSERT_EQUAL(0, Stats->CachedStats.Current);
-        UNIT_ASSERT_EQUAL(0, Stats->WaitingStats.Current);
-        UNIT_ASSERT_EQUAL(0, Stats->FlushStats.Current);
+        UNIT_ASSERT_EQUAL(0, Stats->PersistentQueueStats.RawUsedBytesCount);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->PendingStats.MinTime);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->WaitStats.MinTime);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushStats.MinTime);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->EvictStats.MinTime);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->CachedStats.MinTime);
+        UNIT_ASSERT_EQUAL(0, Stats->PendingStats.InProgressCount);
+        UNIT_ASSERT_EQUAL(0, Stats->WaitStats.InProgressCount);
+        UNIT_ASSERT_EQUAL(0, Stats->FlushStats.InProgressCount);
+        UNIT_ASSERT_EQUAL(0, Stats->EvictStats.InProgressCount);
+        UNIT_ASSERT_EQUAL(0, Stats->CachedStats.InProgressCount);
     }
 
     void CheckWriteDataRequestStats(
         const TWriteDataRequestStats& stats,
         const TString& name,
-        ui64 expectedCurrent,
+        ui64 expectedInProgressCount,
         ui64 expectedCount,
         TInstant expectedMinTime)
     {
         UNIT_ASSERT_EQUAL_C(
-            expectedCurrent,
-            stats.Current,
-            name << "Stats.Current: expected = " << expectedCurrent
-                 << ", actual = " << stats.Current);
+            expectedInProgressCount,
+            stats.InProgressCount,
+            name << "Stats.InProgressCount: expected = "
+                 << expectedInProgressCount
+                 << ", actual = " << stats.InProgressCount);
 
         UNIT_ASSERT_EQUAL_C(
             expectedCount,
@@ -692,53 +708,64 @@ struct TBootstrap
     }
 
     void CheckPendingWriteDataRequestStats(
-        ui64 expectedCurrent,
+        ui64 expectedInProgressCount,
         ui64 expectedCount,
         TInstant expectedMinTime)
     {
         CheckWriteDataRequestStats(
             Stats->PendingStats,
             "Pending",
-            expectedCurrent,
+            expectedInProgressCount,
             expectedCount,
             expectedMinTime);
     }
 
+    void CheckWaitingWriteDataRequestStats(
+        ui64 expectedInProgressCount,
+        ui64 expectedCount)
+    {
+        CheckWriteDataRequestStats(
+            Stats->WaitStats,
+            "Waiting",
+            expectedInProgressCount,
+            expectedCount,
+            TInstant::Zero());
+    }
+
+    void CheckFlushingWriteDataRequestStats(
+        ui64 expectedInProgressCount,
+        ui64 expectedCount,
+        TInstant expectedMinTime)
+    {
+        CheckWriteDataRequestStats(
+            Stats->FlushStats,
+            "Flushing",
+            expectedInProgressCount,
+            expectedCount,
+            expectedMinTime);
+    }
+
+    void CheckEvictingWriteDataRequestStats(
+        ui64 expectedInProgressCount,
+        ui64 expectedCount)
+    {
+        CheckWriteDataRequestStats(
+            Stats->EvictStats,
+            "Evicting",
+            expectedInProgressCount,
+            expectedCount,
+            TInstant::Zero());
+    }
+
     void CheckCachedWriteDataRequestStats(
-        ui64 expectedCurrent,
+        ui64 expectedInProgressCount,
         ui64 expectedCount,
         TInstant expectedMinTime)
     {
         CheckWriteDataRequestStats(
             Stats->CachedStats,
             "Cached",
-            expectedCurrent,
-            expectedCount,
-            expectedMinTime);
-    }
-
-    void CheckWaitingWriteDataRequestStats(
-        ui64 expectedCurrent,
-        ui64 expectedCount,
-        TInstant expectedMinTime)
-    {
-        CheckWriteDataRequestStats(
-            Stats->WaitingStats,
-            "Waiting",
-            expectedCurrent,
-            expectedCount,
-            expectedMinTime);
-    }
-
-    void CheckFlushWriteDataRequestStats(
-        ui64 expectedCurrent,
-        ui64 expectedCount,
-        TInstant expectedMinTime)
-    {
-        CheckWriteDataRequestStats(
-            Stats->FlushStats,
-            "Flush",
-            expectedCurrent,
+            expectedInProgressCount,
             expectedCount,
             expectedMinTime);
     }
@@ -1201,10 +1228,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
             b.ValidateCache();
 
-            UNIT_ASSERT_EQUAL(0, b.Stats->PendingStats.Current);
+            UNIT_ASSERT_EQUAL(0, b.Stats->PendingStats.InProgressCount);
             UNIT_ASSERT_EQUAL(
                 stats.GetCachedRequestCount(),
-                b.Stats->CachedStats.Current);
+                b.Stats->CachedStats.InProgressCount);
             UNIT_ASSERT_EQUAL(stats.GetNodeCount(), b.Stats->NodeCount);
             UNIT_ASSERT_EQUAL(stats.FlushCount, b.Stats->CompletedFlushCount);
         }
@@ -1685,11 +1712,12 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.Timer->Sleep(TDuration::Seconds(1));
         b.WriteToCacheSync(1, 0, "abc");
 
+        // Note: MinTime is not reported for Waiting and Evicting states
         b.CheckPendingWriteDataRequestStats(0, 1, zero);
+        b.CheckWaitingWriteDataRequestStats(1, 0);
+        b.CheckFlushingWriteDataRequestStats(0, 0, zero);
+        b.CheckEvictingWriteDataRequestStats(0, 0);
         b.CheckCachedWriteDataRequestStats(1, 0, t1);
-        // Note: MinTime is not reported for Waiting status
-        b.CheckWaitingWriteDataRequestStats(1, 0, zero);
-        b.CheckFlushWriteDataRequestStats(0, 0, zero);
 
         // --- T2
 
@@ -1698,9 +1726,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(2, 1, "xyz");
 
         b.CheckPendingWriteDataRequestStats(0, 3, zero);
+        b.CheckWaitingWriteDataRequestStats(3, 0);
+        b.CheckFlushingWriteDataRequestStats(0, 0, zero);
+        b.CheckEvictingWriteDataRequestStats(0, 0);
         b.CheckCachedWriteDataRequestStats(3, 0, t1);
-        b.CheckWaitingWriteDataRequestStats(3, 0, zero);
-        b.CheckFlushWriteDataRequestStats(0, 0, zero);
 
         // --- T3
 
@@ -1708,18 +1737,20 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.Cache.FlushNodeData(2);
 
         b.CheckPendingWriteDataRequestStats(0, 3, zero);
+        b.CheckWaitingWriteDataRequestStats(1, 2);
+        b.CheckFlushingWriteDataRequestStats(2, 0, t3);
+        b.CheckEvictingWriteDataRequestStats(0, 0);
         b.CheckCachedWriteDataRequestStats(3, 0, t1);
-        b.CheckWaitingWriteDataRequestStats(1, 2, zero);
-        b.CheckFlushWriteDataRequestStats(2, 0, t3);
 
         writeRequests.ProceedAll();
 
         // WriteData requests for node 2 are flushed but they remain cached
         // They cannot be removed from the middle of the queue
         b.CheckPendingWriteDataRequestStats(0, 3, zero);
+        b.CheckWaitingWriteDataRequestStats(1, 2);
+        b.CheckFlushingWriteDataRequestStats(0, 2, zero);
+        b.CheckEvictingWriteDataRequestStats(2, 0);
         b.CheckCachedWriteDataRequestStats(3, 0, t1);
-        b.CheckWaitingWriteDataRequestStats(1, 2, zero);
-        b.CheckFlushWriteDataRequestStats(0, 2, zero);
 
         // --- T4
 
@@ -1730,9 +1761,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Cache recreation forces the requests stored in the queue to be
         // flushed again
         b.CheckPendingWriteDataRequestStats(0, 6, zero);
+        b.CheckWaitingWriteDataRequestStats(3, 3);
+        b.CheckFlushingWriteDataRequestStats(0, 2, zero);
+        b.CheckEvictingWriteDataRequestStats(0, 0);
         b.CheckCachedWriteDataRequestStats(3, 0, t4);
-        b.CheckWaitingWriteDataRequestStats(3, 3, zero);
-        b.CheckFlushWriteDataRequestStats(0, 2, zero);
 
         // --- T5
 
@@ -1749,9 +1781,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         // FlushAll should have been triggered by hitting cache capacity
         b.CheckPendingWriteDataRequestStats(1, count + 6, t5);
+        b.CheckWaitingWriteDataRequestStats(0, count + 6);
+        b.CheckFlushingWriteDataRequestStats(count + 3, 2, t5);
+        b.CheckEvictingWriteDataRequestStats(0, 0);
         b.CheckCachedWriteDataRequestStats(count + 3, 0, t4);
-        b.CheckWaitingWriteDataRequestStats(0, count + 6, zero);
-        b.CheckFlushWriteDataRequestStats(count + 3, 2, t5);
 
         // --- T6
 
@@ -1759,9 +1792,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         writeRequests.ProceedAll();
 
         b.CheckPendingWriteDataRequestStats(0, count + 7, zero);
+        b.CheckWaitingWriteDataRequestStats(1, count + 6);
+        b.CheckFlushingWriteDataRequestStats(0, count + 5, zero);
+        b.CheckEvictingWriteDataRequestStats(0, count + 3);
         b.CheckCachedWriteDataRequestStats(1, count + 3, t5);
-        b.CheckWaitingWriteDataRequestStats(1, count + 6, zero);
-        b.CheckFlushWriteDataRequestStats(0, count + 5, zero);
 
         // --- T7
 
@@ -1771,9 +1805,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         writeRequests.ProceedAll();
 
         b.CheckPendingWriteDataRequestStats(0, count + 7, zero);
+        b.CheckWaitingWriteDataRequestStats(0, count + 7);
+        b.CheckFlushingWriteDataRequestStats(0, count + 6, zero);
+        b.CheckEvictingWriteDataRequestStats(0, count + 4);
         b.CheckCachedWriteDataRequestStats(0, count + 4, zero);
-        b.CheckWaitingWriteDataRequestStats(0, count + 7, zero);
-        b.CheckFlushWriteDataRequestStats(0, count + 6, zero);
 
         b.CheckStatsAreEmpty();
     }

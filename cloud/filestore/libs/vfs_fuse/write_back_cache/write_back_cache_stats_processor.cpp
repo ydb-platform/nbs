@@ -4,7 +4,7 @@
 
 namespace NCloud::NFileStore::NFuse {
 
-using EWriteDataStats = IWriteBackCacheStats::EWriteDataRequestStats;
+using EWriteDataRequestState = IWriteBackCacheStats::EWriteDataRequestState;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -25,7 +25,7 @@ void TWriteBackCache::TStatsProcessor::FlushStarted(
     if (Stats) {
         Stats->IncrementInProgressFlushCount();
         Stats->SetWriteDataRequestMinInstant(
-            EWriteDataStats::Flush,
+            EWriteDataRequestState::Flush,
             *FlushStartTimeSet.begin());
     }
 }
@@ -38,11 +38,12 @@ void TWriteBackCache::TStatsProcessor::FlushCompleted(
     FlushStartTimeSet.erase(it);
 
     if (Stats) {
-        auto minTime = FlushStartTimeSet.empty() ? TInstant::Zero()
-                                                 : *FlushStartTimeSet.begin();
         Stats->DecrementInProgressFlushCount();
         Stats->IncrementCompletedFlushCount();
-        Stats->SetWriteDataRequestMinInstant(EWriteDataStats::Flush, minTime);
+        Stats->SetWriteDataRequestMinInstant(
+            EWriteDataRequestState::Flush,
+            FlushStartTimeSet.empty() ? TInstant::Zero()
+                                      : *FlushStartTimeSet.begin());
     }
 }
 
@@ -72,10 +73,10 @@ void TWriteBackCache::TStatsProcessor::UpdatePendingQueueStats(
     const TDeque<std::unique_ptr<TWriteDataEntry>>& pendingEntries)
 {
     if (Stats) {
-        auto minTime = pendingEntries.empty()
-                           ? TInstant::Zero()
-                           : pendingEntries.front()->PendingTime;
-        Stats->SetWriteDataRequestMinInstant(EWriteDataStats::Pending, minTime);
+        Stats->SetWriteDataRequestMinInstant(
+            EWriteDataRequestState::Pending,
+            pendingEntries.empty() ? TInstant::Zero()
+                                   : pendingEntries.front()->PendingTime);
     }
 }
 
@@ -83,27 +84,28 @@ void TWriteBackCache::TStatsProcessor::UpdateCachedQueueStats(
     const TDeque<std::unique_ptr<TWriteDataEntry>>& cachedEntries)
 {
     if (Stats) {
-        auto minTime = cachedEntries.empty()
-                           ? TInstant::Zero()
-                           : cachedEntries.front()->PendingTime;
-        Stats->SetWriteDataRequestMinInstant(EWriteDataStats::Cached, minTime);
+        Stats->SetWriteDataRequestMinInstant(
+            EWriteDataRequestState::Cached,
+            cachedEntries.empty() ? TInstant::Zero()
+                                  : cachedEntries.front()->PendingTime);
     }
 }
 
 void TWriteBackCache::TStatsProcessor::WriteDataRequestEnteredState(
-    IWriteBackCacheStats::EWriteDataRequestStats state)
+    IWriteBackCacheStats::EWriteDataRequestState state)
 {
     if (Stats) {
-        Stats->IncrementWriteDataRequestCount(state);
+        Stats->IncrementInProgressWriteDataRequestCount(state);
     }
 }
 
 void TWriteBackCache::TStatsProcessor::WriteDataRequestExitedState(
-    IWriteBackCacheStats::EWriteDataRequestStats state,
+    IWriteBackCacheStats::EWriteDataRequestState state,
     TDuration duration)
 {
     if (Stats) {
-        Stats->DecrementWriteDataRequestCountAndAddStats(state, duration);
+        Stats->DecrementInProgressWriteDataRequestCount(state);
+        Stats->AddWriteDataRequestStats(state, duration);
     }
 }
 
