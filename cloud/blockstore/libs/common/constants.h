@@ -6,6 +6,7 @@
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
+
 constexpr ui32 DefaultLocalSSDBlockSize = 512_B;
 
 // The maximum possible volume block size.
