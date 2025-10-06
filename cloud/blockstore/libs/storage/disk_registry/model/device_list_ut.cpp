@@ -1462,7 +1462,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
                 {},   // dirtyDevices
                 {},   // suspendedDevices
                 {{device.GetDeviceUUID(), diskId}},
-                false   // alwaysAllocateLocalDisks
+                false,   // alwaysAllocateLocalDisks,
+                false    // attachDetachPathsEnabled
             };
 
             deviceList.UpdateDevices(agent, poolConfigs);
@@ -1472,10 +1473,11 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         {
             TDeviceList deviceList{
-                {},     // dirtyDevices
-                {},     // suspendedDevices
-                {},     // allocatedDevices
-                false   // alwaysAllocateLocalDisks
+                {},      // dirtyDevices
+                {},      // suspendedDevices
+                {},      // allocatedDevices
+                false,   // alwaysAllocateLocalDisks
+                false    // attachDetachPathsEnabled
             };
 
             deviceList.UpdateDevices(agent, poolConfigs);
