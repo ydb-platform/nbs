@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_device_blocks_actor.h>
@@ -28,6 +29,7 @@ struct TDiskAgentState
 {
     TDuration ResponseDelay;
     NProto::TError Error;
+    bool EnableDataIntegrityValidation = false;
     TCreateDirectCopyActorFunc CreateDirectCopyActorFunc;
     TAcquireObserveFunction AcquireObserveFunction = [](auto&, const auto&)
     {
@@ -176,6 +178,12 @@ private:
             {
                 buf.clear();
             }
+        }
+
+        if (State->EnableDataIntegrityValidation) {
+            *response->Record.MutableChecksum() = CalculateChecksum(
+                response->Record.GetBlocks(),
+                config.GetBlockSize());
         }
 
         Reply(ctx, *ev, std::move(response));
