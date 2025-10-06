@@ -64,10 +64,10 @@ public:
         const ui32 replicaNo,
         const TVector<TDeviceId>& devices);
     bool RemoveMirroredDisk(const TDiskId& diskId);
-    bool IsReplacementAllowed(
+    [[nodiscard]] bool IsReplacementAllowed(
         const TDiskId& diskId,
         const TDeviceId& deviceId) const;
-    bool ReplaceDevice(
+    [[nodiscard]] bool ReplaceDevice(
         const TDiskId& diskId,
         const TDeviceId& deviceId,
         const TDeviceId& replacementId);

@@ -1476,7 +1476,15 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
                     disk.MasterDiskId,
                     deviceId,
                     targetDevice.GetDeviceUUID());
-                Y_DEBUG_ABORT_UNLESS(replaced);
+                if (!replaced) {
+                    ReportDiskRegistryReplicaTableReplaceError(
+                        "ReplaceDeviceWithoutDiskStateUpdate failed",
+                        {{"diskId", disk.MasterDiskId},
+                         {"replicaId", diskId},
+                         {"deviceId", deviceId},
+                         {"targetDeviceId", targetDevice.GetDeviceUUID()},
+                         {"message", message}});
+                }
 
                 db.UpdateDisk(BuildDiskConfig(disk.MasterDiskId, *masterDisk));
             }
@@ -6434,7 +6442,14 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
 
     const bool replaced =
         ReplicaTable.ReplaceDevice(disk.MasterDiskId, sourceId, targetId);
-    Y_DEBUG_ABORT_UNLESS(replaced);
+    if (!replaced) {
+        ReportDiskRegistryReplicaTableReplaceError(
+            "AbortMigrationAndReplaceDevice failed",
+            {{"diskId", disk.MasterDiskId},
+             {"replicaId", diskId},
+             {"deviceId", sourceId},
+             {"targetDeviceId", targetId}});
+    }
 
     DeviceList.ReleaseDevice(sourceId);
     db.UpdateDirtyDevice(sourceId, diskId);
@@ -6528,10 +6543,17 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
     if (disk.MasterDiskId) {
         const bool replaced =
             ReplicaTable.ReplaceDevice(disk.MasterDiskId, sourceId, targetId);
+        if (!replaced) {
+            ReportDiskRegistryReplicaTableReplaceError(
+                "FinishDeviceMigration failed",
+                {{"diskId", disk.MasterDiskId},
+                 {"replicaId", diskId},
+                 {"deviceId", sourceId},
+                 {"targetDeviceId", targetId}});
+        }
+
         // targetId is actually fully initialized after migration
         ReplicaTable.MarkReplacementDevice(disk.MasterDiskId, targetId, false);
-
-        Y_DEBUG_ABORT_UNLESS(replaced);
     }
 
     *diskStateUpdated = TryUpdateDiskState(db, diskId, disk, timestamp);
