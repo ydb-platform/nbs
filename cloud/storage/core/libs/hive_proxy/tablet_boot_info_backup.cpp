@@ -46,7 +46,7 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     // Load backup even if in read-only mode to warm up BS group connections.
-    if (!LoadFromTextFormat(ctx) && !LoadFromBinaryFormat(ctx)) {
+    if (!LoadFromBinaryFormat(ctx) && !LoadFromTextFormat(ctx)) {
         LOG_WARN_S(
             ctx,
             LogComponent,
