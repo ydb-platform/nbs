@@ -1,5 +1,7 @@
 #include "disk_validation.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////

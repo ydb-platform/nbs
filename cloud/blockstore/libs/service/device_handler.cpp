@@ -3,7 +3,7 @@
 #include "aligned_device_handler.h"
 #include "unaligned_device_handler.h"
 
-#include <cloud/blockstore/libs/common/public.h>
+#include <cloud/blockstore/libs/common/constants.h>
 
 namespace NCloud::NBlockStore {
 

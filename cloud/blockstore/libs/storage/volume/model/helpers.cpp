@@ -327,4 +327,23 @@ TVector<NProto::TDeviceConfig> GetReplacedDevices(
     return result;
 }
 
+TMap<TString, TString> ParseTags(const TString& tags)
+{
+    TMap<TString, TString> result;
+
+    TStringBuf tok;
+    TStringBuf sit(tags);
+    while (sit.NextTok(',', tok)) {
+        TStringBuf key;
+        TStringBuf value;
+        if (tok.TrySplit('=', key, value)) {
+            result.insert({TString(key), TString(value)});
+        } else {
+            result.insert({TString(tok), ""});
+        }
+    }
+
+    return result;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
