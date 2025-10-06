@@ -14,8 +14,8 @@ IActorPtr CreateNonreplicatedPartition(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
-    TActorId statActorId,
     TActorId volumeActorId,
+    TActorId statActorId,
     NRdma::IClientPtr rdmaClient)
 {
     if (rdmaClient) {
@@ -31,8 +31,8 @@ IActorPtr CreateNonreplicatedPartition(
         std::move(config),
         std::move(diagnosticsConfig),
         std::move(partConfig),
-        statActorId,
-        volumeActorId);
+        volumeActorId,
+        statActorId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

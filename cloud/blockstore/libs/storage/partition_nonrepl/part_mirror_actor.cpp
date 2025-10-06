@@ -56,18 +56,18 @@ TMirrorPartitionActor::TMirrorPartitionActor(
         TMigrations migrations,
         TVector<TDevices> replicas,
         NRdma::IClientPtr rdmaClient,
+        TActorId volumeActorId,
         TActorId statActorId,
-        TActorId resyncActorId,
-        TActorId volumeActorId)
+        TActorId resyncActorId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
     , RdmaClient(std::move(rdmaClient))
     , DiskId(partConfig->GetName())
+    , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
     , ResyncActorId(resyncActorId)
-    , VolumeActorId(volumeActorId)
     , State(
           Config,
           rwClientId,
@@ -138,8 +138,8 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
                 Config,
                 DiagnosticsConfig,
                 replicaInfo.Config,
-                SelfId(),
                 VolumeActorId,
+                SelfId(),
                 RdmaClient);
         }
 

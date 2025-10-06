@@ -27,17 +27,17 @@ TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
-        TActorId statActorId,
-        TActorId volumeActorId)
+        TActorId volumeActorId,
+        TActorId statActorId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
+    , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
     , DeviceStats(PartConfig->GetDevices().size())
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
           DiagnosticsConfig->GetHistogramCounterOptions()))
-    , VolumeActorId(volumeActorId)
 {}
 
 TNonreplicatedPartitionActor::~TNonreplicatedPartitionActor() = default;

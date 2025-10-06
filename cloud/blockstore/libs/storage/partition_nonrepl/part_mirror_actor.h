@@ -60,9 +60,9 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     NRdma::IClientPtr RdmaClient;
     const TString DiskId;
+    const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
     const NActors::TActorId ResyncActorId;
-    const NActors::TActorId VolumeActorId;
 
     TMirrorPartitionState State;
 
@@ -124,9 +124,9 @@ public:
         TMigrations migrations,
         TVector<TDevices> replicas,
         NRdma::IClientPtr rdmaClient,
+        NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
-        NActors::TActorId resyncActorId,
-        NActors::TActorId volumeActorId);
+        NActors::TActorId resyncActorId);
 
     ~TMirrorPartitionActor() override;
 

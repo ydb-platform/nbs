@@ -237,6 +237,7 @@ struct TTestEnv
             replicas,
             RdmaClient,
             VolumeActorId,
+            VolumeActorId,
             TActorId() // resyncActorId
         );
 
@@ -288,8 +289,8 @@ struct TTestEnv
             Config,
             CreateDiagnosticsConfig(),
             partConfig,
-            TActorId(), // do not send stats
             VolumeActorId,
+            TActorId(),   // do not send stats
             RdmaClient);
 
         TActorId actorId(0, name);

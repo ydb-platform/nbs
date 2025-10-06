@@ -45,13 +45,13 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const NProto::EResyncPolicy ResyncPolicy;
     const bool CritOnChecksumMismatch;
+    const NActors::TActorId VolumeActorId;
     TString RWClientId;
     TNonreplicatedPartitionConfigPtr PartConfig;
     TMigrations Migrations;
     TVector<TDevices> ReplicaDevices;
     NRdma::IClientPtr RdmaClient;
     NActors::TActorId StatActorId;
-    const NActors::TActorId VolumeActorId;
 
     TMirrorPartitionResyncState State;
 
@@ -104,11 +104,11 @@ public:
         TMigrations migrations,
         TVector<TDevices> replicaDevices,
         NRdma::IClientPtr rdmaClient,
+        NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         ui64 initialResyncIndex,
         NProto::EResyncPolicy resyncPolicy,
-        bool critOnChecksumMismatch,
-        NActors::TActorId volumeActorId);
+        bool critOnChecksumMismatch);
 
     ~TMirrorPartitionResyncActor();
 

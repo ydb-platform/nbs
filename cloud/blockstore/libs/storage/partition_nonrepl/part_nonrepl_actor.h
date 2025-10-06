@@ -55,6 +55,7 @@ private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
+    const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
 
     TVector<TDeviceStat> DeviceStats;
@@ -84,8 +85,6 @@ private:
 
     TRequestInfoPtr Poisoner;
 
-    const NActors::TActorId VolumeActorId;
-
     TLogTitle LogTitle{
         GetCycleCount(),
         TLogTitle::TPartitionNonrepl{.DiskId = PartConfig->GetName()}};
@@ -95,8 +94,8 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
-        NActors::TActorId statActorId,
-        NActors::TActorId volumeActorId);
+        NActors::TActorId volumeActorId,
+        NActors::TActorId statActorId);
 
     ~TNonreplicatedPartitionActor() override;
 
