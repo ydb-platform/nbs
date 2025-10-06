@@ -504,4 +504,9 @@ TString PrintCompletion(ibv_wc* wc)
         << "]";
 }
 
+int DestroyId(rdma_cm_id* id)
+{
+    return rdma_destroy_id(id);
+}
+
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs
