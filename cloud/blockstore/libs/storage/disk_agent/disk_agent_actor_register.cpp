@@ -140,7 +140,7 @@ void TRegisterActor::DetachPathsIfNeeded(const TActorContext& ctx)
 
     auto detachRequest = std::make_unique<TEvDiskAgent::TEvDetachPathRequest>();
     detachRequest->Record.SetDiskRegistryGeneration(
-        RegisterResponse.GetDiskRegistryTabletGeneration());
+        RegisterResponse.GetDiskRegistryGeneration());
 
     for (auto& pathToGeneration: *RegisterResponse.MutableUnknownPaths()) {
         *detachRequest->Record.AddPathsToDetach() = std::move(pathToGeneration);
@@ -160,7 +160,7 @@ void TRegisterActor::AttachPathsIfNeeded(const TActorContext& ctx)
 
     auto attachRequest = std::make_unique<TEvDiskAgent::TEvAttachPathRequest>();
     attachRequest->Record.SetDiskRegistryGeneration(
-        RegisterResponse.GetDiskRegistryTabletGeneration());
+        RegisterResponse.GetDiskRegistryGeneration());
 
     for (auto& pathToGeneration: *RegisterResponse.MutableAllowedPaths()) {
         *attachRequest->Record.AddPathsToAttach() = std::move(pathToGeneration);

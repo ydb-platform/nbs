@@ -33,11 +33,13 @@ void TDiskAgentActor::HandleAttachPath(
     const auto& record = msg->Record;
 
     if (!Config->GetAttachDetachPathsEnabled() || Spdk) {
+        // DR should handle errors with E_PRECONDITION_FAILED code.
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(
-                MakeError(E_ARGUMENT, "attach/detach paths is disabled")));
+            std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(MakeError(
+                E_PRECONDITION_FAILED,
+                "attach/detach paths is disabled")));
         return;
     }
 
@@ -148,11 +150,12 @@ void TDiskAgentActor::HandleDetachPath(
     const auto& record = msg->Record;
 
     if (!Config->GetAttachDetachPathsEnabled() || Spdk) {
+        // DR should handle errors with E_PRECONDITION_FAILED code.
         NCloud::Reply(
             ctx,
             *ev,
             std::make_unique<TEvDiskAgent::TEvDetachPathResponse>(
-                MakeError(E_ARGUMENT, "attach/detach paths is disabled")));
+                MakeError(E_PRECONDITION_FAILED, "attach/detach paths is disabled")));
         return;
     }
 
