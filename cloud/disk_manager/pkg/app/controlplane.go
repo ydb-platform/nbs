@@ -291,6 +291,7 @@ func registerControlplaneTasks(
 		resourceStorage,
 		nbsFactory,
 		poolService,
+		cellSelector,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register image tasks: %v", err)
@@ -305,6 +306,7 @@ func registerControlplaneTasks(
 		taskScheduler,
 		resourceStorage,
 		nbsFactory,
+		cellSelector,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register snapshot tasks: %v", err)
