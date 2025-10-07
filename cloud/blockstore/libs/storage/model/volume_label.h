@@ -34,4 +34,8 @@ TString GetLogicalDiskId(const TString& diskId);
 // Returns whether the diskId has a secondary disk suffix.
 bool IsSecondaryDiskId(const TString& diskId);
 
+// Returns the next name for the disk copy, which is makes by adding or
+// removing '-copy' suffix from the passed diskId.
+TString GetNextDiskId(const TString& diskId);
+
 }   // namespace NCloud::NBlockStore::NStorage

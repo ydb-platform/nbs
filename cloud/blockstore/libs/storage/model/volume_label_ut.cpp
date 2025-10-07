@@ -138,6 +138,12 @@ Y_UNIT_TEST_SUITE(TDiskIdTest)
         UNIT_ASSERT_VALUES_EQUAL(false, IsSecondaryDiskId("disk"));
         UNIT_ASSERT_VALUES_EQUAL(true, IsSecondaryDiskId("disk-copy"));
     }
+
+    Y_UNIT_TEST(TestNextDiskId)
+    {
+        UNIT_ASSERT_VALUES_EQUAL("disk-copy", GetNextDiskId("disk"));
+        UNIT_ASSERT_VALUES_EQUAL("disk", GetNextDiskId("disk-copy"));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
