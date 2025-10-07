@@ -5635,6 +5635,9 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
         for (const auto& device: agent->GetDevices()) {
             paths.emplace_back(device.GetDeviceName());
         }
+        for (const auto& [path, _]: agent->GetPathAttachStates()) {
+            paths.emplace_back(path);
+        }
         SortUnique(paths);
 
         for (auto& path: paths) {
