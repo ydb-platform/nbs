@@ -91,6 +91,22 @@ public:
                 std::move(traceInfo.DiskId));
         }
 
+        if (traceInfo.MediaKind) {
+            auto* mediaKindAttribute =
+                resourceSpans->mutable_resource()->add_attributes();
+            mediaKindAttribute->set_key("mediaKind");
+            mediaKindAttribute->mutable_value()->set_string_value(
+                NProto::EStorageMediaKind_Name(traceInfo.MediaKind));
+        }
+
+        if (traceInfo.RequestSize) {
+            auto* requestSizeAttribute =
+                resourceSpans->mutable_resource()->add_attributes();
+            requestSizeAttribute->set_key("requestSize");
+            requestSizeAttribute->mutable_value()->set_int_value(
+                static_cast<i64>(traceInfo.RequestSize));
+        }
+
         auto* scopedSpans = resourceSpans->add_scope_spans();
         for (const auto& span: spans) {
             *scopedSpans->add_spans() = span;

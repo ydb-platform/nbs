@@ -399,6 +399,9 @@ TTraceInfo ConvertToOpenTelemetrySpans(const NLWTrace::TTrackLog& tl)
 
     traceInfo.RequestId = FindRequestId(tl, traceItCtx);
     traceInfo.DiskId = FindFirst<TString>(tl, "diskId", traceItCtx);
+    traceInfo.MediaKind =
+        FindFirst<NProto::EStorageMediaKind>(tl, "mediaKind", traceItCtx);
+    traceInfo.RequestSize = FindFirst<ui64>(tl, "requestSize", traceItCtx);
 
     auto converter = TTraceConverter(
         RandomNumber<ui64>(),   // traceId
