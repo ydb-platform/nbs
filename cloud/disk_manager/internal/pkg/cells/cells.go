@@ -3,7 +3,6 @@ package cells
 import (
 	"context"
 	"slices"
-	"sort"
 
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
@@ -116,13 +115,17 @@ func (s *cellSelector) selectCell(
 	case cells_config.CellSelectionPolicy_FIRST_IN_CONFIG:
 		return cells[0], nil
 	case cells_config.CellSelectionPolicy_MAX_FREE_BYTES:
-		capacities, err := s.storage.GetRecentClusterCapacities(ctx, zoneID, kind)
+		capacities, err := s.storage.GetRecentClusterCapacities(
+			ctx,
+			zoneID,
+			kind,
+		)
 		if err != nil {
 			return "", err
 		}
 
-		sort.Slice(capacities, func(i, j int) bool {
-			return capacities[i].FreeBytes > capacities[j].FreeBytes
+		slices.SortFunc(capacities, func(i, j storage.ClusterCapacity) int {
+			return int(j.FreeBytes - i.FreeBytes)
 		})
 
 		return capacities[0].CellID, nil
