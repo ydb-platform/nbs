@@ -181,6 +181,7 @@ void TAttachDetachPathActor::ReplyAndDie(
 
 void TAttachDetachPathActor::UpdatePathAttachStates(const TActorContext& ctx)
 {
+    Y_DEBUG_ABORT_UNLESS(PendingRequests == 0);
     for (auto& [path, gen]: PathToGeneration) {
         auto request = std::make_unique<
             TEvDiskRegistryPrivate::TEvUpdatePathAttachStateRequest>();
@@ -201,6 +202,7 @@ void TAttachDetachPathActor::UpdateDeviceStatesIfNeeded(
     const TActorContext& ctx,
     const NProto::TAttachPathResponse& response)
 {
+    Y_DEBUG_ABORT_UNLESS(PendingRequests == 0);
     bool hasErrorDevices = false;
     for (const auto& device: response.GetAttachedDevices()) {
         if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
@@ -259,11 +261,11 @@ void TAttachDetachPathActor::HandleAttachDetachPathResult(
     auto& record = msg->Record;
     const auto& error = record.GetError();
 
-    if (HasError(error) && error.GetCode() != E_ARGUMENT) {
+    if (HasError(error) && error.GetCode() != E_PRECONDITION_FAILED) {
         ReplyAndDie(ctx, error);
         return;
     }
-    if (error.GetCode() == E_ARGUMENT) {
+    if (error.GetCode() == E_PRECONDITION_FAILED) {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
@@ -401,8 +403,9 @@ void TDiskRegistryActor::HandleUpdatePathAttachState(
 
     if (!Config->GetAttachDetachPathsEnabled()) {
         auto response = std::make_unique<
-            TEvDiskRegistryPrivate::TEvUpdatePathAttachStateResponse>(
-            MakeError(E_ARGUMENT, "path attach detach feature disabled"));
+            TEvDiskRegistryPrivate::TEvUpdatePathAttachStateResponse>(MakeError(
+            E_PRECONDITION_FAILED,
+            "path attach detach feature disabled"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -530,7 +533,7 @@ void TDiskRegistryActor::ProcessPathsToAttachDetachOnAgent(
         *isAttach,
         Executor()->Generation(),
         std::move(pathToGeneration),
-        Config->GetAgentRequestTimeout());
+        Config->GetAttachDetachPathRequestTimeout());
     AgentsWithAttachDetachRequestsInProgress[agentId] = actorId;
 }
 
@@ -543,7 +546,7 @@ void TDiskRegistryActor::ProcessPathsToAttachDetach(const TActorContext& ctx)
     if (AgentsWithAttachDetachRequestsInProgress.size() ==
         Config->GetMaxInflightAttachDetachPathRequestsProcessing())
     {
-        LOG_DEBUG(
+        LOG_WARN(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Max inflight of attach detach requests reached, will try "
