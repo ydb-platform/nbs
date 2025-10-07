@@ -652,5 +652,12 @@ message TStorageConfig
     // Enable zero-copy for write operations in the VFS FUSE layer
     optional bool ZeroCopyWriteEnabled = 441;
 
+    // When enabled, the backup in stored in binary proto format instead of
+    // prototxt.
     optional bool UseBinaryFormatForTabletBootInfoBackup = 442;
+
+    // Allows to set node's priority for system (tenant) tablets (hive,
+    // schemeshard, etc.). Lower value means lower priority.
+    // NOTE: can be negative.
+    optional int32 SystemTabletsPriority = 464;
 }

@@ -580,6 +580,7 @@ public:
 
     TVector<TString> GetKnownSpareNodes() const;
     ui32 GetSpareNodeProbability() const;
+    [[nodiscard]] i32 GetSystemTabletsPriority() const;
 
     bool GetRejectLateRequestsAtDiskAgentEnabled() const;
     bool GetAssignIdToWriteAndZeroRequestsEnabled() const;

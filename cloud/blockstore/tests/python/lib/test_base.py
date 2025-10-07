@@ -38,8 +38,8 @@ def thread_count():
     return int(common.get_param("threads", 2))
 
 
-def counters_url(host, mon_port):
-    return "http://%s:%s/counters/counters=blockstore/json" % (host, mon_port)
+def counters_url(host, mon_port, component="blockstore"):
+    return "http://%s:%s/counters/counters=%s/json" % (host, mon_port, component)
 
 
 def _extract_tracks(nbs_log_path, track_filter):
@@ -332,6 +332,14 @@ def wait_for_disk_agent(mon_port):
 
     if result != 0:
         raise RuntimeError("Failed to connect to disk agent")
+
+
+@retrying.retry(stop_max_delay=60000, wait_fixed=3000, retry_on_exception=is_request_error)
+def get_utils_counters(mon_port):
+    r = requests.get(counters_url('localhost', mon_port, "utils"), timeout=10)
+    r.raise_for_status()
+
+    return r.json()
 
 
 @retrying.retry(stop_max_delay=60000, wait_fixed=3000, retry_on_exception=is_request_error)

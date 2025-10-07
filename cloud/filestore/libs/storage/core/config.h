@@ -184,6 +184,8 @@ public:
     ui32 GetMaxBlocksPerTruncateTx() const;
     ui32 GetMaxTruncateTxInflight() const;
 
+    [[nodiscard]] i32 GetSystemTabletsPriority() const;
+
     TDuration GetCompactionRetryTimeout() const;
 
     ui32 GetReassignChannelsPercentageThreshold() const;
