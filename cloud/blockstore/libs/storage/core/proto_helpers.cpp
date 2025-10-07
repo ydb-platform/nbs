@@ -213,7 +213,7 @@ void VolumeConfigToVolume(
     volume.SetIsFillFinished(volumeConfig.GetIsFillFinished());
     const auto tags = ParseTags(volumeConfig.GetTagsStr());
     for (const auto& [key, value]: tags) {
-        volume.MutableTags()->insert(google::protobuf::MapPair(key, value));
+        volume.MutableTags()->insert({key, value});
     }
 }
 
