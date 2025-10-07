@@ -370,8 +370,6 @@ public:
         TVector<TDiskId> AffectedDisks;
         TVector<TDiskId> DisksToReallocate;
         TVector<TString> DevicesToDisableIO;
-        THashMap<TString, ui64> PathsToAttach;
-        THashMap<TString, ui64> PathsToDetach;
     };
 
     auto RegisterAgent(
@@ -799,14 +797,12 @@ public:
     void AttachPathIfNeeded(
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
-        const TString& path,
-        bool force);
+        const TString& path);
 
     void DetachPathIfNeeded(
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
-        const TString& path,
-        bool force);
+        const TString& path);
 
     const THashMap<TString, THashSet<TString>>& GetPathsToAttachDetach() const;
 
@@ -939,6 +935,15 @@ public:
         -> std::pair<NProto::TAgentConfig*, TVector<NProto::TDeviceConfig*>>;
 
     bool HasDependentDisks(const TAgentId& agentId, const TString& path);
+
+    struct TPathsToAttachDetachOnRegistration
+    {
+        THashMap<TString, ui64> PathsToAttach;
+        THashMap<TString, ui64> PathsToDetach;
+    };
+
+    TPathsToAttachDetachOnRegistration GetPathsToAttachDetachOnRegistration(
+        const TAgentId& agentId) const;
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
@@ -1419,7 +1424,6 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         const TString& path,
-        bool force,
         bool attach);
 };
 
