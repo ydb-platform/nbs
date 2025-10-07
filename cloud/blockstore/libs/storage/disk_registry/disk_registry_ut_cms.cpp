@@ -1535,6 +1535,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         AddHost("agent-1");
 
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
         UNIT_ASSERT_VALUES_EQUAL(1, attachRequests);
         UNIT_ASSERT_VALUES_EQUAL(0, detachRequests);
         UNIT_ASSERT_VALUES_EQUAL(2, pathsToAttach.size());
@@ -1572,6 +1574,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         pathsToDetach.clear();
 
         AddDevice("agent-1", "dev-1");
+
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
 
         UNIT_ASSERT_VALUES_EQUAL(2, attachRequests);
         UNIT_ASSERT_VALUES_EQUAL(1, detachRequests);
