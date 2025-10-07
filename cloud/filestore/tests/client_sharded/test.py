@@ -136,7 +136,7 @@ def test_explicit_shard_count_addition():
     return ret
 
 
-def test_turn_on_strict():
+def test_enable_strict():
     client, results_path = __init_test()
     out = client.create(
         "fs0",
@@ -150,7 +150,7 @@ def test_turn_on_strict():
         "getfilesystemtopology", {"FileSystemId": "fs0"})
     out += client.resize(
         "fs0", int(SHARD_SIZE / BLOCK_SIZE), shard_count=3, force=False,
-        turn_on_strict=True)
+        enable_strict=True)
     out += client.execute_action(
         "getfilesystemtopology", {"FileSystemId": "fs0"})
     out += client.execute_action(

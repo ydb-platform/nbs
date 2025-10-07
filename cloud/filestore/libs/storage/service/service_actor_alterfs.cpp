@@ -48,7 +48,7 @@ private:
     const bool Force;
     const ui32 ExplicitShardCount;
 
-    NKikimrFileStore::TConfig DesiredConfig;
+    NKikimrFileStore::TConfig TargetConfig;
 
     TMultiShardFileStoreConfig FileStoreConfig;
 
@@ -173,10 +173,10 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , Force(false)
     , ExplicitShardCount(0)
 {
-    DesiredConfig.SetCloudId(request.GetCloudId());
-    DesiredConfig.SetFolderId(request.GetFolderId());
-    DesiredConfig.SetProjectId(request.GetProjectId());
-    DesiredConfig.SetVersion(request.GetConfigVersion());
+    TargetConfig.SetCloudId(request.GetCloudId());
+    TargetConfig.SetFolderId(request.GetFolderId());
+    TargetConfig.SetProjectId(request.GetProjectId());
+    TargetConfig.SetVersion(request.GetConfigVersion());
 }
 
 TAlterFileStoreActor::TAlterFileStoreActor(
@@ -193,8 +193,8 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , EnableStrictFileSystemSizeEnforcement(
           request.GetEnableStrictFileSystemSizeEnforcement())
 {
-    DesiredConfig.SetBlocksCount(request.GetBlocksCount());
-    DesiredConfig.SetVersion(request.GetConfigVersion());
+    TargetConfig.SetBlocksCount(request.GetBlocksCount());
+    TargetConfig.SetVersion(request.GetConfigVersion());
 }
 
 void TAlterFileStoreActor::Bootstrap(const TActorContext& ctx)
@@ -248,10 +248,11 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
         LOG_ERROR(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] Describing filestore %s failed: %s",
+            "[%s] Describing filestore %s (cookie: %lu) failed: %s",
             FileSystemId.c_str(),
             isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
                           : "\"UNKNOWN\"",
+            ev->Cookie,
             FormatError(msg->GetError()).c_str());
 
         ReplyAndDie(ctx, msg->GetError());
@@ -287,7 +288,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     const bool allocateMixed0 =
         thirdChannelDataKind == EChannelDataKind::Mixed0;
 
-    if (currentConfig.GetBlocksCount() > DesiredConfig.GetBlocksCount() &&
+    if (currentConfig.GetBlocksCount() > TargetConfig.GetBlocksCount() &&
         !Force)
     {
         ReplyAndDie(
@@ -297,11 +298,11 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     }
 
     Y_ABORT_UNLESS(
-        DesiredConfig.GetCloudId().empty() &&
-        DesiredConfig.GetFolderId().empty() &&
-        DesiredConfig.GetProjectId().empty());
+        TargetConfig.GetCloudId().empty() &&
+        TargetConfig.GetFolderId().empty() &&
+        TargetConfig.GetProjectId().empty());
 
-    currentConfig.SetBlocksCount(DesiredConfig.GetBlocksCount());
+    currentConfig.SetBlocksCount(TargetConfig.GetBlocksCount());
     if (!allocateMixed0
             && StorageConfig->GetAutomaticShardCreationEnabled())
     {
@@ -320,7 +321,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
         FileStoreConfig.MainFileSystemConfig = currentConfig;
     }
 
-    if (const auto version = DesiredConfig.GetVersion()) {
+    if (const auto version = TargetConfig.GetVersion()) {
         FileStoreConfig.MainFileSystemConfig.SetVersion(version);
     }
 
@@ -370,10 +371,11 @@ void TAlterFileStoreActor::HandleAlterFileStoreResponse(
         LOG_ERROR(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] Altering of filestore %s failed: %s",
+            "[%s] Altering of filestore %s (cookie: %lu) failed: %s",
             FileSystemId.c_str(),
             isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
                           : "\"UNKNOWN\"",
+            ev->Cookie,
             FormatError(msg->GetError()).Quote().c_str());
 
         ReplyAndDie(ctx, msg->GetError());
@@ -492,7 +494,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
     // StrictFileSystemSizeEnforcement
     if (StrictFileSystemSizeEnforcementEnabled) {
         for (auto& shard: FileStoreConfig.ShardConfigs) {
-            shard.SetBlocksCount(DesiredConfig.GetBlocksCount());
+            shard.SetBlocksCount(TargetConfig.GetBlocksCount());
         }
     }
 
@@ -578,10 +580,11 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
         LOG_ERROR(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] Shard %s creation failed: %s",
+            "[%s] Shard %s (cookie: %lu) creation failed: %s",
             FileSystemId.c_str(),
             isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
                           : "\"UNKNOWN\"",
+            ev->Cookie,
             FormatError(msg->GetError()).Quote().c_str());
 
         ReplyAndDie(ctx, msg->GetError());
@@ -656,10 +659,11 @@ void TAlterFileStoreActor::HandleConfigureShardResponse(
         LOG_ERROR(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] Shard %s configuration failed: %s",
+            "[%s] Shard %s (cookie: %lu) configuration failed: %s",
             FileSystemId.c_str(),
             isCookieValid ? GetFileSytemIdByCookie(ev->Cookie).Quote().c_str()
                           : "\"UNKNOWN\"",
+            ev->Cookie,
             FormatError(msg->GetError()).Quote().c_str());
 
         ReplyAndDie(ctx, msg->GetError());
@@ -769,16 +773,16 @@ void TAlterFileStoreActor::HandleDescribeFileStoreForAlterResponse(
     const auto& fileStore = msg->PathDescription.GetFileStoreDescription();
     auto config = fileStore.GetConfig();
 
-    if (const auto& cloud = DesiredConfig.GetCloudId()) {
+    if (const auto& cloud = TargetConfig.GetCloudId()) {
         config.SetCloudId(cloud);
     }
-    if (const auto& project = DesiredConfig.GetProjectId()) {
+    if (const auto& project = TargetConfig.GetProjectId()) {
         config.SetProjectId(project);
     }
-    if (const auto& folder = DesiredConfig.GetFolderId()) {
+    if (const auto& folder = TargetConfig.GetFolderId()) {
         config.SetFolderId(folder);
     }
-    if (auto version = DesiredConfig.GetVersion()) {
+    if (auto version = TargetConfig.GetVersion()) {
         config.SetVersion(version);
     }
 

@@ -37,7 +37,7 @@ public:
             .Help("explicitly specifies the required shard count")
             .StoreResult(&ShardCount);
 
-        Opts.AddLongOption("turn-on-strict")
+        Opts.AddLongOption("enable-strict")
             .StoreTrue(&EnableStrictFileSystemSizeEnforcement)
             .Help("enable strict file system size enforcement");
     }
