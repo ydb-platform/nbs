@@ -30,7 +30,6 @@ def run_replay(name):
     config.Tests[0].LoadTest.CreateFileStoreRequest.BlocksCount = 10241024
     with open(tool_conf_path, "w") as config_file:
         config_file.write(MessageToString(config))
-        config_file.flush()
 
     tool_bin_path = common.binary_path(
         "cloud/filestore/tools/testing/loadtest/bin/filestore-loadtest"
@@ -45,6 +44,7 @@ def run_replay(name):
         ]
     )
 
+    # Canonize directory structure and file sizes
     proc = common.execute(
         [
             "bash",
