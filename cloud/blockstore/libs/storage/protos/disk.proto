@@ -603,7 +603,9 @@ message TRegisterAgentResponse
     // List of device IDs to which Disk Agent should disable IO operations.
     repeated string DevicesToDisableIO = 2;
 
-    uint32 DiskRegistryTabletGeneration = 3;
+    // Disk Registry Tablet generation needed to order attach/detach path
+    // requests sent from two different DR generations.
+    uint32 DiskRegistryGeneration = 3;
 
     // Allowed devices attached to the agent.
     repeated TPathToGeneration AllowedPaths = 4;
@@ -1867,7 +1869,7 @@ message TGetClusterCapacityResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// OpenDevice
+// AttachPath
 
 message TAttachPathRequest
 {
@@ -1877,7 +1879,8 @@ message TAttachPathRequest
     // List of paths we want to attach.
     repeated TPathToGeneration PathsToAttach = 2;
 
-    // Generation of DR tablet.
+    // Disk Registry Tablet generation needed to order attach/detach path
+    // requests sent from two different DR generations.
     uint32 DiskRegistryGeneration = 3;
 }
 
@@ -1891,7 +1894,7 @@ message TAttachPathResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// CloseDevice
+// DetachPath
 
 message TDetachPathRequest
 {
@@ -1901,7 +1904,8 @@ message TDetachPathRequest
     // List of paths we want to detach.
     repeated TPathToGeneration PathsToDetach = 2;
 
-    // Generation of DR tablet.
+    // Disk Registry Tablet generation needed to order attach/detach path
+    // requests sent from two different DR generations.
     uint32 DiskRegistryGeneration = 3;
 }
 
