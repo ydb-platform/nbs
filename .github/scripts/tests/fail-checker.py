@@ -5,6 +5,32 @@ from typing import List
 from junit_utils import iter_xml_files
 
 
+def write_to_file_from_env(key: str, value: str, env_var: str, is_secret: bool = False):
+    filename = os.environ.get(env_var)
+    if filename:
+        with open(filename, "a") as fp:
+            fp.write(f"{key}={value}\n")
+
+        print_with_secret_masked(
+            'echo "%s=%s" >> $%s (%s)', key, value, env_var, filename, is_secret
+        )
+
+
+def print_with_secret_masked(
+    msg: str, key: str, value: str, filename: str, is_secret: bool = False
+):
+    if is_secret:
+        value = "******"
+    print(f"{msg}: {key}={value} ({filename})")
+
+
+# we are writing to GITHUB_ENV to propagate env variables to next steps
+# and to FAIL_CHECKER_TEMP_FILE to get variable out of subshell
+def write_to_env(key: str, value: str, is_secret: bool = False):
+    write_to_file_from_env(key, value, "GITHUB_ENV", is_secret)
+    write_to_file_from_env(key, value, "FAIL_CHECKER_TEMP_FILE", is_secret)
+
+
 def check_for_fail(paths: List[str]):
     failed_list = []
     build_failed_list = []
@@ -30,6 +56,7 @@ def check_for_fail(paths: List[str]):
             print(f"error: {t} ({fn})")
         if len(build_failed_list) > 0:
             os.environ["BUILD_FAILED_COUNT"] = str(len(build_failed_list))
+            write_to_env("BUILD_FAILED_COUNT", str(len(build_failed_list)))
             raise SystemExit(237)
 
         raise SystemExit(1)

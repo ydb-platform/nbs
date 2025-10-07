@@ -645,7 +645,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
         return MakeFuture(response);
     }
 
-    if (EnableDataIntegrityValidation) {
+    if (EnableDataIntegrityValidation && request->ChecksumsSize() > 0) {
         if (request->ChecksumsSize() != 1) {
             NProto::TWriteBlocksLocalResponse response;
             ui32 flags = 0;
@@ -653,7 +653,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
             *response.MutableError() = MakeError(
                 E_REJECTED,
                 TStringBuilder()
-                    << "Invalid checksums count: " << request->ChecksumsSize(),
+                    << "Invalid checksum count: " << request->ChecksumsSize(),
                 flags);
             return MakeFuture(response);
         }

@@ -154,7 +154,7 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     const TEvNonreplPartitionPrivate::TEvRangeResynced::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
     const auto range = msg->Range;
     const auto rangeId = BlockRange2RangeId(range, PartConfig->GetBlockSize());
 
@@ -171,35 +171,47 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
 
     State.FinishResyncRange(rangeId.first);
 
-    ProfileLog->Write({
-        .DiskId = PartConfig->GetName(),
-        .Ts = msg->ChecksumStartTs,
-        .Request = IProfileLog::TSysReadWriteRequest{
-            .RequestType = ESysRequestType::Resync,
-            .Duration = msg->ChecksumDuration + msg->ReadDuration,
-            .Ranges = {msg->Range},
-        },
-    });
+    if (msg->ChecksumStartTs) {
+        ProfileLog->Write(
+            {.DiskId = PartConfig->GetName(),
+             .Ts = msg->ChecksumStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncChecksum,
+                 .Duration = msg->ChecksumDuration,
+                 .RangeInfo = std::move(msg->ChecksumRangeInfo)}});
+    }
 
-    ProfileLog->Write({
-        .DiskId = PartConfig->GetName(),
-        .Ts = msg->WriteStartTs,
-        .Request = IProfileLog::TSysReadWriteRequest{
-            .RequestType = ESysRequestType::Resync,
-            .Duration = msg->WriteDuration,
-            .Ranges = {msg->Range},
-        },
-    });
+    if (msg->ReadStartTs) {
+        ProfileLog->Write(
+            {.DiskId = PartConfig->GetName(),
+             .Ts = msg->ReadStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncRead,
+                 .Duration = msg->ReadDuration,
+                 .RangeInfo = std::move(msg->ReadRangeInfo)}});
+    }
+
+    if (msg->WriteStartTs) {
+        ProfileLog->Write(
+            {.DiskId = PartConfig->GetName(),
+             .Ts = msg->WriteStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncWrite,
+                 .Duration = msg->WriteDuration,
+                 .RangeInfo = std::move(msg->WriteRangeInfo)}});
+    }
 
     if (msg->AffectedBlockInfos) {
+        Y_DEBUG_ABORT_UNLESS(msg->WriteStartTs);
+
         ProfileLog->Write({
             .DiskId = PartConfig->GetName(),
             .Ts = msg->WriteStartTs,
-            .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
-                .RequestType = ESysRequestType::Resync,
-                .BlockInfos = std::move(msg->AffectedBlockInfos),
-                .CommitId = 0,
-            },
+            .Request =
+                IProfileLog::TSysReadWriteRequestBlockInfos{
+                    .RequestType = ESysRequestType::ResyncWrite,
+                    .BlockInfos = std::move(msg->AffectedBlockInfos),
+                    .CommitId = 0},
         });
     }
 

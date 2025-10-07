@@ -41,6 +41,7 @@ THiveProxyActor::THiveProxyActor(
     , LockExpireTimeout(config.HiveLockExpireTimeout)
     , LogComponent(config.LogComponent)
     , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
+    , UseBinaryFormatForTabletBootInfoBackup(config.UseBinaryFormatForTabletBootInfoBackup)
     , TenantHiveTabletId(config.TenantHiveTabletId)
     , Counters(std::move(counters))
 {}
@@ -57,6 +58,7 @@ void THiveProxyActor::Bootstrap(const TActorContext& ctx)
         auto cache = std::make_unique<TTabletBootInfoBackup>(
             LogComponent,
             TabletBootInfoBackupFilePath,
+            UseBinaryFormatForTabletBootInfoBackup,
             false /* readOnlyMode */
         );
         TabletBootInfoBackup = ctx.Register(

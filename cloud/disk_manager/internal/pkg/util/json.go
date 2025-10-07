@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	cells_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/protos"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	disk_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	filesystem_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
@@ -70,6 +71,7 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 }
 
 var stateProtoByTaskType = map[string]func() proto.Message{
+	"cells.CollectClusterCapacity":                  func() proto.Message { return &cells_protos.CollectClusterCapacityTaskState{} },
 	"dataplane.CollectSnapshots":                    func() proto.Message { return &dataplane_protos.CollectSnapshotsTaskState{} },
 	"dataplane.CreateSnapshotFromDisk":              func() proto.Message { return &dataplane_protos.CreateSnapshotFromDiskTaskState{} },
 	"dataplane.CreateSnapshotFromSnapshot":          func() proto.Message { return &dataplane_protos.CreateSnapshotFromSnapshotTaskState{} },

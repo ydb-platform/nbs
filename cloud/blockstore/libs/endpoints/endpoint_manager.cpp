@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/metric.h>
 #include <cloud/blockstore/libs/client/session.h>
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/nbd/device.h>
@@ -1677,10 +1678,11 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
         return getSessionError;
     }
 
-    STORAGE_INFO("Switching endpoint"
-        << ", reason=" << request->GetReason()
-        << ", volume=" << sessionInfo.Volume.GetDiskId()
-        << ", IsFastPathEnabled=" << sessionInfo.Volume.GetIsFastPathEnabled()
+    STORAGE_INFO(
+        "Switching endpoint"
+        << ", reason=" << request->GetReason() << ", volume="
+        << sessionInfo.Volume.GetDiskId() << ", IsFastPathEnabled="
+        << sessionInfo.Volume.GetTags().contains(UseFastPathTagName)
         << ", Migrations=" << sessionInfo.Volume.GetMigrations().size());
 
     auto switchFuture = listener->SwitchEndpoint(

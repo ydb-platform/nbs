@@ -894,7 +894,7 @@ void TVolumeActor::ForwardRequest(
      *
      *  See https://github.com/ydb-platform/nbs/issues/2421
      */
-    if constexpr (IsWriteMethod<TMethod>) {
+    if constexpr (IsExactlyWriteMethod<TMethod>) {
         if (State->GetUseIntermediateWriteBuffer()) {
             CopySgListIntoRequestBuffers(*msg);
         }

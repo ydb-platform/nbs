@@ -11,6 +11,7 @@ import (
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -76,9 +77,18 @@ func (t *deleteSnapshotDataTask) deleteSnapshotData(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	snapshotMeta, err := t.storage.CheckSnapshotReady(ctx, t.request.SnapshotId)
+	snapshotMeta, err := t.storage.GetSnapshotMeta(ctx, t.request.SnapshotId)
 	if err != nil {
 		return err
+	}
+
+	if snapshotMeta == nil {
+		logging.Warn(
+			ctx,
+			"attempted to delete snapshot data for unexisting snapshot %v",
+			t.request.SnapshotId,
+		)
+		return nil
 	}
 
 	// Shallow copy means creating references for chunks.

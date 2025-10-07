@@ -823,7 +823,7 @@ func (s *nodeService) GetGrpcErrorCode(err error) codes.Code {
 	errorCode, ok := s.GetNbsErrorCode(err)
 	if ok {
 		switch errorCode {
-		case nbsclient.E_MOUNT_CONFLICT:
+		case nbsclient.E_INVALID_SESSION, nbsclient.E_MOUNT_CONFLICT:
 			return codes.Unavailable
 		case nbsclient.E_GRPC_CANCELLED, nfsclient.E_GRPC_CANCELLED:
 			return codes.Canceled

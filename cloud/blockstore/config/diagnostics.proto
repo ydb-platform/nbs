@@ -84,6 +84,8 @@ message TMonitoringUrlData
 
 message TDiagnosticsConfig
 {
+    reserved 55;
+
     // How NBS generates name for external resources.
     optional EHostNameScheme HostNameScheme = 1;
 
@@ -229,7 +231,4 @@ message TDiagnosticsConfig
     optional bool SkipReportingZeroBlocksMetricsForYDBBasedDisks = 53;
 
     optional NCloud.NProto.TOpentelemetryTraceConfig OpentelemetryTraceConfig = 54;
-
-    // Add host label in service volume metrics.
-    optional bool AddHostLabelInServiceVolumeMetrics = 55;
 }

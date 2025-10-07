@@ -21,6 +21,7 @@ enum ELinkAction
 {
     LINK_ACTION_CREATE = 0;
     LINK_ACTION_DESTROY = 1;
+    LINK_ACTION_COMPLETED = 2;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

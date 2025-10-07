@@ -527,6 +527,7 @@ public:
     bool GetHiveProxyFallbackMode() const;
     TString GetPathDescriptionBackupFilePath() const;
     bool GetUseBinaryFormatForPathDescriptionBackup() const;
+    bool GetUseBinaryFormatForTabletBootInfoBackup() const;
     bool GetSSProxyFallbackMode() const;
     bool GetUseSchemeCache() const;
     bool GetDontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode() const;

@@ -82,9 +82,9 @@ class CrashProcessor(object):
     def process_coredump(self, crash_info):
         try:
             if crash_info.is_minidump:
-                core = Minidump(crash_info.corefile)
+                core = Minidump(crash_info.corefile, self.args.gdb_timeout)
             else:
-                core = Coredump(crash_info.corefile)
+                core = Coredump(crash_info.corefile, self.args.gdb_timeout)
 
             backtrace = core.backtrace
             service_name = core.service

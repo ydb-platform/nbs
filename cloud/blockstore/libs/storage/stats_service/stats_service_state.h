@@ -129,7 +129,8 @@ struct TVolumeStatsInfo
     NProto::TVolume VolumeInfo;
     ui64 VolumeTabletId = 0;
 
-    bool CountersRegistered = false;
+    bool IsLocalMountCounterRegistered = false;
+    bool SelfCountersRegistered = false;
 
     bool IsLocalMount = false;
     NMonitoring::TDynamicCounters::TCounterPtr IsLocalMountCounter;

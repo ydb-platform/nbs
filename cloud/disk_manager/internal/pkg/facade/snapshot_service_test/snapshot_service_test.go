@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"fmt"
 	"hash/crc32"
 	"testing"
 	"time"
@@ -183,14 +182,10 @@ func TestSnapshotServiceCancelCreateSnapshotFromDisk(t *testing.T) {
 	// If snapshot creation was cancelled, checkpoint should be deleted.
 	// Otherwise, there should be a checkpoint from snapshot.
 	if snapshotMeta == nil {
-		// Two possible cases here: GetSnapshotMeta returned nil with a
-		// “snapshot does not exist” error, or the snapshot is no longer
+		// Two possible cases here: GetSnapshotMeta returned nil because
+		// snapshot does not exist, or the snapshot is no longer
 		// ready (its status has changed to Deleting or Deleted).
-		require.ErrorContains(
-			t,
-			err,
-			fmt.Sprintf("snapshot with id %s does not exist", snapshotID),
-		)
+		require.NoError(t, err)
 		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 	} else if !snapshotMeta.Ready {
 		require.NoError(t, err)

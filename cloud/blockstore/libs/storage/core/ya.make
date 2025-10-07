@@ -44,6 +44,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/model
     cloud/blockstore/libs/storage/protos
+    cloud/blockstore/libs/storage/volume/model
     cloud/blockstore/public/api/protos
 
     cloud/storage/core/config

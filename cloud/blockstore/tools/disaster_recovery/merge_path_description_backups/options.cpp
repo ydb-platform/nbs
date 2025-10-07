@@ -2,19 +2,20 @@
 
 using namespace NLastGetopt;
 
-////////////////////////////////////////////////////////////////////////////////
-
 TOptions::TOptions(int argc, char** argv)
 {
     TOpts opts;
     opts.AddHelpOption();
 
-    opts.AddLongOption("src-root")
+    opts.AddLongOption("src-backups-file-path")
         .RequiredArgument("STR")
         .Required()
-        .StoreResult(&SrcRoot);
+        .StoreResult(&SrcBackupsFilePath)
+        .Help(
+            "Path to the directory containing subdirectories with path "
+            "description (schemeshard) backups.");
 
-    opts.AddLongOption("output")
+    opts.AddLongOption("text-output")
         .RequiredArgument("STR")
         .StoreResult(&TextOutputPath);
 

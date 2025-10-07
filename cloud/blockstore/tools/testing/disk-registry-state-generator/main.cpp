@@ -177,7 +177,7 @@ std::unique_ptr<TDiskRegistryState> GenerateAll(ui64 seed)
                 case EDevicePool::Nrd: {
                     device->SetBlockSize(NrdBlockSize);
                     device->SetBlocksCount(
-                        AllocationUnit[""] / DefaultBlockSize);
+                        AllocationUnit[""] / NCloud::DefaultBlockSize);
                 } break;
                 case EDevicePool::V1: {
                     device->SetBlockSize(LocalBlockSize);
@@ -311,7 +311,7 @@ std::unique_ptr<TDiskRegistryState> GenerateAll(ui64 seed)
 
         auto mediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
         TString poolName;
-        ui32 blockSize = DefaultBlockSize;
+        ui32 blockSize = NCloud::DefaultBlockSize;
         switch (tag) {
             case EVolumeType::V1:
                 poolName = "standard-v1";

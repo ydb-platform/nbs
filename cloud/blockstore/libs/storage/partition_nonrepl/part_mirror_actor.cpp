@@ -7,6 +7,7 @@
 #include "part_nonrepl_migration.h"
 #include "resync_range.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
@@ -183,7 +184,7 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
     const bool equal = (majorCount == checksums.size());
     if (!equal && WriteIntersectsWithScrubbing) {
         if (!ScrubbingRangeRescheduled) {
-            LOG_WARN(
+            LOG_INFO(
                 ctx,
                 TBlockStoreComponents::PARTITION,
                 "[%s] Reschedule scrubbing for range %s due to inflight write",
@@ -193,6 +194,14 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
         StartScrubbingRange(ctx, ScrubbingRangeId);
         return;
     }
+
+    ProfileLog->Write(
+        {.DiskId = DiskId,
+         .Ts = ChecksumRangeActorCompanion.GetChecksumStartTs(),
+         .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+             .RequestType = ESysRequestType::Scrubbing,
+             .Duration = ChecksumRangeActorCompanion.GetChecksumDuration(),
+             .RangeInfo = ChecksumRangeActorCompanion.GetRangeInfo()}});
 
     if (!equal) {
         if (ctx.Now() - ScrubbingRangeStarted <
@@ -561,7 +570,7 @@ void TMirrorPartitionActor::HandleRangeResynced(
 {
     using EStatus = TEvNonreplPartitionPrivate::TEvRangeResynced::EStatus;
 
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
     if (!HasError(msg->Error)) {
         if (msg->Status == EStatus::HealedAll) {
@@ -579,6 +588,25 @@ void TMirrorPartitionActor::HandleRangeResynced(
         ToString(msg->Status).c_str());
 
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
+
+    if (msg->ReadStartTs) {
+        ProfileLog->Write(
+            {.DiskId = DiskId,
+             .Ts = msg->ReadStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncRead,
+                 .Duration = msg->ReadDuration,
+                 .RangeInfo = std::move(msg->ReadRangeInfo)}});
+    }
+    if (msg->WriteStartTs) {
+        ProfileLog->Write(
+            {.DiskId = DiskId,
+             .Ts = msg->WriteStartTs,
+             .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
+                 .RequestType = ESysRequestType::ResyncWrite,
+                 .Duration = msg->WriteDuration,
+                 .RangeInfo = std::move(msg->WriteRangeInfo)}});
+    }
 
     ResyncRangeStarted = false;
     StartScrubbingRange(ctx, ScrubbingRangeId + 1);

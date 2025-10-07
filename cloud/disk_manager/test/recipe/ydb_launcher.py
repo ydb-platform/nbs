@@ -14,14 +14,14 @@ class YDBLauncher:
             dict(name="dynamic_storage_pool:3", kind="rotencrypted", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:4", kind="ssdencrypted", pdisk_user_kind=0),
         ]
-        configurator = KikimrConfigGenerator(
+        self.__configurator = KikimrConfigGenerator(
             binary_path=ydb_binary_path,
             erasure=None,
             static_pdisk_size=64 * 2**30,
             dynamic_storage_pools=dynamic_storage_pools,
             enable_public_api_external_blobs=True)
 
-        self.__cluster = kikimr_cluster_factory(configurator=configurator)
+        self.__cluster = kikimr_cluster_factory(configurator=self.__configurator)
         self.__dynamic_storage_pools = dynamic_storage_pools
 
     def start(self):
@@ -52,3 +52,7 @@ class YDBLauncher:
     @property
     def client(self):
         return self.__cluster.client
+
+    @property
+    def domain(self):
+        return self.__configurator.domains_txt.Domain[0].Name

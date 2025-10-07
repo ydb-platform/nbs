@@ -46,9 +46,27 @@ bool ValidateDevices(
     const TString& label,
     const TDevices& oldDevs,
     const TDevices& newDevs,
+    const TVector<TString>& freshDeviceIds,
+    const TMigrations& oldMigrations,
+    NProto::EStorageMediaKind mediaKind,
     bool checkDeviceId)
 {
     bool ok = true;
+
+    auto isFreshDeviceId = [&](const TString& deviceId) -> bool
+    {
+        return FindPtr(freshDeviceIds, deviceId) != nullptr;
+    };
+
+    auto isMigrationTarget = [&](const TString& deviceId) -> bool
+    {
+        for (const auto& m: oldMigrations) {
+            if (m.GetTargetDevice().GetDeviceUUID() == deviceId) {
+                return true;
+            }
+        }
+        return false;
+    };
 
     auto newDeviceIt = newDevs.begin();
     auto oldDeviceIt = oldDevs.begin();
@@ -80,6 +98,19 @@ bool ValidateDevices(
                 std::distance(newDevs.begin(), newDeviceIt),
                 oldDeviceIt->GetDeviceUUID().Quote().c_str(),
                 newDeviceIt->GetDeviceUUID().Quote().c_str());
+
+            if (IsReliableDiskRegistryMediaKind(mediaKind) &&
+                !isFreshDeviceId(newDeviceIt->GetDeviceUUID()) &&
+                !isMigrationTarget(newDeviceIt->GetDeviceUUID()))
+            {
+                ReportDeviceReplacementContractBroken(
+                    TStringBuilder() << logTitle << " ",
+                    {{"oldDevice", oldDeviceIt->GetDeviceUUID()},
+                     {"newDevice", newDeviceIt->GetDeviceUUID()}});
+
+                ok = false;
+                break;
+            }
         }
 
         if (newDeviceIt->GetBlocksCount() != oldDeviceIt->GetBlocksCount()) {
@@ -411,7 +442,12 @@ void TVolumeActor::HandleAllocateDiskResponse(
         unavailableDeviceIds.push_back(std::move(deviceId));
     }
 
-    if (!CheckAllocationResult(ctx, devices, replicas)) {
+    if (!CheckAllocationResult(
+            ctx,
+            devices,
+            replicas,
+            freshDeviceIds))
+    {
         return;
     }
 
@@ -459,9 +495,15 @@ void TVolumeActor::HandleUpdateDevices(
         return;
     }
 
-    if (!CheckAllocationResult(ctx, msg->Devices, msg->Replicas)) {
-        auto response = std::make_unique<TEvVolumePrivate::TEvUpdateDevicesResponse>(
-            MakeError(E_INVALID_STATE, "Bad allocation result"));
+    if (!CheckAllocationResult(
+            ctx,
+            msg->Devices,
+            msg->Replicas,
+            msg->FreshDeviceIds))
+    {
+        auto response =
+            std::make_unique<TEvVolumePrivate::TEvUpdateDevicesResponse>(
+                MakeError(E_INVALID_STATE, "Bad allocation result"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -483,7 +525,8 @@ void TVolumeActor::HandleUpdateDevices(
 bool TVolumeActor::CheckAllocationResult(
     const TActorContext& ctx,
     const TDevices& devices,
-    const TVector<TDevices>& replicas)
+    const TVector<TDevices>& replicas,
+    const TVector<TString>& freshDeviceIds)
 {
     Y_ABORT_UNLESS(StateLoadFinished);
 
@@ -503,7 +546,10 @@ bool TVolumeActor::CheckAllocationResult(
         "MainConfig",
         State->GetMeta().GetDevices(),
         devices,
-        true);
+        freshDeviceIds,
+        State->GetMeta().GetMigrations(),
+        State->GetStorageMediaKind(),
+        /*checkDeviceId=*/true);
 
     const auto oldReplicaCount = State->GetMeta().ReplicasSize();
     if (replicas.size() < oldReplicaCount) {
@@ -526,7 +572,10 @@ bool TVolumeActor::CheckAllocationResult(
             Sprintf("Replica-%u", i),
             State->GetMeta().GetReplicas(i).GetDevices(),
             replicas[i],
-            true);
+            freshDeviceIds,
+            State->GetMeta().GetMigrations(),
+            State->GetStorageMediaKind(),
+            /*checkDeviceId=*/true);
 
         ok &= ValidateDevices(
             ctx,
@@ -534,7 +583,10 @@ bool TVolumeActor::CheckAllocationResult(
             Sprintf("ReplicaReference-%u", i),
             devices,
             replicas[i],
-            false);
+            freshDeviceIds,
+            State->GetMeta().GetMigrations(),
+            State->GetStorageMediaKind(),
+            /*checkDeviceId=*/false);
 
         if (replicas[i].size() > devices.size()) {
             LOG_ERROR(

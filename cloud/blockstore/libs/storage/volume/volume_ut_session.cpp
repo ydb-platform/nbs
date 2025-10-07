@@ -883,8 +883,8 @@ Y_UNIT_TEST_SUITE(TVolumeAcquireReleaseTest)
         auto stat = volume.StatVolume();
         const auto& volumeConfig = stat->Record.GetVolume();
         TVector<TString> replacedDevices = {
-            volumeConfig.GetDevices(0).GetDeviceUUID(),
-            volumeConfig.GetReplicas(0).GetDevices(0).GetDeviceUUID()};
+            volumeConfig.GetReplicas(0).GetDevices(0).GetDeviceUUID(),
+            volumeConfig.GetReplicas(1).GetDevices(0).GetDeviceUUID()};
         UNIT_ASSERT(
             diskRegistryState->ReplaceDevice("vol0", replacedDevices[0]));
         UNIT_ASSERT(

@@ -10,10 +10,17 @@ message TProfileLogBlockInfo {
     optional uint32 Checksum = 2;
 };
 
+message TReplicaChecksum {
+    option (message_id) = 10;
+    optional uint32 ReplicaId = 1;
+    repeated uint32 Checksums = 2;
+};
+
 message TProfileLogBlockRange {
     option (message_id) = 4;
     optional uint64 BlockIndex = 1;
     optional uint32 BlockCount = 2;
+    repeated TReplicaChecksum ReplicaChecksums = 3;
 };
 
 message TProfileLogBlockCommitId {

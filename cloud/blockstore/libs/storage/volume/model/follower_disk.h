@@ -30,6 +30,12 @@ struct TLeaderFollowerLink
     bool Match(const TLeaderFollowerLink& rhs) const;
 };
 
+struct TOutdatedLeaderDestruction
+{
+    size_t TryCount = 0;
+    TBackoffDelayProvider DelayProvider;
+};
+
 // Link info persisted on follower side.
 struct TLeaderDiskInfo
 {

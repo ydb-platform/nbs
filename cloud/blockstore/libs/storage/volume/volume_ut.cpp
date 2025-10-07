@@ -1,5 +1,6 @@
 #include "volume_ut.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
@@ -8178,7 +8179,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         updateConfig("");
         checkUseFastPath(0);
 
-        updateConfig("use-fastpath");
+        updateConfig(TString(UseFastPathTagName));
         checkUseFastPath(1);
     }
 

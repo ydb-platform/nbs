@@ -251,6 +251,10 @@ func (f *fileSystemModel) listAllNodes(parentNodeID uint64) []nfs.Node {
 			break
 		}
 
+		if nextCookie == "" {
+			break
+		}
+
 		cookie = nextCookie
 	}
 

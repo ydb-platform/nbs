@@ -1,6 +1,6 @@
 #include "block_digest.h"
 
-#include <cloud/blockstore/libs/common/public.h>
+#include <cloud/blockstore/libs/common/constants.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
 

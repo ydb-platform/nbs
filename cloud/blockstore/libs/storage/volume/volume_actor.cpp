@@ -1073,6 +1073,10 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification,
             HandleUpdateVolatileThrottlingConfig);
 
+        HFunc(
+            TEvService::TEvDestroyVolumeResponse,
+            HandleDestroyOutdatedLeaderVolumeResponse);
+
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:
@@ -1106,7 +1110,9 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
         IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
 
+        IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
         IgnoreFunc(TEvStatsService::TEvVolumePartCounters);
+        IgnoreFunc(TEvVolumePrivate::TEvPartStatsSaved);
 
         IgnoreFunc(TEvPartition::TEvWaitReadyResponse);
 
@@ -1135,6 +1141,8 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvRetryAcquireReleaseDisk);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvPartCountersCombined);
+
+        IgnoreFunc(TEvService::TEvDestroyVolumeResponse);
 
         default:
             if (!RejectRequests(ev)) {

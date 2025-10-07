@@ -1341,4 +1341,5 @@ message TStorageServiceConfig
     optional uint32 CollectGarbageTimeoutHDD = 461;
 
     optional bool UseBinaryFormatForPathDescriptionBackup = 462;
+    optional bool UseBinaryFormatForTabletBootInfoBackup = 463;
 }

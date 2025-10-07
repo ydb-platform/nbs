@@ -3,6 +3,7 @@
 #include "cont_io_with_timeout.h"
 #include "external_endpoint_stats.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/common/device_path.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -940,9 +941,9 @@ private:
         const NProto::TStartEndpointRequest& request,
         const NProto::TVolume& volume) const
     {
-        return volume.GetIsFastPathEnabled()
-            && request.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL
-            && request.GetIpcType() == NProto::IPC_VHOST;
+        return request.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL &&
+               request.GetIpcType() == NProto::IPC_VHOST &&
+               volume.GetTags().contains(UseFastPathTagName);
     }
 
     bool CanStartExternalEndpoint(

@@ -16,6 +16,7 @@ struct THiveProxyConfig
     TDuration HiveLockExpireTimeout;
     int LogComponent = 0;
     TString TabletBootInfoBackupFilePath;
+    bool UseBinaryFormatForTabletBootInfoBackup = false;
     bool FallbackMode = false;
     ui64 TenantHiveTabletId = 0;
 };

@@ -28,10 +28,33 @@ struct TFollowerDiskActorParams
 
 ///////////////////////////////////////////////////////////////////////////////
 
+//   DataTransferring (migration in progress)
+//        |
+//        |                          /------------------------------\
+//        v                          v                              |
+//   DataTransferred -> [Propagate follower state (CopyCompleted)]  |
+//                              |        |                          |
+//                 OK           |        |  On other Error repeat   |
+//            /-----------------/        |--------------------------/
+//            |                          |
+//            |                          |  On NotFoundSchemeShardError
+//            v                          v
+//   LeadershipTransferred           Link error state
+//
+
 class TFollowerDiskActor final
     : public TNonreplicatedPartitionMigrationCommonActor
     , public IMigrationOwner
 {
+public:
+    enum class EState
+    {
+        DataTransferring,
+        DataTransferred,
+        LeadershipTransferred,
+    };
+
+private:
     const TChildLogTitle LogTitle;
     const NProto::EStorageMediaKind LeaderMediaKind =
         NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
@@ -40,8 +63,10 @@ class TFollowerDiskActor final
     const NActors::TActorId LeaderVolumeActorId;
     const NActors::TActorId LeaderPartitionActorId;
     const bool TakePartitionOwnership = false;
+
     TString ClientId;
 
+    EState State = EState::DataTransferring;
     TFollowerDiskInfo FollowerDiskInfo;
     NActors::TActorId FollowerPartitionActorId;
 
@@ -72,6 +97,10 @@ private:
         const NActors::TActorContext& ctx,
         const TFollowerDiskInfo& newDiskInfo);
 
+    void AdvanceState(const NActors::TActorContext& ctx, EState newState);
+    void PropagateLeadershipToFollower(const NActors::TActorContext& ctx);
+    void RebootLeaderVolume(const NActors::TActorContext& ctx);
+
     template <typename TMethod>
     void ForwardRequestToLeaderPartition(
         const typename TMethod::TRequest::TPtr& ev,
@@ -96,6 +125,10 @@ private:
 
     void HandleUpdateFollowerStateResponse(
         const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePropagateLeadershipToFollowerResponse(
+        const TEvVolumePrivate::TEvLinkOnFollowerDataTransferred::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

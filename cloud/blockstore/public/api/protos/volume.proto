@@ -174,7 +174,7 @@ message TEncryptionDesc
 
 message TVolume
 {
-    reserved 25;
+    reserved 25, 36;
 
     // Label of volume.
     string DiskId = 1;
@@ -281,14 +281,13 @@ message TVolume
     // Represents whether disk filling finished or not.
     bool IsFillFinished = 35;
 
-    // Whether volume can use fast data path (external endpoint with direct
-    // rdma connection to engine)
-    bool IsFastPathEnabled = 36;
-
     // When a disk is being copied or has already been copied, the
     // PrincipalDiskId field specifies the name of the disk that the client
     // should use instead of current.
     string PrincipalDiskId = 37;
+
+    // Set of volume tags. Value can be empty.
+    map<string, string> Tags = 38;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

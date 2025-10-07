@@ -14,6 +14,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -436,6 +437,13 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 		snapshotMeta, err := t.storage.GetSnapshotMeta(ctx, t.state.BaseSnapshotId)
 		if err != nil {
 			return err
+		}
+
+		if snapshotMeta == nil {
+			return errors.NewNonRetriableErrorf(
+				"base snapshot with id %v does not exist",
+				t.state.BaseSnapshotId,
+			)
 		}
 
 		// Data transfer and shallow copy is performed in parallel.

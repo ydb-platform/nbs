@@ -1,24 +1,25 @@
 #include "follower_disk_actor.h"
 
-#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/actors/propagate_to_follower.h>
 #include <cloud/blockstore/libs/storage/volume/actors/volume_as_partition_actor.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
-#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 using namespace NActors;
 
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
+
+constexpr auto RestartVolumeTabletDelay = TDuration::Seconds(30);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -128,6 +129,9 @@ bool TFollowerDiskActor::OnMessage(
         HFunc(
             TEvVolumePrivate::TEvUpdateFollowerStateResponse,
             HandleUpdateFollowerStateResponse);
+        HFunc(
+            TEvVolumePrivate::TEvLinkOnFollowerDataTransferred,
+            HandlePropagateLeadershipToFollowerResponse);
 
         // Intercepting the message to block the sending of statistics by the
         // base class.
@@ -197,6 +201,69 @@ void TFollowerDiskActor::PersistFollowerState(
     NCloud::Send(ctx, LeaderVolumeActorId, std::move(request));
 }
 
+void TFollowerDiskActor::AdvanceState(
+    const NActors::TActorContext& ctx,
+    EState newState)
+{
+    Y_DEBUG_ABORT_UNLESS(newState >= State);
+
+    if (State == newState) {
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s State changed %s -> %s",
+        LogTitle.GetWithTime().c_str(),
+        ToString(State).c_str(),
+        ToString(newState).c_str());
+
+    State = newState;
+
+    switch (State) {
+        case EState::DataTransferring: {
+            break;
+        }
+        case EState::DataTransferred:{
+            PropagateLeadershipToFollower(ctx);
+            break;
+        }
+        case EState::LeadershipTransferred:{
+            RebootLeaderVolume(ctx);
+            break;
+        }
+    }
+}
+
+void TFollowerDiskActor::PropagateLeadershipToFollower(
+    const NActors::TActorContext& ctx)
+{
+    NCloud::Register<TPropagateLinkToFollowerActor>(
+        ctx,
+        LogTitle.GetWithTime(),
+        CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
+        FollowerDiskInfo.Link,
+        TPropagateLinkToFollowerActor::EReason::DataTransferred);
+}
+
+void TFollowerDiskActor::RebootLeaderVolume(const NActors::TActorContext& ctx)
+{
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s  Scheduling reboot for leader volume after %s",
+        LogTitle.GetWithTime().c_str(),
+        FormatDuration(RestartVolumeTabletDelay).c_str());
+
+    ctx.Schedule(
+        RestartVolumeTabletDelay,
+        std::make_unique<IEventHandle>(
+            LeaderVolumeActorId,
+            ctx.SelfID,
+            new TEvents::TEvPoisonPill()));
+}
+
 template <typename TMethod>
 void TFollowerDiskActor::ForwardRequestToLeaderPartition(
     const typename TMethod::TRequest::TPtr& ev,
@@ -249,11 +316,58 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
-
     const auto* msg = ev->Get();
 
     FollowerDiskInfo = msg->Follower;
+
+    if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::DataReady) {
+        AdvanceState(ctx, EState::DataTransferred);
+    } else if (FollowerDiskInfo.State == TFollowerDiskInfo::EState::Error) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Link in error state. Restart volume tablet immediately",
+            LogTitle.GetWithTime().c_str());
+        NCloud::Send(
+            ctx,
+            LeaderVolumeActorId,
+            std::make_unique<TEvents::TEvPoisonPill>());
+    }
+}
+
+void TFollowerDiskActor::HandlePropagateLeadershipToFollowerResponse(
+    const TEvVolumePrivate::TEvLinkOnFollowerDataTransferred::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    const auto&  error = msg->GetError();
+    if (HasError(error)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Propagate ready state to follower error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
+
+        if (IsNotFoundSchemeShardError(error)) {
+            // If it is not possible to transfer leadership because there is no
+            // follower disk, then we should go into an error state.
+            auto newFollowerInfo = FollowerDiskInfo;
+            newFollowerInfo.State = TFollowerDiskInfo::EState::Error;
+            newFollowerInfo.ErrorMessage = FormatError(msg->GetError());
+            PersistFollowerState(ctx, newFollowerInfo);
+        } else {
+            // We need to repeat the leadership transfer, and not go into error,
+            // since the client could have already switched to a new leader, and
+            // passing into an error state can lead the client to switch to an
+            // old leader who is already outdated.
+            PropagateLeadershipToFollower(ctx);
+        }
+        return;
+    }
+
+    AdvanceState(ctx, EState::LeadershipTransferred);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

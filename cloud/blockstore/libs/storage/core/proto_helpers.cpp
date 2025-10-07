@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -210,11 +211,9 @@ void VolumeConfigToVolume(
     volume.SetBaseDiskCheckpointId(volumeConfig.GetBaseDiskCheckpointId());
     volume.SetIsSystem(volumeConfig.GetIsSystem());
     volume.SetIsFillFinished(volumeConfig.GetIsFillFinished());
-
     const auto tags = ParseTags(volumeConfig.GetTagsStr());
-
-    if (tags.contains("use-fastpath")) {
-        volume.SetIsFastPathEnabled(true);
+    for (const auto& [key, value]: tags) {
+        volume.MutableTags()->insert({key, value});
     }
 }
 
@@ -537,25 +536,6 @@ NProto::TVolumePerformanceProfile VolumeConfigToVolumePerformanceProfile(
         volumeConfig,
         performanceProfile);
     return performanceProfile;
-}
-
-TMap<TString, TString> ParseTags(const TString& tags)
-{
-    TMap<TString, TString> result;
-
-    TStringBuf tok;
-    TStringBuf sit(tags);
-    while (sit.NextTok(',', tok)) {
-        TStringBuf key;
-        TStringBuf value;
-        if (tok.TrySplit('=', key, value)) {
-            result.insert({TString(key), TString(value)});
-        } else {
-            result.insert({TString(tok), ""});
-        }
-    }
-
-    return result;
 }
 
 TString PoolKindToString(const NProto::EDevicePoolKind poolKind)

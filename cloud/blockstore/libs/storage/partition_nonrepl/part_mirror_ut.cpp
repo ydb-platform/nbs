@@ -5,6 +5,7 @@
 #include "part_nonrepl_actor.h"
 #include "ut_env.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -2026,7 +2027,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, mirroredDiskMinorityChecksumMismatch->Val());
     }
 
-    Y_UNIT_TEST(ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled)
+    void ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled(
+        bool diskAgentChecksumCalculation)
     {
         using namespace NMonitoring;
 
@@ -2064,6 +2066,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         NProto::TStorageServiceConfig config;
         config.SetMirrorReadReplicaCount(2);
         TTestEnv env(runtime, config);
+        env.DiskAgentState->EnableDataIntegrityValidation =
+            diskAgentChecksumCalculation;
 
         // Write different data to all replicas.
         const auto range = TBlockRange64::WithLength(2049, 50);
@@ -2150,6 +2154,16 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             2,
             mirroredDiskChecksumMismatchUponRead->Val());
+    }
+
+    Y_UNIT_TEST(ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled_NBSChecksumCalculation)
+    {
+        ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled(false);
+    }
+
+    Y_UNIT_TEST(ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled_DiskAgentChecksumCalculation)
+    {
+        ShouldRejectReadUponChecksumMismatchIfRead2IsEnabled(true);
     }
 
     Y_UNIT_TEST(ShouldNotFireMismatchUponReadErrorWhenThereAreOverlappingWritesAndRead2IsEnabled)

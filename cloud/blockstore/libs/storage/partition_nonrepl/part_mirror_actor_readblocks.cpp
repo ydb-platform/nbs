@@ -30,6 +30,12 @@ ui32 CalculateChecksum(
 {
     Y_UNUSED(request);
 
+    // If checksum is already calculated by the disk agent, we can use it instead
+    // of calculating it again.
+    if (response.HasChecksum() && response.GetChecksum().GetByteCount() > 0) {
+        return response.GetChecksum().GetChecksum();
+    }
+
     TBlockChecksum checksum;
     for (const auto& buffer: response.GetBlocks().GetBuffers()) {
         checksum.Extend(buffer.data(), buffer.size());
@@ -41,7 +47,11 @@ ui32 CalculateChecksum(
     const TEvService::TEvReadBlocksLocalRequest::ProtoRecordType& request,
     const TEvService::TEvReadBlocksLocalResponse::ProtoRecordType& response)
 {
-    Y_UNUSED(response);
+    // If checksum is already calculated by the disk agent, we can use it instead
+    // of calculating it again.
+    if (response.HasChecksum() && response.GetChecksum().GetByteCount() > 0) {
+        return response.GetChecksum().GetChecksum();
+    }
 
     auto g = request.Sglist.Acquire();
     if (!g) {
