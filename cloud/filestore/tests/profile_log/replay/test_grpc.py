@@ -8,7 +8,9 @@ from google.protobuf.text_format import MessageToString
 
 tests = ["sqlite", "jpeg", "fstest"]
 
-bindir = pathlib.Path(common.build_path("cloud/filestore/tests/profile_log/replay/data"))
+bindir = pathlib.Path(
+    common.build_path("cloud/filestore/tests/profile_log/replay/data")
+)
 
 
 def run_replay(name):
@@ -30,14 +32,29 @@ def run_replay(name):
         config_file.write(MessageToString(config))
         config_file.flush()
 
-    tool_bin_path = common.binary_path("cloud/filestore/tools/testing/loadtest/bin/filestore-loadtest")
-    common.execute([tool_bin_path,
-                    "--tests-config", tool_conf_path,
-                    "--port", os.getenv("NFS_SERVER_PORT"),
-                    ])
+    tool_bin_path = common.binary_path(
+        "cloud/filestore/tools/testing/loadtest/bin/filestore-loadtest"
+    )
+    common.execute(
+        [
+            tool_bin_path,
+            "--tests-config",
+            tool_conf_path,
+            "--port",
+            os.getenv("NFS_SERVER_PORT"),
+        ]
+    )
 
-    proc = common.execute(["bash", "-xc", " cd " + dir_out_path + " && find . -type f -iname '*' -printf '%h/%f %s \n' | sort "])
-    return proc.stdout.decode('utf-8')
+    proc = common.execute(
+        [
+            "bash",
+            "-xc",
+            " cd "
+            + dir_out_path
+            + " && find . -type f -iname '*' -printf '%h/%f %s \n' | sort ",
+        ]
+    )
+    return proc.stdout.decode("utf-8")
 
 
 @pytest.mark.parametrize("name", tests)
@@ -45,7 +62,7 @@ def test_profile_log(name):
     results_path = common.output_path("results.txt")
     result = run_replay(name)
 
-    with open(results_path, 'w') as results:
+    with open(results_path, "w") as results:
         results.write(result)
 
     ret = common.canonical_file(results_path, local=True)

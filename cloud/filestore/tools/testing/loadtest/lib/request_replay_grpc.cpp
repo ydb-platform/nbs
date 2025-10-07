@@ -1,9 +1,9 @@
 /*
 
-TODO:
-create file/dir modes
-create handle modes (now rw)
-compare log and actual result ( S_OK E_FS_NOENT ...)
+Not implemented:
+create file/dir with modes from profile log
+create handle modes from profile log (now rw)
+compare profile log and actual result ( S_OK E_FS_NOENT ...)
 
 */
 
@@ -61,7 +61,7 @@ private:
 
     std::atomic<ui64> LastRequestId = 0;
 
-    static constexpr ui32 LockLength = 4096;
+    // static constexpr ui32 LockLength = 4096;
 
     const ui64 OwnerId = RandomNumber(100500u);
 
@@ -170,18 +170,18 @@ private:
         // TODO(proller): where is mask in logRequest?
         // request->SetMask(logRequest.GetNodeInfo().);
         auto self = weak_from_this();
+
+        const TRequestInfo info{
+            .Started = Started,
+            .EventMessageNumber = EventMessageNumber,
+            .LogRequest = logRequest,
+            .Description = ToString(nodeId)};
+
         const auto future =
             Session->AccessNode(CreateCallContext(), std::move(request))
                 .Apply(
                     [self,
-                     info =
-                         TRequestInfo{
-                             Started,
-                             EventMessageNumber,
-                             logRequest,
-                             ToString(nodeId)}
-
-        ](const TFuture<NProto::TAccessNodeResponse>& future)
+                     info](const TFuture<NProto::TAccessNodeResponse>& future)
                     {
                         if (auto ptr = self.lock()) {
                             return ptr->HandleAccessNode(future, info);
@@ -254,18 +254,18 @@ private:
             nodeId,
             logRequest.GetNodeInfo().GetNodeId());
 
+        const TRequestInfo info{
+            .Started = Started,
+            .EventMessageNumber = EventMessageNumber,
+            .LogRequest = logRequest,
+            .Description = name};
+
         const auto self = weak_from_this();
         const auto future =
             Session->CreateHandle(CreateCallContext(), request)
                 .Apply(
                     [self,
-                     info =
-                         TRequestInfo{
-                             Started,
-                             EventMessageNumber,
-                             logRequest,
-                             name}](
-                        const TFuture<NProto::TCreateHandleResponse>& future)
+                     info](const TFuture<NProto::TCreateHandleResponse>& future)
                     {
                         if (auto ptr = self.lock()) {
                             return ptr->HandleCreateHandle(future, info);
@@ -371,17 +371,16 @@ private:
         request->SetOffset(logRequest.GetRanges().cbegin()->GetOffset());
         request->SetLength(logRequest.GetRanges().cbegin()->GetBytes());
 
+        const TRequestInfo info{
+            .Started = Started,
+            .EventMessageNumber = EventMessageNumber,
+            .LogRequest = logRequest,
+            .Description = ToString(handle)};
+
         auto self = weak_from_this();
         return Session->ReadData(CreateCallContext(), std::move(request))
             .Apply(
-                [self,
-                 info =
-                     TRequestInfo{
-                         Started,
-                         EventMessageNumber,
-                         logRequest,
-                         ToString(handle)}](
-                    const TFuture<NProto::TReadDataResponse>& future)
+                [self, info](const TFuture<NProto::TReadDataResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
                         return ptr->HandleRead(future, info);
@@ -472,17 +471,16 @@ private:
 
         *request->MutableBuffer() = std::move(buffer);
 
+        const TRequestInfo info{
+            .Started = Started,
+            .EventMessageNumber = EventMessageNumber,
+            .LogRequest = logRequest,
+            .Description = ToString(handleLog)};
+
         const auto self = weak_from_this();
         return Session->WriteData(CreateCallContext(), std::move(request))
             .Apply(
-                [self,
-                 info =
-                     TRequestInfo{
-                         Started,
-                         EventMessageNumber,
-                         logRequest,
-                         ToString(handleLog)}](
-                    const TFuture<NProto::TWriteDataResponse>& future)
+                [self, info](const TFuture<NProto::TWriteDataResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
                         return ptr->HandleWrite(future, info);
@@ -592,19 +590,17 @@ private:
                 // type - too hard to delete them
                 break;
         }
-
+        const TRequestInfo info{
+            .Started = Started,
+            .EventMessageNumber = EventMessageNumber,
+            .LogRequest = logRequest,
+            .Description = name};
         const auto self = weak_from_this();
         const auto future =
             Session->CreateNode(CreateCallContext(), std::move(request))
                 .Apply(
                     [self,
-                     info =
-                         TRequestInfo{
-                             Started,
-                             EventMessageNumber,
-                             logRequest,
-                             name}](
-                        const TFuture<NProto::TCreateNodeResponse>& future)
+                     info](const TFuture<NProto::TCreateNodeResponse>& future)
                     {
                         if (auto ptr = self.lock()) {
                             return ptr->HandleCreateNode(future, info);
@@ -686,18 +682,18 @@ private:
         request->SetNewName(logRequest.GetNodeInfo().GetNewNodeName());
         request->SetFlags(logRequest.GetNodeInfo().GetFlags());
 
+        const TRequestInfo info{
+            .Started = Started,
+            .EventMessageNumber = EventMessageNumber,
+            .LogRequest = logRequest,
+            .Description = logRequest.GetNodeInfo().GetNodeName()};
+
         const auto self = weak_from_this();
         const auto future =
             Session->RenameNode(CreateCallContext(), std::move(request))
                 .Apply(
                     [self,
-                     info =
-                         TRequestInfo{
-                             Started,
-                             EventMessageNumber,
-                             logRequest,
-                             logRequest.GetNodeInfo().GetNodeName()}](
-                        const TFuture<NProto::TRenameNodeResponse>& future)
+                     info](const TFuture<NProto::TRenameNodeResponse>& future)
                     {
                         if (auto ptr = self.lock()) {
                             return ptr->HandleRenameNode(future, info);
@@ -764,17 +760,16 @@ private:
                     MakeError(E_NOT_FOUND, "parent node not found")});
         }
         request->SetNodeId(node);
+        const TRequestInfo info{
+            .Started = Started,
+            .EventMessageNumber = EventMessageNumber,
+            .LogRequest = logRequest,
+            .Description = name};
+
         const auto self = weak_from_this();
         return Session->UnlinkNode(CreateCallContext(), std::move(request))
             .Apply(
-                [self,
-                 info =
-                     TRequestInfo{
-                         Started,
-                         EventMessageNumber,
-                         logRequest,
-                         name}](
-                    const TFuture<NProto::TUnlinkNodeResponse>& future)
+                [self, info](const TFuture<NProto::TUnlinkNodeResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
                         return ptr->HandleUnlinkNode(future, info);
@@ -839,17 +834,17 @@ private:
         auto request = CreateRequest<NProto::TDestroyHandleRequest>();
         request->SetHandle(handle);
 
+        const TRequestInfo info{
+            .Started = Started,
+            .EventMessageNumber = EventMessageNumber,
+            .LogRequest = logRequest,
+            .Description = logRequest.GetNodeInfo().GetNodeName()};
+
         const auto self = weak_from_this();
         return Session->DestroyHandle(CreateCallContext(), std::move(request))
             .Apply(
                 [self,
-                 info =
-                     TRequestInfo{
-                         Started,
-                         EventMessageNumber,
-                         logRequest,
-                         logRequest.GetNodeInfo().GetNodeName()}](
-                    const TFuture<NProto::TDestroyHandleResponse>& future)
+                 info](const TFuture<NProto::TDestroyHandleResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
                         return ptr->HandleDestroyHandle(future, info);
@@ -927,17 +922,18 @@ private:
         const auto name = logRequest.GetNodeInfo().GetNodeName();
         request->SetName(name);
         request->SetFlags(logRequest.GetNodeInfo().GetFlags());
+
+        const TRequestInfo info{
+            .Started = Started,
+            .EventMessageNumber = EventMessageNumber,
+            .LogRequest = logRequest,
+            .Description = name};
+
         const auto self = weak_from_this();
         return Session->GetNodeAttr(CreateCallContext(), std::move(request))
             .Apply(
                 [self,
-                 info =
-                     TRequestInfo{
-                         Started,
-                         EventMessageNumber,
-                         logRequest,
-                         name}](
-                    const TFuture<NProto::TGetNodeAttrResponse>& future)
+                 info](const TFuture<NProto::TGetNodeAttrResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
                         return ptr->HandleGetNodeAttr(future, info);
@@ -973,8 +969,8 @@ private:
     }
 
     TFuture<TCompletedRequest> DoAcquireLock(
-        const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
-        override
+        const NCloud::NFileStore::NProto::
+            TProfileLogRequestInfo& /*logRequest*/) override
     {
         // TODO(proller):
         return MakeFuture(
@@ -982,6 +978,8 @@ private:
                 NProto::ACTION_ACQUIRE_LOCK,
                 Started,
                 MakeError(E_NOT_IMPLEMENTED, "not implemented")});
+        /*
+        // Test and enable:
 
         TGuard<TMutex> guard(StateLock);
         if (Handles.empty()) {
@@ -1032,6 +1030,7 @@ private:
                         info.Started,
                         MakeError(E_INVALID_STATE, "cancelled")};
                 });
+        */
     }
 
     TCompletedRequest HandleAcquireLock(
@@ -1070,14 +1069,16 @@ private:
     }
 
     TFuture<TCompletedRequest> DoReleaseLock(
-        const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
-        override
+        const NCloud::NFileStore::NProto::
+            TProfileLogRequestInfo& /*logRequest*/) override
     {
         return MakeFuture(
             TCompletedRequest{
                 NProto::ACTION_RELEASE_LOCK,
                 Started,
                 MakeError(E_NOT_IMPLEMENTED, "not implemented")});
+        /*
+        // Test and enable:
 
         TGuard<TMutex> guard(StateLock);
         if (Locks.empty()) {
@@ -1116,6 +1117,7 @@ private:
                         info.Started,
                         MakeError(E_INVALID_STATE, "cancelled")};
                 });
+        */
     }
 
     TCompletedRequest HandleReleaseLock(
@@ -1171,17 +1173,17 @@ private:
         }
         auto request = CreateRequest<NProto::TListNodesRequest>();
         request->SetNodeId(nodeId);
+
+        const TRequestInfo info{
+            .Started = Started,
+            .EventMessageNumber = EventMessageNumber,
+            .LogRequest = logRequest,
+            .Description = ToString(nodeId)};
+
         const auto self = weak_from_this();
         return Session->ListNodes(CreateCallContext(), std::move(request))
             .Apply(
-                [self,
-                 info =
-                     TRequestInfo{
-                         Started,
-                         EventMessageNumber,
-                         logRequest,
-                         ToString(nodeId)}](
-                    const TFuture<NProto::TListNodesResponse>& future)
+                [self, info](const TFuture<NProto::TListNodesResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
                         return ptr->HandleListNodes(future, info);
@@ -1254,17 +1256,17 @@ private:
 
         auto request = CreateRequest<NProto::TFsyncRequest>();
         request->SetHandle(handle);
+
+        const TRequestInfo info{
+            .Started = Started,
+            .EventMessageNumber = EventMessageNumber,
+            .LogRequest = logRequest,
+            .Description = ToString(handle)};
+
         const auto self = weak_from_this();
         return Session->Fsync(CreateCallContext(), std::move(request))
             .Apply(
-                [self,
-                 info =
-                     TRequestInfo{
-                         Started,
-                         EventMessageNumber,
-                         logRequest,
-                         ToString(handle)}](
-                    const TFuture<NProto::TFsyncResponse>& future)
+                [self, info](const TFuture<NProto::TFsyncResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
                         return ptr->HandleFlush(future, info);
