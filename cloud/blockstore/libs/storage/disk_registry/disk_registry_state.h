@@ -1415,11 +1415,6 @@ private:
         const TAgentList::TAgentRegistrationResult& r,
         THashSet<TDiskId>& disksToReallocate);
 
-    void ProcessPathAttachStatesOnRegistration(
-        NProto::TAgentConfig& agent,
-        THashMap<TString, ui64>& pathsToAttach,
-        THashMap<TString, ui64>& pathsToDetach);
-
     void AttachDetachPathIfNeeded(
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
