@@ -221,8 +221,6 @@ struct TTxDiskRegistry
         TVector<TString> AffectedDisks;
         TVector<TString> NotifiedDisks;
         TVector<TString> DevicesToDisableIO;
-        THashMap<TString, ui64> PathsToAttach;
-        THashMap<TString, ui64> PathsToDetach;
 
         TAddAgent(
                 TRequestInfoPtr requestInfo,
