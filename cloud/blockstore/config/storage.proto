@@ -1367,5 +1367,9 @@ message TStorageServiceConfig
     // Enable to attach or detach hardware devices in runtime in Disk Agent.
     optional bool AttachDetachPathsEnabled = 468;
 
+    // Max inflight attach/detach path requests in progress.
     optional uint64 MaxInflightAttachDetachPathRequestsProcessing = 467;
+
+    // Timeout for attach/detach path requests (in milliseconds).
+    optional uint32 AttachDetachPathRequestTimeout = 467;
 }

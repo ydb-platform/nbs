@@ -33,6 +33,33 @@ enum ECheckpointState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// passive - send attach/detach path request only on registration
+// active - send attach/detach path request on registration and trying to send this requests to DA until success
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// State                        // Can allocate disks?  // Should try attach or detach path?             //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// PATH_ATTACH_STATE_ATTACHED   // Yes                  // passive attach                                //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// PATH_ATTACH_STATE_ATTACHING  // No                   // active attach                                 //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// PATH_ATTACH_STATE_DETACHED   // No                   // passive detach                                //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// PATH_ATTACH_STATE_DETACHING  // No                   // active detach (if no disks allocated)         //
+//                              //                      // passive attach (if some disks was allocated)  //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
 enum EPathAttachState
 {
     PATH_ATTACH_STATE_ATTACHED = 0;
@@ -48,7 +75,7 @@ message TPathToGeneration
     // Path to HW device.
     string Path = 1;
 
-    //  Monotonously increasing counter, need to order attach detach requests.
+    // Monotonously increasing counter, needed to order attach and detach requests.
     uint64 Generation = 2;
 }
 
@@ -616,7 +643,9 @@ message TRegisterAgentResponse
     // List of device IDs to which Disk Agent should disable IO operations.
     repeated string DevicesToDisableIO = 2;
 
-    uint32 DiskRegistryTabletGeneration = 3;
+    // Disk Registry Tablet generation needed to order attach/detach path
+    // requests sent from two different DR generations.
+    uint32 DiskRegistryGeneration = 3;
 
     // Allowed devices attached to the agent.
     repeated TPathToGeneration AllowedPaths = 4;
@@ -1890,7 +1919,8 @@ message TAttachPathRequest
     // List of paths we want to attach.
     repeated TPathToGeneration PathsToAttach = 2;
 
-    // Generation of DR tablet.
+    // Disk Registry Tablet generation needed to order attach/detach path
+    // requests sent from two different DR generations.
     uint32 DiskRegistryGeneration = 3;
 }
 
@@ -1914,7 +1944,8 @@ message TDetachPathRequest
     // List of paths we want to detach.
     repeated TPathToGeneration PathsToDetach = 2;
 
-    // Generation of DR tablet.
+    // Disk Registry Tablet generation needed to order attach/detach path
+    // requests sent from two different DR generations.
     uint32 DiskRegistryGeneration = 3;
 }
 
