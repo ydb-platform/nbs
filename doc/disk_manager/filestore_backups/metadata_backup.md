@@ -157,12 +157,11 @@ with primary key `(filesystem_backup_id, node_id)`.
 For the queue, we will use the following table `filesystems/directory_listing_queue`:
 ```
 filesystem_backup_id: Utf8
-status: Uint32 // e.g. pending, listing, finished
 node_id: Uint64
 cookie: Bytes
 depth: Uint64
 ```
-The primary key should be `(filesystem_backup_id, status, node_id, cookie)`.
+The primary key should be `(filesystem_backup_id, node_id, cookie)`.
 
 ### Hard links:
 Hard links are visible as files with `Links > 1`. They turn the filesystem tree into an acyclic graph and add some complexity. To tackle this issue, we will store such references in a separate table and restore these references at the very end of the metadata backup restore. `filesystems/hardlinks` will have the following schema:
@@ -177,23 +176,19 @@ With primary key `(filesystem_backup_id, node_id, parent_node_id, name)`.
 ## `dataplane.BackupMetadata` task
 *  First, it emplaces the root node into the queue table if one does not exist yet. Several `DirectoryLister` goroutines and a single `DirectoryListingScheduler` goroutine are spawned.
 * `DirectoryListingScheduler` does the following:
-    1. At the start of the task, reads all the records that were marked as `listing` and put them into a channel (`fetchListingDirectories()`).
-    2. In a loop, reads pending directory records, and marks all the pending records with a `listing` status in the same transaction. (`lockDirectoriesToList()`). If there are currently `listing` records, remove `pending` duplicates with the same node id.
-    4. Puts locked records into the channel for processing.
-    5. Finishes if there are no unfinished records in the queue table.
+    1. Check if root record was scheduled, if not, schedule root node as pending and update the task state in the same transaction (`SaveStateWithPreparation()`).
+    2. Fetch all inodes to list with the `listing` state and put them into the channel.
 
 * `DirectoryLister` does the following:
     1. Reads a record from the channel.
     2. Performs ListNodes API call for the `node_id` from the record, using the `cookie` from the record if it is not empty.
-    3. Performs upsert of all the nodes to `filesystems/node_references` table. (By incrementing the depth of the parent from the queue by one). For this, we can use the `BulkUpsert` API call. (`saveNodeReferences()`)
-    4. Puts all the directories into the queue table with `status = pending` and cookie as empty. (`enqueueDirectoriesToList()`)
-    5. For all the symlinks, performs `ReadLink` API call to populate the node data.
-    6. For all the inode attributes saves them to the `filesystems/node_attributes` table. (`saveNodeAttributes()`)
-    7. For all the files with `refcnt > 1`, saves them to the `filesystems/hardlinks` (`saveHardlinks()`). Refcnt is returned in `ListNodes` API call.
-    8. If hardlinks are present in the listing, update the `node_type` field in node references table to `Link` for all but the first by the primary key of the hardlinks. (`processHardlinks()`)
-    9. On success, updates the cookie in the queue table and sets `status == finished` if listing did not return anything. Otherwise continue listing in the next iteration.
-
-After all the metadata is backed up, delete all the records from the queue table by the given `filesystem_backup_id`.
+    3. Performs upsert of all the nodes to `filesystems/node_refs` table. (By incrementing the depth of the parent from the queue by one). For this, we can use the `BulkUpsert` API call. (`saveNodeRefs()`)
+    4. For all the symlinks, performs `ReadLink` API call to populate the node data.
+    5. For all the inode attributes saves them to the `filesystems/nodes` table. (`saveNodes()`)
+    6. For all the files with `Links > 1`, saves them to the `filesystems/hardlinks` (`saveHardlinks()`). Links is returned in `ListNodes` API call. All the files with `Links > 1` are to be saved to the `filesystems/node_refs` table with type Link.
+    7. Puts all the directories into the queue table with empty cookie. (`enqueueDirectoriesToList()`)
+    8. In the same transaction as 7, updates the cookie and removes the record from the queue if the inode listing was finished.
+    9. Continues 2-8 with the new cookie until there are no more entries to process. 
 
 ### Metadata restore
 
@@ -206,10 +201,10 @@ destination_filesystem_id: Utf8
 source_node_id: Uint64
 destination_node_id: Uint64
 ```
-with primary key (`source_filesystem_id`, `destination_filesystem_id`, `source_node_id`).
+with primary key `(source_filesystem_id, destination_filesystem_id, source_node_id)`.
 We will initially prepend the table with the root node mapping (1 -> 1). (Root node id is always 1).
 
 In the task state we will need to store the current depth and the index of the chunk of fixed size, all the chunks before which are already processed.
 To split each layer into chunks, we need to implement a `CountNodesByDepth()` method.
 Large number of hard links is unexpected. To simplify the implementation hardlinks are to be restored separately after all the layers are restored.
-
+We will fetch data from the hardlinks table create the first entry with the same inode as a file and others as a link.
