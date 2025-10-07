@@ -645,6 +645,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(AttachDetachPathsEnabled,             bool,        false              )\
                                                                                \
     xxx(MaxInflightAttachDetachPathRequestsProcessing,  ui64,  100            )\
+                                                                               \
+    xxx(AttachDetachPathRequestTimeout,       TDuration,   Seconds(5)         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

@@ -295,6 +295,29 @@ bool HasNewSerialNumber(
            oldConfig.GetSerialNumber() != newConfig.GetSerialNumber();
 }
 
+bool StateTransitionAllowed(
+    NProto::EPathAttachState newState,
+    NProto::EPathAttachState oldState)
+{
+    static const THashMap<
+        NProto::EPathAttachState,
+        THashSet<NProto::EPathAttachState>>
+        AllowedTransitions{
+            {NProto::PATH_ATTACH_STATE_ATTACHED,
+             {NProto::PATH_ATTACH_STATE_ATTACHING}},
+            {NProto::PATH_ATTACH_STATE_ATTACHING,
+             {NProto::PATH_ATTACH_STATE_DETACHING,
+              NProto::PATH_ATTACH_STATE_DETACHED}},
+            {NProto::PATH_ATTACH_STATE_DETACHED,
+             {NProto::PATH_ATTACH_STATE_DETACHING}},
+            {NProto::PATH_ATTACH_STATE_DETACHING,
+             {NProto::PATH_ATTACH_STATE_ATTACHING,
+              NProto::PATH_ATTACH_STATE_ATTACHED}}};
+
+    const auto* allowedOldStates = AllowedTransitions.FindPtr(newState);
+    return allowedOldStates && allowedOldStates->contains(oldState);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -953,8 +976,6 @@ auto TDiskRegistryState::RegisterAgent(
     TVector<TDiskId> affectedDisks;
     THashSet<TDiskId> disksToReallocate;
     TVector<TString> devicesToDisableIO;
-    THashMap<TString, ui64> pathsToAttach;
-    THashMap<TString, ui64> pathsToDetach;
 
     try {
         if (auto* buddy = AgentList.FindAgent(config.GetNodeId());
@@ -1027,19 +1048,25 @@ auto TDiskRegistryState::RegisterAgent(
             AdjustDeviceIfNeeded(d, timestamp);
             if (r.NewDeviceIds.contains(uuid)) {
                 SuspendDeviceIfNeeded(db, d);
-                AttachPathIfNeeded(
-                    db,
-                    agent,
-                    d.GetDeviceName(),
-                    false   // force
-                );
             }
         }
 
-        ProcessPathAttachStatesOnRegistration(
-            agent,
-            pathsToAttach,
-            pathsToDetach);
+        // Needed to initialize path states at first start, can be deleted after
+        // full feature enabling.
+        if (StorageConfig->GetAttachDetachPathsEnabled()) {
+            for (const auto& device: agent.GetDevices()) {
+                if (agent.GetPathAttachStates().contains(
+                        device.GetDeviceName()))
+                {
+                    continue;
+                }
+
+                auto& pathAttachStates = *agent.MutablePathAttachStates();
+
+                pathAttachStates[device.GetDeviceName()] =
+                    NProto::PATH_ATTACH_STATE_ATTACHED;
+            }
+        }
 
         DeviceList.UpdateDevices(agent, DevicePoolConfigs, r.PrevNodeId);
 
@@ -1128,9 +1155,7 @@ auto TDiskRegistryState::RegisterAgent(
         .AffectedDisks = std::move(affectedDisks),
         .DisksToReallocate =
             {disksToReallocate.begin(), disksToReallocate.end()},
-        .DevicesToDisableIO = std::move(devicesToDisableIO),
-        .PathsToAttach = std::move(pathsToAttach),
-        .PathsToDetach = std::move(pathsToDetach)};
+        .DevicesToDisableIO = std::move(devicesToDisableIO)};
 }
 
 void TDiskRegistryState::ReallocateDisksWithLostOrReappearedDevices(
@@ -1190,17 +1215,6 @@ void TDiskRegistryState::ProcessPathAttachStatesOnRegistration(
 {
     if (!StorageConfig->GetAttachDetachPathsEnabled()) {
         return;
-    }
-
-    for (const auto& device: agent.GetDevices()) {
-        if (agent.GetPathAttachStates().contains(device.GetDeviceName())) {
-            continue;
-        }
-
-        auto& pathAttachStates = *agent.MutablePathAttachStates();
-
-        pathAttachStates[device.GetDeviceName()] =
-            NProto::PATH_ATTACH_STATE_ATTACHED;
     }
 
     for (const auto& unknownDevice: agent.GetUnknownDevices()) {
@@ -3912,13 +3926,6 @@ NProto::TError TDiskRegistryState::UpdateConfig(
             AdjustDeviceIfNeeded(device, timestamp);
             SuspendDeviceIfNeeded(db, device);
 
-            AttachPathIfNeeded(
-                db,
-                *agent,
-                device.GetDeviceName(),
-                false   // force
-            );
-
             DeviceList.MarkDeviceAsDirty(uuid);
             db.UpdateDirtyDevice(uuid, {});
         }
@@ -5636,32 +5643,6 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
         return result;
     }
 
-    auto attachDetachPaths = [&](bool attach)
-    {
-        TVector<TString> paths;
-        for (const auto& [path, _]: agent->GetPathAttachStates()) {
-            paths.emplace_back(path);
-        }
-
-        for (auto& path: paths) {
-            AttachDetachPathIfNeeded(
-                db,
-                *agent,
-                path,
-                true,   //  force
-                attach);
-        }
-    };
-
-    if (!HasError(result) && newState == NProto::AGENT_STATE_ONLINE) {
-        attachDetachPaths(true);   // attach
-    } else if (
-        result.GetCode() == E_TRY_AGAIN &&
-        newState == NProto::AGENT_STATE_WARNING)
-    {
-        attachDetachPaths(false);   // detach
-    }
-
     if (agent->GetState() != NProto::AGENT_STATE_UNAVAILABLE) {
         ChangeAgentState(*agent, newState, now, "cms action");
     }
@@ -5685,6 +5666,28 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
         {
             ResumeLocalDevices(db, *agent, now);
         }
+    }
+
+    auto attachDetachPaths = [&](bool attach)
+    {
+        TVector<TString> paths;
+        for (const auto& device: agent->GetDevices()) {
+            paths.emplace_back(device.GetDeviceName());
+        }
+        SortUnique(paths);
+
+        for (auto& path: paths) {
+            AttachDetachPathIfNeeded(db, *agent, path, attach);
+        }
+    };
+
+    if (!HasError(result) && newState == NProto::AGENT_STATE_ONLINE) {
+        attachDetachPaths(true);   // attach
+    } else if (
+        result.GetCode() == E_TRY_AGAIN &&
+        newState == NProto::AGENT_STATE_WARNING)
+    {
+        attachDetachPaths(false);   // detach
     }
 
     return result;
@@ -6147,6 +6150,79 @@ bool TDiskRegistryState::HasDependentDisks(
         });
 }
 
+auto TDiskRegistryState::GetPathsToAttachDetachOnRegistration(
+    const TAgentId& agentId) const -> TPathsToAttachDetachOnRegistration
+{
+    if (!StorageConfig->GetAttachDetachPathsEnabled()) {
+        return {};
+    }
+
+    const auto* agent = AgentList.FindAgent(agentId);
+    if (!agent) {
+        return {};
+    }
+
+    TPathsToAttachDetachOnRegistration result;
+    auto& pathsToDetach = result.PathsToDetach;
+    auto& pathsToAttach = result.PathsToAttach;
+
+    std::optional<THashSet<TString>> pathsWithDependentDisks;
+
+    auto initializePathsWithDependedDisks = [&]()
+    {
+        pathsWithDependentDisks.emplace();
+        for (const auto& device: agent->GetDevices()) {
+            if (device.GetState() != NProto::DEVICE_STATE_ERROR &&
+                FindDisk(device.GetDeviceUUID()))
+            {
+                pathsWithDependentDisks->emplace(device.GetDeviceName());
+            }
+        }
+    };
+
+    auto hasDependentDisks = [&](const TString& path)
+    {
+        if (!pathsWithDependentDisks) {
+            initializePathsWithDependedDisks();
+        }
+
+        return pathsWithDependentDisks->contains(path);
+    };
+
+    for (const auto& [path, attachState]: agent->GetPathAttachStates()) {
+        auto generation = AgentList.GetPathGeneration(agentId, path);
+        switch (attachState) {
+            case NProto::PATH_ATTACH_STATE_ATTACHED:
+            case NProto::PATH_ATTACH_STATE_ATTACHING:
+                pathsToAttach[path] = generation;
+                break;
+            case NProto::PATH_ATTACH_STATE_DETACHED:
+                pathsToDetach[path] = generation;
+                break;
+            case NProto::PATH_ATTACH_STATE_DETACHING:
+                if (hasDependentDisks(path)) {
+                    pathsToAttach[path] = generation;
+                } else {
+                    pathsToDetach[path] = generation;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    for (const auto& unknownDevice: agent->GetUnknownDevices()) {
+        if (!pathsToAttach.FindPtr(unknownDevice.GetDeviceName())) {
+            pathsToDetach[unknownDevice.GetDeviceName()] =
+                AgentList.GetPathGeneration(
+                    agentId,
+                    unknownDevice.GetDeviceName());
+        }
+    }
+
+    return result;
+}
+
 auto TDiskRegistryState::AddNewDevices(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig& agent,
@@ -6174,7 +6250,7 @@ auto TDiskRegistryState::AddNewDevices(
         return {};
     }
 
-    AttachPathIfNeeded(db, agent, path, true);
+    AttachPathIfNeeded(db, agent, path);
 
     TVector<TString> ids;
     for (auto* device: devices) {
@@ -6433,23 +6509,15 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
         }
     }
 
-    if (!HasError(result.Error) && newState == NProto::DEVICE_STATE_ONLINE) {
-        AttachPathIfNeeded(
-            db,
-            *agent,
-            path,
-            true   // force
-        );
+    if (!dryRun && !HasError(result.Error) &&
+        newState == NProto::DEVICE_STATE_ONLINE)
+    {
+        AttachPathIfNeeded(db, *agent, path);
     } else if (
-        newState == NProto::DEVICE_STATE_WARNING &&
+        !dryRun && newState == NProto::DEVICE_STATE_WARNING &&
         result.Error.GetCode() == E_TRY_AGAIN)
     {
-        DetachPathIfNeeded(
-            db,
-            *agent,
-            path,
-            true   // force
-        );
+        DetachPathIfNeeded(db, *agent, path);
     }
 
     if (processed != devices.size()) {
@@ -6961,23 +7029,7 @@ NProto::TError TDiskRegistryState::UpdatePathAttachState(
         return MakeError(E_FAIL, "outdated transition");
     }
 
-    static const THashMap<
-        NProto::EPathAttachState,
-        THashSet<NProto::EPathAttachState>>
-        AllowedTransitions{
-            {NProto::PATH_ATTACH_STATE_ATTACHED,
-             {NProto::PATH_ATTACH_STATE_ATTACHING}},
-            {NProto::PATH_ATTACH_STATE_ATTACHING,
-             {NProto::PATH_ATTACH_STATE_DETACHING,
-              NProto::PATH_ATTACH_STATE_DETACHED}},
-            {NProto::PATH_ATTACH_STATE_DETACHED,
-             {NProto::PATH_ATTACH_STATE_DETACHING}},
-            {NProto::PATH_ATTACH_STATE_DETACHING,
-             {NProto::PATH_ATTACH_STATE_ATTACHING,
-              NProto::PATH_ATTACH_STATE_ATTACHED}}};
-
-    const auto* allowedOldStates = AllowedTransitions.FindPtr(state);
-    if (!allowedOldStates || !allowedOldStates->contains(oldState)) {
+    if (!StateTransitionAllowed(state, oldState)) {
         return MakeError(
             E_ARGUMENT,
             Sprintf(
@@ -7020,14 +7072,12 @@ NProto::TError TDiskRegistryState::UpdatePathAttachState(
 void TDiskRegistryState::AttachPathIfNeeded(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig& agent,
-    const TString& path,
-    bool force)
+    const TString& path)
 {
     AttachDetachPathIfNeeded(
         db,
         agent,
         path,
-        force,
         true   // attach
     );
 }
@@ -7035,14 +7085,12 @@ void TDiskRegistryState::AttachPathIfNeeded(
 void TDiskRegistryState::DetachPathIfNeeded(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig& agent,
-    const TString& path,
-    bool force)
+    const TString& path)
 {
     AttachDetachPathIfNeeded(
         db,
         agent,
         path,
-        force,
         false   // attach
     );
 }
@@ -7051,7 +7099,6 @@ void TDiskRegistryState::AttachDetachPathIfNeeded(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig& agent,
     const TString& path,
-    bool force,
     bool attach)
 {
     if (!StorageConfig->GetAttachDetachPathsEnabled()) {
@@ -7066,7 +7113,8 @@ void TDiskRegistryState::AttachDetachPathIfNeeded(
     auto& pathStates = *agent.MutablePathAttachStates();
     auto [it, inserted] = pathStates.insert({path, desirableState});
     auto& actualState = it->second;
-    if (force && actualState != desirableState && actualState != companionState)
+    if (!inserted && actualState != desirableState &&
+        actualState != companionState)
     {
         actualState = desirableState;
         inserted = true;

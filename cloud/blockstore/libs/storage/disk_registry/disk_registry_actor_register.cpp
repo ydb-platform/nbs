@@ -85,8 +85,6 @@ void TDiskRegistryActor::ExecuteAddAgent(
     args.AffectedDisks = std::move(r.AffectedDisks);
     args.NotifiedDisks = std::move(r.DisksToReallocate);
     args.DevicesToDisableIO = std::move(r.DevicesToDisableIO);
-    args.PathsToAttach = std::move(r.PathsToAttach);
-    args.PathsToDetach = std::move(r.PathsToDetach);
 
     if (HasError(args.Error)) {
         return;
@@ -170,16 +168,19 @@ void TDiskRegistryActor::CompleteAddAgent(
         args.DevicesToDisableIO.end());
 
     if (Config->GetAttachDetachPathsEnabled()) {
-        response->Record.SetDiskRegistryTabletGeneration(
-            Executor()->Generation());
+        auto [pathsToAttach, pathsToDetach] =
+            State->GetPathsToAttachDetachOnRegistration(
+                args.Config.GetAgentId());
 
-        for (const auto& [path, generation]: args.PathsToAttach) {
+        response->Record.SetDiskRegistryGeneration(Executor()->Generation());
+
+        for (const auto& [path, generation]: pathsToAttach) {
             auto* pathToGen = response->Record.AddAllowedPaths();
             pathToGen->SetPath(path);
             pathToGen->SetGeneration(generation);
         }
 
-        for (const auto& [path, generation]: args.PathsToDetach) {
+        for (const auto& [path, generation]: pathsToDetach) {
             auto* pathToGen = response->Record.AddUnknownPaths();
             pathToGen->SetPath(path);
             pathToGen->SetGeneration(generation);
