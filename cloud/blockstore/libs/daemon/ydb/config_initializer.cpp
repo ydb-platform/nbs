@@ -22,6 +22,8 @@
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
 
+#include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
+
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -372,7 +374,10 @@ void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
     ComputeClientConfig = std::move(config);
 }
 
-void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config)
+////////////////////////////////////////////////////////////////////////////////
+
+void TConfigInitializerYdb::ApplyNamedConfigs(
+    const NKikimrConfig::TAppConfig& config)
 {
     THashMap<TString, ui32> configs;
 
@@ -423,6 +428,29 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfi
             this,
             config.GetNamedConfigs(it->second).GetConfig());
     }
+}
+
+void TConfigInitializerYdb::ApplyBlockstoreConfig(
+    const NKikimrConfig::TAppConfig& config)
+{
+    if (!config.HasBlockstoreConfig()) {
+        return;
+    }
+
+    const auto& blockstoreConfig = config.GetBlockstoreConfig();
+
+    auto volumePreemptionType = static_cast<NProto::EVolumePreemptionType>(
+        blockstoreConfig.GetVolumePreemptionType());
+    StorageConfig->SetVolumePreemptionType(volumePreemptionType);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TConfigInitializerYdb::ApplyCustomCMSConfigs(
+    const NKikimrConfig::TAppConfig& config)
+{
+    ApplyNamedConfigs(config);
+    ApplyBlockstoreConfig(config);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

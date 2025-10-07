@@ -7,8 +7,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
-	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
@@ -22,13 +20,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createImageFromImageTask struct {
-	config            *config.ImagesConfig
-	performanceConfig *performance_config.PerformanceConfig
-	scheduler         tasks.Scheduler
-	storage           resources.Storage
-	poolService       pools.Service
-	request           *protos.CreateImageFromImageRequest
-	state             *protos.CreateImageFromImageTaskState
+	config      *config.ImagesConfig
+	scheduler   tasks.Scheduler
+	storage     resources.Storage
+	poolService pools.Service
+	request     *protos.CreateImageFromImageRequest
+	state       *protos.CreateImageFromImageTaskState
 }
 
 func (t *createImageFromImageTask) Save() ([]byte, error) {
@@ -109,12 +106,6 @@ func (t *createImageFromImageTask) Run(
 			)
 		}
 
-		// TODO: estimate should be applied before resource creation, not after.
-		execCtx.SetEstimatedInflightDuration(performance.Estimate(
-			typedResponse.SnapshotStorageSize,
-			t.performanceConfig.GetCreateImageFromImageBandwidthMiBs(),
-		))
-
 		t.state.ImageSize = int64(typedResponse.SnapshotSize)
 		t.state.ImageStorageSize = int64(typedResponse.SnapshotStorageSize)
 	} else {
@@ -146,12 +137,6 @@ func (t *createImageFromImageTask) Run(
 				response,
 			)
 		}
-
-		// TODO: estimate should be applied before resource creation, not after.
-		execCtx.SetEstimatedInflightDuration(performance.Estimate(
-			typedResponse.TransferredDataSize,
-			t.performanceConfig.GetCreateImageFromImageBandwidthMiBs(),
-		))
 
 		t.state.ImageSize = int64(typedResponse.SnapshotSize)
 		t.state.ImageStorageSize = int64(typedResponse.SnapshotStorageSize)

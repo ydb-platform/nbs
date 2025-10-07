@@ -63,6 +63,11 @@ NProto::TNode CreateSocketAttrs(ui32 mode, ui32 uid, ui32 gid)
     return CreateAttrs(NProto::E_SOCK_NODE, mode, 0, uid, gid);
 }
 
+NProto::TNode CreateFifoAttrs(ui32 mode, ui32 uid, ui32 gid)
+{
+    return CreateAttrs(NProto::E_FIFO_NODE, mode, 0, uid, gid);
+}
+
 NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode)
 {
     ui64 now = MicroSeconds();
@@ -128,7 +133,7 @@ NProto::TError ValidateNodeName(const TString& name)
         name.find('\0') != TString::npos ||
         name.find('/') != TString::npos)
     {
-        return ErrorInvalidArgument();
+        return ErrorInvalidArgument("invalid name");
     }
 
     if (name.size() > MaxName) {
@@ -169,7 +174,7 @@ NProto::TError ValidateXAttrValue(const TString& name, const TString& value)
 NProto::TError ValidateRange(TByteRange byteRange, ui32 maxFileBlocks)
 {
     if (!byteRange.Length) {
-        return ErrorInvalidArgument();
+        return ErrorInvalidArgument("empty byte range");
     }
 
     if (byteRange.LastBlock() + 1 > maxFileBlocks) {

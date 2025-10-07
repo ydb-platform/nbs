@@ -121,11 +121,12 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CommonOverlayPrefixPoolKind,   TString,      "overlay"                )\
     xxx(NonReplicatedHDDPoolName,      TString,      "rot"                    )\
                                                                                \
-    xxx(TabletBootInfoBackupFilePath,   TString,     ""                       )\
-    xxx(PathDescriptionBackupFilePath,  TString,     ""                       )\
-    xxx(DiskRegistrySplitTransactionCounter, ui32,   10000                    )\
-    xxx(DiskRegistryBackupPeriod,      TDuration,    Days(1)                  )\
-    xxx(DiskRegistryBackupDirPath,     TString,      ""                       )\
+    xxx(TabletBootInfoBackupFilePath,                TString,      ""         )\
+    xxx(PathDescriptionBackupFilePath,               TString,      ""         )\
+    xxx(UseBinaryFormatForPathDescriptionBackup,     bool,         false      )\
+    xxx(DiskRegistrySplitTransactionCounter,         ui32,         10000      )\
+    xxx(DiskRegistryBackupPeriod,                    TDuration,    Days(1)    )\
+    xxx(DiskRegistryBackupDirPath,                   TString,      ""         )\
                                                                                \
     xxx(DiskRegistryMetricsCachePeriod, TDuration,   Days(14)                 )\
     xxx(DiskRegistryCountersHost,       TString,     ""                       )\
@@ -541,8 +542,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(UnconfirmedBlobCountHardLimit,             ui32,      1000            )\
                                                                                \
-    xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
-                                                                               \
     xxx(UseDirectCopyRange,                             bool,      false         )\
     xxx(NonReplicatedVolumeDirectAcquireEnabled,        bool,      false         )\
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
@@ -628,6 +627,16 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(RetryAcquireReleaseDiskMaxDelay,      TDuration,   Seconds(5)         )\
                                                                                \
     xxx(NonReplicatedVolumeAcquireDiskAfterAddClientEnabled, bool,   false    )\
+    xxx(EnableDataIntegrityValidationForYdbBasedDisks,       bool,   false    )\
+                                                                               \
+    xxx(TrimFreshLogTimeout,                  TDuration,   Seconds(0)         )\
+    xxx(CollectGarbageTimeoutSSD,             TDuration,   Seconds(0)         )\
+    xxx(CollectGarbageTimeoutHDD,             TDuration,   Seconds(0)         )\
+                                                                               \
+    xxx(HiveLocalServiceCpuResourceLimit,     ui64,        0                  )\
+    xxx(HiveLocalServiceMemoryResourceLimit,  ui64,        0                  )\
+    xxx(HiveLocalServiceNetworkResourceLimit, ui64,        0                  )\
+    xxx(DynamicNodeRegistrationTimeout,       TDuration,   Seconds(5)         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
@@ -862,6 +871,12 @@ struct TStorageConfig::TImpl
         FeaturesConfig = std::move(featuresConfig);
     }
 
+    void SetVolumePreemptionType(
+        NProto::EVolumePreemptionType volumePreemptionType)
+    {
+        StorageServiceConfig.SetVolumePreemptionType(volumePreemptionType);
+    }
+
     NProto::TStorageServiceConfig GetStorageConfigProto() const
     {
         NProto::TStorageServiceConfig proto = StorageServiceConfig;
@@ -898,6 +913,12 @@ void TStorageConfig::SetFeaturesConfig(
     NFeatures::TFeaturesConfigPtr featuresConfig)
 {
     Impl->SetFeaturesConfig(std::move(featuresConfig));
+}
+
+void TStorageConfig::SetVolumePreemptionType(
+    NProto::EVolumePreemptionType volumePreemptionType)
+{
+    Impl->SetVolumePreemptionType(volumePreemptionType);
 }
 
 void TStorageConfig::Register(TControlBoard& controlBoard){

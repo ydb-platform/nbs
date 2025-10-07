@@ -105,7 +105,8 @@ public:
         const TString& diskId = DefaultDiskId,
         bool destroyIfBroken = false,
         bool sync = false,
-        ui64 fillGeneration = 0);
+        ui64 fillGeneration = 0,
+        bool exactDiskIdMatch = false);
 
     std::unique_ptr<TEvService::TEvAssignVolumeRequest> CreateAssignVolumeRequest(
         const TString& diskId = DefaultDiskId,
@@ -113,8 +114,10 @@ public:
         const TString& token = {},
         ui64 tokenVersion = 0);
 
-    std::unique_ptr<TEvService::TEvDescribeVolumeRequest> CreateDescribeVolumeRequest(
-        const TString& diskId = DefaultDiskId);
+    std::unique_ptr<TEvService::TEvDescribeVolumeRequest>
+    CreateDescribeVolumeRequest(
+        const TString& diskId = DefaultDiskId,
+        bool exactDiskIdmatch = false);
 
     std::unique_ptr<TEvService::TEvDescribeVolumeModelRequest> CreateDescribeVolumeModelRequest(
         ui64 blocksCount,

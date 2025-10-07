@@ -398,7 +398,8 @@ bool TBootstrap::InitKikimrService()
         .MaxAttempts =
             Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
         .ErrorTimeout = Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
-        .RegistrationTimeout = Configs->StorageConfig->GetNodeRegistrationTimeout(),
+        .LegacyRegistrationTimeout = Configs->StorageConfig->GetNodeRegistrationTimeout(),
+        .DynamicNodeRegistrationTimeout = Configs->StorageConfig->GetDynamicNodeRegistrationTimeout(),
         .LoadConfigsFromCmsRetryMinDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
         .LoadConfigsFromCmsRetryMaxDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
         .LoadConfigsFromCmsTotalTimeout = Configs->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
@@ -509,8 +510,12 @@ bool TBootstrap::InitKikimrService()
     STORAGE_INFO("StatsFetcher initialized");
 
     if (Configs->StorageConfig->GetBlockDigestsEnabled()) {
-        BlockDigestGenerator = CreateExt4BlockDigestGenerator(
-            Configs->StorageConfig->GetDigestedBlocksPercentage());
+        if (Configs->StorageConfig->GetUseTestBlockDigestGenerator()) {
+            BlockDigestGenerator = CreateTestBlockDigestGenerator();
+        } else {
+            BlockDigestGenerator = CreateExt4BlockDigestGenerator(
+                Configs->StorageConfig->GetDigestedBlocksPercentage());
+        }
     } else {
         BlockDigestGenerator = CreateBlockDigestGeneratorStub();
     }

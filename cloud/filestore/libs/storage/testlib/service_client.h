@@ -329,6 +329,34 @@ public:
         return request;
     }
 
+    static auto CreateWriteDataRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        ui64 nodeId,
+        ui64 handle,
+        ui64 offset,
+        const std::vector<TString>& buffers)
+    {
+        auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetHandle(handle);
+        request->Record.SetOffset(offset);
+        Y_ASSUME(!buffers.empty());
+        for (const auto& buf: buffers) {
+            auto* iovec = request->Record.AddIovecs();
+            if (buf.empty()) {
+                iovec->SetBase(0);
+                iovec->SetLength(0);
+            } else {
+                iovec->SetBase(reinterpret_cast<ui64>(&buf[0]));
+                iovec->SetLength(buf.size());
+            }
+        }
+        return request;
+    }
+
     static auto CreateCreateHandleRequest(
         const THeaders& headers,
         const TString& fileSystemId,

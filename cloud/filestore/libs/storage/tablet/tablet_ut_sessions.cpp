@@ -829,6 +829,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetAsyncHandleOperationPeriod(
             TDuration::MilliSeconds(50).MilliSeconds());
         features.SetHasXAttrs(true);
+        features.SetMaxFuseLoopThreads(1);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
 
@@ -847,6 +848,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetServerWriteBackCacheEnabled(true);
         config.SetParentlessFilesOnly(true);
         config.SetAllowHandlelessIO(true);
+        config.SetZeroCopyWriteEnabled(true);
 
         features.SetTwoStageReadEnabled(true);
         features.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
@@ -863,6 +865,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetServerWriteBackCacheEnabled(true);
         features.SetParentlessFilesOnly(true);
         features.SetAllowHandlelessIO(true);
+        features.SetZeroCopyWriteEnabled(true);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }

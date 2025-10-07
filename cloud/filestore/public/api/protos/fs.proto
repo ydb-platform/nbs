@@ -38,6 +38,7 @@ message TFileStoreFeatures
     bool HasXAttrs = 23;
     uint32 MaxBackground = 24;
     uint32 MaxFuseLoopThreads = 25;
+    bool ZeroCopyWriteEnabled = 26;
 }
 
 message TFileStore

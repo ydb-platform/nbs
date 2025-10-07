@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+
 #include <cloud/storage/core/libs/diagnostics/solomon_counters.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
@@ -50,6 +52,7 @@ struct TDiskRegistrySelfCounters
     TCounterPtr AllocatedDisks;
     TCounterPtr AllocatedDevices;
     TCounterPtr DirtyDevices;
+    TCounterPtr FreshDevices;
     TCounterPtr UnknownDevices;
     TCounterPtr DevicesInOnlineState;
     TCounterPtr DevicesInWarningState;
@@ -61,8 +64,6 @@ struct TDiskRegistrySelfCounters
 
     TCounterPtr DisksInWarningState;
     TCounterPtr MaxWarningTime;
-    // XXX for backward compat with alerts
-    TCounterPtr DisksInMigrationState;
     TCounterPtr MaxMigrationTime;
 
     TCounterPtr DevicesInMigrationState;
@@ -93,11 +94,12 @@ struct TDiskRegistrySelfCounters
     TVector<TNonreplMetricsCounter> NonreplMetricsCounter;
 
     void Init(
-        const TVector<TString>& poolNames,
+        const TVector<std::pair<TString, NProto::EDevicePoolKind>>& pools,
         NMonitoring::TDynamicCountersPtr counters);
 
     void RegisterPool(
         const TString& poolName,
+        const TString& poolKind,
         NMonitoring::TDynamicCountersPtr counters);
 };
 

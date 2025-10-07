@@ -212,7 +212,7 @@ message TServerConfig
     // Endpoint Proxy unix socket path. Triggers proxy device factory usage
     // instead of ioctl-based nbd device factory usage (but NbdNetlink flag has
     // higher priority).
-    optional string EndpointProxySocketPath = 114;
+    optional string EndpointProxySocketPath = 114 [deprecated = true];
 
     // Allow all control requests via unix socket (e.g., for CSI-driver)
     optional bool AllowAllRequestsViaUDS = 115;

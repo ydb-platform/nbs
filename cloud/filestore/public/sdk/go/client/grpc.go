@@ -299,6 +299,118 @@ func (client *grpcClient) DescribeFileStoreModel(
 	return resp.(*protos.TDescribeFileStoreModelResponse), err
 }
 
+func (client *grpcClient) CreateSession(
+	ctx context.Context,
+	req *protos.TCreateSessionRequest,
+) (*protos.TCreateSessionResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.CreateSession(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TCreateSessionResponse), err
+}
+
+func (client *grpcClient) DestroySession(
+	ctx context.Context,
+	req *protos.TDestroySessionRequest,
+) (*protos.TDestroySessionResponse, error) {
+
+	if req.Headers == nil {
+		return nil, &ClientError{
+			Code:    E_FS_INVALID_SESSION,
+			Message: "DestroySession: headers must be not nil",
+		}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.DestroySession(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TDestroySessionResponse), err
+}
+
+func (client *grpcClient) ListNodes(
+	ctx context.Context,
+	req *protos.TListNodesRequest,
+) (*protos.TListNodesResponse, error) {
+
+	if req.Headers == nil {
+		return nil, &ClientError{
+			Code:    E_FS_INVALID_SESSION,
+			Message: "ListNodes: headers must be not nil",
+		}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ListNodes(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TListNodesResponse), err
+}
+
+func (client *grpcClient) CreateNode(
+	ctx context.Context,
+	req *protos.TCreateNodeRequest,
+) (*protos.TCreateNodeResponse, error) {
+
+	if req.Headers == nil {
+		return nil, &ClientError{
+			Code:    E_FS_INVALID_SESSION,
+			Message: "CreateNode: headers must be not nil",
+		}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.CreateNode(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TCreateNodeResponse), err
+}
+
+func (client *grpcClient) ReadLink(
+	ctx context.Context,
+	req *protos.TReadLinkRequest,
+) (*protos.TReadLinkResponse, error) {
+
+	if req.Headers == nil {
+		return nil, &ClientError{
+			Code:    E_FS_INVALID_SESSION,
+			Message: "ReadLink: headers must be not nil",
+		}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ReadLink(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TReadLinkResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type grpcEndpointClient struct {

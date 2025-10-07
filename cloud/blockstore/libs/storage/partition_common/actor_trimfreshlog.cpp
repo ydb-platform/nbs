@@ -26,7 +26,8 @@ TTrimFreshLogActor::TTrimFreshLogActor(
         ui32 recordGeneration,
         ui32 perGenerationCounter,
         TVector<ui32> freshChannels,
-        TString diskId)
+        TString diskId,
+        TDuration timeout)
     : RequestInfo(std::move(requestInfo))
     , PartitionActorId(partitionActorId)
     , TabletInfo(std::move(tabletInfo))
@@ -35,6 +36,7 @@ TTrimFreshLogActor::TTrimFreshLogActor(
     , PerGenerationCounter(perGenerationCounter)
     , FreshChannels(std::move(freshChannels))
     , DiskId(std::move(diskId))
+    , Timeout(timeout)
 {}
 
 void TTrimFreshLogActor::Bootstrap(const TActorContext& ctx)
@@ -66,6 +68,8 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
         for (const auto& [bsProxyId, barrier]: barriers.GetRequests(channelId)) {
             auto [barrierGen, barrierStep] = ParseCommitId(barrier.CollectCommitId);
 
+            auto deadline = Timeout ? ctx.Now() + Timeout : TInstant::Max();
+
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
                 tabletId,               // tabletId
                 RecordGeneration,       // record generation
@@ -76,7 +80,7 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
                 barrierStep,            // barrier step
                 nullptr,                // keep
                 nullptr,                // do not keep
-                TInstant::Max(),        // deadline
+                deadline,               // deadline
                 false,                  // multicollect not allowed
                 false);                 // soft barrier
 
@@ -133,9 +137,13 @@ void TTrimFreshLogActor::HandleCollectGarbageResult(
     if (auto error = MakeKikimrError(msg->Status, msg->ErrorReason);
         HasError(error))
     {
-        ReportTrimFreshLogError(
-            FormatError(error),
-            {{"disk", DiskId}, {"TabletId", TabletInfo->TabletID}});
+        TCritEventParams critEventParams =
+             {{"disk", DiskId}, {"TabletId", TabletInfo->TabletID}};
+        if (msg->Status == NKikimrProto::EReplyStatus::DEADLINE) {
+            ReportTrimFreshLogTimeout(FormatError(error), critEventParams);
+        } else {
+            ReportTrimFreshLogError(FormatError(error), critEventParams);
+        }
         Error = std::move(error);
     }
 

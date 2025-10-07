@@ -10,47 +10,33 @@ import time
 from pathlib import Path
 
 import yatest.common as common
-
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
+
 from contrib.ydb.core.protos.config_pb2 import TLogConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.config.client_pb2 import TClientConfig, TClientAppConfig
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
-from cloud.blockstore.tests.python.lib.test_base import (
-    thread_count
-)
-from cloud.storage.core.protos.endpoints_pb2 import (
-    EEndpointStorageType,
-)
-
+from cloud.blockstore.tests.python.lib.test_base import thread_count
+from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 from google.protobuf.text_format import MessageToString
 
 
 BLOCKSTORE_CLIENT_PATH = common.binary_path(
     "cloud/blockstore/apps/client/blockstore-client")
-ENDPOINT_PROXY_PATH = common.binary_path(
-    "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")
 
 
 def init(
-        with_netlink=True,
-        stored_endpoints_path=None,
-        nbd_request_timeout=None,
-        nbd_reconnect_delay=None,
-        proxy_restart_events=None,
-        max_zero_blocks_sub_request_size=None,
+        nbd_netlink=True,
+        nbd_request_timeout=10,
         nbds_max=4,
+        max_zero_blocks_sub_request_size=None,
 ):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
-    if with_netlink:
+    if nbd_netlink:
         server_config_patch.NbdNetlink = True
-        if nbd_request_timeout:
-            server_config_patch.NbdRequestTimeout = nbd_request_timeout * 1000
-        else:
-            server_config_patch.NbdRequestTimeout = 10 * 1000       # 10 seconds
-        logging.info("nbd_request_timeout: %d" % server_config_patch.NbdRequestTimeout)
-        server_config_patch.NbdConnectionTimeout = 10 * 60 * 1000   # 10 minutes
+        server_config_patch.NbdRequestTimeout = nbd_request_timeout * 1000
+        server_config_patch.NbdConnectionTimeout = 600 * 1000
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
     endpoints_dir.mkdir(exist_ok=True)
     server_config_patch.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
@@ -72,20 +58,12 @@ def init(
         server.ServerConfig.MaxZeroBlocksSubRequestSize = max_zero_blocks_sub_request_size
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
     subprocess.check_call(["modprobe", "nbd", f"nbds_max={nbds_max}"], timeout=20)
-    if stored_endpoints_path:
-        stored_endpoints_path.mkdir(exist_ok=True)
     log_config = TLogConfig()
     log_config.Entry.add(Component=b"BLOCKSTORE_NBD", Level=7)
     env = LocalLoadTest(
         endpoint="",
         server_app_config=server,
-        storage_config_patches=None,
         use_in_memory_pdisks=True,
-        with_netlink=with_netlink,
-        stored_endpoints_path=stored_endpoints_path,
-        nbd_request_timeout=nbd_request_timeout,
-        nbd_reconnect_delay=nbd_reconnect_delay,
-        proxy_restart_events=proxy_restart_events,
         log_config=log_config)
 
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
@@ -138,8 +116,8 @@ def log_called_process_error(exc):
     )
 
 
-@pytest.mark.parametrize('with_netlink', [True, False])
-def test_free_device_allocation(with_netlink):
+@pytest.mark.parametrize('nbd_netlink', [True, False])
+def test_free_device_allocation(nbd_netlink):
     disk = "disk"
     block_size = 4096
     blocks_count = 1024
@@ -147,7 +125,7 @@ def test_free_device_allocation(with_netlink):
     nbds_max = 4
 
     env, run = init(
-        with_netlink=with_netlink,
+        nbd_netlink=nbd_netlink,
         nbds_max=nbds_max)
 
     def createvolume(i):
@@ -179,7 +157,7 @@ def test_free_device_allocation(with_netlink):
             assert createvolume(i) == 0
             assert startendpoint(i) == 0
 
-        if with_netlink:
+        if nbd_netlink:
             # netlink implementation can allocate new devices on the fly,
             # so we should be able to go beyond configured limit
             assert createvolume(nbds_max) == 0
@@ -211,6 +189,39 @@ def test_free_device_allocation(with_netlink):
         cleanup_after_test(env)
 
 
+def force_nbd_reconnect(
+        env,
+        filename,
+        runtime,
+        downtime,
+        block_size=4096,
+        iodepth=1024,
+):
+    proc = subprocess.Popen(
+        [
+            "fio",
+            "--name=fio",
+            "--ioengine=libaio",
+            "--direct=1",
+            "--time_based=1",
+            "--rw=randrw",
+            "--rwmixread=50",
+            "--filename=" + filename,
+            "--runtime=" + str(runtime),
+            "--blocksize=" + str(block_size),
+            "--iodepth=" + str(iodepth),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+
+    os.kill(env.nbs.pid, signal.SIGSTOP)
+    time.sleep(downtime)
+    os.kill(env.nbs.pid, signal.SIGCONT)
+
+    proc.communicate(timeout=60)
+    assert proc.returncode == 0
+
+
 def test_nbd_reconnect():
     disk_id = "disk0"
     block_size = 4096
@@ -225,7 +236,7 @@ def test_nbd_reconnect():
     nbs_runtime_between_reconnects = request_timeout
 
     env, run = init(
-        with_netlink=True,
+        nbd_netlink=True,
         nbd_request_timeout=request_timeout)
 
     try:
@@ -255,29 +266,13 @@ def test_nbd_reconnect():
         assert result.returncode == 0
 
         for i in range(0, reconnects):
-            proc = subprocess.Popen(
-                [
-                    "fio",
-                    "--name=fio",
-                    "--ioengine=libaio",
-                    "--direct=1",
-                    "--time_based=1",
-                    "--rw=randrw",
-                    "--rwmixread=50",
-                    "--filename=" + nbd_device,
-                    "--runtime=" + str(runtime),
-                    "--blocksize=" + str(block_size),
-                    "--iodepth=" + str(iodepth),
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT)
-
-            os.kill(env.nbs.pid, signal.SIGSTOP)
-            time.sleep(nbs_downtime)
-            os.kill(env.nbs.pid, signal.SIGCONT)
-
-            proc.communicate(timeout=60)
-            assert proc.returncode == 0
+            force_nbd_reconnect(
+                env,
+                nbd_device,
+                runtime,
+                nbs_downtime,
+                block_size,
+                iodepth)
 
             time.sleep(nbs_runtime_between_reconnects)
 
@@ -302,201 +297,25 @@ def test_nbd_reconnect():
         cleanup_after_test(env)
 
 
-def test_multiple_errors():
-    volume_name = "test-disk"
-    block_size = 4096
-    blocks_count = 1024
-    nbd_device = "/dev/nbd0"
-    socket_path = "/tmp/nbd.sock"
-    request_timeout = 2
-    runtime = request_timeout * 2
-    nbs_downtime = request_timeout + 1
-    iodepth = 1024
-
-    env, run = init(
-        with_netlink=True,
-        nbd_request_timeout=request_timeout,
-        proxy_restart_events=2)
-
-    try:
-        result = run(
-            "createvolume",
-            "--disk-id",
-            volume_name,
-            "--blocks-count",
-            str(blocks_count),
-            "--block-size",
-            str(block_size),
-        )
-        assert result.returncode == 0
-
-        result = run(
-            "startendpoint",
-            "--disk-id",
-            volume_name,
-            "--socket",
-            socket_path,
-            "--ipc-type",
-            "nbd",
-            "--persistent",
-            "--nbd-device",
-            nbd_device
-        )
-        assert result.returncode == 0
-
-        proc = subprocess.Popen(
-            [
-                "fio",
-                "--name=fio",
-                "--ioengine=libaio",
-                "--direct=1",
-                "--time_based=1",
-                "--rw=randrw",
-                "--rwmixread=50",
-                "--filename=" + nbd_device,
-                "--runtime=" + str(runtime),
-                "--blocksize=" + str(block_size),
-                "--iodepth=" + str(iodepth),
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT)
-
-        os.kill(env.nbs.pid, signal.SIGSTOP)
-        time.sleep(nbs_downtime)
-        os.kill(env.nbs.pid, signal.SIGCONT)
-
-        proc.communicate(timeout=60)
-
-    except subprocess.CalledProcessError as e:
-        log_called_process_error(e)
-        raise
-
-    finally:
-        run(
-            "stopendpoint",
-            "--socket",
-            socket_path,
-        )
-
-        result = run(
-            "destroyvolume",
-            "--disk-id",
-            volume_name,
-            input=volume_name,
-        )
-
-        cleanup_after_test(env)
-
-
-def test_stop_start():
-    env, run = init(
-        with_netlink=True,
-        nbd_reconnect_delay=1)
-
-    volume_name = "example-disk"
-    block_size = 4096
-    blocks_count = 1024
-    nbd_device = "/dev/nbd0"
-    socket_path = "/tmp/nbd.sock"
-    data_file = "data"
-
-    try:
-        result = run(
-            "createvolume",
-            "--disk-id",
-            volume_name,
-            "--blocks-count",
-            str(blocks_count),
-            "--block-size",
-            str(block_size),
-        )
-        assert result.returncode == 0
-
-        result = run(
-            "startendpoint",
-            "--disk-id",
-            volume_name,
-            "--socket",
-            socket_path,
-            "--ipc-type",
-            "nbd",
-            "--persistent",
-            "--nbd-device",
-            nbd_device
-        )
-        assert result.returncode == 0
-
-        result = run(
-            "stopendpoint",
-            "--socket",
-            socket_path,
-        )
-        assert result.returncode == 0
-
-        result = run(
-            "startendpoint",
-            "--disk-id",
-            volume_name,
-            "--socket",
-            socket_path,
-            "--ipc-type",
-            "nbd",
-            "--persistent",
-            "--nbd-device",
-            nbd_device
-        )
-        assert result.returncode == 0
-
-        proc = subprocess.Popen(
-            [
-                "dd",
-                "if=" + nbd_device,
-                "iflag=direct",
-                "of=" + data_file,
-                "bs=" + str(block_size),
-                "count=" + str(blocks_count)
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT)
-        proc.communicate(timeout=60)
-        assert proc.returncode == 0
-
-    except subprocess.CalledProcessError as e:
-        log_called_process_error(e)
-        raise
-
-    finally:
-        run(
-            "stopendpoint",
-            "--socket",
-            socket_path,
-        )
-
-        result = run(
-            "destroyvolume",
-            "--disk-id",
-            volume_name,
-            input=volume_name,
-        )
-
-        cleanup_after_test(env)
-
-
-@pytest.mark.parametrize('with_netlink', [True, False])
-def test_resize_device(with_netlink):
-    stored_endpoints_path = Path(common.output_path()) / "stored_endpoints"
-    env, run = init(
-        with_netlink=with_netlink,
-        stored_endpoints_path=stored_endpoints_path,
-        max_zero_blocks_sub_request_size=512 * 1024 * 1024
-    )
-
+@pytest.mark.parametrize('nbd_netlink', [True, False])
+def test_resize_device(nbd_netlink):
     volume_name = "example-disk"
     block_size = 4096
     blocks_count = 1310720
     volume_size = blocks_count * block_size
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
+    iodepth = 1024
+    request_timeout = 2
+    runtime = request_timeout * 2
+    nbs_downtime = request_timeout + 2
+
+    env, run = init(
+        nbd_netlink=nbd_netlink,
+        nbd_request_timeout=request_timeout,
+        max_zero_blocks_sub_request_size=512 * 1024 * 1024
+    )
+
     try:
         result = run(
             "createvolume",
@@ -571,6 +390,23 @@ def test_resize_device(with_netlink):
         assert result.returncode == 0
         disk_size = int(result.stdout)
         assert new_volume_size == disk_size
+
+        # check if reconnected device didn't shrink back
+        if nbd_netlink:
+            force_nbd_reconnect(
+                env,
+                nbd_device,
+                runtime,
+                nbs_downtime,
+                block_size,
+                iodepth)
+
+            try:
+                fd = os.open(nbd_device, os.O_RDWR | os.O_SYNC)
+                os.lseek(fd, volume_size, os.SEEK_SET)
+                os.write(fd, b"foobar")
+            finally:
+                os.close(fd)
 
         result = common.execute(
             ["resize2fs", nbd_device],
@@ -749,10 +585,7 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
 
 
 def test_discard_device():
-    stored_endpoints_path = Path(common.output_path()) / "stored_endpoints"
     env, run = init(
-        with_netlink=True,
-        stored_endpoints_path=stored_endpoints_path,
         max_zero_blocks_sub_request_size=512 * 1024 * 1024
     )
 

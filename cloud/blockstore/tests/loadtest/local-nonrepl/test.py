@@ -57,6 +57,7 @@ class _TestCase(object):
             allocation_unit_size=1,
             agent_count=1,
             storage_pool_name=None,
+            storage_pool_kind=None,
             dump_block_digests=False,
             reject_late_requests_at_disk_agent=False,
             encryption_at_rest=False):
@@ -71,6 +72,7 @@ class _TestCase(object):
         self.allocation_unit_size = allocation_unit_size
         self.agent_count = agent_count
         self.storage_pool_name = storage_pool_name
+        self.storage_pool_kind = storage_pool_kind
         self.dump_block_digests = dump_block_digests
         self.reject_late_requests_at_disk_agent = reject_late_requests_at_disk_agent
         self.encryption_at_rest = encryption_at_rest
@@ -137,6 +139,7 @@ TESTS = [
         "load-hdd",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-hdd.txt",
         storage_pool_name="rot",
+        storage_pool_kind="global",
     ),
     _TestCase(
         "load-encryption-at-rest",
@@ -248,7 +251,7 @@ def __run_test(test_case, backend, use_rdma):
         storage.AcquireNonReplicatedDevices = True
         storage.ClientRemountPeriod = 1000
         storage.NonReplicatedMigrationStartAllowed = True
-        storage.NonReplicatedSecureEraseTimeout = 2000  # 2 sec
+        storage.NonReplicatedSecureEraseTimeout = 30000  # 30 sec
         storage.DisableLocalService = False
         storage.InactiveClientsTimeout = 60000  # 1 min
         storage.AgentRequestTimeout = 5000      # 5 sec
@@ -291,7 +294,6 @@ def __run_test(test_case, backend, use_rdma):
         disk_agents = []
         for i in range(test_case.agent_count):
             disk_agent = None
-
             if dedicated_disk_agent:
                 disk_agent = LocalDiskAgent(
                     kikimr_port,
@@ -303,7 +305,8 @@ def __run_test(test_case, backend, use_rdma):
                     enable_tls=True,
                     kikimr_binary_path=kikimr_binary_path,
                     disk_agent_binary_path=yatest_common.binary_path(disk_agent_binary_path),
-                    restart_interval=test_case.restart_interval)
+                    restart_interval=test_case.restart_interval,
+                    suspend_restarts=True)
 
                 disk_agent.start()
                 wait_for_disk_agent(disk_agent.mon_port)
@@ -318,6 +321,7 @@ def __run_test(test_case, backend, use_rdma):
                     kikimr_binary_path=kikimr_binary_path,
                     nbs_binary_path=yatest_common.binary_path(nbs_binary_path),
                     restart_interval=test_case.restart_interval,
+                    suspend_restarts=True,
                     ping_path="/blockstore/disk_agent")
 
                 disk_agent.start()
@@ -327,7 +331,12 @@ def __run_test(test_case, backend, use_rdma):
 
         wait_for_secure_erase(
             nbs.mon_port,
-            test_case.storage_pool_name or "default")
+            test_case.storage_pool_name or "default",
+            test_case.storage_pool_kind or "default")
+
+        if test_case.restart_interval:
+            for agent in disk_agents:
+                agent.allow_restart()
 
         config_path = __prepare_test_config(test_case)
 

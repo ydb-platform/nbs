@@ -184,6 +184,7 @@ class _TestCmsRemoveAgent:
             assert response.ActionResults[0].Result.Code == 0
             assert response.ActionResults[0].Timeout == 0
             nbs.wait_for_stats(UnknownDevices=0)
+            wait_for_secure_erase(nbs.mon_port)
         else:
             nbs.wait_for_stats(AgentsInWarningState=1)
             assert nbs.get_stats("UnknownDevices") == 0
@@ -240,7 +241,7 @@ class _TestCmsPurgeAgentNoUserDisks:
         assert response.ActionResults[0].Result.Code == 0
         assert response.ActionResults[0].Timeout == 0
         nbs.wait_for_stats(UnknownDevices=0)
-        wait_for_secure_erase(nbs.mon_port)
+        wait_for_secure_erase(nbs.mon_port, pool="local-ssd", kind="local")
 
         nbs.create_volume("local1", blocks_count=DEFAULT_BLOCK_COUNT_PER_DEVICE,
                           kind="ssd_local")

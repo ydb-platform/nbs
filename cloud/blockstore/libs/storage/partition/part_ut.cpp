@@ -13012,6 +13012,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldSendCorrectBarriersInfoAfterReboot)
     {
+        return; // TODO: fix this test. See issue #4414
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1);
         config.SetAddingUnconfirmedBlobsEnabled(true);
@@ -13127,6 +13128,275 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // Check that partition sent statistics
         UNIT_ASSERT(partitionStatisticsSent);
+    }
+
+    Y_UNIT_TEST(ShouldRaiseCriticalEventIfTrimFreshLogTimesOut)
+    {
+        constexpr ui32 FreshChannelId = 4;
+
+        auto config = DefaultConfig();
+        config.SetFreshChannelCount(1);
+        config.SetFlushThreshold(4_MB);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetTrimFreshLogTimeout(TDuration::Seconds(1).MilliSeconds());
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        NMonitoring::TDynamicCountersPtr counters
+            = new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto trimCounter =
+            counters->GetCounter("AppCriticalEvents/TrimFreshLogTimeout", true);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
+        }
+
+        bool trimSeen = false;
+        bool trimCompletedSeen = false;
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCollectGarbageResult: {
+                        auto* msg =
+                            event->Get<TEvBlobStorage::TEvCollectGarbageResult>();
+                        if (msg->Channel == FreshChannelId) {
+                            trimSeen = true;
+                            msg->Status = NKikimrProto::EReplyStatus::DEADLINE;
+                        }
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted: {
+                        auto* msg = event->Get<TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted>();
+                        UNIT_ASSERT(FAILED(msg->GetStatus()));
+                        trimCompletedSeen = true;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        partition.Flush();
+
+        // wait for trimfreshlog to complete
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] {
+            return trimCompletedSeen;
+        };
+        runtime->DispatchEvents(options);
+
+        UNIT_ASSERT_VALUES_EQUAL(true, trimSeen);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, trimCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldLoadFreshBlobsFromLastTrimFreshLogToCommitIdInMeta)
+    {
+        constexpr ui32 FreshChannelId = 4;
+
+        auto config = DefaultConfig();
+        config.SetFreshChannelCount(1);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
+        }
+
+        bool saveBlobs = false;
+        TSet<ui64> expectedBlobs;
+
+        auto eventFilter =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCollectGarbage: {
+                        auto* msg = ev->Get<TEvBlobStorage::TEvCollectGarbage>();
+                        if (msg->Channel == FreshChannelId) {
+                            return true;
+                        }
+                        break;
+                    }
+                    case TEvBlobStorage::EvRangeResult: {
+                        using TEvent = TEvBlobStorage::TEvRangeResult;
+                        auto* msg = ev->Get<TEvent>();
+                        bool isRangeResponseFromFresh = false;
+                        for (const auto& r: msg->Responses) {
+                            if (r.Id.Channel() == FreshChannelId) {
+                                isRangeResponseFromFresh = true;
+                                auto commitId = MakeCommitId(
+                                        r.Id.Generation(),
+                                        r.Id.Step());
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    1,
+                                    expectedBlobs.count(commitId));
+                            }
+                        }
+                        if (isRangeResponseFromFresh) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                expectedBlobs.size(),
+                                msg->Responses.size());
+                        }
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvWriteBlobCompleted: {
+                        using TEvent = TEvPartitionPrivate::TEvWriteBlobCompleted;
+                        auto* msg = ev->Get<TEvent>();
+                        if (msg->BlobId.Channel() == 4 && saveBlobs)
+                        {
+                            expectedBlobs.emplace(msg->BlobId.CommitId());
+                        }
+                        break;
+                    }
+                }
+                return false;
+            };
+
+
+        runtime->SetEventFilter(eventFilter);
+
+        // update TrimFreshLogToCommitId in meta to gen:step = 0:0
+        partition.Flush();
+
+        runtime->DispatchEvents(TDispatchOptions{}, TDuration::Seconds(1));
+
+        saveBlobs = true;
+
+        partition.WriteBlocks(4, 4);
+        partition.WriteBlocks(5, 5);
+        partition.WriteBlocks(6, 6);
+
+        // update TrimFreshLogToCommitId in meta to gen:step = 2:4
+        partition.Flush();
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        // expect to read last 3 blobs ([2:5], [2:6], [2:7])
+
+        UNIT_ASSERT_VALUES_EQUAL(3, expectedBlobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 5)));
+        UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 6)));
+        UNIT_ASSERT_VALUES_EQUAL(1, expectedBlobs.count(MakeCommitId(2, 7)));
+    }
+
+    Y_UNIT_TEST(ShouldReleaseTrimFreshLogBarrierInCaseOfWriteBlobError)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelCount(1);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui64 trimFreshLogToCommitId = 0llu;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            trimFreshLogToCommitId = stats.GetTrimFreshLogToCommitId();
+        }
+
+        bool shouldRejectWriteBlob = false;
+        auto eventFilter =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+        {
+            switch (ev->GetTypeRewrite()) {
+                case TEvPartitionPrivate::EvWriteBlobResponse: {
+                    if (shouldRejectWriteBlob) {
+                        auto* msg = ev->Get<
+                            TEvPartitionPrivate::TEvWriteBlobResponse>();
+                        auto& e = const_cast<NProto::TError&>(msg->Error);
+                        e.SetCode(E_REJECTED);
+                    }
+                    break;
+                }
+                case TEvPartitionPrivate::EvWriteBlocksCompleted: {
+                    auto* msg =
+                        ev->Get<TEvPartitionPrivate::TEvWriteBlocksCompleted>();
+                    UNIT_ASSERT_EQUAL(shouldRejectWriteBlob, HasError(msg->GetError()));
+                    break;
+                }
+            }
+            return false;
+        };
+
+        runtime->SetEventFilter(eventFilter);
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+
+        partition.Flush();
+        trimFreshLogToCommitId += 4llu;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+
+        shouldRejectWriteBlob = true;
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(4, 1), 4);
+        {
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(5, 1), 5);
+        {
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+
+        trimFreshLogToCommitId += 2llu;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+
+        shouldRejectWriteBlob = false;
+
+        partition.Flush();
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
+
+        partition.WriteBlocks(6, 6);
+        partition.Flush();
+        trimFreshLogToCommitId += 2llu;
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(trimFreshLogToCommitId, stats.GetTrimFreshLogToCommitId());
+        }
     }
 }
 

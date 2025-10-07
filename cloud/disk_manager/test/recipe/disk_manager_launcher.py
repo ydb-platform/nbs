@@ -145,6 +145,38 @@ NbsConfig: <
 >
 CellsConfig: <
     Cells: <
+        key: "zone-a"
+        value: <
+            Cells: [
+                "zone-a"
+            ]
+        >
+    >
+    Cells: <
+        key: "zone-b"
+        value: <
+            Cells: [
+                "zone-b"
+            ]
+        >
+    >
+    Cells: <
+        key: "zone-c"
+        value: <
+            Cells: [
+                "zone-c"
+            ]
+        >
+    >
+    Cells: <
+        key: "no_dataplane"
+        value: <
+            Cells: [
+                "no_dataplane"
+            ]
+        >
+    >
+    Cells: <
         key: "zone-d"
         value: <
             Cells: [

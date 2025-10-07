@@ -18,10 +18,22 @@ enum class ECommand
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EIoEngine
+{
+    AsyncIo,
+    IoUring,
+    Sync
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TOptions
 {
-    ECommand Command;
-    TString CommandName;
+    ECommand Command = ECommand::UnknownCmd;
+
+    EIoEngine Engine = EIoEngine::AsyncIo;
+    bool RunInCallbacks = false;
+    bool NoDirect = false;
 
     TMaybe<TString> FilePath;
     TMaybe<ui64> FileSize;

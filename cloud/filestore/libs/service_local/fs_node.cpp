@@ -84,6 +84,13 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
         }
 
         target = parent->CreateSocket(request.GetName(), mode);
+    } else if (request.HasFifo()) {
+        int mode = request.GetFifo().GetMode();
+        if (!mode) {
+            mode = Config->GetDefaultPermissions();
+        }
+
+        target = parent->CreateFifo(request.GetName(), mode);
     } else {
         return TErrorResponse(ErrorInvalidArgument());
     }

@@ -376,15 +376,6 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                 DefaultDiskId,
                 volumeTabletId));
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeVolumeRequest: {
-                        UNIT_ASSERT(false);
-                        break;
-                    }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
         service.StatVolume();
 
         // adjust time to trigger pipe connection destroy
@@ -485,15 +476,10 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
             }});
     }
 
-    Y_UNIT_TEST(ShouldRunDescribeForCachedTabletsIfDurationOfFailedConnectsExceedsThreshold)
+    Y_UNIT_TEST(ShouldRunDescribeForCachedTablets)
     {
-        constexpr ui32 timeout = 3'000;
-
-        NProto::TStorageServiceConfig config;
-        config.SetVolumeProxyCacheRetryDuration(timeout);
-
         TTestEnv env;
-        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+        ui32 nodeIdx = SetupTestEnv(env);
 
         auto& runtime = env.GetRuntime();
         TServiceClient service(runtime, nodeIdx);
@@ -533,14 +519,6 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         {
             service.SendStatVolumeRequest();
             auto response = service.RecvStatVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        }
-
-        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(timeout));
-
-        {
-            service.SendStatVolumeRequest();
-            auto response = service.RecvStatVolumeResponse();
             auto code = response->GetStatus();
             UNIT_ASSERT_VALUES_EQUAL(
                 FACILITY_SCHEMESHARD,
@@ -551,13 +529,10 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldResetFailCounterIfDisconnectedCachedVolumeIsOnlineAgain)
+    Y_UNIT_TEST(ShouldAnswerIfDisconnectedCachedVolumeIsOnlineAgain)
     {
-        NProto::TStorageServiceConfig config;
-        config.SetVolumeProxyCacheRetryDuration(3'000);
-
         TTestEnv env;
-        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+        ui32 nodeIdx = SetupTestEnv(env);
 
         auto& runtime = env.GetRuntime();
         TServiceClient service(runtime, nodeIdx);
@@ -592,7 +567,6 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
         RebootTablet(runtime, volumeTabletId, service.GetSender(), nodeIdx);
 
-        TActorId proxy;
         bool failConnects = true;
         runtime.SetEventFilter([&] (auto& runtime, auto& event) {
                 Y_UNUSED(runtime);
@@ -600,18 +574,11 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                     case TEvTabletPipe::EvClientConnected: {
                         auto* msg = event->template Get<TEvTabletPipe::TEvClientConnected>();
                         if (msg->TabletId == volumeTabletId) {
-                            proxy = event->Recipient;
                             if (failConnects) {
                               auto& code =
                                 const_cast<NKikimrProto::EReplyStatus&>(msg->Status);
                               code = NKikimrProto::ERROR;
                             }
-                        }
-                        break;
-                    }
-                    case TEvSSProxy::EvDescribeVolumeResponse: {
-                        if (failConnects && event->Recipient == proxy) {
-                            UNIT_ASSERT(false);
                         }
                         break;
                     }
@@ -630,6 +597,357 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
         service.StatVolume();
         service.StatVolume();
+    }
+
+    Y_UNIT_TEST(ShouldMapBaseDiskIfSchemeShardIsNotAvailable)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume();
+        service.WaitForVolume();
+
+        ui64 volumeTabletId;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        service.DescribeVolume();
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
+                DefaultDiskId,
+                volumeTabletId));
+        service.StatVolume();
+
+        // adjust time to trigger pipe connection destroy
+        runtime.AdvanceCurrentTime(TDuration::Minutes(1));
+        // give a chance to internal messages to complete
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        bool describe = false;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const_cast<NProto::TError&>(msg->Error) =
+                                MakeError(E_REJECTED, "SS is dead");
+                        describe = true;
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        service.StatVolume();
+        UNIT_ASSERT(describe);
+    }
+
+    Y_UNIT_TEST(ShouldForwardRequestToPrimaryVolumeTablet)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1");
+        service.WaitForVolume("Disk-1");
+
+        auto statResponse = service.StatVolume("Disk-1");
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Disk-1",
+            statResponse->Record.GetVolume().GetDiskId());
+    }
+
+    Y_UNIT_TEST(ShouldForwardRequestToSecondaryVolume)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1-copy");
+        service.WaitForVolume("Disk-1-copy");
+
+        auto statResponse = service.StatVolume("Disk-1");
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Disk-1-copy",
+            statResponse->Record.GetVolume().GetDiskId());
+    }
+
+    Y_UNIT_TEST(
+        ShouldActLikeSecondaryVolumeDoesNotExistWhenExactDiskIdMatchIsRequired)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1-copy");
+        service.WaitForVolume("Disk-1-copy");
+
+        auto request = service.CreateStatVolumeRequest("Disk-1");
+        request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+        service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+        auto statResponse = service.RecvStatVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist),
+            statResponse->GetStatus(),
+            FormatError(statResponse->GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldFailRequestToSecondaryVolumeWhenItDoesNotExist)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1");
+        service.WaitForVolume("Disk-1");
+
+        {
+            auto request = service.CreateStatVolumeRequest("Disk-1-copy");
+            service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+            auto statResponse = service.RecvStatVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist),
+                statResponse->GetStatus(),
+                FormatError(statResponse->GetError()));
+        }
+
+        {
+            auto request = service.CreateStatVolumeRequest("Disk-1-copy");
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+            service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+            auto statResponse = service.RecvStatVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist),
+                statResponse->GetStatus(),
+                FormatError(statResponse->GetError()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldForwardRequestToPrimaryAndSecondaryVolume)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1");
+        service.WaitForVolume("Disk-1");
+
+        service.CreateVolume("Disk-1-copy");
+        service.WaitForVolume("Disk-1-copy");
+
+        {
+            // Forward to Disk-1
+            auto statResponse = service.StatVolume("Disk-1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1",
+                statResponse->Record.GetVolume().GetDiskId());
+
+            auto request = service.CreateStatVolumeRequest("Disk-1");
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+            service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+            statResponse = service.RecvStatVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1",
+                statResponse->Record.GetVolume().GetDiskId());
+        }
+
+        {
+            // Forward to Disk-1-copy
+            auto statResponse = service.StatVolume("Disk-1-copy");
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1-copy",
+                statResponse->Record.GetVolume().GetDiskId());
+
+            auto request = service.CreateStatVolumeRequest("Disk-1-copy");
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+            service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+            statResponse = service.RecvStatVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1-copy",
+                statResponse->Record.GetVolume().GetDiskId());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDescribeOnceWhenPublicNameUsedFirst)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1-copy");
+        service.WaitForVolume("Disk-1-copy");
+
+        // adjust time to trigger pipe connection destroy
+        runtime.AdvanceCurrentTime(TDuration::Minutes(1));
+        // give a chance to internal messages to complete
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        ui64 describeCount = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        ++describeCount;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        {
+            auto statResponse = service.StatVolume("Disk-1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1-copy",
+                statResponse->Record.GetVolume().GetDiskId());
+        }
+        {
+            auto statResponse = service.StatVolume("Disk-1-copy");
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1-copy",
+                statResponse->Record.GetVolume().GetDiskId());
+        }
+
+        // The VolumeProxy should find both Disk-1 and Disk-1-copy when forward
+        // first request to Disk-1.
+        UNIT_ASSERT_VALUES_EQUAL(1ul, describeCount);
+    }
+
+    Y_UNIT_TEST(ShouldDescribeTwiceWhenSecondaryNameUsedFirst)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1-copy");
+        service.WaitForVolume("Disk-1-copy");
+
+        // adjust time to trigger pipe connection destroy
+        runtime.AdvanceCurrentTime(TDuration::Minutes(1));
+        // give a chance to internal messages to complete
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        ui64 describeCount = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        ++describeCount;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        {
+            // The VolumeProxy should find only Disk-1-copy when forward
+            // first request to Disk-1-copy.
+
+            auto statResponse = service.StatVolume("Disk-1-copy");
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1-copy",
+                statResponse->Record.GetVolume().GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(1ul, describeCount);
+        }
+        {
+            // The VolumeProxy should describe Disk-1 explicitly.
+
+            auto statResponse = service.StatVolume("Disk-1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1-copy",
+                statResponse->Record.GetVolume().GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(2ul, describeCount);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotMakeDiskIdRemapping)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1-copy");
+        service.WaitForVolume("Disk-1-copy");
+
+        {
+            // Forward to Disk-1-copy
+            auto statResponse = service.StatVolume("Disk-1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1-copy",
+                statResponse->Record.GetVolume().GetDiskId());
+        }
+
+        service.CreateVolume("Disk-1");
+        service.WaitForVolume("Disk-1");
+
+        {
+            // Request requiring an exact DiskId match should be forward to the
+            // newly created disk.
+            auto request = service.CreateStatVolumeRequest("Disk-1");
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+            service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+            auto statResponse = service.RecvStatVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1",
+                statResponse->Record.GetVolume().GetDiskId());
+        }
+
+        {
+            // A request that does not require an exact name match should be
+            // forward to the old disk, since the existing connection has not
+            // been terminated.
+            auto statResponse = service.StatVolume("Disk-1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1-copy",
+                statResponse->Record.GetVolume().GetDiskId());
+        }
+
+        // adjust time to trigger pipe connection destroy
+        runtime.AdvanceCurrentTime(TDuration::Minutes(1));
+        // give a chance to internal messages to complete
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        {
+            // A request that does not require an exact name match should be
+            // forward to the new disk, since the existing connection has been
+            // terminated.
+            auto statResponse = service.StatVolume("Disk-1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1",
+                statResponse->Record.GetVolume().GetDiskId());
+        }
     }
 }
 

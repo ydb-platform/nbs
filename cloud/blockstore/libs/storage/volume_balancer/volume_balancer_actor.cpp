@@ -159,6 +159,7 @@ void TVolumeBalancerActor::Bootstrap(const TActorContext& ctx)
 {
     LastCpuWaitTs = ctx.Monotonic();
 
+    SendConfigSubscriptionRequest(ctx);
     RegisterPages(ctx);
     RegisterCounters(ctx);
     Become(&TThis::StateWork);
@@ -195,9 +196,7 @@ void TVolumeBalancerActor::RegisterCounters(const TActorContext& ctx)
 
 bool TVolumeBalancerActor::IsBalancerEnabled() const
 {
-    return State->GetEnabled()
-        && VolumeBalancerSwitch->IsBalancerEnabled()
-        && StorageConfig->GetVolumePreemptionType() != NProto::PREEMPTION_NONE;
+    return State->GetEnabled() && VolumeBalancerSwitch->IsBalancerEnabled();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -240,6 +239,22 @@ void TVolumeBalancerActor::SendVolumeToHive(
     State->SetVolumeInProgress(volume);
 }
 
+void TVolumeBalancerActor::SendConfigSubscriptionRequest(
+    const TActorContext& ctx)
+{
+    auto req = std::make_unique<
+        TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest>();
+    auto blockstoreConfig =
+        static_cast<ui32>(NKikimrConsole::TConfigItem::BlockstoreConfigItem);
+    req->ConfigItemKinds = {
+        blockstoreConfig,
+    };
+    NCloud::Send(
+        ctx,
+        NConsole::MakeConfigsDispatcherID(ctx.SelfID.NodeId()),
+        std::move(req));
+}
+
 void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
     const TEvService::TEvGetVolumeStatsResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -250,7 +265,7 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
         auto [cpuWait, error] = StatsFetcher->GetCpuWait();
         if (HasError(error)) {
             auto errorMessage =
-                ReportCpuWaitCounterReadError(error.GetMessage());
+                ReportCpuWaitCounterReadError(FormatError(error));
                 LOG_WARN_S(
                     ctx,
                     TBlockStoreComponents::VOLUME_BALANCER,
@@ -264,13 +279,13 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
             cpuLack /= intervalUs;
             *CpuWaitCounter = cpuLack;
 
-            LastCpuWaitTs = now;
-
             if (cpuLack >= StorageConfig->GetCpuLackThreshold()) {
                 LOG_WARN_S(ctx, TBlockStoreComponents::VOLUME_BALANCER,
                     "Cpu wait is " << cpuLack);
             }
         }
+
+        LastCpuWaitTs = now;
 
         ui64 numManuallyPreempted = 0;
         ui64 numBalancerPreempted = 0;
@@ -380,6 +395,45 @@ void TVolumeBalancerActor::HandleConfigureVolumeBalancerRequest(
     }
 }
 
+void TVolumeBalancerActor::HandleConfigSubscriptionResponse(
+    const TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME_BALANCER,
+        "Subscribed to config changes");
+}
+
+void TVolumeBalancerActor::HandleConfigNotificationRequest(
+    const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& record = ev->Get()->Record;
+    auto response =
+        std::make_unique<TEvConsole::TEvConfigNotificationResponse>(record);
+    NCloud::Reply(ctx, *ev, std::move(response));
+
+    const auto& config = record.GetConfig();
+
+    if (!config.HasBlockstoreConfig() ||
+        !config.GetBlockstoreConfig().HasVolumePreemptionType())
+    {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME_BALANCER,
+            "VolumePreemptionType is not present in ConfigDispatcher "
+            "notification");
+        return;
+    }
+
+    auto volumePreemptionType = static_cast<NProto::EVolumePreemptionType>(
+        config.GetBlockstoreConfig().GetVolumePreemptionType());
+
+    State->OverrideVolumePreemptionTypeIfPossible(volumePreemptionType);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TVolumeBalancerActor::StateWork)
@@ -392,6 +446,13 @@ STFUNC(TVolumeBalancerActor::StateWork)
         HFunc(TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest, HandleConfigureVolumeBalancerRequest);
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
+
+        HFunc(
+            TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse,
+            HandleConfigSubscriptionResponse);
+        HFunc(
+            TEvConsole::TEvConfigNotificationRequest,
+            HandleConfigNotificationRequest);
 
         default:
             HandleUnexpectedEvent(

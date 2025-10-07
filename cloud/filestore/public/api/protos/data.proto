@@ -119,6 +119,19 @@ message TDestroyHandleResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Read/Write common messages
+
+message TIovec
+{
+    // Starting address or offset of the data buffer to perform read to
+    // or write from.
+    uint64 Base = 1;
+
+    // Number of bytes to read/write.
+    uint64 Length = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // ReadData request/response
 
 message TReadDataRequest
@@ -182,6 +195,10 @@ message TWriteDataRequest
 
     // Bytes to write start at buffer offset.
     uint32 BufferOffset = 7;
+
+    // Vector I/O data structure
+    // Data can be passed via Iovecs instead of Buffer to avoid excess copy
+    repeated TIovec Iovecs = 8;
 }
 
 message TWriteDataResponse

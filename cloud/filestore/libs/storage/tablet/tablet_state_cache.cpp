@@ -228,7 +228,11 @@ bool TInMemoryIndexState::ReadNodeRef(
 {
     auto it = NodeRefs.find(TNodeRefsKey(nodeId, name));
     if (it == NodeRefs.end()) {
-        return false;
+        // If the cache is exhaustive for the node and we did not find the
+        // entry, then we are sure that the entry does not exist and we can
+        // return true, meaning that cache lookup was successful. But we do not
+        // set the ref, meaning that the entry does not exist.
+        return NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId);
     }
 
     ui64 minCommitId = it->second.CommitId;

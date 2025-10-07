@@ -284,6 +284,11 @@ message TVolume
     // Whether volume can use fast data path (external endpoint with direct
     // rdma connection to engine)
     bool IsFastPathEnabled = 36;
+
+    // When a disk is being copied or has already been copied, the
+    // PrincipalDiskId field specifies the name of the disk that the client
+    // should use instead of current.
+    string PrincipalDiskId = 37;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -396,6 +401,9 @@ message TVolumeStats
 
     uint32 UnconfirmedBlobCount = 27;
     uint32 ConfirmedBlobCount = 28;
+
+    // Current trim fresh log as commit id
+    uint64 TrimFreshLogToCommitId = 29;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1,4 +1,5 @@
 #include "fs.h"
+
 #include "log.h"
 #include "loop.h"
 #include "node_cache.h"
@@ -6,6 +7,7 @@
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -126,6 +128,7 @@ struct TBootstrap
             UNIT_ASSERT(request->GetRestoreClientSession());
             NProto::TCreateSessionResponse result;
             result.MutableSession()->SetSessionId(SessionId);
+            result.MutableFileStore()->SetBlockSize(4096);
             result.MutableFileStore()->MutableFeatures()->CopyFrom(
                 featuresConfig);
             result.MutableFileStore()->SetFileSystemId(FileSystemId);
@@ -2353,6 +2356,66 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     true);
 
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*writeBackCacheError));
+    }
+
+    Y_UNIT_TEST(ShouldNotCrashWhileStoppingWhenForgetRequestIsInFlight)
+    {
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler);
+
+        bootstrap.Start();
+
+        const ui64 nodeId = 123;
+        const ui64 refCount = 10;
+
+        auto future = bootstrap.Fuse->SendRequest<TForgetRequest>(nodeId, refCount);
+        bootstrap.Stop();
+
+        scheduler->RunAllScheduledTasks();
+
+        UNIT_ASSERT_EXCEPTION(future.GetValue(WaitTimeout), yexception);
+    }
+
+    Y_UNIT_TEST(ShouldRaiseCritEventWhenErrorWasSentToGuest)
+    {
+        TBootstrap bootstrap;
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+        const ui64 size = 789;
+
+        bootstrap.Service->ReadDataHandler = [&](auto, auto)
+        {
+            return MakeFuture(NProto::TReadDataResponse(TErrorResponse(E_IO)));
+        };
+
+        bootstrap.Service->WriteDataHandler = [&](auto, auto)
+        {
+            return MakeFuture(NProto::TWriteDataResponse(TErrorResponse(E_IO)));
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handleId, 0, size);
+
+        UNIT_ASSERT_EXCEPTION(read.GetValueSync(), yexception);
+
+        auto errorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter("AppCriticalEvents/ErrorWasSentToTheGuest", true);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, errorCounter->Val());
+
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4096, 'a'));
+
+        UNIT_ASSERT_EXCEPTION(write.GetValue(WaitTimeout), yexception);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, errorCounter->Val());
     }
 }
 

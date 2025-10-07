@@ -266,7 +266,6 @@ class TDiskRegistryState
         // Filled if the disk is a shadow disk for the checkpoint.
         NProto::TCheckpointReplica CheckpointReplica;
 
-        TVector<TDeviceId> DeviceReplacementIds;
         THashSet<TString> LostDeviceIds;
 
         NProto::EStorageMediaKind MediaKind =
@@ -579,7 +578,7 @@ public:
 
     const TVector<TDiskStateUpdate>& GetDiskStateUpdates() const;
 
-    TVector<NProto::TDiskState> ListDisksStates() const;
+    TVector<NProto::TDiskState> ListDiskStates() const;
 
     void DeleteDiskStateUpdate(TDiskRegistryDatabase& db, ui64 maxSeqNo);
 

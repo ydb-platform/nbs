@@ -11,14 +11,28 @@ using namespace NKikimr::NConfig;
 static const TString tenantLabel = "tenant";
 static const TString nodeNameLabel = "node_type";
 
+TRegisterDynamicNodeOptions::TNodeLabels GetLabels(
+    const NCloud::NProto::TConfigDispatcherSettings& settings,
+    const TString& tenantName,
+    const TString& nodeType)
+{
+    TRegisterDynamicNodeOptions::TNodeLabels result{
+        {tenantLabel, tenantName},
+        {nodeNameLabel, nodeType},
+    };
+    for (const auto& label: settings.GetAdditionalNodeLabels()) {
+        result.emplace(label.GetKey(), label.GetValue());
+    }
+    return result;
+}
+
 void SetupConfigDispatcher(
     const NProto::TConfigDispatcherSettings& settings,
     const TString& tenantName,
     const TString& nodeType,
     NKikimr::NConfig::TConfigsDispatcherInitInfo* config)
 {
-    config->Labels.emplace(tenantLabel, tenantName);
-    config->Labels.emplace(nodeNameLabel, nodeType);
+    config->Labels = GetLabels(settings, tenantName, nodeType);
 
     if (!settings.HasAllowList() && !settings.HasDenyList()) {
         return;

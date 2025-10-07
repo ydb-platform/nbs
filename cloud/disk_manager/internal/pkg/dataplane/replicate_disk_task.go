@@ -25,11 +25,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type replicateDiskTask struct {
-	nbsFactory        nbs_client.Factory
 	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
+	nbsFactory        nbs_client.Factory
 	request           *protos.ReplicateDiskTaskRequest
 	state             *protos.ReplicateDiskTaskState
-	performanceConfig *performance_config.PerformanceConfig
 }
 
 func (t *replicateDiskTask) Save() ([]byte, error) {
@@ -135,7 +135,7 @@ func (t *replicateDiskTask) saveProgress(
 	}
 
 	bytesPerSecond := performance.ConvertMiBsToBytes(
-		t.performanceConfig.GetReplicateDiskBandwidthMiBs(),
+		t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
 	)
 
 	if t.state.ChunkCount != 0 && t.state.Progress != 1 {
@@ -257,6 +257,11 @@ func (t *replicateDiskTask) replicate(
 	}
 
 	t.state.ChunkCount = chunkCount
+
+	err = t.setEstimate(ctx, execCtx, source)
+	if err != nil {
+		return err
+	}
 
 	target, err := nbs.NewDiskTarget(
 		ctx,
@@ -402,6 +407,32 @@ func (t *replicateDiskTask) getBytesToReplicate(
 	)
 
 	return bytesToReplicate, nil
+}
+
+func (t *replicateDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	diskSource common.Source,
+) error {
+
+	bytesToReplicate, err := diskSource.EstimatedBytesToRead(ctx)
+	if err != nil {
+		return err
+	}
+
+	t.logInfo(
+		ctx,
+		execCtx,
+		"bytes to replicate is %v",
+		bytesToReplicate,
+	)
+
+	execCtx.SetEstimatedInflightDuration(performance.Estimate(
+		bytesToReplicate,
+		t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
+	))
+
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

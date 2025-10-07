@@ -9,6 +9,8 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -22,12 +24,13 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteDiskTask struct {
-	storage     resources.Storage
-	scheduler   tasks.Scheduler
-	poolService pools.Service
-	nbsFactory  nbs.Factory
-	request     *protos.DeleteDiskRequest
-	state       *protos.DeleteDiskTaskState
+	performanceConfig *performance_config.PerformanceConfig
+	storage           resources.Storage
+	scheduler         tasks.Scheduler
+	poolService       pools.Service
+	nbsFactory        nbs.Factory
+	request           *protos.DeleteDiskRequest
+	state             *protos.DeleteDiskTaskState
 }
 
 func (t *deleteDiskTask) Save() ([]byte, error) {
@@ -49,6 +52,11 @@ func (t *deleteDiskTask) deleteDisk(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	err := t.setEstimate(ctx, execCtx)
+	if err != nil {
+		return err
+	}
 
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
@@ -108,7 +116,7 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	// Only overlay disks (created from image) should be released.
-	if diskMeta != nil && len(diskMeta.SrcImageID) != 0 {
+	if len(diskMeta.SrcImageID) != 0 {
 		taskID, err = t.poolService.ReleaseBaseDisk(
 			headers.SetIncomingIdempotencyKey(
 				ctx,
@@ -169,4 +177,62 @@ func (t *deleteDiskTask) GetMetadata(
 
 func (t *deleteDiskTask) GetResponse() proto.Message {
 	return &empty.Empty{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *deleteDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	// Only sync requests are blocking.
+	if !t.request.Sync {
+		return nil
+	}
+
+	diskID := t.request.Disk.DiskId
+
+	diskMeta, err := t.storage.GetDiskMeta(ctx, diskID)
+	if err != nil {
+		return err
+	}
+
+	if diskMeta == nil {
+		// Should be idempotent.
+		return nil
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
+	if err != nil {
+		return err
+	}
+
+	diskParams, err := client.Describe(ctx, diskID)
+	if err != nil {
+		if nbs.IsDiskNotFoundError(err) {
+			// Should be idempotent.
+			return nil
+		}
+
+		return err
+	}
+
+	diskSize := diskParams.BlocksCount * uint64(diskParams.BlockSize)
+
+	switch diskParams.Kind {
+	case types.DiskKind_DISK_KIND_SSD_LOCAL:
+		execCtx.SetEstimatedInflightDuration(performance.Estimate(
+			diskSize,
+			t.performanceConfig.GetSSDLocalDiskDeletingBandwidthMiBs(),
+		))
+
+	case types.DiskKind_DISK_KIND_HDD_LOCAL:
+		execCtx.SetEstimatedInflightDuration(performance.Estimate(
+			diskSize,
+			t.performanceConfig.GetHDDLocalDiskDeletingBandwidthMiBs(),
+		))
+	}
+
+	return nil
 }

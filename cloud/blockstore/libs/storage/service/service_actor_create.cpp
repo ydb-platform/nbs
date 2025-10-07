@@ -340,17 +340,18 @@ void TCreateVolumeActor::HandleDescribeVolumeResponse(
     const auto& msg = ev->Get();
     const auto& error = msg->GetError();
 
-    if (FAILED(error.GetCode())) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::VOLUME,
+    if (HasError(error)) {
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::VOLUME,
             "Could not resolve path for base volume "
-            << baseDiskId.Quote() << ": " << FormatError(error));
+                << baseDiskId.Quote() << ": " << FormatError(error));
 
         ReplyAndDie(
             ctx,
             std::make_unique<TEvService::TEvCreateVolumeResponse>(error));
 
         return;
-
     }
 
     const auto& pathDescr = msg->PathDescription;
@@ -373,10 +374,12 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
     const auto& error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Creation of volume %s failed: %s",
             Request.GetDiskId().Quote().c_str(),
-            msg->GetErrorReason().c_str());
+            FormatError(error).c_str());
 
         ReplyAndDie(
             ctx,
@@ -407,12 +410,16 @@ void TCreateVolumeActor::HandleWaitReadyResponse(
     auto error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Volume %s creation failed with error: %s",
             Request.GetDiskId().Quote().c_str(),
-            error.GetMessage().Quote().c_str());
+            FormatError(error).c_str());
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Successfully created volume %s",
             Request.GetDiskId().Quote().c_str());
     }
@@ -457,8 +464,6 @@ NProto::TError ValidateCreateVolumeRequest(
     const TStorageConfig& config,
     const NProto::TCreateVolumeRequest& request)
 {
-    TString errorMessage;
-
     if (!request.GetDiskId()) {
         return MakeError(E_ARGUMENT, "DiskId cannot be empty");
     }

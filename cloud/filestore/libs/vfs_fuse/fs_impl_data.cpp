@@ -228,7 +228,7 @@ void TFileSystem::Release(
     }
 
     if (WriteBackCache) {
-        WriteBackCache.FlushData(handle).Subscribe(
+        WriteBackCache.FlushNodeData(ino).Subscribe(
             [=, ptr = weak_from_this()] (const auto&)
             {
                 if (auto self = ptr.lock()) {
@@ -523,6 +523,7 @@ void TFileSystem::WriteBuf(
         return;
     }
 
+    // TODO(myagkov): Update service-local to use ZeroCopyWriteEnabled option
     if (Config->GetZeroCopyEnabled()) {
         WriteBufLocal(callContext, req, ino, bufv, offset, fi);
         return;
@@ -534,31 +535,49 @@ void TFileSystem::WriteBuf(
         << " size:" << size);
 
     auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
-    TAlignedBuffer alignedBuffer(size, align);
-
-    fuse_bufvec dst = FUSE_BUFVEC_INIT(size);
-    dst.buf[0].mem = (void*)(alignedBuffer.Begin());
-
-    ssize_t res = fuse_buf_copy(
-        &dst, bufv
-#if !defined(FUSE_VIRTIO)
-        ,fuse_buf_copy_flags(0)
-#endif
-    );
-    if (res < 0) {
-        ReplyError(*callContext, MakeError(res), req, res);
-        return;
-    }
-    Y_ABORT_UNLESS((size_t)res == size);
-
     callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
         || !IsAligned(size, Config->GetBlockSize());
-
     auto request = StartRequest<NProto::TWriteDataRequest>(ino);
+
+    // TODO(myagkov): Support iovecs in WriteBackCache
+    const bool isZeroCopyWrite = Config->GetZeroCopyWriteEnabled() &&
+                                 !Config->GetServerWriteBackCacheEnabled();
+    if (!isZeroCopyWrite) {
+        TAlignedBuffer alignedBuffer(size, align);
+
+        fuse_bufvec dst = FUSE_BUFVEC_INIT(size);
+        dst.buf[0].mem = (void*)(alignedBuffer.Begin());
+
+        ssize_t res = fuse_buf_copy(
+            &dst,
+            bufv
+#if !defined(FUSE_VIRTIO)
+            ,
+            fuse_buf_copy_flags(0)
+#endif
+        );
+        if (res < 0) {
+            ReplyError(*callContext, MakeError(res), req, res);
+            return;
+        }
+        Y_ABORT_UNLESS((size_t)res == size);
+        request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
+        request->SetBuffer(alignedBuffer.TakeBuffer());
+    } else {
+        request->MutableIovecs()->Reserve(bufv->count);
+        for (size_t index = 0; index < bufv->count; ++index) {
+            const auto* srcFuseBuf = &bufv->buf[index];
+            if (srcFuseBuf->size == 0) {
+                continue;
+            }
+
+            auto* iovec = request->MutableIovecs()->Add();
+            iovec->SetBase(reinterpret_cast<ui64>(srcFuseBuf->mem));
+            iovec->SetLength(srcFuseBuf->size);
+        }
+    }
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
-    request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
-    request->SetBuffer(alignedBuffer.TakeBuffer());
 
     if (ShouldUseServerWriteBackCache(fi)) {
         WriteBackCache.WriteData(callContext, std::move(request))
@@ -717,7 +736,7 @@ void TFileSystem::Flush(
     auto future = fsyncQueueFuture;
 
     if (WriteBackCache) {
-        auto writeBackCacheFlushFuture = WriteBackCache.FlushData(fi->fh)
+        auto writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino)
             .Apply([] (const auto&) { return MakeError(S_OK); });
 
         future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
@@ -828,7 +847,7 @@ void TFileSystem::FSync(
 
         TFuture<NProto::TError> writeBackCacheFlushFuture;
         if (fi) {
-            writeBackCacheFlushFuture = WriteBackCache.FlushData(fi->fh)
+            writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino)
                 .Apply(convertOK);
         } else {
             writeBackCacheFlushFuture = WriteBackCache.FlushAllData()

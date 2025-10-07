@@ -52,7 +52,11 @@ type Source interface {
 	baseSource
 
 	Read(ctx context.Context, chunk *Chunk) error
+	// Returns total chunk count in the source.
 	ChunkCount(ctx context.Context) (uint32, error)
+	// Returns data size to read. Might be less than ChunkCount * chunkSize.
+	// Used to calculate the estimated transfer time.
+	EstimatedBytesToRead(ctx context.Context) (uint64, error)
 }
 
 type ShallowSource interface {

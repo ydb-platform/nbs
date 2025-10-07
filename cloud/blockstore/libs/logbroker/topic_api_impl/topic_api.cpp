@@ -1,14 +1,15 @@
 #include "topic_api.h"
 
-#include <contrib/ydb/public/sdk/cpp/client/iam/common/iam.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/status_codes.h>
+#include <cloud/blockstore/libs/logbroker/iface/config.h>
+#include <cloud/blockstore/libs/logbroker/iface/credentials_provider.h>
+#include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <cloud/blockstore/libs/logbroker/iface/config.h>
-#include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
+#include <contrib/ydb/public/sdk/cpp/client/iam/common/iam.h>
+#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
+#include <contrib/ydb/public/sdk/cpp/client/ydb_types/status_codes.h>
 
 #include <util/generic/overloaded.h>
 #include <util/stream/file.h>
@@ -88,12 +89,18 @@ private:
     std::unique_ptr<TBatch> Batch;
     std::optional<TContinuationToken> ContinuationToken;
 
+    std::shared_ptr<NYdbICredentialsProviderFactory>
+        CredentialsProviderFactory;
+
 public:
     TService(
             TLogbrokerConfigPtr config,
-            ILoggingServicePtr logging)
+            ILoggingServicePtr logging,
+            std::shared_ptr<NYdbICredentialsProviderFactory>
+            credentialsProviderFactory)
         : Config(std::move(config))
         , Logging(std::move(logging))
+        , CredentialsProviderFactory(std::move(credentialsProviderFactory))
     {}
 
     TFuture<NProto::TError> Write(
@@ -278,19 +285,10 @@ private:
             .SetDatabase(Config->GetDatabase())
             .SetLog(Logging->CreateLog("BLOCKSTORE_LOGBROKER").ReleaseBackend())
             .SetDiscoveryMode(NYdb::EDiscoveryMode::Async)
-            .SetDrainOnDtors(true);
+            .SetDrainOnDtors(true)
+            .SetCredentialsProviderFactory(CredentialsProviderFactory);
 
-        if (TString address = Config->GetMetadataServerAddress()) {
-            TStringBuf hostRef;
-            TStringBuf portRef;
-            TStringBuf{address}.Split(':', hostRef, portRef);
-
-            cfg.SetCredentialsProviderFactory(
-                NYdb::CreateIamCredentialsProviderFactory({
-                    TString(hostRef),
-                    FromString<ui32>(portRef)
-                }));
-
+        if (Config->GetCaCertFilename()) {
             cfg.UseSecureConnection(
                 Config->GetCaCertFilename()
                     ? TFileInput(Config->GetCaCertFilename()).ReadAll()
@@ -307,9 +305,26 @@ private:
 
 IServicePtr CreateTopicAPIService(
     TLogbrokerConfigPtr config,
+    ILoggingServicePtr logging,
+    std::shared_ptr<NYdbICredentialsProviderFactory>
+        credentialsProviderFactory)
+{
+    return std::make_shared<TService>(
+        std::move(config),
+        std::move(logging),
+        std::move(credentialsProviderFactory));
+}
+
+IServicePtr CreateTopicAPIService(
+    TLogbrokerConfigPtr config,
     ILoggingServicePtr logging)
 {
-    return std::make_shared<TService>(std::move(config), std::move(logging));
+    auto credentialsProviderFactory = CreateCredentialsProviderFactory(*config);
+
+    return CreateTopicAPIService(
+        std::move(config),
+        std::move(logging),
+        std::move(credentialsProviderFactory));
 }
 
 }   // namespace NCloud::NBlockStore::NLogbroker

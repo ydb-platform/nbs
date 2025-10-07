@@ -358,12 +358,29 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                 const ui32 entrySize =
                     RandomNumber(Min(remainingBytes + 1, testUpToEntrySize));
                 const auto data = GenerateData(entrySize);
+                const auto maxAllocationSize = rb->GetMaxAllocationBytesCount();
                 const bool pushed = ri.PushBack(data);
                 UNIT_ASSERT_VALUES_EQUAL(pushed, rb->PushBack(data));
                 if (pushed) {
+                    UNIT_ASSERT_LE_C(
+                        data.size(),
+                        maxAllocationSize,
+                        "Data size " << data.size()
+                                     << " should be less or equal than "
+                                        "GetMaxAllocationBytesCount "
+                                     << maxAllocationSize
+                                     << " for a successful PushBack");
                     UNIT_ASSERT_VALUES_EQUAL(ri.Back(), rb->Back());
                     remainingBytes -= entrySize;
                     // Cerr << "PUSH\t" << data << Endl;
+                } else {
+                    UNIT_ASSERT_C(
+                        data.size() == 0 || data.size() > maxAllocationSize,
+                        "Data size " << data.size()
+                                     << " should be zero or greater than "
+                                        "GetMaxAllocationBytesCount "
+                                     << maxAllocationSize
+                                     << " for a unsuccessful PushBack");
                 }
             } else {
                 UNIT_ASSERT_VALUES_EQUAL(ri.Back(), rb->Back());
@@ -533,6 +550,57 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
             UNIT_ASSERT_EQUAL(Dump(afterVisit), Dump(afterPopBack));
         }
+    }
+
+    Y_UNIT_TEST(ShouldGetRawCapacity)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 42;
+        TFileRingBuffer rb(f.GetName(), len);
+        UNIT_ASSERT_EQUAL(len, rb.GetRawCapacity());
+    }
+
+    Y_UNIT_TEST(ShouldGetRawUsedBytesCount)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        UNIT_ASSERT_EQUAL(0, rb.GetRawUsedBytesCount());
+        UNIT_ASSERT(rb.PushBack("abcd"));   // 12 bytes
+        UNIT_ASSERT_EQUAL(12, rb.GetRawUsedBytesCount());
+        UNIT_ASSERT(rb.PushBack("efgh"));   // 12 bytes
+        UNIT_ASSERT_EQUAL(24, rb.GetRawUsedBytesCount());
+        UNIT_ASSERT(rb.PushBack("ijkl"));   // 12 bytes
+        UNIT_ASSERT_EQUAL(36, rb.GetRawUsedBytesCount());
+        rb.PopFront();
+        UNIT_ASSERT_EQUAL(24, rb.GetRawUsedBytesCount());
+        rb.PopFront();
+        UNIT_ASSERT_EQUAL(12, rb.GetRawUsedBytesCount());
+        rb.PopFront();
+        UNIT_ASSERT_EQUAL(0, rb.GetRawUsedBytesCount());
+    }
+
+    Y_UNIT_TEST(ShouldGetMaxAllocationBytesCount)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        // 36 - header size (8)
+        UNIT_ASSERT_EQUAL(28, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT(rb.PushBack("abcd"));
+        UNIT_ASSERT_EQUAL(16, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT(rb.PushBack("efgh"));
+        UNIT_ASSERT_EQUAL(4, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT(rb.PushBack("ijkl"));
+        UNIT_ASSERT_EQUAL(0, rb.GetMaxAllocationBytesCount());
+        rb.PopFront();
+        UNIT_ASSERT_EQUAL(3, rb.GetMaxAllocationBytesCount());
+        rb.PopFront();
+        UNIT_ASSERT_EQUAL(15, rb.GetMaxAllocationBytesCount());
+        rb.PopFront();
+        UNIT_ASSERT_EQUAL(28, rb.GetMaxAllocationBytesCount());
     }
 }
 

@@ -7,7 +7,8 @@ SRCS(
     metric.cpp
     multiclient_endpoint.cpp
     session.cpp
-    session_test.cpp
+    switchable_client.cpp
+    switchable_session.cpp
     throttling.cpp
 )
 

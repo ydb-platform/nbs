@@ -73,6 +73,23 @@ void ToDeviceStats(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TReadDeviceBlocksResponse ConvertToReadDeviceBlocksResponse(
+    TFuture<NProto::TReadBlocksResponse> future)
+{
+    auto data = future.ExtractValue();
+    NProto::TReadDeviceBlocksResponse response;
+
+    response.MutableError()->Swap(data.MutableError());
+    response.MutableBlocks()->Swap(data.MutableBlocks());
+    if (data.HasChecksum()) {
+        response.MutableChecksum()->Swap(data.MutableChecksum());
+    }
+
+    return response;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TCollectStatsContext
 {
     TPromise<NProto::TAgentStats> Promise = NewPromise<NProto::TAgentStats>();
@@ -161,10 +178,33 @@ struct TCollectStatsContext
 
 TVector<IProfileLog::TBlockInfo> ComputeDigest(
     const IBlockDigestGenerator& generator,
-    const NProto::TWriteBlocksRequest& req,
-    ui32 blockSize)
+    const TSgList& sglist,
+    const ui64 startIndex)
 {
-    auto bytesCount = CalculateBytesCount(req, blockSize);
+    TVector<IProfileLog::TBlockInfo> blockInfos;
+    blockInfos.reserve(sglist.size());
+
+    ui64 blockIndex = startIndex;
+    for (TBlockDataRef ref: sglist) {
+        const auto digest = generator.ComputeDigest(blockIndex, ref);
+
+        if (digest.Defined()) {
+            blockInfos.push_back({blockIndex, *digest});
+        }
+
+        ++blockIndex;
+    }
+
+    return blockInfos;
+}
+
+TVector<IProfileLog::TBlockInfo> ComputeDigest(
+    const IBlockDigestGenerator& generator,
+    const NProto::TWriteBlocksRequest& req,
+    ui32 blockSize,
+    TStringBuf buffer)
+{
+    const ui64 bytesCount = CalculateBytesCount(req, blockSize);
     if (bytesCount % blockSize != 0) {
         Y_DEBUG_ABORT_UNLESS(false);
         return {};
@@ -179,27 +219,23 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
         return {};
     }
 
-    auto sglistOrError = SgListNormalize(GetSgList(req), blockSize);
+    TSgList sglist;
+    if (buffer) {
+        sglist = {{buffer.data(), buffer.size()}};
+    } else {
+        sglist = GetSgList(req);
+    }
+
+    auto sglistOrError = SgListNormalize(std::move(sglist), blockSize);
     if (HasError(sglistOrError)) {
         Y_DEBUG_ABORT_UNLESS(false);
         return {};
     }
-    auto sglist = sglistOrError.ExtractResult();
 
-    TVector<IProfileLog::TBlockInfo> blockInfos;
-
-    ui64 blockIndex = req.GetStartIndex();
-    for (const auto& ref: sglist) {
-        const auto digest = generator.ComputeDigest(blockIndex, ref);
-
-        if (digest.Defined()) {
-            blockInfos.push_back({blockIndex, *digest});
-        }
-
-        ++blockIndex;
-    }
-
-    return blockInfos;
+    return ComputeDigest(
+        generator,
+        sglistOrError.GetResult(),
+        req.GetStartIndex());
 }
 
 TVector<IProfileLog::TBlockInfo> ComputeDigest(
@@ -230,6 +266,23 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
     }
 
     return blockInfos;
+}
+
+TVector<IProfileLog::TBlockInfo> ComputeDigest(
+    const IBlockDigestGenerator& generator,
+    const NProto::TReadDeviceBlocksRequest& req,
+    const TSgList& sglist)
+{
+    const bool shouldCalcDigests = generator.ShouldProcess(
+        req.GetStartIndex(),
+        req.GetBlocksCount(),
+        req.GetBlockSize());
+
+    if (!shouldCalcDigests) {
+        return {};
+    }
+
+    return ComputeDigest(generator, sglist, req.GetStartIndex());
 }
 
 }   // namespace
@@ -624,39 +677,85 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
         {} // no data buffer
     );
 
-    return result.Apply(
-        [] (auto future) {
-            auto data = future.ExtractValue();
-            NProto::TReadDeviceBlocksResponse response;
+    if (!StorageConfig->GetUseTestBlockDigestGenerator()) {
+        return result.Apply(ConvertToReadDeviceBlocksResponse);
+    }
 
-            *response.MutableError() = data.GetError();
-            response.MutableBlocks()->Swap(data.MutableBlocks());
+    return result.Apply(
+        [request, generator = BlockDigestGenerator, profileLog = ProfileLog](
+            auto future)
+        {
+            auto response =
+                ConvertToReadDeviceBlocksResponse(std::move(future));
+
+            auto blockInfos = ComputeDigest(
+                *generator,
+                request,
+                GetSgList(response.GetBlocks()));
+
+            Y_DEBUG_ABORT_UNLESS(blockInfos);
+
+            if (blockInfos) {
+                profileLog->Write({
+                    .DiskId = request.GetDeviceUUID(),
+                    .Ts = Now(),
+                    .Request =
+                        IProfileLog::TSysReadWriteRequestBlockInfos{
+                            .RequestType = ESysRequestType::ReadDeviceBlocks,
+                            .BlockInfos = std::move(blockInfos),
+                            .CommitId = 0,
+                        },
+                });
+            }
 
             return response;
         });
 }
 
-template <typename T>
 void TDiskAgentState::WriteProfileLog(
     TInstant now,
     const TString& uuid,
-    const T& req,
+    const NProto::TWriteBlocksRequest& req,
     ui32 blockSize,
-    ESysRequestType requestType)
+    TStringBuf buffer)
+{
+    auto blockInfos =
+        ComputeDigest(*BlockDigestGenerator, req, blockSize, buffer);
+    if (!blockInfos) {
+        return;
+    }
+
+    ProfileLog->Write({
+        .DiskId = uuid,
+        .Ts = now,
+        .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
+            .RequestType = ESysRequestType::WriteDeviceBlocks,
+            .BlockInfos = std::move(blockInfos),
+            .CommitId = 0,
+        },
+    });
+}
+
+void TDiskAgentState::WriteProfileLog(
+    TInstant now,
+    const TString& uuid,
+    const NProto::TZeroBlocksRequest& req,
+    ui32 blockSize)
 {
     auto blockInfos = ComputeDigest(*BlockDigestGenerator, req, blockSize);
-
-    if (blockInfos) {
-        ProfileLog->Write({
-            .DiskId = uuid,
-            .Ts = now,
-            .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
-                .RequestType = requestType,
-                .BlockInfos = std::move(blockInfos),
-                .CommitId = 0,
-            },
-        });
+    if (!blockInfos) {
+        return;
     }
+
+    ProfileLog->Write({
+        .DiskId = uuid,
+        .Ts = now,
+        .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
+            .RequestType = ESysRequestType::ZeroDeviceBlocks,
+            .BlockInfos = std::move(blockInfos),
+            .CommitId = 0,
+        },
+    });
 }
 
 TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
@@ -667,6 +766,10 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
     writeRequest->MutableHeaders()->CopyFrom(request.GetHeaders());
     writeRequest->SetStartIndex(request.GetStartIndex());
     writeRequest->MutableBlocks()->Swap(request.MutableBlocks());
+    if (request.HasChecksum()) {
+        writeRequest->MutableChecksums()->Add()->CopyFrom(
+            request.GetChecksum());
+    }
 
     return WriteBlocks(
         now,
@@ -698,7 +801,7 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::WriteBlocks(
         deviceUUID,
         *request,
         blockSize,
-        ESysRequestType::WriteDeviceBlocks);
+        buffer);
 
     auto result = device.StorageAdapter->WriteBlocks(
         now,
@@ -738,9 +841,7 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
         now,
         request.GetDeviceUUID(),
         *zeroRequest,
-        request.GetBlockSize(),
-        ESysRequestType::ZeroDeviceBlocks
-    );
+        request.GetBlockSize());
 
     auto result = device.StorageAdapter->ZeroBlocks(
         now,
@@ -832,15 +933,18 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
     );
 
     return result.Apply(
-        [] (auto future) {
+        [](auto future)
+        {
             auto data = future.ExtractValue();
             NProto::TChecksumDeviceBlocksResponse response;
 
             if (HasError(data.GetError())) {
                 *response.MutableError() = data.GetError();
+            } else if (data.HasChecksum()) {
+                response.SetChecksum(data.GetChecksum().GetChecksum());
             } else {
                 TBlockChecksum checksum;
-                for (const auto& buffer : data.GetBlocks().GetBuffers()) {
+                for (const auto& buffer: data.GetBlocks().GetBuffers()) {
                     checksum.Extend(buffer.data(), buffer.size());
                 }
                 response.SetChecksum(checksum.GetValue());

@@ -1368,6 +1368,9 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         return TErrorResponse(getSessionError);
     }
 
+    it->second->Volume.SetBlocksCount(sessionInfo.Volume.GetBlocksCount());
+    it->second->Volume.SetBlockSize(sessionInfo.Volume.GetBlockSize());
+
     auto error = it->second->Device->Resize(
         sessionInfo.Volume.GetBlocksCount() *
         sessionInfo.Volume.GetBlockSize()).GetValueSync();
@@ -1408,8 +1411,7 @@ void TEndpointManager::ProcessException(
         }
     };
 
-    STORAGE_INFO(
-        TStringBuilder() << prefix.Get() << "schedule restart at " << deadline);
+    STORAGE_INFO(prefix << " schedule restart at " << deadline);
     Scheduler->Schedule(Executor.get(), deadline, std::move(func));
 }
 
@@ -1430,30 +1432,24 @@ void TEndpointManager::DoProcessException(
     if (state != ProcessingSockets.end() &&
         std::holds_alternative<TRequestState<TStopEndpointMethod>>(state->second))
     {
-        STORAGE_WARN(
-            TStringBuilder()
-            << prefix.Get() << "endpoint is stopping, cancel restart");
+        STORAGE_WARN(prefix << " endpoint is stopping, cancel restart");
         return;
     }
 
     auto session = endpoint->Session.lock();
     if (!session) {
-        STORAGE_WARN(
-            TStringBuilder()
-            << prefix.Get() << "session is down, cancel restart");
+        STORAGE_WARN(prefix << " session is down, cancel restart");
         return;
     }
 
     if (endpoint->Generation != context->Generation) {
-        STORAGE_WARN(
-            TStringBuilder()
-            << prefix.Get() << "generation mismatch (" << endpoint->Generation
+        STORAGE_WARN(prefix << " generation mismatch (" << endpoint->Generation
             << " != " << context->Generation << "), cancel restart");
         return;
     }
     endpoint->Generation++;
 
-    STORAGE_INFO(TStringBuilder() << prefix.Get() << "restart endpoint");
+    STORAGE_INFO(prefix << " restart endpoint");
 
     bool hasDevice =
         endpoint->Request->HasNbdDeviceFile() &&
@@ -1461,43 +1457,40 @@ void TEndpointManager::DoProcessException(
         endpoint->Request->GetPersistent();
 
     if (hasDevice && endpoint->Device) {
-        STORAGE_INFO(TStringBuilder() << prefix.Get() << "stop device");
+        STORAGE_INFO(prefix << " stop device");
         auto future = endpoint->Device->Stop(false);
         auto error = Executor->WaitFor(future);
         if (HasError(error)) {
-            STORAGE_ERROR(
-                TStringBuilder() << prefix.Get() << "failed to stop device: "
+            STORAGE_ERROR(prefix << " failed to stop device: "
                                  << FormatError(error));
         }
         endpoint->Device.reset();
     }
 
-    STORAGE_INFO(TStringBuilder() << prefix.Get() << "close socket");
+    STORAGE_INFO(prefix << " close socket");
     CloseAllEndpointSockets(*endpoint->Request);
 
     auto socketPath = endpoint->Request->GetUnixSocketPath();
 
-    STORAGE_INFO(TStringBuilder() << prefix.Get() << "update error handler");
+    STORAGE_INFO(prefix << " update error handler");
     NbdErrorHandlerMap->Erase(socketPath);
     NbdErrorHandlerMap->Emplace(
         socketPath,
         std::make_shared<TErrorHandler>(weak_from_this(), endpoint));
 
-    STORAGE_INFO(TStringBuilder() << prefix.Get() << "open socket");
+    STORAGE_INFO(prefix << " open socket");
     auto error = OpenAllEndpointSockets(
         *endpoint->Request,
         TSessionInfo(endpoint->Volume, session));
     if (HasError(error)) {
-        STORAGE_ERROR(
-            TStringBuilder()
-            << prefix.Get() << "failed to open socket: " << FormatError(error));
+        STORAGE_ERROR(prefix << " failed to open socket: " << FormatError(error));
         context->Generation++;
         ProcessException(std::move(context), std::move(prefix));
         return;
     }
 
     if (hasDevice) {
-        STORAGE_INFO(TStringBuilder() << prefix.Get() << "start device");
+        STORAGE_INFO(prefix << "start device");
         auto device = NbdDeviceFactory->Create(
             TNetworkAddress(TUnixSocketPath(socketPath)),
             endpoint->Request->GetNbdDeviceFile(),
@@ -1506,9 +1499,8 @@ void TEndpointManager::DoProcessException(
         auto startDeviceFuture = device->Start();
         error = Executor->WaitFor(startDeviceFuture);
         if (HasError(error)) {
-            STORAGE_ERROR(
-                TStringBuilder() << prefix.Get() << "failed to start device: "
-                                 << FormatError(error));
+            STORAGE_ERROR(prefix << "failed to start device: "
+                << FormatError(error));
             context->Generation++;
             ProcessException(std::move(context), std::move(prefix));
             return;

@@ -30,7 +30,13 @@ TString FormatKeyValueList(
         if (!first) {
             sb << "; ";
         }
-        sb << key << "=" << value;
+        sb << key << "=";
+        if (std::holds_alternative<TString>(value)) {
+            sb << std::get<TString>(value).Quote();
+        } else {
+            sb << value;
+        }
+
         first = false;
     }
     return sb;

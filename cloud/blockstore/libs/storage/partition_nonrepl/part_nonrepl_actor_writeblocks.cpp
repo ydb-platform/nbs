@@ -4,6 +4,7 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
@@ -89,7 +90,12 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
         PartConfig->GetBlockSize(),
         Request);
 
-    ui32 cookie = 0;
+
+    if (DeviceRequests.size() == 1) {
+        CombineChecksumsInPlace(*Request.MutableChecksums());
+    }
+
+    ui32 index = 0;
     for (const auto& deviceRequest: DeviceRequests) {
         auto request =
             std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
@@ -102,6 +108,23 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
                 Request.GetHeaders().GetVolumeRequestId());
             request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
         }
+        if (index < Request.ChecksumsSize()) {
+            const auto& checksum = Request.GetChecksums(index);
+            if (checksum.GetByteCount() ==
+                deviceRequest.BlockRange.Size() * PartConfig->GetBlockSize())
+            {
+                *request->Record.MutableChecksum() = checksum;
+            } else {
+                ReportChecksumCalculationError(
+                    "DiskAgentWriteActor: Incorrectly calculated checksum for "
+                    "block range",
+                    {{"range", deviceRequest.BlockRange.Print()},
+                     {"request range length", deviceRequest.BlockRange.Size()},
+                     {"checksum length",
+                      checksum.GetByteCount() / PartConfig->GetBlockSize()},
+                     {"disk id", PartConfig->GetName().Quote()}});
+            }
+        }
 
         builder.BuildNextRequest(request->Record);
 
@@ -110,7 +133,7 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
             ctx.SelfID,
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
-            cookie++,
+            index++,
             &ctx.SelfID // forwardOnNondelivery
         );
 

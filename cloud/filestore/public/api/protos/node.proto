@@ -30,6 +30,7 @@ enum ENodeType
     E_LINK_NODE = 3;
     E_SOCK_NODE = 4;
     E_SYMLINK_NODE = 5;
+    E_FIFO_NODE = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,6 +132,11 @@ message TCreateNodeRequest
         uint32 Mode = 1;
     }
 
+    message TFifo
+    {
+        uint32 Mode = 1;
+    }
+
     // Optional request headers.
     THeaders Headers = 1;
 
@@ -156,6 +162,7 @@ message TCreateNodeRequest
         TLink Link = 7;
         TSymLink SymLink = 8;
         TSocket Socket = 9;
+        TFifo Fifo = 13;
     }
 
     // If set, the node will be created in the shard FS.

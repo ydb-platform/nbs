@@ -1050,7 +1050,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandler = factory->CreateDeviceHandler(
             TDeviceHandlerParams{
                 .Storage = storage,
@@ -1136,7 +1137,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandlerForReliableDisk = factory->CreateDeviceHandler(
             TDeviceHandlerParams{
                 .Storage = storage,
@@ -1292,7 +1294,8 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 
         auto storage = std::make_shared<TTestStorage>();
 
-        auto factory = CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
+        auto factory =
+            CreateDeviceHandlerFactoryForTesting(blocksCountLimit * blockSize);
         auto deviceHandlerForReliableDisk = factory->CreateDeviceHandler(
             TDeviceHandlerParams{
                 .Storage = storage,

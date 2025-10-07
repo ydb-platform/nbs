@@ -2,7 +2,9 @@
 
 #include "fs_impl.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/vfs/probes.h>
+
 #include <cloud/storage/core/libs/common/helpers.h>
 
 namespace NCloud::NFileStore::NFuse {
@@ -21,7 +23,7 @@ int ReplyNone(
     requestStats.ResponseSent(callContext);
     FILESTORE_TRACK(ResponseSent, (&callContext), "None");
 
-    fuse_reply_none(req);
+    fuse_reply_none_override(req);
 
     requestStats.RequestCompleted(log, callContext, error);
 
@@ -68,6 +70,10 @@ int ReplyError(
         errorCode,
         res);
 
+    if (errorCode == EIO) {
+        ReportErrorWasSentToTheGuest(TStringBuilder()
+            << callContext.LogString() << " EIO error was sent to the guest");
+    }
     return res;
 }
 

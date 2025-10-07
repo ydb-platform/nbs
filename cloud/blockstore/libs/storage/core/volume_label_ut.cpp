@@ -129,6 +129,15 @@ Y_UNIT_TEST_SUITE(TDiskIdTest)
             "/local/nbs", "///test///volume",
             "/local/nbs/_1D2", "%2F%2F%2Ftest%2F%2F%2Fvolume");
     }
+
+    Y_UNIT_TEST(TestSecondaryAndLogicalDiskId)
+    {
+        UNIT_ASSERT_VALUES_EQUAL("disk-copy", GetSecondaryDiskId("disk"));
+        UNIT_ASSERT_VALUES_EQUAL("disk", GetLogicalDiskId("disk"));
+        UNIT_ASSERT_VALUES_EQUAL("disk", GetLogicalDiskId("disk-copy"));
+        UNIT_ASSERT_VALUES_EQUAL(false, IsSecondaryDiskId("disk"));
+        UNIT_ASSERT_VALUES_EQUAL(true, IsSecondaryDiskId("disk-copy"));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

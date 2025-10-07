@@ -40,6 +40,7 @@ namespace {
     xxx(MaxResponseEntries,          ui32,          10000                     )\
     xxx(MaxBackground,               ui32,          0                         )\
     xxx(MaxFuseLoopThreads,          ui32,          1                         )\
+    xxx(ZeroCopyWriteEnabled,        bool,          false                     )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(xxx)                             \
@@ -115,8 +116,10 @@ void DumpImpl(const T& t, IOutputStream& os)
 #define FILESTORE_CONFIG_GETTER(name, type, ...)                               \
 type TLocalFileStoreConfig::Get##name() const                                  \
 {                                                                              \
-    const auto value = ProtoConfig.Get##name();                                \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : Default##name;        \
+    if (ProtoConfig.Has##name()) {                                             \
+        return ConvertValue<type>(ProtoConfig.Get##name());                    \
+    }                                                                          \
+    return Default##name;                                                      \
 }                                                                              \
 // FILESTORE_CONFIG_GETTER
 
@@ -196,10 +199,10 @@ void TLocalFileStoreConfig::DumpHtml(IOutputStream& out) const
 #define FILESTORE_CONFIG_NULL_FILE_IO_GETTER(name, type, ...)                  \
 type TNullFileIOConfig::Get##name() const                                      \
 {                                                                              \
-    const auto value = Proto.Get##name();                                      \
-    return !IsEmpty(value)                                                     \
-        ? ConvertValue<type>(value)                                            \
-        : DefaultNullFileIO##name;                                             \
+    if (Proto.Has##name()) {                                                   \
+        return ConvertValue<type>(Proto.Get##name());                          \
+    }                                                                          \
+    return DefaultNullFileIO##name;                                            \
 }                                                                              \
 // FILESTORE_CONFIG_AIO_GETTER
 
@@ -212,8 +215,10 @@ FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(FILESTORE_CONFIG_NULL_FILE_IO_GETTER)
 #define FILESTORE_CONFIG_AIO_GETTER(name, type, ...)                           \
 type TAioConfig::Get##name() const                                             \
 {                                                                              \
-    const auto value = Proto.Get##name();                                      \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : DefaultAio##name;     \
+    if (Proto.Has##name()) {                                                   \
+        return ConvertValue<type>(Proto.Get##name());                          \
+    }                                                                          \
+    return DefaultAio##name;                                                   \
 }                                                                              \
 // FILESTORE_CONFIG_AIO_GETTER
 
@@ -226,8 +231,10 @@ FILESTORE_SERVICE_AIO_CONFIG(FILESTORE_CONFIG_AIO_GETTER)
 #define FILESTORE_CONFIG_IO_URING_GETTER(name, type, ...)                      \
 type TIoUringConfig::Get##name() const                                         \
 {                                                                              \
-    const auto value = Proto.Get##name();                                      \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : DefaultIoUring##name; \
+    if (Proto.Has##name()) {                                                   \
+        return ConvertValue<type>(Proto.Get##name());                          \
+    }                                                                          \
+    return DefaultIoUring##name;                                               \
 }                                                                              \
 // FILESTORE_CONFIG_IO_URING_GETTER
 

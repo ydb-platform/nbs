@@ -1,6 +1,7 @@
 import logging
 import os
 import pytest
+import uuid
 
 from cloud.blockstore.config.client_pb2 import TClientAppConfig, TClientConfig
 from cloud.blockstore.config.disk_pb2 import DEVICE_ERASE_METHOD_NONE, TDiskAgentConfig
@@ -15,6 +16,7 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, \
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonreplicated, \
     create_devices, setup_disk_registry_config, \
     enable_writable_state, make_agent_node_type, make_agent_id, AgentInfo, DeviceInfo
+from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
 from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
@@ -202,6 +204,7 @@ def __process_config(config_path, devices_per_agent):
 
 def __run_test(test_case, use_rdma):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    endpoint_storage_dir = yatest_common.output_path() + '/endpoints-' + str(uuid.uuid4())
 
     configurator = KikimrConfigGenerator(
         erasure=None,
@@ -261,6 +264,8 @@ def __run_test(test_case, use_rdma):
         server_app_config.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
         server_app_config.ServerConfig.UseFakeRdmaClient = use_rdma
         server_app_config.ServerConfig.RdmaClientEnabled = use_rdma
+        server_app_config.ServerConfig.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
+        server_app_config.ServerConfig.EndpointStorageDir = endpoint_storage_dir
         server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
         storage = TStorageServiceConfig()
@@ -287,7 +292,7 @@ def __run_test(test_case, use_rdma):
         storage.MaxTimedOutDeviceStateDuration = 60000    # 1 min
         storage.NonReplicatedAgentMinTimeout = 60000      # 1 min
         storage.NonReplicatedAgentMaxTimeout = 60000      # 1 min
-        storage.NonReplicatedSecureEraseTimeout = 1000    # 1 sec
+        storage.NonReplicatedSecureEraseTimeout = 30000   # 30 sec
         storage.EnableToChangeStatesFromDiskRegistryMonpage = True
         storage.EnableToChangeErrorStatesFromDiskRegistryMonpage = True
         storage.UseNonreplicatedRdmaActor = use_rdma
@@ -300,6 +305,7 @@ def __run_test(test_case, use_rdma):
         client_config = TClientConfig()
         client_config.RetryTimeout = 20000  # 20 sec
         client_config.RetryTimeoutIncrement = 100  # 100 msec
+        client_config.ConnectionErrorMaxRetryTimeout = 500  # 500 msec
         client_app_config = TClientAppConfig()
         client_app_config.ClientConfig.CopyFrom(client_config)
 
@@ -328,9 +334,10 @@ def __run_test(test_case, use_rdma):
 
         disk_agents = []
         for i in range(test_case.agent_count):
-            disk_agent = None
+            restart_interval = None
+            if i in test_case.agent_indexes_to_restart:
+                restart_interval = test_case.restart_interval
 
-            restart_interval = test_case.restart_interval if i in test_case.agent_indexes_to_restart else None
             disk_agent = LocalDiskAgent(
                 kikimr_port,
                 configurator.domains_txt,
@@ -342,6 +349,7 @@ def __run_test(test_case, use_rdma):
                 disk_agent_binary_path=yatest_common.binary_path(disk_agent_binary_path),
                 restart_interval=restart_interval,
                 restart_downtime=test_case.disk_agent_downtime,
+                suspend_restarts=True,
                 rack="rack-%s" % i,
                 node_type=make_agent_node_type(i))
 
@@ -351,6 +359,9 @@ def __run_test(test_case, use_rdma):
             disk_agents.append(disk_agent)
 
         wait_for_secure_erase(nbs.mon_port, expectedAgents=test_case.agent_count)
+        for i, agent in enumerate(disk_agents):
+            if i in test_case.agent_indexes_to_restart:
+                agent.allow_restart()
 
         client_config.NbdSocketSuffix = nbd_socket_suffix
 
@@ -363,6 +374,7 @@ def __run_test(test_case, use_rdma):
             nbs.mon_port,
             nbs_log_path=nbs.stderr_file_name,
             client_config=client_config,
+            endpoint_storage_dir=endpoint_storage_dir,
             env_processes=disk_agents + [nbs],
         )
     finally:

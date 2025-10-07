@@ -82,6 +82,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             tablet.AssertCreateNodeFailed(TCreateNodeArgs::Directory(RootNodeId, name));
             tablet.AssertCreateNodeFailed(TCreateNodeArgs::Link(RootNodeId, name, id));
             tablet.AssertCreateNodeFailed(TCreateNodeArgs::Sock(RootNodeId, name));
+            tablet.AssertCreateNodeFailed(TCreateNodeArgs::Fifo(RootNodeId, name));
 
             tablet.AssertCreateHandleFailed(RootNodeId, name, TCreateHandleArgs::CREATE);
             tablet.AssertRenameNodeFailed(RootNodeId, "test", RootNodeId, name);

@@ -37,16 +37,16 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
         MakeIntrusive<TCallContext>(CreateRequestId())
     );
 
-    if (State->GetTrimFreshLogTimeout()) {
+    if (State->GetTrimFreshLogBackoffDelay()) {
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION,
             "%s TrimFreshLog request scheduled: %lu, %s",
             LogTitle.GetWithTime().c_str(),
             request->CallContext->RequestId,
-            FormatDuration(State->GetTrimFreshLogTimeout()).c_str());
+            FormatDuration(State->GetTrimFreshLogBackoffDelay()).c_str());
 
-        ctx.Schedule(State->GetTrimFreshLogTimeout(), request.release());
+        ctx.Schedule(State->GetTrimFreshLogBackoffDelay(), request.release());
     } else {
         LOG_DEBUG(
             ctx,
@@ -140,7 +140,8 @@ void TPartitionActor::HandleTrimFreshLog(
         Executor()->Generation(),
         nextPerGenerationCounter,
         std::move(freshChannels),
-        PartitionConfig.GetDiskId());
+        PartitionConfig.GetDiskId(),
+        Config->GetTrimFreshLogTimeout());
 
     Actors.Insert(actor);
 }

@@ -112,6 +112,8 @@ public:
     ui32 GetMaxBackground() const;
 
     ui32 GetMaxFuseLoopThreads() const;
+
+    bool GetZeroCopyWriteEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore

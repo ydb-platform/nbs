@@ -11,7 +11,7 @@ RECURSE(
     csi_driver
     direct_device_acquire
     disk_agent_config
-    disks_states
+    disk_states
     encryption_at_rest
     external_endpoint
     e2e-tests

@@ -57,6 +57,10 @@ func (c *ExecutionContextMock) SetEstimatedInflightDuration(estimatedInflightDur
 	c.Called(estimatedInflightDuration)
 }
 
+func (c *ExecutionContextMock) SetEstimatedStallingDuration(estimatedStallingDuration time.Duration) {
+	c.Called(estimatedStallingDuration)
+}
+
 func (c *ExecutionContextMock) HasEvent(ctx context.Context, event int64) bool {
 	args := c.Called(ctx, event)
 	return args.Bool(0)

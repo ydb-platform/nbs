@@ -27,6 +27,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TStorageConfigPtr Config;
     const TString DiskId;
+    const bool ExactDiskIdMatch = false;
 
     NProto::TVolume Volume;
 
@@ -34,7 +35,8 @@ public:
     TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
-        TString diskId);
+        TString diskId,
+        bool exactDiskIdMatch);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -63,10 +65,12 @@ private:
 TDescribeVolumeActor::TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
-        TString diskId)
+        TString diskId,
+        bool exactDiskIdMatch)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
+    , ExactDiskIdMatch(exactDiskIdMatch)
 {}
 
 void TDescribeVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -78,7 +82,9 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
 
-    auto request = std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId);
+    auto request = std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+        DiskId,
+        ExactDiskIdMatch);
 
     NCloud::Send(
         ctx,
@@ -90,7 +96,7 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
 void TDescribeVolumeActor::DescribeDiskRegistryVolume(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvDiskRegistry::TEvDescribeDiskRequest>();
-    request->Record.SetDiskId(DiskId);
+    request->Record.SetDiskId(Volume.GetDiskId());
 
     NCloud::Send(
         ctx,
@@ -230,7 +236,8 @@ void TServiceActor::HandleDescribeVolume(
         ctx,
         std::move(requestInfo),
         Config,
-        request.GetDiskId());
+        request.GetDiskId(),
+        request.GetHeaders().GetExactDiskIdMatch());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

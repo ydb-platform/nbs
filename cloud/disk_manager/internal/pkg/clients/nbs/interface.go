@@ -71,6 +71,12 @@ type DiskParams struct {
 	IsDiskRegistryBasedDisk bool
 }
 
+type DiskState struct {
+	DiskID       string
+	State        types.DiskState
+	StateMessage string
+}
+
 type PlacementGroup struct {
 	GroupID                 string
 	PlacementStrategy       types.PlacementStrategy
@@ -119,6 +125,12 @@ type DiskContentInfo struct {
 	StorageSize uint64
 	Crc32       uint32
 	BlockCrc32s []uint32
+}
+
+type ClusterCapacityInfo struct {
+	DiskKind   types.DiskKind
+	FreeBytes  uint64
+	TotalBytes uint64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -205,6 +217,8 @@ type Client interface {
 		ctx context.Context,
 		diskID string,
 	) (DiskParams, error)
+
+	ListDiskStates(ctx context.Context) ([]DiskState, error)
 
 	CreatePlacementGroup(
 		ctx context.Context,
@@ -312,6 +326,10 @@ type Client interface {
 		diskID string,
 		fillGeneration uint64,
 	) error
+
+	ZoneID() string
+
+	GetClusterCapacity(ctx context.Context) ([]ClusterCapacityInfo, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

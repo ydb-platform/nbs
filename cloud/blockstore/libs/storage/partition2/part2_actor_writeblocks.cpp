@@ -1,6 +1,7 @@
 #include "part2_actor.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -11,6 +12,7 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/alloc.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -26,6 +28,8 @@ using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
 using namespace NCloud::NStorage;
+
+using MessageDifferencer = google::protobuf::util::MessageDifferencer;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -118,27 +122,25 @@ void TPartitionActor::HandleWriteBlocksRequest(
         "WriteBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=, this] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [&](NProto::TError error)
     {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(errorCode, std::move(errorReason)));
+        auto response =
+            std::make_unique<typename TMethod::TResponse>(std::move(error));
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%lu] WriteBlocks error: %s",
             TabletID(),
             response->GetError().GetMessage().c_str());
 
         LWTRACK(
             ResponseSent_Partition,
-            requestInfo.CallContext->LWOrbit,
+            requestInfo->CallContext->LWOrbit,
             "WriteBlocks",
-            requestInfo.CallContext->RequestId);
+            requestInfo->CallContext->RequestId);
 
-        NCloud::Reply(ctx, requestInfo, std::move(response));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
     };
 
     auto sglist = GetSglist(msg->Record);
@@ -148,15 +150,51 @@ void TPartitionActor::HandleWriteBlocksRequest(
     if (auto guard = sglist.Acquire()) {
         for (const auto& buffer: guard.Get()) {
             if (!buffer.Size() || buffer.Size() % State->GetBlockSize() != 0) {
-                replyError(ctx, *requestInfo, E_ARGUMENT, TStringBuilder()
-                    << "invalid buffer length: " << buffer.Size());
+                replyError(MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "invalid buffer length: " << buffer.Size()));
                 return;
             }
 
             blocksCount += buffer.Size() / State->GetBlockSize();
         }
+
+        if (Config->GetEnableDataIntegrityValidationForYdbBasedDisks() &&
+            msg->Record.ChecksumsSize() > 0)
+        {
+            if (msg->Record.ChecksumsSize() != 1) {
+                ReportChecksumCalculationError(
+                    TStringBuilder()
+                        << "WriteBlocks: incorrect number of checksums: "
+                        << msg->Record.ChecksumsSize() << " (expected 1)",
+                    {{"diskId", State->GetConfig().GetDiskId()},
+                     {"range",
+                      TBlockRange64::WithLength(
+                          msg->Record.GetStartIndex(),
+                          blocksCount)}});
+            } else {
+                auto checksum = CalculateChecksum(guard.Get());
+                if (!MessageDifferencer::Equals(
+                        msg->Record.GetChecksums(0),
+                        checksum))
+                {
+                    ui32 flags = 0;
+                    SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+                    replyError(MakeError(
+                        E_REJECTED,
+                        TStringBuilder()
+                            << "Data integrity violation. Current checksum: "
+                            << checksum.ShortUtf8DebugString()
+                            << "; Incoming checksum: "
+                            << msg->Record.GetChecksums(0)
+                                   .ShortUtf8DebugString(),
+                        flags));
+                }
+            }
+        }
     } else {
-        replyError(ctx, *requestInfo, E_REJECTED, "failed to acquire input buffer");
+        replyError(MakeError(E_REJECTED, "failed to acquire input buffer"));
         return;
     }
 
@@ -169,16 +207,18 @@ void TPartitionActor::HandleWriteBlocksRequest(
     );
 
     if (!ok) {
-        replyError(ctx, *requestInfo, E_ARGUMENT, TStringBuilder()
-            << "invalid block range ["
-            << "index: " << msg->Record.GetStartIndex()
-            << ", count: " << blocksCount
-            << "]");
+        replyError(MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "invalid block range: "
+                             << TBlockRange64::WithLength(
+                                    msg->Record.GetStartIndex(),
+                                    blocksCount)
+                                    .Print()));
         return;
     }
 
     if (!State->IsWriteAllowed(EChannelPermission::UserWritesAllowed)) {
-        replyError(ctx, *requestInfo, E_BS_OUT_OF_SPACE, "insufficient disk space");
+        replyError(MakeError(E_BS_OUT_OF_SPACE, "insufficient disk space"));
 
         ReassignChannelsIfNeeded(ctx);
 

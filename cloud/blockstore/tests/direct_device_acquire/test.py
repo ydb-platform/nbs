@@ -55,7 +55,8 @@ def apply_common_params_to_config(cfg, params):
     cfg.files["storage"].NonReplicatedAgentMinTimeout = timeout
     cfg.files["storage"].NonReplicatedAgentMaxTimeout = timeout
 
-    cfg.files["storage"].NonReplicatedVolumeAcquireDiskAfterAddClientEnabled = True
+    cfg.files["storage"].NonReplicatedVolumeAcquireDiskAfterAddClientEnabled = params.get(
+        "NonReplicatedVolumeAcquireDiskAfterAddClientEnabled", False)
 
     cfg.files["server"].ServerConfig.VhostEnabled = True
     cfg.files["server"].ServerConfig.VhostServerPath = yatest_common.binary_path(
@@ -212,6 +213,10 @@ def wait_for_all_volumes_to_be_notified(client, timeout=60):
         time.sleep(1)
 
 
+@pytest.mark.parametrize("nbs", [
+    ({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}),
+    ({})
+], indirect=["nbs"])
 def test_should_mount_volume_with_unknown_devices(
         nbs_with_dr,
         nbs,
@@ -298,6 +303,10 @@ def test_should_mount_volume_with_unknown_devices(
     session.unmount_volume()
 
 
+@pytest.mark.parametrize("nbs", [
+    ({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}),
+    ({})
+], indirect=["nbs"])
 def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_configurators):
 
     logger = logging.getLogger("client")
@@ -355,12 +364,18 @@ def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_
     session.unmount_volume()
 
 
-@pytest.mark.parametrize("nbs_with_dr", [({"NonReplicatedAgentTimeout": 6000})], indirect=["nbs_with_dr"])
+@pytest.mark.parametrize("should_break_device", [True, False])
+@pytest.mark.parametrize("nbs_with_dr", [{"NonReplicatedAgentTimeout": 6000}], indirect=["nbs_with_dr"])
+@pytest.mark.parametrize("nbs", [
+    ({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}),
+    ({})
+], indirect=["nbs"])
 def test_should_mount_volume_with_unavailable_agents(
         nbs_with_dr,
         nbs,
         agent_ids,
-        disk_agent_configurators):
+        disk_agent_configurators,
+        should_break_device):
 
     logger = logging.getLogger("client")
     logger.setLevel(logging.DEBUG)
@@ -406,6 +421,16 @@ def test_should_mount_volume_with_unavailable_agents(
 
     session.unmount_volume()
 
+    if should_break_device:
+        client.execute_DiskRegistryChangeState(
+            Message="test",
+            ChangeDeviceState={
+                "DeviceUUID": bkp['Agents'][0]["Devices"][0]["DeviceUUID"],
+                "State": 2,    # DEVICE_STATE_ERROR
+            })
+
+        wait_for_all_volumes_to_be_notified(client)
+
     # stop the agent
     agents[0].kill()
 
@@ -431,11 +456,12 @@ def test_should_mount_volume_with_unavailable_agents(
     session.unmount_volume()
 
 
-def do_test_should_stop_not_restored_endpoint(nbs_with_dr,
-                                              nbs,
-                                              agent_ids,
-                                              disk_agent_configurators,
-                                              pass_client_id):
+@pytest.mark.parametrize("nbs, pass_client_id", [({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}, False), ({}, True)], indirect=["nbs"])
+def test_should_stop_not_restored_endpoint(nbs_with_dr,
+                                           nbs,
+                                           agent_ids,
+                                           disk_agent_configurators,
+                                           pass_client_id):
 
     client = CreateTestClient(f"localhost:{nbs.port}")
 
@@ -501,28 +527,10 @@ def do_test_should_stop_not_restored_endpoint(nbs_with_dr,
     assert not Path(another_socket.name).exists()
 
 
-def test_should_stop_not_restored_endpoint(nbs_with_dr,
-                                           nbs,
-                                           agent_ids,
-                                           disk_agent_configurators):
-    do_test_should_stop_not_restored_endpoint(nbs_with_dr,
-                                              nbs,
-                                              agent_ids,
-                                              disk_agent_configurators,
-                                              pass_client_id=False)
-
-
-def test_should_stop_not_restored_endpoint_pass_client_id(nbs_with_dr,
-                                                          nbs,
-                                                          agent_ids,
-                                                          disk_agent_configurators):
-    do_test_should_stop_not_restored_endpoint(nbs_with_dr,
-                                              nbs,
-                                              agent_ids,
-                                              disk_agent_configurators,
-                                              pass_client_id=True)
-
-
+@pytest.mark.parametrize("nbs", [
+    ({"NonReplicatedVolumeAcquireDiskAfterAddClientEnabled": True}),
+    ({})
+], indirect=["nbs"])
 def test_should_stop_not_restored_endpoint_when_volume_was_deleted(nbs_with_dr,
                                                                    nbs,
                                                                    agent_ids,

@@ -7,7 +7,6 @@
 #include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -25,22 +24,38 @@ constexpr TDuration Timeout = TDuration::Seconds(20);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Finds a disk in the SchemaShard by DiskId. The search starts with the
+// deprecated path naming scheme and then performed with the actual path naming
+// scheme. If a disk is not found, a disk with a "-copy" suffix in its name is
+// searched for.
 class TDescribeVolumeActor final
     : public TActorBootstrapped<TDescribeVolumeActor>
 {
 private:
-    const TRequestInfoPtr RequestInfo;
+    enum class EState
+    {
+        DescribePrimaryDeprecated,   // Search in SchemeShard with an deprecated
+                                     // path
 
+        DescribePrimary,   // Search in SchemeShard with an actual path
+
+        DescribeSecondary,   // Describe SchemeShard for a disk with an actual
+                             // path and name with suffix "-copy"
+    };
+
+    const TRequestInfoPtr RequestInfo;
     const TStorageConfigPtr Config;
     const TString DiskId;
+    const bool ExactDiskIdMatch = false;
 
-    bool FallbackRequest = false;
+    EState State = EState::DescribePrimaryDeprecated;
 
 public:
     TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
-        TString diskId);
+        TString diskId,
+        bool exactDiskIdMatch);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -74,10 +89,12 @@ private:
 TDescribeVolumeActor::TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
-        TString diskId)
+        TString diskId,
+        bool exactDiskIdMatch)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
+    , ExactDiskIdMatch(exactDiskIdMatch)
 {}
 
 void TDescribeVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -111,10 +128,16 @@ TString TDescribeVolumeActor::GetFullPath() const
     TStringBuilder fullPath;
     fullPath << Config->GetSchemeShardDir() << '/';
 
-    if (!FallbackRequest) {
-        fullPath << DiskIdToPathDeprecated(DiskId);
-    } else {
-        fullPath << DiskIdToPath(DiskId);
+    switch (State) {
+        case EState::DescribePrimaryDeprecated:
+            fullPath << DiskIdToPathDeprecated(DiskId);
+            break;
+        case EState::DescribePrimary:
+            fullPath << DiskIdToPath(DiskId);
+            break;
+        case EState::DescribeSecondary:
+            fullPath << DiskIdToPath(GetSecondaryDiskId(DiskId));
+            break;
     }
 
     return fullPath;
@@ -150,11 +173,32 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
             auto status =
                 static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
             // TODO: return E_NOT_FOUND instead of StatusPathDoesNotExist
+
+            LOG_TRACE(
+                ctx,
+                TBlockStoreComponents::SS_PROXY,
+                "Describe request error for volume %s %s %s",
+                DiskId.c_str(),
+                GetFullPath().Quote().data(),
+                FormatError(error).c_str());
+
             if (status == NKikimrScheme::StatusPathDoesNotExist) {
-                if (!FallbackRequest) {
-                    FallbackRequest = true;
-                    DescribeVolume(ctx);
-                    return;
+                switch (State) {
+                    case EState::DescribePrimaryDeprecated: {
+                        State = EState::DescribePrimary;
+                        DescribeVolume(ctx);
+                        return;
+                    }
+                    case EState::DescribePrimary: {
+                        if (ExactDiskIdMatch || IsSecondaryDiskId(DiskId)) {
+                            break;
+                        }
+                        State = EState::DescribeSecondary;
+                        DescribeVolume(ctx);
+                        return;
+                    }
+                    case EState::DescribeSecondary:
+                        break;
                 }
             }
         }
@@ -291,7 +335,8 @@ void TSSProxyActor::HandleDescribeVolume(
         ctx,
         std::move(requestInfo),
         Config,
-        msg->DiskId);
+        msg->DiskId,
+        msg->ExactDiskIdMatch);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

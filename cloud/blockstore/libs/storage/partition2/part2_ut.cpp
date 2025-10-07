@@ -7642,6 +7642,76 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         // Check that partition sent statistics
         UNIT_ASSERT(partitionStatisticsSent);
     }
+
+    Y_UNIT_TEST(ShouldRaiseCriticalEventIfTrimFreshLogTimesOut)
+    {
+        constexpr ui32 FreshChannelId = 4;
+
+        auto config = DefaultConfig();
+        config.SetFreshChannelCount(1);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFlushThreshold(4_MB);
+        config.SetTrimFreshLogTimeout(TDuration::Seconds(1).MilliSeconds());
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        NMonitoring::TDynamicCountersPtr counters
+            = new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto trimCounter =
+            counters->GetCounter("AppCriticalEvents/TrimFreshLogTimeout", true);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
+        }
+
+        bool trimSeen = false;
+        bool trimCompletedSeen = false;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCollectGarbageResult: {
+                        auto* msg =
+                            event->Get<TEvBlobStorage::TEvCollectGarbageResult>();
+                        if (msg->Channel == FreshChannelId) {
+                            trimSeen = true;
+                            msg->Status = NKikimrProto::EReplyStatus::DEADLINE;
+                        }
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted: {
+                        auto* msg = event->Get<TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted>();
+                        UNIT_ASSERT(FAILED(msg->GetStatus()));
+                        trimCompletedSeen = true;
+                        break;
+                    }
+                }
+                return false;
+            }
+        );
+
+        partition.Flush();
+
+        // wait for trimfreshlog to complete
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] {
+            return trimCompletedSeen;
+        };
+        runtime->DispatchEvents(options);
+
+        UNIT_ASSERT_VALUES_EQUAL(true, trimSeen);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, trimCounter->Val());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

@@ -422,22 +422,28 @@ func scheduleHangingTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type waitingTask struct {
+type waitingTaskWithSleep struct {
 	request   *wrappers.StringValue
 	scheduler tasks.Scheduler
 }
 
-func (t *waitingTask) Save() ([]byte, error) {
+func (t *waitingTaskWithSleep) Save() ([]byte, error) {
 	return proto.Marshal(t.request)
 }
 
-func (t *waitingTask) Load(request, state []byte) error {
+func (t *waitingTaskWithSleep) Load(request, state []byte) error {
 	t.request = &wrappers.StringValue{}
 	return proto.Unmarshal(request, t.request)
 }
 
-func (t *waitingTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
-	_, err := waitTaskAsync(ctx, execCtx, t.scheduler, t.request.Value)
+func (t *waitingTaskWithSleep) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(2 * time.Second):
+	}
+
+	_, err := t.scheduler.WaitTask(ctx, execCtx, t.request.Value)
 	if err != nil {
 		return err
 	}
@@ -450,30 +456,30 @@ func (t *waitingTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) e
 	}
 }
 
-func (t *waitingTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
+func (t *waitingTaskWithSleep) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
 	return nil
 }
 
-func (t *waitingTask) GetMetadata(ctx context.Context) (proto.Message, error) {
+func (t *waitingTaskWithSleep) GetMetadata(ctx context.Context) (proto.Message, error) {
 	return &empty.Empty{}, nil
 }
 
-func (t *waitingTask) GetResponse() proto.Message {
+func (t *waitingTaskWithSleep) GetResponse() proto.Message {
 	return &wrappers.UInt64Value{
 		Value: 1,
 	}
 }
 
-func registerWaitingTask(registry *tasks.Registry, scheduler tasks.Scheduler) error {
+func registerWaitingTaskWithSleep(registry *tasks.Registry, scheduler tasks.Scheduler) error {
 	return registry.RegisterForExecution(
 		"waiting",
 		func() tasks.Task {
-			return &waitingTask{scheduler: scheduler}
+			return &waitingTaskWithSleep{scheduler: scheduler}
 		},
 	)
 }
 
-func scheduleWaitingTask(
+func scheduleWaitingTaskWithSleep(
 	ctx context.Context,
 	scheduler tasks.Scheduler,
 	depTaskId string,
@@ -764,21 +770,6 @@ func waitTask(
 ) (uint64, error) {
 
 	return waitTaskWithTimeout(ctx, scheduler, id, defaultTimeout)
-}
-
-func waitTaskAsync(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-	scheduler tasks.Scheduler,
-	id string,
-) (uint64, error) {
-
-	response, err := scheduler.WaitTask(ctx, execCtx, id)
-	if err != nil {
-		return 0, err
-	}
-
-	return response.(*wrappers.UInt64Value).GetValue(), nil
 }
 
 func getTaskMetadata(
@@ -1839,14 +1830,14 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	defer db.Close(ctx)
 
 	// runnersCount must be at least the count of tasks + 1 (for CollectListerMetrics).
-	// Otherwise, a race condition can occur where longTask is picked up before waitingTask.
+	// Otherwise, a race condition can occur where longTask is picked up before waitingTaskWithSleep.
 	// https://github.com/ydb-platform/nbs/pull/4002
 	s := createServices(t, ctx, db, 3 /* runnersCount */)
 
 	err := registerLongTask(s.registry)
 	require.NoError(t, err)
 
-	err = registerWaitingTask(s.registry, s.scheduler)
+	err = registerWaitingTaskWithSleep(s.registry, s.scheduler)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1857,17 +1848,17 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	require.NoError(t, err)
 
 	reqCtx = getRequestContext(t, ctx)
-	waitingTaskID, err := scheduleWaitingTask(reqCtx, s.scheduler, depTaskID)
+	waitingTaskWithSleepID, err := scheduleWaitingTaskWithSleep(reqCtx, s.scheduler, depTaskID)
 	require.NoError(t, err)
 
 	timeout := 30 * time.Second
 
-	_, err = waitTaskWithTimeout(ctx, s.scheduler, waitingTaskID, timeout)
+	_, err = waitTaskWithTimeout(ctx, s.scheduler, waitingTaskWithSleepID, timeout)
 	require.NoError(t, err)
 	_, err = waitTaskWithTimeout(ctx, s.scheduler, depTaskID, timeout)
 	require.NoError(t, err)
 
-	waitingState, err := s.storage.GetTask(ctx, waitingTaskID)
+	waitingState, err := s.storage.GetTask(ctx, waitingTaskWithSleepID)
 	require.NoError(t, err)
 
 	inflightDuration := waitingState.InflightDuration
@@ -1878,9 +1869,16 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	// in WaitingDuration, so it can be less than expected.
 	waitingThreshold := 2 * time.Second
 
-	require.GreaterOrEqual(t, inflightDuration, 5*time.Second)
-	require.GreaterOrEqual(t, waitingDuration, 10*time.Second-waitingThreshold)
-	require.GreaterOrEqual(t, totalDuration, 15*time.Second)
+	// First waitingTaskWithSleep iteration: it waits for 2 seconds, then
+	// adds a dependency and interrupts.
+	// Second waitingTaskWithSleep iteration: it waits for 2 seconds, then
+	// skips WaitTask (as the dependency is finished) and waits for 5 seconds.
+	// Total: 2+2+5 = 9 seconds.
+	require.GreaterOrEqual(t, inflightDuration, 9*time.Second)
+	// Due to 2 seconds delay at the start, WaitingDuration will be 10-2 = 8 seconds.
+	require.GreaterOrEqual(t, waitingDuration, 8*time.Second-waitingThreshold)
+	require.GreaterOrEqual(t, totalDuration, 17*time.Second)
+	require.LessOrEqual(t, inflightDuration+waitingDuration, totalDuration)
 }
 
 func TestTaskWaitingDurationInChain(t *testing.T) {
@@ -1895,7 +1893,7 @@ func TestTaskWaitingDurationInChain(t *testing.T) {
 	err := registerLongTask(s.registry)
 	require.NoError(t, err)
 
-	err = registerWaitingTask(s.registry, s.scheduler)
+	err = registerWaitingTaskWithSleep(s.registry, s.scheduler)
 	require.NoError(t, err)
 
 	err = s.startRunners(ctx)
@@ -1906,11 +1904,11 @@ func TestTaskWaitingDurationInChain(t *testing.T) {
 	require.NoError(t, err)
 
 	reqCtx = getRequestContext(t, ctx)
-	task2ID, err := scheduleWaitingTask(reqCtx, s.scheduler, task1ID)
+	task2ID, err := scheduleWaitingTaskWithSleep(reqCtx, s.scheduler, task1ID)
 	require.NoError(t, err)
 
 	reqCtx = getRequestContext(t, ctx)
-	task3ID, err := scheduleWaitingTask(reqCtx, s.scheduler, task2ID)
+	task3ID, err := scheduleWaitingTaskWithSleep(reqCtx, s.scheduler, task2ID)
 	require.NoError(t, err)
 
 	timeout := 30 * time.Second
@@ -1929,15 +1927,25 @@ func TestTaskWaitingDurationInChain(t *testing.T) {
 
 	state2, err := s.storage.GetTask(ctx, task2ID)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, state2.InflightDuration, 5*time.Second)
+	require.GreaterOrEqual(t, state2.InflightDuration, 9*time.Second)
 	require.GreaterOrEqual(
-		t, state2.WaitingDuration, 10*time.Second-waitingThreshold,
+		t, state2.WaitingDuration, 8*time.Second-waitingThreshold,
+	)
+
+	task2TotalDuration := state2.EndedAt.Sub(state2.CreatedAt)
+	require.LessOrEqual(
+		t, state2.InflightDuration+state2.WaitingDuration, task2TotalDuration,
 	)
 
 	state3, err := s.storage.GetTask(ctx, task3ID)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, state3.InflightDuration, 5*time.Second)
+	require.GreaterOrEqual(t, state3.InflightDuration, 9*time.Second)
 	require.GreaterOrEqual(
-		t, state3.WaitingDuration, 15*time.Second-waitingThreshold,
+		t, state3.WaitingDuration, 8*time.Second-waitingThreshold,
+	)
+
+	task3TotalDuration := state3.EndedAt.Sub(state3.CreatedAt)
+	require.LessOrEqual(
+		t, state3.InflightDuration+state3.WaitingDuration, task3TotalDuration,
 	)
 }

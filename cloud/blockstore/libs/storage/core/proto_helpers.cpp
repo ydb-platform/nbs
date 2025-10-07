@@ -211,14 +211,11 @@ void VolumeConfigToVolume(
     volume.SetIsSystem(volumeConfig.GetIsSystem());
     volume.SetIsFillFinished(volumeConfig.GetIsFillFinished());
 
-    TStringBuf sit(volumeConfig.GetTagsStr());
-    TStringBuf tag;
-    while (sit.NextTok(',', tag)) {
-        if (tag == "use-fastpath") {
-            volume.SetIsFastPathEnabled(true);
-        }
-    }
+    const auto tags = ParseTags(volumeConfig.GetTagsStr());
 
+    if (tags.contains("use-fastpath")) {
+        volume.SetIsFastPathEnabled(true);
+    }
 }
 
 void VolumeConfigToVolumeModel(
@@ -540,6 +537,49 @@ NProto::TVolumePerformanceProfile VolumeConfigToVolumePerformanceProfile(
         volumeConfig,
         performanceProfile);
     return performanceProfile;
+}
+
+TMap<TString, TString> ParseTags(const TString& tags)
+{
+    TMap<TString, TString> result;
+
+    TStringBuf tok;
+    TStringBuf sit(tags);
+    while (sit.NextTok(',', tok)) {
+        TStringBuf key;
+        TStringBuf value;
+        if (tok.TrySplit('=', key, value)) {
+            result.insert({TString(key), TString(value)});
+        } else {
+            result.insert({TString(tok), ""});
+        }
+    }
+
+    return result;
+}
+
+TString PoolKindToString(const NProto::EDevicePoolKind poolKind)
+{
+    switch (poolKind) {
+        case NProto::DEVICE_POOL_KIND_DEFAULT:
+            return "default";
+        case NProto::DEVICE_POOL_KIND_LOCAL:
+            return "local";
+        case NProto::DEVICE_POOL_KIND_GLOBAL:
+            return "global";
+        case NProto::EDevicePoolKind_INT_MIN_SENTINEL_DO_NOT_USE_:
+        case NProto::EDevicePoolKind_INT_MAX_SENTINEL_DO_NOT_USE_:
+            break;
+    }
+    Y_ABORT("unknown pool kind: %d", static_cast<int>(poolKind));
+    return "unknown";
+}
+
+bool IsNotFoundSchemeShardError(const NProto::TError& error)
+{
+    return FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD &&
+           static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(
+               error.GetCode())) == NKikimrScheme::StatusPathDoesNotExist;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

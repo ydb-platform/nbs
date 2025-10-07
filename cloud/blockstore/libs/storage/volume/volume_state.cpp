@@ -354,38 +354,49 @@ void TVolumeState::Reset()
 
     BlockCount = ComputeBlockCount(Meta);
 
-    TStringBuf sit(Meta.GetVolumeConfig().GetTagsStr());
-    TStringBuf tagStr;
-    while (sit.NextTok(',', tagStr)) {
-        TStringBuf tag, value;
-        tagStr.Split('=', tag, value);
-        if (tag == "repair") {
-            ForceRepair = true;
-        } else if (tag == "mute-io-errors") {
-            Meta.SetMuteIOErrors(true);
-        } else if (tag == "accept-invalid-disk-allocation-response") {
-            AcceptInvalidDiskAllocationResponse = true;
-        } else if (tag == "read-only") {
-            RejectWrite = true;
-        } else if (tag == "track-used") {
-            // XXX beware that used block tracking is not supported for
-            // cross-partition writes in multipartition network-ssd/network-hdd
-            // volumes
-            TrackUsedBlocks = true;
-        } else if (tag == "mask-unused") {
-            TrackUsedBlocks = true;
-            MaskUnusedBlocks = true;
-        } else if (tag == "use-rdma") {
-            UseRdma = true;
-        } else if (tag == "disable-rdma") {
-            UseRdma = false;
-        } else if (tag == "max-timed-out-device-state-duration") {
-            TDuration::TryParse(value, MaxTimedOutDeviceStateDuration);
-        } else if (tag == "use-fastpath") {
-            UseFastPath = true;
-        } else if (tag == IntermediateWriteBufferTagName) {
-            UseIntermediateWriteBuffer = true;
-        }
+    const auto tags = ParseTags(Meta.GetVolumeConfig().GetTagsStr());
+
+    if (tags.contains("repair")) {
+        ForceRepair = true;
+    }
+    if (tags.contains("mute-io-errors")) {
+        Meta.SetMuteIOErrors(true);
+    }
+    if (tags.contains("accept-invalid-disk-allocation-response")) {
+        AcceptInvalidDiskAllocationResponse = true;
+    }
+    if (tags.contains("read-only")) {
+        RejectWrite = true;
+    }
+    if (tags.contains("track-used")) {
+        // XXX beware that used block tracking is not supported for
+        // cross-partition writes in multipartition network-ssd/network-hdd
+        // volumes
+        TrackUsedBlocks = true;
+    }
+    if (tags.contains("mask-unused")) {
+        TrackUsedBlocks = true;
+        MaskUnusedBlocks = true;
+    }
+    if (tags.contains("use-rdma")) {
+        UseRdma = true;
+    }
+    if (tags.contains("disable-rdma")) {
+        UseRdma = false;
+    }
+    if (const auto* value = tags.FindPtr("max-timed-out-device-state-duration"))
+    {
+        TDuration::TryParse(*value, MaxTimedOutDeviceStateDuration);
+    }
+    if (tags.contains("use-fastpath")) {
+        UseFastPath = true;
+    }
+    if (tags.contains(IntermediateWriteBufferTagName)) {
+        UseIntermediateWriteBuffer = true;
+    }
+    if (const auto* value = tags.FindPtr(SourceDiskIdTagName)) {
+        SourceDiskId = *value;
+        UpdatePrincipalDiskId();
     }
 
     UseMirrorResync = StorageConfig->GetUseMirrorResync();
@@ -995,6 +1006,11 @@ void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
 {
     Y_DEBUG_ABORT_UNLESS(follower.Link.LinkUUID);
 
+    Y_DEFER
+    {
+        UpdatePrincipalDiskId();
+    };
+
     for (auto& followerInfo: FollowerDisks) {
         if (followerInfo.Link.Match(follower.Link)) {
             followerInfo = std::move(follower);
@@ -1006,6 +1022,11 @@ void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
 
 void TVolumeState::RemoveFollower(const TLeaderFollowerLink& link)
 {
+    Y_DEFER
+    {
+        UpdatePrincipalDiskId();
+    };
+
     EraseIf(
         FollowerDisks,
         [&](const TFollowerDiskInfo& follower)
@@ -1028,8 +1049,23 @@ std::optional<TLeaderDiskInfo> TVolumeState::FindLeader(
     return std::nullopt;
 }
 
+std::optional<TLeaderDiskInfo> TVolumeState::FindLeaderByHash(ui64 hash) const
+{
+    for (const auto& leader: LeaderDisks) {
+        if (leader.Link.GetHash() == hash) {
+            return leader;
+        }
+    }
+    return std::nullopt;
+}
+
 void TVolumeState::AddOrUpdateLeader(TLeaderDiskInfo leader)
 {
+    Y_DEFER
+    {
+        UpdatePrincipalDiskId();
+    };
+
     for (auto& leaderInfo: LeaderDisks) {
         if (leaderInfo.Link.Match(leader.Link)) {
             leaderInfo = std::move(leader);
@@ -1041,6 +1077,11 @@ void TVolumeState::AddOrUpdateLeader(TLeaderDiskInfo leader)
 
 void TVolumeState::RemoveLeader(const TLeaderFollowerLink& link)
 {
+    Y_DEFER
+    {
+        UpdatePrincipalDiskId();
+    };
+
     EraseIf(
         LeaderDisks,
         [&](const TLeaderDiskInfo& leader) { return leader.Link.Match(link); });
@@ -1049,6 +1090,41 @@ void TVolumeState::RemoveLeader(const TLeaderFollowerLink& link)
 const TLeaderDisks& TVolumeState::GetAllLeaders() const
 {
     return LeaderDisks;
+}
+
+TString TVolumeState::GetPrincipalDiskId() const
+{
+    return PrincipalDiskId;
+}
+
+void TVolumeState::UpdatePrincipalDiskId()
+{
+    // We need to return the diskId of the disk that is currently the principal.
+    // The principal changes when all data is transferred to the follower. At
+    // this point, the follower is appointed as the new principal.
+    // If the disk is not involved in copying, or it is the principal, it should
+    // return an empty string.
+
+    // If this is the source disk (leader), then we are look at FollowerDisks.
+    for (const auto& followerInfo: FollowerDisks) {
+        if (followerInfo.State == TFollowerDiskInfo::EState::DataReady) {
+            PrincipalDiskId = followerInfo.Link.FollowerDiskId;
+            return;
+        }
+    }
+
+    // If this is the destination disk (follower), then we are look at LeaderDisks.
+    for (const auto& leaderInfo: LeaderDisks) {
+        if (leaderInfo.State == TLeaderDiskInfo::EState::Leader ||
+            leaderInfo.State == TLeaderDiskInfo::EState::Principal)
+        {
+            PrincipalDiskId = {};
+            return;
+        }
+    }
+
+    // If the disk was created as a follower, then it has the SourceDiskId set.
+    PrincipalDiskId = SourceDiskId;
 }
 
 void TVolumeState::UpdateScrubberCounters(TScrubbingInfo counters)

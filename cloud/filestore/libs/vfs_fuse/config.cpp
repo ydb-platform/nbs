@@ -44,6 +44,7 @@ namespace {
     xxx(GuestKeepCacheAllowed,        bool,     false                         )\
     xxx(MaxBackground,                ui32,     0                             )\
     xxx(MaxFuseLoopThreads,           ui32,     1                             )\
+    xxx(ZeroCopyWriteEnabled,         bool,     false                         )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \
@@ -69,12 +70,6 @@ TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 }
 
 template <typename T>
-bool IsEmpty(const T& t)
-{
-    return !t;
-}
-
-template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
     os << t;
@@ -87,8 +82,10 @@ void DumpImpl(const T& t, IOutputStream& os)
 #define FILESTORE_CONFIG_GETTER(class, name, type, ...)                        \
 type class::Get##name() const                                                  \
 {                                                                              \
-    const auto value = ProtoConfig.Get##name();                                \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : class##Default##name; \
+    if (ProtoConfig.Has##name()) {                                             \
+        return ConvertValue<type>(ProtoConfig.Get##name());                    \
+    }                                                                          \
+    return class##Default##name;                                               \
 }                                                                              \
 // FILESTORE_CONFIG_GETTER
 

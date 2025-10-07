@@ -86,6 +86,7 @@ private:
 
         std::atomic<i64> TotalNodesCount{0};
         std::atomic<i64> UsedNodesCount{0};
+        std::atomic<i64> AggregateUsedNodesCount{0};
 
         std::atomic<i64> UsedSessionsCount{0};
         std::atomic<i64> UsedHandlesCount{0};
@@ -794,8 +795,8 @@ private:
         const TEvIndexTabletPrivate::TEvNodeRenamedInDestination::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleGetShardStatsCompleted(
-        const TEvIndexTabletPrivate::TEvGetShardStatsCompleted::TPtr& ev,
+    void HandleAggregateStatsCompleted(
+        const TEvIndexTabletPrivate::TEvAggregateStatsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleShardRequestCompleted(

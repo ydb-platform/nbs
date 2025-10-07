@@ -43,6 +43,8 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
+    void SetVolumePreemptionType(NProto::EVolumePreemptionType volumePreemptionType);
+
     void Register(NKikimr::TControlBoard& controlBoard);
 
     static TStorageConfigPtr Merge(
@@ -524,6 +526,7 @@ public:
     TString GetTabletBootInfoBackupFilePath() const;
     bool GetHiveProxyFallbackMode() const;
     TString GetPathDescriptionBackupFilePath() const;
+    bool GetUseBinaryFormatForPathDescriptionBackup() const;
     bool GetSSProxyFallbackMode() const;
     bool GetUseSchemeCache() const;
     bool GetDontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode() const;
@@ -611,8 +614,6 @@ public:
     TDuration GetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked() const;
 
     TDuration GetWaitDependentDisksRetryRequestDelay() const;
-
-    TDuration GetVolumeProxyCacheRetryDuration() const;
 
     TDuration GetServiceSelfPingInterval() const;
 
@@ -717,6 +718,18 @@ public:
 
     [[nodiscard]] bool
     GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() const;
+
+    [[nodiscard]] TDuration GetTrimFreshLogTimeout() const;
+    [[nodiscard]] TDuration GetCollectGarbageTimeoutSSD() const;
+    [[nodiscard]] TDuration GetCollectGarbageTimeoutHDD() const;
+
+    [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
+
+    [[nodiscard]] ui64 GetHiveLocalServiceCpuResourceLimit() const;
+    [[nodiscard]] ui64 GetHiveLocalServiceMemoryResourceLimit() const;
+    [[nodiscard]] ui64 GetHiveLocalServiceNetworkResourceLimit() const;
+
+    [[nodiscard]] TDuration GetDynamicNodeRegistrationTimeout() const;
 };
 
 ui64 GetAllocationUnit(

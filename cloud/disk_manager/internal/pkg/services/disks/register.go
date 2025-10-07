@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -25,6 +26,7 @@ func RegisterForExecution(
 	taskScheduler tasks.Scheduler,
 	poolService pools.Service,
 	nbsFactory nbs.Factory,
+	cellSelector cells.CellSelector,
 ) error {
 
 	deletedDiskExpirationTimeout, err := time.ParseDuration(
@@ -43,9 +45,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateEmptyDisk", func() tasks.Task {
 		return &createEmptyDiskTask{
-			storage:    resourceStorage,
-			scheduler:  taskScheduler,
-			nbsFactory: nbsFactory,
+			storage:      resourceStorage,
+			scheduler:    taskScheduler,
+			nbsFactory:   nbsFactory,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {
@@ -54,10 +57,11 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateOverlayDisk", func() tasks.Task {
 		return &createOverlayDiskTask{
-			storage:     resourceStorage,
-			scheduler:   taskScheduler,
-			poolService: poolService,
-			nbsFactory:  nbsFactory,
+			storage:      resourceStorage,
+			scheduler:    taskScheduler,
+			poolService:  poolService,
+			nbsFactory:   nbsFactory,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {
@@ -66,10 +70,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromImage", func() tasks.Task {
 		return &createDiskFromImageTask{
-			performanceConfig: performanceConfig,
-			storage:           resourceStorage,
-			scheduler:         taskScheduler,
-			nbsFactory:        nbsFactory,
+			storage:      resourceStorage,
+			scheduler:    taskScheduler,
+			nbsFactory:   nbsFactory,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {
@@ -78,10 +82,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromSnapshot", func() tasks.Task {
 		return &createDiskFromSnapshotTask{
-			performanceConfig: performanceConfig,
-			storage:           resourceStorage,
-			scheduler:         taskScheduler,
-			nbsFactory:        nbsFactory,
+			storage:      resourceStorage,
+			scheduler:    taskScheduler,
+			nbsFactory:   nbsFactory,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {
@@ -90,10 +94,11 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.DeleteDisk", func() tasks.Task {
 		return &deleteDiskTask{
-			storage:     resourceStorage,
-			scheduler:   taskScheduler,
-			poolService: poolService,
-			nbsFactory:  nbsFactory,
+			performanceConfig: performanceConfig,
+			storage:           resourceStorage,
+			scheduler:         taskScheduler,
+			poolService:       poolService,
+			nbsFactory:        nbsFactory,
 		}
 	})
 	if err != nil {
@@ -149,13 +154,12 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.MigrateDisk", func() tasks.Task {
 		return &migrateDiskTask{
-			disksConfig:       config,
-			performanceConfig: performanceConfig,
-			scheduler:         taskScheduler,
-			poolService:       poolService,
-			resourceStorage:   resourceStorage,
-			poolStorage:       poolStorage,
-			nbsFactory:        nbsFactory,
+			disksConfig:     config,
+			scheduler:       taskScheduler,
+			poolService:     poolService,
+			resourceStorage: resourceStorage,
+			poolStorage:     poolStorage,
+			nbsFactory:      nbsFactory,
 		}
 	})
 	if err != nil {

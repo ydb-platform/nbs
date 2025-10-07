@@ -71,6 +71,58 @@ NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
     return response;
 }
 
+TString GenerateValidateData(ui32 size, ui32 seed = 0)
+{
+    TString data(size, 0);
+    for (ui32 i = 0; i < size; ++i) {
+        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
+    }
+    return data;
+}
+
+void WaitForTabletStart(TServiceClient& service)
+{
+    TDispatchOptions options;
+    options.FinalEvents = {
+        TDispatchOptions::TFinalEventCondition(
+            TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
+    service.AccessRuntime().DispatchEvents(options);
+}
+
+NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
+    TServiceClient& service,
+    const NProtoPrivate::TGetStorageStatsRequest& request)
+{
+    TString buf;
+    NProtoPrivate::TGetStorageStatsResponse response;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+    const auto actionResponse = service.ExecuteAction("GetStorageStats", buf);
+    auto status = google::protobuf::util::JsonStringToMessage(
+        actionResponse->Record.GetOutput(),
+        &response);
+
+    return response;
+}
+
+auto GetFileSystemCounters(TTestEnv& env, const TString& fsId)
+{
+    const auto counters = env.GetRuntime().GetAppData().Counters;
+    auto subgroup = counters->FindSubgroup("counters", "filestore");
+    UNIT_ASSERT(subgroup);
+    subgroup = subgroup->FindSubgroup("component", "storage_fs");
+    UNIT_ASSERT(subgroup);
+    subgroup = subgroup->FindSubgroup("host", "cluster");
+    UNIT_ASSERT(subgroup);
+    subgroup = subgroup->FindSubgroup("filesystem", fsId);
+    UNIT_ASSERT(subgroup);
+    subgroup = subgroup->FindSubgroup("cloud", "test_cloud");
+    UNIT_ASSERT(subgroup);
+    subgroup = subgroup->FindSubgroup("folder", "test_folder");
+    UNIT_ASSERT(subgroup);
+
+    return subgroup;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -294,22 +346,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.DestroySession(headers);
     }
 
-    void WaitForTabletStart(TServiceClient& service)
-    {
-        TDispatchOptions options;
-        options.FinalEvents = {
-            TDispatchOptions::TFinalEventCondition(
-                TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
-        service.AccessRuntime().DispatchEvents(options);
-    }
-
-    Y_UNIT_TEST(ShouldGetStorageStats)
+    void DoShouldGetStorageStats(
+        const bool strictFileSystemSizeEnforcementEnabled)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetAutomaticShardCreationEnabled(true);
         storageConfig.SetShardAllocationUnit(1_GB);
         storageConfig.SetAutomaticallyCreatedShardSize(1_GB);
         storageConfig.SetMultiTabletForwardingEnabled(true);
+        storageConfig.SetStrictFileSystemSizeEnforcementEnabled(
+            strictFileSystemSizeEnforcementEnabled);
 
         NProto::TDiagnosticsConfig diagConfig;
         NProto::TFileSystemPerformanceProfile pp;
@@ -336,80 +382,106 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         auto headers = service.InitSession("test", "client");
 
-        const auto handle = service.CreateHandle(
-            headers,
-            fsId,
-            RootNodeId,
-            "file",
-            TCreateHandleArgs::CREATE
-        )->Record;
-        const auto nodeId = handle.GetNodeAttr().GetId();
-        const auto handleId = handle.GetHandle();
+        TString data1 = GenerateValidateData(256_KB, 1);
+        TString data2 = GenerateValidateData(256_KB, 2);
+        TString data3 = GenerateValidateData(512_KB, 3);
 
-        service.WriteData(
-            headers,
-            fsId,
-            nodeId,
-            handleId,
-            0,
-            TString(256_KB, 'a'));
+        auto writeToFile =
+            [&](const TString& fileName, const TString& d1, const TString& d2)
+        {
+            const auto handle = service.CreateHandle(
+                headers,
+                fsId,
+                RootNodeId,
+                fileName,
+                TCreateHandleArgs::CREATE)->Record;
 
-        service.WriteData(
-            headers,
-            fsId,
-            nodeId,
-            handleId,
-            256_KB,
-            TString(256_KB, 'a'));
+            const auto nodeId = handle.GetNodeAttr().GetId();
+            const auto handleId = handle.GetHandle();
 
-        // waiting for async stats calculation
+            service.WriteData(headers, fsId, nodeId, handleId, 0, d1);
+            service.WriteData(headers, fsId, nodeId, handleId, d1.size(), d2);
+        };
+
+        writeToFile("file1", data1, data2);
+        writeToFile("file2", data2, data3);
+
+        struct TFileSystemInfo {
+            const TString Id;
+            const ui64 Size;
+        };
+        TVector<TFileSystemInfo> fileSystems = {
+            {.Id = fsId + "_s1", .Size = data1.size() + data2.size()},
+            {.Id = fsId + "_s2", .Size = data2.size() + data3.size()},
+            {.Id = fsId, .Size = 0}};
+        const ui64 shardsCount = 2;
+        const ui64 totalSize = fileSystems[0].Size + fileSystems[1].Size;
+
+        // Waiting for async stats calculation. In case
+        // strictFileSystemSizeEnforcementEnabled shards know of other shards
+        // and fetch statistics from them in order to have correct
+        // AggregateUsedBytesCount and AggregateUsedNodesCount. These counters
+        // are updated in HandleAggregateStatsCompleted and we wait for
+        // EvAggregateStatsCompleted for the main filesystem and every shard.
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
         TDispatchOptions options;
         options.FinalEvents = {
             TDispatchOptions::TFinalEventCondition(
-                TEvIndexTabletPrivate::EvGetShardStatsCompleted)
+                TEvIndexTabletPrivate::EvAggregateStatsCompleted,
+                strictFileSystemSizeEnforcementEnabled ? 3 : 1)
         };
         env.GetRuntime().DispatchEvents(options);
+
+        auto checkShardStats = [&](const NProtoPrivate::TStorageStats& stats) {
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.ShardStatsSize());
+
+            for (ui64 i = 0; i < shardsCount; ++i) {
+                const auto& shardStats = stats.GetShardStats(i);
+                const auto& fsInfo = fileSystems[i];
+                UNIT_ASSERT_VALUES_EQUAL(
+                    fsInfo.Id,
+                    shardStats.GetShardId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1_GB / 4_KB,
+                    shardStats.GetTotalBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    fsInfo.Size / 4_KB,
+                    shardStats.GetUsedBlocksCount());
+                UNIT_ASSERT_VALUES_UNEQUAL(
+                    0,
+                    shardStats.GetCurrentLoad());
+            }
+        };
 
         {
             NProtoPrivate::TGetStorageStatsRequest request;
             request.SetFileSystemId(fsId);
             request.SetAllowCache(true);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            const auto response = service.ExecuteAction("GetStorageStats", buf);
-            NProtoPrivate::TGetStorageStatsResponse record;
-            auto status = google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &record);
-            const auto& stats = record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.ShardStatsSize());
-            UNIT_ASSERT_VALUES_EQUAL(
-                fsId + "_s1",
-                stats.GetShardStats(0).GetShardId());
-            UNIT_ASSERT_VALUES_EQUAL(
-                1_GB / 4_KB,
-                stats.GetShardStats(0).GetTotalBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                512_KB / 4_KB,
-                stats.GetShardStats(0).GetUsedBlocksCount());
-            UNIT_ASSERT_VALUES_UNEQUAL(
-                0,
-                stats.GetShardStats(0).GetCurrentLoad());
-            UNIT_ASSERT_VALUES_EQUAL(
-                fsId + "_s2",
-                stats.GetShardStats(1).GetShardId());
-            UNIT_ASSERT_VALUES_EQUAL(
-                1_GB / 4_KB,
-                stats.GetShardStats(1).GetTotalBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                stats.GetShardStats(1).GetUsedBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                stats.GetShardStats(1).GetCurrentLoad());
+
+            NProtoPrivate::TGetStorageStatsResponse response =
+                GetStorageStats(service, request);
+
+            checkShardStats(response.GetStats());
         }
 
+        for (ui64 i = 0; i < shardsCount; ++i) {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fileSystems[i].Id);
+            request.SetAllowCache(false);
+            request.SetMode(
+                NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+
+            NProtoPrivate::TGetStorageStatsResponse response =
+                GetStorageStats(service, request);
+            const NProtoPrivate::TStorageStats& stats = response.GetStats();
+
+            if (strictFileSystemSizeEnforcementEnabled) {
+                // Check that shards have stats from other shards
+                checkShardStats(response.GetStats());
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.ShardStatsSize());
+            }
+        }
 
         {
             NProtoPrivate::TGetStorageStatsRequest request;
@@ -434,27 +506,40 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
 
-        const auto counters = env.GetRuntime().GetAppData().Counters;
-        auto subgroup = counters->FindSubgroup("counters", "filestore");
-        UNIT_ASSERT(subgroup);
-        subgroup = subgroup->FindSubgroup("component", "storage_fs");
-        UNIT_ASSERT(subgroup);
-        subgroup = subgroup->FindSubgroup("host", "cluster");
-        UNIT_ASSERT(subgroup);
-        subgroup = subgroup->FindSubgroup("filesystem", fsId);
-        UNIT_ASSERT(subgroup);
-        subgroup = subgroup->FindSubgroup("cloud", "test_cloud");
-        UNIT_ASSERT(subgroup);
-        subgroup = subgroup->FindSubgroup("folder", "test_folder");
-        UNIT_ASSERT(subgroup);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            subgroup->GetCounter("UsedBytesCount")->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(
-            512_KB,
-            subgroup->GetCounter("AggregateUsedBytesCount")->GetAtomic());
+        for (const auto& fsInfo: fileSystems) {
+            auto counters = GetFileSystemCounters(env, fsInfo.Id);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                fsInfo.Size,
+                counters->GetCounter("UsedBytesCount")->GetAtomic());
+
+            // Aggregated counters in shards are calculated if
+            // strictFileSystemSizeEnforcementEnabled == true
+            if (strictFileSystemSizeEnforcementEnabled || fsInfo.Id == fsId) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    totalSize,
+                    counters->GetCounter("AggregateUsedBytesCount")
+                        ->GetAtomic());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    counters->GetCounter("AggregateUsedNodesCount")
+                        ->GetAtomic());
+            }
+        }
 
         service.DestroySession(headers);
+    }
+
+    Y_UNIT_TEST(ShouldGetStorageStatsWithFileSystemSizeEnforcement)
+    {
+        const bool strictFileSystemSizeEnforcementEnabled = true;
+        DoShouldGetStorageStats(strictFileSystemSizeEnforcementEnabled);
+    }
+
+    Y_UNIT_TEST(ShouldGetStorageStatsWithoutFileSystemSizeEnforcement)
+    {
+        const bool strictFileSystemSizeEnforcementEnabled = false;
+        DoShouldGetStorageStats(strictFileSystemSizeEnforcementEnabled);
     }
 
     Y_UNIT_TEST(ShouldRunForcedOperation)

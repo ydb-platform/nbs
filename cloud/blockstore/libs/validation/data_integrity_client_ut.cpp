@@ -186,7 +186,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service")
-                ->GetSubgroup("component", "data_integrity");
+                ->GetSubgroup("subcomponent", "data_integrity");
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
 
@@ -248,7 +248,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service")
-                ->GetSubgroup("component", "data_integrity");
+                ->GetSubgroup("subcomponent", "data_integrity");
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
 
@@ -311,7 +311,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service")
-                ->GetSubgroup("component", "data_integrity");
+                ->GetSubgroup("subcomponent", "data_integrity");
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
 
@@ -363,7 +363,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service")
-                ->GetSubgroup("component", "data_integrity");
+                ->GetSubgroup("subcomponent", "data_integrity");
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
 
@@ -421,7 +421,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service")
-                ->GetSubgroup("component", "data_integrity");
+                ->GetSubgroup("subcomponent", "data_integrity");
 
         env.TestClient->ReadBlocksLocalHandler =
             [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
@@ -472,7 +472,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service")
-                ->GetSubgroup("component", "data_integrity");
+                ->GetSubgroup("subcomponent", "data_integrity");
 
         env.TestClient->WriteBlocksHandler =
             [&](std::shared_ptr<NProto::TWriteBlocksRequest> request)

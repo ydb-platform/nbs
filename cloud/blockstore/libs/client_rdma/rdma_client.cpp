@@ -422,13 +422,121 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaEndpoint final
+struct TPingMethod
+{
+    static constexpr TBlockStoreProtocol::EMessageType ResponseType =
+        TBlockStoreProtocol::EMessageType::PingResponse;
+
+    using TRequest = NProto::TPingRequest;
+    using TResponse = NProto::TPingResponse;
+};
+
+struct TMountVolumeMethod
+{
+    static constexpr TBlockStoreProtocol::EMessageType ResponseType =
+        TBlockStoreProtocol::EMessageType::MountVolumeResponse;
+
+    using TRequest = NProto::TMountVolumeRequest;
+    using TResponse = NProto::TMountVolumeResponse;
+};
+
+struct TUnmountVolumeMethod
+{
+    static constexpr TBlockStoreProtocol::EMessageType ResponseType =
+        TBlockStoreProtocol::EMessageType::UnmountVolumeResponse;
+
+    using TRequest = NProto::TUnmountVolumeRequest;
+    using TResponse = NProto::TUnmountVolumeResponse;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
+class TProtoMessageHandler final
+    : public IRequestHandler
+{
+public:
+    using TRequest =  TMethod::TRequest;
+    using TResponse = TMethod::TResponse;
+
+private:
+    const TCallContextPtr CallContext;
+    const std::shared_ptr<TRequest> Request;
+    const ITraceSerializerPtr TraceSerializer;
+
+    TPromise<TResponse> Response = NewPromise<TResponse>();
+    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+
+public:
+    TProtoMessageHandler(
+            TCallContextPtr callContext,
+            std::shared_ptr<TRequest> request,
+            ITraceSerializerPtr traceSerializer,
+            bool isAlignedDataEnabled)
+        : CallContext(std::move(callContext))
+        , Request(std::move(request))
+        , TraceSerializer(std::move(traceSerializer))
+    {
+        Y_UNUSED(isAlignedDataEnabled);
+    }
+
+    size_t GetRequestSize() const
+    {
+        return NRdma::TProtoMessageSerializer::MessageByteSize(*Request, 0);
+    }
+
+    size_t GetResponseSize() const
+    {
+        return MAX_PROTO_SIZE;
+    }
+
+    TFuture<TResponse> GetResponse() const
+    {
+        return Response.GetFuture();
+    }
+
+    size_t PrepareRequest(TStringBuf buffer)
+    {
+        ui32 flags = 0;
+
+        return NRdma::TProtoMessageSerializer::Serialize(
+            buffer,
+            TBlockStoreProtocol::PingRequest,
+            flags,   // flags
+            *Request);
+    }
+
+    void HandleResponse(TStringBuf buffer) override
+    {
+        auto resultOrError = Serializer->Parse(buffer);
+        if (HasError(resultOrError)) {
+            Response.SetValue(TErrorResponse(resultOrError.GetError()));
+            return;
+        }
+
+        const auto& response = resultOrError.GetResult();
+        Y_ENSURE(response.MsgId == TMethod::ResponseType);
+        Y_ENSURE(response.Data.length() == 0);
+
+        auto& responseMsg = static_cast<TResponse&>(*response.Proto);
+
+        Response.SetValue(std::move(responseMsg));
+    }
+
+    void HandleError(ui32 error, TStringBuf message) override
+    {
+        Response.SetValue(TErrorResponse(error, TString(message)));
+    }
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TRdmaDataEndpoint
     : public TEndpointBase
     , public NRdma::IClientHandler
-    , public std::enable_shared_from_this<TRdmaEndpoint>
+    , public std::enable_shared_from_this<TRdmaDataEndpoint>
 {
-private:
-    const IBlockStorePtr VolumeClient;
     const ITraceSerializerPtr TraceSerializer;
     const ITaskQueuePtr TaskQueue;
     const bool IsAlignedDataEnabled;
@@ -437,25 +545,21 @@ private:
     TLog Log;
 
 public:
-    ~TRdmaEndpoint() override
+    TRdmaDataEndpoint(
+            ILoggingServicePtr logging,
+            ITraceSerializerPtr traceSerializer,
+            ITaskQueuePtr taskQueue,
+            bool isAlignedDataEnabled)
+        : TraceSerializer(std::move(traceSerializer))
+        , TaskQueue(std::move(taskQueue))
+        , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
-        Stop();
+        Log = logging->CreateLog("BLOCKSTORE_RDMA");
     }
 
-    static std::shared_ptr<TRdmaEndpoint> Create(
-        ILoggingServicePtr logging,
-        IBlockStorePtr volumeClient,
-        ITraceSerializerPtr traceSerializer,
-        ITaskQueuePtr taskQueue,
-        bool isAlignedDataEnabled)
+    ~TRdmaDataEndpoint() override
     {
-        return std::shared_ptr<TRdmaEndpoint>{
-            new TRdmaEndpoint(
-                std::move(logging),
-                std::move(volumeClient),
-                std::move(traceSerializer),
-                std::move(taskQueue),
-                isAlignedDataEnabled)};
+        Stop();
     }
 
     void Init(NRdma::IClientEndpointPtr endpoint)
@@ -470,11 +574,34 @@ public:
 
     TFuture<NProto::TMountVolumeResponse> MountVolume(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TMountVolumeRequest> request) override;
+        std::shared_ptr<NProto::TMountVolumeRequest> request) override
+    {
+        using THandler = TProtoMessageHandler<TMountVolumeMethod>;
+        return HandleRequest<THandler>(
+            std::move(callContext),
+            std::move(request));
+    }
 
     TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TUnmountVolumeRequest> request) override;
+        std::shared_ptr<NProto::TUnmountVolumeRequest> request) override
+    {
+        using THandler = TProtoMessageHandler<TUnmountVolumeMethod>;
+        return HandleRequest<THandler>(
+            std::move(callContext),
+            std::move(request));
+    }
+
+    TFuture<NProto::TPingResponse> Ping(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TPingRequest> request) override
+    {
+        using THandler =
+            TProtoMessageHandler<TPingMethod>;
+        return HandleRequest<THandler>(
+            std::move(callContext),
+            std::move(request));
+    }
 
     TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
         TCallContextPtr callContext,
@@ -504,20 +631,6 @@ public:
     }
 
 private:
-    TRdmaEndpoint(
-            ILoggingServicePtr logging,
-            IBlockStorePtr volumeClient,
-            ITraceSerializerPtr traceSerializer,
-            ITaskQueuePtr taskQueue,
-            bool isAlignedDataEnabled)
-        : VolumeClient(std::move(volumeClient))
-        , TraceSerializer(std::move(traceSerializer))
-        , TaskQueue(std::move(taskQueue))
-        , IsAlignedDataEnabled(isAlignedDataEnabled)
-    {
-        Log = logging->CreateLog("BLOCKSTORE_RDMA");
-    }
-
     template <typename T>
     TFuture<typename T::TResponse> HandleRequest(
         TCallContextPtr callContext,
@@ -531,44 +644,74 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TRdmaEndpoint::Start()
+class TRdmaEndpoint final
+    : public TRdmaDataEndpoint
+{
+private:
+    const IBlockStorePtr VolumeClient;
+
+public:
+    static std::shared_ptr<TRdmaEndpoint> Create(
+        ILoggingServicePtr logging,
+        IBlockStorePtr volumeClient,
+        ITraceSerializerPtr traceSerializer,
+        ITaskQueuePtr taskQueue,
+        bool isAlignedDataEnabled)
+    {
+        return std::shared_ptr<TRdmaEndpoint>{
+            new TRdmaEndpoint(
+                std::move(logging),
+                std::move(volumeClient),
+                std::move(traceSerializer),
+                std::move(taskQueue),
+                isAlignedDataEnabled)};
+    }
+
+    TFuture<NProto::TMountVolumeResponse> MountVolume(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TMountVolumeRequest> request) override;
+
+    TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TUnmountVolumeRequest> request) override;
+
+private:
+    TRdmaEndpoint(
+            ILoggingServicePtr logging,
+            IBlockStorePtr volumeClient,
+            ITraceSerializerPtr traceSerializer,
+            ITaskQueuePtr taskQueue,
+            bool isAlignedDataEnabled)
+        : TRdmaDataEndpoint(
+            std::move(logging),
+            std::move(traceSerializer),
+            std::move(taskQueue),
+            isAlignedDataEnabled)
+        , VolumeClient(std::move(volumeClient))
+    {
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TRdmaDataEndpoint::Start()
 {
     // TODO
 }
 
-void TRdmaEndpoint::Stop()
+void TRdmaDataEndpoint::Stop()
 {
     Endpoint->Stop().Wait();
 }
 
-TStorageBuffer TRdmaEndpoint::AllocateBuffer(size_t bytesCount)
+TStorageBuffer TRdmaDataEndpoint::AllocateBuffer(size_t bytesCount)
 {
     Y_UNUSED(bytesCount);
     return nullptr;
 }
 
-TFuture<NProto::TMountVolumeResponse> TRdmaEndpoint::MountVolume(
-    TCallContextPtr callContext,
-    std::shared_ptr<NProto::TMountVolumeRequest> request)
-{
-    // TODO
-    return VolumeClient->MountVolume(
-        std::move(callContext),
-        std::move(request));
-}
-
-TFuture<NProto::TUnmountVolumeResponse> TRdmaEndpoint::UnmountVolume(
-    TCallContextPtr callContext,
-    std::shared_ptr<NProto::TUnmountVolumeRequest> request)
-{
-    // TODO
-    return VolumeClient->UnmountVolume(
-        std::move(callContext),
-        std::move(request));
-}
-
 template <typename T>
-TFuture<typename T::TResponse> TRdmaEndpoint::HandleRequest(
+TFuture<typename T::TResponse> TRdmaDataEndpoint::HandleRequest(
     TCallContextPtr callContext,
     std::shared_ptr<typename T::TRequest> request)
 {
@@ -596,7 +739,7 @@ TFuture<typename T::TResponse> TRdmaEndpoint::HandleRequest(
     return response;
 }
 
-void TRdmaEndpoint::HandleResponse(
+void TRdmaDataEndpoint::HandleResponse(
     NRdma::TClientRequestPtr req,
     ui32 status,
     size_t responseBytes)
@@ -624,6 +767,29 @@ void TRdmaEndpoint::HandleResponse(
             STORAGE_ERROR("Exception in callback: " << CurrentExceptionMessage());
         }
     });
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+TFuture<NProto::TMountVolumeResponse> TRdmaEndpoint::MountVolume(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TMountVolumeRequest> request)
+{
+    // TODO
+    return VolumeClient->MountVolume(
+        std::move(callContext),
+        std::move(request));
+}
+
+TFuture<NProto::TUnmountVolumeResponse> TRdmaEndpoint::UnmountVolume(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+{
+    // TODO
+    return VolumeClient->UnmountVolume(
+        std::move(callContext),
+        std::move(request));
 }
 
 }   // namespace
@@ -677,6 +843,24 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsyn
             });
         return result;
     });
+}
+
+IBlockStorePtr CreateRdmaDataEndpoint(
+    ILoggingServicePtr logging,
+    NRdma::IClientPtr client,
+    NRdma::IClientEndpointPtr clientEndpoint,
+    ITraceSerializerPtr traceSerializer,
+    ITaskQueuePtr taskQueue)
+{
+    auto endpoint = std::make_shared<TRdmaDataEndpoint>(
+        std::move(logging),
+        std::move(traceSerializer),
+        std::move(taskQueue),
+        client->IsAlignedDataEnabled());
+
+    endpoint->Init(std::move(clientEndpoint));
+
+    return endpoint;
 }
 
 }   // namespace NCloud::NBlockStore::NClient

@@ -333,6 +333,13 @@ public:
     bool GetAllowHandlelessIO() const;
 
     bool GetLazyXAttrsEnabled() const;
+
+    ui32 GetMaxBackground() const;
+    ui32 GetMaxFuseLoopThreads() const;
+
+    bool GetStrictFileSystemSizeEnforcementEnabled() const;
+
+    bool GetZeroCopyWriteEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

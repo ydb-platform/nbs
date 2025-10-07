@@ -915,7 +915,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 NProto::VOLUME_ACCESS_READ_WRITE
             );
             auto response = diskAgent.RecvAcquireDevicesResponse();
-            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
+            UNIT_ASSERT_VALUES_EQUAL(E_BS_MOUNT_CONFLICT, response->GetStatus());
             UNIT_ASSERT(response->GetErrorReason().Contains("already acquired"));
         }
 
@@ -986,7 +986,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 2
             );
             auto response = diskAgent.RecvAcquireDevicesResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(E_BS_MOUNT_CONFLICT, response->GetStatus());
         }
     }
 
@@ -1032,7 +1032,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 NProto::VOLUME_ACCESS_READ_WRITE
             );
             auto response = diskAgent.RecvAcquireDevicesResponse();
-            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
+            UNIT_ASSERT_VALUES_EQUAL(E_BS_MOUNT_CONFLICT, response->GetStatus());
             UNIT_ASSERT(response->GetErrorReason().Contains("already acquired"));
             UNIT_ASSERT(response->GetErrorReason().Contains(
                 "MemoryDevice1"
@@ -2095,7 +2095,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             );
 
             auto response = diskAgent.RecvWriteDeviceBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
+            UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, response->GetStatus());
         }
 
         for (auto sid: {readerClientId1, readerClientId2}) {
@@ -2107,7 +2107,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             );
 
             auto response = diskAgent.RecvZeroDeviceBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_BS_INVALID_SESSION);
+            UNIT_ASSERT_VALUES_EQUAL(E_BS_INVALID_SESSION, response->GetStatus());
         }
 
         for (auto sid: {writerClientId, readerClientId1, readerClientId2}) {

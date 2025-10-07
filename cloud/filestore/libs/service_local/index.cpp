@@ -50,6 +50,16 @@ TIndexNodePtr TIndexNode::CreateSocket(const TString& name, int mode)
     return std::make_shared<TIndexNode>(stat.INode, std::move(node));
 }
 
+TIndexNodePtr TIndexNode::CreateFifo(const TString& name, int mode)
+{
+    NLowLevel::MkFifoAt(NodeFd, name, mode);
+
+    auto node = NLowLevel::OpenAt(NodeFd, name, O_PATH, 0);
+    auto stat = NLowLevel::Stat(node);
+
+    return std::make_shared<TIndexNode>(stat.INode, std::move(node));
+}
+
 TIndexNodePtr TIndexNode::CreateLink(const TIndexNode& parent, const TString& name)
 {
     NLowLevel::LinkAt(NodeFd, parent.NodeFd, name);

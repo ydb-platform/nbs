@@ -51,7 +51,7 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    NThreading::TFuture<void> FlushData(ui64 handle);
+    NThreading::TFuture<void> FlushNodeData(ui64 nodeId);
 
     NThreading::TFuture<void> FlushAllData();
 
@@ -62,7 +62,7 @@ private:
     enum class EWriteDataEntryStatus;
     class TWriteDataEntry;
     struct TWriteDataEntryPart;
-    struct THandleState;
+    struct TNodeState;
     struct TFlushState;
     class TUtil;
     struct TPendingOperations;

@@ -107,7 +107,7 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
     xxx(CreateVolumeFromDevice,             __VA_ARGS__)                       \
     xxx(ResumeDevice,                       __VA_ARGS__)                       \
     xxx(QueryAgentsInfo,                    __VA_ARGS__)                       \
-    xxx(ListDisksStates,                    __VA_ARGS__)                       \
+    xxx(ListDiskStates,                     __VA_ARGS__)                       \
     xxx(CreateVolumeLink,                   __VA_ARGS__)                       \
     xxx(DestroyVolumeLink,                  __VA_ARGS__)                       \
     xxx(RemoveVolumeClient,                 __VA_ARGS__)                       \
@@ -186,6 +186,7 @@ enum class ESysRequestType
     ZeroDeviceBlocks = 10007,
     Resync = 10008,
     ConfirmBlobs = 10009,
+    ReadDeviceBlocks = 10010,
     MAX
 };
 

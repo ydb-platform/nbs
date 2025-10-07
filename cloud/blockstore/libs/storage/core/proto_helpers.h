@@ -245,4 +245,11 @@ TString LogDevices(const TVector<NProto::TDeviceConfig>& devices);
 
 NProto::TVolumePerformanceProfile VolumeConfigToVolumePerformanceProfile(
     const NKikimrBlockStore::TVolumeConfig& volumeConfig);
+
+TMap<TString, TString> ParseTags(const TString& tags);
+
+TString PoolKindToString(const NProto::EDevicePoolKind poolKind);
+
+bool IsNotFoundSchemeShardError(const NProto::TError& error);
+
 }   // namespace NCloud::NBlockStore::NStorage

@@ -7,6 +7,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -14,10 +16,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromSnapshotTask struct {
-	storage storage.Storage
-	config  *config.DataplaneConfig
-	request *protos.CreateSnapshotFromSnapshotRequest
-	state   *protos.CreateSnapshotFromSnapshotTaskState
+	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
+	storage           storage.Storage
+	request           *protos.CreateSnapshotFromSnapshotRequest
+	state             *protos.CreateSnapshotFromSnapshotTaskState
 }
 
 func (t *createSnapshotFromSnapshotTask) Save() ([]byte, error) {
@@ -46,6 +49,11 @@ func (t *createSnapshotFromSnapshotTask) Run(
 	}
 
 	t.state.ChunkCount = srcMeta.ChunkCount
+
+	execCtx.SetEstimatedInflightDuration(performance.Estimate(
+		srcMeta.StorageSize,
+		t.performanceConfig.GetSnapshotShallowCopyBandwidthMiBs(),
+	))
 
 	_, err = t.storage.CreateSnapshot(
 		ctx,

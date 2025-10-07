@@ -38,6 +38,7 @@ enum ECompactionType
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Keep consistent with copy from contrib/ydb/core/protos/nbs/blockstore.proto
 enum EVolumePreemptionType
 {
     // Do not preempt volumes when host is overloaded
@@ -1002,7 +1003,7 @@ message TStorageServiceConfig
 
     // Duration of attempts to connect to tablet for cached tablets before
     // switching to describe volume (in ms).
-    optional uint32 VolumeProxyCacheRetryDuration = 360;
+    optional uint32 VolumeProxyCacheRetryDuration = 360; // deprecated
 
     // Service actor self ping measurement interval. Used to evaluate
     // service actor load. Set in ms.
@@ -1315,4 +1316,29 @@ message TStorageServiceConfig
     // Min percentage of reassignable fresh channels after which reassign requests
     // are sent.
     optional uint32 ReassignFreshChannelsPercentageThreshold = 453;
+
+    // Timeout for trim fresh log (in milliseconds).
+    optional uint32 TrimFreshLogTimeout = 454;
+
+    // Enables data integrity validation for the YDB-based disks.
+    // See "EnableDataIntegrityClient" in server.proto for more details.
+    optional bool EnableDataIntegrityValidationForYdbBasedDisks = 455;
+
+    // These parameters are used to configure resource limits (CPU, RAM, network)
+    // for the local service in the tenant pool.
+    optional uint64 HiveLocalServiceCpuResourceLimit = 456;
+    optional uint64 HiveLocalServiceMemoryResourceLimit = 457;
+    optional uint64 HiveLocalServiceNetworkResourceLimit = 458;
+
+    // Timeout for dynamic node registration via discovery service
+    // (in milliseconds).
+    optional uint32 DynamicNodeRegistrationTimeout = 459;
+
+    // Timeout for collect garbage on SSD (in milliseconds).
+    optional uint32 CollectGarbageTimeoutSSD = 460;
+
+    // Timeout for collect garbage on HDD (in milliseconds).
+    optional uint32 CollectGarbageTimeoutHDD = 461;
+
+    optional bool UseBinaryFormatForPathDescriptionBackup = 462;
 }

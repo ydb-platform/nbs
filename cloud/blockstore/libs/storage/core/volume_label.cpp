@@ -13,6 +13,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr TStringBuf SecondaryDiskSuffix = "-copy";
+
+////////////////////////////////////////////////////////////////////////////////
+
 TString ComputeFolder(const TString& diskId)
 {
     constexpr ui32 folders = 1 << 10;
@@ -107,6 +111,24 @@ std::tuple<TString, TString> DiskIdToVolumeDirAndName(
 {
     TString path = DiskIdToPath(diskId);
     return ExtractParentDirAndName(rootDir, path);
+}
+
+TString GetSecondaryDiskId(const TString& diskId)
+{
+    return diskId + SecondaryDiskSuffix;
+}
+
+TString GetLogicalDiskId(const TString& diskId)
+{
+    if (diskId.EndsWith(SecondaryDiskSuffix)) {
+        return diskId.substr(0, diskId.size() - SecondaryDiskSuffix.size());
+    }
+    return diskId;
+}
+
+bool IsSecondaryDiskId(const TString& diskId)
+{
+    return diskId.EndsWith(SecondaryDiskSuffix);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -11,6 +11,10 @@ namespace NCloud::NBlockStore::NStorage {
 constexpr TStringBuf IntermediateWriteBufferTagName =
     "use-intermediate-write-buffer";
 
+// If the tag is set, it means that this disk is being copied and the name of
+// the disk from where the copy is being made should be taken from the tag.
+constexpr TStringBuf SourceDiskIdTagName = "source-disk-id";
+
 ////////////////////////////////////////////////////////////////////////////////
 // BackpressureReport event descriptor
 

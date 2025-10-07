@@ -75,6 +75,12 @@ public:
         const TDiskId& diskId,
         const TDeviceId& deviceId,
         bool isReplacement);
+    [[nodiscard]] TVector<TString> GetDevicesReplacements(
+        const TDiskId& diskId) const;
+    [[nodiscard]] ui32 GetDevicesReplacementsCount(const TDiskId& diskId) const;
+    [[nodiscard]] bool IsReplacementDevice(
+        const TDiskId& diskId,
+        const TDeviceId& deviceId) const;
 
     // for tests and monpages
     TVector<TVector<TDeviceInfo>> AsMatrix(const TString& diskId) const;
@@ -94,12 +100,12 @@ private:
 private:
     // a transposed view of disk config
 
-    using TCell = TVector<TDeviceInfo>;
+    using TRow = TVector<TDeviceInfo>;
 
     struct TDiskState
     {
-        TDeque<TCell> Cells;
-        THashMap<TString, TCell*> DeviceId2Cell;
+        TDeque<TRow> Rows;
+        THashMap<TString, TRow*> DeviceId2Row;
     };
 
     THashMap<TDiskId, TDiskState> Disks;

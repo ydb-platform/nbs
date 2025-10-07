@@ -48,9 +48,6 @@ inline IOutputStream& operator<<(IOutputStream& out, const TBlockData& data)
 struct IRequestGenerator;
 using IRequestGeneratorPtr = std::shared_ptr<IRequestGenerator>;
 
-struct ITestExecutor;
-using ITestExecutorPtr = std::shared_ptr<ITestExecutor>;
-
 struct IConfigHolder;
 using IConfigHolderPtr = std::shared_ptr<IConfigHolder>;
 

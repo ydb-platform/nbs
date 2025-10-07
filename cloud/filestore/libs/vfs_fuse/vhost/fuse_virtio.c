@@ -174,11 +174,6 @@ static bool is_ignored_request(struct fuse_in_header* in)
     return in->opcode == FUSE_INTERRUPT;
 }
 
-static bool is_oneway_request(struct fuse_in_header* in)
-{
-    return in->opcode == FUSE_FORGET || in->opcode == FUSE_BATCH_FORGET;
-}
-
 struct iov_iter {
     struct iovec *iov;
     size_t count;
@@ -243,6 +238,12 @@ static int process_request(struct fuse_session* se, struct vhd_io* io)
     size_t cplen = iov_iter_to_buf(&it, &in_hdr, sizeof(in_hdr));
     VHD_ASSERT(cplen == sizeof(in_hdr));
 
+    // Don't process some requests with strange logic
+    if (is_ignored_request(&in_hdr)) {
+        complete_request(req, 0);
+        return 0;
+    }
+
     size_t buf0len = !is_write_request(&in_hdr) ? len :
         sizeof(struct fuse_in_header) + sizeof(struct fuse_write_in);
 
@@ -273,26 +274,10 @@ static int process_request(struct fuse_session* se, struct vhd_io* io)
         };
     }
 
-    // Don't process some requests with strange logic
-    if (is_ignored_request(&in_hdr)) {
-        complete_request(req, 0);
-        return 0;
-    }
-
     fuse_session_process_buf_int(se, pbufv, &req->ch);
 
     if (extra_bufs) {
         vhd_free(pbufv);
-    }
-
-    /*
-     * These requests don't assume response and thus don't call
-     * virtio_send_msg.  Be sure to complete and free the request and recycle
-     * the virtio descriptors.
-     * FIXME: wire completion into fuse_reply_none
-     */
-    if (is_oneway_request(&in_hdr)) {
-        complete_request(req, 0);
     }
 
     return 0;
@@ -384,6 +369,21 @@ int fuse_cancel_request(
     return 0;
 }
 
+// 'overrides' fuse_reply_none, needed for VIRTIO-specific request completion
+// handling.
+// See https://github.com/ydb-platform/nbs/pull/4283
+// and https://github.com/ydb-platform/nbs/pull/4313
+void fuse_reply_none_override(fuse_req_t req)
+{
+    // complete attached fuse virtio request
+    struct fuse_chan* ch = req->ch;
+    struct fuse_virtio_request* vhd_req = VIRTIO_REQ_FROM_CHAN(ch);
+    complete_request(vhd_req, 0);
+
+    // calling 'base' implementation
+    fuse_reply_none(req);
+}
+
 int virtio_session_mount(struct fuse_session* se)
 {
     struct fuse_virtio_dev* dev = vhd_zalloc(sizeof(struct fuse_virtio_dev));
@@ -470,6 +470,8 @@ void virtio_session_exit(struct fuse_session* se)
         sched_yield();
     }
 
+    se->exited = 1;
+
     VHD_LOG_INFO("finished unregister device");
 }
 
@@ -496,7 +498,6 @@ int virtio_session_loop(struct fuse_session* se, int queue_index)
         }
     }
 
-    se->exited = 1;
     return res;
 }
 

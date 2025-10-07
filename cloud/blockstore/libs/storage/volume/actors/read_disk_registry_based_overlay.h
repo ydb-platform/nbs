@@ -44,6 +44,7 @@ private:
     const ui32 BlockSize;
     const TDuration LongRunningThreshold;
     TChildLogTitle LogTitle;
+    const bool EnableDataIntegrityValidation;
     const EStorageAccessMode Mode;
 
     // Initially, the block map is built on the basis of the usedBlocks of the
@@ -72,7 +73,8 @@ public:
         ui32 blockSize,
         EStorageAccessMode mode,
         TDuration longRunningThreshold,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        bool enableDataIntegrityValidation);
 
     void Bootstrap(const TActorContext& ctx);
 

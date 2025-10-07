@@ -1965,3 +1965,15 @@ func TestAlterPlacementGroupMembershipFailureBecauseOfTooManyDisksInGroup(t *tes
 	err = client.DeletePlacementGroup(ctx, groupID)
 	require.NoError(t, err)
 }
+
+// TODO: enable this test after syncing ydb stable-24-3.
+func TestGetClusterCapacity(t *testing.T) {
+	/*
+		ctx := newContext()
+		client := newTestingClient(t, ctx)
+
+		capacity, err := client.GetClusterCapacity(ctx)
+		require.NoError(t, err)
+		require.NotEmpty(t, capacity)
+	*/
+}

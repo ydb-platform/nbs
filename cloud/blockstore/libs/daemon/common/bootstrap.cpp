@@ -30,8 +30,6 @@
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryption_service.h>
-#include <cloud/blockstore/libs/endpoint_proxy/client/client.h>
-#include <cloud/blockstore/libs/endpoint_proxy/client/device_factory.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_manager.h>
@@ -574,37 +572,13 @@ void TBootstrapBase::Init()
 
     NBD::IDeviceFactoryPtr nbdDeviceFactory;
 
-    if (Configs->ServerConfig->GetEndpointProxySocketPath()) {
-        EndpointProxyClient = NClient::CreateClient(
-            {
-                "", // Host
-                0,  // Port
-                0,  // SecurePort
-                "", // RootCertsFile
-                Configs->ServerConfig->GetEndpointProxySocketPath(),
-                {}, // RetryPolicy
-            },
-            Scheduler,
-            Timer,
-            Logging);
-
-        const ui32 defaultSectorSize = 4_KB;
-
-        nbdDeviceFactory = NClient::CreateProxyDeviceFactory(
-            {defaultSectorSize},
-            EndpointProxyClient);
-    }
-
-    if (!nbdDeviceFactory && Configs->ServerConfig->GetNbdNetlink()) {
+    if (Configs->ServerConfig->GetNbdNetlink()) {
         nbdDeviceFactory = NBD::CreateNetlinkDeviceFactory(
             Logging,
             Configs->ServerConfig->GetNbdRequestTimeout(),
             Configs->ServerConfig->GetNbdConnectionTimeout());
     }
 
-    // The only case we want kernel to retry requests is when the socket is dead
-    // due to nbd server restart. And since we can't configure ioctl device to
-    // use a new socket, request timeout effectively becomes connection timeout
     if (!nbdDeviceFactory) {
         nbdDeviceFactory = NBD::CreateDeviceFactory(
             Logging,
@@ -809,7 +783,11 @@ void TBootstrapBase::InitLocalService()
         CreateLocalStorageProvider(
             FileIOServiceProvider,
             NvmeManager,
-            {.DirectIO = false, .UseSubmissionThread = false}));
+            {.DirectIO = false,
+             .UseSubmissionThread = false,
+             .EnableDataIntegrityValidation =
+                 Configs->DiskAgentConfig
+                     ->GetEnableDataIntegrityValidationForDrBasedDisks()}));
 }
 
 void TBootstrapBase::InitNullService()
@@ -960,7 +938,6 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(Spdk);
     START_COMMON_COMPONENT(FileIOServiceProvider);
     START_KIKIMR_COMPONENT(ActorSystem);
-    START_COMMON_COMPONENT(EndpointProxyClient);
     START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
     START_COMMON_COMPONENT(VhostServer);
@@ -1041,8 +1018,6 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(VhostServer);
     STOP_COMMON_COMPONENT(Service);
     STOP_COMMON_COMPONENT(EndpointManager);
-    STOP_COMMON_COMPONENT(EndpointProxyClient);
-
 
     STOP_KIKIMR_COMPONENT(ActorSystem);
 

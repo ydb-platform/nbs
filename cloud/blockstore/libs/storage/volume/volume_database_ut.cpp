@@ -1362,6 +1362,72 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 UNIT_ASSERT_VALUES_EQUAL(follower2, readFollowers[0]);
             });
     }
+
+    Y_UNIT_TEST(ShouldStoreLeaders)
+    {
+        TTestExecutor executor;
+
+        TLeaderDiskInfo leader{
+            .Link =
+                TLeaderFollowerLink{
+                    .LinkUUID = "x",
+                    .LeaderDiskId = "vol0",
+                    .LeaderShardId = "su0",
+                    .FollowerDiskId = "vol1",
+                    .FollowerShardId = "su1"},
+            .CreatedAt = TInstant::Now(),
+            .State = TLeaderDiskInfo::EState::None,
+            .ErrorMessage = ""};
+
+        executor.WriteTx(
+            [&](TVolumeDatabase db)
+            {
+                db.InitSchema();
+                db.WriteLeader(leader);
+            });
+
+        executor.ReadTx(
+            [&](TVolumeDatabase db)
+            {
+                TLeaderDisks readLeaders;
+                UNIT_ASSERT(db.ReadLeaders(readLeaders));
+                UNIT_ASSERT_VALUES_EQUAL(1, readLeaders.size());
+                UNIT_ASSERT_VALUES_EQUAL(leader, readLeaders[0]);
+            });
+
+        leader.State = TLeaderDiskInfo::EState::Leader;
+
+        executor.WriteTx(
+            [&](TVolumeDatabase db)
+            {
+                db.InitSchema();
+                db.WriteLeader(leader);
+            });
+
+        executor.ReadTx(
+            [&](TVolumeDatabase db)
+            {
+                TLeaderDisks readLeaders;
+                UNIT_ASSERT(db.ReadLeaders(readLeaders));
+                UNIT_ASSERT_VALUES_EQUAL(1, readLeaders.size());
+                UNIT_ASSERT_VALUES_EQUAL(leader, readLeaders[0]);
+            });
+
+        executor.WriteTx(
+            [&](TVolumeDatabase db)
+            {
+                db.InitSchema();
+                db.DeleteLeader(leader.Link);
+            });
+
+        executor.ReadTx(
+            [&](TVolumeDatabase db)
+            {
+                TLeaderDisks readLeaders;
+                UNIT_ASSERT(db.ReadLeaders(readLeaders));
+                UNIT_ASSERT_VALUES_EQUAL(0, readLeaders.size());
+            });
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
@@ -1395,6 +1461,14 @@ template <>
 void Out<NCloud::NBlockStore::NStorage::TFollowerDiskInfo>(
     IOutputStream& out,
     const NCloud::NBlockStore::NStorage::TFollowerDiskInfo& value)
+{
+    out << value.Describe();
+}
+
+template <>
+void Out<NCloud::NBlockStore::NStorage::TLeaderDiskInfo>(
+    IOutputStream& out,
+    const NCloud::NBlockStore::NStorage::TLeaderDiskInfo& value)
 {
     out << value.Describe();
 }

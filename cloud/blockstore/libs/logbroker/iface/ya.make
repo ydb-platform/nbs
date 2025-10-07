@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     config.cpp
+    credentials_provider.cpp
     logbroker.cpp
 )
 

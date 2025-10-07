@@ -2,6 +2,7 @@
 
 #include "options.h"
 
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -9,6 +10,8 @@
 #include <util/system/file.h>
 
 namespace NCloud::NBlockStore {
+
+using namespace NTesting;
 
 namespace {
 
@@ -40,6 +43,7 @@ public:
 private:
     void InitLogger();
 
+    TTestExecutorSettings ConfigureTest() const;
     int RunTest();
 
     void DumpConfiguration();
@@ -93,12 +97,57 @@ void TTest::DumpConfiguration()
         << Options->DumpPath.Quote());
 }
 
+TTestExecutorSettings TTest::ConfigureTest() const
+{
+    auto log = Logging->CreateLog("ETERNAL_EXECUTOR");
+
+    TTestExecutorSettings settings;
+    settings.TestScenario = CreateAlignedBlockTestScenario(ConfigHolder, log);
+
+    switch (Options->Engine) {
+        case EIoEngine::AsyncIo:
+            settings.FileService = ETestExecutorFileService::AsyncIo;
+            STORAGE_INFO("Using file service: AsyncIo");
+            break;
+
+        case EIoEngine::IoUring:
+            settings.FileService = ETestExecutorFileService::IoUring;
+            STORAGE_INFO("Using file service: IoUring");
+            break;
+
+        case EIoEngine::Sync:
+            settings.FileService = ETestExecutorFileService::Sync;
+            STORAGE_INFO("Using file service: Sync");
+            break;
+
+        default:
+            Y_ABORT("Unsupported EIoEngine value %d", Options->Engine);
+    }
+
+    settings.FilePath = ConfigHolder->GetConfig().GetFilePath();
+    STORAGE_INFO("Using test file: " << settings.FilePath);
+
+    settings.FileSize = ConfigHolder->GetConfig().GetFileSize();
+    STORAGE_INFO("Using test file size: " << settings.FileSize);
+
+    settings.RunInCallbacks = Options->RunInCallbacks;
+    STORAGE_INFO(
+        "Using run test logic in callbacks: "
+        << settings.RunInCallbacks);
+
+    settings.NoDirect = Options->NoDirect;
+    STORAGE_INFO("Using O_DIRECT: " << !settings.NoDirect);
+
+    settings.Log = log;
+
+    return settings;
+}
+
 int TTest::RunTest()
 {
-    Executor = CreateTestExecutor(
-        ConfigHolder,
-        Logging->CreateLog("ETERNAL_EXECUTOR")
-    );
+    auto settings = ConfigureTest();
+
+    Executor = CreateTestExecutor(std::move(settings));
 
     int res = 0;
     if (!Executor->Run()) {

@@ -1432,8 +1432,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         TDiskRegistrySelfCounters::TDevicePoolCounters defaultPool;
         TDiskRegistrySelfCounters::TDevicePoolCounters localPool;
 
-        defaultPool.Init(diskRegistryGroup->GetSubgroup("pool", "default"));
-        localPool.Init(diskRegistryGroup->GetSubgroup("pool", "local"));
+        defaultPool.Init(diskRegistryGroup->GetSubgroup("pool", "default")
+                             ->GetSubgroup("kind", "default"));
+        localPool.Init(diskRegistryGroup->GetSubgroup("pool", "local-ssd")
+                           ->GetSubgroup("kind", "local"));
 
         auto freeBytes = diskRegistryGroup->GetCounter("FreeBytes");
         auto totalBytes = diskRegistryGroup->GetCounter("TotalBytes");
@@ -1452,7 +1454,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto agentsInWarningState = diskRegistryGroup->GetCounter("AgentsInWarningState");
         auto agentsInUnavailableState = diskRegistryGroup->GetCounter("AgentsInUnavailableState");
         auto disksInOnlineState = diskRegistryGroup->GetCounter("DisksInOnlineState");
-        auto disksInMigrationState = diskRegistryGroup->GetCounter("DisksInMigrationState");
         auto disksInTemporarilyUnavailableState =
             diskRegistryGroup->GetCounter("DisksInTemporarilyUnavailableState");
         auto disksInErrorState = diskRegistryGroup->GetCounter("DisksInErrorState");
@@ -1606,7 +1607,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInOnlineState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, placementGroups->Val());
@@ -1659,7 +1659,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInOnlineState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
@@ -1710,7 +1709,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, disksInOnlineState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
@@ -1761,7 +1759,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, agentsInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInOnlineState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
@@ -1802,7 +1799,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, agentsInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInOnlineState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
@@ -1841,7 +1837,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, agentsInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, agentsInUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInOnlineState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInErrorState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, placementGroups->Val());
@@ -3815,28 +3810,28 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, lastSeqNo);
 
         {
-            auto disksStates = state.ListDisksStates();
-            SortBy(disksStates, [](const auto& s) { return s.GetDiskId(); });
+            auto diskStates = state.ListDiskStates();
+            SortBy(diskStates, [](const auto& s) { return s.GetDiskId(); });
 
-            UNIT_ASSERT_VALUES_EQUAL(3, disksStates.size());
+            UNIT_ASSERT_VALUES_EQUAL(3, diskStates.size());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", disksStates[0].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", diskStates[0].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_WARNING,
-                disksStates[0].GetState());
-            UNIT_ASSERT_VALUES_UNEQUAL("", disksStates[0].GetStateMessage());
+                diskStates[0].GetState());
+            UNIT_ASSERT_VALUES_UNEQUAL("", diskStates[0].GetStateMessage());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-2", disksStates[1].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", diskStates[1].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_ONLINE,
-                disksStates[1].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[1].GetStateMessage());
+                diskStates[1].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[1].GetStateMessage());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-3", disksStates[2].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", diskStates[2].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_WARNING,
-                disksStates[2].GetState());
-            UNIT_ASSERT_VALUES_UNEQUAL("", disksStates[2].GetStateMessage());
+                diskStates[2].GetState());
+            UNIT_ASSERT_VALUES_UNEQUAL("", diskStates[2].GetStateMessage());
         }
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -3894,28 +3889,28 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(3, lastSeqNo);
 
         {
-            auto disksStates = state.ListDisksStates();
-            SortBy(disksStates, [](const auto& s) { return s.GetDiskId(); });
+            auto diskStates = state.ListDiskStates();
+            SortBy(diskStates, [](const auto& s) { return s.GetDiskId(); });
 
-            UNIT_ASSERT_VALUES_EQUAL(3, disksStates.size());
+            UNIT_ASSERT_VALUES_EQUAL(3, diskStates.size());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", disksStates[0].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", diskStates[0].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE,
-                disksStates[0].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[0].GetStateMessage());
+                diskStates[0].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[0].GetStateMessage());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-2", disksStates[1].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", diskStates[1].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_ONLINE,
-                disksStates[1].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[1].GetStateMessage());
+                diskStates[1].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[1].GetStateMessage());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-3", disksStates[2].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", diskStates[2].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE,
-                disksStates[2].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[2].GetStateMessage());
+                diskStates[2].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[2].GetStateMessage());
         }
 
         // #3 : online -> unavailable
@@ -3975,28 +3970,28 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(4, lastSeqNo);
 
         {
-            auto disksStates = state.ListDisksStates();
-            SortBy(disksStates, [](const auto& s) { return s.GetDiskId(); });
+            auto diskStates = state.ListDiskStates();
+            SortBy(diskStates, [](const auto& s) { return s.GetDiskId(); });
 
-            UNIT_ASSERT_VALUES_EQUAL(3, disksStates.size());
+            UNIT_ASSERT_VALUES_EQUAL(3, diskStates.size());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", disksStates[0].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", diskStates[0].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE,
-                disksStates[0].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[0].GetStateMessage());
+                diskStates[0].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[0].GetStateMessage());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-2", disksStates[1].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", diskStates[1].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE,
-                disksStates[1].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[1].GetStateMessage());
+                diskStates[1].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[1].GetStateMessage());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-3", disksStates[2].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", diskStates[2].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE,
-                disksStates[2].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[2].GetStateMessage());
+                diskStates[2].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[2].GetStateMessage());
         }
 
         // #1 : unavailable -> online
@@ -4025,28 +4020,28 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(5, lastSeqNo);
 
         {
-            auto disksStates = state.ListDisksStates();
-            SortBy(disksStates, [](const auto& s) { return s.GetDiskId(); });
+            auto diskStates = state.ListDiskStates();
+            SortBy(diskStates, [](const auto& s) { return s.GetDiskId(); });
 
-            UNIT_ASSERT_VALUES_EQUAL(3, disksStates.size());
+            UNIT_ASSERT_VALUES_EQUAL(3, diskStates.size());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", disksStates[0].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", diskStates[0].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_ONLINE,
-                disksStates[0].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[0].GetStateMessage());
+                diskStates[0].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[0].GetStateMessage());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-2", disksStates[1].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", diskStates[1].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE,
-                disksStates[1].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[1].GetStateMessage());
+                diskStates[1].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[1].GetStateMessage());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-3", disksStates[2].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", diskStates[2].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE,
-                disksStates[2].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[2].GetStateMessage());
+                diskStates[2].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[2].GetStateMessage());
         }
 
         // #2 : unavailable -> online
@@ -4088,28 +4083,28 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(7, lastSeqNo);
 
         {
-            auto disksStates = state.ListDisksStates();
-            SortBy(disksStates, [](const auto& s) { return s.GetDiskId(); });
+            auto diskStates = state.ListDiskStates();
+            SortBy(diskStates, [](const auto& s) { return s.GetDiskId(); });
 
-            UNIT_ASSERT_VALUES_EQUAL(3, disksStates.size());
+            UNIT_ASSERT_VALUES_EQUAL(3, diskStates.size());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-1", disksStates[0].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", diskStates[0].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_ONLINE,
-                disksStates[0].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[0].GetStateMessage());
+                diskStates[0].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[0].GetStateMessage());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-2", disksStates[1].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-2", diskStates[1].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_ONLINE,
-                disksStates[1].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[1].GetStateMessage());
+                diskStates[1].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[1].GetStateMessage());
 
-            UNIT_ASSERT_VALUES_EQUAL("disk-3", disksStates[2].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL("disk-3", diskStates[2].GetDiskId());
             UNIT_ASSERT_EQUAL(
                 NProto::DISK_STATE_ONLINE,
-                disksStates[2].GetState());
-            UNIT_ASSERT_VALUES_EQUAL("", disksStates[2].GetStateMessage());
+                diskStates[2].GetState());
+            UNIT_ASSERT_VALUES_EQUAL("", diskStates[2].GetStateMessage());
         }
 
         executor.ReadTx([&] (TDiskRegistryDatabase db) mutable {
@@ -8285,7 +8280,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry");
         auto disksInWarningState = diskRegistryGroup->GetCounter("DisksInWarningState");
-        auto disksInMigrationState = diskRegistryGroup->GetCounter("DisksInMigrationState");
         auto devicesInMigrationState = diskRegistryGroup->GetCounter("DevicesInMigrationState");
         auto maxWarningTime = diskRegistryGroup->GetCounter("MaxWarningTime");
         auto maxMigrationTime = diskRegistryGroup->GetCounter("MaxMigrationTime");
@@ -8348,7 +8342,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         state.PublishCounters(TInstant::Zero());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInWarningState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxWarningTime->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());
@@ -8364,7 +8357,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto now1 = TInstant::Seconds(1000);
         state.PublishCounters(now1);
         UNIT_ASSERT_VALUES_EQUAL(3, disksInWarningState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(3, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(3, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             (now1 - disk1WarningTs).Seconds(),
@@ -8407,7 +8399,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto now2 = TInstant::Seconds(3000);
         state.PublishCounters(now2);
         UNIT_ASSERT_VALUES_EQUAL(2, disksInWarningState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             (now2 - disk1WarningTs).Seconds(),
@@ -8425,7 +8416,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto now3 = TInstant::Seconds(4000);
         state.PublishCounters(now3);
         UNIT_ASSERT_VALUES_EQUAL(2, disksInWarningState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             (now3 - disk2WarningTs).Seconds(),
@@ -8440,7 +8430,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto now4 = TInstant::Seconds(5000);
         state.PublishCounters(now4);
         UNIT_ASSERT_VALUES_EQUAL(1, disksInWarningState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             (now4 - disk1WarningTs).Seconds(),
@@ -8451,7 +8440,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         errorDevice(1, TInstant::Seconds(5100));
         state.PublishCounters(TInstant::Seconds(6000));
         UNIT_ASSERT_VALUES_EQUAL(0, disksInWarningState->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxWarningTime->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());

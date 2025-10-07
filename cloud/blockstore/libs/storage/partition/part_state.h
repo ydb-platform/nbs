@@ -26,6 +26,8 @@
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
+
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
@@ -1253,7 +1255,10 @@ private:
     TBarriers TrimFreshLogBarriers;
     TOperationState TrimFreshLogState;
     ui64 LastTrimFreshLogToCommitId = 0;
-    TDuration TrimFreshLogTimeout;
+    TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
+        TDuration::Zero(),
+        TDuration::MilliSeconds(100),
+        TDuration::Seconds(5)};
 
 public:
     TBarriers& GetTrimFreshLogBarriers()
@@ -1276,22 +1281,19 @@ public:
         return TrimFreshLogState;
     }
 
-    TDuration GetTrimFreshLogTimeout()
+    TDuration GetTrimFreshLogBackoffDelay()
     {
-        return TrimFreshLogTimeout;
+        return TrimFreshLogBackoffDelayProvider.GetDelay();
     }
 
     void RegisterTrimFreshLogError()
     {
-        TrimFreshLogTimeout = Min(
-            TDuration::Seconds(5),
-            Max(TDuration::MilliSeconds(100), TrimFreshLogTimeout * 2)
-        );
+        TrimFreshLogBackoffDelayProvider.IncreaseDelay();
     }
 
     void RegisterTrimFreshLogSuccess()
     {
-        TrimFreshLogTimeout = {};
+        TrimFreshLogBackoffDelayProvider.Reset();
     }
 
     ui64 GetLastTrimFreshLogToCommitId() const

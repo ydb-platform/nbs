@@ -91,6 +91,8 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
         // Mark device "d2-2" as replacement. We still have two good devices in
         // the cell.
         t.MarkReplacementDevice("disk-1", "d2-2", true);
+        // Check that we have one device in the replacement state.
+        UNIT_ASSERT_VALUES_EQUAL(1, t.GetDevicesReplacementsCount("disk-1"));
         // Check that the device "d1-2" is ready for replacement.
         UNIT_ASSERT(t.IsReplacementAllowed("disk-1", "d1-2"));
         // Replace it. Now we have only one good device in the cell.
@@ -183,6 +185,8 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
 
         t.MarkReplacementDevice("disk-1", "d1-2-2", true);
 
+        UNIT_ASSERT_VALUES_EQUAL(1, t.GetDevicesReplacementsCount("disk-1"));
+
         replicaCountStats = t.CalculateReplicaCountStats();
         UNIT_ASSERT_VALUES_EQUAL(0, replicaCountStats.Mirror3DiskMinus0);
         UNIT_ASSERT_VALUES_EQUAL(1, replicaCountStats.Mirror3DiskMinus1);
@@ -197,7 +201,11 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
         t.MarkReplacementDevice("disk-1", "d1-2-3", true);
         t.MarkReplacementDevice("disk-1", "d1-3-1", true);
 
+        UNIT_ASSERT_VALUES_EQUAL(5, t.GetDevicesReplacementsCount("disk-1"));
+
         t.MarkReplacementDevice("disk-2", "d2-2-1", true);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, t.GetDevicesReplacementsCount("disk-2"));
 
         replicaCountStats = t.CalculateReplicaCountStats();
         UNIT_ASSERT_VALUES_EQUAL(0, replicaCountStats.Mirror3DiskMinus0);
@@ -210,6 +218,8 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
 
         t.MarkReplacementDevice("disk-1", "d1-2-1", true);
 
+        UNIT_ASSERT_VALUES_EQUAL(6, t.GetDevicesReplacementsCount("disk-1"));
+
         replicaCountStats = t.CalculateReplicaCountStats();
         UNIT_ASSERT_VALUES_EQUAL(0, replicaCountStats.Mirror3DiskMinus0);
         UNIT_ASSERT_VALUES_EQUAL(0, replicaCountStats.Mirror3DiskMinus1);
@@ -221,6 +231,9 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
 
         // Remove replacement state from mirror-2 device d2-2-1
         t.MarkReplacementDevice("disk-2", "d2-2-1", false);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, t.GetDevicesReplacementsCount("disk-2"));
+
         replicaCountStats = t.CalculateReplicaCountStats();
         UNIT_ASSERT_VALUES_EQUAL(1, replicaCountStats.Mirror2DiskMinus0);
         UNIT_ASSERT_VALUES_EQUAL(0, replicaCountStats.Mirror2DiskMinus1);

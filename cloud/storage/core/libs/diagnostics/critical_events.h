@@ -15,6 +15,7 @@ namespace NCloud {
     xxx(LoadPathDescriptionBackupFailure)                                      \
     xxx(MlockFailed)                                                           \
     xxx(ConfigDispatcherItemParseError)                                        \
+    xxx(GetConfigsFromCmsYamlParseError)                                       \
 // STORAGE_CRITICAL_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -10,6 +10,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -17,10 +19,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type transferFromDiskToDiskTask struct {
-	nbsFactory nbs_client.Factory
-	config     *config.DataplaneConfig
-	request    *protos.TransferFromDiskToDiskRequest
-	state      *protos.TransferFromDiskToDiskTaskState
+	config            *config.DataplaneConfig
+	performanceConfig *performance_config.PerformanceConfig
+	nbsFactory        nbs_client.Factory
+	request           *protos.TransferFromDiskToDiskRequest
+	state             *protos.TransferFromDiskToDiskTaskState
 }
 
 func (t *transferFromDiskToDiskTask) Save() ([]byte, error) {
@@ -77,6 +80,11 @@ func (t *transferFromDiskToDiskTask) Run(
 	}
 
 	t.state.ChunkCount = chunkCount
+
+	err = t.setEstimate(ctx, execCtx, source)
+	if err != nil {
+		return err
+	}
 
 	ignoreZeroChunks := true
 
@@ -145,6 +153,27 @@ func (t *transferFromDiskToDiskTask) GetResponse() proto.Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (t *transferFromDiskToDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	diskSource common.Source,
+) error {
+
+	bytesToTransfer, err := diskSource.EstimatedBytesToRead(ctx)
+	if err != nil {
+		return err
+	}
+
+	logging.Info(ctx, "bytes to transfer is %v", bytesToTransfer)
+
+	execCtx.SetEstimatedInflightDuration(performance.Estimate(
+		bytesToTransfer,
+		t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
+	))
+
+	return nil
+}
 
 func (t *transferFromDiskToDiskTask) saveProgress(
 	ctx context.Context,

@@ -66,6 +66,7 @@
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
+#include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
@@ -509,7 +510,8 @@ void TBootstrapYdb::InitKikimrService()
         .MaxAttempts =
             Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
         .ErrorTimeout = Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
-        .RegistrationTimeout = Configs->StorageConfig->GetNodeRegistrationTimeout(),
+        .LegacyRegistrationTimeout = Configs->StorageConfig->GetNodeRegistrationTimeout(),
+        .DynamicNodeRegistrationTimeout = Configs->StorageConfig->GetDynamicNodeRegistrationTimeout(),
         .LoadConfigsFromCmsRetryMinDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
         .LoadConfigsFromCmsRetryMaxDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
         .LoadConfigsFromCmsTotalTimeout = Configs->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
@@ -520,17 +522,22 @@ void TBootstrapYdb::InitKikimrService()
         .NodeType = Configs->StorageConfig->GetNodeType(),
     };
 
-    NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts {
+    auto nodeLabels = GetLabels(
+        Configs->StorageConfig->GetConfigDispatcherSettings(),
+        Configs->StorageConfig->GetSchemeShardDir(),
+        Configs->StorageConfig->GetNodeType());
+    NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts{
         .Domain = Configs->Options->Domain,
         .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
         .NodeBrokerAddress = Configs->Options->NodeBrokerAddress,
         .NodeBrokerPort = Configs->Options->NodeBrokerPort,
         .NodeBrokerSecurePort = Configs->Options->NodeBrokerSecurePort,
-        .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl
-            || Configs->StorageConfig->GetNodeRegistrationUseSsl(),
+        .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl ||
+                            Configs->StorageConfig->GetNodeRegistrationUseSsl(),
         .InterconnectPort = Configs->Options->InterconnectPort,
         .LoadCmsConfigs = Configs->Options->LoadCmsConfigs,
-        .Settings = std::move(settings)
+        .Settings = std::move(settings),
+        .Labels = std::move(nodeLabels),
     };
 
     const bool emergencyMode =

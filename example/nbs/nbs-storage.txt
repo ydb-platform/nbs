@@ -14,14 +14,16 @@ NonReplicatedDontSuspendDevices: true
 NonReplicatedMigrationStartAllowed: true
 
 # DiskRegistry-based
+AcquireNonReplicatedDevices: true
 AssignIdToWriteAndZeroRequestsEnabled: true
 MaxMigrationBandwidth: 1000
 MaxMigrationIoDepth: 1
 MaxShadowDiskFillBandwidth: 1000
 MaxShadowDiskFillIoDepth: 4
-UseDirectCopyRange: true
+NonReplicatedVolumeDirectAcquireEnabled: true
 OptimizeVoidBuffersTransferForReadsEnabled: true
 RejectLateRequestsAtDiskAgentEnabled: true
+UseDirectCopyRange: true
 UseNonreplicatedRdmaActor: true
 UseRdma: true
 UseShadowDisksForNonreplDiskCheckpoints: true
@@ -61,3 +63,15 @@ TabletBootInfoBackupFilePath: "backups.1/nbs-tablet-boot-info-backup.txt"
 
 # Volume Throttling Manager
 VolumeThrottlingManagerEnabled: true
+
+# YDB Config Dispatcher Support
+ConfigsDispatcherServiceEnabled: true
+ConfigDispatcherSettings {
+  AllowList {
+    Names: "BlockstoreConfigItem"
+  }
+  AdditionalNodeLabels {
+    Key: "nbs"
+    Value: "true"
+  }
+}
