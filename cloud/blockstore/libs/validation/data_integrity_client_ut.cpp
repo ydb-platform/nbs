@@ -165,6 +165,25 @@ struct TTestEnv
     }
 
     ~TTestEnv() = default;
+
+    IBlockStorePtr CreateDataIntegrityClient(
+        ui32 blockSize,
+        bool checksumMismatchDetected) const
+    {
+        NProto::TVolume volume;
+        volume.SetBlockSize(blockSize);
+        volume.SetDiskId("disk-id");
+        if (checksumMismatchDetected) {
+            volume.MutableTags()->insert(
+                {TString(DataIntegrityViolationDetectedTagName), ""});
+        }
+
+        return NClient::CreateDataIntegrityClient(
+            Logging,
+            Monitoring,
+            TestClient,
+            volume);
+    }
 };
 
 }   // namespace
@@ -177,11 +196,9 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
     {
         constexpr ui32 BlockSize = 4_KB;
         TTestEnv env{};
-        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
-            env.Logging,
-            env.Monitoring,
-            env.TestClient,
-            BlockSize);
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            BlockSize,
+            /*checksumMismatchDetected=*/false);
 
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
@@ -239,11 +256,9 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
     {
         constexpr ui32 BlockSize = 4_KB;
         TTestEnv env{};
-        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
-            env.Logging,
-            env.Monitoring,
-            env.TestClient,
-            BlockSize);
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            BlockSize,
+            /*checksumMismatchDetected=*/false);
 
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
@@ -302,11 +317,9 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
     {
         constexpr ui32 BlockSize = 4_KB;
         TTestEnv env{};
-        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
-            env.Logging,
-            env.Monitoring,
-            env.TestClient,
-            BlockSize);
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            BlockSize,
+            /*checksumMismatchDetected=*/false);
 
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
@@ -354,11 +367,9 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
     {
         constexpr ui32 BlockSize = 4_KB;
         TTestEnv env{};
-        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
-            env.Logging,
-            env.Monitoring,
-            env.TestClient,
-            BlockSize);
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            BlockSize,
+            /*checksumMismatchDetected=*/false);
 
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
@@ -410,11 +421,9 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
     {
         constexpr ui32 BlockSize = 4_KB;
         TTestEnv env{};
-        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
-            env.Logging,
-            env.Monitoring,
-            env.TestClient,
-            BlockSize);
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            BlockSize,
+            /*checksumMismatchDetected=*/false);
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
 
@@ -461,11 +470,9 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
     void ShouldCalculateCorrectAmountOfChecksumsForWriteRequests(ui32 blockSize)
     {
         TTestEnv env{};
-        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
-            env.Logging,
-            env.Monitoring,
-            env.TestClient,
-            blockSize);
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            blockSize,
+            /*checksumMismatchDetected=*/false);
 
         const ui32 maxBlockCount = MaxSubRequestSize / blockSize;
 

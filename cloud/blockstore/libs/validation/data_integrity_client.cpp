@@ -34,7 +34,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-TVector<NProto::TChecksum> CalculateChecksumsForWriteRequest(
+[[nodiscard]] TVector<NProto::TChecksum> CalculateChecksumsForWriteRequest(
     const T& buffers,
     ui64 startIndex,
     ui32 blockSize)
@@ -76,32 +76,126 @@ TVector<NProto::TChecksum> CalculateChecksumsForWriteRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestCounters
+struct TStatCounters
 {
-    TDynamicCounters::TCounterPtr ReadRequests;
-    TDynamicCounters::TCounterPtr WriteRequests;
-    TDynamicCounters::TCounterPtr ReadChecksumMismatch;
-    TDynamicCounters::TCounterPtr WriteChecksumMismatch;
+    struct TRequestCounters
+    {
+        TDynamicCounters::TCounterPtr Count;
+        TDynamicCounters::TCounterPtr Mismatches;
 
-    TDynamicCounters::TCounterPtr EndpointsWithCopyingCount;
-    TDynamicCounters::TCounterPtr EndpointsWithoutCopyingCount;
+        void Register(TDynamicCounters& counters)
+        {
+            Count = counters.GetCounter("Count", /*derivative=*/true);
+            Mismatches = counters.GetCounter("Mismatches", /*derivative=*/true);
+        }
+    };
+
+    struct TIntegrityCounters
+    {
+        TRequestCounters ReadBlocksLocal;
+        TRequestCounters WriteBlocksLocal;
+        TDynamicCounters::TCounterPtr Endpoints;
+
+        void Register(TDynamicCounters& counters)
+        {
+            ReadBlocksLocal.Register(
+                *counters.GetSubgroup("request", "ReadBlocksLocal"));
+            WriteBlocksLocal.Register(
+                *counters.GetSubgroup("request", "WriteBlocksLocal"));
+            Endpoints = counters.GetCounter("Endpoints", /*derivative=*/false);
+        }
+    };
+
+    TIntegrityCounters IntegrityModeCounters;
+    TIntegrityCounters NormalModeCounters;
+    // Data integrity mode doesn't affect normal read and write requests,
+    TRequestCounters ReadBlocks;
+    TRequestCounters WriteBlocks;
 
     void Register(TDynamicCounters& counters)
     {
-        ReadRequests = counters.GetCounter("ReadRequests", /*derivative=*/true);
-        WriteRequests =
-            counters.GetCounter("WriteRequests", /*derivative=*/true);
-        ReadChecksumMismatch =
-            counters.GetCounter("ReadChecksumMismatch", /*derivative=*/true);
-        WriteChecksumMismatch =
-            counters.GetCounter("WriteChecksumMismatch", /*derivative=*/true);
+        IntegrityModeCounters.Register(
+            *counters.GetSubgroup("DataCopying", "enabled"));
+        NormalModeCounters.Register(
+            *counters.GetSubgroup("DataCopying", "disabled"));
+        ReadBlocks.Register(*counters.GetSubgroup("request", "ReadBlocks"));
+        WriteBlocks.Register(*counters.GetSubgroup("request", "WriteBlocks"));
+    }
 
-        EndpointsWithCopyingCount = counters.GetCounter(
-            "EndpointsWithCopyingCount",
-            /*derivative=*/false);
-        EndpointsWithoutCopyingCount = counters.GetCounter(
-            "EndpointsWithoutCopyingCount",
-            /*derivative=*/false);
+    void ReadBlocksCountIncrease()
+    {
+        ReadBlocks.Count->Inc();
+    }
+
+    void ReadBlocksLocalCountIncrease(bool integrityMode)
+    {
+        if (integrityMode) {
+            IntegrityModeCounters.ReadBlocksLocal.Count->Inc();
+        } else {
+            NormalModeCounters.ReadBlocksLocal.Count->Inc();
+        }
+    }
+
+    void WriteBlocksCountIncrease()
+    {
+        WriteBlocks.Count->Inc();
+    }
+
+    void WriteBlocksLocalCountIncrease(bool integrityMode)
+    {
+        if (integrityMode) {
+            IntegrityModeCounters.WriteBlocksLocal.Count->Inc();
+        } else {
+            NormalModeCounters.WriteBlocksLocal.Count->Inc();
+        }
+    }
+
+    void ReadBlocksMismatchIncrease()
+    {
+        ReadBlocks.Mismatches->Inc();
+    }
+
+    void ReadBlocksLocalMismatchIncrease(bool integrityMode)
+    {
+        if (integrityMode) {
+            IntegrityModeCounters.ReadBlocksLocal.Mismatches->Inc();
+        } else {
+            NormalModeCounters.ReadBlocksLocal.Mismatches->Inc();
+        }
+    }
+
+    void WriteBlocksMismatchIncrease()
+    {
+        WriteBlocks.Mismatches->Inc();
+    }
+
+    void WriteBlocksLocalMismatchIncrease(bool integrityMode)
+    {
+        if (integrityMode) {
+            IntegrityModeCounters.WriteBlocksLocal.Mismatches->Inc();
+        } else {
+            NormalModeCounters.WriteBlocksLocal.Mismatches->Inc();
+        }
+    }
+
+    void EndpointsIncrease(bool integrityMode)
+    {
+        if (integrityMode) {
+            IntegrityModeCounters.Endpoints->Inc();
+        } else {
+            NormalModeCounters.Endpoints->Inc();
+        }
+    }
+
+    void EndpointsDecrease(bool integrityMode)
+    {
+        if (integrityMode) {
+            Y_DEBUG_ABORT_UNLESS(IntegrityModeCounters.Endpoints->Val() > 0);
+            IntegrityModeCounters.Endpoints->Dec();
+        } else {
+            Y_DEBUG_ABORT_UNLESS(NormalModeCounters.Endpoints->Val() > 0);
+            NormalModeCounters.Endpoints->Dec();
+        }
     }
 };
 
@@ -119,10 +213,10 @@ private:
     const ui32 BlockSize;
 
     // Indicates whether a checksum mismatch has been detected for a given disk.
-    std::atomic_flag ChecksumMismatchDetected;
+    std::atomic_flag IntegrityModeEnabled;
 
     TDynamicCountersPtr Counters;
-    TRequestCounters RequestCounters;
+    TStatCounters StatCounters;
 
 public:
     TDataIntegrityClient(
@@ -131,7 +225,9 @@ public:
         IBlockStorePtr client,
         TString diskId,
         ui32 blockSize,
-        bool checksumMismatchDetected);
+        bool intergityModeEnabled);
+
+    ~TDataIntegrityClient() override;
 
     void Start() override
     {
@@ -155,28 +251,14 @@ public:
     {                                                                          \
         TFuture<NProto::T##name##Response> response;                           \
         if (!HandleRequest(callContext, request, response)) {                  \
-            response = Client->name(                                           \
-                std::move(callContext), std::move(request));                   \
+            response =                                                         \
+                Client->name(std::move(callContext), std::move(request));      \
         }                                                                      \
         return response;                                                       \
     }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        TFuture<NProto::T##name##Response> response;                           \
-        if (!HandleRequest(callContext, request, response)) {                  \
-            response = Client->name(                                           \
-                std::move(callContext), std::move(request));                   \
-        }                                                                      \
-        return response;                                                       \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
+    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
 #undef BLOCKSTORE_IMPLEMENT_METHOD
 
@@ -213,7 +295,7 @@ private:
         return false;
     }
 
-    void SetTag();
+    void EnableCopyingForVolume();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -224,24 +306,26 @@ TDataIntegrityClient::TDataIntegrityClient(
         IBlockStorePtr client,
         TString diskId,
         ui32 blockSize,
-        bool checksumMismatchDetected)
+        bool intergityModeEnabled)
     : Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
     , Client(std::move(client))
     , DiskId(std::move(diskId))
     , BlockSize(blockSize)
-    , ChecksumMismatchDetected(checksumMismatchDetected)
+    , IntegrityModeEnabled(intergityModeEnabled)
 {
     auto counters = monitoring->GetCounters();
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
     Counters = rootGroup->GetSubgroup("component", "service")
                    ->GetSubgroup("subcomponent", "data_integrity");
-    RequestCounters.Register(*Counters);
+    StatCounters.Register(*Counters);
+    StatCounters.EndpointsIncrease(IntegrityModeEnabled.test());
+}
 
-    if (ChecksumMismatchDetected.test()) {
-        RequestCounters.EndpointsWithCopyingCount->Inc();
-    } else {
-        RequestCounters.EndpointsWithoutCopyingCount->Inc();
-    }
+TDataIntegrityClient::~TDataIntegrityClient()
+{
+    // The destruction of this object should happen after drain. So we should
+    // not worry about changing counters non-atomically.
+    StatCounters.EndpointsDecrease(IntegrityModeEnabled.test());
 }
 
 bool TDataIntegrityClient::HandleRequest(
@@ -249,7 +333,7 @@ bool TDataIntegrityClient::HandleRequest(
     std::shared_ptr<NProto::TReadBlocksRequest> request,
     TFuture<NProto::TReadBlocksResponse>& response)
 {
-    RequestCounters.ReadRequests->Inc();
+    StatCounters.ReadBlocksCountIncrease();
 
     auto result =
         Client->ReadBlocks(std::move(callContext), std::move(request));
@@ -276,10 +360,14 @@ bool TDataIntegrityClient::HandleRequest(
             const auto& checksum = response.GetChecksum();
 
             if (!MessageDifferencer::Equals(checksum, currentChecksum)) {
-                self->RequestCounters.ReadChecksumMismatch->Inc();
+                self->StatCounters.ReadBlocksMismatchIncrease();
+
+                // Calling EnableCopyingForVolume() is pointless here, as the
+                // client could not interfere with the data.
 
                 ui32 flags = 0;
                 SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+                SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
                 return TErrorResponse{MakeError(
                     E_REJECTED,
                     TStringBuilder()
@@ -301,57 +389,77 @@ bool TDataIntegrityClient::HandleRequest(
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request,
     TFuture<NProto::TReadBlocksLocalResponse>& response)
 {
-    RequestCounters.ReadRequests->Inc();
+    const bool integrityMode = IntegrityModeEnabled.test();
+    StatCounters.ReadBlocksLocalCountIncrease(integrityMode);
 
     auto sgList = request->Sglist;
-    auto result =
-        Client->ReadBlocksLocal(std::move(callContext), std::move(request));
-    response = result.Apply(
-        [guardedSgList = std::move(sgList), result, weakPtr = weak_from_this()](
-            const auto&) mutable -> NProto::TReadBlocksLocalResponse
-        {
-            NProto::TReadBlocksLocalResponse response = result.ExtractValue();
-            if (HasError(response)) {
-                return response;
-            }
 
-            auto self = weakPtr.lock();
-            if (!self) {
-                return response;
-            }
-
-            if (!response.HasChecksum()) {
-                return response;
-            }
-
-            auto guard = guardedSgList.Acquire();
-            if (!guard) {
-                return TErrorResponse{MakeError(
-                    E_CANCELLED,
-                    "failed to acquire sglist in DataIntegrityClient")};
-            }
-
-            const auto& sgList = guard.Get();
-            const auto currentChecksum = CalculateChecksum(sgList);
-            const auto& checksum = response.GetChecksum();
-
-            if (!MessageDifferencer::Equals(checksum, currentChecksum)) {
-                self->RequestCounters.ReadChecksumMismatch->Inc();
-
-                ui32 flags = 0;
-                SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
-                return TErrorResponse{MakeError(
-                    E_REJECTED,
-                    TStringBuilder()
-                        << "Data integrity violation. Current checksum: "
-                        << currentChecksum.ShortUtf8DebugString()
-                        << "; Incoming checksum: "
-                        << checksum.ShortUtf8DebugString(),
-                    flags)};
-            }
-
+    auto responseHandler =
+        [guardedSgList = std::move(sgList),
+         weakPtr = weak_from_this(),
+         integrityMode]<typename TResponse>(
+            TFuture<TResponse> result) -> NProto::TReadBlocksLocalResponse
+    {
+        NProto::TReadBlocksLocalResponse response{result.ExtractValue()};
+        if (HasError(response)) {
             return response;
-        });
+        }
+
+        auto self = weakPtr.lock();
+        if (!self) {
+            return response;
+        }
+
+        if (!response.HasChecksum()) {
+            return response;
+        }
+
+        auto guard = guardedSgList.Acquire();
+        if (!guard) {
+            return TErrorResponse{MakeError(
+                E_CANCELLED,
+                "failed to acquire sglist in DataIntegrityClient")};
+        }
+
+        if (integrityMode) {
+            // TODO
+            // copy the data
+            // calculate the checksum
+        }
+
+        const auto& sgList = guard.Get();
+        const auto currentChecksum = CalculateChecksum(sgList);
+        const auto& checksum = response.GetChecksum();
+
+        if (!MessageDifferencer::Equals(checksum, currentChecksum)) {
+            self->StatCounters.ReadBlocksLocalMismatchIncrease(integrityMode);
+            self->EnableCopyingForVolume();
+
+            ui32 flags = 0;
+            SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+            SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
+            return TErrorResponse{MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Data integrity violation. Current checksum: "
+                    << currentChecksum.ShortUtf8DebugString()
+                    << "; Incoming checksum: "
+                    << checksum.ShortUtf8DebugString(),
+                flags)};
+        }
+
+        return response;
+    };
+
+    if (integrityMode) {
+        response =
+            Client->ReadBlocks(std::move(callContext), std::move(request))
+                .Apply(responseHandler);
+    } else {
+        response =
+            Client->ReadBlocksLocal(std::move(callContext), std::move(request))
+                .Apply(responseHandler);
+    }
 
     return true;
 }
@@ -361,7 +469,7 @@ bool TDataIntegrityClient::HandleRequest(
     std::shared_ptr<NProto::TWriteBlocksRequest> request,
     TFuture<NProto::TWriteBlocksResponse>& response)
 {
-    RequestCounters.WriteRequests->Inc();
+    StatCounters.WriteBlocksCountIncrease();
 
     auto checksums = CalculateChecksumsForWriteRequest(
         request->GetBlocks().GetBuffers(),
@@ -387,7 +495,10 @@ bool TDataIntegrityClient::HandleRequest(
                                                error.GetFlags(),
                                                NProto::EF_CHECKSUM_MISMATCH))
                     {
-                        self->RequestCounters.WriteChecksumMismatch->Inc();
+                        // Calling EnableCopyingForVolume() is pointless here,
+                        // as the client could not interfere with the data.
+
+                        self->StatCounters.WriteBlocksMismatchIncrease();
                     }
 
                     return response.GetValue();
@@ -400,7 +511,8 @@ bool TDataIntegrityClient::HandleRequest(
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request,
     TFuture<NProto::TWriteBlocksLocalResponse>& response)
 {
-    RequestCounters.WriteRequests->Inc();
+    const bool integrityMode = IntegrityModeEnabled.test();
+    StatCounters.WriteBlocksLocalCountIncrease(integrityMode);
 
     auto guard = request->Sglist.Acquire();
     if (!guard) {
@@ -412,52 +524,76 @@ bool TDataIntegrityClient::HandleRequest(
     }
 
     const auto& sgList = guard.Get();
-    auto checksums = CalculateChecksumsForWriteRequest(
-        sgList,
-        request->GetStartIndex(),
-        BlockSize);
+    TVector<NProto::TChecksum> checksums;
+    if (integrityMode) {
+        NProto::TIOVector blocks;
+        SgListCopy(
+            sgList,
+            ResizeIOVector(blocks, request->BlocksCount, request->BlockSize));
+        *request->MutableBlocks() = std::move(blocks);
+
+        checksums = CalculateChecksumsForWriteRequest(
+            request->GetBlocks().GetBuffers(),
+            request->GetStartIndex(),
+            request->BlockSize);
+    } else {
+        checksums = CalculateChecksumsForWriteRequest(
+            sgList,
+            request->GetStartIndex(),
+            BlockSize);
+    }
+
     for (auto& checksum: checksums) {
         *request->AddChecksums() = std::move(checksum);
     }
 
-    response =
-        Client->WriteBlocksLocal(std::move(callContext), std::move(request))
-            .Apply(
-                [weakPtr = weak_from_this()](
-                    const TFuture<NProto::TWriteBlocksLocalResponse>& response)
-                {
-                    auto self = weakPtr.lock();
-                    if (!self) {
-                        return response.GetValue();
-                    }
+    auto responseHandler = [weakPtr = weak_from_this(), integrityMode](
+                               TFuture<NProto::TWriteBlocksResponse> result)
+    {
+        auto response = result.ExtractValue();
+        auto self = weakPtr.lock();
+        if (!self) {
+            return response;
+        }
 
-                    const auto& error = response.GetValue().GetError();
-                    if (HasError(error) && HasProtoFlag(
-                                               error.GetFlags(),
-                                               NProto::EF_CHECKSUM_MISMATCH))
-                    {
-                        self->RequestCounters.WriteChecksumMismatch->Inc();
-                    }
+        auto& error = *response.MutableError();
+        if (HasError(error) &&
+            HasProtoFlag(error.GetFlags(), NProto::EF_CHECKSUM_MISMATCH))
+        {
+            self->StatCounters.WriteBlocksLocalMismatchIncrease(integrityMode);
+            if (!integrityMode) {
+                self->EnableCopyingForVolume();
+                SetErrorProtoFlag(error, NProto::EF_INSTANT_RETRIABLE);
+            }
+        }
 
-                    return response.GetValue();
-                });
+        return response;
+    };
+
+    if (integrityMode) {
+        response =
+            Client->WriteBlocks(std::move(callContext), std::move(request))
+                .Apply(responseHandler);
+    } else {
+        response =
+            Client->WriteBlocksLocal(std::move(callContext), std::move(request))
+                .Apply(responseHandler);
+    }
+
     return true;
 }
 
-void TDataIntegrityClient::SetTag() {
-    if (ChecksumMismatchDetected.test()) {
+void TDataIntegrityClient::EnableCopyingForVolume()
+{
+    if (IntegrityModeEnabled.test_and_set()) {
         return;
     }
-    ChecksumMismatchDetected.test_and_set();
-
-    RequestCounters.EndpointsWithCopyingCount->Inc();
-    Y_DEBUG_ABORT_UNLESS(
-        RequestCounters.EndpointsWithoutCopyingCount->Val() > 0);
-    RequestCounters.EndpointsWithoutCopyingCount->Dec();
+    StatCounters.EndpointsDecrease(/*integrityMode=*/false);
+    StatCounters.EndpointsIncrease(/*integrityMode=*/true);
 
     auto callContext = MakeIntrusive<TCallContext>(CreateRequestId());
     auto request = std::make_shared<NProto::TExecuteActionRequest>();
-    request->SetAction("modifytags");  // todo const ?
+    request->SetAction("modifytags");
 
     NPrivateProto::TModifyTagsRequest input;
     input.SetDiskId(DiskId);
@@ -500,7 +636,7 @@ IBlockStorePtr CreateDataIntegrityClient(
 {
     // "IntermediateWriteBufferTagName" indicates that user modfies the buffer
     // during writes. We should also enable copying in this case.
-    const bool checksumMismatchDetected =
+    const bool intergityModeEnabled =
         volume.GetTags().contains(DataIntegrityViolationDetectedTagName) ||
         volume.GetTags().contains(IntermediateWriteBufferTagName);
     return std::make_unique<TDataIntegrityClient>(
@@ -509,7 +645,7 @@ IBlockStorePtr CreateDataIntegrityClient(
         std::move(client),
         volume.GetDiskId(),
         volume.GetBlockSize(),
-        checksumMismatchDetected);
+        intergityModeEnabled);
 }
 
 }   // namespace NCloud::NBlockStore::NClient
