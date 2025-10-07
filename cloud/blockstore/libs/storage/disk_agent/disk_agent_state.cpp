@@ -1202,7 +1202,9 @@ NProto::TError TDiskAgentState::CheckCanAttachPath(
 
     for (const auto& uuid: uuids) {
         if (memoryDevices.contains(uuid)) {
-            return MakeError(E_ARGUMENT, "Not supported for memory devices");
+            return MakeError(
+                E_PRECONDITION_FAILED,
+                "Not supported for memory devices");
         }
     }
 
