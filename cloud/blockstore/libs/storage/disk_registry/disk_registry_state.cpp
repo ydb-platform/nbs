@@ -1208,45 +1208,6 @@ void TDiskRegistryState::ReallocateDisksWithLostOrReappearedDevices(
     }
 }
 
-void TDiskRegistryState::ProcessPathAttachStatesOnRegistration(
-    NProto::TAgentConfig& agent,
-    THashMap<TString, ui64>& pathsToAttach,
-    THashMap<TString, ui64>& pathsToDetach)
-{
-    if (!StorageConfig->GetAttachDetachPathsEnabled()) {
-        return;
-    }
-
-    for (const auto& unknownDevice: agent.GetUnknownDevices()) {
-        pathsToDetach[unknownDevice.GetDeviceName()] =
-            AgentList.GetPathGeneration(
-                agent.GetAgentId(),
-                unknownDevice.GetDeviceName());
-    }
-
-    for (const auto& [path, attachState]: agent.GetPathAttachStates()) {
-        auto generation = AgentList.GetPathGeneration(agent.GetAgentId(), path);
-        const auto hasDependentDisks =
-            HasDependentDisks(agent.GetAgentId(), path);
-        switch (attachState) {
-            case NProto::PATH_ATTACH_STATE_ATTACHED:
-            case NProto::PATH_ATTACH_STATE_ATTACHING:
-                pathsToAttach[path] = generation;
-                break;
-            case NProto::PATH_ATTACH_STATE_DETACHED:
-            case NProto::PATH_ATTACH_STATE_DETACHING:
-                if (hasDependentDisks) {
-                    pathsToAttach[path] = generation;
-                } else {
-                    pathsToDetach[path] = generation;
-                }
-                break;
-            default:
-                break;
-        }
-    }
-}
-
 auto TDiskRegistryState::GetUnavailableDevicesForDisk(
     const TString& diskId) const -> THashSet<TDeviceId>
 {
