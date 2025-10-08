@@ -2,7 +2,6 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -56,7 +55,7 @@ void TVolumeActor::HandleWaitReady(
 
     auto response = std::make_unique<TEvVolume::TEvWaitReadyResponse>();
     auto& volume = *response->Record.MutableVolume();
-    VolumeConfigToVolume(volumeConfig, volume);
+    VolumeConfigToVolume(volumeConfig, State->GetPrincipalDiskId(), volume);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

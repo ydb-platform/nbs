@@ -145,7 +145,7 @@ void TCreateVolumeLinkActor::HandleDescribeVolumeResponse(
         pathDescription.GetBlockStoreVolumeDescription();
     const auto& volumeConfig = volumeDescription.GetVolumeConfig();
 
-    VolumeConfigToVolume(volumeConfig, volume);
+    VolumeConfigToVolume(volumeConfig, "", volume);
     volume.SetTokenVersion(volumeDescription.GetTokenVersion());
 
     LinkVolumes(ctx);

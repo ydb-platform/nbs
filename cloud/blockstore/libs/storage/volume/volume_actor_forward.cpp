@@ -901,6 +901,65 @@ void TVolumeActor::ForwardRequest(
     }
 
     /*
+     *  Validation for reads and writes for the leader and follower
+     */
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        const bool isCopingClient = clientId == CopyVolumeClientId;
+
+        if (isCopingClient && IsReadMethod<TMethod>) {
+            auto message = TStringBuilder()
+                           << "The client " << clientId.Quote()
+                           << " is not allowed to read " << blockRange.Print();
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s %s",
+                LogTitle.GetWithTime().c_str(),
+                message.c_str());
+
+            replyError(MakeError(E_ARGUMENT, std::move(message)));
+            return;
+        }
+
+        if (isCopingClient && State->GetPrincipalDiskId() == "") {
+            auto message = TStringBuilder()
+                           << "The client " << clientId.Quote()
+                           << " is not allowed to write " << blockRange.Print()
+                           << " to the principal disk";
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s %s",
+                LogTitle.GetWithTime().c_str(),
+                message.c_str());
+
+            replyError(MakeError(E_REJECTED, std::move(message)));
+            return;
+        }
+
+        if (!isCopingClient && State->GetPrincipalDiskId() != "") {
+            auto message = TStringBuilder()
+                           << "The client " << clientId.Quote()
+                           << " is not allowed to " << TMethod::Name << " "
+                           << blockRange.Print()
+                           << " to the outdated disk. Reconnect to "
+                           << State->GetPrincipalDiskId().Quote();
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s %s",
+                LogTitle.GetWithTime().c_str(),
+                message.c_str());
+
+            ui32 flags = 0;
+            SetProtoFlag(flags, NProto::EF_OUTDATED_VOLUME);
+            replyError(
+                MakeError(E_BS_INVALID_SESSION, std::move(message), flags));
+            return;
+        }
+    }
+
+    /*
      *  Processing overlapping writes. Overlapping writes should not be sent
      *  to the underlying (storage) layer.
      */

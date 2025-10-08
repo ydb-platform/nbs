@@ -269,7 +269,10 @@ void TVolumeActor::HandleStatVolume(
     auto* volume = record.MutableVolume();
     record.SetMountSeqNumber(
         State->GetMountSeqNumber());
-    VolumeConfigToVolume(State->GetMeta().GetVolumeConfig(), *volume);
+    VolumeConfigToVolume(
+        State->GetMeta().GetVolumeConfig(),
+        State->GetPrincipalDiskId(),
+        *volume);
 
     auto* stats = record.MutableStats();
     stats->SetWriteAndZeroRequestsInFlight(WriteAndZeroRequestsInFlight.Size());
@@ -358,7 +361,10 @@ void TVolumeActor::HandleGetVolumeInfo(
 
     auto* volume = response->Record.MutableVolume();
     State->FillDeviceInfo(*volume);
-    VolumeConfigToVolume(State->GetMeta().GetVolumeConfig(), *volume);
+    VolumeConfigToVolume(
+        State->GetMeta().GetVolumeConfig(),
+        State->GetPrincipalDiskId(),
+        *volume);
     volume->SetResyncInProgress(State->IsMirrorResyncNeeded());
 
     auto requestInfo = CreateRequestInfo(

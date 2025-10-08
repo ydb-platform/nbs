@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
@@ -191,6 +192,7 @@ ui64 GetVolumeRequestIdFromHeaders(const TEv& request)
 
 void VolumeConfigToVolume(
     const NKikimrBlockStore::TVolumeConfig& volumeConfig,
+    const TString& principalDiskId,
     NProto::TVolume& volume)
 {
     VolumeConfigToVolumeModelFields(volumeConfig, volume);
@@ -211,6 +213,7 @@ void VolumeConfigToVolume(
     volume.SetBaseDiskCheckpointId(volumeConfig.GetBaseDiskCheckpointId());
     volume.SetIsSystem(volumeConfig.GetIsSystem());
     volume.SetIsFillFinished(volumeConfig.GetIsFillFinished());
+    volume.SetPrincipalDiskId(principalDiskId);
     const auto tags = ParseTags(volumeConfig.GetTagsStr());
     for (const auto& [key, value]: tags) {
         volume.MutableTags()->insert({key, value});

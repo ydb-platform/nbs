@@ -206,7 +206,7 @@ public:
         STORAGE_INFO(
             "Switch #" << activeSession << " session from "
                        << oldSession.DiskId.Quote() << " to "
-                       << newDiskId.Quote() << ". Inflight requests:"
+                       << newDiskId.Quote() << ". Inflight requests: "
                        << oldSession.InflightRequestCounter->Count.load());
         oldSession.SwitchableClient->Switch(
             newSwitchableClient,
