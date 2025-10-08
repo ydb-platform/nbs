@@ -181,15 +181,16 @@ func NewDriver(cfg Config) (*Driver, error) {
 		return nil, err
 	}
 
-	monintoringCfg := monitoring.MonitoringConfig{
+	monitoringCfg := monitoring.MonitoringConfig{
 		Port:      cfg.MonPort,
 		Path:      "/metrics",
 		Component: "server",
 	}
 
-	monintoring := monitoring.NewMonitoring(&monintoringCfg)
-	monintoring.StartListening()
-	monintoring.ReportVersion(cfg.VendorVersion)
+	mon := monitoring.NewMonitoring(&monitoringCfg)
+	mon.StartListening()
+	mon.ReportVersion(cfg.VendorVersion)
+	mon.ReportExternalFsMountExpirationTimes(externalFsOverrides.GetMountExpirationTimes())
 
 	errInterceptor := func(
 		ctx context.Context,
@@ -198,7 +199,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 		handler grpc.UnaryHandler) (interface{}, error) {
 
 		method := getCsiMethodName(info.FullMethod)
-		monintoring.ReportRequestReceived(method)
+		mon.ReportRequestReceived(method)
 
 		startTime := time.Now()
 		resp, err := handler(ctx, req)
@@ -207,7 +208,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 		if err != nil {
 			log.WithError(err).WithField("method", info.FullMethod).Error("method failed")
 		}
-		monintoring.ReportRequestCompleted(method, err, elapsedTime)
+		mon.ReportRequestCompleted(method, err, elapsedTime)
 		return resp, err
 	}
 
@@ -244,7 +245,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 
 	return &Driver{
 		grpcServer: grpcServer,
-		monitoring: monintoring,
+		monitoring: mon,
 	}, nil
 }
 

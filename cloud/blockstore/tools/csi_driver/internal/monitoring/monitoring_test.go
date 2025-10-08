@@ -186,3 +186,24 @@ InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
 RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 4
 `)
 }
+
+func TestShouldReportMountExpirationTimes(t *testing.T) {
+	mon := NewTestMonitoring()
+	mon.ReportExternalFsMountExpirationTimes(map[string]int64{
+		"fs-123": 123123,
+		"fs-456": 456456,
+	})
+
+	serv := httptest.NewServer(mon.Handler)
+	defer serv.Close()
+
+	response, err := http.Get(serv.URL)
+	require.NoError(t, err)
+	assert.Equal(t, response.StatusCode, http.StatusOK)
+	assert.Equal(t, getResponseBody(response),
+		`# HELP ExternalFsMountExpirationTime
+# TYPE ExternalFsMountExpirationTime gauge
+ExternalFsMountExpirationTime{component="server",filesystem="fs-123"} 123123
+ExternalFsMountExpirationTime{component="server",filesystem="fs-456"} 456456
+`)
+}

@@ -5,18 +5,20 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 )
 
 type ExternalFsConfig struct {
-	Id         string   `json:"fs_id"`
-	Type       string   `json:"fs_type"`
-	SizeGb     uint64   `json:"fs_size_gb"`
-	CloudId    string   `json:"fs_cloud_id"`
-	FolderId   string   `json:"fs_folder_id"`
-	MountCmd   string   `json:"fs_mount_cmd"`
-	MountArgs  []string `json:"fs_mount_args"`
-	UmountCmd  string   `json:"fs_umount_cmd"`
-	UmountArgs []string `json:"fs_umount_args"`
+	Id                  string   `json:"fs_id"`
+	Type                string   `json:"fs_type"`
+	SizeGb              uint64   `json:"fs_size_gb"`
+	CloudId             string   `json:"fs_cloud_id"`
+	FolderId            string   `json:"fs_folder_id"`
+	MountCmd            string   `json:"fs_mount_cmd"`
+	MountArgs           []string `json:"fs_mount_args"`
+	UmountCmd           string   `json:"fs_umount_cmd"`
+	UmountArgs          []string `json:"fs_umount_args"`
+	MountExpirationTime string   `json:"fs_mount_expiration_time"`
 }
 
 type ExternalFsOverrideMap map[string]ExternalFsConfig
@@ -44,4 +46,24 @@ func LoadExternalFsOverrides(filePath string) (ExternalFsOverrideMap, error) {
 	log.Printf("ExternalFsOverrideMap: %+v", overrideMap)
 
 	return overrideMap, nil
+}
+
+func (om ExternalFsOverrideMap) GetMountExpirationTimes() map[string]int64 {
+	expTimes := make(map[string]int64)
+
+	for fsId := range om {
+		mountExpirationTimestamp := om[fsId].MountExpirationTime
+		if mountExpirationTimestamp == "" {
+			continue
+		}
+
+		t, err := time.Parse(time.RFC3339, mountExpirationTimestamp)
+		if err != nil {
+			continue
+		}
+
+		expTimes[fsId] = t.Unix()
+	}
+
+	return expTimes
 }

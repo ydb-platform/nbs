@@ -81,6 +81,14 @@ func (m *Monitoring) ReportVersion(version string) {
 	}).Gauge("version").Set(1)
 }
 
+func (m *Monitoring) ReportExternalFsMountExpirationTimes(fsMountExpTimes map[string]int64) {
+	for fsId := range fsMountExpTimes {
+		m.registry.WithTags(map[string]string{
+			"filesystem": fsId,
+		}).Gauge("ExternalFsMountExpirationTime").Set(float64(fsMountExpTimes[fsId]))
+	}
+}
+
 func (m *Monitoring) ReportRequestReceived(method string) {
 	subregistry := m.registry.WithTags(map[string]string{
 		"method": method,
