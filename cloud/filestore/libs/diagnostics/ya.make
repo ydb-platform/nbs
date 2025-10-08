@@ -10,6 +10,7 @@ SRCS(
     throttler_info_serializer.cpp
     trace_serializer.cpp
     user_counter.cpp
+    write_back_cache_stats.cpp
 )
 
 PEERDIR(
