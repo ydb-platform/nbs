@@ -121,10 +121,10 @@ private:
             }
         }
 
-        void OnStatsSend()
+        void OnStatsSend(bool resend)
         {
             Y_DEBUG_ABORT_UNLESS(State != STATE_NO_STATS);
-            Y_DEBUG_ABORT_UNLESS(State != STATE_SENDING_STATS);
+            Y_DEBUG_ABORT_UNLESS(resend || State != STATE_SENDING_STATS);
             if (State == STATE_HAS_STATS) {
                 State = STATE_SENDING_STATS;
             }
@@ -233,7 +233,8 @@ private:
 
     void SendTabletMetrics(
         const NActors::TActorContext& ctx,
-        ui64 hiveId);
+        ui64 hiveId,
+        bool resend);
 
     void HandleConnect(
         NKikimr::TEvTabletPipe::TEvClientConnected::TPtr& ev,
