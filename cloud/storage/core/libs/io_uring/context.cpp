@@ -5,9 +5,12 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 
+#include <util/generic/scope.h>
 #include <util/string/builder.h>
 #include <util/system/error.h>
 #include <util/system/sanitizers.h>
+
+#include <linux/nvme_ioctl.h>
 
 namespace NCloud::NIoUring {
 
@@ -16,6 +19,37 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 const TDuration DefaultTimeout = TDuration::Minutes(1);
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TNvmeUringCmd
+{
+    ui8 opcode;
+    ui8 flags;
+    ui16 rsvd1;
+    ui32 nsid;
+    ui32 cdw2;
+    ui32 cdw3;
+    ui64 metadata;
+    ui64 addr;
+    ui32 metadata_len;
+    ui32 data_len;
+    ui32 cdw10;
+    ui32 cdw11;
+    ui32 cdw12;
+    ui32 cdw13;
+    ui32 cdw14;
+    ui32 cdw15;
+    ui32 timeout_ms;
+    ui32 rsvd2;
+};
+
+enum ENvmeOpcode
+{
+    Write = 0x01,
+    Read = 0x02,
+    WriteZeroes = 0x08
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -91,10 +125,18 @@ NProto::TError EnableRing(io_uring* ring)
     return {};
 }
 
-NProto::TError InitRing(io_uring* ring, ui32 entries, io_uring* wqOwner)
+NProto::TError InitRing(
+    io_uring* ring,
+    ui32 entries,
+    io_uring* wqOwner,
+    bool bigRing)
 {
     io_uring_params params{
         .flags = IORING_SETUP_R_DISABLED | IORING_SETUP_SINGLE_ISSUER};
+
+    if (bigRing) {
+        params.flags |= IORING_SETUP_SQE128 | IORING_SETUP_CQE32;
+    }
 
     if (wqOwner) {
         params.flags |= IORING_SETUP_ATTACH_WQ;
@@ -133,19 +175,20 @@ TContext::TContext(TParams params)
     const auto error = InitRing(
         &Ring,
         params.SubmissionQueueEntries,
-        params.WqOwner ? &params.WqOwner->Ring : nullptr);
+        params.WqOwner ? &params.WqOwner->Ring : nullptr,
+        params.EnableNvmePassthrough);
 
-    Y_ABORT_IF(
-        HasError(error),
-        "can't initialize the ring: %s",
-        FormatError(error).c_str());
+    if (HasError(error)) {
+        ythrow TSystemError(error.GetCode())
+            << "can't initialize the ring: " << error.GetMessage();
+    }
 
     if (!params.WqOwner && params.MaxKernelWorkersCount) {
         const auto error = SetMaxWorkers(&Ring, params.MaxKernelWorkersCount);
-        Y_ABORT_IF(
-            HasError(error),
-            "can't set max workers: %s",
-            FormatError(error).c_str());
+        if (HasError(error)) {
+            ythrow TSystemError(error.GetCode())
+                << "can't set max workers: " << error.GetMessage();
+        }
     }
 }
 
@@ -430,6 +473,228 @@ void TContext::AsyncReadV(
         offset,
         completion,
         flags);
+}
+
+void TContext::AsyncNvmeWriteZeroes(
+    int fd,
+    int nsId,
+    ui32 lbaShift,
+    ui64 len,
+    ui64 offset,
+    TFileIOCompletion* completion,
+    ui32 flags)
+{
+    AsyncNvmeIO(
+        ENvmeOpcode::WriteZeroes,
+        NVME_URING_CMD_IO,
+        fd,
+        nsId,
+        lbaShift,
+        nullptr,   // addr
+        len,
+        len,
+        offset,
+        completion,
+        flags);
+}
+
+void TContext::AsyncNvmeWrite(
+    int fd,
+    int nsId,
+    ui32 lbaShift,
+    TArrayRef<const char> buffer,
+    ui64 offset,
+    TFileIOCompletion* completion,
+    ui32 flags)
+{
+    AsyncNvmeIO(
+        ENvmeOpcode::Write,
+        NVME_URING_CMD_IO,
+        fd,
+        nsId,
+        lbaShift,
+        buffer.data(),
+        buffer.size(),
+        buffer.size(),
+        offset,
+        completion,
+        flags);
+}
+
+void TContext::AsyncNvmeRead(
+    int fd,
+    int nsId,
+    ui32 lbaShift,
+    TArrayRef<char> buffer,
+    ui64 offset,
+    TFileIOCompletion* completion,
+    ui32 flags)
+{
+    AsyncNvmeIO(
+        ENvmeOpcode::Read,
+        NVME_URING_CMD_IO,
+        fd,
+        nsId,
+        lbaShift,
+        buffer.data(),
+        buffer.size(),
+        buffer.size(),
+        offset,
+        completion,
+        flags);
+}
+
+void TContext::AsyncNvmeReadV(
+    int fd,
+    int nsId,
+    ui32 lbaShift,
+    TArrayRef<const TArrayRef<char>> buffers,
+    ui64 offset,
+    TFileIOCompletion* completion,
+    ui32 flags)
+{
+    ui64 totalLen = 0;
+    for (const auto buf: buffers) {
+        totalLen += buf.size();
+    }
+
+    AsyncNvmeIO(
+        ENvmeOpcode::Read,
+        NVME_URING_CMD_IO_VEC,
+        fd,
+        nsId,
+        lbaShift,
+        buffers.data(),
+        buffers.size(),
+        totalLen,
+        offset,
+        completion,
+        flags);
+}
+
+void TContext::AsyncNvmeWriteV(
+    int fd,
+    int nsId,
+    ui32 lbaShift,
+    TArrayRef<const TArrayRef<const char>> buffers,
+    ui64 offset,
+    TFileIOCompletion* completion,
+    ui32 flags)
+{
+    ui64 totalLen = 0;
+    for (const auto buf: buffers) {
+        totalLen += buf.size();
+    }
+
+    AsyncNvmeIO(
+        ENvmeOpcode::Write,
+        NVME_URING_CMD_IO_VEC,
+        fd,
+        nsId,
+        lbaShift,
+        buffers.data(),
+        buffers.size(),
+        totalLen,
+        offset,
+        completion,
+        flags);
+}
+
+void TContext::AsyncNvmeIO(
+    ui8 op,
+    ui32 cmd,
+    int fd,
+    ui32 nsId,
+    ui32 lbaShift,
+    const void* addr,
+    ui32 dataLen,
+    ui64 totalLen,
+    ui64 offset,
+    TFileIOCompletion* completion,
+    ui32 flags)
+{
+    SubmissionThread->ExecuteSimple([=, this] {
+        SubmitNvmeIO(
+            op,
+            cmd,
+            fd,
+            nsId,
+            lbaShift,
+            addr,
+            dataLen,
+            totalLen,
+            offset,
+            completion,
+            flags);
+    });
+}
+
+void TContext::SubmitNvmeIO(
+    ui8 op,
+    ui32 cmd,
+    int fd,
+    ui32 nsId,
+    ui32 lbaShift,
+    const void* addr,
+    ui32 dataLen,
+    ui64 totalLen,
+    ui64 offset,
+    TFileIOCompletion* completion,
+    ui32 flags)
+{
+    io_uring_sqe* sqe = io_uring_get_sqe(&Ring);
+    if (!sqe) {
+        completion->Func(completion, MakeError(E_REJECTED, "Overloaded"), 0);
+        return;
+    }
+
+    sqe->fd = fd;
+    sqe->cmd_op = cmd;
+    sqe->opcode = IORING_OP_URING_CMD;
+
+    const ui64 startingLba = offset >> lbaShift;
+    const ui32 lbaCount = static_cast<ui32>(totalLen >> lbaShift) - 1;
+
+    new (sqe->cmd) TNvmeUringCmd{
+        .opcode = op,
+        .nsid = nsId,
+        .addr = std::bit_cast<ui64>(addr),
+        .data_len = dataLen,
+        .cdw10 = static_cast<ui32>(startingLba & 0xffffffff),
+        .cdw11 = static_cast<ui32>(startingLba >> 32),
+        .cdw12 = lbaCount,
+    };
+
+    io_uring_sqe_set_data(sqe, completion);
+    io_uring_sqe_set_flags(sqe, flags);
+
+    NSan::Release(completion);
+
+    const auto error = Submit(&Ring);
+    if (HasError(error)) {
+        completion->Func(completion, error, 0);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TResultOrError<bool> IsNvmePassthroughSupported()
+{
+    io_uring ring = {};
+    const auto error = InitRing(&ring, 1, nullptr, true);
+    if (HasError(error)) {
+        return false;
+    }
+    Y_DEFER { io_uring_queue_exit(&ring); };
+
+    auto* probe = io_uring_get_probe_ring(&ring);
+    if (!probe) {
+        return MakeSystemError(ENOTSUP, "io_uring_get_probe_ring");
+    }
+
+    Y_DEFER { io_uring_free_probe(probe); };
+
+    return io_uring_opcode_supported(probe, IORING_OP_URING_CMD);
 }
 
 }   // namespace NCloud::NIoUring
