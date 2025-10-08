@@ -14,20 +14,20 @@ Disk Manager should be able to choose which cell is most advantageous to create 
 
 ### How to get cluster capacity information
 
-To get data about Cell capacity, we will create a `cells.CollectZoneCapacity` task that will be schedulled by default once per hour. Period is configurable.
+To get data about Cell capacity, we will create a `cells.CollectZoneCapacity` task that will be scheduled by default once per hour. Period is configurable.
 It will iterate through each of the Cells and get data from the `getClusterCapacity` handler.
 After each step, we add the processed cellID to the task state, because on retry we want to avoid repeated calls to the `getClusterCapacity` handler.
 If we get an error from the `getClusterCapacity` handler, we retry the request with the limit, in metrics, we increment the error counter to then set up an alert on this counter.
 
 ```mermaid
 sequenceDiagram
-    participant GetCapactiyTask as cells.CollectZoneCapacity
+    participant GetCapacityTask as cells.CollectZoneCapacity
     participant NBS as NBS Cell
 
     par GetCapacity(Cell 1)
-    GetCapactiyTask ->>+ NBS: [private API] getClusterCapacity(Cell1)
+    GetCapacityTask ->>+ NBS: [private API] getClusterCapacity(Cell1)
 
-    create participant BSC as Blob Storage Contoller
+    create participant BSC as Blob Storage Controller
     NBS ->> BSC: TEvControllerConfigRequest
     destroy BSC
     BSC ->> NBS: OK, []storagePools, []groups
@@ -38,19 +38,19 @@ sequenceDiagram
     destroy DR
     DR ->> NBS: TEvGetClusterCapacityResponse
     Note over DR: getCapacityResponse<br/>+ kind: StorageMediaKind<br/>+ free: uint64<br/>+ total: uint64
-    NBS ->> GetCapactiyTask: TEvGetClusterCapacityResponse
+    NBS ->> GetCapacityTask: TEvGetClusterCapacityResponse
 
-    activate GetCapactiyTask
+    activate GetCapacityTask
     create participant CS as Cells Storage
-    GetCapactiyTask ->> CS: UpdateClusterCapacities()
+    GetCapacityTask ->> CS: UpdateClusterCapacities()
     destroy CS
-    CS ->> GetCapactiyTask: OK
-    GetCapactiyTask ->> GetCapactiyTask: SaveState(CellID)
-    deactivate GetCapactiyTask
+    CS ->> GetCapacityTask: OK
+    GetCapacityTask ->> GetCapacityTask: SaveState(CellID)
+    deactivate GetCapacityTask
     and GetCapacity(Cell 2)
-    Note over GetCapactiyTask, NBS: The task is performed similarly.
+    Note over GetCapacityTask, NBS: The task is performed similarly.
     and GetCapacity(Cell N)
-    Note over GetCapactiyTask, NBS: The task is performed similarly.
+    Note over GetCapacityTask, NBS: The task is performed similarly.
     end
 ```
 
@@ -120,7 +120,7 @@ For any task, that called from Disk Manager's Disks API we should get correct `z
 - delete_disk_task (Unnecessary, due to getting correct zoneID from `storage.DeleteDisk`)
 - migrate_disk_task
 - resize_disk_task
-- crete_image_from_disk_task
+- create_image_from_disk_task
 - create_snapshot_from_disk_task
 - stat_disk_task (Should be created. There is no task for `DiskService.Stat` request currently)
 - describe_disk_task (Should be created. There is no task for `DiskService.Describe` request currently)
