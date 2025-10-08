@@ -1340,6 +1340,13 @@ message TStorageServiceConfig
     // Timeout for collect garbage on HDD (in milliseconds).
     optional uint32 CollectGarbageTimeoutHDD = 461;
 
+    // When enabled, the backups are stored in binary proto format instead of
+    // prototxt.
     optional bool UseBinaryFormatForPathDescriptionBackup = 462;
     optional bool UseBinaryFormatForTabletBootInfoBackup = 463;
+
+    // Allows to set node's priority for system (tenant) tablets (hive,
+    // schemeshard, etc.) and the DR tablet. Lower value means lower priority.
+    // NOTE: can be negative.
+    optional int32 SystemTabletsPriority = 464;
 }

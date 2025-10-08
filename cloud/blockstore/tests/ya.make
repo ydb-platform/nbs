@@ -37,6 +37,7 @@ RECURSE(
     spare_node
     stats_aggregator_perf
     storage_discovery
+    tablets
     vhost-server
     vhost-server/run_and_die
 )

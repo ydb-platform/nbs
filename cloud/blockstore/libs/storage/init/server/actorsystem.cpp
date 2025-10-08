@@ -480,7 +480,8 @@ public:
                             appData->SystemPoolId));
             }
 
-            const i32 priority { IsDiskRegistrySpareNode ? -1 : 0 };
+            const i32 drPriority = StorageConfig->GetSystemTabletsPriority() -
+                                   (IsDiskRegistrySpareNode ? 1 : 0);
 
             localConfig->TabletClassInfo[TTabletTypes::BlockStoreDiskRegistry] =
                 TLocalConfig::TTabletClassInfo(
@@ -490,15 +491,16 @@ public:
                         appData->UserPoolId,
                         TMailboxType::ReadAsFilled,
                         appData->SystemPoolId),
-                    priority);
+                    drPriority);
 
             ConfigureTenantSystemTablets(
                 *appData,
                 *localConfig,
-                StorageConfig->GetAllowAdditionalSystemTablets()
-            );
+                StorageConfig->GetAllowAdditionalSystemTablets(),
+                StorageConfig->GetSystemTabletsPriority());
 
-            auto tenantPoolConfig = MakeIntrusive<TTenantPoolConfig>(localConfig);
+            auto tenantPoolConfig =
+                MakeIntrusive<TTenantPoolConfig>(localConfig);
 
             NKikimrTabletBase::TMetrics resourceLimit;
             if (StorageConfig->GetHiveLocalServiceCpuResourceLimit()) {
