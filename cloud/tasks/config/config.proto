@@ -37,6 +37,7 @@ message TasksConfig {
     // Exception task types for hanging task metric.
     repeated string ExceptHangingTaskTypes = 24;
     optional int64 MaxHangingTaskIDsToReport = 25 [default = 1000];
+    // Note: this will override estimated durations only for new tasks.
     map<string, string> EstimatedInflightDurationOverrideByTaskType = 26;
     map<string, string> EstimatedStallingDurationOverrideByTaskType = 27;
 
