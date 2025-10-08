@@ -131,4 +131,10 @@ bool IsSecondaryDiskId(const TString& diskId)
     return diskId.EndsWith(SecondaryDiskSuffix);
 }
 
+TString GetNextDiskId(const TString& diskId)
+{
+    return IsSecondaryDiskId(diskId) ? GetLogicalDiskId(diskId)
+                                     : GetSecondaryDiskId(diskId);
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

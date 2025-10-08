@@ -8,8 +8,8 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/core/volume_label.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 

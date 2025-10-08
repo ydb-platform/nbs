@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
-#include <cloud/blockstore/libs/storage/core/volume_label.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

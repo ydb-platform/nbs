@@ -18,6 +18,7 @@ SRCS(
     log_title.cpp
     request_bounds_tracker.cpp
     requests_in_progress.cpp
+    volume_label.cpp
 )
 
 END()
