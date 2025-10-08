@@ -219,7 +219,7 @@ void THiveProxyActor::SendTabletMetrics(
     NKikimrHive::TEvTabletMetrics& record = event->Record;
     for (auto& prTabletId: state->UpdatedTabletMetrics) {
         AddTabletMetrics(prTabletId.first, prTabletId.second, record);
-        prTabletId.second.OnStatsSend(resend);
+        prTabletId.second.OnSendStats(resend);
     }
     if (record.TabletMetricsSize() > 0) {
         SendRequest(ctx, hive, event.Release());
@@ -336,7 +336,11 @@ void THiveProxyActor::HandleConnectionError(
         }
 
         if (!states->ScheduledSendTabletMetrics) {
-            SendTabletMetrics(ctx, hive, true);
+            SendTabletMetrics(
+                ctx,
+                hive,
+                true   // resend
+            );
         }
 
         for (const auto& actorId: states->Actors) {
@@ -475,7 +479,7 @@ void THiveProxyActor::HandleTabletMetrics(
         return;
     }
 
-    tabletData.OnStatsUpdate();
+    tabletData.OnUpdateStats();
 
     if (!state->ScheduledSendTabletMetrics) {
         ScheduleSendTabletMetrics(ctx, hive);
@@ -487,7 +491,11 @@ void THiveProxyActor::HandleSendTabletMetrics(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    SendTabletMetrics(ctx, msg->Hive, false);
+    SendTabletMetrics(
+        ctx,
+        msg->Hive,
+        false      // resend
+    );
 }
 
 void THiveProxyActor::HandleMetricsResponse(

@@ -112,7 +112,7 @@ private:
         NKikimrTabletBase::TMetrics ResourceValues;
         ui32 SlaveID = 0;
 
-        void OnStatsUpdate()
+        void OnUpdateStats()
         {
             switch (State) {
                 case STATE_NO_STATS: State = STATE_HAS_STATS; break;
@@ -121,7 +121,7 @@ private:
             }
         }
 
-        void OnStatsSend(bool resend)
+        void OnSendStats(bool resend)
         {
             Y_DEBUG_ABORT_UNLESS(State != STATE_NO_STATS);
             Y_DEBUG_ABORT_UNLESS(resend || State != STATE_SENDING_STATS);
