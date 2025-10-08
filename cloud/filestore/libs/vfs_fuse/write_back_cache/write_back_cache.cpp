@@ -22,6 +22,8 @@ using namespace NCloud::NFileStore::NVFS;
 using namespace NThreading;
 
 using EWriteDataRequestState = IWriteBackCacheStats::EWriteDataRequestState;
+using EReadDataRequestCacheState =
+    IWriteBackCacheStats::EReadDataRequestCacheState;
 
 namespace {
 
@@ -73,6 +75,7 @@ struct TPendingReadDataRequest
     TCallContextPtr CallContext;
     std::shared_ptr<NProto::TReadDataRequest> Request;
     TPromise<NProto::TReadDataResponse> Promise;
+    TInstant PendingTime = TInstant::Zero();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -453,7 +456,8 @@ public:
         TPendingReadDataRequest pendingRequest = {
             .CallContext = std::move(callContext),
             .Request = std::move(request),
-            .Promise = NewPromise<NProto::TReadDataResponse>()};
+            .Promise = NewPromise<NProto::TReadDataResponse>(),
+            .PendingTime = Timer->Now()};
 
         auto result = pendingRequest.Promise.GetFuture();
         result.Subscribe(std::move(unlocker));
@@ -877,6 +881,8 @@ private:
         state.Length = request.Request->GetLength();
         state.Promise = std::move(request.Promise);
 
+        auto waitDuration = Timer->Now() - request.PendingTime;
+
         state.Parts = CalculateDataPartsToReadAndFillBuffer(
             nodeId,
             state.StartingFromOffset,
@@ -891,9 +897,18 @@ private:
             // Serve request from cache
             NProto::TReadDataResponse response;
             response.SetBuffer(std::move(state.Buffer));
+            Stats.AddReadDataStats(
+                EReadDataRequestCacheState::FullHit,
+                waitDuration);
             state.Promise.SetValue(std::move(response));
             return;
         }
+
+        auto cacheState = state.Parts.empty()
+            ? EReadDataRequestCacheState::Miss
+            : EReadDataRequestCacheState::PartialHit;
+
+        Stats.AddReadDataStats(cacheState, waitDuration);
 
         // Cache is not sufficient to serve the request - read all the data
         // and merge with the cached parts

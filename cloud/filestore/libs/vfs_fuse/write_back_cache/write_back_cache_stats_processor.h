@@ -43,6 +43,10 @@ public:
         IWriteBackCacheStats::EWriteDataRequestState state,
         TDuration duration);
 
+    void AddReadDataStats(
+        IWriteBackCacheStats::EReadDataRequestCacheState state,
+        TDuration waitDuration);
+
     // Persistent queue stats should be reported after a call (or a series of
     // calls) to AllocateBack or PopFront
     void UpdatePersistentQueueStats(const TFileRingBuffer& buffer);

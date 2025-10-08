@@ -109,6 +109,15 @@ void TWriteBackCache::TStatsProcessor::WriteDataRequestExitedState(
     }
 }
 
+void TWriteBackCache::TStatsProcessor::AddReadDataStats(
+    IWriteBackCacheStats::EReadDataRequestCacheState state,
+    TDuration waitDuration)
+{
+    if (Stats) {
+        Stats->AddReadDataStats(state, waitDuration);
+    }
+}
+
 void TWriteBackCache::TStatsProcessor::UpdatePersistentQueueStats(
     const TFileRingBuffer& buffer)
 {

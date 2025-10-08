@@ -132,6 +132,14 @@ struct TWriteDataRequestStats
     ui64 Count = 0;
 };
 
+struct TReadDataRequestStats
+{
+    TVector<TDuration> Data;
+    ui64 CacheMissCount = 0;
+    ui64 CachePartialHitCount = 0;
+    ui64 CacheFullHitCount = 0;
+};
+
 struct TWriteBackCacheStats
     : public IWriteBackCacheStats
 {
@@ -146,6 +154,8 @@ struct TWriteBackCacheStats
     TWriteDataRequestStats FlushStats;
     TWriteDataRequestStats EvictStats;
     TWriteDataRequestStats CachedStats;
+
+    TReadDataRequestStats ReadStats;
 
     TWriteBackCache::TPersistentQueueStats PersistentQueueStats;
 
@@ -201,7 +211,7 @@ struct TWriteBackCacheStats
         NodeCount--;
     }
 
-    TWriteDataRequestStats& GetStats(EWriteDataRequestState state)
+    TWriteDataRequestStats& GetWriteStats(EWriteDataRequestState state)
     {
         switch (state) {
             case EWriteDataRequestState::Pending:
@@ -223,29 +233,51 @@ struct TWriteBackCacheStats
         EWriteDataRequestState state,
         TInstant value) override
     {
-        GetStats(state).MinTime = value;
+        GetWriteStats(state).MinTime = value;
     }
 
     void IncrementInProgressWriteDataRequestCount(
         EWriteDataRequestState state) override
     {
-        GetStats(state).InProgressCount++;
+        GetWriteStats(state).InProgressCount++;
     }
 
     void DecrementInProgressWriteDataRequestCount(
         EWriteDataRequestState state) override
     {
-        GetStats(state).InProgressCount--;
+        GetWriteStats(state).InProgressCount--;
     }
 
     void AddWriteDataRequestStats(
         EWriteDataRequestState state,
         TDuration duration) override
     {
-        auto& stats = GetStats(state);
+        auto& stats = GetWriteStats(state);
         stats.Count++;
         if (stats.Data.size() < MaxItems) {
             stats.Data.push_back(duration);
+        }
+    }
+
+    void AddReadDataStats(
+        EReadDataRequestCacheState state,
+        TDuration waitDuration) override
+    {
+        if (ReadStats.Data.size() < MaxItems) {
+            ReadStats.Data.push_back(waitDuration);
+        }
+        switch (state) {
+            case EReadDataRequestCacheState::Miss:
+                ReadStats.CacheMissCount++;
+                break;
+            case EReadDataRequestCacheState::PartialHit:
+                ReadStats.CachePartialHitCount++;
+                break;
+            case EReadDataRequestCacheState::FullHit:
+                ReadStats.CacheFullHitCount++;
+                break;
+            default:
+                Y_ABORT("Unknown EReadDataRequestCacheState value");
         }
     }
 
@@ -1894,6 +1926,61 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(
             TInstant::Zero(),
             stats->FlushStats.MinTime);
+    }
+
+    Y_UNIT_TEST(ShouldReportReadDataCounters)
+    {
+        TBootstrap b;
+        b.Stats->MaxItems = 10;
+        auto& stats = b.Stats->ReadStats;
+
+        // Prevent Flush from completing immediately
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        b.WriteToCacheSync(1, 0, "abc");
+
+        UNIT_ASSERT_EQUAL(0, stats.CacheFullHitCount);
+        UNIT_ASSERT_EQUAL(0, stats.CachePartialHitCount);
+        UNIT_ASSERT_EQUAL(0, stats.CacheMissCount);
+
+        b.ReadFromCache(1, 0, 2).IgnoreResult().Wait();
+
+        UNIT_ASSERT_EQUAL(1, stats.CacheFullHitCount);
+        UNIT_ASSERT_EQUAL(0, stats.CachePartialHitCount);
+        UNIT_ASSERT_EQUAL(0, stats.CacheMissCount);
+
+        b.ReadFromCache(1, 2, 2).IgnoreResult().Wait();
+
+        UNIT_ASSERT_EQUAL(1, stats.CacheFullHitCount);
+        UNIT_ASSERT_EQUAL(1, stats.CachePartialHitCount);
+        UNIT_ASSERT_EQUAL(0, stats.CacheMissCount);
+
+        b.ReadFromCache(1, 4, 2).IgnoreResult().Wait();
+
+        UNIT_ASSERT_EQUAL(1, stats.CacheFullHitCount);
+        UNIT_ASSERT_EQUAL(1, stats.CachePartialHitCount);
+        UNIT_ASSERT_EQUAL(1, stats.CacheMissCount);
+
+        // Fill the cache until the requests become pending
+        while (true) {
+            auto writeFuture = b.WriteToCache(1, 0, "0123456789");
+            if (!writeFuture.HasValue()) {
+                break;
+            }
+        }
+
+        // A pending write request holds read-write-lock that
+        // prevents read requests from proceeding
+        auto readFuture = b.ReadFromCache(1, 0, 2).IgnoreResult();
+
+        b.Timer->Sleep(TDuration::Seconds(1));
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT_EQUAL(4, stats.Data.size());
+        UNIT_ASSERT_EQUAL(TDuration::Zero(), stats.Data[0]);
+        UNIT_ASSERT_EQUAL(TDuration::Zero(), stats.Data[1]);
+        UNIT_ASSERT_EQUAL(TDuration::Zero(), stats.Data[2]);
+        UNIT_ASSERT_EQUAL(TDuration::Seconds(1), stats.Data[3]);
     }
 
     /* TODO(svartmetal): fix tests with automatic flush

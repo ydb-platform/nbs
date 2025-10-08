@@ -113,6 +113,18 @@ struct IWriteBackCacheStats
         Cached
     };
 
+    enum class EReadDataRequestCacheState
+    {
+        // A request wasn't served from the cache
+        Miss,
+
+        // A request was partially served from the cache
+        PartialHit,
+
+        // A request was fully served from the cache
+        FullHit
+    };
+
     virtual ~IWriteBackCacheStats() = default;
 
     // Reset all non-derivative counters to zero
@@ -140,6 +152,10 @@ struct IWriteBackCacheStats
     virtual void AddWriteDataRequestStats(
         EWriteDataRequestState state,
         TDuration duration) = 0;
+
+    virtual void AddReadDataStats(
+        EReadDataRequestCacheState state,
+        TDuration waitDuration) = 0;
 
     virtual void SetPersistentQueueStats(
         const TWriteBackCache::TPersistentQueueStats& stats) = 0;
