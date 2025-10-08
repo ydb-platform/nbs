@@ -37,29 +37,31 @@ message TasksConfig {
     // Exception task types for hanging task metric.
     repeated string ExceptHangingTaskTypes = 24;
     optional int64 MaxHangingTaskIDsToReport = 25 [default = 1000];
+    map<string, string> EstimatedInflightDurationOverrideByTaskType = 26;
+    map<string, string> EstimatedStallingDurationOverrideByTaskType = 27;
 
-    optional string UpdateTaskTimeout = 26 [default = "1m"];
+    optional string UpdateTaskTimeout = 28 [default = "1m"];
 
     // Zonal tasks affinity: zonal tasks from these zones can be executed on
     // current node.
-    repeated string ZoneIds = 27;
+    repeated string ZoneIds = 29;
 
-    optional string HearbeatInterval = 28 [default = "30s"];
+    optional string HearbeatInterval = 30 [default = "30s"];
     // The time window within which the node is considered alive.
-    optional string LivenessWindow = 29 [default = "30s"];
+    optional string LivenessWindow = 31 [default = "30s"];
 
     // Feature flag for enabling node eviction policy based
     // on the health of the node and the number of running nodes.
-    optional bool NodeEvictionEnabled = 30 [default = false];
+    optional bool NodeEvictionEnabled = 32 [default = false];
 
-    map<string, int64> InflightTaskPerNodeLimits = 31; // by task type
+    map<string, int64> InflightTaskPerNodeLimits = 33; // by task type
 
-    optional string CollectListerMetricsTaskScheduleInterval = 32 [default = "10m"];
-    optional string ListerMetricsCollectionInterval = 33 [default = "1m"];
+    optional string CollectListerMetricsTaskScheduleInterval = 34 [default = "10m"];
+    optional string ListerMetricsCollectionInterval = 35 [default = "1m"];
 
     // Needed for tracing.
     // Spans of tasks with greater generation id will not be sampled.
-    optional uint64 MaxSampledTaskGeneration = 34 [default = 100];
+    optional uint64 MaxSampledTaskGeneration = 36 [default = 100];
 
     // System tasks are tasks implemented by `tasks` library, like,
     // tasks.ClearEndedTasks, tasks.CollectListerMetricsTask. If this flag is
@@ -67,16 +69,16 @@ message TasksConfig {
     // execution and scheduled.
     // Warning: if this flag is false, then information about ended tasks
     // will not be cleared from the database.
-    optional bool RegularSystemTasksEnabled = 35 [default = true];
+    optional bool RegularSystemTasksEnabled = 37 [default = true];
 
     // Lister retrieves tasks from the front of the tasks table and sends them
     // to workers if possible.
     // This parameter limits the number of tasks that will be retrieved from the
     // database.
-    optional uint64 TasksToListLimit = 36 [default = 10000];
+    optional uint64 TasksToListLimit = 38 [default = 10000];
 
-    optional string AvailabilityMonitoringSuccessRateReportingPeriod = 37 [default = "15s"];
+    optional string AvailabilityMonitoringSuccessRateReportingPeriod = 39 [default = "15s"];
 
     // Overrides MaxRetriableErrorCount.
-    map<string, uint64> MaxRetriableErrorCountByTaskType = 38;
+    map<string, uint64> MaxRetriableErrorCountByTaskType = 40;
 }
