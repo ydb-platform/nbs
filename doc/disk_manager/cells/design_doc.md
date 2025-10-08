@@ -8,9 +8,9 @@ Disk Manager should be able to choose which cell is most advantageous to create 
 
 ### Contracts
 
-`cellSelector.SelectCell` idempotently returns nbsClient for most suitable Cell ID by given zone. If the zone is not divided into cells, or cells are not allowed for the folder, or cells config is not set, returns the original zone nbsClient.
+`cellSelector.SelectCell` idempotently returns an `nbsClient` for the most suitable cell in a given zone. If the zone is not divided into cells, cells are not allowed for the folder, or the cells config is not set, it returns the original zone's `nbsClient`.
 
-`cellSelector.DefineCellForLocalDisk` finds the only correct cell, where requested `Agent` is located. If the zone is not divided into cells, or cells are not allowed for the folder, or cells config is not set, returns the original zone nbsClient.
+`cellSelector.DefineCellForLocalDisk` finds the only correct cell where the requested `Agent` is located. If the zone is not divided into cells, cells are not allowed for the folder, or the cells config is not set, it returns the original zone's `nbsClient`.
 
 ### How to get cluster capacity information
 
@@ -54,7 +54,7 @@ sequenceDiagram
     end
 ```
 
-### How to select shard
+### How to select a cell
 
 We add a new component to Disk Manager: cellSelector. Through configuration, it receives information about which cells belong to which zone, for example:
 
@@ -78,11 +78,11 @@ Cells: {
 }
 ```
 
-Each zone should be one of its own `cells`. At service startup we should check this.
+Each zone should be one of its own cells. We should check this at service startup.
 
 #### SelectCell:
 
-When selecting a Cell for creating a non-local disk, we first rely on the configuration. If the Folder from the request is allowed, we select the least occupied cell from the requested zone and bind it in CellStorage.
+When selecting a cell for creating a non-local disk, we first rely on the configuration. If the folder from the request is allowed, we select the least occupied cell from the requested zone and bind it in `CellStorage`.
 If cells config is not set, we return nbsClient for the requested zone.
 
 ```mermaid
@@ -112,18 +112,18 @@ sequenceDiagram
     Note right of CreateDiskTask: regular execution <br> of the task
 ```
 
-For any task, that called from Disk Manager's Disks API we should get correct `zoneID` from `diskMeta`.
+For any task that is called from Disk Manager's Disks API, we should get the correct `zoneID` from `diskMeta`.
 
 **Tasks list**
 
 - alter_disk_task
-- delete_disk_task (Unnecessary, due to getting correct zoneID from `storage.DeleteDisk`)
+- delete_disk_task (Unnecessary, because the correct `zoneID` is retrieved from `storage.DeleteDisk`)
 - migrate_disk_task
 - resize_disk_task
 - create_image_from_disk_task
 - create_snapshot_from_disk_task
-- stat_disk_task (Should be created. There is no task for `DiskService.Stat` request currently)
-- describe_disk_task (Should be created. There is no task for `DiskService.Describe` request currently)
+- stat_disk_task (Should be created. There is currently no task for a `DiskService.Stat` request)
+- describe_disk_task (Should be created. There is currently no task for a `DiskService.Describe` request)
 
 For example, Migrate Disk Task:
 
@@ -184,5 +184,5 @@ If there are no available agents in any zone, we should return an `errors.NewInt
 
 ### Other
 
-To maintain naming consistency, we need to rename ZoneID to CellID in nbsFactory and nbsClient.
-We also need to add a CellID field to the resources tables for the same purpose.
+To maintain naming consistency, we need to rename `ZoneID` to `CellID` in `nbsFactory` and `nbsClient`.
+We also need to add a `CellID` field to the resources tables for the same purpose.
