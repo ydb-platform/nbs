@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_guard.h>
+#include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -38,6 +39,23 @@ private:
         std::shared_ptr<TStorageAdapter> StorageAdapter;
 
         TStorageIoStatsPtr Stats;
+
+        bool IsOpen() const
+        {
+            return StorageAdapter != nullptr;
+        }
+    };
+
+    enum class EPathAttachState
+    {
+        Attached,
+        Detached,
+    };
+
+    struct TPathAttachState
+    {
+        EPathAttachState State = EPathAttachState::Attached;
+        ui64 Generation = 0;
     };
 
 private:
@@ -65,6 +83,9 @@ private:
 
     TRdmaTargetConfigPtr RdmaTargetConfig;
     TOldRequestCounters OldRequestCounters;
+
+    ui32 LastDiskRegistryGenerationSeen = 0;
+    THashMap<TString, TPathAttachState> PathAttachStates;
 
 public:
     TDiskAgentState(
@@ -161,6 +182,10 @@ public:
     void SuspendDevice(const TString& uuid);
     void EnableDevice(const TString& uuid);
     bool IsDeviceDisabled(const TString& uuid) const;
+    bool IsDeviceAttached(const TString& uuid) const;
+    bool IsPathAttached(const TString& path) const;
+    ui64 DeviceGeneration(const TString& uuid) const;
+    EDeviceStateFlags GetDeviceStateFlags(const TString& uuid) const;
     bool IsDeviceSuspended(const TString& uuid) const;
     void ReportDisabledDeviceError(const TString& uuid);
 
@@ -168,6 +193,29 @@ public:
 
     void SetPartiallySuspended(bool partiallySuspended);
     bool GetPartiallySuspended() const;
+
+    TVector<TString> GetAllDeviceUUIDsForPath(const TString& path);
+
+    TVector<NProto::TDeviceConfig> GetAllDevicesForPaths(
+        const THashSet<TString>& paths);
+
+    NProto::TError CheckCanAttachPath(
+        ui64 diskRegistryGeneration,
+        const TString& path,
+        ui64 pathGeneration);
+
+    THashMap<TString, NThreading::TFuture<IStoragePtr>> AttachPath(
+        const TString& path);
+
+    void PathAttached(
+        THashMap<TString, TResultOrError<IStoragePtr>> devices,
+        const THashMap<TString, ui64>& pathToGeneration,
+        const THashMap<TString, ui64>& alreadyAttachedPaths);
+
+    NProto::TError DetachPath(
+        ui64 diskRegistryGeneration,
+        const THashMap<TString, ui64>& pathToGeneration);
+
 
 private:
     const TDeviceState& GetDeviceState(
@@ -209,6 +257,10 @@ private:
         const THashSet<TString>& lostDevicesIds) const;
 
     void CheckIfDeviceIsDisabled(const TString& uuid, const TString& clientId);
+
+    NProto::TError CheckDiskRegistryGenerationAndUpdateItIfNeeded(
+        ui64 diskRegistryGeneration);
+    void ResetPathGenerations();
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

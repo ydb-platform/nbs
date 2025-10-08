@@ -389,6 +389,12 @@ STFUNC(TDiskAgentActor::StateWork)
             TEvDiskAgentPrivate::TEvMultiAgentWriteDeviceBlocksRequest,
             HandleMultiAgentWriteDeviceBlocks);
 
+        HFunc(TEvDiskAgentPrivate::TEvPathAttached, HandlePathAttached);
+
+        HFunc(
+            TEvDiskAgentPrivate::TEvCheckIsSamePathResult,
+            HandleCheckIsSamePathResult);
+
         case TEvDiskAgentPrivate::EvParsedReadDeviceBlocksRequest:
             HandleReadDeviceBlocks(
                 *reinterpret_cast<
