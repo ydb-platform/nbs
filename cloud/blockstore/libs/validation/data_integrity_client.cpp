@@ -22,6 +22,8 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <cstddef>
+
 namespace NCloud::NBlockStore::NClient {
 
 using namespace NMonitoring;
@@ -393,10 +395,13 @@ bool TDataIntegrityClient::HandleRequest(
     StatCounters.ReadBlocksLocalCountIncrease(integrityMode);
 
     auto sgList = request->Sglist;
+    const ui64 requestByteCount =
+        static_cast<const ui64>(request->GetBlocksCount()) * request->BlockSize;
 
     auto responseHandler =
         [guardedSgList = std::move(sgList),
          weakPtr = weak_from_this(),
+         requestByteCount,
          integrityMode]<typename TResponse>(
             TFuture<TResponse> result) -> NProto::TReadBlocksLocalResponse
     {
@@ -421,16 +426,23 @@ bool TDataIntegrityClient::HandleRequest(
                 "failed to acquire sglist in DataIntegrityClient")};
         }
 
+        const auto& sgList = guard.Get();
+        NProto::TChecksum currentChecksum;
         if (integrityMode) {
-            // TODO
-            // copy the data
-            // calculate the checksum
+            const size_t bytesCopied = CopyToSgList(
+                response.GetBlocks(),
+                self->BlockSize,
+                sgList,
+                self->BlockSize);
+            Y_DEBUG_ABORT_UNLESS(bytesCopied == requestByteCount);
+
+            currentChecksum =
+                CalculateChecksum(response.GetBlocks(), self->BlockSize);
+        } else {
+            currentChecksum = CalculateChecksum(sgList);
         }
 
-        const auto& sgList = guard.Get();
-        const auto currentChecksum = CalculateChecksum(sgList);
         const auto& checksum = response.GetChecksum();
-
         if (!MessageDifferencer::Equals(checksum, currentChecksum)) {
             self->StatCounters.ReadBlocksLocalMismatchIncrease(integrityMode);
             self->EnableCopyingForVolume();
@@ -561,10 +573,8 @@ bool TDataIntegrityClient::HandleRequest(
             HasProtoFlag(error.GetFlags(), NProto::EF_CHECKSUM_MISMATCH))
         {
             self->StatCounters.WriteBlocksLocalMismatchIncrease(integrityMode);
-            if (!integrityMode) {
-                self->EnableCopyingForVolume();
-                SetErrorProtoFlag(error, NProto::EF_INSTANT_RETRIABLE);
-            }
+            self->EnableCopyingForVolume();
+            SetErrorProtoFlag(error, NProto::EF_INSTANT_RETRIABLE);
         }
 
         return response;
