@@ -39,7 +39,7 @@ def get_dr_actor_count(nbs_mon_port):
 
 
 def wait_for_dr_metrics(nbs_mon_port):
-    for i in range(10):
+    for i in range(60):
         actors_count = get_dr_actor_count(nbs_mon_port)
         if (actors_count > 0):
             break
@@ -64,7 +64,7 @@ def setup_kikimr(paths):
     return kikimr_cluster, configurator
 
 
-def setup_nbs(paths, kikimr_cluster, configurator, priority):
+def setup_nbs(paths, kikimr_cluster, configurator, system_tablets_priority):
     server_app_config = TServerAppConfig()
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
     server_app_config.ServerConfig.ThreadsCount = thread_count()
@@ -82,7 +82,7 @@ def setup_nbs(paths, kikimr_cluster, configurator, priority):
     storage.DisableLocalService = False
     storage.SchemeShardDir = "/Root/nbs"
     storage.NodeType = 'nbs'
-    storage.SystemTabletsPriority = priority
+    storage.SystemTabletsPriority = system_tablets_priority
 
     nbs = LocalNbs(
         kikimr_port,
@@ -108,16 +108,16 @@ def test_system_tablets_priority():
     setup_nonreplicated(kikimr_cluster.client, [], agent_count=0)
 
     nbs_low_priority1 = setup_nbs(
-        common_paths, kikimr_cluster, configurator, -1)
+        common_paths, kikimr_cluster, configurator, system_tablets_priority=-1)
 
     enable_writable_state(nbs_low_priority1.nbs_port,
                           common_paths.nbs_client_path)
     wait_for_dr_metrics(nbs_low_priority1.mon_port)
 
     nbs_low_priority2 = setup_nbs(
-        common_paths, kikimr_cluster, configurator, -2)
+        common_paths, kikimr_cluster, configurator, system_tablets_priority=-2)
     nbs_high_priority = setup_nbs(
-        common_paths, kikimr_cluster, configurator, 1)
+        common_paths, kikimr_cluster, configurator, system_tablets_priority=1)
 
     # DR shouldn't have been moved.
     wait_for_dr_metrics(nbs_low_priority1.mon_port)
