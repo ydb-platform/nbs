@@ -599,6 +599,16 @@ public:
         InvalidateIterators();
     }
 
+    void PushBack(TRcBuf&& data) {
+        if (!data.HasBuffer()) {
+            return;
+        }
+        Size += data.GetSize();
+        Chain.PutToEnd(std::move(data));
+        InvalidateIterators();
+    }
+}
+
     void EraseFront(size_t len) {
         Y_DEBUG_ABORT_UNLESS(Size >= len);
         Size -= len;
