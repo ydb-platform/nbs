@@ -17,8 +17,8 @@ import (
 
 func testSelectCellForLocalDiskCellReturnsAnError(
 	t *testing.T,
-	correctCellResponceLatency time.Duration,
-	emptyCellResponceLatency time.Duration,
+	correctCellResponseLatency time.Duration,
+	emptyCellResponseLatency time.Duration,
 	correctCellReturnsError bool,
 ) {
 
@@ -54,7 +54,7 @@ func testSelectCellForLocalDiskCellReturnsAnError(
 	}
 
 	nbsClientCorrectCell.On("QueryAvailableStorage", mock.Anything, agentIDs).
-		After(correctCellResponceLatency).
+		After(correctCellResponseLatency).
 		Return(
 			[]nbs.AvailableStorageInfo{
 				{
@@ -66,7 +66,7 @@ func testSelectCellForLocalDiskCellReturnsAnError(
 			correctCellError,
 		)
 	nbsClientEmptyCell.On("QueryAvailableStorage", mock.Anything, agentIDs).
-		After(emptyCellResponceLatency).
+		After(emptyCellResponseLatency).
 		Return(
 			[]nbs.AvailableStorageInfo(nil),
 			emptyCellError,
@@ -305,23 +305,23 @@ func TestSelectCellForLocalDiskShouldReturnErrorIfNoAvailableAgentsFound(
 func TestSelectCellForLocalDiskCellReturnsAnError(t *testing.T) {
 	testCases := []struct {
 		name                       string
-		correctCellResponceLatency time.Duration
-		emptyCellResponceLatency   time.Duration
+		correctCellResponseLatency time.Duration
+		emptyCellResponseLatency   time.Duration
 	}{
 		{
 			name:                       "responses are not ordered",
-			correctCellResponceLatency: 0,
-			emptyCellResponceLatency:   0,
+			correctCellResponseLatency: 0,
+			emptyCellResponseLatency:   0,
 		},
 		{
 			name:                       "valid response is faster",
-			correctCellResponceLatency: 0,
-			emptyCellResponceLatency:   10 * time.Second,
+			correctCellResponseLatency: 0,
+			emptyCellResponseLatency:   10 * time.Second,
 		},
 		{
 			name:                       "error response is faster",
-			correctCellResponceLatency: 10 * time.Second,
-			emptyCellResponceLatency:   0,
+			correctCellResponseLatency: 10 * time.Second,
+			emptyCellResponseLatency:   0,
 		},
 	}
 
@@ -335,8 +335,8 @@ func TestSelectCellForLocalDiskCellReturnsAnError(t *testing.T) {
 			t.Run(testCaseName, func(t *testing.T) {
 				testSelectCellForLocalDiskCellReturnsAnError(
 					t,
-					testCase.correctCellResponceLatency,
-					testCase.emptyCellResponceLatency,
+					testCase.correctCellResponseLatency,
+					testCase.emptyCellResponseLatency,
 					correctCellReturnsError,
 				)
 			})

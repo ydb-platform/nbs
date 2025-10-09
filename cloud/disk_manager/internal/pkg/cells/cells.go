@@ -64,6 +64,13 @@ func (s *cellSelector) SelectCellForLocalDisk(
 		)
 	}
 
+	if len(agentIDs) != 1 {
+		return nil, errors.NewNonCancellableErrorf(
+			"cell for local disk may be selected, only when one agentID provided, not %v",
+			len(agentIDs),
+		)
+	}
+
 	errGroup := errgroup.Group{}
 
 	selectedClient := make(chan nbs.Client, 1)
