@@ -121,6 +121,207 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         UNIT_ASSERT_EQUAL(requestsCount, maxRequestsCount);
     }
 
+    Y_UNIT_TEST(ShouldUseNonRetriableListEnabledAndNotRetryListed)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        static constexpr size_t maxRequestsCount = 3;
+        size_t requestsCount = 0;
+
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+
+            NProto::TPingResponse response;
+
+            if (++requestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_FAIL);
+            }
+
+            return MakeFuture(std::move(response));
+        };
+
+        auto protoConf = NProto::TClientAppConfig{};
+        protoConf.MutableClientConfig()->SetEnableListBasedRetryRules(true);
+        protoConf.MutableClientConfig()->AddNonRetriableErrorsForReliableMedia(
+            E_FAIL);
+
+        auto config = std::make_shared<TClientAppConfig>(protoConf);
+
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
+
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+        Y_SCOPE_EXIT(=)
+        {
+            scheduler->Stop();
+        };
+
+        auto requestStats = CreateRequestStatsStub();
+        auto volumeStats = CreateVolumeStatsStub();
+
+        auto logging = CreateLoggingService("console");
+
+        auto durable = CreateDurableClient(
+            config,
+            client,
+            std::move(policy),
+            std::move(logging),
+            std::move(timer),
+            std::move(scheduler),
+            std::move(requestStats),
+            std::move(volumeStats));
+
+        auto future = durable->Ping(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TPingRequest>());
+
+        const auto& response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(HasError(response));
+        UNIT_ASSERT_EQUAL(response.GetError().GetCode(), E_FAIL);
+
+        UNIT_ASSERT_EQUAL(requestsCount, 1);
+    }
+
+    Y_UNIT_TEST(ShouldUseNonRetriableListWhenEnabledAndNotRetryNeverRetriable)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        static constexpr size_t maxRequestsCount = 3;
+        size_t requestsCount = 0;
+        EWellKnownResultCodes errorToReturn = S_OK;
+
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+
+            NProto::TPingResponse response;
+
+            if (++requestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(errorToReturn);
+            }
+
+            return MakeFuture(std::move(response));
+        };
+
+        auto protoConf = NProto::TClientAppConfig{};
+        protoConf.MutableClientConfig()->SetEnableListBasedRetryRules(true);
+
+        auto config = std::make_shared<TClientAppConfig>(protoConf);
+
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
+
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+        Y_SCOPE_EXIT(=)
+        {
+            scheduler->Stop();
+        };
+
+        auto requestStats = CreateRequestStatsStub();
+        auto volumeStats = CreateVolumeStatsStub();
+
+        auto logging = CreateLoggingService("console");
+
+        auto durable = CreateDurableClient(
+            config,
+            client,
+            std::move(policy),
+            std::move(logging),
+            std::move(timer),
+            std::move(scheduler),
+            std::move(requestStats),
+            std::move(volumeStats));
+
+        // See cloud/blockstore/libs/client/durable.cpp:NeverRetriableErrors
+        for (const auto errorCode: {
+                 E_BS_INVALID_SESSION,
+                 E_CANCELLED,
+                 E_ARGUMENT,
+                 E_IO_SILENT,
+                 E_IO,
+             })
+        {
+            requestsCount = 0;
+            errorToReturn = errorCode;
+
+            auto future = durable->Ping(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TPingRequest>());
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+
+            UNIT_ASSERT_EQUAL(response.GetError().GetCode(), errorCode);
+            UNIT_ASSERT_EQUAL(requestsCount, 1);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseNonRetriableListWhenEnabledAndRetryNotListed)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        static constexpr size_t maxRequestsCount = 3;
+        size_t requestsCount = 0;
+
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+
+            NProto::TPingResponse response;
+
+            if (++requestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_FAIL);
+            }
+
+            return MakeFuture(std::move(response));
+        };
+
+        auto protoConf = NProto::TClientAppConfig{};
+        protoConf.MutableClientConfig()->SetEnableListBasedRetryRules(true);
+        protoConf.MutableClientConfig()->AddNonRetriableErrorsForReliableMedia(
+            E_REJECTED);
+
+        auto config = std::make_shared<TClientAppConfig>(protoConf);
+
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
+
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+        Y_SCOPE_EXIT(=)
+        {
+            scheduler->Stop();
+        };
+
+        auto requestStats = CreateRequestStatsStub();
+        auto volumeStats = CreateVolumeStatsStub();
+
+        auto logging = CreateLoggingService("console");
+
+        auto durable = CreateDurableClient(
+            config,
+            client,
+            std::move(policy),
+            std::move(logging),
+            std::move(timer),
+            std::move(scheduler),
+            std::move(requestStats),
+            std::move(volumeStats));
+
+        auto future = durable->Ping(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TPingRequest>());
+
+        const auto& response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(!HasError(response));
+
+        UNIT_ASSERT_EQUAL(requestsCount, maxRequestsCount);
+    }
+
     Y_UNIT_TEST(ShouldNotRetryNonRetriableRequests)
     {
         auto client = std::make_shared<TTestService>();

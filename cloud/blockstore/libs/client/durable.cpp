@@ -29,6 +29,27 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// List of errors that must never be retried and semantically have
+// no point in retrying
+// Note: changes is this list must me reflected in
+//     cloud/blockstore/libs/client/durable_ut.cpp:
+//         ShouldUseNonRetriableListWhenEnabledAndNotRetryNeverRetriable
+const TVector<EWellKnownResultCodes> NeverRetriableErrors = {
+    E_BS_INVALID_SESSION,   // This error must never be retried as
+                            // not passing in up may break
+                            // the remounting logic
+    E_CANCELLED,            // Request is canceled,
+                            // no point in retrying
+    E_ARGUMENT,             // Request is ill-formed,
+                            // no point in retrying
+    E_IO_SILENT,            // Unrecoverable error, that must be
+                            // passed up to the client
+    E_IO,                   // Unrecoverable error, that must be
+                            // passed up to the client
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 ELogPriority GetDetailsLogPriority(const NProto::TError& error)
 {
     const auto kind = GetDiagnosticsErrorKind(error);
@@ -477,12 +498,17 @@ class TRetryPolicy final: public IRetryPolicy
 {
 private:
     TClientAppConfigPtr Config;
-    TDuration InitialRetryTimeout;
+    const TDuration InitialRetryTimeout;
+    const bool MediaIsReliable;
 
 public:
-    TRetryPolicy(TClientAppConfigPtr config, TDuration initialRetryTimeout)
+    TRetryPolicy(
+        TClientAppConfigPtr config,
+        const TDuration initialRetryTimeout,
+        const bool mediaIsReliable)
         : Config(std::move(config))
         , InitialRetryTimeout(initialRetryTimeout)
+        , MediaIsReliable(mediaIsReliable)
     {}
 
     TRetrySpec ShouldRetry(
@@ -490,8 +516,13 @@ public:
         const NProto::TError& error) override
     {
         TRetrySpec spec;
+
         spec.IsRetriableError =
             GetErrorKind(error) == EErrorKind::ErrorRetriable;
+        if (Config->GetEnableListBasedRetryRules()) {
+            spec.IsRetriableError =
+                spec.IsRetriableError || !IsInNonRetriableList(error);
+        }
 
         if (!spec.IsRetriableError ||
             TInstant::Now() - state.Started >= Config->GetRetryTimeout())
@@ -524,6 +555,18 @@ public:
         state.RetryTimeout = newRetryTimeout;
         return spec;
     }
+
+private:
+    bool IsInNonRetriableList(const NProto::TError& error) const
+    {
+        if (FindPtr(NeverRetriableErrors, error.GetCode())) {
+            return true;
+        }
+        auto nonRetriableErrorsList =
+            MediaIsReliable ? Config->GetNonRetriableErrorsForReliableMedia()
+                            : Config->GetNonRetriableErrorsForUnreliableMedia();
+        return FindPtr(nonRetriableErrorsList, error.GetCode()) != nullptr;
+    }
 };
 
 }   // namespace
@@ -546,7 +589,8 @@ IRetryPolicyPtr CreateRetryPolicy(
 
     return std::make_shared<TRetryPolicy>(
         std::move(config),
-        initialRetryTimeout);
+        initialRetryTimeout,
+        IsReliableMediaKind(mediaKind.value_or(NProto::STORAGE_MEDIA_DEFAULT)));
 }
 
 IBlockStorePtr CreateDurableClient(
