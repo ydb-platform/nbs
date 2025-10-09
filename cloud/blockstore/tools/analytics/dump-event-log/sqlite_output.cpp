@@ -57,18 +57,18 @@ constexpr TStringBuf CreateFilteredView = R"__(
     create view FilteredRequest as
     SELECT
         rn.id as RangeId,
-	    r.*
+        r.*
     from Requests as r
     INNER join Disks as d on d.Id == r.DiskId
     INNER join Ranges as rn
-	    on d.DiskId == rn.DiskId and
-	    (rn.StartBlock is null or rn.StartBlock <= r.EndBlock) and
-	    (rn.EndBlock is null or rn.EndBlock >= r.StartBlock)
+        on d.DiskId == rn.DiskId and
+        (rn.StartBlock is null or rn.StartBlock <= r.EndBlock) and
+        (rn.EndBlock is null or rn.EndBlock >= r.StartBlock)
 )__";
 
 constexpr TStringBuf CreateRequestsIndex = R"__(
 CREATE INDEX IF NOT EXISTS "disk_id" ON "Requests" (
-	"DiskId"	ASC
+    "DiskId"    ASC
 );
 )__";
 
