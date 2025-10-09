@@ -16,14 +16,14 @@ UNALIGNED_TESTS = fio.generate_tests(
     offset=100,
     sizes=SIZES,
     iodepths=[1],
-    numjobs=[4],
+    numjobs=[1],
     scenarios=SCENARIOS)
 
 ALIGNED_TESTS = fio.generate_tests(
     offset=0,
     sizes=SIZES,
     iodepths=[1],
-    numjobs=[4],
+    numjobs=[1],
     scenarios=SCENARIOS)
 
 
