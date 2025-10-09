@@ -131,6 +131,7 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
                 replicaInfo.Config,
                 replicaInfo.Migrations,
                 RdmaClient,
+                VolumeActorId,
                 SelfId(),
                 migrationSrcActorId);
         } else {
