@@ -478,11 +478,18 @@ class TRetryPolicy final: public IRetryPolicy
 private:
     TClientAppConfigPtr Config;
     TDuration InitialRetryTimeout;
+    bool MediaIsReliable;
+    TVector<ui32> NeverRetriableWithErrorListPolicy;
 
 public:
-    TRetryPolicy(TClientAppConfigPtr config, TDuration initialRetryTimeout)
+    TRetryPolicy(
+        TClientAppConfigPtr config,
+        TDuration initialRetryTimeout,
+        bool mediaIsReliable)
         : Config(std::move(config))
         , InitialRetryTimeout(initialRetryTimeout)
+        , MediaIsReliable(mediaIsReliable)
+        , NeverRetriableWithErrorListPolicy({E_BS_INVALID_SESSION})
     {}
 
     TRetrySpec ShouldRetry(
@@ -490,8 +497,23 @@ public:
         const NProto::TError& error) override
     {
         TRetrySpec spec;
-        spec.IsRetriableError =
-            GetErrorKind(error) == EErrorKind::ErrorRetriable;
+
+        auto nonRetriableErrorsList =
+            MediaIsReliable ? Config->GetNonRetriableErrorsForReliableMedia()
+                            : Config->GetNonRetriableErrorsForUnreliableMedia();
+
+        if (nonRetriableErrorsList.empty()) {
+            spec.IsRetriableError =
+                GetErrorKind(error) == EErrorKind::ErrorRetriable;
+        } else {
+            spec.IsRetriableError =
+                std::ranges::find(
+                    NeverRetriableWithErrorListPolicy,
+                    error.GetCode()) ==
+                    NeverRetriableWithErrorListPolicy.end() &&
+                std::ranges::find(nonRetriableErrorsList, error.GetCode()) ==
+                    nonRetriableErrorsList.end();
+        }
 
         if (!spec.IsRetriableError ||
             TInstant::Now() - state.Started >= Config->GetRetryTimeout())
@@ -546,7 +568,8 @@ IRetryPolicyPtr CreateRetryPolicy(
 
     return std::make_shared<TRetryPolicy>(
         std::move(config),
-        initialRetryTimeout);
+        initialRetryTimeout,
+        IsReliableMediaKind(mediaKind.value_or(NProto::STORAGE_MEDIA_DEFAULT)));
 }
 
 IBlockStorePtr CreateDurableClient(
