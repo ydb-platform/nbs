@@ -9,7 +9,17 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+func newContext() context.Context {
+	return logging.SetLogger(
+		context.Background(),
+		logging.NewStderrLogger(logging.DebugLevel),
+	)
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -75,7 +85,7 @@ func TestCellsIsFolderAllowed(t *testing.T) {
 }
 
 func TestCellSelectorSelectsCorrectCell(t *testing.T) {
-	ctx := context.Background()
+	ctx := newContext()
 
 	policy := cells_config.CellSelectionPolicy_FIRST_IN_CONFIG
 	config := &cells_config.CellsConfig{
@@ -129,7 +139,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 }
 
 func TestCellSelectorReturnsCorrectNBSClientIfConfigsIsNotSet(t *testing.T) {
-	ctx := context.Background()
+	ctx := newContext()
 	cellSelector := cellSelector{}
 
 	selectedCell, err := cellSelector.selectCell(
@@ -143,7 +153,7 @@ func TestCellSelectorReturnsCorrectNBSClientIfConfigsIsNotSet(t *testing.T) {
 }
 
 func TestCellSelectorReturnsCorrectCellWithMaxFreeBytesPolicy(t *testing.T) {
-	ctx := context.Background()
+	ctx := newContext()
 	cellStorage := storage_mocks.NewStorageMock()
 
 	policy := cells_config.CellSelectionPolicy_MAX_FREE_BYTES
@@ -164,6 +174,43 @@ func TestCellSelectorReturnsCorrectCellWithMaxFreeBytesPolicy(t *testing.T) {
 		{FreeBytes: 2048, CellID: cellID1},
 		{FreeBytes: 1024, CellID: cellID2},
 	}, nil)
+
+	selector := cellSelector{
+		config:  config,
+		storage: cellStorage,
+	}
+
+	selectedCell, err := selector.selectCell(
+		ctx,
+		shardedZoneID,
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+	)
+	require.NoError(t, err)
+	require.Equal(t, cellID1, selectedCell)
+}
+
+func TestCellSelectorReturnsCorrectCellWithMaxFreeBytesPolicyIfNoCapacities(
+	t *testing.T,
+) {
+
+	ctx := newContext()
+	cellStorage := storage_mocks.NewStorageMock()
+
+	policy := cells_config.CellSelectionPolicy_MAX_FREE_BYTES
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			shardedZoneID: {Cells: []string{cellID1, cellID2}},
+		},
+		CellSelectionPolicy: &policy,
+	}
+
+	cellStorage.On(
+		"GetRecentClusterCapacities",
+		ctx,
+		shardedZoneID,
+		types.DiskKind_DISK_KIND_SSD,
+	).Return([]storage.ClusterCapacity{}, nil)
 
 	selector := cellSelector{
 		config:  config,

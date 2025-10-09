@@ -1,6 +1,7 @@
 package cells
 
 import (
+	"cmp"
 	"context"
 	"slices"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -124,15 +126,27 @@ func (s *cellSelector) selectCell(
 			return "", err
 		}
 
+		if len(capacities) == 0 {
+			logging.Warn(
+				ctx,
+				"no capacities found for zone %v, "+
+					"using first cell in config: %v",
+				zoneID,
+				cells[0],
+			)
+
+			return cells[0], nil
+		}
+
 		slices.SortFunc(capacities, func(i, j storage.ClusterCapacity) int {
-			return int(j.FreeBytes - i.FreeBytes)
+			return cmp.Compare(j.FreeBytes, i.FreeBytes)
 		})
 
 		return capacities[0].CellID, nil
 	default:
 		return "", errors.NewNonCancellableErrorf(
-			"unknown cell selection policy: %q",
-			s.config.CellSelectionPolicy,
+			"unknown cell selection policy: %v",
+			s.config.GetCellSelectionPolicy().String(),
 		)
 	}
 }
