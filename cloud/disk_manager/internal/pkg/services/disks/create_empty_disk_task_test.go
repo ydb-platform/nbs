@@ -55,6 +55,7 @@ func TestCreateEmptyDiskTask(t *testing.T) {
 		"zone",
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIdMatch
 	).Return(nbsClient, nil)
 
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
@@ -117,6 +118,7 @@ func TestCreateEmptyDiskTaskFailure(t *testing.T) {
 		"zone",
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIdMatch
 	).Return(nbsClient, nil)
 
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{

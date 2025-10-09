@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/fake-root-kms/recipe.inc)
 
 SET_APPEND(RECIPE_ARGS --nemesis)
 SET_APPEND(RECIPE_ARGS --multiple-nbs)
+SET_APPEND(RECIPE_ARGS --with-cells)
 SET_APPEND(RECIPE_ARGS --encryption)
 SET_APPEND(RECIPE_ARGS --min-restart-period-sec 30)
 SET_APPEND(RECIPE_ARGS --max-restart-period-sec 60)

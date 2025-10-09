@@ -51,7 +51,8 @@ func setupMigrationTest(
 			DiskId: params.DiskID,
 			ZoneId: params.SrcZoneID,
 		},
-		FolderId: params.FolderID,
+		FolderId:                params.FolderID,
+		RequireExactCellIdMatch: true,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
@@ -61,6 +62,7 @@ func setupMigrationTest(
 
 	if params.FillDisk {
 		nbsClient := testcommon.NewNbsTestingClient(t, ctx, params.SrcZoneID)
+
 		_, err = nbsClient.FillDisk(
 			ctx,
 			params.DiskID,

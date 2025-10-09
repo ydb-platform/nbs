@@ -96,6 +96,7 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 		"zone",
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIdMatch
 	).Return(nbsClient, nil)
 
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
@@ -170,6 +171,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testin
 		"zone",
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIdMatch
 	).Return(nbsClient, nil)
 
 	nbsClient.On("ZoneID").Return("zone")
@@ -239,12 +241,12 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 	// TODO: Improve this expectation.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{}, nil)
 
-	cellSelector.On(
-		"SelectCell",
+	cellSelector.On("SelectCell",
 		ctx,
 		"zone",
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIdMatch
 	).Return(nbsClient, nil)
 
 	nbsClient.On("ZoneID").Return("zone")

@@ -67,6 +67,7 @@ func TestDiskServicegetZoneIDForExistingDisk(
 			storage.On("GetDiskMeta", ctx, "disk").Return(&resources.DiskMeta{
 				ZoneID: testCase.actualDiskZoneID,
 			}, nil)
+
 			cellSelector.On(
 				"IsCellOfZone",
 				testCase.actualDiskZoneID,

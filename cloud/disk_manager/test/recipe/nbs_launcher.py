@@ -5,7 +5,12 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from cloud.blockstore.config.discovery_pb2 import TDiscoveryServiceConfig
 from cloud.blockstore.config.grpc_client_pb2 import TGrpcClientConfig
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
-from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, TKikimrServiceConfig
+from cloud.blockstore.config.server_pb2 import (
+    TKikimrServiceConfig,
+    TServerAppConfig,
+    TServerConfig,
+)
+from cloud.blockstore.config.cells_pb2 import TCellsConfig, TCellConfig, TCellHostConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
@@ -40,7 +45,10 @@ class NbsLauncher:
         compute_port=0,
         kms_port=0,
         destruction_allowed_only_for_disks_with_id_prefixes=[],
-        disk_agent_count=1
+        disk_agent_count=1,
+        nbs_secure_port=None,
+        cell_id=None,
+        cells=[],
     ):
         self.__ydb_port = ydb_port
         self.__domains_txt = domains_txt
@@ -50,7 +58,8 @@ class NbsLauncher:
 
         self.__port_manager = yatest_common.PortManager()
         nbs_port = self.__port_manager.get_port()
-        nbs_secure_port = self.__port_manager.get_port()
+        if nbs_secure_port is None:
+            nbs_secure_port = self.__port_manager.get_port()
 
         server_app_config = TServerAppConfig()
         server_app_config.ServerConfig.CopyFrom(TServerConfig())
@@ -66,6 +75,22 @@ class NbsLauncher:
         cert = server_app_config.ServerConfig.Certs.add()
         cert.CertFile = cert_file
         cert.CertPrivateKeyFile = cert_key_file
+
+        cells_config = None
+        if cell_id:
+            cells_config = TCellsConfig()
+            cells_config.CellId = cell_id
+
+            for cell in cells:
+                another_cell_config = TCellConfig()
+                another_cell_config.CellId = cell["cell_id"]
+
+                for host in cell["hosts"]:
+                    cell_host_config = TCellHostConfig()
+                    cell_host_config.Fqdn = host
+                    another_cell_config.Hosts.append(cell_host_config)
+
+                cells_config.Cells.append(another_cell_config)
 
         storage_config_patch = TStorageServiceConfig()
         storage_config_patch.AllocationUnitNonReplicatedSSD = 1
@@ -143,6 +168,7 @@ class NbsLauncher:
             domains_txt,
             server_app_config=server_app_config,
             storage_config_patches=[storage_config_patch],
+            cells_config=cells_config,
             discovery_config=discovery_config,
             enable_tls=True,
             dynamic_storage_pools=dynamic_storage_pools,

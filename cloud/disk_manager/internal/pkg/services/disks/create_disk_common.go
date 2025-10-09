@@ -50,6 +50,7 @@ func SelectCell(
 				params.Disk.ZoneId,
 				params.FolderId,
 				params.Kind,
+				params.RequireExactCellIdMatch,
 			)
 		}
 		if err != nil {

@@ -114,6 +114,8 @@ class _MigrationTestSetup:
             nbs_port=self.nbs.port,
             nbs2_port=self.nbs.port,
             nbs3_port=self.nbs.port,
+            nbs4_port=self.nbs.port,
+            nbs5_port=self.nbs.port,
             root_certs_file=str(self._root_certs_file),
             cert_file=str(self._cert_file),
             cert_key_file=str(self._cert_key_file),
