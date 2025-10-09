@@ -353,8 +353,8 @@ func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 
 	// Should wait for first disk creation in order to ensure that pool is
 	// created.
-	firstCreateDiskOperationId := operations[0].Id
-	err = internal_client.WaitOperation(ctx, client, firstCreateDiskOperationId)
+	firstCreateDiskOperationID := operations[0].Id
+	err = internal_client.WaitOperation(ctx, client, firstCreateDiskOperationID)
 	require.NoError(t, err)
 
 	privateClient, err := testcommon.NewPrivateClient(ctx)
@@ -376,7 +376,7 @@ func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 		diskID := fmt.Sprintf("%v%v", t.Name(), i)
 		errGroup.Go(
 			func() error {
-				if operationID != firstCreateDiskOperationId {
+				if operationID != firstCreateDiskOperationID {
 					err := internal_client.WaitOperation(
 						ctx,
 						client,
