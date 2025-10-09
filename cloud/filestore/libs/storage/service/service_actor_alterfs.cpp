@@ -61,7 +61,6 @@ private:
     bool DirectoryCreationInShardsEnabled = false;
     bool StrictFileSystemSizeEnforcementEnabled = false;
     bool EnableStrictFileSystemSizeEnforcement = false;
-    ui32 BlockSize = 0;
     bool IsToConfigureMainFileStore = false;
 
     const ui64 MainFileStoreCookie = Max<ui64>();
@@ -325,7 +324,6 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
         FileStoreConfig.MainFileSystemConfig.SetVersion(version);
     }
 
-    BlockSize = currentConfig.GetBlockSize();
     FileStoreConfig.MainFileSystemConfig.ClearBlockSize();
 
     GetFileSystemTopology(ctx);
