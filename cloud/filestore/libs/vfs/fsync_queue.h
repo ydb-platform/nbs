@@ -88,7 +88,7 @@ private:
     TLog Log;
 
     TFSyncCache CurrentState;
-    TMutex StateMutex;
+    TAdaptiveLock StateLock;
 
 public:
     TFSyncQueue(const TString& fileSystemId, ILoggingServicePtr logging);
