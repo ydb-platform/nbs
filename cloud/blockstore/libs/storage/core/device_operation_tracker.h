@@ -25,6 +25,7 @@ public:
         Read,
         Write,
         Zero,
+        Checksum
     };
 
     struct TBucketInfo

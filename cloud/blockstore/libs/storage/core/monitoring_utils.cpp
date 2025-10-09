@@ -1980,6 +1980,8 @@ void DumpLatencyTableForRequestType(
                 return TString("Write");
             case TDeviceOperationTracker::ERequestType::Zero:
                 return TString("Zero");
+            case TDeviceOperationTracker::ERequestType::Checksum:
+                return TString("Checksum");
         }
         return TString("Unknown");
     }();
@@ -2085,6 +2087,10 @@ void DumpDeviceOperationLatency(
                 out,
                 deviceTracker,
                 TDeviceOperationTracker::ERequestType::Zero);
+            DumpLatencyTableForRequestType(
+                out,
+                deviceTracker,
+                TDeviceOperationTracker::ERequestType::Checksum);
         }
 
         out << R"(<script>

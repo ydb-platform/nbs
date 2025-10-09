@@ -40,6 +40,8 @@ TString TDeviceOperationTracker::ToString(ERequestType type)
             return "Write";
         case ERequestType::Zero:
             return "Zero";
+        case ERequestType::Checksum:
+            return "Checksum";
     }
     return "Unknown";
 }
@@ -87,7 +89,8 @@ TDeviceOperationTracker::TDeviceOperationTracker(
     const TVector<ERequestType> requestTypes = {
         ERequestType::Read,
         ERequestType::Write,
-        ERequestType::Zero};
+        ERequestType::Zero,
+        ERequestType::Checksum};
 
     for (const auto& requestType: requestTypes) {
         const TString requestTypeStr = ToString(requestType);
@@ -222,7 +225,8 @@ void TDeviceOperationTracker::UpdateDevices(
     const TVector<ERequestType> requestTypes = {
         ERequestType::Read,
         ERequestType::Write,
-        ERequestType::Zero};
+        ERequestType::Zero,
+        ERequestType::Checksum};
 
     for (const auto& requestType: requestTypes) {
         const TString requestTypeStr = ToString(requestType);

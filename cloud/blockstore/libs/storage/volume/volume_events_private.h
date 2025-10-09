@@ -491,7 +491,8 @@ struct TEvVolumePrivate
         {
             Read,
             Write,
-            Zero
+            Zero,
+            Checksum
         };
 
         TString DeviceUUID;
