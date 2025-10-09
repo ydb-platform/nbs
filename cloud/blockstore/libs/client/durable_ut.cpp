@@ -64,6 +64,229 @@ struct TPostponedTimeTestService
 
 Y_UNIT_TEST_SUITE(TDurableClientTest)
 {
+    Y_UNIT_TEST(WellKnownCodesEnumShouldMatch)
+    {
+        UNIT_ASSERT_EQUAL(
+            S_OK,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::S_OK));
+        UNIT_ASSERT_EQUAL(
+            S_FALSE,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::S_FALSE));
+        UNIT_ASSERT_EQUAL(
+            S_ALREADY,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::S_ALREADY));
+        UNIT_ASSERT_EQUAL(
+            E_FAIL,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FAIL));
+        UNIT_ASSERT_EQUAL(
+            E_ARGUMENT,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_ARGUMENT));
+        UNIT_ASSERT_EQUAL(
+            E_REJECTED,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_REJECTED));
+        UNIT_ASSERT_EQUAL(
+            E_INVALID_STATE,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_INVALID_STATE));
+        UNIT_ASSERT_EQUAL(
+            E_TIMEOUT,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_TIMEOUT));
+        UNIT_ASSERT_EQUAL(
+            E_NOT_FOUND,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_NOT_FOUND));
+        UNIT_ASSERT_EQUAL(
+            E_UNAUTHORIZED,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_UNAUTHORIZED));
+        UNIT_ASSERT_EQUAL(
+            E_NOT_IMPLEMENTED,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_NOT_IMPLEMENTED));
+        UNIT_ASSERT_EQUAL(
+            E_ABORTED,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_ABORTED));
+        UNIT_ASSERT_EQUAL(
+            E_TRY_AGAIN,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_TRY_AGAIN));
+        UNIT_ASSERT_EQUAL(
+            E_IO,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_IO));
+        UNIT_ASSERT_EQUAL(
+            E_CANCELLED,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_CANCELLED));
+        UNIT_ASSERT_EQUAL(
+            E_IO_SILENT,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_IO_SILENT));
+        UNIT_ASSERT_EQUAL(
+            E_RETRY_TIMEOUT,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_RETRY_TIMEOUT));
+        UNIT_ASSERT_EQUAL(
+            E_PRECONDITION_FAILED,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_PRECONDITION_FAILED));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_CANCELLED,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_GRPC_CANCELLED));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_UNKNOWN,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_GRPC_UNKNOWN));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_INVALID_ARGUMENT,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_GRPC_INVALID_ARGUMENT));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_DEADLINE_EXCEEDED,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_GRPC_DEADLINE_EXCEEDED));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_NOT_FOUND,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_GRPC_NOT_FOUND));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_ALREADY_EXISTS,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_GRPC_ALREADY_EXISTS));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_PERMISSION_DENIED,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_GRPC_PERMISSION_DENIED));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_RESOURCE_EXHAUSTED,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_GRPC_RESOURCE_EXHAUSTED));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_FAILED_PRECONDITION,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_GRPC_FAILED_PRECONDITION));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_ABORTED,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_GRPC_ABORTED));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_OUT_OF_RANGE,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_GRPC_OUT_OF_RANGE));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_UNIMPLEMENTED,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_GRPC_UNIMPLEMENTED));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_INTERNAL,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_GRPC_INTERNAL));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_UNAVAILABLE,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_GRPC_UNAVAILABLE));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_DATA_LOSS,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_GRPC_DATA_LOSS));
+        UNIT_ASSERT_EQUAL(
+            E_GRPC_UNAUTHENTICATED,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_GRPC_UNAUTHENTICATED));
+        UNIT_ASSERT_EQUAL(
+            E_BS_INVALID_SESSION,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_BS_INVALID_SESSION));
+        UNIT_ASSERT_EQUAL(
+            E_BS_OUT_OF_SPACE,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_BS_OUT_OF_SPACE));
+        UNIT_ASSERT_EQUAL(
+            E_BS_THROTTLED,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_BS_THROTTLED));
+        UNIT_ASSERT_EQUAL(
+            E_BS_RESOURCE_EXHAUSTED,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_BS_RESOURCE_EXHAUSTED));
+        UNIT_ASSERT_EQUAL(
+            E_BS_DISK_ALLOCATION_FAILED,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_BS_DISK_ALLOCATION_FAILED));
+        UNIT_ASSERT_EQUAL(
+            E_BS_MOUNT_CONFLICT,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_BS_MOUNT_CONFLICT));
+        UNIT_ASSERT_EQUAL(
+            E_FS_IO,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_IO));
+        UNIT_ASSERT_EQUAL(
+            E_FS_PERM,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_PERM));
+        UNIT_ASSERT_EQUAL(
+            E_FS_NOENT,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_NOENT));
+        UNIT_ASSERT_EQUAL(
+            E_FS_NXIO,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_NXIO));
+        UNIT_ASSERT_EQUAL(
+            E_FS_ACCESS,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_ACCESS));
+        UNIT_ASSERT_EQUAL(
+            E_FS_EXIST,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_EXIST));
+        UNIT_ASSERT_EQUAL(
+            E_FS_XDEV,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_XDEV));
+        UNIT_ASSERT_EQUAL(
+            E_FS_NODEV,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_NODEV));
+        UNIT_ASSERT_EQUAL(
+            E_FS_NOTDIR,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_NOTDIR));
+        UNIT_ASSERT_EQUAL(
+            E_FS_ISDIR,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_ISDIR));
+        UNIT_ASSERT_EQUAL(
+            E_FS_INVAL,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_INVAL));
+        UNIT_ASSERT_EQUAL(
+            E_FS_FBIG,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_FBIG));
+        UNIT_ASSERT_EQUAL(
+            E_FS_NOSPC,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_NOSPC));
+        UNIT_ASSERT_EQUAL(
+            E_FS_ROFS,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_ROFS));
+        UNIT_ASSERT_EQUAL(
+            E_FS_MLINK,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_MLINK));
+        UNIT_ASSERT_EQUAL(
+            E_FS_NAMETOOLONG,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_NAMETOOLONG));
+        UNIT_ASSERT_EQUAL(
+            E_FS_NOTEMPTY,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_NOTEMPTY));
+        UNIT_ASSERT_EQUAL(
+            E_FS_DQUOT,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_DQUOT));
+        UNIT_ASSERT_EQUAL(
+            E_FS_STALE,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_STALE));
+        UNIT_ASSERT_EQUAL(
+            E_FS_REMOTE,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_REMOTE));
+        UNIT_ASSERT_EQUAL(
+            E_FS_BADHANDLE,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_BADHANDLE));
+        UNIT_ASSERT_EQUAL(
+            E_FS_NOTSUPP,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_NOTSUPP));
+        UNIT_ASSERT_EQUAL(
+            E_FS_WOULDBLOCK,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_WOULDBLOCK));
+        UNIT_ASSERT_EQUAL(
+            E_FS_NOLCK,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_NOLCK));
+        UNIT_ASSERT_EQUAL(
+            E_FS_INVALID_SESSION,
+            static_cast<ui32>(
+                NProto::EWellKnownErrorCode::E_FS_INVALID_SESSION));
+        UNIT_ASSERT_EQUAL(
+            E_FS_OUT_OF_SPACE,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_OUT_OF_SPACE));
+        UNIT_ASSERT_EQUAL(
+            E_FS_THROTTLED,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_FS_THROTTLED));
+        UNIT_ASSERT_EQUAL(
+            E_RDMA_UNAVAILABLE,
+            static_cast<ui32>(NProto::EWellKnownErrorCode::E_RDMA_UNAVAILABLE));
+    }
+
     Y_UNIT_TEST(ShouldRetryUndeliveredRequests)
     {
         auto client = std::make_shared<TTestService>();
@@ -93,6 +316,199 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
         Y_SCOPE_EXIT(=) {
+            scheduler->Stop();
+        };
+
+        auto requestStats = CreateRequestStatsStub();
+        auto volumeStats = CreateVolumeStatsStub();
+
+        auto logging = CreateLoggingService("console");
+
+        auto durable = CreateDurableClient(
+            config,
+            client,
+            std::move(policy),
+            std::move(logging),
+            std::move(timer),
+            std::move(scheduler),
+            std::move(requestStats),
+            std::move(volumeStats));
+
+        auto future = durable->Ping(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TPingRequest>());
+
+        const auto& response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(!HasError(response));
+
+        UNIT_ASSERT_EQUAL(requestsCount, maxRequestsCount);
+    }
+
+    Y_UNIT_TEST(ShouldUseNonRetriableListEnabledAndNotRetryListed)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        static constexpr size_t maxRequestsCount = 3;
+        size_t requestsCount = 0;
+
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+
+            NProto::TPingResponse response;
+
+            if (++requestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_FAIL);
+            }
+
+            return MakeFuture(std::move(response));
+        };
+
+        auto protoConf = NProto::TClientAppConfig{};
+        protoConf.MutableClientConfig()->SetEnableListBasedRetryRules(true);
+        protoConf.MutableClientConfig()->AddNonRetriableErrorsForReliableMedia(
+            NProto::EWellKnownErrorCode::E_FAIL);
+
+        auto config = std::make_shared<TClientAppConfig>(protoConf);
+
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
+
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+        Y_SCOPE_EXIT(=)
+        {
+            scheduler->Stop();
+        };
+
+        auto requestStats = CreateRequestStatsStub();
+        auto volumeStats = CreateVolumeStatsStub();
+
+        auto logging = CreateLoggingService("console");
+
+        auto durable = CreateDurableClient(
+            config,
+            client,
+            std::move(policy),
+            std::move(logging),
+            std::move(timer),
+            std::move(scheduler),
+            std::move(requestStats),
+            std::move(volumeStats));
+
+        auto future = durable->Ping(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TPingRequest>());
+
+        const auto& response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(HasError(response));
+        UNIT_ASSERT_EQUAL(response.GetError().GetCode(), E_FAIL);
+
+        UNIT_ASSERT_EQUAL(requestsCount, 1);
+    }
+
+    Y_UNIT_TEST(ShouldUseNonRetriableListWhenEnabledAndNotRetryNeverRetriable)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        static constexpr size_t maxRequestsCount = 3;
+        size_t requestsCount = 0;
+        EWellKnownResultCodes errorToReturn = S_OK;
+
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+
+            NProto::TPingResponse response;
+
+            if (++requestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(errorToReturn);
+            }
+
+            return MakeFuture(std::move(response));
+        };
+
+        auto protoConf = NProto::TClientAppConfig{};
+        protoConf.MutableClientConfig()->SetEnableListBasedRetryRules(true);
+
+        auto config = std::make_shared<TClientAppConfig>(protoConf);
+
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
+
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+        Y_SCOPE_EXIT(=)
+        {
+            scheduler->Stop();
+        };
+
+        auto requestStats = CreateRequestStatsStub();
+        auto volumeStats = CreateVolumeStatsStub();
+
+        auto logging = CreateLoggingService("console");
+
+        auto durable = CreateDurableClient(
+            config,
+            client,
+            std::move(policy),
+            std::move(logging),
+            std::move(timer),
+            std::move(scheduler),
+            std::move(requestStats),
+            std::move(volumeStats));
+
+        for (const auto errorCode: NeverRetriableErrors) {
+            requestsCount = 0;
+            errorToReturn = errorCode;
+
+            auto future = durable->Ping(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TPingRequest>());
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+
+            UNIT_ASSERT_EQUAL(response.GetError().GetCode(), errorCode);
+            UNIT_ASSERT_EQUAL(requestsCount, 1);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseNonRetriableListWhenEnabledAndRetryNotListed)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        static constexpr size_t maxRequestsCount = 3;
+        size_t requestsCount = 0;
+
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+
+            NProto::TPingResponse response;
+
+            if (++requestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_FAIL);
+            }
+
+            return MakeFuture(std::move(response));
+        };
+
+        auto protoConf = NProto::TClientAppConfig{};
+        protoConf.MutableClientConfig()->SetEnableListBasedRetryRules(true);
+        protoConf.MutableClientConfig()->AddNonRetriableErrorsForReliableMedia(
+            NProto::EWellKnownErrorCode::E_REJECTED);
+
+        auto config = std::make_shared<TClientAppConfig>(protoConf);
+
+        auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
+
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
         };
 
