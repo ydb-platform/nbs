@@ -33,9 +33,10 @@ func (s *cellSelector) SelectCell(
 	ctx context.Context,
 	zoneID string,
 	folderID string,
+	requireExactCellIdMatch bool,
 ) (nbs.Client, error) {
 
-	cellID, err := s.selectCell(zoneID, folderID)
+	cellID, err := s.selectCell(zoneID, folderID, requireExactCellIdMatch)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +81,7 @@ func (s *cellSelector) isCell(zoneID string) bool {
 func (s *cellSelector) selectCell(
 	zoneID string,
 	folderID string,
+	requireExactCellIdMatch bool,
 ) (string, error) {
 
 	if s.config == nil {
@@ -101,6 +103,8 @@ func (s *cellSelector) selectCell(
 			"incorrect zone ID provided: %q",
 			zoneID,
 		)
+	} else if requireExactCellIdMatch {
+		return zoneID, nil
 	}
 
 	return cells[0], nil

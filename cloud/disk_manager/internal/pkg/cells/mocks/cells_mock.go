@@ -23,9 +23,10 @@ func (s *CellSelectorMock) SelectCell(
 	ctx context.Context,
 	zoneID string,
 	folderID string,
+	requireExactCellIdMatch bool,
 ) (nbs.Client, error) {
 
-	args := s.Called(ctx, zoneID, folderID)
+	args := s.Called(ctx, zoneID, folderID, requireExactCellIdMatch)
 	return args.Get(0).(nbs.Client), args.Error(1)
 }
 

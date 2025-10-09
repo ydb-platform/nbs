@@ -16,6 +16,7 @@ type CellSelector interface {
 		ctx context.Context,
 		zoneID string,
 		folderID string,
+		requireExactCellIdMatch bool,
 	) (nbs.Client, error)
 
 	IsCellOfZone(cellID string, zoneID string) bool
