@@ -228,28 +228,72 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
             TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
     }
 
-    auto b = std::move(*request.MutableBuffer());
-    auto offset = request.GetBufferOffset();
-    TArrayRef<char> data(b.begin() + offset, b.vend());
     auto promise = NewPromise<NProto::TWriteDataResponse>();
-    FileIOService->AsyncWrite(*handle, request.GetOffset(), data)
-        .Subscribe(
-            [&logRequest, b = std::move(b), promise](
-                const TFuture<ui32>& f) mutable
-            {
-                NProto::TWriteDataResponse response;
-                try {
-                    f.GetValue();
-                } catch (const TServiceError& e) {
-                    *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
-                        ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
-                } catch (...) {
-                    *response.MutableError() =
-                        MakeError(E_IO, CurrentExceptionMessage());
-                }
-                FinalizeProfileLogRequestInfo(logRequest, response);
-                promise.SetValue(std::move(response));
-            });
+
+    if (request.GetIovecs().empty()) {
+        auto b = std::move(*request.MutableBuffer());
+        auto offset = request.GetBufferOffset();
+        TArrayRef<char> data(b.begin() + offset, b.vend());
+
+        FileIOService->AsyncWrite(*handle, request.GetOffset(), data)
+            .Subscribe(
+                [&logRequest, b = std::move(b), promise](
+                    const TFuture<ui32>& f) mutable
+                {
+                    NProto::TWriteDataResponse response;
+                    try {
+                        f.GetValue();
+                    } catch (const TServiceError& e) {
+                        *response.MutableError() = MakeError(
+                            MAKE_FILESTORE_ERROR(ErrnoToFileStoreError(
+                                STATUS_FROM_CODE(e.GetCode()))));
+                    } catch (...) {
+                        *response.MutableError() =
+                            MakeError(E_IO, CurrentExceptionMessage());
+                    }
+                    FinalizeProfileLogRequestInfo(logRequest, response);
+                    promise.SetValue(std::move(response));
+                });
+    } else {
+        TVector<TArrayRef<const char>> data;
+        data.reserve(request.GetIovecs().size());
+        ui64 bytesToWrite = 0;
+        for (const auto& iovec: request.GetIovecs()) {
+            data.emplace_back(
+                reinterpret_cast<const char*>(iovec.GetBase()),
+                iovec.GetLength());
+            bytesToWrite += iovec.GetLength();
+        }
+        FileIOService->AsyncWriteV(*handle, request.GetOffset(), data)
+            .Subscribe(
+                [this,
+                 &logRequest,
+                 promise,
+                 bytesExpected =
+                     bytesToWrite](const TFuture<ui32>& f) mutable
+                {
+                    NProto::TWriteDataLocalResponse response;
+                    try {
+                        auto bytesWritten = f.GetValue();
+                        if (bytesWritten != bytesExpected) {
+                            STORAGE_ERROR(
+                                "WriteData bytesWritten="
+                                << bytesWritten
+                                << " != bytesExpected=" << bytesExpected);
+                            *response.MutableError() = MakeError(E_REJECTED);
+                        }
+                    } catch (const TServiceError& e) {
+                        *response.MutableError() = MakeError(
+                            MAKE_FILESTORE_ERROR(ErrnoToFileStoreError(
+                                STATUS_FROM_CODE(e.GetCode()))));
+                    } catch (...) {
+                        *response.MutableError() =
+                            MakeError(E_IO, CurrentExceptionMessage());
+                    }
+                    FinalizeProfileLogRequestInfo(logRequest, response);
+                    promise.SetValue(std::move(response));
+                });
+    }
 
     return promise;
 }
