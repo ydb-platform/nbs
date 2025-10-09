@@ -34,10 +34,12 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
         ui32 blockSize,
         bool assignVolumeRequestId,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -63,10 +65,12 @@ TDiskAgentZeroActor::TDiskAgentZeroActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
         ui32 blockSize,
         bool assignVolumeRequestId,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId)
     :TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -74,8 +78,10 @@ TDiskAgentZeroActor::TDiskAgentZeroActor(
           std::move(timeoutPolicy),
           std::move(deviceRequests),
           std::move(partConfig),
+          volumeActorId,
           part,
-          std::move(logTitle))
+          std::move(logTitle),
+          deviceOperationId)
     , Request(std::move(request))
     , BlockSize(blockSize)
     , AssignVolumeRequestId(assignVolumeRequestId)
@@ -97,6 +103,15 @@ void TDiskAgentZeroActor::SendRequest(const TActorContext& ctx)
                 Request.GetHeaders().GetVolumeRequestId());
             request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
         }
+
+        auto latencyStartEvent = std::make_unique<
+            TEvVolumePrivate::TEvDeviceOperationStarted>(
+            TEvVolumePrivate::TDeviceOperationStarted(
+                deviceRequest.Device.GetDeviceUUID(),
+                TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Zero,
+                deviceRequest.Device.GetAgentId(),
+                DeviceOperationId + cookie));
+        ctx.Send(VolumeActorId, latencyStartEvent.release());
 
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
@@ -155,6 +170,12 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
         HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
     }
+
+    auto latencyFinishEvent =
+        std::make_unique<TEvVolumePrivate::TEvDeviceOperationFinished>(
+            TEvVolumePrivate::TDeviceOperationFinished(
+                DeviceOperationId + ev->Cookie));
+    ctx.Send(VolumeActorId, latencyFinishEvent.release());
 
     if (++RequestsCompleted < DeviceRequests.size()) {
         return;
@@ -222,6 +243,9 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         return;
     }
 
+    ui64 operationId = DeviceOperationId;
+    DeviceOperationId += deviceRequests.size();
+
     auto actorId = NCloud::Register<TDiskAgentZeroActor>(
         ctx,
         requestInfo,
@@ -229,10 +253,12 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
+        PartConfig->GetParentActorId(), // VolumeActorId
         SelfId(),
         PartConfig->GetBlockSize(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
-        LogTitle.GetChild(GetCycleCount()));
+        LogTitle.GetChild(GetCycleCount()),
+        operationId);
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }

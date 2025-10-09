@@ -25,8 +25,10 @@ protected:
     const TRequestInfoPtr RequestInfo;
     const TVector<TDeviceRequest> DeviceRequests;
     const TNonreplicatedPartitionConfigPtr PartConfig;
+    const NActors::TActorId VolumeActorId;
     const NActors::TActorId Part;
     TChildLogTitle LogTitle;
+    ui64 DeviceOperationId;
 
 private:
     const TString RequestName;
@@ -43,8 +45,10 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        NActors::TActorId volumeActorId,
         const NActors::TActorId& part,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
