@@ -23,7 +23,7 @@ ALIGNED_TESTS = fio.generate_tests(
     offset=0,
     sizes=SIZES,
     iodepths=[1],
-    numjobs=[1],
+    numjobs=[4],
     scenarios=SCENARIOS)
 
 
