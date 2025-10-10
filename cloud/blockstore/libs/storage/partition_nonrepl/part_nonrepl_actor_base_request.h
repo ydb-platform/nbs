@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -24,8 +25,10 @@ protected:
     const TRequestInfoPtr RequestInfo;
     const TVector<TDeviceRequest> DeviceRequests;
     const TNonreplicatedPartitionConfigPtr PartConfig;
+    const NActors::TActorId VolumeActorId;
     const NActors::TActorId Part;
     TChildLogTitle LogTitle;
+    ui64 DeviceOperationId;
 
 private:
     const TString RequestName;
@@ -42,8 +45,10 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        NActors::TActorId volumeActorId,
         const NActors::TActorId& part,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

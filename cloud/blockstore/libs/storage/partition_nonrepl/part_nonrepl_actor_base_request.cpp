@@ -24,13 +24,17 @@ TDiskAgentBaseRequestActor::TDiskAgentBaseRequestActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId)
     : RequestInfo(std::move(requestInfo))
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
+    , VolumeActorId(volumeActorId)
     , Part(part)
     , LogTitle(std::move(logTitle))
+    , DeviceOperationId(deviceOperationId)
     , RequestName(std::move(requestName))
     , RequestId(requestId)
     , TimeoutPolicy(std::move(timeoutPolicy))
