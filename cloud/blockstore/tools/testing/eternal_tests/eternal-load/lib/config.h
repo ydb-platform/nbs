@@ -31,7 +31,7 @@ struct TCreateTestConfigArguments
     ui16 WriteRate = 0;
     ui64 RequestBlockCount = 0;
     ui64 WriteParts = 0;
-    TString AlternatingPhase;
+    TString AlternatingPhase = "";
     ui64 MaxWriteRequestCount = 0;
 
     // Arguments for unaligned test scenario
