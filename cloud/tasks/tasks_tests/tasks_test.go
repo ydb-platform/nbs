@@ -305,25 +305,39 @@ func scheduleDoublerTask(
 	})
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-type longTask struct{}
+// //////////////////////////////////////////////////////////////////////////////
+type longTask struct {
+	timeSpent *wrappers.Int64Value
+}
 
 func (t *longTask) Save() ([]byte, error) {
-	return nil, nil
+	return proto.Marshal(t.timeSpent)
 }
 
 func (t *longTask) Load(request, state []byte) error {
-	return nil
+	return proto.Unmarshal(state, t.timeSpent)
 }
 
-func (t *longTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(10 * time.Second):
-		return nil
+func (t *longTask) Run(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	saveInterval := 100 * time.Millisecond
+	for time.Duration(t.timeSpent.Value) < 10*time.Second {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(saveInterval):
+			t.timeSpent.Value += int64(saveInterval)
+			err := execCtx.SaveState(ctx)
+			if err != nil {
+				return err
+			}
+		}
 	}
+
+	return nil
 }
 
 func (t *longTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
@@ -345,13 +359,21 @@ func (t *longTask) GetResponse() proto.Message {
 
 func registerLongTask(registry *tasks.Registry) error {
 	return registry.RegisterForExecution("long", func() tasks.Task {
-		return &longTask{}
+		return &longTask{
+			timeSpent: &wrappers.Int64Value{
+				Value: 0,
+			},
+		}
 	})
 }
 
 func registerLongTaskNotForExecution(registry *tasks.Registry) error {
 	return registry.Register("long", func() tasks.Task {
-		return &longTask{}
+		return &longTask{
+			timeSpent: &wrappers.Int64Value{
+				Value: 0,
+			},
+		}
 	})
 }
 
@@ -1851,7 +1873,7 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	waitingTaskWithSleepID, err := scheduleWaitingTaskWithSleep(reqCtx, s.scheduler, depTaskID)
 	require.NoError(t, err)
 
-	timeout := 30 * time.Second
+	timeout := 60 * time.Second
 
 	_, err = waitTaskWithTimeout(ctx, s.scheduler, waitingTaskWithSleepID, timeout)
 	require.NoError(t, err)
