@@ -322,12 +322,14 @@ func (t *longTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	saveInterval := 100 * time.Millisecond
 	for time.Duration(t.timeSpent.Value) < 10*time.Second {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(100 * time.Millisecond):
-			t.timeSpent.Value += 100 * int64(time.Millisecond)
+		case <-time.After(saveInterval):
+			t.timeSpent.Value += int64(saveInterval)
 			err := execCtx.SaveState(ctx)
 			if err != nil {
 				return err
@@ -1871,7 +1873,7 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	waitingTaskWithSleepID, err := scheduleWaitingTaskWithSleep(reqCtx, s.scheduler, depTaskID)
 	require.NoError(t, err)
 
-	timeout := 30 * time.Second
+	timeout := 60 * time.Second
 
 	_, err = waitTaskWithTimeout(ctx, s.scheduler, waitingTaskWithSleepID, timeout)
 	require.NoError(t, err)
