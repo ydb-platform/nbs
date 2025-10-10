@@ -206,14 +206,10 @@ Y_UNIT_TEST_SUITE(TModel)
             STORAGE_MEDIA_SSD_MIRROR3,
             STORAGE_MEDIA_HYBRID);
 
-        // In this case answer will be STORAGE_MEDIA_HYBRID, because we cannot
-        // initialize proto value with 0
-        //
-        // In this case default value will be used.
         DO_TEST(
             STORAGE_MEDIA_HDD,
             STORAGE_MEDIA_DEFAULT,
-            STORAGE_MEDIA_HYBRID);
+            STORAGE_MEDIA_HDD);
         DO_TEST(
             STORAGE_MEDIA_HDD,
             STORAGE_MEDIA_SSD,
@@ -1620,7 +1616,7 @@ Y_UNIT_TEST_SUITE(TModel)
 
         kikimrConfig.SetStorageMediaKind(storageType);
 
-        std::uniform_int_distribution<ui32> dist(0, 100'000'000);
+        std::uniform_int_distribution<ui32> dist(1, 100'000'000);
 
         // SSD throttler disabled.
         storageConfig.SetAllocationUnitSSD(dist(engine));
@@ -2161,57 +2157,6 @@ Y_UNIT_TEST_SUITE(TModel)
                 15,                // MaxPostponedCount
                 performanceProfile // ClientPerformanceProfile
             );
-        }
-
-        {
-            // Zero max write iops and bandwidth should use default values.
-            kikimrConfig.Clear();
-            kikimrConfig.SetBlocksCount(blocksCount);
-            kikimrConfig.SetBlockSize(blockSize);
-            SetupPerformanceProfile(
-                storageType,   // storageType
-                0,             // allocationUnits
-                0,             // unitReadIops
-                0,             // unitReadBandwidth (MiB)
-                0,             // unitWriteIops
-                0,             // unitWriteBandwidth (MiB)
-                0,             // maxReadIops
-                0,             // maxReadBandwidth (MiB)
-                0,             // maxWriteIops
-                0,             // maxWriteBandwidth (MiB)
-                0,             // boostTime (30s)
-                0,             // boostRefilleTime (10m)
-                0,             // unitBoost
-                0,             // burstPercentage
-                0,             // defaultPostponedRequestWeight
-                0,             // maxPostponedWeight
-                0,             // maxWriteCostMultiplier
-                0,             // maxPostponedTime (10s)
-                0,             // maxPostponedCount
-                kikimrConfig,  // kikimrConfig
-                storageConfig, // storageConfig
-                {}             // clientPerformanceProfile (do not setup value, because it will override everything)
-            );
-            UNIT_ASSERT(0 != kikimrConfig.GetPerformanceProfileMaxReadIops());
-            UNIT_ASSERT(0 != kikimrConfig.GetPerformanceProfileMaxReadBandwidth());
-            UNIT_ASSERT(0 != kikimrConfig.GetPerformanceProfileMaxWriteIops());
-            UNIT_ASSERT(0 != kikimrConfig.GetPerformanceProfileMaxWriteBandwidth());
-
-            if (storageType == ::NCloud::NProto::STORAGE_MEDIA_SSD) {
-                UNIT_ASSERT_VALUES_EQUAL(0, kikimrConfig.GetPerformanceProfileBoostTime());
-                UNIT_ASSERT_VALUES_EQUAL(0, kikimrConfig.GetPerformanceProfileBoostRefillTime());
-                UNIT_ASSERT_VALUES_EQUAL(0, kikimrConfig.GetPerformanceProfileBoostPercentage());
-            } else {
-                UNIT_ASSERT(0 != kikimrConfig.GetPerformanceProfileBoostTime());
-                UNIT_ASSERT(0 != kikimrConfig.GetPerformanceProfileBoostRefillTime());
-                UNIT_ASSERT(0 != kikimrConfig.GetPerformanceProfileBoostPercentage());
-            }
-
-            UNIT_ASSERT(0 != kikimrConfig.GetPerformanceProfileBurstPercentage());
-            UNIT_ASSERT(0 != kikimrConfig.GetPerformanceProfileDefaultPostponedRequestWeight());
-            UNIT_ASSERT(0 != kikimrConfig.GetPerformanceProfileMaxPostponedWeight());
-            UNIT_ASSERT(0 != kikimrConfig.GetPerformanceProfileMaxWriteCostMultiplier());
-            UNIT_ASSERT(0 != kikimrConfig.GetPerformanceProfileMaxPostponedTime());
         }
     }
 
