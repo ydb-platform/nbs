@@ -696,7 +696,8 @@ void TUnalignedTestScenario::ValidateReadDataRegion(
         }
 
         TStringBuilder sb;
-        sb << "Read validation failed at offset " << offsetInRegion + offset;
+        sb << "Read validation failed\n";
+        sb << "Wrong data at offset " << offsetInRegion + offset;
         sb << ", expected one of " << expectedStates.size() << " patterns:";
 
         for (size_t i = 0; i < expectedStates.size(); i++) {
