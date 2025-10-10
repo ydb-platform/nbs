@@ -741,12 +741,16 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             {{ EErrorKind::ErrorFatal, E_REJECTED }});
     }
 
-    if (Options.EnableDataIntegrityClient) {
+    if (Options.EnableDataIntegrityClient ||
+        FindPtr(
+            Options.MediaKindsToValidateDataIntegrity,
+            volume.GetStorageMediaKind()) != nullptr)
+    {
         client = CreateDataIntegrityClient(
             Logging,
             Monitoring,
             std::move(client),
-            volume.GetBlockSize());
+            volume);
     }
 
     auto retryPolicy =
@@ -794,7 +798,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
 
     if (Options.StrictContractValidation &&
         // switching fast path to slow path during migration might lead to
-                                         // validation false positives
+        // validation false positives
         !volume.GetTags().contains(UseFastPathTagName))
     {
         client = CreateValidationClient(
