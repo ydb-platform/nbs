@@ -1,6 +1,7 @@
 #include "write_back_cache_impl.h"
 
 #include "read_write_range_lock.h"
+#include "write_back_cache_stats_processor.h"
 
 #include <cloud/filestore/libs/service/context.h>
 
@@ -19,6 +20,10 @@ namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
 using namespace NThreading;
+
+using EWriteDataRequestState = IWriteBackCacheStats::EWriteDataRequestState;
+using EReadDataRequestCacheState =
+    IWriteBackCacheStats::EReadDataRequestCacheState;
 
 namespace {
 
@@ -70,6 +75,7 @@ struct TPendingReadDataRequest
     TCallContextPtr CallContext;
     std::shared_ptr<NProto::TReadDataRequest> Request;
     TPromise<NProto::TReadDataResponse> Promise;
+    TInstant PendingTime = TInstant::Zero();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -94,6 +100,7 @@ struct TWriteBackCache::TFlushState
     TVector<std::shared_ptr<NProto::TWriteDataRequest>> FailedWriteRequests;
     size_t AffectedWriteDataEntriesCount = 0;
     size_t InFlightWriteRequestsCount = 0;
+    TInstant StartTime = TInstant::Zero();
     bool Executing = false;
 };
 
@@ -291,6 +298,7 @@ private:
     const IFileStorePtr Session;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
+    TStatsProcessor Stats;
     const TFlushConfig FlushConfig;
 
     // All fields below should be protected by this lock
@@ -319,12 +327,14 @@ public:
             IFileStorePtr session,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
+            IWriteBackCacheStatsPtr stats,
             const TString& filePath,
             ui32 capacityBytes,
             TFlushConfig flushConfig)
         : Session(std::move(session))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
+        , Stats(std::move(stats))
         , FlushConfig(flushConfig)
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
@@ -352,9 +362,16 @@ public:
                     CachedEntries.push_back(std::move(entry));
                 } else {
                     auto* nodeState = GetOrCreateNodeState(entry->GetNodeId());
+                    entry->PendingTime = Timer->Now();
+                    Stats.WriteDataRequestEnteredState(
+                        EWriteDataRequestState::Pending);
                     AddCachedEntry(nodeState, std::move(entry));
                 }
             });
+
+        Stats.UpdatePersistentQueueStats(CachedEntriesPersistentQueue);
+        Stats.UpdatePendingQueueStats(PendingEntries);
+        Stats.UpdateCachedQueueStats(CachedEntries);
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -439,7 +456,8 @@ public:
         TPendingReadDataRequest pendingRequest = {
             .CallContext = std::move(callContext),
             .Request = std::move(request),
-            .Promise = NewPromise<NProto::TReadDataResponse>()};
+            .Promise = NewPromise<NProto::TReadDataResponse>(),
+            .PendingTime = Timer->Now()};
 
         auto result = pendingRequest.Promise.GetFuture();
         result.Subscribe(std::move(unlocker));
@@ -483,6 +501,9 @@ public:
                 MakeError(E_ARGUMENT, "WriteData request has zero length");
             return MakeFuture(std::move(response));
         }
+
+        entry->PendingTime = Timer->Now();
+        Stats.WriteDataRequestEnteredState(EWriteDataRequestState::Pending);
 
         auto serializedSize = entry->GetSerializedSize();
 
@@ -679,6 +700,7 @@ private:
         auto& ptr = NodeStates[nodeId];
         if (!ptr) {
             ptr = std::make_unique<TNodeState>(nodeId);
+            Stats.IncrementNodeCount();
         }
         return ptr.get();
     }
@@ -695,6 +717,7 @@ private:
         if (nodeState != nullptr && nodeState->Empty()) {
             auto erased = NodeStates.erase(nodeState->NodeId);
             Y_DEBUG_ABORT_UNLESS(erased);
+            Stats.DecrementNodeCount();
         }
     }
 
@@ -791,6 +814,10 @@ private:
             nodeState->PendingEntriesCount--;
             PendingEntries.pop_front();
         }
+
+        Stats.UpdatePersistentQueueStats(CachedEntriesPersistentQueue);
+        Stats.UpdateCachedQueueStats(CachedEntries);
+        Stats.UpdatePendingQueueStats(PendingEntries);
     }
 
     TVector<TWriteDataEntryPart> CalculateDataPartsToReadAndFillBuffer(
@@ -854,6 +881,8 @@ private:
         state.Length = request.Request->GetLength();
         state.Promise = std::move(request.Promise);
 
+        auto waitDuration = Timer->Now() - request.PendingTime;
+
         state.Parts = CalculateDataPartsToReadAndFillBuffer(
             nodeId,
             state.StartingFromOffset,
@@ -868,9 +897,18 @@ private:
             // Serve request from cache
             NProto::TReadDataResponse response;
             response.SetBuffer(std::move(state.Buffer));
+            Stats.AddReadDataStats(
+                EReadDataRequestCacheState::FullHit,
+                waitDuration);
             state.Promise.SetValue(std::move(response));
             return;
         }
+
+        auto cacheState = state.Parts.empty()
+            ? EReadDataRequestCacheState::Miss
+            : EReadDataRequestCacheState::PartialHit;
+
+        Stats.AddReadDataStats(cacheState, waitDuration);
 
         // Cache is not sufficient to serve the request - read all the data
         // and merge with the cached parts
@@ -975,6 +1013,7 @@ private:
         {
             nodeState->PendingEntriesCount++;
             PendingEntries.push_back(std::move(entry));
+            Stats.UpdatePendingQueueStats(PendingEntries);
             return;
         }
 
@@ -992,11 +1031,15 @@ private:
 
             CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
             AddCachedEntry(nodeState, std::move(entry));
+            Stats.UpdateCachedQueueStats(CachedEntries);
         } else {
             nodeState->PendingEntriesCount++;
             PendingEntries.push_back(std::move(entry));
+            Stats.UpdatePendingQueueStats(PendingEntries);
             ScheduleFlushAll();
         }
+
+        Stats.UpdatePersistentQueueStats(CachedEntriesPersistentQueue);
     }
 
     // |nodeState| becomes unusable if the function returns false
@@ -1015,6 +1058,7 @@ private:
 
         TVector<TWriteDataEntryPart> parts;
         ui64 handle = InvalidHandle;
+        auto now = Timer->Now();
 
         with_lock (Lock) {
             // Flush cannot be scheduled when CachedEntries is empty
@@ -1035,6 +1079,18 @@ private:
                 entryCount = 1;
             }
 
+            for (size_t i = 0; i < entryCount; i++) {
+                auto* entry = nodeState->CachedEntries[i];
+                entry->FlushStartedTime = now;
+
+                Stats.WriteDataRequestExitedState(
+                    EWriteDataRequestState::Wait,
+                    entry->FlushStartedTime - entry->CachedTime);
+
+                Stats.WriteDataRequestEnteredState(
+                    EWriteDataRequestState::Flush);
+            }
+
             parts = TUtil::CalculateDataPartsToFlush(
                 nodeState->CachedEntries,
                 entryCount);
@@ -1043,6 +1099,9 @@ private:
             Y_ABORT_UNLESS(!parts.empty());
 
             nodeState->FlushState.AffectedWriteDataEntriesCount = entryCount;
+            nodeState->FlushState.StartTime = now;
+
+            Stats.FlushStarted(nodeState->FlushState.StartTime);
         }
 
         nodeState->FlushState.WriteRequests =
@@ -1108,8 +1167,10 @@ private:
         state.WriteRequests.clear();
 
         if (state.FailedWriteRequests.empty()) {
+            Stats.FlushCompleted(state.StartTime);
             CompleteFlush(nodeState);
         } else {
+            Stats.FlushFailed();
             ScheduleRetryFlush(nodeState);
         }
     }
@@ -1121,6 +1182,7 @@ private:
         Y_ABORT_UNLESS(nodeState->FlushState.FailedWriteRequests.empty());
         Y_ABORT_UNLESS(nodeState->FlushState.InFlightWriteRequestsCount == 0);
 
+        auto now = Timer->Now();
         auto guard = Guard(Lock);
 
         while (nodeState->FlushState.AffectedWriteDataEntriesCount > 0) {
@@ -1134,15 +1196,33 @@ private:
             }
 
             entry->FinishFlush(PendingOperations);
+            entry->FlushCompletedTime = now;
+
+            Stats.WriteDataRequestExitedState(
+                EWriteDataRequestState::Flush,
+                now - entry->FlushStartedTime);
+
+            Stats.WriteDataRequestEnteredState(
+                EWriteDataRequestState::Evict);
         }
 
         // Clear flushed entries from the persistent queue
-        while (!CachedEntries.empty() && CachedEntries.front()->IsFlushed())
-        {
+        while (!CachedEntries.empty() && CachedEntries.front()->IsFlushed()) {
+            Stats.WriteDataRequestExitedState(
+                EWriteDataRequestState::Evict,
+                now - CachedEntries.front()->FlushCompletedTime);
+
+            Stats.WriteDataRequestExitedState(
+                EWriteDataRequestState::Cached,
+                now - CachedEntries.front()->CachedTime);
+
             CachedEntries.pop_front();
             CachedEntriesPersistentQueue.PopFront();
             PendingOperations.ShouldProcessPendingEntries = true;
         }
+
+        Stats.UpdatePersistentQueueStats(CachedEntriesPersistentQueue);
+        Stats.UpdateCachedQueueStats(CachedEntries);
 
         nodeState->FlushState.Executing = false;
 
@@ -1173,6 +1253,12 @@ private:
         Y_ABORT_UNLESS(nodeState != nullptr);
         Y_ABORT_UNLESS(nodeState->NodeId == entry->GetNodeId());
 
+        entry->CachedTime = Timer->Now();
+        Stats.WriteDataRequestExitedState(EWriteDataRequestState::Pending,
+            entry->CachedTime - entry->PendingTime);
+        Stats.WriteDataRequestEnteredState(EWriteDataRequestState::Cached);
+        Stats.WriteDataRequestEnteredState(EWriteDataRequestState::Wait);
+
         nodeState->CachedEntryIntervalMap.Add(entry.get());
         nodeState->CachedEntries.push_back(entry.get());
         NodesWithNewCachedEntries.insert(nodeState->NodeId);
@@ -1200,6 +1286,7 @@ TWriteBackCache::TWriteBackCache(
         IFileStorePtr session,
         ISchedulerPtr scheduler,
         ITimerPtr timer,
+        IWriteBackCacheStatsPtr stats,
         const TString& filePath,
         ui32 capacityBytes,
         TDuration automaticFlushPeriod,
@@ -1212,6 +1299,7 @@ TWriteBackCache::TWriteBackCache(
             std::move(session),
             std::move(scheduler),
             std::move(timer),
+            std::move(stats),
             filePath,
             capacityBytes,
             {.AutomaticFlushPeriod = automaticFlushPeriod,

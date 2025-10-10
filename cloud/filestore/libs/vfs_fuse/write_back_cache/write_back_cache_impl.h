@@ -6,6 +6,8 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 
+#include <util/datetime/base.h>
+
 #include <util/generic/intrlist.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
@@ -57,6 +59,11 @@ private:
     EWriteDataEntryStatus Status = EWriteDataEntryStatus::Corrupted;
 
 public:
+    TInstant PendingTime = TInstant::Zero();
+    TInstant CachedTime = TInstant::Zero();
+    TInstant FlushStartedTime = TInstant::Zero();
+    TInstant FlushCompletedTime = TInstant::Zero();
+
     explicit TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
