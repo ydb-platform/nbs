@@ -90,7 +90,7 @@ struct ITestScenario
 {
     virtual ~ITestScenario() = default;
 
-    virtual bool Initialize(TFileHandle& fileHandle)
+    virtual bool Init(TFileHandle& fileHandle)
     {
         Y_UNUSED(fileHandle);
         return true;

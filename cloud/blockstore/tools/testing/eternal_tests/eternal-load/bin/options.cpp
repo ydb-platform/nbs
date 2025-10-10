@@ -14,8 +14,8 @@ const THashMap<TString, ECommand> nameToCommand = {
 };
 
 const THashMap<TString, EScenario> nameToScenario = {
-    {"block", EScenario::Block},
-    {"file", EScenario::File}
+    {"aligned", EScenario::Aligned},
+    {"unaligned", EScenario::Unaligned}
 };
 
 const THashMap<TString, EIoEngine> nameToEngine = {
@@ -82,9 +82,13 @@ void TOptions::Parse(int argc, char** argv)
     opts.AddLongOption(
         "scenario",
         "specify the testing scenario:\n"
-        "- block: use aligned blocks and AIO\n"
-        "- file: unaligned read and writes")
-        | TMapOption(&Scenario, nameToScenario, EScenario::Block);
+        "- aligned: aligned reads and writes\n"
+        "    suitable for testing nbs and nfs\n"
+        "    preferred options: engine=async_io\n"
+        "- unaligned: arbitrary reads and writes\n"
+        "    suitable for testing nfs\n"
+        "    preferred options: engine=sync, no_direct\n")
+        | TMapOption(&Scenario, nameToScenario, EScenario::Aligned);
 
     opts.AddLongOption(
         "engine",

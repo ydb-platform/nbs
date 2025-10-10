@@ -44,7 +44,7 @@ public:
 
         STORAGE_INFO("Reading config");
         TString filePath(argv[1]);
-        auto configHolder = CreateTestConfig(filePath);
+        auto configHolder = LoadTestConfig(filePath);
         --argc;
         ++argv;
 

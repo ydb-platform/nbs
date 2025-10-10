@@ -1,4 +1,4 @@
-#include "file_test_scenario.h"
+#include "unaligned_test_scenario.h"
 
 #include "config.h"
 
@@ -18,86 +18,136 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 DefaultMinReadSize = 4_KB;
-constexpr ui64 DefaultMaxReadSize = 1_MB;
+constexpr ui64 DefaultMinReadByteCount = 4_KB;
+constexpr ui64 DefaultMaxReadByteCount = 1_MB;
 
-constexpr ui64 DefaultMinWriteSize = 4_KB;
-constexpr ui64 DefaultMaxWriteSize = 1_MB;
+constexpr ui64 DefaultMinWriteByteCount = 4_KB;
+constexpr ui64 DefaultMaxWriteByteCount = 1_MB;
 
-constexpr ui64 DefaultMinRegionSize = 3_MB;
-constexpr ui64 DefaultMaxRegionSize = 10_MB;
+constexpr ui64 DefaultMinRegionByteCount = 3_MB;
+constexpr ui64 DefaultMaxRegionByteCount = 10_MB;
 
-constexpr size_t RegionBlockSize = 1_KB;
+constexpr size_t RegionBlockByteCount = 1_KB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
 * Test scenario:
-* - File is split into N non-overlapping regions of various size (about 1-10MiB)
-* - There are K workers that randomly overwrite the regions;
-* - The same workers perform random read (read may overlap several regions);
-* - The beginning of a file contains the metadata table that is updated on each
-*   write and is periodically checked.
+*
+* File is split into N non-overlapping regions of various size, each region
+* is at least |MinRegionByteCount| bytes and at most |MaxRegionByteCount| bytes.
+*
+* |IoDepth| workers run concurrently. Each worker performs read and write
+* operations in an infinite cycle. The ratio between read and write operations
+* is determined by |WriteOperationPercentage| parameter.
+*
+* Write operation:
+* - A worker randomly selects a region that is not currently being written;
+* - The region is locked by the worker for writing;
+* - The worker updates the region metadata: new sequence number, write time;
+* - The worker generates new data for the region and writes it using a series
+*   of consecutive write requests of various size (from |MinWriteByteCount| to
+*   |MaxWriteByteCount|);
+* - The worker updates the region metadata: current state = new state;
+* - The region is unlocked.
+*
+* Read operation:
+* - A worker selects a random offset and length (from |MinReadByteCount| to
+*   |MaxReadByteCount|) within the data area of the file (may overlap several
+*   regions);
+* - The worker reads the data using a single read request;
+* - The worker checks the data integrity:
+*   - For each region that was fully or partially read, the worker checks the
+*     region state before and after the read;
+*   - If the region state did not change during the read, the data is verified
+*     against the expected data pattern;
+*   - If the region state changed during the read, but the worker knows all
+*     intermediate states (i.e. the region was not written by another worker
+*     during the read), the data is verified against all known patterns;
+*   - Otherwise, the data is not verified.
+*
+* Data:
+* - Each region is split into blocks of size |RegionBlockByteCount|, each filled
+*   with a generated pattern,
+* - The values of TRegionState and block offset are used as a seed for the
+*   pattern generation.
 */
 
 struct Y_PACKED TFileHeader
 {
-    ui64 Signature = 0;
+    ui64 Magic = 0;
     ui64 RegionCount = 0;
     ui32 Crc32 = 0;
 
-    // This is used as a marker that a header is properly initialized
-    static constexpr ui64 ExpectedSignature = 0x733c1dfaa5d2a452;
+    // This is used as a marker that the header is properly initialized
+    static constexpr ui64 ExpectedMagic = 0x733c1dfaa5d2a452;
 };
 
+// Defines the expected content in the region
 struct Y_PACKED TRegionState
 {
+    // Sequence number, atomically incremented on each write
+    // The value is reset on test start - writes from different test runs are
+    // distinguished by TestStartTime
     ui64 SeqNum = 0;
     ui64 TestStartTime = 0;
-    ui64 WriteTime = 0;
+    ui64 LastWriteTime = 0;
 
     bool operator==(const TRegionState& rhs) const
     {
         return SeqNum == rhs.SeqNum && TestStartTime == rhs.TestStartTime &&
-               WriteTime == rhs.WriteTime;
+               LastWriteTime == rhs.LastWriteTime;
     }
 };
 
 struct Y_PACKED TRegionMetadata
 {
     ui64 Offset = 0;
-    ui64 Size = 0;
+    ui64 ByteCount = 0;
+    // CurrentState != NewStats means that the region is being written
+    // Since write is not performed atomically, the reader may obeserve
+    // a combination of two states
     TRegionState CurrentState = {};
     TRegionState NewState = {};
 
     ui64 End() const
     {
-        return Offset + Size;
+        return Offset + ByteCount;
     }
 };
 
-struct Y_PACKED TRegionData
+// A region is split in blocks of size |RegionBlockByteCount|, each filled with
+// a generated pattern
+struct Y_PACKED TRegionDataBlock
 {
     ui64 SeqNum = 0;
     ui64 Offset = 0;
     ui64 TestStartTime = 0;
     ui64 WriteTime = 0;
-    std::array<ui64, (RegionBlockSize / sizeof(ui64)) - 5> Data = {};
+    // Data is filled with pseudo-random values generated from the above fields
+    // The array size is chosen to make the struct size = |RegionBlockByteCount|
+    // (there are 5 ui64 fields besides Data - need to subtract them)
+    std::array<ui64, (RegionBlockByteCount / sizeof(ui64)) - 5> Data = {};
     ui64 Crc32 = 0;
 
     TStringBuf AsStringBuf(size_t len) const
     {
-        Y_ABORT_UNLESS(len <= sizeof(TRegionData));
+        Y_ABORT_UNLESS(len <= sizeof(TRegionDataBlock));
         return TStringBuf(reinterpret_cast<const char*>(this), len);
     }
 };
 
+static_assert(sizeof(TRegionDataBlock) == RegionBlockByteCount);
+
+// Read operation may overlap several regions
 struct TReadRegionInfo
 {
     size_t Index = 0;
     ui64 OffsetInRegion = 0;
     ui64 OffsetInReadBuffer = 0;
     ui64 Length = 0;
+    // Read and write operations are not mutually exclusive.
+    // The state of the region may change during the read.
     TRegionMetadata BeforeRead;
     TRegionMetadata AfterRead;
 };
@@ -108,23 +158,29 @@ template <class T>
 T RandomNumberFromRange(T min, T max)
 {
     Y_ABORT_UNLESS(min <= max);
-    return RandomNumber(max - min + 1);
+    return RandomNumber(max - min + 1) + min;
 }
 
-ui64 UpdateSeed(ui64 seed, ui64 value)
+ui64 UpdateSeed(ui64 seed, ui64 nonce)
 {
-    return (seed * 397) + (value * 31) + 13;
+    return (seed * 397) + (nonce * 31) + 13;
+}
+
+ui64 NextValue(ui64* seed)
+{
+    *seed = UpdateSeed(*seed, 0);
+    return *seed;
 }
 
 void GenerateRegionData(
     const TRegionState& state,
     ui64 offset,
-    TRegionData* regionData)
+    TRegionDataBlock* regionData)
 {
     regionData->SeqNum = state.SeqNum;
     regionData->Offset = offset;
     regionData->TestStartTime = state.TestStartTime;
-    regionData->WriteTime = state.WriteTime;
+    regionData->WriteTime = state.LastWriteTime;
 
     ui64 seed = UpdateSeed(0, regionData->SeqNum);
     seed = UpdateSeed(seed, regionData->Offset);
@@ -132,16 +188,15 @@ void GenerateRegionData(
     seed = UpdateSeed(seed, regionData->WriteTime);
 
     for (auto& v: regionData->Data) {
-        seed = UpdateSeed(seed, 0);
-        v = seed;
+        v = NextValue(&seed);
     }
 
-    regionData->Crc32 = Crc32c(regionData, offsetof(TRegionData, Crc32));
+    regionData->Crc32 = Crc32c(regionData, offsetof(TRegionDataBlock, Crc32));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileTestScenario: public ITestScenario
+class TUnalignedTestScenario: public ITestScenario
 {
 private:
     class TTestWorker;
@@ -153,22 +208,29 @@ private:
     TMutex Lock;
     TVector<std::unique_ptr<ITestScenarioWorker>> Workers;
     TVector<TRegionMetadata> RegionMetadata;
-    TVector<bool> RegionUseFlags;
+    // Workers are not allowed to concurrently write to the same region.
+    // When a worker starts writing to a region, it sets the corresponding flag
+    // to true. When the write is complete, the flag is reset to false.
+    TVector<bool> RegionWriteFlags;
     std::atomic<ui64> NextSeqNum = 0;
+    // If set, the workers alternate between two phases:
+    // - 1: WriteProbabilityPercentage = |WriteProbabilityPercentage|
+    // - 2: WriteProbabilityPercentage = 100 - |WriteProbabilityPercentage|
+    // The duration of each phase is |PhaseDuration| seconds
     std::optional<double> PhaseDuration;
-    ui32 WriteRate = 0;
+    ui32 WriteProbabilityPercent = 0;
     ui64 FileSize = 0;
     const TInstant TestStartTime;
 
-    ui64 MinReadSize = DefaultMinReadSize;
-    ui64 MaxReadSize = DefaultMaxReadSize;
-    ui64 MinWriteSize = DefaultMinWriteSize;
-    ui64 MaxWriteSize = DefaultMaxWriteSize;
-    ui64 MinRegionSize = DefaultMinRegionSize;
-    ui64 MaxRegionSize = DefaultMaxRegionSize;
+    ui64 MinReadByteCount = DefaultMinReadByteCount;
+    ui64 MaxReadByteCount = DefaultMaxReadByteCount;
+    ui64 MinWriteByteCount = DefaultMinWriteByteCount;
+    ui64 MaxWriteByteCount = DefaultMaxWriteByteCount;
+    ui64 MinRegionByteCount = DefaultMinRegionByteCount;
+    ui64 MaxRegionByteCount = DefaultMaxRegionByteCount;
 
 public:
-    TFileTestScenario(IConfigHolderPtr configHolder, const TLog& log);
+    TUnalignedTestScenario(IConfigHolderPtr configHolder, const TLog& log);
 
     ui32 GetWorkerCount() const override
     {
@@ -181,11 +243,11 @@ public:
     }
 
 private:
-    ui64 GetNextRegionSize(ui64 size) const;
-    bool Format();
-    bool ValidateFormat() const;
-    bool Initialize(TFileHandle& file) override;
-    ui32 GetWriteRate(double secondsSinceTestStart) const;
+    ui64 GetNextRegionByteCount(ui64 remainingFileSize) const;
+    bool GenerateRegionMetadata();
+    bool ValidateRegionMetadata() const;
+    bool Init(TFileHandle& file) override;
+    ui32 GetWriteProbabilityPercent(double secondsSinceTestStart) const;
 
     void Read(IService& service, TVector<char>& readBuffer);
     TVector<TReadRegionInfo> GetReadRegions(ui64 offset, ui64 length) const;
@@ -201,7 +263,7 @@ private:
         ui64 offsetInRegion) const;
     bool ValidateReadDataFragment(
         TStringBuf readBuffer,
-        const TVector<TRegionData>& expectedData) const;
+        const TVector<TRegionDataBlock>& expectedData) const;
 
     size_t WriteBegin(IService& service);
     void WriteBody(IService& service, size_t index, TVector<char>& writeBuffer);
@@ -221,10 +283,10 @@ enum class EOperation
     WriteEnd
 };
 
-class TFileTestScenario::TTestWorker: public ITestScenarioWorker
+class TUnalignedTestScenario::TTestWorker: public ITestScenarioWorker
 {
 private:
-    TFileTestScenario* TestScenario = nullptr;
+    TUnalignedTestScenario* TestScenario = nullptr;
     TVector<char> ReadBuffer;
     TVector<char> WriteBuffer;
     EOperation Operation = EOperation::Idle;
@@ -232,10 +294,10 @@ private:
     TLog Log;
 
 public:
-    TTestWorker(TFileTestScenario* testScenario, const TLog& log)
+    TTestWorker(TUnalignedTestScenario* testScenario, const TLog& log)
         : TestScenario(testScenario)
-        , ReadBuffer(testScenario->MaxReadSize)
-        , WriteBuffer(testScenario->MaxRegionSize)
+        , ReadBuffer(testScenario->MaxReadByteCount)
+        , WriteBuffer(testScenario->MaxRegionByteCount)
         , Log(log)
     {}
 
@@ -244,7 +306,7 @@ public:
         ITestExecutorIOService& service) override
     {
         if (Operation == EOperation::Idle) {
-            auto writeRate = TestScenario->GetWriteRate(secondsSinceTestStart);
+            auto writeRate = TestScenario->GetWriteProbabilityPercent(secondsSinceTestStart);
             if (RandomNumber(100u) >= writeRate) {
                 Operation = EOperation::Read;
             } else {
@@ -285,7 +347,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define HELPER(config, x) \
+#define INIT_CONFIG_PARAMS_HELPER(config, x) \
     if ((config).GetMin##x() > 0) { \
         Min##x = (config).GetMin##x(); \
     } \
@@ -298,7 +360,7 @@ public:
     (config).SetMin##x(Min##x); \
     (config).SetMax##x(Max##x); \
 
-TFileTestScenario::TFileTestScenario(
+TUnalignedTestScenario::TUnalignedTestScenario(
         IConfigHolderPtr configHolder,
         const TLog& log)
     : ConfigHolder(std::move(configHolder))
@@ -315,35 +377,36 @@ TFileTestScenario::TFileTestScenario(
             TDuration::Parse(config.GetAlternatingPhase()).SecondsFloat();
     }
 
-    WriteRate = config.GetWriteRate();
+    WriteProbabilityPercent = config.GetWriteRate();
 
-    auto& fileTestConfig = *config.MutableFileTest();
-    HELPER(fileTestConfig, ReadSize);
-    HELPER(fileTestConfig, WriteSize);
-    HELPER(fileTestConfig, RegionSize);
+    auto& fileTestConfig = *config.MutableUnalignedTest();
+    INIT_CONFIG_PARAMS_HELPER(fileTestConfig, ReadByteCount);
+    INIT_CONFIG_PARAMS_HELPER(fileTestConfig, WriteByteCount);
+    INIT_CONFIG_PARAMS_HELPER(fileTestConfig, RegionByteCount);
 }
 
-#undef HELPER
+#undef INIT_CONFIG_PARAMS_HELPER
 
-ui64 TFileTestScenario::GetNextRegionSize(ui64 size) const
+ui64 TUnalignedTestScenario::GetNextRegionByteCount(
+    ui64 remainingFileSize) const
 {
-    if (size <= MaxRegionSize) {
-        return size;
+    if (remainingFileSize <= MaxRegionByteCount) {
+        return remainingFileSize;
     }
 
     // We want to ensure that the remaining size will be enough to fit at
     // least one region
-    ui64 maxRegionSize = Min(
-        MaxRegionSize,
-        size - MinRegionSize - sizeof(TRegionMetadata)
+    ui64 maxRegionByteCount = Min(
+        MaxRegionByteCount,
+        remainingFileSize - MinRegionByteCount - sizeof(TRegionMetadata)
     );
 
-    Y_ABORT_UNLESS(MinRegionSize <= maxRegionSize);
+    Y_ABORT_UNLESS(MinRegionByteCount <= maxRegionByteCount);
 
-    return RandomNumber(maxRegionSize - MinRegionSize + 1) + MinRegionSize;
+    return RandomNumberFromRange(MinRegionByteCount, maxRegionByteCount);
 }
 
-bool TFileTestScenario::Format()
+bool TUnalignedTestScenario::GenerateRegionMetadata()
 {
     // File structure:
     // - TFileHeader
@@ -352,7 +415,7 @@ bool TFileTestScenario::Format()
 
     auto size = FileSize;
     auto minSize =
-        sizeof(TFileHeader) + sizeof(TRegionMetadata) + MinRegionSize;
+        sizeof(TFileHeader) + sizeof(TRegionMetadata) + MinRegionByteCount;
 
     if (size < minSize) {
         STORAGE_ERROR(
@@ -367,9 +430,9 @@ bool TFileTestScenario::Format()
         size -= sizeof(TRegionMetadata);
 
         TRegionMetadata metadata;
-        metadata.Size = GetNextRegionSize(size);
-        Y_ABORT_UNLESS(metadata.Size <= size);
-        size -= metadata.Size;
+        metadata.ByteCount = GetNextRegionByteCount(size);
+        Y_ABORT_UNLESS(metadata.ByteCount <= size);
+        size -= metadata.ByteCount;
 
         RegionMetadata.push_back(metadata);
     }
@@ -379,13 +442,13 @@ bool TFileTestScenario::Format()
 
     for (auto& metadata: RegionMetadata) {
         metadata.Offset = offset;
-        offset += metadata.Size;
+        offset += metadata.ByteCount;
     }
 
     return true;
 }
 
-bool TFileTestScenario::ValidateFormat() const
+bool TUnalignedTestScenario::ValidateRegionMetadata() const
 {
     ui64 offset =
         sizeof(TFileHeader) + RegionMetadata.size() * sizeof(TRegionMetadata);
@@ -400,22 +463,22 @@ bool TFileTestScenario::ValidateFormat() const
             return false;
         }
         if (metadata.Offset > FileSize ||
-            metadata.Size > FileSize - metadata.Offset)
+            metadata.ByteCount > FileSize - metadata.Offset)
         {
             STORAGE_ERROR(
                 "File format error: region #"
                 << i << " points outside the file (offset " << metadata.Offset
-                << ", size " << metadata.Size << ", file size " << FileSize
+                << ", size " << metadata.ByteCount << ", file size " << FileSize
                 << ")");
             return false;
         }
-        offset += metadata.Size;
+        offset += metadata.ByteCount;
     }
 
     return true;
 }
 
-bool TFileTestScenario::Initialize(TFileHandle& file)
+bool TUnalignedTestScenario::Init(TFileHandle& file)
 {
     FileSize = static_cast<ui64>(file.GetLength());
 
@@ -425,7 +488,7 @@ bool TFileTestScenario::Initialize(TFileHandle& file)
         return false;
     }
 
-    if (header.Signature == TFileHeader::ExpectedSignature) {
+    if (header.Magic == TFileHeader::ExpectedMagic) {
         auto actualCrc32 = Crc32c(&header, offsetof(TFileHeader, Crc32));
         if (header.Crc32 != actualCrc32) {
             STORAGE_ERROR("Header CRC mismatch");
@@ -442,13 +505,13 @@ bool TFileTestScenario::Initialize(TFileHandle& file)
             }
         }
     } else {
-        if (!Format()) {
+        if (!GenerateRegionMetadata()) {
             return false;
         }
 
         file.Seek(0, SeekDir::sSet);
 
-        header.Signature = TFileHeader::ExpectedSignature;
+        header.Magic = TFileHeader::ExpectedMagic;
         header.RegionCount = RegionMetadata.size();
         header.Crc32 = Crc32c(&header, offsetof(TFileHeader, Crc32));
         if (file.Write(&header, sizeof(TFileHeader)) != sizeof(TFileHeader)) {
@@ -464,9 +527,8 @@ bool TFileTestScenario::Initialize(TFileHandle& file)
                 return false;
             }
         }
+        file.Flush();
     }
-
-    file.Flush();
 
     if (GetWorkerCount() > RegionMetadata.size()) {
         STORAGE_ERROR(
@@ -477,35 +539,37 @@ bool TFileTestScenario::Initialize(TFileHandle& file)
         return false;
     }
 
-    RegionUseFlags = TVector<bool>(RegionMetadata.size(), false);
+    RegionWriteFlags = TVector<bool>(RegionMetadata.size(), false);
 
     STORAGE_INFO("File format: " << RegionMetadata.size() << " regions");
 
-    return ValidateFormat();
+    return ValidateRegionMetadata();
 }
 
-ui32 TFileTestScenario::GetWriteRate(double secondsSinceTestStart) const
+ui32 TUnalignedTestScenario::GetWriteProbabilityPercent(
+    double secondsSinceTestStart) const
 {
     if (PhaseDuration) {
         auto iter = secondsSinceTestStart / PhaseDuration.value();
-        return static_cast<ui64>(iter) % 2 == 1 ? 100 - WriteRate : WriteRate;
+        return static_cast<ui64>(iter) % 2 == 1 ? 100 - WriteProbabilityPercent
+                                                : WriteProbabilityPercent;
     }
-    return WriteRate;
+    return WriteProbabilityPercent;
 }
 
-void TFileTestScenario::Read(
+void TUnalignedTestScenario::Read(
     ITestExecutorIOService& service,
     TVector<char>& readBuffer)
 {
     auto dataOffset = RegionMetadata.front().Offset;
-    auto dataSize = RegionMetadata.back().End() - dataOffset;
+    auto dataByteCount = RegionMetadata.back().End() - dataOffset;
 
     auto len =
-        Min(RandomNumberFromRange(MinReadSize, MaxReadSize),
+        Min(RandomNumberFromRange(MinReadByteCount, MaxReadByteCount),
             readBuffer.size(),
-            dataSize);
+            dataByteCount);
 
-    auto offset = RandomNumber(dataSize - len + 1) + dataOffset;
+    auto offset = RandomNumber(dataByteCount - len + 1) + dataOffset;
 
     auto regions = GetReadRegions(offset, len);
     auto buffer = TStringBuf(readBuffer.data(), len);
@@ -521,7 +585,7 @@ void TFileTestScenario::Read(
         });
 }
 
-TVector<TReadRegionInfo> TFileTestScenario::GetReadRegions(
+TVector<TReadRegionInfo> TUnalignedTestScenario::GetReadRegions(
     ui64 offset,
     ui64 length) const
 {
@@ -547,7 +611,7 @@ TVector<TReadRegionInfo> TFileTestScenario::GetReadRegions(
     return res;
 }
 
-void TFileTestScenario::UpdateReadRegions(
+void TUnalignedTestScenario::UpdateReadRegions(
     TVector<TReadRegionInfo>& regions) const
 {
     auto guard = Guard(Lock);
@@ -557,7 +621,7 @@ void TFileTestScenario::UpdateReadRegions(
     }
 }
 
-void TFileTestScenario::ValidateReadData(
+void TUnalignedTestScenario::ValidateReadData(
     IService& service,
     TStringBuf readBuffer,
     const TVector<TReadRegionInfo>& regions) const
@@ -600,28 +664,21 @@ void TFileTestScenario::ValidateReadData(
     }
 }
 
-void TFileTestScenario::ValidateReadDataRegion(
+void TUnalignedTestScenario::ValidateReadDataRegion(
     IService& service,
     TStringBuf readBuffer,
     const TVector<TRegionState>& expectedStates,
     ui64 offsetInRegion) const
 {
-    /* STORAGE_INFO(
-        "Validating read data at offset "
-        << offsetInRegion
-        << " (length " << readBuffer.size() << ", expected states "
-        << expectedStates.size() << ")"
-    ); */
-
     if (expectedStates.empty()) {
         return;
     }
 
-    TVector<TRegionData> expectedBuffers(
+    TVector<TRegionDataBlock> expectedBuffers(
         expectedStates.size());
 
-    auto offset = ((offsetInRegion + sizeof(TRegionData) - 1) /
-                   sizeof(TRegionData) * sizeof(TRegionData)) - offsetInRegion;
+    auto offset = ((offsetInRegion + sizeof(TRegionDataBlock) - 1) /
+                   sizeof(TRegionDataBlock) * sizeof(TRegionDataBlock)) - offsetInRegion;
 
     while (offset < readBuffer.size()) {
         for (size_t i = 0; i < expectedStates.size(); i++) {
@@ -631,10 +688,10 @@ void TFileTestScenario::ValidateReadDataRegion(
                 &expectedBuffers[i]);
         }
 
-        auto fragment = readBuffer.SubStr(offset, sizeof(TRegionData));
+        auto fragment = readBuffer.SubStr(offset, sizeof(TRegionDataBlock));
 
         if (ValidateReadDataFragment(fragment, expectedBuffers)) {
-            offset += sizeof(TRegionData);
+            offset += sizeof(TRegionDataBlock);
             continue;
         }
 
@@ -646,11 +703,11 @@ void TFileTestScenario::ValidateReadDataRegion(
             sb << "\nPattern #" << (i + 1) << ": "
                << expectedStates[i].SeqNum << ", "
                << expectedStates[i].TestStartTime << ", "
-               << expectedStates[i].WriteTime;
+               << expectedStates[i].LastWriteTime;
         }
 
-        if (fragment.size() >= offsetof(TRegionData, Data)) {
-            TRegionData regionData;
+        if (fragment.size() >= offsetof(TRegionDataBlock, Data)) {
+            TRegionDataBlock regionData;
             MemCopy(
                 reinterpret_cast<char*>(&regionData),
                 fragment.data(),
@@ -666,9 +723,9 @@ void TFileTestScenario::ValidateReadDataRegion(
     }
 }
 
-bool TFileTestScenario::ValidateReadDataFragment(
+bool TUnalignedTestScenario::ValidateReadDataFragment(
     TStringBuf readBuffer,
-    const TVector<TRegionData>& expectedData) const
+    const TVector<TRegionDataBlock>& expectedData) const
 {
     // Optimization: compare as a whole first
     for (const auto& expected: expectedData) {
@@ -703,7 +760,7 @@ bool TFileTestScenario::ValidateReadDataFragment(
     return true;
 }
 
-size_t TFileTestScenario::WriteBegin(IService& service)
+size_t TUnalignedTestScenario::WriteBegin(IService& service)
 {
     auto guard = Guard(Lock);
     size_t index = 0;
@@ -712,8 +769,8 @@ size_t TFileTestScenario::WriteBegin(IService& service)
         // The number of workers is guaranteed to be not greater than the
         // number of regions, so this loop will eventually terminate
         index = RandomNumber(RegionMetadata.size());
-        if (!RegionUseFlags[index]) {
-            RegionUseFlags[index] = true;
+        if (!RegionWriteFlags[index]) {
+            RegionWriteFlags[index] = true;
             break;
         }
     }
@@ -723,7 +780,7 @@ size_t TFileTestScenario::WriteBegin(IService& service)
         metadata.NewState = {
             .SeqNum = NextSeqNum++,
             .TestStartTime = TestStartTime.GetValue(),
-            .WriteTime = Now().GetValue()
+            .LastWriteTime = Now().GetValue()
         };
     } else {
         STORAGE_DEBUG(
@@ -744,22 +801,22 @@ size_t TFileTestScenario::WriteBegin(IService& service)
     return index;
 }
 
-void TFileTestScenario::WriteBody(
+void TUnalignedTestScenario::WriteBody(
     IService& service,
     size_t index,
     TVector<char>& writeBuffer)
 {
     const auto& metadata = RegionMetadata[index];
 
-    Y_ABORT_UNLESS(writeBuffer.size() >= metadata.Size);
+    Y_ABORT_UNLESS(writeBuffer.size() >= metadata.ByteCount);
 
-    TRegionData regionData;
+    TRegionDataBlock regionData;
     ui64 offset = 0;
 
-    while (offset < metadata.Size) {
+    while (offset < metadata.ByteCount) {
         GenerateRegionData(metadata.NewState, offset, &regionData);
 
-        auto len = Min(metadata.Size - offset, sizeof(TRegionData));
+        auto len = Min(metadata.ByteCount - offset, sizeof(TRegionDataBlock));
 
         MemCopy(
             writeBuffer.begin() + offset,
@@ -770,10 +827,10 @@ void TFileTestScenario::WriteBody(
     }
 
     ui64 ofs = 0;
-    while (ofs < metadata.Size) {
+    while (ofs < metadata.ByteCount) {
         auto len =
-            Min(RandomNumberFromRange(MinWriteSize, MaxWriteSize),
-                metadata.Size - ofs);
+            Min(RandomNumberFromRange(MinWriteByteCount, MaxWriteByteCount),
+                metadata.ByteCount - ofs);
 
         service.Write(
             writeBuffer.begin() + ofs,
@@ -784,7 +841,7 @@ void TFileTestScenario::WriteBody(
     }
 }
 
-void TFileTestScenario::WriteEnd(IService& service, size_t index)
+void TUnalignedTestScenario::WriteEnd(IService& service, size_t index)
 {
     const auto& metadata = RegionMetadata[index];
     auto metadataOffset = sizeof(TFileHeader) + index * sizeof(TRegionMetadata);
@@ -796,8 +853,8 @@ void TFileTestScenario::WriteEnd(IService& service, size_t index)
         [this, index]()
         {
             auto guard = Guard(Lock);
-            Y_ABORT_UNLESS(RegionUseFlags[index]);
-            RegionUseFlags[index] = false;
+            Y_ABORT_UNLESS(RegionWriteFlags[index]);
+            RegionWriteFlags[index] = false;
             RegionMetadata[index].CurrentState = RegionMetadata[index].NewState;
         });
 }
@@ -806,12 +863,12 @@ void TFileTestScenario::WriteEnd(IService& service, size_t index)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITestScenarioPtr CreateFileTestScenario(
+ITestScenarioPtr CreateUnalignedTestScenario(
     IConfigHolderPtr configHolder,
     const TLog& log)
 {
     return ITestScenarioPtr(
-        new TFileTestScenario(std::move(configHolder), log));
+        new TUnalignedTestScenario(std::move(configHolder), log));
 }
 
 }   // namespace NCloud::NBlockStore::NTesting

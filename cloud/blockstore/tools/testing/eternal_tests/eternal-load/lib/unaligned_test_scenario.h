@@ -7,7 +7,7 @@ namespace NCloud::NBlockStore::NTesting {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITestScenarioPtr CreateAlignedBlockTestScenario(
+ITestScenarioPtr CreateUnalignedTestScenario(
     IConfigHolderPtr configHolder,
     const TLog& log);
 

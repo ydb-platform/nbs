@@ -126,7 +126,7 @@ TTestExecutor::TTestExecutor(
 
 bool TTestExecutor::Run()
 {
-    if (!TestScenario->Initialize(File)) {
+    if (!TestScenario->Init(File)) {
         return false;
     }
 

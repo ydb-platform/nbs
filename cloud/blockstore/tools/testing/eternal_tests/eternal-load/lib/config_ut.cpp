@@ -141,14 +141,14 @@ Y_UNIT_TEST_SUITE(ConfigTest)
                 "StartBlockIdx":11
             }
             ],
-        "FileTest":
+        "UnalignedTest":
             {
-                "MinReadSize":1,
-                "MaxReadSize":2,
-                "MinWriteSize":3,
-                "MaxWriteSize":4,
-                "MinRegionSize":5,
-                "MaxRegionSize":6
+                "MinReadByteCount":1,
+                "MaxReadByteCount":2,
+                "MinWriteByteCount":3,
+                "MaxWriteByteCount":4,
+                "MinRegionByteCount":5,
+                "MaxRegionByteCount":6
             },
         "BlockSize":4096,
         "FilePath":"/dev/vdb",
@@ -166,7 +166,7 @@ Y_UNIT_TEST_SUITE(ConfigTest)
             output.Write(expectedConfig);
         }
 
-        auto configHolder = CreateTestConfig(filename);
+        auto configHolder = LoadTestConfig(filename);
         auto& config = configHolder->GetConfig();
         UNIT_ASSERT_EQUAL(config.GetFilePath(), "/dev/vdb");
         UNIT_ASSERT_EQUAL(config.GetFileSize(), 10 * 1_GB);
@@ -195,7 +195,23 @@ Y_UNIT_TEST_SUITE(ConfigTest)
         // Test config generation is not deterministic, so we need to set random seed
         SetRandomSeed(42);
 
-        auto configHolder = CreateTestConfig("/dev/vdb", 10 * 1_GB, 12, 4096, 50, 1, 1, "", 0, 1, 2, 3, 4, 5, 6);
+        auto configHolder = CreateTestConfig(
+            {.FilePath = "/dev/vdb",
+             .FileSize = 10 * 1_GB,
+             .IoDepth = 12,
+             .BlockSize = 4096,
+             .WriteRate = 50,
+             .RequestBlockCount = 1,
+             .WriteParts = 1,
+             .AlternatingPhase = "",
+             .MaxWriteRequestCount = 0,
+             .MinReadByteCount = 1,
+             .MaxReadByteCount = 2,
+             .MinWriteByteCount = 3,
+             .MaxWriteByteCount = 4,
+             .MinRegionByteCount = 5,
+             .MaxRegionByteCount = 6});
+
         auto filename = MakeTempName();
         configHolder->DumpConfig(filename);
 
@@ -263,7 +279,7 @@ Y_UNIT_TEST_SUITE(ConfigTest)
         // Test config generation is not deterministic, so we need to set random seed
         SetRandomSeed(42);
 
-        auto configHolder = CreateTestConfig(filename);
+        auto configHolder = LoadTestConfig(filename);
         auto& config = configHolder->GetConfig();
 
         UNIT_ASSERT_EQUAL(config.GetRangeBlockCount(), 299573968896 / 4096 / 64);

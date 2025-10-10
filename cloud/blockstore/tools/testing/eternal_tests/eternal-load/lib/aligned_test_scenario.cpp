@@ -1,4 +1,4 @@
-#include "aligned_block_test_scenario.h"
+#include "aligned_test_scenario.h"
 
 #include "config.h"
 
@@ -123,7 +123,7 @@ struct TRange
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAlignedBlockTestScenario: public ITestScenario
+class TAlignedTestScenario: public ITestScenario
 {
 private:
     using IService = ITestExecutorIOService;
@@ -156,10 +156,10 @@ private:
 
     struct TWorker: public ITestScenarioWorker
     {
-        TAlignedBlockTestScenario* Scenario;
+        TAlignedTestScenario* Scenario;
         ui32 Index;
 
-        TWorker(TAlignedBlockTestScenario* scenario, ui32 index)
+        TWorker(TAlignedTestScenario* scenario, ui32 index)
             : Scenario(scenario)
             , Index(index)
         {}
@@ -171,7 +171,7 @@ private:
     };
 
 public:
-    TAlignedBlockTestScenario(IConfigHolderPtr configHolder, const TLog& log)
+    TAlignedTestScenario(IConfigHolderPtr configHolder, const TLog& log)
         : TestStartTimestamp(Now())
         , ConfigHolder(configHolder)
         , Log(log)
@@ -213,7 +213,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlignedBlockTestScenario::DoRequest(
+void TAlignedTestScenario::DoRequest(
     ui16 rangeIdx,
     double secondsSinceTestStart,
     IService& service)
@@ -233,7 +233,7 @@ void TAlignedBlockTestScenario::DoRequest(
     }
 }
 
-void TAlignedBlockTestScenario::OnResponse(
+void TAlignedTestScenario::OnResponse(
     TInstant startTs,
     ui16 rangeIdx,
     TStringBuf reqType,
@@ -258,7 +258,7 @@ void TAlignedBlockTestScenario::OnResponse(
     }
 }
 
-void TAlignedBlockTestScenario::DoReadRequest(ui16 rangeIdx, IService& service)
+void TAlignedTestScenario::DoReadRequest(ui16 rangeIdx, IService& service)
 {
     auto& range = Ranges[rangeIdx];
     // https://stackoverflow.com/questions/46114214/lambda-implicit-capture-fails-with-variable-declared-from-structured-binding
@@ -306,7 +306,7 @@ void TAlignedBlockTestScenario::DoReadRequest(ui16 rangeIdx, IService& service)
         readHandler);
 }
 
-void TAlignedBlockTestScenario::DoWriteRequest(ui16 rangeIdx, IService& service)
+void TAlignedTestScenario::DoWriteRequest(ui16 rangeIdx, IService& service)
 {
     auto& range = Ranges[rangeIdx];
 
@@ -342,12 +342,12 @@ void TAlignedBlockTestScenario::DoWriteRequest(ui16 rangeIdx, IService& service)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITestScenarioPtr CreateAlignedBlockTestScenario(
+ITestScenarioPtr CreateAlignedTestScenario(
     IConfigHolderPtr configHolder,
     const TLog& log)
 {
     return ITestScenarioPtr(
-        new TAlignedBlockTestScenario(std::move(configHolder), log));
+        new TAlignedTestScenario(std::move(configHolder), log));
 }
 
 }   // namespace NCloud::NBlockStore::NTesting

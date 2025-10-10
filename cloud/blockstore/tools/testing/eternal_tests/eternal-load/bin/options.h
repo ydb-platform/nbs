@@ -29,8 +29,8 @@ enum class EIoEngine
 
 enum class EScenario
 {
-    Block,
-    File
+    Aligned,
+    Unaligned
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,7 +39,7 @@ struct TOptions
 {
     ECommand Command = ECommand::UnknownCmd;
 
-    EScenario Scenario = EScenario::Block;
+    EScenario Scenario = EScenario::Aligned;
 
     EIoEngine Engine = EIoEngine::AsyncIo;
     bool RunInCallbacks = false;
