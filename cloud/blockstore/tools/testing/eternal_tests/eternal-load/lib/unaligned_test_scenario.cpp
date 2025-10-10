@@ -211,7 +211,7 @@ private:
     // Workers are not allowed to concurrently write to the same region.
     // When a worker starts writing to a region, it sets the corresponding flag
     // to true. When the write is complete, the flag is reset to false.
-    TVector<bool> RegionWriteFlags;
+    TVector<bool> RegionLockedForWriteFlags;
     std::atomic<ui64> NextSeqNum = 0;
     // If set, the workers alternate between two phases:
     // - 1: WriteProbabilityPercentage = |WriteProbabilityPercentage|
@@ -266,7 +266,10 @@ private:
         const TVector<TRegionDataBlock>& expectedData) const;
 
     size_t WriteBegin(IService& service);
-    void WriteBody(IService& service, size_t index, TVector<char>& writeBuffer);
+    void WriteRegionData(
+        IService& service,
+        size_t index,
+        TVector<char>& writeBuffer);
     void WriteEnd(IService& service, size_t index);
     size_t AcquireRandomRegion();
     void ReleaseRegion(size_t index);
@@ -278,8 +281,11 @@ enum class EOperation
 {
     Idle,
     Read,
+    // Find a region to write and lock it; write updated region metadata
     WriteBegin,
-    WriteBody,
+    // Generate and write region data (multiple write requests)
+    WriteRegionData,
+    // Write updated region metadata; unlock the region
     WriteEnd
 };
 
@@ -323,11 +329,11 @@ public:
 
             case EOperation::WriteBegin:
                 WriteRegionIndex = TestScenario->WriteBegin(service);
-                Operation = EOperation::WriteBody;
+                Operation = EOperation::WriteRegionData;
                 break;
 
-            case EOperation::WriteBody:
-                TestScenario->WriteBody(
+            case EOperation::WriteRegionData:
+                TestScenario->WriteRegionData(
                     service,
                     WriteRegionIndex,
                     WriteBuffer);
@@ -539,7 +545,7 @@ bool TUnalignedTestScenario::Init(TFileHandle& file)
         return false;
     }
 
-    RegionWriteFlags = TVector<bool>(RegionMetadata.size(), false);
+    RegionLockedForWriteFlags = TVector<bool>(RegionMetadata.size(), false);
 
     STORAGE_INFO("File format: " << RegionMetadata.size() << " regions");
 
@@ -770,8 +776,8 @@ size_t TUnalignedTestScenario::WriteBegin(IService& service)
         // The number of workers is guaranteed to be not greater than the
         // number of regions, so this loop will eventually terminate
         index = RandomNumber(RegionMetadata.size());
-        if (!RegionWriteFlags[index]) {
-            RegionWriteFlags[index] = true;
+        if (!RegionLockedForWriteFlags[index]) {
+            RegionLockedForWriteFlags[index] = true;
             break;
         }
     }
@@ -802,7 +808,7 @@ size_t TUnalignedTestScenario::WriteBegin(IService& service)
     return index;
 }
 
-void TUnalignedTestScenario::WriteBody(
+void TUnalignedTestScenario::WriteRegionData(
     IService& service,
     size_t index,
     TVector<char>& writeBuffer)
@@ -854,8 +860,8 @@ void TUnalignedTestScenario::WriteEnd(IService& service, size_t index)
         [this, index]()
         {
             auto guard = Guard(Lock);
-            Y_ABORT_UNLESS(RegionWriteFlags[index]);
-            RegionWriteFlags[index] = false;
+            Y_ABORT_UNLESS(RegionLockedForWriteFlags[index]);
+            RegionLockedForWriteFlags[index] = false;
             RegionMetadata[index].CurrentState = RegionMetadata[index].NewState;
         });
 }
