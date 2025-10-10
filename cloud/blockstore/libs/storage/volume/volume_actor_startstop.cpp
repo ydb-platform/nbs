@@ -221,6 +221,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     DiagnosticsConfig,
                     nonreplicatedConfig,
                     SelfId(),
+                    SelfId(),
                     GetRdmaClient()));
         } else {
             // nonreplicated disk in migration state
@@ -236,6 +237,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     nonreplicatedConfig,
                     migrations,
                     GetRdmaClient(),
+                    SelfId(),
                     SelfId()));
         }
     } else {
@@ -264,6 +266,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     std::move(replicas),
                     GetRdmaClient(),
                     SelfId(),
+                    SelfId(),
                     State->GetMeta().GetResyncIndex(),
                     resyncPolicy,
                     State->GetMeta().GetAlertResyncChecksumMismatch()));
@@ -281,6 +284,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     migrations,
                     std::move(replicas),
                     GetRdmaClient(),
+                    SelfId(),
                     SelfId()));
         }
     }

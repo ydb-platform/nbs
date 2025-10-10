@@ -17,6 +17,7 @@ NActors::IActorPtr CreateNonreplicatedPartition(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
+    NActors::TActorId volumeActorId,
     NActors::TActorId statActorId,
     NRdma::IClientPtr rdmaClient = nullptr);
 

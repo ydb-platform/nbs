@@ -144,6 +144,7 @@ struct TTestEnv
                 config,
                 CreateDiagnosticsConfig(),
                 std::move(partConfig),
+                VolumeActorId,
                 VolumeActorId
             );
 
