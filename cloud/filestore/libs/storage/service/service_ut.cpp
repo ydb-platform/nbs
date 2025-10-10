@@ -3973,6 +3973,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             STORAGE_INFO("iovec size with index: %lu: %lu", i, iovecSize);
             iovecSizes.push_back(iovecSize);
         }
+
+        TestZeroCopyWrite(config, 0, iovecSizes);
     }
 
     Y_UNIT_TEST(TestZeroCopyWriteWithPartiallyEmptyIovecs)
