@@ -73,19 +73,23 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 		config: config,
 	}
 
-	selectedCell, err := selector.selectCell("zone1", "folder")
+	selectedCell, err := selector.selectCell("zone1", "folder", true)
+	require.NoError(t, err)
+	require.Equal(t, "zone1", selectedCell)
+
+	selectedCell, err = selector.selectCell("zone1", "folder", false)
 	require.NoError(t, err)
 	require.Equal(t, "zone1-cell1", selectedCell) // First in the config.
 
-	selectedCell, err = selector.selectCell("zone1-cell1", "folder")
+	selectedCell, err = selector.selectCell("zone1-cell1", "folder", false)
 	require.NoError(t, err)
 	require.Equal(t, "zone1-cell1", selectedCell)
 
-	selectedCell, err = selector.selectCell("zone2", "folder")
+	selectedCell, err = selector.selectCell("zone2", "folder", false)
 	require.NoError(t, err)
 	require.Equal(t, "zone2", selectedCell)
 
-	selectedCell, err = selector.selectCell("zone3", "folder")
+	selectedCell, err = selector.selectCell("zone3", "folder", false)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "incorrect zone ID provided")
 	require.Empty(t, selectedCell)
@@ -94,7 +98,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 func TestCellSelectorReturnsCorrectNBSClientIfConfigsIsNotSet(t *testing.T) {
 	cellSelector := cellSelector{}
 
-	selectedCell, err := cellSelector.selectCell("zone", "folder")
+	selectedCell, err := cellSelector.selectCell("zone", "folder", false)
 	require.NoError(t, err)
 	require.Equal(t, "zone", selectedCell)
 }

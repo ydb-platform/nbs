@@ -10,6 +10,7 @@ from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig
 from cloud.blockstore.config.root_kms_pb2 import TRootKmsConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig, TServerConfig, TLocation
+from cloud.blockstore.config.cells_pb2 import TCellsConfig
 from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 from cloud.storage.core.tools.common.python.core_pattern import core_pattern
 from cloud.storage.core.tools.common.python.daemon import Daemon
@@ -38,6 +39,7 @@ class LocalNbs(Daemon):
             contract_validation=False,
             config_sub_folder=None,
             storage_config_patches=None,
+            cells_config=None,
             tracking_enabled=False,
             enable_access_service=False,
             enable_tls=False,
@@ -114,6 +116,7 @@ class LocalNbs(Daemon):
         self.__server_app_config = server_app_config
         self.contract_validation = contract_validation
         self.storage_config_patches = storage_config_patches
+        self.cells_config = cells_config
         self.features_config_patch = features_config_patch
         self.client_config_patch = client_config_patch
         self.tracking_enabled = tracking_enabled
@@ -129,6 +132,7 @@ class LocalNbs(Daemon):
             "server-sys.txt": self.__generate_server_sys_txt(),
             "server.txt": self.__generate_server_txt(),
             "storage.txt": self.__generate_storage_txt(),
+            "cells.txt": self.__generate_cells_txt(),
             "features.txt": self.__generate_features_txt(),
             "dyn_ns.txt": self.__generate_dyn_ns_txt(),
             "dr_proxy.txt": self.__generate_dr_proxy_txt(),
@@ -373,6 +377,12 @@ ModifyScheme {
         else:
             server = self.__server_app_config
         return server
+
+    def __generate_cells_txt(self):
+        cells = TCellsConfig()
+        if self.cells_config is not None:
+            cells.CopyFrom(self.cells_config)
+        return cells
 
     def __generate_server_sys_txt(self):
         sys_config = TActorSystemConfig()
