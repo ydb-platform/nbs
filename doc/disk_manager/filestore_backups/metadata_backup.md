@@ -118,7 +118,7 @@ After the controlplane record is created, an almost identical database entry for
 
 ## Dataplane metadata backup
 
-The proposed approach for the `dataplane.BackupMetadata` is to perform a BFS-like traversal of the filesystem tree via several parallel workers, whilst using a YDB table as a persistent queue.
+The proposed approach for the `dataplane.BackupMetadata` is to perform a BFS-like traversal of the filesystem tree via several parallel workers, while using a YDB table as a persistent queue.
 
 ### NodeRefs
 
