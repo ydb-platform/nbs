@@ -174,7 +174,7 @@ name: Utf8
 With primary key `(filesystem_backup_id, node_id, parent_node_id, name)`.
 
 ## `dataplane.BackupMetadata` task
-*  First, it emplaces the root node into the queue table if one does not exist yet. Several `DirectoryLister` goroutines and a single `DirectoryListingScheduler` goroutine are spawned.
+*  First, it places the root node into the queue table if one does not exist yet. Several `DirectoryLister` goroutines and a single `DirectoryListingScheduler` goroutine are spawned.
 * `DirectoryListingScheduler` does the following:
     1. Check if the root record was scheduled; if not, schedule the root node as pending and update the task state in the same transaction (`SaveStateWithPreparation()`).
     2. Fetch all inodes to list with the `listing` state and put them into the channel.
