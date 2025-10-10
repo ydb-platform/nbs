@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
@@ -291,25 +292,40 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
     }
     auto response = future.GetValue();
     if (!HasError(response)) {
-        if (!Cell.StrictCellIdCheckInDescribe ||
-            Cell.CellId == response.GetCellId())
-        {
-            response.SetCellId(Cell.CellId);
-            owner->Reply(std::move(response));
+        const auto& volume = response.GetVolume();
+        if (volume.GetTags().contains(SourceDiskIdTagName)) {
             STORAGE_DEBUG(
                 TStringBuilder()
-                    << "DescribeVolume: got success for disk "
-                    << Request.GetDiskId().Quote() << " from " << HostInfo.Fqdn);
-            return;
+                << "DescribeVolume: got success for disk "
+                << Request.GetDiskId().Quote() << " with source disk id "
+                << volume.GetTags().at(SourceDiskIdTagName).Quote() << " from "
+                << HostInfo.Fqdn);
+
+            const auto* msg =
+                "DescribeVolume response ignored since volume has source disk "
+                "id tag";
+            *response.MutableError() = MakeError(E_NOT_FOUND, msg);
+        } else {
+            if (!Cell.StrictCellIdCheckInDescribe ||
+                Cell.CellId == response.GetCellId())
+            {
+                response.SetCellId(Cell.CellId);
+                owner->Reply(std::move(response));
+                STORAGE_DEBUG(
+                    TStringBuilder() << "DescribeVolume: got success for disk "
+                                     << Request.GetDiskId().Quote() << " from "
+                                     << HostInfo.Fqdn);
+                return;
+            }
+
+            const auto* msg = "DescribeVolume response cell id mismatch";
+
+            ReportWrongCellIdInDescribeVolume(
+                msg,
+                {{"expected", Cell.CellId}, {"actual", response.GetCellId()}});
+
+            *response.MutableError() = MakeError(E_REJECTED, msg);
         }
-
-        const auto* msg = "DescribeVolume response cell id mismatch";
-
-        ReportWrongCellIdInDescribeVolume(
-            msg,
-            {{"expected", Cell.CellId}, {"actual", response.GetCellId()}});
-
-        *response.MutableError() = MakeError(E_REJECTED, msg);
     }
 
     STORAGE_DEBUG(
