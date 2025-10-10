@@ -91,10 +91,10 @@ NProto::TError EnableRing(io_uring* ring)
     return {};
 }
 
-NProto::TError InitRing(io_uring* ring, ui32 entries, io_uring* wqOwner)
+NProto::TError InitRing(io_uring* ring, ui32 entries, io_uring* wqOwner, ui32 flags)
 {
     io_uring_params params{
-        .flags = IORING_SETUP_R_DISABLED | IORING_SETUP_SINGLE_ISSUER};
+        .flags = flags | IORING_SETUP_R_DISABLED | IORING_SETUP_SINGLE_ISSUER};
 
     if (wqOwner) {
         params.flags |= IORING_SETUP_ATTACH_WQ;
@@ -133,7 +133,8 @@ TContext::TContext(TParams params)
     const auto error = InitRing(
         &Ring,
         params.SubmissionQueueEntries,
-        params.WqOwner ? &params.WqOwner->Ring : nullptr);
+        params.WqOwner ? &params.WqOwner->Ring : nullptr,
+        params.Flags);
 
     Y_ABORT_IF(
         HasError(error),

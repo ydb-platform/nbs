@@ -228,7 +228,7 @@ void TFSyncQueue::Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle)
 
     STORAGE_TRACE(LogTag << " Request was started " << request);
 
-    with_lock (StateMutex) {
+    with_lock (StateLock) {
         CurrentState.AddRequest(request);
     }
 }
@@ -246,7 +246,7 @@ void TFSyncQueue::Dequeue(
 
     STORAGE_TRACE(LogTag << " Request was finished " << request);
 
-    with_lock (StateMutex) {
+    with_lock (StateLock) {
         CurrentState.RemoveRequest(request);
     }
 }
@@ -260,7 +260,7 @@ TFuture<NProto::TError> TFSyncQueue::WaitForRequests(
     STORAGE_TRACE(LogTag
         << " FSync request was received " << request << " meta");
 
-    with_lock (StateMutex) {
+    with_lock (StateLock) {
         return CurrentState.AddFSyncRequest(request);
     }
 }
@@ -281,7 +281,7 @@ TFuture<NProto::TError> TFSyncQueue::WaitForDataRequests(
     STORAGE_TRACE(LogTag
         << " FSync request was received " << request << " data");
 
-    with_lock (StateMutex) {
+    with_lock (StateLock) {
         return CurrentState.AddFSyncRequest(request);
     }
 }
