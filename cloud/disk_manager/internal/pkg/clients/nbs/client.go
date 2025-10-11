@@ -379,6 +379,21 @@ func fromScanDiskProgress(
 	}
 }
 
+func fromAvailableStorageInfo(
+	availableStorageInfo *protos.TAvailableStorageInfo,
+) AvailableStorageInfo {
+
+	if availableStorageInfo == nil {
+		return AvailableStorageInfo{}
+	}
+
+	return AvailableStorageInfo{
+		AgentID:    availableStorageInfo.AgentId,
+		ChunkCount: availableStorageInfo.ChunkCount,
+		ChunkSize:  availableStorageInfo.ChunkSize,
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func wrapError(e error) error {
@@ -1652,6 +1667,33 @@ func (c *client) Stat(
 	return DiskStats{
 		StorageSize: uint64(volume.BlockSize) * volumeStats.LogicalUsedBlocksCount,
 	}, nil
+}
+
+func (c *client) QueryAvailableStorage(
+	ctx context.Context,
+	agentIDs []string,
+) (infos []AvailableStorageInfo, err error) {
+
+	defer c.metrics.StatRequest("QueryAvailableStorage")(&err)
+
+	ctx = c.withTimeoutHeader(ctx)
+	ctx, span := tracing.StartSpan(
+		ctx,
+		"blockstore.queryAvailableStorage",
+	)
+	defer span.End()
+	defer tracing.SetError(span, &err)
+
+	response, err := c.nbs.QueryAvailableStorage(ctx, agentIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, info := range response {
+		infos = append(infos, fromAvailableStorageInfo(info))
+	}
+
+	return infos, nil
 }
 
 func (c *client) Freeze(
