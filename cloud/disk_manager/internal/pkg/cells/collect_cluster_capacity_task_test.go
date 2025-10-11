@@ -1,7 +1,6 @@
 package cells
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -15,18 +14,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
-
-////////////////////////////////////////////////////////////////////////////////
-
-func newContext() context.Context {
-	return logging.SetLogger(
-		context.Background(),
-		logging.NewStderrLogger(logging.DebugLevel),
-	)
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 

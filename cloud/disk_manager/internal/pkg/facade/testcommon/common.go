@@ -17,6 +17,8 @@ import (
 	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
+	cells_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
@@ -597,6 +599,15 @@ func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
 	}, db, metrics.NewEmptyRegistry())
 }
 
+func newCellStorage(ctx context.Context) (cells_storage.Storage, error) {
+	db, err := newYDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return cells_storage.NewStorage(&cells_config.CellsConfig{}, db), nil
+}
+
 func newSnapshotStorage(ctx context.Context) (snapshot_storage.Storage, error) {
 	// Should be in sync with settings from SnapshotConfig in test recipe.
 	endpoint := fmt.Sprintf(
@@ -799,6 +810,20 @@ func GetSnapshotMeta(
 	}
 
 	return storage.GetSnapshotMeta(ctx, snapshotID)
+}
+
+func UpdateClusterCapacities(
+	ctx context.Context,
+	capacities []cells_storage.ClusterCapacity,
+	deleteOlderThan time.Time,
+) error {
+
+	cellStorage, err := newCellStorage(ctx)
+	if err != nil {
+		return err
+	}
+
+	return cellStorage.UpdateClusterCapacities(ctx, capacities, deleteOlderThan)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
