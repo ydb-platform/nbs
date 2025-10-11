@@ -1056,7 +1056,11 @@ void TIndexTabletActor::HandleGetStorageStats(
     if (!IsMainTablet()) {
         // If the current tablet is a shard, it will collect self stats via
         // TAggregateStatsActor
-        stats->Clear();
+        #define FILESTORE_TABLET_CLEAR_COUNTER(name, ...)                      \
+            stats->Clear##name();                                              \
+        // FILESTORE_TABLET_MERGE_COUNTER
+        FILESTORE_TABLET_STATS(FILESTORE_TABLET_CLEAR_COUNTER)
+        #undef FILESTORE_TABLET_CLEAR_COUNTER
     }
 
     auto actor = std::make_unique<TAggregateStatsActor>(
@@ -1084,9 +1088,10 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
-            "%s Background shard stats fetch completed in %s",
+            "%s Background shard stats fetch completed in %s, ShardsCount: %lu",
             LogTag.c_str(),
-            (ctx.Now() - CachedStatsFetchingStartTs).ToString().c_str());
+            (ctx.Now() - CachedStatsFetchingStartTs).ToString().c_str(),
+            msg->ShardStats.size());
         CachedStatsFetchingStartTs = TInstant::Zero();
     }
     if (!HasError(msg->Error)) {
@@ -1095,7 +1100,7 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         }
         CachedAggregateStats = std::move(msg->AggregateStats);
         CachedShardStats = std::move(msg->ShardStats);
-        UpdateShardStats(CachedShardStats);
+        UpdateShardBalancer(CachedShardStats);
 
         Store(
             Metrics.AggregateUsedBytesCount,

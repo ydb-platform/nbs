@@ -1478,9 +1478,21 @@ NProto::TError TIndexTabletState::SelectShard(ui64 fileSize, TString* shardId)
     return e;
 }
 
-void TIndexTabletState::UpdateShardStats(const TVector<TShardStats>& stats)
+void TIndexTabletState::UpdateShardBalancer(const TVector<TShardStats>& stats)
 {
-    Impl->ShardBalancer->UpdateShardStats(stats);
+    std::optional<ui64> desiredFreeSpaceReserve;
+    std::optional<ui64> minFreeSpaceReserve;
+    // TODO: remove this code when all the file systems will be switched to
+    // strict mode
+    if(GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled()) {
+        desiredFreeSpaceReserve = 0;
+        minFreeSpaceReserve = 0;
+    }
+
+    Impl->ShardBalancer->Update(
+        stats,
+        desiredFreeSpaceReserve,
+        minFreeSpaceReserve);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -57,8 +57,18 @@ TShardBalancerBase::TShardBalancerBase(
     }
 }
 
-void TShardBalancerBase::UpdateShardStats(const TVector<TShardStats>& stats)
+void TShardBalancerBase::Update(
+    const TVector<TShardStats>& stats,
+    std::optional<ui64> desiredFreeSpaceReserve,
+    std::optional<ui64> minFreeSpaceReserve)
 {
+    if(desiredFreeSpaceReserve.has_value()) {
+        DesiredFreeSpaceReserve = desiredFreeSpaceReserve.value();
+    }
+    if(minFreeSpaceReserve.has_value()) {
+        MinFreeSpaceReserve = minFreeSpaceReserve.value();
+    }
+
     Y_ABORT_UNLESS(stats.size() == Metas.size());
     for (ui32 i = 0; i < stats.size(); ++i) {
         Metas[i] = TShardMeta(i, stats[i]);
@@ -91,10 +101,15 @@ std::optional<size_t> TShardBalancerBase::FindUpperBoundAmongAllShardsToFitFile(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TShardBalancerRoundRobin::UpdateShardStats(
-    const TVector<TShardStats>& stats)
+void TShardBalancerRoundRobin::Update(
+    const TVector<TShardStats>& stats,
+    std::optional<ui64> desiredFreeSpaceReserve,
+    std::optional<ui64> minFreeSpaceReserve)
 {
-    TShardBalancerBase::UpdateShardStats(stats);
+    TShardBalancerBase::Update(
+        stats,
+        desiredFreeSpaceReserve,
+        minFreeSpaceReserve);
     ShardSelector = 0;
 }
 
@@ -157,10 +172,15 @@ void TShardBalancerWeightedRandom::UpdateWeightPrefixSums()
     }
 }
 
-void TShardBalancerWeightedRandom::UpdateShardStats(
-    const TVector<TShardStats>& stats)
+void TShardBalancerWeightedRandom::Update(
+    const TVector<TShardStats>& stats,
+    std::optional<ui64> desiredFreeSpaceReserve,
+    std::optional<ui64> minFreeSpaceReserve)
 {
-    TShardBalancerBase::UpdateShardStats(stats);
+    TShardBalancerBase::Update(
+        stats,
+        desiredFreeSpaceReserve,
+        minFreeSpaceReserve);
     UpdateWeightPrefixSums();
 }
 

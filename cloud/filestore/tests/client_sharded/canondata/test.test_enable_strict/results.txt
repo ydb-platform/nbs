@@ -1,0 +1,27 @@
+Session {
+  SessionId: "session0"
+}
+FileStore {
+  FileSystemId: "fs0"
+  FolderId: "test_folder"
+  CloudId: "test_cloud"
+  BlockSize: 4096
+  BlocksCount: 262144
+  NodesCount: 4194304
+  StorageMediaKind: 2
+  Features {
+    ThreeStageWriteThreshold: 65536
+    PreferredBlockSize: 4096
+    AsyncHandleOperationPeriod: 50
+    HasXAttrs: true
+    MaxFuseLoopThreads: 1
+  }
+  ShardFileSystemIds: "fs0_s1"
+}
+
+{"ShardFileSystemIds":["fs0_s1"]}
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"StrictFileSystemSizeEnforcementEnabled":true}
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"ShardNo":1,"StrictFileSystemSizeEnforcementEnabled":true}
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"ShardNo":2,"StrictFileSystemSizeEnforcementEnabled":true}
+{"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"ShardNo":3,"StrictFileSystemSizeEnforcementEnabled":true}
+
