@@ -1,8 +1,10 @@
 LIBRARY()
 
 SRCS(
+    aligned_test_scenario.cpp
     config.cpp
     test_executor.cpp
+    unaligned_test_scenario.cpp
 )
 
 PEERDIR(

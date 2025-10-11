@@ -20,22 +20,32 @@ struct IConfigHolder
     virtual ~IConfigHolder() = default;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TCreateTestConfigArguments
+{
+    TString FilePath;
+    ui64 FileSize = 0;
+    ui16 IoDepth = 0;
+    ui64 BlockSize = 0;
+    ui16 WriteRate = 0;
+    ui64 RequestBlockCount = 0;
+    ui64 WriteParts = 0;
+    TString AlternatingPhase = "";
+    ui64 MaxWriteRequestCount = 0;
+
+    // Arguments for unaligned test scenario
+    ui64 MinReadByteCount = 0;
+    ui64 MaxReadByteCount = 0;
+    ui64 MinWriteByteCount = 0;
+    ui64 MaxWriteByteCount = 0;
+    ui64 MinRegionByteCount = 0;
+    ui64 MaxRegionByteCount = 0;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IConfigHolderPtr CreateTestConfig(
-    const TString& filePath,
-    ui64 fileSize,
-    ui16 ioDepth,
-    ui64 blockSize,
-    ui16 writeRate,
-    ui64 requestBlockCount,
-    ui64 writeParts,
-    TString alternatingPhase = "",
-    ui64 maxWriteRequestCount = 0
-);
-
-IConfigHolderPtr CreateTestConfig(const TString& filePath);
+IConfigHolderPtr CreateTestConfig(const TCreateTestConfigArguments& args);
+IConfigHolderPtr LoadTestConfig(const TString& filePath);
 
 }   // namespace NCloud::NBlockStore
-

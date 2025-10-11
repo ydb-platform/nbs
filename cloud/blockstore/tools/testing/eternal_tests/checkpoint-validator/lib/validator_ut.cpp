@@ -20,13 +20,13 @@ bool RunTest(
     };
 
     auto configHolder = CreateTestConfig(
-        "",                         //  filePath
-        size * sizeof(TBlockData),  //  fileSize
-        1,                          //  ioDepth
-        sizeof(TBlockData),         //  blockSize
-        100,                        //  writeRate
-        1,                          //  requestBlockCount
-        1);                         //  writeParts
+        {.FilePath = "",
+         .FileSize = size * sizeof(TBlockData),
+         .IoDepth = 1,
+         .BlockSize = sizeof(TBlockData),
+         .WriteRate = 100,
+         .RequestBlockCount = 1,
+         .WriteParts = 1});
 
     const auto& config = configHolder->GetConfig();
 

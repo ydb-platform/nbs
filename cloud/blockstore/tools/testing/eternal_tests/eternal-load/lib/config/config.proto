@@ -15,6 +15,16 @@ message TRangeConfig {
   optional uint64 WriteParts = 8;
 }
 
+// Additional config for the unaligned test scenario
+message TUnalignedTestConfig {
+  optional uint64 MinReadByteCount = 1;
+  optional uint64 MaxReadByteCount = 2;
+  optional uint64 MinWriteByteCount = 3;
+  optional uint64 MaxWriteByteCount = 4;
+  optional uint64 MinRegionByteCount = 5;
+  optional uint64 MaxRegionByteCount = 6;
+}
+
 message TTestConfig {
   optional uint64 TestId = 1;
   required string FilePath = 2;
@@ -30,4 +40,6 @@ message TTestConfig {
   optional string AlternatingPhase = 10;
   // Used for tests only.
   optional uint64 MaxWriteRequestCount = 11;
+  // Used in TUnalignedTestScenario
+  optional TUnalignedTestConfig UnalignedTest = 12;
 }
