@@ -343,6 +343,8 @@ public:
     bool GetStrictFileSystemSizeEnforcementEnabled() const;
 
     bool GetZeroCopyWriteEnabled() const;
+
+    bool GetFsyncQueueDisabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

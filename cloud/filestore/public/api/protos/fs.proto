@@ -39,6 +39,7 @@ message TFileStoreFeatures
     uint32 MaxBackground = 24;
     uint32 MaxFuseLoopThreads = 25;
     bool ZeroCopyWriteEnabled = 26;
+    bool FsyncQueueDisabled = 27;
 }
 
 message TFileStore

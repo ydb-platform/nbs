@@ -43,7 +43,6 @@ TFileSystem::TFileSystem(
     , Config(std::move(config))
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
-    , FSyncQueue(Config->GetFileSystemId(), Logging)
     , XAttrCache(
         Timer,
         Config->GetXAttrCacheLimit(),
@@ -52,6 +51,12 @@ TFileSystem::TFileSystem(
     , WriteBackCache(std::move(writeBackCache))
 {
     Log = Logging->CreateLog("NFS_FUSE");
+    if (Config->GetFsyncQueueDisabled()) {
+        FSyncQueue = std::make_unique<TFSyncQueueStub>();
+    } else {
+        FSyncQueue =
+            std::make_unique<TFSyncQueue>(Config->GetFileSystemId(), Logging);
+    }
 }
 
 TFileSystem::~TFileSystem()
