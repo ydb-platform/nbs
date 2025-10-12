@@ -45,6 +45,7 @@ namespace {
     xxx(MaxBackground,                ui32,     0                             )\
     xxx(MaxFuseLoopThreads,           ui32,     1                             )\
     xxx(ZeroCopyWriteEnabled,         bool,     false                         )\
+    xxx(FsyncQueueDisabled,           bool,     false                         )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \

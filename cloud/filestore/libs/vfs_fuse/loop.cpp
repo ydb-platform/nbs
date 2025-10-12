@@ -1136,6 +1136,8 @@ private:
 
         config.SetZeroCopyWriteEnabled(features.GetZeroCopyWriteEnabled());
 
+        config.SetFsyncQueueDisabled(features.GetFsyncQueueDisabled());
+
         return std::make_shared<TFileSystemConfig>(config);
     }
 
