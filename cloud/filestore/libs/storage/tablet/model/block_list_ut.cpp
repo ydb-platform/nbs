@@ -18,6 +18,23 @@ constexpr ui32 FirstBlockIndex = 123456;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename T>
+TString PrintValues(const TVector<T>& values)
+{
+    auto out = TStringBuilder() << "[";
+    for (size_t i = 0; i != values.size();) {
+        out << values[i];
+        i++;
+        if (i != values.size()) {
+            out << ", ";
+        }
+    }
+    out << "]";
+    return out;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TVector<TBlock> GenerateSeqBlocks(size_t blocksCount, size_t groupsCount)
 {
     constexpr ui64 maxCommitId = InvalidCommitId;
@@ -189,15 +206,20 @@ void CheckFindBlocksIterator(
     const TVector<TBlock>& expectedBlocks)
 {
     for (size_t i = 0; i < expectedBlocksToFind; i += iter.BlocksInCurrentIteration) {
-        UNIT_ASSERT(iter.Next());
-        UNIT_ASSERT(iter.BlocksInCurrentIteration > 0);
+        auto comment = TStringBuilder()
+            << "expectedBlocks=" << PrintValues(expectedBlocks)
+            << ", i=" << i;
+        UNIT_ASSERT_C(iter.Next(), comment);
+        UNIT_ASSERT_C(iter.BlocksInCurrentIteration > 0, comment);
 
         for (ui32 j = 0; j < iter.BlocksInCurrentIteration; j++) {
+            comment << ", j=" << j;
+
             const auto& block = expectedBlocks[iter.BlobOffset + j];
-            UNIT_ASSERT_VALUES_EQUAL(block.NodeId, iter.Block.NodeId);
-            UNIT_ASSERT_VALUES_EQUAL(block.BlockIndex, iter.Block.BlockIndex + j);
-            UNIT_ASSERT_VALUES_EQUAL(block.MinCommitId, iter.Block.MinCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(block.MaxCommitId, iter.Block.MaxCommitId);
+            UNIT_ASSERT_VALUES_EQUAL_C(block.NodeId, iter.Block.NodeId, comment);
+            UNIT_ASSERT_VALUES_EQUAL_C(block.BlockIndex, iter.Block.BlockIndex + j, comment);
+            UNIT_ASSERT_VALUES_EQUAL_C(block.MinCommitId, iter.Block.MinCommitId, comment);
+            UNIT_ASSERT_VALUES_EQUAL_C(block.MaxCommitId, iter.Block.MaxCommitId, comment);
         }
     }
 
@@ -338,7 +360,7 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
 
     Y_UNIT_TEST(ShouldEncodeRandomBlockGroupsWithoutDeletions)
     {
-        for (size_t i = 0; i < 10; i++) {
+        for (size_t i = 0; i < 100; i++) {
             TestEncodeBlocks(
                 GenerateRandomBlockGroups(
                     /*blockGroups=*/40,
@@ -348,7 +370,7 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
 
     Y_UNIT_TEST(ShouldEncodeRandomBlockGroupsWithDeletions)
     {
-        for (size_t i = 0; i < 10; i++) {
+        for (size_t i = 0; i < 100; i++) {
             TestEncodeBlocks(
                 GenerateRandomBlockGroups(
                     /*blockGroups=*/30,
