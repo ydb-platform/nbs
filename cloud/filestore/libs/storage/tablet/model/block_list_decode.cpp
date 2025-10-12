@@ -201,22 +201,20 @@ ui32 FindDeletionMarkers(
                 return 1;
             }
 
-            if (blobOffset <= entry.BlobOffset &&
-                entry.BlobOffset < blobOffset + maxBlocksToFind)
-            {
-                minSeenBlobOffset = Min<ui16>(minSeenBlobOffset, entry.BlobOffset);
-            }
+            minSeenBlobOffset = Min<ui16>(minSeenBlobOffset, entry.BlobOffset);
         } else {
             const auto& multi = reader.Read<NBlockListSpec::TMultiGroupHeader>();
             switch (multi.GroupType) {
                 case NBlockListSpec::TMultiGroupHeader::MergedGroup: {
                     const auto& entry = reader.Read<NBlockListSpec::TDeletionMarker>();
-                    const auto maxBlobOffset = Min<ui32>(
+                    const auto minBlobOffset = Min<ui32>(
                         blobOffset + maxBlocksToFind,
                         entry.BlobOffset + multi.Count);
-                    if (entry.BlobOffset <= blobOffset && blobOffset < maxBlobOffset) {
+                    if (entry.BlobOffset <= blobOffset && blobOffset < minBlobOffset) {
                         *maxCommitId = group.CommitId;
-                        return maxBlobOffset - blobOffset;
+                        return Min<ui16>(
+                            minSeenBlobOffset - blobOffset,
+                            minBlobOffset - blobOffset);
                     }
                     break;
                 }
@@ -232,11 +230,7 @@ ui32 FindDeletionMarkers(
                         return 1;
                     }
 
-                    if (blobOffset <= blobOffsets[0] &&
-                        blobOffsets[0] < blobOffset + maxBlocksToFind)
-                    {
-                        minSeenBlobOffset = Min<ui16>(minSeenBlobOffset, blobOffsets[0]);
-                    }
+                    minSeenBlobOffset = Min<ui16>(minSeenBlobOffset, blobOffsets[0]);
                     break;
                 }
             }
