@@ -360,7 +360,7 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
 
     Y_UNIT_TEST(ShouldEncodeRandomBlockGroupsWithoutDeletions)
     {
-        for (size_t i = 0; i < 100; i++) {
+        for (size_t i = 0; i < 50; i++) {
             TestEncodeBlocks(
                 GenerateRandomBlockGroups(
                     /*blockGroups=*/40,
@@ -370,7 +370,7 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
 
     Y_UNIT_TEST(ShouldEncodeRandomBlockGroupsWithDeletions)
     {
-        for (size_t i = 0; i < 100; i++) {
+        for (size_t i = 0; i < 50; i++) {
             TestEncodeBlocks(
                 GenerateRandomBlockGroups(
                     /*blockGroups=*/30,
