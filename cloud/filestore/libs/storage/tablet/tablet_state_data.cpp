@@ -1483,8 +1483,9 @@ void TIndexTabletState::UpdateShardBalancer(const TVector<TShardStats>& stats)
     std::optional<ui64> desiredFreeSpaceReserve;
     std::optional<ui64> minFreeSpaceReserve;
     // TODO: remove this code when all the file systems will be switched to
-    // strict mode
-    if(GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled()) {
+    // strict mode (https://github.com/ydb-platform/nbs/issues/4485, assigned to
+    // https://github.com/ruslan-gar)
+    if (GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled()) {
         desiredFreeSpaceReserve = 0;
         minFreeSpaceReserve = 0;
     }

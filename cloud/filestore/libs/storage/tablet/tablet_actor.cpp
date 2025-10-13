@@ -1336,19 +1336,21 @@ void TIndexTabletActor::UpdateLogTag()
     }
 }
 
-bool TIndexTabletActor::HasBlocksLeft(i64 blocksRequired) const
+bool TIndexTabletActor::HasBlocksLeft(ui64 blocksRequired) const
 {
     if (!GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled()) {
-        if (blocksRequired > 0 &&
-            GetUsedBlocksCount() + blocksRequired > GetBlocksCount())
-        {
+        if (GetUsedBlocksCount() + blocksRequired > GetBlocksCount()) {
             return false;
         }
     } else {
         // A new way to count available space that always takes into account the
         // byte count aggregated by all shards.
-        if (Metrics.AggregateUsedBytesCount + blocksRequired * GetBlockSize() >
-            Metrics.TotalBytesCount)
+        Y_ASSERT(
+            Metrics.AggregateUsedBytesCount >= 0 &&
+            Metrics.TotalBytesCount >= 0);
+        if (static_cast<ui64>(Metrics.AggregateUsedBytesCount) +
+                blocksRequired * GetBlockSize() >
+            static_cast<ui64>(Metrics.TotalBytesCount))
         {
             return false;
         }
@@ -1360,7 +1362,9 @@ bool TIndexTabletActor::HasBlocksLeft(i64 blocksRequired) const
 bool TIndexTabletActor::HasSpaceLeft(ui64 prevSize, ui64 newSize) const
 {
     return HasBlocksLeft(
-        GetBlocksDifference(prevSize, newSize, GetBlockSize()));
+        static_cast<ui64>(Max<i64>(
+            0,
+            GetBlocksDifference(prevSize, newSize, GetBlockSize()))));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

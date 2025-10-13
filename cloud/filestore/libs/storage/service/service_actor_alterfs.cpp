@@ -61,7 +61,7 @@ private:
     bool DirectoryCreationInShardsEnabled = false;
     bool StrictFileSystemSizeEnforcementEnabled = false;
     bool EnableStrictFileSystemSizeEnforcement = false;
-    bool IsToConfigureMainFileStore = false;
+    bool ShouldConfigureMainFileStore = false;
 
     const ui64 MainFileStoreCookie = Max<ui64>();
 
@@ -507,7 +507,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         Y_ABORT_UNLESS(
             ShardsToCreate == 0 && ShardsToConfigure == 0 &&
             ShardsToAlter == 0 && ShardsToDescribe == 0 &&
-            !IsToConfigureMainFileStore);
+            !ShouldConfigureMainFileStore);
 
         FileStoreConfig.ShardConfigs.clear();
 
@@ -521,7 +521,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         ShardsToCreate =
             FileStoreConfig.ShardConfigs.size() - ExistingShardIds.size();
         if (ShardsToCreate || EnableStrictFileSystemSizeEnforcement) {
-            IsToConfigureMainFileStore = true;
+            ShouldConfigureMainFileStore = true;
             ShardsToConfigure = FileStoreConfig.ShardConfigs.size();
         }
 
@@ -691,7 +691,7 @@ void TAlterFileStoreActor::HandleConfigureShardResponse(
 void TAlterFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
 {
     // As a shard is being resized, we can't send ConfigureShardsRequest to it
-    if (!IsToConfigureMainFileStore) {
+    if (!ShouldConfigureMainFileStore) {
         ReplyAndDie(ctx);
         return;
     }

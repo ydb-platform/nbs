@@ -174,6 +174,56 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         ASSERT_SB_ERROR(0, E_FS_NOSPC);
     }
 
+    Y_UNIT_TEST(ShouldBalanceShardsBeforeTheFirstUpdateWithRoundRobin)
+    {
+        // We imitate the situation in when
+        // GetStrictFileSystemSizeEnforcementEnabled and
+        // desiredFreeSpaceReserve, minFreeSpaceReserve are zero
+        TShardBalancerRoundRobin balancer(4_KB, 0, 0, {"s1", "s2", "s3", "s4"});
+        ASSERT_NO_SB_ERROR(1_TB, "s1");
+        ASSERT_NO_SB_ERROR(1_TB, "s2");
+        ASSERT_NO_SB_ERROR(1_TB, "s3");
+        ASSERT_NO_SB_ERROR(1_TB, "s4");
+        ASSERT_NO_SB_ERROR(1_TB, "s1");
+        ASSERT_NO_SB_ERROR(1_TB, "s2");
+        ASSERT_NO_SB_ERROR(1_TB, "s3");
+        ASSERT_NO_SB_ERROR(1_TB, "s4");
+    }
+
+    Y_UNIT_TEST(ShouldBalanceShardsBeforeTheFirstUpdateWithRandom)
+    {
+        TShardBalancerRandom balancer(4_KB, 0, 0, {"s1", "s2", "s3", "s4"});
+
+        const ui64 iterations = 64;
+        for (ui64 i = 0; i < iterations; ++i) {
+            TString shardId;
+            const auto error = balancer.SelectShard(1_TB, &shardId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldBalanceShardsBeforeTheFirstUpdateWitWeightedhRandom)
+    {
+        TShardBalancerWeightedRandom balancer(
+            4_KB,
+            0,
+            0,
+            {"s1", "s2", "s3", "s4"});
+
+        const ui64 iterations = 64;
+        for (ui64 i = 0; i < iterations; ++i) {
+            TString shardId;
+            const auto error = balancer.SelectShard(1_TB, &shardId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+        }
+    }
+
     Y_UNIT_TEST(ShouldBalanceShardsWithFileSizeRoundRobin)
     {
         TShardBalancerRoundRobin balancer(
