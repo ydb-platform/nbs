@@ -6,8 +6,6 @@ SET_APPEND(RECIPE_ARGS --encryption)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common.inc)
 
 GO_XTEST_SRCS(
-    common_test.go
-    image_service_cells_test.go
     image_service_test.go
 )
 
