@@ -138,11 +138,13 @@ func (s *cellSelector) selectCell(
 			return cells[0], nil
 		}
 
-		slices.SortFunc(capacities, func(i, j storage.ClusterCapacity) int {
-			return cmp.Compare(j.FreeBytes, i.FreeBytes)
-		})
+		mostFree := slices.MaxFunc(
+			capacities,
+			func(a, b storage.ClusterCapacity) int {
+				return cmp.Compare(b.FreeBytes, a.FreeBytes)
+			})
 
-		return capacities[0].CellID, nil
+		return mostFree.CellID, nil
 	default:
 		return "", errors.NewNonCancellableErrorf(
 			"unknown cell selection policy: %v",
