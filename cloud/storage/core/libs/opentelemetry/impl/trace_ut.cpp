@@ -84,7 +84,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
                     RunLogShuttleAction { }
                 }
             }
-        )END",
+            )END",
             &q);
 
         UNIT_ASSERT(parsed);
@@ -196,7 +196,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
                     RunLogShuttleAction { }
                 }
             }
-        )END",
+            )END",
             &q);
 
         UNIT_ASSERT(parsed);
@@ -350,7 +350,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
                     RunLogShuttleAction { }
                 }
             }
-        )END",
+            )END",
             &q);
 
         UNIT_ASSERT(parsed);
@@ -464,7 +464,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
                     RunLogShuttleAction { }
                 }
             }
-        )END",
+            )END",
             &q);
 
         UNIT_ASSERT(parsed);
