@@ -307,6 +307,48 @@ func scheduleDoublerTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func DurableWait(
+	ctx context.Context,
+	state *wrappers.Int64Value,
+	execCtx tasks.ExecutionContext,
+	timeout time.Duration,
+) error {
+
+	n := time.Now()
+	defer func() {
+		logging.Warn(
+			ctx,
+			"DurableWait waited for %v out of %v",
+			time.Since(n),
+			timeout,
+		)
+	}()
+
+	saveInterval := 100 * time.Millisecond
+	now := time.Now()
+	alreadyWaited := time.Duration(state.Value)
+	for alreadyWaited < timeout {
+		interval := min(saveInterval, timeout-alreadyWaited)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+			state.Value += int64(time.Since(now))
+			now = time.Now()
+			err := execCtx.SaveState(ctx)
+			if err != nil {
+				return err
+			}
+		}
+
+		alreadyWaited = time.Duration(state.Value)
+	}
+
+	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type longTask struct {
 	// Represents time already spent.
 	state *wrappers.Int64Value
@@ -324,25 +366,7 @@ func (t *longTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
-
-	saveInterval := 100 * time.Millisecond
-	timeoutNanosec := int64(10 * time.Second)
-	now := time.Now()
-	for t.state.Value < timeoutNanosec {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(saveInterval):
-			t.state.Value += int64(time.Since(now))
-			now = time.Now()
-			err := execCtx.SaveState(ctx)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	return DurableWait(ctx, t.state, execCtx, 10*time.Second)
 }
 
 func (t *longTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
@@ -476,7 +500,13 @@ func (t *waitingTaskWithSleep) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	err := t.DurableWait(ctx, execCtx, 2*time.Second)
+	err := DurableWait(ctx, t.state, execCtx, 2*time.Second)
+	if err != nil {
+		return err
+	}
+
+	t.state.Value = 0
+	err = execCtx.SaveState(ctx)
 	if err != nil {
 		return err
 	}
@@ -486,7 +516,7 @@ func (t *waitingTaskWithSleep) Run(
 		return err
 	}
 
-	err = t.DurableWait(ctx, execCtx, 5*time.Second)
+	err = DurableWait(ctx, t.state, execCtx, 5*time.Second)
 	if err != nil {
 		return err
 	}
@@ -506,32 +536,6 @@ func (t *waitingTaskWithSleep) GetResponse() proto.Message {
 	return &wrappers.UInt64Value{
 		Value: 1,
 	}
-}
-
-func (t *waitingTaskWithSleep) DurableWait(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-	timeout time.Duration,
-) error {
-
-	saveInterval := 100 * time.Millisecond
-	timeoutNanosec := int64(timeout)
-	now := time.Now()
-	for t.state.Value < timeoutNanosec {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(saveInterval):
-			t.state.Value += int64(time.Since(now))
-			now = time.Now()
-			err := execCtx.SaveState(ctx)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }
 
 func registerWaitingTaskWithSleep(registry *tasks.Registry, scheduler tasks.Scheduler) error {
