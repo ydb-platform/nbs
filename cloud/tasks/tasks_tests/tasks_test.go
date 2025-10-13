@@ -307,6 +307,8 @@ func scheduleDoublerTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// DurableWait waits for the given timeout, saving state every 100ms.
+// if you need to wait multiple times, you need to reset the state.Value to 0.
 func DurableWait(
 	ctx context.Context,
 	state *wrappers.Int64Value,
@@ -314,12 +316,12 @@ func DurableWait(
 	timeout time.Duration,
 ) error {
 
-	n := time.Now()
+	startedAt := time.Now()
 	defer func() {
 		logging.Warn(
 			ctx,
 			"DurableWait waited for %v out of %v",
-			time.Since(n),
+			time.Since(startedAt),
 			timeout,
 		)
 	}()
