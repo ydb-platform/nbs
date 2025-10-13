@@ -147,20 +147,18 @@ func (t *transferFromSnapshotToDiskTask) setEstimate(
 	}
 
 	transferBandwidth := t.performanceConfig.GetTransferBetweenDiskAndSnapshotBandwidthMiBs()
-
 	if t.request.DstEncryption != nil {
 		transferBandwidth = t.performanceConfig.GetTransferBetweenEncryptedDiskAndSnapshotBandwidthMiBs()
 	}
 
 	estimatedDuration := performance.Estimate(bytesToTransfer, transferBandwidth)
+	execCtx.SetEstimatedInflightDuration(estimatedDuration)
 
 	logging.Info(
 		ctx,
 		"bytes to transfer is %v, has encryption is %v, estimated duration is %v",
 		bytesToTransfer, t.request.DstEncryption != nil, estimatedDuration,
 	)
-
-	execCtx.SetEstimatedInflightDuration(estimatedDuration)
 
 	return nil
 }
