@@ -267,7 +267,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
-        PartConfig->GetParentActorId(), // VolumeActorId
+        VolumeActorId,
         SelfId(),
         LogTitle.GetChild(GetCycleCount()),
         operationId);

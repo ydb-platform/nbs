@@ -112,10 +112,12 @@ void TDeviceOperationTracker::OnStarted(
     ERequestType requestType,
     ui64 startTime)
 {
-    TString agentId = "Unknown";
+    TString agentId = "";
     auto it = DeviceToAgent.find(deviceUUID);
     if (it != DeviceToAgent.end()) {
         agentId = it->second;
+    } else {
+        return;
     }
 
     Inflight.emplace(
@@ -165,9 +167,7 @@ TString TDeviceOperationTracker::GetStatJson(ui64 nowCycles) const
             allStat[htmlPrefix + times[i]] = ::ToString(histogram.Buckets[i]);
         }
 
-        if (total > 0) {
-            allStat[htmlPrefix + "Total"] = ::ToString(total);
-        }
+        allStat[htmlPrefix + "Total"] = ::ToString(total);
     }
 
     auto getInflightHtmlKey = [](const TString& requestType,
@@ -221,6 +221,7 @@ void TDeviceOperationTracker::UpdateDevices(
     }
 
     Histograms.clear();
+    Inflight.clear();
 
     const TVector<ERequestType> requestTypes = {
         ERequestType::Read,

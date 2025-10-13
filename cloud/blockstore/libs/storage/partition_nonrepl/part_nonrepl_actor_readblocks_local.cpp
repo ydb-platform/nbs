@@ -324,7 +324,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
         PartConfig,
         blockRange,
         msg->Record.ShouldReportFailedRangesOnFailure,
-        PartConfig->GetParentActorId(), // change to VolumeActorId
+        VolumeActorId,
         SelfId(),
         LogTitle.GetChild(GetCycleCount()),
         operationId);
