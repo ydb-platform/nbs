@@ -18,12 +18,24 @@ constexpr ui32 FirstBlockIndex = 123456;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TString PrintValue(const TBlock& b)
+{
+    TStringBuilder out;
+    out << "{"
+        << b.NodeId      << ", "
+        << b.BlockIndex  << ", "
+        << b.MinCommitId << ", "
+        << b.MaxCommitId
+        << "}";
+    return out;
+}
+
 template <typename T>
 TString PrintValues(const TVector<T>& values)
 {
     auto out = TStringBuilder() << "[";
     for (size_t i = 0; i != values.size();) {
-        out << values[i];
+        out << PrintValue(values[i]);
         i++;
         if (i != values.size()) {
             out << ", ";
@@ -355,7 +367,9 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
 
     Y_UNIT_TEST(ShouldEncodeRandomBlocks)
     {
-        TestEncodeBlocks(GenerateRandomBlocks(1000));
+        for (size_t i = 0; i < 50; i++) {
+            TestEncodeBlocks(GenerateRandomBlocks(1000));
+        }
     }
 
     Y_UNIT_TEST(ShouldEncodeRandomBlockGroupsWithoutDeletions)
