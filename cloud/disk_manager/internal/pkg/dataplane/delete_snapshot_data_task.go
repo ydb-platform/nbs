@@ -91,11 +91,9 @@ func (t *deleteSnapshotDataTask) deleteSnapshotData(
 		return nil
 	}
 
-	// Shallow copy means creating references for chunks.
-	// DeleteSnapshotData deletes references, so the bandwidth is the same.
 	execCtx.SetEstimatedInflightDuration(performance.Estimate(
 		snapshotMeta.StorageSize,
-		t.performanceConfig.GetSnapshotShallowCopyBandwidthMiBs(),
+		t.performanceConfig.GetDeleteSnapshotDataBandwidthMiBs(),
 	))
 
 	return t.storage.DeleteSnapshotData(ctx, t.request.SnapshotId)

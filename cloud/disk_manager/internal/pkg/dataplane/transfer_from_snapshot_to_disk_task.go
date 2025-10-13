@@ -59,15 +59,10 @@ func (t *transferFromSnapshotToDiskTask) Run(
 	source := snapshot.NewSnapshotSource(t.request.SrcSnapshotId, t.storage)
 	defer source.Close(ctx)
 
-	bytesToTransfer, err := source.EstimatedBytesToRead(ctx)
+	err = t.setEstimate(ctx, execCtx, source)
 	if err != nil {
 		return err
 	}
-
-	execCtx.SetEstimatedInflightDuration(performance.Estimate(
-		bytesToTransfer,
-		t.performanceConfig.GetTransferBetweenDiskAndSnapshotBandwidthMiBs(),
-	))
 
 	target, err := nbs.NewDiskTarget(
 		ctx,
@@ -139,6 +134,36 @@ func (t *transferFromSnapshotToDiskTask) GetResponse() proto.Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (t *transferFromSnapshotToDiskTask) setEstimate(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	source common.Source,
+) error {
+
+	bytesToTransfer, err := source.EstimatedBytesToRead(ctx)
+	if err != nil {
+		return err
+	}
+
+	transferBandwidth := t.performanceConfig.GetTransferBetweenDiskAndSnapshotBandwidthMiBs()
+
+	if t.request.DstEncryption != nil {
+		transferBandwidth = t.performanceConfig.GetTransferBetweenEncryptedDiskAndSnapshotBandwidthMiBs()
+	}
+
+	estimatedDuration := performance.Estimate(bytesToTransfer, transferBandwidth)
+
+	logging.Info(
+		ctx,
+		"bytes to transfer is %v, has encryption is %v, estimated duration is %v",
+		bytesToTransfer, t.request.DstEncryption != nil, estimatedDuration,
+	)
+
+	execCtx.SetEstimatedInflightDuration(estimatedDuration)
+
+	return nil
+}
 
 func (t *transferFromSnapshotToDiskTask) saveProgress(
 	ctx context.Context,
