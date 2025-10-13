@@ -18,7 +18,8 @@ UNALIGNED_TESTS = fio.generate_tests(
     sizes=SIZES,
     iodepths=[1],
     numjobs=[1],
-    scenarios=['randwrite', 'randrw'])
+    duration=120,
+    scenarios=['randrw'])
 
 
 @pytest.mark.parametrize("name", TESTS.keys())

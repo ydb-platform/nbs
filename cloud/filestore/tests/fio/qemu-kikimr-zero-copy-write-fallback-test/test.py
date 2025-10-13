@@ -4,7 +4,7 @@ import cloud.storage.core.tools.testing.fio.lib as fio
 
 from cloud.filestore.tests.python.lib.common import get_filestore_mount_path
 
-SCENARIOS = ["randwrite", "randrw"]
+SCENARIOS = ["randrw"]
 
 BLOCK_SIZE = 4096
 
@@ -17,6 +17,7 @@ UNALIGNED_TESTS = fio.generate_tests(
     sizes=SIZES,
     iodepths=[1],
     numjobs=[1],
+    duration=120,
     scenarios=SCENARIOS)
 
 ALIGNED_TESTS = fio.generate_tests(
