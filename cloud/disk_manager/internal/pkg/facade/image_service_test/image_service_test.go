@@ -21,6 +21,13 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const (
+	defaultZoneID = "zone-a"
+	shardedZoneID = "zone-d"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
 var defaultEncryptionDescWithKey = &disk_manager.EncryptionDesc{
 	Mode: disk_manager.EncryptionMode_ENCRYPTION_AES_XTS,
 	Key: &disk_manager.EncryptionDesc_KmsKey{
@@ -52,7 +59,7 @@ func checkEncryptedSource(
 		Size: diskSize,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID1,
 		},
 		EncryptionDesc: &disk_manager.EncryptionDesc{
@@ -65,7 +72,7 @@ func checkEncryptedSource(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
 	diskParams, err := nbsClient.Describe(ctx, diskID1)
 	require.NoError(t, err)
 
@@ -91,7 +98,7 @@ func checkEncryptedSource(
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID2,
 		},
 	})
@@ -122,7 +129,7 @@ func checkUnencryptedImage(
 		Size: diskSize,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID1,
 		},
 		EncryptionDesc: defaultEncryptionDescWithKey,
@@ -133,7 +140,7 @@ func checkUnencryptedImage(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
 	diskParams, err := nbsClient.Describe(ctx, diskID1)
 	require.NoError(t, err)
 
@@ -161,7 +168,7 @@ func checkUnencryptedImage(
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID2,
 		},
 		EncryptionDesc: &disk_manager.EncryptionDesc{
@@ -174,6 +181,102 @@ func checkUnencryptedImage(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "KeyPath should contain path to encryption key")
+}
+
+func testImageServiceCreateImageFromDiskWithKind(
+	t *testing.T,
+	diskKind disk_manager.DiskKind,
+	diskSize uint64,
+	zoneID string,
+) {
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: diskKind,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: zoneID,
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	// Disk cell is not determined, when creating in sharded zone.
+	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
+	require.NoError(t, err)
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
+	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID, diskSize)
+	require.NoError(t, err)
+
+	imageID := t.Name()
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
+		Src: &disk_manager.CreateImageRequest_SrcDiskId{
+			SrcDiskId: &disk_manager.DiskId{
+				ZoneId: zoneID,
+				DiskId: diskID,
+			},
+		},
+		DstImageId: imageID,
+		FolderId:   "folder",
+		Pooled:     true,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	response := disk_manager.CreateImageResponse{}
+	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
+	require.NoError(t, err)
+	require.Equal(t, int64(diskSize), response.Size)
+
+	meta := disk_manager.CreateImageMetadata{}
+	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
+	require.NoError(t, err)
+	require.Equal(t, float64(1), meta.Progress)
+
+	diskParams, err := nbsClient.Describe(ctx, diskID)
+	require.NoError(t, err)
+
+	if diskParams.IsDiskRegistryBasedDisk {
+		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
+	} else {
+		testcommon.RequireCheckpoint(t, ctx, diskID, imageID)
+	}
+
+	checkUnencryptedImage(
+		t,
+		client,
+		ctx,
+		imageID,
+		int64(diskSize),
+		diskContentInfo.Crc32,
+	)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteImage(reqCtx, &disk_manager.DeleteImageRequest{
+		ImageId: imageID,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -231,7 +334,7 @@ func TestImageServiceCreateImageFromImage(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID2,
 		},
 	})
@@ -240,7 +343,7 @@ func TestImageServiceCreateImageFromImage(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
 
 	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
@@ -285,7 +388,7 @@ func TestImageServiceCreateImageFromSnapshot(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID,
 		},
 		EncryptionDesc: &disk_manager.EncryptionDesc{
@@ -297,7 +400,7 @@ func TestImageServiceCreateImageFromSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
 	diskParams, err := nbsClient.Describe(ctx, diskID)
 	require.NoError(t, err)
 
@@ -325,7 +428,7 @@ func TestImageServiceCreateImageFromSnapshot(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID,
 		},
 		SnapshotId: snapshotID,
@@ -467,7 +570,7 @@ func testCreateImageFromURL(
 		Size: diskSize,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID,
 		},
 	})
@@ -476,7 +579,7 @@ func testCreateImageFromURL(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
 	err = nbsClient.ValidateCrc32(
 		ctx,
 		diskID,
@@ -639,7 +742,7 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 		Size: imageResponse.Size,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID,
 		},
 	})
@@ -648,7 +751,7 @@ func testImageServiceCreateImageFromURLWhichIsOverwrittenInProcess(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
 
 	err = nbsClient.ValidateCrc32(
 		ctx,
@@ -863,7 +966,7 @@ func TestImageServiceCancelCreateImageFromSnapshot(t *testing.T) {
 		Size: 4194304,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID,
 		},
 	})
@@ -877,7 +980,7 @@ func TestImageServiceCancelCreateImageFromSnapshot(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
 		Src: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID,
 		},
 		SnapshotId: snapshotID,
@@ -911,7 +1014,15 @@ func TestImageServiceCreateImageFromDisk(t *testing.T) {
 		disk_manager.DiskKind_DISK_KIND_SSD,
 		uint64(4*1024*1024), // diskSize.
 		defaultZoneID,
-		defaultZoneID, // diskCellID. Zone is not sharded.
+	)
+}
+
+func TestImageServiceCreateImageFromDiskInShardedZone(t *testing.T) {
+	testImageServiceCreateImageFromDiskWithKind(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD,
+		uint64(4*1024*1024), // diskSize.
+		shardedZoneID,
 	)
 }
 
@@ -921,7 +1032,6 @@ func TestImageServiceCreateImageFromNonReplicatedDisk(t *testing.T) {
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		uint64(1024*1024*1024), // diskSize.
 		defaultZoneID,
-		defaultZoneID, // diskCellID. Zone is not sharded.
 	)
 }
 
@@ -942,7 +1052,7 @@ func TestImageServiceCancelCreateImageFromDisk(t *testing.T) {
 		Size: 4194304,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID,
 		},
 	})
@@ -957,7 +1067,7 @@ func TestImageServiceCancelCreateImageFromDisk(t *testing.T) {
 	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
 		Src: &disk_manager.CreateImageRequest_SrcDiskId{
 			SrcDiskId: &disk_manager.DiskId{
-				ZoneId: "zone-a",
+				ZoneId: defaultZoneID,
 				DiskId: diskID,
 			},
 		},
@@ -1030,7 +1140,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID1,
 		},
 	})
@@ -1044,7 +1154,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
 		Src: &disk_manager.CreateImageRequest_SrcDiskId{
 			SrcDiskId: &disk_manager.DiskId{
-				ZoneId: "zone-a",
+				ZoneId: defaultZoneID,
 				DiskId: diskID1,
 			},
 		},
@@ -1065,7 +1175,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	require.Equal(t, float64(1), meta.Progress)
 	testcommon.RequireCheckpoint(t, ctx, diskID1, imageID1)
 
-	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
 	waitForWrite, err := nbsClient.GoWriteRandomBlocksToNbsDisk(ctx, diskID1)
 	require.NoError(t, err)
 	err = waitForWrite()
@@ -1076,7 +1186,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
 		Src: &disk_manager.CreateImageRequest_SrcDiskId{
 			SrcDiskId: &disk_manager.DiskId{
-				ZoneId: "zone-a",
+				ZoneId: defaultZoneID,
 				DiskId: diskID1,
 			},
 		},
@@ -1112,7 +1222,7 @@ func TestImageServiceCreateIncrementalImageFromDisk(t *testing.T) {
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
+			ZoneId: defaultZoneID,
 			DiskId: diskID2,
 		},
 	})
