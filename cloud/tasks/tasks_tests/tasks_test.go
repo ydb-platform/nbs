@@ -478,7 +478,7 @@ func scheduleHangingTask(
 type waitingTaskWithSleep struct {
 	request   *wrappers.StringValue
 	scheduler tasks.Scheduler
-	// Represent time spent while sleeping.
+	// Represents time spent while sleeping.
 	state *wrappers.Int64Value
 }
 
