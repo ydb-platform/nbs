@@ -352,7 +352,7 @@ func DurableWait(
 ////////////////////////////////////////////////////////////////////////////////
 
 type longTask struct {
-	// Represents time already spent.
+	// Represents time spent while sleeping.
 	state *wrappers.Int64Value
 }
 
