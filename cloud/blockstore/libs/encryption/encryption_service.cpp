@@ -8,8 +8,6 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <library/cpp/threading/future/subscription/wait_all.h>
-
 #include <util/generic/map.h>
 #include <util/system/rwlock.h>
 
