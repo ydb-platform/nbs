@@ -573,7 +573,7 @@ void TVolumeActor::CancelRequests(const TActorContext& ctx)
     for (auto& [volumeRequestId, volumeRequest]: VolumeRequests) {
         volumeRequest.CancelRequest(
             ctx,
-            MakeError(E_REJECTED, "Volume actor shutting down"));
+            MakeError(E_REJECTED, "Shutting down"));
     }
     VolumeRequests.clear();
 
