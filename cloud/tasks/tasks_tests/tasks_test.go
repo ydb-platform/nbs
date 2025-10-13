@@ -305,17 +305,19 @@ func scheduleDoublerTask(
 	})
 }
 
-// //////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
 type longTask struct {
-	timeSpent *wrappers.Int64Value
+	// Represents time already spent.
+	state *wrappers.Int64Value
 }
 
 func (t *longTask) Save() ([]byte, error) {
-	return proto.Marshal(t.timeSpent)
+	return proto.Marshal(t.state)
 }
 
 func (t *longTask) Load(request, state []byte) error {
-	return proto.Unmarshal(state, t.timeSpent)
+	return proto.Unmarshal(state, t.state)
 }
 
 func (t *longTask) Run(
@@ -324,12 +326,15 @@ func (t *longTask) Run(
 ) error {
 
 	saveInterval := 100 * time.Millisecond
-	for time.Duration(t.timeSpent.Value) < 10*time.Second {
+	timeoutNanosec := int64(10 * time.Second)
+	now := time.Now()
+	for t.state.Value < timeoutNanosec {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(saveInterval):
-			t.timeSpent.Value += int64(saveInterval)
+			t.state.Value += int64(time.Since(now))
+			now = time.Now()
 			err := execCtx.SaveState(ctx)
 			if err != nil {
 				return err
@@ -360,7 +365,7 @@ func (t *longTask) GetResponse() proto.Message {
 func registerLongTask(registry *tasks.Registry) error {
 	return registry.RegisterForExecution("long", func() tasks.Task {
 		return &longTask{
-			timeSpent: &wrappers.Int64Value{
+			state: &wrappers.Int64Value{
 				Value: 0,
 			},
 		}
@@ -370,7 +375,7 @@ func registerLongTask(registry *tasks.Registry) error {
 func registerLongTaskNotForExecution(registry *tasks.Registry) error {
 	return registry.Register("long", func() tasks.Task {
 		return &longTask{
-			timeSpent: &wrappers.Int64Value{
+			state: &wrappers.Int64Value{
 				Value: 0,
 			},
 		}
@@ -447,35 +452,46 @@ func scheduleHangingTask(
 type waitingTaskWithSleep struct {
 	request   *wrappers.StringValue
 	scheduler tasks.Scheduler
+	// Represent time spent while sleeping.
+	state *wrappers.Int64Value
 }
 
 func (t *waitingTaskWithSleep) Save() ([]byte, error) {
-	return proto.Marshal(t.request)
+	return proto.Marshal(t.state)
 }
 
 func (t *waitingTaskWithSleep) Load(request, state []byte) error {
 	t.request = &wrappers.StringValue{}
-	return proto.Unmarshal(request, t.request)
-}
-
-func (t *waitingTaskWithSleep) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(2 * time.Second):
-	}
-
-	_, err := t.scheduler.WaitTask(ctx, execCtx, t.request.Value)
+	err := proto.Unmarshal(request, t.request)
 	if err != nil {
 		return err
 	}
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(5 * time.Second):
-		return nil
+	t.state = &wrappers.Int64Value{}
+	return proto.Unmarshal(state, t.state)
+}
+
+func (t *waitingTaskWithSleep) Run(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	err := t.DurableWait(ctx, execCtx, 2*time.Second)
+	if err != nil {
+		return err
 	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, t.request.Value)
+	if err != nil {
+		return err
+	}
+
+	err = t.DurableWait(ctx, execCtx, 5*time.Second)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (t *waitingTaskWithSleep) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
@@ -492,11 +508,42 @@ func (t *waitingTaskWithSleep) GetResponse() proto.Message {
 	}
 }
 
+func (t *waitingTaskWithSleep) DurableWait(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	timeout time.Duration,
+) error {
+
+	saveInterval := 100 * time.Millisecond
+	timeoutNanosec := int64(timeout)
+	now := time.Now()
+	for t.state.Value < timeoutNanosec {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(saveInterval):
+			t.state.Value += int64(time.Since(now))
+			now = time.Now()
+			err := execCtx.SaveState(ctx)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func registerWaitingTaskWithSleep(registry *tasks.Registry, scheduler tasks.Scheduler) error {
 	return registry.RegisterForExecution(
 		"waiting",
 		func() tasks.Task {
-			return &waitingTaskWithSleep{scheduler: scheduler}
+			return &waitingTaskWithSleep{
+				scheduler: scheduler,
+				state: &wrappers.Int64Value{
+					Value: 0,
+				},
+			}
 		},
 	)
 }
@@ -1890,13 +1937,9 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	// The delay between task scheduling and runner task pickup is not included
 	// in WaitingDuration, so it can be less than expected.
 	waitingThreshold := 2 * time.Second
-
-	// First waitingTaskWithSleep iteration: it waits for 2 seconds, then
-	// adds a dependency and interrupts.
-	// Second waitingTaskWithSleep iteration: it waits for 2 seconds, then
-	// skips WaitTask (as the dependency is finished) and waits for 5 seconds.
-	// Total: 2+2+5 = 9 seconds.
-	require.GreaterOrEqual(t, inflightDuration, 9*time.Second)
+	// The task sleeps for 2 seconds, then waits for long task and after that
+	// sleeps for 5 seconds.
+	require.GreaterOrEqual(t, inflightDuration, 6*time.Second)
 	// Due to 2 seconds delay at the start, WaitingDuration will be 10-2 = 8 seconds.
 	require.GreaterOrEqual(t, waitingDuration, 8*time.Second-waitingThreshold)
 	require.GreaterOrEqual(t, totalDuration, 17*time.Second)
@@ -1949,7 +1992,7 @@ func TestTaskWaitingDurationInChain(t *testing.T) {
 
 	state2, err := s.storage.GetTask(ctx, task2ID)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, state2.InflightDuration, 9*time.Second)
+	require.GreaterOrEqual(t, state2.InflightDuration, 7*time.Second)
 	require.GreaterOrEqual(
 		t, state2.WaitingDuration, 8*time.Second-waitingThreshold,
 	)
