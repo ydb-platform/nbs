@@ -426,19 +426,14 @@ func (t *createSnapshotFromDiskTask) setEstimate(
 		return err
 	}
 
-	transferBandwidth := t.performanceConfig.GetTransferBetweenDiskAndSnapshotBandwidthMiBs()
-
-	if t.request.DstEncryption != nil {
-		transferBandwidth = t.performanceConfig.GetTransferBetweenEncryptedDiskAndSnapshotBandwidthMiBs()
-	}
-
-	estimatedDuration := performance.Estimate(bytesToTransfer, transferBandwidth)
-
-	logging.Info(
-		ctx,
-		"bytes to transfer is %v, has encryption is %v, estimated duration is %v",
-		bytesToTransfer, t.request.DstEncryption != nil, estimatedDuration,
+	// NOTE: NewDiskSource does not use encryption, so bandwidth is the same
+	// for encrypted disks.
+	estimatedDuration := performance.Estimate(
+		bytesToTransfer,
+		t.performanceConfig.GetTransferBetweenDiskAndSnapshotBandwidthMiBs(),
 	)
+
+	logging.Info(ctx, "bytes to transfer is %v, estimated duration is %v", bytesToTransfer, estimatedDuration)
 
 	if len(t.state.BaseSnapshotId) != 0 {
 		snapshotMeta, err := t.storage.GetSnapshotMeta(ctx, t.state.BaseSnapshotId)
