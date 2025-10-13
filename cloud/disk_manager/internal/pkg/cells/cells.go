@@ -141,7 +141,7 @@ func (s *cellSelector) selectCell(
 		mostFree := slices.MaxFunc(
 			capacities,
 			func(a, b storage.ClusterCapacity) int {
-				return cmp.Compare(b.FreeBytes, a.FreeBytes)
+				return cmp.Compare(a.FreeBytes, b.FreeBytes)
 			})
 
 		return mostFree.CellID, nil
