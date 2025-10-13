@@ -52,7 +52,6 @@ func (s *cellSelector) SelectCellForLocalDisk(
 ) (nbs.Client, error) {
 
 	cells := s.getCells(zoneID)
-
 	if len(cells) == 0 {
 		if s.isCell(zoneID) {
 			return s.nbsFactory.GetClient(ctx, zoneID)
