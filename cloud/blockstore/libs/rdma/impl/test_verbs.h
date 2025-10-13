@@ -36,6 +36,9 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     std::function<void(ibv_wc* wc)> HandleCompletionEvent;
     std::function<void(rdma_cm_id* id, ibv_qp_init_attr* attr)> CreateQP;
     std::function<void(rdma_cm_id* id, const void* data, ui8 size)> Reject;
+    std::function<
+        TAddressInfoPtr(const TString& host, ui32 port, rdma_addrinfo* hints)>
+        GetAddressInfo;
 };
 
 using TTestContextPtr = TIntrusivePtr<TTestContext>;
