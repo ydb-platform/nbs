@@ -59,7 +59,7 @@ private:
     // Only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
 
-    enum class EWriteDataEntryStatus;
+    enum class EWriteDataRequestStatus;
     class TWriteDataEntry;
     struct TWriteDataEntryPart;
     struct TNodeState;

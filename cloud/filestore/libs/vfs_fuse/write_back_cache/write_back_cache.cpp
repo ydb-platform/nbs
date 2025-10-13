@@ -103,9 +103,9 @@ struct TWriteBackCache::TNodeState
 {
     const ui64 NodeId = 0;
 
-    // Entries from TWriteBackCache::TImpl::CachedEntries
-    // with statuses Cached and FlushRequested filtered by nodeId
-    // appearing in the same order
+    // Entries from |TImpl::CachedEntries| with statuses Cached, FlushRequested
+    // and Flushing filtered by nodeId appearing in the same order.
+    // Note: entries with status Flushed reside only in |TImpl::CachedEntries|.
     TDeque<TWriteBackCache::TWriteDataEntry*> CachedEntries;
 
     // Efficient calculation of TWriteDataEntryParts from CachedEntries
@@ -114,9 +114,6 @@ struct TWriteBackCache::TNodeState
     // Count entries in TWriteBackCache::TImpl::PendingEntries
     // with status Pending filtered by nodeId
     size_t PendingEntriesCount = 0;
-
-    // Count entries in CachedEntries with status FlushRequested
-    size_t EntriesWithFlushRequested = 0;
 
     // Prevent from concurrent read and write requests with overlapping ranges
     TReadWriteRangeLock RangeLock;
@@ -135,7 +132,8 @@ struct TWriteBackCache::TNodeState
 
     bool ShouldFlush() const
     {
-        return EntriesWithFlushRequested > 0;
+        return !CachedEntries.empty() &&
+               CachedEntries.front()->IsFlushRequested();
     }
 };
 
@@ -296,7 +294,8 @@ private:
     // All fields below should be protected by this lock
     TMutex Lock;
 
-    // Entries with Cached and FlushRequested statuses
+    // Entries that are stored in the persistent queue - entries with
+    // Cached, FlushRequested, Flushing and Flushed statuses
     TDeque<std::unique_ptr<TWriteDataEntry>> CachedEntries;
 
     // Serialized entries from |CachedEntries| with the same order
@@ -305,7 +304,8 @@ private:
     // WriteData entries and Flush states grouped by nodeId
     THashMap<ui64, std::unique_ptr<TNodeState>> NodeStates;
 
-    // Entries with Pending status
+    // Waiting queue for the available space in the cache - entries
+    // with Pending status that have acquired write lock.
     TDeque<std::unique_ptr<TWriteDataEntry>> PendingEntries;
 
     // Nodes with new cached WriteData entries since last FlushAll
@@ -342,6 +342,9 @@ public:
                 auto entry = std::make_unique<TWriteDataEntry>(
                     checksum,
                     serializedRequest);
+
+                Y_ABORT_UNLESS(
+                    entry->GetStatus() != EWriteDataRequestStatus::Initial);
 
                 if (entry->IsCorrupted()) {
                     // This may happen when a buffer was corrupted.
@@ -594,7 +597,7 @@ public:
         auto guard = Guard(Lock);
 
         auto* nodeState = GetNodeStateOrNull(nodeId);
-        auto future = RequestFlush(nodeState);
+        auto future = RequestFlushAndGetFuture(nodeState);
 
         ExecutePendingOperations(guard);
 
@@ -608,7 +611,7 @@ public:
             auto guard = Guard(Lock);
 
             for (const auto& [_, nodeState]: NodeStates) {
-                futures.push_back(RequestFlush(nodeState.get()));
+                futures.push_back(RequestFlushAndGetFuture(nodeState.get()));
             }
 
             ExecutePendingOperations(guard);
@@ -617,8 +620,13 @@ public:
     }
 
     // should be protected by |Lock|
-    void ScheduleFlushIfNeeded(TNodeState* nodeState)
+    void RequestFlush(TNodeState* nodeState)
     {
+        auto it = nodeState->CachedEntries.rbegin();
+        while (it != nodeState->CachedEntries.rend() && (*it)->RequestFlush()) {
+            ++it;
+        }
+
         if (nodeState->ShouldFlush() && !nodeState->FlushState.Executing) {
             nodeState->FlushState.Executing = true;
             PendingOperations.Flush.push_back(nodeState);
@@ -626,7 +634,7 @@ public:
     }
 
     // should be protected by |Lock|
-    void ScheduleFlushAll()
+    void RequestFlushAll()
     {
         for (auto nodeId: NodesWithNewCachedEntries) {
             auto nodeEntryIter = NodeStates.find(nodeId);
@@ -639,32 +647,22 @@ public:
                 continue;
             }
 
-            // It is enough to request flush only the last entry in the queue
-            // It will trigger flush for all the preceding entries
-            auto* entry = nodeState->CachedEntries.back();
-            if (entry->RequestFlush()) {
-                nodeState->EntriesWithFlushRequested++;
-                ScheduleFlushIfNeeded(nodeState);
-            }
+            RequestFlush(nodeState);
         }
 
         NodesWithNewCachedEntries.clear();
     }
 
     // should be protected by |Lock|
-    TFuture<void> RequestFlush(TNodeState* nodeState)
+    TFuture<void> RequestFlushAndGetFuture(TNodeState* nodeState)
     {
         if (nodeState == nullptr || nodeState->CachedEntries.empty()) {
             return NThreading::MakeFuture();
         }
 
-        auto* entry = nodeState->CachedEntries.back();
-        if (entry->RequestFlush()) {
-            nodeState->EntriesWithFlushRequested++;
-            ScheduleFlushIfNeeded(nodeState);
-        }
+        RequestFlush(nodeState);
 
-        return entry->GetFlushFuture();
+        return nodeState->CachedEntries.back()->GetFlushFuture();
     }
 
 private:
@@ -772,7 +770,7 @@ private:
                 &allocationPtr);
 
             if (!allocated) {
-                ScheduleFlushAll();
+                RequestFlushAll();
                 break;
             }
 
@@ -995,7 +993,7 @@ private:
         } else {
             nodeState->PendingEntriesCount++;
             PendingEntries.push_back(std::move(entry));
-            ScheduleFlushAll();
+            RequestFlushAll();
         }
     }
 
@@ -1043,6 +1041,11 @@ private:
             Y_ABORT_UNLESS(!parts.empty());
 
             nodeState->FlushState.AffectedWriteDataEntriesCount = entryCount;
+
+            for (size_t i = 0; i < entryCount; i++) {
+                auto* entry = nodeState->CachedEntries[i];
+                entry->StartFlush();
+            }
         }
 
         nodeState->FlushState.WriteRequests =
@@ -1127,12 +1130,6 @@ private:
             nodeState->FlushState.AffectedWriteDataEntriesCount--;
 
             auto* entry = RemoveFrontCachedEntry(nodeState);
-
-            if (entry->IsFlushRequested()) {
-                Y_ABORT_UNLESS(nodeState->EntriesWithFlushRequested > 0);
-                nodeState->EntriesWithFlushRequested--;
-            }
-
             entry->FinishFlush(PendingOperations);
         }
 
@@ -1144,10 +1141,12 @@ private:
             PendingOperations.ShouldProcessPendingEntries = true;
         }
 
-        nodeState->FlushState.Executing = false;
-
-        ScheduleFlushIfNeeded(nodeState);
-        DeleteNodeStateIfEmpty(nodeState);
+        if (nodeState->ShouldFlush()) {
+            PendingOperations.Flush.push_back(nodeState);
+        } else {
+            nodeState->FlushState.Executing = false;
+            DeleteNodeStateIfEmpty(nodeState);
+        }
 
         ExecutePendingOperations(guard);
     }
@@ -1255,7 +1254,7 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request)
     : Request(std::move(request))
     , CachedPromise(NewPromise<NProto::TWriteDataResponse>())
-    , Status(EWriteDataEntryStatus::Pending)
+    , Status(EWriteDataRequestStatus::Pending)
 {
     RequestBuffer.swap(*Request->MutableBuffer());
     BufferRef = TStringBuf(RequestBuffer).Skip(Request->GetBufferOffset());
@@ -1279,6 +1278,7 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         // Currently this may happen when execution stopped between allocation
         // and Serialization. In future, this can happen only as a result of
         // corruption
+        Status = EWriteDataRequestStatus::Corrupted;
         return;
     }
 
@@ -1287,6 +1287,7 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     if (mi.Skip(bufferSize) != bufferSize) {
         // Buffer corruption
         // TODO(nasonov): report and handle
+        Status = EWriteDataRequestStatus::Corrupted;
         return;
     }
 
@@ -1294,12 +1295,13 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     if (!parsedRequest->ParseFromArray(mi.Buf(), static_cast<int>(mi.Avail()))) {
         // Buffer corruption
         // TODO(nasonov): report and handle
+        Status = EWriteDataRequestStatus::Corrupted;
         return;
     }
 
     Request.swap(parsedRequest);
     BufferRef = TStringBuf(bufferPtr, bufferSize);
-    Status = EWriteDataEntryStatus::Cached;
+    Status = EWriteDataRequestStatus::Cached;
 }
 
 size_t TWriteBackCache::TWriteDataEntry::GetSerializedSize() const
@@ -1314,7 +1316,7 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     Y_ABORT_UNLESS(AllocationPtr == nullptr);
     Y_ABORT_UNLESS(allocationPtr != nullptr);
     Y_ABORT_UNLESS(BufferRef.size() <= Max<ui32>());
-    Y_ABORT_UNLESS(Status == EWriteDataEntryStatus::Pending);
+    Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Pending);
 
     AllocationPtr = allocationPtr;
 
@@ -1331,7 +1333,7 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     BufferRef = TStringBuf(allocationPtr + sizeof(ui32), bufferSize);
     RequestBuffer.clear();
 
-    Status = EWriteDataEntryStatus::Cached;
+    Status = EWriteDataRequestStatus::Cached;
 
     if (CachedPromise.Initialized()) {
         pendingOperations.WriteDataCompleted.push_back(
@@ -1339,36 +1341,44 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     }
 }
 
-void TWriteBackCache::TWriteDataEntry::FinishFlush(
-    TPendingOperations& pendingOperations)
-{
-    Y_ABORT_UNLESS(
-        Status == EWriteDataEntryStatus::Cached ||
-        Status == EWriteDataEntryStatus::FlushRequested);
-
-    Status = EWriteDataEntryStatus::Flushed;
-    BufferRef.Clear();
-
-    if (FlushPromise.Initialized()) {
-        pendingOperations.FlushCompleted.push_back(
-            std::move(FlushPromise));
-    }
-}
-
 bool TWriteBackCache::TWriteDataEntry::RequestFlush()
 {
     switch (Status) {
-        case EWriteDataEntryStatus::Cached:
-            Status = EWriteDataEntryStatus::FlushRequested;
+        case EWriteDataRequestStatus::Cached:
+            Status = EWriteDataRequestStatus::FlushRequested;
             return true;
 
-        case EWriteDataEntryStatus::FlushRequested:
+        case EWriteDataRequestStatus::FlushRequested:
+        case EWriteDataRequestStatus::Flushing:
             return false;
 
         default:
             Y_ABORT(
                 "It is not possible to request flush for entry with status %d",
                 static_cast<int>(Status));
+    }
+}
+
+void TWriteBackCache::TWriteDataEntry::StartFlush()
+{
+    Y_ABORT_UNLESS(
+        Status == EWriteDataRequestStatus::Cached ||
+        Status == EWriteDataRequestStatus::FlushRequested);
+
+    Status = EWriteDataRequestStatus::Flushing;
+}
+
+void TWriteBackCache::TWriteDataEntry::FinishFlush(
+    TPendingOperations& pendingOperations)
+{
+    Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Flushing);
+
+    Status = EWriteDataRequestStatus::Flushed;
+    BufferRef.Clear();
+
+    if (FlushPromise.Initialized()) {
+        pendingOperations.FlushCompleted.push_back(
+            std::move(FlushPromise));
     }
 }
 
@@ -1382,7 +1392,7 @@ auto TWriteBackCache::TWriteDataEntry::GetCachedFuture()
 TFuture<void> TWriteBackCache::TWriteDataEntry::GetFlushFuture()
 {
     if (!FlushPromise.Initialized()) {
-        if (Status == EWriteDataEntryStatus::Flushed) {
+        if (Status == EWriteDataRequestStatus::Flushed) {
             return MakeFuture();
         }
         FlushPromise = NewPromise();
