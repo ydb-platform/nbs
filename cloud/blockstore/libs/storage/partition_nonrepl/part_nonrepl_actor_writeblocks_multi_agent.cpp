@@ -352,7 +352,7 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
-        PartConfig->GetParentActorId(), // VolumeActorId
+        VolumeActorId,
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         LogTitle.GetChild(GetCycleCount()),

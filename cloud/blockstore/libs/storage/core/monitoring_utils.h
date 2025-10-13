@@ -232,6 +232,11 @@ TString FormatBSGroupOperationsInflight(
     ui64 nowCycles,
     TInstant now);
 
+TString FormatDeviceOperationsInflight(
+    const TDeviceOperationTracker::TInflightMap& operations,
+    ui64 nowCycles,
+    TInstant now);
+
 extern const TStringBuf DefaultButtonStyle;
 
 void RenderStyledLink(

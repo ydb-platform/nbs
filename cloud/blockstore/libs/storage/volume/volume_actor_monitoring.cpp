@@ -958,6 +958,8 @@ void TVolumeActor::HandleHttpInfo(
          &TActor::HandleHttpInfo_ResetTransactionLatencyStats},
         {"resetRequestLatencyStats",
          &TActor::HandleHttpInfo_ResetRequestLatencyStats},
+         {"resetDeviceOperationLatencyStats",
+         &TActor::HandleHttpInfo_ResetDeviceOperationLatencyStats},
     }};
 
     const THttpHandlers getActions{{
@@ -970,6 +972,8 @@ void TVolumeActor::HandleHttpInfo(
         {"getRequestsInflight",
          &TActor::HandleHttpInfo_GetRequestsInflight},
         {"getDeviceLatency", &TActor::HandleHttpInfo_GetDeviceLatency},
+        {"getDeviceOperationsInflight",
+         &TActor::HandleHttpInfo_GetDeviceOperationsInflight},
     }};
 
     auto* msg = ev->Get();
@@ -2904,6 +2908,16 @@ void TVolumeActor::HandleHttpInfo_ResetRequestLatencyStats(
     SendHttpResponse(ctx, *requestInfo, "");
 }
 
+void TVolumeActor::HandleHttpInfo_ResetDeviceOperationLatencyStats(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    DeviceOperationTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
+}
+
 void TVolumeActor::HandleHttpInfo_GetTransactionsInflight(
     const NActors::TActorContext& ctx,
     const TCgiParameters& params,
@@ -2934,6 +2948,23 @@ void TVolumeActor::HandleHttpInfo_GetRequestsInflight(
             RequestTimeTracker.GetInflightOperations(),
             GetCycleCount(),
             TInstant::Now())));
+}
+
+void TVolumeActor::HandleHttpInfo_GetDeviceOperationsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(
+            FormatDeviceOperationsInflight(
+                DeviceOperationTracker.GetInflightOperations(),
+                GetCycleCount(),
+                TInstant::Now())));
 }
 
 void TVolumeActor::HandleHttpInfo_GetDeviceLatency(

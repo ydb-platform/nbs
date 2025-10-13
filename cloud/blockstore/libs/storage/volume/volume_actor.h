@@ -755,12 +755,22 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_ResetDeviceOperationLatencyStats(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleHttpInfo_GetTransactionsInflight(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_GetRequestsInflight(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_GetDeviceOperationsInflight(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

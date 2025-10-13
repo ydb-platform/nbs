@@ -309,7 +309,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
-        PartConfig->GetParentActorId(), // change to VolumeActorId
+        VolumeActorId,
         SelfId(),
         LogTitle.GetChild(GetCycleCount()),
         operationId);
