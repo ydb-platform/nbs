@@ -319,7 +319,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
-        PartConfig->GetParentActorId(), // change VolumeActorId
+        VolumeActorId,
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         false,   // replyLocal
@@ -437,7 +437,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
-        PartConfig->GetParentActorId(), // change VolumeActorId
+        VolumeActorId,
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         true,   // replyLocal

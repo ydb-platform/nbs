@@ -253,7 +253,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
-        PartConfig->GetParentActorId(), // VolumeActorId
+        VolumeActorId,
         SelfId(),
         PartConfig->GetBlockSize(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),

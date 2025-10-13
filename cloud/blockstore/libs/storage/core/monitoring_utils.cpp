@@ -1880,6 +1880,73 @@ TString FormatBSGroupOperationsInflight(
     return out.Str();
 }
 
+TString FormatDeviceOperationsInflight(
+    const TDeviceOperationTracker::TInflightMap& operations,
+    ui64 nowCycles,
+    TInstant now)
+{
+    TStringStream out;
+
+    HTML (out) {
+        DIV_CLASS ("container") {
+            TABLE_SORTABLE()
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ID";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Device UUID";
+                        }
+                        TABLEH () {
+                            out << "Agent ID";
+                        }
+                        TABLEH () {
+                            out << "Start Time";
+                        }
+                        TABLEH () {
+                            out << "Duration";
+                        }
+                    }
+                }
+                TABLEBODY()
+                {
+                    for (const auto& [id, op]: operations) {
+                        auto duration =
+                            CyclesToDurationSafe(nowCycles - op.StartTime);
+                        TABLER () {
+                            TABLED () {
+                                out << id;
+                            }
+                            TABLED () {
+                                out << op.RequestType;
+                            }
+                            TABLED () {
+                                out << op.DeviceUUID;
+                            }
+                            TABLED () {
+                                out << op.AgentId;
+                            }
+                            TABLED () {
+                                out << (now - duration).ToStringUpToSeconds();
+                            }
+                            TABLED () {
+                                out << FormatDuration(duration);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out.Str();
+}
+
 const TStringBuf DefaultButtonStyle =
     "display:inline-block;"
     "padding:2px 8px;"
@@ -1918,6 +1985,17 @@ void AddDeviceOperationLatencyCSS(IOutputStream& out)
         << R"(
         .table-latency {
             border-collapse: collapse;
+            table-layout: auto;
+        }
+
+        .table-latency td:not(:first-child):not(:nth-child(2)) {
+            white-space: nowrap;
+            text-align: right;
+            padding: 5px;
+        }
+
+        .table-latency th:not(:first-child):not(:nth-child(2)) {
+            min-width: 35px;
         }
 
         .table-latency th {
@@ -2060,18 +2138,17 @@ void DumpDeviceOperationLatency(
             "Auto update device operations",
             true);
 
-        // RenderStyledPostButton(
-        //     out,
-        //     "/tablets/app?action=resetDeviceOperationLatencyStats&TabletID="
-        //     +
-        //         ToString(tabletId),
-        //     "Reset");
+        RenderStyledPostButton(
+            out,
+            "/tablets/app?action=resetDeviceOperationLatencyStats&TabletID=" +
+                ToString(tabletId),
+            "Reset");
 
-        // RenderStyledLink(
-        //     out,
-        //     "/tablets/app?action=getDeviceOperationsInflight&TabletID=" +
-        //         ToString(tabletId),
-        //     "Inflight");
+        RenderStyledLink(
+            out,
+            "/tablets/app?action=getDeviceOperationsInflight&TabletID=" +
+                ToString(tabletId),
+            "Inflight");
 
         DIV_CLASS_ID(" ", containerId)
         {
