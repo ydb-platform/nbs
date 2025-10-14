@@ -1349,4 +1349,7 @@ message TStorageServiceConfig
     // schemeshard, etc.) and the DR tablet. Lower value means lower priority.
     // NOTE: can be negative.
     optional int32 SystemTabletsPriority = 464;
+
+    // Enables force calculation of the checksums for all compaction blocks.
+    optional bool ComputeDigestForEveryBlockOnCompaction = 465;
 }

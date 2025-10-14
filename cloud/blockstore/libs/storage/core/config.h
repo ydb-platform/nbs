@@ -732,6 +732,8 @@ public:
     [[nodiscard]] ui64 GetHiveLocalServiceNetworkResourceLimit() const;
 
     [[nodiscard]] TDuration GetDynamicNodeRegistrationTimeout() const;
+
+    [[nodiscard]] bool GetComputeDigestForEveryBlockOnCompaction() const;
 };
 
 ui64 GetAllocationUnit(

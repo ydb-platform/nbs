@@ -50,6 +50,12 @@ struct TExt4BlockDigestGenerator final
             return Nothing();
         }
 
+        return ComputeDigestForce(blockContent);
+    }
+
+    TMaybe<ui32> ComputeDigestForce(
+        TBlockDataRef blockContent) const override
+    {
         if (blockContent.Data() != nullptr) {
             return ComputeDefaultDigest(blockContent);
         }
@@ -109,6 +115,12 @@ struct TTestBlockDigestGenerator final
     {
         Y_UNUSED(blockIndex);
 
+        return ComputeDigestForce(blockContent);
+    }
+
+    TMaybe<ui32> ComputeDigestForce(
+        TBlockDataRef blockContent) const override
+    {
         if (blockContent.Data() == nullptr) {
             return 0;
         }
@@ -139,8 +151,20 @@ struct TTestBlockDigestGenerator final
 struct TBlockDigestGeneratorStub final
     : IBlockDigestGenerator
 {
-    TMaybe<ui32> ComputeDigest(ui64, TBlockDataRef) const override
+    TMaybe<ui32> ComputeDigest(
+        ui64 blockIndex,
+        TBlockDataRef blockContent) const override
     {
+        Y_UNUSED(blockIndex);
+
+        return ComputeDigestForce(blockContent);
+    }
+
+    TMaybe<ui32> ComputeDigestForce(
+        TBlockDataRef blockContent) const override
+    {
+        Y_UNUSED(blockContent);
+
         return Nothing();
     }
 
