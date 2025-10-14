@@ -46,7 +46,8 @@ public:
         TActorId volumeActorId,
         const TActorId& part,
         TChildLogTitle logTitle,
-        ui64 deviceOperationId);
+        ui64 deviceOperationId,
+        bool shouldTrackOperations);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -75,7 +76,8 @@ TDiskAgentChecksumActor::TDiskAgentChecksumActor(
         TActorId volumeActorId,
         const TActorId& part,
         TChildLogTitle logTitle,
-        ui64 deviceOperationId)
+        ui64 deviceOperationId,
+        bool shouldTrackOperations)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -86,7 +88,8 @@ TDiskAgentChecksumActor::TDiskAgentChecksumActor(
           volumeActorId,
           part,
           std::move(logTitle),
-          deviceOperationId)
+          deviceOperationId,
+          shouldTrackOperations)
     , Request(std::move(request))
 {}
 
@@ -104,15 +107,17 @@ void TDiskAgentChecksumActor::SendRequest(const TActorContext& ctx)
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
 
-        auto latencyStartEvent =
-            std::make_unique<TEvVolumePrivate::TEvDeviceOperationStarted>(
-                TEvVolumePrivate::TDeviceOperationStarted(
-                    deviceRequest.Device.GetDeviceUUID(),
-                    TEvVolumePrivate::TDeviceOperationStarted::ERequestType::
-                        Checksum,
-                    deviceRequest.Device.GetAgentId(),
-                    DeviceOperationId + cookie));
-        ctx.Send(VolumeActorId, latencyStartEvent.release());
+        if (ShouldTrackOperations) {
+            auto latencyStartEvent =
+                std::make_unique<TEvVolumePrivate::TEvDeviceOperationStarted>(
+                    TEvVolumePrivate::TDeviceOperationStarted(
+                        deviceRequest.Device.GetDeviceUUID(),
+                        TEvVolumePrivate::TDeviceOperationStarted::
+                            ERequestType::Checksum,
+                        deviceRequest.Device.GetAgentId(),
+                        DeviceOperationId + cookie));
+            ctx.Send(VolumeActorId, latencyStartEvent.release());
+        }
 
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
@@ -178,11 +183,13 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
     const auto rangeSize = deviceRequest.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
     Checksums[rangeStart] = {msg->Record.GetChecksum(), rangeSize};
 
-    auto latencyFinishEvent =
-        std::make_unique<TEvVolumePrivate::TEvDeviceOperationFinished>(
-            TEvVolumePrivate::TDeviceOperationFinished(
-                DeviceOperationId + ev->Cookie));
-    ctx.Send(VolumeActorId, latencyFinishEvent.release());
+    if (ShouldTrackOperations) {
+        auto latencyFinishEvent =
+            std::make_unique<TEvVolumePrivate::TEvDeviceOperationFinished>(
+                TEvVolumePrivate::TDeviceOperationFinished(
+                    DeviceOperationId + ev->Cookie));
+        ctx.Send(VolumeActorId, latencyFinishEvent.release());
+    }
 
     if (++RequestsCompleted < DeviceRequests.size()) {
         return;
@@ -259,6 +266,8 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
 
     ui64 operationId = DeviceOperationId;
     DeviceOperationId += deviceRequests.size();
+    bool shouldTrack =
+        (operationId % Config->GetDeviceOperationTrackingFrequency()) == 0;
 
     auto actorId = NCloud::Register<TDiskAgentChecksumActor>(
         ctx,
@@ -270,7 +279,8 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         VolumeActorId,
         SelfId(),
         LogTitle.GetChild(GetCycleCount()),
-        operationId);
+        operationId,
+        shouldTrack);
 
     RequestsInProgress.AddReadRequest(actorId, std::move(request));
 }

@@ -1355,4 +1355,9 @@ message TStorageServiceConfig
 
     // Disables the use of intermediate write buffers in volume actor.
     optional bool DisableUsingIntermediateWriteBuffer = 466;
+
+    // Specifies which operation should be tracked for device operation latency statistics.
+    // For example: 1 = every operation, 10 = every 10th operation, 100 = every 100th operation.
+    // This helps reduce overhead when tracking latency statistics for high-load systems.
+    optional uint32 DeviceOperationTrackingFrequency = 467;
 }

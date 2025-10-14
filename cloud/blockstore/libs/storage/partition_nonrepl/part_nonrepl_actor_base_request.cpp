@@ -27,7 +27,8 @@ TDiskAgentBaseRequestActor::TDiskAgentBaseRequestActor(
         TActorId volumeActorId,
         const TActorId& part,
         TChildLogTitle logTitle,
-        ui64 deviceOperationId)
+        ui64 deviceOperationId,
+        bool shouldTrackOperations)
     : RequestInfo(std::move(requestInfo))
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
@@ -35,6 +36,7 @@ TDiskAgentBaseRequestActor::TDiskAgentBaseRequestActor(
     , Part(part)
     , LogTitle(std::move(logTitle))
     , DeviceOperationId(deviceOperationId)
+    , ShouldTrackOperations(shouldTrackOperations)
     , RequestName(std::move(requestName))
     , RequestId(requestId)
     , TimeoutPolicy(std::move(timeoutPolicy))
