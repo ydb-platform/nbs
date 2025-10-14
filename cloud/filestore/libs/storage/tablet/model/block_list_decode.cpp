@@ -259,20 +259,7 @@ void FindDeletionMarkers(
                         entry.BlobOffset + multi.Count);
                     if (entry.BlobOffset <= blobOffset && blobOffset < skipUntilBlobOffset) {
                         *maxCommitId = group.CommitId;
-
-                        if (minSeenBlobOffset == Max<ui16>()) {
-                            *blocksFound = skipUntilBlobOffset - blobOffset;
-                            return;
-                        }
-
-                        if (minSeenBlobOffset <= blobOffset) {
-                            *blocksFound = 1;
-                            return;
-                        }
-
-                        *blocksFound = Min<ui16>(
-                            minSeenBlobOffset - blobOffset,
-                            skipUntilBlobOffset - blobOffset);
+                        *blocksFound = skipUntilBlobOffset - blobOffset;
                         return;
                     }
                     break;
