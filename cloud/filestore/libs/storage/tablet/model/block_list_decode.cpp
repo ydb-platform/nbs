@@ -305,6 +305,8 @@ void FindDeletionMarkers(
     *maxCommitId = InvalidCommitId;
 
     if (minSeenBlobOffset == Max<ui16>()) {
+        // There are no deletion markers that may overlap with
+        // [blobOffset, blobOffset + maxBlocksToFind)
         *blocksFound = maxBlocksToFind;
         return;
     }
