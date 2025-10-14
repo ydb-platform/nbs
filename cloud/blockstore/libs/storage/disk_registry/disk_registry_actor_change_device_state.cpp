@@ -25,6 +25,7 @@ private:
     const TString DeviceUUID;
     const NProto::EDeviceState NewState;
     const NProto::EDeviceState OldState;
+    const TString Message;
 
 public:
     TChangeDeviceStateActor(
@@ -33,7 +34,8 @@ public:
         TRequestInfoPtr requestInfo,
         TString deviceId,
         NProto::EDeviceState newState,
-        NProto::EDeviceState oldState);
+        NProto::EDeviceState oldState,
+        TString message);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -65,13 +67,15 @@ TChangeDeviceStateActor::TChangeDeviceStateActor(
         TRequestInfoPtr requestInfo,
         TString deviceId,
         NProto::EDeviceState newState,
-        NProto::EDeviceState oldState)
+        NProto::EDeviceState oldState,
+        TString message)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))
     , DeviceUUID(std::move(deviceId))
     , NewState(newState)
     , OldState(oldState)
+    , Message(std::move(message))
 {}
 
 void TChangeDeviceStateActor::Bootstrap(const TActorContext& ctx)
@@ -81,7 +85,9 @@ void TChangeDeviceStateActor::Bootstrap(const TActorContext& ctx)
 
     request->Record.SetDeviceUUID(DeviceUUID);
     request->Record.SetDeviceState(NewState);
-    request->Record.SetReason("monpage action");
+
+    TString reason = Message.empty() ? "monpage action" : Message;
+    request->Record.SetReason(reason);
 
     NCloud::Send(ctx, Owner, std::move(request));
 
@@ -184,6 +190,7 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
     }
     const auto& newStateRaw = params.Get("NewState");
     const auto& deviceUUID = params.Get("DeviceUUID");
+    const auto& stateMessage = params.Get("stateMessage");
 
     if (!newStateRaw) {
         RejectHttpRequest(ctx, *requestInfo, "No new state is given");
@@ -243,7 +250,8 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState(
         std::move(requestInfo),
         deviceUUID,
         newState,
-        device.GetState());
+        device.GetState(),
+        stateMessage);
 
     Actors.insert(actor);
 }

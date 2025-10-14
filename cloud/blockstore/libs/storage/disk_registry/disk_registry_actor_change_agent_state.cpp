@@ -24,6 +24,7 @@ private:
     const TString AgentID;
     const NProto::EAgentState NewState;
     const NProto::EAgentState OldState;
+    const TString Message;
 
 public:
     TChangeAgentStateActor(
@@ -32,7 +33,8 @@ public:
         TRequestInfoPtr requestInfo,
         TString agentId,
         NProto::EAgentState newState,
-        NProto::EAgentState oldState);
+        NProto::EAgentState oldState,
+        TString message);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -64,13 +66,15 @@ TChangeAgentStateActor::TChangeAgentStateActor(
         TRequestInfoPtr requestInfo,
         TString agentId,
         NProto::EAgentState newState,
-        NProto::EAgentState oldState)
+        NProto::EAgentState oldState,
+        TString message)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))
     , AgentID(std::move(agentId))
     , NewState(newState)
     , OldState(oldState)
+    , Message(std::move(message))
 {}
 
 void TChangeAgentStateActor::Bootstrap(const TActorContext& ctx)
@@ -80,7 +84,9 @@ void TChangeAgentStateActor::Bootstrap(const TActorContext& ctx)
 
     request->Record.SetAgentId(AgentID);
     request->Record.SetAgentState(NewState);
-    request->Record.SetReason("monpage action");
+
+    TString reason = Message.empty() ? "monpage action" : Message;
+    request->Record.SetReason(reason);
 
     NCloud::Send(ctx, Owner, std::move(request));
 
@@ -184,6 +190,7 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
 
     const auto& newStateRaw = params.Get("NewState");
     const auto& agentId = params.Get("AgentID");
+    const auto& stateMessage = params.Get("stateMessage");
 
     if (!newStateRaw) {
         RejectHttpRequest(ctx, *requestInfo, "No new state is given");
@@ -244,7 +251,8 @@ void TDiskRegistryActor::HandleHttpInfo_ChangeAgentState(
         std::move(requestInfo),
         agentId,
         newState,
-        *agentState.Get());
+        *agentState.Get(),
+        stateMessage);
 
     Actors.insert(actor);
 }
