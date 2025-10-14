@@ -582,6 +582,8 @@ public:
     ui32 GetSpareNodeProbability() const;
     [[nodiscard]] i32 GetSystemTabletsPriority() const;
 
+    ui32 GetDeviceOperationTrackingFrequency() const;
+
     bool GetRejectLateRequestsAtDiskAgentEnabled() const;
     bool GetAssignIdToWriteAndZeroRequestsEnabled() const;
 
