@@ -102,6 +102,14 @@ TVector<TBlock> GenerateRandomBlockGroups(
     size_t blockGroups,
     size_t maxDeletionGroups)
 {
+    constexpr size_t MaxBlocksInGroup = 20u;
+    constexpr size_t MaxDeletionsInGroup = MaxBlocksInGroup;
+
+    Y_ABORT_UNLESS(blockGroups >= maxDeletionGroups);
+    // 2 rewrites at max are possible for each block
+    Y_ABORT_UNLESS(
+        blockGroups*MaxBlocksInGroup + 2*maxDeletionGroups*MaxDeletionsInGroup <= MaxBlocksCount);
+
     auto blockIndex = FirstBlockIndex;
 
     auto writeNewBlock = [&](TVector<TBlock>& blocks)
@@ -124,6 +132,17 @@ TVector<TBlock> GenerateRandomBlockGroups(
             b.MinCommitId = b.MaxCommitId;
             b.MaxCommitId = InvalidCommitId;
             blocks.push_back(std::move(b));
+
+            if (RandomNumber(2u) == 0) {
+                // Rewrite one more block (for better testing)
+                auto& block = blocks.back();
+                block.MaxCommitId = block.MinCommitId + 1 + RandomNumber(100u);
+
+                auto b = block;
+                b.MinCommitId = b.MaxCommitId;
+                b.MaxCommitId = InvalidCommitId;
+                blocks.push_back(std::move(b));
+            }
         }
     };
 
@@ -134,11 +153,11 @@ TVector<TBlock> GenerateRandomBlockGroups(
     for (size_t i = 0; i < blockGroups; ++i) {
         TVector<TBlock> group;
 
-        const auto maxBlocksInGroup = 1 + RandomNumber(20u);
+        const auto blocksInGroup = 1 + RandomNumber(MaxBlocksInGroup);
 
         if (RandomNumber(2u) == 0) {
             // Merged block group
-            for (size_t j = 0; j < maxBlocksInGroup; ++j) {
+            for (size_t j = 0; j < blocksInGroup; ++j) {
                 writeNewBlock(group);
                 blockIndex++;
             }
@@ -150,7 +169,7 @@ TVector<TBlock> GenerateRandomBlockGroups(
             blockIndex++;
 
             // Fill the rest
-            for (size_t j = 0; j < maxBlocksInGroup - 1; ++j) {
+            for (size_t j = 0; j < blocksInGroup - 1; ++j) {
                 if (RandomNumber(2u) == 0){
                     writeNewBlock(group);
                 }
@@ -377,7 +396,7 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         for (size_t i = 0; i < 50; i++) {
             TestEncodeBlocks(
                 GenerateRandomBlockGroups(
-                    /*blockGroups=*/40,
+                    /*blockGroups=*/50,
                     /*deletionGroups=*/0));
         }
     }
@@ -387,8 +406,8 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         for (size_t i = 0; i < 50; i++) {
             TestEncodeBlocks(
                 GenerateRandomBlockGroups(
-                    /*blockGroups=*/30,
-                    /*deletionGroups=*/8));
+                    /*blockGroups=*/20,
+                    /*deletionGroups=*/15));
         }
     }
 
