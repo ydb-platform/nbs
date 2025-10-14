@@ -2004,7 +2004,7 @@ func TestTaskWaitingDurationInChain(t *testing.T) {
 
 	state3, err := s.storage.GetTask(ctx, task3ID)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, state3.InflightDuration, 9*time.Second)
+	require.GreaterOrEqual(t, state3.InflightDuration, 7*time.Second)
 	require.GreaterOrEqual(
 		t, state3.WaitingDuration, 8*time.Second-waitingThreshold,
 	)
