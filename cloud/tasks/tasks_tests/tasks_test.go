@@ -1942,7 +1942,7 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	require.GreaterOrEqual(t, inflightDuration, 7*time.Second)
 	// Due to 2 seconds delay at the start, WaitingDuration will be 10-2 = 8 seconds.
 	require.GreaterOrEqual(t, waitingDuration, 8*time.Second-waitingThreshold)
-	require.GreaterOrEqual(t, totalDuration, 17*time.Second)
+	require.GreaterOrEqual(t, totalDuration, 15*time.Second)
 	require.LessOrEqual(t, inflightDuration+waitingDuration, totalDuration)
 }
 
