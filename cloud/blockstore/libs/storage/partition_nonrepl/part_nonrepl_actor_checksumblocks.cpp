@@ -114,7 +114,6 @@ void TDiskAgentChecksumActor::SendRequest(const TActorContext& ctx)
                         deviceRequest.Device.GetDeviceUUID(),
                         TEvVolumePrivate::TDeviceOperationStarted::
                             ERequestType::Checksum,
-                        deviceRequest.Device.GetAgentId(),
                         DeviceOperationId + cookie));
             ctx.Send(VolumeActorId, latencyStartEvent.release());
         }
@@ -266,8 +265,9 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
 
     ui64 operationId = DeviceOperationId;
     DeviceOperationId += deviceRequests.size();
+    ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
     bool shouldTrack =
-        (operationId % Config->GetDeviceOperationTrackingFrequency()) == 0;
+        (trackingFreq == 0) ? false : ((operationId % trackingFreq) == 0);
 
     auto actorId = NCloud::Register<TDiskAgentChecksumActor>(
         ctx,

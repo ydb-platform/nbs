@@ -132,7 +132,6 @@ void TDiskAgentReadLocalActor::SendRequest(const TActorContext& ctx)
                         deviceRequest.Device.GetDeviceUUID(),
                         TEvVolumePrivate::TDeviceOperationStarted::
                             ERequestType::Read,
-                        deviceRequest.Device.GetAgentId(),
                         DeviceOperationId + cookie));
             ctx.Send(VolumeActorId, latencyStartEvent.release());
         }
@@ -322,8 +321,9 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
 
     ui64 operationId = DeviceOperationId;
     DeviceOperationId += deviceRequests.size();
+    ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
     bool shouldTrack =
-        (operationId % Config->GetDeviceOperationTrackingFrequency()) == 0;
+        (trackingFreq == 0) ? false : ((operationId % trackingFreq) == 0);
 
     auto actorId = NCloud::Register<TDiskAgentReadLocalActor>(
         ctx,
