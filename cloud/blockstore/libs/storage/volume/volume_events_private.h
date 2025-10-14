@@ -497,17 +497,14 @@ struct TEvVolumePrivate
 
         TString DeviceUUID;
         ERequestType RequestType;
-        TString AgentId;
         ui64 OperationId;
 
         TDeviceOperationStarted(
             TString deviceUUID,
             ERequestType requestType,
-            TString agentId,
             ui64 operationId)
             : DeviceUUID(std::move(deviceUUID))
             , RequestType(requestType)
-            , AgentId(std::move(agentId))
             , OperationId(operationId)
         {}
     };
