@@ -144,7 +144,6 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
                         deviceRequest.Device.GetDeviceUUID(),
                         TEvVolumePrivate::TDeviceOperationStarted::
                             ERequestType::Write,
-                        deviceRequest.Device.GetAgentId(),
                         DeviceOperationId + index));
             ctx.Send(VolumeActorId, latencyStartEvent.release());
         }
@@ -319,8 +318,9 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
 
     ui64 operationId = DeviceOperationId;
     DeviceOperationId += deviceRequests.size();
+    ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
     bool shouldTrack =
-        (operationId % Config->GetDeviceOperationTrackingFrequency()) == 0;
+        (trackingFreq == 0) ? false : ((operationId % trackingFreq) == 0);
 
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
@@ -440,8 +440,9 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
 
     ui64 operationId = DeviceOperationId;
     DeviceOperationId += deviceRequests.size();
+    ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
     bool shouldTrack =
-        (operationId % Config->GetDeviceOperationTrackingFrequency()) == 0;
+        (trackingFreq == 0) ? false : ((operationId % trackingFreq) == 0);
 
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,

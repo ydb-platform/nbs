@@ -139,7 +139,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(KnownSpareNodes,                TVector<TString>,   {}                )\
     xxx(SpareNodeProbability,           ui32,               0                 )\
     xxx(SystemTabletsPriority,          i32,                0                 )\
-    xxx(DeviceOperationTrackingFrequency, ui32,             10                )\
+    xxx(DeviceOperationTrackingFrequency, ui32,             0                 )\
                                                                                \
     xxx(TenantHiveTabletId,             ui64,               0                 )\
                                                                                \
