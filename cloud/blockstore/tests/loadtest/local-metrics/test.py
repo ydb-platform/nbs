@@ -221,6 +221,7 @@ def test_metrics():
     check_ydb_volume_metrics(kikimr_port)
 
     nbs.stop()
+    kikimr_cluster.stop()
 
     assert read_data_size >= raw_data_size
     assert read_data_iops >= 1

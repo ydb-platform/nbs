@@ -26,6 +26,7 @@ from cloud.storage.core.tests.common import (
 )
 
 PID_FILE_NAME = "local_kikimr_nfs_server_recipe.pid"
+KIKIMR_PID_FILE_NAME = "local_kikimr_nfs_server_recipe.kikimr_pid"
 ERR_LOG_FILE_NAMES_FILE = "local_kikimr_nfs_server_recipe.err_log_files"
 PDISK_SIZE = 32 * 1024 * 1024 * 1024
 
@@ -141,6 +142,9 @@ def start(argv):
     with open(PID_FILE_NAME, "w") as f:
         f.write(str(filestore_server.pid))
 
+    with open(KIKIMR_PID_FILE_NAME, "w") as f:
+        f.write(str(list(kikimr_cluster.nodes.values())[0].pid))
+
     wait_for_filestore_server(filestore_server, filestore_configurator.port)
 
     set_env("NFS_SERVER_PORT", str(filestore_configurator.port))
@@ -160,6 +164,10 @@ def stop(argv):
         return
 
     with open(PID_FILE_NAME) as f:
+        pid = int(f.read())
+        shutdown(pid)
+
+    with open(KIKIMR_PID_FILE_NAME) as f:
         pid = int(f.read())
         shutdown(pid)
 
