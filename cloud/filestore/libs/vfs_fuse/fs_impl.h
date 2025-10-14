@@ -75,7 +75,7 @@ private:
     IRequestStatsPtr RequestStats;
     ICompletionQueuePtr CompletionQueue;
 
-    NVFS::TFSyncQueue FSyncQueue;
+    std::unique_ptr<NVFS::IFSyncQueue> FSyncQueue;
 
     TNodeCache NodeCache;
     TMutex NodeCacheLock;

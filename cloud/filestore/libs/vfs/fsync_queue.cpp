@@ -286,6 +286,53 @@ TFuture<NProto::TError> TFSyncQueue::WaitForDataRequests(
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void TFSyncQueueStub::Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle)
+{
+    Y_UNUSED(reqId);
+    Y_UNUSED(nodeId);
+    Y_UNUSED(handle);
+}
+
+void TFSyncQueueStub::Dequeue(
+    TRequestId reqId,
+    const NProto::TError& error,
+    TNodeId nodeId,
+    THandle handle)
+{
+    Y_UNUSED(reqId);
+    Y_UNUSED(error);
+    Y_UNUSED(nodeId);
+    Y_UNUSED(handle);
+}
+
+TFuture<NProto::TError> TFSyncQueueStub::WaitForRequests(
+    TRequestId reqId,
+    TNodeId nodeId)
+{
+    Y_UNUSED(reqId);
+    Y_UNUSED(nodeId);
+    return MakeFuture<NProto::TError>();
+}
+
+TFuture<NProto::TError> TFSyncQueueStub::WaitForDataRequests(TRequestId reqId)
+{
+    Y_UNUSED(reqId);
+    return MakeFuture<NProto::TError>();
+}
+
+TFuture<NProto::TError> TFSyncQueueStub::WaitForDataRequests(
+    TRequestId reqId,
+    TNodeId nodeId,
+    THandle handle)
+{
+    Y_UNUSED(reqId);
+    Y_UNUSED(nodeId);
+    Y_UNUSED(handle);
+    return MakeFuture<NProto::TError>();
+}
+
 }   // namespace NCloud::NFileStore::NVFS
 
 template <>
