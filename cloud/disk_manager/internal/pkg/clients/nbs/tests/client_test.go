@@ -1977,3 +1977,26 @@ func TestGetClusterCapacity(t *testing.T) {
 		require.NotEmpty(t, capacity)
 	*/
 }
+
+func TestQueryAvailableStorage(t *testing.T) {
+	ctx := newContext()
+	client := newTestingClient(t, ctx)
+
+	// Searching for an agent without any local disks.
+	availableStorageInfos, err := client.QueryAvailableStorage(
+		ctx,
+		[]string{"localhost"},
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(availableStorageInfos))
+	require.Equal(t, "localhost", availableStorageInfos[0].AgentID)
+	require.EqualValues(t, 0, availableStorageInfos[0].ChunkCount)
+	require.EqualValues(t, 0, availableStorageInfos[0].ChunkSize)
+
+	availableStorageInfos, err = client.QueryAvailableStorage(
+		ctx,
+		[]string{"unknown-agent"},
+	)
+	require.NoError(t, err)
+	require.Empty(t, availableStorageInfos)
+}
