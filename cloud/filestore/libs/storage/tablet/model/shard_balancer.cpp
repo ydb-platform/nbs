@@ -37,6 +37,7 @@ struct TShardMetaComp
 
 TShardBalancerBase::TShardBalancerBase(
         ui32 blockSize,
+        ui32 maxFileBlocks,
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
         TVector<TString> shardIds)
@@ -49,11 +50,9 @@ TShardBalancerBase::TShardBalancerBase(
         Metas.emplace_back(
             i,
             // Before the first update shards are treated like empty with
-            // infinite capacity Max<ui64>() / 4096 is large enough to serve as
-            // infinity and on the other hand all these shards' sizes sum up to
-            // a number that is less than Max<ui64>()
+            // infinite capacity. maxFileBlocks is used as inifinity here.
             TShardStats{
-                .TotalBlocksCount = Max<ui64>() / 4096,
+                .TotalBlocksCount = maxFileBlocks,
                 .UsedBlocksCount = 0,
                 .CurrentLoad = 0,
                 .Suffer = 0,
@@ -154,11 +153,13 @@ NProto::TError TShardBalancerRandom::SelectShard(
 
 TShardBalancerWeightedRandom::TShardBalancerWeightedRandom(
         ui32 blockSize,
+        ui32 maxFileBlocks,
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
         TVector<TString> shardIds)
     : TShardBalancerBase(
           blockSize,
+          maxFileBlocks,
           desiredFreeSpaceReserve,
           minFreeSpaceReserve,
           std::move(shardIds))
@@ -225,6 +226,7 @@ NProto::TError TShardBalancerWeightedRandom::SelectShard(
 IShardBalancerPtr CreateShardBalancer(
     NProto::EShardBalancerPolicy policy,
     ui32 blockSize,
+    ui32 maxFileBlocks,
     ui64 desiredFreeSpaceReserve,
     ui64 minFreeSpaceReserve,
     TVector<TString> shardIds)
@@ -233,18 +235,21 @@ IShardBalancerPtr CreateShardBalancer(
         case NProto::SBP_ROUND_ROBIN:
             return std::make_shared<TShardBalancerRoundRobin>(
                 blockSize,
+                maxFileBlocks,
                 desiredFreeSpaceReserve,
                 minFreeSpaceReserve,
                 shardIds);
         case NProto::SBP_RANDOM:
             return std::make_shared<TShardBalancerRandom>(
                 blockSize,
+                maxFileBlocks,
                 desiredFreeSpaceReserve,
                 minFreeSpaceReserve,
                 shardIds);
         case NProto::SBP_WEIGHTED_RANDOM:
             return std::make_shared<TShardBalancerWeightedRandom>(
                 blockSize,
+                maxFileBlocks,
                 desiredFreeSpaceReserve,
                 minFreeSpaceReserve,
                 shardIds);

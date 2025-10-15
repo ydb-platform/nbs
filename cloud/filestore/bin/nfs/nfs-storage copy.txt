@@ -1,7 +1,0 @@
-SchemeShardDir: "/Root/NFS"
-MultiTabletForwardingEnabled: true
-AllowFileStoreForceDestroy: true
-AutomaticShardCreationEnabled: true
-AutomaticallyCreatedShardSize: 1073741824
-ShardAllocationUnit: 268435456
-

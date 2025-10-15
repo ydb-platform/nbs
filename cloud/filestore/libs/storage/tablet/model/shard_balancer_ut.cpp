@@ -31,12 +31,16 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 }                                                                              \
 // ASSERT_ERROR
 
+constexpr ui32 BlockSize = 4_KB;
+constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
+
     Y_UNIT_TEST(ShouldBalanceShardsRoundRobin)
     {
         TShardBalancerRoundRobin balancer(
-            4_KB,
-            1_TB,
-            1_MB,
+            BlockSize,
+            MaxFileBlocks,
+            1_TB /* desiredFreeSpaceReserve */,
+            1_MB /* minFreeSpaceReserve */,
             {"s1", "s2", "s3", "s4", "s5"});
         ASSERT_NO_SB_ERROR(0, "s1");
         ASSERT_NO_SB_ERROR(0, "s2");
@@ -179,25 +183,35 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // We imitate the situation in when
         // GetStrictFileSystemSizeEnforcementEnabled and
         // desiredFreeSpaceReserve, minFreeSpaceReserve are zero
-        TShardBalancerRoundRobin balancer(4_KB, 0, 0, {"s1", "s2", "s3", "s4"});
-        ASSERT_NO_SB_ERROR(1_TB, "s1");
-        ASSERT_NO_SB_ERROR(1_TB, "s2");
-        ASSERT_NO_SB_ERROR(1_TB, "s3");
-        ASSERT_NO_SB_ERROR(1_TB, "s4");
-        ASSERT_NO_SB_ERROR(1_TB, "s1");
-        ASSERT_NO_SB_ERROR(1_TB, "s2");
-        ASSERT_NO_SB_ERROR(1_TB, "s3");
-        ASSERT_NO_SB_ERROR(1_TB, "s4");
+        TShardBalancerRoundRobin balancer(
+            BlockSize,
+            MaxFileBlocks,
+            0 /* desiredFreeSpaceReserve */,
+            0 /* minFreeSpaceReserve */,
+            {"s1", "s2", "s3", "s4"});
+        ASSERT_NO_SB_ERROR(1_GB, "s1");
+        ASSERT_NO_SB_ERROR(1_GB, "s2");
+        ASSERT_NO_SB_ERROR(1_GB, "s3");
+        ASSERT_NO_SB_ERROR(1_GB, "s4");
+        ASSERT_NO_SB_ERROR(1_GB, "s1");
+        ASSERT_NO_SB_ERROR(1_GB, "s2");
+        ASSERT_NO_SB_ERROR(1_GB, "s3");
+        ASSERT_NO_SB_ERROR(1_GB, "s4");
     }
 
     Y_UNIT_TEST(ShouldBalanceShardsBeforeTheFirstUpdateWithRandom)
     {
-        TShardBalancerRandom balancer(4_KB, 0, 0, {"s1", "s2", "s3", "s4"});
+        TShardBalancerRandom balancer(
+            BlockSize,
+            MaxFileBlocks,
+            0 /* desiredFreeSpaceReserve */,
+            0 /* minFreeSpaceReserve */,
+            {"s1", "s2", "s3", "s4"});
 
         const ui64 iterations = 64;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(1_TB, &shardId);
+            const auto error = balancer.SelectShard(1_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -205,18 +219,19 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldBalanceShardsBeforeTheFirstUpdateWitWeightedhRandom)
+    Y_UNIT_TEST(ShouldBalanceShardsBeforeTheFirstUpdateWithWeightedhRandom)
     {
         TShardBalancerWeightedRandom balancer(
-            4_KB,
-            0,
-            0,
+            BlockSize,
+            MaxFileBlocks,
+            0 /* desiredFreeSpaceReserve */,
+            0 /* minFreeSpaceReserve */,
             {"s1", "s2", "s3", "s4"});
 
         const ui64 iterations = 64;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(1_TB, &shardId);
+            const auto error = balancer.SelectShard(1_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -227,9 +242,10 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
     Y_UNIT_TEST(ShouldBalanceShardsWithFileSizeRoundRobin)
     {
         TShardBalancerRoundRobin balancer(
-            4_KB,
-            1_TB,
-            1_MB,
+            BlockSize,
+            MaxFileBlocks,
+            1_TB /* desiredFreeSpaceReserve */,
+            1_MB /* minFreeSpaceReserve */,
             {"s1", "s2", "s3", "s4", "s5"});
 
         balancer.Update({
@@ -275,9 +291,10 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
     Y_UNIT_TEST(ShouldBalanceShardsRandom)
     {
         TShardBalancerRandom balancer(
-            4_KB,
-            1_TB,
-            1_MB,
+            BlockSize,
+            MaxFileBlocks,
+            1_TB /* desiredFreeSpaceReserve */,
+            1_MB /* minFreeSpaceReserve */,
             {"s1", "s2", "s3", "s4", "s5"});
         const ui64 shardCount = 5;
 
@@ -291,7 +308,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         THashMap<TString, ui64> hitCount;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(1_TB, &shardId);
+            const auto error = balancer.SelectShard(1_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -342,9 +359,10 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
     Y_UNIT_TEST(ShouldBalanceShardsWeightedRandom)
     {
         TShardBalancerWeightedRandom balancer(
-            4_KB,
-            1_TB,
-            0,
+            BlockSize,
+            MaxFileBlocks,
+            1_TB /* desiredFreeSpaceReserve */,
+            0 /* minFreeSpaceReserve */,
             {"s1", "s2", "s3", "s4", "s5"});
         const ui64 shardCount = 5;
 
@@ -358,7 +376,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         THashMap<TString, ui64> hitCount;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(1_TB, &shardId);
+            const auto error = balancer.SelectShard(1_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),

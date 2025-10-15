@@ -53,6 +53,7 @@ public:
 
     TShardBalancerBase(
         ui32 blockSize,
+        ui32 maxFileBlocks,
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
         TVector<TString> shardIds);
@@ -130,6 +131,7 @@ private:
 public:
     TShardBalancerWeightedRandom(
         ui32 blockSize,
+        ui32 maxFileBlocks,
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
         TVector<TString> shardIds);
@@ -145,6 +147,7 @@ public:
 IShardBalancerPtr CreateShardBalancer(
     NProto::EShardBalancerPolicy policy,
     ui32 blockSize,
+    ui32 maxFileBlocks,
     ui64 desiredFreeSpaceReserve,
     ui64 minFreeSpaceReserve,
     TVector<TString> shardIds);
