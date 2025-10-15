@@ -107,6 +107,7 @@ struct TPartitionInfo
     const ui64 TabletId;
     const ui32 PartitionIndex;
     const NProto::TPartitionConfig PartitionConfig;
+    const TInstant StartTime = TInstant::Now();
 
     TRetryPolicy RetryPolicy;
     NActors::TSchedulerCookieHolder RetryCookie;
@@ -140,6 +141,7 @@ struct TPartitionInfo
     [[nodiscard]] bool IsKnownActorId(const NActors::TActorId actorId) const;
 
     [[nodiscard]] TString GetStatus() const;
+    [[nodiscard]] TInstant GetStartTime() const;
 };
 
 using TPartitionInfoList = TDeque<TPartitionInfo>;

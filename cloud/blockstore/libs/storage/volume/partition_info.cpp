@@ -137,4 +137,9 @@ TString TPartitionInfo::GetStatus() const
     return out.Str();
 }
 
+TInstant TPartitionInfo::GetStartTime() const
+{
+    return StartTime;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

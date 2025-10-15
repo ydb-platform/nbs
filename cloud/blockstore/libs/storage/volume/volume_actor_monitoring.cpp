@@ -1632,6 +1632,12 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
             }
         }
 
+        DIV_CLASS ("row") {
+            DIV_CLASS ("col-md-6") {
+                RenderUptime(out);
+            }
+        }
+
         if (IsDiskRegistryMediaKind(mediaKind)) {
             DIV_CLASS("row") {
                 DIV_CLASS("col-md-6") {
@@ -1706,6 +1712,7 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     TABLEH() { out << "Partition"; }
                     TABLEH() { out << "Status"; }
                     TABLEH() { out << "Blocks Count"; }
+                    TABLEH() { out << "Uptime"; }
                 }
             }
 
@@ -1724,6 +1731,10 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     TABLED() {
                         out << partition.PartitionConfig.GetBlocksCount();
                     }
+                    TABLED () {
+                        out << FormatDuration(
+                            TInstant::Now() - partition.GetStartTime());
+                    }
                 }
             }
 
@@ -1741,6 +1752,8 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     }
                     TABLED() {
                         out << State->GetConfig().GetBlocksCount();
+                    }
+                    TABLED () {
                     }
                 }
             }
@@ -2141,6 +2154,11 @@ void TVolumeActor::RenderStatus(IOutputStream& out) const
             }
         }
     }
+}
+
+void TVolumeActor::RenderUptime(IOutputStream& out) const
+{
+    out << "Uptime: " << FormatDuration(TInstant::Now() - VolumeStartTime);
 }
 
 void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const

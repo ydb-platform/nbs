@@ -195,6 +195,7 @@ public:
 
 private:
     const ui64 StartTime = GetCycleCount();
+    const TInstant VolumeStartTime = TInstant::Now();
     TStorageConfigPtr GlobalStorageConfig;
     TStorageConfigPtr Config;
     bool HasStorageConfigPatch = false;
@@ -504,6 +505,7 @@ private:
 
     void RenderConfig(IOutputStream& out) const;
     void RenderStatus(IOutputStream& out) const;
+    void RenderUptime(IOutputStream& out) const;
     void RenderScrubbingStatus(IOutputStream& out) const;
     void RenderMigrationStatus(IOutputStream& out) const;
     void RenderResyncStatus(IOutputStream& out) const;
