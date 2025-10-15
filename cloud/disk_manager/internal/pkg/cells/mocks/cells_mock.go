@@ -31,6 +31,16 @@ func (s *CellSelectorMock) SelectCell(
 	return args.Get(0).(nbs.Client), args.Error(1)
 }
 
+func (s *CellSelectorMock) SelectCellForLocalDisk(
+	ctx context.Context,
+	zoneID string,
+	agentIDs []string,
+) (nbs.Client, error) {
+
+	args := s.Called(ctx, zoneID, agentIDs)
+	return args.Get(0).(nbs.Client), args.Error(1)
+}
+
 func (s *CellSelectorMock) IsCellOfZone(cellID string, zoneID string) bool {
 	args := s.Called(cellID, zoneID)
 	return args.Bool(0)

@@ -55,6 +55,7 @@ private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
+    const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
 
     TVector<TDeviceStat> DeviceStats;
@@ -93,6 +94,7 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
+        NActors::TActorId volumeActorId,
         NActors::TActorId statActorId);
 
     ~TNonreplicatedPartitionActor() override;

@@ -996,6 +996,7 @@ private:
                         Session,
                         Scheduler,
                         Timer,
+                        CreateDummyWriteBackCacheStats(),
                         path / WriteBackCacheFileName,
                         Config->GetWriteBackCacheCapacity(),
                         Config->GetWriteBackCacheAutomaticFlushPeriod(),

@@ -9,7 +9,6 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
-#include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -45,9 +44,8 @@ std::unique_ptr<TEvVolume::TEvAddClientResponse> CreateAddClientResponse(
 
     const auto& volumeConfig = state.GetMeta().GetVolumeConfig();
     auto* volumeInfo = response->Record.MutableVolume();
-    VolumeConfigToVolume(volumeConfig, *volumeInfo);
+    VolumeConfigToVolume(volumeConfig, state.GetPrincipalDiskId(), *volumeInfo);
     volumeInfo->SetInstanceId(std::move(instanceId));
-    volumeInfo->SetPrincipalDiskId(state.GetPrincipalDiskId());
     state.FillDeviceInfo(*volumeInfo);
 
     return response;

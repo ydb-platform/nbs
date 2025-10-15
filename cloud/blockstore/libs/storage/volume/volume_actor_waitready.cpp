@@ -56,7 +56,7 @@ void TVolumeActor::HandleWaitReady(
 
     auto response = std::make_unique<TEvVolume::TEvWaitReadyResponse>();
     auto& volume = *response->Record.MutableVolume();
-    VolumeConfigToVolume(volumeConfig, volume);
+    VolumeConfigToVolume(volumeConfig, State->GetPrincipalDiskId(), volume);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

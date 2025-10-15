@@ -5,6 +5,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -35,12 +36,22 @@ func SelectCell(
 			return nil, err
 		}
 	} else {
-		client, err = cellSelector.SelectCell(
-			ctx,
-			params.Disk.ZoneId,
-			params.FolderId,
-			params.Kind,
-		)
+		if common.IsLocalDiskKind(params.Kind) {
+			// There is an agent, where local disk should be created. Can't use
+			// default cell selection mechanism.
+			client, err = cellSelector.SelectCellForLocalDisk(
+				ctx,
+				params.Disk.ZoneId,
+				params.AgentIds,
+			)
+		} else {
+			client, err = cellSelector.SelectCell(
+				ctx,
+				params.Disk.ZoneId,
+				params.FolderId,
+        params.Kind,
+			)
+		}
 		if err != nil {
 			return nil, err
 		}

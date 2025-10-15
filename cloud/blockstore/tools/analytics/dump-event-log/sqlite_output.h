@@ -42,6 +42,7 @@ private:
     void CreateTables();
     void ReadDisks();
     void AddRequestTypes();
+    void AddBlocksSequence();
 
     ui64 GetVolumeId(const TString& diskId);
     void AddRequest(

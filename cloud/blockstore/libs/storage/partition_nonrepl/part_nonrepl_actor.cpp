@@ -27,10 +27,12 @@ TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         TActorId statActorId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
+    , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
     , DeviceStats(PartConfig->GetDevices().size())
     , PartCounters(CreatePartitionDiskCounters(

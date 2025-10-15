@@ -312,8 +312,9 @@ struct TTestVerbs
         ui32 port,
         rdma_addrinfo* hints) override
     {
-        Y_UNUSED(hints);
-
+        if (TestContext->GetAddressInfo) {
+            return TestContext->GetAddressInfo(host, port, hints);
+        }
         return {
             static_cast<rdma_addrinfo*>(new TAddressInfo(host, port)),
             TAddressInfo::Destroy,

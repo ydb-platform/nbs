@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
@@ -351,7 +353,8 @@ func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 
 	// Should wait for first disk creation in order to ensure that pool is
 	// created.
-	err = internal_client.WaitOperation(ctx, client, operations[0].Id)
+	firstCreateDiskOperationID := operations[0].Id
+	err = internal_client.WaitOperation(ctx, client, firstCreateDiskOperationID)
 	require.NoError(t, err)
 
 	privateClient, err := testcommon.NewPrivateClient(ctx)
@@ -364,36 +367,32 @@ func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 	require.NotEmpty(t, operation)
 	operations = append(operations, operation)
 
-	errs := make(chan error)
+	errGroup := errgroup.Group{}
 
 	for i := 0; i < diskCount; i++ {
 		operationID := operations[i].Id
 
 		nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 		diskID := fmt.Sprintf("%v%v", t.Name(), i)
+		errGroup.Go(
+			func() error {
+				if operationID != firstCreateDiskOperationID {
+					err := internal_client.WaitOperation(
+						ctx,
+						client,
+						operationID,
+					)
+					if err != nil {
+						return err
+					}
+				}
 
-		go func() {
-			err := internal_client.WaitOperation(ctx, client, operationID)
-			if err != nil {
-				errs <- err
-				return
-			}
-
-			err = nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
-			errs <- err
-		}()
+				return nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
+			},
+		)
 	}
 
-	for i := 0; i < diskCount; i++ {
-		err := <-errs
-		require.NoError(t, err)
-	}
-
-	for _, operation := range operations {
-		err := internal_client.WaitOperation(ctx, client, operation.Id)
-		require.NoError(t, err)
-	}
-
+	require.NoError(t, errGroup.Wait())
 	testcommon.CheckConsistency(t, ctx)
 }
 

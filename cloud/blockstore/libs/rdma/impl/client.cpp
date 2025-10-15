@@ -2101,14 +2101,14 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
             }
         }
 
+        endpoint->ChangeState(
+            EEndpointState::Disconnected,
+            EEndpointState::ResolvingAddress);
+
         auto addrinfo = Verbs->GetAddressInfo(
             endpoint->Host, endpoint->Port, &hints);
 
         RDMA_DEBUG(endpoint->Log, "resolve server address");
-
-        endpoint->ChangeState(
-            EEndpointState::Disconnected,
-            EEndpointState::ResolvingAddress);
 
         Verbs->ResolveAddress(endpoint->Connection.get(), addrinfo->ai_src_addr,
             addrinfo->ai_dst_addr, RESOLVE_TIMEOUT);

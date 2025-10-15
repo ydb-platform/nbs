@@ -453,7 +453,10 @@ void TVolumeActor::DoRegisterVolume(
     Y_DEBUG_ABORT_UNLESS(diskId);
 
     NProto::TVolume volume;
-    VolumeConfigToVolume(State->GetMeta().GetVolumeConfig(), volume);
+    VolumeConfigToVolume(
+        State->GetMeta().GetVolumeConfig(),
+        State->GetPrincipalDiskId(),
+        volume);
 
     if (State->GetDiskId() != diskId) {
         // Handle shadow disk.
@@ -515,7 +518,10 @@ void TVolumeActor::DoUnregisterVolume(
 void TVolumeActor::SendVolumeConfigUpdated(const TActorContext& ctx)
 {
     NProto::TVolume volume;
-    VolumeConfigToVolume(State->GetMeta().GetVolumeConfig(), volume);
+    VolumeConfigToVolume(
+        State->GetMeta().GetVolumeConfig(),
+        State->GetPrincipalDiskId(),
+        volume);
     {
         auto request = std::make_unique<TEvService::TEvVolumeConfigUpdated>(
             State->GetDiskId(),

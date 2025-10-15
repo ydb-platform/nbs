@@ -225,6 +225,7 @@ struct TTestEnv
             std::move(partConfig),
             std::move(migrations),
             RdmaClient,
+            VolumeActorId,
             VolumeActorId // statActorId
         );
 

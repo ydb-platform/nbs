@@ -216,6 +216,7 @@ struct TTestEnv
             Replicas,
             nullptr,   // rdmaClient
             VolumeActorId,
+            VolumeActorId,
             TActorId()   // resyncActorId
         );
 

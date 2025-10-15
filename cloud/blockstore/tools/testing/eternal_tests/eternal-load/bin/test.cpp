@@ -2,8 +2,10 @@
 
 #include "options.h"
 
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/aligned_test_scenario.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/unaligned_test_scenario.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/size_literals.h>
@@ -67,20 +69,29 @@ int TTest::Run()
             Y_ENSURE(Options->FilePath.Defined(), "You need to specify the file path");
             Y_ENSURE(Options->FileSize.Defined(), "You need to specify the file size");
             Y_ENSURE(Options->WriteRate <= 100, "Write rate should be in range [0, 100]");
+
             ConfigHolder = CreateTestConfig(
-                *Options->FilePath,
-                *Options->FileSize * 1_GB,
-                Options->IoDepth,
-                Options->BlockSize,
-                Options->WriteRate,
-                Options->RequestBlockCount,
-                Options->WriteParts,
-                Options->AlternatingPhase);
+                {.FilePath = *Options->FilePath,
+                 .FileSize = *Options->FileSize * 1_GB,
+                 .IoDepth = Options->IoDepth,
+                 .BlockSize = Options->BlockSize,
+                 .WriteRate = Options->WriteRate,
+                 .RequestBlockCount = Options->RequestBlockCount,
+                 .WriteParts = Options->WriteParts,
+                 .AlternatingPhase = Options->AlternatingPhase,
+                 .MaxWriteRequestCount = 0,
+                 .MinReadByteCount = Options->MinReadSize,
+                 .MaxReadByteCount = Options->MaxReadSize,
+                 .MinWriteByteCount = Options->MinWriteSize,
+                 .MaxWriteByteCount = Options->MaxWriteSize,
+                 .MinRegionByteCount = Options->MinRegionSize,
+                 .MaxRegionByteCount = Options->MaxRegionSize});
+
             DumpConfiguration();
             break;
         case ECommand::ReadConfigCmd:
             Y_ENSURE(Options->RestorePath.Defined(), "You need to specify the restore path");
-            ConfigHolder = CreateTestConfig(*Options->RestorePath);
+            ConfigHolder = LoadTestConfig(*Options->RestorePath);
             break;
         case ECommand::UnknownCmd:
             STORAGE_ERROR("Unknown command, check avaliable commands in the help");
@@ -102,7 +113,23 @@ TTestExecutorSettings TTest::ConfigureTest() const
     auto log = Logging->CreateLog("ETERNAL_EXECUTOR");
 
     TTestExecutorSettings settings;
-    settings.TestScenario = CreateAlignedBlockTestScenario(ConfigHolder, log);
+
+    switch (Options->Scenario) {
+        case EScenario::Aligned:
+            settings.TestScenario =
+                CreateAlignedTestScenario(ConfigHolder, log);
+            STORAGE_INFO("Using test scenario: Aligned");
+            break;
+
+        case EScenario::Unaligned:
+            settings.TestScenario =
+                CreateUnalignedTestScenario(ConfigHolder, log);
+            STORAGE_INFO("Using test scenario: Unaligned");
+            break;
+
+        default:
+            Y_ABORT("Unsupported Scenario value %d", Options->Engine);
+    }
 
     switch (Options->Engine) {
         case EIoEngine::AsyncIo:

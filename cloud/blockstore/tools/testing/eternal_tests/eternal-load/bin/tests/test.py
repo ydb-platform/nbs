@@ -15,13 +15,21 @@ _REQUEST_SIZE = _REQUEST_BLOCK_COUNT * _BLOCKSIZE
 _REQUEST_COUNT = (_FILE_SIZE * 1024 ** 3) / _REQUEST_SIZE
 _BINARY_PATH = 'cloud/blockstore/tools/testing/eternal_tests/eternal-load/bin/eternal-load'
 
+_SCENARIOS = [
+    ("aligned", "asyncio", True),
+    ("aligned", "sync", False),
+    ("unaligned", "sync", False)
+]
 
-def __run_load_test(file_name, timeout=None):
+
+def __run_load_test(file_name, scenario="aligned", engine="asyncio", direct=True, timeout=None):
     eternal_load = yatest_common.binary_path(_BINARY_PATH)
 
     params = [
         eternal_load,
         '--config-type', 'generated',
+        '--scenario', scenario,
+        '--engine', engine,
         '--blocksize', str(_BLOCKSIZE),
         '--request-block-count', str(_REQUEST_BLOCK_COUNT),
         '--file', file_name,
@@ -30,14 +38,18 @@ def __run_load_test(file_name, timeout=None):
         '--write-rate', '70'
     ]
 
+    if not direct:
+        params.append('--no-direct')
+
     return run(params, stdout=PIPE, stderr=PIPE, universal_newlines=True, timeout=timeout)
 
 
-def test_load_fails():
+@pytest.mark.parametrize("scenario,engine,direct", _SCENARIOS)
+def test_load_fails(scenario, engine, direct):
     tmp_file = tempfile.NamedTemporaryFile(suffix=".test")
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(__run_load_test, tmp_file.name)
+        future = executor.submit(__run_load_test, tmp_file.name, scenario, engine, direct)
         time.sleep(10)
 
         cnt = 0
@@ -52,11 +64,12 @@ def test_load_fails():
         assert (result.returncode == 1) and (result.stderr.find('Wrong') != -1)
 
 
-def test_load_works():
+@pytest.mark.parametrize("scenario,engine,direct", _SCENARIOS)
+def test_load_works(scenario, engine, direct):
     timeout = 30
     tmp_file = tempfile.NamedTemporaryFile(suffix=".test")
     try:
-        assert __run_load_test(tmp_file.name, timeout).returncode == 0
+        assert __run_load_test(tmp_file.name, scenario, engine, direct, timeout).returncode == 0
     except TimeoutExpired:
         pass
     else:
