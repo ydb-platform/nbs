@@ -322,7 +322,7 @@ func DurableWait(
 
 	startedAt := time.Now()
 	defer func() {
-		logging.Warn(
+		logging.Info(
 			ctx,
 			"DurableWait waited for %v out of %v",
 			time.Since(startedAt),
