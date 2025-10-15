@@ -94,7 +94,6 @@ TVolumeActor::TVolumeActor(
                   time);
           })
     , TransactionTimeTracker(VolumeTransactions)
-    , DeviceOperationTracker({})
 {}
 
 TVolumeActor::~TVolumeActor()
@@ -844,45 +843,28 @@ void TVolumeActor::InitializeDeviceOperationTracker()
     DeviceOperationTracker.UpdateDevices(deviceInfos);
 }
 
-void TVolumeActor::HandleDeviceOperationStarted(
-    const TEvVolumePrivate::TEvDeviceOperationStarted::TPtr& ev,
+void TVolumeActor::HandleDiskRegistryDeviceOperationStarted(
+    const TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& record = ev->Get();
     Y_UNUSED(ctx);
 
-    TDeviceOperationTracker::ERequestType requestType;
-
-    switch (record->RequestType) {
-        case TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Read:
-            requestType = TDeviceOperationTracker::ERequestType::Read;
-            break;
-        case TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Write:
-            requestType = TDeviceOperationTracker::ERequestType::Write;
-            break;
-        case TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Zero:
-            requestType = TDeviceOperationTracker::ERequestType::Zero;
-            break;
-        case TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Checksum:
-            requestType = TDeviceOperationTracker::ERequestType::Checksum;
-            break;
-        default:
-            return;
-    }
+    const auto& record = ev->Get();
 
     DeviceOperationTracker.OnStarted(
         record->OperationId,
         record->DeviceUUID,
-        requestType,
+        record->RequestType,
         GetCycleCount());
 }
 
-void TVolumeActor::HandleDeviceOperationFinished(
-    const TEvVolumePrivate::TEvDeviceOperationFinished::TPtr& ev,
+void TVolumeActor::HandleDiskRegistryDeviceOperationFinished(
+    const TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& record = ev->Get();
     Y_UNUSED(ctx);
+
+    const auto& record = ev->Get();
 
     DeviceOperationTracker.OnFinished(record->OperationId, GetCycleCount());
 }
@@ -1158,12 +1140,12 @@ STFUNC(TVolumeActor::StateWork)
             HandleDestroyOutdatedLeaderVolumeResponse);
 
         HFunc(
-            TEvVolumePrivate::TEvDeviceOperationStarted,
-            HandleDeviceOperationStarted);
+            TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted,
+            HandleDiskRegistryDeviceOperationStarted);
 
         HFunc(
-            TEvVolumePrivate::TEvDeviceOperationFinished,
-            HandleDeviceOperationFinished);
+            TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished,
+            HandleDiskRegistryDeviceOperationFinished);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
