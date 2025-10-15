@@ -52,6 +52,14 @@ constexpr TStringBuf CreateRangesTable = R"__(
     );
 )__";
 
+constexpr TStringBuf CreateBlocksSequenceTable = R"__(
+    CREATE TABLE IF NOT EXISTS BlocksSequence (
+        BlockIndx integer not null unique,
+        PRIMARY KEY ("BlockIndx")
+    );
+)__";
+
+
 constexpr TStringBuf CreateFilteredView = R"__(
     drop view if exists FilteredRequest;
     create view FilteredRequest as
@@ -117,6 +125,7 @@ TSqliteOutput::TSqliteOutput(const TString& filename)
 
     CreateTables();
     AddRequestTypes();
+    AddBlocksSequence();
     ReadDisks();
 
     Transaction = std::make_unique<TTransaction>(Db);
@@ -173,6 +182,7 @@ void TSqliteOutput::CreateTables()
     execSql(CreateVolumesTable);
     execSql(CreateRequestTypeTable);
     execSql(CreateRangesTable);
+    execSql(CreateBlocksSequenceTable);
     execSql(CreateFilteredView);
     execSql(CreateRequestsIndex);
 
@@ -247,6 +257,33 @@ void TSqliteOutput::AddRequestTypes()
 
     for (const auto& [id, name]: GetEnumNames<ESysRequestType>()) {
         addRequestType(static_cast<int>(id), name);
+    }
+}
+
+void TSqliteOutput::AddBlocksSequence()
+{
+    const char* sql = "INSERT OR REPLACE INTO BlocksSequence(BlockIndx) VALUES(?);";
+    sqlite3_stmt* stmt = nullptr;
+
+    if (sqlite3_prepare_v2(Db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        ythrow yexception() << sqlite3_errmsg(Db);
+    }
+
+    auto addBlock = [&](int blockIndex)
+    {
+        sqlite3_reset(stmt);
+
+        if (sqlite3_bind_int(stmt, 1, blockIndex) != SQLITE_OK) {
+            ythrow yexception()
+                << "Binding param error: " << sqlite3_errmsg(Db);
+        }
+        if (sqlite3_step(stmt) != SQLITE_DONE) {
+            Cerr << "Step error: " << sqlite3_errmsg(Db) << Endl;
+        }
+    };
+
+    for (int i = 0; i < 1024; ++i) {
+        addBlock(i);
     }
 }
 
