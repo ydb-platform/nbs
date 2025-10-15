@@ -2475,7 +2475,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            counters->GetCounter("CompletedFlush")->GetAtomic());
+            counters->GetCounter("CompletedFlushCount")->GetAtomic());
     }
 }
 
