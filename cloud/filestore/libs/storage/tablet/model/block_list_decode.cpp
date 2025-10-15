@@ -220,16 +220,18 @@ ui64 FindDeletionMarker(const TByteVector& encodedDeletionMarkers, ui16 blobOffs
     return InvalidCommitId;
 }
 
-void FindDeletionMarkers(
+struct FindDeletionMarkersResult
+{
+    ui64 MaxCommitId = 0;
+    ui32 BlocksFound = 0;
+};
+
+FindDeletionMarkersResult FindDeletionMarkers(
     const TByteVector& encodedDeletionMarkers,
     ui16 blobOffset,
-    ui32 maxBlocksToFind,
-    ui64* maxCommitId,
-    ui32* blocksFound)
+    ui32 maxBlocksToFind)
 {
     Y_ABORT_UNLESS(maxBlocksToFind);
-    Y_ABORT_UNLESS(maxCommitId);
-    Y_ABORT_UNLESS(blocksFound);
 
     ui16 minSeenBlobOffset = Max<ui16>();
 
@@ -244,9 +246,10 @@ void FindDeletionMarkers(
         if (!group.IsMulti) {
             const auto& entry = reader.Read<NBlockListSpec::TDeletionMarker>();
             if (entry.BlobOffset == blobOffset) {
-                *maxCommitId = group.CommitId;
-                *blocksFound = 1;
-                return;
+                return {
+                    .MaxCommitId = group.CommitId,
+                    .BlocksFound = 1
+                };
             }
 
             if (blobOffset <= entry.BlobOffset &&
@@ -269,9 +272,10 @@ void FindDeletionMarkers(
                     if (entry.BlobOffset <= blobOffset &&
                         blobOffset < skipUntilBlobOffset)
                     {
-                        *maxCommitId = group.CommitId;
-                        *blocksFound = skipUntilBlobOffset - blobOffset;
-                        return;
+                        return {
+                            .MaxCommitId = group.CommitId,
+                            .BlocksFound = skipUntilBlobOffset - blobOffset
+                        };
                     }
 
                     minSeenBlobOffset = Min<ui16>(
@@ -288,9 +292,10 @@ void FindDeletionMarkers(
                         blobOffsets + multi.Count,
                         blobOffset);
                     if (i != NPOS) {
-                        *maxCommitId = group.CommitId;
-                        *blocksFound = 1;
-                        return;
+                        return {
+                            .MaxCommitId = group.CommitId,
+                            .BlocksFound = 1
+                        };
                     }
 
                     minSeenBlobOffset = Min<ui16>(
@@ -302,24 +307,24 @@ void FindDeletionMarkers(
         }
     }
 
-    *maxCommitId = InvalidCommitId;
+    ui64 maxCommitId = InvalidCommitId;
+    // Safest choice
+    ui32 blocksFound = 1;
 
     if (minSeenBlobOffset == Max<ui16>()) {
         // There are no deletion markers that may overlap with
         // [blobOffset, blobOffset + maxBlocksToFind)
-        *blocksFound = maxBlocksToFind;
-        return;
+        blocksFound = maxBlocksToFind;
+    } else if (minSeenBlobOffset > blobOffset) {
+        blocksFound = Min<ui16>(
+            minSeenBlobOffset - blobOffset,
+            maxBlocksToFind);
     }
 
-    if (minSeenBlobOffset <= blobOffset) {
-        // Safest choice
-        *blocksFound = 1;
-        return;
-    }
-
-    *blocksFound = Min<ui16>(
-        minSeenBlobOffset - blobOffset,
-        maxBlocksToFind);
+    return {
+        .MaxCommitId = maxCommitId,
+        .BlocksFound = blocksFound
+    };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -509,18 +514,13 @@ bool TBlockIterator::NextMerged()
             continue;
         }
 
-        ui64 maxCommitId = 0;
-        ui32 blocksFound = 0;
-
-        FindDeletionMarkers(
+        const auto markers = FindDeletionMarkers(
             EncodedDeletionMarkers,
             blobOffset,
-            /* maxBlocksToFind = */ Group.Count - Group.Index,
-            &maxCommitId,
-            &blocksFound);
+            /* maxBlocksToFind = */ Group.Count - Group.Index);
 
         const auto rangeEndBlockIndex = Min(
-            blockIndex + blocksFound,
+            blockIndex + markers.BlocksFound,
             Filter.MaxBlockIndex);
         if (rangeEndBlockIndex <= blockIndex) {
             // All possible blocks were filtered by |Filter.MaxBlockIndex|
@@ -529,9 +529,9 @@ bool TBlockIterator::NextMerged()
 
         Group.Index += rangeEndBlockIndex - blockIndex;
 
-        if (Filter.CommitId < maxCommitId) {
+        if (Filter.CommitId < markers.MaxCommitId) {
             Block.BlockIndex = blockIndex;
-            Block.MaxCommitId = maxCommitId;
+            Block.MaxCommitId = markers.MaxCommitId;
             BlobOffset = blobOffset;
             BlocksInCurrentIteration = rangeEndBlockIndex - blockIndex;
             return true;
