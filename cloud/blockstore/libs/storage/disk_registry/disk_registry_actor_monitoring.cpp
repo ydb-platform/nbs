@@ -116,6 +116,14 @@ void BuildChangeDeviceStateButton(
                 <option value="%s">Online</option>
                 <option value="%s">Warning</option>
             </select>
+            <br>
+            <label for="stateMessage">State message:</label>
+            <input  type="text"
+                    name="stateMessage"
+                    placeholder="Message"
+                    maxlength="255"
+                    style="width: 150px;">
+            <br>
             <input type="submit" value="Change state">
             <input type='hidden' name='action' value='changeDeviceState'/>
             <input type='hidden' name='DeviceUUID' value='%s'/>
@@ -141,6 +149,14 @@ void BuildChangeAgentStateButton(
                 <option value="%s">Online</option>
                 <option value="%s">Warning</option>
             </select>
+            <br>
+            <label for="stateMessage">State message:</label>
+            <input  type="text"
+                    name="stateMessage"
+                    placeholder="Message"
+                    maxlength="255"
+                    style="width: 150px;">
+            <br>
             <input type="submit" value="Change state">
             <input type='hidden' name='action' value='changeAgentState'/>
             <input type='hidden' name='AgentID' value='%s'/>
