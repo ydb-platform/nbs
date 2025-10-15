@@ -307,8 +307,12 @@ func scheduleDoublerTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// DurableWait waits for the given timeout, saving state every 100ms.
-// if you need to wait multiple times, just add previously waited duration to the
+// DurableWait waits for the waitDuration, saving state every 100ms.
+// To wait many times within a single task, add already waited duration from 
+// previous calls to the duration you want to wait for in current DurableWait().
+// For instance, to wait 2 seconds, then 5 seconds, we will run the following code
+// DurableWait(ctx, execCtx, 2 * time.Second, t.state)
+// DurableWait(ctx, execCtx, 7 * time.Second, t.state)
 func DurableWait(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -342,7 +346,6 @@ func DurableWait(
 				return err
 			}
 		}
-
 	}
 
 	return nil
