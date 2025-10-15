@@ -53,7 +53,8 @@ struct IRequestStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IFileSystemStats: public IRequestStats
+struct IFileSystemStats
+    : public IRequestStats
 {
     virtual IWriteBackCacheStatsPtr GetWriteBackCacheStats() = 0;
 };
