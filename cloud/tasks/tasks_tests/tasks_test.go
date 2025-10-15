@@ -307,23 +307,70 @@ func scheduleDoublerTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type longTask struct{}
+// DurableWait waits for the waitDuration, saving state every 100ms.
+// To wait many times within a single task, add already waited duration from
+// previous calls to the duration you want to wait for in current DurableWait().
+// For instance, to wait 2 seconds, then 5 seconds, we will run the following code
+// DurableWait(ctx, execCtx, 2 * time.Second, t.state)
+// DurableWait(ctx, execCtx, 7 * time.Second, t.state)
+func DurableWait(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	waitDuration time.Duration,
+	state *wrappers.Int64Value,
+) error {
 
-func (t *longTask) Save() ([]byte, error) {
-	return nil, nil
-}
+	startedAt := time.Now()
+	defer func() {
+		logging.Info(
+			ctx,
+			"DurableWait waited for %v out of %v",
+			time.Since(startedAt),
+			waitDuration,
+		)
+	}()
 
-func (t *longTask) Load(request, state []byte) error {
+	saveInterval := 100 * time.Millisecond
+	iterationStartedAt := time.Now()
+	for state.Value < int64(waitDuration) {
+		timeRemaining := waitDuration - time.Duration(state.Value)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(min(saveInterval, timeRemaining)):
+			state.Value += int64(time.Since(iterationStartedAt))
+			// Get time before SaveState to account time spent in SaveState.
+			iterationStartedAt = time.Now()
+			err := execCtx.SaveState(ctx)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
-func (t *longTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(10 * time.Second):
-		return nil
-	}
+////////////////////////////////////////////////////////////////////////////////
+
+type longTask struct {
+	// Represents time spent while sleeping.
+	state *wrappers.Int64Value
+}
+
+func (t *longTask) Save() ([]byte, error) {
+	return proto.Marshal(t.state)
+}
+
+func (t *longTask) Load(request, state []byte) error {
+	return proto.Unmarshal(state, t.state)
+}
+
+func (t *longTask) Run(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+	return DurableWait(ctx, execCtx, 10*time.Second, t.state)
 }
 
 func (t *longTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
@@ -345,13 +392,21 @@ func (t *longTask) GetResponse() proto.Message {
 
 func registerLongTask(registry *tasks.Registry) error {
 	return registry.RegisterForExecution("long", func() tasks.Task {
-		return &longTask{}
+		return &longTask{
+			state: &wrappers.Int64Value{
+				Value: 0,
+			},
+		}
 	})
 }
 
 func registerLongTaskNotForExecution(registry *tasks.Registry) error {
 	return registry.Register("long", func() tasks.Task {
-		return &longTask{}
+		return &longTask{
+			state: &wrappers.Int64Value{
+				Value: 0,
+			},
+		}
 	})
 }
 
@@ -425,35 +480,47 @@ func scheduleHangingTask(
 type waitingTaskWithSleep struct {
 	request   *wrappers.StringValue
 	scheduler tasks.Scheduler
+	// Represents time spent while sleeping.
+	state *wrappers.Int64Value
 }
 
 func (t *waitingTaskWithSleep) Save() ([]byte, error) {
-	return proto.Marshal(t.request)
+	return proto.Marshal(t.state)
 }
 
 func (t *waitingTaskWithSleep) Load(request, state []byte) error {
 	t.request = &wrappers.StringValue{}
-	return proto.Unmarshal(request, t.request)
-}
-
-func (t *waitingTaskWithSleep) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(2 * time.Second):
-	}
-
-	_, err := t.scheduler.WaitTask(ctx, execCtx, t.request.Value)
+	err := proto.Unmarshal(request, t.request)
 	if err != nil {
 		return err
 	}
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(5 * time.Second):
-		return nil
+	t.state = &wrappers.Int64Value{}
+	return proto.Unmarshal(state, t.state)
+}
+
+func (t *waitingTaskWithSleep) Run(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	firstWaitDuration := 2 * time.Second
+	err := DurableWait(ctx, execCtx, firstWaitDuration, t.state)
+	if err != nil {
+		return err
 	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, t.request.Value)
+	if err != nil {
+		return err
+	}
+
+	err = DurableWait(ctx, execCtx, firstWaitDuration+5*time.Second, t.state)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (t *waitingTaskWithSleep) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
@@ -474,7 +541,12 @@ func registerWaitingTaskWithSleep(registry *tasks.Registry, scheduler tasks.Sche
 	return registry.RegisterForExecution(
 		"waiting",
 		func() tasks.Task {
-			return &waitingTaskWithSleep{scheduler: scheduler}
+			return &waitingTaskWithSleep{
+				scheduler: scheduler,
+				state: &wrappers.Int64Value{
+					Value: 0,
+				},
+			}
 		},
 	)
 }
@@ -1851,7 +1923,7 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	waitingTaskWithSleepID, err := scheduleWaitingTaskWithSleep(reqCtx, s.scheduler, depTaskID)
 	require.NoError(t, err)
 
-	timeout := 30 * time.Second
+	timeout := 60 * time.Second
 
 	_, err = waitTaskWithTimeout(ctx, s.scheduler, waitingTaskWithSleepID, timeout)
 	require.NoError(t, err)
@@ -1868,16 +1940,12 @@ func TestTaskInflightDurationDoesNotCountWaitingStatus(t *testing.T) {
 	// The delay between task scheduling and runner task pickup is not included
 	// in WaitingDuration, so it can be less than expected.
 	waitingThreshold := 2 * time.Second
-
-	// First waitingTaskWithSleep iteration: it waits for 2 seconds, then
-	// adds a dependency and interrupts.
-	// Second waitingTaskWithSleep iteration: it waits for 2 seconds, then
-	// skips WaitTask (as the dependency is finished) and waits for 5 seconds.
-	// Total: 2+2+5 = 9 seconds.
-	require.GreaterOrEqual(t, inflightDuration, 9*time.Second)
+	// The task sleeps for 2 seconds, then waits for long task and after that
+	// sleeps for 5 seconds.
+	require.GreaterOrEqual(t, inflightDuration, 7*time.Second)
 	// Due to 2 seconds delay at the start, WaitingDuration will be 10-2 = 8 seconds.
 	require.GreaterOrEqual(t, waitingDuration, 8*time.Second-waitingThreshold)
-	require.GreaterOrEqual(t, totalDuration, 17*time.Second)
+	require.GreaterOrEqual(t, totalDuration, 15*time.Second)
 	require.LessOrEqual(t, inflightDuration+waitingDuration, totalDuration)
 }
 
@@ -1927,7 +1995,7 @@ func TestTaskWaitingDurationInChain(t *testing.T) {
 
 	state2, err := s.storage.GetTask(ctx, task2ID)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, state2.InflightDuration, 9*time.Second)
+	require.GreaterOrEqual(t, state2.InflightDuration, 7*time.Second)
 	require.GreaterOrEqual(
 		t, state2.WaitingDuration, 8*time.Second-waitingThreshold,
 	)
@@ -1939,7 +2007,7 @@ func TestTaskWaitingDurationInChain(t *testing.T) {
 
 	state3, err := s.storage.GetTask(ctx, task3ID)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, state3.InflightDuration, 9*time.Second)
+	require.GreaterOrEqual(t, state3.InflightDuration, 7*time.Second)
 	require.GreaterOrEqual(
 		t, state3.WaitingDuration, 8*time.Second-waitingThreshold,
 	)
