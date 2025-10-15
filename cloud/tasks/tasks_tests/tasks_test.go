@@ -312,7 +312,7 @@ func scheduleDoublerTask(
 func DurableWait(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	timeout time.Duration,
+	waitDuration time.Duration,
 	state *wrappers.Int64Value,
 ) error {
 
@@ -322,14 +322,14 @@ func DurableWait(
 			ctx,
 			"DurableWait waited for %v out of %v",
 			time.Since(startedAt),
-			timeout,
+			waitDuration,
 		)
 	}()
 
 	saveInterval := 100 * time.Millisecond
 	iterationStartedAt := time.Now()
-	for state.Value < int64(timeout) {
-		timeRemaining := timeout - time.Duration(state.Value)
+	for state.Value < int64(waitDuration) {
+		timeRemaining := waitDuration - time.Duration(state.Value)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
