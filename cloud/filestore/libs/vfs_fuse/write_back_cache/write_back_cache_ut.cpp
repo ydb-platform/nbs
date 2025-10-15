@@ -881,6 +881,11 @@ public:
         return Triggers.empty();
     }
 
+    size_t size() const
+    {
+        return Triggers.size();
+    }
+
     void ProceedAll()
     {
         while (!Triggers.empty()) {
@@ -1192,6 +1197,25 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 22, "efghij");
         b.Scheduler->RunAllScheduledTasks();
         checkFlush(2);
+    }
+
+    Y_UNIT_TEST(ShouldFlushAutomaticallyForDifferentNodes)
+    {
+        const auto automaticFlushPeriod = TDuration::MilliSeconds(1);
+        TBootstrap b(automaticFlushPeriod);
+
+        // Prevent write requests initiated by Flush from completing immediately
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        b.WriteToCacheSync(1, 11, "abcde");
+        b.Scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_EQUAL(1, writeRequests.size());
+
+        // Stuck at flushing for one node should not affect automatic flushing
+        // for another node
+        b.WriteToCacheSync(2, 22, "efghij");
+        b.Scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_EQUAL(2, writeRequests.size());
     }
 
     void TestShouldReadAfterWriteRandomized(bool withRecreation = false) {

@@ -389,14 +389,17 @@ public:
             Timer->Now() + FlushConfig.AutomaticFlushPeriod,
             [ptr = weak_from_this()] () {
                 if (auto self = ptr.lock()) {
-                    self->FlushAllData().Subscribe(
-                        [ptr = self->weak_from_this()] (auto) {
-                            if (auto self = ptr.lock()) {
-                                self->ScheduleAutomaticFlushIfNeeded();
-                            }
-                        });
+                    self->RequestAutomaticFlush();
                 }
             });
+    }
+
+    void RequestAutomaticFlush()
+    {
+        auto guard = Guard(Lock);
+        RequestFlushAll();
+        ExecutePendingOperations(guard);
+        ScheduleAutomaticFlushIfNeeded();
     }
 
     // should be protected by |Lock|
