@@ -16,20 +16,23 @@ func GetDiskCell(
 	storage resources.Storage,
 	cellSelector cells.CellSelector,
 	disk *types.Disk,
-) (string, error) {
+) (*types.Disk, error) {
 
 	diskMeta, err := storage.GetDiskMeta(ctx, disk.DiskId)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if !cellSelector.IsCellOfZone(diskMeta.ZoneID, disk.ZoneId) {
-		return "", errors.NewNonCancellableErrorf(
+		return nil, errors.NewNonCancellableErrorf(
 			"disk %s is not in zone %s",
 			disk.DiskId,
 			disk.ZoneId,
 		)
 	}
 
-	return diskMeta.ZoneID, nil
+	return &types.Disk{
+		DiskId: disk.DiskId,
+		ZoneId: diskMeta.ZoneID,
+	}, nil
 }

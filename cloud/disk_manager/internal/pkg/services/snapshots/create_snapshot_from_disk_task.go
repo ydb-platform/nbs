@@ -161,15 +161,11 @@ func (t *createSnapshotFromDiskTask) Run(
 ) error {
 
 	// Disk cell may differ from the zone presented in the request.
-	cellID, err := common.GetDiskCell(ctx, t.storage, t.cellSelector, t.request.SrcDisk)
+	disk, err := common.GetDiskCell(ctx, t.storage, t.cellSelector, t.request.SrcDisk)
 	if err != nil {
 		return err
 	}
 
-	disk := &types.Disk{
-		DiskId: t.request.SrcDisk.DiskId,
-		ZoneId: cellID,
-	}
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
 		return err
@@ -198,15 +194,11 @@ func (t *createSnapshotFromDiskTask) Cancel(
 ) error {
 
 	// Disk cell may differ from the zone presented in the request.
-	cellID, err := common.GetDiskCell(ctx, t.storage, t.cellSelector, t.request.SrcDisk)
+	disk, err := common.GetDiskCell(ctx, t.storage, t.cellSelector, t.request.SrcDisk)
 	if err != nil {
 		return err
 	}
 
-	disk := &types.Disk{
-		DiskId: t.request.SrcDisk.DiskId,
-		ZoneId: cellID,
-	}
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
 		return err
