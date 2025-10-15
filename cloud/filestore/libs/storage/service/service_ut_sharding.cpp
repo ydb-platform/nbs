@@ -2615,13 +2615,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         ui32 alterEventCount = 0;
         env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
                 Y_UNUSED(runtime);
-                if (event->GetTypeRewrite() == TEvSSProxy::EvAlterFileStoreResponse) {
+                if (event->GetTypeRewrite() ==
+                    TEvSSProxy::EvAlterFileStoreResponse)
+                {
                     if (alterEventCount == 0) {
                         auto* msg =
                             event->Get<TEvSSProxy::TEvAlterFileStoreResponse>();
-                        const_cast<NProto::TError&>(msg->Error).set_code(E_REJECTED);
+                        const_cast<NProto::TError&>(msg->Error)
+                            .set_code(E_REJECTED);
                     }
                     alterEventCount++;
                 }
@@ -2638,22 +2642,33 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             const auto& stats = response.GetStats();
             UNIT_ASSERT_EQUAL(2, stats.GetShardStats().size());
             UNIT_ASSERT_EQUAL(newBlocksCount, stats.GetTotalBlocksCount());
-            UNIT_ASSERT_EQUAL(fsConfig.MainFsBlockCount(), stats.GetShardStats()[0].GetTotalBlocksCount());
-            UNIT_ASSERT_EQUAL(fsConfig.MainFsBlockCount(), stats.GetShardStats()[1].GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(
+                fsConfig.MainFsBlockCount(),
+                stats.GetShardStats()[0].GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(
+                fsConfig.MainFsBlockCount(),
+                stats.GetShardStats()[1].GetTotalBlocksCount());
         }
 
-        // The next step perform retry of ResizeFileStore.
-        // It should complete resisze and bring the file system into consistent state.
-        env.GetRuntime().SetEventFilter(&TTestActorRuntimeBase::DefaultFilterFunc);
+        // The next step retries ResizeFileStore. It should complete resize and
+        // bring the file system into consistent state.
+        env.GetRuntime().SetEventFilter(
+            &TTestActorRuntimeBase::DefaultFilterFunc);
         service.ResizeFileStore(fsConfig.FsId, newBlocksCount);
         {
             const auto response = GetStorageStats(service, fsConfig.FsId);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_EQUAL(3, stats.GetShardStats().size());
             UNIT_ASSERT_EQUAL(newBlocksCount, stats.GetTotalBlocksCount());
-            UNIT_ASSERT_EQUAL(newBlocksCount, stats.GetShardStats()[0].GetTotalBlocksCount());
-            UNIT_ASSERT_EQUAL(newBlocksCount, stats.GetShardStats()[1].GetTotalBlocksCount());
-            UNIT_ASSERT_EQUAL(newBlocksCount, stats.GetShardStats()[2].GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(
+                newBlocksCount,
+                stats.GetShardStats()[0].GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(
+                newBlocksCount,
+                stats.GetShardStats()[1].GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(
+                newBlocksCount,
+                stats.GetShardStats()[2].GetTotalBlocksCount());
         }
     }
 
