@@ -682,8 +682,10 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
     }
 
     return result.Apply(
-        [request, generator = BlockDigestGenerator, profileLog = ProfileLog](
-            auto future)
+        [request,
+         generator = BlockDigestGenerator,
+         profileLog = ProfileLog,
+         timestamp = Now()](auto future)
         {
             auto response =
                 ConvertToReadDeviceBlocksResponse(std::move(future));
@@ -698,64 +700,18 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
             if (blockInfos) {
                 profileLog->Write({
                     .DiskId = request.GetDeviceUUID(),
-                    .Ts = Now(),
+                    .Ts = timestamp,
                     .Request =
                         IProfileLog::TSysReadWriteRequestBlockInfos{
                             .RequestType = ESysRequestType::ReadDeviceBlocks,
                             .BlockInfos = std::move(blockInfos),
-                            .CommitId = 0,
+                            .CommitId = (Now() - timestamp).MicroSeconds(),
                         },
                 });
             }
 
             return response;
         });
-}
-
-void TDiskAgentState::WriteProfileLog(
-    TInstant now,
-    const TString& uuid,
-    const NProto::TWriteBlocksRequest& req,
-    ui32 blockSize,
-    TStringBuf buffer)
-{
-    auto blockInfos =
-        ComputeDigest(*BlockDigestGenerator, req, blockSize, buffer);
-    if (!blockInfos) {
-        return;
-    }
-
-    ProfileLog->Write({
-        .DiskId = uuid,
-        .Ts = now,
-        .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
-            .RequestType = ESysRequestType::WriteDeviceBlocks,
-            .BlockInfos = std::move(blockInfos),
-            .CommitId = 0,
-        },
-    });
-}
-
-void TDiskAgentState::WriteProfileLog(
-    TInstant now,
-    const TString& uuid,
-    const NProto::TZeroBlocksRequest& req,
-    ui32 blockSize)
-{
-    auto blockInfos = ComputeDigest(*BlockDigestGenerator, req, blockSize);
-    if (!blockInfos) {
-        return;
-    }
-
-    ProfileLog->Write({
-        .DiskId = uuid,
-        .Ts = now,
-        .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
-            .RequestType = ESysRequestType::ZeroDeviceBlocks,
-            .BlockInfos = std::move(blockInfos),
-            .CommitId = 0,
-        },
-    });
 }
 
 TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
@@ -796,26 +752,37 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::WriteBlocks(
         request->GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_WRITE);
 
-    WriteProfileLog(
-        now,
-        deviceUUID,
-        *request,
-        blockSize,
-        buffer);
+    auto blockInfos =
+        ComputeDigest(*BlockDigestGenerator, *request, blockSize, buffer);
 
     auto result = device.StorageAdapter->WriteBlocks(
         now,
         MakeIntrusive<TCallContext>(),
-        std::move(request),
+        request,
         blockSize,
         buffer);
 
     return result.Apply(
-        [] (const auto& future) {
+        [timestamp = Now(),
+         uuid = deviceUUID,
+         profileLog = ProfileLog,
+         blockInfos = std::move(blockInfos)](const auto& future) mutable
+        {
+            if (blockInfos) {
+                const auto dt = Now() - timestamp;
+                profileLog->Write({
+                    .DiskId = uuid,
+                    .Ts = timestamp,
+                    .Request = IProfileLog::TSysReadWriteRequestBlockInfos{
+                        .RequestType = ESysRequestType::WriteDeviceBlocks,
+                        .BlockInfos = std::move(blockInfos),
+                        .CommitId = dt.MicroSeconds(),
+                    },
+                });
+            }
+
             NProto::TWriteDeviceBlocksResponse response;
-
             *response.MutableError() = future.GetValue().GetError();
-
             return response;
         });
 }
@@ -824,12 +791,15 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
     TInstant now,
     NProto::TZeroDeviceBlocksRequest request)
 {
+    const auto& deviceId = request.GetDeviceUUID();
+    const ui32 blockSize = request.GetBlockSize();
+
     CheckIfDeviceIsDisabled(
-        request.GetDeviceUUID(),
+        deviceId,
         request.GetHeaders().GetClientId());
 
     const auto& device = GetDeviceState(
-        request.GetDeviceUUID(),
+        deviceId,
         request.GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_WRITE);
 
@@ -837,24 +807,37 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
     zeroRequest->SetStartIndex(request.GetStartIndex());
     zeroRequest->SetBlocksCount(request.GetBlocksCount());
 
-    WriteProfileLog(
-        now,
-        request.GetDeviceUUID(),
-        *zeroRequest,
-        request.GetBlockSize());
+    auto blockInfos =
+        ComputeDigest(*BlockDigestGenerator, *zeroRequest, blockSize);
 
     auto result = device.StorageAdapter->ZeroBlocks(
         now,
         MakeIntrusive<TCallContext>(),
         std::move(zeroRequest),
-        request.GetBlockSize());
+        blockSize);
 
     return result.Apply(
-        [] (const auto& future) {
+        [timestamp = Now(),
+         uuid = deviceId,
+         profileLog = ProfileLog,
+         blockInfos = std::move(blockInfos)](const auto& future) mutable
+        {
+            if (blockInfos) {
+                const auto dt = Now() - timestamp;
+                profileLog->Write({
+                    .DiskId = uuid,
+                    .Ts = timestamp,
+                    .Request =
+                        IProfileLog::TSysReadWriteRequestBlockInfos{
+                            .RequestType = ESysRequestType::ZeroDeviceBlocks,
+                            .BlockInfos = std::move(blockInfos),
+                            .CommitId = dt.MicroSeconds(),
+                        },
+                });
+            }
+
             NProto::TZeroDeviceBlocksResponse response;
-
             *response.MutableError() = future.GetValue().GetError();
-
             return response;
         });
 }

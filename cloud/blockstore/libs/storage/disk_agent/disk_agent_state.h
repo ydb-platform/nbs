@@ -186,19 +186,6 @@ private:
         const TString& clientId,
         NProto::EVolumeAccessMode accessMode) const;
 
-    void WriteProfileLog(
-        TInstant now,
-        const TString& uuid,
-        const NProto::TWriteBlocksRequest& req,
-        ui32 blockSize,
-        TStringBuf buffer);
-
-    void WriteProfileLog(
-        TInstant now,
-        const TString& uuid,
-        const NProto::TZeroBlocksRequest& req,
-        ui32 blockSize);
-
     NThreading::TFuture<TInitializeResult> InitSpdkStorage();
     NThreading::TFuture<TInitializeResult> InitAioStorage();
 
