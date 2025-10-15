@@ -54,8 +54,7 @@ public:
         TActorId volumeActorId,
         const TActorId& part,
         TChildLogTitle logTitle,
-        ui64 deviceOperationId,
-        bool shouldTrackOperations);
+        ui64 deviceOperationId);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -86,8 +85,7 @@ TDiskAgentReadLocalActor::TDiskAgentReadLocalActor(
         TActorId volumeActorId,
         const TActorId& part,
         TChildLogTitle logTitle,
-        ui64 deviceOperationId,
-        bool shouldTrackOperations)
+        ui64 deviceOperationId)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -98,8 +96,7 @@ TDiskAgentReadLocalActor::TDiskAgentReadLocalActor(
           volumeActorId,
           part,
           std::move(logTitle),
-          deviceOperationId,
-          shouldTrackOperations)
+          deviceOperationId)
     , Request(std::move(request))
     , SkipVoidBlocksToOptimizeNetworkTransfer(
           Request.GetHeaders().GetOptimizeNetworkTransfer() ==
@@ -125,14 +122,13 @@ void TDiskAgentReadLocalActor::SendRequest(const TActorContext& ctx)
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
 
-        if (ShouldTrackOperations) {
-            auto latencyStartEvent =
-                std::make_unique<TEvVolumePrivate::TEvDeviceOperationStarted>(
-                    TEvVolumePrivate::TDeviceOperationStarted(
-                        deviceRequest.Device.GetDeviceUUID(),
-                        TEvVolumePrivate::TDeviceOperationStarted::
-                            ERequestType::Read,
-                        DeviceOperationId + cookie));
+        if (DeviceOperationId) {
+            auto latencyStartEvent = std::make_unique<
+                TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
+                TEvVolumePrivate::TDiskRegistryDeviceOperationStarted(
+                    deviceRequest.Device.GetDeviceUUID(),
+                    TDeviceOperationTracker::ERequestType::Read,
+                    DeviceOperationId + cookie));
             ctx.Send(VolumeActorId, latencyStartEvent.release());
         }
 
@@ -233,11 +229,11 @@ void TDiskAgentReadLocalActor::HandleReadDeviceBlocksResponse(
         }
     }
 
-    if (ShouldTrackOperations) {
-        auto latencyFinishEvent =
-            std::make_unique<TEvVolumePrivate::TEvDeviceOperationFinished>(
-                TEvVolumePrivate::TDeviceOperationFinished(
-                    DeviceOperationId + ev->Cookie));
+    if (DeviceOperationId) {
+        auto latencyFinishEvent = std::make_unique<
+            TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
+            TEvVolumePrivate::TDiskRegistryDeviceOperationFinished(
+                DeviceOperationId + ev->Cookie));
         ctx.Send(VolumeActorId, latencyFinishEvent.release());
     }
 
@@ -319,11 +315,12 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
             NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
     }
 
-    ui64 operationId = DeviceOperationId;
-    DeviceOperationId += deviceRequests.size();
     ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
-    bool shouldTrack =
-        (trackingFreq == 0) ? false : ((operationId % trackingFreq) == 0);
+    ui64 operationId =
+        (trackingFreq > 0 && DeviceOperationId % trackingFreq == 0)
+            ? DeviceOperationId
+            : 0;
+    DeviceOperationId += deviceRequests.size();
 
     auto actorId = NCloud::Register<TDiskAgentReadLocalActor>(
         ctx,
@@ -337,8 +334,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
         VolumeActorId,
         SelfId(),
         LogTitle.GetChild(GetCycleCount()),
-        operationId,
-        shouldTrack);
+        operationId);
 
     RequestsInProgress.AddReadRequest(actorId, std::move(request));
 }

@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
-
+#include <cloud/blockstore/libs/storage/core/device_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
@@ -482,26 +482,18 @@ struct TEvVolumePrivate
     };
 
     //
-    //  DeviceOperationStarted
+    //  DiskRegistryDeviceOperationStarted
     //
 
-    struct TDeviceOperationStarted
+    struct TDiskRegistryDeviceOperationStarted
     {
-        enum class ERequestType
-        {
-            Read,
-            Write,
-            Zero,
-            Checksum
-        };
-
         TString DeviceUUID;
-        ERequestType RequestType;
+        TDeviceOperationTracker::ERequestType RequestType;
         ui64 OperationId;
 
-        TDeviceOperationStarted(
+        TDiskRegistryDeviceOperationStarted(
             TString deviceUUID,
-            ERequestType requestType,
+            TDeviceOperationTracker::ERequestType requestType,
             ui64 operationId)
             : DeviceUUID(std::move(deviceUUID))
             , RequestType(requestType)
@@ -510,14 +502,14 @@ struct TEvVolumePrivate
     };
 
     //
-    //  DeviceOperationFinished
+    //  DiskRegistryDeviceOperationFinished
     //
 
-    struct TDeviceOperationFinished
+    struct TDiskRegistryDeviceOperationFinished
     {
         ui64 OperationId;
 
-        explicit TDeviceOperationFinished(ui64 operationId)
+        explicit TDiskRegistryDeviceOperationFinished(ui64 operationId)
             : OperationId(operationId)
         {}
     };
@@ -553,8 +545,8 @@ struct TEvVolumePrivate
         EvLinkOnFollowerDestroyed,
         EvLinkOnFollowerDataTransferred,
         EvCreateLinkFinished,
-        EvDeviceOperationStarted,
-        EvDeviceOperationFinished,
+        EvDiskRegistryDeviceOperationStarted,
+        EvDiskRegistryDeviceOperationFinished,
 
         EvEnd
     };
@@ -652,11 +644,13 @@ struct TEvVolumePrivate
     using TEvCreateLinkFinished =
         TResponseEvent<TCreateLinkFinished, EvCreateLinkFinished>;
 
-    using TEvDeviceOperationStarted =
-        TRequestEvent<TDeviceOperationStarted, EvDeviceOperationStarted>;
+    using TEvDiskRegistryDeviceOperationStarted = TRequestEvent<
+        TDiskRegistryDeviceOperationStarted,
+        EvDiskRegistryDeviceOperationStarted>;
 
-    using TEvDeviceOperationFinished =
-        TRequestEvent<TDeviceOperationFinished, EvDeviceOperationFinished>;
+    using TEvDiskRegistryDeviceOperationFinished = TRequestEvent<
+        TDiskRegistryDeviceOperationFinished,
+        EvDiskRegistryDeviceOperationFinished>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -330,7 +330,7 @@ private:
 
     TRequestsTimeTracker RequestTimeTracker{StartTime};
     TTransactionTimeTracker TransactionTimeTracker;
-    TDeviceOperationTracker DeviceOperationTracker;
+    TDeviceOperationTracker DeviceOperationTracker{{}};
 
     // inflight VolumeRequestId -> duplicate request queue
     // we respond to duplicate requests as soon as our original request is completed
@@ -1284,12 +1284,13 @@ private:
 
     void InitializeDeviceOperationTracker();
 
-    void HandleDeviceOperationStarted(
-        const TEvVolumePrivate::TEvDeviceOperationStarted::TPtr& ev,
+    void HandleDiskRegistryDeviceOperationStarted(
+        const TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleDeviceOperationFinished(
-        const TEvVolumePrivate::TEvDeviceOperationFinished::TPtr& ev,
+    void HandleDiskRegistryDeviceOperationFinished(
+        const TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished::TPtr&
+            ev,
         const TActorContext& ctx);
 
     // Restart partitions. If these were partition of DiskRegistry-based disk,
