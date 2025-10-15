@@ -53,8 +53,7 @@ public:
         const TActorId& part,
         bool assignVolumeRequestId,
         TChildLogTitle logTitle,
-        ui64 deviceOperationId,
-        bool shouldTrackOperations);
+        ui64 deviceOperationId);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -84,8 +83,7 @@ TDiskAgentMultiWriteActor::TDiskAgentMultiWriteActor(
         const TActorId& part,
         bool assignVolumeRequestId,
         TChildLogTitle logTitle,
-        ui64 deviceOperationId,
-        bool shouldTrackOperations)
+        ui64 deviceOperationId)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -96,8 +94,7 @@ TDiskAgentMultiWriteActor::TDiskAgentMultiWriteActor(
           volumeActorId,
           part,
           std::move(logTitle),
-          deviceOperationId,
-          shouldTrackOperations)
+          deviceOperationId)
     , AssignVolumeRequestId(assignVolumeRequestId)
     , Request(std::move(request))
 {}
@@ -142,12 +139,12 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
         }
     }
 
-    if (ShouldTrackOperations) {
+    if (DeviceOperationId) {
         auto latencyStartEvent = std::make_unique<
-            TEvVolumePrivate::TEvDeviceOperationStarted>(
-            TEvVolumePrivate::TDeviceOperationStarted(
+            TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
+            TEvVolumePrivate::TDiskRegistryDeviceOperationStarted(
                 Request.DevicesAndRanges[0].Device.GetDeviceUUID(),
-                TEvVolumePrivate::TDeviceOperationStarted::ERequestType::Write,
+                TDeviceOperationTracker::ERequestType::Write,
                 DeviceOperationId));
         ctx.Send(VolumeActorId, latencyStartEvent.release());
     }
@@ -247,10 +244,11 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksResponse(
         return;
     }
 
-    if (ShouldTrackOperations) {
-        auto latencyFinishEvent =
-            std::make_unique<TEvVolumePrivate::TEvDeviceOperationFinished>(
-                TEvVolumePrivate::TDeviceOperationFinished(DeviceOperationId));
+    if (DeviceOperationId) {
+        auto latencyFinishEvent = std::make_unique<
+            TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
+            TEvVolumePrivate::TDiskRegistryDeviceOperationFinished(
+                DeviceOperationId));
         ctx.Send(VolumeActorId, latencyFinishEvent.release());
     }
 
@@ -348,11 +346,12 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
     timeoutPolicy.Timeout =
         CalcOverallTimeout(msg->Record, Config->GetNetworkForwardingTimeout());
 
-    ui64 operationId = DeviceOperationId;
-    DeviceOperationId += deviceRequests.size();
     ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
-    bool shouldTrack =
-        (trackingFreq == 0) ? false : ((operationId % trackingFreq) == 0);
+    ui64 operationId =
+        (trackingFreq > 0 && DeviceOperationId % trackingFreq == 0)
+            ? DeviceOperationId
+            : 0;
+    DeviceOperationId += deviceRequests.size();
 
     auto actorId = NCloud::Register<TDiskAgentMultiWriteActor>(
         ctx,
@@ -365,8 +364,7 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         LogTitle.GetChild(GetCycleCount()),
-        operationId,
-        shouldTrack);
+        operationId);
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }

@@ -84,8 +84,6 @@ private:
     TInflightMap Inflight;
     THashMap<TKey, TTimeHistogram, THash> Histograms;
 
-    [[nodiscard]] static TString ToString(ERequestType type);
-
 public:
     explicit TDeviceOperationTracker(std::span<const TDeviceInfo> deviceInfos);
 

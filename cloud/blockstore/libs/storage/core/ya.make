@@ -1,5 +1,6 @@
 LIBRARY()
 
+GENERATE_ENUM_SERIALIZATION(device_operation_tracker.h)
 GENERATE_ENUM_SERIALIZATION(mount_token.h)
 
 SRCS(

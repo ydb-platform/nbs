@@ -2049,20 +2049,7 @@ void DumpLatencyTableForRequestType(
 {
     const auto timeBuckets = deviceTracker.GetTimeBuckets();
     const auto deviceInfos = deviceTracker.GetDeviceInfos();
-    const TString requestTypeStr = [requestType]()
-    {
-        switch (requestType) {
-            case TDeviceOperationTracker::ERequestType::Read:
-                return TString("Read");
-            case TDeviceOperationTracker::ERequestType::Write:
-                return TString("Write");
-            case TDeviceOperationTracker::ERequestType::Zero:
-                return TString("Zero");
-            case TDeviceOperationTracker::ERequestType::Checksum:
-                return TString("Checksum");
-        }
-        return TString("Unknown");
-    }();
+    const TString requestTypeStr = ToString(requestType);
 
     HTML (out) {
         TAG (TH3) {

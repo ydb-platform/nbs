@@ -31,23 +31,6 @@ const TString& GetTimeBucketName(TDuration duration)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString TDeviceOperationTracker::ToString(ERequestType type)
-{
-    switch (type) {
-        case ERequestType::Read:
-            return "Read";
-        case ERequestType::Write:
-            return "Write";
-        case ERequestType::Zero:
-            return "Zero";
-        case ERequestType::Checksum:
-            return "Checksum";
-    }
-    return "Unknown";
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 TString TDeviceOperationTracker::TKey::GetHtmlPrefix() const
 {
     TStringBuilder builder;

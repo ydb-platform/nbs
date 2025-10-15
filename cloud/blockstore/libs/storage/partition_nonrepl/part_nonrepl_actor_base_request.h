@@ -29,7 +29,6 @@ protected:
     const NActors::TActorId Part;
     TChildLogTitle LogTitle;
     ui64 DeviceOperationId;
-    bool ShouldTrackOperations;
 
 private:
     const TString RequestName;
@@ -49,8 +48,7 @@ public:
         NActors::TActorId volumeActorId,
         const NActors::TActorId& part,
         TChildLogTitle logTitle,
-        ui64 deviceOperationId,
-        bool shouldTrackOperations);
+        ui64 deviceOperationId);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
