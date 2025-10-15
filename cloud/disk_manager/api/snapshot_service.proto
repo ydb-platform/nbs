@@ -27,6 +27,7 @@ service SnapshotService {
 message CreateSnapshotRequest {
     reserved 4, 5, 6;
 
+    // A correct zone ID must be provided; using a cell ID will cause a failure.
     DiskId src = 1;
     string snapshot_id = 2;
     string folder_id = 3;
