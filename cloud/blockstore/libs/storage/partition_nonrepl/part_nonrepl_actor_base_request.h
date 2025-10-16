@@ -27,8 +27,8 @@ protected:
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId Part;
+    const ui64 DeviceOperationId;
     TChildLogTitle LogTitle;
-    ui64 DeviceOperationId;
 
 private:
     const TString RequestName;
@@ -79,6 +79,14 @@ protected:
         const NActors::TActorContext& ctx,
         NActors::IEventBasePtr response,
         EStatus status);
+
+    void OnRequestStarted(
+        const NActors::TActorContext& ctx,
+        const TString& deviceUUID,
+        TDeviceOperationTracker::ERequestType requestType,
+        ui32 cookie);
+
+    void OnRequestFinished(const NActors::TActorContext& ctx, ui32 cookie);
 
 private:
     void StateWork(TAutoPtr<NActors::IEventHandle>& ev);

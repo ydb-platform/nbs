@@ -133,15 +133,11 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
 
         builder.BuildNextRequest(request->Record);
 
-        if (DeviceOperationId) {
-            auto latencyStartEvent = std::make_unique<
-                TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
-                TEvVolumePrivate::TDiskRegistryDeviceOperationStarted(
-                    deviceRequest.Device.GetDeviceUUID(),
-                    TDeviceOperationTracker::ERequestType::Write,
-                    DeviceOperationId + index));
-            ctx.Send(VolumeActorId, latencyStartEvent.release());
-        }
+        OnRequestStarted(
+            ctx,
+            deviceRequest.Device.GetDeviceUUID(),
+            TDeviceOperationTracker::ERequestType::Write,
+            index);
 
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
@@ -206,13 +202,7 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
         return;
     }
 
-    if (DeviceOperationId) {
-        auto latencyFinishEvent = std::make_unique<
-            TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
-            TEvVolumePrivate::TDiskRegistryDeviceOperationFinished(
-                DeviceOperationId + ev->Cookie));
-        ctx.Send(VolumeActorId, latencyFinishEvent.release());
-    }
+    OnRequestFinished(ctx, ev->Cookie);
 
     if (++RequestsCompleted < DeviceRequests.size()) {
         return;
@@ -311,12 +301,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         return;
     }
 
-    ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
-    ui64 operationId =
-        (trackingFreq > 0 && DeviceOperationId % trackingFreq == 0)
-            ? DeviceOperationId
-            : 0;
-    DeviceOperationId += deviceRequests.size();
+    ui64 operationId = GenerateOperationId(deviceRequests.size());
 
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
@@ -433,12 +418,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
     // code to TDiskAgentWriteActor that tries to use it
     msg->Record.Sglist.SetSgList({});
 
-    ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
-    ui64 operationId =
-        (trackingFreq > 0 && DeviceOperationId % trackingFreq == 0)
-            ? DeviceOperationId
-            : 0;
-    DeviceOperationId += deviceRequests.size();
+    ui64 operationId = GenerateOperationId(deviceRequests.size());
 
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,

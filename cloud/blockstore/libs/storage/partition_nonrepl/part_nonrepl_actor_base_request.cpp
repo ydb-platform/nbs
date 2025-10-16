@@ -33,8 +33,8 @@ TDiskAgentBaseRequestActor::TDiskAgentBaseRequestActor(
     , PartConfig(std::move(partConfig))
     , VolumeActorId(volumeActorId)
     , Part(part)
-    , LogTitle(std::move(logTitle))
     , DeviceOperationId(deviceOperationId)
+    , LogTitle(std::move(logTitle))
     , RequestName(std::move(requestName))
     , RequestId(requestId)
     , TimeoutPolicy(std::move(timeoutPolicy))
@@ -114,6 +114,42 @@ void TDiskAgentBaseRequestActor::Done(
     NCloud::Send(ctx, Part, std::move(completion.Event));
 
     Die(ctx);
+}
+
+void TDiskAgentBaseRequestActor::OnRequestStarted(
+    const NActors::TActorContext& ctx,
+    const TString& deviceUUID,
+    TDeviceOperationTracker::ERequestType requestType,
+    ui32 cookie)
+{
+    if (!DeviceOperationId) {
+        return;
+    }
+
+    auto startEvent = std::make_unique<
+        TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
+        TEvVolumePrivate::TDiskRegistryDeviceOperationStarted(
+            deviceUUID,
+            requestType,
+            DeviceOperationId + cookie));
+
+    ctx.Send(VolumeActorId, startEvent.release());
+}
+
+void TDiskAgentBaseRequestActor::OnRequestFinished(
+    const NActors::TActorContext& ctx,
+    ui32 cookie)
+{
+    if (!DeviceOperationId) {
+        return;
+    }
+
+    auto finishEvent = std::make_unique<
+        TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
+        TEvVolumePrivate::TDiskRegistryDeviceOperationFinished(
+            DeviceOperationId + cookie));
+
+    ctx.Send(VolumeActorId, finishEvent.release());
 }
 
 void TDiskAgentBaseRequestActor::HandleCancelRequest(

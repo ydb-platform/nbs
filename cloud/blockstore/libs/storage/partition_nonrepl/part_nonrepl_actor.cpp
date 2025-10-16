@@ -658,6 +658,19 @@ bool TNonreplicatedPartitionActor::HandleRequests(STFUNC_SIG)
     return true;
 }
 
+ui64 TNonreplicatedPartitionActor::GenerateOperationId(
+    size_t deviceRequestsCount)
+{
+    const ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
+    const ui64 operationId =
+        (trackingFreq > 0 && DeviceOperationIdGenerator % trackingFreq == 0)
+            ? DeviceOperationIdGenerator
+            : 0;
+
+    DeviceOperationIdGenerator += deviceRequestsCount;
+    return operationId;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \

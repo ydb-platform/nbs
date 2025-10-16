@@ -104,15 +104,11 @@ void TDiskAgentChecksumActor::SendRequest(const TActorContext& ctx)
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
 
-        if (DeviceOperationId) {
-            auto latencyStartEvent = std::make_unique<
-                TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
-                TEvVolumePrivate::TDiskRegistryDeviceOperationStarted(
-                    deviceRequest.Device.GetDeviceUUID(),
-                    TDeviceOperationTracker::ERequestType::Checksum,
-                    DeviceOperationId + cookie));
-            ctx.Send(VolumeActorId, latencyStartEvent.release());
-        }
+        OnRequestStarted(
+            ctx,
+            deviceRequest.Device.GetDeviceUUID(),
+            TDeviceOperationTracker::ERequestType::Checksum,
+            cookie);
 
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
@@ -178,13 +174,7 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
     const auto rangeSize = deviceRequest.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
     Checksums[rangeStart] = {msg->Record.GetChecksum(), rangeSize};
 
-    if (DeviceOperationId) {
-        auto latencyFinishEvent = std::make_unique<
-            TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
-            TEvVolumePrivate::TDiskRegistryDeviceOperationFinished(
-                DeviceOperationId + ev->Cookie));
-        ctx.Send(VolumeActorId, latencyFinishEvent.release());
-    }
+    OnRequestFinished(ctx, ev->Cookie);
 
     if (++RequestsCompleted < DeviceRequests.size()) {
         return;
@@ -259,12 +249,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         return;
     }
 
-    ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
-    ui64 operationId =
-        (trackingFreq > 0 && DeviceOperationId % trackingFreq == 0)
-            ? DeviceOperationId
-            : 0;
-    DeviceOperationId += deviceRequests.size();
+    ui64 operationId = GenerateOperationId(deviceRequests.size());
 
     auto actorId = NCloud::Register<TDiskAgentChecksumActor>(
         ctx,
