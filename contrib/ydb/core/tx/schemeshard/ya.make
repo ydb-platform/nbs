@@ -53,6 +53,10 @@ RECURSE_FOR_TESTS(
 
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     defs.h
     schemeshard.cpp

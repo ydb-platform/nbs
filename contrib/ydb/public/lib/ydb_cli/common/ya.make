@@ -1,5 +1,9 @@
 LIBRARY(common)
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     aws.cpp
     command.cpp

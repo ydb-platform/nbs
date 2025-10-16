@@ -1,5 +1,9 @@
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     alter_cdc_stream_unit.cpp
     alter_table_unit.cpp
@@ -127,7 +131,7 @@ SRCS(
     datashard_repl_offsets_client.cpp
     datashard_repl_offsets_server.cpp
     datashard_subdomain_path_id.cpp
-    datashard_write_operation.cpp    
+    datashard_write_operation.cpp
     datashard_txs.h
     datashard.cpp
     datashard.h

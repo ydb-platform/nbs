@@ -1,5 +1,9 @@
 LIBRARY(topic_workload)
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
     topic_workload_clean.cpp
     topic_workload_describe.cpp
@@ -30,7 +34,7 @@ PEERDIR(
     contrib/ydb/public/sdk/cpp/client/ydb_table
     contrib/ydb/public/sdk/cpp/client/ydb_topic
     contrib/ydb/public/sdk/cpp/client/ydb_types/operation
-    contrib/ydb/public/sdk/cpp/client/ydb_types/status    
+    contrib/ydb/public/sdk/cpp/client/ydb_types/status
 )
 
 END()

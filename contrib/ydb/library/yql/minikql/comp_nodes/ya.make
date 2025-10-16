@@ -5,6 +5,10 @@ OWNER(
 
 LIBRARY()
 
+CFLAGS(
+    -Wno-deprecated-declarations
+)
+
 SRCS(
 )
 
