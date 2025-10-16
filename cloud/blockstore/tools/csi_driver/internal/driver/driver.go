@@ -310,6 +310,10 @@ func GetVolumeId(req interface{}) string {
 		return r.VolumeId
 	case csi.NodeExpandVolumeRequest:
 		return r.VolumeId
+	case csi.CreateVolumeRequest:
+		return r.Name
+	case csi.DeleteVolumeRequest:
+		return r.VolumeId
 	default:
 		return ""
 	}
