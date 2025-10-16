@@ -147,10 +147,10 @@ TString TDeviceOperationTracker::GetStatJson(ui64 nowCycles) const
 
         for (size_t i = 0; i < TRequestUsTimeBuckets::BUCKETS_COUNT; ++i) {
             total += histogram.Buckets[i];
-            allStat[htmlPrefix + times[i]] = ::ToString(histogram.Buckets[i]);
+            allStat[htmlPrefix + times[i]] = ToString(histogram.Buckets[i]);
         }
 
-        allStat[htmlPrefix + "Total"] = ::ToString(total);
+        allStat[htmlPrefix + "Total"] = ToString(total);
     }
 
     auto getInflightHtmlKey = [](const TString& requestType,
@@ -182,7 +182,7 @@ TString TDeviceOperationTracker::GetStatJson(ui64 nowCycles) const
     }
 
     for (const auto& [key, count]: inflight) {
-        allStat[key] = "+ " + ::ToString(count);
+        allStat[key] = "+ " + ToString(count);
     }
 
     NJson::TJsonValue json;
