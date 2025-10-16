@@ -7,6 +7,7 @@ import (
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 )
 
@@ -19,6 +20,7 @@ func RegisterForExecution(
 	taskScheduler tasks.Scheduler,
 	storage storage.Storage,
 	nbsFactory nbs.Factory,
+	metricsRegistry metrics.Registry,
 ) error {
 
 	collectClusterCapacityTaskScheduleInterval, err := time.ParseDuration(
@@ -57,5 +59,46 @@ func RegisterForExecution(
 			},
 		)
 	}
+
+	collectCellsMetricsTaskScheduleInterval, err := time.ParseDuration(
+		config.GetCollectCellsMetricsTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	cellsMetricsCollectionInterval, err := time.ParseDuration(
+		config.GetCellsMetricsCollectionInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.RegisterForExecution(
+		"cells.CollectCellsMetrics",
+		func() tasks.Task {
+			return &collectCellsMetricsTask{
+				config:                    config,
+				storage:                   storage,
+				registry:                  metricsRegistry,
+				metricsCollectionInterval: cellsMetricsCollectionInterval,
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	if config.GetScheduleCollectClusterCapacityTask() {
+		taskScheduler.ScheduleRegularTasks(
+			ctx,
+			"cells.CollectCellsMetrics",
+			tasks.TaskSchedule{
+				ScheduleInterval: collectCellsMetricsTaskScheduleInterval,
+				MaxTasksInflight: 1,
+			},
+		)
+	}
+
 	return nil
 }

@@ -19,6 +19,7 @@ type ClusterCapacity struct {
 	Kind       types.DiskKind
 	TotalBytes uint64
 	FreeBytes  uint64
+	CreatedAt  time.Time
 }
 
 ////////////////////////////////////////////////////////////////////////////////
