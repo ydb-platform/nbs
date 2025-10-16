@@ -220,6 +220,51 @@ ui64 FindDeletionMarker(const TByteVector& encodedDeletionMarkers, ui16 blobOffs
     return InvalidCommitId;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TRange
+{
+    ui32 Offset = 0;
+    ui32 Length = 0;
+
+    explicit operator bool() const
+    {
+        return Length;
+    }
+
+    static TRange WithLength(ui32 offset, ui32 length)
+    {
+        return {offset, length};
+    }
+
+    static TRange WithEnd(ui32 offset, ui32 end)
+    {
+        Y_DEBUG_ABORT_UNLESS(end > offset);
+        return {offset, end - offset};
+    }
+
+    ui32 End() const
+    {
+        return Offset + Length;
+    }
+
+    bool Contains(ui32 offset) const
+    {
+        return Offset <= offset && offset < End();
+    }
+
+    TRange Intersection(const TRange& range) const
+    {
+        auto offset = Max(Offset, range.Offset);
+        auto end = Min(End(), range.End());
+        if (end > offset) {
+            return {offset, end - offset};
+        }
+
+        return {};
+    }
+};
+
 struct FindDeletionMarkersResult
 {
     ui64 MaxCommitId = 0;
@@ -233,13 +278,14 @@ FindDeletionMarkersResult FindDeletionMarkers(
 {
     Y_ABORT_UNLESS(maxBlocksToFind);
 
-    ui16 minSeenBlobOffset = Max<ui16>();
-
     TBinaryReader reader(encodedDeletionMarkers);
 
     const auto& header = reader.Read<NBlockListSpec::TListHeader>();
     Y_ABORT_UNLESS(
         header.ListType == NBlockListSpec::TListHeader::DeletionMarkers);
+
+    ui16 minOverlappingBlobOffset = Max<ui16>();
+    const auto searchRange = TRange::WithLength(blobOffset, maxBlocksToFind);
 
     while (reader.Avail()) {
         const auto& group = reader.Read<NBlockListSpec::TGroupHeader>();
@@ -252,11 +298,9 @@ FindDeletionMarkersResult FindDeletionMarkers(
                 };
             }
 
-            if (blobOffset <= entry.BlobOffset &&
-                entry.BlobOffset < blobOffset + maxBlocksToFind)
-            {
-                minSeenBlobOffset = Min<ui16>(
-                    minSeenBlobOffset,
+            if (searchRange.Contains(entry.BlobOffset)) {
+                minOverlappingBlobOffset = Min<ui16>(
+                    minOverlappingBlobOffset,
                     entry.BlobOffset);
             }
         } else {
@@ -266,21 +310,26 @@ FindDeletionMarkersResult FindDeletionMarkers(
                 case NBlockListSpec::TMultiGroupHeader::MergedGroup: {
                     const auto& entry =
                         reader.Read<NBlockListSpec::TDeletionMarker>();
-                    const auto skipUntilBlobOffset = Min<ui32>(
-                        blobOffset + maxBlocksToFind,
-                        entry.BlobOffset + multi.Count);
-                    if (entry.BlobOffset <= blobOffset &&
-                        blobOffset < skipUntilBlobOffset)
+
+                    const auto groupRange = TRange::WithLength(
+                        entry.BlobOffset,
+                        multi.Count);
+
+                    const auto r = searchRange.Intersection(groupRange);
+                    if (groupRange.Offset <= searchRange.Offset &&
+                        searchRange.Offset < r.End())
                     {
                         return {
                             .MaxCommitId = group.CommitId,
-                            .BlocksFound = skipUntilBlobOffset - blobOffset
+                            .BlocksFound = r.End() - searchRange.Offset
                         };
                     }
 
-                    minSeenBlobOffset = Min<ui16>(
-                        minSeenBlobOffset,
-                        entry.BlobOffset);
+                    if (r) {
+                        minOverlappingBlobOffset = Min<ui16>(
+                            minOverlappingBlobOffset,
+                            r.Offset);
+                    }
                     break;
                 }
 
@@ -298,9 +347,16 @@ FindDeletionMarkersResult FindDeletionMarkers(
                         };
                     }
 
-                    minSeenBlobOffset = Min<ui16>(
-                        minSeenBlobOffset,
-                        blobOffsets[0]);
+                    Y_DEBUG_ABORT_UNLESS(multi.Count > 1);
+                    const auto groupRange = TRange::WithEnd(
+                        blobOffsets[0],
+                        blobOffsets[multi.Count - 1]);
+
+                    if (auto r = searchRange.Intersection(groupRange)) {
+                        minOverlappingBlobOffset = Min<ui16>(
+                            minOverlappingBlobOffset,
+                            r.Offset);
+                    }
                     break;
                 }
             }
@@ -311,13 +367,15 @@ FindDeletionMarkersResult FindDeletionMarkers(
     // Safest choice
     ui32 blocksFound = 1;
 
-    if (minSeenBlobOffset == Max<ui16>()) {
-        // There are no deletion markers that may overlap with
+    if (minOverlappingBlobOffset == Max<ui16>()) {
+        // There are no deletion markers in range
         // [blobOffset, blobOffset + maxBlocksToFind)
         blocksFound = maxBlocksToFind;
-    } else if (minSeenBlobOffset > blobOffset) {
+    } else if (minOverlappingBlobOffset > blobOffset) {
+        // There are no deletion markers in range
+        // [blobOffset, blobOffset + blocksFound)
         blocksFound = Min<ui16>(
-            minSeenBlobOffset - blobOffset,
+            minOverlappingBlobOffset - blobOffset,
             maxBlocksToFind);
     }
 
