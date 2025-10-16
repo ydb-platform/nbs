@@ -55,6 +55,7 @@ public:
     [[nodiscard]] bool GetShareKernelWorkers() const;
     [[nodiscard]] ui32 GetMaxKernelWorkersCount() const;
     [[nodiscard]] bool GetForceAsyncIO() const;
+    [[nodiscard]] bool GetSQKernelPollingEnabled() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -114,6 +115,8 @@ public:
     ui32 GetMaxFuseLoopThreads() const;
 
     bool GetZeroCopyWriteEnabled() const;
+
+    bool GetFsyncQueueDisabled() const;
 };
 
 }   // namespace NCloud::NFileStore

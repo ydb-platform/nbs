@@ -101,7 +101,7 @@ void TFileSystem::MkDir(
     dir->SetMode(mode & ~(S_IFMT));
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->CreateNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -112,7 +112,7 @@ void TFileSystem::MkDir(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyEntry(*callContext, error, req, response.GetNode());
@@ -137,7 +137,7 @@ void TFileSystem::RmDir(
     request->SetUnlinkDirectory(true);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->UnlinkNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -148,7 +148,7 @@ void TFileSystem::RmDir(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyError(*callContext, error, req, 0);
@@ -195,7 +195,7 @@ void TFileSystem::MkNode(
     }
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->CreateNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -206,7 +206,7 @@ void TFileSystem::MkNode(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyEntry(*callContext, error, req, response.GetNode());
@@ -231,7 +231,7 @@ void TFileSystem::Unlink(
     request->SetUnlinkDirectory(false);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->UnlinkNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -242,7 +242,7 @@ void TFileSystem::Unlink(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyError(*callContext, error, req, 0);
@@ -275,7 +275,7 @@ void TFileSystem::Rename(
     request->SetFlags(protoFlags);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->RenameNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -286,7 +286,7 @@ void TFileSystem::Rename(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 // TODO: update tree
@@ -316,7 +316,7 @@ void TFileSystem::SymLink(
     link->SetTargetPath(std::move(target));
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->CreateNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -327,7 +327,7 @@ void TFileSystem::SymLink(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyEntry(*callContext, error, req, response.GetNode());
@@ -355,7 +355,7 @@ void TFileSystem::Link(
     link->SetTargetNode(ino);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {ino});
+    FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
     Session->CreateNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -366,7 +366,7 @@ void TFileSystem::Link(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
                 self->ReplyEntry(*callContext, error, req, response.GetNode());
