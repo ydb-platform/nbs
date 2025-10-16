@@ -43,7 +43,7 @@ func main() {
 	flag.StringVar(&cfg.NfsLocalEndpointSocket, "nfs-local-endpoint-socket", "", "NFS local endpoint unix socket path")
 	flag.StringVar(&cfg.MountOptions, "mount-options", "grpid", "Comma-separated list of filesystem mount options")
 	flag.BoolVar(&cfg.UseDiscardForYDBBasedDisks, "use-discard-for-ydb-based-disks", false, "Enable discard option for mounted filesystem. Applied only for YDB-based disks.")
-	flag.DurationVar(&cfg.RetriableErrorsDurationThreshold, "retriable-errors-threshold", 10*time.Minute,
+	flag.DurationVar(&cfg.RetriableErrorsDurationThreshold, "retriable-errors-threshold", 15*time.Minute,
 		"Report retriable errors per volume after duration threshold exceeded")
 	flag.Parse()
 
