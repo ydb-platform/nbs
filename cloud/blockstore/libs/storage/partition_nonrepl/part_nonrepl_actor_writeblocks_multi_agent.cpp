@@ -139,15 +139,11 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
         }
     }
 
-    if (DeviceOperationId) {
-        auto latencyStartEvent = std::make_unique<
-            TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
-            TEvVolumePrivate::TDiskRegistryDeviceOperationStarted(
-                Request.DevicesAndRanges[0].Device.GetDeviceUUID(),
-                TDeviceOperationTracker::ERequestType::Write,
-                DeviceOperationId));
-        ctx.Send(VolumeActorId, latencyStartEvent.release());
-    }
+    OnRequestStarted(
+        ctx,
+        Request.DevicesAndRanges[0].Device.GetDeviceUUID(),
+        TDeviceOperationTracker::ERequestType::Write,
+        0);
 
     auto event = std::make_unique<NActors::IEventHandle>(
         MakeDiskAgentServiceId(Request.DevicesAndRanges[0].Device.GetNodeId()),
@@ -244,13 +240,7 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksResponse(
         return;
     }
 
-    if (DeviceOperationId) {
-        auto latencyFinishEvent = std::make_unique<
-            TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
-            TEvVolumePrivate::TDiskRegistryDeviceOperationFinished(
-                DeviceOperationId));
-        ctx.Send(VolumeActorId, latencyFinishEvent.release());
-    }
+    OnRequestFinished(ctx, 0);
 
     Y_DEBUG_ABORT_UNLESS(error.GetCode() == S_OK);
     Done(ctx, MakeResponse(std::move(error)), EStatus::Success);
@@ -346,12 +336,7 @@ void TNonreplicatedPartitionActor::HandleMultiAgentWrite(
     timeoutPolicy.Timeout =
         CalcOverallTimeout(msg->Record, Config->GetNetworkForwardingTimeout());
 
-    ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
-    ui64 operationId =
-        (trackingFreq > 0 && DeviceOperationId % trackingFreq == 0)
-            ? DeviceOperationId
-            : 0;
-    DeviceOperationId += deviceRequests.size();
+    ui64 operationId = GenerateOperationId(deviceRequests.size());
 
     auto actorId = NCloud::Register<TDiskAgentMultiWriteActor>(
         ctx,
