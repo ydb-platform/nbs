@@ -75,6 +75,8 @@ void TPartitionInfo::SetStarted(TActorsStack actors)
     RelatedActors = std::move(actors);
     State = STARTED;
     Message = {};
+    StartTime = TInstant::Now();
+    RestartCount++;
 }
 
 void TPartitionInfo::SetReady()
@@ -88,6 +90,7 @@ void TPartitionInfo::SetStopped()
     RelatedActors.Clear();
     State = STOPPED;
     Message = {};
+    StartTime = Nothing();
 }
 
 void TPartitionInfo::SetFailed(TString message)
@@ -95,6 +98,7 @@ void TPartitionInfo::SetFailed(TString message)
     RelatedActors.Clear();
     State = FAILED;
     Message = std::move(message);
+    StartTime = Nothing();
 }
 
 NActors::TActorId TPartitionInfo::GetTopActorId() const
@@ -137,9 +141,14 @@ TString TPartitionInfo::GetStatus() const
     return out.Str();
 }
 
-TInstant TPartitionInfo::GetStartTime() const
+TMaybe<TInstant> TPartitionInfo::GetStartTime() const
 {
     return StartTime;
+}
+
+ui32 TPartitionInfo::GetRestartCount() const
+{
+    return RestartCount;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

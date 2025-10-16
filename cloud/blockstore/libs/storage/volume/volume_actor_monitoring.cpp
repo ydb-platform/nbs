@@ -1713,6 +1713,7 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     TABLEH() { out << "Status"; }
                     TABLEH() { out << "Blocks Count"; }
                     TABLEH() { out << "Uptime"; }
+                    TABLEH() { out << "Restarts"; }
                 }
             }
 
@@ -1732,8 +1733,14 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                         out << partition.PartitionConfig.GetBlocksCount();
                     }
                     TABLED () {
-                        out << FormatDuration(
-                            TInstant::Now() - partition.GetStartTime());
+                        if (auto startTime = partition.GetStartTime()) {
+                            out << FormatDuration(TInstant::Now() - *startTime);
+                        } else {
+                            out << "Not running";
+                        }
+                    }
+                    TABLED () {
+                        out << partition.GetRestartCount();
                     }
                 }
             }
@@ -1752,6 +1759,8 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     }
                     TABLED() {
                         out << State->GetConfig().GetBlocksCount();
+                    }
+                    TABLED () {
                     }
                     TABLED () {
                     }
