@@ -205,6 +205,23 @@ struct TEvDiskAgentPrivate
     };
 
     //
+    // DeviceOpened
+    //
+
+    struct TPathAttached
+    {
+        THashMap<TString, TResultOrError<IStoragePtr>> Devices;
+    };
+
+    //
+    // CheckIsSameDeviceResult
+    //
+
+    struct TCheckIsSamePathResult
+    {
+    };
+
+    //
     // Events declaration
     //
 
@@ -226,6 +243,9 @@ struct TEvDiskAgentPrivate
 
         EvMultiAgentWriteDeviceBlocksRequest,
 
+        EvPathAttached,
+        EvCheckIsSamePathResult,
+
         BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
 
         EvEnd
@@ -243,6 +263,11 @@ struct TEvDiskAgentPrivate
     using TEvSecureEraseCompleted = TResponseEvent<
         TSecureEraseCompleted,
         EvSecureEraseCompleted>;
+
+    using TEvPathAttached = TResponseEvent<TPathAttached, EvPathAttached>;
+
+    using TEvCheckIsSamePathResult =
+        TResponseEvent<TCheckIsSamePathResult, EvCheckIsSamePathResult>;
 
     using TEvWriteOrZeroCompleted = TResponseEvent<
         TWriteOrZeroCompleted,
