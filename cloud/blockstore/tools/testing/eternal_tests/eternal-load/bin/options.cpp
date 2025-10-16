@@ -224,6 +224,11 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&MinRegionSize)
         .StoreResult(&MaxRegionSize);
 
+    opts.AddLongOption(
+        "debug",
+        "print debug statistics")
+        .StoreTrue(&PrintDebugStats);
+
     TOptsParseResultException(&opts, argc, argv);
 }
 

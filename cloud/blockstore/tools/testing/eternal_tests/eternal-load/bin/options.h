@@ -66,6 +66,8 @@ struct TOptions
     ui64 MinRegionSize = 0;
     ui64 MaxRegionSize = 0;
 
+    bool PrintDebugStats = false;
+
     void Parse(int argc, char** argv);
 };
 

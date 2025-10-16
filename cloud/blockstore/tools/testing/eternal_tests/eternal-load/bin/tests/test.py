@@ -35,7 +35,8 @@ def __run_load_test(file_name, scenario="aligned", engine="asyncio", direct=True
         '--file', file_name,
         '--filesize', str(_FILE_SIZE),
         '--iodepth', str(_IO_DEPTH),
-        '--write-rate', '70'
+        '--write-rate', '70',
+        '--debug'
     ]
 
     if not direct:
@@ -61,7 +62,7 @@ def test_load_fails(scenario, engine, direct):
             cnt %= _REQUEST_COUNT
 
         result = future.result()
-        assert (result.returncode == 1) and (result.stderr.find('Wrong') != -1)
+        assert (result.returncode == 1) and (result.stderr.find('Wrong') != -1) and (result.stderr.find('MiB/s') != -1)
 
 
 @pytest.mark.parametrize("scenario,engine,direct", _SCENARIOS)
