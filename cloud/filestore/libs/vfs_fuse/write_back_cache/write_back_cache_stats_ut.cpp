@@ -7,11 +7,12 @@
 
 #include <util/generic/map.h>
 
-namespace NCloud::NFileStore {
+namespace NCloud::NFileStore::NFuse {
 
 using namespace NMonitoring;
 
 using EWriteDataRequestStatus = NFuse::TWriteBackCache::EWriteDataRequestStatus;
+using TDynamicCountersPtr = TIntrusivePtr<TDynamicCounters>;
 
 namespace {
 
@@ -222,7 +223,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
             bootstrap.CheckChanges("");
 
             bootstrap.Timer->Sleep(TDuration::Seconds(2));
-            bootstrap.Stats->UpdateStats(false);
+            bootstrap.Stats->UpdateStats();
             bootstrap.CheckChanges(
                 "WriteDataRequest_" + testCase.Name + "_MaxTime: 2000000");
 
@@ -230,7 +231,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
                 testCase.Status,
                 bootstrap.Timer->Now());
 
-            bootstrap.Stats->UpdateStats(false);
+            bootstrap.Stats->UpdateStats();
             bootstrap.CheckChanges(
                 "WriteDataRequest_" + testCase.Name + "_MaxTime: 25");
 
@@ -248,14 +249,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
                 testCase.Status,
                 TInstant::Zero());
 
-            bootstrap.Stats->UpdateStats(false);
+            bootstrap.Stats->UpdateStats();
             bootstrap.CheckChanges(
                 "WriteDataRequest_" + testCase.Name + "_MaxTime: 3000025");
         }
 
         // MaxTimeCalc uses a sliding window of 15 buckets
         for (int i = 0; i < 15; i++) {
-            bootstrap.Stats->UpdateStats(false);
+            bootstrap.Stats->UpdateStats();
         }
 
         bootstrap.CheckChanges(
@@ -270,7 +271,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
                 testCase.Status,
                 bootstrap.Timer->Now() - TDuration::Seconds(1));
         }
-        bootstrap.Stats->UpdateStats(false);
+        bootstrap.Stats->UpdateStats();
         // MaxTime will have non-zero value - just update it without checking
         bootstrap.UpdateChanges();
 
@@ -280,7 +281,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
             IWriteBackCacheStats::EReadDataRequestCacheStatus::Miss,
             TDuration::Seconds(1));
 
-        bootstrap.Stats->UpdateStats(false);
+        bootstrap.Stats->UpdateStats();
 
         bootstrap.CheckChanges(
             "ReadDataRequest_CacheMissCount: 1, "
@@ -292,7 +293,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
             IWriteBackCacheStats::EReadDataRequestCacheStatus::PartialHit,
             TDuration::MicroSeconds(50));
 
-        bootstrap.Stats->UpdateStats(false);
+        bootstrap.Stats->UpdateStats();
 
         bootstrap.CheckChanges(
             "ReadDataRequest_CachePartialHitCount: 1, "
@@ -303,7 +304,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
             IWriteBackCacheStats::EReadDataRequestCacheStatus::FullHit,
             TDuration::Seconds(2));
 
-        bootstrap.Stats->UpdateStats(false);
+        bootstrap.Stats->UpdateStats();
 
         bootstrap.CheckChanges(
             "ReadDataRequest_CacheFullHitCount: 1, "
@@ -330,9 +331,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
         );
 
         // Check that MaxTime calculators are reset
-        bootstrap.Stats->UpdateStats(false);
+        bootstrap.Stats->UpdateStats();
         bootstrap.CheckChanges("");
     }
 }
 
-}   // namespace NCloud::NFileStore
+}   // namespace NCloud::NFileStore::NFuse

@@ -1,14 +1,10 @@
 #include "write_back_cache_stats.h"
 
-#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache.h>
-
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
-
-#include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <atomic>
 
-namespace NCloud::NFileStore {
+namespace NCloud::NFileStore::NFuse {
 
 using namespace NMonitoring;
 
@@ -323,7 +319,7 @@ public:
     }
 
     void UpdatePersistentQueueStats(
-        const NFuse::TWriteBackCache::TPersistentQueueStats& stats) override
+        const TPersistentQueueStats& stats) override
     {
         PersistentQueueRawCapacity->Set(static_cast<TValue>(stats.RawCapacity));
         PersistentQueueRawUsedBytesCount->Set(
@@ -333,10 +329,8 @@ public:
         PersistentQueueCorrupted->Set(stats.IsCorrupted ? 1 : 0);
     }
 
-    void UpdateStats(bool updatePercentiles) override
+    void UpdateStats() override
     {
-        Y_UNUSED(updatePercentiles);
-
         PendingWriteDataRequestStats.UpdateStats();
         CachedWriteDataRequestStats.UpdateStats();
         FlushRequestedWriteDataRequestStats.UpdateStats();
@@ -367,6 +361,70 @@ private:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TWriteBackCacheStatsStub
+    : public IWriteBackCacheStats
+{
+public:
+    void ResetNonDerivativeCounters() override
+    {}
+
+    void FlushStarted() override
+    {}
+
+    void FlushCompleted() override
+    {}
+
+    void FlushFailed() override
+    {}
+
+    void IncrementNodeCount() override
+    {}
+
+    void DecrementNodeCount() override
+    {}
+
+    void WriteDataRequestEnteredStatus(
+        TWriteBackCache::EWriteDataRequestStatus status) override
+    {
+        Y_UNUSED(status);
+    }
+
+    void WriteDataRequestExitedStatus(
+        TWriteBackCache::EWriteDataRequestStatus status,
+        TDuration duration) override
+    {
+        Y_UNUSED(status);
+        Y_UNUSED(duration);
+    }
+
+    void WriteDataRequestUpdateMinTime(
+        TWriteBackCache::EWriteDataRequestStatus status,
+        TInstant minTime) override
+    {
+        Y_UNUSED(status);
+        Y_UNUSED(minTime);
+    }
+
+    void AddReadDataStats(
+        IWriteBackCacheStats::EReadDataRequestCacheStatus status,
+        TDuration duraton) override
+    {
+        Y_UNUSED(status);
+        Y_UNUSED(duraton);
+    }
+
+    void UpdatePersistentQueueStats(
+        const TPersistentQueueStats& stats) override
+    {
+        Y_UNUSED(stats);
+    }
+
+    void UpdateStats() override
+    {}
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -380,4 +438,9 @@ IWriteBackCacheStatsPtr CreateWriteBackCacheStats(
         std::move(timer));
 }
 
-}   // namespace NCloud::NFileStore
+IWriteBackCacheStatsPtr CreateWriteBackCacheStatsStub()
+{
+    return std::make_shared<TWriteBackCacheStatsStub>();
+}
+
+}   // namespace NCloud::NFileStore::NFuse

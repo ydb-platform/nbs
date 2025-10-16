@@ -10,7 +10,6 @@ SRCS(
     throttler_info_serializer.cpp
     trace_serializer.cpp
     user_counter.cpp
-    write_back_cache_stats.cpp
 )
 
 PEERDIR(
@@ -20,6 +19,7 @@ PEERDIR(
     cloud/filestore/libs/storage/core
     # FIXME use public api protos
     cloud/filestore/libs/storage/tablet/protos
+    cloud/filestore/libs/vfs_fuse/write_back_cache
     cloud/filestore/private/api/protos
     cloud/filestore/public/api/protos
 

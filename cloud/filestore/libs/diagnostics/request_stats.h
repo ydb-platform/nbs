@@ -56,7 +56,7 @@ struct IRequestStats
 struct IFileSystemStats
     : public IRequestStats
 {
-    virtual IWriteBackCacheStatsPtr GetWriteBackCacheStats() = 0;
+    virtual NFuse::IWriteBackCacheStatsPtr GetWriteBackCacheStats() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

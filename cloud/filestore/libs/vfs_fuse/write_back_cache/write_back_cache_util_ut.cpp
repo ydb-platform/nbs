@@ -1,6 +1,6 @@
 #include "write_back_cache_impl.h"
 
-#include "disjoint_interval_map.h"
+#include "write_back_cache_stats.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -881,7 +881,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         constexpr ui64 MaxLength = 10;
         constexpr size_t MaxIntervalCount = 10;
 
-        auto stats = CreateDummyWriteBackCacheStats();
+        auto stats = CreateWriteBackCacheStatsStub();
 
         for (size_t iter = 0; iter < IterationCount; iter++) {
             size_t intervalCount = RandomNumber(MaxIntervalCount) + 1;

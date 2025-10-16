@@ -7,7 +7,6 @@ SRCS(
     profile_log_ut.cpp
     request_stats_ut.cpp
     user_counter_ut.cpp
-    write_back_cache_stats_ut.cpp
 )
 
 PEERDIR(

@@ -2,11 +2,11 @@
 
 #include "config.h"
 #include "critical_events.h"
-#include "write_back_cache_stats.h"
 
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/filestore/libs/diagnostics/user_counter.h>
 #include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -28,6 +28,7 @@
 namespace NCloud::NFileStore {
 
 using namespace NMonitoring;
+using namespace NFuse;
 
 namespace {
 
@@ -535,7 +536,7 @@ public:
         PredictorStats.UpdateStats();
 
         if (writeBackCacheStats) {
-            writeBackCacheStats->UpdateStats(updatePercentiles);
+            writeBackCacheStats->UpdateStats();
         }
     }
 
@@ -692,7 +693,7 @@ public:
 
     IWriteBackCacheStatsPtr GetWriteBackCacheStats() override
     {
-        return {};
+        return CreateWriteBackCacheStatsStub();
     }
 };
 
