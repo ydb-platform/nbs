@@ -284,16 +284,12 @@ bool TDiskAgentActor::CheckIntersection(
     }
 
     TString overlapDetails;
-    auto result = OverlapStatusToResult(recentBlocksTracker.CheckRecorded(
+    const bool overlapped = IsOverlapped(recentBlocksTracker.CheckRecorded(
         volumeRequestId,
         range,
         &overlapDetails));
-    if (result != S_OK) {
-        if (result == E_REJECTED) {
-            OldRequestCounters.Rejected->Inc();
-        } else {
-            Y_DEBUG_ABORT_UNLESS(false);
-        }
+    if (overlapped) {
+        OldRequestCounters.Rejected->Inc();
 
         if (!RejectLateRequestsAtDiskAgentEnabled) {
             // Monitoring mode. Don't change the behavior.
@@ -309,7 +305,7 @@ bool TDiskAgentActor::CheckIntersection(
             *TActivationContext::ActorSystem(),
             ctx.SelfID,
             *requestInfo,
-            MakeError(result, overlapDetails),
+            MakeError(E_REJECTED, overlapDetails),
             {},
             volumeRequestId,
             std::move(deviceUUID),

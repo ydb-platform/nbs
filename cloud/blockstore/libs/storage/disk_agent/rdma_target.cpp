@@ -428,17 +428,13 @@ private:
             return ECheckRange::DelayRequest;
         }
 
-        auto result = OverlapStatusToResult(
+        const bool overlapped = IsOverlapped(
             synchronizedData.RecentBlocksTracker.CheckRecorded(
                 requestDetails.VolumeRequestId,
                 requestDetails.Range,
                 overlapDetails));
-        if (result != S_OK) {
-            if (result == E_REJECTED) {
-                synchronizedData.OldRequestCounters.Rejected->Inc();
-            } else {
-                Y_DEBUG_ABORT_UNLESS(false);
-            }
+        if (overlapped) {
+            synchronizedData.OldRequestCounters.Rejected->Inc();
 
             if (!RejectLateRequests) {
                 // Monitoring mode. Don't change the behavior.

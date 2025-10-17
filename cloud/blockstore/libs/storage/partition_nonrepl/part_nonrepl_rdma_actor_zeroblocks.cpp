@@ -127,7 +127,6 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
         if (AssignIdToWriteAndZeroRequestsEnabled) {
             deviceRequest.SetVolumeRequestId(
                 msg->Record.GetHeaders().GetVolumeRequestId());
-            deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
 
         auto context = std::make_unique<TDeviceRequestRdmaContext>();
