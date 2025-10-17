@@ -39,6 +39,7 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     std::function<
         TAddressInfoPtr(const TString& host, ui32 port, rdma_addrinfo* hints)>
         GetAddressInfo;
+    std::function<void(rdma_cm_id* id)> DestroyQP;
 };
 
 using TTestContextPtr = TIntrusivePtr<TTestContext>;
