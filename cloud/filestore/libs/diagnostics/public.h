@@ -16,6 +16,9 @@ namespace NCloud::NFileStore {
 class TDiagnosticsConfig;
 using TDiagnosticsConfigPtr = std::shared_ptr<TDiagnosticsConfig>;
 
+struct IFileSystemStats;
+using IFileSystemStatsPtr = std::shared_ptr<IFileSystemStats>;
+
 struct IRequestStats;
 using IRequestStatsPtr = std::shared_ptr<IRequestStats>;
 
@@ -35,3 +38,12 @@ class TFileSystemStatCounters;
 using TFileSystemStatCountersPtr = std::shared_ptr<TFileSystemStatCounters>;
 
 }   // namespace NCloud::NFileStore
+
+namespace NCloud::NFileStore::NFuse {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IWriteBackCacheStats;
+using IWriteBackCacheStatsPtr = std::shared_ptr<IWriteBackCacheStats>;
+
+}   // namespace NCloud::NFileStore::NFuse

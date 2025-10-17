@@ -27,6 +27,8 @@ namespace NFileStore {
 
 struct IRequestStats
 {
+    virtual ~IRequestStats() = default;
+
     virtual void RequestStarted(TCallContext& callContext) = 0;
 
     virtual void RequestCompleted(
@@ -51,12 +53,20 @@ struct IRequestStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IFileSystemStats
+    : public IRequestStats
+{
+    virtual NFuse::IWriteBackCacheStatsPtr GetWriteBackCacheStats() = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IRequestStatsRegistry
     : public IIncompleteRequestProcessor
 {
     virtual IRequestStatsPtr GetRequestStats() = 0;
 
-    virtual IRequestStatsPtr GetFileSystemStats(
+    virtual IFileSystemStatsPtr GetFileSystemStats(
         const TString& filesystem,
         const TString& client,
         const TString& cloudId,

@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/filestore/libs/diagnostics/user_counter.h>
 #include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -27,6 +28,7 @@
 namespace NCloud::NFileStore {
 
 using namespace NMonitoring;
+using namespace NFuse;
 
 namespace {
 
@@ -407,7 +409,7 @@ struct TUserMetadata
 };
 
 class TFileSystemStats final
-    : public IRequestStats
+    : public IFileSystemStats
     , IIncompleteRequestCollector
     , TRequestLogger
 {
@@ -417,12 +419,15 @@ private:
     const TString CloudId;
     const TString FolderId;
 
-    TRequestCountersPtr Counters;
+    ITimerPtr Timer;
+    TDynamicCountersPtr DynamicCounters;
+    TRequestCountersPtr RequestCounters;
     IPostponeTimePredictorPtr Predictor;
     TPostponeTimePredictorStats PredictorStats;
 
     TMutex Lock;
     TVector<IIncompleteRequestProviderPtr> IncompleteRequestProviders;
+    IWriteBackCacheStatsPtr WriteBackCacheStats;
 
     TUserMetadata UserMetadata;
 
@@ -443,14 +448,16 @@ public:
         , ClientId{std::move(clientId)}
         , CloudId{std::move(cloudId)}
         , FolderId{std::move(folderId)}
-        , Counters{MakeRequestCounters(
+        , Timer(timer)
+        , DynamicCounters(std::move(counters))
+        , RequestCounters{MakeRequestCounters(
             timer,
-            *counters,
+            *DynamicCounters,
             REQUEST_COUNTERS_OPTIONS
                 | TRequestCounters::EOption::LazyRequestInitialization,
             histogramCounterOptions)}
         , Predictor{std::move(predictor)}
-        , PredictorStats{counters, std::move(timer)}
+        , PredictorStats{DynamicCounters, std::move(timer)}
     {}
 
     void SetUserMetadata(TUserMetadata userMetadata)
@@ -465,12 +472,12 @@ public:
 
     void Subscribe(TRequestCountersPtr subscriber)
     {
-        Counters->Subscribe(std::move(subscriber));
+        RequestCounters->Subscribe(std::move(subscriber));
     }
 
     void RequestStarted(TCallContext& callContext) override
     {
-        callContext.SetRequestStartedCycles(Counters->RequestStarted(
+        callContext.SetRequestStartedCycles(RequestCounters->RequestStarted(
             GetRequestType(callContext),
             callContext.RequestSize));
 
@@ -516,14 +523,21 @@ public:
 
     void UpdateStats(bool updatePercentiles) override
     {
+        IWriteBackCacheStatsPtr writeBackCacheStats = nullptr;
+
         with_lock (Lock) {
             for (auto& provider: IncompleteRequestProviders) {
                 provider->Accept(*this);
             }
+            writeBackCacheStats = WriteBackCacheStats;
         }
 
-        Counters->UpdateStats(updatePercentiles);
+        RequestCounters->UpdateStats(updatePercentiles);
         PredictorStats.UpdateStats();
+
+        if (writeBackCacheStats) {
+            writeBackCacheStats->UpdateStats();
+        }
     }
 
     void RegisterIncompleteRequestProvider(
@@ -535,7 +549,7 @@ public:
 
     void Collect(const TIncompleteRequest& req) override
     {
-        Counters->AddIncompleteStats(
+        RequestCounters->AddIncompleteStats(
             GetRequestType(req),
             req.ExecutionTime,
             req.TotalTime,
@@ -558,6 +572,20 @@ public:
         return FolderId;
     }
 
+    IWriteBackCacheStatsPtr GetWriteBackCacheStats() override
+    {
+        with_lock (Lock) {
+            if (!WriteBackCacheStats) {
+                auto counters =
+                    DynamicCounters->GetSubgroup("module", "write_back_cache");
+
+                WriteBackCacheStats =
+                    CreateWriteBackCacheStats(*counters, Timer);
+            }
+            return WriteBackCacheStats;
+        }
+    }
+
 private:
     TDuration RequestCompleted(
         const TCallContext& callContext,
@@ -568,7 +596,7 @@ private:
         const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
         const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
         const auto waitTime = postponedTime + backoffTime;
-        return Counters->RequestCompleted(
+        return RequestCounters->RequestCompleted(
             type,
             startedCycles,
             waitTime,
@@ -611,8 +639,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestStatsStub final
-    : public IRequestStats
+class TFileSystemStatsStub final
+    : public IFileSystemStats
 {
 public:
     void RequestStarted(TCallContext& callContext) override
@@ -662,6 +690,11 @@ public:
 
     void Reset() override
     {}
+
+    IWriteBackCacheStatsPtr GetWriteBackCacheStats() override
+    {
+        return CreateWriteBackCacheStatsStub();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -731,7 +764,7 @@ public:
             ->GetSubgroup("host", "cluster");
     }
 
-    IRequestStatsPtr GetFileSystemStats(
+    IFileSystemStatsPtr GetFileSystemStats(
         const TString& fileSystemId,
         const TString& clientId,
         const TString& cloudId,
@@ -975,7 +1008,7 @@ class TRequestStatsRegistryStub final
 public:
     TRequestStatsRegistryStub() = default;
 
-    IRequestStatsPtr GetFileSystemStats(
+    IFileSystemStatsPtr GetFileSystemStats(
         const TString& fileSystemId,
         const TString& clientId,
         const TString& cloudId,
@@ -986,7 +1019,7 @@ public:
         Y_UNUSED(cloudId);
         Y_UNUSED(folderId);
 
-        return std::make_shared<TRequestStatsStub>();
+        return std::make_shared<TFileSystemStatsStub>();
     }
 
     void SetFileSystemMediaKind(
@@ -1013,7 +1046,7 @@ public:
 
     IRequestStatsPtr GetRequestStats() override
     {
-        return std::make_shared<TRequestStatsStub>();
+        return std::make_shared<TFileSystemStatsStub>();
     }
 
     void Unregister(

@@ -2417,6 +2417,66 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2, errorCounter->Val());
     }
+
+    // This is an integration test checking that the metrics are reported from
+    // the write-back cache. Tests for individual metrics can be found in
+    // TWriteBackCacheTest and TWriteBackCacheStatsTest.
+    Y_UNIT_TEST(ShouldReportWriteBackCacheStats)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        std::atomic<int> writeDataCalled = 0;
+
+        bootstrap.Service->WriteDataHandler = [&](auto, auto)
+        {
+            writeDataCalled++;
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        auto reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+
+        reqWrite->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_EQUAL(0, writeDataCalled.load());
+
+        auto flush = bootstrap.Fuse->SendRequest<TFlushRequest>(
+            nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
+        UNIT_ASSERT_EQUAL(1, writeDataCalled.load());
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
+            ->FindSubgroup("module", "write_back_cache");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter("CompletedFlushCount")->GetAtomic());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

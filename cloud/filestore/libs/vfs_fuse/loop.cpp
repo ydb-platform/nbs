@@ -18,6 +18,7 @@
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vfs/protos/session.pb.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/media.h>
@@ -635,7 +636,7 @@ private:
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
 
     std::shared_ptr<TCompletionQueue> CompletionQueue;
-    IRequestStatsPtr RequestStats;
+    IFileSystemStatsPtr RequestStats;
     IFileSystemPtr FileSystem;
     TFileSystemConfigPtr FileSystemConfig;
 
@@ -996,7 +997,7 @@ private:
                         Session,
                         Scheduler,
                         Timer,
-                        CreateDummyWriteBackCacheStats(),
+                        RequestStats->GetWriteBackCacheStats(),
                         path / WriteBackCacheFileName,
                         Config->GetWriteBackCacheCapacity(),
                         Config->GetWriteBackCacheAutomaticFlushPeriod(),
