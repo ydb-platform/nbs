@@ -520,7 +520,9 @@ struct TTestVerbs
 
     void DestroyQP(rdma_cm_id* id) override
     {
-        Y_UNUSED(id);
+        if (TestContext->DestroyQP) {
+            TestContext->DestroyQP(id);
+        }
     }
 
     void ModifyQP(ibv_qp* qp, ibv_qp_attr* attr, int mask) override

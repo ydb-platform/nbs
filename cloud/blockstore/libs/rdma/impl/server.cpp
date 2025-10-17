@@ -471,7 +471,9 @@ TServerSession::~TServerSession()
 {
     RDMA_INFO("stop session");
 
-    Verbs->DestroyQP(Connection.get());
+    if (Connection->qp) {
+        Verbs->DestroyQP(Connection.get());
+    }
 
     CompletionQueue.reset();
     CompletionChannel.reset();
