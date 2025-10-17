@@ -15,6 +15,11 @@ TEST_SRCS(
     test.py
 )
 
+SET(
+    NFS_STORAGE_CONFIG_PATCH
+    cloud/filestore/tests/fio/qemu-local-test/nfs-patch.txt
+)
+
 SET(QEMU_VIRTIO fs)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-local.inc)
