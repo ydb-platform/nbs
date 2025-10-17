@@ -16,7 +16,7 @@ TEST_SRCS(
 )
 
 SET(
-    NFS_STORAGE_CONFIG_PATCH
+    NFS_LOCAL_SERVICE_CONFIG_PATCH
     cloud/filestore/tests/fio/qemu-local-test/nfs-patch.txt
 )
 

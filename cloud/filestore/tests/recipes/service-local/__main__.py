@@ -4,6 +4,7 @@ import os
 import subprocess
 
 import yatest.common as common
+import google.protobuf.text_format as text_format
 
 from library.python.testing.recipe import declare_recipe, set_env
 
@@ -27,6 +28,7 @@ def start(argv):
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--service", action="store", default="null")
     parser.add_argument("--file-io", action="store", default="aio")
+    parser.add_argument("--local-service-config-patch", action="store", default=None)
     args = parser.parse_args(argv)
 
     filestore_binary_path = common.binary_path(
@@ -38,6 +40,11 @@ def start(argv):
         )
 
     local_service_config = TLocalServiceConfig()
+    if args.local_service_config_patch:
+        with open(common.source_path(args.local_service_config_patch)) as p:
+            local_service_config = text_format.Parse(
+                p.read(),
+                TLocalServiceConfig())
 
     if args.file_io == 'aio':
         local_service_config.AioConfig.CopyFrom(TAioConfig())
