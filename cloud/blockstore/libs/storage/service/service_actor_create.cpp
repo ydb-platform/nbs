@@ -235,6 +235,7 @@ void TCreateVolumeActor::CreateVolumeImpl(
     config.SetBaseDiskCheckpointId(Request.GetBaseDiskCheckpointId());
     config.SetIsSystem(Request.GetIsSystem());
     config.SetFillGeneration(Request.GetFillGeneration());
+    config.SetTagsStr(Request.GetTagsStr());
 
     const TVolumeParams volumeParams = ComputeVolumeParams(
         *Config,
