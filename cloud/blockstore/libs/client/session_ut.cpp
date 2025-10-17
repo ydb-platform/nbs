@@ -51,8 +51,7 @@ public:
             std::shared_ptr<TTestService> client,
             ITimerPtr timer,
             ISchedulerPtr scheduler,
-            TString clientVersionInfo,
-            ui64 mountSeqNumber)
+            TSessionConfig config)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(CreateLoggingService("console"))
@@ -66,12 +65,7 @@ public:
             CreateVolumeStatsStub(),
             Client,
             Config,
-            TSessionConfig{
-                .DiskId = DefaultDiskId,
-                .MountToken = DefaultMountToken,
-                .ClientVersionInfo = std::move(clientVersionInfo),
-                .MountSeqNumber = mountSeqNumber
-            }))
+            std::move(config)))
     {}
 
     void Start()
@@ -140,6 +134,7 @@ public:
 std::unique_ptr<TBootstrap> CreateBootstrap(
     std::shared_ptr<TTestService> client,
     ISchedulerPtr scheduler = {},
+    TSessionConfig config = {},
     TString clientVersionInfo = {},
     ui64 mountSeqNumber = 0)
 {
@@ -147,12 +142,16 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
         scheduler = CreateScheduler();
     }
 
+    config.DiskId = DefaultDiskId;
+    config.MountToken = DefaultMountToken;
+    config.ClientVersionInfo = std::move(clientVersionInfo);
+    config.MountSeqNumber = mountSeqNumber;
+
     return std::make_unique<TBootstrap>(
         std::move(client),
         CreateWallClockTimer(),
         std::move(scheduler),
-        std::move(clientVersionInfo),
-        mountSeqNumber);
+        std::move(config));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -325,6 +324,253 @@ Y_UNIT_TEST_SUITE(TSessionTest)
 
         {
             auto res = session->UnmountVolume().GetValueSync();
+            UNIT_ASSERT_C(!HasError(res), res);
+        }
+
+        bootstrap->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldRetryToMountVolume)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        size_t fail_attempts = 7;
+
+        client->MountVolumeHandler =
+            [&fail_attempts](
+                std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
+            if (fail_attempts > 0) {
+                --fail_attempts;
+                return MakeFuture<NProto::TMountVolumeResponse>(
+                    TErrorResponse(MakeError((E_INVALID_STATE))));
+            }
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId("1");
+
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(DefaultBlocksCount);
+
+            return MakeFuture(response);
+        };
+
+        client->UnmountVolumeHandler =
+            [](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
+            return MakeFuture<NProto::TUnmountVolumeResponse>();
+        };
+
+        auto bootstrap = CreateBootstrap(
+            client,
+            {},
+            {
+                .RetryFailed = true,
+            });
+
+        auto session = bootstrap->GetSession();
+
+        bootstrap->Start();
+
+        {
+            auto res = session->MountVolume().GetValueSync();
+            UNIT_ASSERT_C(!HasError(res), res);
+            UNIT_ASSERT_EQUAL(fail_attempts, 0);
+        }
+
+        {
+            auto res = session->UnmountVolume().GetValueSync();
+            UNIT_ASSERT_C(!HasError(res), res);
+        }
+
+        bootstrap->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyReportRequestTimeout)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        size_t fail_attempts = 7;
+
+        client->MountVolumeHandler =
+            [&fail_attempts](
+                std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
+            if (fail_attempts > 0) {
+                --fail_attempts;
+                return MakeFuture<NProto::TMountVolumeResponse>(
+                    TErrorResponse(MakeError((E_INVALID_STATE))));
+            }
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId("1");
+
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(DefaultBlocksCount);
+
+            return MakeFuture(response);
+        };
+
+        client->UnmountVolumeHandler =
+            [](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
+            return MakeFuture<NProto::TUnmountVolumeResponse>();
+        };
+
+        auto bootstrap = CreateBootstrap(
+            client,
+            {},
+            {
+                .RetryFailed = true,
+                .RetryTimeout = TDuration::Seconds(2),
+                .BackoffIncrement = TDuration::Seconds(1),
+            });
+
+        auto session = bootstrap->GetSession();
+
+        bootstrap->Start();
+
+        {
+            auto res = session->MountVolume().GetValueSync();
+            UNIT_ASSERT_C(HasError(res), res);
+            UNIT_ASSERT_EQUAL(res.GetError().GetCode(), E_RETRY_TIMEOUT);
+        }
+
+        bootstrap->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldRetryToUnmountVolume)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        client->MountVolumeHandler =
+            [] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
+                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+                UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
+
+                NProto::TMountVolumeResponse response;
+                response.SetSessionId("1");
+
+                auto& volume = *response.MutableVolume();
+                volume.SetDiskId(request->GetDiskId());
+                volume.SetBlockSize(DefaultBlockSize);
+                volume.SetBlocksCount(DefaultBlocksCount);
+
+                return MakeFuture(response);
+            };
+
+        size_t fail_attempts = 4;
+
+        client->UnmountVolumeHandler =
+            [&fail_attempts] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) mutable {
+                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+                UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
+                if (fail_attempts > 0) {
+                    --fail_attempts;
+                    return MakeFuture<NProto::TUnmountVolumeResponse>(TErrorResponse(MakeError((E_INVALID_STATE))));
+                }
+
+                return MakeFuture<NProto::TUnmountVolumeResponse>();
+            };
+
+        auto bootstrap = CreateBootstrap(
+            client,
+            {},
+            {
+                .RetryFailed = true,
+                .RetryTimeout = TDuration::Seconds(50),
+                .BackoffIncrement = TDuration::MilliSeconds(500),
+            });
+
+        auto session = bootstrap->GetSession();
+
+        bootstrap->Start();
+
+        {
+            auto res = session->MountVolume().GetValueSync();
+            UNIT_ASSERT_C(!HasError(res), res);
+        }
+
+        {
+            auto res = session->UnmountVolume().GetValueSync();
+            UNIT_ASSERT_C(!HasError(res), res);
+            UNIT_ASSERT_EQUAL(fail_attempts, 0);
+
+        }
+
+        bootstrap->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldMountAfterRetryToUnmountVolume)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        client->MountVolumeHandler =
+            [] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
+                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+                UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
+
+                NProto::TMountVolumeResponse response;
+                response.SetSessionId("1");
+
+                auto& volume = *response.MutableVolume();
+                volume.SetDiskId(request->GetDiskId());
+                volume.SetBlockSize(DefaultBlockSize);
+                volume.SetBlocksCount(DefaultBlocksCount);
+
+                return MakeFuture(response);
+            };
+
+        size_t fail_attempts = 1;
+
+        client->UnmountVolumeHandler =
+            [&fail_attempts] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) mutable {
+                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+                UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
+                if (fail_attempts > 0) {
+                    --fail_attempts;
+                    return MakeFuture<NProto::TUnmountVolumeResponse>(TErrorResponse(MakeError((E_INVALID_STATE))));
+                }
+
+                return MakeFuture<NProto::TUnmountVolumeResponse>();
+            };
+
+        auto bootstrap = CreateBootstrap(
+            client,
+            {},
+            {
+                .RetryFailed = true,
+                .RetryTimeout = TDuration::Seconds(50),
+                .BackoffIncrement = TDuration::MilliSeconds(500),
+            });
+
+        auto session = bootstrap->GetSession();
+
+        bootstrap->Start();
+
+        {
+            auto res = session->MountVolume().GetValueSync();
+            UNIT_ASSERT_C(!HasError(res), res);
+        }
+
+        {
+            auto res = session->UnmountVolume().GetValueSync();
+            UNIT_ASSERT_C(!HasError(res), res);
+            UNIT_ASSERT_EQUAL(fail_attempts, 0);
+        }
+
+        {
+            auto res = session->MountVolume().GetValueSync();
             UNIT_ASSERT_C(!HasError(res), res);
         }
 
@@ -1363,7 +1609,7 @@ Y_UNIT_TEST_SUITE(TSessionTest)
                 return MakeFuture<NProto::TUnmountVolumeResponse>();
             };
 
-        auto bootstrap = CreateBootstrap(client, {}, clientVersionInfo);
+        auto bootstrap = CreateBootstrap(client, {}, {}, clientVersionInfo);
 
         auto session = bootstrap->GetSession();
 
@@ -1673,7 +1919,7 @@ Y_UNIT_TEST_SUITE(TSessionTest)
                 return MakeFuture<NProto::TUnmountVolumeResponse>();
             };
 
-        auto bootstrap = CreateBootstrap(client, {}, {}, mountSeqNumber);
+        auto bootstrap = CreateBootstrap(client, {}, {}, {}, mountSeqNumber);
 
         auto session = bootstrap->GetSession();
 
