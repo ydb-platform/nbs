@@ -257,6 +257,7 @@ struct TRange
     {
         auto offset = Max(Offset, range.Offset);
         auto end = Min(End(), range.End());
+
         if (end > offset) {
             return {offset, end - offset};
         }
@@ -348,9 +349,11 @@ FindDeletionMarkersResult FindDeletionMarkers(
                     }
 
                     Y_DEBUG_ABORT_UNLESS(multi.Count > 1);
+                    // +1 is needed because "end is beyond the last element"
+                    auto groupEndBlobOffset = blobOffsets[multi.Count - 1] + 1;
                     const auto groupRange = TRange::WithEnd(
                         blobOffsets[0],
-                        blobOffsets[multi.Count - 1]);
+                        groupEndBlobOffset);
 
                     if (auto r = searchRange.Intersection(groupRange)) {
                         minOverlappingBlobOffset = Min<ui16>(
@@ -363,7 +366,6 @@ FindDeletionMarkersResult FindDeletionMarkers(
         }
     }
 
-    ui64 maxCommitId = InvalidCommitId;
     // Safest choice
     ui32 blocksFound = 1;
 
@@ -380,7 +382,7 @@ FindDeletionMarkersResult FindDeletionMarkers(
     }
 
     return {
-        .MaxCommitId = maxCommitId,
+        .MaxCommitId = InvalidCommitId,
         .BlocksFound = blocksFound
     };
 }
