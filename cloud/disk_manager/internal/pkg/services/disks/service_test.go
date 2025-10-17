@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	cells_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/mocks"
@@ -71,7 +72,7 @@ func TestDiskServicegetZoneIDForExistingDisk(
 				"ZoneContainsCell",
 				testCase.requestedDiskZoneID,
 				testCase.actualDiskZoneID,
-			).Return(testCase.requestedZoneContainsCell)
+			).Return(testCase.requestedZoneContainsCell).Maybe()
 
 			diskService := &service{
 				cellSelector:    cellSelector,
@@ -93,7 +94,8 @@ func TestDiskServicegetZoneIDForExistingDisk(
 				require.Error(t, err)
 				require.ErrorContains(t, err, testCase.expectedErrorText)
 			}
+
+			mock.AssertExpectationsForObjects(t, storage, cellSelector)
 		})
 	}
-
 }

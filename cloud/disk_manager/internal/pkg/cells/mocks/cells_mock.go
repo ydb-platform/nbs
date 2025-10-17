@@ -42,6 +42,6 @@ func (s *CellSelectorMock) SelectCellForLocalDisk(
 }
 
 func (s *CellSelectorMock) ZoneContainsCell(zoneID string, cellID string) bool {
-	args := s.Called(cellID, zoneID)
+	args := s.Called(zoneID, cellID)
 	return args.Bool(0)
 }
