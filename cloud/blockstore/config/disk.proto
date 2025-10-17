@@ -168,6 +168,20 @@ message TDiskAgentThrottlingConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TChaosConfig
+{
+    // The probability of getting an error on the request start and finish.
+    optional double ChaosProbability = 1;
+
+    // Error codes that the chaos will generate. When empty E_REJECTED is used.
+    repeated uint32 ChaosErrorCodes = 2;
+
+    // The probability of data corruption when responding with an error.
+    optional double ChaosDataDamageProbability = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TDiskAgentConfig
 {
     optional bool Enabled = 1;
@@ -320,15 +334,8 @@ message TDiskAgentConfig
     // See "EnableDataIntegrityClient" in server.proto for more details.
     optional bool EnableDataIntegrityValidationForDrBasedDisks = 44;
 
-    // The probability of getting an error on the request.
-    // It is used for testing through chaos.
-    optional double ChaosProbability = 45;
-
-    // Error codes that the system will generate.
-    repeated uint32 ChaosErrorCodes = 46;
-
-    // The probability of data corruption when responding with an error.
-    optional double ChaosDataDamageProbability = 47;
+    // DANGER! It is used to generate errors during chaos testing.
+    optional TChaosConfig ChaosConfig = 45;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

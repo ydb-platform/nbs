@@ -143,9 +143,14 @@ public:
 
     bool GetEnableDataIntegrityValidationForDrBasedDisks() const;
 
-    [[nodiscard]] double GetChaosProbability() const;
-    [[nodiscard]] TVector<EWellKnownResultCodes> GetChaosErrorCodes() const;
-    [[nodiscard]] double GetChaosDataDamageProbability() const;
+    [[nodiscard]] bool HasChaosConfig() const
+    {
+        return Config.HasChaosConfig();
+    }
+    [[nodiscard]] const NProto::TChaosConfig& GetChaosConfig() const
+    {
+        return Config.GetChaosConfig();
+    }
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
