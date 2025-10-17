@@ -17,44 +17,44 @@ func TestDiskServicegetZoneIDForExistingDisk(
 	t *testing.T,
 ) {
 	testCases := []struct {
-		name                string
-		actualDiskZoneID    string
-		requestedDiskZoneID string
-		ZoneContainsCell    bool
-		expectedZoneID      string
-		expectedErrorText   string
+		name                      string
+		actualDiskZoneID          string
+		requestedDiskZoneID       string
+		requestedZoneContainsCell bool
+		expectedZoneID            string
+		expectedErrorText         string
 	}{
 		{
-			name:                "Actual disk's zone ID equals the requested disk's zone ID",
-			requestedDiskZoneID: "zone-a",
-			actualDiskZoneID:    "zone-a",
-			ZoneContainsCell:    false,
-			expectedZoneID:      "zone-a",
-			expectedErrorText:   "",
+			name:                      "Actual disk's zone ID equals the requested disk's zone ID",
+			requestedDiskZoneID:       "zone-a",
+			actualDiskZoneID:          "zone-a",
+			requestedZoneContainsCell: false,
+			expectedZoneID:            "zone-a",
+			expectedErrorText:         "",
 		},
 		{
-			name:                "Actual disk's zone ID is a cell and is equal to the requested zone ID",
-			requestedDiskZoneID: "zone-a",
-			actualDiskZoneID:    "zone-a",
-			ZoneContainsCell:    true,
-			expectedZoneID:      "zone-a",
-			expectedErrorText:   "",
+			name:                      "Actual disk's zone ID is a cell and is equal to the requested zone ID",
+			requestedDiskZoneID:       "zone-a",
+			actualDiskZoneID:          "zone-a",
+			requestedZoneContainsCell: true,
+			expectedZoneID:            "zone-a",
+			expectedErrorText:         "",
 		},
 		{
-			name:                "The disk is located in a cell of requested disks's zone ID",
-			requestedDiskZoneID: "zone-a",
-			actualDiskZoneID:    "zone-a-shard1",
-			ZoneContainsCell:    true,
-			expectedZoneID:      "zone-a-shard1",
-			expectedErrorText:   "",
+			name:                      "The disk is located in a cell of requested disks's zone ID",
+			requestedDiskZoneID:       "zone-a",
+			actualDiskZoneID:          "zone-a-shard1",
+			requestedZoneContainsCell: true,
+			expectedZoneID:            "zone-a-shard1",
+			expectedErrorText:         "",
 		},
 		{
-			name:                "Requested zone ID does not match with an actual zone ID",
-			requestedDiskZoneID: "zone-a",
-			actualDiskZoneID:    "zone-b",
-			ZoneContainsCell:    false,
-			expectedZoneID:      "",
-			expectedErrorText:   "does not match with an actual zone ID",
+			name:                      "Requested zone ID does not match with an actual zone ID",
+			requestedDiskZoneID:       "zone-a",
+			actualDiskZoneID:          "zone-b",
+			requestedZoneContainsCell: false,
+			expectedZoneID:            "",
+			expectedErrorText:         "does not match with an actual zone ID",
 		},
 	}
 
@@ -69,9 +69,9 @@ func TestDiskServicegetZoneIDForExistingDisk(
 			}, nil)
 			cellSelector.On(
 				"ZoneContainsCell",
-				testCase.actualDiskZoneID,
 				testCase.requestedDiskZoneID,
-			).Return(testCase.ZoneContainsCell)
+				testCase.actualDiskZoneID,
+			).Return(testCase.requestedZoneContainsCell)
 
 			diskService := &service{
 				cellSelector:    cellSelector,

@@ -132,7 +132,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 	}
 }
 
-func (s *cellSelector) ZoneContainsCell(cellID string, zoneID string) bool {
+func (s *cellSelector) ZoneContainsCell(zoneID string, cellID string) bool {
 	return slices.Contains(s.getCells(zoneID), cellID)
 }
 

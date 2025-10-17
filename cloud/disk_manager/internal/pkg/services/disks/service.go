@@ -176,7 +176,7 @@ func (s *service) getZoneIDForExistingDisk(
 	}
 
 	if diskMeta.ZoneID != diskID.ZoneId &&
-		!s.cellSelector.ZoneContainsCell(diskMeta.ZoneID, diskID.ZoneId) {
+		!s.cellSelector.ZoneContainsCell(diskID.ZoneId, diskMeta.ZoneID) {
 		return "", common.NewInvalidArgumentError(
 			"provided zone ID %v does not match with an actual zone ID %v",
 			diskID.ZoneId,

@@ -26,5 +26,5 @@ type CellSelector interface {
 		agentIDs []string,
 	) (nbs.Client, error)
 
-	ZoneContainsCell(cellID string, zoneID string) bool
+	ZoneContainsCell(zoneID string, cellID string) bool
 }

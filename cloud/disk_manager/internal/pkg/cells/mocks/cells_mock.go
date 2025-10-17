@@ -41,7 +41,7 @@ func (s *CellSelectorMock) SelectCellForLocalDisk(
 	return args.Get(0).(nbs.Client), args.Error(1)
 }
 
-func (s *CellSelectorMock) ZoneContainsCell(cellID string, zoneID string) bool {
+func (s *CellSelectorMock) ZoneContainsCell(zoneID string, cellID string) bool {
 	args := s.Called(cellID, zoneID)
 	return args.Bool(0)
 }
