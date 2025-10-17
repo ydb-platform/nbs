@@ -11,7 +11,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func GetDiskCell(
+func GetDiskFromCell(
 	ctx context.Context,
 	storage resources.Storage,
 	cellSelector cells.CellSelector,
@@ -23,6 +23,7 @@ func GetDiskCell(
 		return nil, err
 	}
 
+	// A correct zone ID must be provided; using a cell ID will cause a failure.
 	if !cellSelector.IsCellOfZone(diskMeta.ZoneID, disk.ZoneId) {
 		return nil, errors.NewNonCancellableErrorf(
 			"disk %s is not in zone %s",

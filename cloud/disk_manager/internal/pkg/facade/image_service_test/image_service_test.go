@@ -1012,7 +1012,7 @@ func TestImageServiceCreateImageFromDisk(t *testing.T) {
 	testImageServiceCreateImageFromDiskWithKind(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD,
-		uint64(4*1024*1024), // diskSize.
+		uint64(4*1024*1024), // diskSize
 		defaultZoneID,
 	)
 }
@@ -1021,7 +1021,7 @@ func TestImageServiceCreateImageFromDiskInShardedZone(t *testing.T) {
 	testImageServiceCreateImageFromDiskWithKind(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD,
-		uint64(4*1024*1024), // diskSize.
+		uint64(4*1024*1024), // diskSize
 		shardedZoneID,
 	)
 }
@@ -1030,7 +1030,7 @@ func TestImageServiceCreateImageFromNonReplicatedDisk(t *testing.T) {
 	testImageServiceCreateImageFromDiskWithKind(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		uint64(1024*1024*1024), // diskSize.
+		uint64(1024*1024*1024), // diskSize
 		defaultZoneID,
 	)
 }

@@ -161,7 +161,7 @@ func (t *createSnapshotFromDiskTask) Run(
 ) error {
 
 	// Disk cell may differ from the zone presented in the request.
-	disk, err := common.GetDiskCell(ctx, t.storage, t.cellSelector, t.request.SrcDisk)
+	disk, err := common.GetDiskFromCell(ctx, t.storage, t.cellSelector, t.request.SrcDisk)
 	if err != nil {
 		return err
 	}
@@ -194,7 +194,7 @@ func (t *createSnapshotFromDiskTask) Cancel(
 ) error {
 
 	// Disk cell may differ from the zone presented in the request.
-	disk, err := common.GetDiskCell(ctx, t.storage, t.cellSelector, t.request.SrcDisk)
+	disk, err := common.GetDiskFromCell(ctx, t.storage, t.cellSelector, t.request.SrcDisk)
 	if err != nil {
 		return err
 	}
