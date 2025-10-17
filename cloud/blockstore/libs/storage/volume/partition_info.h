@@ -123,6 +123,9 @@ struct TPartitionInfo
 
     TDuration ExternalBootTimeout;
 
+    std::optional<TInstant> StartTime;
+    ui32 RestartCount = 0;
+
     TPartitionInfo(
         ui64 tabletId,
         NProto::TPartitionConfig partitionConfig,
@@ -140,6 +143,8 @@ struct TPartitionInfo
     [[nodiscard]] bool IsKnownActorId(const NActors::TActorId actorId) const;
 
     [[nodiscard]] TString GetStatus() const;
+    [[nodiscard]] std::optional<TInstant> GetStartTime() const;
+    [[nodiscard]] ui32 GetRestartCount() const;
 };
 
 using TPartitionInfoList = TDeque<TPartitionInfo>;
