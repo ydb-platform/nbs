@@ -150,6 +150,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         return;
     }
 
+    InitializeDeviceOperationTracker();
+
     const auto& volumeConfig = GetNewestConfig();
     const auto mediaKind = State->GetConfig().GetStorageMediaKind();
     const auto& volumeParams = State->GetVolumeParams();
