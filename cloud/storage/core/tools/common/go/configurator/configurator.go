@@ -73,9 +73,10 @@ type ConfigsSpec struct {
 }
 
 type ValuesSpec struct {
-	Generate bool   `yaml:"generate"`
-	FileName string `yaml:"fileName"`
-	DumpPath string `yaml:"dumpPath"`
+	Generate     bool   `yaml:"generate"`
+	FileName     string `yaml:"fileName"`
+	DumpPath     string `yaml:"dumpPath"`
+	FullDumpPath string `yaml:"fullDumpPath"`
 }
 
 type GeneratorSpec struct {
@@ -370,12 +371,21 @@ func (g *ConfigGenerator) dumpConfigs(
 		if seed {
 			targetName = "seed"
 		}
+		valuesDumpPath := path.Join(
+			configPath,
+			targetName,
+			g.spec.ServiceSpec.Clusters[cluster].Values.FileName)
+		if g.spec.ServiceSpec.Clusters[cluster].Values.FullDumpPath != "" {
+			valuesDumpPath = path.Join(
+				g.spec.ArcadiaPath,
+				g.spec.ServiceSpec.Clusters[cluster].Values.FullDumpPath)
+		}
+
 		err := g.dumpValues(
 			ctx,
 			resultConfigs,
 			valuesTemplatePath,
-			path.Join(configPath, targetName),
-			g.spec.ServiceSpec.Clusters[cluster].Values.FileName)
+			valuesDumpPath)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to generate values for target '%v': %w",
@@ -494,10 +504,9 @@ func (g *ConfigGenerator) dumpValues(
 	ctx context.Context,
 	configs []ResultConfig,
 	valuesTemplatePath string,
-	dumpPath string,
-	fileName string,
+	dumpFileName string,
 ) error {
-	g.LogDbg(ctx, "dump values to %v", dumpPath)
+	g.LogDbg(ctx, "dump values to %v", dumpFileName)
 
 	var resultConfigs []ResultConfig
 	for _, cfg := range configs {
@@ -518,7 +527,7 @@ func (g *ConfigGenerator) dumpValues(
 			err,
 		)
 	}
-	err = os.MkdirAll(dumpPath, 0755)
+	err = os.MkdirAll(filepath.Dir(dumpFileName), 0755)
 	if err != nil {
 		return fmt.Errorf(
 			"cannot create directories: %w",
@@ -526,9 +535,8 @@ func (g *ConfigGenerator) dumpValues(
 		)
 	}
 
-	filePath := path.Join(dumpPath, fileName)
 	file, err := os.OpenFile(
-		filePath,
+		dumpFileName,
 		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
 		0755)
 	if err != nil {
@@ -557,7 +565,7 @@ func (g *ConfigGenerator) dumpValues(
 		)
 	}
 
-	err = trimWhiteSpaceLines(filePath)
+	err = trimWhiteSpaceLines(dumpFileName)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to trim white space lines from file: %w",
