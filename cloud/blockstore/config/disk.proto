@@ -319,6 +319,16 @@ message TDiskAgentConfig
     // Enables data integrity validation for the DR-based disks.
     // See "EnableDataIntegrityClient" in server.proto for more details.
     optional bool EnableDataIntegrityValidationForDrBasedDisks = 44;
+
+    // The probability of getting an error on the request.
+    // It is used for testing through chaos.
+    optional double ChaosProbability = 45;
+
+    // Error codes that the system will generate.
+    repeated uint32 ChaosErrorCodes = 46;
+
+    // The probability of data corruption when responding with an error.
+    optional double ChaosDataDamageProbability = 47;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

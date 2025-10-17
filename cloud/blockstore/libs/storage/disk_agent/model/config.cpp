@@ -61,6 +61,10 @@ namespace {
     xxx(UseLocalStorageSubmissionThread,    bool,       true                  )\
     xxx(KickOutOldClientsEnabled,           bool,       false                 )\
     xxx(UseOneSubmissionThreadPerAIOServiceEnabled,     bool,       false     )\
+                                                                               \
+    xxx(ChaosProbability,                   double,     0.f                   )\
+    xxx(ChaosErrorCodes,                    TVector<EWellKnownResultCodes>, {})\
+    xxx(ChaosDataDamageProbability,         double,     0.f                   )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \
@@ -74,15 +78,34 @@ BLOCKSTORE_AGENT_CONFIG(BLOCKSTORE_DECLARE_CONFIG)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TTarget, typename TSource>
-TTarget ConvertValue(TSource value)
+TTarget ConvertValue(const TSource& value)
 {
-    return static_cast<TTarget>(std::move(value));
+    return static_cast<TTarget>(value);
 }
 
 template <>
-TDuration ConvertValue<TDuration, ui32>(ui32 value)
+TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 {
     return TDuration::MilliSeconds(value);
+}
+
+template <>
+TVector<EWellKnownResultCodes> ConvertValue<
+    TVector<EWellKnownResultCodes>,
+    google::protobuf::RepeatedField<arc_ui32>>(
+    const google::protobuf::RepeatedField<arc_ui32>& value)
+{
+    TVector<EWellKnownResultCodes> v;
+    for (const auto& x: value) {
+        v.push_back(static_cast<EWellKnownResultCodes>(x));
+    }
+    return v;
+}
+
+template <typename T>
+bool IsEmpty(const google::protobuf::RepeatedField<T>& value)
+{
+    return value.empty();
 }
 
 IOutputStream& operator<<(IOutputStream& out, NProto::EDiskAgentBackendType pt)
@@ -108,28 +131,69 @@ IOutputStream& operator<<(IOutputStream& out, NProto::EDeviceEraseMethod pt)
     return out << s;
 }
 
+template <typename T>
+void DumpImpl(const T& t, IOutputStream& os)
+{
+    os << t;
+}
+
+void DumpImpl(const TVector<EWellKnownResultCodes>& value, IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << value[i];
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
-type TDiskAgentConfig::Get##name() const                                       \
-{                                                                              \
-    if (Config.Has##name()) {                                                  \
-        return ConvertValue<type>(Config.Get##name());                         \
-    }                                                                          \
-    return Default##name;                                                      \
-}                                                                              \
-// BLOCKSTORE_CONFIG_GETTER
+#define DECLARE_FIELD_CHECKER(name, type, ...)                               \
+    template <typename TProtoConfig, typename = void>                        \
+    struct Has##name##Method: std::false_type                                \
+    {                                                                        \
+    };                                                                       \
+                                                                             \
+    template <typename TProtoConfig>                                         \
+    struct Has##name##Method<                                                \
+        TProtoConfig,                                                        \
+        std::void_t<decltype(std::declval<TProtoConfig>().Has##name())>>     \
+        : std::true_type                                                     \
+    {                                                                        \
+    };                                                                       \
+                                                                             \
+    template <typename TProtoConfig, typename TProtoValue>                   \
+    bool IsEmpty##name(const TProtoConfig& config, const TProtoValue& value) \
+    {                                                                        \
+        if constexpr (Has##name##Method<TProtoConfig>::value) {              \
+            return !config.Has##name();                                      \
+        } else {                                                             \
+            return IsEmpty(value);                                           \
+        }                                                                    \
+    }
+BLOCKSTORE_AGENT_CONFIG(DECLARE_FIELD_CHECKER)
+#undef DECLARE_FIELD_CHECKER
 
+#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                        \
+    type TDiskAgentConfig::Get##name() const                             \
+    {                                                                    \
+        const auto& value = Config.Get##name();                          \
+        return IsEmpty##name(Config, value) ? Default##name              \
+                                            : ConvertValue<type>(value); \
+    }
 BLOCKSTORE_AGENT_CONFIG(BLOCKSTORE_CONFIG_GETTER)
 
 #undef BLOCKSTORE_CONFIG_GETTER
 
 void TDiskAgentConfig::Dump(IOutputStream& out) const
 {
-#define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
-    out << #name << ": " << Get##name() << Endl;                               \
+#define BLOCKSTORE_CONFIG_DUMP(name, ...) \
+    out << #name << ": ";                 \
+    DumpImpl(Get##name(), out);           \
+    out << Endl;                          \
 // BLOCKSTORE_CONFIG_DUMP
 
     BLOCKSTORE_AGENT_CONFIG(BLOCKSTORE_CONFIG_DUMP);
@@ -142,7 +206,7 @@ void TDiskAgentConfig::DumpHtml(IOutputStream& out) const
 #define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
     TABLER() {                                                                 \
         TABLED() { out << #name; }                                             \
-        TABLED() { out << Get##name(); }                                       \
+        TABLED() { DumpImpl(Get##name(), out); }                               \
     }                                                                          \
 // BLOCKSTORE_CONFIG_DUMP
 

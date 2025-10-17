@@ -8,6 +8,8 @@
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_device_blocks_actor.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
 
+#include <util/random/random.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -38,12 +40,35 @@ TBlockRange64 BuildRequestBlockRange(
         request.StorageSize / request.Record.GetBlockSize());
 }
 
+bool TryChaosLuck(double probability)
+{
+    if (probability == 0.f) {
+        return false;
+    }
+
+    return RandomNumber<double>() < probability;
+}
+
+EWellKnownResultCodes GetChaosErrroCode(
+    const TVector<EWellKnownResultCodes>& errors)
+{
+    if (errors.empty()) {
+        return E_REJECTED;
+    }
+
+    return errors[RandomNumber<size_t>(errors.size())];
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
 constexpr bool IsWriteDeviceMethod =
     std::is_same_v<T, TEvDiskAgent::TWriteDeviceBlocksMethod> ||
     std::is_same_v<T, TEvDiskAgent::TZeroDeviceBlocksMethod>;
+
+template <typename T>
+constexpr bool IsExactlyWriteDeviceMethod =
+    std::is_same_v<T, TEvDiskAgent::TWriteDeviceBlocksMethod>;
 
 template <typename T>
 constexpr bool IsReadDeviceMethod =
@@ -207,6 +232,37 @@ void TDiskAgentActor::PerformIO(
         deviceUUID.c_str(),
         clientId.c_str());
 
+    bool chaosDamageData = false;
+    if (TryChaosLuck( AgentConfig->GetChaosProbability())) {
+        if constexpr (IsExactlyWriteDeviceMethod<TMethod>) {
+            chaosDamageData =
+                TryChaosLuck(AgentConfig->GetChaosDataDamageProbability());
+            if (chaosDamageData) {
+                LOG_WARN(
+                    *actorSystem,
+                    TBlockStoreComponents::DISK_AGENT,
+                    "Chaos will damage written data on %s [%s] before replying "
+                    "error",
+                    deviceUUID.Quote().c_str(),
+                    ToString(range).c_str());
+                auto& buffers = *msg->Record.MutableBlocks()->MutableBuffers();
+                for (auto& block: buffers) {
+                    block[0] = 'c';
+                    block[1] = 'h';
+                    block[2] = 'a';
+                    block[3] = 'o';
+                    block[4] = 's';
+                }
+            }
+        }
+        if (!chaosDamageData) {
+            replyError(
+                GetChaosErrroCode(AgentConfig->GetChaosErrorCodes()),
+                "Chaos-generated error before execution");
+            return;
+        }
+    }
+
     if (SecureErasePendingRequests.contains(deviceUUID)) {
         const bool isHealthCheckRead =
             IsReadDeviceMethod<TMethod> && clientId == CheckHealthClientId;
@@ -232,9 +288,25 @@ void TDiskAgentActor::PerformIO(
             std::invoke(operation, *State, ctx.Now(), std::move(record));
 
         result.Subscribe(
-            [=] (auto future) {
+            [chaosDamageData,
+             replySuccess,
+             replyError,
+             deviceUUID,
+             clientId,
+             agentConfig = AgentConfig,
+             actorSystem](auto future)
+            {
                 try {
-                    replySuccess(future.ExtractValue());
+                    if (chaosDamageData ||
+                        TryChaosLuck(agentConfig->GetChaosProbability()))
+                    {
+                        replyError(
+                            GetChaosErrroCode(
+                                agentConfig->GetChaosErrorCodes()),
+                            "Chaos-generated error after execution");
+                    } else {
+                        replySuccess(future.ExtractValue());
+                    }
                 } catch (...) {
                     auto [code, message] = HandleException(
                         *actorSystem,
