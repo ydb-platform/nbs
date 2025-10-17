@@ -90,7 +90,7 @@ void TPartitionInfo::SetStopped()
     RelatedActors.Clear();
     State = STOPPED;
     Message = {};
-    StartTime = Nothing();
+    StartTime = std::nullopt;
 }
 
 void TPartitionInfo::SetFailed(TString message)
@@ -98,7 +98,7 @@ void TPartitionInfo::SetFailed(TString message)
     RelatedActors.Clear();
     State = FAILED;
     Message = std::move(message);
-    StartTime = Nothing();
+    StartTime = std::nullopt;
 }
 
 NActors::TActorId TPartitionInfo::GetTopActorId() const
@@ -141,7 +141,7 @@ TString TPartitionInfo::GetStatus() const
     return out.Str();
 }
 
-TMaybe<TInstant> TPartitionInfo::GetStartTime() const
+std::optional<TInstant> TPartitionInfo::GetStartTime() const
 {
     return StartTime;
 }

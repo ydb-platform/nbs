@@ -123,7 +123,7 @@ struct TPartitionInfo
 
     TDuration ExternalBootTimeout;
 
-    TMaybe<TInstant> StartTime;
+    std::optional<TInstant> StartTime;
     ui32 RestartCount = 0;
 
     TPartitionInfo(
@@ -143,7 +143,7 @@ struct TPartitionInfo
     [[nodiscard]] bool IsKnownActorId(const NActors::TActorId actorId) const;
 
     [[nodiscard]] TString GetStatus() const;
-    [[nodiscard]] TMaybe<TInstant> GetStartTime() const;
+    [[nodiscard]] std::optional<TInstant> GetStartTime() const;
     [[nodiscard]] ui32 GetRestartCount() const;
 };
 
