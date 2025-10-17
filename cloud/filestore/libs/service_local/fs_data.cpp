@@ -255,22 +255,22 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
                     promise.SetValue(std::move(response));
                 });
     } else {
-        TVector<TArrayRef<const char>> data;
-        data.reserve(request.GetIovecs().size());
+        auto buffers = std::make_shared<TVector<TArrayRef<const char>>>();
+        buffers->reserve(request.GetIovecs().size());
         ui64 bytesToWrite = 0;
         for (const auto& iovec: request.GetIovecs()) {
-            data.emplace_back(
+            buffers->emplace_back(
                 reinterpret_cast<const char*>(iovec.GetBase()),
                 iovec.GetLength());
             bytesToWrite += iovec.GetLength();
         }
-        FileIOService->AsyncWriteV(*handle, request.GetOffset(), data)
+        FileIOService->AsyncWriteV(*handle, request.GetOffset(), *buffers)
             .Subscribe(
                 [this,
                  &logRequest,
                  promise,
-                 bytesExpected =
-                     bytesToWrite](const TFuture<ui32>& f) mutable
+                 bytesExpected = bytesToWrite,
+                 buffers = std::move(buffers)](const TFuture<ui32>& f) mutable
                 {
                     NProto::TWriteDataLocalResponse response;
                     try {
