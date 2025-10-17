@@ -9,8 +9,30 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
+	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
+func newContext() context.Context {
+	return logging.SetLogger(
+		context.Background(),
+		logging.NewStderrLogger(logging.DebugLevel),
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+const (
+	shardedZoneID = "zone-a"
+	cellID1       = "zone-a"
+	cellID2       = "zone-a-shard1"
+	otherZoneID   = "zone-b"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -28,7 +50,7 @@ func testSelectCellForLocalDiskCellReturnsAnError(
 	nbsClientEmptyCell := nbs_mocks.NewClientMock()
 	config := &cells_config.CellsConfig{
 		Cells: map[string]*cells_config.ZoneCells{
-			"zone-a": {Cells: []string{"zone-a", "zone-a-cell1"}},
+			shardedZoneID: {Cells: []string{cellID1, cellID2}},
 		},
 	}
 	agentIDs := []string{"agent1"}
@@ -36,14 +58,14 @@ func testSelectCellForLocalDiskCellReturnsAnError(
 	nbsFactory.On(
 		"GetClient",
 		mock.Anything,
-		"zone-a",
+		cellID1,
 	).Return(nbsClientCorrectCell, nil)
 
 	// If got a result, don't wait for other cells.
 	nbsFactory.On(
 		"GetClient",
 		mock.Anything,
-		"zone-a-cell1",
+		cellID2,
 	).Return(nbsClientEmptyCell, nil)
 
 	correctCellError := error(nil)
@@ -79,7 +101,7 @@ func testSelectCellForLocalDiskCellReturnsAnError(
 
 	selectedClient, err := cellSelector.SelectCellForLocalDisk(
 		ctx,
-		"zone-a",
+		cellID1,
 		agentIDs,
 	)
 	if correctCellReturnsError {
@@ -150,41 +172,146 @@ func TestCellsIsFolderAllowed(t *testing.T) {
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestCellSelectorSelectsCorrectCell(t *testing.T) {
+	ctx := newContext()
+
+	policy := cells_config.CellSelectionPolicy_FIRST_IN_CONFIG
 	config := &cells_config.CellsConfig{
 		Cells: map[string]*cells_config.ZoneCells{
-			"zone1": {Cells: []string{"zone1-cell1", "zone1"}},
-			"zone2": {Cells: []string{"zone2"}},
+			shardedZoneID: {Cells: []string{cellID2, cellID1}},
+			otherZoneID:   {Cells: []string{otherZoneID}},
 		},
+		CellSelectionPolicy: &policy,
 	}
 
 	selector := cellSelector{
 		config: config,
 	}
 
-	selectedCell, err := selector.selectCell("zone1", "folder")
+	selectedCell, err := selector.selectCell(
+		ctx,
+		shardedZoneID,
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+	)
 	require.NoError(t, err)
-	require.Equal(t, "zone1-cell1", selectedCell) // First in the config.
+	require.Equal(t, cellID2, selectedCell) // First in the config.
 
-	selectedCell, err = selector.selectCell("zone1-cell1", "folder")
+	selectedCell, err = selector.selectCell(
+		ctx,
+		cellID2,
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+	)
 	require.NoError(t, err)
-	require.Equal(t, "zone1-cell1", selectedCell)
+	require.Equal(t, cellID2, selectedCell)
 
-	selectedCell, err = selector.selectCell("zone2", "folder")
+	selectedCell, err = selector.selectCell(
+		ctx,
+		otherZoneID,
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+	)
 	require.NoError(t, err)
-	require.Equal(t, "zone2", selectedCell)
+	require.Equal(t, otherZoneID, selectedCell)
 
-	selectedCell, err = selector.selectCell("zone3", "folder")
+	selectedCell, err = selector.selectCell(
+		ctx,
+		"incorrectZoneID",
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+	)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "incorrect zone ID provided")
 	require.Empty(t, selectedCell)
 }
 
 func TestCellSelectorReturnsCorrectNBSClientIfConfigsIsNotSet(t *testing.T) {
+	ctx := newContext()
 	cellSelector := cellSelector{}
 
-	selectedCell, err := cellSelector.selectCell("zone", "folder")
+	selectedCell, err := cellSelector.selectCell(
+		ctx,
+		otherZoneID,
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+	)
 	require.NoError(t, err)
-	require.Equal(t, "zone", selectedCell)
+	require.Equal(t, otherZoneID, selectedCell)
+}
+
+func TestCellSelectorReturnsCorrectCellWithMaxFreeBytesPolicy(t *testing.T) {
+	ctx := newContext()
+	cellStorage := storage_mocks.NewStorageMock()
+
+	policy := cells_config.CellSelectionPolicy_MAX_FREE_BYTES
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			shardedZoneID: {Cells: []string{cellID2, cellID1}},
+			otherZoneID:   {Cells: []string{otherZoneID}},
+		},
+		CellSelectionPolicy: &policy,
+	}
+
+	cellStorage.On(
+		"GetRecentClusterCapacities",
+		ctx,
+		shardedZoneID,
+		types.DiskKind_DISK_KIND_SSD,
+	).Return([]storage.ClusterCapacity{
+		{FreeBytes: 2048, CellID: cellID1},
+		{FreeBytes: 1024, CellID: cellID2},
+	}, nil)
+
+	selector := cellSelector{
+		config:  config,
+		storage: cellStorage,
+	}
+
+	selectedCell, err := selector.selectCell(
+		ctx,
+		shardedZoneID,
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+	)
+	require.NoError(t, err)
+	require.Equal(t, cellID1, selectedCell)
+}
+
+func TestCellSelectorReturnsCorrectCellWithMaxFreeBytesPolicyIfNoCapacities(
+	t *testing.T,
+) {
+
+	ctx := newContext()
+	cellStorage := storage_mocks.NewStorageMock()
+
+	policy := cells_config.CellSelectionPolicy_MAX_FREE_BYTES
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			shardedZoneID: {Cells: []string{cellID1, cellID2}},
+		},
+		CellSelectionPolicy: &policy,
+	}
+
+	cellStorage.On(
+		"GetRecentClusterCapacities",
+		ctx,
+		shardedZoneID,
+		types.DiskKind_DISK_KIND_SSD,
+	).Return([]storage.ClusterCapacity{}, nil)
+
+	selector := cellSelector{
+		config:  config,
+		storage: cellStorage,
+	}
+
+	selectedCell, err := selector.selectCell(
+		ctx,
+		shardedZoneID,
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+	)
+	require.NoError(t, err)
+	require.Equal(t, cellID1, selectedCell)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

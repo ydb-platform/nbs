@@ -49,6 +49,7 @@ func SelectCell(
 				ctx,
 				params.Disk.ZoneId,
 				params.FolderId,
+				params.Kind,
 			)
 		}
 		if err != nil {
