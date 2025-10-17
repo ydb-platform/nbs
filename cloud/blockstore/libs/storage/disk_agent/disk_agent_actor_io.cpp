@@ -8,6 +8,8 @@
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_device_blocks_actor.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
 
+#include <util/random/random.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -38,12 +40,36 @@ TBlockRange64 BuildRequestBlockRange(
         request.StorageSize / request.Record.GetBlockSize());
 }
 
+bool TryChaosLuck(double probability)
+{
+    if (probability == 0.f) {
+        return false;
+    }
+
+    return RandomNumber<double>() < probability;
+}
+
+EWellKnownResultCodes GetChaosErrorCode(
+    const google::protobuf::RepeatedField<ui32>& errors)
+{
+    if (errors.empty()) {
+        return E_REJECTED;
+    }
+
+    return static_cast<EWellKnownResultCodes>(
+        errors[RandomNumber<size_t>(errors.size())]);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
 constexpr bool IsWriteDeviceMethod =
     std::is_same_v<T, TEvDiskAgent::TWriteDeviceBlocksMethod> ||
     std::is_same_v<T, TEvDiskAgent::TZeroDeviceBlocksMethod>;
+
+template <typename T>
+constexpr bool IsExactlyWriteDeviceMethod =
+    std::is_same_v<T, TEvDiskAgent::TWriteDeviceBlocksMethod>;
 
 template <typename T>
 constexpr bool IsReadDeviceMethod =
@@ -207,6 +233,48 @@ void TDiskAgentActor::PerformIO(
         deviceUUID.c_str(),
         clientId.c_str());
 
+    // We flip four coins:
+    // 1. will we generate an error (ChaosProbability)
+    // 2. will we spoil the write buffer (GetChaosDataDamageProbability).
+    //    If the buffer is corrupted, we always respond after completing the
+    //    request
+    // 3. will we execute the request or respond with an error immediately (0.5)
+    // 4. what error code will we respond with?
+    EWellKnownResultCodes forcedErrorCode = S_OK;
+    if (AgentConfig->HasChaosConfig() &&
+        TryChaosLuck(AgentConfig->GetChaosConfig().GetChaosProbability()))
+    {
+        const EWellKnownResultCodes errorCode = GetChaosErrorCode(
+            AgentConfig->GetChaosConfig().GetChaosErrorCodes());
+        if constexpr (IsExactlyWriteDeviceMethod<TMethod>) {
+            const bool damageData = TryChaosLuck(
+                AgentConfig->GetChaosConfig().GetChaosDataDamageProbability());
+            if (damageData) {
+                LOG_WARN(
+                    *actorSystem,
+                    TBlockStoreComponents::DISK_AGENT,
+                    "Chaos will damage written data on %s [%s] before replying "
+                    "error",
+                    deviceUUID.Quote().c_str(),
+                    ToString(range).c_str());
+                auto& buffers = *msg->Record.MutableBlocks()->MutableBuffers();
+                for (auto& block: buffers) {
+                    block[0] = 'c';
+                    block[1] = 'h';
+                    block[2] = 'a';
+                    block[3] = 'o';
+                    block[4] = 's';
+                }
+                forcedErrorCode = errorCode;
+            }
+        }
+        if (forcedErrorCode == S_OK && TryChaosLuck(0.5f)) {
+            replyError(errorCode, "Chaos-generated error before execution");
+            return;
+        }
+        forcedErrorCode = errorCode;
+    }
+
     if (SecureErasePendingRequests.contains(deviceUUID)) {
         const bool isHealthCheckRead =
             IsReadDeviceMethod<TMethod> && clientId == CheckHealthClientId;
@@ -232,9 +300,22 @@ void TDiskAgentActor::PerformIO(
             std::invoke(operation, *State, ctx.Now(), std::move(record));
 
         result.Subscribe(
-            [=] (auto future) {
+            [forcedErrorCode,
+             replySuccess,
+             replyError,
+             deviceUUID,
+             clientId,
+             actorSystem](auto future)
+            {
                 try {
-                    replySuccess(future.ExtractValue());
+                    if (forcedErrorCode != S_OK &&
+                        !HasError(future.GetValue())) {
+                        replyError(
+                            forcedErrorCode,
+                            "Chaos-generated error after execution");
+                    } else {
+                        replySuccess(future.ExtractValue());
+                    }
                 } catch (...) {
                     auto [code, message] = HandleException(
                         *actorSystem,

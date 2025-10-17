@@ -84,6 +84,14 @@ ThrottlingConfig: {
     MaxDeviceBandwidthMiB: 15
 }
 
+ChaosConfig: {
+    ChaosProbability: 0.01
+    ChaosErrorCodes: 0x80000002 # E_REJECTED
+    ChaosErrorCodes: 0x80000005 # E_TIMEOUT
+    ChaosErrorCodes: 0x80000007 # E_UNAUTHORIZED
+    ChaosDataDamageProbability: 0.5
+}
+
 EOF
 
 cat > $BIN_DIR/nbs/nbs-location-$1.txt <<EOF
