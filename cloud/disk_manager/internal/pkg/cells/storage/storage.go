@@ -47,6 +47,7 @@ func (c *clusterCapacityState) toClusterCapacity() (ClusterCapacity, error) {
 		Kind:       kind,
 		TotalBytes: c.TotalBytes,
 		FreeBytes:  c.FreeBytes,
+		CreatedAt:  c.CreatedAt,
 	}, nil
 }
 
