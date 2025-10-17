@@ -44,15 +44,17 @@ func isRetriableError(err error) bool {
 ////////////////////////////////////////////////////////////////////////////////
 
 type MonitoringConfig struct {
-	Port      uint
-	Path      string
-	Component string
+	Port                             uint
+	Path                             string
+	Component                        string
+	RetriableErrorsDurationThreshold time.Duration
 }
 
 type Monitoring struct {
-	cfg      *MonitoringConfig
-	registry metrics.Registry
-	Handler  http.Handler
+	cfg                *MonitoringConfig
+	registry           metrics.Registry
+	Handler            http.Handler
+	retriableErrorsMap map[string]time.Time
 }
 
 func (m *Monitoring) StartListening() {
@@ -89,7 +91,7 @@ func (m *Monitoring) ReportExternalFsMountExpirationTimes(fsMountExpTimes map[st
 	}
 }
 
-func (m *Monitoring) ReportRequestReceived(method string) {
+func (m *Monitoring) ReportRequestReceived(volumeId string, method string) {
 	subregistry := m.registry.WithTags(map[string]string{
 		"method": method,
 	})
@@ -98,8 +100,10 @@ func (m *Monitoring) ReportRequestReceived(method string) {
 }
 
 func (m *Monitoring) ReportRequestCompleted(
+	volumeId string,
 	method string,
 	err error,
+	timestamp time.Time,
 	elapsedTime time.Duration,
 ) {
 	subregistry := m.registry.WithTags(map[string]string{
@@ -110,10 +114,21 @@ func (m *Monitoring) ReportRequestCompleted(
 		subregistry.DurationHistogram("Time", requestDurationBuckets()).RecordDuration(elapsedTime)
 	}
 	if err == nil {
+		m.retriableErrorsMap[volumeId] = time.Time{}
 		subregistry.Counter("Success").Inc()
 	} else {
 		if isRetriableError(err) {
-			subregistry.Counter("RetriableErrors").Inc()
+			if len(volumeId) != 0 {
+				if m.retriableErrorsMap[volumeId].IsZero() {
+					m.retriableErrorsMap[volumeId] = timestamp
+				}
+				if m.retriableErrorsMap[volumeId].Before(timestamp.
+					Add(-m.cfg.RetriableErrorsDurationThreshold)) {
+					subregistry.Counter("RetriableErrors").Inc()
+				}
+			} else {
+				subregistry.Counter("RetriableErrors").Inc()
+			}
 		} else {
 			subregistry.Counter("Errors").Inc()
 		}
@@ -138,5 +153,6 @@ func NewMonitoring(
 		cfg,
 		registry,
 		handler,
+		make(map[string]time.Time),
 	}
 }
