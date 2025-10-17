@@ -45,6 +45,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
             Config->GetMaxBackground());
         features->SetMaxFuseLoopThreads(
             Config->GetMaxFuseLoopThreads());
+        features->SetZeroCopyWriteEnabled(Config->GetZeroCopyWriteEnabled());
         return response;
     };
 
