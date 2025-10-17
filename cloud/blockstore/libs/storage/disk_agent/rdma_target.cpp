@@ -43,7 +43,6 @@ enum class ECheckRange
 {
     NotOverlapped,
     DelayRequest,
-    ResponseAlready,
     ResponseRejected,
 };
 
@@ -429,27 +428,20 @@ private:
             return ECheckRange::DelayRequest;
         }
 
-        auto result = OverlapStatusToResult(
+        const bool overlapped = IsOverlapped(
             synchronizedData.RecentBlocksTracker.CheckRecorded(
                 requestDetails.VolumeRequestId,
                 requestDetails.Range,
                 overlapDetails));
-        if (result != S_OK) {
-            if (result == E_REJECTED) {
-                synchronizedData.OldRequestCounters.Rejected->Inc();
-            } else {
-                Y_DEBUG_ABORT_UNLESS(false);
-            }
+        if (overlapped) {
+            synchronizedData.OldRequestCounters.Rejected->Inc();
 
             if (!RejectLateRequests) {
                 // Monitoring mode. Don't change the behavior.
                 return ECheckRange::NotOverlapped;
             }
 
-            if (result == E_REJECTED) {
-                return ECheckRange::ResponseRejected;
-            }
-            return ECheckRange::ResponseAlready;
+            return ECheckRange::ResponseRejected;
         }
 
         // Here we add request to inflight list. Caller should execute request
@@ -476,12 +468,6 @@ private:
             switch (checkResult) {
                 case ECheckRange::NotOverlapped:
                     readyToExecute.push_back(std::move(postponedRequest));
-                    return true;
-                case ECheckRange::ResponseAlready:
-                    FinishHandleRequest(
-                        postponedRequest,
-                        S_ALREADY,
-                        overlapDetails);
                     return true;
                 case ECheckRange::ResponseRejected:
                     FinishHandleRequest(
@@ -731,8 +717,6 @@ private:
             switch (checkResult) {
                 case ECheckRange::NotOverlapped:
                     break;
-                case ECheckRange::ResponseAlready:
-                    return TErrorResponse(S_ALREADY, overlapDetails);
                 case ECheckRange::ResponseRejected:
                     return TErrorResponse(E_REJECTED, overlapDetails);
                 case ECheckRange::DelayRequest: {
@@ -859,7 +843,6 @@ private:
             switch (checkResult) {
                 case ECheckRange::NotOverlapped:
                     break;
-                case ECheckRange::ResponseAlready:
                 case ECheckRange::ResponseRejected:
                     return TErrorResponse(E_REJECTED, overlapDetails);
                 case ECheckRange::DelayRequest: {
@@ -980,8 +963,6 @@ private:
             switch (checkResult) {
                 case ECheckRange::NotOverlapped:
                     break;
-                case ECheckRange::ResponseAlready:
-                    return TErrorResponse(S_ALREADY, overlapDetails);
                 case ECheckRange::ResponseRejected:
                     return TErrorResponse(E_REJECTED, overlapDetails);
                 case ECheckRange::DelayRequest: {

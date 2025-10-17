@@ -113,7 +113,6 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
     if (AssignVolumeRequestId) {
         request->Record.SetVolumeRequestId(
             Request.GetHeaders().GetVolumeRequestId());
-        request->Record.SetMultideviceRequest(false);
     }
 
     if (auto checksum = CombineChecksums(Request.GetChecksums());

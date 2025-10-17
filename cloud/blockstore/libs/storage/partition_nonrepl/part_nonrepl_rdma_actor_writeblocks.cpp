@@ -37,7 +37,6 @@ NProto::TWriteDeviceBlocksRequest CreateWriteDeviceBlocksRequest(
     const NProto::TWriteBlocksRequest& sourceRequest,
     const TNonreplicatedPartitionConfigPtr& partConfig,
     bool assignIdToWriteAndZeroRequestsEnabled,
-    bool multideviceRequest,
     ui32 requestIndex)
 {
     NProto::TWriteDeviceBlocksRequest request;
@@ -48,7 +47,6 @@ NProto::TWriteDeviceBlocksRequest CreateWriteDeviceBlocksRequest(
     if (assignIdToWriteAndZeroRequestsEnabled) {
         request.SetVolumeRequestId(
             sourceRequest.GetHeaders().GetVolumeRequestId());
-        request.SetMultideviceRequest(multideviceRequest);
     }
 
     if (requestIndex < sourceRequest.ChecksumsSize()) {
@@ -237,7 +235,6 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             msg->Record,
             PartConfig,
             AssignIdToWriteAndZeroRequestsEnabled,
-            deviceRequests.size() > 1,
             i);
 
         auto context = std::make_unique<TDeviceRequestRdmaContext>();
@@ -403,7 +400,6 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             msg->Record,
             PartConfig,
             AssignIdToWriteAndZeroRequestsEnabled,
-            deviceRequests.size() > 1,
             i);
 
         auto context = std::make_unique<TDeviceRequestRdmaContext>();

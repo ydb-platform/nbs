@@ -95,7 +95,6 @@ void TDiskAgentZeroActor::SendRequest(const TActorContext& ctx)
         if (AssignVolumeRequestId) {
             request->Record.SetVolumeRequestId(
                 Request.GetHeaders().GetVolumeRequestId());
-            request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
         }
 
         auto event = std::make_unique<IEventHandle>(
