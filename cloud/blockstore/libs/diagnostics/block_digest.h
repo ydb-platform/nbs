@@ -16,6 +16,10 @@ struct IBlockDigestGenerator
         ui64 blockIndex,
         TBlockDataRef blockContent) const = 0;
 
+    // calculate checksum independently of ShouldProcess result
+    virtual TMaybe<ui32> ComputeDigestForce(
+        TBlockDataRef blockContent) const = 0;
+
     virtual bool ShouldProcess(
         ui64 blockIndex,
         ui32 blockCount,

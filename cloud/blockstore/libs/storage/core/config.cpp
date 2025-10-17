@@ -164,6 +164,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(LinkedDiskFillBandwidth,                                               \
         TVector<NProto::TLinkedDiskFillBandwidth>,                             \
         {}                                                                    )\
+    xxx(ComputeDigestForEveryBlockOnCompaction,     bool,            false    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
