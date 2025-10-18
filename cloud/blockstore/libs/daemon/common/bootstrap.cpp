@@ -352,6 +352,8 @@ void TBootstrapBase::Init()
 
     STORAGE_INFO("StorageProvider initialized");
 
+    const NProto::TChecksumFlags checksumFlags =
+        Configs->ServerConfig->GetChecksumFlags();
     TSessionManagerOptions sessionManagerOptions;
     sessionManagerOptions.StrictContractValidation
         = Configs->ServerConfig->GetStrictContractValidation();
@@ -362,8 +364,11 @@ void TBootstrapBase::Init()
     sessionManagerOptions.DisableClientThrottler =
         Configs->ServerConfig->GetDisableClientThrottlers();
     sessionManagerOptions.EnableDataIntegrityClient =
-        Configs->ServerConfig->GetChecksumFlags()
-            .GetEnableDataIntegrityClient();
+        checksumFlags.GetEnableDataIntegrityClient();
+    for (auto mediaKind: checksumFlags.GetMediaKindsToValidateDataIntegrity()) {
+        sessionManagerOptions.MediaKindsToValidateDataIntegrity.push_back(
+            static_cast<NProto::EStorageMediaKind>(mediaKind));
+    }
 
     if (!KmsKeyProvider) {
         KmsKeyProvider = CreateKmsKeyProviderStub();
@@ -424,7 +429,7 @@ void TBootstrapBase::Init()
             NbdServer,
             Logging,
             ServerStats,
-            Configs->ServerConfig->GetChecksumFlags(),
+            checksumFlags,
             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
             NbdErrorHandlerMap);
 
@@ -454,7 +459,7 @@ void TBootstrapBase::Init()
 
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer,
-            Configs->ServerConfig->GetChecksumFlags(),
+            checksumFlags,
             Configs->ServerConfig->GetVhostDiscardEnabled(),
             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
             Configs->ServerConfig->GetVhostOptimalIoSize());

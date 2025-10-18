@@ -6,13 +6,16 @@
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/protobuf/json/proto2json.h>
 
+#include <util/generic/scope.h>
 #include <util/generic/string.h>
 #include <util/generic/utility.h>
 #include <util/generic/vector.h>
@@ -32,7 +35,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-TVector<NProto::TChecksum> CalculateChecksumsForWriteRequest(
+[[nodiscard]] TVector<NProto::TChecksum> CalculateChecksumsForWriteRequest(
     const T& buffers,
     ui64 startIndex,
     ui32 blockSize)
@@ -74,21 +77,142 @@ TVector<NProto::TChecksum> CalculateChecksumsForWriteRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestCounters
+TStorageBuffer AllocateStorageBuffer(IBlockStore& client, ui32 bytesCount)
 {
-    TDynamicCounters::TCounterPtr ReadRequests;
-    TDynamicCounters::TCounterPtr WriteRequests;
-    TDynamicCounters::TCounterPtr ReadChecksumMismatch;
-    TDynamicCounters::TCounterPtr WriteChecksumMismatch;
+    auto buffer = client.AllocateBuffer(bytesCount);
+
+    if (!buffer) {
+        buffer = std::shared_ptr<char>(
+            new char[bytesCount],
+            std::default_delete<char[]>());
+    }
+    return buffer;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TStatCounters
+{
+    struct TRequestCounters
+    {
+        TDynamicCounters::TCounterPtr Count;
+        TDynamicCounters::TCounterPtr Mismatches;
+
+        void Register(TDynamicCounters& counters)
+        {
+            Count = counters.GetCounter("Count", /*derivative=*/true);
+            Mismatches = counters.GetCounter("Mismatches", /*derivative=*/true);
+        }
+    };
+
+    struct TValidationCounters
+    {
+        TRequestCounters ReadBlocksLocal;
+        TRequestCounters WriteBlocksLocal;
+        TDynamicCounters::TCounterPtr Endpoints;
+
+        void Register(TDynamicCounters& counters)
+        {
+            ReadBlocksLocal.Register(
+                *counters.GetSubgroup("request", "ReadBlocksLocal"));
+            WriteBlocksLocal.Register(
+                *counters.GetSubgroup("request", "WriteBlocksLocal"));
+            Endpoints = counters.GetCounter("Endpoints", /*derivative=*/false);
+        }
+    };
+
+    TValidationCounters CopiedValidationModeCounters;
+    TValidationCounters DirectValidationModeCounters;
+    // Validation mode doesn't affect non-local requests.
+    TRequestCounters ReadBlocks;
+    TRequestCounters WriteBlocks;
 
     void Register(TDynamicCounters& counters)
     {
-        ReadRequests = counters.GetCounter("ReadRequests", true);
-        WriteRequests = counters.GetCounter("WriteRequests", true);
-        ReadChecksumMismatch =
-            counters.GetCounter("ReadChecksumMismatch", true);
-        WriteChecksumMismatch =
-            counters.GetCounter("WriteChecksumMismatch", true);
+        CopiedValidationModeCounters.Register(
+            *counters.GetSubgroup("validation_mode", "copied"));
+        DirectValidationModeCounters.Register(
+            *counters.GetSubgroup("validation_mode", "direct"));
+        ReadBlocks.Register(*counters.GetSubgroup("request", "ReadBlocks"));
+        WriteBlocks.Register(*counters.GetSubgroup("request", "WriteBlocks"));
+    }
+
+    void ReadBlocksCountIncrease()
+    {
+        ReadBlocks.Count->Inc();
+    }
+
+    void ReadBlocksLocalCountIncrease(bool shouldCopy)
+    {
+        if (shouldCopy) {
+            CopiedValidationModeCounters.ReadBlocksLocal.Count->Inc();
+        } else {
+            DirectValidationModeCounters.ReadBlocksLocal.Count->Inc();
+        }
+    }
+
+    void WriteBlocksCountIncrease()
+    {
+        WriteBlocks.Count->Inc();
+    }
+
+    void WriteBlocksLocalCountIncrease(bool shouldCopy)
+    {
+        if (shouldCopy) {
+            CopiedValidationModeCounters.WriteBlocksLocal.Count->Inc();
+        } else {
+            DirectValidationModeCounters.WriteBlocksLocal.Count->Inc();
+        }
+    }
+
+    void ReadBlocksMismatchIncrease()
+    {
+        ReadBlocks.Mismatches->Inc();
+    }
+
+    void ReadBlocksLocalMismatchIncrease(bool shouldCopy)
+    {
+        if (shouldCopy) {
+            CopiedValidationModeCounters.ReadBlocksLocal.Mismatches->Inc();
+        } else {
+            DirectValidationModeCounters.ReadBlocksLocal.Mismatches->Inc();
+        }
+    }
+
+    void WriteBlocksMismatchIncrease()
+    {
+        WriteBlocks.Mismatches->Inc();
+    }
+
+    void WriteBlocksLocalMismatchIncrease(bool shouldCopy)
+    {
+        if (shouldCopy) {
+            CopiedValidationModeCounters.WriteBlocksLocal.Mismatches->Inc();
+        } else {
+            DirectValidationModeCounters.WriteBlocksLocal.Mismatches->Inc();
+        }
+    }
+
+    void EndpointsIncrease(bool shouldCopy)
+    {
+        if (shouldCopy) {
+            CopiedValidationModeCounters.Endpoints->Inc();
+        } else {
+            DirectValidationModeCounters.Endpoints->Inc();
+        }
+    }
+
+    void EndpointsDecrease(bool shouldCopy)
+    {
+        if (shouldCopy) {
+            Y_DEBUG_ABORT_UNLESS(
+                CopiedValidationModeCounters.Endpoints->Val() > 0);
+            CopiedValidationModeCounters.Endpoints->Dec();
+        } else {
+            Y_DEBUG_ABORT_UNLESS(
+                DirectValidationModeCounters.Endpoints->Val() > 0);
+            DirectValidationModeCounters.Endpoints->Dec();
+        }
     }
 };
 
@@ -102,17 +226,25 @@ private:
     TLog Log;
 
     const IBlockStorePtr Client;
+    const TString DiskId;
     const ui32 BlockSize;
 
+    // Indicates whether a checksum mismatch has been detected for a given disk.
+    std::atomic_flag CopiedDataValidationEnabled;
+
     TDynamicCountersPtr Counters;
-    TRequestCounters RequestCounters;
+    TStatCounters StatCounters;
 
 public:
     TDataIntegrityClient(
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         IBlockStorePtr client,
-        ui32 blockSize);
+        TString diskId,
+        ui32 blockSize,
+        bool copiedDataValidationEnabled);
+
+    ~TDataIntegrityClient() override;
 
     void Start() override
     {
@@ -136,28 +268,14 @@ public:
     {                                                                          \
         TFuture<NProto::T##name##Response> response;                           \
         if (!HandleRequest(callContext, request, response)) {                  \
-            response = Client->name(                                           \
-                std::move(callContext), std::move(request));                   \
+            response =                                                         \
+                Client->name(std::move(callContext), std::move(request));      \
         }                                                                      \
         return response;                                                       \
     }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        TFuture<NProto::T##name##Response> response;                           \
-        if (!HandleRequest(callContext, request, response)) {                  \
-            response = Client->name(                                           \
-                std::move(callContext), std::move(request));                   \
-        }                                                                      \
-        return response;                                                       \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
+    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
 #undef BLOCKSTORE_IMPLEMENT_METHOD
 
@@ -193,6 +311,8 @@ private:
         Y_UNUSED(response);
         return false;
     }
+
+    void EnableCopyingForVolume();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -201,16 +321,28 @@ TDataIntegrityClient::TDataIntegrityClient(
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         IBlockStorePtr client,
-        ui32 blockSize)
+        TString diskId,
+        ui32 blockSize,
+        bool copiedDataValidationEnabled)
     : Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
     , Client(std::move(client))
+    , DiskId(std::move(diskId))
     , BlockSize(blockSize)
+    , CopiedDataValidationEnabled(copiedDataValidationEnabled)
 {
     auto counters = monitoring->GetCounters();
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
     Counters = rootGroup->GetSubgroup("component", "service")
                    ->GetSubgroup("subcomponent", "data_integrity");
-    RequestCounters.Register(*Counters);
+    StatCounters.Register(*Counters);
+    StatCounters.EndpointsIncrease(CopiedDataValidationEnabled.test());
+}
+
+TDataIntegrityClient::~TDataIntegrityClient()
+{
+    // The destruction of this object should happen after drain. So we should
+    // not worry about changing counters non-atomically.
+    StatCounters.EndpointsDecrease(CopiedDataValidationEnabled.test());
 }
 
 bool TDataIntegrityClient::HandleRequest(
@@ -218,7 +350,7 @@ bool TDataIntegrityClient::HandleRequest(
     std::shared_ptr<NProto::TReadBlocksRequest> request,
     TFuture<NProto::TReadBlocksResponse>& response)
 {
-    RequestCounters.ReadRequests->Inc();
+    StatCounters.ReadBlocksCountIncrease();
 
     auto result =
         Client->ReadBlocks(std::move(callContext), std::move(request));
@@ -245,17 +377,21 @@ bool TDataIntegrityClient::HandleRequest(
             const auto& checksum = response.GetChecksum();
 
             if (!MessageDifferencer::Equals(checksum, currentChecksum)) {
-                self->RequestCounters.ReadChecksumMismatch->Inc();
+                self->StatCounters.ReadBlocksMismatchIncrease();
+
+                // Calling EnableCopyingForVolume() is pointless here, as the
+                // client could not interfere with the data.
 
                 ui32 flags = 0;
                 SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+                SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
                 return TErrorResponse{MakeError(
                     E_REJECTED,
                     TStringBuilder()
                         << "Data integrity violation. Current checksum: "
-                        << currentChecksum.ShortUtf8DebugString()
+                        << currentChecksum.ShortUtf8DebugString().Quote()
                         << "; Incoming checksum: "
-                        << checksum.ShortUtf8DebugString(),
+                        << checksum.ShortUtf8DebugString().Quote(),
                     flags)};
             }
 
@@ -270,57 +406,106 @@ bool TDataIntegrityClient::HandleRequest(
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request,
     TFuture<NProto::TReadBlocksLocalResponse>& response)
 {
-    RequestCounters.ReadRequests->Inc();
+    const bool shouldCopy = CopiedDataValidationEnabled.test();
+    StatCounters.ReadBlocksLocalCountIncrease(shouldCopy);
 
-    auto sgList = request->Sglist;
-    auto result =
-        Client->ReadBlocksLocal(std::move(callContext), std::move(request));
-    response = result.Apply(
-        [guardedSgList = std::move(sgList), result, weakPtr = weak_from_this()](
-            const auto&) mutable -> NProto::TReadBlocksLocalResponse
+    const ui32 requestByteCount =
+        request->GetBlocksCount() * request->GetBlockSize();
+    TStorageBuffer copyBuffer;
+    TGuardedSgList copyGuardedSgList;
+    auto requestCopy =
+        std::make_shared<NProto::TReadBlocksLocalRequest>(*request);
+    if (shouldCopy) {
+        copyBuffer = AllocateStorageBuffer(*Client, requestByteCount);
+        auto sgListOrError =
+            SgListNormalize({copyBuffer.get(), requestByteCount}, BlockSize);
+        if (HasError(sgListOrError)) {
+            response = MakeFuture<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(sgListOrError.GetError()));
+            return true;
+        }
+        copyGuardedSgList = TGuardedSgList(sgListOrError.ExtractResult());
+        requestCopy->Sglist = copyGuardedSgList.CreateDepender();
+    }
+
+    auto responseHandler =
+        [shouldCopy,
+         requestByteCount,
+         weakPtr = weak_from_this(),
+         request = std::move(request),
+         copyGuardedSgList = std::move(copyGuardedSgList),
+         copyBuffer = std::move(copyBuffer)](
+            TFuture<NProto::TReadBlocksLocalResponse> result) mutable
+        -> NProto::TReadBlocksLocalResponse
+    {
+        Y_DEFER
         {
-            NProto::TReadBlocksLocalResponse response = result.ExtractValue();
-            if (HasError(response)) {
-                return response;
+            if (!copyGuardedSgList.Empty()) {
+                copyGuardedSgList.Close();
+                copyBuffer.reset();
             }
+        };
 
-            auto self = weakPtr.lock();
-            if (!self) {
-                return response;
-            }
-
-            if (!response.HasChecksum()) {
-                return response;
-            }
-
-            auto guard = guardedSgList.Acquire();
-            if (!guard) {
-                return TErrorResponse{MakeError(
-                    E_CANCELLED,
-                    "failed to acquire sglist in DataIntegrityClient")};
-            }
-
-            const auto& sgList = guard.Get();
-            const auto currentChecksum = CalculateChecksum(sgList);
-            const auto& checksum = response.GetChecksum();
-
-            if (!MessageDifferencer::Equals(checksum, currentChecksum)) {
-                self->RequestCounters.ReadChecksumMismatch->Inc();
-
-                ui32 flags = 0;
-                SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
-                return TErrorResponse{MakeError(
-                    E_REJECTED,
-                    TStringBuilder()
-                        << "Data integrity violation. Current checksum: "
-                        << currentChecksum.ShortUtf8DebugString()
-                        << "; Incoming checksum: "
-                        << checksum.ShortUtf8DebugString(),
-                    flags)};
-            }
-
+        NProto::TReadBlocksLocalResponse response{result.ExtractValue()};
+        if (HasError(response)) {
             return response;
-        });
+        }
+
+        auto guard = request->Sglist.Acquire();
+        if (!guard) {
+            return TErrorResponse{MakeError(
+                E_CANCELLED,
+                "failed to acquire sglist in DataIntegrityClient")};
+        }
+
+        const TSgList* sgList = nullptr;
+        if (shouldCopy) {
+            // Should be safe, since we are the only one who can close the
+            // sglist.
+            sgList = &copyGuardedSgList.Acquire().Get();
+            // Once the sglist is closed, no one should change the contents of
+            // the buffer. Now it is safe to copy and calculate the checksum.
+            copyGuardedSgList.Close();
+
+            const size_t bytesCopied = SgListCopy(*sgList, guard.Get());
+            Y_DEBUG_ABORT_UNLESS(requestByteCount == bytesCopied);
+        } else {
+            sgList = &guard.Get();
+        }
+
+        auto self = weakPtr.lock();
+        if (!response.HasChecksum() || !self) {
+            return response;
+        }
+
+        NProto::TChecksum currentChecksum = CalculateChecksum(*sgList);
+        Y_DEBUG_ABORT_UNLESS(
+            requestByteCount == currentChecksum.GetByteCount());
+
+        const auto& checksum = response.GetChecksum();
+        if (!MessageDifferencer::Equals(checksum, currentChecksum)) {
+            self->StatCounters.ReadBlocksLocalMismatchIncrease(shouldCopy);
+            self->EnableCopyingForVolume();
+
+            ui32 flags = 0;
+            SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+            SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
+            return TErrorResponse{MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Data integrity violation. Current checksum: "
+                    << currentChecksum.ShortUtf8DebugString().Quote()
+                    << "; Incoming checksum: "
+                    << checksum.ShortUtf8DebugString().Quote(),
+                flags)};
+        }
+
+        return response;
+    };
+
+    response =
+        Client->ReadBlocksLocal(std::move(callContext), std::move(requestCopy))
+            .Apply(responseHandler);
 
     return true;
 }
@@ -330,12 +515,12 @@ bool TDataIntegrityClient::HandleRequest(
     std::shared_ptr<NProto::TWriteBlocksRequest> request,
     TFuture<NProto::TWriteBlocksResponse>& response)
 {
-    RequestCounters.WriteRequests->Inc();
+    StatCounters.WriteBlocksCountIncrease();
 
     auto checksums = CalculateChecksumsForWriteRequest(
         request->GetBlocks().GetBuffers(),
         request->GetStartIndex(),
-        BlockSize);
+        request->GetBlockSize());
     for (auto& checksum: checksums) {
         *request->AddChecksums() = std::move(checksum);
     }
@@ -356,7 +541,10 @@ bool TDataIntegrityClient::HandleRequest(
                                                error.GetFlags(),
                                                NProto::EF_CHECKSUM_MISMATCH))
                     {
-                        self->RequestCounters.WriteChecksumMismatch->Inc();
+                        // Calling EnableCopyingForVolume() is pointless here,
+                        // as the client could not interfere with the data.
+
+                        self->StatCounters.WriteBlocksMismatchIncrease();
                     }
 
                     return response.GetValue();
@@ -369,7 +557,8 @@ bool TDataIntegrityClient::HandleRequest(
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request,
     TFuture<NProto::TWriteBlocksLocalResponse>& response)
 {
-    RequestCounters.WriteRequests->Inc();
+    const bool shouldCopy = CopiedDataValidationEnabled.test();
+    StatCounters.WriteBlocksLocalCountIncrease(shouldCopy);
 
     auto guard = request->Sglist.Acquire();
     if (!guard) {
@@ -380,37 +569,123 @@ bool TDataIntegrityClient::HandleRequest(
         return true;
     }
 
-    const auto& sgList = guard.Get();
-    auto checksums = CalculateChecksumsForWriteRequest(
-        sgList,
-        request->GetStartIndex(),
-        BlockSize);
-    for (auto& checksum: checksums) {
-        *request->AddChecksums() = std::move(checksum);
+    const ui32 requestByteCount =
+        request->BlocksCount * request->GetBlockSize();
+    TStorageBuffer copyBuffer;
+    TGuardedSgList copyGuardedSgList;
+    std::shared_ptr<NProto::TWriteBlocksLocalRequest> requestCopy;
+    if (shouldCopy) {
+        copyBuffer = AllocateStorageBuffer(*Client, requestByteCount);
+        auto sgListOrError =
+            SgListNormalize({copyBuffer.get(), requestByteCount}, BlockSize);
+        if (HasError(sgListOrError)) {
+            response = MakeFuture<NProto::TWriteBlocksLocalResponse>(
+                TErrorResponse(sgListOrError.GetError()));
+            return true;
+        }
+        TSgList copySgList = sgListOrError.ExtractResult();
+
+        const size_t bytesCopied = SgListCopy(guard.Get(), copySgList);
+        Y_DEBUG_ABORT_UNLESS(requestByteCount == bytesCopied);
+
+        copyGuardedSgList = TGuardedSgList(std::move(copySgList));
+        requestCopy =
+            std::make_shared<NProto::TWriteBlocksLocalRequest>(*request);
+        requestCopy->Sglist = copyGuardedSgList.CreateDepender();
+    } else {
+        requestCopy = std::move(request);
     }
 
+    // Safe to Acquire. Either we own the sgList or the guard already exists.
+    TVector<NProto::TChecksum> checksums = CalculateChecksumsForWriteRequest(
+        requestCopy->Sglist.Acquire().Get(),
+        requestCopy->GetStartIndex(),
+        requestCopy->GetBlockSize());
+    Y_DEBUG_ABORT_UNLESS(requestCopy->GetChecksums().empty());
+    for (auto& checksum: checksums) {
+        *requestCopy->AddChecksums() = std::move(checksum);
+    }
+
+    auto responseHandler =
+        [shouldCopy,
+         weakPtr = weak_from_this(),
+         copyBuffer = std::move(copyBuffer),
+         copyGuardedSgList = std::move(copyGuardedSgList)](
+            TFuture<NProto::TWriteBlocksResponse> result) mutable
+    {
+        if (!copyGuardedSgList.Empty()) {
+            copyGuardedSgList.Close();
+            copyBuffer.reset();
+        }
+
+        auto response = result.ExtractValue();
+        auto self = weakPtr.lock();
+        if (!self) {
+            return response;
+        }
+
+        auto& error = *response.MutableError();
+        if (HasError(error) &&
+            HasProtoFlag(error.GetFlags(), NProto::EF_CHECKSUM_MISMATCH))
+        {
+            self->StatCounters.WriteBlocksLocalMismatchIncrease(shouldCopy);
+            self->EnableCopyingForVolume();
+            SetErrorProtoFlag(error, NProto::EF_INSTANT_RETRIABLE);
+        }
+
+        return response;
+    };
+
     response =
-        Client->WriteBlocksLocal(std::move(callContext), std::move(request))
-            .Apply(
-                [weakPtr = weak_from_this()](
-                    const TFuture<NProto::TWriteBlocksLocalResponse>& response)
-                {
-                    auto self = weakPtr.lock();
-                    if (!self) {
-                        return response.GetValue();
-                    }
+        Client->WriteBlocksLocal(std::move(callContext), std::move(requestCopy))
+            .Apply(responseHandler);
 
-                    const auto& error = response.GetValue().GetError();
-                    if (HasError(error) && HasProtoFlag(
-                                               error.GetFlags(),
-                                               NProto::EF_CHECKSUM_MISMATCH))
-                    {
-                        self->RequestCounters.WriteChecksumMismatch->Inc();
-                    }
-
-                    return response.GetValue();
-                });
     return true;
+}
+
+void TDataIntegrityClient::EnableCopyingForVolume()
+{
+    if (CopiedDataValidationEnabled.test_and_set()) {
+        return;
+    }
+    STORAGE_WARN(
+        "Enabling data integrity mode for disk %s",
+        DiskId.Quote().c_str());
+
+    StatCounters.EndpointsDecrease(/*shouldCopy=*/false);
+    StatCounters.EndpointsIncrease(/*shouldCopy=*/true);
+
+    auto callContext = MakeIntrusive<TCallContext>(CreateRequestId());
+    auto request = std::make_shared<NProto::TExecuteActionRequest>();
+    request->SetAction("modifytags");
+
+    NPrivateProto::TModifyTagsRequest input;
+    input.SetDiskId(DiskId);
+    *input.AddTagsToAdd() = DataIntegrityViolationDetectedTagName;
+    request->SetInput(NProtobufJson::Proto2Json(input));
+    auto future = Client->ExecuteAction(callContext, std::move(request));
+    future.Subscribe(
+        [future, weakPtr = weak_from_this()](
+            const TFuture<NProto::TExecuteActionResponse>&)
+        {
+            auto self = weakPtr.lock();
+            if (!self) {
+                return;
+            }
+
+            const auto& error = future.GetValue().GetError();
+            if (HasError(error)) {
+                auto& Log = self->Log;
+                STORAGE_ERROR(
+                    "[%s] Failed to add tag after data integrity violation: %s",
+                    self->DiskId.c_str(),
+                    FormatError(error).c_str());
+
+                // The errors here are probably rare and not critical. So it's
+                // ok to not retry. Retrying might be bad in case of some
+                // SchemeShard malfunctions, as they might induce a large load.
+            }
+        });
 }
 
 }   // namespace
@@ -421,13 +696,20 @@ IBlockStorePtr CreateDataIntegrityClient(
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     IBlockStorePtr client,
-    ui32 blockSize)
+    const NProto::TVolume& volume)
 {
+    // "IntermediateWriteBufferTagName" indicates that user modfies the buffer
+    // during writes. We should also enable copying in this case.
+    const bool copiedDataValidationEnabled =
+        volume.GetTags().contains(DataIntegrityViolationDetectedTagName) ||
+        volume.GetTags().contains(IntermediateWriteBufferTagName);
     return std::make_unique<TDataIntegrityClient>(
         std::move(logging),
         std::move(monitoring),
         std::move(client),
-        blockSize);
+        volume.GetDiskId(),
+        volume.GetBlockSize(),
+        copiedDataValidationEnabled);
 }
 
 }   // namespace NCloud::NBlockStore::NClient

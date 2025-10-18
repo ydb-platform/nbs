@@ -6,6 +6,8 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
+#include <cloud/blockstore/private/api/protos/volume.pb.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/protobuf/json/proto2json.h>
@@ -116,6 +118,11 @@ int TControlPlaneActionRunner::Run(
             case NProto::TActionGraph::TControlPlaneAction::kReplaceDevicesRequest:
             {
                 return RunReplaceDevicesRequest(action);
+            }
+
+            case NProto::TActionGraph::TControlPlaneAction::kModifyTagsRequest:
+            {
+                return RunModifyTagsRequest(action);
             }
 
             default: Y_ABORT_UNLESS(0);
@@ -682,6 +689,39 @@ int TControlPlaneActionRunner::RunReplaceDevicesRequest(
         NProtobufJson::Proto2Json(response, log, {});
         STORAGE_INFO("Replace device result: " << log);
     }
+
+    return 0;
+}
+
+int TControlPlaneActionRunner::RunModifyTagsRequest(
+    const NProto::TActionGraph::TControlPlaneAction& action)
+{
+    const auto& request = action.GetModifyTagsRequest();
+    const ui64 requestId = GetRequestId(request);
+
+    NPrivateProto::TModifyTagsRequest modifyTagsRequest;
+    modifyTagsRequest.SetDiskId(request.GetDiskId());
+    for (const auto& tag: request.GetTagsToAdd()) {
+        modifyTagsRequest.AddTagsToAdd(tag);
+    }
+    for (const auto& tag: request.GetTagsToRemove()) {
+        modifyTagsRequest.AddTagsToRemove(tag);
+    }
+
+    NProto::TExecuteActionRequest executeAction;
+    executeAction.SetAction("modifytags");
+    executeAction.SetInput(NProtobufJson::Proto2Json(modifyTagsRequest));
+
+    auto response = WaitForCompletion(
+        "ExecuteAction",
+        Client->ExecuteAction(
+            MakeIntrusive<TCallContext>(requestId),
+            std::make_shared<NProto::TExecuteActionRequest>(executeAction)),
+        {});
+
+    TString log;
+    NProtobufJson::Proto2Json(response, log, {});
+    STORAGE_INFO("ExecuteAction result: " << log);
 
     return 0;
 }

@@ -679,9 +679,9 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
                 E_REJECTED,
                 TStringBuilder()
                     << "Data integrity violation. Current checksum: "
-                    << calculatedChecksum.ShortUtf8DebugString()
+                    << calculatedChecksum.ShortUtf8DebugString().Quote()
                     << "; Incoming checksum: "
-                    << request->GetChecksums(0).ShortUtf8DebugString(),
+                    << request->GetChecksums(0).ShortUtf8DebugString().Quote(),
                 flags);
             return MakeFuture(response);
         }

@@ -2,9 +2,11 @@
 
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+#include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/media.h>
@@ -14,12 +16,17 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/protobuf/json/json2proto.h>
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
 using namespace NUnitTest;
+
+using MessageDifferencer = google::protobuf::util::MessageDifferencer;
 
 namespace {
 
@@ -59,7 +66,28 @@ void FillBlocksWithDeterministicData(TBlocksHolder& holder)
     }
 }
 
-void FillBlocksWithDeterministicData(
+void FillBlocksWithDeterministicData(const TSgList& sglist)
+{
+    ui8 value = 0;
+    for (const TBlockDataRef& buffer: sglist) {
+        for (size_t i = 0; i < buffer.Size(); ++i) {
+            const_cast<char*>(buffer.Data())[i] =
+                static_cast<char>(++value % 128);
+        }
+    }
+}
+
+void FillBlocksWithDeterministicData(NProto::TIOVector& blockList)
+{
+    ui8 value = 0;
+    for (TString& buffer: *blockList.MutableBuffers()) {
+        for (char& byte: buffer) {
+            byte = static_cast<char>(++value % 128);
+        }
+    }
+}
+
+void AppendBlocksWithDeterministicData(
     NProto::TIOVector& blockList,
     ui32 blockSize,
     ui32 blockCount)
@@ -85,8 +113,9 @@ std::shared_ptr<NProto::TWriteBlocksLocalRequest> CreateWriteBlocksLocalRequest(
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->SetDiskId(diskId);
     request->SetStartIndex(startIndex);
-    request->BlocksCount = blocksCount;
+    request->SetBlockSize(blockSize);
     request->BlockSize = blockSize;
+    request->BlocksCount = blocksCount;
 
     TSgList sglist;
     auto blocksHolder =
@@ -113,6 +142,7 @@ std::shared_ptr<NProto::TReadBlocksLocalRequest> CreateReadBlocksLocalRequest(
     request->SetDiskId(diskId);
     request->SetStartIndex(startIndex);
     request->SetBlocksCount(blocksCount);
+    request->SetBlockSize(blockSize);
     request->BlockSize = blockSize;
     request->Sglist = TGuardedSgList(std::move(sglist));
     return request;
@@ -127,6 +157,7 @@ std::shared_ptr<NProto::TWriteBlocksRequest> CreateWriteBlocksRequest(
     auto request = std::make_shared<NProto::TWriteBlocksRequest>();
     request->SetDiskId(diskId);
     request->SetStartIndex(startIndex);
+    request->SetBlockSize(blockSize);
     ResizeAndFillBlocksWithRandomData(
         *request->MutableBlocks(),
         blockSize,
@@ -165,6 +196,25 @@ struct TTestEnv
     }
 
     ~TTestEnv() = default;
+
+    IBlockStorePtr CreateDataIntegrityClient(
+        ui32 blockSize,
+        bool copiedValidationMode) const
+    {
+        NProto::TVolume volume;
+        volume.SetBlockSize(blockSize);
+        volume.SetDiskId("disk-id");
+        if (copiedValidationMode) {
+            volume.MutableTags()->insert(
+                {TString(DataIntegrityViolationDetectedTagName), ""});
+        }
+
+        return NClient::CreateDataIntegrityClient(
+            Logging,
+            Monitoring,
+            TestClient,
+            volume);
+    }
 };
 
 }   // namespace
@@ -177,17 +227,26 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
     {
         constexpr ui32 BlockSize = 4_KB;
         TTestEnv env{};
-        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
-            env.Logging,
-            env.Monitoring,
-            env.TestClient,
-            BlockSize);
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            BlockSize,
+            /*copiedValidationMode=*/false);
 
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service")
                 ->GetSubgroup("subcomponent", "data_integrity");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
+                ->GetCounter("Endpoints")
+                ->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
+                ->GetCounter("Endpoints")
+                ->Val());
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
 
@@ -214,36 +273,30 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             BlockSize,
             42,   // startIndex
             maxBlockCount);
-
-        ui8 value = 0;
-        for (auto& buffer: *request->MutableBlocks()->MutableBuffers()) {
-            for (char& byte: buffer) {
-                byte = static_cast<char>(++value % 128);
-            }
-        }
+        FillBlocksWithDeterministicData(*request->MutableBlocks());
 
         auto future = dataIntegrityClient->WriteBlocks(
             MakeIntrusive<TCallContext>(),
             request);
         auto response = future.GetValueSync();
         UNIT_ASSERT(!HasError(response.GetError()));
+        auto writeBlocksCounters =
+            dataIntegrityCounters->GetSubgroup("request", "WriteBlocks");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            dataIntegrityCounters->GetCounter("WriteRequests")->Val());
+            writeBlocksCounters->GetCounter("Count")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            dataIntegrityCounters->GetCounter("WriteChecksumMismatch")->Val());
+            writeBlocksCounters->GetCounter("Mismatches")->Val());
     }
 
     Y_UNIT_TEST(ShouldCalculateChecksumsForWriteLocalRequests)
     {
         constexpr ui32 BlockSize = 4_KB;
         TTestEnv env{};
-        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
-            env.Logging,
-            env.Monitoring,
-            env.TestClient,
-            BlockSize);
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            BlockSize,
+            /*copiedValidationMode=*/false);
 
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
@@ -277,36 +330,31 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             BlockSize,
             42,   // startIndex
             maxBlockCount);
+        FillBlocksWithDeterministicData(env.BlocksHolderList.back());
 
-        ui8 value = 0;
-        TVector<TString>& buffers = *env.BlocksHolderList[0];
-        for (TString& buffer: buffers) {
-            for (char& byte: buffer) {
-                byte = static_cast<char>(++value % 128);
-            }
-        }
         auto future = dataIntegrityClient->WriteBlocksLocal(
             MakeIntrusive<TCallContext>(),
             request);
         auto response = future.GetValueSync();
         UNIT_ASSERT(!HasError(response.GetError()));
+        auto writeBlocksLocalCounters =
+            dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
+                ->GetSubgroup("request", "WriteBlocksLocal");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            dataIntegrityCounters->GetCounter("WriteRequests")->Val());
+            writeBlocksLocalCounters->GetCounter("Count")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            dataIntegrityCounters->GetCounter("WriteChecksumMismatch")->Val());
+            writeBlocksLocalCounters->GetCounter("Mismatches")->Val());
     }
 
     Y_UNIT_TEST(ShouldCalculateChecksumsForReadRequests)
     {
         constexpr ui32 BlockSize = 4_KB;
         TTestEnv env{};
-        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
-            env.Logging,
-            env.Monitoring,
-            env.TestClient,
-            BlockSize);
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            BlockSize,
+            /*copiedValidationMode=*/false);
 
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
@@ -320,7 +368,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
         {
             NProto::TReadBlocksResponse response;
-            FillBlocksWithDeterministicData(
+            AppendBlocksWithDeterministicData(
                 *response.MutableBlocks(),
                 BlockSize,
                 request->GetBlocksCount());
@@ -342,23 +390,23 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         UNIT_ASSERT_C(
             !HasError(response.GetError()),
             TStringBuilder() << FormatError(response.GetError()));
+        auto readBlocksCounters =
+            dataIntegrityCounters->GetSubgroup("request", "ReadBlocks");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            dataIntegrityCounters->GetCounter("ReadRequests")->Val());
+            readBlocksCounters->GetCounter("Count")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            dataIntegrityCounters->GetCounter("ReadChecksumMismatch")->Val());
+            readBlocksCounters->GetCounter("Mismatches")->Val());
     }
 
     Y_UNIT_TEST(ShouldReturnErrorOnReadChecksumMismatch)
     {
         constexpr ui32 BlockSize = 4_KB;
         TTestEnv env{};
-        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
-            env.Logging,
-            env.Monitoring,
-            env.TestClient,
-            BlockSize);
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            BlockSize,
+            /*copiedValidationMode=*/false);
 
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
@@ -372,7 +420,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
         {
             NProto::TReadBlocksResponse response;
-            FillBlocksWithDeterministicData(
+            AppendBlocksWithDeterministicData(
                 *response.MutableBlocks(),
                 BlockSize,
                 request->GetBlocksCount());
@@ -398,23 +446,23 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         UNIT_ASSERT(HasProtoFlag(
             response.GetError().GetFlags(),
             NProto::EF_CHECKSUM_MISMATCH));
+        auto readBlocksCounters =
+            dataIntegrityCounters->GetSubgroup("request", "ReadBlocks");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            dataIntegrityCounters->GetCounter("ReadRequests")->Val());
+            readBlocksCounters->GetCounter("Count")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            dataIntegrityCounters->GetCounter("ReadChecksumMismatch")->Val());
+            readBlocksCounters->GetCounter("Mismatches")->Val());
     }
 
     Y_UNIT_TEST(ShouldCalculateChecksumsForReadLocalRequests)
     {
         constexpr ui32 BlockSize = 4_KB;
         TTestEnv env{};
-        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
-            env.Logging,
-            env.Monitoring,
-            env.TestClient,
-            BlockSize);
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            BlockSize,
+            /*copiedValidationMode=*/false);
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
 
@@ -427,6 +475,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         env.TestClient->ReadBlocksLocalHandler =
             [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
+            FillBlocksWithDeterministicData(request->Sglist.Acquire().Get());
             NProto::TReadBlocksLocalResponse response;
             response.MutableChecksum()->SetChecksum(675155616);
             response.MutableChecksum()->SetByteCount(
@@ -441,7 +490,6 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             BlockSize,
             42,   // startIndex
             maxBlockCount);
-        FillBlocksWithDeterministicData(env.BlocksHolderList.back());
 
         auto future = dataIntegrityClient->ReadBlocksLocal(
             MakeIntrusive<TCallContext>(),
@@ -450,22 +498,23 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         UNIT_ASSERT_C(
             !HasError(response.GetError()),
             TStringBuilder() << FormatError(response.GetError()));
+        auto readBlocksLocalCounters =
+            dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
+                ->GetSubgroup("request", "ReadBlocksLocal");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            dataIntegrityCounters->GetCounter("ReadRequests")->Val());
+            readBlocksLocalCounters->GetCounter("Count")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            dataIntegrityCounters->GetCounter("ReadChecksumMismatch")->Val());
+            readBlocksLocalCounters->GetCounter("Mismatches")->Val());
     }
 
     void ShouldCalculateCorrectAmountOfChecksumsForWriteRequests(ui32 blockSize)
     {
         TTestEnv env{};
-        auto dataIntegrityClient = NClient::CreateDataIntegrityClient(
-            env.Logging,
-            env.Monitoring,
-            env.TestClient,
-            blockSize);
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            blockSize,
+            /*copiedValidationMode=*/false);
 
         const ui32 maxBlockCount = MaxSubRequestSize / blockSize;
 
@@ -493,6 +542,9 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
             return MakeFuture(std::move(response));
         };
 
+        auto writeBlocksCounters =
+            dataIntegrityCounters->GetSubgroup("request", "WriteBlocks");
+
         {
             auto request = CreateWriteBlocksRequest(
                 env.DiskId,
@@ -507,11 +559,10 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
 
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
-                dataIntegrityCounters->GetCounter("WriteRequests")->Val());
+                writeBlocksCounters->GetCounter("Count")->Val());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                dataIntegrityCounters->GetCounter("WriteChecksumMismatch")
-                    ->Val());
+                writeBlocksCounters->GetCounter("Mismatches")->Val());
         }
 
         {
@@ -528,11 +579,10 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
 
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
-                dataIntegrityCounters->GetCounter("WriteRequests")->Val());
+                writeBlocksCounters->GetCounter("Count")->Val());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                dataIntegrityCounters->GetCounter("WriteChecksumMismatch")
-                    ->Val());
+                writeBlocksCounters->GetCounter("Mismatches")->Val());
         }
 
         {
@@ -549,11 +599,10 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
 
             UNIT_ASSERT_VALUES_EQUAL(
                 3,
-                dataIntegrityCounters->GetCounter("WriteRequests")->Val());
+                writeBlocksCounters->GetCounter("Count")->Val());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                dataIntegrityCounters->GetCounter("WriteChecksumMismatch")
-                    ->Val());
+                writeBlocksCounters->GetCounter("Mismatches")->Val());
         }
     }
 
@@ -570,6 +619,410 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
     IMPLEMENT_CHECKSUMS_AMOUNT_CHECKER_TEST(16_KB)
 
 #undef IMPLEMENT_CHECKSUMS_AMOUNT_CHECKER_TEST
+
+    Y_UNIT_TEST(ShouldEnterCopiedDataValidationModeOnStart)
+    {
+        TTestEnv env{};
+        constexpr ui32 BlockSize = 4_KB;
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            BlockSize,
+            /*copiedValidationMode=*/true);
+
+        const ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
+
+        auto dataIntegrityCounters =
+            env.Monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service")
+                ->GetSubgroup("subcomponent", "data_integrity");
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
+                ->GetCounter("Endpoints")
+                ->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
+                ->GetCounter("Endpoints")
+                ->Val());
+        auto writeBlocksLocalCounters =
+            dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
+                ->GetSubgroup("request", "WriteBlocksLocal");
+        auto readBlocksLocalCounters =
+            dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
+                ->GetSubgroup("request", "ReadBlocksLocal");
+        auto readBlocksCounters =
+            dataIntegrityCounters->GetSubgroup("request", "ReadBlocks");
+        auto writeBlocksCounters =
+            dataIntegrityCounters->GetSubgroup("request", "WriteBlocks");
+
+        env.TestClient->WriteBlocksLocalHandler =
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            const auto& checksums = request->GetChecksums();
+            UNIT_ASSERT_VALUES_EQUAL(2, checksums.size());
+            UNIT_ASSERT_VALUES_EQUAL(821937825, checksums[0].GetChecksum());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (static_cast<ui64>(maxBlockCount) - 42) * BlockSize,
+                checksums[0].GetByteCount());
+            UNIT_ASSERT_VALUES_EQUAL(3818203452, checksums[1].GetChecksum());
+            UNIT_ASSERT_VALUES_EQUAL(
+                42 * BlockSize,
+                checksums[1].GetByteCount());
+
+            auto dataChecksum =
+                CalculateChecksum(request->Sglist.Acquire().Get());
+            auto expectedChecksum = CombineChecksums(checksums);
+            UNIT_ASSERT_C(
+                MessageDifferencer::Equals(dataChecksum, expectedChecksum),
+                TStringBuilder()
+                    << "dataChecksum: " << dataChecksum.ShortUtf8DebugString()
+                    << ", expectedChecksum: "
+                    << expectedChecksum.ShortUtf8DebugString());
+
+            NProto::TWriteBlocksLocalResponse response;
+            return MakeFuture(std::move(response));
+        };
+
+        env.TestClient->ReadBlocksLocalHandler =
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            FillBlocksWithDeterministicData(request->Sglist.Acquire().Get());
+            NProto::TReadBlocksLocalResponse response;
+            response.MutableChecksum()->SetChecksum(675155616);
+            response.MutableChecksum()->SetByteCount(
+                request->GetBlocksCount() * BlockSize);
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                std::move(response));
+        };
+
+        {
+            auto request = CreateWriteBlocksLocalRequest(
+                env.BlocksHolderList,
+                env.DiskId,
+                BlockSize,
+                42,   // startIndex
+                maxBlockCount);
+            FillBlocksWithDeterministicData(env.BlocksHolderList.back());
+            auto future = dataIntegrityClient->WriteBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                request);
+            auto response = future.GetValueSync();
+            UNIT_ASSERT(!HasError(response.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                writeBlocksLocalCounters->GetCounter("Count")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                writeBlocksLocalCounters->GetCounter("Mismatches")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                writeBlocksCounters->GetCounter("Count")->Val());
+        }
+
+        {
+            auto request = CreateReadBlocksLocalRequest(
+                env.BlocksHolderList,
+                env.DiskId,
+                BlockSize,
+                42,   // startIndex
+                maxBlockCount);
+            auto future = dataIntegrityClient->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                request);
+            auto response = future.GetValueSync();
+            UNIT_ASSERT(!HasError(response.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                readBlocksLocalCounters->GetCounter("Count")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                readBlocksLocalCounters->GetCounter("Mismatches")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                readBlocksCounters->GetCounter("Count")->Val());
+
+            auto dataChecksum =
+                CalculateChecksum(request->Sglist.Acquire().Get());
+            UNIT_ASSERT_C(
+                MessageDifferencer::Equals(
+                    dataChecksum,
+                    response.GetChecksum()),
+                TStringBuilder()
+                    << "dataChecksum: " << dataChecksum.ShortUtf8DebugString()
+                    << ", expectedChecksum: "
+                    << response.GetChecksum().ShortUtf8DebugString());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTransitionToCopiedValidationModeOnChecksumMismatch)
+    {
+        TTestEnv env{};
+        constexpr ui32 BlockSize = 4_KB;
+        auto dataIntegrityClient = env.CreateDataIntegrityClient(
+            BlockSize,
+            /*copiedValidationMode=*/false);
+
+        const ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
+
+        auto dataIntegrityCounters =
+            env.Monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service")
+                ->GetSubgroup("subcomponent", "data_integrity");
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
+                ->GetCounter("Endpoints")
+                ->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
+                ->GetCounter("Endpoints")
+                ->Val());
+        auto writeBlocksLocalCounters =
+            dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
+                ->GetSubgroup("request", "WriteBlocksLocal");
+        auto readBlocksLocalCounters =
+            dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
+                ->GetSubgroup("request", "ReadBlocksLocal");
+        auto readBlocksCounters =
+            dataIntegrityCounters->GetSubgroup("request", "ReadBlocks");
+        auto writeBlocksCounters =
+            dataIntegrityCounters->GetSubgroup("request", "WriteBlocks");
+
+        // Handle read local request with checksum mismatch.
+        env.TestClient->ReadBlocksLocalHandler =
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            FillBlocksWithDeterministicData(request->Sglist.Acquire().Get());
+            NProto::TReadBlocksLocalResponse response;
+            response.MutableChecksum()->SetChecksum(0xbeef);
+            response.MutableChecksum()->SetByteCount(
+                static_cast<ui64>(request->GetBlocksCount()) * BlockSize);
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                std::move(response));
+        };
+
+        env.TestClient->ExecuteActionHandler =
+            [&](std::shared_ptr<NProto::TExecuteActionRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL("modifytags", request->GetAction());
+            NPrivateProto::TModifyTagsRequest input;
+            NProtobufJson::Json2Proto(request->GetInput(), input);
+            UNIT_ASSERT_VALUES_EQUAL(env.DiskId, input.GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(1, input.TagsToAddSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                DataIntegrityViolationDetectedTagName,
+                input.GetTagsToAdd(0));
+            return MakeFuture<NProto::TExecuteActionResponse>();
+        };
+
+        // Try to read local. After checksum mismatch the client should
+        // transition to the copied validation mode.
+        {
+            auto request = CreateReadBlocksLocalRequest(
+                env.BlocksHolderList,
+                env.DiskId,
+                BlockSize,
+                42,   // startIndex
+                maxBlockCount);
+            auto future = dataIntegrityClient->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                request);
+            auto response = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetError().GetCode());
+            UNIT_ASSERT(HasProtoFlag(
+                response.GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE));
+            UNIT_ASSERT(HasProtoFlag(
+                response.GetError().GetFlags(),
+                NProto::EF_CHECKSUM_MISMATCH));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                readBlocksLocalCounters->GetCounter("Count")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                readBlocksLocalCounters->GetCounter("Mismatches")->Val());
+        }
+
+        // Check that the client has switched to the copied validation mode.
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
+                ->GetCounter("Endpoints")
+                ->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
+                ->GetCounter("Endpoints")
+                ->Val());
+
+        env.TestClient->ExecuteActionHandler =
+            [&](std::shared_ptr<NProto::TExecuteActionRequest>)
+        {
+            UNIT_ASSERT(false);   // should be unreachable
+            return MakeFuture<NProto::TExecuteActionResponse>();
+        };
+
+        writeBlocksLocalCounters =
+            dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
+                ->GetSubgroup("request", "WriteBlocksLocal");
+        readBlocksLocalCounters =
+            dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
+                ->GetSubgroup("request", "ReadBlocksLocal");
+
+        env.TestClient->WriteBlocksLocalHandler =
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            const auto& checksums = request->GetChecksums();
+            UNIT_ASSERT_VALUES_EQUAL(2, checksums.size());
+            UNIT_ASSERT_VALUES_EQUAL(821937825, checksums[0].GetChecksum());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (static_cast<ui64>(maxBlockCount) - 42) * BlockSize,
+                checksums[0].GetByteCount());
+            UNIT_ASSERT_VALUES_EQUAL(3818203452, checksums[1].GetChecksum());
+            UNIT_ASSERT_VALUES_EQUAL(
+                42 * BlockSize,
+                checksums[1].GetByteCount());
+
+            auto dataChecksum =
+                CalculateChecksum(request->Sglist.Acquire().Get());
+            auto expectedChecksum = CombineChecksums(checksums);
+            UNIT_ASSERT_C(
+                MessageDifferencer::Equals(dataChecksum, expectedChecksum),
+                TStringBuilder()
+                    << "dataChecksum: " << dataChecksum.ShortUtf8DebugString()
+                    << ", expectedChecksum: "
+                    << expectedChecksum.ShortUtf8DebugString());
+
+            NProto::TWriteBlocksLocalResponse response;
+            return MakeFuture(std::move(response));
+        };
+
+        env.TestClient->ReadBlocksLocalHandler =
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            FillBlocksWithDeterministicData(request->Sglist.Acquire().Get());
+            NProto::TReadBlocksLocalResponse response;
+            response.MutableChecksum()->SetChecksum(675155616);
+            response.MutableChecksum()->SetByteCount(
+                request->GetBlocksCount() * BlockSize);
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                std::move(response));
+        };
+
+        {
+            auto request = CreateReadBlocksLocalRequest(
+                env.BlocksHolderList,
+                env.DiskId,
+                BlockSize,
+                42,   // startIndex
+                maxBlockCount);
+            auto future = dataIntegrityClient->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                request);
+            auto response = future.GetValueSync();
+            UNIT_ASSERT(!HasError(response.GetError()));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                readBlocksLocalCounters->GetCounter("Count")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                readBlocksLocalCounters->GetCounter("Mismatches")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                readBlocksCounters->GetCounter("Count")->Val());
+
+            // Counter without data coying should be incremented.
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
+                    ->GetSubgroup("request", "ReadBlocksLocal")
+                    ->GetCounter("Count")
+                    ->Val());
+        }
+
+        {
+            auto request = CreateWriteBlocksLocalRequest(
+                env.BlocksHolderList,
+                env.DiskId,
+                BlockSize,
+                42,   // startIndex
+                maxBlockCount);
+            FillBlocksWithDeterministicData(env.BlocksHolderList.back());
+            auto future = dataIntegrityClient->WriteBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                request);
+            auto response = future.GetValueSync();
+            UNIT_ASSERT(!HasError(response.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                writeBlocksLocalCounters->GetCounter("Count")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                writeBlocksLocalCounters->GetCounter("Mismatches")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                writeBlocksCounters->GetCounter("Count")->Val());
+        }
+
+        env.TestClient->WriteBlocksHandler =
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest> request)
+        {
+            const auto& checksums = request->GetChecksums();
+            UNIT_ASSERT_VALUES_EQUAL(2, checksums.size());
+            UNIT_ASSERT_VALUES_EQUAL(821937825, checksums[0].GetChecksum());
+            UNIT_ASSERT_VALUES_EQUAL(
+                (static_cast<ui64>(maxBlockCount) - 42) * BlockSize,
+                checksums[0].GetByteCount());
+            UNIT_ASSERT_VALUES_EQUAL(3818203452, checksums[1].GetChecksum());
+            UNIT_ASSERT_VALUES_EQUAL(
+                42 * BlockSize,
+                checksums[1].GetByteCount());
+
+            auto dataChecksum = CalculateChecksum(
+                request->GetBlocks(),
+                request->GetBlockSize());
+            auto expectedChecksum = CombineChecksums(checksums);
+            UNIT_ASSERT_C(
+                MessageDifferencer::Equals(dataChecksum, expectedChecksum),
+                TStringBuilder()
+                    << "dataChecksum: " << dataChecksum.ShortUtf8DebugString()
+                    << ", expectedChecksum: "
+                    << expectedChecksum.ShortUtf8DebugString());
+
+            NProto::TWriteBlocksResponse response;
+            return MakeFuture(std::move(response));
+        };
+
+        // Non-local write request should be done as usual.
+        {
+            auto request = CreateWriteBlocksRequest(
+                env.DiskId,
+                BlockSize,
+                42,   // startIndex
+                maxBlockCount);
+            FillBlocksWithDeterministicData(*request->MutableBlocks());
+
+            auto future = dataIntegrityClient->WriteBlocks(
+                MakeIntrusive<TCallContext>(),
+                request);
+            auto response = future.GetValueSync();
+            UNIT_ASSERT(!HasError(response.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                writeBlocksCounters->GetCounter("Count")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                writeBlocksCounters->GetCounter("Mismatches")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                writeBlocksLocalCounters->GetCounter("Count")->Val());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore

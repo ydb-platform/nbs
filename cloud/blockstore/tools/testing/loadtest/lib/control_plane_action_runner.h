@@ -61,6 +61,8 @@ private:
         const NProto::TActionGraph::TControlPlaneAction& action);
     int RunReplaceDevicesRequest(
         const NProto::TActionGraph::TControlPlaneAction& action);
+    int RunModifyTagsRequest(
+        const NProto::TActionGraph::TControlPlaneAction& action);
 
     int CmsRemoveHostHard(
         ui32 agentNo,
