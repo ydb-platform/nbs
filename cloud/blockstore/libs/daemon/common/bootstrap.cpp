@@ -364,6 +364,12 @@ void TBootstrapBase::Init()
     sessionManagerOptions.EnableDataIntegrityClient =
         Configs->ServerConfig->GetChecksumFlags()
             .GetEnableDataIntegrityClient();
+    for (auto mediaKind: Configs->ServerConfig->GetChecksumFlags()
+                             .GetMediaKindsToValidateDataIntegrity())
+    {
+        sessionManagerOptions.MediaKindsToValidateDataIntegrity.push_back(
+            static_cast<NProto::EStorageMediaKind>(mediaKind));
+    }
 
     if (!KmsKeyProvider) {
         KmsKeyProvider = CreateKmsKeyProviderStub();

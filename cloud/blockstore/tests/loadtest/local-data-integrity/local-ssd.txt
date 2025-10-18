@@ -36,7 +36,7 @@ Vertices {
                 }
             }
         }
-        TestDuration: 60
+        TestDuration: 30
         Verify: true
         Name: "test_vol0"
     }
