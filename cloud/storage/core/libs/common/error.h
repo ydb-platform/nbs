@@ -94,6 +94,12 @@ enum EFacilityCode
     MAKE_RESULT_CODE(SEVERITY_ERROR, FACILITY_RDMA, status)
 
 ////////////////////////////////////////////////////////////////////////////////
+// Warning: This enum has a mirror
+// enum EWellKnownErrorCode in cloud/blockstore/config/client.proto
+// Every change in this enum must be reflected in its mirror,
+// as well as in respective equality-check test case
+// TDurableClientTest::WellKnownCodesEnumShouldMatch
+// in cloud/blockstore/libs/client/durable_ut.cpp
 
 enum EWellKnownResultCodes: ui32
 {

@@ -58,4 +58,8 @@ IBlockStorePtr CreateDurableClient(
     IRequestStatsPtr requestStats,
     IVolumeStatsPtr volumeStats);
 
+// List of errors that must never be retried and semantically have
+// no point in retrying
+extern const TVector<EWellKnownResultCodes> NeverRetriableErrors;
+
 }   // namespace NCloud::NBlockStore::NClient

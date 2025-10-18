@@ -11,6 +11,99 @@ package NCloud.NBlockStore.NProto;
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
+// Well-known error codes.
+// Warning: This enum is a mirror of
+// enum EWellKnownResultCodes from cloud/storage/core/libs/common/error.h
+//
+// Note: Since proto2 enum values are strictly limited to int32_t values,
+// which are [-2^31, 2^31-1], and error codes with SEVERITY_ERROR
+// have the highest bit on, such values are represented in the enum as
+// NAME = <signed representation>; // <actual unsigned value>,
+// and this style must be followed by any change within the enum
+
+enum EWellKnownErrorCode
+{
+    S_OK = 0x00000000;
+    S_FALSE = 0x00000001;
+    S_ALREADY = 0x00000002;
+
+    E_FAIL = -0x80000000; // 0x80000000
+    E_ARGUMENT = -0x7FFFFFFF; // 0x80000001
+    E_REJECTED = -0x7FFFFFFE; // 0x80000002
+
+    reserved                      -0x7FFFFFFD; // 0x80000003
+
+    E_INVALID_STATE = -0x7FFFFFFC; // 0x80000004
+    E_TIMEOUT = -0x7FFFFFFB; // 0x80000005
+    E_NOT_FOUND = -0x7FFFFFFA; // 0x80000006
+    E_UNAUTHORIZED = -0x7FFFFFF9; // 0x80000007
+    E_NOT_IMPLEMENTED = -0x7FFFFFF8; // 0x80000008
+    E_ABORTED = -0x7FFFFFF7; // 0x80000009
+    E_TRY_AGAIN = -0x7FFFFFF6; // 0x8000000A
+    E_IO = -0x7FFFFFF5; // 0x8000000B
+    E_CANCELLED = -0x7FFFFFF4; // 0x8000000C
+    E_IO_SILENT = -0x7FFFFFF3; // 0x8000000D
+    E_RETRY_TIMEOUT = -0x7FFFFFF2; // 0x8000000E
+    E_PRECONDITION_FAILED = -0x7FFFFFF1; // 0x8000000F
+
+    E_GRPC_CANCELLED = -0x7FFDFFFF; // 0x80020001
+    E_GRPC_UNKNOWN = -0x7FFDFFFE; // 0x80020002
+    E_GRPC_INVALID_ARGUMENT = -0x7FFDFFFD; // 0x80020003
+    E_GRPC_DEADLINE_EXCEEDED = -0x7FFDFFFC; // 0x80020004
+    E_GRPC_NOT_FOUND = -0x7FFDFFFB; // 0x80020005
+    E_GRPC_ALREADY_EXISTS = -0x7FFDFFFA; // 0x80020006
+    E_GRPC_PERMISSION_DENIED = -0x7FFDFFF9; // 0x80020007
+    E_GRPC_RESOURCE_EXHAUSTED = -0x7FFDFFF8; // 0x80020008
+    E_GRPC_FAILED_PRECONDITION = -0x7FFDFFF7; // 0x80020009
+    E_GRPC_ABORTED = -0x7FFDFFF6; // 0x8002000A
+    E_GRPC_OUT_OF_RANGE = -0x7FFDFFF5; // 0x8002000B
+    E_GRPC_UNIMPLEMENTED = -0x7FFDFFF4; // 0x8002000C
+    E_GRPC_INTERNAL = -0x7FFDFFF3; // 0x8002000D
+    E_GRPC_UNAVAILABLE = -0x7FFDFFF2; // 0x8002000E
+    E_GRPC_DATA_LOSS = -0x7FFDFFF1; // 0x8002000F
+    E_GRPC_UNAUTHENTICATED = -0x7FFDFFF0; // 0x80020010
+
+    E_BS_INVALID_SESSION = -0x7FFAFFFF; // 0x80050001
+    E_BS_OUT_OF_SPACE = -0x7FFAFFFE; // 0x80050002
+    E_BS_THROTTLED = -0x7FFAFFFD; // 0x80050003
+    E_BS_RESOURCE_EXHAUSTED = -0x7FFAFFFC; // 0x80050004
+    E_BS_DISK_ALLOCATION_FAILED = -0x7FFAFFFB; // 0x80050005
+    E_BS_MOUNT_CONFLICT = -0x7FFAFFFA; // 0x80050006
+
+    E_FS_IO = -0x7FF90000; // 0x80070000
+    E_FS_PERM = -0x7FF8FFFF; // 0x80070001
+    E_FS_NOENT = -0x7FF8FFFE; // 0x80070002
+    E_FS_NXIO = -0x7FF8FFFD; // 0x80070003
+    E_FS_ACCESS = -0x7FF8FFFC; // 0x80070004
+    E_FS_EXIST = -0x7FF8FFFB; // 0x80070005
+    E_FS_XDEV = -0x7FF8FFFA; // 0x80070006
+    E_FS_NODEV = -0x7FF8FFF9; // 0x80070007
+    E_FS_NOTDIR = -0x7FF8FFF8; // 0x80070008
+    E_FS_ISDIR = -0x7FF8FFF7; // 0x80070009
+    E_FS_INVAL = -0x7FF8FFF6; // 0x8007000A
+    E_FS_FBIG = -0x7FF8FFF5; // 0x8007000B
+    E_FS_NOSPC = -0x7FF8FFF4; // 0x8007000C
+    E_FS_ROFS = -0x7FF8FFF3; // 0x8007000D
+    E_FS_MLINK = -0x7FF8FFF2; // 0x8007000E
+    E_FS_NAMETOOLONG = -0x7FF8FFF1; // 0x8007000F
+    E_FS_NOTEMPTY = -0x7FF8FFF0; // 0x80070010
+    E_FS_DQUOT = -0x7FF8FFEF; // 0x80070011
+    E_FS_STALE = -0x7FF8FFEE; // 0x80070012
+    E_FS_REMOTE = -0x7FF8FFED; // 0x80070013
+    E_FS_BADHANDLE = -0x7FF8FFEC; // 0x80070014
+    E_FS_NOTSUPP = -0x7FF8FFEB; // 0x80070015
+
+    E_FS_WOULDBLOCK = -0x7FF8FFE2; // 0x8007001E
+    E_FS_NOLCK = -0x7FF8FFE1; // 0x8007001F
+
+    E_FS_INVALID_SESSION = -0x7FF8FF9C; // 0x80070064
+    E_FS_OUT_OF_SPACE = -0x7FF8FF9B; // 0x80070065
+    E_FS_THROTTLED = -0x7FF8FF9A; // 0x80070066
+
+    E_RDMA_UNAVAILABLE = -0x7FF7FFFF; // 0x80080001
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 message TClientMediaKindThrottlingConfig
 {
@@ -191,6 +284,28 @@ message TClientConfig
 
     // First retry timeout for YDB based disks (in milliseconds).
     optional uint32 YDBBasedDiskInitialRetryTimeout = 44;
+
+    // Enable list-based retry rules in TDurableClient.
+    // If disabled (default),
+    //     "EErrorKind::ErrorRetriable"-based predicate is used.
+    // If enabled, TDurableClient will additionally retry all error except:
+    //   For all media:
+    //     - cloud/blockstore/libs/client/durable.cpp::NeverRetriableErrors[]
+    //   For reliable media:
+    //     - NonRetriableErrorsForReliableMedia[]
+    //   For non-reliable media:
+    //     - NonRetriableErrorsForUnreliableMedia[].
+    optional bool EnableListBasedRetryRules = 45;
+
+    // List of non-retriable errors that will not be retried
+    //     even if EnableListBasedRetryRules is set.
+    // Applied for disks with IsReliableMediaKind == true.
+    repeated EWellKnownErrorCode NonRetriableErrorsForReliableMedia = 46;
+
+    // List of non-retriable errors that will not be retried
+    //     even if EnableListBasedRetryRules is set.
+    // Applied for disks with IsReliableMediaKind == false.
+    repeated EWellKnownErrorCode NonRetriableErrorsForUnreliableMedia = 47;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
