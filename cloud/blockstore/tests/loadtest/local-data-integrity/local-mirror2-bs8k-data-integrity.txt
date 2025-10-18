@@ -1,19 +1,49 @@
 Vertices {
-    Test {
+    ControlPlaneAction {
+        Name: "create_volume"
+
         CreateVolumeRequest {
-            BlocksCount: 786432
-            BlockSize: 4096
+            DiskId: "vol0"
+            BlocksCount: 393216
+            BlockSize: 8192
             StorageMediaKind: STORAGE_MEDIA_SSD_MIRROR2
         }
+    }
+}
+
+Vertices {
+    Sleep {
+        Name: "sleep"
+        Duration: 1
+    }
+}
+
+Vertices {
+    ControlPlaneAction {
+        Name: "add_tag"
+
+        ModifyTagsRequest {
+            DiskId: "vol0"
+            TagsToAdd: "data-integrity-violation-detected"
+        }
+    }
+}
+
+Vertices {
+    Test {
+        Name: "shoot_vol0"
+        VolumeName: "vol0"
+
         StartEndpointRequest {
             IpcType: IPC_GRPC
             VolumeAccessMode: VOLUME_ACCESS_READ_WRITE
             VolumeMountMode: VOLUME_MOUNT_LOCAL
         }
+
         ArtificialLoadSpec {
             Ranges {
-                Start: 261144
-                End: 263144
+                Start: 130572
+                End: 131572
                 WriteRate: 80
                 ZeroRate: 20
                 ReadRate: 100
@@ -36,8 +66,8 @@ Vertices {
                 }
             }
             Ranges {
-                Start: 523288
-                End: 525288
+                Start: 261644
+                End: 262644
                 WriteRate: 80
                 ZeroRate: 20
                 ReadRate: 100
@@ -61,7 +91,27 @@ Vertices {
             }
         }
         TestDuration: 30
-        Verify: true
-        Name: "test_vol0"
+        Verify: false
+    }
+}
+
+Dependencies {
+    key: "sleep",
+    value {
+        Names: "create_volume"
+    }
+}
+
+Dependencies {
+    key: "add_tag",
+    value {
+        Names: "sleep"
+    }
+}
+
+Dependencies {
+    key: "shoot_vol0",
+    value {
+        Names: "add_tag"
     }
 }

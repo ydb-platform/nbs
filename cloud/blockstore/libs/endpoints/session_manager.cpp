@@ -141,7 +141,8 @@ public:
         const auto& type = GetBlockStoreRequestName(EBlockStoreRequest::name); \
         return MakeFuture<NProto::T##name##Response>(TErrorResponse(           \
             E_NOT_IMPLEMENTED,                                                 \
-            TStringBuilder() << "Unsupported request " << type.Quote()));      \
+            TStringBuilder()                                                   \
+                << "TClientBase: unsupported request " << type.Quote()));      \
     }                                                                          \
 // BLOCKSTORE_IMPLEMENT_METHOD
 
@@ -191,20 +192,21 @@ public:
         return Storage->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, receiver)                            \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        SetBlockSize(*request);                                              \
+        SetBlockSize(*request);                                                \
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);       \
-        return Storage->name(std::move(callContext), std::move(request));      \
+        return receiver->name(std::move(callContext), std::move(request));     \
     }                                                                          \
 // BLOCKSTORE_IMPLEMENT_METHOD
 
-    BLOCKSTORE_IMPLEMENT_METHOD(ReadBlocksLocal)
-    BLOCKSTORE_IMPLEMENT_METHOD(WriteBlocksLocal)
-    BLOCKSTORE_IMPLEMENT_METHOD(ZeroBlocks)
+    BLOCKSTORE_IMPLEMENT_METHOD(ReadBlocksLocal, Storage)
+    BLOCKSTORE_IMPLEMENT_METHOD(WriteBlocksLocal, Storage)
+    BLOCKSTORE_IMPLEMENT_METHOD(ZeroBlocks, Storage)
+    BLOCKSTORE_IMPLEMENT_METHOD(ExecuteAction, Service)
 
 #undef BLOCKSTORE_IMPLEMENT_METHOD
 
@@ -741,12 +743,16 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             {{ EErrorKind::ErrorFatal, E_REJECTED }});
     }
 
-    if (Options.EnableDataIntegrityClient) {
+    if (Options.EnableDataIntegrityClient ||
+        FindPtr(
+            Options.MediaKindsToValidateDataIntegrity,
+            volume.GetStorageMediaKind()) != nullptr)
+    {
         client = CreateDataIntegrityClient(
             Logging,
             Monitoring,
             std::move(client),
-            volume.GetBlockSize());
+            volume);
     }
 
     auto retryPolicy =
@@ -794,7 +800,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
 
     if (Options.StrictContractValidation &&
         // switching fast path to slow path during migration might lead to
-                                         // validation false positives
+        // validation false positives
         !volume.GetTags().contains(UseFastPathTagName))
     {
         client = CreateValidationClient(

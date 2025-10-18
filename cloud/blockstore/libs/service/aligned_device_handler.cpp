@@ -207,6 +207,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     request->SetCheckpointId(checkpointId);
     request->SetStartIndex(blocksInfo.Range.Start);
     request->SetBlocksCount(requestBlockCount);
+    request->SetBlockSize(BlockSize);
     request->BlockSize = BlockSize;
 
     if (requestBlockCount == blocksInfo.Range.Size()) {
@@ -294,6 +295,7 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
     request->MutableHeaders()->SetTimestamp(TInstant::Now().MicroSeconds());
     request->MutableHeaders()->SetClientId(ClientId);
     request->SetStartIndex(blocksInfo.Range.Start);
+    request->SetBlockSize(BlockSize);
     request->BlocksCount = requestBlockCount;
     request->BlockSize = BlockSize;
 
