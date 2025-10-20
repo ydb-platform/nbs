@@ -24,7 +24,7 @@ func GetDiskFromCell(
 	}
 
 	// A correct zone ID must be provided; using a cell ID will cause a failure.
-	if !cellSelector.IsCellOfZone(diskMeta.ZoneID, disk.ZoneId) {
+	if !cellSelector.ZoneContainsCell(disk.ZoneId, diskMeta.ZoneID) {
 		return nil, errors.NewNonCancellableErrorf(
 			"disk %s is not in zone %s",
 			disk.DiskId,

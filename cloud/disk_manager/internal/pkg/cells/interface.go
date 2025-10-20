@@ -26,5 +26,7 @@ type CellSelector interface {
 		agentIDs []string,
 	) (nbs.Client, error)
 
+	// Returns true if the specified cell is in the specified zone or cells
+	// config is nil.
 	ZoneContainsCell(zoneID string, cellID string) bool
 }

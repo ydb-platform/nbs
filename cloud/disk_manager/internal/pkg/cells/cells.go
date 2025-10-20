@@ -137,7 +137,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 }
 
 func (s *cellSelector) ZoneContainsCell(zoneID string, cellID string) bool {
-	return slices.Contains(s.getCells(zoneID), cellID)
+	return s.config == nil || slices.Contains(s.getCells(zoneID), cellID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
