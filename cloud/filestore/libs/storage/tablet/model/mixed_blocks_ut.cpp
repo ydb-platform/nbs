@@ -102,13 +102,11 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
 
         mixedBlocks.AddDeletionMarker(
             rangeId,
-            {
-                .NodeId = nodeId,
-                .CommitId = minCommitId + 2,
-                .BlockIndex = blockIndex + deletionOffset,
-                .BlockCount = deletedBlocksCount
-            }
-        );
+            TDeletionMarker(
+                nodeId,
+                minCommitId + 2,
+                blockIndex + deletionOffset,
+                deletedBlocksCount));
 
         {
             TMixedBlockVisitor visitor;

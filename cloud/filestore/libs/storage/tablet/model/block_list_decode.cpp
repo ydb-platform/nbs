@@ -237,12 +237,6 @@ struct TRange
         return {offset, length};
     }
 
-    static TRange WithEnd(ui32 offset, ui32 end)
-    {
-        Y_DEBUG_ABORT_UNLESS(end > offset);
-        return {offset, end - offset};
-    }
-
     ui32 End() const
     {
         return Offset + Length;
@@ -348,18 +342,12 @@ FindDeletionMarkersResult FindDeletionMarkers(
                             };
                         }
 
-                        Y_DEBUG_ABORT_UNLESS(multi.Count > 1);
-                        // +1 is needed because "end is beyond the last element"
-                        auto groupEndBlobOffset =
-                            blobOffsets[multi.Count - 1] + 1;
-                        const auto groupRange = TRange::WithEnd(
-                            *it,
-                            groupEndBlobOffset);
+                        Y_DEBUG_ABORT_UNLESS(*it > blobOffset);
 
-                        if (auto r = searchRange.Intersection(groupRange)) {
+                        if (*it < searchRange.End()) {
                             minOverlappingBlobOffset = Min<ui16>(
                                 minOverlappingBlobOffset,
-                                r.Offset);
+                                *it);
                         }
                     }
                     break;
