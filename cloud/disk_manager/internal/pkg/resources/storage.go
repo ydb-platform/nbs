@@ -92,6 +92,23 @@ type FilesystemMeta struct {
 	ExternalStorageClusterName string `json:"external_storage_cluster_name"`
 }
 
+type FilesystemBackupMeta struct {
+	ID                string                `json:"id"`
+	FolderID          string                `json:"folder_id"`
+	Filesystem        *types.Filesystem     `json:"filesystem"`
+	CheckpointID      string                `json:"checkpoint_id"`
+	CreateRequest     proto.Message         `json:"create_request"`
+	CreateTaskID      string                `json:"create_task_id"`
+	CreatingAt        time.Time             `json:"creating_at"`
+	CreatedBy         string                `json:"created_by"`
+	DeleteTaskID      string                `json:"delete_task_id"`
+	UseDataplaneTasks bool                  `json:"use_dataplane_tasks"`
+	Size              uint64                `json:"size"`
+	StorageSize       uint64                `json:"storage_size"`
+	Encryption        *types.EncryptionDesc `json:"encryption"`
+	Ready             bool                  `json:"ready"`
+}
+
 type PlacementGroupMeta struct {
 	ID                      string                  `json:"id"`
 	ZoneID                  string                  `json:"zone_id"`
