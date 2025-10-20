@@ -353,7 +353,9 @@ void TFileSystem::Read(
     request->SetOffset(offset);
     request->SetLength(size);
 
-    if (Config->GetZeroCopyReadEnabled()) {
+    const bool isZeroCopyRead =
+        Config->GetZeroCopyReadEnabled() && !WriteBackCache;
+    if (isZeroCopyRead) {
         struct iovec* iov = NULL;
         int count = 0;
         int ret = fuse_out_buf(req, &iov, &count);
@@ -417,14 +419,25 @@ void TFileSystem::Read(
 
         const auto& response = future.GetValue();
         if (CheckResponse(self, *callContext, req, response)) {
-            const auto& buffer = response.GetBuffer();
-            ui32 bufferOffset = response.GetBufferOffset();
-            self->ReplyBuf(
-                *callContext,
-                response.GetError(),
-                req,
-                buffer.data() + bufferOffset,
-                buffer.size() - bufferOffset);
+            const bool isZeroCopyRead =
+                Config->GetZeroCopyReadEnabled() && !WriteBackCache;
+            if (isZeroCopyRead) {
+                self->ReplyBuf(
+                    *callContext,
+                    response.GetError(),
+                    req,
+                    nullptr,
+                    response.GetLength());
+            } else {
+                const auto& buffer = response.GetBuffer();
+                ui32 bufferOffset = response.GetBufferOffset();
+                self->ReplyBuf(
+                    *callContext,
+                    response.GetError(),
+                    req,
+                    buffer.data() + bufferOffset,
+                    buffer.size() - bufferOffset);
+            }
         }
     });
 }
