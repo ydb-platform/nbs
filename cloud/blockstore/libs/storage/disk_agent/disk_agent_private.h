@@ -205,7 +205,7 @@ struct TEvDiskAgentPrivate
     };
 
     //
-    // DeviceOpened
+    // PathAttached
     //
 
     struct TPathAttached
