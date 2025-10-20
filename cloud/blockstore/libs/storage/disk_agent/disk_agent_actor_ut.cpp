@@ -7191,7 +7191,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             THashMap<TString, ui64>{{filePath, 1}});
 
         auto resp = diskAgent.RecvAttachPathResponse();
-        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, resp->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
@@ -7200,7 +7200,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             THashMap<TString, ui64>{{filePath, 100}});
 
         resp = diskAgent.RecvAttachPathResponse();
-        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, resp->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
