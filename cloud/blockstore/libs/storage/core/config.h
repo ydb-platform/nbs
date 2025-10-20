@@ -627,6 +627,7 @@ public:
     ui64 GetMaxScrubbingBandwidth() const;
     ui64 GetMinScrubbingBandwidth() const;
     bool GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() const;
+    bool GetEnableUsingIntermediateWriteBuffer() const;
     NProto::EResyncPolicy GetScrubbingResyncPolicy() const;
 
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;

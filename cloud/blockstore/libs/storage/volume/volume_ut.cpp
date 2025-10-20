@@ -9485,10 +9485,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     TVector<TString> WriteToDiskWithInflightDataCorruptionAndReadResults(
         NCloud::NProto::EStorageMediaKind mediaKind,
         ui32 writeNumberToIntercept,
-        const TString& tags)
+        const TString& tags,
+        bool enableUsingIntermediateWriteBuffer = true)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
+        config.SetEnableUsingIntermediateWriteBuffer(
+            enableUsingIntermediateWriteBuffer);
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(config, state);
 
@@ -9602,6 +9605,29 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(adata, results[0]);
         UNIT_ASSERT_VALUES_EQUAL(adata, results[1]);
         UNIT_ASSERT_VALUES_EQUAL(adata, results[2]);
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotCopyWriteRequestDataBeforeWritingToStorageIfTagIsSetM3ButFeatureIsDisabled)
+    {
+        auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            // 1 - to volume
+            // 1 - to mirror actor
+            // 3 - to 3 replicas
+            1 + 1 + 3,
+            "use-intermediate-write-buffer",
+            /*enableUsingIntermediateWriteBuffer=*/false);
+        const TString adata(4_KB, 'a');
+
+        const bool replica1Match = (adata == results[0]);
+        const bool replica2Match = (adata == results[1]);
+        const bool replica3Match = (adata == results[2]);
+        // One of the replicas should have inconsistent data due to disabled
+        // feature.
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            replica1Match + replica2Match + replica3Match);
     }
 
     Y_UNIT_TEST(ShouldHaveDifferentDataInReplicasUponInflightBufferCorruptionM3)
