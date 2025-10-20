@@ -86,11 +86,11 @@ private:
             return false;
         }
 
-        if (static_cast<bool>(DiskId) != static_cast<bool>(ClientId)) {
-            const auto* passedArgument = DiskId ? "disk id" : "client id";
-            const auto* otherArgument = DiskId ? "client id" : "disk id";
+        if (DiskId.empty() != ClientId.empty()) {
+            const auto* passedArgument = DiskId ? "DiskId" : "ClientId";
+            const auto* otherArgument = DiskId ? "ClientId" : "DiskId";
             STORAGE_ERROR(
-                "There is no sens to pass " << passedArgument << " without "
+                "There is no sense to pass " << passedArgument << " without "
                                             << otherArgument);
             return false;
         }
