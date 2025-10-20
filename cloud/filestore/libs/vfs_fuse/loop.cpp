@@ -997,6 +997,7 @@ private:
                         RequestStats->GetModuleCounters("write_back_cache");
 
                     auto stats = CreateWriteBackCacheStats(*counters, Timer);
+                    RequestStats->RegisterUpdateableStats(stats);
 
                     writeBackCache = TWriteBackCache(
                         Session,
