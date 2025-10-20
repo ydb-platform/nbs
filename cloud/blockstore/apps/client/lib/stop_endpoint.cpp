@@ -19,6 +19,8 @@ class TStopEndpointCommand final
 {
 private:
     TString UnixSocketPath;
+    TString DiskId;
+    TString ClientId;
 
 public:
     TStopEndpointCommand(IBlockStorePtr client)
@@ -27,6 +29,12 @@ public:
         Opts.AddLongOption("socket", "unix socket path")
             .RequiredArgument("STR")
             .StoreResult(&UnixSocketPath);
+        Opts.AddLongOption("disk-id", "volume identifier")
+            .RequiredArgument("STR")
+            .StoreResult(&DiskId);
+        Opts.AddLongOption("client-id", "client identifier")
+            .RequiredArgument("STR")
+            .StoreResult(&ClientId);
     }
 
 protected:
@@ -45,6 +53,8 @@ protected:
             ParseFromTextFormat(input, *request);
         } else {
             request->SetUnixSocketPath(UnixSocketPath);
+            request->SetDiskId(DiskId);
+            request->MutableHeaders()->SetClientId(ClientId);
         }
 
         STORAGE_DEBUG("Sending StopEndpoint request");
@@ -73,6 +83,15 @@ private:
     {
         if (!UnixSocketPath) {
             STORAGE_ERROR("Unix socket path is required");
+            return false;
+        }
+
+        if (static_cast<bool>(DiskId) != static_cast<bool>(ClientId)) {
+            const auto* passedArgument = DiskId ? "disk id" : "client id";
+            const auto* otherArgument = DiskId ? "client id" : "disk id";
+            STORAGE_ERROR(
+                "There is no sens to pass " << passedArgument << " without "
+                                            << otherArgument);
             return false;
         }
 
