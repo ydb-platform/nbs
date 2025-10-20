@@ -688,11 +688,11 @@ public:
     void Reset() override
     {}
 
-    NMonitoring::TDynamicCountersPtr GetModuleCounters(
+    TDynamicCountersPtr GetModuleCounters(
         const TString& moduleName) override
     {
         Y_UNUSED(moduleName);
-        return {};
+        return MakeIntrusive<TDynamicCounters>();
     }
 
     void RegisterUpdateableStats(IUpdateableStatsPtr stats) override
