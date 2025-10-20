@@ -224,8 +224,8 @@ ui64 FindDeletionMarker(const TByteVector& encodedDeletionMarkers, ui16 blobOffs
 
 struct TRange
 {
-    ui32 Offset = 0;
-    ui32 Length = 0;
+    const ui32 Offset = 0;
+    const ui32 Length = 0;
 
     explicit operator bool() const
     {
@@ -317,9 +317,7 @@ FindDeletionMarkersResult FindDeletionMarkers(
                         multi.Count);
 
                     const auto r = searchRange.Intersection(groupRange);
-                    if (groupRange.Offset <= searchRange.Offset &&
-                        searchRange.Offset < r.End())
-                    {
+                    if (r.Contains(searchRange.Offset)) {
                         return {
                             .MaxCommitId = group.CommitId,
                             .BlocksFound = r.End() - searchRange.Offset
@@ -337,28 +335,32 @@ FindDeletionMarkersResult FindDeletionMarkers(
                 case NBlockListSpec::TMultiGroupHeader::MixedGroup: {
                     const auto* blobOffsets =
                         reader.Read<ui16>(Align2(multi.Count));
-                    size_t i = FindOffset(
+                    const auto* end = blobOffsets + multi.Count;
+                    const auto* it = std::lower_bound(
                         blobOffsets,
-                        blobOffsets + multi.Count,
+                        end,
                         blobOffset);
-                    if (i != NPOS) {
-                        return {
-                            .MaxCommitId = group.CommitId,
-                            .BlocksFound = 1
-                        };
-                    }
+                    if (it != end) {
+                        if (*it == blobOffset) {
+                            return {
+                                .MaxCommitId = group.CommitId,
+                                .BlocksFound = 1
+                            };
+                        }
 
-                    Y_DEBUG_ABORT_UNLESS(multi.Count > 1);
-                    // +1 is needed because "end is beyond the last element"
-                    auto groupEndBlobOffset = blobOffsets[multi.Count - 1] + 1;
-                    const auto groupRange = TRange::WithEnd(
-                        blobOffsets[0],
-                        groupEndBlobOffset);
+                        Y_DEBUG_ABORT_UNLESS(multi.Count > 1);
+                        // +1 is needed because "end is beyond the last element"
+                        auto groupEndBlobOffset =
+                            blobOffsets[multi.Count - 1] + 1;
+                        const auto groupRange = TRange::WithEnd(
+                            *it,
+                            groupEndBlobOffset);
 
-                    if (auto r = searchRange.Intersection(groupRange)) {
-                        minOverlappingBlobOffset = Min<ui16>(
-                            minOverlappingBlobOffset,
-                            r.Offset);
+                        if (auto r = searchRange.Intersection(groupRange)) {
+                            minOverlappingBlobOffset = Min<ui16>(
+                                minOverlappingBlobOffset,
+                                r.Offset);
+                        }
                     }
                     break;
                 }
