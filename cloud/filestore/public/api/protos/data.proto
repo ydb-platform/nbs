@@ -153,6 +153,11 @@ message TReadDataRequest
 
     // Number of bytes to read.
     uint64 Length = 6;
+
+    // Vector I/O data structure
+    // Data can be read to Iovecs instead of buffer in the response
+    // to avoid excess copy
+    repeated TIovec Iovecs = 8;
 }
 
 message TReadDataResponse
