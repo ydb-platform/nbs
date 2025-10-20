@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package filesystembackups;
+
+import "cloud/disk_manager/internal/pkg/types/types.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystembackups/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message CreateSnapshotFromDiskRequest {
+    types.Filesystem SrcDisk = 1;
+    string DstFilesystemBackupId = 2;
+    string FolderId = 3;
+    bool UseS3 = 8;
+}
+
+message CreateSnapshotFromDiskTaskState {
+    double MetadataProgress = 1;
+    double Progress = 2;
+    int64 FilesystemBackupSize = 4;
+    int64 FilesystemBackupStorageSize = 5;
+    string DataplaneTaskID = 6;
+}
