@@ -44,10 +44,10 @@ protected:
     }
 };
 
-Y_UNIT_TEST_SUITE(TOrbitThreadSafety)
+Y_UNIT_TEST_SUITE(TOrbitMultithreadedUsage)
 {
-    // Test concurrent HasShuttles() calls while modifying orbit
-    Y_UNIT_TEST(ConcurrentHasShuttlesAndAddShuttle)
+    // Test HasShuttles() calls while modifying orbit
+    Y_UNIT_TEST(HasShuttlesAndAddShuttle)
     {
         TOrbit orbit;
         std::atomic<bool> stopFlag{false};
@@ -98,8 +98,9 @@ Y_UNIT_TEST_SUITE(TOrbitThreadSafety)
         UNIT_ASSERT(orbit.HasShuttles());
     }
 
-    // Test the race condition from the tests crash: Fork() vs HasShuttles()
-    Y_UNIT_TEST(ConcurrentForkAndHasShuttles)
+    // Test the race condition from the tsan tests crash: Fork() vs
+    // HasShuttles()
+    Y_UNIT_TEST(ForkAndHasShuttles)
     {
         TOrbit orbit;
 
@@ -156,7 +157,7 @@ Y_UNIT_TEST_SUITE(TOrbitThreadSafety)
     }
 
     // Test the Serialize() race condition
-    Y_UNIT_TEST(ConcurrentSerializeAndHasShuttles)
+    Y_UNIT_TEST(SerializeAndHasShuttles)
     {
         TOrbit orbit;
 
