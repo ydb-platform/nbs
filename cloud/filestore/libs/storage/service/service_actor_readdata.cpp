@@ -524,6 +524,10 @@ void TReadDataActor::ReadData(
     request->Record = std::move(ReadRequest);
     request->Record.MutableHeaders()->SetThrottlingDisabled(true);
 
+    // Original iovecs should be preserved in this request and pruned during
+    // this forwarding on the tablet side
+    ReadRequest.MutableIovecs()->Swap(request->Record.MutableIovecs());
+
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
@@ -601,6 +605,33 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
         response->Record.set_allocated_buffer(BlockBuffer.release());
         response->Record.SetBufferOffset(bufferOffset);
     }
+
+    if (ReadRequest.IovecsSize() > 0) {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s copying data to target iovecs",
+            LogTag.c_str());
+        auto currentOffsetInSource = response->Record.GetBufferOffset();
+        for (const auto& iovec: ReadRequest.GetIovecs()) {
+            auto dataToWrite = Min(
+                iovec.GetLength(),
+                response->Record.GetBuffer().size() - currentOffsetInSource);
+            if (dataToWrite > 0) {
+                memcpy(
+                    reinterpret_cast<void*>(iovec.GetBase()),
+                    response->Record.GetBuffer().data() + currentOffsetInSource,
+                    dataToWrite);
+            }
+            currentOffsetInSource += dataToWrite;
+        }
+        response->Record.SetLength(
+            response->Record.GetBuffer().size() -
+            response->Record.GetBufferOffset());
+        response->Record.ClearBuffer();
+        response->Record.SetBufferOffset(0);
+    }
+
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -691,7 +722,9 @@ void TStorageServiceActor::HandleReadData(
         msg->Record.SetFileSystemId(fsId);
     }
 
-    if (!IsTwoStageReadEnabled(filestore)) {
+    // Iovecs are supported only in two-stage read mode for the sake of
+    // simplicity
+    if (!IsTwoStageReadEnabled(filestore) && msg->Record.IovecsSize() == 0) {
         // If two-stage read is disabled, forward the request to the tablet in
         // the same way as all other requests.
         ForwardRequest<TEvService::TReadDataMethod>(ctx, ev);
