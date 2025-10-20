@@ -1,5 +1,7 @@
 #include "write_back_cache.h"
 
+#include "write_back_cache_stats.h"
+
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
 
@@ -153,7 +155,7 @@ struct TWriteBackCacheStats
 
     TReadDataRequestStats ReadStats;
 
-    TWriteBackCache::TPersistentQueueStats PersistentQueueStats;
+    TPersistentQueueStats PersistentQueueStats;
 
     // Do not store more than the specified amount of elements in the following
     // vectors in order to prevent OOM for large tests
@@ -265,9 +267,14 @@ struct TWriteBackCacheStats
     }
 
     void UpdatePersistentQueueStats(
-        const TWriteBackCache::TPersistentQueueStats& stats) override
+        const TPersistentQueueStats& stats) override
     {
         PersistentQueueStats = stats;
+    }
+
+    void UpdateStats(bool updatePercentiles) override
+    {
+        Y_UNUSED(updatePercentiles);
     }
 };
 

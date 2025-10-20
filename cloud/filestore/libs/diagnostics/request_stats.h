@@ -25,7 +25,17 @@ namespace NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IUpdateableStats
+{
+    virtual ~IUpdateableStats() = default;
+
+    virtual void UpdateStats(bool updatePercentiles) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IRequestStats
+    : public IUpdateableStats
 {
     virtual void RequestStarted(TCallContext& callContext) = 0;
 
@@ -42,11 +52,20 @@ struct IRequestStats
 
     virtual void ResponseSent(TCallContext& callContext) = 0;
 
-    virtual void UpdateStats(bool updatePercentiles) = 0;
-
     virtual void RegisterIncompleteRequestProvider(IIncompleteRequestProviderPtr provider) = 0;
 
     virtual void Reset() = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IFileSystemStats
+    : public IRequestStats
+{
+    virtual NMonitoring::TDynamicCountersPtr GetModuleCounters(
+        const TString& moduleName) = 0;
+
+    virtual void RegisterUpdateableStats(IUpdateableStatsPtr stats) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -56,7 +75,7 @@ struct IRequestStatsRegistry
 {
     virtual IRequestStatsPtr GetRequestStats() = 0;
 
-    virtual IRequestStatsPtr GetFileSystemStats(
+    virtual IFileSystemStatsPtr GetFileSystemStats(
         const TString& filesystem,
         const TString& client,
         const TString& cloudId,

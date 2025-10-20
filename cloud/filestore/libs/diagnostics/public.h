@@ -16,6 +16,12 @@ namespace NCloud::NFileStore {
 class TDiagnosticsConfig;
 using TDiagnosticsConfigPtr = std::shared_ptr<TDiagnosticsConfig>;
 
+struct IUpdateableStats;
+using IUpdateableStatsPtr = std::shared_ptr<IUpdateableStats>;
+
+struct IFileSystemStats;
+using IFileSystemStatsPtr = std::shared_ptr<IFileSystemStats>;
+
 struct IRequestStats;
 using IRequestStatsPtr = std::shared_ptr<IRequestStats>;
 

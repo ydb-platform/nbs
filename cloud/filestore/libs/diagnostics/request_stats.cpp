@@ -407,7 +407,7 @@ struct TUserMetadata
 };
 
 class TFileSystemStats final
-    : public IRequestStats
+    : public IFileSystemStats
     , IIncompleteRequestCollector
     , TRequestLogger
 {
@@ -417,12 +417,14 @@ private:
     const TString CloudId;
     const TString FolderId;
 
+    TDynamicCountersPtr RootCounters;
     TRequestCountersPtr Counters;
     IPostponeTimePredictorPtr Predictor;
     TPostponeTimePredictorStats PredictorStats;
 
     TMutex Lock;
     TVector<IIncompleteRequestProviderPtr> IncompleteRequestProviders;
+    TVector<IUpdateableStatsPtr> UpdateableStats;
 
     TUserMetadata UserMetadata;
 
@@ -443,14 +445,15 @@ public:
         , ClientId{std::move(clientId)}
         , CloudId{std::move(cloudId)}
         , FolderId{std::move(folderId)}
+        , RootCounters(std::move(counters))
         , Counters{MakeRequestCounters(
             timer,
-            *counters,
+            *RootCounters,
             REQUEST_COUNTERS_OPTIONS
                 | TRequestCounters::EOption::LazyRequestInitialization,
             histogramCounterOptions)}
         , Predictor{std::move(predictor)}
-        , PredictorStats{counters, std::move(timer)}
+        , PredictorStats{RootCounters, std::move(timer)}
     {}
 
     void SetUserMetadata(TUserMetadata userMetadata)
@@ -516,7 +519,10 @@ public:
 
     void UpdateStats(bool updatePercentiles) override
     {
+        TVector<IUpdateableStatsPtr> updateableStats;
+
         with_lock (Lock) {
+            updateableStats = UpdateableStats;
             for (auto& provider: IncompleteRequestProviders) {
                 provider->Accept(*this);
             }
@@ -524,6 +530,10 @@ public:
 
         Counters->UpdateStats(updatePercentiles);
         PredictorStats.UpdateStats();
+
+        for (const auto& stats: updateableStats) {
+            stats->UpdateStats(updatePercentiles);
+        }
     }
 
     void RegisterIncompleteRequestProvider(
@@ -556,6 +566,21 @@ public:
 
     TString GetFolderId() const {
         return FolderId;
+    }
+
+    NMonitoring::TDynamicCountersPtr GetModuleCounters(
+        const TString& moduleName) override
+    {
+        with_lock (Lock) {
+            return RootCounters->GetSubgroup("module", moduleName);
+        }
+    }
+
+    void RegisterUpdateableStats(IUpdateableStatsPtr stats) override
+    {
+        with_lock (Lock) {
+            UpdateableStats.push_back(std::move(stats));
+        }
     }
 
 private:
@@ -611,8 +636,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestStatsStub final
-    : public IRequestStats
+class TFileSystemStatsStub final
+    : public IFileSystemStats
 {
 public:
     void RequestStarted(TCallContext& callContext) override
@@ -662,6 +687,18 @@ public:
 
     void Reset() override
     {}
+
+    NMonitoring::TDynamicCountersPtr GetModuleCounters(
+        const TString& moduleName) override
+    {
+        Y_UNUSED(moduleName);
+        return {};
+    }
+
+    void RegisterUpdateableStats(IUpdateableStatsPtr stats) override
+    {
+        Y_UNUSED(stats);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -731,7 +768,7 @@ public:
             ->GetSubgroup("host", "cluster");
     }
 
-    IRequestStatsPtr GetFileSystemStats(
+    IFileSystemStatsPtr GetFileSystemStats(
         const TString& fileSystemId,
         const TString& clientId,
         const TString& cloudId,
@@ -975,7 +1012,7 @@ class TRequestStatsRegistryStub final
 public:
     TRequestStatsRegistryStub() = default;
 
-    IRequestStatsPtr GetFileSystemStats(
+    IFileSystemStatsPtr GetFileSystemStats(
         const TString& fileSystemId,
         const TString& clientId,
         const TString& cloudId,
@@ -986,7 +1023,7 @@ public:
         Y_UNUSED(cloudId);
         Y_UNUSED(folderId);
 
-        return std::make_shared<TRequestStatsStub>();
+        return std::make_shared<TFileSystemStatsStub>();
     }
 
     void SetFileSystemMediaKind(
@@ -1013,7 +1050,7 @@ public:
 
     IRequestStatsPtr GetRequestStats() override
     {
-        return std::make_shared<TRequestStatsStub>();
+        return std::make_shared<TFileSystemStatsStub>();
     }
 
     void Unregister(
