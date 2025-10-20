@@ -471,3 +471,25 @@ func TestSelectCellForLocalDiskCellReturnsAnError(t *testing.T) {
 		}
 	}
 }
+
+func TestSelectCellForLocalDiskReturnsCorrectNBSClientIfConfigsIsNotSet(
+	t *testing.T,
+) {
+
+	ctx := context.Background()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient := nbs_mocks.NewClientMock()
+
+	cellSelector := cellSelector{
+		nbsFactory: nbsFactory,
+	}
+
+	nbsFactory.On("GetClient", mock.Anything, "zone-a").Return(nbsClient, nil)
+
+	agentIDs := []string{"agent1"}
+
+	client, err := cellSelector.SelectCellForLocalDisk(ctx, "zone-a", agentIDs)
+	require.NoError(t, err)
+	require.Equal(t, nbsClient, client)
+	mock.AssertExpectationsForObjects(t, nbsFactory, nbsClient)
+}
