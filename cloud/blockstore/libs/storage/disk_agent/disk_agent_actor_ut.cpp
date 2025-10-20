@@ -6805,9 +6805,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 config.SetEnabled(true);
                 auto* chaosConfig = config.MutableChaosConfig();
                 chaosConfig->SetChaosProbability(0.5);
-                chaosConfig->SetChaosDataDamageProbability(0.5);
-                chaosConfig->AddChaosErrorCodes(E_REJECTED);
-                chaosConfig->AddChaosErrorCodes(E_TIMEOUT);
+                chaosConfig->SetDataDamageProbability(0.5);
+                chaosConfig->SetImmediateReplyProbability(0.5);
+                chaosConfig->AddErrorCodes(E_REJECTED);
+                chaosConfig->AddErrorCodes(E_TIMEOUT);
 
                 *config.AddMemoryDevices() = PrepareMemoryDevice(
                     "MemoryDevice1",

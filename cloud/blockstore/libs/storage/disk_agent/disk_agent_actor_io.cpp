@@ -203,24 +203,19 @@ void TDiskAgentActor::PerformIO(
     auto* actorSystem = ctx.ActorSystem();
     auto replyFrom = ctx.SelfID;
 
-    auto replySuccess = [=] (auto result) {
+    auto reply = [actorSystem,
+                  replyFrom,
+                  requestInfo,
+                  range,
+                  volumeRequestId,
+                  deviceUUID,
+                  started](auto result)
+    {
         Reply<TMethod>(
             *actorSystem,
             replyFrom,
             *requestInfo,
             std::move(result),
-            range,
-            volumeRequestId,
-            deviceUUID,
-            started);
-    };
-
-    auto replyError = [=] (auto code, auto message) {
-        Reply<TMethod>(
-            *actorSystem,
-            replyFrom,
-            *requestInfo,
-            MakeError(code, std::move(message)),
             range,
             volumeRequestId,
             deviceUUID,
@@ -235,44 +230,46 @@ void TDiskAgentActor::PerformIO(
 
     // We flip four coins:
     // 1. will we generate an error (ChaosProbability)
-    // 2. will we spoil the write buffer (GetChaosDataDamageProbability).
+    // 2. will we spoil the write buffer (GetDataDamageProbability).
     //    If the buffer is corrupted, we always respond after completing the
     //    request
-    // 3. will we execute the request or respond with an error immediately (0.5)
-    // 4. what error code will we respond with?
+    // 3. will we execute the request or respond with an error immediately
+    //    (GetImmediateReplyProbability())
+    // 4. what error code will we respond with? (from GetErrorCodes())
     EWellKnownResultCodes forcedErrorCode = S_OK;
     if (AgentConfig->HasChaosConfig() &&
         TryChaosLuck(AgentConfig->GetChaosConfig().GetChaosProbability()))
     {
-        const EWellKnownResultCodes errorCode = GetChaosErrorCode(
-            AgentConfig->GetChaosConfig().GetChaosErrorCodes());
+        forcedErrorCode =
+            GetChaosErrorCode(AgentConfig->GetChaosConfig().GetErrorCodes());
+        bool damageData = false;
         if constexpr (IsExactlyWriteDeviceMethod<TMethod>) {
-            const bool damageData = TryChaosLuck(
-                AgentConfig->GetChaosConfig().GetChaosDataDamageProbability());
+            damageData = TryChaosLuck(
+                AgentConfig->GetChaosConfig().GetDataDamageProbability());
             if (damageData) {
                 LOG_WARN(
                     *actorSystem,
                     TBlockStoreComponents::DISK_AGENT,
-                    "Chaos will damage written data on %s [%s] before replying "
-                    "error",
+                    "Chaos will damage written data for %s %s",
                     deviceUUID.Quote().c_str(),
                     ToString(range).c_str());
                 auto& buffers = *msg->Record.MutableBlocks()->MutableBuffers();
                 for (auto& block: buffers) {
-                    block[0] = 'c';
-                    block[1] = 'h';
-                    block[2] = 'a';
-                    block[3] = 'o';
-                    block[4] = 's';
+                    block[0] =
+                        RandomNumber<ui8>(std::numeric_limits<ui8>::max());
                 }
-                forcedErrorCode = errorCode;
             }
         }
-        if (forcedErrorCode == S_OK && TryChaosLuck(0.5f)) {
-            replyError(errorCode, "Chaos-generated error before execution");
+        const bool immediateReply =
+            !damageData &&
+            TryChaosLuck(
+                AgentConfig->GetChaosConfig().GetImmediateReplyProbability());
+        if (immediateReply) {
+            reply(MakeError(
+                forcedErrorCode,
+                "Chaos-generated error before execution"));
             return;
         }
-        forcedErrorCode = errorCode;
     }
 
     if (SecureErasePendingRequests.contains(deviceUUID)) {
@@ -289,7 +286,7 @@ void TDiskAgentActor::PerformIO(
                  {"isWrite", IsWriteDeviceMethod<TMethod>},
                  {"isRdma", 0}});
         }
-        replyError(E_REJECTED, "Secure erase in progress");
+        reply(MakeError(E_REJECTED, "Secure erase in progress"));
         return;
     }
 
@@ -301,8 +298,7 @@ void TDiskAgentActor::PerformIO(
 
         result.Subscribe(
             [forcedErrorCode,
-             replySuccess,
-             replyError,
+             reply,
              deviceUUID,
              clientId,
              actorSystem](auto future)
@@ -310,11 +306,11 @@ void TDiskAgentActor::PerformIO(
                 try {
                     if (forcedErrorCode != S_OK &&
                         !HasError(future.GetValue())) {
-                        replyError(
+                        reply(MakeError(
                             forcedErrorCode,
-                            "Chaos-generated error after execution");
+                            "Chaos-generated error after execution"));
                     } else {
-                        replySuccess(future.ExtractValue());
+                        reply(future.ExtractValue());
                     }
                 } catch (...) {
                     auto [code, message] = HandleException(
@@ -324,7 +320,7 @@ void TDiskAgentActor::PerformIO(
                         deviceUUID,
                         clientId);
 
-                    replyError(code, message);
+                    reply(MakeError(code, message));
                 }
             });
     } catch (...) {
@@ -335,7 +331,7 @@ void TDiskAgentActor::PerformIO(
             deviceUUID,
             clientId);
 
-        replyError(code, message);
+        reply(MakeError(code, message));
     }
 }
 

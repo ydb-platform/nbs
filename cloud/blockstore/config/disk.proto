@@ -174,10 +174,13 @@ message TChaosConfig
     optional double ChaosProbability = 1;
 
     // Error codes that the chaos will generate. When empty E_REJECTED is used.
-    repeated uint32 ChaosErrorCodes = 2;
+    repeated uint32 ErrorCodes = 2;
 
     // The probability of data corruption when responding with an error.
-    optional double ChaosDataDamageProbability = 3;
+    optional double DataDamageProbability = 3;
+
+    // The probability of a response immediately upon receipt of the request.
+    optional double ImmediateReplyProbability = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

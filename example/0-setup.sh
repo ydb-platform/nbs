@@ -86,10 +86,11 @@ ThrottlingConfig: {
 
 ChaosConfig: {
     ChaosProbability: 0.01
-    ChaosErrorCodes: 0x80000002 # E_REJECTED
-    ChaosErrorCodes: 0x80000005 # E_TIMEOUT
-    ChaosErrorCodes: 0x80000007 # E_UNAUTHORIZED
-    ChaosDataDamageProbability: 0.5
+    ErrorCodes: 0x80000002 # E_REJECTED
+    ErrorCodes: 0x80000005 # E_TIMEOUT
+    ErrorCodes: 0x80000007 # E_UNAUTHORIZED
+    DataDamageProbability: 0.1
+    ImmediateReplyProbability: 0.5
 }
 
 EOF
