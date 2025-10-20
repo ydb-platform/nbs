@@ -353,6 +353,10 @@ void TFileSystem::Read(
     request->SetOffset(offset);
     request->SetLength(size);
 
+    if (Config->GetZeroCopyReadEnabled()) {
+        // stub: create iovecs and add them to request
+    }
+
     TFuture<NProto::TReadDataResponse> future;
     if (WriteBackCache) {
         future = WriteBackCache.ReadData(callContext, std::move(request));
