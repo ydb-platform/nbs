@@ -44,6 +44,7 @@ message TFileStoreFeatures
     bool DirectoryHandlesStorageEnabled = 29;
     uint64 DirectoryHandlesTableSize = 30;
     bool GuestHandleKillPrivV2Enabled = 31;
+    bool ZeroCopyReadEnabled = 32;
 }
 
 message TFileStore
