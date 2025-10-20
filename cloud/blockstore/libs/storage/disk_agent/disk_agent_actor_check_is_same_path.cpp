@@ -28,16 +28,6 @@ NProto::TError MakeDeviceChangedError(
         Sprintf("device %s changed: %s", path.c_str(), reason.c_str()));
 }
 
-template <typename T>
-TResultOrError<T> UnpackFuture(TFuture<T> f)
-{
-    try {
-        return f.GetValue();
-    } catch (...) {
-        return MakeError(E_FAIL, CurrentExceptionMessage());
-    }
-}
-
 TString DescribePaths(const THashMap<TString, ui64>& pathToGeneration)
 {
     TStringBuilder sb;
@@ -322,8 +312,8 @@ void TDiskAgentActor::HandleCheckIsSamePathResult(
          uuidToFuture = std::move(storageFutures)](auto) mutable
         {
             THashMap<TString, TResultOrError<IStoragePtr>> deviceOpenResults;
-            for (const auto& [uuid, future]: uuidToFuture) {
-                deviceOpenResults.try_emplace(uuid, UnpackFuture(future));
+            for (auto& [uuid, future]: uuidToFuture) {
+                deviceOpenResults.try_emplace(uuid, ResultOrError(future));
             }
 
             auto response =
