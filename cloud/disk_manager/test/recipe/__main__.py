@@ -52,6 +52,7 @@ def parse_args(args):
     parser.add_argument("--ydb-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--encryption", action=argparse.BooleanOptionalAction)
     parser.add_argument("--multiple-nbs", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--with-cells", action=argparse.BooleanOptionalAction)
     parser.add_argument("--nbs-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--nfs-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--multiple-disk-managers", action=argparse.BooleanOptionalAction)
@@ -178,7 +179,8 @@ def start(argv):
             ydb_client=ydb3.client,
             compute_port=compute_port,
             kms_port=kms_port,
-            destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes)
+            destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes,
+        )
         nbs3.start()
         append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs3.nbs.stderr_file_name)
     else:
@@ -186,6 +188,69 @@ def start(argv):
         nbs3 = nbs
     set_env("DISK_MANAGER_RECIPE_NBS2_PORT", str(nbs2.port))
     set_env("DISK_MANAGER_RECIPE_NBS3_PORT", str(nbs3.port))
+
+    if args.with_cells:
+        port_manager = yatest_common.PortManager()
+        nbs4_secure_port = port_manager.get_port()
+        nbs5_secure_port = port_manager.get_port()
+
+        ydb4 = YDBLauncher(ydb_binary_path=ydb_binary_path)
+        ydb4.start()
+
+        nbs4 = NbsLauncher(
+            ydb4.port,
+            ydb4.domains_txt,
+            ydb4.dynamic_storage_pools,
+            root_certs_file,
+            cert_file,
+            cert_key_file,
+            ydb_binary_path=ydb_binary_path,
+            nbs_binary_path=nbs_binary_path,
+            disk_agent_binary_path=disk_agent_binary_path,
+            ydb_client=ydb4.client,
+            compute_port=compute_port,
+            kms_port=kms_port,
+            destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes,
+            nbs_secure_port=nbs4_secure_port,
+            cell_id="zone-d",
+            cells=[
+                {"cell_id": "zone-d-shard1", "hosts": [f"localhost{nbs5_secure_port}"]},
+            ]
+        )
+        nbs4.start()
+        append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs4.nbs.stderr_file_name)
+
+        ydb5 = YDBLauncher(ydb_binary_path=ydb_binary_path)
+        ydb5.start()
+
+        nbs5 = NbsLauncher(
+            ydb5.port,
+            ydb5.domains_txt,
+            ydb5.dynamic_storage_pools,
+            root_certs_file,
+            cert_file,
+            cert_key_file,
+            ydb_binary_path=ydb_binary_path,
+            nbs_binary_path=nbs_binary_path,
+            disk_agent_binary_path=disk_agent_binary_path,
+            ydb_client=ydb5.client,
+            compute_port=compute_port,
+            kms_port=kms_port,
+            destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes,
+            nbs_secure_port=nbs5_secure_port,
+            cell_id="zone-d-shard1",
+            cells=[
+                {"cell_id": "zone-d", "hosts": [f"localhost{nbs4_secure_port}"]},
+            ]
+        )
+        nbs5.start()
+        append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs5.nbs.stderr_file_name)
+    else:
+        nbs4 = nbs
+        nbs5 = nbs
+
+    set_env("DISK_MANAGER_RECIPE_NBS4_PORT", str(nbs4.port))
+    set_env("DISK_MANAGER_RECIPE_NBS5_PORT", str(nbs5.port))
 
     if args.nbs_only:
         return
@@ -232,6 +297,8 @@ def start(argv):
             nbs_port=nbs.port,
             nbs2_port=nbs2.port,
             nbs3_port=nbs3.port,
+            nbs4_port=nbs4.port,
+            nbs5_port=nbs5.port,
             metadata_url=metadata_service.url,
             root_certs_file=root_certs_file,
             idx=idx,
@@ -267,6 +334,8 @@ def start(argv):
             nbs_port=nbs.port,
             nbs2_port=nbs2.port,
             nbs3_port=nbs3.port,
+            nbs4_port=nbs4.port,
+            nbs5_port=nbs5.port,
             metadata_url=metadata_service.url,
             root_certs_file=root_certs_file,
             idx=idx,
