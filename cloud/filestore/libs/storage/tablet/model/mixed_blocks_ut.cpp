@@ -155,8 +155,9 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
                 blocksCount);
 
             auto blocks = visitor.Finish();
+            const auto aliveBlocksCount = blocksCount - deletedBlocksCount;
             // Deletion should not be seen
-            UNIT_ASSERT_VALUES_EQUAL(blocks.size(), blocksCount - deletedBlocksCount);
+            UNIT_ASSERT_VALUES_EQUAL(blocks.size(), aliveBlocksCount);
 
             for (size_t i = 0; i < deletionOffset; ++i) {
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
@@ -165,11 +166,15 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
             }
 
-            for (size_t i = deletionOffset; i < blocksCount - deletedBlocksCount; ++i) {
+            for (size_t i = deletionOffset; i < aliveBlocksCount; ++i) {
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
                 UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, minCommitId);
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, InvalidCommitId);
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i + deletedBlocksCount);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blocks[i].MaxCommitId,
+                    InvalidCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blocks[i].BlockIndex,
+                    blockIndex + i + deletedBlocksCount);
             }
         }
     }

@@ -238,7 +238,8 @@ void CheckFindBlocksIterator(
     size_t expectedBlocksToFind,
     const TVector<TBlock>& expectedBlocks)
 {
-    for (size_t i = 0; i < expectedBlocksToFind; i += iter.BlocksInCurrentIteration) {
+    size_t i = 0;
+    while (i < expectedBlocksToFind) {
         auto comment = TStringBuilder()
             << "expectedBlocks=" << PrintValues(expectedBlocks)
             << ", i=" << i;
@@ -266,6 +267,8 @@ void CheckFindBlocksIterator(
                 iter.Block.MaxCommitId,
                 comment);
         }
+
+        i += iter.BlocksInCurrentIteration;
     }
 
     UNIT_ASSERT(!iter.Next());
