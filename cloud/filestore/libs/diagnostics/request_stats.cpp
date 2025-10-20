@@ -571,9 +571,7 @@ public:
     NMonitoring::TDynamicCountersPtr GetModuleCounters(
         const TString& moduleName) override
     {
-        with_lock (Lock) {
-            return RootCounters->GetSubgroup("module", moduleName);
-        }
+        return RootCounters->GetSubgroup("module", moduleName);
     }
 
     void RegisterUpdateableStats(IUpdateableStatsPtr stats) override
