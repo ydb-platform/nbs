@@ -21,7 +21,9 @@ size_t DumpValues(const NJson::TJsonValue::TMapType& map)
 
     size_t nonEmptyCount = 0;
     for (const auto& [key, val]: ordered) {
-        if (val != "" && val != "0" && val != "0 B") {
+        if (val != "" && val != "0" && val != "0 B" &&
+            !key.EndsWith("OpsPerSec") && !key.EndsWith("BytesPerSec"))
+        {
             Cout << key << "=" << val << Endl;
             ++nonEmptyCount;
         }
@@ -103,7 +105,8 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
         auto stat = requestsTimeTracker.OnRequestFinished(
             2,
             true,
-            4000 * GetCyclesPerMillisecond());
+            4000 * GetCyclesPerMillisecond(),
+            4096);
         UNIT_ASSERT_VALUES_EQUAL(
             TRequestsTimeTracker::ERequestType::Write,
             stat->RequestType);
@@ -124,13 +127,15 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
         stat = requestsTimeTracker.OnRequestFinished(
             1,
             true,
-            4000 * GetCyclesPerMillisecond());
+            4000 * GetCyclesPerMillisecond(),
+            4096);
         UNIT_ASSERT_EQUAL(std::nullopt, stat);
 
         stat = requestsTimeTracker.OnRequestFinished(
             3,
             true,
-            4000 * GetCyclesPerMillisecond());
+            4000 * GetCyclesPerMillisecond(),
+            4096);
         UNIT_ASSERT_EQUAL(std::nullopt, stat);
 
         auto json = requestsTimeTracker.GetStatJson(
@@ -196,19 +201,22 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
         auto stat = requestsTimeTracker.OnRequestFinished(
             1,
             false,
-            4000 * GetCyclesPerMillisecond());
+            4000 * GetCyclesPerMillisecond(),
+            4096);
         UNIT_ASSERT_EQUAL(std::nullopt, stat);
 
         stat = requestsTimeTracker.OnRequestFinished(
             2,
             false,
-            4000 * GetCyclesPerMillisecond());
+            4000 * GetCyclesPerMillisecond(),
+            4096);
         UNIT_ASSERT_EQUAL(std::nullopt, stat);
 
         stat = requestsTimeTracker.OnRequestFinished(
             3,
             false,
-            4000 * GetCyclesPerMillisecond());
+            4000 * GetCyclesPerMillisecond(),
+            4096);
         UNIT_ASSERT_EQUAL(std::nullopt, stat);
 
         auto json = requestsTimeTracker.GetStatJson(
@@ -256,7 +264,8 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
         stat = requestsTimeTracker.OnRequestFinished(
             4,
             true,
-            10000 * GetCyclesPerMillisecond());
+            10000 * GetCyclesPerMillisecond(),
+            4096);
         UNIT_ASSERT_VALUES_EQUAL(
             TRequestsTimeTracker::ERequestType::Zero,
             stat->RequestType);
@@ -301,13 +310,15 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
         auto readResult = requestsTimeTracker.OnRequestFinished(
             1,
             true,
-            constructionTime + 3000 * GetCyclesPerMillisecond());
+            constructionTime + 3000 * GetCyclesPerMillisecond(),
+            4096);
         UNIT_ASSERT(readResult.has_value());
 
         auto writeResult = requestsTimeTracker.OnRequestFinished(
             2,
             false,
-            constructionTime + 4000 * GetCyclesPerMillisecond());
+            constructionTime + 4000 * GetCyclesPerMillisecond(),
+            4096);
         UNIT_ASSERT(!writeResult.has_value());
 
         auto jsonBefore = requestsTimeTracker.GetStatJson(
@@ -339,6 +350,77 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "1",
             valueAfter["stat"]["W_1_inflight_Count"].GetString());
+    }
+
+    Y_UNIT_TEST(ShouldCalculateThroughputStatistics)
+    {
+        const ui64 baseTime = 1000000000000ULL;
+        TRequestsTimeTracker requestsTimeTracker(baseTime);
+
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Read,
+            1,
+            TBlockRange64::WithLength(0, 4),
+            baseTime + 100000);
+
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Read,
+            2,
+            TBlockRange64::WithLength(0, 8),
+            baseTime + 200000);
+
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Write,
+            3,
+            TBlockRange64::WithLength(0, 16),
+            baseTime + 300000);
+
+        auto readStat1 = requestsTimeTracker.OnRequestFinished(
+            1,
+            true,
+            baseTime + 400000,
+            4096);
+        auto readStat2 = requestsTimeTracker.OnRequestFinished(
+            2,
+            true,
+            baseTime + 500000,
+            4096);
+        auto writeStat = requestsTimeTracker.OnRequestFinished(
+            3,
+            true,
+            baseTime + 600000,
+            4096);
+
+        UNIT_ASSERT(readStat1.has_value());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TRequestsTimeTracker::ERequestType::Read,
+            readStat1->RequestType);
+        UNIT_ASSERT(!readStat2.has_value());
+
+        UNIT_ASSERT(writeStat.has_value());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TRequestsTimeTracker::ERequestType::Write,
+            writeStat->RequestType);
+
+        auto json = requestsTimeTracker.GetStatJson(baseTime + 1000001, 4096);
+        NJson::TJsonValue value;
+        NJson::ReadJsonTree(json, &value, true);
+
+        auto getStat = [&](const TString& key)
+        {
+            return value["stat"][key].GetString();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL("2", getStat("R_Total_OpsPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("48.00 KiB/s", getStat("R_Total_BytesPerSec"));
+
+        UNIT_ASSERT_VALUES_EQUAL("1", getStat("W_Total_OpsPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("64.00 KiB/s", getStat("W_Total_BytesPerSec"));
+
+        UNIT_ASSERT_VALUES_EQUAL("0", getStat("Z_Total_OpsPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("0 B/s", getStat("Z_Total_BytesPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("0", getStat("D_Total_OpsPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("0 B/s", getStat("D_Total_BytesPerSec"));
     }
 }
 

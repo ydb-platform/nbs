@@ -153,6 +153,32 @@ bool TRequestsTimeTracker::TEqual::operator()(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TRequestsTimeTracker::TSimpleThroughput::AddOperation(
+    ui64 currentTimeUs,
+    ui64 bytes) const
+{
+    UpdateTime(currentTimeUs);
+
+    CurrentBytes += bytes;
+    CurrentOps++;
+}
+
+void TRequestsTimeTracker::TSimpleThroughput::UpdateTime(
+    ui64 currentTimeUs) const
+{
+    ui64 currentSecond = currentTimeUs / 1000000;
+
+    if (currentSecond != LastSecond) {
+        PreviousBytes = CurrentBytes;
+        PreviousOps = CurrentOps;
+        CurrentBytes = 0;
+        CurrentOps = 0;
+        LastSecond = currentSecond;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TRequestsTimeTracker::TRequestsTimeTracker(const ui64 constructionTime)
     : ConstructionTime(constructionTime)
 {
@@ -224,7 +250,8 @@ std::optional<TRequestsTimeTracker::TFirstSuccessStat>
 TRequestsTimeTracker::OnRequestFinished(
     ui64 requestId,
     bool success,
-    ui64 finishTime)
+    ui64 finishTime,
+    ui32 blockSize)
 {
     TRequestInflight request;
     {
@@ -249,6 +276,12 @@ TRequestsTimeTracker::OnRequestFinished(
     key.SizeBucket = TotalSizeBucket;
     Histograms[key].Increment(duration.MicroSeconds());
     Histograms[key].BlockCount += request.BlockRange.Size();
+
+    const auto requestTypeIndex = static_cast<size_t>(request.RequestType);
+    if (requestTypeIndex < ThroughputCounters.size()) {
+        const ui64 bytes = request.BlockRange.Size() * blockSize;
+        ThroughputCounters.at(requestTypeIndex).AddOperation(finishTime, bytes);
+    }
 
     return StatFirstSuccess(request, success, finishTime);
 }
@@ -346,6 +379,30 @@ TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize) const
         } else {
             allStat[key] = ToString(count);
         }
+    }
+
+    const char* typeNames[] = {"R", "W", "Z", "D"};
+
+    for (size_t requestType = 0; requestType < ThroughputCounters.size();
+         ++requestType)
+    {
+        ThroughputCounters.at(requestType).UpdateTime(nowCycles);
+
+        const auto bytesPerSec =
+            ThroughputCounters.at(requestType).GetBytesPerSecond();
+        const auto opsPerSec =
+            ThroughputCounters.at(requestType).GetOpsPerSecond();
+
+        const TString formattedThroughput =
+            bytesPerSec > 0 ? (FormatByteSize(bytesPerSec) + "/s") : "0 B/s";
+
+        const TString htmlKeyBytes =
+            TString(typeNames[requestType]) + "_Total_BytesPerSec";
+        const TString htmlKeyOps =
+            TString(typeNames[requestType]) + "_Total_OpsPerSec";
+
+        allStat[htmlKeyBytes] = formattedThroughput;
+        allStat[htmlKeyOps] = ToString(opsPerSec);
     }
 
     NJson::TJsonValue json;
