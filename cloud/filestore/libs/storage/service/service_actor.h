@@ -57,6 +57,8 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr SsdFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr SsdTabletCount;
 
+    NProto::EServiceState ServiceState = NProto::SERVICE_STATE_UNKNOWN;
+
     TMonotonic LastCpuWaitTs;
 
 public:

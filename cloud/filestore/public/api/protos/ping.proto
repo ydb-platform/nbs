@@ -10,6 +10,13 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/prot
 ////////////////////////////////////////////////////////////////////////////////
 // Health-check request/response
 
+enum EServiceState
+{
+    SERVICE_STATE_UNKNOWN = 0;
+    SERVICE_STATE_RUNNING = 1;
+    SERVICE_STATE_STOPPING = 2;
+}
+
 message TPingRequest
 {
     // Optional request headers.
@@ -17,6 +24,27 @@ message TPingRequest
 }
 
 message TPingResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Current service state.
+    EServiceState ServiceState = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Toggle service state request/response
+
+message TToggleServiceStateRequest
+{
+    // Desired service state.
+    EServiceState DesiredServiceState = 1;
+
+    // Optional request headers.
+    THeaders Headers = 2;
+}
+
+message TToggleServiceStateResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
