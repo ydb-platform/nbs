@@ -2477,6 +2477,79 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             1,
             counters->GetCounter("CompletedFlushCount")->GetAtomic());
     }
+
+    Y_UNIT_TEST(ShouldRegisterWriteBackCacheStatsAsUpdateable)
+    {
+        // Prevent automatic flush from running - we should observe
+        // MaxTime growth that is updated in UpdateStats - this ensures
+        // that UpdateStats is properly called
+        constexpr ui32 VeryLargeAutomaticFlushPeriod = 1000000;
+
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000,
+            VeryLargeAutomaticFlushPeriod);
+
+        std::atomic<int> writeDataCalled = 0;
+
+        bootstrap.Service->WriteDataHandler = [&](auto, auto)
+        {
+            writeDataCalled++;
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
+            ->FindSubgroup("module", "write_back_cache");
+
+        auto counter = counters->GetCounter("WriteDataRequest_Cached_MaxTime");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        auto reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+
+        reqWrite->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_EQUAL(0, writeDataCalled.load());
+
+        bootstrap.Timer->Sleep(TDuration::Seconds(1));
+        bootstrap.StatsRegistry->UpdateStats(false);
+
+        auto maxTime1 = counter->GetAtomic();
+
+        bootstrap.Timer->Sleep(TDuration::Seconds(1));
+        bootstrap.StatsRegistry->UpdateStats(false);
+
+        auto maxTime2 = counter->GetAtomic();
+
+        UNIT_ASSERT_EQUAL(0, writeDataCalled.load());
+        UNIT_ASSERT_GT(maxTime1, 0);
+        UNIT_ASSERT_GT(maxTime2, maxTime1);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
