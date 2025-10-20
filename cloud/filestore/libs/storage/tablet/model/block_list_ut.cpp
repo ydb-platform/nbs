@@ -249,10 +249,22 @@ void CheckFindBlocksIterator(
             comment << ", j=" << j;
 
             const auto& block = expectedBlocks[iter.BlobOffset + j];
-            UNIT_ASSERT_VALUES_EQUAL_C(block.NodeId, iter.Block.NodeId, comment);
-            UNIT_ASSERT_VALUES_EQUAL_C(block.BlockIndex, iter.Block.BlockIndex + j, comment);
-            UNIT_ASSERT_VALUES_EQUAL_C(block.MinCommitId, iter.Block.MinCommitId, comment);
-            UNIT_ASSERT_VALUES_EQUAL_C(block.MaxCommitId, iter.Block.MaxCommitId, comment);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                block.NodeId,
+                iter.Block.NodeId,
+                comment);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                block.BlockIndex,
+                iter.Block.BlockIndex + j,
+                comment);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                block.MinCommitId,
+                iter.Block.MinCommitId,
+                comment);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                block.MaxCommitId,
+                iter.Block.MaxCommitId,
+                comment);
         }
     }
 
