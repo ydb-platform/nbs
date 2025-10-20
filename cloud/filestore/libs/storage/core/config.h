@@ -353,6 +353,8 @@ public:
     bool GetGuestHandleKillPrivV2Enabled() const;
 
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
+
+    bool GetZeroCopyReadEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
