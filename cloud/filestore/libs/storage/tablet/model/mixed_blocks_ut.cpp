@@ -102,7 +102,12 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
 
         mixedBlocks.AddDeletionMarker(
             rangeId,
-            {nodeId, minCommitId + 2, blockIndex + deletionOffset, deletedBlocksCount}
+            {
+                .NodeId = nodeId,
+                .CommitId = minCommitId + 2,
+                .BlockIndex = blockIndex + deletionOffset,
+                .BlockCount = deletedBlocksCount
+            }
         );
 
         {

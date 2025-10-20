@@ -106,9 +106,11 @@ TVector<TBlock> GenerateRandomBlockGroups(
     constexpr size_t MaxDeletionsInGroup = MaxBlocksInGroup;
 
     Y_ABORT_UNLESS(blockGroups >= maxDeletionGroups);
+
     // 2 rewrites at max are possible for each block
     Y_ABORT_UNLESS(
-        blockGroups*MaxBlocksInGroup + 2*maxDeletionGroups*MaxDeletionsInGroup <= MaxBlocksCount);
+        blockGroups*MaxBlocksInGroup + 2*maxDeletionGroups*MaxDeletionsInGroup
+            <= MaxBlocksCount);
 
     auto blockIndex = FirstBlockIndex;
 
@@ -396,8 +398,8 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         for (size_t i = 0; i < 50; i++) {
             TestEncodeBlocks(
                 GenerateRandomBlockGroups(
-                    /*blockGroups=*/50,
-                    /*deletionGroups=*/0));
+                    /* blockGroups = */ 50,
+                    /* deletionGroups = */ 0));
         }
     }
 
@@ -406,8 +408,8 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         for (size_t i = 0; i < 50; i++) {
             TestEncodeBlocks(
                 GenerateRandomBlockGroups(
-                    /*blockGroups=*/20,
-                    /*deletionGroups=*/15));
+                    /* blockGroups = */ 20,
+                    /* deletionGroups = */ 15));
         }
     }
 
@@ -427,10 +429,12 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
                     InvalidCommitId);
             }
 
-            blocks[blocksCount/2].MaxCommitId = InitialCommitId + 1;
+            blocks[blocksCount / 2].MaxCommitId = InitialCommitId + 1;
         }
 
-        auto list = TBlockList::EncodeBlocks(blocks, TDefaultAllocator::Instance());
+        auto list = TBlockList::EncodeBlocks(
+            blocks,
+            TDefaultAllocator::Instance());
 
         auto stats = list.GetStats();
         UNIT_ASSERT_VALUES_EQUAL(1, stats.DeletionMarkers);

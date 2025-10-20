@@ -571,7 +571,7 @@ bool TBlockIterator::NextMerged()
         ui16 blobOffset = Group.Merged.BlobOffset + Group.Index;
 
         if (Filter.MinBlockIndex > blockIndex) {
-            // Skip first part of merged group
+            // Skip the first part of the merged group
             Group.Index += Filter.MinBlockIndex - blockIndex;
             continue;
         }
