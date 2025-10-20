@@ -1,3 +1,4 @@
+import glob
 import itertools
 import json
 import logging
@@ -6,6 +7,7 @@ import random
 import subprocess
 import sys
 import uuid
+import shutil
 
 import yatest.common as common
 
@@ -294,14 +296,20 @@ def _lay_out_files(directory, name, jobs, size):
 
 def _execute_command(cmd, fail_on_errors):
     logger.info("execute " + " ".join(cmd))
-    ex = common.execute(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
+    fio_artifacts = "./*.dat.*"
+    try:
+        ex = common.execute(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+    except common.process.ExecutionError as e:
+        raise e
+    finally:
+        for filepath in glob.glob(fio_artifacts):
+            shutil.copy(filepath, common.output_path())
 
     results = json.loads(ex.stdout)
 
-    # TODO: canonize something useful
     errors = 0
     for job in results["jobs"]:
         errors += int(job["error"])
