@@ -156,6 +156,7 @@ struct TRequestCounters
 
 class TValidationClient final
     : public IBlockStoreValidationClient
+    , public std::enable_shared_from_this<TValidationClient>
 {
     class TMonPage;
 
@@ -771,16 +772,21 @@ bool TValidationClient::HandleRequest(
 {
     RequestCounters.MountRequests->Inc();
 
-    response = Client->MountVolume(
-        std::move(callContext), std::move(request)
-    ).Subscribe([this] (const auto& future) {
+    auto onResponse = [weakPtr = weak_from_this()](const auto& future)
+    {
+        auto self = weakPtr.lock();
+        if (!self) {
+            return;
+        }
+
         if (!IsRequestFailed(future)) {
             const auto& response = future.GetValue();
-            MountVolume(
-                response.GetVolume(),
-                response.GetSessionId());
+            self->MountVolume(response.GetVolume(), response.GetSessionId());
         }
-    });
+    };
+
+    response = Client->MountVolume(std::move(callContext), std::move(request))
+                   .Subscribe(onResponse);
     return true;
 }
 
@@ -792,13 +798,20 @@ bool TValidationClient::HandleRequest(
     RequestCounters.UnmountRequests->Inc();
 
     auto diskId = request->GetDiskId();
-    response = Client->UnmountVolume(
-        std::move(callContext), std::move(request)
-    ).Subscribe([=, this] (const auto& future) {
-        if (!IsRequestFailed(future)) {
-            UnmountVolume(diskId);
+    auto onResponse = [=, weakPtr = weak_from_this()](const auto& future)
+    {
+        auto self = weakPtr.lock();
+        if (!self) {
+            return;
         }
-    });
+
+        if (!IsRequestFailed(future)) {
+            self->UnmountVolume(diskId);
+        }
+    };
+
+    response = Client->UnmountVolume(std::move(callContext), std::move(request))
+                   .Subscribe(onResponse);
     return true;
 }
 
@@ -836,31 +849,41 @@ bool TValidationClient::HandleRequest(
         std::move(callContext), std::move(request)
     );
 
-    response = f.Subscribe([=, this, blocks_ = std::move(blocks)] (const auto& future) {
+    auto onResponse = [=,
+                       weakPtr = weak_from_this(),
+                       blocks_ = std::move(blocks)](const auto& future)
+    {
+        auto self = weakPtr.lock();
+        if (!self) {
+            return;
+        }
+
         if (!IsRequestFailed(future)) {
             const auto& response = future.GetValue();
 
-            auto sgListOrError = GetSgList(response, volume->Info.GetBlockSize());
+            auto sgListOrError =
+                GetSgList(response, volume->Info.GetBlockSize());
             if (HasError(sgListOrError)) {
-                OnError(*volume, *range);
+                self->OnError(*volume, *range);
                 return;
             }
 
             auto blocksRead = CalculateBlocksDigest(
                 sgListOrError.GetResult(),
-                *DigestCalculator,
+                *self->DigestCalculator,
                 volume->Info.GetBlockSize(),
                 range->Begin,
                 range->Size(),
-                zeroBlockDigest
-            );
+                zeroBlockDigest);
 
-            CompleteRead(*volume, *range, blocks_, blocksRead);
+            self->CompleteRead(*volume, *range, blocks_, blocksRead);
         } else {
-            OnError(*volume, *range);
+            self->OnError(*volume, *range);
         }
         return;
-    });
+    };
+
+    response = f.Subscribe(onResponse);
 
     return true;
 }
@@ -898,27 +921,36 @@ bool TValidationClient::HandleRequest(
 
     auto f = Client->ReadBlocksLocal(std::move(callContext), request);
 
-    response = f.Subscribe([=, this, blocks = std::move(blocks)] (const auto& future) {
+    auto onResponse = [=,
+                       weakPtr = weak_from_this(),
+                       blocks = std::move(blocks)](const auto& future)
+    {
+        auto self = weakPtr.lock();
+        if (!self) {
+            return;
+        }
+
         if (!IsRequestFailed(future)) {
             auto guard = sgList.Acquire();
 
             if (guard) {
                 auto blocksRead = CalculateBlocksDigest(
                     guard.Get(),
-                    *DigestCalculator,
+                    *self->DigestCalculator,
                     volume->Info.GetBlockSize(),
                     range->Begin,
                     range->Size(),
-                    zeroBlockDigest
-                );
+                    zeroBlockDigest);
 
-                CompleteRead(*volume, *range, blocks, blocksRead);
+                self->CompleteRead(*volume, *range, blocks, blocksRead);
                 return;
             }
         }
 
-        OnError(*volume, *range);
-    });
+        self->OnError(*volume, *range);
+    };
+
+    response = f.Subscribe(onResponse);
 
     return true;
 }
@@ -970,15 +1002,24 @@ bool TValidationClient::HandleRequest(
 
     PrepareWrite(*volume, *range);
 
-    response = Client->WriteBlocks(
-        std::move(callContext), std::move(request)
-    ).Subscribe([=, this, blocks_ = std::move(blocks)] (const auto& future) {
-        if (!IsRequestFailed(future)) {
-            CompleteWrite(*volume, *range, blocks_);
-        } else {
-            OnError(*volume, *range);
+    auto onResponse = [=,
+                       weakPtr = weak_from_this(),
+                       blocks_ = std::move(blocks)](const auto& future)
+    {
+        auto self = weakPtr.lock();
+        if (!self) {
+            return;
         }
-    });
+
+        if (!IsRequestFailed(future)) {
+            self->CompleteWrite(*volume, *range, blocks_);
+        } else {
+            self->OnError(*volume, *range);
+        }
+    };
+
+    response = Client->WriteBlocks(std::move(callContext), std::move(request))
+                   .Subscribe(onResponse);
 
     return true;
 }
@@ -1021,15 +1062,25 @@ bool TValidationClient::HandleRequest(
 
         PrepareWrite(*volume, *range);
 
-        response = Client->WriteBlocksLocal(
-            std::move(callContext), std::move(request)
-        ).Subscribe([=, this, blocks_ = std::move(blocks)] (const auto& future) {
-            if (!IsRequestFailed(future)) {
-                CompleteWrite(*volume, *range, blocks_);
-            } else {
-                OnError(*volume, *range);
+        auto onResponse = [=,
+                           weakPtr = weak_from_this(),
+                           blocks_ = std::move(blocks)](const auto& future)
+        {
+            auto self = weakPtr.lock();
+            if (!self) {
+                return;
             }
-        });
+
+            if (!IsRequestFailed(future)) {
+                self->CompleteWrite(*volume, *range, blocks_);
+            } else {
+                self->OnError(*volume, *range);
+            }
+        };
+
+        response =
+            Client->WriteBlocksLocal(std::move(callContext), std::move(request))
+                .Subscribe(onResponse);
     } else {
         NProto::TWriteBlocksLocalResponse record;
         *record.MutableError() = MakeError(
@@ -1069,15 +1120,22 @@ bool TValidationClient::HandleRequest(
 
     PrepareZero(*volume, *range);
 
-    response = Client->ZeroBlocks(
-        std::move(callContext), std::move(request)
-    ).Subscribe([=, this] (const auto& future) {
-        if (!IsRequestFailed(future)) {
-            CompleteZero(*volume, *range);
-        } else {
-            OnError(*volume, *range);
+    auto onResponse = [=, weakPtr = weak_from_this()](const auto& future)
+    {
+        auto self = weakPtr.lock();
+        if (!self) {
+            return;
         }
-    });
+
+        if (!IsRequestFailed(future)) {
+            self->CompleteZero(*volume, *range);
+        } else {
+            self->OnError(*volume, *range);
+        }
+    };
+
+    response = Client->ZeroBlocks(std::move(callContext), std::move(request))
+                   .Subscribe(onResponse);
     return true;
 }
 
@@ -1094,7 +1152,7 @@ IBlockStoreValidationClientPtr CreateValidationClient(
     TString loggingTag,
     const TBlockRange64& validationRange)
 {
-    return std::make_unique<TValidationClient>(
+    return std::make_shared<TValidationClient>(
         std::move(logging),
         std::move(monitoring),
         std::move(client),
