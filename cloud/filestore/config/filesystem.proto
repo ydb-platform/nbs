@@ -87,5 +87,5 @@ message TFileSystemConfig
     optional bool ZeroCopyWriteEnabled = 25;
 
     // Disable fsync queue which is used to synchronize data/metadata ops during fsync
-    optional bool FsyncQueueDisabled = 26;
+    optional bool FSyncQueueDisabled = 26;
 }

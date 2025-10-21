@@ -115,7 +115,7 @@ public:
 
     bool GetZeroCopyWriteEnabled() const;
 
-    bool GetFsyncQueueDisabled() const;
+    bool GetFSyncQueueDisabled() const;
 };
 
 }   // namespace NCloud::NFileStore

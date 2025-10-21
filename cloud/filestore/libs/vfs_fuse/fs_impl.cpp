@@ -51,7 +51,7 @@ TFileSystem::TFileSystem(
     , WriteBackCache(std::move(writeBackCache))
 {
     Log = Logging->CreateLog("NFS_FUSE");
-    if (Config->GetFsyncQueueDisabled()) {
+    if (Config->GetFSyncQueueDisabled()) {
         FSyncQueue = std::make_unique<TFSyncQueueStub>();
     } else {
         FSyncQueue =

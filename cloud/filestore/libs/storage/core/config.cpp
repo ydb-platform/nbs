@@ -291,7 +291,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ZeroCopyWriteEnabled,              bool,      false                   )\
                                                                                \
-    xxx(FsyncQueueDisabled,                bool,      false                   )\
+    xxx(FSyncQueueDisabled,                bool,      false                   )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

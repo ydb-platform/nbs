@@ -77,7 +77,7 @@ void FillFeatures(
 
     features->SetZeroCopyWriteEnabled(config.GetZeroCopyWriteEnabled());
 
-    features->SetFsyncQueueDisabled(config.GetFsyncQueueDisabled());
+    features->SetFSyncQueueDisabled(config.GetFSyncQueueDisabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
