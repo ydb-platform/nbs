@@ -244,7 +244,9 @@ struct TVerbs
                 RDMA_OPTION_ID_TOS,
                 &tos,
                 sizeof(tos));
+
             if (res < 0) {
+                rdma_destroy_id(id);
                 RDMA_THROW_ERROR("rdma_set_option RDMA_OPTION_ID_TOS");
             }
         }
