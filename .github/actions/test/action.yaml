@@ -207,9 +207,13 @@ runs:
           fi
         fi
 
-        if [[ -n "$TMPFS_MOUNT_POINT" ]] && mountpoint -q "$TMPFS_MOUNT_POINT"; then
-          YA_RAM_DRIVE_PATH="$TMPFS_MOUNT_POINT"
-          echo "Tmpfs enabled ($YA_RAM_DRIVE_PATH)"
+        if [[ -n "$TMPFS_MOUNT_POINT" ]]; then
+          if mountpoint -q "$TMPFS_MOUNT_POINT"; then
+            export YA_RAM_DRIVE_PATH="$TMPFS_MOUNT_POINT"
+            echo "Tmpfs enabled ($YA_RAM_DRIVE_PATH)"
+          else
+            echo "Error: $TMPFS_MOUNT_POINT is not mounted"
+          fi
         fi
 
         # shellcheck disable=SC2153
