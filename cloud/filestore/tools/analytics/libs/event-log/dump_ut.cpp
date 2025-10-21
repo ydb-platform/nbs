@@ -94,7 +94,7 @@ Y_UNIT_TEST_SUITE(TDumpTest)
     {
         const auto requests = GetRequestTypes();
 
-        UNIT_ASSERT_VALUES_EQUAL(73, requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(74, requests.size());
 
         ui32 index = 0;
 #define TEST_REQUEST_TYPE(id, name)                                            \
@@ -163,6 +163,7 @@ Y_UNIT_TEST_SUITE(TDumpTest)
         TEST_REQUEST_TYPE(55, AddData);
         TEST_REQUEST_TYPE(56, ReadBlob);
         TEST_REQUEST_TYPE(57, WriteBlob);
+        TEST_REQUEST_TYPE(58, ToggleServiceState);
 
         // Fuse
         TEST_REQUEST_TYPE(1001, Flush);

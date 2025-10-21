@@ -120,6 +120,7 @@ static const TString RequestNames[] = {
     "AddData",
     "ReadBlob",
     "WriteBlob",
+    "ToggleServiceState",
 };
 
 static_assert(

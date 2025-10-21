@@ -34,6 +34,7 @@ SRCS(
     service_actor_monitoring.cpp
     service_actor_monitoring_search.cpp
     service_actor_ping.cpp
+    service_actor_toggle_service_state.cpp
     service_actor_pingsession.cpp
     service_actor_readdata.cpp
     service_actor_statfs.cpp

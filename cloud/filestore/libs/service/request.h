@@ -85,12 +85,14 @@ namespace NCloud::NFileStore {
 #define FILESTORE_CONTROL_SERVICE(xxx, ...)                                    \
     xxx(Ping,                               __VA_ARGS__)                       \
     xxx(PingSession,                        __VA_ARGS__)                       \
+    xxx(ToggleServiceState,                 __VA_ARGS__)                       \
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
 // FILESTORE_CONTROL_SERVICE
 
 #define FILESTORE_SERVICE(xxx, ...)                                            \
     xxx(Ping,                               __VA_ARGS__)                       \
     xxx(PingSession,                        __VA_ARGS__)                       \
+    xxx(ToggleServiceState,                 __VA_ARGS__)                       \
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
     FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
     FILESTORE_LOCAL_DATA_METHODS(xxx,       __VA_ARGS__)                       \
@@ -99,6 +101,7 @@ namespace NCloud::NFileStore {
 #define FILESTORE_REMOTE_SERVICE(xxx, ...)                                     \
     xxx(Ping,                               __VA_ARGS__)                       \
     xxx(PingSession,                        __VA_ARGS__)                       \
+    xxx(ToggleServiceState,                 __VA_ARGS__)                       \
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
     FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
 // FILESTORE_SERVICE
@@ -132,6 +135,7 @@ namespace NCloud::NFileStore {
 #define FILESTORE_PROTO_REQUESTS(xxx, ...)                                     \
     xxx(Ping,                               __VA_ARGS__)                       \
     xxx(PingSession,                        __VA_ARGS__)                       \
+    xxx(ToggleServiceState,                 __VA_ARGS__)                       \
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
     FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
     FILESTORE_LOCAL_DATA_METHODS(xxx,       __VA_ARGS__)                       \
@@ -148,6 +152,7 @@ enum class EFileStoreRequest
     AddData,
     ReadBlob,
     WriteBlob,
+    ToggleServiceState,
     MAX
 };
 
