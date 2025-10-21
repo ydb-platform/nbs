@@ -76,6 +76,7 @@ void FillFeatures(
     features->SetMaxFuseLoopThreads(config.GetMaxFuseLoopThreads());
 
     features->SetZeroCopyWriteEnabled(config.GetZeroCopyWriteEnabled());
+    features->SetZeroCopyReadEnabled(config.GetZeroCopyReadEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

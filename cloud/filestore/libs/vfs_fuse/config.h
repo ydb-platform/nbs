@@ -58,6 +58,7 @@ public:
     ui32 GetMaxFuseLoopThreads() const;
 
     bool GetZeroCopyWriteEnabled() const;
+    bool GetZeroCopyReadEnabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

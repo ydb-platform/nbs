@@ -1135,6 +1135,7 @@ private:
         config.SetMaxFuseLoopThreads(features.GetMaxFuseLoopThreads());
 
         config.SetZeroCopyWriteEnabled(features.GetZeroCopyWriteEnabled());
+        config.SetZeroCopyReadEnabled(features.GetZeroCopyReadEnabled());
 
         return std::make_shared<TFileSystemConfig>(config);
     }

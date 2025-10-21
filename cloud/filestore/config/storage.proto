@@ -656,6 +656,9 @@ message TStorageConfig
     // prototxt.
     optional bool UseBinaryFormatForTabletBootInfoBackup = 442;
 
+    // Enable zero-copy for read operations in the VFS FUSE layer
+    optional bool ZeroCopyReadEnabled = 443;
+
     // Allows to set node's priority for system (tenant) tablets (hive,
     // schemeshard, etc.). Lower value means lower priority.
     // NOTE: can be negative.

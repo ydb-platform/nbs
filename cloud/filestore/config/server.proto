@@ -168,6 +168,9 @@ message TLocalServiceConfig
 
     // Enable zero-copy for write operations in the VFS FUSE layer
     optional bool ZeroCopyWriteEnabled = 28;
+
+    // Enable zero-copy for read operations in the VFS FUSE layer
+    optional bool ZeroCopyReadEnabled = 29;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
