@@ -93,20 +93,19 @@ type FilesystemMeta struct {
 }
 
 type FilesystemBackupMeta struct {
-	ID                string                `json:"id"`
-	FolderID          string                `json:"folder_id"`
-	Filesystem        *types.Filesystem     `json:"filesystem"`
-	CheckpointID      string                `json:"checkpoint_id"`
-	CreateRequest     proto.Message         `json:"create_request"`
-	CreateTaskID      string                `json:"create_task_id"`
-	CreatingAt        time.Time             `json:"creating_at"`
-	CreatedBy         string                `json:"created_by"`
-	DeleteTaskID      string                `json:"delete_task_id"`
-	UseDataplaneTasks bool                  `json:"use_dataplane_tasks"`
-	Size              uint64                `json:"size"`
-	StorageSize       uint64                `json:"storage_size"`
-	Encryption        *types.EncryptionDesc `json:"encryption"`
-	Ready             bool                  `json:"ready"`
+	ID                string            `json:"id"`
+	FolderID          string            `json:"folder_id"`
+	Filesystem        *types.Filesystem `json:"filesystem"`
+	CheckpointID      string            `json:"checkpoint_id"`
+	CreateRequest     proto.Message     `json:"create_request"`
+	CreateTaskID      string            `json:"create_task_id"`
+	CreatingAt        time.Time         `json:"creating_at"`
+	CreatedBy         string            `json:"created_by"`
+	DeleteTaskID      string            `json:"delete_task_id"`
+	UseDataplaneTasks bool              `json:"use_dataplane_tasks"`
+	Size              uint64            `json:"size"`
+	StorageSize       uint64            `json:"storage_size"`
+	Ready             bool              `json:"ready"`
 }
 
 type PlacementGroupMeta struct {
@@ -246,6 +245,40 @@ type Storage interface {
 	// Lists all existing filesystem ids in specified |folderID|.
 	// Lists all existing filesystem ids if |folderID| is not set.
 	ListFilesystems(
+		ctx context.Context,
+		folderID string,
+		creatingBefore time.Time,
+	) ([]string, error)
+
+	// Returns filesystemBackup if action has been accepted by storage and nil otherwise.
+	CreateFilesystemBackup(ctx context.Context, backup FilesystemBackupMeta) (FilesystemBackupMeta, error)
+
+	FilesystemBackupCreated(
+		ctx context.Context,
+		backupID string,
+		checkpointID string,
+		createdAt time.Time,
+		backupSize uint64,
+		backupStorageSize uint64,
+	) error
+
+	GetFilesystemBackupMeta(ctx context.Context, backupID string) (*FilesystemBackupMeta, error)
+
+	// Returns filesystemBackup if action has been accepted by storage and nil otherwise.
+	DeleteFilesystemBackup(
+		ctx context.Context,
+		backupID string,
+		taskID string,
+		deletingAt time.Time,
+	) (*FilesystemBackupMeta, error)
+
+	FilesystemBackupDeleted(ctx context.Context, backupID string, deletedAt time.Time) error
+
+	ClearDeletedFilesystemBackups(ctx context.Context, deletedBefore time.Time, limit int) error
+
+	// Lists all existing filesystem backup ids in specified |folderID|.
+	// Lists all existing filesystem backup ids if |folderID| is not set.
+	ListFilesystemBackups(
 		ctx context.Context,
 		folderID string,
 		creatingBefore time.Time,

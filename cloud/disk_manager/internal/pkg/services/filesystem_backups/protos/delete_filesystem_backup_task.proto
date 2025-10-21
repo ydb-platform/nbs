@@ -1,1 +1,13 @@
-package protos
+syntax = "proto3";
+
+package filesystembackups;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystembackups/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message DeleteFilesystemBackupRequest {
+    string FilesystemBackupId = 1;
+}
+
+message DeleteFilesystemBackupTaskState {}

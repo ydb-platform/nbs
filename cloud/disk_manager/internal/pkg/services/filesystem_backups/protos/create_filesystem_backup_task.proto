@@ -12,7 +12,7 @@ message CreateSnapshotFromDiskRequest {
     types.Filesystem SrcDisk = 1;
     string DstFilesystemBackupId = 2;
     string FolderId = 3;
-    bool UseS3 = 8;
+    bool UseS3 = 4;
 }
 
 message CreateSnapshotFromDiskTaskState {

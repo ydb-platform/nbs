@@ -7,8 +7,8 @@ import (
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystembackups/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystembackups/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 )
@@ -41,12 +41,12 @@ func (s *service) CreateFilesystemBackup(
 
 	return s.taskScheduler.ScheduleTask(
 		ctx,
-		"snapshots.CreateFilesystemBackupFromDisk",
+		"filesystembackups.CreateFilesystemBackupFromFilesystem",
 		"",
-		&protos.CreateFilesystemBackupFromDiskRequest{
-			SrcDisk: &types.Disk{
-				ZoneId: req.Src.ZoneId,
-				DiskId: req.Src.FilesystemId,
+		&protos.CreateFilesystemBackupFromFilesystemRequest{
+			SrcFilesystem: &types.Filesystem{
+				ZoneId:       req.Src.ZoneId,
+				FilesystemId: req.Src.FilesystemId,
 			},
 			DstFilesystemBackupId:            req.FilesystemBackupId,
 			FolderId:                         req.FolderId,
