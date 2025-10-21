@@ -156,6 +156,12 @@ public:
             UpdateCompactionCounters(blob);
         }
 
+        for (const auto& i: Args.FlushedCommitIdsFromChannel) {
+            State.GetTrimFreshLogBarriers().ReleaseBarrierN(
+                i.CommitId,
+                i.BlockCount);
+        }
+
         if (Args.Mode == ADD_COMPACTION_RESULT) {
             ProcessAffectedBlobs(db);
             ProcessAffectedBlocks(db);
