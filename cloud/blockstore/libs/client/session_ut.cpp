@@ -1818,6 +1818,78 @@ Y_UNIT_TEST_SUITE(TSessionTest)
 
         bootstrap->Stop();
     }
+
+    Y_UNIT_TEST(ShouldHandleFrozenReadWriteRequestAfterSessionDestruction)
+    {
+        auto promise = NewPromise<void>();
+
+        size_t mountCount = 0;
+
+        auto client = std::make_shared<TTestService>();
+
+        client->MountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
+                ++mountCount;
+
+                NProto::TMountVolumeResponse response;
+                response.SetSessionId("1");
+                response.SetInactiveClientsTimeout(100);
+
+                auto& volume = *response.MutableVolume();
+                volume.SetDiskId(request->GetDiskId());
+                volume.SetBlockSize(DefaultBlockSize);
+                volume.SetBlocksCount(DefaultBlocksCount);
+
+                return NThreading::MakeFuture(std::move(response));
+            };
+
+        client->UnmountVolumeHandler =
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return NThreading::MakeFuture(NProto::TUnmountVolumeResponse());
+        };
+
+        client->WriteBlocksLocalHandler =
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(request);
+            return promise.GetFuture().Apply(
+                [=](const auto&)
+                { return NProto::TWriteBlocksLocalResponse(); });
+        };
+
+        auto futureResponse = [&]()
+        {
+            auto scheduler = std::make_shared<TTestScheduler>();
+            auto bootstrap = CreateBootstrap(client, scheduler);
+
+            auto session = bootstrap->GetSession();
+
+            bootstrap->Start();
+
+            {
+                auto res = session->MountVolume().GetValueSync();
+                UNIT_ASSERT_C(!HasError(res), res);
+            }
+
+            scheduler->RunAllScheduledTasks();
+
+            auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+            auto response = session->WriteBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            bootstrap->Stop();
+            return response;
+        }();
+
+        // Unfreeze request handlers
+        promise.SetValue();
+
+        auto response = futureResponse.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetError().GetCode());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NClient

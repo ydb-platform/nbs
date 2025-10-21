@@ -894,7 +894,11 @@ void TSession::HandleRequestAfterMount(
                             sessionId,
                             future,
                             response);
+                        return;
                     }
+
+                    response.SetValue(TErrorResponse(
+                        MakeError(E_REJECTED, "Session is destroyed")));
                 });
             return;
         }
