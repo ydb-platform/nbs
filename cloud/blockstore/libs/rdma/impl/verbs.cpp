@@ -195,8 +195,9 @@ struct TVerbs
         if (res < 0) {
             RDMA_THROW_ERROR(
                 TStringBuilder()
-                    << "rdma_getaddrinfo "
-                    << "host: " << host);
+                    << "rdma_getaddrinfo("
+                    << "host='" << host
+                    << "')");
         }
 
         return WrapPtr(addr);
@@ -261,8 +262,9 @@ struct TVerbs
         if (res < 0) {
             RDMA_THROW_ERROR(
                 TStringBuilder()
-                    << "rdma_bind_addr "
-                    << " addr: " << PrintAddress(addr));
+                    << "rdma_bind_addr("
+                    << "addr='" << PrintAddress(addr)
+                    << "')");
         }
     }
 
@@ -276,9 +278,10 @@ struct TVerbs
         if (res < 0) {
             RDMA_THROW_ERROR(
                 TStringBuilder()
-                    << "rdma_resolve_addr "
-                    << " src: " << PrintAddress(src)
-                    << " dst: " << PrintAddress(dst));
+                    << "rdma_resolve_addr("
+                    << "src='" << PrintAddress(src)
+                    << "', dst='" << PrintAddress(dst)
+                    << "')");
         }
     }
 
