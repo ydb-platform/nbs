@@ -45,7 +45,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
             Config->GetMaxBackground());
         features->SetMaxFuseLoopThreads(
             Config->GetMaxFuseLoopThreads());
-        features->SetFsyncQueueDisabled(Config->GetFsyncQueueDisabled());
+        features->SetFSyncQueueDisabled(Config->GetFSyncQueueDisabled());
         return response;
     };
 

@@ -662,6 +662,6 @@ message TStorageConfig
     optional int32 SystemTabletsPriority = 464;
 
     // Disable fsync queue which is used to synchronize data/metadata ops during fsync
-    optional bool FsyncQueueDisabled = 465;
+    optional bool FSyncQueueDisabled = 465;
 
 }
