@@ -848,14 +848,19 @@ void TSession::HandleRequest(
         } else {
             auto weak_ptr = weak_from_this();
             mountResponse.Subscribe(
-                [=, weak_ptr = std::move(weak_ptr)] (const auto& future) mutable {
+                [=, weak_ptr = std::move(weak_ptr)](const auto& future) mutable
+                {
                     if (auto p = weak_ptr.lock()) {
                         p->HandleRequestAfterMount<T>(
                             std::move(callContext),
                             std::move(request),
                             future,
                             response);
+                        return;
                     }
+
+                    response.SetValue(TErrorResponse(
+                        MakeError(E_REJECTED, "Session is destroyed")));
                 });
         }
         return;
