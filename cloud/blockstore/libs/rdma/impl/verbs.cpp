@@ -196,8 +196,8 @@ struct TVerbs
             RDMA_THROW_ERROR(
                 TStringBuilder()
                     << "rdma_getaddrinfo("
-                    << "host='" << host
-                    << "')");
+                    << "host=" << host.Quote()
+                    << ')');
         }
 
         return WrapPtr(addr);
@@ -263,8 +263,8 @@ struct TVerbs
             RDMA_THROW_ERROR(
                 TStringBuilder()
                     << "rdma_bind_addr("
-                    << "addr='" << PrintAddress(addr)
-                    << "')");
+                    << "addr=" << PrintAddressAndPort(addr)
+                    << ')');
         }
     }
 
@@ -279,9 +279,9 @@ struct TVerbs
             RDMA_THROW_ERROR(
                 TStringBuilder()
                     << "rdma_resolve_addr("
-                    << "src='" << PrintAddress(src)
-                    << "', dst='" << PrintAddress(dst)
-                    << "')");
+                    << "src='" << PrintAddressAndPort(src)
+                    << "', dst='" << PrintAddressAndPort(dst)
+                    << ')');
         }
     }
 
@@ -491,6 +491,11 @@ const char* GetEventName(rdma_cm_event_type event)
 TString PrintAddress(const sockaddr* addr)
 {
     return NAddr::PrintHost(NAddr::TOpaqueAddr(addr));
+}
+
+TString PrintAddressAndPort(const sockaddr* addr)
+{
+    return NAddr::PrintHostAndPort(NAddr::TOpaqueAddr(addr));
 }
 
 TString PrintConnectionParams(const rdma_conn_param* conn)
