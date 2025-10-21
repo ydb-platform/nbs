@@ -1383,7 +1383,7 @@ NProto::TError TDiskAgentState::CheckDiskRegistryGenerationAndUpdateItIfNeeded(
     ui64 diskRegistryGeneration)
 {
     if (diskRegistryGeneration < LastDiskRegistryGenerationSeen) {
-        return MakeError(E_FAIL, "outdated disk registry generation");
+        return MakeError(E_ARGUMENT, "outdated disk registry generation");
     }
 
     if (diskRegistryGeneration > LastDiskRegistryGenerationSeen) {
