@@ -59,6 +59,10 @@ func (s *cellSelector) SelectCellForLocalDisk(
 	agentIDs []string,
 ) (nbs.Client, error) {
 
+	if s.config == nil {
+		return s.nbsFactory.GetClient(ctx, zoneID)
+	}
+
 	cells := s.getCells(zoneID)
 	if len(cells) == 0 {
 		if s.isCell(zoneID) {
