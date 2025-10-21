@@ -85,4 +85,7 @@ message TFileSystemConfig
 
     // Enable zero-copy for write operations in the VFS FUSE layer
     optional bool ZeroCopyWriteEnabled = 25;
+
+    // Disable fsync queue which is used to synchronize data/metadata ops during fsync
+    optional bool FSyncQueueDisabled = 26;
 }
