@@ -445,7 +445,8 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
 
         // Check that the session has not switched, as there are requests in
         // flight.
-        drainFuture.Wait(TDuration::Seconds(3));
+        Cerr << "Before drainFuture.Wait\n";
+        drainFuture.Wait(TDuration::Seconds(2.5));
         UNIT_ASSERT_VALUES_EQUAL(false, drainFuture.HasValue());
 
         // Responding with a retriable error to the request from the first disk.
@@ -455,7 +456,9 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
         {
             NProto::TReadBlocksLocalResponse response;
             *response.MutableError() = MakeError(E_REJECTED, "some error");
+            Cerr << "Before readPromise.SetValue\n";
             readPromise.SetValue(std::move(response));
+            Cerr << "After readPromise.SetValue\n";
         }
 
         // Check that the request was completed successfully.
