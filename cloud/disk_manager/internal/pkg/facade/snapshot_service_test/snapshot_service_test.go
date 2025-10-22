@@ -18,8 +18,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	defaultZoneID = "zone-a"
-	shardedZoneID = "zone-d"
+	defaultZoneID   = "zone-a"
+	zoneWithCellsID = "zone-d"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -120,13 +120,13 @@ func TestSnapshotServiceCreateSnapshotFromDisk(t *testing.T) {
 	)
 }
 
-func TestSnapshotServiceCreateSnapshotFromDiskInShardedZone(t *testing.T) {
+func TestSnapshotServiceCreateSnapshotFromDiskInZoneWithCells(t *testing.T) {
 	testCreateSnapshotFromDiskWithZoneID(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD,
 		4096,         // diskBlockSize
 		32*1024*4096, // diskSize
-		shardedZoneID,
+		zoneWithCellsID,
 	)
 }
 

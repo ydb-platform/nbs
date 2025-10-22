@@ -22,8 +22,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	defaultZoneID = "zone-a"
-	shardedZoneID = "zone-d"
+	defaultZoneID   = "zone-a"
+	zoneWithCellsID = "zone-d"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1017,12 +1017,12 @@ func TestImageServiceCreateImageFromDisk(t *testing.T) {
 	)
 }
 
-func TestImageServiceCreateImageFromDiskInShardedZone(t *testing.T) {
+func TestImageServiceCreateImageFromDiskInZoneWithCells(t *testing.T) {
 	testImageServiceCreateImageFromDiskWithKind(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD,
 		uint64(4*1024*1024), // diskSize
-		shardedZoneID,
+		zoneWithCellsID,
 	)
 }
 
