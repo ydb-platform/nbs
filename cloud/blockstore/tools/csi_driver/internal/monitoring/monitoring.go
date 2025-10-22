@@ -121,8 +121,8 @@ func (m *Monitoring) ReportRequestCompleted(
 			if m.retriableErrorTimestampsByVolume[volumeId].IsZero() {
 				m.retriableErrorTimestampsByVolume[volumeId] = completedAt
 			}
-			if m.retriableErrorTimestampsByVolume[volumeId].Before(completedAt.
-				Add(-m.cfg.RetriableErrorsDurationThreshold)) {
+			if completedAt.After(m.retriableErrorTimestampsByVolume[volumeId].
+				Add(m.cfg.RetriableErrorsDurationThreshold)) {
 				subregistry.Counter("RetriableErrors").Inc()
 			}
 		} else {
