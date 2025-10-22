@@ -1,5 +1,6 @@
 #include "bootstrap.h"
 
+#include "chaos_storage_provider.h"
 #include "config.h"
 
 #include <cloud/blockstore/libs/nvme/nvme.h>
@@ -108,11 +109,14 @@ IStorageProviderPtr CreateStorageProvider(
     NServer::IFileIOServiceProviderPtr provider,
     NNvme::INvmeManagerPtr nvmeManager)
 {
+    IStorageProviderPtr result;
+
     switch (config.GetBackend()) {
-        case NProto::DISK_AGENT_BACKEND_SPDK:
+        case NProto::DISK_AGENT_BACKEND_SPDK: {
             break;
-        case NProto::DISK_AGENT_BACKEND_AIO:
-            return CreateLocalStorageProvider(
+        }
+        case NProto::DISK_AGENT_BACKEND_AIO: {
+            result = CreateLocalStorageProvider(
                 std::move(provider),
                 std::move(nvmeManager),
                 {
@@ -122,11 +126,15 @@ IStorageProviderPtr CreateStorageProvider(
                     .EnableDataIntegrityValidation =
                         config.GetEnableDataIntegrityValidationForDrBasedDisks(),
                 });
-        case NProto::DISK_AGENT_BACKEND_NULL:
-            return NServer::CreateNullStorageProvider();
+            break;
+        }
+        case NProto::DISK_AGENT_BACKEND_NULL: {
+            result = NServer::CreateNullStorageProvider();
+            break;
+        }
         case NProto::DISK_AGENT_BACKEND_IO_URING:
-        case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
-            return CreateLocalStorageProvider(
+        case NProto::DISK_AGENT_BACKEND_IO_URING_NULL: {
+            result = CreateLocalStorageProvider(
                 std::move(provider),
                 std::move(nvmeManager),
                 {
@@ -137,9 +145,17 @@ IStorageProviderPtr CreateStorageProvider(
                     .EnableDataIntegrityValidation =
                         config.GetEnableDataIntegrityValidationForDrBasedDisks(),
                 });
+            break;
+        }
     }
 
-    return nullptr;
+    if (result && config.HasChaosConfig()) {
+        result = NServer::CreateChaosStorageProvider(
+            std::move(result),
+            config.GetChaosConfig());
+    }
+
+    return result;
 }
 
 NNvme::INvmeManagerPtr CreateNvmeManager(const TDiskAgentConfig& config)

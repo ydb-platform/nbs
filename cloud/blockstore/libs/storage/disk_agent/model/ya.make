@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 SRCS(
     bandwidth_calculator.cpp
     bootstrap.cpp
+    chaos_storage_provider.cpp
     compare_configs.cpp
     config.cpp
     device_client.cpp
