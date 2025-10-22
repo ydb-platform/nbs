@@ -401,7 +401,7 @@ void TAlterFileStoreActor::HandleAlterFileStoreResponse(
 void TAlterFileStoreActor::GetFileSystemTopology(const TActorContext& ctx)
 {
     Y_ABORT_UNLESS(!Alter);
- 
+
     auto request =
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyRequest>();
     request->Record.SetFileSystemId(FileSystemId);
