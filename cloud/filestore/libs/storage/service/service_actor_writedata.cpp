@@ -73,12 +73,10 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
         if (iovec.GetLength() == 0) {
             continue;
         }
-        rope.Insert(
-            rope.End(),
-            TRope(TRcBuf(
-                MakeIntrusive<TIovecContiguousChunk>(
-                    iovec.GetBase(),
-                    iovec.GetLength()))));
+        rope.PushBack(TRcBuf(
+            MakeIntrusive<TIovecContiguousChunk>(
+                iovec.GetBase(),
+                iovec.GetLength())));
     }
     return rope;
 }
@@ -329,18 +327,9 @@ private:
             std::unique_ptr<TEvBlobStorage::TEvPut> request;
 
             if (!iovecs.empty()) {
-                // TODO(myagkov): Implement TEvPut with TRope as a buffer
-                // to remove unnecessary memcpy
-                TString putData;
-                putData.ReserveAndResize(blobId.BlobSize());
-                auto bytesCopied = TRopeUtils::SafeMemcpy(
-                    &putData[0],
-                    ropeIt,
-                    blobId.BlobSize());
-                TABLET_VERIFY(bytesCopied == blobId.BlobSize());
                 request = std::make_unique<TEvBlobStorage::TEvPut>(
                     blobId,
-                    std::move(putData),
+                    TRope(ropeIt, ropeIt + blobId.BlobSize()),
                     TInstant::Max(),
                     NKikimrBlobStorage::UserData);
                 ropeIt += blobId.BlobSize();
