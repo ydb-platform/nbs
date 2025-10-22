@@ -312,6 +312,7 @@ func GetVolumeId(req interface{}) string {
 		return r.VolumeId
 	case csi.CreateVolumeRequest:
 		// Per CSI spec, the VolumeId is provided in the Name field
+		// https://github.com/container-storage-interface/spec/blob/release-1.12/csi.proto#L350
 		return r.Name
 	case csi.DeleteVolumeRequest:
 		return r.VolumeId
