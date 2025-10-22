@@ -115,26 +115,26 @@ private:
 
     struct TSimpleThroughput
     {
-        mutable ui64 LastSecond = 0;
-        mutable ui64 CurrentBytes = 0;
-        mutable ui64 PreviousBytes = 0;
-        mutable ui64 CurrentOps = 0;
-        mutable ui64 PreviousOps = 0;
+        ui64 LastSecond = 0;
+        ui64 CurrentBytes = 0;
+        ui64 PreviousBytes = 0;
+        ui64 CurrentOps = 0;
+        ui64 PreviousOps = 0;
 
-        void AddOperation(ui64 currentTimeUs, ui64 bytes) const;
-        void UpdateTime(ui64 currentTimeUs) const;
+        void AddOperation(ui64 currentTimeUs, ui64 bytes);
+        void UpdateTime(ui64 currentTimeUs);
 
-        ui64 GetBytesPerSecond() const
+        [[nodiscard]] ui64 GetBytesPerSecond() const
         {
             return PreviousBytes;
         }
-        ui64 GetOpsPerSecond() const
+        [[nodiscard]] ui64 GetOpsPerSecond() const
         {
             return PreviousOps;
         }
     };
 
-    mutable std::array<TSimpleThroughput, RequestTypeCount> ThroughputCounters;
+    std::array<TSimpleThroughput, RequestTypeCount> ThroughputCounters;
 
 public:
     explicit TRequestsTimeTracker(const ui64 constructionTime);
@@ -157,7 +157,7 @@ public:
         ui64 finishTime,
         ui32 blockSize);
 
-    [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize) const;
+    [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize);
 
     void ResetStats();
 

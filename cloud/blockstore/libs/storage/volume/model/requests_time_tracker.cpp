@@ -155,7 +155,7 @@ bool TRequestsTimeTracker::TEqual::operator()(
 
 void TRequestsTimeTracker::TSimpleThroughput::AddOperation(
     ui64 currentTimeUs,
-    ui64 bytes) const
+    ui64 bytes)
 {
     UpdateTime(currentTimeUs);
 
@@ -163,8 +163,7 @@ void TRequestsTimeTracker::TSimpleThroughput::AddOperation(
     CurrentOps++;
 }
 
-void TRequestsTimeTracker::TSimpleThroughput::UpdateTime(
-    ui64 currentTimeUs) const
+void TRequestsTimeTracker::TSimpleThroughput::UpdateTime(ui64 currentTimeUs)
 {
     ui64 currentSecond = currentTimeUs / 1000000;
 
@@ -321,7 +320,7 @@ NJson::TJsonValue TRequestsTimeTracker::BuildPercentilesJson() const
     return result;
 }
 
-TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize) const
+TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize)
 {
     NJson::TJsonValue allStat(NJson::EJsonValueType::JSON_MAP);
 
