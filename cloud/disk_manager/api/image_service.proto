@@ -34,8 +34,8 @@ message CreateImageRequest {
         string src_snapshot_id = 1;
         string src_image_id = 2;
         ImageUrl src_url = 3;
-        // A correct zone ID must be provided; using a cell ID will cause
-        // a failure.
+        // src_disk_id's zone ID must be an existing zone ID; using a cell ID
+        // will cause a failure.
         DiskId src_disk_id = 5;
     }
     string dst_image_id = 6;

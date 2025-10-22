@@ -39,6 +39,7 @@ func NewCellSelector(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// If config is nil, returns copy of disk with original zone ID.
 func (s *cellSelector) ReplaceZoneIdWithCellIdInDiskMeta(
 	ctx context.Context,
 	storage resources.Storage,

@@ -11,8 +11,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type CellSelector interface {
-	// Returns copy of disk with replaced zone ID with cell ID. If config
-	// is nil, returns copy of disk with original zone ID.
+	// Returns copy of disk with replaced zone ID with cell ID.
 	ReplaceZoneIdWithCellIdInDiskMeta(
 		ctx context.Context,
 		storage resources.Storage,
@@ -20,8 +19,8 @@ type CellSelector interface {
 	) (*types.Disk, error)
 
 	// Returns an nbs Client for the most suitable cell in the specified zone.
-	// If the Cells mechanism is not enabled for this folder or config is nil,
-	// returns an nbs Client for specified zone.
+	// If the Cells mechanism is not enabled for this folder, returns an nbs
+	// Client for specified zone.
 	SelectCell(
 		ctx context.Context,
 		zoneID string,
