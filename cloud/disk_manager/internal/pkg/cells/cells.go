@@ -9,6 +9,7 @@ import (
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -37,6 +38,39 @@ func NewCellSelector(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (s *cellSelector) ReplaceZoneIdWithCellIdInDiskMeta(
+	ctx context.Context,
+	storage resources.Storage,
+	disk *types.Disk,
+) (*types.Disk, error) {
+
+	if s.config == nil {
+		return &types.Disk{
+			DiskId: disk.DiskId,
+			ZoneId: disk.ZoneId,
+		}, nil
+	}
+
+	diskMeta, err := storage.GetDiskMeta(ctx, disk.DiskId)
+	if err != nil {
+		return nil, err
+	}
+
+	// A correct zone ID must be provided; using a cell ID will cause a failure.
+	if !s.ZoneContainsCell(disk.ZoneId, diskMeta.ZoneID) {
+		return nil, errors.NewNonCancellableErrorf(
+			"disk %s is not in zone %s",
+			disk.DiskId,
+			disk.ZoneId,
+		)
+	}
+
+	return &types.Disk{
+		DiskId: disk.DiskId,
+		ZoneId: diskMeta.ZoneID,
+	}, nil
+}
 
 func (s *cellSelector) SelectCell(
 	ctx context.Context,
@@ -137,7 +171,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 }
 
 func (s *cellSelector) ZoneContainsCell(zoneID string, cellID string) bool {
-	return s.config == nil || slices.Contains(s.getCells(zoneID), cellID)
+	return slices.Contains(s.getCells(zoneID), cellID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

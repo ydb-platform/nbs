@@ -4,12 +4,21 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type CellSelector interface {
+	// Returns copy of disk with replaced zone ID with cell ID. If config
+	// is nil, returns copy of disk with original zone ID.
+	ReplaceZoneIdWithCellIdInDiskMeta(
+		ctx context.Context,
+		storage resources.Storage,
+		disk *types.Disk,
+	) (*types.Disk, error)
+
 	// Returns an nbs Client for the most suitable cell in the specified zone.
 	// If the Cells mechanism is not enabled for this folder or config is nil,
 	// returns an nbs Client for specified zone.
@@ -26,7 +35,5 @@ type CellSelector interface {
 		agentIDs []string,
 	) (nbs.Client, error)
 
-	// Returns true if the specified cell is in the specified zone or cells
-	// config is nil.
 	ZoneContainsCell(zoneID string, cellID string) bool
 }
