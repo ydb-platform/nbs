@@ -25,13 +25,13 @@ namespace {
 // The steps of the resize mode:
 // 1. Describe main filestore. Gets main file system size, config version,
 // calculates desired number of shards
-// 2. Get filesystem topology. Gets number of exsitingshards, calculates number
-// of shards too be created.
+// 2. Get filesystem topology. Gets number of exsiting shards, calculates number
+// of shards to be created.
 // 3. Describe shards. We need this step to get config version of shards in case
 // we need to resize them.
 // 4. Alter (actually resize) main filestore.
 // 5. Alter shards (if we resize them)
-// 6. Create shards if nedded.
+// 6. Create shards if needed.
 // 7. Configure shards if we created some new ones.
 // 8. Configure main filestore if new shards were created.
 // The end!
