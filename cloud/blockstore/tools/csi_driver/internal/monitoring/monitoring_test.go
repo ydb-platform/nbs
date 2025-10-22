@@ -69,10 +69,10 @@ version{component="server",revision="2.5"} 1
 
 func TestShouldReportInflightAndCount(t *testing.T) {
 	mon := NewTestMonitoring(defaultRetriableErrorsThreshold)
-	mon.ReportRequestReceived(volumeId1, "/csi.v1.Controller/ControllerPublishVolume")
-	mon.ReportRequestReceived(volumeId1, "/csi.v1.Controller/CreateVolume")
-	mon.ReportRequestReceived(volumeId1, "/csi.v1.Controller/CreateVolume")
-	mon.ReportRequestReceived(volumeId1, "/csi.v1.Controller/DeleteVolume")
+	mon.ReportRequestReceived("/csi.v1.Controller/ControllerPublishVolume")
+	mon.ReportRequestReceived("/csi.v1.Controller/CreateVolume")
+	mon.ReportRequestReceived("/csi.v1.Controller/CreateVolume")
+	mon.ReportRequestReceived("/csi.v1.Controller/DeleteVolume")
 
 	serv := httptest.NewServer(mon.Handler)
 	defer serv.Close()
@@ -97,10 +97,10 @@ InflightCount{component="server",method="/csi.v1.Controller/DeleteVolume"} 1
 func TestShouldReportErrorsAndSuccess(t *testing.T) {
 	mon := NewTestMonitoring(defaultRetriableErrorsThreshold)
 	method := "/csi.v1.Controller/CreateVolume"
-	mon.ReportRequestReceived(volumeId1, method)
-	mon.ReportRequestReceived(volumeId1, method)
-	mon.ReportRequestReceived(volumeId1, method)
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method, nil, time.Now(), -1)
 	mon.ReportRequestCompleted(volumeId1, method, nil, time.Now(), -1)
 	mon.ReportRequestCompleted(volumeId1, method, errors.New("some error"), time.Now(), -1)
@@ -130,7 +130,7 @@ Success{component="server",method="/csi.v1.Controller/CreateVolume"} 2
 func TestShouldReportTimeBuckets(t *testing.T) {
 	mon := NewTestMonitoring(defaultRetriableErrorsThreshold)
 	method := "/csi.v1.Controller/ControllerPublishVolume"
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method, nil, time.Now(), 7*time.Second)
 
 	serv := httptest.NewServer(mon.Handler)
@@ -170,19 +170,19 @@ func TestShouldReportRetriableErros(t *testing.T) {
 	method := "/csi.v1.Node/NodeStageVolume"
 	timestamp := time.Now()
 	duration := 11 * time.Minute
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp, -1)
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(duration), -1)
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Aborted, ""), timestamp.Add(duration), -1)
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.DeadlineExceeded, ""), timestamp.Add(duration), -1)
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Canceled, ""), timestamp.Add(duration), -1)
 
@@ -231,20 +231,20 @@ func TestShouldReportRetriableErrosAfterExceedingThresholdForVolume(t *testing.T
 	timestamp := time.Now()
 	method := "/csi.v1.Node/NodeStageVolume"
 
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp, -1)
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(5*time.Minute), -1)
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(11*time.Minute), -1)
 
-	mon.ReportRequestReceived(volumeId2, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId2, method,
 		status.Error(codes.Unavailable, ""), timestamp, -1)
-	mon.ReportRequestReceived(volumeId2, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId2, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(10*time.Minute), -1)
 
@@ -266,10 +266,10 @@ InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
 RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
 `)
 
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(12*time.Minute), -1)
-	mon.ReportRequestReceived(volumeId2, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId2, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(12*time.Minute), -1)
 
@@ -290,10 +290,10 @@ RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 3
 
 	// send success request to reset errors counter for volume so next error
 	// should not increase retriable errors counter
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method, nil,
 		timestamp.Add(12*time.Minute), -1)
-	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(15*time.Minute), -1)
 

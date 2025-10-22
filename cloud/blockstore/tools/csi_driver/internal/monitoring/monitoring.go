@@ -51,10 +51,10 @@ type MonitoringConfig struct {
 }
 
 type Monitoring struct {
-	cfg                *MonitoringConfig
-	registry           metrics.Registry
-	Handler            http.Handler
-	retriableErrorsMap map[string]time.Time
+	cfg                              *MonitoringConfig
+	registry                         metrics.Registry
+	Handler                          http.Handler
+	retriableErrorTimestampsByVolume map[string]time.Time
 }
 
 func (m *Monitoring) StartListening() {
@@ -91,7 +91,7 @@ func (m *Monitoring) ReportExternalFsMountExpirationTimes(fsMountExpTimes map[st
 	}
 }
 
-func (m *Monitoring) ReportRequestReceived(volumeId string, method string) {
+func (m *Monitoring) ReportRequestReceived(method string) {
 	subregistry := m.registry.WithTags(map[string]string{
 		"method": method,
 	})
@@ -103,7 +103,7 @@ func (m *Monitoring) ReportRequestCompleted(
 	volumeId string,
 	method string,
 	err error,
-	timestamp time.Time,
+	completedAt time.Time,
 	elapsedTime time.Duration,
 ) {
 	subregistry := m.registry.WithTags(map[string]string{
@@ -114,24 +114,22 @@ func (m *Monitoring) ReportRequestCompleted(
 		subregistry.DurationHistogram("Time", requestDurationBuckets()).RecordDuration(elapsedTime)
 	}
 	if err == nil {
-		m.retriableErrorsMap[volumeId] = time.Time{}
+		m.retriableErrorTimestampsByVolume[volumeId] = time.Time{}
 		subregistry.Counter("Success").Inc()
-	} else {
-		if isRetriableError(err) {
-			if len(volumeId) != 0 {
-				if m.retriableErrorsMap[volumeId].IsZero() {
-					m.retriableErrorsMap[volumeId] = timestamp
-				}
-				if m.retriableErrorsMap[volumeId].Before(timestamp.
-					Add(-m.cfg.RetriableErrorsDurationThreshold)) {
-					subregistry.Counter("RetriableErrors").Inc()
-				}
-			} else {
+	} else if isRetriableError(err) {
+		if len(volumeId) != 0 {
+			if m.retriableErrorTimestampsByVolume[volumeId].IsZero() {
+				m.retriableErrorTimestampsByVolume[volumeId] = completedAt
+			}
+			if m.retriableErrorTimestampsByVolume[volumeId].Before(completedAt.
+				Add(-m.cfg.RetriableErrorsDurationThreshold)) {
 				subregistry.Counter("RetriableErrors").Inc()
 			}
 		} else {
-			subregistry.Counter("Errors").Inc()
+			subregistry.Counter("RetriableErrors").Inc()
 		}
+	} else {
+		subregistry.Counter("Errors").Inc()
 	}
 	subregistry.IntGauge("InflightCount").Add(-1)
 }

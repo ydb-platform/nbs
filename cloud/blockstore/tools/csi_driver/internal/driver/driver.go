@@ -202,7 +202,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 
 		method := getCsiMethodName(info.FullMethod)
 		volumeId := GetVolumeId(req)
-		mon.ReportRequestReceived(volumeId, method)
+		mon.ReportRequestReceived(method)
 
 		startTime := time.Now()
 		resp, err := handler(ctx, req)
@@ -311,6 +311,7 @@ func GetVolumeId(req interface{}) string {
 	case csi.NodeExpandVolumeRequest:
 		return r.VolumeId
 	case csi.CreateVolumeRequest:
+		// Per CSI spec, the VolumeId is provided in the Name field
 		return r.Name
 	case csi.DeleteVolumeRequest:
 		return r.VolumeId
