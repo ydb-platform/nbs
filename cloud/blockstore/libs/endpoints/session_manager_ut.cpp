@@ -124,8 +124,9 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         auto service = std::make_shared<TTestService>();
         service->DescribeVolumeHandler =
             [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture(NProto::TDescribeVolumeResponse());
+                auto response = NProto::TDescribeVolumeResponse();
+                response.MutableVolume()->SetDiskId(request->GetDiskId());
+                return MakeFuture(std::move(response));
             };
         service->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -230,8 +231,9 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         auto service = std::make_shared<TTestService>();
         service->DescribeVolumeHandler =
             [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture(NProto::TDescribeVolumeResponse());
+                auto response = NProto::TDescribeVolumeResponse();
+                response.MutableVolume()->SetDiskId(request->GetDiskId());
+                return MakeFuture(std::move(response));
             };
         service->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
@@ -333,8 +335,9 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         service->DescribeVolumeHandler =
             [&](std::shared_ptr<NProto::TDescribeVolumeRequest> request)
         {
-            Y_UNUSED(request);
-            return MakeFuture(NProto::TDescribeVolumeResponse());
+            auto response = NProto::TDescribeVolumeResponse();
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+            return MakeFuture(std::move(response));
         };
         service->MountVolumeHandler =
             [&](std::shared_ptr<NProto::TMountVolumeRequest> request)

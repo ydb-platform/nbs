@@ -20,6 +20,7 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
+    cloud/blockstore/libs/storage/model
     cloud/blockstore/libs/throttling
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/throttling
