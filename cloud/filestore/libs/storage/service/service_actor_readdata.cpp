@@ -259,7 +259,7 @@ TString DescribeResponseDebugString(
 void ApplyFreshDataRange(
     const TActorContext& ctx,
     const NProtoPrivate::TFreshDataRange& sourceFreshData,
-    TString& targetBuffer,
+    TRope& targetBuffer,
     TByteRange alignedTargetByteRange,
     ui32 blockSize,
     ui64 offset,
@@ -300,8 +300,8 @@ void ApplyFreshDataRange(
     }
 
     const ui64 relOffset = commonRange.Offset - alignedTargetByteRange.Offset;
-    memcpy(
-        &targetBuffer[relOffset],
+    TRopeUtils::Memcpy(
+        targetBuffer.Begin() + relOffset,
         sourceFreshData.GetContent().data() +
             (commonRange.Offset - sourceByteRange.Offset),
         commonRange.Length);
@@ -626,7 +626,7 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
         ApplyFreshDataRange(
             ctx,
             freshDataRange,
-            *BlockBuffer,
+            Rope,
             AlignedByteRange,
             BlockSize,
             ReadRequest.GetOffset(),
