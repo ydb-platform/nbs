@@ -33,6 +33,51 @@ bool IsTwoStageReadEnabled(const NProto::TFileStore& fs)
     return !disabledAsHdd && fs.GetFeatures().GetTwoStageReadEnabled();
 }
 
+class TIovecContiguousChunk: public IContiguousChunk
+{
+private:
+    ui64 Base = 0;
+    ui64 Size = 0;
+
+public:
+    TIovecContiguousChunk(ui64 base, ui64 size)
+        : Base(base)
+        , Size(size)
+    {}
+
+    TContiguousSpan GetData() const override
+    {
+        return TContiguousSpan(reinterpret_cast<const char*>(Base), Size);
+    }
+
+    TMutableContiguousSpan GetDataMut() override
+    {
+        return TMutableContiguousSpan(reinterpret_cast<char*>(Base), Size);
+    }
+
+    size_t GetOccupiedMemorySize() const override
+    {
+        return Size;
+    }
+};
+
+TRope CreateRopeFromIovecs(const NProto::TReadDataRequest& request)
+{
+    TRope rope;
+    for (const auto& iovec: request.GetIovecs()) {
+        if (iovec.GetLength() == 0) {
+            continue;
+        }
+        rope.Insert(
+            rope.End(),
+            TRope(TRcBuf(
+                MakeIntrusive<TIovecContiguousChunk>(
+                    iovec.GetBase(),
+                    iovec.GetLength()))));
+    }
+    return rope;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TReadDataActor final: public TActorBootstrapped<TReadDataActor>
@@ -50,6 +95,7 @@ private:
     const TByteRange OriginByteRange;
     const TByteRange AlignedByteRange;
     std::unique_ptr<TString> BlockBuffer;
+    TRope Rope;
     NProtoPrivate::TDescribeDataResponse DescribeResponse;
     ui32 RemainingBlobsToRead = 0;
     bool ReadDataFallbackEnabled = false;
@@ -135,7 +181,15 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
     // a block buffer leads to memory allocation (and initialization) which is
     // heavy and we would like to execute that on a separate thread (instead of
     // this actor's parent thread)
-    BlockBuffer->ReserveAndResize(AlignedByteRange.Length);
+    if (ReadRequest.GetIovecs().empty()) {
+        BlockBuffer->ReserveAndResize(AlignedByteRange.Length);
+        Rope = TRope(TRcBuf(
+            MakeIntrusive<TIovecContiguousChunk>(
+                reinterpret_cast<ui64>(BlockBuffer->data()),
+                BlockBuffer->size())));
+    } else {
+        Rope = CreateRopeFromIovecs(ReadRequest);
+    }
 
     DescribeData(ctx);
     Become(&TThis::StateWork);
@@ -476,8 +530,9 @@ void TReadDataActor::HandleReadBlobResponse(
         TABLET_VERIFY(blobRange.GetOffset() >= AlignedByteRange.Offset);
 
         const ui64 relOffset = blobRange.GetOffset() - AlignedByteRange.Offset;
-        dataIter.ExtractPlainDataAndAdvance(
-            &(*BlockBuffer)[relOffset],
+        TRopeUtils::Memcpy(
+            Rope.Begin() + relOffset,
+            dataIter,
             blobRange.GetLength());
         ZeroIntervals.PunchHole(relOffset, relOffset + blobRange.GetLength());
     }
@@ -589,8 +644,8 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
     }
 
     for (const auto& zeroInterval: ZeroIntervals) {
-        memset(
-            &(*BlockBuffer)[zeroInterval.Start],
+        TRopeUtils::Memset(
+            Rope.Begin() + zeroInterval.Start,
             0,
             zeroInterval.End - zeroInterval.Start);
     }
@@ -599,37 +654,16 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
     if (end <= OriginByteRange.Offset) {
         BlockBuffer->clear();
     } else {
-        BlockBuffer->ReserveAndResize(end - AlignedByteRange.Offset);
+        auto length = end - AlignedByteRange.Offset;
         const auto bufferOffset =
             OriginByteRange.Offset - AlignedByteRange.Offset;
-        response->Record.set_allocated_buffer(BlockBuffer.release());
         response->Record.SetBufferOffset(bufferOffset);
-    }
-
-    if (ReadRequest.IovecsSize() > 0) {
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "%s copying data to target iovecs",
-            LogTag.c_str());
-        auto currentOffsetInSource = response->Record.GetBufferOffset();
-        for (const auto& iovec: ReadRequest.GetIovecs()) {
-            auto dataToWrite = Min(
-                iovec.GetLength(),
-                response->Record.GetBuffer().size() - currentOffsetInSource);
-            if (dataToWrite > 0) {
-                memcpy(
-                    reinterpret_cast<void*>(iovec.GetBase()),
-                    response->Record.GetBuffer().data() + currentOffsetInSource,
-                    dataToWrite);
-            }
-            currentOffsetInSource += dataToWrite;
+        if (ReadRequest.GetIovecs().empty()) {
+            BlockBuffer->ReserveAndResize(length);
+            response->Record.set_allocated_buffer(BlockBuffer.release());
+        } else {
+            response->Record.SetLength(length);
         }
-        response->Record.SetLength(
-            response->Record.GetBuffer().size() -
-            response->Record.GetBufferOffset());
-        response->Record.ClearBuffer();
-        response->Record.SetBufferOffset(0);
     }
 
 
