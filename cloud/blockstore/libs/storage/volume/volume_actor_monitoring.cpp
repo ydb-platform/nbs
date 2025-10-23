@@ -609,6 +609,43 @@ void RenderLatencyTable(IOutputStream& out, const TString& parentId)
                     }
                 }
             }
+            if (parentId.Contains("Total")) {
+                TABLER () {
+                    TABLED () {
+                        RenderTextWithTooltip(
+                            out,
+                            "Ops/Sec",
+                            "Operations per second");
+                    }
+                    TABLED_ATTRS ({{"id", parentId + "_OpsPerSec"}}) {
+                        out << "0";
+                    }
+                    TABLED () {
+                        out << "-";
+                    }
+                    TABLED () {
+                        out << "-";
+                    }
+                }
+
+                TABLER () {
+                    TABLED () {
+                        RenderTextWithTooltip(
+                            out,
+                            "Data/Sec",
+                            "Data throughput per second");
+                    }
+                    TABLED_ATTRS ({{"id", parentId + "_BytesPerSec"}}) {
+                        out << "0 B/s";
+                    }
+                    TABLED () {
+                        out << "-";
+                    }
+                    TABLED () {
+                        out << "-";
+                    }
+                }
+            }
         }
     }
 }

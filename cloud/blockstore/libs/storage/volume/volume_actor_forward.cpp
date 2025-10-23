@@ -522,7 +522,8 @@ bool TVolumeActor::ReplyToOriginalRequest(
     const auto firstSuccess = RequestTimeTracker.OnRequestFinished(
         volumeRequestId,
         success,
-        GetCycleCount());
+        GetCycleCount(),
+        State->GetBlockSize());
 
     if (firstSuccess) {
         LOG_INFO(
