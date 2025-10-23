@@ -185,6 +185,26 @@ void TDiskRegistryActor::CompleteAddAgent(
         args.DevicesToDisableIO.begin(),
         args.DevicesToDisableIO.end());
 
+    if (Config->GetAttachDetachPathsEnabled()) {
+        auto [pathsToAttach, pathsToDetach] =
+            State->GetPathsToAttachDetachOnRegistration(
+                args.Config.GetAgentId());
+
+        response->Record.SetDiskRegistryGeneration(Executor()->Generation());
+
+        for (const auto& [path, generation]: pathsToAttach) {
+            auto* pathToGen = response->Record.AddAllowedPaths();
+            pathToGen->SetPath(path);
+            pathToGen->SetGeneration(generation);
+        }
+
+        for (const auto& [path, generation]: pathsToDetach) {
+            auto* pathToGen = response->Record.AddUnknownPaths();
+            pathToGen->SetPath(path);
+            pathToGen->SetGeneration(generation);
+        }
+    }
+
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     SendCachedAcquireRequestsToAgent(ctx, args.Config);
@@ -194,6 +214,7 @@ void TDiskRegistryActor::CompleteAddAgent(
     PublishDiskStates(ctx);
     SecureErase(ctx);
     StartMigration(ctx);
+    ProcessPathsToAttachDetach(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

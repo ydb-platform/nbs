@@ -88,7 +88,8 @@ TAgentList::TAgentList(
         const TAgentListConfig& config,
         NMonitoring::TDynamicCountersPtr counters,
         TVector<NProto::TAgentConfig> configs,
-        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams,
+        THashMap<TString, NProto::TDiskRegistryAgentParams>
+            diskRegistryAgentListParams,
         TLog log)
     : Config(config)
     , ComponentGroup(std::move(counters))
@@ -103,6 +104,16 @@ TAgentList::TAgentList(
 
     if (ComponentGroup) {
         RejectAgentTimeoutCounter.Register(ComponentGroup, "RejectAgentTimeout");
+    }
+
+    for (const auto& agents: Agents) {
+        for (const auto& [path, state]: agents.GetPathAttachStates()) {
+            if (state == NProto::PATH_ATTACH_STATE_DETACHING ||
+                state == NProto::PATH_ATTACH_STATE_ATTACHING)
+            {
+                AddPathToAttachDetach(agents.GetAgentId(), path);
+            }
+        }
     }
 }
 
@@ -647,6 +658,8 @@ void TAgentList::RemoveAgentByIdx(size_t index)
 
     auto& agent = Agents.back();
 
+    PathGenerations.erase(agent.GetAgentId());
+    PathsToAttachDetach.erase(agent.GetAgentId());
     AgentIdToIdx.erase(agent.GetAgentId());
     NodeIdToIdx.erase(agent.GetNodeId());
 
@@ -690,6 +703,65 @@ TVector<TString> TAgentList::GetAgentIdsWithOverriddenListParams() const
         agentIds.push_back(agentId);
     }
     return agentIds;
+}
+
+ui64 TAgentList::GetPathGeneration(
+    const TString& agentId,
+    const TString& path) const
+{
+    const auto* generationsForAgent = PathGenerations.FindPtr(agentId);
+    if (!generationsForAgent) {
+        return 1;
+    }
+
+    const auto* generation = generationsForAgent->FindPtr(path);
+
+    return generation ? *generation : 1;
+}
+
+ui64 TAgentList::InrementAndGetPathGeneration(
+    const TString& agentId,
+    const TString& path)
+{
+    auto& generationsForAgent = PathGenerations[agentId];
+
+    auto& generation = generationsForAgent[path];
+    if (!generation) {
+        generation = 1;
+    }
+
+    return ++generation;
+}
+
+auto TAgentList::GetPathsToAttachDetach() const
+    -> const THashMap<TAgentId, THashSet<TString>>&
+{
+    return PathsToAttachDetach;
+}
+
+void TAgentList::AddPathToAttachDetach(
+    const TString& agentId,
+    const TString& path)
+{
+    auto& pathsForAgent = PathsToAttachDetach[agentId];
+    pathsForAgent.insert(path);
+}
+
+void TAgentList::DeletePathToAttachDetach(
+    const TString& agentId,
+    const TString& path)
+{
+    auto it = PathsToAttachDetach.find(agentId);
+    if (it == PathsToAttachDetach.end()) {
+        return;
+    }
+
+    auto& pathsForAgent = it->second;
+    pathsForAgent.erase(path);
+
+    if (!pathsForAgent) {
+        PathsToAttachDetach.erase(it);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
