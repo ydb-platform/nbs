@@ -245,6 +245,7 @@ func registerControlplaneTasks(
 	resourceStorage resources.Storage,
 	cellStorage cells_storage.Storage,
 	cellSelector cells.CellSelector,
+	cellsMetricsRegistry metrics.Registry,
 ) error {
 
 	logging.Info(ctx, "Registering pool tasks")
@@ -355,6 +356,7 @@ func registerControlplaneTasks(
 			taskScheduler,
 			cellStorage,
 			nbsFactory,
+			cellsMetricsRegistry,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to register cells tasks: %v", err)
@@ -442,6 +444,7 @@ func initControlplane(
 		cellStorage,
 		nbsFactory,
 	)
+	cellsMetricsRegistry := mon.NewRegistry("cells")
 
 	err = registerControlplaneTasks(
 		ctx,
@@ -460,6 +463,7 @@ func initControlplane(
 		resourceStorage,
 		cellStorage,
 		cellSelector,
+		cellsMetricsRegistry,
 	)
 	if err != nil {
 		return nil, err

@@ -19,6 +19,7 @@ type ClusterCapacity struct {
 	Kind       types.DiskKind
 	TotalBytes uint64
 	FreeBytes  uint64
+	CreatedAt  time.Time
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,6 +47,7 @@ func (c *clusterCapacityState) toClusterCapacity() (ClusterCapacity, error) {
 		Kind:       kind,
 		TotalBytes: c.TotalBytes,
 		FreeBytes:  c.FreeBytes,
+		CreatedAt:  c.CreatedAt,
 	}, nil
 }
 
@@ -97,6 +99,7 @@ func scanClusterCapacity(
 		persistence.OptionalWithDefault("kind", &capacity.Kind),
 		persistence.OptionalWithDefault("total_bytes", &capacity.TotalBytes),
 		persistence.OptionalWithDefault("free_bytes", &capacity.FreeBytes),
+		persistence.OptionalWithDefault("created_at", &capacity.CreatedAt),
 	)
 
 	return capacity, err
