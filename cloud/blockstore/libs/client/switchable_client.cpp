@@ -136,6 +136,8 @@ public:
         const TString& diskId,
         const TString& sessionId)
     {
+        Y_ABORT_UNLESS(blockStore);
+
         TVector<TRequestInfo> requests;
         with_lock (RequestsLock) {
             requests.swap(Requests);

@@ -452,8 +452,8 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
                 testZeroMethod.GetSecondaryRequestCount());
         }
 
-        // Request routed to secondary client after AfterSwitching() called by
-        // guard.
+        // Check that the request is routed to secondary client after Switch()
+        // and AfterSwitching()
         Check<
             NProto::TReadBlocksLocalRequest,
             NProto::TReadBlocksLocalResponse>(
