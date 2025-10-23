@@ -1353,6 +1353,6 @@ message TStorageServiceConfig
     // Enables force calculation of the checksums for all compaction blocks.
     optional bool ComputeDigestForEveryBlockOnCompaction = 465;
 
-    // Enables the use of intermediate write buffers in volume actor.
-    optional bool EnableUsingIntermediateWriteBuffer = 466;
+    // Disables the use of intermediate write buffers in volume actor.
+    optional bool DisableUsingIntermediateWriteBuffer = 466;
 }

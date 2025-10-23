@@ -9486,12 +9486,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         NCloud::NProto::EStorageMediaKind mediaKind,
         ui32 writeNumberToIntercept,
         const TString& tags,
-        bool enableUsingIntermediateWriteBuffer = true)
+        bool disableUsingIntermediateWriteBuffer = false)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
-        config.SetEnableUsingIntermediateWriteBuffer(
-            enableUsingIntermediateWriteBuffer);
+        config.SetDisableUsingIntermediateWriteBuffer(
+            disableUsingIntermediateWriteBuffer);
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(config, state);
 
@@ -9617,7 +9617,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             // 3 - to 3 replicas
             1 + 1 + 3,
             "use-intermediate-write-buffer",
-            /*enableUsingIntermediateWriteBuffer=*/false);
+            /*disableUsingIntermediateWriteBuffer=*/true);
         const TString adata(4_KB, 'a');
 
         const bool replica1Match = (adata == results[0]);

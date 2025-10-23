@@ -393,8 +393,8 @@ void TVolumeState::Reset()
     if (tags.contains(UseFastPathTagName)) {
         UseFastPath = true;
     }
-    if (tags.contains(IntermediateWriteBufferTagName) &&
-        StorageConfig->GetEnableUsingIntermediateWriteBuffer())
+    if (!StorageConfig->GetDisableUsingIntermediateWriteBuffer() &&
+        tags.contains(IntermediateWriteBufferTagName))
     {
         UseIntermediateWriteBuffer = true;
     }
