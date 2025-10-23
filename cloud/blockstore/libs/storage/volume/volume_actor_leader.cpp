@@ -126,6 +126,7 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
 
             case TFollowerDiskInfo::EState::Preparing:
             case TFollowerDiskInfo::EState::DataReady:
+            case TFollowerDiskInfo::EState::LeadershipTransferred:
             case TFollowerDiskInfo::EState::Error: {
                 // Link creation finished.
                 LOG_INFO(

@@ -30,17 +30,25 @@ struct TFollowerDiskActorParams
 
 //   DataTransferring (migration in progress)
 //        |
-//        |                          /------------------------------\
-//        v                          v                              |
-//   DataTransferred -> [Propagate follower state (CopyCompleted)]  |
-//                              |        |                          |
-//                 OK           |        |  On other Error repeat   |
-//            /-----------------/        |--------------------------/
+//        |                          /-------------------------------\
+//        v                          v                               |
+//   DataTransferred -> [Propagate follower state (DataTransferred)] |
+//                              |        |                           |
+//                     OK       |        |  On other Error repeat    |
+//            /-----------------/        |---------------------------/
 //            |                          |
 //            |                          |  On NotFoundSchemeShardError
-//            v                          v
-//   LeadershipTransferred           Link error state
-//
+//            |                          v
+//            |                    Link error state
+//            v
+//   LeadershipTransferred -> [Persist LeadershipTransferred on leader]
+//                                      |
+//                        OK            |
+//            /-------------------------/
+//            |
+//            |
+//            v
+//  LeadershipTransferredAndPersisted
 
 class TFollowerDiskActor final
     : public TNonreplicatedPartitionMigrationCommonActor
@@ -52,6 +60,8 @@ public:
         DataTransferring,
         DataTransferred,
         LeadershipTransferred,
+        LeadershipTransferredAndPersisted,
+        Error,
     };
 
 private:
@@ -97,9 +107,12 @@ private:
         const NActors::TActorContext& ctx,
         const TFollowerDiskInfo& newDiskInfo);
 
+    // Return true if need to start data transfer.
+    bool ApplyLinkState(const NActors::TActorContext& ctx);
     void AdvanceState(const NActors::TActorContext& ctx, EState newState);
     void PropagateLeadershipToFollower(const NActors::TActorContext& ctx);
-    void RebootLeaderVolume(const NActors::TActorContext& ctx);
+    void PersistLeadershipTransferred(const NActors::TActorContext& ctx);
+    void RebootLeaderVolume(const NActors::TActorContext& ctx, TDuration delay);
 
     template <typename TMethod>
     void ForwardRequestToLeaderPartition(
