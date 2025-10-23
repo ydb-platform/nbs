@@ -99,6 +99,7 @@ func scanClusterCapacity(
 		persistence.OptionalWithDefault("kind", &capacity.Kind),
 		persistence.OptionalWithDefault("total_bytes", &capacity.TotalBytes),
 		persistence.OptionalWithDefault("free_bytes", &capacity.FreeBytes),
+		persistence.OptionalWithDefault("created_at", &capacity.CreatedAt),
 	)
 
 	return capacity, err
