@@ -109,7 +109,7 @@ struct TStatCounters
     {
         TRequestCounters ReadBlocksLocal;
         TRequestCounters WriteBlocksLocal;
-        TDynamicCounters::TCounterPtr Endpoints;
+        TDynamicCounters::TCounterPtr Clients;
 
         void Register(TDynamicCounters& counters)
         {
@@ -117,7 +117,7 @@ struct TStatCounters
                 *counters.GetSubgroup("request", "ReadBlocksLocal"));
             WriteBlocksLocal.Register(
                 *counters.GetSubgroup("request", "WriteBlocksLocal"));
-            Endpoints = counters.GetCounter("Endpoints", /*derivative=*/false);
+            Clients = counters.GetCounter("Clients", /*derivative=*/false);
         }
     };
 
@@ -193,25 +193,25 @@ struct TStatCounters
         }
     }
 
-    void EndpointsIncrease(bool shouldCopy)
+    void ClientsIncrease(bool shouldCopy)
     {
         if (shouldCopy) {
-            CopiedValidationModeCounters.Endpoints->Inc();
+            CopiedValidationModeCounters.Clients->Inc();
         } else {
-            DirectValidationModeCounters.Endpoints->Inc();
+            DirectValidationModeCounters.Clients->Inc();
         }
     }
 
-    void EndpointsDecrease(bool shouldCopy)
+    void ClientsDecrease(bool shouldCopy)
     {
         if (shouldCopy) {
             Y_DEBUG_ABORT_UNLESS(
-                CopiedValidationModeCounters.Endpoints->Val() > 0);
-            CopiedValidationModeCounters.Endpoints->Dec();
+                CopiedValidationModeCounters.Clients->Val() > 0);
+            CopiedValidationModeCounters.Clients->Dec();
         } else {
             Y_DEBUG_ABORT_UNLESS(
-                DirectValidationModeCounters.Endpoints->Val() > 0);
-            DirectValidationModeCounters.Endpoints->Dec();
+                DirectValidationModeCounters.Clients->Val() > 0);
+            DirectValidationModeCounters.Clients->Dec();
         }
     }
 };
@@ -335,14 +335,14 @@ TDataIntegrityClient::TDataIntegrityClient(
     Counters = rootGroup->GetSubgroup("component", "service")
                    ->GetSubgroup("subcomponent", "data_integrity");
     StatCounters.Register(*Counters);
-    StatCounters.EndpointsIncrease(CopiedDataValidationEnabled.test());
+    StatCounters.ClientsIncrease(CopiedDataValidationEnabled.test());
 }
 
 TDataIntegrityClient::~TDataIntegrityClient()
 {
     // The destruction of this object should happen after drain. So we should
     // not worry about changing counters non-atomically.
-    StatCounters.EndpointsDecrease(CopiedDataValidationEnabled.test());
+    StatCounters.ClientsDecrease(CopiedDataValidationEnabled.test());
 }
 
 bool TDataIntegrityClient::HandleRequest(
@@ -451,6 +451,11 @@ bool TDataIntegrityClient::HandleRequest(
             return response;
         }
 
+        auto self = weakPtr.lock();
+        if (!self) {
+            return response;
+        }
+
         auto guard = request->Sglist.Acquire();
         if (!guard) {
             return TErrorResponse{MakeError(
@@ -473,8 +478,7 @@ bool TDataIntegrityClient::HandleRequest(
             sgList = &guard.Get();
         }
 
-        auto self = weakPtr.lock();
-        if (!response.HasChecksum() || !self) {
+        if (!response.HasChecksum()) {
             return response;
         }
 
@@ -652,8 +656,8 @@ void TDataIntegrityClient::EnableCopyingForVolume()
         "Enabling data integrity mode for disk %s",
         DiskId.Quote().c_str());
 
-    StatCounters.EndpointsDecrease(/*shouldCopy=*/false);
-    StatCounters.EndpointsIncrease(/*shouldCopy=*/true);
+    StatCounters.ClientsDecrease(/*shouldCopy=*/false);
+    StatCounters.ClientsIncrease(/*shouldCopy=*/true);
 
     auto callContext = MakeIntrusive<TCallContext>(CreateRequestId());
     auto request = std::make_shared<NProto::TExecuteActionRequest>();

@@ -240,12 +240,12 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
-                ->GetCounter("Endpoints")
+                ->GetCounter("Clients")
                 ->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
-                ->GetCounter("Endpoints")
+                ->GetCounter("Clients")
                 ->Val());
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
@@ -638,12 +638,12 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
-                ->GetCounter("Endpoints")
+                ->GetCounter("Clients")
                 ->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
-                ->GetCounter("Endpoints")
+                ->GetCounter("Clients")
                 ->Val());
         auto writeBlocksLocalCounters =
             dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
@@ -773,12 +773,12 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
-                ->GetCounter("Endpoints")
+                ->GetCounter("Clients")
                 ->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
-                ->GetCounter("Endpoints")
+                ->GetCounter("Clients")
                 ->Val());
         auto writeBlocksLocalCounters =
             dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
@@ -851,12 +851,12 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             dataIntegrityCounters->GetSubgroup("validation_mode", "copied")
-                ->GetCounter("Endpoints")
+                ->GetCounter("Clients")
                 ->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             dataIntegrityCounters->GetSubgroup("validation_mode", "direct")
-                ->GetCounter("Endpoints")
+                ->GetCounter("Clients")
                 ->Val());
 
         env.TestClient->ExecuteActionHandler =

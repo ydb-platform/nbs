@@ -167,17 +167,17 @@ def __get_data_integrity_sensors(mon_port, validation_mode):
                                          validation_mode=validation_mode,
                                          request="WriteBlocksLocal",
                                          sensor="Mismatches")
-    endpoints = get_sensor(sensors,
-                           default_value=0,
-                           component='service',
-                           subcomponent='data_integrity',
-                           validation_mode=validation_mode,
-                           sensor="Endpoints")
+    clients = get_sensor(sensors,
+                         default_value=0,
+                         component='service',
+                         subcomponent='data_integrity',
+                         validation_mode=validation_mode,
+                         sensor="Clients")
     return {"read_local_requests": read_local_requests,
             "write_local_requests": write_local_requests,
             "read_checksum_mismatch": read_checksum_mismatch,
             "write_checksum_mismatch": write_checksum_mismatch,
-            "endpoints": endpoints}
+            "clients": clients}
 
 
 def __check_data_integrity_counters(test_case, mon_port):
@@ -190,17 +190,17 @@ def __check_data_integrity_counters(test_case, mon_port):
             'active': direct_counters,
             'inactive': copied_counters,
             'active_should_have_requests': True,
-            'active_should_have_endpoints': True,
+            'active_should_have_clients': True,
             'inactive_should_have_requests': False,
-            'inactive_should_have_endpoints': False
+            'inactive_should_have_clients': False
         },
         ValidationMode.COPIED: {
             'active': copied_counters,
             'inactive': direct_counters,
             'active_should_have_requests': False,
-            'active_should_have_endpoints': True,
+            'active_should_have_clients': True,
             'inactive_should_have_requests': False,
-            'inactive_should_have_endpoints': False
+            'inactive_should_have_clients': False
         }
     }
 
@@ -211,7 +211,7 @@ def __check_data_integrity_counters(test_case, mon_port):
         rules['active'],
         mode_name=test_case.validation_mode.name,
         should_have_requests=rules['active_should_have_requests'],
-        should_have_endpoints=rules['active_should_have_endpoints']
+        should_have_clients=rules['active_should_have_clients']
     )
 
     # Validate inactive mode counters
@@ -219,16 +219,16 @@ def __check_data_integrity_counters(test_case, mon_port):
         rules['inactive'],
         mode_name=__get_opposite_mode(test_case.validation_mode).name,
         should_have_requests=rules['inactive_should_have_requests'],
-        should_have_endpoints=rules['inactive_should_have_endpoints']
+        should_have_clients=rules['inactive_should_have_clients']
     )
 
 
-def __validate_counters(counters, mode_name, should_have_requests, should_have_endpoints):
+def __validate_counters(counters, mode_name, should_have_requests, should_have_clients):
     read_requests = counters["read_local_requests"]
     write_requests = counters["write_local_requests"]
     read_mismatches = counters["read_checksum_mismatch"]
     write_mismatches = counters["write_checksum_mismatch"]
-    endpoints = counters["endpoints"]
+    clients = counters["clients"]
 
     # Validate request counts
     if should_have_requests:
@@ -252,12 +252,12 @@ def __validate_counters(counters, mode_name, should_have_requests, should_have_e
         )
 
     # Validate endpoint counts
-    if should_have_endpoints:
-        if endpoints == 0:
-            raise Exception(f"{mode_name} mode shouldn't have 0 endpoints")
+    if should_have_clients:
+        if clients == 0:
+            raise Exception(f"{mode_name} mode shouldn't have 0 clients")
     else:
-        if endpoints != 0:
-            raise Exception(f"{mode_name} mode shouldn't have {endpoints} endpoints")
+        if clients != 0:
+            raise Exception(f"{mode_name} mode shouldn't have {clients} clients")
 
 
 def __get_opposite_mode(validation_mode):
