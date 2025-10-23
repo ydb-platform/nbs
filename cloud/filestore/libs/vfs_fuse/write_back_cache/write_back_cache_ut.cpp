@@ -291,14 +291,25 @@ struct TTestTimer
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBootstrapArgs
+{
+    TDuration AutomaticFlushPeriod = {};
+    ui32 MaxWriteRequestSize = DefaultMaxWriteRequestSize;
+    ui32 MaxWriteRequestsCount = DefaultMaxWriteRequestsCount;
+    ui32 MaxSumWriteRequestsSize = DefaultMaxSumWriteRequestsSize;
+    bool UseTestTimerAndScheduler = true;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TBootstrap
 {
     ILoggingServicePtr Logging;
     TLog Log;
 
     std::shared_ptr<TFileStoreTest> Session;
-    std::shared_ptr<TTestTimer> Timer;
-    std::shared_ptr<TTestScheduler> Scheduler;
+    ITimerPtr Timer;
+    ISchedulerPtr Scheduler;
     std::shared_ptr<TWriteBackCacheStats> Stats;
     TDuration CacheAutomaticFlushPeriod;
     TDuration CacheFlushRetryPeriod;
@@ -332,30 +343,25 @@ struct TBootstrap
 
     std::atomic<int> SessionWriteDataHandlerCalled;
 
-    TBootstrap(
-            TDuration cacheAutomaticFlushPeriod = {},
-            ui32 maxWriteRequestSize = 0,
-            ui32 maxWriteRequestsCount = 0,
-            ui32 maxSumWriteRequestsSize = 0)
-        : MaxWriteRequestSize(maxWriteRequestSize > 0
-            ? maxWriteRequestSize
-            : DefaultMaxWriteRequestSize)
-        , MaxWriteRequestsCount(maxWriteRequestsCount > 0
-            ? maxWriteRequestsCount
-            : DefaultMaxWriteRequestsCount)
-        , MaxSumWriteRequestsSize(maxSumWriteRequestsSize > 0
-            ? maxSumWriteRequestsSize
-            : DefaultMaxSumWriteRequestsSize)
+    TBootstrap(const TBootstrapArgs& args = {})
+        : CacheAutomaticFlushPeriod(args.AutomaticFlushPeriod)
+        , MaxWriteRequestSize(args.MaxWriteRequestsCount)
+        , MaxWriteRequestsCount(args.MaxWriteRequestsCount)
+        , MaxSumWriteRequestsSize(args.MaxSumWriteRequestsSize)
     {
-        CacheAutomaticFlushPeriod = cacheAutomaticFlushPeriod;
         CacheFlushRetryPeriod = TDuration::MilliSeconds(100);
 
         Logging = CreateLoggingService("console", TLogSettings{});
         Logging->Start();
         Log = Logging->CreateLog("WRITE_BACK_CACHE");
 
-        Timer = std::make_shared<TTestTimer>();
-        Scheduler = std::make_shared<TTestScheduler>();
+        if (args.UseTestTimerAndScheduler) {
+            Timer = std::make_shared<TTestTimer>();
+            Scheduler = std::make_shared<TTestScheduler>();
+        } else {
+            Timer = CreateWallClockTimer();
+            Scheduler = CreateScheduler(Timer);
+        }
         Scheduler->Start();
 
         Stats = std::make_shared<TWriteBackCacheStats>();
@@ -786,6 +792,13 @@ struct TBootstrap
             expectedCount,
             expectedMinTime);
     }
+
+    void RunAllScheduledTasks()
+    {
+        auto* testScheduler = dynamic_cast<TTestScheduler*>(Scheduler.get());
+        Y_ABORT_UNLESS(testScheduler != nullptr);
+        testScheduler->RunAllScheduledTasks();
+    }
 };
 
 struct TWriteRequestLogger
@@ -1180,7 +1193,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldFlushAutomatically)
     {
         const auto automaticFlushPeriod = TDuration::MilliSeconds(1);
-        TBootstrap b(automaticFlushPeriod);
+        TBootstrap b({.AutomaticFlushPeriod = automaticFlushPeriod});
 
         auto checkFlush = [&](int attempt)
         {
@@ -1191,30 +1204,30 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         };
 
         b.WriteToCacheSync(1, 11, "abcde");
-        b.Scheduler->RunAllScheduledTasks();
+        b.RunAllScheduledTasks();
         checkFlush(1);
 
         b.WriteToCacheSync(1, 22, "efghij");
-        b.Scheduler->RunAllScheduledTasks();
+        b.RunAllScheduledTasks();
         checkFlush(2);
     }
 
     Y_UNIT_TEST(ShouldFlushAutomaticallyForDifferentNodes)
     {
         const auto automaticFlushPeriod = TDuration::MilliSeconds(1);
-        TBootstrap b(automaticFlushPeriod);
+        TBootstrap b({.AutomaticFlushPeriod = automaticFlushPeriod});
 
         // Prevent write requests initiated by Flush from completing immediately
         TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
 
         b.WriteToCacheSync(1, 11, "abcde");
-        b.Scheduler->RunAllScheduledTasks();
+        b.RunAllScheduledTasks();
         UNIT_ASSERT_EQUAL(1, writeRequests.size());
 
         // Stuck at flushing for one node should not affect automatic flushing
         // for another node
         b.WriteToCacheSync(2, 22, "efghij");
-        b.Scheduler->RunAllScheduledTasks();
+        b.RunAllScheduledTasks();
         UNIT_ASSERT_EQUAL(2, writeRequests.size());
     }
 
@@ -1338,7 +1351,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         const auto automaticFlushPeriod =
             withAutomaticFlush ? TDuration::MilliSeconds(1) : TDuration();
-        TBootstrap b(automaticFlushPeriod);
+        TBootstrap b({.AutomaticFlushPeriod = automaticFlushPeriod});
 
         const TString alphabet = "abcdefghijklmnopqrstuvwxyz";
 
@@ -1489,7 +1502,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // WriteData request from Flush succeeds after WriteAttemptsThreshold
         // attempts.
         for (int i = 1; i < WriteAttemptsThreshold; i++) {
-            b.Scheduler->RunAllScheduledTasks();
+            b.RunAllScheduledTasks();
         }
 
         UNIT_ASSERT(flushFuture.HasValue());
@@ -1498,8 +1511,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldSplitLargeWriteRequestsAtFlush)
     {
-        // Set MaxWriteRequestSize to 2 bytes
-        TBootstrap b({}, 2, 0, 0);
+        TBootstrap b({.MaxWriteRequestSize = 2});
 
         TWriteRequestLogger logger;
         logger.Subscribe(b);
@@ -1519,8 +1531,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldLimitTotalWriteRequestSizeAtFlush)
     {
-        // Set MaxSumWriteRequestsSize to 7 bytes
-        TBootstrap b({}, 0, 0, 7);
+        TBootstrap b({.MaxSumWriteRequestsSize = 7});
 
         TWriteRequestLogger logger;
         logger.Subscribe(b);
@@ -1540,8 +1551,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldLimitWriteRequestsCountAtFlush)
     {
-        // Set MaxWriteRequestsCount to 3
-        TBootstrap b({}, 0, 3, 0);
+        TBootstrap b({.MaxWriteRequestsCount = 3});
 
         TWriteRequestLogger logger;
         logger.Subscribe(b);
@@ -1562,8 +1572,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldTryToFlushWhenRequestSizeIsGreaterThanLimit)
     {
-        // Set MaxWriteRequestSize to 2 bytes and MaxWriteRequestsCount to 1
-        TBootstrap b({}, 2, 1, 0);
+        TBootstrap b({.MaxWriteRequestSize = 2, .MaxWriteRequestsCount = 1});
 
         TWriteRequestLogger logger;
         logger.Subscribe(b);
@@ -1683,7 +1692,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(now, stats.FlushingStats.MinTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
-        b.Scheduler->RunAllScheduledTasks();
+        b.RunAllScheduledTasks();
         auto flushFuture2 = b.Cache.FlushNodeData(2);
 
         UNIT_ASSERT(!flushFuture1.HasValue());
@@ -1694,7 +1703,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(now, stats.FlushingStats.MinTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
-        b.Scheduler->RunAllScheduledTasks();
+        b.RunAllScheduledTasks();
 
         UNIT_ASSERT(flushFuture1.HasValue());
         UNIT_ASSERT_EQUAL(2, stats.CompletedFlushCount);
