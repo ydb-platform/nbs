@@ -227,9 +227,9 @@ struct TRange
     const ui32 Offset = 0;
     const ui32 Length = 0;
 
-    explicit operator bool() const
+    bool Empty() const
     {
-        return Length;
+        return Length == 0;
     }
 
     static TRange WithLength(ui32 offset, ui32 length)
@@ -260,13 +260,13 @@ struct TRange
     }
 };
 
-struct FindDeletionMarkersResult
+struct TFindDeletionMarkersResult
 {
     ui64 MaxCommitId = 0;
     ui32 BlocksFound = 0;
 };
 
-FindDeletionMarkersResult FindDeletionMarkers(
+TFindDeletionMarkersResult FindDeletionMarkers(
     const TByteVector& encodedDeletionMarkers,
     ui16 blobOffset,
     ui32 maxBlocksToFind)
@@ -310,18 +310,20 @@ FindDeletionMarkersResult FindDeletionMarkers(
                         entry.BlobOffset,
                         multi.Count);
 
-                    const auto r = searchRange.Intersection(groupRange);
-                    if (r.Contains(searchRange.Offset)) {
+                    const auto intersection =
+                        searchRange.Intersection(groupRange);
+                    if (intersection.Contains(searchRange.Offset)) {
                         return {
                             .MaxCommitId = group.CommitId,
-                            .BlocksFound = r.End() - searchRange.Offset
+                            .BlocksFound =
+                                intersection.End() - searchRange.Offset
                         };
                     }
 
-                    if (r) {
+                    if (!intersection.Empty()) {
                         minOverlappingBlobOffset = Min<ui16>(
                             minOverlappingBlobOffset,
-                            r.Offset);
+                            intersection.Offset);
                     }
                     break;
                 }

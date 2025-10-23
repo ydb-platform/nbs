@@ -1,5 +1,7 @@
 #include "block_list.h"
 
+#include "block_list_spec.h"
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/algorithm.h>
@@ -102,14 +104,14 @@ TVector<TBlock> GenerateRandomBlockGroups(
     size_t blockGroups,
     size_t maxDeletionGroups)
 {
-    constexpr size_t MaxBlocksInGroup = 20u;
+    constexpr size_t MaxBlocksInGroup = 2 * NBlockListSpec::MergedGroupMinSize;
     constexpr size_t MaxDeletionsInGroup = MaxBlocksInGroup;
 
     Y_ABORT_UNLESS(blockGroups >= maxDeletionGroups);
 
     // 2 rewrites at max are possible for each block
     Y_ABORT_UNLESS(
-        blockGroups*MaxBlocksInGroup + 2*maxDeletionGroups*MaxDeletionsInGroup
+        blockGroups * MaxBlocksInGroup + 2 * maxDeletionGroups * MaxDeletionsInGroup
             <= MaxBlocksCount);
 
     auto blockIndex = FirstBlockIndex;
@@ -211,7 +213,7 @@ TVector<TBlock> GenerateRandomBlockGroups(
             deletionGroups++;
         }
 
-        // Append block group
+        // Append a block group
         blocks.insert(blocks.end(), group.begin(), group.end());
 
         // Adding space between block groups
@@ -246,7 +248,7 @@ void CheckFindBlocksIterator(
         UNIT_ASSERT_C(iter.Next(), comment);
         UNIT_ASSERT_C(iter.BlocksInCurrentIteration > 0, comment);
 
-        for (ui32 j = 0; j < iter.BlocksInCurrentIteration; j++) {
+        for (ui32 j = 0; j < iter.BlocksInCurrentIteration; ++j) {
             comment << ", j=" << j;
 
             const auto& block = expectedBlocks[iter.BlobOffset + j];
@@ -342,19 +344,17 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
             minCommitId,
             blockIndex,
             blocksCount);
-        for (size_t i = 0; i < blocksCount; i += iter.BlocksInCurrentIteration) {
-            UNIT_ASSERT(iter.Next());
-            UNIT_ASSERT(iter.BlocksInCurrentIteration > 0);
+        UNIT_ASSERT(iter.Next());
+        UNIT_ASSERT_VALUES_EQUAL(blocksCount, iter.BlocksInCurrentIteration);
+        UNIT_ASSERT_VALUES_EQUAL(0, iter.BlobOffset);
 
-            for (ui32 j = 0; j < iter.BlocksInCurrentIteration; j++) {
-                UNIT_ASSERT_VALUES_EQUAL(i + j, iter.BlobOffset + j);
-                UNIT_ASSERT_VALUES_EQUAL(nodeId, iter.Block.NodeId);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    blockIndex + i + j,
-                    iter.Block.BlockIndex + j);
-                UNIT_ASSERT_VALUES_EQUAL(minCommitId, iter.Block.MinCommitId);
-                UNIT_ASSERT_VALUES_EQUAL(maxCommitId, iter.Block.MaxCommitId);
-            }
+        for (ui32 i = 0; i < iter.BlocksInCurrentIteration; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(nodeId, iter.Block.NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                blockIndex + i,
+                iter.Block.BlockIndex + i);
+            UNIT_ASSERT_VALUES_EQUAL(minCommitId, iter.Block.MinCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(maxCommitId, iter.Block.MaxCommitId);
         }
 
         UNIT_ASSERT(!iter.Next());
