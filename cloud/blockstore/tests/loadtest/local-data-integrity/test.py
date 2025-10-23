@@ -251,7 +251,7 @@ def __validate_counters(counters, mode_name, should_have_requests, should_have_c
             f"read_mismatches={read_mismatches}, write_mismatches={write_mismatches}"
         )
 
-    # Validate endpoint counts
+    # Validate client counts
     if should_have_clients:
         if clients == 0:
             raise Exception(f"{mode_name} mode shouldn't have 0 clients")
