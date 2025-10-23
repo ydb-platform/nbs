@@ -813,6 +813,62 @@ void TVolumeActor::HandleTakeVolumeRequestId(
     NCloud::Reply(ctx, *ev, std::move(resp));
 }
 
+void TVolumeActor::InitializeDeviceOperationTracker()
+{
+    if (!State) {
+        return;
+    }
+
+    TVector<TDeviceOperationTracker::TDeviceInfo> deviceInfos;
+    TSet<TString> seenDevices;
+
+    for (const auto& device: State->GetMeta().GetDevices()) {
+        const TString deviceUUID = device.GetDeviceUUID();
+        if (seenDevices.insert(deviceUUID).second) {
+            deviceInfos.push_back(
+                {.DeviceUUID = deviceUUID, .AgentId = device.GetAgentId()});
+        }
+    }
+
+    for (const auto& replica: State->GetMeta().GetReplicas()) {
+        for (const auto& device: replica.GetDevices()) {
+            const TString deviceUUID = device.GetDeviceUUID();
+            if (seenDevices.insert(deviceUUID).second) {
+                deviceInfos.push_back(
+                    {.DeviceUUID = deviceUUID, .AgentId = device.GetAgentId()});
+            }
+        }
+    }
+
+    DeviceOperationTracker.UpdateDevices(deviceInfos);
+}
+
+void TVolumeActor::HandleDiskRegistryDeviceOperationStarted(
+    const TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    const auto& record = ev->Get();
+
+    DeviceOperationTracker.OnStarted(
+        record->OperationId,
+        record->DeviceUUID,
+        record->RequestType,
+        GetCycleCount());
+}
+
+void TVolumeActor::HandleDiskRegistryDeviceOperationFinished(
+    const TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    const auto& record = ev->Get();
+
+    DeviceOperationTracker.OnFinished(record->OperationId, GetCycleCount());
+}
+
 bool TVolumeActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
@@ -1082,6 +1138,14 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvService::TEvDestroyVolumeResponse,
             HandleDestroyOutdatedLeaderVolumeResponse);
+
+        HFunc(
+            TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted,
+            HandleDiskRegistryDeviceOperationStarted);
+
+        HFunc(
+            TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished,
+            HandleDiskRegistryDeviceOperationFinished);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
