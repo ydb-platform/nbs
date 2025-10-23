@@ -332,7 +332,7 @@ TDataIntegrityClient::TDataIntegrityClient(
 {
     auto counters = monitoring->GetCounters();
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
-    Counters = rootGroup->GetSubgroup("component", "service")
+    Counters = rootGroup->GetSubgroup("component", "server")
                    ->GetSubgroup("subcomponent", "data_integrity");
     StatCounters.Register(*Counters);
     StatCounters.ClientsIncrease(CopiedDataValidationEnabled.test());

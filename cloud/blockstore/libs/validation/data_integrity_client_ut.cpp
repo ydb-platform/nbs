@@ -234,7 +234,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "server")
                 ->GetSubgroup("subcomponent", "data_integrity");
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -301,7 +301,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "server")
                 ->GetSubgroup("subcomponent", "data_integrity");
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
@@ -359,7 +359,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "server")
                 ->GetSubgroup("subcomponent", "data_integrity");
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
@@ -411,7 +411,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "server")
                 ->GetSubgroup("subcomponent", "data_integrity");
 
         constexpr ui32 maxBlockCount = MaxSubRequestSize / BlockSize;
@@ -469,7 +469,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "server")
                 ->GetSubgroup("subcomponent", "data_integrity");
 
         env.TestClient->ReadBlocksLocalHandler =
@@ -521,7 +521,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "server")
                 ->GetSubgroup("subcomponent", "data_integrity");
 
         env.TestClient->WriteBlocksHandler =
@@ -633,7 +633,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "server")
                 ->GetSubgroup("subcomponent", "data_integrity");
         UNIT_ASSERT_VALUES_EQUAL(
             1,
@@ -768,7 +768,7 @@ Y_UNIT_TEST_SUITE(TDataIntegrityClientTest)
         auto dataIntegrityCounters =
             env.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service")
+                ->GetSubgroup("component", "server")
                 ->GetSubgroup("subcomponent", "data_integrity");
         UNIT_ASSERT_VALUES_EQUAL(
             0,
