@@ -656,10 +656,10 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "rdma_client");
 
-        auto unexpected = counters->GetCounter("UnexpectedCompletions");
+        auto completionErrors = counters->GetCounter("CompletionErrors");
         auto active = counters->GetCounter("ActiveRecv");
         auto errors = counters->GetCounter("RecvErrors");
-        auto unexpectedOld = unexpected->Val();
+        auto completionErrorsOld = completionErrors->Val();
         auto errorsOld = errors->Val();
 
         ibv_recv_wr* wr = context->RecvEvents.back();
@@ -716,8 +716,8 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             }
         };
 
-        wait(unexpected, unexpectedOld + 2);
-        wait(errors, errorsOld + 2);
+        wait(completionErrors, completionErrorsOld + 2);
+        wait(errors, errorsOld + 3);
         wait(active, 8);
     }
 };
