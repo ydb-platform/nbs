@@ -22,7 +22,7 @@
 
 #include <util/folder/tempdir.h>
 
-#include <chrono>
+#include <filesystem>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -62,8 +62,220 @@ TFsPath TryGetRamDrivePath()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestNvmeManager
-    : NNvme::INvmeManager
+TVector<ui64> FindProcessesWithOpenFile(const TString& targetPath)
+{
+    TVector<ui64> result;
+
+    namespace NFs = std::filesystem;
+
+    for (const auto& entry: NFs::directory_iterator{NFs::path{"/proc"}}) {
+        try {
+            const auto& path = entry.path();
+            const auto pidFilename = path.filename().string();
+
+            i64 pid = FromString<i64>(pidFilename);
+
+            TString fdsDirectory = "/proc/";
+            fdsDirectory += pidFilename;
+            fdsDirectory += "/fd";
+
+            for (const auto& entry:
+                 NFs::directory_iterator{NFs::path{fdsDirectory.c_str()}})
+            {
+                const auto& path = entry.path();
+                const auto fd = path.filename().string();
+
+                if (fd == "." || fd == "..") {
+                    continue;
+                }
+
+                auto actualFilePath = ::NFs::ReadLink(path.c_str());
+
+                if (actualFilePath == targetPath) {
+                    result.emplace_back(pid);
+                }
+            }
+        } catch (...) {
+            continue;
+        }
+    }
+
+    SortUnique(result);
+
+    return result;
+}
+
+class TDiskAgentAttachDetachModel
+{
+    struct TPathAttachState
+    {
+        bool Attached = true;
+        ui64 Generation = 0;
+    };
+
+private:
+    ui64 DrGeneration = 0;
+    THashMap<TString, TPathAttachState> PathAttachStates;
+
+public:
+    explicit TDiskAgentAttachDetachModel(const TVector<TString>& paths)
+    {
+        for (const auto& path: paths) {
+            PathAttachStates[path] = {};
+        }
+    }
+
+    bool AttachDetachPath(
+        ui64 drGeneration,
+        const THashMap<TString, ui64>& pathToGeneration,
+        bool attach)
+    {
+        if (!CheckDrGenerationAndUpdateItIfNeeded(drGeneration)) {
+            return false;
+        }
+
+        for (const auto& [path, generation]: pathToGeneration) {
+            auto& state = PathAttachStates[path];
+
+            if (state.Attached == attach) {
+                continue;
+            }
+
+            if (generation <= state.Generation) {
+                return false;
+            }
+        }
+
+        for (const auto& [path, generation]: pathToGeneration) {
+            auto& state = PathAttachStates[path];
+
+            state.Generation = Max(state.Generation, generation);
+            state.Attached = attach;
+        }
+
+        return true;
+    }
+
+    bool CheckDrGenerationAndUpdateItIfNeeded(ui64 drGeneration)
+    {
+        if (drGeneration < DrGeneration) {
+            return false;
+        }
+
+        if (drGeneration > DrGeneration) {
+            for (auto& pathAndState: PathAttachStates) {
+                pathAndState.second.Generation = 0;
+            }
+        }
+        DrGeneration = drGeneration;
+        return true;
+    }
+
+    bool IsPathAttached(const TString& path) const
+    {
+        return PathAttachStates.at(path).Attached;
+    }
+};
+
+class TAttachDetachRequestsGenerator
+{
+private:
+    ui64 DevicesCount;
+    TVector<TString> Paths;
+
+    ui64 MinPathGeneration = 1;
+    TVector<ui64> GeneratedPathGeneration;
+    TVector<bool> GeneratedShouldAttachPath;
+
+    ui64 MinDrGeneration = 1;
+    ui32 GeneratedDrGeneration = 0;
+
+public:
+    TAttachDetachRequestsGenerator(const TVector<TString>& paths)
+        : DevicesCount(paths.size())
+        , Paths(std::move(paths))
+    {}
+
+    void GeneratePathGeneration()
+    {
+        MinPathGeneration += 10;
+        GeneratedPathGeneration.clear();
+        for (ui64 i = 0; i < DevicesCount; ++i) {
+            GeneratedPathGeneration.push_back(
+                RandomNumber<ui64>(100) + MinPathGeneration);
+        }
+    }
+
+    void GenerateShouldAttachPath()
+    {
+        GeneratedShouldAttachPath.clear();
+        for (ui64 i = 0; i < DevicesCount; ++i) {
+            if (RandomNumber<ui64>(2) == 0) {
+                GeneratedShouldAttachPath.push_back(false);
+            } else {
+                GeneratedShouldAttachPath.push_back(true);
+            }
+        }
+    }
+
+    void GenerateDrGeneration()
+    {
+        MinDrGeneration += 10;
+        GeneratedDrGeneration = RandomNumber<ui32>(100) + MinDrGeneration;
+        MinPathGeneration = 1;
+    }
+
+    ui32 GetDrGeneration()
+    {
+        return GeneratedDrGeneration;
+    }
+
+    struct TRequest
+    {
+        THashMap<TString, ui64> PathToGeneration;
+    };
+
+    TVector<TRequest> GetAttachDetachRequests(bool attach)
+    {
+        auto pathIdxs = GetPathIdxsToAttachDetach(attach);
+        TVector<TRequest> requests;
+
+        while (pathIdxs.size() > 0) {
+            TRequest request;
+            auto devicesInRequest =
+                Max(RandomNumber<ui64>(pathIdxs.size() + 1),
+                    static_cast<ui64>(1));
+
+            for (ui64 i = 0; i < devicesInRequest; ++i) {
+                auto pathIdx = pathIdxs.back();
+
+                request.PathToGeneration[Paths[pathIdx]] =
+                    GeneratedPathGeneration[pathIdx];
+
+                pathIdxs.pop_back();
+            }
+
+            requests.push_back(request);
+        }
+
+        return requests;
+    }
+
+    TVector<ui64> GetPathIdxsToAttachDetach(bool attach)
+    {
+        TVector<ui64> result;
+        for (ui64 i = 0; i < DevicesCount; ++i) {
+            if (GeneratedShouldAttachPath[i] == attach) {
+                result.push_back(i);
+            }
+        }
+        return result;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestNvmeManager: NNvme::INvmeManager
 {
     THashMap<TString, TString> PathToSerial;
 
@@ -6786,6 +6998,477 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             S_OK,
             response.ReplicationResponses[1].GetCode(),
             FormatError(response.ReplicationResponses[1]));
+    }
+
+    Y_UNIT_TEST(ShouldDetachPath)
+    {
+        auto agentConfig = CreateDefaultAgentConfig();
+        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetAcquireRequired(true);
+        agentConfig.SetEnabled(true);
+
+        const auto workingDir = TryGetRamDrivePath();
+        const auto filePath =
+            workingDir / ("test" + ToString(RandomNumber<ui64>()));
+
+        {
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(16_MB);
+        }
+
+        auto prepareFileDevice = [&](const TString& deviceName)
+        {
+            NProto::TFileDeviceArgs device;
+            device.SetPath(filePath);
+            device.SetBlockSize(DefaultDeviceBlockSize);
+            device.SetDeviceId(deviceName);
+            return device;
+        };
+
+        {
+            auto* d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-1");
+
+            d->SetOffset(1_MB);
+            d->SetFileSize(4_MB);
+
+            d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-2");
+
+            d->SetOffset(5_MB);
+            d->SetFileSize(4_MB);
+        }
+
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(agentConfig)
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.DetachPath(0, THashMap<TString, ui64>{{filePath, 1}});
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+    }
+
+    Y_UNIT_TEST(ShouldAttachPath)
+    {
+        auto agentConfig = CreateDefaultAgentConfig();
+        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetAcquireRequired(true);
+        agentConfig.SetEnabled(true);
+
+        const auto workingDir = TryGetRamDrivePath();
+        const auto filePath =
+            workingDir / ("test" + ToString(RandomNumber<ui64>()));
+
+        {
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(16_MB);
+        }
+
+        auto prepareFileDevice = [&](const TString& deviceName)
+        {
+            NProto::TFileDeviceArgs device;
+            device.SetPath(filePath);
+            device.SetBlockSize(DefaultDeviceBlockSize);
+            device.SetDeviceId(deviceName);
+            return device;
+        };
+
+        {
+            auto* d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-1");
+
+            d->SetOffset(1_MB);
+            d->SetFileSize(4_MB);
+
+            d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-2");
+
+            d->SetOffset(5_MB);
+            d->SetFileSize(4_MB);
+        }
+
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(agentConfig)
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.DetachPath(0, THashMap<TString, ui64>{{filePath, 1}});
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.AttachPath(0, THashMap<TString, ui64>{{filePath, 2}});
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+    }
+
+    Y_UNIT_TEST(ShouldRejectOldattachDetachRequests)
+    {
+        auto agentConfig = CreateDefaultAgentConfig();
+        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetAcquireRequired(true);
+        agentConfig.SetEnabled(true);
+
+        const auto workingDir = TryGetRamDrivePath();
+        const auto filePath =
+            workingDir / ("test" + ToString(RandomNumber<ui64>()));
+
+        {
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(16_MB);
+        }
+
+        auto prepareFileDevice = [&](const TString& deviceName)
+        {
+            NProto::TFileDeviceArgs device;
+            device.SetPath(filePath);
+            device.SetBlockSize(DefaultDeviceBlockSize);
+            device.SetDeviceId(deviceName);
+            return device;
+        };
+
+        {
+            auto* d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-1");
+
+            d->SetOffset(1_MB);
+            d->SetFileSize(4_MB);
+
+            d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-2");
+
+            d->SetOffset(5_MB);
+            d->SetFileSize(4_MB);
+        }
+
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(agentConfig)
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.DetachPath(5, THashMap<TString, ui64>{{filePath, 10}});
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.SendAttachPathRequest(
+            5,
+            THashMap<TString, ui64>{{filePath, 1}});
+
+        auto resp = diskAgent.RecvAttachPathResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.SendAttachPathRequest(
+            4,
+            THashMap<TString, ui64>{{filePath, 100}});
+
+        resp = diskAgent.RecvAttachPathResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.AttachPath(6, THashMap<TString, ui64>{{filePath, 1}});
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+    }
+
+    Y_UNIT_TEST(ShouldDetectDeviceFileChange)
+    {
+        auto agentConfig = CreateDefaultAgentConfig();
+        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetAcquireRequired(true);
+        agentConfig.SetEnabled(true);
+
+        const auto workingDir = TryGetRamDrivePath();
+        const auto filePath =
+            workingDir / ("test" + ToString(RandomNumber<ui64>()));
+
+        {
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(16_MB);
+        }
+
+        auto prepareFileDevice = [&](const TString& deviceName)
+        {
+            NProto::TFileDeviceArgs device;
+            device.SetPath(filePath);
+            device.SetBlockSize(DefaultDeviceBlockSize);
+            device.SetDeviceId(deviceName);
+            return device;
+        };
+
+        {
+            auto* d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-1");
+
+            d->SetOffset(1_MB);
+            d->SetFileSize(4_MB);
+
+            d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-2");
+
+            d->SetOffset(5_MB);
+            d->SetFileSize(4_MB);
+        }
+
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(agentConfig)
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.DetachPath(5, THashMap<TString, ui64>{{filePath, 10}});
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+
+        {
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(1_MB);
+        }
+
+        diskAgent.SendAttachPathRequest(
+            5,
+            THashMap<TString, ui64>{{filePath, 11}});
+
+        auto resp = diskAgent.RecvAttachPathResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, resp->GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+    }
+
+    Y_UNIT_TEST(ShouldBrokeFailedToAttachPaths)
+    {
+        auto agentConfig = CreateDefaultAgentConfig();
+        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetAcquireRequired(true);
+        agentConfig.SetEnabled(true);
+
+        const auto workingDir = TryGetRamDrivePath();
+        const auto filePath =
+            workingDir / ("test" + ToString(RandomNumber<ui64>()));
+
+        {
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(16_MB);
+        }
+
+        auto prepareFileDevice = [&](const TString& deviceName)
+        {
+            NProto::TFileDeviceArgs device;
+            device.SetPath(filePath);
+            device.SetBlockSize(DefaultDeviceBlockSize);
+            device.SetDeviceId(deviceName);
+            return device;
+        };
+
+        {
+            auto* d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-1");
+
+            d->SetOffset(1_MB);
+            d->SetFileSize(4_MB);
+
+            d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-2");
+
+            d->SetOffset(5_MB);
+            d->SetFileSize(4_MB);
+        }
+
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(agentConfig)
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+
+        diskAgent.DetachPath(0, THashMap<TString, ui64>{{filePath, 10}});
+
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+
+        Chmod(filePath.c_str(), 0);
+
+        auto response =
+            diskAgent.AttachPath(0, THashMap<TString, ui64>{{filePath, 11}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            response->Record.GetAttachedDevices().size());
+        UNIT_ASSERT(AllOf(
+            response->Record.GetAttachedDevices(),
+            [&](const auto& device)
+            {
+                return device.GetDeviceName() == filePath &&
+                       device.GetState() == NProto::DEVICE_STATE_ERROR;
+            }));
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+    }
+
+    Y_UNIT_TEST(ShouldAttachDetachPaths)
+    {
+        auto agentConfig = CreateDefaultAgentConfig();
+        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
+        agentConfig.SetAcquireRequired(true);
+        agentConfig.SetEnabled(true);
+
+        ui64 devicesCount = 10;
+        const auto workingDir = TryGetRamDrivePath();
+
+        auto prepareFileDevice =
+            [&](const TString& deviceName, const TString& filePath)
+        {
+            NProto::TFileDeviceArgs device;
+            device.SetPath(filePath);
+            device.SetBlockSize(DefaultDeviceBlockSize);
+            device.SetDeviceId(deviceName);
+            return device;
+        };
+
+        TVector<TFsPath> filePaths;
+        for (ui64 i = 0; i < devicesCount; ++i) {
+            auto filePath =
+                workingDir / ("test" + ToString(RandomNumber<ui64>()));
+            filePaths.push_back(filePath);
+            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
+            fileData.Resize(4_MB);
+
+            auto* d = agentConfig.AddFileDevices();
+            *d = prepareFileDevice("FileDevice-" + ToString(i), filePath);
+
+            d->SetOffset(0_MB);
+            d->SetFileSize(4_MB);
+        }
+
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(agentConfig)
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        TVector<TString> paths;
+        for (const auto& fPath: filePaths) {
+            paths.emplace_back(fPath.GetPath());
+        }
+        TAttachDetachRequestsGenerator requestsGenerator(paths);
+        TDiskAgentAttachDetachModel diskAgentModel(paths);
+
+        ui64 eventsCount = 100;
+
+        for (ui64 eventIdx = 0; eventIdx < eventsCount; ++eventIdx) {
+            if (eventIdx % 10 == 0) {
+                requestsGenerator.GenerateDrGeneration();
+            }
+            requestsGenerator.GeneratePathGeneration();
+            requestsGenerator.GenerateShouldAttachPath();
+
+            auto doRequests = [&](bool attach)
+            {
+                auto requests =
+                    requestsGenerator.GetAttachDetachRequests(attach);
+
+                for (auto& request: requests) {
+                    NProto::TError error;
+                    if (attach) {
+                        diskAgent.SendAttachPathRequest(
+                            requestsGenerator.GetDrGeneration(),
+                            request.PathToGeneration);
+                        error = diskAgent.RecvAttachPathResponse()->GetError();
+                    } else {
+                        diskAgent.SendDetachPathRequest(
+                            requestsGenerator.GetDrGeneration(),
+                            request.PathToGeneration);
+                        error = diskAgent.RecvDetachPathResponse()->GetError();
+                    }
+
+                    bool shouldBeSuccessful = diskAgentModel.AttachDetachPath(
+                        requestsGenerator.GetDrGeneration(),
+                        request.PathToGeneration,
+                        attach);
+
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        shouldBeSuccessful,
+                        !HasError(error));
+                }
+            };
+
+            doRequests(true);
+            doRequests(false);
+
+            for (const auto& fPath: filePaths) {
+                auto procesesWithOpenFileExpected =
+                    diskAgentModel.IsPathAttached(fPath) ? 1 : 0;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    procesesWithOpenFileExpected,
+                    FindProcessesWithOpenFile(fPath).size());
+            }
+        }
     }
 }
 

@@ -309,6 +309,38 @@ public:
         return request;
     }
 
+    auto CreateAttachPathRequest(
+        ui64 drGeneration,
+        const THashMap<TString, ui64>& pathToGeneration)
+    {
+        auto request = std::make_unique<TEvDiskAgent::TEvAttachPathRequest>();
+        request->Record.SetDiskRegistryGeneration(drGeneration);
+
+        for (const auto& [path, gen]: pathToGeneration) {
+            auto* pathToAttach = request->Record.AddPathsToAttach();
+            pathToAttach->SetPath(path);
+            pathToAttach->SetGeneration(gen);
+        }
+
+        return request;
+    }
+
+    auto CreateDetachPathRequest(
+        ui64 drGeneration,
+        const THashMap<TString, ui64>& pathToGeneration)
+    {
+        auto request = std::make_unique<TEvDiskAgent::TEvDetachPathRequest>();
+        request->Record.SetDiskRegistryGeneration(drGeneration);
+
+        for (const auto& [path, gen]: pathToGeneration) {
+            auto* pathToDetach = request->Record.AddPathsToDetach();
+            pathToDetach->SetPath(path);
+            pathToDetach->SetGeneration(gen);
+        }
+
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
