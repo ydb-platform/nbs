@@ -14,6 +14,27 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ELeadershipStatus
+{
+    // The disk is the principal. It is ready to serve the client's requests.
+    // This is a normal condition for a disk that has no links.
+    Principal,
+
+    // The disk is a follower. Readings are prohibited. Can only accept writes
+    // from the CopyVolumeClientId client.
+    Follower,
+
+    // This is a leader who has a follower to whom all the data has been
+    // transferred. The transfer of leadership is currently taking place. All
+    // read and write requests should be responded with the E_REJECTED error
+    // code.
+    LeadershipTransferring,
+
+    // The disk has transferred leadership to follower. Responds to all
+    // read/write requests with E_BS_INVALID_SESSION.
+    Outdated,
+};
+
 struct TLeaderFollowerLink
 {
     TString LinkUUID;   // It can be empty if the exact uuid is not known.
@@ -77,7 +98,13 @@ struct TFollowerDiskInfo
         Preparing = 30,   // Persisted on follower side.
                           // Preparing in progress.
 
-        DataReady = 40,
+        DataReady = 40,   // All data transferred to follower.
+                          // Need to transfer leadership to follower.
+                          // Respond to all requests with the E_REJECTED code.
+
+        LeadershipTransferred = 45,   // Leadership transferred to follower.
+                                      // Respond to all requests with the
+                                      // E_BS_INVALID_SESSION code.
 
         Error = 50,
     };

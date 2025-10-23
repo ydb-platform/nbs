@@ -766,7 +766,8 @@ void TVolumeActor::ForwardRequest(
                         E_BS_INVALID_SESSION,
                         TStringBuilder()
                             << "Invalid session. Can't use " << clientId.Quote()
-                            << " when other clients exists"));
+                            << " when other clients exists for "
+                            << TMethod::Name << blockRange.Print()));
                     return;
                 }
                 predefinedClient = true;
@@ -897,6 +898,82 @@ void TVolumeActor::ForwardRequest(
     if constexpr (IsExactlyWriteMethod<TMethod>) {
         if (State->GetUseIntermediateWriteBuffer()) {
             CopySgListIntoRequestBuffers(*msg);
+        }
+    }
+
+    /*
+     *  Validation for reads and writes for the leader and follower
+     */
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        const bool isCopingClient = clientId == CopyVolumeClientId;
+
+        auto makeMessage = [&](NLog::EPriority priority) -> TString
+        {
+            auto message = TStringBuilder()
+                           << "The client " << clientId.Quote()
+                           << " is not allowed to " << TMethod::Name
+                           << blockRange.Print() << " to disk with state "
+                           << ToString(State->GetLeadershipStatus()).Quote()
+                           << (State->GetPrincipalDiskId()
+                                   ? ". Reconnect to " +
+                                         State->GetPrincipalDiskId().Quote()
+                                   : "");
+            LOG_LOG(
+                ctx,
+                priority,
+                TBlockStoreComponents::VOLUME,
+                "%s %s",
+                LogTitle.GetWithTime().c_str(),
+                message.c_str());
+            return message;
+        };
+
+        switch (State->GetLeadershipStatus()) {
+            case ELeadershipStatus::Principal: {
+                if (isCopingClient && IsReadMethod<TMethod>) {
+                    replyError(
+                        MakeError(E_ARGUMENT, makeMessage(NLog::PRI_ERROR)));
+                    return;
+                }
+                if (isCopingClient && IsWriteMethod<TMethod>) {
+                    replyError(
+                        MakeError(E_REJECTED, makeMessage(NLog::PRI_WARN)));
+                    return;
+                }
+                break;
+            }
+            case ELeadershipStatus::Follower: {
+                if (!isCopingClient || !IsWriteMethod<TMethod>) {
+                    replyError(
+                        MakeError(E_ARGUMENT, makeMessage(NLog::PRI_ERROR)));
+                    return;
+                }
+                break;
+            }
+            case ELeadershipStatus::LeadershipTransferring: {
+                if (isCopingClient) {
+                    replyError(
+                        MakeError(E_ARGUMENT, makeMessage(NLog::PRI_ERROR)));
+                    return;
+                }
+                replyError(MakeError(E_REJECTED, makeMessage(NLog::PRI_DEBUG)));
+                return;
+            }
+            case ELeadershipStatus::Outdated: {
+                if (isCopingClient) {
+                    replyError(
+                        MakeError(E_ARGUMENT, makeMessage(NLog::PRI_ERROR)));
+                    return;
+                }
+
+                ui32 flags = 0;
+                SetProtoFlag(flags, NProto::EF_OUTDATED_VOLUME);
+                replyError(MakeError(
+                    E_BS_INVALID_SESSION,
+                    makeMessage(NLog::PRI_INFO),
+                    flags));
+                break;
+            }
         }
     }
 

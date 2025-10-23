@@ -165,6 +165,7 @@ void TCreateVolumeLinkActor::HandlePersistedOnLeader(
 
     switch (message->Follower.State) {
         case TFollowerDiskInfo::EState::DataReady:
+        case TFollowerDiskInfo::EState::LeadershipTransferred:
         case TFollowerDiskInfo::EState::Error: {
             ReplyAndDie(
                 ctx,

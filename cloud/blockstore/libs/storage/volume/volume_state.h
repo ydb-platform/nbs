@@ -270,7 +270,8 @@ private:
     TString SourceDiskId;
     TFollowerDisks FollowerDisks;
     TLeaderDisks LeaderDisks;
-    TString PrincipalDiskId;
+    TString PrincipalDiskId;   // Set when in ELeadershipStatus::Outdated
+    ELeadershipStatus LeadershipStatus = ELeadershipStatus::Principal;
 
     struct TLaggingAgentMigrationInfo
     {
@@ -834,6 +835,7 @@ public:
     void RemoveLeader(const TLeaderFollowerLink& link);
     const TLeaderDisks& GetAllLeaders() const;
     TString GetPrincipalDiskId() const;
+    ELeadershipStatus GetLeadershipStatus() const;
 
     //
     // Scrubbing
@@ -862,7 +864,7 @@ private:
 
     [[nodiscard]] bool ShouldTrackUsedBlocks() const;
 
-    void UpdatePrincipalDiskId();
+    void UpdateLeadershipStatus();
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
