@@ -339,11 +339,13 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
             session1.Session,
             session1.SwitchableClient);
 
+        session1.SwitchableClient->BeforeSwitching();
         auto drainFuture = switchableSession->SwitchSession(
             "disk-2",
             "session-2",
             session2.Session,
             session2.SwitchableClient);
+        session1.SwitchableClient->AfterSwitching();
 
         Check<
             NProto::TReadBlocksLocalRequest,
@@ -437,11 +439,13 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
             });
 
         // Start switching to the second session
+        session1.SwitchableClient->BeforeSwitching();
         auto drainFuture = switchableSession->SwitchSession(
             "disk-2",
             "session-2",
             session2.Session,
             session2.SwitchableClient);
+        session1.SwitchableClient->AfterSwitching();
 
         // Check that the session has not switched, as there are requests in
         // flight.
@@ -496,11 +500,13 @@ Y_UNIT_TEST_SUITE(TSwitchableSessionTest)
             TTestSession newSession =
                 CreateTestSession(newDiskId, newSessionId);
 
+            oldSession.SwitchableClient->BeforeSwitching();
             auto drainFuture = switchableSession->SwitchSession(
                 newDiskId,
                 newSessionId,
                 newSession.Session,
                 newSession.SwitchableClient);
+            oldSession.SwitchableClient->AfterSwitching();
 
             Check<
                 NProto::TReadBlocksLocalRequest,
