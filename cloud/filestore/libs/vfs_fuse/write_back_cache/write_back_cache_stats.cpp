@@ -27,7 +27,7 @@ private:
     TDynamicCounters::TCounterPtr Count;
     // WriteData requests can take several minutes (~10^9 microseconds).
     // Summing durations in an ui64 counter may eventually overflow.
-    // We use two counters for calculate seconds and microseconds separately.
+    // We use two counters to calculate seconds and microseconds separately.
     // In this case, overflow will happen after about ~10^13 requests.
     TDynamicCounters::TCounterPtr TimeSumSeconds;
     TDynamicCounters::TCounterPtr TimeSumUs;

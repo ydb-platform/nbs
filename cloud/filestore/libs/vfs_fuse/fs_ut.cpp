@@ -2462,7 +2462,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto flush = bootstrap.Fuse->SendRequest<TFlushRequest>(
             nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
-        UNIT_ASSERT_EQUAL(1, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
 
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut_fs")
@@ -2546,7 +2546,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto maxTime2 = counter->GetAtomic();
 
-        UNIT_ASSERT_EQUAL(0, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
         UNIT_ASSERT_GT(maxTime1, 0);
         UNIT_ASSERT_GT(maxTime2, maxTime1);
     }

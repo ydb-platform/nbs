@@ -57,7 +57,7 @@ struct TBootstrap
         auto counter = Counters->FindCounter(name);
         UNIT_ASSERT_C(counter, "Counter " << name << " is not found");
         UNIT_ASSERT_EQUAL_C(derivative, counter->ForDerivative(),
-            "Counter " << name << " was wrong ForDerivative value");
+            "Counter " << name << " has wrong ForDerivative value");
     }
 
     ui64 GetValue(const TString& name) const
