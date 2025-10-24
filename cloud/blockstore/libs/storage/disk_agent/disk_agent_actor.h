@@ -52,13 +52,6 @@ class TDiskAgentActor final
         Registered,
     };
 
-    struct TPendingAttachRequest
-    {
-        THashMap<TString, ui64> AlreadyAttachedPathsToGeneration;
-        THashMap<TString, ui64> PathToGenerationToAttach;
-        TRequestInfoPtr RequestInfo;
-    };
-
 private:
     const TStorageConfigPtr Config;
     const TDiskAgentConfigPtr AgentConfig;
@@ -104,7 +97,9 @@ private:
 
     NActors::TActorId HealthCheckActor;
 
-    std::optional<TPendingAttachRequest> PendingAttachPathRequest;
+    std::optional<TRequestInfoPtr> PendingAttachPathRequest;
+
+    ITaskQueuePtr BackgroundThreadPool;
 
 public:
     TDiskAgentActor(
@@ -118,7 +113,8 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
-        NNvme::INvmeManagerPtr nvmeManager);
+        NNvme::INvmeManagerPtr nvmeManager,
+        ITaskQueuePtr backgroundThreadPool);
 
     ~TDiskAgentActor() override;
 
@@ -255,10 +251,6 @@ private:
 
     void HandlePathAttached(
         const TEvDiskAgentPrivate::TEvPathAttached::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleCheckIsSamePathResult(
-        const TEvDiskAgentPrivate::TEvCheckIsSamePathResult::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
