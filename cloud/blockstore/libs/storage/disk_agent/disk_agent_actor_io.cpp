@@ -177,24 +177,19 @@ void TDiskAgentActor::PerformIO(
     auto* actorSystem = ctx.ActorSystem();
     auto replyFrom = ctx.SelfID;
 
-    auto replySuccess = [=] (auto result) {
+    auto reply = [actorSystem,
+                  replyFrom,
+                  requestInfo,
+                  range,
+                  volumeRequestId,
+                  deviceUUID,
+                  started](auto result)
+    {
         Reply<TMethod>(
             *actorSystem,
             replyFrom,
             *requestInfo,
             std::move(result),
-            range,
-            volumeRequestId,
-            deviceUUID,
-            started);
-    };
-
-    auto replyError = [=] (auto code, auto message) {
-        Reply<TMethod>(
-            *actorSystem,
-            replyFrom,
-            *requestInfo,
-            MakeError(code, std::move(message)),
             range,
             volumeRequestId,
             deviceUUID,
@@ -221,7 +216,7 @@ void TDiskAgentActor::PerformIO(
                  {"isWrite", IsWriteDeviceMethod<TMethod>},
                  {"isRdma", 0}});
         }
-        replyError(E_REJECTED, "Secure erase in progress");
+        reply(MakeError(E_REJECTED, "Secure erase in progress"));
         return;
     }
 
@@ -232,9 +227,10 @@ void TDiskAgentActor::PerformIO(
             std::invoke(operation, *State, ctx.Now(), std::move(record));
 
         result.Subscribe(
-            [=] (auto future) {
+            [reply, deviceUUID, clientId, actorSystem](auto future)
+            {
                 try {
-                    replySuccess(future.ExtractValue());
+                    reply(future.ExtractValue());
                 } catch (...) {
                     auto [code, message] = HandleException(
                         *actorSystem,
@@ -243,7 +239,7 @@ void TDiskAgentActor::PerformIO(
                         deviceUUID,
                         clientId);
 
-                    replyError(code, message);
+                    reply(MakeError(code, message));
                 }
             });
     } catch (...) {
@@ -254,7 +250,7 @@ void TDiskAgentActor::PerformIO(
             deviceUUID,
             clientId);
 
-        replyError(code, message);
+        reply(MakeError(code, message));
     }
 }
 
