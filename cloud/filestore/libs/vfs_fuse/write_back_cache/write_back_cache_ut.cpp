@@ -987,7 +987,7 @@ struct TStatsCalculator
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSimpleIntervalLock
+class TAdativeIntervalLock
 {
 private:
     std::mutex Mutex;
@@ -1394,7 +1394,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Concurrent overlapping writes can be completed in any order.
         // There is no way to validate cache in this case.
         // Therefore, we allow only non-overlapping conurrent writes.
-        TSimpleIntervalLock intervalLock;
+        TAdativeIntervalLock intervalLock;
 
         TVector<std::thread> threads;
 
