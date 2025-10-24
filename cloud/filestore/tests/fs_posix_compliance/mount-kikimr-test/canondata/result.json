@@ -23,6 +23,9 @@
     "test.test_posix_compliance[mkfifo]": {
         "uri": "file://test.test_posix_compliance_mkfifo_/results-mkfifo.txt"
     },
+    "test.test_posix_compliance[mknod]": {
+        "uri": "file://test.test_posix_compliance_mknod_/results-mknod.txt"
+    },
     "test.test_posix_compliance[open]": {
         "uri": "file://test.test_posix_compliance_open_/results-open.txt"
     },
