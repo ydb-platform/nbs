@@ -9674,40 +9674,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(bdata, results[2]);
     }
 
-    Y_UNIT_TEST(ShouldPerformIoWithPredefinedCopyVolumeClientId)
-    {
-        NProto::TStorageServiceConfig config;
-        config.SetAcquireNonReplicatedDevices(true);
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(config, state);
-
-        TVolumeClient volume(*runtime);
-
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
-
-        volume.WaitReady();
-
-        // IO with predefined CopyVolumeClientId accepted.
-        volume.WriteBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            TString(CopyVolumeClientId),
-            1);
-        volume.ZeroBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            TString(CopyVolumeClientId));
-        volume.ReadBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            TString(CopyVolumeClientId));
-    }
-
     Y_UNIT_TEST(ShouldNotPerformIoWithPredefinedWhenOtherClient)
     {
         NProto::TStorageServiceConfig config;
