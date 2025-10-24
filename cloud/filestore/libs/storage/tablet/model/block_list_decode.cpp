@@ -203,7 +203,11 @@ bool FindDeletionGroup(
                 case NBlockListSpec::TMultiGroupHeader::MergedGroup: {
                     const auto& entry =
                         reader.Read<NBlockListSpec::TDeletionMarker>();
-                    if (mergedGroup(entry.BlobOffset, multi.Count, group.CommitId)) {
+                    const bool found = mergedGroup(
+                        entry.BlobOffset,
+                        multi.Count,
+                        group.CommitId);
+                    if (found) {
                         return true;
                     }
                     break;
@@ -284,14 +288,14 @@ struct TRange
     const ui32 Offset = 0;
     const ui32 Length = 0;
 
-    bool Empty() const
-    {
-        return Length == 0;
-    }
-
     static TRange WithLength(ui32 offset, ui32 length)
     {
         return {offset, length};
+    }
+
+    bool Empty() const
+    {
+        return Length == 0;
     }
 
     ui32 End() const
@@ -434,7 +438,7 @@ TFindDeletionMarkersResult FindDeletionMarkers(
             maxBlocksToFind);
     }
 
-    return {
+    return TFindDeletionMarkersResult {
         .MaxCommitId = InvalidCommitId,
         .BlocksFound = blocksFound
     };
