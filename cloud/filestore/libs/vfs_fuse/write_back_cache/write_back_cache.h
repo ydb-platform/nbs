@@ -34,7 +34,7 @@ public:
         ITimerPtr timer,
         IWriteBackCacheStatsPtr stats,
         const TString& filePath,
-        ui32 capacityBytes,
+        ui64 capacityBytes,
         TDuration automaticFlushPeriod,
         TDuration flushRetryPeriod,
         ui32 maxWriteRequestSize,
