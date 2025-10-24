@@ -62,6 +62,10 @@ public:
 
     void OnShutDown(const NActors::TActorContext&) override
     {
+        if (PostponedQueueFlushInProgress) {
+            // We are already in the process of flushing postponed requests
+            return;
+        }
         PostponedQueueFlushScheduled = false;
 
         while (PostponedRequests.size()) {
@@ -71,6 +75,8 @@ public:
             TAutoPtr<NActors::IEventHandle> ev = x.Event.release();
             Owner.Receive(ev);
 
+            // When shutting down, we do not expect that the actor will try to
+            // schedule flushing again
             Y_ABORT_UNLESS(!PostponedQueueFlushScheduled);
             PostponedRequests.pop_front();
         }
