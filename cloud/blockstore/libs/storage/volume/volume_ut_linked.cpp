@@ -247,6 +247,9 @@ struct TFixture: public NUnitTest::TBaseFixture
             if (response->GetStatus() == S_OK) {
                 return;
             }
+//            if (response->GetStatus() == E_BS_INVALID_SESSION) {
+//                return;
+//            }
             Runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
             if (response->GetStatus() == E_REJECTED) {
                 Cout << "WriteBlocks " << range.Print() << " failed"
@@ -746,14 +749,13 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         }
 
         // Link volumes
+        TLeaderFollowerLink link{
+            .LinkUUID = "",
+            .LeaderDiskId = "vol1",
+            .LeaderShardId = "su1",
+            .FollowerDiskId = "vol2",
+            .FollowerShardId = "su2"};
         {
-            TLeaderFollowerLink link{
-                .LinkUUID = "",
-                .LeaderDiskId = "vol1",
-                .LeaderShardId = "su1",
-                .FollowerDiskId = "vol2",
-                .FollowerShardId = "su2"};
-
             auto response = volume1.LinkLeaderVolumeToFollower(link);
             link.LinkUUID = response->Record.GetLinkUUID();
 
@@ -787,11 +789,11 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             TDispatchOptions options;
             options.CustomFinalCondition = [&]
             {
-                return followerState == TFollowerDiskInfo::EState::DataReady;
+                return followerState == TFollowerDiskInfo::EState::LeadershipTransferred;
             };
             fixture.Runtime->DispatchEvents(options, TDuration::Seconds(10));
             UNIT_ASSERT_EQUAL(
-                TFollowerDiskInfo::EState::DataReady,
+                TFollowerDiskInfo::EState::LeadershipTransferred,
                 followerState);
         }
 
@@ -802,6 +804,8 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         }
 
         // Check volumes content match.
+        volume1.UnlinkLeaderVolumeFromFollower(link);
+        volume1.ReconnectPipe();
         fixture.CheckVolumesDataMatch();
     }
 
@@ -908,6 +912,8 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         NProto::EStorageMediaKind leaderMediaType,
         NProto::EStorageMediaKind followerMediaType)
     {
+        using EState = TFollowerDiskInfo::EState;
+
         struct TRestart
         {
             ui64 Position = 0;
@@ -938,8 +944,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                     TEvVolumePrivate::TEvUpdateFollowerStateResponse>();
                 followerState = msg->Follower.State;
 
-                if (msg->Follower.State ==
-                        TFollowerDiskInfo::EState::Preparing &&
+                if (msg->Follower.State == EState::Preparing &&
                     msg->Follower.MigratedBytes)
                 {
                     UNIT_ASSERT_C(
@@ -1013,20 +1018,17 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         }
 
         // Link volumes
+        TLeaderFollowerLink link{
+            .LinkUUID = "",
+            .LeaderDiskId = "vol1",
+            .LeaderShardId = "su1",
+            .FollowerDiskId = "vol2",
+            .FollowerShardId = "su2"};
         {
-            TLeaderFollowerLink link{
-                .LinkUUID = "",
-                .LeaderDiskId = "vol1",
-                .LeaderShardId = "su1",
-                .FollowerDiskId = "vol2",
-                .FollowerShardId = "su2"};
-
             auto response = volume1.LinkLeaderVolumeToFollower(link);
             link.LinkUUID = response->Record.GetLinkUUID();
 
-            UNIT_ASSERT_EQUAL(
-                TFollowerDiskInfo::EState::Preparing,
-                followerState);
+            UNIT_ASSERT_EQUAL(EState::Preparing, followerState);
 
             // It is necessary to reconnect the pipe as the previous one broke
             // when the partition was restarted.
@@ -1050,7 +1052,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 options,
                 TDuration::MilliSeconds(100));
 
-            if (followerState == TFollowerDiskInfo::EState::DataReady) {
+            if (followerState == EState::DataReady ||
+                followerState == EState::LeadershipTransferred)
+            {
                 break;
             }
 
@@ -1071,10 +1075,23 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                     << "Restart at " << restart.Position << " failed");
         }
 
-        // Check volumes content match.
-        fixture.CheckVolumesDataMatch();
+        {  // The source disk should be deleted after 60 seconds.
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return deletionOfTheSourceHasBeenInitiated;
+            };
+            fixture.Runtime->AdvanceCurrentTime(TDuration::Seconds(120));
+            fixture.Runtime->DispatchEvents(
+                options,
+                TDuration::MilliSeconds(100));
+            UNIT_ASSERT_VALUES_EQUAL(true, deletionOfTheSourceHasBeenInitiated);
+        }
 
-        UNIT_ASSERT_VALUES_EQUAL(true, deletionOfTheSourceHasBeenInitiated);
+        // Check volumes content match.
+        volume1.UnlinkLeaderVolumeFromFollower(link);
+        volume1.ReconnectPipe();
+        fixture.CheckVolumesDataMatch();
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_SSD_NRD_WithReboot, TFixture)
@@ -1231,11 +1248,11 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             TDispatchOptions options;
             options.CustomFinalCondition = [&]
             {
-                return followerState == TFollowerDiskInfo::EState::DataReady;
+                return followerState == TFollowerDiskInfo::EState::LeadershipTransferred;
             };
             Runtime->DispatchEvents(options, TDuration::Seconds(10));
             UNIT_ASSERT_EQUAL(
-                TFollowerDiskInfo::EState::DataReady,
+                TFollowerDiskInfo::EState::LeadershipTransferred,
                 followerState);
         }
 
@@ -1507,6 +1524,245 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             Runtime->DispatchEvents(options, TDuration::Seconds(1));
 
             UNIT_ASSERT_VALUES_EQUAL(true, leaderPoisoned);
+        }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldPerformIoWithPredefinedCopyVolumeClientIdWhenPreparing,
+        TFixture)
+    {
+        TTestActorRuntimeBase::TEventFilter prevFilter;
+        std::optional<TFollowerDiskInfo::EState> followerState;
+        std::optional<ui64> migratedBytes;
+        auto followerStateFilter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvUpdateFollowerStateResponse)
+            {
+                auto* msg = event->Get<
+                    TEvVolumePrivate::TEvUpdateFollowerStateResponse>();
+                followerState = msg->Follower.State;
+                migratedBytes = msg->Follower.MigratedBytes;
+            }
+
+            return prevFilter(runtime, event);
+        };
+        prevFilter = Runtime->SetEventFilter(followerStateFilter);
+
+        // Leader
+        TVolumeClient volume1(*Runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD,
+            VolumeBlockCount,   // block count per partition
+            "vol1"));
+        volume1.WaitReady();
+
+        // registering a writer
+        auto clientInfo1 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume1.AddClient(clientInfo1);
+        Volumes["vol1"] = {
+            .VolumeClient = &volume1,
+            .VolumeClientInfo = &clientInfo1};
+
+        // Follower
+        TVolumeClient volume2(*Runtime, 0, TestVolumeTablets[1]);
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            VolumeBlockCount,   // block count per partition
+            "vol2"));
+        volume2.WaitReady();
+        Volumes["vol2"] = {
+            .VolumeClient = &volume2,
+            .VolumeClientInfo = nullptr};
+
+        {   // volume1 and volume2 are not linked
+            {   // vol1 accepted IO with "normal" clientId.
+                volume1.WriteBlocks(
+                    TBlockRange64::MakeOneBlock(0),
+                    clientInfo1.GetClientId(),
+                    1);
+                volume1.ZeroBlocks(
+                    TBlockRange64::MakeOneBlock(0),
+                    clientInfo1.GetClientId());
+
+                volume1.ReadBlocks(
+                    TBlockRange64::MakeOneBlock(0),
+                    clientInfo1.GetClientId());
+            }
+            {   // vol2 rejected IO with CopyVolumeClientId.
+                volume2.SendWriteBlocksRequest(
+                    TBlockRange64::MakeOneBlock(0),
+                    TString(CopyVolumeClientId),
+                    1);
+                auto respWrite = volume2.RecvWriteBlocksResponse();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_REJECTED,
+                    respWrite->GetStatus(),
+                    FormatError(respWrite->GetError()));
+
+                volume2.SendWriteBlocksRequest(
+                    TBlockRange64::MakeOneBlock(0),
+                    TString(CopyVolumeClientId),
+                    1);
+                auto respZero = volume2.RecvWriteBlocksResponse();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_REJECTED,
+                    respZero->GetStatus(),
+                    FormatError(respZero->GetError()));
+
+                volume2.SendReadBlocksRequest(
+                    TBlockRange64::MakeOneBlock(0),
+                    TString(CopyVolumeClientId));
+                auto respRead = volume2.RecvReadBlocksResponse();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_ARGUMENT,
+                    respRead->GetStatus(),
+                    FormatError(respRead->GetError()));
+            }
+        }
+
+        // Create link
+        TLeaderFollowerLink link{
+            .LinkUUID = "",
+            .LeaderDiskId = "vol1",
+            .FollowerDiskId = "vol2"};
+        {
+            // Create link
+            auto response = volume1.LinkLeaderVolumeToFollower(link);
+            link.LinkUUID = response->Record.GetLinkUUID();
+
+            volume1.ReconnectPipe();
+            volume1.AddClient(clientInfo1);
+        }
+
+        {   // State of leader ELeadershipStatus::Principal
+            // State of follower ELeadershipStatus::Follower
+
+            {   // Leader accepted IO with "normal" clientid.
+                volume1.WriteBlocks(
+                    TBlockRange64::MakeOneBlock(VolumeBlockCount - 1),
+                    clientInfo1.GetClientId(),
+                    1);
+
+                volume1.ZeroBlocks(
+                    TBlockRange64::MakeOneBlock(VolumeBlockCount - 1),
+                    clientInfo1.GetClientId());
+
+                volume1.ReadBlocks(
+                    TBlockRange64::MakeOneBlock(0),
+                    clientInfo1.GetClientId());
+            }
+            {   // Leader declined IO with predefined CopyVolumeClientId
+                volume1.SendWriteBlocksRequest(
+                    TBlockRange64::MakeOneBlock(0),
+                    TString(CopyVolumeClientId),
+                    1);
+                auto respWrite = volume1.RecvWriteBlocksResponse();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_REJECTED,
+                    respWrite->GetStatus(),
+                    FormatError(respWrite->GetError()));
+
+                volume1.SendZeroBlocksRequest(
+                    TBlockRange64::MakeOneBlock(0),
+                    TString(CopyVolumeClientId));
+                auto respZero = volume1.RecvZeroBlocksResponse();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_REJECTED,
+                    respZero->GetStatus(),
+                    FormatError(respZero->GetError()));
+
+                volume1.SendReadBlocksRequest(
+                    TBlockRange64::MakeOneBlock(0),
+                    TString(CopyVolumeClientId));
+                auto respRead = volume1.RecvReadBlocksResponse();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_ARGUMENT,
+                    respRead->GetStatus(),
+                    FormatError(respRead->GetError()));
+            }
+            {   // Follower accepted IO with predefined CopyVolumeClientId
+                // only for WriteBlocks and ZeroBlocks.
+                volume2.WriteBlocks(
+                    TBlockRange64::MakeOneBlock(0),
+                    TString(CopyVolumeClientId),
+                    1);
+                volume2.ZeroBlocks(
+                    TBlockRange64::MakeOneBlock(0),
+                    TString(CopyVolumeClientId));
+
+                volume2.SendReadBlocksRequest(
+                    TBlockRange64::MakeOneBlock(0),
+                    TString(CopyVolumeClientId));
+                auto resp = volume2.RecvReadBlocksResponse();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_ARGUMENT,
+                    resp->GetStatus(),
+                    FormatError(resp->GetError()));
+            }
+        }
+
+        // Waiting for the follower disk to fill up.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return followerState ==
+                       TFollowerDiskInfo::EState::LeadershipTransferred;
+            };
+            Runtime->DispatchEvents(options, TDuration::Seconds(10));
+            UNIT_ASSERT_EQUAL(
+                TFollowerDiskInfo::EState::LeadershipTransferred,
+                followerState);
+        }
+
+        {   // State of leader ELeadershipStatus::LeadershipTransferring
+            // State of follower ELeadershipStatus::Follower
+
+            // Leader declined IO from "normal" client
+            volume1.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo1.GetClientId(),
+                1);
+            auto respWrite = volume1.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                respWrite->GetStatus(),
+                FormatError(respWrite->GetError()));
+
+            volume1.SendZeroBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo1.GetClientId());
+            auto respZero = volume1.RecvZeroBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                respZero->GetStatus(),
+                FormatError(respZero->GetError()));
+
+            volume1.SendReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo1.GetClientId());
+            auto respRead = volume1.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                respRead->GetStatus(),
+                FormatError(respWrite->GetError()));
         }
     }
 }
