@@ -85,7 +85,10 @@ private:
     TOldRequestCounters OldRequestCounters;
 
     ui32 LastDiskRegistryGenerationSeen = 0;
-    THashMap<TString, TPathAttachState> PathAttachStates;
+    THashMap<TString, EPathAttachState> PathAttachStates;
+    ui64 DiskAgentGeneration = 0;
+
+    ITaskQueuePtr BackgroundThreadPool;
 
 public:
     TDiskAgentState(
@@ -101,7 +104,8 @@ public:
         NNvme::INvmeManagerPtr nvmeManager,
         TRdmaTargetConfigPtr rdmaTargetConfig,
         TOldRequestCounters oldRequestCounters,
-        IMultiAgentWriteHandlerPtr multiAgentWriteHandler);
+        IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
+        ITaskQueuePtr backgroundThreadPool);
 
     struct TInitializeResult
     {
@@ -184,7 +188,7 @@ public:
     bool IsDeviceDisabled(const TString& uuid) const;
     bool IsDeviceAttached(const TString& uuid) const;
     bool IsPathAttached(const TString& path) const;
-    ui64 DeviceGeneration(const TString& uuid) const;
+    ui64 GetDiskAgentGeneration() const;
     EDeviceStateFlags GetDeviceStateFlags(const TString& uuid) const;
     bool IsDeviceSuspended(const TString& uuid) const;
     void ReportDisabledDeviceError(const TString& uuid);
@@ -199,23 +203,27 @@ public:
     TVector<NProto::TDeviceConfig> GetAllDevicesForPaths(
         const THashSet<TString>& paths);
 
-    NProto::TError CheckCanAttachPath(
-        ui64 diskRegistryGeneration,
-        const TString& path,
-        ui64 pathGeneration);
+    struct TAttachPathResult
+    {
+        THashMap<TString, TResultOrError<IStoragePtr>> Devices;
+        TVector<TString> PathsToAttach;
+        TVector<TString> AlreadyAttachedPaths;
+    };
 
-    THashMap<TString, NThreading::TFuture<IStoragePtr>> AttachPath(
-        const TString& path);
+    NThreading::TFuture<TResultOrError<TAttachPathResult>> AttachPath(
+        ui32 diskRegistryGeneration,
+        ui64 diskAgentGeneration,
+        const TVector<TString>& pathsToAttach);
 
     void PathAttached(
+        ui64 diskAgentGeneration,
         THashMap<TString, TResultOrError<IStoragePtr>> devices,
-        const THashMap<TString, ui64>& pathToGeneration,
-        const THashMap<TString, ui64>& alreadyAttachedPaths);
+        const TVector<TString>& pathsToAttach);
 
     NProto::TError DetachPath(
         ui64 diskRegistryGeneration,
-        const THashMap<TString, ui64>& pathToGeneration);
-
+        ui64 diskAgentGeneration,
+        const TVector<TString>& paths);
 
 private:
     const TDeviceState& GetDeviceState(
@@ -260,7 +268,17 @@ private:
 
     NProto::TError CheckDiskRegistryGenerationAndUpdateItIfNeeded(
         ui64 diskRegistryGeneration);
-    void ResetPathGenerations();
+
+    struct TCheckCanAttachPathResult
+    {
+        TVector<TString> AlreadyAttachedPaths;
+        TVector<TString> PathsToAttach;
+    };
+
+    TResultOrError<TCheckCanAttachPathResult> CheckCanAttachPath(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration,
+        const TVector<TString>& paths);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -10,6 +10,7 @@
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
@@ -378,18 +379,22 @@ TTestEnv TTestEnvBuilder::Build()
         Spdk->Start();
     }
 
+    auto backgroundThreadPool = CreateThreadPool("Background", 1);
+    backgroundThreadPool->Start();
+
     auto diskAgent = CreateDiskAgent(
         config,
         agentConfig,
-        nullptr,    // rdmaConfig
+        nullptr,   // rdmaConfig
         Spdk,
         allocator,
         StorageProvider,
         CreateProfileLogStub(),
         CreateBlockDigestGeneratorStub(),
         CreateLoggingService("console"),
-        nullptr,    // rdmaServer
-        NvmeManager);
+        nullptr,   // rdmaServer
+        NvmeManager,
+        backgroundThreadPool);
 
     const ui32 firstDiskAgentNodeIndex = 0;
 
@@ -414,7 +419,8 @@ TTestEnv TTestEnvBuilder::Build()
             CreateBlockDigestGeneratorStub(),
             CreateLoggingService("console"),
             nullptr,   // rdmaServer
-            NvmeManager);
+            NvmeManager,
+            CreateThreadPool("Background", 1));
 
         Runtime.AddLocalService(
             MakeDiskAgentServiceId(Runtime.GetNodeId(additionalDiskAgentNodeIndex)),

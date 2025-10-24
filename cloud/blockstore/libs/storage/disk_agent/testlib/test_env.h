@@ -311,15 +311,15 @@ public:
 
     auto CreateAttachPathRequest(
         ui64 drGeneration,
-        const THashMap<TString, ui64>& pathToGeneration)
+        ui64 daGeneration,
+        const TVector<TString>& paths)
     {
         auto request = std::make_unique<TEvDiskAgent::TEvAttachPathRequest>();
         request->Record.SetDiskRegistryGeneration(drGeneration);
+        request->Record.SetDiskAgentGeneration(daGeneration);
 
-        for (const auto& [path, gen]: pathToGeneration) {
-            auto* pathToAttach = request->Record.AddPathsToAttach();
-            pathToAttach->SetPath(path);
-            pathToAttach->SetGeneration(gen);
+        for (const auto& path: paths) {
+            request->Record.AddPathsToAttach(path);
         }
 
         return request;
@@ -327,15 +327,15 @@ public:
 
     auto CreateDetachPathRequest(
         ui64 drGeneration,
-        const THashMap<TString, ui64>& pathToGeneration)
+        ui64 daGeneration,
+        const TVector<TString>& paths)
     {
         auto request = std::make_unique<TEvDiskAgent::TEvDetachPathRequest>();
         request->Record.SetDiskRegistryGeneration(drGeneration);
+        request->Record.SetDiskAgentGeneration(daGeneration);
 
-        for (const auto& [path, gen]: pathToGeneration) {
-            auto* pathToDetach = request->Record.AddPathsToDetach();
-            pathToDetach->SetPath(path);
-            pathToDetach->SetGeneration(gen);
+        for (const auto& path: paths) {
+            request->Record.AddPathsToDetach(path);
         }
 
         return request;
