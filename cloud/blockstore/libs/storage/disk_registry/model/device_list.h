@@ -11,6 +11,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <span>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -71,6 +73,7 @@ public:
     {
         THashSet<TString> ForbiddenRacks;
         THashSet<TString> PreferredRacks;
+        std::function<void (std::span<ui32> nodeIds)> NodeRankingFunc;
 
         ui32 LogicalBlockSize = 0;
         ui64 BlockCount = 0;
@@ -175,9 +178,15 @@ private:
         const TAllocationQuery& query,
         const TString& poolName);
     TVector<TDeviceRange> CollectDevices(const TAllocationQuery& query);
+
     [[nodiscard]] TVector<TRack> SelectRacks(
         const TAllocationQuery& query,
         const TString& poolName) const;
+
+    [[nodiscard]] TVector<TNodeId> RankNodes(
+        const TAllocationQuery& query,
+        TVector<TRack> racks) const;
+
     void RemoveDeviceFromFreeList(const TDeviceId& id);
     void UpdateInAllDevices(
         const TDeviceId& id,
