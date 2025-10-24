@@ -53,6 +53,7 @@
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/version/version.h>
+#include <cloud/storage/core/libs/common/thread_pool.cpp>
 
 #include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
 #include <contrib/ydb/core/protos/config.pb.h>
@@ -268,6 +269,7 @@ void TBootstrap::Init()
 
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
+    BackgroundThreadPool = CreateThreadPool("Background", 1);
 
     if (!InitKikimrService()) {
         InitHTTPServer();
@@ -541,6 +543,7 @@ bool TBootstrap::InitKikimrService()
     args.Logging = logging;
     args.NvmeManager = NvmeManager;
     args.StatsFetcher = StatsFetcher;
+    args.BackgroundThreadPool = BackgroundThreadPool;
 
     ActorSystem = NStorage::CreateDiskAgentActorSystem(args);
 
@@ -646,6 +649,7 @@ void TBootstrap::Start()
     }                                                                          \
 // START_COMPONENT
 
+    START_COMPONENT(BackgroundThreadPool);
     START_COMPONENT(AsyncLogger);
     START_COMPONENT(Logging);
     START_COMPONENT(StatsFetcher);
@@ -705,6 +709,7 @@ void TBootstrap::Stop()
     STOP_COMPONENT(StatsFetcher);
     STOP_COMPONENT(Logging);
     STOP_COMPONENT(AsyncLogger);
+    STOP_COMPONENT(BackgroundThreadPool);
 
 #undef STOP_COMPONENT
 }

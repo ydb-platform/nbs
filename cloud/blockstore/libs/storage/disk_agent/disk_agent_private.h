@@ -211,6 +211,9 @@ struct TEvDiskAgentPrivate
     struct TPathAttached
     {
         THashMap<TString, TResultOrError<IStoragePtr>> Devices;
+        TVector<TString> PathsToAttach;
+        TVector<TString> AlreadyAttachedPaths;
+        ui64 DiskAgentGeneration;
     };
 
     //
@@ -265,9 +268,6 @@ struct TEvDiskAgentPrivate
         EvSecureEraseCompleted>;
 
     using TEvPathAttached = TResponseEvent<TPathAttached, EvPathAttached>;
-
-    using TEvCheckIsSamePathResult =
-        TResponseEvent<TCheckIsSamePathResult, EvCheckIsSamePathResult>;
 
     using TEvWriteOrZeroCompleted = TResponseEvent<
         TWriteOrZeroCompleted,
