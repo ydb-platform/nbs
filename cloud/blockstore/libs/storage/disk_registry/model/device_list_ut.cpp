@@ -508,7 +508,15 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             return deviceList.AllocateDevices(
                 "disk",
                 {
-                    .DownrankedNodeIds = std::move(downrankedNodeIds),
+                    .NodeRankingFunc =
+                        [downrankedNodeIds](std::span<ui32> nodeIds)
+                    {
+                        std::stable_partition(
+                            nodeIds.begin(),
+                            nodeIds.end(),
+                            [&](ui32 nodeId)
+                            { return !downrankedNodeIds.contains(nodeId); });
+                    },
                     .LogicalBlockSize = DefaultBlockSize,
                     .BlockCount = n * DefaultBlockCount,
                     .NodeIds = std::move(nodeIds),

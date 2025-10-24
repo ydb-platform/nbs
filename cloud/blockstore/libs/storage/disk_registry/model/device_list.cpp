@@ -495,7 +495,7 @@ auto TDeviceList::SelectRacks(
 
 auto TDeviceList::RankNodes(
     const TAllocationQuery& query,
-    TVector<TRack> racks) const -> TVector<TNodeInfo>
+    TVector<TRack> racks) const -> TVector<TNodeId>
 {
     Sort(
         racks,
@@ -505,7 +505,7 @@ auto TDeviceList::RankNodes(
                    std::tie(l.Preferred, r.OccupiedSpace, l.FreeSpace, r.Id);
         });
 
-    TVector<TNodeInfo> nodes;
+    TVector<TNodeId> nodes;
     {
         size_t size = 0;
         for (const auto& rack: racks) {
@@ -523,19 +523,15 @@ auto TDeviceList::RankNodes(
                        std::tie(r.OccupiedSpace, l.FreeSpace);
             });
 
-        nodes.insert(
-            nodes.end(),
-            std::make_move_iterator(rack.Nodes.begin()),
-            std::make_move_iterator(rack.Nodes.end()));
+        std::transform(
+            rack.Nodes.begin(),
+            rack.Nodes.end(),
+            std::back_inserter(nodes),
+            [](const TNodeInfo& node) { return node.NodeId; });
     }
 
-    if (query.DownrankedNodeIds) {
-        // move downranked nodes to the end of the list
-        std::stable_partition(
-            nodes.begin(),
-            nodes.end(),
-            [&](const TNodeInfo& node)
-            { return !query.DownrankedNodeIds.contains(node.NodeId); });
+    if (query.NodeRankingFunc) {
+        query.NodeRankingFunc(nodes);
     }
 
     return nodes;
@@ -552,8 +548,8 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
     TVector<TDeviceRange> ranges;
     ui64 totalSize = query.GetTotalByteCount();
 
-    for (const auto& node: RankNodes(query, SelectRacks(query, poolName))) {
-        const auto* nodeDevices = NodeDevices.FindPtr(node.NodeId);
+    for (ui32 nodeId: RankNodes(query, SelectRacks(query, poolName))) {
+        const auto* nodeDevices = NodeDevices.FindPtr(nodeId);
         Y_ABORT_UNLESS(nodeDevices);
 
         // finding free devices belonging to this node that match our
@@ -615,7 +611,7 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
             }
 
             if (deviceInfo.Range.first != it) {
-                ranges.emplace_back(node.NodeId, deviceInfo.Range.first, it);
+                ranges.emplace_back(nodeId, deviceInfo.Range.first, it);
             }
 
             if (totalSize == 0) {
