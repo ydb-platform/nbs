@@ -497,22 +497,12 @@ auto TDeviceList::RankNodes(
     const TAllocationQuery& query,
     TVector<TRack> racks) const -> TVector<TNodeInfo>
 {
-    Y_UNUSED(query);
-
     Sort(
         racks,
-        [](const TRack& lhs, const TRack& rhs)
+        [](const TRack& l, const TRack& r)
         {
-            return std::tie(
-                       rhs.Preferred,
-                       lhs.OccupiedSpace,
-                       rhs.FreeSpace,
-                       lhs.Id) <
-                   std::tie(
-                       lhs.Preferred,
-                       rhs.OccupiedSpace,
-                       lhs.FreeSpace,
-                       rhs.Id);
+            return std::tie(r.Preferred, l.OccupiedSpace, r.FreeSpace, l.Id) <
+                   std::tie(l.Preferred, r.OccupiedSpace, l.FreeSpace, r.Id);
         });
 
     TVector<TNodeInfo> nodes;
@@ -520,23 +510,32 @@ auto TDeviceList::RankNodes(
         std::accumulate(
             racks.begin(),
             racks.end(),
-            0U,
-            [](ui32 size, const TRack& rack)
+            size_t{0},
+            [](size_t size, const TRack& rack)
             { return size + rack.Nodes.size(); }));
 
     for (auto& rack: racks) {
         Sort(
             rack.Nodes,
-            [](const TNodeInfo& lhs, const TNodeInfo& rhs)
+            [](const TNodeInfo& l, const TNodeInfo& r)
             {
-                return std::tie(lhs.OccupiedSpace, rhs.FreeSpace) <
-                       std::tie(rhs.OccupiedSpace, lhs.FreeSpace);
+                return std::tie(l.OccupiedSpace, r.FreeSpace) <
+                       std::tie(r.OccupiedSpace, l.FreeSpace);
             });
 
         nodes.insert(
             nodes.end(),
             std::make_move_iterator(rack.Nodes.begin()),
             std::make_move_iterator(rack.Nodes.end()));
+    }
+
+    if (query.DownrankedNodeIds) {
+        // Move downranked nodes to the end
+        std::stable_partition(
+            nodes.begin(),
+            nodes.end(),
+            [&](const TNodeInfo& node)
+            { return !query.DownrankedNodeIds.contains(node.NodeId); });
     }
 
     return nodes;

@@ -495,6 +495,174 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         UNIT_ASSERT_VALUES_EQUAL(agent2.GetNodeId(), devices3[0].GetNodeId());
     }
 
+    Y_UNIT_TEST(ShouldDownrankNodes)
+    {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
+        TDeviceList deviceList;
+
+        auto allocate = [&](ui32 n,
+                            THashSet<ui32> nodeIds = {},
+                            THashSet<ui32> downrankedNodeIds = {})
+        {
+            return deviceList.AllocateDevices(
+                "disk",
+                {
+                    .DownrankedNodeIds = std::move(downrankedNodeIds),
+                    .LogicalBlockSize = DefaultBlockSize,
+                    .BlockCount = n * DefaultBlockCount,
+                    .NodeIds = std::move(nodeIds),
+                });
+        };
+
+        NProto::TAgentConfig agent1 = CreateAgentConfig("agent1", 1, "rack1");
+        NProto::TAgentConfig agent2 = CreateAgentConfig("agent2", 2, "rack1");
+        NProto::TAgentConfig agent3 = CreateAgentConfig("agent3", 3, "rack2");
+        NProto::TAgentConfig agent4 = CreateAgentConfig("agent4", 4, "rack2");
+        NProto::TAgentConfig agent5 = CreateAgentConfig("agent5", 5, "rack3");
+        NProto::TAgentConfig agent6 = CreateAgentConfig("agent6", 6, "rack3");
+
+        for (auto& agent: {agent1, agent2, agent3, agent4, agent5, agent6}) {
+            deviceList.UpdateDevices(agent, poolConfigs);
+        }
+
+        allocate(12, {agent2.GetNodeId()});
+
+        allocate(6, {agent3.GetNodeId()});
+        allocate(12, {agent4.GetNodeId()});
+
+        allocate(9, {agent5.GetNodeId()});
+        allocate(12, {agent6.GetNodeId()});
+
+        {
+            // rack1 *agent1: 15, agent2: 3  18
+            // rack2  agent3:  9, agent4: 3  12
+            // rack3  agent5:  6, agent6: 3   9
+
+            auto devices = allocate(1);
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("rack1", devices[0].GetRack());
+            UNIT_ASSERT_VALUES_EQUAL(agent1.GetAgentId(), devices[0].GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(agent1.GetNodeId(), devices[0].GetNodeId());
+        }
+
+        const THashSet<ui32> downrankedNodes = {
+            agent1.GetNodeId(),
+            agent5.GetNodeId()
+        };
+
+        {
+            // rack1 [agent1: 14], *agent2: 3  17
+            // rack2  agent3:  9,   agent4: 3  12
+            // rack3 [agent5:  6],  agent6: 3   9
+
+            auto devices = allocate(3, {}, downrankedNodes);
+            UNIT_ASSERT_VALUES_EQUAL(3, devices.size());
+            for (const auto& d: devices) {
+                UNIT_ASSERT_VALUES_EQUAL("rack1", d.GetRack());
+                UNIT_ASSERT_VALUES_EQUAL(agent2.GetAgentId(), d.GetAgentId());
+                UNIT_ASSERT_VALUES_EQUAL(agent2.GetNodeId(), d.GetNodeId());
+            }
+        }
+
+        {
+            // rack1 [agent1: 14]             14
+            // rack2 *agent3:  9,  agent4: 3  12
+            // rack3 [agent5:  6], agent6: 3   9
+
+            auto devices = allocate(9, {}, downrankedNodes);
+            UNIT_ASSERT_VALUES_EQUAL(9, devices.size());
+            for (const auto& d: devices) {
+                UNIT_ASSERT_VALUES_EQUAL_C("rack2", d.GetRack(), d);
+                UNIT_ASSERT_VALUES_EQUAL(agent3.GetAgentId(), d.GetAgentId());
+                UNIT_ASSERT_VALUES_EQUAL(agent3.GetNodeId(), d.GetNodeId());
+            }
+        }
+
+        {
+            // rack1 [agent1: 14]              14
+            // rack3 [agent5:  6], *agent6: 3   9
+            // rack2                agent4: 3   3
+
+            auto devices = allocate(3, {}, downrankedNodes);
+            UNIT_ASSERT_VALUES_EQUAL(3, devices.size());
+            for (const auto& d: devices) {
+                UNIT_ASSERT_VALUES_EQUAL_C("rack3", d.GetRack(), d);
+                UNIT_ASSERT_VALUES_EQUAL(agent6.GetAgentId(), d.GetAgentId());
+                UNIT_ASSERT_VALUES_EQUAL(agent6.GetNodeId(), d.GetNodeId());
+            }
+        }
+
+        {
+            // rack1 [agent1: 14]             14
+            // rack3 [agent5:  6]              6
+            // rack2              *agent4: 3   3
+
+            auto devices = allocate(3, {}, downrankedNodes);
+            UNIT_ASSERT_VALUES_EQUAL(3, devices.size());
+            for (const auto& d: devices) {
+                UNIT_ASSERT_VALUES_EQUAL_C("rack2", d.GetRack(), d);
+                UNIT_ASSERT_VALUES_EQUAL(agent4.GetAgentId(), d.GetAgentId());
+                UNIT_ASSERT_VALUES_EQUAL(agent4.GetNodeId(), d.GetNodeId());
+            }
+        }
+
+        // It's time for the downranked nodes.
+
+        {
+            // rack1 *[agent1: 14]  14
+            // rack3  [agent5:  6]   6
+
+            auto devices = allocate(6, {}, downrankedNodes);
+            UNIT_ASSERT_VALUES_EQUAL(6, devices.size());
+            for (const auto& d: devices) {
+                UNIT_ASSERT_VALUES_EQUAL_C("rack1", d.GetRack(), d);
+                UNIT_ASSERT_VALUES_EQUAL(agent1.GetAgentId(), d.GetAgentId());
+                UNIT_ASSERT_VALUES_EQUAL(agent1.GetNodeId(), d.GetNodeId());
+            }
+        }
+
+        {
+            // rack1 *[agent1: 8]  8
+            // rack3  [agent5: 6]  6
+
+            auto devices = allocate(6, {}, downrankedNodes);
+            UNIT_ASSERT_VALUES_EQUAL(6, devices.size());
+            for (const auto& d: devices) {
+                UNIT_ASSERT_VALUES_EQUAL_C("rack1", d.GetRack(), d);
+                UNIT_ASSERT_VALUES_EQUAL(agent1.GetAgentId(), d.GetAgentId());
+                UNIT_ASSERT_VALUES_EQUAL(agent1.GetNodeId(), d.GetNodeId());
+            }
+        }
+
+        {
+            // rack3 *[agent5: 6]  6
+            // rack1  [agent1: 2]  2
+
+            auto devices = allocate(2, {}, downrankedNodes);
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
+            for (const auto& d: devices) {
+                UNIT_ASSERT_VALUES_EQUAL_C("rack3", d.GetRack(), d);
+                UNIT_ASSERT_VALUES_EQUAL(agent5.GetAgentId(), d.GetAgentId());
+                UNIT_ASSERT_VALUES_EQUAL(agent5.GetNodeId(), d.GetNodeId());
+            }
+        }
+
+        {
+            // rack3 *[agent5: 4]  4
+            // rack1 *[agent1: 2]  2
+
+            auto devices = allocate(6, {}, downrankedNodes);
+            UNIT_ASSERT_VALUES_EQUAL(6, devices.size());
+        }
+
+        // No space left
+        {
+            auto devices = allocate(1, {}, downrankedNodes);
+            UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+        }
+    }
+
     Y_UNIT_TEST(ShouldSelectPhysicalDeviceWithTheMostSpaceUponDeviceAllocation)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});

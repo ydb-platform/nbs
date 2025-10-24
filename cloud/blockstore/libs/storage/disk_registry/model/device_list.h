@@ -71,6 +71,7 @@ public:
     {
         THashSet<TString> ForbiddenRacks;
         THashSet<TString> PreferredRacks;
+        THashSet<ui32> DownrankedNodeIds;
 
         ui32 LogicalBlockSize = 0;
         ui64 BlockCount = 0;
