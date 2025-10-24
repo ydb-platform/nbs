@@ -46,21 +46,6 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_METHOD(name, ...)                                         \
-    NThreading::TFuture<NProto::T##name##Response>                           \
-    TBlockStoreRequestAdapter::Execute(                                      \
-        IBlockStore* blockstore,                                             \
-        TCallContextPtr callContext,                                         \
-        std::shared_ptr<NProto::T##name##Request> request)                   \
-    {                                                                        \
-        return blockstore->name(std::move(callContext), std::move(request)); \
-    }
-
-BLOCKSTORE_SERVICE(BLOCKSTORE_METHOD)
-#undef BLOCKSTORE_METHOD
-
-////////////////////////////////////////////////////////////////////////////////
-
 IBlockStorePtr CreateBlockStoreStub()
 {
     return std::make_shared<TBlockStoreStub>();

@@ -52,14 +52,11 @@ ISwitchableBlockStorePtr CreateSwitchableClient(
 
 // It allows to automate calls BeforeSwitching() and AfterSwitching() for
 // ISwitchableBlockStore.
-class ISessionSwitchingGuard
-{
-public:
-    virtual ~ISessionSwitchingGuard() = default;
-};
-using ISessionSwitchingGuardPtr = std::shared_ptr<ISessionSwitchingGuard>;
 
-ISessionSwitchingGuardPtr CreateSessionSwitchingGuard(
+class TSessionSwitchingGuard;
+using TSessionSwitchingGuardPtr = std::shared_ptr<TSessionSwitchingGuard>;
+
+TSessionSwitchingGuardPtr CreateSessionSwitchingGuard(
     ISwitchableBlockStorePtr switchableDataClient);
 
 ////////////////////////////////////////////////////////////////////////////////

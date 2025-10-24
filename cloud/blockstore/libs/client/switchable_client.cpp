@@ -17,6 +17,28 @@ using namespace NThreading;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// The adapter helps to execute the request via the generalized overloaded
+// Execute() method.
+class TBlockStoreRequestAdapter
+{
+public:
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                 \
+    static NThreading::TFuture<NProto::T##name##Response> Execute(           \
+        IBlockStore* blockstore,                                             \
+        TCallContextPtr callContext,                                         \
+        std::shared_ptr<NProto::T##name##Request> request)                   \
+    {                                                                        \
+        return blockstore->name(std::move(callContext), std::move(request)); \
+    }                                                                        \
+    // BLOCKSTORE_DECLARE_METHOD
+
+    BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
+
+#undef BLOCKSTORE_DECLARE_METHOD
+};   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 struct TClientInfo
 {
     IBlockStorePtr Client;
@@ -277,9 +299,11 @@ private:
     }
 };
 
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSessionSwitchingGuard final: public ISessionSwitchingGuard
+class TSessionSwitchingGuard
 {
     ISwitchableBlockStorePtr SwitchableDataClient;
 
@@ -291,13 +315,11 @@ public:
         SwitchableDataClient->BeforeSwitching();
     }
 
-    ~TSessionSwitchingGuard() override
+    ~TSessionSwitchingGuard()
     {
         SwitchableDataClient->AfterSwitching();
     }
 };
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -312,7 +334,7 @@ ISwitchableBlockStorePtr CreateSwitchableClient(
         std::move(client));
 }
 
-ISessionSwitchingGuardPtr CreateSessionSwitchingGuard(
+TSessionSwitchingGuardPtr CreateSessionSwitchingGuard(
     ISwitchableBlockStorePtr switchableDataClient)
 {
     return std::make_shared<TSessionSwitchingGuard>(
