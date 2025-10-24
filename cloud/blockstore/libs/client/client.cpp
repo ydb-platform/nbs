@@ -878,7 +878,8 @@ public:
         const auto& type = GetBlockStoreRequestName(EBlockStoreRequest::name); \
         return MakeFuture<NProto::T##name##Response>(TErrorResponse(           \
             E_NOT_IMPLEMENTED,                                                 \
-            TStringBuilder() << "Unsupported request " << type.Quote()));      \
+            TStringBuilder()                                                   \
+                << "TEndpointBase: unsupported request " << type.Quote()));    \
     }                                                                          \
 // BLOCKSTORE_IMPLEMENT_METHOD
 
