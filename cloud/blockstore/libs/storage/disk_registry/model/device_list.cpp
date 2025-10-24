@@ -275,13 +275,10 @@ NProto::TDeviceConfig TDeviceList::AllocateDevice(
     const TDiskId& diskId,
     const TAllocationQuery& query)
 {
-    for (auto& kv: NodeDevices) {
-        if (!query.NodeIds.empty() && !query.NodeIds.contains(kv.first)) {
+    for (auto& [nodeId, nodeDevices]: NodeDevices) {
+        if (!query.NodeIds.empty() && !query.NodeIds.contains(nodeId)) {
             continue;
         }
-
-        const ui32 nodeId = kv.first;
-        auto& nodeDevices = kv.second;
 
         const auto& currentRack = nodeDevices.Rack;
         auto& devices = nodeDevices.FreeDevices;
@@ -428,10 +425,6 @@ void TDeviceList::MarkDeviceAllocated(const TDiskId& diskId, const TDeviceId& id
     AllocatedDevices.emplace(id, diskId);
 }
 
-// returns a list of racks sorted by preference and then by occupied space ASC
-// then by free space DESC
-// the nodes in each rack are sorted by occupied space ASC then by free space
-// DESC
 auto TDeviceList::SelectRacks(
     const TAllocationQuery& query,
     const TString& poolName) const -> TVector<TRack>
@@ -446,7 +439,6 @@ auto TDeviceList::SelectRacks(
         auto& rack = racks[currentRack];
         rack.Id = currentRack;
         rack.Nodes.push_back({nodeId, 0, 0});
-        rack.Preferred = query.PreferredRacks.contains(currentRack);
     };
 
     if (!query.NodeIds.empty()) {
@@ -486,17 +478,26 @@ auto TDeviceList::SelectRacks(
 
     TVector<TRack> result;
     result.reserve(racks.size());
-    for (auto& r: racks) {
-        result.push_back(std::move(r.second));
+    for (auto& [_, r]: racks) {
+        if (r.FreeSpace) {
+            r.Preferred = query.PreferredRacks.contains(r.Id);
+            result.push_back(std::move(r));
+        }
     }
 
     return result;
 }
 
+// Returns a ranked list of nodes. Sorting is performed in stages:
+// - Sort racks by preference, occupied space, free space
+// - Sort nodes within each rack by occupied space, free space
+// - Optionally apply custom NodeRankingFunc to all nodes (if set in query)
 auto TDeviceList::RankNodes(
     const TAllocationQuery& query,
-    TVector<TRack> racks) const -> TVector<TNodeInfo>
+    TVector<TRack> racks) const -> TVector<TNodeId>
 {
+    // Sort racks by preference then by occupied space ASC then by free space
+    // DESC
     Sort(
         racks,
         [](const TRack& l, const TRack& r)
@@ -505,40 +506,36 @@ auto TDeviceList::RankNodes(
                    std::tie(l.Preferred, r.OccupiedSpace, l.FreeSpace, r.Id);
         });
 
-    TVector<TNodeInfo> nodes;
+    TVector<TNodeId> nodeIds;
     {
         size_t size = 0;
-        for (const auto& rack: racks) {
+        for (const TRack& rack: racks) {
             size += rack.Nodes.size();
         }
-        nodes.reserve(size);
+        nodeIds.reserve(size);
     }
 
-    for (auto& rack: racks) {
+    for (TRack& rack: racks) {
+        // Sort rack's nodes by occupied space ASC then by free space DESC
         Sort(
             rack.Nodes,
-            [](const TNodeInfo& l, const TNodeInfo& r)
+            [](const TNodeInfo& lhs, const TNodeInfo& rhs)
             {
-                return std::tie(l.OccupiedSpace, r.FreeSpace) <
-                       std::tie(r.OccupiedSpace, l.FreeSpace);
+                return std::tie(lhs.OccupiedSpace, rhs.FreeSpace) <
+                       std::tie(rhs.OccupiedSpace, lhs.FreeSpace);
             });
 
-        nodes.insert(
-            nodes.end(),
-            std::make_move_iterator(rack.Nodes.begin()),
-            std::make_move_iterator(rack.Nodes.end()));
+        for (const TNodeInfo& node: rack.Nodes) {
+            nodeIds.push_back(node.NodeId);
+        }
     }
 
-    if (query.DownrankedNodeIds) {
-        // move downranked nodes to the end of the list
-        std::stable_partition(
-            nodes.begin(),
-            nodes.end(),
-            [&](const TNodeInfo& node)
-            { return !query.DownrankedNodeIds.contains(node.NodeId); });
+    // Get the final order of nodes
+    if (query.NodeRankingFunc) {
+        query.NodeRankingFunc(nodeIds);
     }
 
-    return nodes;
+    return nodeIds;
 }
 
 TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
@@ -552,8 +549,8 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
     TVector<TDeviceRange> ranges;
     ui64 totalSize = query.GetTotalByteCount();
 
-    for (const auto& node: RankNodes(query, SelectRacks(query, poolName))) {
-        const auto* nodeDevices = NodeDevices.FindPtr(node.NodeId);
+    for (ui32 nodeId: RankNodes(query, SelectRacks(query, poolName))) {
+        const auto* nodeDevices = NodeDevices.FindPtr(nodeId);
         Y_ABORT_UNLESS(nodeDevices);
 
         // finding free devices belonging to this node that match our
@@ -615,7 +612,7 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
             }
 
             if (deviceInfo.Range.first != it) {
-                ranges.emplace_back(node.NodeId, deviceInfo.Range.first, it);
+                ranges.emplace_back(nodeId, deviceInfo.Range.first, it);
             }
 
             if (totalSize == 0) {

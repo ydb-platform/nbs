@@ -508,7 +508,17 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             return deviceList.AllocateDevices(
                 "disk",
                 {
-                    .DownrankedNodeIds = std::move(downrankedNodeIds),
+                    .NodeRankingFunc =
+                        [downrankedNodeIds](std::span<ui32> nodeIds)
+                    {
+                        auto it = std::stable_partition(
+                            nodeIds.begin(),
+                            nodeIds.end(),
+                            [&](ui32 nodeId)
+                            { return !downrankedNodeIds.contains(nodeId); });
+
+                        std::sort(it, nodeIds.end());
+                    },
                     .LogicalBlockSize = DefaultBlockSize,
                     .BlockCount = n * DefaultBlockCount,
                     .NodeIds = std::move(nodeIds),
@@ -636,21 +646,23 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         }
 
         {
-            // rack3 *[agent5: 6]  6
-            // rack1  [agent1: 2]  2
+            // downranked nodes are sorted by nodeId, so agent1 is selected
+            // first, even though rack1 has less space than rack3.
+
+            // rack1 *[agent1: 2]  2
+            // rack3  [agent5: 6]  6
 
             auto devices = allocate(2, {}, downrankedNodes);
             UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
             for (const auto& d: devices) {
-                UNIT_ASSERT_VALUES_EQUAL_C("rack3", d.GetRack(), d);
-                UNIT_ASSERT_VALUES_EQUAL(agent5.GetAgentId(), d.GetAgentId());
-                UNIT_ASSERT_VALUES_EQUAL(agent5.GetNodeId(), d.GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL_C("rack1", d.GetRack(), d);
+                UNIT_ASSERT_VALUES_EQUAL(agent1.GetAgentId(), d.GetAgentId());
+                UNIT_ASSERT_VALUES_EQUAL(agent1.GetNodeId(), d.GetNodeId());
             }
         }
 
         {
-            // rack3 *[agent5: 4]  4
-            // rack1 *[agent1: 2]  2
+            // rack3  [agent5: 6]  6
 
             auto devices = allocate(6, {}, downrankedNodes);
             UNIT_ASSERT_VALUES_EQUAL(6, devices.size());
