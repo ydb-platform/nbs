@@ -481,49 +481,65 @@ auto TDeviceList::SelectRacks(
             }
         }
 
-        Sort(
-            rack.Nodes,
-            [] (const TNodeInfo& lhs, const TNodeInfo& rhs) {
-                if (lhs.OccupiedSpace != rhs.OccupiedSpace) {
-                    return lhs.OccupiedSpace < rhs.OccupiedSpace;
-                }
-
-                return lhs.FreeSpace > rhs.FreeSpace;
-            });
-
         rack.OccupiedSpace = rackTotalSpace - rack.FreeSpace;
     }
 
-    TVector<TRack*> bySpace;
-    for (auto& x: racks) {
-        if (x.second.FreeSpace) {
-            bySpace.push_back(&x.second);
-        }
-    }
-
-    Sort(
-        bySpace,
-        [] (const TRack* lhs, const TRack* rhs) {
-            if (lhs->Preferred != rhs->Preferred) {
-                return lhs->Preferred > rhs->Preferred;
-            }
-            if (lhs->OccupiedSpace != rhs->OccupiedSpace) {
-                return lhs->OccupiedSpace < rhs->OccupiedSpace;
-            }
-            if (lhs->FreeSpace != rhs->FreeSpace) {
-                return lhs->FreeSpace > rhs->FreeSpace;
-            }
-            return lhs->Id < rhs->Id;
-        });
-
     TVector<TRack> result;
-    result.reserve(bySpace.size());
-
-    for (auto* x: bySpace) {
-        result.push_back(*x);
+    result.reserve(racks.size());
+    for (auto& r: racks) {
+        result.push_back(std::move(r.second));
     }
 
     return result;
+}
+
+auto TDeviceList::RankNodes(
+    const TAllocationQuery& query,
+    TVector<TRack> racks) const -> TVector<TNodeInfo>
+{
+    Y_UNUSED(query);
+
+    Sort(
+        racks,
+        [](const TRack& lhs, const TRack& rhs)
+        {
+            return std::tie(
+                       rhs.Preferred,
+                       lhs.OccupiedSpace,
+                       rhs.FreeSpace,
+                       lhs.Id) <
+                   std::tie(
+                       lhs.Preferred,
+                       rhs.OccupiedSpace,
+                       lhs.FreeSpace,
+                       rhs.Id);
+        });
+
+    TVector<TNodeInfo> nodes;
+    nodes.reserve(
+        std::accumulate(
+            racks.begin(),
+            racks.end(),
+            0U,
+            [](ui32 size, const TRack& rack)
+            { return size + rack.Nodes.size(); }));
+
+    for (auto& rack: racks) {
+        Sort(
+            rack.Nodes,
+            [](const TNodeInfo& lhs, const TNodeInfo& rhs)
+            {
+                return std::tie(lhs.OccupiedSpace, rhs.FreeSpace) <
+                       std::tie(rhs.OccupiedSpace, lhs.FreeSpace);
+            });
+
+        nodes.insert(
+            nodes.end(),
+            std::make_move_iterator(rack.Nodes.begin()),
+            std::make_move_iterator(rack.Nodes.end()));
+    }
+
+    return nodes;
 }
 
 TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
@@ -537,84 +553,82 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
     TVector<TDeviceRange> ranges;
     ui64 totalSize = query.GetTotalByteCount();
 
-    for (const auto& rack: SelectRacks(query, poolName)) {
-        for (const auto& node: rack.Nodes) {
-            const auto* nodeDevices = NodeDevices.FindPtr(node.NodeId);
-            Y_ABORT_UNLESS(nodeDevices);
+    for (const auto& node: RankNodes(query, SelectRacks(query, poolName))) {
+        const auto* nodeDevices = NodeDevices.FindPtr(node.NodeId);
+        Y_ABORT_UNLESS(nodeDevices);
 
-            // finding free devices belonging to this node that match our
-            // query
-            auto [begin, end] =
-                FindDeviceRange(query, poolName, nodeDevices->FreeDevices);
+        // finding free devices belonging to this node that match our
+        // query
+        auto [begin, end] =
+            FindDeviceRange(query, poolName, nodeDevices->FreeDevices);
 
-            using TDeviceIter = decltype(begin);
-            struct TDeviceInfo
+        using TDeviceIter = decltype(begin);
+        struct TDeviceInfo
+        {
+            TString DeviceName;
+            ui64 Size = 0;
+            std::pair<TDeviceIter, TDeviceIter> Range;
+        };
+
+        // grouping these matching devices by DeviceName and sorting
+        // these groups by size in descending order
+        TVector<TDeviceInfo> bySize;
+        for (auto it = begin; it != end; ++it) {
+            if (bySize.empty()
+                    || bySize.back().DeviceName != it->GetDeviceName())
             {
-                TString DeviceName;
-                ui64 Size = 0;
-                std::pair<TDeviceIter, TDeviceIter> Range;
-            };
-
-            // grouping these matching devices by DeviceName and sorting
-            // these groups by size in descending order
-            TVector<TDeviceInfo> bySize;
-            for (auto it = begin; it != end; ++it) {
-                if (bySize.empty()
-                        || bySize.back().DeviceName != it->GetDeviceName())
-                {
-                    bySize.emplace_back(TDeviceInfo{
-                        .DeviceName = it->GetDeviceName(),
-                        .Size = 0,
-                        .Range = std::make_pair(it, it),
-                    });
-                }
-
-                auto& current = bySize.back();
-                current.Size += it->GetBlockSize() * it->GetBlocksCount();
-                ++current.Range.second;
+                bySize.emplace_back(TDeviceInfo{
+                    .DeviceName = it->GetDeviceName(),
+                    .Size = 0,
+                    .Range = std::make_pair(it, it),
+                });
             }
 
-            SortBy(bySize, [] (const TDeviceInfo& d) {
-                return Max<ui64>() - d.Size;
-            });
+            auto& current = bySize.back();
+            current.Size += it->GetBlockSize() * it->GetBlocksCount();
+            ++current.Range.second;
+        }
 
-            // traversing device groups from the biggest to the smallest
-            // the goal is to greedily select as few groups as possible
-            // in most of the cases it will lead to an allocation which is placed
-            // on a single physical device, which is what we want
-            for (const auto& deviceInfo: bySize) {
-                auto it = deviceInfo.Range.first;
-                for (; it != deviceInfo.Range.second; ++it) {
-                    const auto& device = *it;
+        SortBy(bySize, [] (const TDeviceInfo& d) {
+            return Max<ui64>() - d.Size;
+        });
 
-                    Y_DEBUG_ABORT_UNLESS(device.GetRack() == nodeDevices->Rack);
+        // traversing device groups from the biggest to the smallest
+        // the goal is to greedily select as few groups as possible
+        // in most of the cases it will lead to an allocation which is placed
+        // on a single physical device, which is what we want
+        for (const auto& deviceInfo: bySize) {
+            auto it = deviceInfo.Range.first;
+            for (; it != deviceInfo.Range.second; ++it) {
+                const auto& device = *it;
 
-                    const ui64 size = device.GetBlockSize() * device.GetBlocksCount();
+                Y_DEBUG_ABORT_UNLESS(device.GetRack() == nodeDevices->Rack);
 
-                    if (totalSize <= size) {
-                        totalSize = 0;
-                        ++it;
-                        break;
-                    }
+                const ui64 size = device.GetBlockSize() * device.GetBlocksCount();
 
-                    totalSize -= size;
+                if (totalSize <= size) {
+                    totalSize = 0;
+                    ++it;
+                    break;
                 }
 
-                if (deviceInfo.Range.first != it) {
-                    ranges.emplace_back(node.NodeId, deviceInfo.Range.first, it);
-                }
-
-                if (totalSize == 0) {
-                    return ranges;
-                }
+                totalSize -= size;
             }
 
-            if (query.PoolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
-                // here we go again
-
-                ranges.clear();
-                totalSize = query.GetTotalByteCount();
+            if (deviceInfo.Range.first != it) {
+                ranges.emplace_back(node.NodeId, deviceInfo.Range.first, it);
             }
+
+            if (totalSize == 0) {
+                return ranges;
+            }
+        }
+
+        if (query.PoolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
+            // here we go again
+
+            ranges.clear();
+            totalSize = query.GetTotalByteCount();
         }
     }
 

@@ -175,9 +175,15 @@ private:
         const TAllocationQuery& query,
         const TString& poolName);
     TVector<TDeviceRange> CollectDevices(const TAllocationQuery& query);
+
     [[nodiscard]] TVector<TRack> SelectRacks(
         const TAllocationQuery& query,
         const TString& poolName) const;
+
+    [[nodiscard]] TVector<TNodeInfo> RankNodes(
+        const TAllocationQuery& query,
+        TVector<TRack> racks) const;
+
     void RemoveDeviceFromFreeList(const TDeviceId& id);
     void UpdateInAllDevices(
         const TDeviceId& id,
