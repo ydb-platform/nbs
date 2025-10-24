@@ -70,6 +70,8 @@ struct TServerActorSystemArgs
 
     TVector<NCloud::NStorage::IUserMetricsSupplierPtr> UserCounterProviders;
 
+    ITaskQueuePtr BackgroundThreadPool;
+
     bool IsDiskRegistrySpareNode = false;
     bool TemporaryServer = false;
 };
