@@ -18,7 +18,7 @@ using EWriteDataRequestStatus = NFuse::TWriteBackCache::EWriteDataRequestStatus;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteDataRequestStats
+class TWriteDataRequestStatsByStatus
 {
 private:
     const ITimerPtr Timer;
@@ -37,28 +37,29 @@ private:
 
     static TDynamicCounters::TCounterPtr GetCounter(
         TDynamicCounters& counters,
-        const TString& group,
+        const TString& status,
         const TString& name,
         bool derivative)
     {
         return counters.GetCounter(
-            "WriteDataRequest_" + group + "_" + name,
+            "WriteDataRequest_" + status + "_" + name,
             derivative);
     }
 
 public:
-    TWriteDataRequestStats(
+    TWriteDataRequestStatsByStatus(
             TDynamicCounters& counters,
             ITimerPtr timer,
-            const TString& group)
+            const TString& status)
         : Timer(std::move(timer))
         , MaxCompletedTimeCalc(Timer)
     {
-        InProgressCount = GetCounter(counters, group, "InProgressCount", false);
-        Count = GetCounter(counters, group, "Count", true);
-        TimeSumSeconds = GetCounter(counters, group, "TimeSumSeconds", true);
-        TimeSumUs = GetCounter(counters, group, "TimeSumUs", true);
-        MaxTime = GetCounter(counters, group, "MaxTime", false);
+        InProgressCount =
+            GetCounter(counters, status, "InProgressCount", false);
+        Count = GetCounter(counters, status, "Count", true);
+        TimeSumSeconds = GetCounter(counters, status, "TimeSumSeconds", true);
+        TimeSumUs = GetCounter(counters, status, "TimeSumUs", true);
+        MaxTime = GetCounter(counters, status, "MaxTime", false);
     }
 
     void Reset()
@@ -208,11 +209,11 @@ private:
     TDynamicCounters::TCounterPtr PersistentQueueMaxAllocationBytesCount;
     TDynamicCounters::TCounterPtr PersistentQueueIsCorrupted;
 
-    TWriteDataRequestStats PendingWriteDataRequestStats;
-    TWriteDataRequestStats CachedWriteDataRequestStats;
-    TWriteDataRequestStats FlushRequestedWriteDataRequestStats;
-    TWriteDataRequestStats FlushingWriteDataRequestStats;
-    TWriteDataRequestStats FlushedWriteDataRequestStats;
+    TWriteDataRequestStatsByStatus PendingWriteDataRequestStats;
+    TWriteDataRequestStatsByStatus CachedWriteDataRequestStats;
+    TWriteDataRequestStatsByStatus FlushRequestedWriteDataRequestStats;
+    TWriteDataRequestStatsByStatus FlushingWriteDataRequestStats;
+    TWriteDataRequestStatsByStatus FlushedWriteDataRequestStats;
 
     TReadDataRequestStats ReadDataRequestStats;
 
@@ -351,7 +352,7 @@ public:
     }
 
 private:
-    TWriteDataRequestStats& GetWriteDataRequestStats(
+    TWriteDataRequestStatsByStatus& GetWriteDataRequestStats(
         EWriteDataRequestStatus status)
     {
         switch (status) {
