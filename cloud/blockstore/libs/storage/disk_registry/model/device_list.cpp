@@ -506,13 +506,13 @@ auto TDeviceList::RankNodes(
         });
 
     TVector<TNodeInfo> nodes;
-    nodes.reserve(
-        std::accumulate(
-            racks.begin(),
-            racks.end(),
-            size_t{0},
-            [](size_t size, const TRack& rack)
-            { return size + rack.Nodes.size(); }));
+    {
+        size_t size = 0;
+        for (const auto& rack: racks) {
+            size += rack.Nodes.size();
+        }
+        nodes.reserve(size);
+    }
 
     for (auto& rack: racks) {
         Sort(
@@ -530,7 +530,7 @@ auto TDeviceList::RankNodes(
     }
 
     if (query.DownrankedNodeIds) {
-        // Move downranked nodes to the end
+        // move downranked nodes to the end of the list
         std::stable_partition(
             nodes.begin(),
             nodes.end(),
@@ -624,7 +624,7 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
         }
 
         if (query.PoolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
-            // here we go again
+            // a local disk cannot be shared between multiple nodes
 
             ranges.clear();
             totalSize = query.GetTotalByteCount();
