@@ -110,11 +110,11 @@ class TDiskAgentAttachDetachModel
     struct TPathAttachState
     {
         bool Attached = true;
-        ui64 Generation = 0;
     };
 
 private:
     ui64 DrGeneration = 0;
+    ui64 DiskAgentGeneration = 0;
     THashMap<TString, TPathAttachState> PathAttachStates;
 
 public:
@@ -127,31 +127,32 @@ public:
 
     bool AttachDetachPath(
         ui64 drGeneration,
-        const THashMap<TString, ui64>& pathToGeneration,
+        ui64 daGeneration,
+        const TVector<TString>& paths,
         bool attach)
     {
         if (!CheckDrGenerationAndUpdateItIfNeeded(drGeneration)) {
             return false;
         }
 
-        for (const auto& [path, generation]: pathToGeneration) {
+        for (const auto& path: paths) {
             auto& state = PathAttachStates[path];
 
             if (state.Attached == attach) {
                 continue;
             }
 
-            if (generation <= state.Generation) {
+            if (daGeneration <= DiskAgentGeneration) {
                 return false;
             }
         }
 
-        for (const auto& [path, generation]: pathToGeneration) {
+        for (const auto& path: paths) {
             auto& state = PathAttachStates[path];
-
-            state.Generation = Max(state.Generation, generation);
             state.Attached = attach;
         }
+
+        DiskAgentGeneration = Max(DiskAgentGeneration, daGeneration);
 
         return true;
     }
@@ -163,9 +164,7 @@ public:
         }
 
         if (drGeneration > DrGeneration) {
-            for (auto& pathAndState: PathAttachStates) {
-                pathAndState.second.Generation = 0;
-            }
+            DiskAgentGeneration = 0;
         }
         DrGeneration = drGeneration;
         return true;
@@ -183,8 +182,7 @@ private:
     ui64 DevicesCount;
     TVector<TString> Paths;
 
-    ui64 MinPathGeneration = 1;
-    TVector<ui64> GeneratedPathGeneration;
+    ui64 MinDAGeneration = 1;
     TVector<bool> GeneratedShouldAttachPath;
 
     ui64 MinDrGeneration = 1;
@@ -196,14 +194,10 @@ public:
         , Paths(std::move(paths))
     {}
 
-    void GeneratePathGeneration()
+    ui64 GenerateDAGeneration()
     {
-        MinPathGeneration += 10;
-        GeneratedPathGeneration.clear();
-        for (ui64 i = 0; i < DevicesCount; ++i) {
-            GeneratedPathGeneration.push_back(
-                RandomNumber<ui64>(100) + MinPathGeneration);
-        }
+        MinDAGeneration += 10;
+        return RandomNumber<ui64>(100) + MinDAGeneration;
     }
 
     void GenerateShouldAttachPath()
@@ -222,7 +216,7 @@ public:
     {
         MinDrGeneration += 10;
         GeneratedDrGeneration = RandomNumber<ui32>(100) + MinDrGeneration;
-        MinPathGeneration = 1;
+        MinDAGeneration = 1;
     }
 
     ui32 GetDrGeneration()
@@ -232,7 +226,8 @@ public:
 
     struct TRequest
     {
-        THashMap<TString, ui64> PathToGeneration;
+        ui64 DAGeneration;
+        TVector<TString> Paths;
     };
 
     TVector<TRequest> GetAttachDetachRequests(bool attach)
@@ -242,6 +237,8 @@ public:
 
         while (pathIdxs.size() > 0) {
             TRequest request;
+            request.DAGeneration = GenerateDAGeneration();
+
             auto devicesInRequest =
                 Max(RandomNumber<ui64>(pathIdxs.size() + 1),
                     static_cast<ui64>(1));
@@ -249,8 +246,7 @@ public:
             for (ui64 i = 0; i < devicesInRequest; ++i) {
                 auto pathIdx = pathIdxs.back();
 
-                request.PathToGeneration[Paths[pathIdx]] =
-                    GeneratedPathGeneration[pathIdx];
+                request.Paths.emplace_back(Paths[pathIdx]);
 
                 pathIdxs.pop_back();
             }
@@ -7056,7 +7052,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.DetachPath(0, THashMap<TString, ui64>{{filePath, 1}});
+        diskAgent.DetachPath(
+            0,   // drGeneration
+            1,   // daGeneration
+            TVector<TString>{{filePath}});
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
     }
@@ -7117,11 +7116,17 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.DetachPath(0, THashMap<TString, ui64>{{filePath, 1}});
+        diskAgent.DetachPath(
+            0,   // drGeneration
+            1,   // daGeneration
+            TVector<TString>{{filePath}});
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.AttachPath(0, THashMap<TString, ui64>{{filePath, 2}});
+        diskAgent.AttachPath(
+            0,   // drGeneration
+            2,   // daGeneration
+            TVector<TString>{{filePath}});
 
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
     }
@@ -7182,13 +7187,17 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.DetachPath(5, THashMap<TString, ui64>{{filePath, 10}});
+        diskAgent.DetachPath(
+            5,    // drGeneration
+            10,   // daGeneration
+            TVector<TString>{{filePath}});
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
         diskAgent.SendAttachPathRequest(
-            5,
-            THashMap<TString, ui64>{{filePath, 1}});
+            5,   // drGeneration
+            1,   // daGeneration
+            TVector<TString>{{filePath}});
 
         auto resp = diskAgent.RecvAttachPathResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
@@ -7196,15 +7205,19 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
         diskAgent.SendAttachPathRequest(
-            4,
-            THashMap<TString, ui64>{{filePath, 100}});
+            4,     // drGeneration
+            100,   // daGeneration
+            TVector<TString>{{filePath}});
 
         resp = diskAgent.RecvAttachPathResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.AttachPath(6, THashMap<TString, ui64>{{filePath, 1}});
+        diskAgent.AttachPath(
+            6,   // drGeneration
+            1,   // daGeneration
+            TVector<TString>{{filePath}});
 
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
     }
@@ -7265,7 +7278,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.DetachPath(5, THashMap<TString, ui64>{{filePath, 10}});
+        diskAgent.DetachPath(
+            5,    // drGeneration
+            10,   // daGeneration
+            TVector<TString>{{filePath}});
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
@@ -7275,8 +7291,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         diskAgent.SendAttachPathRequest(
-            5,
-            THashMap<TString, ui64>{{filePath, 11}});
+            5,    // drGeneration
+            11,   // daGeneration
+            TVector<TString>{{filePath}});
 
         auto resp = diskAgent.RecvAttachPathResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, resp->GetError().GetCode());
@@ -7340,14 +7357,19 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
 
-        diskAgent.DetachPath(0, THashMap<TString, ui64>{{filePath, 10}});
+        diskAgent.DetachPath(
+            0,    // drGeneration
+            10,   // daGeneration
+            TVector<TString>{{filePath}});
 
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
         Chmod(filePath.c_str(), 0);
 
-        auto response =
-            diskAgent.AttachPath(0, THashMap<TString, ui64>{{filePath, 11}});
+        auto response = diskAgent.AttachPath(
+            0,    // drGeneration
+            11,   // daGeneration
+            TVector<TString>{{filePath}});
 
         UNIT_ASSERT_VALUES_EQUAL(
             2,
@@ -7362,7 +7384,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
     }
 
-    Y_UNIT_TEST(ShouldAttachDetachPaths)
+    Y_UNIT_TEST(AttachDetachPathStressTest)
     {
         auto agentConfig = CreateDefaultAgentConfig();
         agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
@@ -7425,7 +7447,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             if (eventIdx % 10 == 0) {
                 requestsGenerator.GenerateDrGeneration();
             }
-            requestsGenerator.GeneratePathGeneration();
             requestsGenerator.GenerateShouldAttachPath();
 
             auto doRequests = [&](bool attach)
@@ -7438,18 +7459,21 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                     if (attach) {
                         diskAgent.SendAttachPathRequest(
                             requestsGenerator.GetDrGeneration(),
-                            request.PathToGeneration);
+                            request.DAGeneration,
+                            request.Paths);
                         error = diskAgent.RecvAttachPathResponse()->GetError();
                     } else {
                         diskAgent.SendDetachPathRequest(
                             requestsGenerator.GetDrGeneration(),
-                            request.PathToGeneration);
+                            request.DAGeneration,
+                            request.Paths);
                         error = diskAgent.RecvDetachPathResponse()->GetError();
                     }
 
                     bool shouldBeSuccessful = diskAgentModel.AttachDetachPath(
                         requestsGenerator.GetDrGeneration(),
-                        request.PathToGeneration,
+                        request.DAGeneration,
+                        request.Paths,
                         attach);
 
                     UNIT_ASSERT_VALUES_EQUAL(

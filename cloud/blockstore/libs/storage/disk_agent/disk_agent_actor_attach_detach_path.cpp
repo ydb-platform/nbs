@@ -1,5 +1,7 @@
 #include "disk_agent_actor.h"
 
+#include "util/string/join.h"
+
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -7,21 +9,6 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NActors;
 using namespace NKikimr;
 using namespace NThreading;
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString DescribePaths(const THashMap<TString, ui64>& pathToGeneration)
-{
-    TStringBuilder sb;
-    for (const auto& [path, generation]: pathToGeneration) {
-        sb << path << ":" << generation << " ";
-    }
-    return sb;
-}
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -52,47 +39,45 @@ void TDiskAgentActor::HandleAttachPath(
         return;
     }
 
-    TPendingAttachRequest request;
-    request.RequestInfo =
+    PendingAttachPathRequest =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    TVector<TString> paths;
+    TVector<TString> pathsToAttach{
+        record.GetPathsToAttach().begin(),
+        record.GetPathsToAttach().end()};
 
-    for (const auto& pathToGeneration: record.GetPathsToAttach()) {
-        auto error = State->CheckCanAttachPath(
-            record.GetDiskRegistryGeneration(),
-            pathToGeneration.GetPath(),
-            pathToGeneration.GetGeneration());
+    auto future = State->AttachPath(
+        record.GetDiskRegistryGeneration(),
+        record.GetDiskAgentGeneration(),
+        pathsToAttach);
 
-        if (HasError(error) && error.GetCode() != E_NOT_FOUND) {
-            LOG_ERROR(
-                ctx,
-                TBlockStoreComponents::DISK_AGENT,
-                "Can't attach path %s with generation %lu: %s",
-                pathToGeneration.GetPath().c_str(),
-                pathToGeneration.GetGeneration(),
-                FormatError(error).c_str());
-            NCloud::Reply(
-                ctx,
-                *ev,
-                std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(error));
-            return;
-        }
+    auto* actorSystem = TActivationContext::ActorSystem();
+    auto daId = ctx.SelfID;
 
-        if (error.GetCode() == S_ALREADY || error.GetCode() == E_NOT_FOUND) {
-            request
-                .AlreadyAttachedPathsToGeneration[pathToGeneration.GetPath()] =
-                pathToGeneration.GetGeneration();
-        } else {
-            request.PathToGenerationToAttach[pathToGeneration.GetPath()] =
-                pathToGeneration.GetGeneration();
-            paths.emplace_back(pathToGeneration.GetPath());
-        }
-    }
+    future.Subscribe(
+        [diskAgentGeneration = record.GetDiskAgentGeneration(),
+         pathsToAttach = std::move(pathsToAttach),
+         actorSystem,
+         daId](
+            TFuture<TResultOrError<TDiskAgentState::TAttachPathResult>>
+                future) mutable
+        {
+            auto [result, error] = future.ExtractValue();
 
-    PendingAttachPathRequest = std::move(request);
+            auto response =
+                std::make_unique<TEvDiskAgentPrivate::TEvPathAttached>(error);
+            response->AlreadyAttachedPaths =
+                std::move(result.AlreadyAttachedPaths);
+            response->PathsToAttach = std::move(result.PathsToAttach);
+            response->Devices = std::move(result.Devices);
+            response->DiskAgentGeneration = diskAgentGeneration;
 
-    CheckIsSamePath(ctx, std::move(paths));
+            if (!response->AlreadyAttachedPaths && !response->PathsToAttach) {
+                response->PathsToAttach = std::move(pathsToAttach);
+            }
+
+            actorSystem->Send(new IEventHandle{daId, daId, response.release()});
+        });
 }
 
 void TDiskAgentActor::HandlePathAttached(
@@ -101,22 +86,36 @@ void TDiskAgentActor::HandlePathAttached(
 {
     auto* msg = ev->Get();
 
-    State->PathAttached(
-        std::move(msg->Devices),
-        PendingAttachPathRequest->PathToGenerationToAttach,
-        PendingAttachPathRequest->AlreadyAttachedPathsToGeneration);
+    Y_DEFER
+    {
+        PendingAttachPathRequest.reset();
+    };
 
-    THashSet<TString> paths;
-    for (const auto& [path, _]:
-         PendingAttachPathRequest->PathToGenerationToAttach)
-    {
-        paths.emplace(path);
+    if (HasError(msg->Error)) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "Failed to attach paths[%s]: %s",
+            JoinSeq(",", msg->PathsToAttach).c_str(),
+            FormatError(msg->Error).c_str());
+
+        auto response =
+            std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(msg->Error);
+        NCloud::Reply(ctx, **PendingAttachPathRequest, std::move(response));
+        return;
     }
-    for (const auto& [path, _]:
-         PendingAttachPathRequest->AlreadyAttachedPathsToGeneration)
-    {
-        paths.emplace(path);
-    }
+
+    State->PathAttached(
+        msg->DiskAgentGeneration,
+        std::move(msg->Devices),
+        msg->PathsToAttach);
+
+    THashSet<TString> paths{
+        msg->PathsToAttach.begin(),
+        msg->PathsToAttach.end()};
+    paths.insert(
+        msg->AlreadyAttachedPaths.begin(),
+        msg->AlreadyAttachedPaths.end());
 
     auto deviceConfigs = State->GetAllDevicesForPaths(paths);
 
@@ -128,18 +127,13 @@ void TDiskAgentActor::HandlePathAttached(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
-        "Attached paths [%s] Already attached paths [%s]",
-        DescribePaths(PendingAttachPathRequest->PathToGenerationToAttach)
-            .c_str(),
-        DescribePaths(
-            PendingAttachPathRequest->AlreadyAttachedPathsToGeneration)
-            .c_str());
+        "Attached paths [%s] with Disk Agent Generation %lu Already attached "
+        "paths [%s]",
+        JoinSeq(",", msg->PathsToAttach).c_str(),
+        msg->DiskAgentGeneration,
+        JoinSeq(",", msg->AlreadyAttachedPaths).c_str());
 
-    NCloud::Reply(
-        ctx,
-        *PendingAttachPathRequest->RequestInfo,
-        std::move(response));
-    PendingAttachPathRequest.reset();
+    NCloud::Reply(ctx, **PendingAttachPathRequest, std::move(response));
 }
 
 void TDiskAgentActor::HandleDetachPath(
@@ -154,8 +148,9 @@ void TDiskAgentActor::HandleDetachPath(
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskAgent::TEvDetachPathResponse>(
-                MakeError(E_PRECONDITION_FAILED, "attach/detach paths is disabled")));
+            std::make_unique<TEvDiskAgent::TEvDetachPathResponse>(MakeError(
+                E_PRECONDITION_FAILED,
+                "attach/detach paths is disabled")));
         return;
     }
 
@@ -168,28 +163,28 @@ void TDiskAgentActor::HandleDetachPath(
         return;
     }
 
-    THashMap<TString, ui64> pathToGeneration;
-    for (const auto& diskToDetach: record.GetPathsToDetach()) {
-        pathToGeneration[diskToDetach.GetPath()] =
-            diskToDetach.GetGeneration();
-    }
+    TVector<TString> pathsToDetach{
+        record.GetPathsToDetach().begin(),
+        record.GetPathsToDetach().end()};
 
-    auto error =
-        State->DetachPath(record.GetDiskRegistryGeneration(), pathToGeneration);
+    auto error = State->DetachPath(
+        record.GetDiskRegistryGeneration(),
+        record.GetDiskAgentGeneration(),
+        pathsToDetach);
 
     if (HasError(error)) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
             "Failed to detach paths [%s]: %s",
-            DescribePaths(pathToGeneration).c_str(),
+            JoinSeq(",", pathsToDetach).c_str(),
             FormatError(error).c_str());
     } else {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
             "Detached paths [%s]",
-            DescribePaths(pathToGeneration).c_str());
+            JoinSeq(",", pathsToDetach).c_str());
     }
 
     auto response =

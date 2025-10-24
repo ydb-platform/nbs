@@ -303,7 +303,8 @@ TDiskAgentState::TDiskAgentState(
         NNvme::INvmeManagerPtr nvmeManager,
         TRdmaTargetConfigPtr rdmaTargetConfig,
         TOldRequestCounters oldRequestCounters,
-        IMultiAgentWriteHandlerPtr multiAgentWriteHandler)
+        IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
+        ITaskQueuePtr backgroundThreadPool)
     : StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
     , Spdk(std::move(spdk))
@@ -318,6 +319,7 @@ TDiskAgentState::TDiskAgentState(
     , NvmeManager(std::move(nvmeManager))
     , RdmaTargetConfig(std::move(rdmaTargetConfig))
     , OldRequestCounters(std::move(oldRequestCounters))
+    , BackgroundThreadPool(std::move(backgroundThreadPool))
 {
 }
 
@@ -573,9 +575,8 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
                     r.LostDevicesIds.end()});
 
             for (const auto& [uuid, deviceState]: this->Devices) {
-                this->PathAttachStates[deviceState.Config.GetDeviceName()] = {
-                    .State = EPathAttachState::Attached,
-                    .Generation = 0};
+                this->PathAttachStates[deviceState.Config.GetDeviceName()] =
+                    EPathAttachState::Attached;
             }
 
             return r;
@@ -1097,18 +1098,12 @@ bool TDiskAgentState::IsPathAttached(const TString& path) const
 {
     const auto* pathAttachState = PathAttachStates.FindPtr(path);
     return pathAttachState &&
-           pathAttachState->State == EPathAttachState::Attached;
+           *pathAttachState == EPathAttachState::Attached;
 }
 
-ui64 TDiskAgentState::DeviceGeneration(const TString& uuid) const
+ui64 TDiskAgentState::GetDiskAgentGeneration() const
 {
-    const auto* d = Devices.FindPtr(uuid);
-    if (!d) {
-        return 0;
-    }
-    const auto& path = d->Config.GetDeviceName();
-    const auto* pathAttachState = PathAttachStates.FindPtr(path);
-    return pathAttachState ? pathAttachState->Generation : 0;
+    return DiskAgentGeneration;
 }
 
 EDeviceStateFlags TDiskAgentState::GetDeviceStateFlags(
@@ -1156,250 +1151,6 @@ void TDiskAgentState::SetPartiallySuspended(bool partiallySuspended)
 bool TDiskAgentState::GetPartiallySuspended() const
 {
     return PartiallySuspended;
-}
-
-TVector<TString> TDiskAgentState::GetAllDeviceUUIDsForPath(const TString& path)
-{
-    TVector<TString> result;
-    for (const auto& [uuid, device]: Devices) {
-        if (device.Config.GetDeviceName() == path) {
-            result.emplace_back(uuid);
-        }
-    }
-    return result;
-}
-
-TVector<NProto::TDeviceConfig> TDiskAgentState::GetAllDevicesForPaths(
-    const THashSet<TString>& paths)
-{
-    TVector<NProto::TDeviceConfig> result;
-    for (const auto& [uuid, device]: Devices) {
-        if (paths.contains(device.Config.GetDeviceName())) {
-            result.emplace_back(device.Config);
-        }
-    }
-    return result;
-}
-
-NProto::TError TDiskAgentState::CheckCanAttachPath(
-    ui64 diskRegistryGeneration,
-    const TString& path,
-    ui64 pathGeneration)
-{
-    if (auto error = CheckDiskRegistryGenerationAndUpdateItIfNeeded(
-            diskRegistryGeneration);
-        HasError(error))
-    {
-        return error;
-    }
-
-    auto uuids = GetAllDeviceUUIDsForPath(path);
-    THashSet<TString> memoryDevices;
-
-    for (const auto& md: AgentConfig->GetMemoryDevices()) {
-        memoryDevices.emplace(md.GetDeviceId());
-    }
-
-    for (const auto& uuid: uuids) {
-        if (memoryDevices.contains(uuid)) {
-            return MakeError(
-                E_PRECONDITION_FAILED,
-                "Not supported for memory devices");
-        }
-    }
-
-    auto* p = PathAttachStates.FindPtr(path);
-    if (!p) {
-        return MakeError(E_NOT_FOUND, "Path not found");
-    }
-
-    if (p->State == EPathAttachState::Attached) {
-        return MakeError(S_ALREADY, "Path is already attached");
-    }
-
-    if (pathGeneration <= p->Generation) {
-        return MakeError(
-            E_ARGUMENT,
-            Sprintf(
-                "outdated path generation %lu vs %lu",
-                pathGeneration,
-                p->Generation));
-    }
-
-    return {};
-}
-
-THashMap<TString, NThreading::TFuture<IStoragePtr>> TDiskAgentState::AttachPath(
-    const TString& path)
-{
-    auto uuids = GetAllDeviceUUIDsForPath(path);
-
-    THashMap<TString, TFuture<IStoragePtr>> storages;
-
-    for (const auto& uuid: uuids) {
-        auto* d = Devices.FindPtr(uuid);
-        auto& config = d->Config;
-        TFuture<IStoragePtr> storage;
-
-        try {
-            storage = CreateFileStorage(
-                config.GetDeviceName(),
-                config.GetPhysicalOffset() / config.GetBlockSize(),
-                config,
-                d->Stats,
-                StorageProvider,
-                AgentConfig->GetAgentId());
-        } catch (const std::exception& e) {
-            storage = MakeErrorFuture<IStoragePtr>(std::current_exception());
-        }
-
-        storages[uuid] = std::move(storage);
-    }
-
-    return storages;
-}
-
-void TDiskAgentState::PathAttached(
-    THashMap<TString, TResultOrError<IStoragePtr>> devices,
-    const THashMap<TString, ui64>& pathToGenerationToAttach,
-    const THashMap<TString, ui64>& alreadyAttachedPaths)
-{
-    for (auto& [uuid, errorOrDevice]: devices) {
-        auto [storage, error] = std::move(errorOrDevice);
-        auto* d = Devices.FindPtr(uuid);
-        if (!d) {
-            continue;
-        }
-
-        auto& config = d->Config;
-
-        if (HasError(error)) {
-            config.SetState(NProto::DEVICE_STATE_ERROR);
-            config.SetStateMessage(std::move(*error.MutableMessage()));
-            storage = CreateBrokenStorage();
-            storage = CreateStorageWithIoStats(
-                storage,
-                d->Stats,
-                d->Config.GetBlockSize());
-        } else {
-            config.SetState(NProto::DEVICE_STATE_ONLINE);
-            config.ClearStateMessage();
-        }
-
-        TDuration ioTimeout;
-        if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
-            ioTimeout = AgentConfig->GetDeviceIOTimeout();
-        }
-
-        auto storageAdapter = std::make_shared<TStorageAdapter>(
-            std::move(storage),
-            d->Config.GetBlockSize(),
-            false,   // normalize
-            ioTimeout,
-            AgentConfig->GetShutdownTimeout());
-
-        d->StorageAdapter = std::move(storageAdapter);
-
-        if (RdmaTarget) {
-            RdmaTarget->AttachDevice(uuid, std::move(storageAdapter));
-        }
-    }
-
-    for (const auto& [path, deviceGeneration]: pathToGenerationToAttach) {
-        PathAttachStates[path] = {
-            .State = EPathAttachState::Attached,
-            .Generation = deviceGeneration};
-    }
-
-    for (const auto& [path, generation]: alreadyAttachedPaths) {
-        auto& pathAttachState = PathAttachStates[path];
-        Y_ABORT_UNLESS(pathAttachState.State == EPathAttachState::Attached);
-        pathAttachState.Generation =
-            Max(pathAttachState.Generation, generation);
-    }
-}
-
-NProto::TError TDiskAgentState::DetachPath(
-    ui64 diskRegistryGeneration,
-    const THashMap<TString, ui64>& pathToGeneration)
-{
-    if (auto error = CheckDiskRegistryGenerationAndUpdateItIfNeeded(
-            diskRegistryGeneration);
-        HasError(error))
-    {
-        return error;
-    }
-
-    for (const auto& [path, gen]: pathToGeneration) {
-        auto* pathAttachState = PathAttachStates.FindPtr(path);
-        if (!pathAttachState) {
-            continue;
-        }
-
-        if (pathAttachState->State == EPathAttachState::Detached) {
-            continue;
-        }
-
-        if (gen <= pathAttachState->Generation) {
-            return MakeError(
-                E_ARGUMENT,
-                Sprintf(
-                    "outdated path generation %lu vs %lu",
-                    gen,
-                    pathAttachState->Generation));
-        }
-    }
-
-    for (const auto& [path, pathGeneration]: pathToGeneration) {
-        auto* pathAttachState = PathAttachStates.FindPtr(path);
-        if (!pathAttachState) {
-            continue;
-        }
-        auto uuids = GetAllDeviceUUIDsForPath(path);
-
-        pathAttachState->Generation =
-            Max(pathAttachState->Generation, pathGeneration);
-
-        if (pathAttachState->State == EPathAttachState::Detached) {
-            continue;
-        }
-
-        for (const auto& uuid: uuids) {
-            auto* d = Devices.FindPtr(uuid);
-            d->StorageAdapter.reset();
-
-            if (RdmaTarget) {
-                RdmaTarget->DetachDevice(uuid);
-            }
-        }
-
-        pathAttachState->State = EPathAttachState::Detached;
-    }
-
-    return {};
-}
-
-NProto::TError TDiskAgentState::CheckDiskRegistryGenerationAndUpdateItIfNeeded(
-    ui64 diskRegistryGeneration)
-{
-    if (diskRegistryGeneration < LastDiskRegistryGenerationSeen) {
-        return MakeError(E_ARGUMENT, "outdated disk registry generation");
-    }
-
-    if (diskRegistryGeneration > LastDiskRegistryGenerationSeen) {
-        ResetPathGenerations();
-    }
-
-    LastDiskRegistryGenerationSeen = diskRegistryGeneration;
-
-    return {};
-}
-
-void TDiskAgentState::ResetPathGenerations()
-{
-    for (auto& [path, state]: PathAttachStates) {
-        state.Generation = 0;
-    }
 }
 
 void TDiskAgentState::RestoreSessions(

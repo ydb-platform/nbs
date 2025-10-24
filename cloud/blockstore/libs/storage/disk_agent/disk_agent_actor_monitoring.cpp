@@ -46,6 +46,10 @@ void TDiskAgentActor::HandleHttpInfo(
             }
         }
 
+        DIV () {
+            out << "Disk agent generation: " << State->GetDiskAgentGeneration();
+        }
+
         TAG(TH3) { out << "Devices"; }
         RenderDevices(out);
 
@@ -83,7 +87,6 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                     TABLEH() { out << "Rdma endpoint"; }
                     TABLEH() { out << "Writer session"; }
                     TABLEH() { out << "Reader sessions"; }
-                    TABLEH() { out << "Path generation"; }
                 }
             }
 
@@ -144,10 +147,6 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                                 }
                             }
                         }
-                    }
-
-                    TABLED () {
-                        out << State->DeviceGeneration(uuid);
                     }
                 }
             }
