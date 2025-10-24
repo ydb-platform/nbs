@@ -845,6 +845,7 @@ void TBootstrapYdb::InitKikimrService()
     args.EndpointEventHandler = EndpointEventHandler;
     args.RootKmsKeyProvider = RootKmsKeyProvider;
     args.TemporaryServer = Configs->Options->TemporaryServer;
+    args.BackgroundThreadPool = BackgroundThreadPool;
 
     ActorSystem = NStorage::CreateActorSystem(args);
 
