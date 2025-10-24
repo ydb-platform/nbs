@@ -521,6 +521,7 @@ TString PrintCompletion(ibv_wc* wc)
         << "[wr_id=" << TWorkRequestId(wc->wr_id)
         << " opcode=" << GetOpcodeName(wc->opcode)
         << " status=" << GetStatusString(wc->status)
+        << " vendor_err=" << wc->vendor_err
         << "]";
 }
 
