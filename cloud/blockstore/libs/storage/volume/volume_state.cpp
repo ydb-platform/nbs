@@ -400,9 +400,9 @@ void TVolumeState::Reset()
     }
     if (const auto* value = tags.FindPtr(SourceDiskIdTagName)) {
         SourceDiskId = *value;
-        UpdateLeadershipStatus();
     }
 
+    UpdateLeadershipStatus();
     UseMirrorResync = StorageConfig->GetUseMirrorResync();
     ForceMirrorResync = StorageConfig->GetForceMirrorResync();
 

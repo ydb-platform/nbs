@@ -14,6 +14,9 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Runtime disk status.  ELeadershipStatusCalculated based on the tag,
+// TVolumeState::FollowerDisks, TVolumeState.LeaderDisks for the leader and
+// follower disks.
 enum class ELeadershipStatus
 {
     // The disk is the principal. It is ready to serve the client's requests.

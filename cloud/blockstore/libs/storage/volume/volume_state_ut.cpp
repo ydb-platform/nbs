@@ -2215,6 +2215,13 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             .Link = link,
             .State = TFollowerDiskInfo::EState::DataReady,
             .MediaKind = NProto::STORAGE_MEDIA_SSD});
+        UNIT_ASSERT_VALUES_EQUAL("", volumeState.GetPrincipalDiskId());
+
+        // Update state to DataReady
+        volumeState.AddOrUpdateFollower(TFollowerDiskInfo{
+            .Link = link,
+            .State = TFollowerDiskInfo::EState::LeadershipTransferred,
+            .MediaKind = NProto::STORAGE_MEDIA_SSD});
         UNIT_ASSERT_VALUES_EQUAL("vol0-copy", volumeState.GetPrincipalDiskId());
 
         // Update state to Error

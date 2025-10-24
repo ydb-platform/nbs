@@ -9,7 +9,7 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration OutdatedLeaderDestructionBackoffDelay =
-    TDuration::Seconds(60);
+    TDuration::Seconds(30);
 constexpr TDuration OutdatedLeaderDestructionMaxBackoffDelay =
     TDuration::Seconds(180);
 
