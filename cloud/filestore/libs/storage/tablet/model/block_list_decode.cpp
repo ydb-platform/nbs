@@ -177,6 +177,20 @@ void DecodeDeletionMarkers(const TByteVector& encodedDeletionMarkers, TVector<TB
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+* Searches through deletion groups and invokes custom predicates on each one
+*
+* @param encodedDeletionMarkers Deletion markers are encoded as a list of
+*   deletion groups.
+* @param singleGroup Predicate for a single-block deletion group: if it returns
+*   true, the search stops.
+* @param mergedGroup Predicate for a merged deletion group (a range of blocks):
+*   if it returns true, the search stops
+* @param mixedGroup Predicate for a mixed deletion group (an arbitrary array of
+*   non-consecutive blocks): if it returns true, the search stops
+*
+* @return true if any predicate returns true, otherwise false
+*/
 bool FindDeletionGroup(
     const TByteVector& encodedDeletionMarkers,
     auto singleGroup,
@@ -327,6 +341,29 @@ struct TFindDeletionMarkersResult
     ui32 BlocksFound = 0;
 };
 
+/**
+* Searches through deletion markers in a range-based way
+*
+* @param encodedDeletionMarkers Deletion markers are encoded as a list of
+*   deletion groups.
+* @param blobOffset Offset of the block from the start of the blob. The blob is
+*   a list of blocks (|TBlockList|) with a separate list of deletion markers.
+*   Each deletion marker contains a blob offset and a maximum commit id (the
+*   moment in time when the block was deleted).
+* @param maxBlocksToFind Number of blocks to find starting from |blobOffset|
+*
+* @return TFindDeletionMarkersResult with |BlocksFound| blocks whose maximum
+*   commit id is |MaxCommitId|
+*
+* Note: If |res.BlocksFound > 0| and |res.MaxCommitId == InvalidCommitId|,
+*   there are no deletion markers inside the resulting range
+*   [blobOffset, blobOffset + res.BlocksFound).
+*   The function searched all deletion markers and kept the closest deletion
+*   marker (before |minOverlappingBlobOffset|) that lies within the search
+*   range [blobOffset, blobOffset + maxBlocksToFind).
+*   Therefore, no deletion marker exists with a blob offset less than
+*   |minOverlappingBlobOffset|
+*/
 TFindDeletionMarkersResult FindDeletionMarkers(
     const TByteVector& encodedDeletionMarkers,
     ui16 blobOffset,
