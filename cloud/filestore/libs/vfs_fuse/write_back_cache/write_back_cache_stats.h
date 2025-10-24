@@ -11,7 +11,7 @@ namespace NCloud::NFileStore::NFuse {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct IWriteBackCacheStats
-    : public IUpdateableStats
+    : public IStats
 {
     enum class EReadDataRequestCacheStatus;
     struct TPersistentQueueStats;

@@ -25,17 +25,8 @@ namespace NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IUpdateableStats
-{
-    virtual ~IUpdateableStats() = default;
-
-    virtual void UpdateStats(bool updatePercentiles) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct IRequestStats
-    : public IUpdateableStats
+    : public IStats
 {
     virtual void RequestStarted(TCallContext& callContext) = 0;
 
@@ -65,7 +56,7 @@ struct IFileSystemStats
     virtual NMonitoring::TDynamicCountersPtr GetModuleCounters(
         const TString& moduleName) = 0;
 
-    virtual void RegisterUpdateableStats(IUpdateableStatsPtr stats) = 0;
+    virtual void RegisterModuleStats(IStatsPtr stats) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

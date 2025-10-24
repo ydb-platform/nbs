@@ -424,7 +424,7 @@ private:
 
     TMutex Lock;
     TVector<IIncompleteRequestProviderPtr> IncompleteRequestProviders;
-    TVector<IUpdateableStatsPtr> UpdateableStats;
+    TVector<IStatsPtr> ModuleStats;
 
     TUserMetadata UserMetadata;
 
@@ -519,10 +519,10 @@ public:
 
     void UpdateStats(bool updatePercentiles) override
     {
-        TVector<IUpdateableStatsPtr> updateableStats;
+        TVector<IStatsPtr> moduleStats;
 
         with_lock (Lock) {
-            updateableStats = UpdateableStats;
+            moduleStats = ModuleStats;
             for (auto& provider: IncompleteRequestProviders) {
                 provider->Accept(*this);
             }
@@ -531,7 +531,7 @@ public:
         Counters->UpdateStats(updatePercentiles);
         PredictorStats.UpdateStats();
 
-        for (const auto& stats: updateableStats) {
+        for (const auto& stats: moduleStats) {
             stats->UpdateStats(updatePercentiles);
         }
     }
@@ -574,10 +574,10 @@ public:
         return RootCounters->GetSubgroup("module", moduleName);
     }
 
-    void RegisterUpdateableStats(IUpdateableStatsPtr stats) override
+    void RegisterModuleStats(IStatsPtr stats) override
     {
         with_lock (Lock) {
-            UpdateableStats.push_back(std::move(stats));
+            ModuleStats.push_back(std::move(stats));
         }
     }
 
@@ -693,7 +693,7 @@ public:
         return MakeIntrusive<TDynamicCounters>();
     }
 
-    void RegisterUpdateableStats(IUpdateableStatsPtr stats) override
+    void RegisterModuleStats(IStatsPtr stats) override
     {
         Y_UNUSED(stats);
     }
