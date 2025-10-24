@@ -2443,9 +2443,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,
             1000,
-            4_GB + 1); // writeBackCacheCapacity
+            4_GB + 100500); // writeBackCacheCapacity
 
-        // Narrowing ui64 to ui32 will result in verification failure
+        // Narrowing ui64 to ui32 will result in verification failure because
+        // 100500 is less than the minimal allowed cache capacity
         bootstrap.Start();
         Y_DEFER {
             bootstrap.Stop();
