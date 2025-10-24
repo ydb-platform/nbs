@@ -451,12 +451,12 @@ auto TDeviceList::SelectRacks(
 
     if (!query.NodeIds.empty()) {
         for (ui32 id: query.NodeIds) {
-            if (auto* nodeDevices = NodeDevices.FindPtr(id)) {
+            if (const auto* nodeDevices = NodeDevices.FindPtr(id)) {
                 appendNode(nodeDevices->Rack, id);
             }
         }
     } else {
-        for (auto& [nodeId, nodeDevices]: NodeDevices) {
+        for (const auto& [nodeId, nodeDevices]: NodeDevices) {
             appendNode(nodeDevices.Rack, nodeId);
         }
     }
@@ -563,9 +563,9 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
                         || bySize.back().DeviceName != it->GetDeviceName())
                 {
                     bySize.emplace_back(TDeviceInfo{
-                        it->GetDeviceName(),
-                        0,
-                        std::make_pair(it, it),
+                        .DeviceName = it->GetDeviceName(),
+                        .Size = 0,
+                        .Range = std::make_pair(it, it),
                     });
                 }
 
