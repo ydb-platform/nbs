@@ -393,7 +393,9 @@ void TVolumeState::Reset()
     if (tags.contains(UseFastPathTagName)) {
         UseFastPath = true;
     }
-    if (tags.contains(IntermediateWriteBufferTagName)) {
+    if (!StorageConfig->GetDisableUsingIntermediateWriteBuffer() &&
+        tags.contains(IntermediateWriteBufferTagName))
+    {
         UseIntermediateWriteBuffer = true;
     }
     if (const auto* value = tags.FindPtr(SourceDiskIdTagName)) {

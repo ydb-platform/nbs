@@ -566,6 +566,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
     xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
+    xxx(DisableUsingIntermediateWriteBuffer,                   bool, false       )\
     xxx(ScrubbingResyncPolicy,                                                    \
         NProto::EResyncPolicy,                                                    \
         NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB                           )\
