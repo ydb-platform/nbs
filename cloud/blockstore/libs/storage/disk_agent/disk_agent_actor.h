@@ -178,10 +178,6 @@ private:
 
     TDuration GetMaxRequestTimeout() const;
 
-    void CheckIsSamePath(
-        const NActors::TActorContext& ctx,
-        TVector<TString> paths);
-
 private:
     STFUNC(StateInit);
     STFUNC(StateWork);
