@@ -97,7 +97,8 @@ struct TBootstrap
             ISchedulerPtr scheduler = CreateScheduler(),
             const NProto::TFileStoreFeatures& featuresConfig = {},
             ui32 handleOpsQueueSize = 1000,
-            ui32 writeBackCacheAutomaticFlushPeriodMs = 1000)
+            ui32 writeBackCacheAutomaticFlushPeriodMs = 1000,
+            ui64 writeBackCacheCapacity = 1024*1024 + 1024)
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -166,7 +167,7 @@ struct TBootstrap
         if (featuresConfig.GetServerWriteBackCacheEnabled()) {
             proto.SetWriteBackCachePath(TempDir.Path() / "WriteBackCache");
             // minimum possible capacity
-            proto.SetWriteBackCacheCapacity(1024*1024 + 1024);
+            proto.SetWriteBackCacheCapacity(writeBackCacheCapacity);
             proto.SetWriteBackCacheAutomaticFlushPeriod(
                 writeBackCacheAutomaticFlushPeriodMs);
         }
@@ -2429,6 +2430,26 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_EXCEPTION(write.GetValue(WaitTimeout), yexception);
 
         UNIT_ASSERT_VALUES_EQUAL(2, errorCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldSupportWriteBackCacheCapacity4GiB)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000,
+            1000,
+            4_GB + 1); // writeBackCacheCapacity
+
+        // Narrowing ui64 to ui32 will result in verification failure
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
     }
 }
 
