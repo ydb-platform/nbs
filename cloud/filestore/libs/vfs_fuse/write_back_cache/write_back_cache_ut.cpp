@@ -1,5 +1,7 @@
 #include "write_back_cache.h"
 
+#include "overlapping_interval_set.h"
+
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
 
@@ -345,7 +347,7 @@ struct TBootstrap
 
     TBootstrap(const TBootstrapArgs& args = {})
         : CacheAutomaticFlushPeriod(args.AutomaticFlushPeriod)
-        , MaxWriteRequestSize(args.MaxWriteRequestsCount)
+        , MaxWriteRequestSize(args.MaxWriteRequestSize)
         , MaxWriteRequestsCount(args.MaxWriteRequestsCount)
         , MaxSumWriteRequestsSize(args.MaxSumWriteRequestsSize)
     {
@@ -983,6 +985,32 @@ struct TStatsCalculator
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TSimpleIntervalLock
+{
+private:
+    std::mutex Mutex;
+    TOverlappingIntervalSet Set;
+
+public:
+    bool TryLock(ui64 offset, ui64 length)
+    {
+        std::unique_lock lock(Mutex);
+        if (Set.HasIntersection(offset, offset + length)) {
+            return false;
+        }
+        Set.AddInterval(offset, offset + length);
+        return true;
+    }
+
+    void Unlock(ui64 offset, ui64 length)
+    {
+        std::unique_lock lock(Mutex);
+        Set.RemoveInterval(offset, offset + length);
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1351,7 +1379,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         const auto automaticFlushPeriod =
             withAutomaticFlush ? TDuration::MilliSeconds(1) : TDuration();
-        TBootstrap b({.AutomaticFlushPeriod = automaticFlushPeriod});
+        TBootstrap b(
+            {.AutomaticFlushPeriod = automaticFlushPeriod,
+             .UseTestTimerAndScheduler = true});
 
         const TString alphabet = "abcdefghijklmnopqrstuvwxyz";
 
@@ -1360,6 +1390,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         const auto threadCount = rwThreadCount + roThreadCount;
 
         std::latch start{threadCount};
+
+        // Concurrent overlapping writes can be completed in any order.
+        // There is no way to validate cache in this case.
+        // Therefore, we allow only non-overlapping conurrent writes.
+        TSimpleIntervalLock intervalLock;
 
         TVector<std::thread> threads;
 
@@ -1373,10 +1408,18 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 while (writesRemaining--) {
                     SleepForRandomDurationMs(10);
 
-                    const ui64 offset = RandomNumber(alphabet.length());
-                    const ui64 length = Max(
-                        1ul,
-                        RandomNumber(alphabet.length() - offset));
+                    ui64 offset = 0;
+                    ui64 length = 0;
+
+                    while (true) {
+                        offset = RandomNumber(alphabet.length());
+                        length =
+                            Max(1ul, RandomNumber(alphabet.length() - offset));
+
+                        if (intervalLock.TryLock(offset, length)) {
+                            break;
+                        }
+                    }
 
                     auto data = TStringBuf(alphabet).SubString(offset, length);
 
@@ -1384,6 +1427,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                         nodeId,
                         offset + RandomNumber(11u),
                         TString(data));
+
+                    intervalLock.Unlock(offset, length);
 
                     if (withManualFlush) {
                         if (RandomNumber(10u) == 0 && flushesRemaining > 0) {
@@ -1921,7 +1966,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(TDuration::Seconds(1), stats.Data[3]);
     }
 
-    /* TODO(svartmetal): fix tests with automatic flush
     Y_UNIT_TEST(ShouldReadAfterWriteConcurrentlyWithAutomaticFlush)
     {
         TestShouldReadAfterWriteConcurrently(
@@ -1935,7 +1979,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             true,   // withManualFlush
             true);  // withAutomaticFlush
     }
-    */
 }
 
 }   // namespace NCloud::NFileStore::NFuse
