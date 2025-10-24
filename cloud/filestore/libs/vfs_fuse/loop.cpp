@@ -18,6 +18,7 @@
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vfs/protos/session.pb.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/media.h>
@@ -635,7 +636,7 @@ private:
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
 
     std::shared_ptr<TCompletionQueue> CompletionQueue;
-    IRequestStatsPtr RequestStats;
+    IFileSystemStatsPtr FileSystemStats;
     IFileSystemPtr FileSystem;
     TFileSystemConfigPtr FileSystemConfig;
 
@@ -667,7 +668,7 @@ public:
 
     TFuture<NProto::TError> StartAsync() override
     {
-        RequestStats = StatsRegistry->GetFileSystemStats(
+        FileSystemStats = StatsRegistry->GetFileSystemStats(
             Config->GetFileSystemId(),
             Config->GetClientId(),
             "", // folderId, empty until the session is created
@@ -677,7 +678,7 @@ public:
             Config->GetFileSystemId(),
             CreateRequestId());
         callContext->RequestType = EFileStoreRequest::CreateSession;
-        RequestStats->RequestStarted(Log, *callContext);
+        FileSystemStats->RequestStarted(Log, *callContext);
 
         auto weakPtr = weak_from_this();
         return Session->CreateSession(
@@ -685,7 +686,7 @@ public:
             Config->GetMountSeqNumber()).Apply([=] (const auto& future) {
                 if (auto p = weakPtr.lock()) {
                     const auto& response = future.GetValue();
-                    p->RequestStats->RequestCompleted(
+                    p->FileSystemStats->RequestCompleted(
                         p->Log,
                         *callContext,
                         response.GetError());
@@ -727,7 +728,7 @@ public:
                 p->Config->GetFileSystemId(),
                 CreateRequestId());
             callContext->RequestType = EFileStoreRequest::DestroySession;
-            p->RequestStats->RequestStarted(p->Log, *callContext);
+            p->FileSystemStats->RequestStarted(p->Log, *callContext);
 
             p->Session->DestroySession()
                 .Subscribe([
@@ -742,7 +743,7 @@ public:
                     }
 
                     const auto& response = f.GetValue();
-                    p->RequestStats->RequestCompleted(
+                    p->FileSystemStats->RequestCompleted(
                         p->Log,
                         *callContext,
                         response.GetError());
@@ -846,7 +847,7 @@ public:
             Config->GetFileSystemId(),
             CreateRequestId());
         callContext->RequestType = EFileStoreRequest::CreateSession;
-        RequestStats->RequestStarted(Log, *callContext);
+        FileSystemStats->RequestStarted(Log, *callContext);
 
         auto weakPtr = weak_from_this();
         return Session->AlterSession(isReadonly, mountSeqNumber)
@@ -855,7 +856,7 @@ public:
                     NProto::TError error;
                     try {
                         const auto& response = future.GetValue();
-                        p->RequestStats->RequestCompleted(
+                        p->FileSystemStats->RequestCompleted(
                             p->Log,
                             *callContext,
                             response.GetError());
@@ -933,7 +934,7 @@ private:
 
             CompletionQueue = std::make_shared<TCompletionQueue>(
                 Config->GetFileSystemId(),
-                RequestStats,
+                FileSystemStats,
                 Log,
                 StorageMediaKind);
             FileSystemConfig = MakeFileSystemConfig(filestore);
@@ -992,11 +993,17 @@ private:
                         return error;
                     }
 
+                    auto counters =
+                        FileSystemStats->GetModuleCounters("write_back_cache");
+
+                    auto stats = CreateWriteBackCacheStats(*counters, Timer);
+                    FileSystemStats->RegisterModuleStats(stats);
+
                     writeBackCache = TWriteBackCache(
                         Session,
                         Scheduler,
                         Timer,
-                        CreateDummyWriteBackCacheStats(),
+                        std::move(stats),
                         path / WriteBackCacheFileName,
                         Config->GetWriteBackCacheCapacity(),
                         Config->GetWriteBackCacheAutomaticFlushPeriod(),
@@ -1026,12 +1033,12 @@ private:
                 Timer,
                 FileSystemConfig,
                 Session,
-                RequestStats,
+                FileSystemStats,
                 CompletionQueue,
                 std::move(handleOpsQueue),
                 std::move(writeBackCache));
 
-            RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
+            FileSystemStats->RegisterIncompleteRequestProvider(CompletionQueue);
 
             SessionState = response.GetSession().GetSessionState();
             fuse_lowlevel_ops ops = {};
@@ -1240,7 +1247,7 @@ private:
             callContext->CancellationCode = *cancelCode;
             CancelRequest(
                 pThis->Log,
-                *pThis->RequestStats,
+                *pThis->FileSystemStats,
                 *callContext,
                 req);
             return;
@@ -1253,7 +1260,7 @@ private:
             callContext->FileSystemId,
             pThis->StorageMediaKind,
             callContext->RequestSize);
-        pThis->RequestStats->RequestStarted(Log, *callContext);
+        pThis->FileSystemStats->RequestStarted(Log, *callContext);
 
         try {
             auto* fs = pThis->FileSystem.get();
@@ -1263,7 +1270,7 @@ private:
                 << FormatResultCode(e.GetCode()) << " " << e.GetMessage());
             ReplyError(
                 pThis->Log,
-                *pThis->RequestStats,
+                *pThis->FileSystemStats,
                 *callContext,
                 MakeError(e.GetCode(), TString(e.GetMessage())),
                 req,
@@ -1272,7 +1279,7 @@ private:
             STORAGE_ERROR("unexpected error: " << CurrentExceptionMessage());
             ReplyError(
                 pThis->Log,
-                *pThis->RequestStats,
+                *pThis->FileSystemStats,
                 *callContext,
                 MakeError(E_IO, CurrentExceptionMessage()),
                 req,
