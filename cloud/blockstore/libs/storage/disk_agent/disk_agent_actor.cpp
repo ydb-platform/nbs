@@ -30,7 +30,8 @@ TDiskAgentActor::TDiskAgentActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
-        NNvme::INvmeManagerPtr nvmeManager)
+        NNvme::INvmeManagerPtr nvmeManager,
+        ITaskQueuePtr backgroundThreadPool)
     : Config(std::move(config))
     , AgentConfig(std::move(agentConfig))
     , RdmaConfig(std::move(rdmaConfig))
@@ -42,6 +43,7 @@ TDiskAgentActor::TDiskAgentActor(
     , Logging(std::move(logging))
     , RdmaServer(std::move(rdmaServer))
     , NvmeManager(std::move(nvmeManager))
+    , BackgroundThreadPool(std::move(backgroundThreadPool))
 {}
 
 TDiskAgentActor::~TDiskAgentActor()
@@ -390,10 +392,6 @@ STFUNC(TDiskAgentActor::StateWork)
             HandleMultiAgentWriteDeviceBlocks);
 
         HFunc(TEvDiskAgentPrivate::TEvPathAttached, HandlePathAttached);
-
-        HFunc(
-            TEvDiskAgentPrivate::TEvCheckIsSamePathResult,
-            HandleCheckIsSamePathResult);
 
         case TEvDiskAgentPrivate::EvParsedReadDeviceBlocksRequest:
             HandleReadDeviceBlocks(
