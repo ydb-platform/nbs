@@ -428,13 +428,14 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         TDeviceList deviceList;
 
-        auto allocate = [&] (ui32 n, THashSet<TString> preferredRacks = {}) {
+        auto allocate = [&](ui32 n, THashSet<ui32> nodeIds = {})
+        {
             return deviceList.AllocateDevices(
                 "disk",
                 {
-                    .PreferredRacks = std::move(preferredRacks),
                     .LogicalBlockSize = DefaultBlockSize,
                     .BlockCount = n * DefaultBlockCount,
+                    .NodeIds = std::move(nodeIds),
                 }
             );
         };
@@ -450,25 +451,48 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         UNIT_ASSERT_VALUES_EQUAL(60, deviceList.Size());
 
-        // using up some space in rack1
-        auto devices0 = allocate(15, {"rack1"});
+        // using up some space in rack1 (on agent1)
+        auto devices0 = allocate(15, {agent1.GetNodeId()});
         UNIT_ASSERT_VALUES_EQUAL(15, devices0.size());
-        UNIT_ASSERT_VALUES_EQUAL("rack1", devices0[0].GetRack());
+        for (const auto& d: devices0) {
+            UNIT_ASSERT_VALUES_EQUAL("rack1", d.GetRack());
+            UNIT_ASSERT_VALUES_EQUAL(agent1.GetAgentId(), d.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(agent1.GetNodeId(), d.GetNodeId());
+        }
 
         // now rack2 has less occupied space
         auto devices1 = allocate(10);
         UNIT_ASSERT_VALUES_EQUAL(10, devices1.size());
-        UNIT_ASSERT_VALUES_EQUAL("rack2", devices1[0].GetRack());
+        for (const auto& d: devices1) {
+            UNIT_ASSERT_VALUES_EQUAL("rack2", d.GetRack());
+            UNIT_ASSERT_VALUES_EQUAL(devices1[0].GetNodeId(), d.GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(devices1[0].GetAgentId(), d.GetAgentId());
+        }
 
         // rack2 still has less occupied space
         auto devices2 = allocate(10);
         UNIT_ASSERT_VALUES_EQUAL(10, devices2.size());
-        UNIT_ASSERT_VALUES_EQUAL("rack2", devices2[0].GetRack());
+
+        // it must be another node, the least occupied one
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            devices1[0].GetNodeId(),
+            devices2[0].GetNodeId());
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            devices1[0].GetAgentId(),
+            devices2[0].GetAgentId());
+
+        for (const auto& d: devices2) {
+            UNIT_ASSERT_VALUES_EQUAL("rack2", d.GetRack());
+            UNIT_ASSERT_VALUES_EQUAL(devices2[0].GetNodeId(), d.GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(devices2[0].GetAgentId(), d.GetAgentId());
+        }
 
         // now rack1 has less occupied space
         auto devices3 = allocate(1);
         UNIT_ASSERT_VALUES_EQUAL(1, devices3.size());
         UNIT_ASSERT_VALUES_EQUAL("rack1", devices3[0].GetRack());
+        UNIT_ASSERT_VALUES_EQUAL(agent2.GetAgentId(), devices3[0].GetAgentId());
+        UNIT_ASSERT_VALUES_EQUAL(agent2.GetNodeId(), devices3[0].GetNodeId());
     }
 
     Y_UNIT_TEST(ShouldSelectPhysicalDeviceWithTheMostSpaceUponDeviceAllocation)
