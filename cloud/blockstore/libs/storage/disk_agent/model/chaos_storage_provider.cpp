@@ -1,5 +1,6 @@
 #include "chaos_storage_provider.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
@@ -73,8 +74,14 @@ EWellKnownResultCodes GetChaosErrorCode(
 class TChaosStorage final: public IStorage
 {
 private:
-    IStoragePtr Storage;
+    const IStoragePtr Storage;
     const NProto::TChaosConfig ChaosConfig;
+    const ui64 MaxCritEventToReport =
+        ChaosConfig.GetCritEventReportingPolicy() == NProto::CCERP_FIRST_ERROR
+            ? 1
+            : std::numeric_limits<ui64>::max();
+
+    ui64 GeneratedErrorCount = 0;
 
 public:
     TChaosStorage(IStoragePtr storage, NProto::TChaosConfig chaosConfig)
@@ -129,7 +136,7 @@ private:
     template <class TResponse, class TRequest>
     NThreading::TFuture<TResponse> Execute(
         TCallContextPtr callContext,
-        std::shared_ptr<TRequest> request) const
+        std::shared_ptr<TRequest> request)
     {
         if (!TryChaosLuck(ChaosConfig.GetChaosProbability())) {
             return UnderlyingExecute(
@@ -137,6 +144,8 @@ private:
                 std::move(callContext),
                 std::move(request));
         }
+
+        ++GeneratedErrorCount;
 
         // We flip four coins:
         // 1. will we generate an error (ChaosProbability)
@@ -170,8 +179,18 @@ private:
             TryChaosLuck(ChaosConfig.GetImmediateReplyProbability());
 
         auto reply = [forcedErrorCode,
+                      reportCritEvent =
+                          GeneratedErrorCount <= MaxCritEventToReport,
                       damageData](bool before) -> NThreading::TFuture<TResponse>
         {
+            if (reportCritEvent) {
+                ReportChaosGeneratedError(
+                    {{"request", GetBlockStoreRequestName<TRequest>()},
+                     {"error", ToString(forcedErrorCode)},
+                     {"before", before},
+                     {"damageData", damageData}});
+            }
+
             TResponse msg;
             *msg.MutableError() = MakeError(
                 forcedErrorCode,

@@ -18,6 +18,7 @@ SRCS(
 PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/libs/common
+    cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
     cloud/blockstore/public/api/protos
 

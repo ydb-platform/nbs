@@ -85,6 +85,7 @@ ThrottlingConfig: {
 }
 
 ChaosConfig: {
+    CritEventReportingPolicy: CCERP_ALL_ERRORS
     ChaosProbability: 0.001
     ErrorCodes: 0x80000002 # E_REJECTED
     ErrorCodes: 0x80000005 # E_TIMEOUT
