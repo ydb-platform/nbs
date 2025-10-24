@@ -603,15 +603,16 @@ message TRegisterAgentResponse
     // List of device IDs to which Disk Agent should disable IO operations.
     repeated string DevicesToDisableIO = 2;
 
+    // Monotonously increasing counters needed to order attach/detach
+    // paths requests from one generation of DR tablet.
+    uint64 DiskAgentGeneration = 3;
+
     // Disk Registry Tablet generation needed to order attach/detach path
     // requests sent from two different DR generations.
-    uint32 DiskRegistryGeneration = 3;
+    uint32 DiskRegistryGeneration = 4;
 
-    // Allowed devices attached to the agent.
-    repeated TPathToGeneration AllowedPaths = 4;
-
-    // Unallowed devices attached to the agent.
-    repeated TPathToGeneration UnknownPaths = 5;
+    // Devices that should be attached to the agent.
+    repeated string PathsToAttach = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1877,11 +1878,15 @@ message TAttachPathRequest
     THeaders Headers = 1;
 
     // List of paths we want to attach.
-    repeated TPathToGeneration PathsToAttach = 2;
+    repeated string PathsToAttach = 2;
+
+    // Monotonously increasing counters needed to order attach/detach
+    // paths requests from one generation of DR tablet.
+    uint64 DiskAgentGeneration = 3;
 
     // Disk Registry Tablet generation needed to order attach/detach path
     // requests sent from two different DR generations.
-    uint32 DiskRegistryGeneration = 3;
+    uint32 DiskRegistryGeneration = 4;
 }
 
 message TAttachPathResponse
@@ -1902,11 +1907,15 @@ message TDetachPathRequest
     THeaders Headers = 1;
 
     // List of paths we want to detach.
-    repeated TPathToGeneration PathsToDetach = 2;
+    repeated string PathsToDetach = 2;
+
+    // Monotonously increasing counters needed to order attach/detach
+    // paths requests from one generation of DR tablet.
+    uint64 DiskAgentGeneration = 3;
 
     // Disk Registry Tablet generation needed to order attach/detach path
     // requests sent from two different DR generations.
-    uint32 DiskRegistryGeneration = 3;
+    uint32 DiskRegistryGeneration = 4;
 }
 
 message TDetachPathResponse
