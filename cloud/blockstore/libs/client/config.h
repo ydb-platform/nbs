@@ -3,14 +3,15 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/client.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/dumpable.h>
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 #include <util/stream/output.h>
 
 namespace NCloud::NBlockStore::NClient {
@@ -60,6 +61,11 @@ public:
     TDuration GetGrpcReconnectBackoff() const;
     TDuration GetDiskRegistryBasedDiskInitialRetryTimeout() const;
     TDuration GetYDBBasedDiskInitialRetryTimeout() const;
+    bool GetEnableListBasedRetryRules() const;
+    TVector<EWellKnownResultCodes>
+    GetNonRetriableErrorsForReliableMedia() const;
+    TVector<EWellKnownResultCodes>
+    GetNonRetriableErrorsForUnreliableMedia() const;
     ui32 GetMemoryQuotaBytes() const;
     ui32 GetSecurePort() const;
     bool GetSkipCertVerification() const;
