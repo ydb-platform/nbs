@@ -16,8 +16,6 @@ struct IWriteBackCacheStats
     enum class EReadDataRequestCacheStatus;
     struct TPersistentQueueStats;
 
-    virtual ~IWriteBackCacheStats() = default;
-
     virtual void ResetNonDerivativeCounters() = 0;
 
     virtual void FlushStarted() = 0;

@@ -2457,7 +2457,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         reqWrite->In->Body.flags |= O_WRONLY;
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
-        UNIT_ASSERT_EQUAL(0, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
 
         auto flush = bootstrap.Fuse->SendRequest<TFlushRequest>(
             nodeId, handleId);
@@ -2534,7 +2534,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         reqWrite->In->Body.flags |= O_WRONLY;
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
-        UNIT_ASSERT_EQUAL(0, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
 
         bootstrap.Timer->Sleep(TDuration::Seconds(1));
         bootstrap.StatsRegistry->UpdateStats(false);

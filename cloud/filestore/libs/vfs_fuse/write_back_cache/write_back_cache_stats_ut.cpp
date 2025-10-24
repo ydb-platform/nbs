@@ -73,7 +73,7 @@ struct TBootstrap
 
         TStringBuilder sb;
         for (const auto& counter: snapshot) {
-            UNIT_ASSERT_EQUAL("sensor", counter.first.LabelName);
+            UNIT_ASSERT_VALUES_EQUAL("sensor", counter.first.LabelName);
             auto& value = Values[counter.first.LabelValue];
             auto newValue = GetValue(counter.first.LabelValue);
 
@@ -158,7 +158,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
         bootstrap.CheckValue("PersistentQueue_RawCapacity", false);
         bootstrap.CheckValue("PersistentQueue_RawUsedBytesCount", false);
         bootstrap.CheckValue("PersistentQueue_MaxAllocationBytesCount", false);
-        bootstrap.CheckValue("PersistentQueue_Corrupted", false);
+        bootstrap.CheckValue("PersistentQueue_IsCorrupted", false);
     }
 
     Y_UNIT_TEST(ShouldUpdateCounters)

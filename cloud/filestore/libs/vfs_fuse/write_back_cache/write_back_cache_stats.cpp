@@ -12,7 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TValue = NMonitoring::TDeprecatedCounter::TValueBase;
+using TValue = TDynamicCounters::TCounterPtr::TValueType::TValueBase;
 using TAtomicInstant = std::atomic<TInstant>;
 using EWriteDataRequestStatus = NFuse::TWriteBackCache::EWriteDataRequestStatus;
 
@@ -136,7 +136,8 @@ public:
         , WaitMaxTimeCalc(Timer)
     {
         CacheFullHitCount = GetCounter(counters, "CacheFullHitCount", true);
-        CachePartialHitCount = GetCounter(counters, "CachePartialHitCount", true);
+        CachePartialHitCount =
+            GetCounter(counters, "CachePartialHitCount", true);
         CacheMissCount = GetCounter(counters, "CacheMissCount", true);
 
         WaitCount = GetCounter(counters, "Wait_Count", true);
@@ -169,7 +170,8 @@ public:
     void AddWaitStats(TDuration duration)
     {
         WaitCount->Inc();
-        WaitTimeSumUs->Add(static_cast<TValue>(duration.MicroSecondsOfSecond()));
+        WaitTimeSumUs->Add(
+            static_cast<TValue>(duration.MicroSecondsOfSecond()));
         WaitTimeSumSeconds->Add(static_cast<TValue>(duration.Seconds()));
         WaitMaxTimeCalc.Add(duration.MicroSeconds());
     }
@@ -198,7 +200,7 @@ private:
     TDynamicCounters::TCounterPtr PersistentQueueRawCapacity;
     TDynamicCounters::TCounterPtr PersistentQueueRawUsedBytesCount;
     TDynamicCounters::TCounterPtr PersistentQueueMaxAllocationBytesCount;
-    TDynamicCounters::TCounterPtr PersistentQueueCorrupted;
+    TDynamicCounters::TCounterPtr PersistentQueueIsCorrupted;
 
     TWriteDataRequestStats PendingWriteDataRequestStats;
     TWriteDataRequestStats CachedWriteDataRequestStats;
@@ -232,8 +234,8 @@ public:
             counters.GetCounter("PersistentQueue_RawUsedBytesCount");
         PersistentQueueMaxAllocationBytesCount =
             counters.GetCounter("PersistentQueue_MaxAllocationBytesCount");
-        PersistentQueueCorrupted =
-            counters.GetCounter("PersistentQueue_Corrupted");
+        PersistentQueueIsCorrupted =
+            counters.GetCounter("PersistentQueue_IsCorrupted");
     }
 
     void ResetNonDerivativeCounters() override
@@ -313,7 +315,7 @@ public:
                 ReadDataRequestStats.IncrementCacheFullHitCount();
                 break;
             default:
-                Y_ABORT("Invalid EReadDataRequestCacheStatus value");
+                Y_UNREACHABLE();
         }
         ReadDataRequestStats.AddWaitStats(waitDuration);
     }
@@ -326,7 +328,7 @@ public:
             static_cast<TValue>(stats.RawUsedBytesCount));
         PersistentQueueMaxAllocationBytesCount->Set(
             static_cast<TValue>(stats.MaxAllocationBytesCount));
-        PersistentQueueCorrupted->Set(stats.IsCorrupted ? 1 : 0);
+        PersistentQueueIsCorrupted->Set(static_cast<TValue>(stats.IsCorrupted));
     }
 
     void UpdateStats(bool updatePercentiles) override
@@ -358,7 +360,7 @@ private:
             case EWriteDataRequestStatus::Flushed:
                 return FlushedWriteDataRequestStats;
             default:
-                Y_ABORT("Invalid EWriteDataRequestStatus value");
+                Y_UNREACHABLE();
         }
     }
 };
