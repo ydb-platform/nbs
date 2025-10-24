@@ -3791,14 +3791,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 data.size());
 
             const auto& buffer = response->Record.GetBuffer();
-            const auto& offset = response->Record.GetBufferOffset();
-            UNIT_ASSERT_VALUES_EQUAL(
-                data.size() + DefaultBlockSize - 1,
-                buffer.size());
-            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize - 1, offset);
-            UNIT_ASSERT_VALUES_EQUAL(
-                data,
-                TString(buffer.data() + offset, data.size()));
+            UNIT_ASSERT_VALUES_EQUAL(data.size(), buffer.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetBufferOffset());
+            UNIT_ASSERT_VALUES_EQUAL(data, buffer);
         }
         {
             // Small unaligned data
@@ -3813,12 +3808,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 dataOffset,
                 data.size());
             const auto& buffer = response->Record.GetBuffer();
-            const auto& offset = response->Record.GetBufferOffset();
-            UNIT_ASSERT_VALUES_EQUAL(data.size() + dataOffset, buffer.size());
-            UNIT_ASSERT_VALUES_EQUAL(dataOffset, offset);
-            UNIT_ASSERT_EQUAL(
-                data,
-                TString(buffer.data() + offset, data.size()));
+            UNIT_ASSERT_VALUES_EQUAL(data.size(), buffer.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetBufferOffset());
+            UNIT_ASSERT_EQUAL(data, buffer);
         }
         {
             // Multiple blobs
