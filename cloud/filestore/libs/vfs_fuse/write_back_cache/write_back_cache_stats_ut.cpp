@@ -217,7 +217,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
                 "WriteDataRequest_" + testCase.Name + "_InProgressCount: 2, " +
                 "WriteDataRequest_" + testCase.Name + "_TimeSumUs: 25");
 
-            bootstrap.Stats->WriteDataRequestUpdateMinTime(
+            bootstrap.Stats->UpdateWriteDataRequestMinStatusChangeTime(
                 testCase.Status,
                 bootstrap.Timer->Now());
             bootstrap.CheckChanges("");
@@ -227,7 +227,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
             bootstrap.CheckChanges(
                 "WriteDataRequest_" + testCase.Name + "_MaxTime: 2000000");
 
-            bootstrap.Stats->WriteDataRequestUpdateMinTime(
+            bootstrap.Stats->UpdateWriteDataRequestMinStatusChangeTime(
                 testCase.Status,
                 bootstrap.Timer->Now());
 
@@ -245,7 +245,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
                 "WriteDataRequest_" + testCase.Name + "_TimeSumSeconds: 3, " +
                 "WriteDataRequest_" + testCase.Name + "_TimeSumUs: 50");
 
-            bootstrap.Stats->WriteDataRequestUpdateMinTime(
+            bootstrap.Stats->UpdateWriteDataRequestMinStatusChangeTime(
                 testCase.Status,
                 TInstant::Zero());
 
@@ -267,7 +267,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
             "WriteDataRequest_Pending_MaxTime: 0");
 
         for (const auto& testCase: testCases) {
-            bootstrap.Stats->WriteDataRequestUpdateMinTime(
+            bootstrap.Stats->UpdateWriteDataRequestMinStatusChangeTime(
                 testCase.Status,
                 bootstrap.Timer->Now() - TDuration::Seconds(1));
         }

@@ -32,8 +32,8 @@ private:
     TDynamicCounters::TCounterPtr TimeSumSeconds;
     TDynamicCounters::TCounterPtr TimeSumUs;
     TDynamicCounters::TCounterPtr MaxTime;
-    TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTimeCalc;
-    TAtomicInstant MinInstant = TInstant::Zero();
+    TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxCompletedTimeCalc;
+    TAtomicInstant MinInProgressStatusChangeTime = TInstant::Zero();
 
     static TDynamicCounters::TCounterPtr GetCounter(
         TDynamicCounters& counters,
@@ -52,7 +52,7 @@ public:
             ITimerPtr timer,
             const TString& group)
         : Timer(std::move(timer))
-        , MaxTimeCalc(Timer)
+        , MaxCompletedTimeCalc(Timer)
     {
         InProgressCount = GetCounter(counters, group, "InProgressCount", false);
         Count = GetCounter(counters, group, "Count", true);
@@ -65,8 +65,8 @@ public:
     {
         InProgressCount->Set(0);
         MaxTime->Set(0);
-        MinInstant.store(TInstant::Zero());
-        MaxTimeCalc = {Timer};
+        MinInProgressStatusChangeTime.store(TInstant::Zero());
+        MaxCompletedTimeCalc = {Timer};
     }
 
     void IncrementInProgressCount()
@@ -84,22 +84,28 @@ public:
         Count->Inc();
         TimeSumUs->Add(static_cast<TValue>(duration.MicroSecondsOfSecond()));
         TimeSumSeconds->Add(static_cast<TValue>(duration.Seconds()));
-        MaxTimeCalc.Add(duration.MicroSeconds());
+        MaxCompletedTimeCalc.Add(duration.MicroSeconds());
     }
 
-    void UpdateMinInstant(TInstant value)
+    void UpdateMinStatusChangeTime(TInstant value)
     {
-        MinInstant.store(value);
+        MinInProgressStatusChangeTime.store(value);
     }
 
     void UpdateStats()
     {
-        auto maxTime = MaxTimeCalc.NextValue();
-        auto minInstant = MinInstant.load();
-        if (minInstant) {
-            maxTime = Max(maxTime, (Timer->Now() - minInstant).MicroSeconds());
-        }
+        const auto maxCompletedTime = MaxCompletedTimeCalc.NextValue();
+        const auto maxInProgressTime = GetMaxInProgressTime().MicroSeconds();
+        const auto maxTime = Max(maxCompletedTime, maxInProgressTime);
         MaxTime->Set(static_cast<TValue>(maxTime));
+    }
+
+private:
+    TDuration GetMaxInProgressTime() const
+    {
+        const auto minStatusChangeTime = MinInProgressStatusChangeTime.load();
+        return minStatusChangeTime ? Timer->Now() - minStatusChangeTime
+                                   : TDuration::Zero();
     }
 };
 
@@ -292,12 +298,12 @@ public:
         stats.AddStats(duration);
     }
 
-    void WriteDataRequestUpdateMinTime(
+    void UpdateWriteDataRequestMinStatusChangeTime(
         EWriteDataRequestStatus status,
-        TInstant minTime) override
+        TInstant minStatusChangeTime) override
     {
         auto& stats = GetWriteDataRequestStats(status);
-        stats.UpdateMinInstant(minTime);
+        stats.UpdateMinStatusChangeTime(minStatusChangeTime);
     }
 
     void AddReadDataStats(
@@ -403,12 +409,12 @@ public:
         Y_UNUSED(duration);
     }
 
-    void WriteDataRequestUpdateMinTime(
+    void UpdateWriteDataRequestMinStatusChangeTime(
         TWriteBackCache::EWriteDataRequestStatus status,
-        TInstant minTime) override
+        TInstant minStatusChangeTime) override
     {
         Y_UNUSED(status);
-        Y_UNUSED(minTime);
+        Y_UNUSED(minStatusChangeTime);
     }
 
     void AddReadDataStats(

@@ -32,9 +32,12 @@ struct IWriteBackCacheStats
         TWriteBackCache::EWriteDataRequestStatus status,
         TDuration duration) = 0;
 
-    virtual void WriteDataRequestUpdateMinTime(
+    // Used to calculate MaxTime for in-progress WriteData requests.
+    // Caller code is responsible for tracking and reporting the earlest time
+    // over all WriteData requests for each status
+    virtual void UpdateWriteDataRequestMinStatusChangeTime(
         TWriteBackCache::EWriteDataRequestStatus status,
-        TInstant minTime) = 0;
+        TInstant minStatusChangeTime) = 0;
 
     virtual void AddReadDataStats(
         IWriteBackCacheStats::EReadDataRequestCacheStatus status,

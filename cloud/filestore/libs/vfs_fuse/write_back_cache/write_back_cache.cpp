@@ -1527,7 +1527,9 @@ void TWriteBackCache::TWriteDataEntry::SetStatus(
             list.Empty() ? TInstant::Zero() : list.Front()->StatusChangeTime;
 
         if (prevMinTime != minTime) {
-            impl->Stats->WriteDataRequestUpdateMinTime(Status, minTime);
+            impl->Stats->UpdateWriteDataRequestMinStatusChangeTime(
+                Status,
+                minTime);
         }
     }
 
@@ -1542,7 +1544,7 @@ void TWriteBackCache::TWriteDataEntry::SetStatus(
         impl->Stats->WriteDataRequestEnteredStatus(Status);
 
         if (list.Empty()) {
-            impl->Stats->WriteDataRequestUpdateMinTime(Status, now);
+            impl->Stats->UpdateWriteDataRequestMinStatusChangeTime(Status, now);
         }
 
         list.PushBack(this);
