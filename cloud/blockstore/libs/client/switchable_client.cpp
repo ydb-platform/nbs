@@ -17,93 +17,15 @@ using namespace NThreading;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-template <typename T>
-concept HasSetDiskId = requires(T& obj) {
-    { obj.SetDiskId(TString()) } -> std::same_as<void>;
-};
-
-template <typename T>
-void SetDiskIdIfExists(T& obj, const TString& diskId)
+struct TClientInfo
 {
-    if constexpr (HasSetDiskId<T>) {
-        obj.SetDiskId(diskId);
-    }
-}
-
-template <typename T>
-concept HasSetSessionId = requires(T& obj) {
-    { obj.SetSessionId(TString()) } -> std::same_as<void>;
+    IBlockStorePtr Client;
+    TString DiskId;
+    TString SessionId;
 };
-
-template <typename T>
-void SetSessionIdIfExists(T& obj, const TString& sessionId)
-{
-    if constexpr (HasSetSessionId<T>) {
-        obj.SetSessionId(sessionId);
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TBlockStoreAdapter
-{
-public:
-    static auto Execute(
-        IBlockStore* blockStore,
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadBlocksRequest> request)
-    {
-        return blockStore->ReadBlocks(
-            std::move(callContext),
-            std::move(request));
-    }
-
-    static auto Execute(
-        IBlockStore* blockStore,
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
-    {
-        return blockStore->ReadBlocksLocal(
-            std::move(callContext),
-            std::move(request));
-    }
-
-    static auto Execute(
-        IBlockStore* blockStore,
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteBlocksRequest> request)
-    {
-        return blockStore->WriteBlocks(
-            std::move(callContext),
-            std::move(request));
-    }
-
-    static auto Execute(
-        IBlockStore* blockStore,
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
-    {
-        return blockStore->WriteBlocksLocal(
-            std::move(callContext),
-            std::move(request));
-    }
-
-    static auto Execute(
-        IBlockStore* blockStore,
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TZeroBlocksRequest> request)
-    {
-        return blockStore->ZeroBlocks(
-            std::move(callContext),
-            std::move(request));
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
 
 template <typename TRequest, typename TResponse>
-class TRequestsHolder
+class TDeferredRequestsHolder
 {
 private:
     struct TRequestInfo
@@ -113,7 +35,6 @@ private:
         std::shared_ptr<TRequest> Request;
     };
 
-    TAdaptiveLock RequestsLock;
     TVector<TRequestInfo> Requests;
 
 public:
@@ -121,38 +42,28 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<TRequest> request)
     {
-        with_lock (RequestsLock) {
-            Requests.emplace_back(
-                TRequestInfo{
-                    .Promise = NewPromise<TResponse>(),
-                    .CallContext = std::move(callContext),
-                    .Request = std::move(request)});
-            return Requests.back().Promise;
-        }
+        Requests.emplace_back(
+            TRequestInfo{
+                .Promise = NewPromise<TResponse>(),
+                .CallContext = std::move(callContext),
+                .Request = std::move(request)});
+        return Requests.back().Promise;
     }
 
-    void ExecuteSavedRequests(
-        IBlockStore* blockStore,
-        const TString& diskId,
-        const TString& sessionId)
+    void ExecuteSavedRequests(const TClientInfo& clientInfo)
     {
-        Y_ABORT_UNLESS(blockStore);
+        Y_ABORT_UNLESS(clientInfo.Client);
 
-        TVector<TRequestInfo> requests;
-        with_lock (RequestsLock) {
-            requests.swap(Requests);
-        }
-
-        for (auto& requestInfo: requests) {
-            if (diskId) {
-                requestInfo.Request->SetDiskId(diskId);
+        for (auto& requestInfo: Requests) {
+            if (clientInfo.DiskId) {
+                requestInfo.Request->SetDiskId(clientInfo.DiskId);
             }
-            if (sessionId) {
-                requestInfo.Request->SetSessionId(sessionId);
+            if (clientInfo.SessionId) {
+                requestInfo.Request->SetSessionId(clientInfo.SessionId);
             }
 
-            auto future = TBlockStoreAdapter::Execute(
-                blockStore,
+            auto future = TBlockStoreRequestAdapter::Execute(
+                clientInfo.Client.get(),
                 std::move(requestInfo.CallContext),
                 std::move(requestInfo.Request));
             future.Subscribe(
@@ -162,8 +73,26 @@ public:
                     promise.SetValue(f.ExtractValue());   //
                 });
         }
+        Requests.clear();
     }
 };
+
+using TDeferredRequestsHolders = std::tuple<
+    TDeferredRequestsHolder<
+        NProto::TReadBlocksRequest,
+        NProto::TReadBlocksResponse>,
+    TDeferredRequestsHolder<
+        NProto::TReadBlocksLocalRequest,
+        NProto::TReadBlocksLocalResponse>,
+    TDeferredRequestsHolder<
+        NProto::TWriteBlocksRequest,
+        NProto::TWriteBlocksResponse>,
+    TDeferredRequestsHolder<
+        NProto::TWriteBlocksLocalRequest,
+        NProto::TWriteBlocksLocalResponse>,
+    TDeferredRequestsHolder<
+        NProto::TZeroBlocksRequest,
+        NProto::TZeroBlocksResponse>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -173,13 +102,6 @@ class TSwitchableBlockStore final
 {
 private:
     TLog Log;
-
-    struct TClientInfo
-    {
-        IBlockStorePtr Client;
-        TString DiskId;
-        TString SessionId;
-    };
 
     TClientInfo PrimaryClientInfo;
     TClientInfo SecondaryClientInfo;
@@ -195,20 +117,8 @@ private:
     // Reverse switching is not possible.
     std::atomic_bool SwitchedToSecondary{false};
 
-    TRequestsHolder<NProto::TReadBlocksRequest, NProto::TReadBlocksResponse>
-        ReadBlocksRequests;
-    TRequestsHolder<
-        NProto::TReadBlocksLocalRequest,
-        NProto::TReadBlocksLocalResponse>
-        ReadBlocksLocalRequests;
-    TRequestsHolder<NProto::TWriteBlocksRequest, NProto::TWriteBlocksResponse>
-        WriteBlocksRequests;
-    TRequestsHolder<
-        NProto::TWriteBlocksLocalRequest,
-        NProto::TWriteBlocksLocalResponse>
-        WriteBlocksLocalRequests;
-    TRequestsHolder<NProto::TZeroBlocksRequest, NProto::TZeroBlocksResponse>
-        ZeroBlocksRequests;
+    TAdaptiveLock DifferedRequestsLock;
+    TDeferredRequestsHolders DeferredRequests;
 
 public:
     TSwitchableBlockStore(
@@ -251,42 +161,32 @@ public:
     void AfterSwitching() override
     {
         Y_ABORT_UNLESS(WillSwitchToSecondary);
-        WillSwitchToSecondary = false;
 
-        if (SwitchedToSecondary) {
-            STORAGE_INFO(
-                "Switching from " << PrimaryClientInfo.DiskId.Quote() << " to "
-                                  << SecondaryClientInfo.DiskId.Quote()
-                                  << " is completed");
-        } else {
-            STORAGE_INFO(
-                "Switching from " << PrimaryClientInfo.DiskId.Quote()
-                                  << " is interrupted");
+        with_lock (DifferedRequestsLock) {
+            WillSwitchToSecondary = false;
+
+            if (SwitchedToSecondary) {
+                STORAGE_INFO(
+                    "Switching from "
+                    << PrimaryClientInfo.DiskId.Quote() << " to "
+                    << SecondaryClientInfo.DiskId.Quote() << " is completed");
+            } else {
+                STORAGE_INFO(
+                    "Switching from " << PrimaryClientInfo.DiskId.Quote()
+                                      << " is interrupted");
+            }
+
+            const TClientInfo& currentClientInfo =
+                SwitchedToSecondary ? SecondaryClientInfo : PrimaryClientInfo;
+
+            std::apply(
+                [currentClientInfo](auto&... deferredRequests)
+                {
+                    (deferredRequests.ExecuteSavedRequests(currentClientInfo),
+                     ...);
+                },
+                DeferredRequests);
         }
-
-        const TClientInfo& currentClientInfo =
-            SwitchedToSecondary ? SecondaryClientInfo : PrimaryClientInfo;
-
-        ReadBlocksRequests.ExecuteSavedRequests(
-            currentClientInfo.Client.get(),
-            currentClientInfo.DiskId,
-            currentClientInfo.SessionId);
-        ReadBlocksLocalRequests.ExecuteSavedRequests(
-            currentClientInfo.Client.get(),
-            currentClientInfo.DiskId,
-            currentClientInfo.SessionId);
-        WriteBlocksRequests.ExecuteSavedRequests(
-            currentClientInfo.Client.get(),
-            currentClientInfo.DiskId,
-            currentClientInfo.SessionId);
-        WriteBlocksLocalRequests.ExecuteSavedRequests(
-            currentClientInfo.Client.get(),
-            currentClientInfo.DiskId,
-            currentClientInfo.SessionId);
-        ZeroBlocksRequests.ExecuteSavedRequests(
-            currentClientInfo.Client.get(),
-            currentClientInfo.DiskId,
-            currentClientInfo.SessionId);
     }
 
     void Start() override
@@ -304,35 +204,21 @@ public:
         return PrimaryClientInfo.Client->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        constexpr bool isSwitchableRequest = IsReadWriteRequest(               \
-            GetBlockStoreRequest<NProto::T##name##Request>());                 \
-        if constexpr (isSwitchableRequest) {                                   \
-            if (SwitchedToSecondary) {                                         \
-                STORAGE_TRACE(                                                 \
-                    "Forward " << #name << " from "                            \
-                               << PrimaryClientInfo.DiskId.Quote() << " to "   \
-                               << SecondaryClientInfo.DiskId.Quote());         \
-                SetDiskIdIfExists(*request, SecondaryClientInfo.DiskId);       \
-                SetSessionIdIfExists(*request, SecondaryClientInfo.SessionId); \
-                return SecondaryClientInfo.Client->name(                       \
-                    std::move(callContext),                                    \
-                    std::move(request));                                       \
-            }                                                                  \
-            if (WillSwitchToSecondary) {                                       \
-                STORAGE_TRACE("Save " << #name);                               \
-                return SaveRequest<NProto::T##name##Response>(                 \
-                    std::move(callContext),                                    \
-                    std::move(request));                                       \
-            }                                                                  \
-        }                                                                      \
-        return PrimaryClientInfo.Client->name(                                 \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                         \
+    TFuture<NProto::T##name##Response> name(                           \
+        TCallContextPtr callContext,                                   \
+        std::shared_ptr<NProto::T##name##Request> request) override    \
+    {                                                                  \
+        constexpr bool isReadWriteRequest = IsReadWriteRequest(        \
+            GetBlockStoreRequest<NProto::T##name##Request>());         \
+        if constexpr (isReadWriteRequest) {                            \
+            return ExecuteReadWriteRequest<NProto::T##name##Response>( \
+                std::move(callContext),                                \
+                std::move(request));                                   \
+        }                                                              \
+        return PrimaryClientInfo.Client->name(                         \
+            std::move(callContext),                                    \
+            std::move(request));                                       \
     }
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
@@ -340,56 +226,52 @@ public:
 #undef BLOCKSTORE_IMPLEMENT_METHOD
 
 private:
-    template <typename U, typename T>
-    TFuture<U> SaveRequest(
+    template <typename TResponse, typename TRequest>
+    TFuture<TResponse> ExecuteReadWriteRequest(
         TCallContextPtr callContext,
-        std::shared_ptr<T> request);
+        std::shared_ptr<TRequest> request)
+    {
+        if (SwitchedToSecondary) {
+            STORAGE_TRACE(
+                "Forward " << typeid(TRequest).name() << " from "
+                           << PrimaryClientInfo.DiskId.Quote() << " to "
+                           << SecondaryClientInfo.DiskId.Quote());
 
-    template <>
-    TFuture<NProto::TReadBlocksResponse> SaveRequest(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadBlocksRequest> request)
-    {
-        return ReadBlocksRequests.SaveRequest(
-            std::move(callContext),
-            std::move(request));
-    }
+            request->SetDiskId(SecondaryClientInfo.DiskId);
+            request->SetSessionId(SecondaryClientInfo.SessionId);
 
-    template <>
-    TFuture<NProto::TReadBlocksLocalResponse> SaveRequest(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
-    {
-        return ReadBlocksLocalRequests.SaveRequest(
-            std::move(callContext),
-            std::move(request));
-    }
+            return TBlockStoreRequestAdapter::Execute(
+                SecondaryClientInfo.Client.get(),
+                std::move(callContext),
+                std::move(request));
+        }
 
-    template <>
-    TFuture<NProto::TWriteBlocksResponse> SaveRequest(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteBlocksRequest> request)
-    {
-        return WriteBlocksRequests.SaveRequest(
-            std::move(callContext),
-            std::move(request));
-    }
-    template <>
-    TFuture<NProto::TWriteBlocksLocalResponse> SaveRequest(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
-    {
-        return WriteBlocksLocalRequests.SaveRequest(
-            std::move(callContext),
-            std::move(request));
-    }
+        if (WillSwitchToSecondary) {
+            with_lock (DifferedRequestsLock) {
+                // A double check is necessary to avoid a race when a switch is
+                // cancelled.
+                if (WillSwitchToSecondary) {
+                    STORAGE_TRACE(
+                        "Save " << typeid(TRequest).name() << " from "
+                                << PrimaryClientInfo.DiskId.Quote());
 
-    template <>
-    TFuture<NProto::TZeroBlocksResponse> SaveRequest(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TZeroBlocksRequest> request)
-    {
-        return ZeroBlocksRequests.SaveRequest(
+                    return std::get<
+                               TDeferredRequestsHolder<TRequest, TResponse>>(
+                               DeferredRequests)
+                        .SaveRequest(
+                            std::move(callContext),
+                            std::move(request));
+                }
+            }
+            return TBlockStoreRequestAdapter::Execute(
+                SwitchedToSecondary ? SecondaryClientInfo.Client.get()
+                                    : PrimaryClientInfo.Client.get(),
+                std::move(callContext),
+                std::move(request));
+        }
+
+        return TBlockStoreRequestAdapter::Execute(
+            PrimaryClientInfo.Client.get(),
             std::move(callContext),
             std::move(request));
     }
