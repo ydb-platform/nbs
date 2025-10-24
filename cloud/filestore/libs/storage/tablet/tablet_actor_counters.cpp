@@ -464,6 +464,9 @@ void TIndexTabletActor::TMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(OrphanNodesCount, EMetricType::MT_ABSOLUTE);
 
+    REGISTER_AGGREGATABLE_SUM(OpenedDirectHandles, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(OpenedHandles, EMetricType::MT_ABSOLUTE);
+
     // Throttling
     REGISTER_LOCAL(MaxReadBandwidth, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxWriteBandwidth, EMetricType::MT_ABSOLUTE);
@@ -568,7 +571,8 @@ void TIndexTabletActor::TMetrics::Update(
     const TInMemoryIndexStateStats& inMemoryIndexStateStats,
     const TBlobMetaMapStats& blobMetaMapStats,
     const TIndexTabletState::TBackpressureThresholds& backpressureThresholds,
-    const TIndexTabletState::TBackpressureValues& backpressureValues)
+    const TIndexTabletState::TBackpressureValues& backpressureValues,
+    const THandlesStats& handlesStats)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -683,6 +687,9 @@ void TIndexTabletActor::TMetrics::Update(
         nodeToSessionCounters.NodesOpenForReadingByMultipleSessions);
 
     Store(OrphanNodesCount, miscNodeStats.OrphanNodesCount);
+
+    Store(OpenedDirectHandles, handlesStats.OpenedDirectHandles);
+    Store(OpenedHandles, handlesStats.OpenedHandles);
 
     BusyIdleCalc.OnUpdateStats();
     UpdatePerformanceMetrics(now, diagConfig, fileSystem);
@@ -816,7 +823,8 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         GetInMemoryIndexStateStats(),
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
-        GetBackpressureValues());
+        GetBackpressureValues(),
+        GetHandlesStats());
 
     // TabletStartTimestamp is intialised once per tablet lifetime and thus it is
     // acceptable to set it in RegisterStatCounters if it is not set yet.
@@ -876,7 +884,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         GetInMemoryIndexStateStats(),
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
-        GetBackpressureValues());
+        GetBackpressureValues(),
+        GetHandlesStats());
     SendMetricsToExecutor(ctx);
 
     UpdateCountersScheduled = false;
