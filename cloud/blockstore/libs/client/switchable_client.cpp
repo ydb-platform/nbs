@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+#include <cloud/blockstore/libs/service/service_method.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -17,28 +18,6 @@ using namespace NThreading;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-// The adapter helps to execute the request via the generalized overloaded
-// Execute() method.
-class TBlockStoreRequestAdapter
-{
-public:
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                 \
-    static NThreading::TFuture<NProto::T##name##Response> Execute(           \
-        IBlockStore* blockstore,                                             \
-        TCallContextPtr callContext,                                         \
-        std::shared_ptr<NProto::T##name##Request> request)                   \
-    {                                                                        \
-        return blockstore->name(std::move(callContext), std::move(request)); \
-    }                                                                        \
-    // BLOCKSTORE_DECLARE_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
-
-#undef BLOCKSTORE_DECLARE_METHOD
-};   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
 struct TClientInfo
 {
     IBlockStorePtr Client;
@@ -46,9 +25,13 @@ struct TClientInfo
     TString SessionId;
 };
 
-template <typename TRequest, typename TResponse>
+template <typename TRequest>
 class TDeferredRequestsHolder
 {
+public:
+    using TMethod = TBlockStoreMethods<TRequest>::TMethod;
+    using TResponse = typename TMethod::TResponse;
+
 private:
     struct TRequestInfo
     {
@@ -84,7 +67,7 @@ public:
                 requestInfo.Request->SetSessionId(clientInfo.SessionId);
             }
 
-            auto future = TBlockStoreRequestAdapter::Execute(
+            auto future = TMethod::Execute(
                 clientInfo.Client.get(),
                 std::move(requestInfo.CallContext),
                 std::move(requestInfo.Request));
@@ -100,27 +83,17 @@ public:
 };
 
 using TDeferredRequestsHolders = std::tuple<
-    TDeferredRequestsHolder<
-        NProto::TReadBlocksRequest,
-        NProto::TReadBlocksResponse>,
-    TDeferredRequestsHolder<
-        NProto::TReadBlocksLocalRequest,
-        NProto::TReadBlocksLocalResponse>,
-    TDeferredRequestsHolder<
-        NProto::TWriteBlocksRequest,
-        NProto::TWriteBlocksResponse>,
-    TDeferredRequestsHolder<
-        NProto::TWriteBlocksLocalRequest,
-        NProto::TWriteBlocksLocalResponse>,
-    TDeferredRequestsHolder<
-        NProto::TZeroBlocksRequest,
-        NProto::TZeroBlocksResponse>>;
+    TDeferredRequestsHolder<NProto::TReadBlocksRequest>,
+    TDeferredRequestsHolder<NProto::TReadBlocksLocalRequest>,
+    TDeferredRequestsHolder<NProto::TWriteBlocksRequest>,
+    TDeferredRequestsHolder<NProto::TWriteBlocksLocalRequest>,
+    TDeferredRequestsHolder<NProto::TZeroBlocksRequest>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSwitchableBlockStore final
     : public std::enable_shared_from_this<TSwitchableBlockStore>
-    , public ISwitchableBlockStore
+    , public TBlockStoreImpl<TSwitchableBlockStore, ISwitchableBlockStore>
 {
 private:
     TLog Log;
@@ -226,43 +199,41 @@ public:
         return PrimaryClientInfo.Client->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                         \
-    TFuture<NProto::T##name##Response> name(                           \
-        TCallContextPtr callContext,                                   \
-        std::shared_ptr<NProto::T##name##Request> request) override    \
-    {                                                                  \
-        constexpr bool isReadWriteRequest = IsReadWriteRequest(        \
-            GetBlockStoreRequest<NProto::T##name##Request>());         \
-        if constexpr (isReadWriteRequest) {                            \
-            return ExecuteReadWriteRequest<NProto::T##name##Response>( \
-                std::move(callContext),                                \
-                std::move(request));                                   \
-        }                                                              \
-        return PrimaryClientInfo.Client->name(                         \
-            std::move(callContext),                                    \
-            std::move(request));                                       \
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        if constexpr (TMethod::IsReadWriteRequest()) {
+            return ExecuteReadWriteRequest(
+                std::move(callContext),
+                std::move(request));
+        }
+        return TMethod::Execute(
+            PrimaryClientInfo.Client.get(),
+            std::move(callContext),
+            std::move(request));
     }
 
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
-
 private:
-    template <typename TResponse, typename TRequest>
-    TFuture<TResponse> ExecuteReadWriteRequest(
+    template <typename TRequest>
+    TFuture<typename TBlockStoreMethods<TRequest>::TMethod::TResponse>
+    ExecuteReadWriteRequest(
         TCallContextPtr callContext,
         std::shared_ptr<TRequest> request)
     {
+        using TMethod = TBlockStoreMethods<TRequest>::TMethod;
+
         if (SwitchedToSecondary) {
             STORAGE_TRACE(
-                "Forward " << typeid(TRequest).name() << " from "
+                "Forward " << TMethod::Name << " from "
                            << PrimaryClientInfo.DiskId.Quote() << " to "
                            << SecondaryClientInfo.DiskId.Quote());
 
             request->SetDiskId(SecondaryClientInfo.DiskId);
             request->SetSessionId(SecondaryClientInfo.SessionId);
 
-            return TBlockStoreRequestAdapter::Execute(
+            return TMethod::Execute(
                 SecondaryClientInfo.Client.get(),
                 std::move(callContext),
                 std::move(request));
@@ -274,25 +245,24 @@ private:
                 // cancelled.
                 if (WillSwitchToSecondary) {
                     STORAGE_TRACE(
-                        "Save " << typeid(TRequest).name() << " from "
+                        "Save " << TMethod::Name << " from "
                                 << PrimaryClientInfo.DiskId.Quote());
 
-                    return std::get<
-                               TDeferredRequestsHolder<TRequest, TResponse>>(
-                               DeferredRequests)
+                    return std::get<TDeferredRequestsHolder<
+                        typename TMethod::TRequest>>(DeferredRequests)
                         .SaveRequest(
                             std::move(callContext),
                             std::move(request));
                 }
             }
-            return TBlockStoreRequestAdapter::Execute(
+            return TMethod::Execute(
                 SwitchedToSecondary ? SecondaryClientInfo.Client.get()
                                     : PrimaryClientInfo.Client.get(),
                 std::move(callContext),
                 std::move(request));
         }
 
-        return TBlockStoreRequestAdapter::Execute(
+        return TMethod::Execute(
             PrimaryClientInfo.Client.get(),
             std::move(callContext),
             std::move(request));
