@@ -156,6 +156,10 @@ Y_UNIT_TEST_SUITE(TChaosStorageProviderTest)
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
             const TString data(8, 'a');
             request->MutableBlocks()->AddBuffers(data.c_str(), data.size());
+            TSgList sglist = {
+                {request->GetBlocks().GetBuffers(0).data(),
+                 request->GetBlocks().GetBuffers(0).size()}};
+            request->Sglist = TGuardedSgList(std::move(sglist));
 
             auto response =
                 chaosStorage
@@ -246,6 +250,10 @@ Y_UNIT_TEST_SUITE(TChaosStorageProviderTest)
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
             const TString data(8, 'a');
             request->MutableBlocks()->AddBuffers(data.c_str(), data.size());
+            TSgList sglist = {
+                {request->GetBlocks().GetBuffers(0).data(),
+                 request->GetBlocks().GetBuffers(0).size()}};
+            request->Sglist = TGuardedSgList(std::move(sglist));
 
             auto response =
                 chaosStorage
@@ -334,6 +342,10 @@ Y_UNIT_TEST_SUITE(TChaosStorageProviderTest)
         auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
         const TString data(8, 'a');
         request->MutableBlocks()->AddBuffers(data.c_str(), data.size());
+        TSgList sglist = {
+            {request->GetBlocks().GetBuffers(0).data(),
+             request->GetBlocks().GetBuffers(0).size()}};
+        request->Sglist = TGuardedSgList(std::move(sglist));
 
         auto response =
             chaosStorage
