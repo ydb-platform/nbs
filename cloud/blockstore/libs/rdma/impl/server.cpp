@@ -649,9 +649,8 @@ void TServerSession::HandleCompletionEvent(ibv_wc* wc)
     }
 
     if (opcode == IBV_WC_SEND && wc->opcode != IBV_WC_SEND &&
-            wc->opcode != IBV_WC_RDMA_WRITE ||
-        opcode == IBV_WC_RECV && wc->opcode != IBV_WC_RECV &&
-            wc->opcode != IBV_WC_RDMA_READ)
+            wc->opcode != IBV_WC_RDMA_READ && wc->opcode != IBV_WC_RDMA_WRITE ||
+        opcode == IBV_WC_RECV && wc->opcode != IBV_WC_RECV)
     {
         RDMA_ERROR(
             "unexpected completion "
