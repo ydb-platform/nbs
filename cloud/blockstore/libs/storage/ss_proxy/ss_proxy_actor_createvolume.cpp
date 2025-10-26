@@ -333,6 +333,14 @@ bool TCreateVolumeActor::VerifyVolume(
         return false;
     }
 
+    if (VolumeConfig.GetTagsStr() != actual.GetTagsStr()) {
+        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+            "Created volume TagsStr mismatch: expected=%s, actual=%s",
+            VolumeConfig.GetTagsStr().Quote().data(),
+            actual.GetTagsStr().Quote().data());
+        return false;
+    }
+
     return true;
 }
 
