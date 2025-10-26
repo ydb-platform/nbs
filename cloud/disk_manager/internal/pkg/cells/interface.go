@@ -18,6 +18,7 @@ type CellSelector interface {
 		zoneID string,
 		folderID string,
 		kind types.DiskKind,
+		requireExactCellIdMatch bool,
 	) (nbs.Client, error)
 
 	SelectCellForLocalDisk(

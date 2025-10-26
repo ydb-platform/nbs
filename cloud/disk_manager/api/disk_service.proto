@@ -89,6 +89,7 @@ message CreateDiskRequest {
     repeated string agent_ids = 18;
     EncryptionDesc encryption_desc = 19;
     uint32 placement_partition_index = 20;
+    bool require_exact_cell_id_match = 21;
 }
 
 message CreateDiskMetadata {
