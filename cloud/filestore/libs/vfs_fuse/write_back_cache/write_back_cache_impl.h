@@ -18,7 +18,7 @@ namespace NCloud::NFileStore::NFuse {
 
 struct TWriteBackCache::TWriteDataEntryDeserializationStats
 {
-    ui64 Count = 0;
+    ui64 EntryCount = 0;
     ui64 ChecksumMismatchCount = 0;
     ui64 EntrySizeMismatchCount = 0;
     ui64 ProtobufDeserializationErrorCount = 0;
