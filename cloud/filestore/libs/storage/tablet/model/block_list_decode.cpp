@@ -460,7 +460,7 @@ TFindDeletionMarkersResult FindDeletionMarkers(
         return res;
     }
 
-    // Nothing found, use safest choice by default
+    // Nothing found, use the safest choice by default
     ui32 blocksFound = 1;
 
     if (minOverlappingBlobOffset == Max<ui16>()) {

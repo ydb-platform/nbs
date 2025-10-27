@@ -111,8 +111,8 @@ TVector<TBlock> GenerateRandomBlockGroups(
 
     // 2 rewrites at max are possible for each block
     Y_ABORT_UNLESS(
-        blockGroups * MaxBlocksInGroup + 2 * maxDeletionGroups * MaxDeletionsInGroup
-            <= MaxBlocksCount);
+        blockGroups * MaxBlocksInGroup
+            + 2 * maxDeletionGroups * MaxDeletionsInGroup <= MaxBlocksCount);
 
     auto blockIndex = FirstBlockIndex;
 
