@@ -44,6 +44,23 @@ struct TBlockStoreMethod;
 template <typename TRequest>
 struct TBlockStoreMethods;
 
+// Generate for each type of request (NProto::TReadBlocksRequest,
+// NProto::TWriteBlocksRequest, etc.) structure that stores the type of request
+// and return value, the name and basic characteristics of the method, which are
+// calculated as constexpr.
+// Also add the specialization of the TBlockStoreMethods template by request
+// type, so that you can take the TBlockStoreMethod specialization by having
+// only the request type.
+// Examples:
+//  using TMethod = TBlockStoreMethod<NProto::TWriteBlocksRequest,
+//                                    NProto::TWriteBlocksResponse>;
+//  using TMethod = TBlockStoreWriteBlocksMethod;
+//  using TMethod = TBlockStoreMethods<NProto::TWriteBlocksRequest>::TMethod;
+//  TStirng methodName = TString(TMethod::Name);
+//  TStirng methodName = TMethod::GetName();
+//  TMethod::Execute(blockstore, std::move(callContext), std::move(request));
+//  if constexpr (TMethod::IsReadWriteRequest()) {}
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ...)                                \
     template <>                                                             \
     struct TBlockStoreMethod<                                               \
@@ -84,6 +101,20 @@ BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 #undef BLOCKSTORE_DECLARE_METHOD
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// Inheritance from TBlockStoreImpl<> allows you to implement the processing of
+// all virtual IBlockStore methods (ReadBlocks, WriteBlocks, etc.) through a
+// single template method without using macros.
+// Example:
+// class TEndpointBase: public TBlockStoreImpl<TEndpointBase, IBlockStore>
+// {
+// public:
+//     template <typename TMethod>
+//     TFuture<typename TMethod::TResponse> Execute(
+//         TCallContextPtr callContext,
+//         std::shared_ptr<typename TMethod::TRequest> request)
+//     {}
+// };
 
 template <typename T, typename U>
 struct TBlockStoreImpl: public U

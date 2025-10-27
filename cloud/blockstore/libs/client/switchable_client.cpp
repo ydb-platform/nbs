@@ -25,11 +25,11 @@ struct TClientInfo
     TString SessionId;
 };
 
-template <typename TRequest>
+template <typename TMethod>
 class TDeferredRequestsHolder
 {
 public:
-    using TMethod = TBlockStoreMethods<TRequest>::TMethod;
+    using TRequest = typename TMethod::TRequest;
     using TResponse = typename TMethod::TResponse;
 
 private:
@@ -83,11 +83,11 @@ public:
 };
 
 using TDeferredRequestsHolders = std::tuple<
-    TDeferredRequestsHolder<NProto::TReadBlocksRequest>,
-    TDeferredRequestsHolder<NProto::TReadBlocksLocalRequest>,
-    TDeferredRequestsHolder<NProto::TWriteBlocksRequest>,
-    TDeferredRequestsHolder<NProto::TWriteBlocksLocalRequest>,
-    TDeferredRequestsHolder<NProto::TZeroBlocksRequest>>;
+    TDeferredRequestsHolder<TBlockStoreReadBlocksMethod>,
+    TDeferredRequestsHolder<TBlockStoreReadBlocksLocalMethod>,
+    TDeferredRequestsHolder<TBlockStoreWriteBlocksMethod>,
+    TDeferredRequestsHolder<TBlockStoreWriteBlocksLocalMethod>,
+    TDeferredRequestsHolder<TBlockStoreZeroBlocksMethod>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -248,8 +248,8 @@ private:
                         "Save " << TMethod::Name << " from "
                                 << PrimaryClientInfo.DiskId.Quote());
 
-                    return std::get<TDeferredRequestsHolder<
-                        typename TMethod::TRequest>>(DeferredRequests)
+                    return std::get<TDeferredRequestsHolder<TMethod>>(
+                               DeferredRequests)
                         .SaveRequest(
                             std::move(callContext),
                             std::move(request));
