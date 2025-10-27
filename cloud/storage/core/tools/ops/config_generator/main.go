@@ -24,6 +24,7 @@ import (
 
 type Options struct {
 	ServicePath       string
+	SpecPath          string
 	WhiteListClusters string
 	ArcadiaRootPath   string
 	Verbose           bool
@@ -106,8 +107,8 @@ func getConfigMap(serviceName string) configurator.ConfigMap {
 	}
 }
 
-func loadServiceConfig(configPath string) (*configurator.ServiceSpec, error) {
-	configTmpl, err := os.ReadFile(path.Join(configPath, "spec.yaml"))
+func loadServiceConfig(specPath string) (*configurator.ServiceSpec, error) {
+	configTmpl, err := os.ReadFile(specPath)
 	if err != nil {
 		return nil, fmt.Errorf("can't read service config: %w", err)
 	}
@@ -147,7 +148,9 @@ func run(opts *Options, ctx context.Context) error {
 		logLevel,
 	)
 
-	var config, err = loadServiceConfig(opts.ServicePath)
+	specPath := path.Join(opts.ServicePath, opts.SpecPath)
+
+	var config, err = loadServiceConfig(specPath)
 	if err != nil {
 		return fmt.Errorf("can't load config: %w", err)
 	}
@@ -188,6 +191,14 @@ func main() {
 		"s",
 		"",
 		"path to folder with service spec",
+	)
+
+	rootCmd.Flags().StringVarP(
+		&opts.SpecPath,
+		"spec-file",
+		"p",
+		"spec.yaml",
+		"spec file name, relative to service-path",
 	)
 
 	rootCmd.Flags().StringVarP(

@@ -1,5 +1,8 @@
 {
-    "gotest.gotest.TestGenerator": {
-        "uri": "file://gotest.gotest.TestGenerator/test.golden"
+    "gotest.gotest.TestGenerator/test": {
+        "uri": "file://gotest.gotest.TestGenerator_test/test.golden"
+    },
+    "gotest.gotest.TestGenerator/test_with_service_name": {
+        "uri": "file://gotest.gotest.TestGenerator_test_with_service_name/test_with_service_name.golden"
     }
 }
