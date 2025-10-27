@@ -306,6 +306,7 @@ def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, external_fs
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
     server_config_patch.NbdNetlink = True
+    server_config_patch.AutomaticNbdDeviceManagement = True
     endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
     endpoints_dir.mkdir(exist_ok=True)
     server_config_patch.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
