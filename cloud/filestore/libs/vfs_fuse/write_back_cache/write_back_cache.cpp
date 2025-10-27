@@ -831,16 +831,17 @@ private:
         ui64 length,
         TString* buffer)
     {
-        *buffer = TString(length, 0);
-
         with_lock (Lock) {
             auto parts = CalculateCachedDataPartsToRead(
                 nodeId,
                 startingFromOffset,
                 length);
 
-            for (const auto& part: parts)  {
-                ReadDataPart(part, startingFromOffset, buffer);
+            if (!parts.empty()) {
+                *buffer = TString(length, 0);
+                for (const auto& part: parts) {
+                    ReadDataPart(part, startingFromOffset, buffer);
+                }
             }
 
             return parts;
@@ -900,6 +901,7 @@ private:
                 state.Length))
         {
             // Serve request from cache
+            Y_DEBUG_ABORT_UNLESS(state.Buffer.size() == state.Length);
             NProto::TReadDataResponse response;
             response.SetBuffer(std::move(state.Buffer));
             Stats->AddReadDataStats(
@@ -940,15 +942,6 @@ private:
         TReadDataState state,
         NProto::TReadDataResponse response)
     {
-        if (response.GetBuffer().empty()) {
-            *response.MutableBuffer() = std::move(state.Buffer);
-            state.Promise.SetValue(std::move(response));
-            return;
-        }
-
-        char* responseBufferData =
-            response.MutableBuffer()->begin() + response.GetBufferOffset();
-
         Y_ABORT_UNLESS(
             response.GetBuffer().length() >= response.GetBufferOffset(),
             "reponse buffer length %lu is expected to be >= buffer offset %u",
@@ -963,6 +956,26 @@ private:
             "response buffer length %lu is expected to be <= request length %lu",
             responseBufferLength,
             state.Length);
+
+        // Cache miss
+        if (state.Buffer.empty()) {
+            if (responseBufferLength < state.Length) {
+                response.MutableBuffer()->resize(
+                    response.GetBufferOffset() + state.Length,
+                    0);
+            }
+            state.Promise.SetValue(std::move(response));
+            return;
+        }
+
+        if (response.GetBuffer().empty()) {
+            *response.MutableBuffer() = std::move(state.Buffer);
+            state.Promise.SetValue(std::move(response));
+            return;
+        }
+
+        char* responseBufferData =
+            response.MutableBuffer()->begin() + response.GetBufferOffset();
 
         // Determine if it is better to apply cached data parts on
         // top of the ReadData response or copy non-cached data from
