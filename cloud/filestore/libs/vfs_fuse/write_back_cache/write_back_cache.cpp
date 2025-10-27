@@ -901,7 +901,7 @@ private:
                 state.Length))
         {
             // Serve request from cache
-            Y_DEBUG_ABORT_UNLESS(state.Buffer.size() == state.Length);
+            Y_ABORT_UNLESS(state.Buffer.size() == state.Length);
             NProto::TReadDataResponse response;
             response.SetBuffer(std::move(state.Buffer));
             Stats->AddReadDataStats(
@@ -957,8 +957,8 @@ private:
             responseBufferLength,
             state.Length);
 
-        // Cache miss
         if (state.Buffer.empty()) {
+            // Cache miss
             if (responseBufferLength < state.Length) {
                 response.MutableBuffer()->resize(
                     response.GetBufferOffset() + state.Length,
