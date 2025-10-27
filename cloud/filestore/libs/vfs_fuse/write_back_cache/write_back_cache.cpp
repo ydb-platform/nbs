@@ -116,10 +116,6 @@ struct TWriteBackCache::TNodeState
     // Efficient calculation of TWriteDataEntryParts from CachedEntries
     TWriteDataEntryIntervalMap CachedEntryIntervalMap;
 
-    // Count entries in TWriteBackCache::TImpl::PendingEntries
-    // with status Pending filtered by nodeId
-    size_t PendingEntriesCount = 0;
-
     // Prevent from concurrent read and write requests with overlapping ranges
     TReadWriteRangeLock RangeLock;
 
@@ -131,8 +127,8 @@ struct TWriteBackCache::TNodeState
 
     bool Empty() const
     {
-        return CachedEntries.empty() && PendingEntriesCount == 0 &&
-               RangeLock.Empty() && !FlushState.Executing;
+        return CachedEntries.empty() && RangeLock.Empty() &&
+               !FlushState.Executing;
     }
 
     bool ShouldFlush() const
@@ -153,15 +149,13 @@ struct TWriteBackCache::TPendingOperations
     bool Executing = false;
 
     // The flag is set when an element is popped from
-    // |TImpl::CachedEntriesPersistentQueue| and free space is increased.
+    // |TImpl::CachedEntriesPersistentQueue| and free space is increased or
+    // an element is pushed to empty |TImpl::CachedEntriesPersistentQueue|.
     // We should try to push pending entries to the persistent queue.
     bool ShouldProcessPendingEntries = false;
 
     // Pending ReadData requests that have acquired |TNodeState::RangeLock|
     TVector<TPendingReadDataRequest> ReadData;
-
-    // Pending WriteData requests that have acquired |TNodeState::RangeLock|
-    TVector<std::unique_ptr<TWriteDataEntry>> WriteData;
 
     // Flush operations that have been scheduled but not yet started
     TVector<TNodeState*> Flush;
@@ -174,7 +168,7 @@ struct TWriteBackCache::TPendingOperations
 
     bool Empty() const
     {
-        return ReadData.empty() && WriteData.empty() && Flush.empty() &&
+        return ReadData.empty() && Flush.empty() &&
                WriteDataCompleted.empty() && FlushCompleted.empty();
     }
 };
@@ -548,7 +542,10 @@ public:
             // TImpl is alive
             Y_ABORT_UNLESS(self);
             if (self) {
-                self->PendingOperations.WriteData.push_back(
+                if (self->PendingEntries.empty()) {
+                    self->PendingOperations.ShouldProcessPendingEntries = true;
+                }
+                self->PendingEntries.push_back(
                     std::unique_ptr<TWriteDataEntry>(entry));
             }
         };
@@ -751,13 +748,11 @@ private:
             }
 
             TVector<TPendingReadDataRequest> readData;
-            TVector<std::unique_ptr<TWriteDataEntry>> writeData;
             TVector<TNodeState*> flush;
             TVector<TPromise<NProto::TWriteDataResponse>> writeDataCompleted;
             TVector<TPromise<void>> flushCompleted;
 
             swap(readData, PendingOperations.ReadData);
-            swap(writeData, PendingOperations.WriteData);
             swap(flush, PendingOperations.Flush);
             swap(writeDataCompleted, PendingOperations.WriteDataCompleted);
             swap(flushCompleted, PendingOperations.FlushCompleted);
@@ -768,10 +763,6 @@ private:
 
             for (auto& request: readData) {
                 StartPendingReadDataRequest(std::move(request));
-            }
-
-            for (auto& entry: writeData) {
-                StartPendingWriteDataRequest(std::move(entry));
             }
 
             for (auto* nodeState: flush) {
@@ -817,8 +808,6 @@ private:
             auto* nodeState = GetNodeState(entry->GetNodeId());
             AddCachedEntry(nodeState, std::move(entry));
 
-            Y_ABORT_UNLESS(nodeState->PendingEntriesCount > 0);
-            nodeState->PendingEntriesCount--;
             PendingEntries.pop_front();
         }
 
@@ -1005,44 +994,6 @@ private:
         }
 
         state.Promise.SetValue(std::move(response));
-    }
-
-    void StartPendingWriteDataRequest(std::unique_ptr<TWriteDataEntry> entry)
-    {
-        auto serializedSize = entry->GetSerializedSize();
-        auto guard = Guard(Lock);
-
-        auto* nodeState = GetNodeState(entry->GetNodeId());
-
-        if (nodeState->PendingEntriesCount > 0)
-        {
-            nodeState->PendingEntriesCount++;
-            PendingEntries.push_back(std::move(entry));
-            return;
-        }
-
-        char* allocationPtr = nullptr;
-        bool allocated = CachedEntriesPersistentQueue.AllocateBack(
-            serializedSize,
-            &allocationPtr);
-
-        if (allocated) {
-            Y_ABORT_UNLESS(allocationPtr != nullptr);
-
-            entry->SerializeAndMoveRequestBuffer(
-                allocationPtr,
-                PendingOperations,
-                this);
-
-            CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
-            AddCachedEntry(nodeState, std::move(entry));
-        } else {
-            nodeState->PendingEntriesCount++;
-            PendingEntries.push_back(std::move(entry));
-            RequestFlushAll();
-        }
-
-        UpdatePersistentQueueStats();
     }
 
     // |nodeState| becomes unusable if the function returns false
