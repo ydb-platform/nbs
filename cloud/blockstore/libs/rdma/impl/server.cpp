@@ -347,8 +347,7 @@ private:
     void SendResponseCompleted(TSendWr* send, ibv_wc_status status);
     void FreeRequest(TRequestPtr req, TSendWr* send) noexcept;
     void RejectRequest(TRequestPtr req, ui32 status, TStringBuf message);
-    void ReclaimWorkRequest(const TWorkRequestId& id, int opcode) noexcept;
-    int DecodeOpcode(const TWorkRequestId& id) const noexcept;
+    int ValidateCompletion(ibv_wc* wc) noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -600,28 +599,55 @@ bool TServerSession::IsFlushed()
         && RecvQueue.Size() == Config->QueueSize;
 }
 
-void TServerSession::ReclaimWorkRequest(
-    const TWorkRequestId& id,
-    int opcode) noexcept
+int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
 {
-    if (opcode == IBV_WC_SEND) {
-        SendQueue.Push(&SendWrs[id.Index]);
-        return;
-    }
-    if (opcode == IBV_WC_RECV) {
-        RecvQueue.Push(&RecvWrs[id.Index]);
-        return;
-    }
-}
+    auto id = TWorkRequestId(wc->wr_id);
 
-int TServerSession::DecodeOpcode(const TWorkRequestId& id) const noexcept
-{
     if (id.Magic == SendMagic && id.Index < SendWrs.size()) {
-        return IBV_WC_SEND;
+        if (wc->status == IBV_WC_WR_FLUSH_ERR) {
+            SendQueue.Push(&SendWrs[id.Index]);
+            return -1;
+        }
+
+        if (wc->opcode != IBV_WC_SEND && wc->opcode != IBV_WC_RDMA_READ &&
+            wc->opcode != IBV_WC_RDMA_WRITE)
+        {
+            RDMA_ERROR(
+                "completion error " << NVerbs::PrintCompletion(wc)
+                                    << ": unexpected opcode");
+
+            Counters->CompletionError();
+            SendQueue.Push(&SendWrs[id.Index]);
+            return -1;
+        }
+
+        return 0;
     }
+
     if (id.Magic == RecvMagic && id.Index < RecvWrs.size()) {
-        return IBV_WC_RECV;
+        if (wc->status == IBV_WC_WR_FLUSH_ERR) {
+            RecvQueue.Push(&RecvWrs[id.Index]);
+            return -1;
+        }
+
+        if (wc->opcode != IBV_WC_RECV) {
+            RDMA_ERROR(
+                "completion error " << NVerbs::PrintCompletion(wc)
+                                    << ": unexpected opcode");
+
+            Counters->CompletionError();
+            RecvQueue.Push(&RecvWrs[id.Index]);
+            return -1;
+        }
+
+        return 0;
     }
+
+    RDMA_ERROR(
+        "completion error " << NVerbs::PrintCompletion(wc)
+                            << ": unexpected wr_id");
+
+    Counters->CompletionError();
     return -1;
 }
 
@@ -629,36 +655,11 @@ int TServerSession::DecodeOpcode(const TWorkRequestId& id) const noexcept
 void TServerSession::HandleCompletionEvent(ibv_wc* wc)
 {
     auto id = TWorkRequestId(wc->wr_id);
-    auto opcode = DecodeOpcode(id);
 
     RDMA_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id
         << " completed with " << NVerbs::GetStatusString(wc->status));
 
-    if (wc->status == IBV_WC_WR_FLUSH_ERR) {
-        ReclaimWorkRequest(id, opcode);
-        return;
-    }
-
-    if (opcode < 0) {
-        RDMA_ERROR(
-            "completion error " << NVerbs::PrintCompletion(wc)
-                                << ": unexpected wr_id");
-
-        Counters->CompletionError();
-        return;
-    }
-
-    if (opcode == IBV_WC_SEND && wc->opcode != IBV_WC_SEND &&
-            wc->opcode != IBV_WC_RDMA_READ && wc->opcode != IBV_WC_RDMA_WRITE ||
-        opcode == IBV_WC_RECV && wc->opcode != IBV_WC_RECV)
-    {
-        RDMA_ERROR(
-            "unexpected completion "
-                << NVerbs::PrintCompletion(wc) << ": expected opcode="
-                << NVerbs::GetOpcodeName(static_cast<ibv_wc_opcode>(opcode)));
-
-        Counters->CompletionError();
-        ReclaimWorkRequest(id, opcode);
+    if (ValidateCompletion(wc)) {
         return;
     }
 
