@@ -125,7 +125,7 @@ struct TWriteBackCache::TNodeState
         : NodeId(nodeId)
     {}
 
-    bool Empty() const
+    bool CanBeDeleted() const
     {
         return CachedEntries.empty() && RangeLock.Empty() &&
                !FlushState.Executing;
@@ -450,7 +450,7 @@ public:
                 auto guard = Guard(self->Lock);
                 auto* nodeState = self->GetNodeState(nodeId);
                 nodeState->RangeLock.UnlockRead(offset, end);
-                self->DeleteNodeStateIfEmpty(nodeState);
+                self->DeleteNodeStateIfNeeded(nodeState);
                 self->ExecutePendingOperations(guard);
             }
         };
@@ -523,7 +523,7 @@ public:
                 auto guard = Guard(self->Lock);
                 auto* nodeState = self->GetNodeState(nodeId);
                 nodeState->RangeLock.UnlockWrite(offset, end);
-                self->DeleteNodeStateIfEmpty(nodeState);
+                self->DeleteNodeStateIfNeeded(nodeState);
                 self->ExecutePendingOperations(guard);
             }
         };
@@ -715,9 +715,9 @@ private:
         return ptr.get();
     }
 
-    void DeleteNodeStateIfEmpty(TNodeState* nodeState)
+    void DeleteNodeStateIfNeeded(TNodeState* nodeState)
     {
-        if (nodeState != nullptr && nodeState->Empty()) {
+        if (nodeState != nullptr && nodeState->CanBeDeleted()) {
             auto erased = NodeStates.erase(nodeState->NodeId);
             Y_DEBUG_ABORT_UNLESS(erased);
             Stats->DecrementNodeCount();
@@ -1152,7 +1152,7 @@ private:
             PendingOperations.Flush.push_back(nodeState);
         } else {
             nodeState->FlushState.Executing = false;
-            DeleteNodeStateIfEmpty(nodeState);
+            DeleteNodeStateIfNeeded(nodeState);
         }
 
         ExecutePendingOperations(guard);
