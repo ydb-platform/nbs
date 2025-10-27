@@ -838,6 +838,10 @@ private:
                 length);
 
             if (!parts.empty()) {
+                // TODO(nasonov): it is possible to completely get rid of copy
+                // here by referencing the buffer directly in the cache and
+                // adding reference count in order to prevent evicting buffer
+                // from the cache
                 *buffer = TString(length, 0);
                 for (const auto& part: parts) {
                     ReadDataPart(part, startingFromOffset, buffer);
