@@ -153,27 +153,40 @@ bool TRequestsTimeTracker::TEqual::operator()(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TRequestsTimeTracker::TSimpleThroughput::AddOperation(
-    ui64 currentTimeUs,
-    ui64 bytes)
+void TRequestsTimeTracker::TThroughputTracker::AddOperation(ui64 blocks)
 {
-    UpdateTime(currentTimeUs);
-
-    CurrentBytes += bytes;
-    CurrentOps++;
+    TotalBlocks += blocks;
+    TotalOps++;
 }
 
-void TRequestsTimeTracker::TSimpleThroughput::UpdateTime(ui64 currentTimeUs)
+std::pair<double, double>
+TRequestsTimeTracker::TThroughputTracker::GetRatesAndReset(
+    ui64 currentTime,
+    ui32 blockSize)
 {
-    ui64 currentSecond = currentTimeUs / 1000000;
-
-    if (currentSecond != LastSecond) {
-        PreviousBytes = CurrentBytes;
-        PreviousOps = CurrentOps;
-        CurrentBytes = 0;
-        CurrentOps = 0;
-        LastSecond = currentSecond;
+    if (StartTime == 0) {
+        StartTime = currentTime;
+        return {0.0, 0.0};
     }
+
+    const ui64 elapsedTimeUs = currentTime - StartTime;
+    if (elapsedTimeUs == 0) {
+        return {0.0, 0.0};
+    }
+
+    const double elapsedSeconds =
+        static_cast<double>(elapsedTimeUs) / 1000000.0;
+
+    const ui64 totalBytes = TotalBlocks * blockSize;
+    const double bytesPerSecond =
+        static_cast<double>(totalBytes) / elapsedSeconds;
+    const double opsPerSecond = static_cast<double>(TotalOps) / elapsedSeconds;
+
+    TotalBlocks = 0;
+    TotalOps = 0;
+    StartTime = currentTime;
+
+    return {bytesPerSecond, opsPerSecond};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -192,6 +205,10 @@ TRequestsTimeTracker::TRequestsTimeTracker(const ui64 constructionTime)
                 .RequestStatus = ERequestStatus::Inflight};
             Histograms[key];
         }
+    }
+
+    for (auto& tracker: ThroughputCounters) {
+        tracker.StartTime = constructionTime;
     }
 }
 
@@ -249,8 +266,7 @@ std::optional<TRequestsTimeTracker::TFirstSuccessStat>
 TRequestsTimeTracker::OnRequestFinished(
     ui64 requestId,
     bool success,
-    ui64 finishTime,
-    ui32 blockSize)
+    ui64 finishTime)
 {
     TRequestInflight request;
     {
@@ -278,8 +294,8 @@ TRequestsTimeTracker::OnRequestFinished(
 
     const auto requestTypeIndex = static_cast<size_t>(request.RequestType);
     if (requestTypeIndex < ThroughputCounters.size()) {
-        const ui64 bytes = request.BlockRange.Size() * blockSize;
-        ThroughputCounters.at(requestTypeIndex).AddOperation(finishTime, bytes);
+        ThroughputCounters.at(requestTypeIndex)
+            .AddOperation(request.BlockRange.Size());
     }
 
     return StatFirstSuccess(request, success, finishTime);
@@ -385,15 +401,14 @@ TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize)
     for (size_t requestType = 0; requestType < ThroughputCounters.size();
          ++requestType)
     {
-        ThroughputCounters.at(requestType).UpdateTime(nowCycles);
-
-        const auto bytesPerSec =
-            ThroughputCounters.at(requestType).GetBytesPerSecond();
-        const auto opsPerSec =
-            ThroughputCounters.at(requestType).GetOpsPerSecond();
+        const ui64 nowUs = CyclesToDurationSafe(nowCycles).MicroSeconds();
+        auto [bytesPerSec, opsPerSec] = ThroughputCounters.at(requestType)
+                                            .GetRatesAndReset(nowUs, blockSize);
 
         const TString formattedThroughput =
-            bytesPerSec > 0 ? (FormatByteSize(bytesPerSec) + "/s") : "0 B/s";
+            bytesPerSec > 0.0
+                ? (FormatByteSize(static_cast<ui64>(bytesPerSec)) + "/s")
+                : "0 B/s";
 
         const TString htmlKeyBytes =
             TString(typeNames[requestType]) + "_Total_BytesPerSec";
@@ -401,7 +416,7 @@ TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize)
             TString(typeNames[requestType]) + "_Total_OpsPerSec";
 
         allStat[htmlKeyBytes] = formattedThroughput;
-        allStat[htmlKeyOps] = ToString(opsPerSec);
+        allStat[htmlKeyOps] = ToString(static_cast<ui64>(opsPerSec));
     }
 
     NJson::TJsonValue json;

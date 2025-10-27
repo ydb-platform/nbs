@@ -113,28 +113,19 @@ private:
         bool success,
         ui64 finishTime);
 
-    struct TSimpleThroughput
+    struct TThroughputTracker
     {
-        ui64 LastSecond = 0;
-        ui64 CurrentBytes = 0;
-        ui64 PreviousBytes = 0;
-        ui64 CurrentOps = 0;
-        ui64 PreviousOps = 0;
+        ui64 StartTime = 0;
+        ui64 TotalBlocks = 0;
+        ui64 TotalOps = 0;
 
-        void AddOperation(ui64 currentTimeUs, ui64 bytes);
-        void UpdateTime(ui64 currentTimeUs);
-
-        [[nodiscard]] ui64 GetBytesPerSecond() const
-        {
-            return PreviousBytes;
-        }
-        [[nodiscard]] ui64 GetOpsPerSecond() const
-        {
-            return PreviousOps;
-        }
+        void AddOperation(ui64 blocks);
+        std::pair<double, double> GetRatesAndReset(
+            ui64 currentTime,
+            ui32 blockSize);
     };
 
-    std::array<TSimpleThroughput, RequestTypeCount> ThroughputCounters;
+    std::array<TThroughputTracker, RequestTypeCount> ThroughputCounters;
 
 public:
     explicit TRequestsTimeTracker(const ui64 constructionTime);
@@ -151,11 +142,8 @@ public:
 
     // Marks that the request is completed and returns stat when the request
     // succeeds for the first time.
-    [[nodiscard]] std::optional<TFirstSuccessStat> OnRequestFinished(
-        ui64 requestId,
-        bool success,
-        ui64 finishTime,
-        ui32 blockSize);
+    [[nodiscard]] std::optional<TFirstSuccessStat>
+    OnRequestFinished(ui64 requestId, bool success, ui64 finishTime);
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles, ui32 blockSize);
 
