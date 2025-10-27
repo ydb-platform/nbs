@@ -7,6 +7,8 @@
 
 #include <util/random/random.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NServer {
 
 namespace {
@@ -162,9 +164,15 @@ private:
         if constexpr (IsExactlyWriteRequest<TRequest>) {
             damageData = TryChaosLuck(ChaosConfig.GetDataDamageProbability());
             if (damageData) {
-                auto& buffers = *request->MutableBlocks()->MutableBuffers();
-                for (auto& block: buffers) {
-                    ui64 trash = RandomNumber<ui64>();
+                TGuardedSgList::TGuard guard = request->Sglist.Acquire();
+                if (!guard) {
+                    return NThreading::MakeFuture<TResponse>(TErrorResponse(
+                        E_CANCELLED,
+                        "failed to acquire sglist in ChaosStorage"));
+                }
+                const auto& buffers = guard.Get();
+                for (const auto& block: buffers) {
+                    const ui64 trash = RandomNumber<ui64>();
                     Y_ABORT_UNLESS(block.size() >= sizeof(trash));
                     memcpy(
                         const_cast<char*>(block.data()),
@@ -211,11 +219,19 @@ private:
             std::move(request));
 
         return future.Apply(
-            [reply = std::move(reply)](NThreading::TFuture<TResponse> f)
+            [damageData,
+             reply = std::move(reply)](NThreading::TFuture<TResponse> f)
                 -> NThreading::TFuture<TResponse>
             {
                 auto originalResponse = f.ExtractValue();
                 if (HasError(originalResponse)) {
+                    if (damageData) {
+                        NProto::TError* error = originalResponse.MutableError();
+                        error->MutableMessage()->append(
+                            TStringBuilder()
+                            << "(The data were damaged by chaos!)");
+                    }
+
                     return NThreading::MakeFuture<TResponse>(
                         std::move(originalResponse));
                 }
@@ -234,10 +250,10 @@ private:
 
 public:
     TChaosStorageProvider(
-        IStorageProviderPtr storageProvider,
-        const NProto::TChaosConfig& chaosConfig)
+            IStorageProviderPtr storageProvider,
+            NProto::TChaosConfig chaosConfig)
         : StorageProvider(std::move(storageProvider))
-        , ChaosConfig(chaosConfig)
+        , ChaosConfig(std::move(chaosConfig))
     {}
 
     NThreading::TFuture<IStoragePtr> CreateStorage(
@@ -265,11 +281,11 @@ public:
 
 IStorageProviderPtr CreateChaosStorageProvider(
     IStorageProviderPtr storageProvider,
-    const NProto::TChaosConfig& chaosConfig)
+    NProto::TChaosConfig chaosConfig)
 {
     return std::make_shared<TChaosStorageProvider>(
         std::move(storageProvider),
-        chaosConfig);
+        std::move(chaosConfig));
 }
 
 }   // namespace NCloud::NBlockStore::NServer

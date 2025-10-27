@@ -17,6 +17,6 @@ namespace NCloud::NBlockStore::NServer {
 
 IStorageProviderPtr CreateChaosStorageProvider(
     IStorageProviderPtr storageProvider,
-    const NProto::TChaosConfig& chaosConfig);
+    NProto::TChaosConfig chaosConfig);
 
 }   // namespace NCloud::NBlockStore::NServer

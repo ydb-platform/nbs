@@ -4,7 +4,7 @@ import pytest
 from enum import Enum
 
 from cloud.blockstore.config.client_pb2 import TClientAppConfig, TClientConfig
-from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
+from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig, TChaosConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
     TKikimrServiceConfig, TChecksumFlags
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
@@ -33,6 +33,7 @@ DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 class ValidationMode(Enum):
     DIRECT = 0
     COPIED = 1
+    DIRECT_TO_COPIED = 2
 
 
 class TestCase(object):
@@ -45,12 +46,14 @@ class TestCase(object):
             storage_media_kind,
             agent_count=1,
             validation_mode=ValidationMode.DIRECT,
+            enable_chaos=False,
             use_rdma=False):
         self.name = name
         self.config_path = config_path
         self.storage_media_kind = storage_media_kind
         self.agent_count = agent_count
         self.validation_mode = validation_mode
+        self.enable_chaos = enable_chaos
         self.use_rdma = use_rdma
 
 
@@ -87,6 +90,14 @@ TESTS = [
         storage_media_kind=STORAGE_MEDIA_SSD_MIRROR2,
         agent_count=2,
         validation_mode=ValidationMode.COPIED,
+    ),
+    TestCase(
+        "mirror2-chaos",
+        "cloud/blockstore/tests/loadtest/local-data-integrity/local-mirror2.txt",
+        storage_media_kind=STORAGE_MEDIA_SSD_MIRROR2,
+        agent_count=2,
+        validation_mode=ValidationMode.DIRECT_TO_COPIED,
+        enable_chaos=True,
     ),
 ]
 
@@ -187,20 +198,52 @@ def __check_data_integrity_counters(test_case, mon_port):
     # Define validation rules for each mode
     validation_rules = {
         ValidationMode.DIRECT: {
-            'active': direct_counters,
-            'inactive': copied_counters,
-            'active_should_have_requests': True,
-            'active_should_have_clients': True,
-            'inactive_should_have_requests': False,
-            'inactive_should_have_clients': False
+            'active': {
+                'mode': ValidationMode.DIRECT,
+                'counters': direct_counters,
+                'should_have_requests': True,
+                'should_have_clients': True,
+                'should_have_mismatches': False,
+            },
+            'inactive': {
+                'mode': ValidationMode.COPIED,
+                'counters': copied_counters,
+                'should_have_requests': False,
+                'should_have_clients': False,
+                'should_have_mismatches': False,
+            }
         },
         ValidationMode.COPIED: {
-            'active': copied_counters,
-            'inactive': direct_counters,
-            'active_should_have_requests': False,
-            'active_should_have_clients': True,
-            'inactive_should_have_requests': False,
-            'inactive_should_have_clients': False
+            'active': {
+                'mode': ValidationMode.COPIED,
+                'counters': copied_counters,
+                'should_have_requests': True,
+                'should_have_clients': True,
+                'should_have_mismatches': False,
+            },
+            'inactive': {
+                'mode': ValidationMode.DIRECT,
+                'counters': direct_counters,
+                'should_have_requests': False,
+                'should_have_clients': False,
+                'should_have_mismatches': False,
+            }
+        },
+        ValidationMode.DIRECT_TO_COPIED: {
+            'active': {
+                'mode': ValidationMode.COPIED,
+                'counters': copied_counters,
+                'should_have_requests': True,
+                'should_have_clients': True,
+                'should_have_mismatches': True,
+            },
+            'inactive': {
+                'mode': ValidationMode.DIRECT,
+                'counters': direct_counters,
+                'should_have_requests': True,
+                'should_have_clients': False,
+                'should_have_mismatches': True,
+            }
         }
     }
 
@@ -208,22 +251,24 @@ def __check_data_integrity_counters(test_case, mon_port):
 
     # Validate active mode counters
     __validate_counters(
-        rules['active'],
-        mode_name=test_case.validation_mode.name,
-        should_have_requests=rules['active_should_have_requests'],
-        should_have_clients=rules['active_should_have_clients']
+        rules['active']['counters'],
+        mode_name=rules['active']['mode'].name,
+        should_have_requests=rules['active']['should_have_requests'],
+        should_have_clients=rules['active']['should_have_clients'],
+        should_have_mismatches=rules['active']['should_have_mismatches']
     )
 
     # Validate inactive mode counters
     __validate_counters(
-        rules['inactive'],
-        mode_name=__get_opposite_mode(test_case.validation_mode).name,
-        should_have_requests=rules['inactive_should_have_requests'],
-        should_have_clients=rules['inactive_should_have_clients']
+        rules['inactive']['counters'],
+        mode_name=rules['inactive']['mode'].name,
+        should_have_requests=rules['inactive']['should_have_requests'],
+        should_have_clients=rules['inactive']['should_have_clients'],
+        should_have_mismatches=rules['inactive']['should_have_mismatches']
     )
 
 
-def __validate_counters(counters, mode_name, should_have_requests, should_have_clients):
+def __validate_counters(counters, mode_name, should_have_requests, should_have_clients, should_have_mismatches):
     read_requests = counters["read_local_requests"]
     write_requests = counters["write_local_requests"]
     read_mismatches = counters["read_checksum_mismatch"]
@@ -232,7 +277,7 @@ def __validate_counters(counters, mode_name, should_have_requests, should_have_c
 
     # Validate request counts
     if should_have_requests:
-        if read_requests == 0 or write_requests == 0:
+        if read_requests == 0 and write_requests == 0:
             raise Exception(
                 f"{mode_name} mode should have requests: "
                 f"read_requests={read_requests}, write_requests={write_requests}"
@@ -244,12 +289,19 @@ def __validate_counters(counters, mode_name, should_have_requests, should_have_c
                 f"read_requests={read_requests}, write_requests={write_requests}"
             )
 
-    # Validate checksum mismatches (should always be 0)
-    if read_mismatches != 0 or write_mismatches != 0:
-        raise Exception(
-            f"Checksum mismatches in {mode_name} mode: "
-            f"read_mismatches={read_mismatches}, write_mismatches={write_mismatches}"
-        )
+    # Validate mismatch counts
+    if should_have_mismatches:
+        if read_mismatches == 0 and write_mismatches == 0:
+            raise Exception(
+                f"{mode_name} mode should have mismatches: "
+                f"read_mismatches={read_mismatches}, write_mismatches={write_mismatches}"
+            )
+    else:
+        if read_mismatches != 0 or write_mismatches != 0:
+            raise Exception(
+                f"{mode_name} mode should not have mismatches: "
+                f"read_mismatches={read_mismatches}, write_mismatches={write_mismatches}"
+            )
 
     # Validate client counts
     if should_have_clients:
@@ -258,11 +310,6 @@ def __validate_counters(counters, mode_name, should_have_requests, should_have_c
     else:
         if clients != 0:
             raise Exception(f"{mode_name} mode shouldn't have {clients} clients")
-
-
-def __get_opposite_mode(validation_mode):
-    """Returns the opposite validation mode."""
-    return ValidationMode.COPIED if validation_mode == ValidationMode.DIRECT else ValidationMode.DIRECT
 
 
 def __run_test(test_case):
@@ -308,12 +355,17 @@ def __run_test(test_case):
 
     try:
         if test_case.agent_count > 0:
+            chaos_config = TChaosConfig()
+            if test_case.enable_chaos:
+                chaos_config.ChaosProbability = 0.2
+                chaos_config.DataDamageProbability = 0.5
             setup_nonreplicated(
                 kikimr_cluster.client,
                 devices_per_agent,
                 disk_agent_config_patch=TDiskAgentConfig(
                     DedicatedDiskAgent=True,
-                    EnableDataIntegrityValidationForDrBasedDisks=True),
+                    EnableDataIntegrityValidationForDrBasedDisks=True,
+                    ChaosConfig=chaos_config),
                 agent_count=test_case.agent_count,
             )
 
@@ -425,8 +477,7 @@ def __run_test(test_case):
             env_processes=disk_agents + [nbs],
         )
 
-        if ret == 0:
-            __check_data_integrity_counters(test_case, nbs.mon_port)
+        __check_data_integrity_counters(test_case, nbs.mon_port)
 
     finally:
         for disk_agent in disk_agents:
