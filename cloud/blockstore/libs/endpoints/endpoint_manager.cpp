@@ -779,17 +779,29 @@ private:
             return promise;
         }
 
-        auto [_, inserted] = ProcessingSockets.emplace(
+        auto [insertedIt, inserted] = ProcessingSockets.emplace(
             socketPath,
             TRequestState<TMethod>{request, promise.GetFuture()});
         Y_ABORT_UNLESS(inserted);
+
+        STORAGE_INFO(
+            "Endpoint " << socketPath.Quote() << " is processing "
+            << GetProcessName(insertedIt->second) << " state");
 
         return promise;
     }
 
     void RemoveProcessingSocket(const TString& socketPath)
     {
-        ProcessingSockets.erase(socketPath);
+        auto it = ProcessingSockets.find(socketPath);
+        Y_ABORT_UNLESS(it != ProcessingSockets.end());
+
+        const auto processName = GetProcessName(it->second);
+        STORAGE_INFO(
+            "Endpoint " << socketPath.Quote()
+            << " processed " << processName << " state");
+
+        ProcessingSockets.erase(it);
     }
 
     TString GetProcessName(const TRequestStateVariant& st)
