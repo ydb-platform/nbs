@@ -10,25 +10,6 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-const TString& GetTimeBucketName(TDuration duration)
-{
-    static const auto TimeNames = TRequestUsTimeBuckets::MakeNames();
-
-    auto idx = std::distance(
-        TRequestUsTimeBuckets::Buckets.begin(),
-        LowerBound(
-            TRequestUsTimeBuckets::Buckets.begin(),
-            TRequestUsTimeBuckets::Buckets.end(),
-            duration.MicroSeconds()));
-    return TimeNames[idx];
-}
-
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TString TDeviceOperationTracker::TKey::GetHtmlPrefix() const
@@ -62,14 +43,14 @@ ui64 TDeviceOperationTracker::THash::operator()(const TKey& key) const
 ////////////////////////////////////////////////////////////////////////////////
 
 TDeviceOperationTracker::TDeviceOperationTracker(
-    std::span<const TDeviceInfo> deviceInfos)
+    TVector<TDeviceInfo> deviceInfos)
     : DeviceInfos(deviceInfos.begin(), deviceInfos.end())
 {
     for (const auto& deviceInfo: DeviceInfos) {
         DeviceToAgent[deviceInfo.DeviceUUID] = deviceInfo.AgentId;
     }
 
-    const TVector<ERequestType> requestTypes = {
+    const ERequestType requestTypes[] = {
         ERequestType::Read,
         ERequestType::Write,
         ERequestType::Zero,
@@ -79,12 +60,11 @@ TDeviceOperationTracker::TDeviceOperationTracker(
         const TString requestTypeStr = ToString(requestType);
 
         for (const auto& deviceInfo: DeviceInfos) {
-            auto key = TKey{
+            Histograms.try_emplace(TKey{
                 .RequestType = requestTypeStr,
                 .DeviceUUID = deviceInfo.DeviceUUID,
                 .AgentId = deviceInfo.AgentId,
-                .Status = EStatus::Finished};
-            Histograms[key];
+                .Status = EStatus::Finished});
         }
     }
 }
@@ -168,7 +148,7 @@ TString TDeviceOperationTracker::GetStatJson(ui64 nowCycles) const
     TMap<TString, size_t> inflight;
 
     for (const auto& [operationId, operation]: Inflight) {
-        const auto& timeBucketName = GetTimeBucketName(
+        const auto& timeBucketName = NCloud::GetTimeBucketName(
             CyclesToDurationSafe(nowCycles - operation.StartTime));
 
         ++inflight[getInflightHtmlKey(
@@ -206,7 +186,7 @@ void TDeviceOperationTracker::UpdateDevices(
     Histograms.clear();
     Inflight.clear();
 
-    const TVector<ERequestType> requestTypes = {
+    const ERequestType requestTypes[] = {
         ERequestType::Read,
         ERequestType::Write,
         ERequestType::Zero,
@@ -216,20 +196,18 @@ void TDeviceOperationTracker::UpdateDevices(
         const TString requestTypeStr = ToString(requestType);
 
         for (const auto& deviceInfo: DeviceInfos) {
-            auto key = TKey{
+            Histograms.try_emplace(TKey{
                 .RequestType = requestTypeStr,
                 .DeviceUUID = deviceInfo.DeviceUUID,
                 .AgentId = deviceInfo.AgentId,
-                .Status = EStatus::Finished};
-            Histograms[key];
+                .Status = EStatus::Finished});
         }
 
-        auto totalKey = TKey{
+        Histograms.try_emplace(TKey{
             .RequestType = requestTypeStr,
             .DeviceUUID = "Total",
             .AgentId = "Total",
-            .Status = EStatus::Finished};
-        Histograms[totalKey];
+            .Status = EStatus::Finished});
     }
 }
 

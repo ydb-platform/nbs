@@ -85,7 +85,8 @@ private:
     THashMap<TKey, TTimeHistogram, THash> Histograms;
 
 public:
-    explicit TDeviceOperationTracker(std::span<const TDeviceInfo> deviceInfos);
+    TDeviceOperationTracker() = default;
+    explicit TDeviceOperationTracker(TVector<TDeviceInfo> deviceInfos);
 
     void OnStarted(
         ui64 operationId,

@@ -128,10 +128,9 @@ void TDiskAgentBaseRequestActor::OnRequestStarted(
 
     auto startEvent = std::make_unique<
         TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
-        TEvVolumePrivate::TDiskRegistryDeviceOperationStarted(
-            deviceUUID,
-            requestType,
-            DeviceOperationId + cookie));
+        deviceUUID,
+        requestType,
+        DeviceOperationId + cookie);
 
     ctx.Send(VolumeActorId, startEvent.release());
 }
@@ -146,8 +145,7 @@ void TDiskAgentBaseRequestActor::OnRequestFinished(
 
     auto finishEvent = std::make_unique<
         TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
-        TEvVolumePrivate::TDiskRegistryDeviceOperationFinished(
-            DeviceOperationId + cookie));
+        DeviceOperationId + cookie);
 
     ctx.Send(VolumeActorId, finishEvent.release());
 }

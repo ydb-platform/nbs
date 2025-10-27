@@ -331,7 +331,7 @@ private:
 
     TRequestsTimeTracker RequestTimeTracker{StartTime};
     TTransactionTimeTracker TransactionTimeTracker;
-    TDeviceOperationTracker DeviceOperationTracker{{}};
+    TDeviceOperationTracker DeviceOperationTracker;
 
     // inflight VolumeRequestId -> duplicate request queue
     // we respond to duplicate requests as soon as our original request is completed

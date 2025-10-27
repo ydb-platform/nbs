@@ -116,4 +116,17 @@ inline TVector<double> ConvertToHistBounds(const TBucketsType& buckets) {
     return {buckets.begin(), std::prev(buckets.end())};
 }
 
+inline const TString& GetTimeBucketName(TDuration duration)
+{
+    static const auto TimeNames = TRequestUsTimeBuckets::MakeNames();
+
+    auto idx = std::distance(
+        TRequestUsTimeBuckets::Buckets.begin(),
+        LowerBound(
+            TRequestUsTimeBuckets::Buckets.begin(),
+            TRequestUsTimeBuckets::Buckets.end(),
+            duration.MicroSeconds()));
+    return TimeNames[idx];
+}
+
 }   // namespace NCloud
