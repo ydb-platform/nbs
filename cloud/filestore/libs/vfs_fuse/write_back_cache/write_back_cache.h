@@ -5,6 +5,7 @@
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -33,6 +34,9 @@ public:
         ISchedulerPtr scheduler,
         ITimerPtr timer,
         IWriteBackCacheStatsPtr stats,
+        TLog log,
+        const TString& fileSystemId,
+        const TString& clientId,
         const TString& filePath,
         ui32 capacityBytes,
         TDuration automaticFlushPeriod,
@@ -68,6 +72,7 @@ private:
     friend struct TCalculateDataPartsToReadTestBootstrap;
 
     class TWriteDataEntry;
+    struct TWriteDataEntryDeserializationStats;
     struct TWriteDataEntryPart;
     struct TNodeState;
     struct TFlushState;

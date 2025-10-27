@@ -16,6 +16,22 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TWriteBackCache::TWriteDataEntryDeserializationStats
+{
+    ui64 Count = 0;
+    ui64 ChecksumMismatchCount = 0;
+    ui64 EntrySizeMismatchCount = 0;
+    ui64 ProtobufDeserializationErrorCount = 0;
+
+    bool HasFailed() const
+    {
+        return ChecksumMismatchCount > 0 || EntrySizeMismatchCount > 0 ||
+               ProtobufDeserializationErrorCount > 0;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteBackCache::TWriteDataEntry
     : public TIntrusiveListItem<TWriteDataEntry>
 {
@@ -46,6 +62,7 @@ public:
     TWriteDataEntry(
         ui32 checksum,
         TStringBuf serializedRequest,
+        TWriteDataEntryDeserializationStats& stats,
         TImpl* impl);
 
     const NProto::TWriteDataRequest* GetRequest() const
