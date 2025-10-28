@@ -523,6 +523,10 @@ func TestReplaceZoneIdWithCellIdInDiskMeta(t *testing.T) {
 		DiskId: "disk3",
 		ZoneId: otherZoneID,
 	}
+	disk4 := &types.Disk{
+		DiskId: "disk4",
+		ZoneId: otherZoneID,
+	}
 
 	storage.On("GetDiskMeta", ctx, "disk1").Return(&resources.DiskMeta{
 		ZoneID: cellID2,
@@ -533,6 +537,10 @@ func TestReplaceZoneIdWithCellIdInDiskMeta(t *testing.T) {
 	storage.On("GetDiskMeta", ctx, "disk3").Return(&resources.DiskMeta{
 		ZoneID: cellID1,
 	}, nil)
+	storage.On("GetDiskMeta", ctx, "disk4").Return(
+		(*resources.DiskMeta)(nil), 
+		nil,
+	)
 
 	processedDisk1, err := cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
 		ctx,
@@ -562,6 +570,15 @@ func TestReplaceZoneIdWithCellIdInDiskMeta(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "is not in zone")
 	require.Nil(t, processedDisk3)
+
+	processedDisk4, err := cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
+		ctx,
+		storage,
+		disk4,
+	)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "no such disk:")
+	require.Nil(t, processedDisk4)
 
 	mock.AssertExpectationsForObjects(t, storage)
 }
