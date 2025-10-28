@@ -30,16 +30,15 @@ public:
 
     struct TBucketInfo
     {
-        TString OperationName;
         TString Key;
         TString Description;
         TString Tooltip;
     };
 
-    struct TOperationInflight
+    struct TOperationInFlight
     {
         ui64 StartTime = 0;
-        TString RequestType;
+        ERequestType RequestType;
         TString DeviceUUID;
         TString AgentId;
     };
@@ -50,7 +49,8 @@ public:
         TString AgentId;
     };
 
-    using TInflightMap = THashMap<ui64, TOperationInflight>;
+    using TOperationId = ui64;
+    using TInflightMap = THashMap<TOperationId, TOperationInFlight>;
 
 private:
     struct TTimeHistogram: public THistogram<TRequestUsTimeBuckets>
@@ -63,7 +63,7 @@ private:
 
     struct TKey
     {
-        TString RequestType;
+        ERequestType RequestType;
         TString DeviceUUID;
         TString AgentId;
         EStatus Status = EStatus::Inflight;
@@ -84,19 +84,21 @@ private:
     TInflightMap Inflight;
     THashMap<TKey, TTimeHistogram, THash> Histograms;
 
+    void RebuildFromDeviceInfos();
+
 public:
     TDeviceOperationTracker() = default;
     explicit TDeviceOperationTracker(TVector<TDeviceInfo> deviceInfos);
 
     void OnStarted(
-        ui64 operationId,
+        TOperationId operationId,
         const TString& deviceUUID,
         ERequestType requestType,
         ui64 startTime);
 
-    void OnFinished(ui64 operationId, ui64 finishTime);
+    void OnFinished(TOperationId operationId, ui64 finishTime);
 
-    void UpdateDevices(std::span<const TDeviceInfo> deviceInfos);
+    void UpdateDevices(TVector<TDeviceInfo> deviceInfos);
 
     [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
     [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;

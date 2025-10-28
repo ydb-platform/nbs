@@ -820,7 +820,7 @@ void TVolumeActor::InitializeDeviceOperationTracker()
     }
 
     TVector<TDeviceOperationTracker::TDeviceInfo> deviceInfos;
-    TSet<TString> seenDevices;
+    THashSet<TString> seenDevices;
 
     for (const auto& device: State->GetMeta().GetDevices()) {
         const TString deviceUUID = device.GetDeviceUUID();
@@ -840,7 +840,7 @@ void TVolumeActor::InitializeDeviceOperationTracker()
         }
     }
 
-    DeviceOperationTracker.UpdateDevices(deviceInfos);
+    DeviceOperationTracker.UpdateDevices(std::move(deviceInfos));
 }
 
 void TVolumeActor::HandleDiskRegistryDeviceOperationStarted(
@@ -849,12 +849,12 @@ void TVolumeActor::HandleDiskRegistryDeviceOperationStarted(
 {
     Y_UNUSED(ctx);
 
-    const auto& record = ev->Get();
+    auto* msg = ev->Get();
 
     DeviceOperationTracker.OnStarted(
-        record->OperationId,
-        record->DeviceUUID,
-        record->RequestType,
+        msg->OperationId,
+        msg->DeviceUUID,
+        msg->RequestType,
         GetCycleCount());
 }
 

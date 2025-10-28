@@ -202,18 +202,24 @@ Y_UNIT_TEST_SUITE(TDeviceOperationTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL(3, inflight.size());
 
         UNIT_ASSERT(inflight.contains(1));
-        UNIT_ASSERT_VALUES_EQUAL("Read", inflight.at(1).RequestType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDeviceOperationTracker::ERequestType::Read,
+            inflight.at(1).RequestType);
         UNIT_ASSERT_VALUES_EQUAL("device-1", inflight.at(1).DeviceUUID);
         UNIT_ASSERT_VALUES_EQUAL("agent-1", inflight.at(1).AgentId);
         UNIT_ASSERT_VALUES_EQUAL(1000, inflight.at(1).StartTime);
 
         UNIT_ASSERT(inflight.contains(2));
-        UNIT_ASSERT_VALUES_EQUAL("Write", inflight.at(2).RequestType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDeviceOperationTracker::ERequestType::Write,
+            inflight.at(2).RequestType);
         UNIT_ASSERT_VALUES_EQUAL("device-2", inflight.at(2).DeviceUUID);
         UNIT_ASSERT_VALUES_EQUAL("agent-1", inflight.at(2).AgentId);
 
         UNIT_ASSERT(inflight.contains(3));
-        UNIT_ASSERT_VALUES_EQUAL("Zero", inflight.at(3).RequestType);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDeviceOperationTracker::ERequestType::Zero,
+            inflight.at(3).RequestType);
 
         tracker.OnFinished(2, 5000);
 

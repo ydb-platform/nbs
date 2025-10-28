@@ -42,13 +42,15 @@ ui64 TDeviceOperationTracker::THash::operator()(const TKey& key) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDeviceOperationTracker::TDeviceOperationTracker(
-    TVector<TDeviceInfo> deviceInfos)
-    : DeviceInfos(deviceInfos.begin(), deviceInfos.end())
+void TDeviceOperationTracker::RebuildFromDeviceInfos()
 {
+    DeviceToAgent.clear();
     for (const auto& deviceInfo: DeviceInfos) {
         DeviceToAgent[deviceInfo.DeviceUUID] = deviceInfo.AgentId;
     }
+
+    Histograms.clear();
+    Inflight.clear();
 
     const ERequestType requestTypes[] = {
         ERequestType::Read,
@@ -57,42 +59,54 @@ TDeviceOperationTracker::TDeviceOperationTracker(
         ERequestType::Checksum};
 
     for (const auto& requestType: requestTypes) {
-        const TString requestTypeStr = ToString(requestType);
-
         for (const auto& deviceInfo: DeviceInfos) {
             Histograms.try_emplace(TKey{
-                .RequestType = requestTypeStr,
+                .RequestType = requestType,
                 .DeviceUUID = deviceInfo.DeviceUUID,
                 .AgentId = deviceInfo.AgentId,
                 .Status = EStatus::Finished});
         }
+
+        Histograms.try_emplace(TKey{
+            .RequestType = requestType,
+            .DeviceUUID = "Total",
+            .AgentId = "Total",
+            .Status = EStatus::Finished});
     }
 }
 
+TDeviceOperationTracker::TDeviceOperationTracker(
+    TVector<TDeviceInfo> deviceInfos)
+    : DeviceInfos(std::move(deviceInfos))
+{
+    RebuildFromDeviceInfos();
+}
+
 void TDeviceOperationTracker::OnStarted(
-    ui64 operationId,
+    TOperationId operationId,
     const TString& deviceUUID,
     ERequestType requestType,
     ui64 startTime)
 {
-    TString agentId = "";
     auto it = DeviceToAgent.find(deviceUUID);
-    if (it != DeviceToAgent.end()) {
-        agentId = it->second;
-    } else {
+    if (it == DeviceToAgent.end()) {
         return;
     }
 
+    const TString& agentId = it->second;
+
     Inflight.emplace(
         operationId,
-        TOperationInflight{
+        TOperationInFlight{
             .StartTime = startTime,
-            .RequestType = ToString(requestType),
+            .RequestType = requestType,
             .DeviceUUID = deviceUUID,
-            .AgentId = std::move(agentId)});
+            .AgentId = agentId});
 }
 
-void TDeviceOperationTracker::OnFinished(ui64 operationId, ui64 finishTime)
+void TDeviceOperationTracker::OnFinished(
+    TOperationId operationId,
+    ui64 finishTime)
 {
     auto it = Inflight.find(operationId);
     if (it == Inflight.end()) {
@@ -104,12 +118,13 @@ void TDeviceOperationTracker::OnFinished(ui64 operationId, ui64 finishTime)
 
     TKey specificKey{
         .RequestType = operation.RequestType,
-        .DeviceUUID = operation.DeviceUUID,
-        .AgentId = operation.AgentId,
+        .DeviceUUID = std::move(operation.DeviceUUID),
+        .AgentId = std::move(operation.AgentId),
         .Status = EStatus::Finished};
+
     Histograms[specificKey].Increment(duration.MicroSeconds());
 
-    Inflight.erase(operationId);
+    Inflight.erase(it);
 }
 
 TString TDeviceOperationTracker::GetStatJson(ui64 nowCycles) const
@@ -133,7 +148,7 @@ TString TDeviceOperationTracker::GetStatJson(ui64 nowCycles) const
         allStat[htmlPrefix + "Total"] = ToString(total);
     }
 
-    auto getInflightHtmlKey = [](const TString& requestType,
+    auto getInflightHtmlKey = [](ERequestType requestType,
                                  const TString& deviceUUID,
                                  TStringBuf timeBucketName)
     {
@@ -145,10 +160,10 @@ TString TDeviceOperationTracker::GetStatJson(ui64 nowCycles) const
         return key.GetHtmlPrefix() + timeBucketName;
     };
 
-    TMap<TString, size_t> inflight;
+    THashMap<TString, size_t> inflight;
 
     for (const auto& [operationId, operation]: Inflight) {
-        const auto& timeBucketName = NCloud::GetTimeBucketName(
+        const auto& timeBucketName = TRequestUsTimeBuckets::GetBucketName(
             CyclesToDurationSafe(nowCycles - operation.StartTime));
 
         ++inflight[getInflightHtmlKey(
@@ -173,46 +188,13 @@ TString TDeviceOperationTracker::GetStatJson(ui64 nowCycles) const
     return out.Str();
 }
 
-void TDeviceOperationTracker::UpdateDevices(
-    std::span<const TDeviceInfo> deviceInfos)
+void TDeviceOperationTracker::UpdateDevices(TVector<TDeviceInfo> deviceInfos)
 {
-    DeviceInfos.assign(deviceInfos.begin(), deviceInfos.end());
-
-    DeviceToAgent.clear();
-    for (const auto& deviceInfo: DeviceInfos) {
-        DeviceToAgent[deviceInfo.DeviceUUID] = deviceInfo.AgentId;
-    }
-
-    Histograms.clear();
-    Inflight.clear();
-
-    const ERequestType requestTypes[] = {
-        ERequestType::Read,
-        ERequestType::Write,
-        ERequestType::Zero,
-        ERequestType::Checksum};
-
-    for (const auto& requestType: requestTypes) {
-        const TString requestTypeStr = ToString(requestType);
-
-        for (const auto& deviceInfo: DeviceInfos) {
-            Histograms.try_emplace(TKey{
-                .RequestType = requestTypeStr,
-                .DeviceUUID = deviceInfo.DeviceUUID,
-                .AgentId = deviceInfo.AgentId,
-                .Status = EStatus::Finished});
-        }
-
-        Histograms.try_emplace(TKey{
-            .RequestType = requestTypeStr,
-            .DeviceUUID = "Total",
-            .AgentId = "Total",
-            .Status = EStatus::Finished});
-    }
+    DeviceInfos = std::move(deviceInfos);
+    RebuildFromDeviceInfos();
 }
 
-TVector<TDeviceOperationTracker::TBucketInfo>
-TDeviceOperationTracker::GetTimeBuckets() const
+auto TDeviceOperationTracker::GetTimeBuckets() const -> TVector<TBucketInfo>
 {
     TVector<TBucketInfo> result;
     TDuration last;
@@ -221,7 +203,6 @@ TDeviceOperationTracker::GetTimeBuckets() const
         const auto us = TryFromString<ui64>(time);
 
         TBucketInfo bucket{
-            .OperationName = {},
             .Key = time,
             .Description =
                 us ? FormatDuration(TDuration::MicroSeconds(*us)) : time,
@@ -233,7 +214,6 @@ TDeviceOperationTracker::GetTimeBuckets() const
     }
 
     result.push_back(TBucketInfo{
-        .OperationName = {},
         .Key = "Total",
         .Description = "Total",
         .Tooltip = "Total operations"});
