@@ -91,9 +91,14 @@ struct TFileSystemStat
     i64 MountFlags = 0;     // Mount flags of filesystem
 };
 
+struct TFileStatEx : public TFileStat {
+    using TFileStat::TFileStat;
+    ui64 Dev = 0;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
-using TDirEntry = std::pair<TString, TFileStat>;
+using TDirEntry = std::pair<TString, TFileStatEx>;
 
 struct TListDirResult
 {
@@ -136,8 +141,8 @@ void UnlinkAt(const TFileHandle& handle, const TString& name, bool directory);
 
 TString ReadLink(const TFileHandle& handle);
 
-TFileStat Stat(const TFileHandle& handle);
-TFileStat StatAt(const TFileHandle& handle, const TString& name);
+TFileStatEx Stat(const TFileHandle& handle);
+TFileStatEx StatAt(const TFileHandle& handle, const TString& name);
 TFileSystemStat StatFs(const TFileHandle& handle);
 
 TListDirResult ListDirAt(

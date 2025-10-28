@@ -69,6 +69,8 @@ message TNodeAttr
     string ShardFileSystemId = 11;
     // Node name in the shard FS.
     string ShardNodeName = 12;
+
+    uint64 DevId = 13;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

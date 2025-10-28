@@ -169,7 +169,7 @@ NProto::TRenameNodeResponse TLocalFileSystem::RenameNode(
         return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
     }
 
-    std::optional<TFileStat> stat = std::nullopt;
+    std::optional<NLowLevel::TFileStatEx> stat = std::nullopt;
     {
         auto newparentList = newparent->List(true);
         auto it = std::find_if(

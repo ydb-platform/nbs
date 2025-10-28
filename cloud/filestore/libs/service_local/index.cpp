@@ -137,12 +137,12 @@ TIndexNode::List(uint64_t offset, size_t entriesLimit, bool ignoreErrors)
     return NLowLevel::ListDirAt(NodeFd, offset, entriesLimit, ignoreErrors);
 }
 
-TFileStat TIndexNode::Stat()
+NLowLevel::TFileStatEx TIndexNode::Stat()
 {
     return NLowLevel::Stat(NodeFd);
 }
 
-TFileStat TIndexNode::Stat(const TString& name)
+NLowLevel::TFileStatEx TIndexNode::Stat(const TString& name)
 {
     return NLowLevel::StatAt(NodeFd, name);
 }

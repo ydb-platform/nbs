@@ -70,6 +70,7 @@ void ConvertAttr(ui32 blockSize, const NProto::TNodeAttr& attr, struct stat& st)
     st.st_atim = ConvertTimeSpec(TInstant::MicroSeconds(attr.GetATime()));
     st.st_mtim = ConvertTimeSpec(TInstant::MicroSeconds(attr.GetMTime()));
     st.st_ctim = ConvertTimeSpec(TInstant::MicroSeconds(attr.GetCTime()));
+    st.st_rdev = attr.GetDevId();
 }
 
 void ConvertStat(

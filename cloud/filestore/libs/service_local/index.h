@@ -78,8 +78,8 @@ public:
 
     [[nodiscard]] TString ReadLink() const;
 
-    TFileStat Stat();
-    TFileStat Stat(const TString& name);
+    NLowLevel::TFileStatEx Stat();
+    NLowLevel::TFileStatEx Stat(const TString& name);
     NLowLevel::TFileSystemStat StatFs() const;
 
     TFileHandle OpenHandle(int flags);

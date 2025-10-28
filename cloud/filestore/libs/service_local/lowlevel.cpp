@@ -47,9 +47,9 @@ ui32 GetSystemErrorCode()
     return MAKE_FILESTORE_ERROR(error);
 }
 
-TFileStat GetFileStat(const struct stat& fs)
+TFileStatEx GetFileStat(const struct stat& fs)
 {
-    TFileStat st;
+    TFileStatEx st;
     st.Mode = fs.st_mode;
     st.NLinks = fs.st_nlink;
     st.Uid = fs.st_uid;
@@ -59,6 +59,7 @@ TFileStat GetFileStat(const struct stat& fs)
     st.MTime = fs.st_mtime;
     st.CTime = fs.st_ctime;
     st.INode = fs.st_ino;
+    st.Dev = fs.st_rdev;
     return st;
 }
 
@@ -271,7 +272,7 @@ void UnlinkAt(const TFileHandle& handle, const TString& name, bool directory)
         << ": " << LastSystemErrorText());
 }
 
-TFileStat Stat(const TFileHandle& handle)
+TFileStatEx Stat(const TFileHandle& handle)
 {
     struct stat fs = {};
     int res = fstat(Fd(handle), &fs);
@@ -281,7 +282,7 @@ TFileStat Stat(const TFileHandle& handle)
     return GetFileStat(fs);
 }
 
-TFileStat StatAt(const TFileHandle& handle, const TString& name)
+TFileStatEx StatAt(const TFileHandle& handle, const TString& name)
 {
     struct stat fs = {};
     int res = fstatat(Fd(handle), name.data(), &fs, AT_SYMLINK_NOFOLLOW);

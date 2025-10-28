@@ -93,7 +93,7 @@ NProto::TDestroyCheckpointResponse TLocalFileSystem::DestroyCheckpoint(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void ConvertStats(const TFileStat& stat, NProto::TNodeAttr& node)
+void ConvertStats(const NLowLevel::TFileStatEx& stat, NProto::TNodeAttr& node)
 {
     if (S_ISREG(stat.Mode)) {
         node.SetType(NProto::E_REGULAR_NODE);
@@ -122,6 +122,7 @@ void ConvertStats(const TFileStat& stat, NProto::TNodeAttr& node)
     node.SetMTime(TInstant::Seconds(stat.MTime).MicroSeconds());
     node.SetCTime(TInstant::Seconds(stat.CTime).MicroSeconds());
     node.SetLinks(stat.NLinks);
+    node.SetDevId(stat.Dev);
 }
 
 }   // namespace NCloud::NFileStore
