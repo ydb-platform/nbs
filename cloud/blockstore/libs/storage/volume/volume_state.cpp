@@ -618,7 +618,13 @@ void TVolumeState::SetDiskRegistryBasedPartitionActor(
     TActorsStack actors,
     TNonreplicatedPartitionConfigPtr config)
 {
+    auto startInfo = DiskRegistryBasedPartitionActor.GetStartInfo();
+    if (!actors.Empty()) {
+        startInfo.OnStart();
+    }
     DiskRegistryBasedPartitionActor = std::move(actors);
+    DiskRegistryBasedPartitionActor.UpdateStartInfo(startInfo);
+
     NonreplicatedPartitionConfig = std::move(config);
 }
 

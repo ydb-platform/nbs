@@ -17,6 +17,15 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TPartitionStartInfo
+{
+    std::optional<TInstant> StartTime;
+    ui32 RestartCount = 0;
+
+    void OnStart();
+    void OnStop();
+};
+
 // Used to store the partition-related actors, the actor of the partitions
 // itself and its wrappers.
 //
@@ -80,6 +89,7 @@ private:
     };
 
     TDeque<TActorInfo> Actors;
+    TPartitionStartInfo StartInfo;
 
 public:
     TActorsStack() = default;
@@ -87,9 +97,13 @@ public:
 
     void Push(NActors::TActorId actorId, EActorPurpose purpose);
     void Clear();
+    [[nodiscard]] bool Empty() const;
     [[nodiscard]] bool IsKnown(NActors::TActorId actorId) const;
     [[nodiscard]] NActors::TActorId GetTop() const;
     [[nodiscard]] NActors::TActorId GetTopWrapper() const;
+
+    void UpdateStartInfo(const TPartitionStartInfo& startInfo);
+    [[nodiscard]] TPartitionStartInfo GetStartInfo() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -123,9 +137,6 @@ struct TPartitionInfo
 
     TDuration ExternalBootTimeout;
 
-    std::optional<TInstant> StartTime;
-    ui32 RestartCount = 0;
-
     TPartitionInfo(
         ui64 tabletId,
         NProto::TPartitionConfig partitionConfig,
@@ -143,8 +154,7 @@ struct TPartitionInfo
     [[nodiscard]] bool IsKnownActorId(const NActors::TActorId actorId) const;
 
     [[nodiscard]] TString GetStatus() const;
-    [[nodiscard]] std::optional<TInstant> GetStartTime() const;
-    [[nodiscard]] ui32 GetRestartCount() const;
+    [[nodiscard]] TPartitionStartInfo GetStartInfo() const;
 };
 
 using TPartitionInfoList = TDeque<TPartitionInfo>;
