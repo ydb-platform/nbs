@@ -2,11 +2,12 @@ import logging
 import os
 import pytest
 
-from cloud.blockstore.config.client_pb2 import TClientConfig
+from cloud.blockstore.config.client_pb2 import TClientAppConfig, TClientConfig
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
-    TKikimrServiceConfig
+    TKikimrServiceConfig, TChecksumFlags
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
+from cloud.blockstore.public.sdk.python.protos import DIVP_ENABLED_FORCED
 
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
@@ -40,6 +41,7 @@ class TestCase(object):
             allocation_unit_size=1,
             agent_count=1,
             dump_block_digests=False,
+            use_resync=False,
             max_migration_bandwidth=1024 * 1024 * 1024):
         self.name = name
         self.config_path = config_path
@@ -50,6 +52,7 @@ class TestCase(object):
         self.allocation_unit_size = allocation_unit_size
         self.agent_count = agent_count
         self.dump_block_digests = dump_block_digests
+        self.use_resync = use_resync
         self.max_migration_bandwidth = max_migration_bandwidth
 
 
@@ -83,6 +86,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-mirror/local-mirror3-resync.txt",
         agent_count=3,
         dump_block_digests=True,
+        use_resync=True,
     ),
 
     # There are non-intuitive replica configuration permutations during migration,
@@ -200,7 +204,9 @@ def __run_test(test_case, use_rdma):
         setup_nonreplicated(
             kikimr_cluster.client,
             devices_per_agent,
-            disk_agent_config_patch=TDiskAgentConfig(DedicatedDiskAgent=True),
+            disk_agent_config_patch=TDiskAgentConfig(
+                DedicatedDiskAgent=True,
+                DataIntegrityValidationPolicyForDrBasedDisks=DIVP_ENABLED_FORCED),
             agent_count=test_case.agent_count,
         )
 
@@ -214,6 +220,8 @@ def __run_test(test_case, use_rdma):
         server_app_config.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
         server_app_config.ServerConfig.UseFakeRdmaClient = use_rdma
         server_app_config.ServerConfig.RdmaClientEnabled = use_rdma
+        server_app_config.ServerConfig.ChecksumFlags.CopyFrom(TChecksumFlags())
+        server_app_config.ServerConfig.ChecksumFlags.EnableDataIntegrityClient = True
         server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
         storage = TStorageServiceConfig()
@@ -227,7 +235,8 @@ def __run_test(test_case, use_rdma):
         storage.InactiveClientsTimeout = 60000  # 1 min
         storage.AgentRequestTimeout = 5000      # 5 sec
         storage.MaxMigrationBandwidth = test_case.max_migration_bandwidth
-        storage.UseMirrorResync = True
+        storage.UseMirrorResync = test_case.use_resync
+        storage.ResyncAfterClientInactivityInterval = 1000  # 1 sec
         storage.MirroredMigrationStartAllowed = True
         storage.NodeType = 'main'
         storage.UseNonreplicatedRdmaActor = use_rdma
@@ -237,11 +246,18 @@ def __run_test(test_case, use_rdma):
             storage.BlockDigestsEnabled = True
             storage.UseTestBlockDigestGenerator = True
 
+        client_config = TClientConfig()
+        client_config.RetryTimeout = 20000  # 20 sec
+        client_config.RetryTimeoutIncrement = 100  # 100 msec
+        client_app_config = TClientAppConfig()
+        client_app_config.ClientConfig.CopyFrom(client_config)
+
         nbs = LocalNbs(
             kikimr_port,
             configurator.domains_txt,
             server_app_config=server_app_config,
             storage_config_patches=[storage],
+            client_config_patch=client_app_config,
             kikimr_binary_path=kikimr_binary_path,
             nbs_binary_path=yatest_common.binary_path(nbs_binary_path))
 
@@ -287,9 +303,7 @@ def __run_test(test_case, use_rdma):
             for agent in disk_agents:
                 agent.allow_restart()
 
-        client = TClientConfig()
-        client.NbdSocketSuffix = nbd_socket_suffix
-
+        client_config.NbdSocketSuffix = nbd_socket_suffix
         config_path = __process_config(test_case.config_path, devices_per_agent)
 
         try:
@@ -299,7 +313,7 @@ def __run_test(test_case, use_rdma):
                 nbs.nbs_port,
                 nbs.mon_port,
                 nbs_log_path=nbs.stderr_file_name,
-                client_config=client,
+                client_config=client_config,
                 env_processes=disk_agents + [nbs],
             )
         finally:
