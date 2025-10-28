@@ -864,9 +864,9 @@ void TVolumeActor::HandleDiskRegistryDeviceOperationFinished(
 {
     Y_UNUSED(ctx);
 
-    const auto& record = ev->Get();
+    auto* msg = ev->Get();
 
-    DeviceOperationTracker.OnFinished(record->OperationId, GetCycleCount());
+    DeviceOperationTracker.OnFinished(msg->OperationId, GetCycleCount());
 }
 
 bool TVolumeActor::HandleRequests(STFUNC_SIG)
