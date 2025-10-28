@@ -20,7 +20,7 @@ private:
     const TString AgentID;
     const TString Path;
     const NProto::EPathAttachState NewState;
-    const ui64 PathGeneration;
+    const ui64 DiskAgentGeneration;
 
 public:
     TUpdatePathAttachStateActor(
@@ -30,7 +30,7 @@ public:
         TString agentId,
         TString path,
         NProto::EPathAttachState newState,
-        ui64 pathGeneration);
+        ui64 diskAgentGeneration);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -64,14 +64,14 @@ TUpdatePathAttachStateActor::TUpdatePathAttachStateActor(
         TString agentId,
         TString path,
         NProto::EPathAttachState newState,
-        ui64 pathGeneration)
+        ui64 diskAgentGeneration)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))
     , AgentID(std::move(agentId))
     , Path(std::move(path))
     , NewState(newState)
-    , PathGeneration(pathGeneration)
+    , DiskAgentGeneration(diskAgentGeneration)
 {}
 
 void TUpdatePathAttachStateActor::Bootstrap(const TActorContext& ctx)
@@ -82,7 +82,7 @@ void TUpdatePathAttachStateActor::Bootstrap(const TActorContext& ctx)
     request->AgentId = AgentID;
     request->Path = Path;
     request->NewState = NewState;
-    request->KnownGeneration = PathGeneration;
+    request->KnownGeneration = DiskAgentGeneration;
 
     NCloud::Send(ctx, Owner, std::move(request));
 
@@ -215,7 +215,7 @@ void TDiskRegistryActor::HandleHttpInfo_UpdatePathAttachState(
 
     switch (newState) {
         case NProto::PATH_ATTACH_STATE_ATTACHING:
-        case NProto::PATH_ATTACH_STATE_DETACHING:
+        case NProto::PATH_ATTACH_STATE_DETACHED:
             break;
         default:
             RejectHttpRequest(ctx, *requestInfo, "Invalid new state");
@@ -231,7 +231,7 @@ void TDiskRegistryActor::HandleHttpInfo_UpdatePathAttachState(
         agentId.Quote().c_str(),
         newStateRaw.c_str());
 
-    const ui64 pathGeneration = State->GetPathGeneration(agentId, path);
+    const ui64 pathGeneration = State->GetDiskAgentGeneration(agentId);
 
     auto actor = NCloud::Register<TUpdatePathAttachStateActor>(
         ctx,
@@ -251,6 +251,12 @@ void TDiskRegistryActor::RenderPathAttachStates(
     const NProto::TAgentConfig& agent) const
 {
     HTML (out) {
+
+        TAG (TH3) {
+            out << "Disk Agent Generation: "
+                << State->GetDiskAgentGeneration(agent.GetAgentId());
+        }
+
         TAG (TH3) {
             out << "Path attach states";
         }
@@ -291,23 +297,13 @@ void TDiskRegistryActor::RenderPathAttachStates(
                             case NProto::PATH_ATTACH_STATE_DETACHED:
                                 out << "<font color=red>Detached</font>";
                                 break;
-                            case NProto::PATH_ATTACH_STATE_DETACHING:
-                                out << "<font "
-                                       "color=lightcoral>Detaching</font>";
-                                break;
                             default:
                                 out << "unknown state";
                                 break;
                         }
                     }
                     TABLED () {
-                        out << State->GetPathGeneration(
-                            agent.GetAgentId(),
-                            path);
-                    }
-                    TABLED () {
                         const auto renderAttachButton =
-                            state == NProto::PATH_ATTACH_STATE_DETACHING ||
                             state == NProto::PATH_ATTACH_STATE_DETACHED;
                         const auto buttonText =
                             TString(renderAttachButton ? "Attach" : "Detach") +
@@ -315,7 +311,7 @@ void TDiskRegistryActor::RenderPathAttachStates(
                         const NProto::EPathAttachState desiriableState =
                             renderAttachButton
                                 ? NProto::PATH_ATTACH_STATE_ATTACHING
-                                : NProto::PATH_ATTACH_STATE_DETACHING;
+                                : NProto::PATH_ATTACH_STATE_DETACHED;
 
                         out << Sprintf(
                             R"(<form name="updatePathAttachState" method="POST">

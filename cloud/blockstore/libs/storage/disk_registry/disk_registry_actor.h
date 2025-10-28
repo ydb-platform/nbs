@@ -69,6 +69,10 @@ class TDiskRegistryActor final
         std::function<void(size_t index, IOutputStream& out)> DataInserter;
     };
 
+    struct TDetachRequest {
+        TRequestInfoPtr RequestInfo;
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -332,12 +336,19 @@ private:
 
     void ProcessInitialAgentRejectionPhase(const NActors::TActorContext& ctx);
 
-    void ProcessPathsToAttachDetachOnAgent(
+    void ProcessPathsToAttachOnAgent(
         const NActors::TActorContext& ctx,
         const NProto::TAgentConfig* agent,
         const THashSet<TString>& paths);
 
     void ProcessPathsToAttachDetach(const NActors::TActorContext& ctx);
+
+    void TryToDetachPaths(
+        const NActors::TActorContext& ctx,
+        const TString& agentId,
+        TVector<TString> paths,
+        TRequestInfoPtr requestInfo,
+        NProto::TAction_EType actionType);
 
 private:
     STFUNC(StateBoot);

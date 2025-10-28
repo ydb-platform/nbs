@@ -1500,8 +1500,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         ui64 attachRequests = 0;
         ui64 detachRequests = 0;
 
-        THashMap<TString, ui64> pathsToAttach;
-        THashMap<TString, ui64> pathsToDetach;
+        ui64 diskAgentGeneration = 0;
+        TVector<TString> pathsToAttach;
+        TVector<TString> pathsToDetach;
 
         Runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -1511,10 +1512,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     attachRequests += 1;
                     auto* baseEvent =
                         event->Get<TEvDiskAgent::TEvAttachPathRequest>();
-                    for (auto& pathToGen: baseEvent->Record.GetPathsToAttach())
+                    diskAgentGeneration = baseEvent->Record.GetDiskAgentGeneration();
+                    for (const auto& path: baseEvent->Record.GetPathsToAttach())
                     {
-                        pathsToAttach[pathToGen.GetPath()] =
-                            pathToGen.GetGeneration();
+                        pathsToAttach.emplace_back(path);
                     }
                 } else if (
                     event->GetTypeRewrite() ==
@@ -1523,10 +1524,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     detachRequests += 1;
                     auto* baseEvent =
                         event->Get<TEvDiskAgent::TEvDetachPathRequest>();
-                    for (auto& pathToGen:
-                         baseEvent->Record.GetPathsToDetach()) {
-                        pathsToDetach[pathToGen.GetPath()] =
-                            pathToGen.GetGeneration();
+                    diskAgentGeneration =
+                        baseEvent->Record.GetDiskAgentGeneration();
+                    for (const auto& path: baseEvent->Record.GetPathsToDetach())
+                    {
+                        pathsToDetach.emplace_back(path);
                     }
                 }
 
@@ -1542,13 +1544,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(2, pathsToAttach.size());
         UNIT_ASSERT_VALUES_EQUAL(0, pathsToDetach.size());
 
-        auto checkPathAndGeneration = [] (auto& map, auto path, ui64 gen) {
-            auto* actualGen = map.FindPtr(path);
-            UNIT_ASSERT(actualGen);
-            UNIT_ASSERT_VALUES_EQUAL(gen, *actualGen);
-        };
-        checkPathAndGeneration(pathsToAttach, "dev-1", 2);
-        checkPathAndGeneration(pathsToAttach, "dev-2", 2);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, diskAgentGeneration);
+        UNIT_ASSERT(FindPtr(pathsToAttach, "dev-1"));
+        UNIT_ASSERT(FindPtr(pathsToAttach, "dev-2"));
 
         pathsToAttach.clear();
         pathsToDetach.clear();
@@ -1567,8 +1566,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, pathsToAttach.size());
         UNIT_ASSERT_VALUES_EQUAL(2, pathsToDetach.size());
 
-        checkPathAndGeneration(pathsToDetach, "dev-1", 3);
-        checkPathAndGeneration(pathsToDetach, "dev-2", 3);
+
+        UNIT_ASSERT_VALUES_EQUAL(5, diskAgentGeneration);
+        UNIT_ASSERT(FindPtr(pathsToDetach, "dev-1"));
+        UNIT_ASSERT(FindPtr(pathsToDetach, "dev-2"));
 
         pathsToAttach.clear();
         pathsToDetach.clear();
@@ -1582,7 +1583,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(1, pathsToAttach.size());
         UNIT_ASSERT_VALUES_EQUAL(0, pathsToDetach.size());
 
-        checkPathAndGeneration(pathsToAttach, "dev-1", 4);
+        UNIT_ASSERT_VALUES_EQUAL(6, diskAgentGeneration);
+        UNIT_ASSERT(FindPtr(pathsToAttach, "dev-1"));
 
         pathsToAttach.clear();
         pathsToDetach.clear();
@@ -1603,7 +1605,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, pathsToAttach.size());
         UNIT_ASSERT_VALUES_EQUAL(1, pathsToDetach.size());
 
-        checkPathAndGeneration(pathsToDetach, "dev-1", 5);
+        UNIT_ASSERT_VALUES_EQUAL(7, diskAgentGeneration);
+        UNIT_ASSERT(FindPtr(pathsToDetach, "dev-1"));
     }
 
     Y_UNIT_TEST_F(
@@ -1654,7 +1657,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         drGeneration = 0;
 
-        RemoveHost("agent-1");
+        auto [res, timeout] = RemoveHost("agent-1");
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, res.GetCode());
         Runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
         UNIT_ASSERT_VALUES_EQUAL(2, drGeneration);
 
@@ -1701,7 +1705,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 return TTestActorRuntimeBase::DefaultObserverFunc(event);
             });
 
-        AddHost("agent-1");
+        auto [res, timeout] = AddHost("agent-1");
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, res.GetCode());
         Runtime->AdvanceCurrentTime(TDuration::Minutes(2));
         Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
 

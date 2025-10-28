@@ -306,11 +306,8 @@ bool StateTransitionAllowed(
             {NProto::PATH_ATTACH_STATE_ATTACHED,
              {NProto::PATH_ATTACH_STATE_ATTACHING}},
             {NProto::PATH_ATTACH_STATE_ATTACHING,
-             {NProto::PATH_ATTACH_STATE_DETACHING,
-              NProto::PATH_ATTACH_STATE_DETACHED}},
+             {NProto::PATH_ATTACH_STATE_DETACHED}},
             {NProto::PATH_ATTACH_STATE_DETACHED,
-             {NProto::PATH_ATTACH_STATE_DETACHING}},
-            {NProto::PATH_ATTACH_STATE_DETACHING,
              {NProto::PATH_ATTACH_STATE_ATTACHING,
               NProto::PATH_ATTACH_STATE_ATTACHED}}};
 
@@ -1240,11 +1237,9 @@ auto TDiskRegistryState::GetUnavailableDevicesForDisk(
     return unavailableDeviceIds;
 }
 
-ui64 TDiskRegistryState::GetPathGeneration(
-    const TString& agentId,
-    const TString& path) const
+ui64 TDiskRegistryState::GetDiskAgentGeneration(const TString& agentId) const
 {
-    return AgentList.GetPathGeneration(agentId, path);
+    return AgentList.GetDiskAgentGeneration(agentId);
 }
 
 NProto::TError TDiskRegistryState::UnregisterAgent(
@@ -5510,18 +5505,8 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     const ui32 maxBrokenHddPartitions =
         StorageConfig->GetMaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval();
 
-    bool hasAttachedPaths = false;
-    if (agent->GetState() != NProto::AGENT_STATE_UNAVAILABLE &&
-        StorageConfig->GetAttachDetachPathsEnabled())
-    {
-        for (const auto& [path, state]: agent->GetPathAttachStates()) {
-            hasAttachedPaths |= state != NProto::PATH_ATTACH_STATE_DETACHED;
-        }
-    }
-
     if (!hasDependentDisks &&
-        brokenPlacementGroupPartitions <= maxBrokenHddPartitions &&
-        !hasAttachedPaths)
+        brokenPlacementGroupPartitions <= maxBrokenHddPartitions)
     {
         // no dependent disks => we can return this host immediately
         timeout = TDuration::Zero();
@@ -5605,10 +5590,7 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
     if (!HasError(result) && newState == NProto::AGENT_STATE_ONLINE) {
         attachDetachPaths(true);   // attach
-    } else if (
-        result.GetCode() == E_TRY_AGAIN &&
-        newState == NProto::AGENT_STATE_WARNING)
-    {
+    } else if (!HasError(result) && newState == NProto::AGENT_STATE_WARNING) {
         attachDetachPaths(false);   // detach
     }
 
@@ -6072,8 +6054,8 @@ bool TDiskRegistryState::HasDependentDisks(
         });
 }
 
-auto TDiskRegistryState::GetPathsToAttachDetachOnRegistration(
-    const TAgentId& agentId) const -> TPathsToAttachDetachOnRegistration
+TVector<TString> TDiskRegistryState::GetPathsToAttachOnRegistration(
+    const TAgentId& agentId) const
 {
     if (!StorageConfig->GetAttachDetachPathsEnabled()) {
         return {};
@@ -6084,65 +6066,19 @@ auto TDiskRegistryState::GetPathsToAttachDetachOnRegistration(
         return {};
     }
 
-    TPathsToAttachDetachOnRegistration result;
-    auto& pathsToDetach = result.PathsToDetach;
-    auto& pathsToAttach = result.PathsToAttach;
-
     std::optional<THashSet<TString>> pathsWithDependentDisks;
 
-    auto initializePathsWithDependedDisks = [&]()
-    {
-        pathsWithDependentDisks.emplace();
-        for (const auto& device: agent->GetDevices()) {
-            if (device.GetState() != NProto::DEVICE_STATE_ERROR &&
-                FindDisk(device.GetDeviceUUID()))
-            {
-                pathsWithDependentDisks->emplace(device.GetDeviceName());
-            }
-        }
-    };
-
-    auto hasDependentDisks = [&](const TString& path)
-    {
-        if (!pathsWithDependentDisks) {
-            initializePathsWithDependedDisks();
-        }
-
-        return pathsWithDependentDisks->contains(path);
-    };
+    TVector<TString> pathsToAttach;
 
     for (const auto& [path, attachState]: agent->GetPathAttachStates()) {
-        auto generation = AgentList.GetPathGeneration(agentId, path);
-        switch (attachState) {
-            case NProto::PATH_ATTACH_STATE_ATTACHED:
-            case NProto::PATH_ATTACH_STATE_ATTACHING:
-                pathsToAttach[path] = generation;
-                break;
-            case NProto::PATH_ATTACH_STATE_DETACHED:
-                pathsToDetach[path] = generation;
-                break;
-            case NProto::PATH_ATTACH_STATE_DETACHING:
-                if (hasDependentDisks(path)) {
-                    pathsToAttach[path] = generation;
-                } else {
-                    pathsToDetach[path] = generation;
-                }
-                break;
-            default:
-                break;
+        if (attachState == NProto::PATH_ATTACH_STATE_ATTACHED ||
+            attachState == NProto::PATH_ATTACH_STATE_ATTACHING)
+        {
+            pathsToAttach.emplace_back(path);
         }
     }
 
-    for (const auto& unknownDevice: agent->GetUnknownDevices()) {
-        if (!pathsToAttach.FindPtr(unknownDevice.GetDeviceName())) {
-            pathsToDetach[unknownDevice.GetDeviceName()] =
-                AgentList.GetPathGeneration(
-                    agentId,
-                    unknownDevice.GetDeviceName());
-        }
-    }
-
-    return result;
+    return pathsToAttach;
 }
 
 auto TDiskRegistryState::AddNewDevices(
@@ -6315,16 +6251,6 @@ NProto::TError TDiskRegistryState::CmsRemoveDevice(
                 << brokenPlacementGroupPartitions);
     }
 
-    const auto& pathAttachStates = agent.GetPathAttachStates();
-    auto it = pathAttachStates.find(device.GetDeviceName());
-    if (!HasError(error) && StorageConfig->GetAttachDetachPathsEnabled() &&
-        it != pathAttachStates.end() &&
-        it->second != NProto::PATH_ATTACH_STATE_DETACHED &&
-        agent.GetState() != NProto::AGENT_STATE_UNAVAILABLE)
-    {
-        error = MakeError(E_TRY_AGAIN, TStringBuilder() << "devices attached");
-    }
-
     if (HasError(error)) {
         cmsTs = TInstant::MicroSeconds(device.GetCmsTs());
         if (!cmsTs || cmsTs + StorageConfig->GetNonReplicatedInfraTimeout() <= now) {
@@ -6436,8 +6362,8 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
     {
         AttachPathIfNeeded(db, *agent, path);
     } else if (
-        !dryRun && newState == NProto::DEVICE_STATE_WARNING &&
-        result.Error.GetCode() == E_TRY_AGAIN)
+        !dryRun && !HasError(result.Error) &&
+        newState == NProto::DEVICE_STATE_WARNING)
     {
         DetachPathIfNeeded(db, *agent, path);
     }
@@ -6946,7 +6872,7 @@ NProto::TError TDiskRegistryState::UpdatePathAttachState(
         return MakeError(S_ALREADY);
     }
 
-    auto currentGeneration = AgentList.GetPathGeneration(agentId, path);
+    auto currentGeneration = AgentList.GetDiskAgentGeneration(agentId);
     if (currentGeneration != knownGeneration) {
         return MakeError(E_FAIL, "outdated transition");
     }
@@ -6960,7 +6886,7 @@ NProto::TError TDiskRegistryState::UpdatePathAttachState(
                 NProto::EPathAttachState_Name(state).c_str()));
     }
 
-    if (state == NProto::PATH_ATTACH_STATE_DETACHING) {
+    if (state == NProto::PATH_ATTACH_STATE_DETACHED) {
         for (const auto& d: devices) {
             auto diskId = DeviceList.FindDiskId(d->GetDeviceUUID());
             if (diskId) {
@@ -6976,16 +6902,14 @@ NProto::TError TDiskRegistryState::UpdatePathAttachState(
     DeviceList.UpdateDevices(*agent, DevicePoolConfigs);
     UpdateAgent(db, *agent);
 
-    if (state == NProto::PATH_ATTACH_STATE_DETACHING ||
-        state == NProto::PATH_ATTACH_STATE_ATTACHING)
-    {
-        AgentList.AddPathToAttachDetach(agentId, path);
-        AgentList.InrementAndGetPathGeneration(agentId, path);
-    } else if (
-        state == NProto::PATH_ATTACH_STATE_ATTACHED ||
-        state == NProto::PATH_ATTACH_STATE_DETACHED)
-    {
-        AgentList.DeletePathToAttachDetach(agentId, path);
+    if (state == NProto::PATH_ATTACH_STATE_ATTACHING) {
+        AgentList.AddPathToAttach(agentId, path);
+        AgentList.InrementAndGetDiskAgentGeneration(agentId);
+    } else {
+        if (state == NProto::PATH_ATTACH_STATE_DETACHED) {
+            AgentList.InrementAndGetDiskAgentGeneration(agentId);
+        }
+        AgentList.DeletePathToAttach(agentId, path);
     }
 
     return {};
@@ -7028,7 +6952,7 @@ void TDiskRegistryState::AttachDetachPathIfNeeded(
     }
 
     const auto desirableState = attach ? NProto::PATH_ATTACH_STATE_ATTACHING
-                                       : NProto::PATH_ATTACH_STATE_DETACHING;
+                                       : NProto::PATH_ATTACH_STATE_DETACHED;
     const auto companionState = attach ? NProto::PATH_ATTACH_STATE_ATTACHED
                                        : NProto::PATH_ATTACH_STATE_DETACHED;
 
@@ -7049,8 +6973,8 @@ void TDiskRegistryState::AttachDetachPathIfNeeded(
             attach ? "attach" : "detach",
             agent.GetAgentId().Quote().c_str()));
 
-        AgentList.AddPathToAttachDetach(agent.GetAgentId(), path);
-        AgentList.InrementAndGetPathGeneration(agent.GetAgentId(), path);
+        AgentList.AddPathToAttach(agent.GetAgentId(), path);
+        AgentList.InrementAndGetDiskAgentGeneration(agent.GetAgentId());
         UpdateAgent(db, agent);
         DeviceList.UpdateDevices(agent, DevicePoolConfigs);
     }
@@ -7059,7 +6983,7 @@ void TDiskRegistryState::AttachDetachPathIfNeeded(
 const THashMap<TString, THashSet<TString>>&
 TDiskRegistryState::GetPathsToAttachDetach() const
 {
-    return AgentList.GetPathsToAttachDetach();
+    return AgentList.GetPathsToAttach();
 }
 
 auto TDiskRegistryState::FindReplicaByMigration(
