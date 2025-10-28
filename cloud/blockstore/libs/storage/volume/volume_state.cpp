@@ -620,7 +620,7 @@ void TVolumeState::SetDiskRegistryBasedPartitionActor(
 {
     auto startInfo = DiskRegistryBasedPartitionActor.GetStartInfo();
     if (!actors.Empty()) {
-        startInfo.Start();
+        startInfo.OnStart();
     }
     DiskRegistryBasedPartitionActor = std::move(actors);
     DiskRegistryBasedPartitionActor.UpdateStartInfo(startInfo);

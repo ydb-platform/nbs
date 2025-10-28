@@ -22,8 +22,8 @@ struct TPartitionStartInfo
     std::optional<TInstant> StartTime;
     ui32 RestartCount = 0;
 
-    void Start();
-    void Stop();
+    void OnStart();
+    void OnStop();
 };
 
 // Used to store the partition-related actors, the actor of the partitions

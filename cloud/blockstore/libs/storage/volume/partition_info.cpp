@@ -4,13 +4,13 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionStartInfo::Start()
+void TPartitionStartInfo::OnStart()
 {
     StartTime = TInstant::Now();
     ++RestartCount;
 }
 
-void TPartitionStartInfo::Stop()
+void TPartitionStartInfo::OnStop()
 {
     StartTime = std::nullopt;
 }
@@ -34,7 +34,7 @@ void TActorsStack::Push(NActors::TActorId actorId, EActorPurpose purpose)
 void TActorsStack::Clear()
 {
     Actors.clear();
-    StartInfo.Stop();
+    StartInfo.OnStop();
 }
 
 bool TActorsStack::Empty() const
@@ -102,7 +102,7 @@ void TPartitionInfo::Init(const NActors::TActorId& bootstrapper)
 void TPartitionInfo::SetStarted(TActorsStack actors)
 {
     auto startInfo = RelatedActors.GetStartInfo();
-    startInfo.Start();
+    startInfo.OnStart();
     RelatedActors = std::move(actors);
     RelatedActors.UpdateStartInfo(startInfo);
 
