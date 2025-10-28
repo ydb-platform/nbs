@@ -1672,13 +1672,15 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             UNIT_ASSERT_VALUES_EQUAL(1, result.TabletBootInfos.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 FakeTablet2,
-                result.TabletBootInfos[0].StorageInfo->TabletID);
+                result.TabletBootInfos[0].StorageInfoProto.GetTabletID());
             TVector<TVector<ui64>> actualGroupIds;
-            for (auto& channel: result.TabletBootInfos[0].StorageInfo->Channels)
+            for (auto& channel:
+                 result.TabletBootInfos[0].StorageInfoProto.GetChannels())
             {
                 actualGroupIds.emplace_back();
-                for (auto& historyEntry: channel.History) {
-                    actualGroupIds.back().emplace_back(historyEntry.GroupID);
+                for (auto& historyEntry: channel.GetHistory()) {
+                    actualGroupIds.back().emplace_back(
+                        historyEntry.GetGroupID());
                 }
             }
 

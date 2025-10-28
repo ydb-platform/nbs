@@ -241,17 +241,20 @@ private:
         auto tabletBootInfos = std::move(ev->Get()->TabletBootInfos);
         THashSet<ui64> groupIds;
         for (const auto& tabletBootInfo: tabletBootInfos) {
-            for (const auto& channel: tabletBootInfo.StorageInfo->Channels) {
+            for (const auto& channel:
+                 tabletBootInfo.StorageInfoProto.GetChannels())
+            {
                 auto historyEntries =
-                    channel.History | std::views::reverse |
+                    channel.GetHistory() | std::views::reverse |
                     std::views::filter(
                         [&](const auto& el)
-                        { return groupIds.insert(el.GroupID).second; }) |
+                        { return groupIds.insert(el.GetGroupID()).second; }) |
                     std::views::take(GroupsPerChannelToWarmup);
                 for (const auto& historyEntry: historyEntries) {
                     NCloud::Send(
                         ctx,
-                        NKikimr::MakeBlobStorageProxyID(historyEntry.GroupID),
+                        NKikimr::MakeBlobStorageProxyID(
+                            historyEntry.GetGroupID()),
                         std::make_unique<NKikimr::TEvBlobStorage::TEvStatus>(
                             TInstant::Max()));
                 }
