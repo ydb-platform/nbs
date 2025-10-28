@@ -6,7 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/common"
@@ -21,7 +21,7 @@ import (
 type createFilesystemBackupFromFilesystemTask struct {
 	scheduler  tasks.Scheduler
 	storage    resources.Storage
-	nbsFactory nbs.Factory
+	nfsFactory nfs.Factory
 	request    *protos.CreateFilesystemBackupFromFilesystemRequest
 	state      *protos.CreateFilesystemBackupFromFilesystemTaskState
 }
@@ -44,14 +44,14 @@ func (t *createFilesystemBackupFromFilesystemTask) Load(request, state []byte) e
 func (t *createFilesystemBackupFromFilesystemTask) run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	nbsClient nbs.Client,
+	nfsClient nfs.Client,
 ) (string, error) {
 
 	filesystem := t.request.SrcFilesystem
 
 	selfTaskID := execCtx.GetTaskID()
 
-	filesystemParams, err := nbsClient.DescribeFilesystem(ctx, filesystem.FilesystemId)
+	filesystemParams, err := nfsClient.DescribeFilesystem(ctx, filesystem.FilesystemId)
 	if err != nil {
 		return "", err
 	}
@@ -63,7 +63,7 @@ func (t *createFilesystemBackupFromFilesystemTask) run(
 		CreateRequest:     t.request,
 		CreateTaskID:      selfTaskID,
 		CreatingAt:        time.Now(),
-		CreatedBy:         "", // TODO: extract CreatedBy from execCtx.
+		CreatedBy:         "",
 		UseDataplaneTasks: true,
 	})
 	if err != nil {
@@ -79,7 +79,7 @@ func (t *createFilesystemBackupFromFilesystemTask) run(
 		ctx,
 		execCtx,
 		t.scheduler,
-		nbsClient,
+		nfsClient,
 		t.request.SrcFilesystem,
 		t.request.DstFilesystemBackupId,
 		selfTaskID,
@@ -152,26 +152,26 @@ func (t *createFilesystemBackupFromFilesystemTask) Run(
 
 	filesystem := t.request.SrcFilesystem
 
-	nbsClient, err := t.nbsFactory.GetClient(ctx, filesystem.ZoneId)
+	nfsClient, err := t.nfsFactory.NewClient(ctx, filesystem.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	checkpointID, err := t.run(ctx, execCtx, nbsClient)
+	checkpointID, err := t.run(ctx, execCtx, nfsClient)
 	if err != nil {
 		return err
 	}
 
-	filesystemParams, err := nbsClient.DescribeFilesystem(ctx, t.request.SrcFilesystem.FilesystemId)
+	filesystemParams, err := nfsClient.DescribeFilesystem(ctx, t.request.SrcFilesystem.FilesystemId)
 	if err != nil {
 		return err
 	}
 
 	if filesystemParams.IsDiskRegistryBasedFilesystem {
-		return nbsClient.DeleteCheckpointFilesystem(ctx, filesystem.FilesystemId, checkpointID)
+		return nfsClient.DeleteCheckpointFilesystem(ctx, filesystem.FilesystemId, checkpointID)
 	}
 
-	return nbsClient.DeleteCheckpointDataFilesystem(ctx, filesystem.FilesystemId, checkpointID)
+	return nfsClient.DeleteCheckpointDataFilesystem(ctx, filesystem.FilesystemId, checkpointID)
 }
 
 func (t *createFilesystemBackupFromFilesystemTask) Cancel(
@@ -180,7 +180,7 @@ func (t *createFilesystemBackupFromFilesystemTask) Cancel(
 ) error {
 
 	filesystem := t.request.SrcFilesystem
-	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.SrcFilesystem.ZoneId)
+	nbsClient, err := t.nfsFactory.GetClient(ctx, t.request.SrcFilesystem.ZoneId)
 	if err != nil {
 		return err
 	}
