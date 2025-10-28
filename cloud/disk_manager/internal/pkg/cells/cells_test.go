@@ -538,7 +538,7 @@ func TestReplaceZoneIdWithCellIdInDiskMeta(t *testing.T) {
 		ZoneID: cellID1,
 	}, nil)
 	storage.On("GetDiskMeta", ctx, "disk4").Return(
-		(*resources.DiskMeta)(nil), 
+		(*resources.DiskMeta)(nil),
 		nil,
 	)
 

@@ -57,11 +57,11 @@ func (s *cellSelector) ReplaceZoneIdWithCellIdInDiskMeta(
 	if err != nil {
 		return nil, err
 	}
-    if diskMeta == nil {
-	    return nil, errors.NewNonCancellableErrorf(
+	if diskMeta == nil {
+		return nil, errors.NewNonCancellableErrorf(
 			"no such disk: %v",
 			disk.DiskId,
-		)	
+		)
 	}
 
 	// A correct zone ID must be provided; using a cell ID will cause a failure.
