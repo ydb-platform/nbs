@@ -5,6 +5,11 @@ Vertices {
             BlockSize: 4096
             StorageMediaKind: STORAGE_MEDIA_SSD_MIRROR2
         }
+        StartEndpointRequest {
+            IpcType: IPC_GRPC
+            VolumeAccessMode: VOLUME_ACCESS_READ_WRITE
+            VolumeMountMode: VOLUME_MOUNT_LOCAL
+        }
         ArtificialLoadSpec {
             Ranges {
                 Start: 200000

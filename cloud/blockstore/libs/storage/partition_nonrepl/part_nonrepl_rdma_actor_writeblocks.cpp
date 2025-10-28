@@ -36,8 +36,7 @@ NProto::TWriteDeviceBlocksRequest CreateWriteDeviceBlocksRequest(
     const TDeviceRequest& deviceRequest,
     const NProto::TWriteBlocksRequest& sourceRequest,
     const TNonreplicatedPartitionConfigPtr& partConfig,
-    bool assignIdToWriteAndZeroRequestsEnabled,
-    ui32 requestIndex)
+    bool assignIdToWriteAndZeroRequestsEnabled)
 {
     NProto::TWriteDeviceBlocksRequest request;
     request.MutableHeaders()->CopyFrom(sourceRequest.GetHeaders());
@@ -49,8 +48,9 @@ NProto::TWriteDeviceBlocksRequest CreateWriteDeviceBlocksRequest(
             sourceRequest.GetHeaders().GetVolumeRequestId());
     }
 
-    if (requestIndex < sourceRequest.ChecksumsSize()) {
-        const auto& checksum = sourceRequest.GetChecksums(requestIndex);
+    if (deviceRequest.RelativeDeviceIdx < sourceRequest.ChecksumsSize()) {
+        const auto& checksum =
+            sourceRequest.GetChecksums(deviceRequest.RelativeDeviceIdx);
         if (checksum.GetByteCount() ==
             deviceRequest.BlockRange.Size() * partConfig->GetBlockSize())
         {
@@ -156,7 +156,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         ui32 errorCode,
         TString errorReason)
     {
-        auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+        auto response = std::make_unique<TEvService::TEvWriteBlocksResponse>(
             PartConfig->MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
@@ -221,12 +221,21 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
     TRequestContext sentRequestCtx;
 
-    if (deviceRequests.size() == 1) {
-        CombineChecksumsInPlace(*msg->Record.MutableChecksums());
+    // Single device request can either indicate that the request is over a
+    // single device. In that case we should combine checksums. Or it can
+    // indicate that this partition has some "holes" in its config (e.g. target
+    // of a migration can have only one device).
+    if (deviceRequests.size() == 1 && msg->Record.ChecksumsSize() > 1) {
+        const ui32 idx = deviceRequests[0].RelativeDeviceIdx;
+        const ui32 checksumBlockCount =
+            msg->Record.GetChecksums(idx).GetByteCount() /
+            PartConfig->GetBlockSize();
+        if (checksumBlockCount < deviceRequests[0].BlockRange.Size()) {
+            CombineChecksumsInPlace(*msg->Record.MutableChecksums());
+        }
     }
 
-    for (ui32 i = 0; i < deviceRequests.size(); ++i) {
-        const auto& deviceRequest = deviceRequests[i];
+    for (const auto& deviceRequest: deviceRequests) {
         auto ep = AgentId2Endpoint[deviceRequest.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
 
@@ -234,8 +243,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             deviceRequest,
             msg->Record,
             PartConfig,
-            AssignIdToWriteAndZeroRequestsEnabled,
-            i);
+            AssignIdToWriteAndZeroRequestsEnabled);
 
         auto context = std::make_unique<TDeviceRequestRdmaContext>();
         context->DeviceIdx = deviceRequest.DeviceIdx;
@@ -383,11 +391,22 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
     TVector<TDeviceRequestInfo> requests;
     TRequestContext sentRequestCtx;
 
-    if (deviceRequests.size() == 1) {
+    // Single device request can either indicate that the request is over a
+    // single device. In that case we should combine checksums. Or it can
+    // indicate that this partition has some "holes" in its config (e.g. target
+    // of a migration can have only one device).
+    if (deviceRequests.size() == 1 && msg->Record.ChecksumsSize() > 1) {
+        const ui32 idx = deviceRequests[0].RelativeDeviceIdx;
+        const ui32 checksumBlockCount =
+            msg->Record.GetChecksums(idx).GetByteCount() /
+            PartConfig->GetBlockSize();
+        if (checksumBlockCount < deviceRequests[0].BlockRange.Size()) {
         CombineChecksumsInPlace(*msg->Record.MutableChecksums());
+}
     }
 
-    ui64 blocks = 0;
+    ui64 blocks =
+        deviceRequests[0].BlockRange.Start - msg->Record.GetStartIndex();
     for (ui32 i = 0; i < deviceRequests.size(); ++i) {
         const auto& deviceRequest = deviceRequests[i];
         auto ep = AgentId2Endpoint[deviceRequest.Device.GetAgentId()];
@@ -399,8 +418,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             deviceRequest,
             msg->Record,
             PartConfig,
-            AssignIdToWriteAndZeroRequestsEnabled,
-            i);
+            AssignIdToWriteAndZeroRequestsEnabled);
 
         auto context = std::make_unique<TDeviceRequestRdmaContext>();
         context->DeviceIdx = deviceRequest.DeviceIdx;
@@ -440,14 +458,15 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
+auto dataSpan = TBlockDataRefSpan(
+            sglist.begin() + blocks,
+            deviceRequest.DeviceBlockRange.Size());
         NRdma::TProtoMessageSerializer::SerializeWithData(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             flags,
             request,
-            TBlockDataRefSpan(
-                sglist.begin() + blocks,
-                deviceRequest.DeviceBlockRange.Size()));
+            dataSpan);
 
         blocks += deviceRequest.DeviceBlockRange.Size();
 

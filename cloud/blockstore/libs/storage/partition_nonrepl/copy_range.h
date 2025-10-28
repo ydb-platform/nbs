@@ -62,7 +62,7 @@ private:
     void ReadBlocks(const NActors::TActorContext& ctx);
     void WriteBlocks(
         const NActors::TActorContext& ctx,
-        NProto::TIOVector blocks);
+        NProto::TReadBlocksResponse& readResponse);
     void ZeroBlocks(const NActors::TActorContext& ctx);
     void Done(const NActors::TActorContext& ctx, NProto::TError error);
 

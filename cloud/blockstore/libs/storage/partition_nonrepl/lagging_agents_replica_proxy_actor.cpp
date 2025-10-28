@@ -172,7 +172,8 @@ void TSplitRequestSenderActor<TMethod>::Done(const NActors::TActorContext& ctx)
 template <typename TMethod>
 void CopyCommonRequestData(
     const typename TMethod::TRequest::TPtr& ev,
-    typename TMethod::TRequest& dst)
+    typename TMethod::TRequest& dst,
+    size_t requestIndex)
 {
     const auto* msg = ev->Get();
 
@@ -188,6 +189,12 @@ void CopyCommonRequestData(
     dst.Record.SetDiskId(msg->Record.GetDiskId());
     dst.Record.SetFlags(msg->Record.GetFlags());
     dst.Record.SetSessionId(msg->Record.GetSessionId());
+    if constexpr (IsExactlyWriteMethod<TMethod>) {
+        if (requestIndex < msg->Record.ChecksumsSize()) {
+            *dst.Record.MutableChecksums()->Add() =
+                msg->Record.GetChecksums(requestIndex);
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -466,9 +473,10 @@ TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitR
         PartConfig->GetBlockSize(),
         msg->Record);
 
-    for (const auto& deviceRequest: deviceRequests) {
+    for (size_t i = 0; i < deviceRequests.size(); ++i) {
+        const auto& deviceRequest = deviceRequests[i];
         auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
-        CopyCommonRequestData<TEvService::TWriteBlocksMethod>(ev, *request);
+        CopyCommonRequestData<TEvService::TWriteBlocksMethod>(ev, *request, i);
 
         request->Record.SetStartIndex(deviceRequest.BlockRange.Start);
         builder.BuildNextRequest(request->Record);
@@ -500,12 +508,14 @@ TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitR
 
     TSgListBlockRange src(guard.Get(), msg->Record.BlockSize);
 
-    for (const auto& deviceRequest: deviceRequests) {
+    for (size_t i = 0; i < deviceRequests.size(); ++i) {
+        const auto& deviceRequest = deviceRequests[i];
         auto request =
             std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
         CopyCommonRequestData<TEvService::TWriteBlocksLocalMethod>(
             ev,
-            *request);
+            *request,
+            i);
 
         request->Record.SetStartIndex(deviceRequest.BlockRange.Start);
         request->Record.BlocksCount = deviceRequest.BlockRange.Size();
@@ -533,9 +543,10 @@ TResultOrError<TVector<TSplitRequest>> TLaggingAgentsReplicaProxyActor::DoSplitR
     const TVector<TDeviceRequest>& deviceRequests)
 {
     TVector<TSplitRequest> result;
-    for (const auto& deviceRequest: deviceRequests) {
+    for (size_t i = 0; i < deviceRequests.size(); ++i) {
+        const auto& deviceRequest = deviceRequests[i];
         auto request = std::make_unique<TEvService::TEvZeroBlocksRequest>();
-        CopyCommonRequestData<TEvService::TZeroBlocksMethod>(ev, *request);
+        CopyCommonRequestData<TEvService::TZeroBlocksMethod>(ev, *request, i);
 
         request->Record.SetStartIndex(deviceRequest.BlockRange.Start);
         request->Record.SetBlocksCount(deviceRequest.BlockRange.Size());

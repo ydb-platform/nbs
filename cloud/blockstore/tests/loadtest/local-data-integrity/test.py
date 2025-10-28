@@ -8,7 +8,8 @@ from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig, TChaosConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
     TKikimrServiceConfig, TChecksumFlags
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
-from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD, STORAGE_MEDIA_SSD_MIRROR2
+from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD, \
+    STORAGE_MEDIA_SSD_MIRROR2, DIVP_ENABLED_FORCED
 
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
@@ -364,7 +365,7 @@ def __run_test(test_case):
                 devices_per_agent,
                 disk_agent_config_patch=TDiskAgentConfig(
                     DedicatedDiskAgent=True,
-                    EnableDataIntegrityValidationForDrBasedDisks=True,
+                    DataIntegrityValidationPolicyForDrBasedDisks=DIVP_ENABLED_FORCED,
                     ChaosConfig=chaos_config),
                 agent_count=test_case.agent_count,
             )

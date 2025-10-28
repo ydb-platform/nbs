@@ -305,46 +305,46 @@ public:
 private:
     NProto::TError ExecuteRequest(const TActorContext& ctx)
     {
-        auto [proto, error] =
+        auto [res, error] =
             TBlockStoreProtocol::Serializer()->Parse(Request->RequestBuffer);
         if (HasError(error)) {
             return error;
         }
 
-        switch (proto.MsgId) {
+        switch (res.MsgId) {
             case TBlockStoreProtocol::ReadDeviceBlocksRequest:
-                Y_ABORT_IF(proto.Data);
+                Y_ABORT_IF(res.Data);
                 return SendReadBlocksRequest(
                     ctx,
                     std::move(static_cast<NProto::TReadDeviceBlocksRequest&>(
-                        *proto.Proto)));
+                        *res.Proto)));
 
             case TBlockStoreProtocol::WriteDeviceBlocksRequest:
                 return SendWriteBlocksRequest(
                     ctx,
                     std::move(static_cast<NProto::TWriteDeviceBlocksRequest&>(
-                        *proto.Proto)),
-                    proto.Data);
+                        *res.Proto)),
+                    res.Data);
 
             case TBlockStoreProtocol::ZeroDeviceBlocksRequest:
-                Y_ABORT_IF(proto.Data);
+                Y_ABORT_IF(res.Data);
                 return SendZeroBlocksRequest(
                     ctx,
                     std::move(static_cast<NProto::TZeroDeviceBlocksRequest&>(
-                        *proto.Proto)));
+                        *res.Proto)));
 
             case TBlockStoreProtocol::ChecksumDeviceBlocksRequest:
-                Y_ABORT_IF(proto.Data);
+                Y_ABORT_IF(res.Data);
                 return SendChecksumBlocksRequest(
                     ctx,
                     std::move(
                         static_cast<NProto::TChecksumDeviceBlocksRequest&>(
-                            *proto.Proto)));
+                            *res.Proto)));
 
             default:
                 return MakeError(
                     E_NOT_IMPLEMENTED,
-                    TStringBuilder() << "MsgId: " << proto.MsgId);
+                    TStringBuilder() << "MsgId: " << res.MsgId);
         }
     }
 

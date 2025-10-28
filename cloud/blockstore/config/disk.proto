@@ -2,6 +2,7 @@ syntax = "proto2";
 
 import "cloud/blockstore/config/rdma.proto";
 import "cloud/blockstore/config/spdk.proto";
+import "cloud/blockstore/public/api/protos/disk.proto";
 
 package NCloud.NBlockStore.NProto;
 
@@ -347,10 +348,14 @@ message TDiskAgentConfig
 
     // Enables data integrity validation for the DR-based disks.
     // See "EnableDataIntegrityClient" in server.proto for more details.
+    // Deprecated. Use "DataIntegrityValidationPolicyForDrBasedDisks" instead.
     optional bool EnableDataIntegrityValidationForDrBasedDisks = 44;
 
     // DANGER! It is used to generate errors during chaos testing.
     optional TChaosConfig ChaosConfig = 45;
+
+    // Allows to control data integrity validation for DR-based disks.
+    optional EDataIntegrityValidationPolicy DataIntegrityValidationPolicyForDrBasedDisks = 46;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

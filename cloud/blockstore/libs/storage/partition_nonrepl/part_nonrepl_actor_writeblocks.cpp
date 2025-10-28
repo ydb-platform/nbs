@@ -90,9 +90,18 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
         PartConfig->GetBlockSize(),
         Request);
 
-
-    if (DeviceRequests.size() == 1) {
-        CombineChecksumsInPlace(*Request.MutableChecksums());
+    // Single device request can either indicate that the request is over a
+    // single device. In that case we should combine checksums. Or it can
+    // indicate that this partition has some "holes" in its config (e.g. target
+    // of a migration can have only one device).
+    if (DeviceRequests.size() == 1 && Request.ChecksumsSize() > 1) {
+        const ui32 idx = DeviceRequests[0].RelativeDeviceIdx;
+        const ui32 checksumBlockCount =
+            Request.GetChecksums(idx).GetByteCount() /
+            PartConfig->GetBlockSize();
+        if (checksumBlockCount < DeviceRequests[0].BlockRange.Size()) {
+            CombineChecksumsInPlace(*Request.MutableChecksums());
+        }
     }
 
     ui32 index = 0;
@@ -107,8 +116,9 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
             request->Record.SetVolumeRequestId(
                 Request.GetHeaders().GetVolumeRequestId());
         }
-        if (index < Request.ChecksumsSize()) {
-            const auto& checksum = Request.GetChecksums(index);
+        if (deviceRequest.RelativeDeviceIdx < Request.ChecksumsSize()) {
+            const auto& checksum =
+                Request.GetChecksums(deviceRequest.RelativeDeviceIdx);
             if (checksum.GetByteCount() ==
                 deviceRequest.BlockRange.Size() * PartConfig->GetBlockSize())
             {

@@ -181,7 +181,7 @@ struct TStorageContext
 
     TFile File;
     const bool DirectIO;
-    const bool EnableDataIntegrityValidation;
+    const NProto::EDataIntegrityValidationPolicy DataIntegrityValidationPolicy;
 
     TStorageContext(
             ITaskQueuePtr submitQueue,
@@ -192,7 +192,7 @@ struct TStorageContext
             ui64 blockCount,
             TFile file,
             bool directIO,
-            bool enableChecksumValidation)
+            NProto::EDataIntegrityValidationPolicy dataIntegrityValidationPolicy)
         : SubmitQueue(std::move(submitQueue))
         , FileIOService(std::move(fileIO))
         , NvmeManager(std::move(nvmeManager))
@@ -201,7 +201,7 @@ struct TStorageContext
         , StorageBlockCount(blockCount)
         , File(std::move(file))
         , DirectIO(directIO)
-        , EnableDataIntegrityValidation(enableChecksumValidation)
+        , DataIntegrityValidationPolicy(dataIntegrityValidationPolicy)
     {}
 };
 
@@ -600,7 +600,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
             fileOffset,
             byteCount)
             .GetFuture();
-    if (!EnableDataIntegrityValidation) {
+    if (DataIntegrityValidationPolicy == NProto::DIVP_DISABLED) {
         return future;
     }
 
@@ -645,7 +645,10 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
         return MakeFuture(response);
     }
 
-    if (EnableDataIntegrityValidation && request->ChecksumsSize() > 0) {
+    if (DataIntegrityValidationPolicy == NProto::DIVP_ENABLED_FORCED ||
+        (DataIntegrityValidationPolicy == NProto::DIVP_ENABLED &&
+         request->ChecksumsSize() > 0))
+    {
         if (request->ChecksumsSize() != 1) {
             NProto::TWriteBlocksLocalResponse response;
             ui32 flags = 0;
@@ -837,7 +840,7 @@ private:
     IFileIOServiceProviderPtr FileIOServiceProvider;
     INvmeManagerPtr NvmeManager;
     const bool DirectIO;
-    const bool EnableDataIntegrityValidation;
+    const NProto::EDataIntegrityValidationPolicy DataIntegrityValidationPolicy;
 
 public:
     explicit TLocalStorageProvider(
@@ -845,12 +848,12 @@ public:
             IFileIOServiceProviderPtr fileIOProvider,
             INvmeManagerPtr nvmeManager,
             bool directIO,
-            bool enableChecksumValidation)
+            NProto::EDataIntegrityValidationPolicy dataIntegrityValidationPolicy)
         : SubmitQueue(std::move(submitQueue))
         , FileIOServiceProvider(std::move(fileIOProvider))
         , NvmeManager(std::move(nvmeManager))
         , DirectIO(directIO)
-        , EnableDataIntegrityValidation(enableChecksumValidation)
+        , DataIntegrityValidationPolicy(dataIntegrityValidationPolicy)
     {}
 
     TFuture<IStoragePtr> CreateStorage(
@@ -883,9 +886,9 @@ public:
             blockSize,
             volume.GetStartIndex(),
             volume.GetBlocksCount(),
-            TFile {filePath, flags},
+            TFile{filePath, flags},
             DirectIO,
-            EnableDataIntegrityValidation);
+            DataIntegrityValidationPolicy);
 
         return MakeFuture<IStoragePtr>(storage);
     };
@@ -911,7 +914,7 @@ IStorageProviderPtr CreateLocalStorageProvider(
         std::move(fileIOProvider),
         std::move(nvmeManager),
         params.DirectIO,
-        params.EnableDataIntegrityValidation);
+        params.DataIntegrityValidationPolicy);
 }
 
 }   // namespace NCloud::NBlockStore::NServer
