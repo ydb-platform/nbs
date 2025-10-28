@@ -1761,8 +1761,22 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                         out << State->GetConfig().GetBlocksCount();
                     }
                     TABLED () {
+                        const auto actorId =
+                            State->GetDiskRegistryBasedPartitionActor();
+                        if (actorId && NrdStartTime) {
+                            out << FormatDuration(
+                                TInstant::Now() - *NrdStartTime);
+                        } else if (NrdStartTime) {
+                            out << "Stopped ("
+                                << FormatDuration(
+                                       TInstant::Now() - *NrdStartTime)
+                                << ")";
+                        } else {
+                            out << "Not running";
+                        }
                     }
                     TABLED () {
+                        out << PartitionRestartCounter;
                     }
                 }
             }

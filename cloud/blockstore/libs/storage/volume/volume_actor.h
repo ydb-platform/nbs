@@ -396,6 +396,7 @@ private:
     // even if the partitions are deleted in a different order.
     TDeque<TPartitionDestroyCallback> WaitForPartitionDestroy;
     ui64 PartitionRestartCounter = 0;
+    std::optional<TInstant> NrdStartTime;
 
     TVector<ui64> GCCompletedPartitions;
 

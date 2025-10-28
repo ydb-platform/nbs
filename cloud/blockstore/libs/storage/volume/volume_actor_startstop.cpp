@@ -301,6 +301,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     State->SetDiskRegistryBasedPartitionActor(
         std::move(actorStack),
         nonreplicatedConfig);
+
+    NrdStartTime = TInstant::Now();
 }
 
 TActorsStack TVolumeActor::WrapWithShadowDiskActorIfNeeded(
