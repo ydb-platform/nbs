@@ -1717,6 +1717,20 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                 }
             }
 
+            auto renderStartInfo = [&](const TPartitionStartInfo& startInfo)
+            {
+                TABLED () {
+                    if (auto startTime = startInfo.StartTime) {
+                        out << FormatDuration(TInstant::Now() - *startTime);
+                    } else {
+                        out << "Not running";
+                    }
+                }
+                TABLED () {
+                    out << startInfo.RestartCount;
+                }
+            };
+
             for (const auto& partition: State->GetPartitions()) {
                 TABLER() {
                     TABLED() {
@@ -1732,16 +1746,7 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     TABLED() {
                         out << partition.PartitionConfig.GetBlocksCount();
                     }
-                    TABLED () {
-                        if (auto startTime = partition.GetStartTime()) {
-                            out << FormatDuration(TInstant::Now() - *startTime);
-                        } else {
-                            out << "Not running";
-                        }
-                    }
-                    TABLED () {
-                        out << partition.GetRestartCount();
-                    }
+                    renderStartInfo(partition.GetStartInfo());
                 }
             }
 
@@ -1760,10 +1765,8 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     TABLED() {
                         out << State->GetConfig().GetBlocksCount();
                     }
-                    TABLED () {
-                    }
-                    TABLED () {
-                    }
+                    renderStartInfo(
+                        State->GetDiskRegistryBasedPartitionStartInfo());
                 }
             }
         }
