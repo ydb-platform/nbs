@@ -62,6 +62,8 @@ public:
     TIndexNodePtr CreateSymlink(const TString& name, const TString& target);
     TIndexNodePtr CreateSocket(const TString& name, int flags);
     TIndexNodePtr CreateFifo(const TString& name, int flags);
+    TIndexNodePtr CreateCharDevice(const TString& name, int flags, dev_t dev);
+    TIndexNodePtr CreateBlockDevice(const TString& name, int flags, dev_t dev);
 
     TVector<NLowLevel::TDirEntry> List(bool ignoreErrors);
     NLowLevel::TListDirResult

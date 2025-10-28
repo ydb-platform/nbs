@@ -197,6 +197,20 @@ void MkFifoAt(const TFileHandle& handle, const TString& name, int mode)
             << LastSystemErrorText());
 }
 
+void MkCharDeviceAt(const TFileHandle& handle, const TString& name, int mode, dev_t dev) {
+    int res = mknodat(Fd(handle), name.data(), mode | S_IFCHR, dev);
+    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
+        << "failed to create char device: " << name.Quote()
+        << ": " << LastSystemErrorText());
+}
+
+void MkBlockDeviceAt(const TFileHandle& handle, const TString& name, int mode, dev_t dev) {
+    int res = mknodat(Fd(handle), name.data(), mode | S_IFBLK, dev);
+    Y_ENSURE_EX(res != -1, TServiceError(GetSystemErrorCode())
+        << "failed to create block device: " << name.Quote()
+        << ": " << LastSystemErrorText());
+}
+
 void LinkAt(
     const TFileHandle& node,
     const TFileHandle& parent,

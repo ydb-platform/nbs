@@ -114,6 +114,8 @@ TFileHandle OpenAt(
 void MkDirAt(const TFileHandle& handle, const TString& name, int mode);
 void MkSockAt(const TFileHandle& handle, const TString& name, int mode);
 void MkFifoAt(const TFileHandle& handle, const TString& name, int mode);
+void MkCharDeviceAt(const TFileHandle& handle, const TString& name, int mode, dev_t dev);
+void MkBlockDeviceAt(const TFileHandle& handle, const TString& name, int mode, dev_t dev);
 
 void RenameAt(
     const TFileHandle& handle,

@@ -105,7 +105,11 @@ void ConvertStats(const TFileStat& stat, NProto::TNodeAttr& node)
         node.SetType(NProto::E_SOCK_NODE);
     } else if (S_ISFIFO(stat.Mode)) {
         node.SetType(NProto::E_FIFO_NODE);
-    } else {
+     } else if (S_ISCHR(stat.Mode)) {
+        node.SetType(NProto::E_CHARDEV_NODE);
+     } else if (S_ISBLK(stat.Mode)) {
+        node.SetType(NProto::E_BLOCKDEV_NODE);
+     }  else {
         ythrow TServiceError(E_IO) << "invalid stats";
     }
 

@@ -60,6 +60,26 @@ TIndexNodePtr TIndexNode::CreateFifo(const TString& name, int mode)
     return std::make_shared<TIndexNode>(stat.INode, std::move(node));
 }
 
+TIndexNodePtr TIndexNode::CreateCharDevice(const TString& name, int mode, dev_t dev)
+{
+    NLowLevel::MkCharDeviceAt(NodeFd, name, mode, dev);
+
+    auto node = NLowLevel::OpenAt(NodeFd, name, O_PATH, 0);
+    auto stat = NLowLevel::Stat(node);
+
+    return std::make_shared<TIndexNode>(stat.INode, std::move(node));
+}
+
+TIndexNodePtr TIndexNode::CreateBlockDevice(const TString& name, int mode, dev_t dev)
+{
+    NLowLevel::MkBlockDeviceAt(NodeFd, name, mode, dev);
+
+    auto node = NLowLevel::OpenAt(NodeFd, name, O_PATH, 0);
+    auto stat = NLowLevel::Stat(node);
+
+    return std::make_shared<TIndexNode>(stat.INode, std::move(node));
+}
+
 TIndexNodePtr TIndexNode::CreateLink(const TIndexNode& parent, const TString& name)
 {
     NLowLevel::LinkAt(NodeFd, parent.NodeFd, name);
