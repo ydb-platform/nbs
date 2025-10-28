@@ -123,8 +123,9 @@ IStorageProviderPtr CreateStorageProvider(
                     .DirectIO = !config.GetDirectIoFlagDisabled(),
                     .UseSubmissionThread =
                         config.GetUseLocalStorageSubmissionThread(),
-                    .EnableDataIntegrityValidation =
-                        config.GetEnableDataIntegrityValidationForDrBasedDisks(),
+                    .DataIntegrityValidationPolicy =
+                        config
+                            .GetDataIntegrityValidationPolicyForDrBasedDisks(),
                 });
             break;
         }
@@ -142,8 +143,9 @@ IStorageProviderPtr CreateStorageProvider(
                     // Each io_uring service already has its own submission
                     // thread, so we don't need one here
                     .UseSubmissionThread = false,
-                    .EnableDataIntegrityValidation =
-                        config.GetEnableDataIntegrityValidationForDrBasedDisks(),
+                    .DataIntegrityValidationPolicy =
+                        config
+                            .GetDataIntegrityValidationPolicyForDrBasedDisks(),
                 });
             break;
         }
