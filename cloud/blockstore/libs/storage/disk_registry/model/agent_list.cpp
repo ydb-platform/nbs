@@ -108,10 +108,8 @@ TAgentList::TAgentList(
 
     for (const auto& agents: Agents) {
         for (const auto& [path, state]: agents.GetPathAttachStates()) {
-            if (state == NProto::PATH_ATTACH_STATE_DETACHING ||
-                state == NProto::PATH_ATTACH_STATE_ATTACHING)
-            {
-                AddPathToAttachDetach(agents.GetAgentId(), path);
+            if (state == NProto::PATH_ATTACH_STATE_ATTACHING) {
+                AddPathToAttach(agents.GetAgentId(), path);
             }
         }
     }
@@ -658,8 +656,8 @@ void TAgentList::RemoveAgentByIdx(size_t index)
 
     auto& agent = Agents.back();
 
-    PathGenerations.erase(agent.GetAgentId());
-    PathsToAttachDetach.erase(agent.GetAgentId());
+    DiskAgentGenerations.erase(agent.GetAgentId());
+    PathsToAttach.erase(agent.GetAgentId());
     AgentIdToIdx.erase(agent.GetAgentId());
     NodeIdToIdx.erase(agent.GetNodeId());
 
@@ -705,54 +703,44 @@ TVector<TString> TAgentList::GetAgentIdsWithOverriddenListParams() const
     return agentIds;
 }
 
-ui64 TAgentList::GetPathGeneration(
-    const TString& agentId,
-    const TString& path) const
+ui64 TAgentList::GetDiskAgentGeneration(const TString& agentId) const
 {
-    const auto* generationsForAgent = PathGenerations.FindPtr(agentId);
-    if (!generationsForAgent) {
-        return 1;
-    }
+    const auto* agentGeneration = DiskAgentGenerations.FindPtr(agentId);
 
-    const auto* generation = generationsForAgent->FindPtr(path);
-
-    return generation ? *generation : 1;
+    return agentGeneration ? *agentGeneration : 1;
 }
 
-ui64 TAgentList::InrementAndGetPathGeneration(
-    const TString& agentId,
-    const TString& path)
+ui64 TAgentList::InrementAndGetDiskAgentGeneration(const TString& agentId)
 {
-    auto& generationsForAgent = PathGenerations[agentId];
+    auto& agentGeneration = DiskAgentGenerations[agentId];
 
-    auto& generation = generationsForAgent[path];
-    if (!generation) {
-        generation = 1;
+    if (!agentGeneration) {
+        agentGeneration = 1;
     }
 
-    return ++generation;
+    return ++agentGeneration;
 }
 
-auto TAgentList::GetPathsToAttachDetach() const
+auto TAgentList::GetPathsToAttach() const
     -> const THashMap<TAgentId, THashSet<TString>>&
 {
-    return PathsToAttachDetach;
+    return PathsToAttach;
 }
 
-void TAgentList::AddPathToAttachDetach(
+void TAgentList::AddPathToAttach(
     const TString& agentId,
     const TString& path)
 {
-    auto& pathsForAgent = PathsToAttachDetach[agentId];
+    auto& pathsForAgent = PathsToAttach[agentId];
     pathsForAgent.insert(path);
 }
 
-void TAgentList::DeletePathToAttachDetach(
+void TAgentList::DeletePathToAttach(
     const TString& agentId,
     const TString& path)
 {
-    auto it = PathsToAttachDetach.find(agentId);
-    if (it == PathsToAttachDetach.end()) {
+    auto it = PathsToAttach.find(agentId);
+    if (it == PathsToAttach.end()) {
         return;
     }
 
@@ -760,7 +748,7 @@ void TAgentList::DeletePathToAttachDetach(
     pathsForAgent.erase(path);
 
     if (!pathsForAgent) {
-        PathsToAttachDetach.erase(it);
+        PathsToAttach.erase(it);
     }
 }
 

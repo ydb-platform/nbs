@@ -53,11 +53,6 @@ enum ECheckpointState
 // PATH_ATTACH_STATE_DETACHED   // No                   // passive detach                                //
 //                              //                      //                                               //
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-//                              //                      //                                               //
-// PATH_ATTACH_STATE_DETACHING  // No                   // active detach (if no disks allocated)         //
-//                              //                      // passive attach (if some disks was allocated)  //
-//                              //                      //                                               //
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 enum EPathAttachState
@@ -65,7 +60,6 @@ enum EPathAttachState
     PATH_ATTACH_STATE_ATTACHED = 0;
     PATH_ATTACH_STATE_ATTACHING = 1;
     PATH_ATTACH_STATE_DETACHED = 2;
-    PATH_ATTACH_STATE_DETACHING = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
