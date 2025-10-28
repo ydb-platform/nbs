@@ -2,6 +2,7 @@ GO_LIBRARY()
 
 SRCS(
     cells.go
+    collect_cells_metrics_task.go
     collect_cluster_capacity_task.go
     interface.go
     register.go
@@ -9,6 +10,7 @@ SRCS(
 
 GO_TEST_SRCS(
     cells_test.go
+    collect_cells_metrics_task_test.go
     collect_cluster_capacity_task_test.go
 )
 
