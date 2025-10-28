@@ -156,6 +156,7 @@ struct TTestEnv
                 std::move(record),
                 1000);
         };
+        DiskAgentState->EnableDataIntegrityValidation = true;
 
         NProto::TStorageServiceConfig storageConfig;
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
