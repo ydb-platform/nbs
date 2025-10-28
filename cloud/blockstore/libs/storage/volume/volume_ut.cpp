@@ -9857,6 +9857,73 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 response->Record.FailInfo.FailedRanges.size());
         }
     }
+
+    Y_UNIT_TEST(ShouldReceiveDeviceOperationStartedAndFinished)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetDeviceOperationTrackingFrequency(1);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            1024);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        bool startedSeen = false;
+        bool finishedSeen = false;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvVolumePrivate::EvDiskRegistryDeviceOperationStarted)
+                {
+                    startedSeen = true;
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvVolumePrivate::EvDiskRegistryDeviceOperationFinished)
+                {
+                    finishedSeen = true;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto range = TBlockRange64::MakeOneBlock(0);
+        volume.SendWriteBlocksRequest(
+            range,
+            clientInfo.GetClientId(),
+            GetBlockContent('X'));
+        auto response = volume.RecvWriteBlocksResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(
+            startedSeen,
+            "Expected DeviceOperationStarted event on write");
+        UNIT_ASSERT_C(
+            finishedSeen,
+            "Expected DeviceOperationFinished event on write");
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
