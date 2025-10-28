@@ -220,34 +220,43 @@ public:
         TString buffer(bytesCount, 0);
 
         while (bytesCount > 0) {
-            // Nagivate to the next element if the current one is fully read.
-            if (CurrentReadOffset == Current->Length) {
-                Current++;
-                CurrentReadOffset = 0;
-
-                // The next element is guaranteed to be valid if the contiguous
-                // buffer hasn't fully read
-                Y_DEBUG_ABORT_UNLESS(RemainingSize > 0);
-
-                // The next element is guaranteed to be non-empty - no need to
-                // skip more elements
-                Y_DEBUG_ABORT_UNLESS(Current->Length > 0);
-            }
-
-            const char* from = Current->Source->GetBuffer().data();
-            from += Current->OffsetInSource + CurrentReadOffset;
-
-            char* to = buffer.vend() - bytesCount;
-
-            auto len = Min(Current->Length - CurrentReadOffset, bytesCount);
-            MemCopy(to, from, len);
-
-            bytesCount -= len;
-            CurrentReadOffset += len;
-            RemainingSize -= len;
+            auto part = TryReadInPlace(bytesCount);
+            Y_ABORT_UNLESS(part.size() > 0 && part.size() <= bytesCount);
+            part.copy(buffer.vend() - bytesCount, part.size());
+            bytesCount -= part.size();
         }
 
         return buffer;
+    }
+
+    TStringBuf TryReadInPlace(ui64 bytesCount)
+    {
+        if (RemainingSize == 0) {
+            return {};
+        }
+
+        // Nagivate to the next element if the current one is fully read.
+        if (CurrentReadOffset == Current->Length) {
+            Current++;
+            CurrentReadOffset = 0;
+
+            // The next element is guaranteed to be valid if the contiguous
+            // buffer hasn't fully read
+            Y_DEBUG_ABORT_UNLESS(RemainingSize > 0);
+
+            // The next element is guaranteed to be non-empty - no need to
+            // skip more elements
+            Y_DEBUG_ABORT_UNLESS(Current->Length > 0);
+        }
+
+        const auto len = Min(Current->Length - CurrentReadOffset, bytesCount);
+        const char* data = Current->Source->GetBuffer().data() +
+                           Current->OffsetInSource + CurrentReadOffset;
+
+        CurrentReadOffset += len;
+        RemainingSize -= len;
+
+        return {data, len};
     }
 
     // Validates a range of data entry parts to ensure they form a contiguous
@@ -590,13 +599,6 @@ public:
                 parts.begin() + rangeEndIndex);
 
             while (reader.GetRemainingSize() > 0) {
-                auto size = Min(
-                    reader.GetRemainingSize(),
-                    static_cast<ui64>(FlushConfig.MaxWriteRequestSize));
-
-                auto offset = reader.GetOffset();
-                auto buffer = reader.Read(size);
-
                 auto request = std::make_shared<NProto::TWriteDataRequest>();
                 request->SetFileSystemId(
                     parts[partIndex].Source->GetRequest()->GetFileSystemId());
@@ -604,8 +606,20 @@ public:
                     parts[partIndex].Source->GetRequest()->GetHeaders();
                 request->SetNodeId(nodeId);
                 request->SetHandle(handle);
-                request->SetOffset(offset);
-                request->SetBuffer(std::move(buffer));
+                request->SetOffset(reader.GetOffset());
+
+                auto remainingBytes = FlushConfig.MaxWriteRequestSize;
+                while (remainingBytes > 0) {
+                    auto part = reader.TryReadInPlace(remainingBytes);
+                    if (part.empty()) {
+                        break;
+                    }
+                    Y_ABORT_UNLESS(part.size() <= remainingBytes);
+                    remainingBytes -= part.size();
+                    auto* iovec = request->AddIovecs();
+                    iovec->SetBase(reinterpret_cast<ui64>(part.data()));
+                    iovec->SetLength(part.size());
+                }
 
                 res.push_back(std::move(request));
             }
