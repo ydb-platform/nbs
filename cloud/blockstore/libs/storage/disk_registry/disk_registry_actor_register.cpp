@@ -168,23 +168,16 @@ void TDiskRegistryActor::CompleteAddAgent(
         args.DevicesToDisableIO.end());
 
     if (Config->GetAttachDetachPathsEnabled()) {
-        auto [pathsToAttach, pathsToDetach] =
-            State->GetPathsToAttachDetachOnRegistration(
-                args.Config.GetAgentId());
-
         response->Record.SetDiskRegistryGeneration(Executor()->Generation());
+        response->Record.SetDiskAgentGeneration(
+            State->GetDiskAgentGeneration(args.Config.GetAgentId()));
 
-        for (const auto& [path, generation]: pathsToAttach) {
-            auto* pathToGen = response->Record.AddAllowedPaths();
-            pathToGen->SetPath(path);
-            pathToGen->SetGeneration(generation);
-        }
+        auto pathsToAttach =
+            State->GetPathsToAttachOnRegistration(args.Config.GetAgentId());
 
-        for (const auto& [path, generation]: pathsToDetach) {
-            auto* pathToGen = response->Record.AddUnknownPaths();
-            pathToGen->SetPath(path);
-            pathToGen->SetGeneration(generation);
-        }
+        response->Record.MutablePathsToAttach()->Add(
+            std::make_move_iterator(pathsToAttach.begin()),
+            std::make_move_iterator(pathsToAttach.end()));
     }
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

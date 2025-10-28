@@ -306,8 +306,8 @@ private:
     {
         auto& record = ev->Get()->Record;
         THashSet<TString> paths;
-        for (auto& pathToGen: record.GetPathsToAttach()) {
-            paths.emplace(pathToGen.GetPath());
+        for (const auto& path: record.GetPathsToAttach()) {
+            paths.emplace(path);
         }
 
         auto response = std::make_unique<TEvDiskAgent::TEvAttachPathResponse>();
