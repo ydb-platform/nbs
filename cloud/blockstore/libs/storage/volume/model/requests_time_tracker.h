@@ -115,7 +115,7 @@ private:
 
     struct TThroughputTracker
     {
-        ui64 StartTime = 0;
+        ui64 LastResetTime = 0;
         ui64 TotalBlocks = 0;
         ui64 TotalOps = 0;
 

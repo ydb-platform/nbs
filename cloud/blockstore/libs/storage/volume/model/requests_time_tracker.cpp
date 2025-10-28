@@ -164,27 +164,27 @@ TRequestsTimeTracker::TThroughputTracker::GetRatesAndReset(
     ui64 currentTime,
     ui32 blockSize)
 {
-    if (StartTime == 0) {
-        StartTime = currentTime;
+    if (LastResetTime == 0) {
+        LastResetTime = currentTime;
         return {0.0, 0.0};
     }
 
-    const ui64 elapsedTimeUs = currentTime - StartTime;
-    if (elapsedTimeUs == 0) {
+    const ui64 elapsedCycles = currentTime - LastResetTime;
+
+    const ui64 elapsedUs = CyclesToDurationSafe(elapsedCycles).MicroSeconds();
+    const double elapsedSeconds = elapsedUs / 1000000.0;
+
+    if (elapsedSeconds < 0.000001) {
         return {0.0, 0.0};
     }
 
-    const double elapsedSeconds =
-        static_cast<double>(elapsedTimeUs) / 1000000.0;
-
-    const ui64 totalBytes = TotalBlocks * blockSize;
-    const double bytesPerSecond =
-        static_cast<double>(totalBytes) / elapsedSeconds;
-    const double opsPerSecond = static_cast<double>(TotalOps) / elapsedSeconds;
+    const ui64 totalBytes = TotalBlocks * static_cast<ui64>(blockSize);
+    const double bytesPerSecond = totalBytes / elapsedSeconds;
+    const double opsPerSecond = TotalOps / elapsedSeconds;
 
     TotalBlocks = 0;
     TotalOps = 0;
-    StartTime = currentTime;
+    LastResetTime = currentTime;
 
     return {bytesPerSecond, opsPerSecond};
 }
@@ -208,7 +208,7 @@ TRequestsTimeTracker::TRequestsTimeTracker(const ui64 constructionTime)
     }
 
     for (auto& tracker: ThroughputCounters) {
-        tracker.StartTime = constructionTime;
+        tracker.LastResetTime = constructionTime;
     }
 }
 
@@ -401,9 +401,9 @@ TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize)
     for (size_t requestType = 0; requestType < ThroughputCounters.size();
          ++requestType)
     {
-        const ui64 nowUs = CyclesToDurationSafe(nowCycles).MicroSeconds();
-        auto [bytesPerSec, opsPerSec] = ThroughputCounters.at(requestType)
-                                            .GetRatesAndReset(nowUs, blockSize);
+        auto [bytesPerSec, opsPerSec] =
+            ThroughputCounters.at(requestType)
+                .GetRatesAndReset(nowCycles, blockSize);
 
         const TString formattedThroughput =
             bytesPerSec > 0.0
