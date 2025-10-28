@@ -929,20 +929,14 @@ public:
     THashSet<TDeviceId> GetUnavailableDevicesForDisk(
         const TString& diskId) const;
 
-    ui64 GetPathGeneration(const TString& agentId, const TString& path) const;
+    ui64 GetDiskAgentGeneration(const TString& agentId) const;
 
     auto ResolveDevices(const TAgentId& agentId, const TString& path)
         -> std::pair<NProto::TAgentConfig*, TVector<NProto::TDeviceConfig*>>;
 
     bool HasDependentDisks(const TAgentId& agentId, const TString& path);
 
-    struct TPathsToAttachDetachOnRegistration
-    {
-        THashMap<TString, ui64> PathsToAttach;
-        THashMap<TString, ui64> PathsToDetach;
-    };
-
-    TPathsToAttachDetachOnRegistration GetPathsToAttachDetachOnRegistration(
+    TVector<TString> GetPathsToAttachOnRegistration(
         const TAgentId& agentId) const;
 
 private:

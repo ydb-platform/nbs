@@ -62,9 +62,9 @@ private:
 
     THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
 
-    THashMap<TAgentId, TPathGenerations> PathGenerations;
+    THashMap<TAgentId, ui64> DiskAgentGenerations;
 
-    THashMap<TAgentId, THashSet<TString>> PathsToAttachDetach;
+    THashMap<TAgentId, THashSet<TString>> PathsToAttach;
 
     TLog Log;
 
@@ -140,14 +140,12 @@ public:
     TVector<TString> CleanupExpiredAgentListParams(TInstant now);
     TVector<TString> GetAgentIdsWithOverriddenListParams() const;
 
-    ui64 GetPathGeneration(const TString& agentId, const TString& path) const;
-    ui64 InrementAndGetPathGeneration(
-        const TString& agentId,
-        const TString& path);
+    ui64 GetDiskAgentGeneration(const TString& agentId) const;
+    ui64 InrementAndGetDiskAgentGeneration(const TString& agentId);
 
-    const THashMap<TAgentId, THashSet<TString>>& GetPathsToAttachDetach() const;
-    void AddPathToAttachDetach(const TString& agentId, const TString& path);
-    void DeletePathToAttachDetach(const TString& agentId, const TString& path);
+    const THashMap<TAgentId, THashSet<TString>>& GetPathsToAttach() const;
+    void AddPathToAttach(const TString& agentId, const TString& path);
+    void DeletePathToAttach(const TString& agentId, const TString& path);
 
 private:
     NProto::TAgentConfig& AddAgent(NProto::TAgentConfig config);
