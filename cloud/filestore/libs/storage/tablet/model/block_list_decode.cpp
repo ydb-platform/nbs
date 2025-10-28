@@ -186,7 +186,7 @@ void DecodeDeletionMarkers(const TByteVector& encodedDeletionMarkers, TVector<TB
 *   true, the search stops.
 * @param mergedGroup Predicate for a merged deletion group (a range of blocks):
 *   if it returns true, the search stops
-* @param mixedGroup Predicate for a mixed deletion group (an arbitrary array of
+* @param mixedGroup Predicate for a mixed deletion group (a sorted array of
 *   non-consecutive blocks): if it returns true, the search stops
 *
 * @return true if any predicate returns true, otherwise false
@@ -355,14 +355,14 @@ struct TFindDeletionMarkersResult
 * @return TFindDeletionMarkersResult with |BlocksFound| blocks whose maximum
 *   commit id is |MaxCommitId|
 *
-* Note: If |res.BlocksFound > 0| and |res.MaxCommitId == InvalidCommitId|,
-*   there are no deletion markers inside the resulting range
-*   [blobOffset, blobOffset + res.BlocksFound).
-*   The function searched all deletion markers and kept the closest deletion
-*   marker (before |minOverlappingBlobOffset|) that lies within the search
-*   range [blobOffset, blobOffset + maxBlocksToFind).
-*   Therefore, no deletion marker exists with a blob offset less than
-*   |minOverlappingBlobOffset|
+* Note:
+*   If there is no deletion marker at |blobOffset|, the function returns the
+*   longest range starting at |blobOffset| and not containing any deletion
+*   markers. It is indicated by |MaxCommitId| == InvalidCommitId and
+*   |BlocksFound| set to the range length.
+*   If there are no deletion markers in
+*   [blobOffset, blobOffset + maxBlocksToFind), it returns
+*   |BlocksFound| == |maxBlocksToFind|.
 */
 TFindDeletionMarkersResult FindDeletionMarkers(
     const TByteVector& encodedDeletionMarkers,
@@ -443,7 +443,7 @@ TFindDeletionMarkersResult FindDeletionMarkers(
                     return true;
                 }
 
-                Y_DEBUG_ABORT_UNLESS(*it > blobOffset);
+                Y_DEBUG_ABORT_UNLESS(*it > searchRange.Offset);
 
                 if (*it < searchRange.End()) {
                     minOverlappingBlobOffset = Min<ui16>(
@@ -468,8 +468,11 @@ TFindDeletionMarkersResult FindDeletionMarkers(
         // [blobOffset, blobOffset + maxBlocksToFind)
         blocksFound = maxBlocksToFind;
     } else if (minOverlappingBlobOffset > blobOffset) {
-        // There are no deletion markers in range
-        // [blobOffset, blobOffset + blocksFound)
+        // The function searched all deletion markers and kept the closest
+        // deletion marker (before |minOverlappingBlobOffset|) that lies within
+        // the search range [blobOffset, blobOffset + maxBlocksToFind).
+        // Therefore, no deletion marker exists with a blob offset less than
+        // |minOverlappingBlobOffset|
         blocksFound = Min<ui16>(
             minOverlappingBlobOffset - blobOffset,
             maxBlocksToFind);
