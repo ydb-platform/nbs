@@ -16,6 +16,7 @@ NonReplicatedMigrationStartAllowed: true
 # DiskRegistry-based
 AcquireNonReplicatedDevices: true
 AssignIdToWriteAndZeroRequestsEnabled: true
+DeviceOperationTrackingFrequency: 1
 MaxMigrationBandwidth: 1000
 MaxMigrationIoDepth: 1
 MaxShadowDiskFillBandwidth: 1000
