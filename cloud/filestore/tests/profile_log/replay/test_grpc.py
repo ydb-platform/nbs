@@ -22,7 +22,7 @@ def run_replay(name):
     config.Tests[0].LoadTest.Name = "test"
     config.Tests[0].LoadTest.KeepFileStore = True
     config.Tests[0].LoadTest.ReplayGrpcSpec.FileName = str(bindir / (name + ".log"))
-    config.Tests[0].LoadTest.IODepth = 1  # TODO: fix flaps and set 4-16
+    config.Tests[0].LoadTest.IODepth = 1  # Tests may flap if more than 1
     config.Tests[0].LoadTest.CreateFileStoreRequest.FileSystemId = "nfs_share"
     config.Tests[0].LoadTest.CreateFileStoreRequest.CloudId = "cloud"
     config.Tests[0].LoadTest.CreateFileStoreRequest.FolderId = "folder"

@@ -3,8 +3,7 @@
 Not implemented:
 create file/dir with modes from profile log
 create handle modes from profile log (now rw)
-compare profile log and actual result ( S_OK E_FS_NOENT ...)
-
+compare the profile log and the actual result ( S_OK E_FS_NOENT ...)
 */
 
 #include "request.h"
@@ -225,7 +224,10 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        // {"TimestampMcs":1726503808715698,"DurationMcs":2622,"RequestType":38,"ErrorCode":0,"NodeInfo":{"ParentNodeId":13882,"NodeName":"compile_commands.json.tmpdf020","Flags":38,"Mode":436,"NodeId":15553,"Handle":46923415058768564,"Size":0}}
+        // {"TimestampMcs":1726503808715698,"DurationMcs":2622,
+        // "RequestType":38,"ErrorCode":0,"NodeInfo":{"ParentNodeId":13882,
+        // "NodeName":"compile_commands.json.tmpdf020","Flags":38,"Mode":43
+        // 6,"NodeId":15553,"Handle":46923415058768564,"Size":0}}
 
         const auto request = CreateRequest<NProto::TCreateHandleRequest>();
         auto name = logRequest.GetNodeInfo().GetNodeName();
@@ -426,7 +428,8 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        //{"TimestampMcs":1465489895000,"DurationMcs":2790,"RequestType":44,"Ranges":[{"NodeId":2,"Handle":20680158862113389,"Offset":13,"Bytes":12}]}
+        //{"TimestampMcs":1465489895000,"DurationMcs":2790,"RequestType":44,
+        // "Ranges":[{"NodeId":2,"Handle":20680158862113389,"Offset":13,"Bytes":12}]}
 
         if (Spec.GetSkipWrite()) {
             return MakeFuture(
@@ -515,7 +518,8 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        // {"TimestampMcs":1725895166478218,"DurationMcs":6328,"RequestType":26,"ErrorCode":0,"NodeInfo":{"NewParentNodeId":1,"NewNodeName":"home","Mode":509,"NodeId":12526,"Size":0}}
+        // {"TimestampMcs":1725895166478218,"DurationMcs":6328,"RequestType":26,"ErrorCode":0,
+        // "NodeInfo":{"NewParentNodeId":1,"NewNodeName":"home","Mode":509,"NodeId":12526,"Size":0}}
         // nfs     CreateNode      0.006404s       S_OK {new_parent_node_id=1,
         // new_node_name=home, mode=509, node_id=12526, size=0}
 
@@ -653,7 +657,8 @@ private:
         const NCloud::NFileStore::NProto::TProfileLogRequestInfo& logRequest)
         override
     {
-        // {"TimestampMcs":895166000,"DurationMcs":2949,"RequestType":28,"NodeInfo":{"ParentNodeId":3,"NodeName":"HEAD.lock","NewParentNodeId":3,"NewNodeName":"HEAD"}}
+        // {"TimestampMcs":895166000,"DurationMcs":2949,"RequestType":28,"NodeInfo":
+        // {"ParentNodeId":3,"NodeName":"HEAD.lock","NewParentNodeId":3,"NewNodeName":"HEAD"}}
         if (Spec.GetSkipRead()) {
             return MakeFuture(
                 TCompletedRequest{
@@ -898,8 +903,13 @@ private:
         }
 
         // TODO(proller): by parent + name
-        // {"TimestampMcs":1726615533406265,"DurationMcs":192,"RequestType":33,"ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":17033,"NodeName":"CPackSourceConfig.cmake","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
-        // {"TimestampMcs":240399000,"DurationMcs":163,"RequestType":33,"NodeInfo":{"ParentNodeId":3,"NodeName":"branches","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
+        // {"TimestampMcs":1726615533406265,"DurationMcs":192,"RequestType":33,
+        // "ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":17033,
+        // "NodeName":"CPackSourceConfig.cmake","Flags":0,"Mode":0,"NodeId":0,
+        // "Handle":0,"Size":0}}
+        // {"TimestampMcs":240399000,"DurationMcs":163,"RequestType":33,
+        // "NodeInfo":{"ParentNodeId":3,"NodeName":"branches","Flags":0,
+        // "Mode":0,"NodeId":0,"Handle":0,"Size":0}}
         // GetNodeAttr     0.006847s       S_OK    {parent_node_id=1,
         // node_name=test, flags=0, mode=509, node_id=2, handle=0, size=0}
 
@@ -978,59 +988,6 @@ private:
                 NProto::ACTION_ACQUIRE_LOCK,
                 Started,
                 MakeError(E_NOT_IMPLEMENTED, "not implemented")});
-        /*
-        // Test and enable:
-
-        TGuard<TMutex> guard(StateLock);
-        if (Handles.empty()) {
-            // return DoCreateHandle();
-        }
-
-        auto it = Handles.begin();
-        while (it != Handles.end() &&
-               (Locks.contains(it->first) || StagedLocks.contains(it->first)))
-        {
-            ++it;
-        }
-
-        if (it == Handles.end()) {
-            return MakeFuture(
-                TCompletedRequest{
-                    NProto::ACTION_ACQUIRE_LOCK,
-                    Started,
-                    MakeError(E_CANCELLED, "cancelled")});
-        }
-
-        auto handle = it->first;
-        Y_ABORT_UNLESS(StagedLocks.insert(handle).second);
-
-        auto request = CreateRequest<NProto::TAcquireLockRequest>();
-        request->SetHandle(handle);
-        request->SetOwner(OwnerId);
-        request->SetLength(LockLength);
-
-        auto self = weak_from_this();
-        return Session->AcquireLock(CreateCallContext(), std::move(request))
-            .Apply(
-                [self,
-                 info =
-                     TRequestInfo{
-                         Started,
-                         EventMessageNumber,
-                         logRequest,
-                         ToString(handle)},
-                 handle](const TFuture<NProto::TAcquireLockResponse>& future)
-                {
-                    if (auto ptr = self.lock()) {
-                        return ptr->HandleAcquireLock(handle, future, info);
-                    }
-
-                    return TCompletedRequest{
-                        NProto::ACTION_ACQUIRE_LOCK,
-                        info.Started,
-                        MakeError(E_INVALID_STATE, "cancelled")};
-                });
-        */
     }
 
     TCompletedRequest HandleAcquireLock(
@@ -1042,7 +999,7 @@ private:
 
         auto it = StagedLocks.find(handle);
         if (it == StagedLocks.end()) {
-            // nothing todo, file was removed
+            // nothing to do, since the file has been removed
             Y_ABORT_UNLESS(!Locks.contains(handle));
             return {NProto::ACTION_ACQUIRE_LOCK, info.Started, {}};
         }
@@ -1077,47 +1034,6 @@ private:
                 NProto::ACTION_RELEASE_LOCK,
                 Started,
                 MakeError(E_NOT_IMPLEMENTED, "not implemented")});
-        /*
-        // Test and enable:
-
-        TGuard<TMutex> guard(StateLock);
-        if (Locks.empty()) {
-            return DoAcquireLock(logRequest);
-        }
-
-        const auto it = Locks.begin();
-        const auto handle = *it;
-
-        Y_ABORT_UNLESS(StagedLocks.insert(handle).second);
-        Locks.erase(it);
-
-        auto request = CreateRequest<NProto::TReleaseLockRequest>();
-        request->SetHandle(handle);
-        request->SetOwner(OwnerId);
-        request->SetLength(LockLength);
-
-        auto self = weak_from_this();
-        return Session->ReleaseLock(CreateCallContext(), std::move(request))
-            .Apply(
-                [self,
-                 info =
-                     TRequestInfo{
-                         Started,
-                         EventMessageNumber,
-                         logRequest,
-                         ToString(handle)},
-                 handle](const TFuture<NProto::TReleaseLockResponse>& future)
-                {
-                    if (auto ptr = self.lock()) {
-                        return ptr->HandleReleaseLock(handle, future, info);
-                    }
-
-                    return TCompletedRequest{
-                        NProto::ACTION_RELEASE_LOCK,
-                        info.Started,
-                        MakeError(E_INVALID_STATE, "cancelled")};
-                });
-        */
     }
 
     TCompletedRequest HandleReleaseLock(
