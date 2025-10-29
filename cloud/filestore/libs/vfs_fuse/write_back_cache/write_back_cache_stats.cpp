@@ -25,12 +25,7 @@ private:
 
     TDynamicCounters::TCounterPtr InProgressCount;
     TDynamicCounters::TCounterPtr Count;
-    // WriteData requests can take several minutes (~10^9 microseconds).
-    // Summing durations in an ui64 counter may eventually overflow.
-    // We use two counters to calculate seconds and microseconds separately.
-    // In this case, overflow will happen after about ~10^13 requests.
-    TDynamicCounters::TCounterPtr TimeSumSeconds;
-    TDynamicCounters::TCounterPtr TimeSumUs;
+    TDynamicCounters::TCounterPtr Time;
     TDynamicCounters::TCounterPtr MaxTime;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTimeCalc;
     TAtomicInstant MinInProgressStatusChangeTime = TInstant::Zero();
@@ -57,8 +52,7 @@ public:
         InProgressCount =
             GetCounter(counters, status, "InProgressCount", false);
         Count = GetCounter(counters, status, "Count", true);
-        TimeSumSeconds = GetCounter(counters, status, "TimeSumSeconds", true);
-        TimeSumUs = GetCounter(counters, status, "TimeSumUs", true);
+        Time = GetCounter(counters, status, "Time", true);
         MaxTime = GetCounter(counters, status, "MaxTime", false);
     }
 
@@ -83,8 +77,7 @@ public:
     void AddStats(TDuration duration)
     {
         Count->Inc();
-        TimeSumUs->Add(static_cast<TValue>(duration.MicroSecondsOfSecond()));
-        TimeSumSeconds->Add(static_cast<TValue>(duration.Seconds()));
+        Time->Add(static_cast<TValue>(duration.MicroSeconds()));
         MaxTimeCalc.Add(duration.MicroSeconds());
     }
 
@@ -116,8 +109,7 @@ private:
     TDynamicCounters::TCounterPtr CacheFullHitCount;
 
     TDynamicCounters::TCounterPtr WaitCount;
-    TDynamicCounters::TCounterPtr WaitTimeSumSeconds;
-    TDynamicCounters::TCounterPtr WaitTimeSumUs;
+    TDynamicCounters::TCounterPtr WaitTime;
     TDynamicCounters::TCounterPtr WaitMaxTime;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> WaitMaxTimeCalc;
 
@@ -142,8 +134,7 @@ public:
         CacheMissCount = GetCounter(counters, "CacheMissCount", true);
 
         WaitCount = GetCounter(counters, "Wait_Count", true);
-        WaitTimeSumSeconds = GetCounter(counters, "Wait_TimeSumSeconds", true);
-        WaitTimeSumUs = GetCounter(counters, "Wait_TimeSumUs", true);
+        WaitTime = GetCounter(counters, "Wait_Time", true);
         WaitMaxTime = GetCounter(counters, "Wait_MaxTime", false);
     }
 
@@ -171,9 +162,7 @@ public:
     void AddWaitStats(TDuration duration)
     {
         WaitCount->Inc();
-        WaitTimeSumUs->Add(
-            static_cast<TValue>(duration.MicroSecondsOfSecond()));
-        WaitTimeSumSeconds->Add(static_cast<TValue>(duration.Seconds()));
+        WaitTime->Add(static_cast<TValue>(duration.MicroSeconds()));
         WaitMaxTimeCalc.Add(duration.MicroSeconds());
     }
 

@@ -116,32 +116,27 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
 
         bootstrap.CheckValue("WriteDataRequest_Pending_InProgressCount", false);
         bootstrap.CheckValue("WriteDataRequest_Pending_Count", true);
-        bootstrap.CheckValue("WriteDataRequest_Pending_TimeSumSeconds", true);
-        bootstrap.CheckValue("WriteDataRequest_Pending_TimeSumUs", true);
+        bootstrap.CheckValue("WriteDataRequest_Pending_Time", true);
         bootstrap.CheckValue("WriteDataRequest_Pending_MaxTime", false);
 
         bootstrap.CheckValue("WriteDataRequest_Cached_InProgressCount", false);
         bootstrap.CheckValue("WriteDataRequest_Cached_Count", true);
-        bootstrap.CheckValue("WriteDataRequest_Cached_TimeSumSeconds", true);
-        bootstrap.CheckValue("WriteDataRequest_Cached_TimeSumUs", true);
+        bootstrap.CheckValue("WriteDataRequest_Cached_Time", true);
         bootstrap.CheckValue("WriteDataRequest_Cached_MaxTime", false);
 
         bootstrap.CheckValue("WriteDataRequest_FlushRequested_InProgressCount", false);
         bootstrap.CheckValue("WriteDataRequest_FlushRequested_Count", true);
-        bootstrap.CheckValue("WriteDataRequest_FlushRequested_TimeSumSeconds", true);
-        bootstrap.CheckValue("WriteDataRequest_FlushRequested_TimeSumUs", true);
+        bootstrap.CheckValue("WriteDataRequest_FlushRequested_Time", true);
         bootstrap.CheckValue("WriteDataRequest_FlushRequested_MaxTime", false);
 
         bootstrap.CheckValue("WriteDataRequest_Flushing_InProgressCount", false);
         bootstrap.CheckValue("WriteDataRequest_Flushing_Count", true);
-        bootstrap.CheckValue("WriteDataRequest_Flushing_TimeSumSeconds", true);
-        bootstrap.CheckValue("WriteDataRequest_Flushing_TimeSumUs", true);
+        bootstrap.CheckValue("WriteDataRequest_Flushing_Time", true);;
         bootstrap.CheckValue("WriteDataRequest_Flushing_MaxTime", false);
 
         bootstrap.CheckValue("WriteDataRequest_Flushed_InProgressCount", false);
         bootstrap.CheckValue("WriteDataRequest_Flushed_Count", true);
-        bootstrap.CheckValue("WriteDataRequest_Flushed_TimeSumSeconds", true);
-        bootstrap.CheckValue("WriteDataRequest_Flushed_TimeSumUs", true);
+        bootstrap.CheckValue("WriteDataRequest_Flushed_Time", true);
         bootstrap.CheckValue("WriteDataRequest_Flushed_MaxTime", false);
 
         bootstrap.CheckValue("ReadDataRequest_CacheMissCount", true);
@@ -151,8 +146,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
         // There is no ReadDataRequest_Wait_InProgressCount counter because
         // it is already reported by client request metrics
         bootstrap.CheckValue("ReadDataRequest_Wait_Count", true);
-        bootstrap.CheckValue("ReadDataRequest_Wait_TimeSumSeconds", true);
-        bootstrap.CheckValue("ReadDataRequest_Wait_TimeSumUs", true);
+        bootstrap.CheckValue("ReadDataRequest_Wait_Time", true);
         bootstrap.CheckValue("ReadDataRequest_Wait_MaxTime", false);
 
         bootstrap.CheckValue("PersistentQueue_RawCapacity", false);
@@ -215,7 +209,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
             bootstrap.CheckChanges(
                 "WriteDataRequest_" + testCase.Name + "_Count: 1, " +
                 "WriteDataRequest_" + testCase.Name + "_InProgressCount: 2, " +
-                "WriteDataRequest_" + testCase.Name + "_TimeSumUs: 25");
+                "WriteDataRequest_" + testCase.Name + "_Time: 25");
 
             bootstrap.Stats->UpdateWriteDataRequestMinStatusChangeTime(
                 testCase.Status,
@@ -243,8 +237,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
             bootstrap.CheckChanges(
                 "WriteDataRequest_" + testCase.Name + "_Count: 2, " +
                 "WriteDataRequest_" + testCase.Name + "_InProgressCount: 1, " +
-                "WriteDataRequest_" + testCase.Name + "_TimeSumSeconds: 3, " +
-                "WriteDataRequest_" + testCase.Name + "_TimeSumUs: 50");
+                "WriteDataRequest_" + testCase.Name + "_Time: 3000050");
 
             bootstrap.Stats->UpdateWriteDataRequestMinStatusChangeTime(
                 testCase.Status,
@@ -288,7 +281,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
             "ReadDataRequest_CacheMissCount: 1, "
             "ReadDataRequest_Wait_Count: 1, "
             "ReadDataRequest_Wait_MaxTime: 1000000, "
-            "ReadDataRequest_Wait_TimeSumSeconds: 1");
+            "ReadDataRequest_Wait_Time: 1000000");
 
         bootstrap.Stats->AddReadDataStats(
             IWriteBackCacheStats::EReadDataRequestCacheStatus::PartialHit,
@@ -299,7 +292,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
         bootstrap.CheckChanges(
             "ReadDataRequest_CachePartialHitCount: 1, "
             "ReadDataRequest_Wait_Count: 2, "
-            "ReadDataRequest_Wait_TimeSumUs: 50");
+            "ReadDataRequest_Wait_Time: 1000050");
 
         bootstrap.Stats->AddReadDataStats(
             IWriteBackCacheStats::EReadDataRequestCacheStatus::FullHit,
@@ -311,7 +304,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
             "ReadDataRequest_CacheFullHitCount: 1, "
             "ReadDataRequest_Wait_Count: 3, "
             "ReadDataRequest_Wait_MaxTime: 2000000, "
-            "ReadDataRequest_Wait_TimeSumSeconds: 3");
+            "ReadDataRequest_Wait_Time: 3000050");
 
         // Reset
 
