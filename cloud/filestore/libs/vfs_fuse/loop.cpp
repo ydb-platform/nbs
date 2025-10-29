@@ -643,7 +643,7 @@ private:
     THolder<TFileLock> WriteBackCacheFileLock;
 
     bool HandleOpsQueueInitialized = false;
-    bool WriteBackCacheInitialized = false;
+    TWriteBackCache WriteBackCache;
 
 public:
     TFileSystemLoop(
@@ -764,7 +764,12 @@ public:
                     }
 
                     // We need to cleanup WriteBackCache file and directories
-                    if (p->WriteBackCacheInitialized) {
+                    if (p->WriteBackCache) {
+                        // Deleting file when in contains unflushed requests
+                        // will result in data loss
+                        Y_ABORT_UNLESS(p->WriteBackCache.IsEmpty());
+                        p->WriteBackCache = {};
+
                         auto error = UnlockAndDeleteFile(
                             TFsPath(p->Config->GetWriteBackCachePath()) /
                                 p->Config->GetFileSystemId() / p->SessionId,
@@ -974,7 +979,6 @@ private:
                 }
             }
 
-            TWriteBackCache writeBackCache;
             if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 if (Config->GetWriteBackCachePath()) {
                     auto path = TFsPath(Config->GetWriteBackCachePath()) /
@@ -992,7 +996,7 @@ private:
                         return error;
                     }
 
-                    writeBackCache = TWriteBackCache(
+                    WriteBackCache = TWriteBackCache(
                         Session,
                         Scheduler,
                         Timer,
@@ -1005,7 +1009,6 @@ private:
                         Config->GetWriteBackCacheFlushMaxWriteRequestsCount(),
                         Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize()
                     );
-                    WriteBackCacheInitialized = true;
                 } else {
                     TString msg =
                         "Error initializing WriteBackCache: "
@@ -1029,7 +1032,7 @@ private:
                 RequestStats,
                 CompletionQueue,
                 std::move(handleOpsQueue),
-                std::move(writeBackCache));
+                WriteBackCache);
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
 

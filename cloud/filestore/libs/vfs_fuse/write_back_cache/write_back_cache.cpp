@@ -643,6 +643,13 @@ public:
         return NWait::WaitAll(futures);
     }
 
+    bool IsEmpty() const
+    {
+        with_lock (Lock) {
+            return CachedEntries.empty();
+        }
+    }
+
     // should be protected by |Lock|
     void RequestFlush(TNodeState* nodeState)
     {
@@ -1304,6 +1311,11 @@ TFuture<void> TWriteBackCache::FlushNodeData(ui64 nodeId)
 TFuture<void> TWriteBackCache::FlushAllData()
 {
     return Impl->FlushAllData();
+}
+
+bool TWriteBackCache::IsEmpty() const
+{
+    return Impl->IsEmpty();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
