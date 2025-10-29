@@ -150,8 +150,7 @@ struct TMiscNodeStats
 
 struct THandlesStats
 {
-    i64 OpenedDirectHandles{0};
-    i64 OpenedHandles{0};
+    i64 UsedDirectHandlesCount{0};
 };
 
 struct TWriteMixedBlocksResult

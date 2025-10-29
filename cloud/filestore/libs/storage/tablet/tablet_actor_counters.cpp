@@ -345,6 +345,7 @@ void TIndexTabletActor::TMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(UsedSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedHandlesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(UsedDirectHandlesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedLocksCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatefulSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatelessSessionsCount, EMetricType::MT_ABSOLUTE);
@@ -464,8 +465,6 @@ void TIndexTabletActor::TMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(OrphanNodesCount, EMetricType::MT_ABSOLUTE);
 
-    REGISTER_AGGREGATABLE_SUM(OpenedDirectHandles, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(OpenedHandles, EMetricType::MT_ABSOLUTE);
 
     // Throttling
     REGISTER_LOCAL(MaxReadBandwidth, EMetricType::MT_ABSOLUTE);
@@ -584,6 +583,7 @@ void TIndexTabletActor::TMetrics::Update(
 
     Store(UsedSessionsCount, stats.GetUsedSessionsCount());
     Store(UsedHandlesCount, stats.GetUsedHandlesCount());
+    Store(UsedDirectHandlesCount, handlesStats.UsedDirectHandlesCount);
     Store(UsedLocksCount, stats.GetUsedLocksCount());
 
     Store(FreshBytesCount, stats.GetFreshBytesCount());
@@ -688,8 +688,6 @@ void TIndexTabletActor::TMetrics::Update(
 
     Store(OrphanNodesCount, miscNodeStats.OrphanNodesCount);
 
-    Store(OpenedDirectHandles, handlesStats.OpenedDirectHandles);
-    Store(OpenedHandles, handlesStats.OpenedHandles);
 
     BusyIdleCalc.OnUpdateStats();
     UpdatePerformanceMetrics(now, diagConfig, fileSystem);

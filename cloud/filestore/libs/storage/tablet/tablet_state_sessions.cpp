@@ -575,10 +575,6 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     Impl->HandleById.emplace(handle->GetHandle(), handle.get());
     Impl->NodeRefsByHandle[proto.GetNodeId()]++;
 
-    ++Impl->OpenedHandles;
-    if (HasFlag(proto.GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
-        ++Impl->OpenedDirectHandles;
-    }
 
     {
         const auto nodeId = handle->GetNodeId();
@@ -620,10 +616,6 @@ void TIndexTabletState::RemoveHandle(TSessionHandle* handle)
         session->HandleStatsByNode.UnregisterHandle(*handle);
     }
 
-    --Impl->OpenedHandles;
-    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
-        --Impl->OpenedDirectHandles;
-    }
 
     {
         const auto nodeId = handle->GetNodeId();
@@ -700,6 +692,10 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     db.WriteSessionHandle(proto);
     IncrementUsedHandlesCount(db);
 
+    if (HasFlag(proto.GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        ++Impl->UsedDirectHandlesCount;
+    }
+
     return CreateHandle(session, proto);
 }
 
@@ -712,6 +708,10 @@ void TIndexTabletState::DestroyHandle(
         handle->GetHandle());
 
     DecrementUsedHandlesCount(db);
+
+    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        --Impl->UsedDirectHandlesCount;
+    }
 
     ReleaseLocks(db, handle->GetHandle());
 

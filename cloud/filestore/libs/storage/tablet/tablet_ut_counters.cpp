@@ -908,15 +908,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         };
 
         auto checkHandlesCounters =
-            [&](i64 expectedDirectHandles, i64 expectedOpenedHandles)
+            [&](i64 expectedDirectHandles, i64 expectedUsedHandles)
         {
             TTestRegistryVisitor visitor;
             registry->Visit(TInstant::Zero(), visitor);
             visitor.ValidateExpectedCounters({
-                {{{"sensor", "OpenedDirectHandles"}, {"filesystem", "test"}},
+                {{{"sensor", "UsedDirectHandlesCount"}, {"filesystem", "test"}},
                  expectedDirectHandles},
-                {{{"sensor", "OpenedHandles"}, {"filesystem", "test"}},
-                 expectedOpenedHandles},
+                {{{"sensor", "UsedHandlesCount"}, {"filesystem", "test"}},
+                 expectedUsedHandles},
             });
         };
 

@@ -237,8 +237,7 @@ TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
 THandlesStats TIndexTabletState::GetHandlesStats() const
 {
     return {
-        .OpenedDirectHandles = Impl->OpenedDirectHandles,
-        .OpenedHandles = Impl->OpenedHandles,
+        .UsedDirectHandlesCount = Impl->UsedDirectHandlesCount,
     };
 }
 

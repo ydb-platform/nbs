@@ -90,6 +90,7 @@ private:
 
         std::atomic<i64> UsedSessionsCount{0};
         std::atomic<i64> UsedHandlesCount{0};
+        std::atomic<i64> UsedDirectHandlesCount{0};
         std::atomic<i64> UsedLocksCount{0};
 
         // Session stats
@@ -190,8 +191,6 @@ private:
 
         std::atomic<i64> OrphanNodesCount{0};
 
-        std::atomic<i64> OpenedDirectHandles{0};
-        std::atomic<i64> OpenedHandles{0};
 
         NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
         using TLatHistogram =
