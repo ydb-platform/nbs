@@ -10,7 +10,8 @@ namespace NCloud::NBlockStore {
 TRequestCounters MakeRequestCounters(
     ITimerPtr timer,
     TRequestCounters::EOptions options,
-    EHistogramCounterOptions histogramCounterOptions)
+    EHistogramCounterOptions histogramCounterOptions,
+    const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses)
 {
     return TRequestCounters(
         std::move(timer),
@@ -26,8 +27,8 @@ TRequestCounters MakeRequestCounters(
             return IsNonLocalReadWriteRequest(bt);
         },
         options,
-        histogramCounterOptions
-    );
+        histogramCounterOptions,
+        executionTimeSizeSubclasses);
 }
 
 }   // namespace NCloud::NBlockStore

@@ -166,6 +166,9 @@ public:
     [[nodiscard]] NCloud::NProto::TOpentelemetryTraceConfig
     GetOpentelemetryTraceConfig() const;
 
+    [[nodiscard]] TVector<NProto::TDiagnosticsConfig::TInterval>
+    GetExecutionTimeSizeClasses() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

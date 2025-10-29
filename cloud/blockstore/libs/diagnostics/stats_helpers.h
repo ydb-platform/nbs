@@ -12,6 +12,7 @@ namespace NCloud::NBlockStore {
 TRequestCounters MakeRequestCounters(
     ITimerPtr timer,
     TRequestCounters::EOptions options,
-    EHistogramCounterOptions histogramCounterOptions);
+    EHistogramCounterOptions histogramCounterOptions,
+    const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses);
 
 }   // namespace NCloud::NBlockStore

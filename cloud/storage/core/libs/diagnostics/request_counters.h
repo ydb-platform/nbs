@@ -51,6 +51,7 @@ private:
     const std::function<TString(TRequestType)> RequestType2Name;
     const std::function<bool(TRequestType)> IsReadWriteRequestType;
     const EOptions Options;
+    const TVector<std::pair<ui64, ui64>> ExecutionTimeSizeSubclasses;
 
     THolder<TSpecialCounters> SpecialCounters;
     TVector<TStatCounters> CountersByRequest;
@@ -63,7 +64,8 @@ public:
         std::function<TString(TRequestType)> requestType2Name,
         std::function<bool(TRequestType)> isReadWriteRequestType,
         EOptions options,
-        EHistogramCounterOptions histogramCounterOptions);
+        EHistogramCounterOptions histogramCounterOptions,
+        const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses);
     ~TRequestCounters();
 
     void Register(NMonitoring::TDynamicCounters& counters);

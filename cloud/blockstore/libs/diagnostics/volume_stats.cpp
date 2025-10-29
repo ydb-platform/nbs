@@ -272,13 +272,15 @@ public:
             std::shared_ptr<TVolumeInfoBase> volumeBase,
             ITimerPtr timer,
             TRealInstanceId realInstanceId,
-            EHistogramCounterOptions histogramCounterOptions)
+            EHistogramCounterOptions histogramCounterOptions,
+            const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses)
         : VolumeBase(std::move(volumeBase))
         , RealInstanceId(std::move(realInstanceId))
         , RequestCounters(MakeRequestCounters(
-            std::move(timer),
-            GetRequestCountersOptions(*VolumeBase),
-            histogramCounterOptions))
+              std::move(timer),
+              GetRequestCountersOptions(*VolumeBase),
+              histogramCounterOptions,
+              executionTimeSizeSubclasses))
     {}
 
     const NProto::TVolume& GetInfo() const override
@@ -462,6 +464,8 @@ private:
     const ITimerPtr Timer;
     const THashSet<TString> CloudIdsWithStrictSLA;
 
+    TVector<std::pair<ui64, ui64>> ExecutionTimeSizeSubclasses;
+
     TDynamicCountersPtr Counters;
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
@@ -497,6 +501,12 @@ public:
         }(DiagnosticsConfig->GetCloudIdsWithStrictSLA()))
         , UserCounters(CreateUserCounterSupplier())
     {
+        for (const auto& subClass: DiagnosticsConfig->GetExecutionTimeSizeClasses())
+        {
+            ExecutionTimeSizeSubclasses.emplace_back(
+                subClass.GetStart(),
+                subClass.GetEnd());
+        }
     }
 
     bool MountVolumeImpl(
@@ -868,7 +878,8 @@ private:
             volumeBase,
             Timer,
             realInstanceId,
-            DiagnosticsConfig->GetHistogramCounterOptions());
+            DiagnosticsConfig->GetHistogramCounterOptions(),
+            ExecutionTimeSizeSubclasses);
 
         if (!Counters) {
             InitCounters();

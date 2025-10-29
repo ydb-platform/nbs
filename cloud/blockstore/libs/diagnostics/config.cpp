@@ -60,6 +60,8 @@ namespace {
                                                                                                          \
     xxx(SkipReportingZeroBlocksMetricsForYDBBasedDisks, bool, false                                     )\
     xxx(OpentelemetryTraceConfig,           ::NCloud::NProto::TOpentelemetryTraceConfig, {}             )\
+                                                                                                         \
+    xxx(ExecutionTimeSizeClasses,       TVector<NProto::TDiagnosticsConfig::TInterval>,  {}             )\
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
 
 #define BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)               \
@@ -119,6 +121,17 @@ TVector<TString> ConvertValue(
     return v;
 }
 
+template <>
+TVector<NProto::TDiagnosticsConfig::TInterval> ConvertValue(
+    const google::protobuf::RepeatedPtrField<NProto::TDiagnosticsConfig::TInterval>& value)
+{
+    TVector<NProto::TDiagnosticsConfig::TInterval> v;
+    for (const auto& x : value) {
+        v.push_back(x);
+    }
+    return v;
+}
+
 template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
@@ -133,6 +146,19 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
             os << ",";
         }
         os << value[i];
+    }
+}
+
+template <>
+void DumpImpl(
+    const TVector<NProto::TDiagnosticsConfig::TInterval>& value,
+    IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << value[i].SerializeAsString();
     }
 }
 

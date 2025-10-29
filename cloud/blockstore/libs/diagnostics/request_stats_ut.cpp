@@ -1,5 +1,6 @@
 #include "request_stats.h"
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -64,7 +65,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
             CreateWallClockTimer(),
-            EHistogramCounterOption::ReportMultipleCounters);
+            EHistogramCounterOption::ReportMultipleCounters,
+            {});
 
         auto totalCounters = monitoring
             ->GetCounters()
@@ -230,7 +232,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
             CreateWallClockTimer(),
-            EHistogramCounterOption::ReportMultipleCounters);
+            EHistogramCounterOption::ReportMultipleCounters,
+            {});
 
         auto totalCounters =
             monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
@@ -319,7 +322,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
             CreateWallClockTimer(),
-            EHistogramCounterOption::ReportMultipleCounters);
+            EHistogramCounterOption::ReportMultipleCounters,
+            {});
 
         auto totalCounters = monitoring
             ->GetCounters()
@@ -431,7 +435,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
             CreateWallClockTimer(),
-            EHistogramCounterOption::ReportMultipleCounters);
+            EHistogramCounterOption::ReportMultipleCounters,
+            {});
 
         auto totalCounters =
             monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
@@ -559,7 +564,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
             CreateWallClockTimer(),
-            EHistogramCounterOption::ReportMultipleCounters);
+            EHistogramCounterOption::ReportMultipleCounters,
+            {});
 
         auto totalCounters = monitoring
             ->GetCounters()
@@ -656,7 +662,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
             CreateWallClockTimer(),
-            EHistogramCounterOption::ReportMultipleCounters);
+            EHistogramCounterOption::ReportMultipleCounters,
+            {});
 
         auto totalCounters = monitoring
             ->GetCounters()
@@ -725,7 +732,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         auto requestStats = CreateServerRequestStats(
             monitoring->GetCounters(),
             CreateWallClockTimer(),
-            EHistogramCounterOption::ReportMultipleCounters);
+            EHistogramCounterOption::ReportMultipleCounters,
+            {});
 
         unsigned int totalShots = 0;
         auto shoot = [&] (auto mediaKind, unsigned int count) {
@@ -776,6 +784,80 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(7, getHwProblems("ssd_local"));
         UNIT_ASSERT_VALUES_EQUAL(2, getHwProblems("ssd_mirror2"));
         UNIT_ASSERT_VALUES_EQUAL(3, getHwProblems("ssd_mirror3"));
+    }
+
+    Y_UNIT_TEST(ShouldTrackExecuteTimeForDifferentSubClassesSeparately)
+    {
+        // Hdr histogram is no-op under Tsan, so just finish this test
+        if (NSan::TSanIsOn()) {
+            return;
+        }
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto requestStats = CreateServerRequestStats(
+            monitoring->GetCounters(),
+            CreateWallClockTimer(),
+            EHistogramCounterOption::ReportMultipleCounters,
+            {{4_KB, 512_KB}, {1_MB, 4_MB}});
+
+        auto totalCounters =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+
+        AddRequestStats(
+            *requestStats,
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            EBlockStoreRequest::WriteBlocks,
+            {
+                {.RequestBytes = 4_KB,   // first size class
+                 .RequestTime = TDuration::MilliSeconds(100),
+                 .PostponedTime = TDuration::MilliSeconds(0)},
+                {.RequestBytes = 512_KB,   // no size class
+                 .RequestTime = TDuration::MilliSeconds(2000),
+                 .PostponedTime = TDuration::MilliSeconds(0)},
+                {.RequestBytes = 1_MB + 512_KB,   // second size class
+                 .RequestTime = TDuration::MilliSeconds(300),
+                 .PostponedTime = TDuration::MilliSeconds(0)},
+                {.RequestBytes = 4_MB,   // no size class
+                 .RequestTime = TDuration::MilliSeconds(4000),
+                 .PostponedTime = TDuration::MilliSeconds(0)},
+            });
+
+        requestStats->UpdateStats(true);
+
+        auto us2ms = [](const ui64 us)
+        {
+            return TDuration::MicroSeconds(us).MilliSeconds();
+        };
+
+        auto getNameForSizeClass = [](ui64 start, ui64 end)
+        {
+            return FormatByteSize(start) + "-" + FormatByteSize(end);
+        };
+
+        {
+            auto percentiles =
+                totalCounters->GetSubgroup("percentiles", "ExecutionTime");
+            auto classPercentiles = percentiles->GetSubgroup(
+                "sizeclass",
+                getNameForSizeClass(4_KB, 512_KB));
+
+            auto p100 = classPercentiles->GetCounter("100");
+
+            UNIT_ASSERT_VALUES_EQUAL(100, us2ms(p100->Val()));
+        }
+
+        {
+            auto percentiles =
+                totalCounters->GetSubgroup("percentiles", "ExecutionTime");
+            auto classPercentiles = percentiles->GetSubgroup(
+                "sizeclass",
+                getNameForSizeClass(1_MB, 4_MB));
+
+            auto p100 = classPercentiles->GetCounter("100");
+
+            UNIT_ASSERT_VALUES_EQUAL(300, us2ms(p100->Val()));
+        }
     }
 }
 

@@ -5,6 +5,8 @@
 #include "max_calculator.h"
 #include "weighted_percentile.h"
 
+#include <cloud/storage/core/libs/common/disjoint_interval_map.h>
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
@@ -297,6 +299,8 @@ struct TRequestCounters::TStatCounters
     TTimeHist ExecutionTimeHistUnaligned;
     TRequestPercentiles<TTimeHist> ExecutionTimePercentiles;
 
+    TDisjointIntervalMap<ui64, TTimeHist> ExecutionTimeSizeClasses;
+
     TTimeHist RequestCompletionTimeHist;
     TRequestPercentiles<TTimeHist> RequestCompletionTimePercentiles;
 
@@ -318,7 +322,8 @@ struct TRequestCounters::TStatCounters
 
     explicit TStatCounters(
         ITimerPtr timer,
-        EHistogramCounterOptions histogramCounterOptions)
+        EHistogramCounterOptions histogramCounterOptions,
+        const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses)
         : SizeHist("Size", histogramCounterOptions)
         , SizePercentiles(SizeHist)
         , TimeHist("Time", histogramCounterOptions)
@@ -342,7 +347,14 @@ struct TRequestCounters::TStatCounters
         , MaxPostponedQueueSizeGrpcCalc(timer)
         , MaxCountCalc(timer)
         , MaxRequestBytesCalc(timer)
-    {}
+    {
+        for (auto [start, end] : executionTimeSizeSubclasses) {
+            ExecutionTimeSizeClasses.Add(
+                start,
+                end,
+                {"ExecutionTime", histogramCounterOptions});
+        }
+    }
 
     TStatCounters(const TStatCounters&) = delete;
     TStatCounters(TStatCounters&&) = default;
@@ -423,6 +435,14 @@ struct TRequestCounters::TStatCounters
                 TimeHistUnaligned.Register(*unalignedClassGroup);
                 ExecutionTimeHist.Register(counters);
                 ExecutionTimeHistUnaligned.Register(*unalignedClassGroup);
+
+                for (auto& [_, subclass]: ExecutionTimeSizeClasses) {
+                    auto sizeClass = counters.GetSubgroup(
+                        "sizeclass",
+                        FormatByteSize(subclass.Begin) + "-" +
+                            FormatByteSize(subclass.End));
+                    subclass.Value.Register(*sizeClass);
+                }
             } else {
                 SizePercentiles.Register(counters);
                 ExecutionTimePercentiles.Register(counters);
@@ -558,6 +578,13 @@ struct TRequestCounters::TStatCounters
             }
 
             ExecutionTimeHist.Increment(execTime);
+
+            ExecutionTimeSizeClasses.VisitOverlapping(
+                requestBytes,
+                requestBytes + 1,
+                [&](TDisjointIntervalMap<ui64, TTimeHist>::TIterator it)
+                { it->second.Value.Increment(execTime); });
+
             PostponedTimeHist.Increment(postponedTime);
         }
     }
@@ -718,7 +745,8 @@ TRequestCounters::TRequestCounters(
         std::function<TString(TRequestType)> requestType2Name,
         std::function<bool(TRequestType)> isReadWriteRequestType,
         EOptions options,
-        EHistogramCounterOptions histogramCounterOptions)
+        EHistogramCounterOptions histogramCounterOptions,
+        const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses)
     : RequestType2Name(std::move(requestType2Name))
     , IsReadWriteRequestType(std::move(isReadWriteRequestType))
     , Options(options)
@@ -729,7 +757,10 @@ TRequestCounters::TRequestCounters(
 
     CountersByRequest.reserve(requestCount);
     for (ui32 i = 0; i < requestCount; ++i) {
-        CountersByRequest.emplace_back(timer, histogramCounterOptions);
+        CountersByRequest.emplace_back(
+            timer,
+            histogramCounterOptions,
+            executionTimeSizeSubclasses);
     }
 }
 

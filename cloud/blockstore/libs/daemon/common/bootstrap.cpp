@@ -297,10 +297,18 @@ void TBootstrapBase::Init()
     }
     PostponedCriticalEvents.clear();
 
+    TVector<std::pair<ui64, ui64>> executionTimeSizeClasses;
+    for (const auto& class:
+         Configs->DiagnosticsConfig->GetExecutionTimeSizeClasses())
+    {
+        executionTimeSizeClasses.emplace_back(class.GetStart(), class.GetEnd());
+    }
+
     RequestStats = CreateServerRequestStats(
         serverGroup,
         Timer,
-        Configs->DiagnosticsConfig->GetHistogramCounterOptions());
+        Configs->DiagnosticsConfig->GetHistogramCounterOptions(),
+        executionTimeSizeClasses);
 
     if (!VolumeStats) {
         VolumeStats = CreateVolumeStats(

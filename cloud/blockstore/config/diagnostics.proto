@@ -231,4 +231,13 @@ message TDiagnosticsConfig
     optional bool SkipReportingZeroBlocksMetricsForYDBBasedDisks = 53;
 
     optional NCloud.NProto.TOpentelemetryTraceConfig OpentelemetryTraceConfig = 54;
+
+    // Represents [Start, End) interval.
+    message TInterval {
+        required uint64 Start = 1;
+        required uint64 End = 2;
+    };
+
+    // Request size intervals, that should be measured separately. (in bytes)
+    repeated TInterval ExecutionTimeSizeClasses = 56;
 }
