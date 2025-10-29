@@ -232,8 +232,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStatsTest)
                 bootstrap.Timer->Now());
 
             bootstrap.Stats->UpdateStats(false);
-            bootstrap.CheckChanges(
-                "WriteDataRequest_" + testCase.Name + "_MaxTime: 25");
+            // MaxTime is calculated as a maximum over a sliding window.
+            // Despite immediate MaxTime value is 25, the maximal value
+            // is still 2000000
 
             bootstrap.Stats->WriteDataRequestExitedStatus(
                 testCase.Status,

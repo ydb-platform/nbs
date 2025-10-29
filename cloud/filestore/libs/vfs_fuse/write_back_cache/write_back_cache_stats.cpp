@@ -32,7 +32,7 @@ private:
     TDynamicCounters::TCounterPtr TimeSumSeconds;
     TDynamicCounters::TCounterPtr TimeSumUs;
     TDynamicCounters::TCounterPtr MaxTime;
-    TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxCompletedTimeCalc;
+    TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTimeCalc;
     TAtomicInstant MinInProgressStatusChangeTime = TInstant::Zero();
 
     static TDynamicCounters::TCounterPtr GetCounter(
@@ -52,7 +52,7 @@ public:
             ITimerPtr timer,
             const TString& status)
         : Timer(std::move(timer))
-        , MaxCompletedTimeCalc(Timer)
+        , MaxTimeCalc(Timer)
     {
         InProgressCount =
             GetCounter(counters, status, "InProgressCount", false);
@@ -67,7 +67,7 @@ public:
         InProgressCount->Set(0);
         MaxTime->Set(0);
         MinInProgressStatusChangeTime.store(TInstant::Zero());
-        MaxCompletedTimeCalc = {Timer};
+        MaxTimeCalc = {Timer};
     }
 
     void IncrementInProgressCount()
@@ -85,7 +85,7 @@ public:
         Count->Inc();
         TimeSumUs->Add(static_cast<TValue>(duration.MicroSecondsOfSecond()));
         TimeSumSeconds->Add(static_cast<TValue>(duration.Seconds()));
-        MaxCompletedTimeCalc.Add(duration.MicroSeconds());
+        MaxTimeCalc.Add(duration.MicroSeconds());
     }
 
     void UpdateMinStatusChangeTime(TInstant value)
@@ -95,18 +95,12 @@ public:
 
     void UpdateStats()
     {
-        const auto maxCompletedTime = MaxCompletedTimeCalc.NextValue();
-        const auto maxInProgressTime = GetMaxInProgressTime().MicroSeconds();
-        const auto maxTime = Max(maxCompletedTime, maxInProgressTime);
-        MaxTime->Set(static_cast<TValue>(maxTime));
-    }
-
-private:
-    TDuration GetMaxInProgressTime() const
-    {
         const auto minStatusChangeTime = MinInProgressStatusChangeTime.load();
-        return minStatusChangeTime ? Timer->Now() - minStatusChangeTime
-                                   : TDuration::Zero();
+        if (minStatusChangeTime) {
+            auto duration = (Timer->Now() - minStatusChangeTime).MicroSeconds();
+            MaxTimeCalc.Add(duration);
+        }
+        MaxTime->Set(static_cast<TValue>(MaxTimeCalc.NextValue()));
     }
 };
 
