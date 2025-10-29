@@ -2,6 +2,7 @@
 #include "hive_proxy_events_private.h"
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/hive_proxy/protos/tablet_boot_info_backup.pb.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/hive.h>
@@ -13,6 +14,7 @@
 #include <contrib/ydb/core/testlib/basics/helpers.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 
+#include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NStorage {
@@ -1685,6 +1687,71 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             }
 
             UNIT_ASSERT_VALUES_EQUAL(expectedGroupIds, actualGroupIds);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldListCorruptedTabletBootInfoBackupsWithoutCrash)
+    {
+        TString backupFilePath =
+            "BootExternal.tablet_boot_info_backup.txt";
+
+        NKikimr::TTabletStorageInfoPtr storageInfo;
+
+        TVector<TVector<ui64>> expectedGroupIds;
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath, false);
+
+            TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+                FakeTablet2,
+                TTabletTypes::BlockStorePartition);
+            env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+            auto sender = runtime.AllocateEdgeActor();
+
+            auto result =
+                env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            UNIT_ASSERT(result.StorageInfo);
+            UNIT_ASSERT_VALUES_EQUAL(FakeTablet2, result.StorageInfo->TabletID);
+            UNIT_ASSERT_VALUES_EQUAL(1u, result.SuggestedGeneration);
+
+            // Smoke check for background sync (15 seconds should be enough).
+            runtime.AdvanceCurrentTime(TDuration::Seconds(15));
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(15));
+
+            for (auto& channel: result.StorageInfo->Channels) {
+                expectedGroupIds.emplace_back();
+                for (auto& historyEntry: channel.History) {
+                    expectedGroupIds.back().emplace_back(
+                        historyEntry.GroupID);
+                }
+            }
+            storageInfo = result.StorageInfo;
+            env.SendBackupTabletBootInfos(sender, S_OK);
+        }
+
+        // simulate backup corruption
+        {
+            NHiveProxy::NProto::TTabletBootInfoBackup backupProto;
+            MergeFromTextFormat(backupFilePath, backupProto);
+
+            backupProto.MutableData()
+                ->begin()
+                ->second.MutableStorageInfo()
+                ->MutableChannels(0)
+                ->SetChannelErasureName("");
+
+            TFileOutput output(backupFilePath);
+            SerializeToTextFormat(backupProto, output);
+        }
+
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath, false);
+
+            auto sender = runtime.AllocateEdgeActor();
+
+            env.SendListTabletBootInfoBackups(sender, S_OK);
         }
     }
 }
