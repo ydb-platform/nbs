@@ -51,6 +51,9 @@ namespace {
     xxx(OffloadAllIORequestsParsingEnabled, bool,       false                 )\
     xxx(DisableNodeBrokerRegistrationOnDevicelessAgent, bool,          false  )\
     xxx(EnableDataIntegrityValidationForDrBasedDisks,   bool,          false  )\
+    xxx(DataIntegrityValidationPolicyForDrBasedDisks,                          \
+        NProto::EDataIntegrityValidationPolicy,                                \
+        NProto::DIVP_DISABLED                                                 )\
     xxx(MaxAIOContextEvents,                ui32,       1024                  )\
     xxx(PathsPerFileIOService,              ui32,       0                     )\
     xxx(DisableBrokenDevices,               bool,       false                 )\
@@ -103,6 +106,20 @@ IOutputStream& operator<<(IOutputStream& out, NProto::EDeviceEraseMethod pt)
     if (s.empty()) {
         return out << "(Unknown EDeviceEraseMethod value "
                    << static_cast<int>(pt) << ")";
+    }
+
+    return out << s;
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    NProto::EDataIntegrityValidationPolicy policy)
+{
+    const TString& s = NProto::EDataIntegrityValidationPolicy_Name(policy);
+
+    if (s.empty()) {
+        return out << "(Unknown EDataIntegrityValidationPolicy value "
+                   << static_cast<int>(policy) << ")";
     }
 
     return out << s;

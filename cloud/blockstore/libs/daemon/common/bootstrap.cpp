@@ -790,9 +790,9 @@ void TBootstrapBase::InitLocalService()
             NvmeManager,
             {.DirectIO = false,
              .UseSubmissionThread = false,
-             .EnableDataIntegrityValidation =
+             .DataIntegrityValidationPolicy =
                  Configs->DiskAgentConfig
-                     ->GetEnableDataIntegrityValidationForDrBasedDisks()}));
+                     ->GetDataIntegrityValidationPolicyForDrBasedDisks()}));
 }
 
 void TBootstrapBase::InitNullService()
