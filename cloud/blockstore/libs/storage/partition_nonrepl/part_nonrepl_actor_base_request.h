@@ -84,9 +84,11 @@ protected:
         const NActors::TActorContext& ctx,
         const TString& deviceUUID,
         TDeviceOperationTracker::ERequestType requestType,
-        ui32 cookie);
+        size_t requestIndex);
 
-    void OnRequestFinished(const NActors::TActorContext& ctx, ui32 cookie);
+    void OnRequestFinished(
+        const NActors::TActorContext& ctx,
+        size_t requestIndex);
 
 private:
     void StateWork(TAutoPtr<NActors::IEventHandle>& ev);

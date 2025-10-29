@@ -144,6 +144,8 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvZeroDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    OnRequestFinished(ctx, ev->Cookie);
+
     const auto& device = DeviceRequests[ev->Cookie].Device;
     LOG_WARN(
         ctx,
@@ -162,12 +164,12 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
+    OnRequestFinished(ctx, ev->Cookie);
+
     if (HasError(msg->GetError())) {
         HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
     }
-
-    OnRequestFinished(ctx, ev->Cookie);
 
     if (++RequestsCompleted < DeviceRequests.size()) {
         return;
