@@ -1,4 +1,5 @@
 import collections
+import json
 import os
 import six
 from hashlib import md5
@@ -11,6 +12,7 @@ YA_IDE_VENV_VAR = 'YA_IDE_VENV'
 PY_NAMESPACE_PREFIX = 'py/namespace'
 BUILTIN_PROTO = 'builtin_proto'
 DEFAULT_FLAKE8_FILE_PROCESSING_TIME = "1.5"  # in seconds
+DEFAULT_BLACK_FILE_PROCESSING_TIME = "1.5"  # in seconds
 
 
 def _split_macro_call(macro_call, data, item_size, chunk_size=1024):
@@ -55,8 +57,8 @@ def uniq_suffix(path, unit):
 
 
 def pb2_arg(suf, path, mod, unit):
-    return '{path}__int__{suf}={mod}{modsuf}'.format(
-        path=stripext(to_build_root(path, unit)), suf=suf, mod=mod, modsuf=stripext(suf)
+    return '{path}__int{py_ver}__{suf}={mod}{modsuf}'.format(
+        path=stripext(to_build_root(path, unit)), suf=suf, mod=mod, modsuf=stripext(suf), py_ver=unit.get('_PYTHON_VER')
     )
 
 
@@ -73,7 +75,7 @@ def ev_cc_arg(path, unit):
 
 
 def ev_arg(path, mod, unit):
-    return '{}__int___ev_pb2.py={}_ev_pb2'.format(stripext(to_build_root(path, unit)), mod)
+    return '{}__int{}___ev_pb2.py={}_ev_pb2'.format(stripext(to_build_root(path, unit)), unit.get('_PYTHON_VER'), mod)
 
 
 def mangle(name):
@@ -135,6 +137,15 @@ def get_srcdir(path, unit):
     return rootrel_arc_src(path, unit)[: -len(path)].rstrip('/')
 
 
+@lazy
+def get_ruff_configs(unit):
+    rel_config_path = rootrel_arc_src(unit.get('RUFF_CONFIG_PATHS_FILE'), unit)
+    arc_config_path = unit.resolve_arc_path(rel_config_path)
+    abs_config_path = unit.resolve(arc_config_path)
+    with open(abs_config_path, 'r') as fd:
+        return list(json.load(fd).values())
+
+
 def add_python_lint_checks(unit, py_ver, files):
     @lazy
     def get_resolved_files():
@@ -144,6 +155,8 @@ def add_python_lint_checks(unit, py_ver, files):
             if resolved.startswith('$S'):  # path was resolved as source file.
                 resolved_files.append(resolved)
         return resolved_files
+
+    upath = unit.path()[3:]
 
     no_lint_value = get_no_lint_value(unit)
     if no_lint_value == "none":
@@ -156,12 +169,12 @@ def add_python_lint_checks(unit, py_ver, files):
             "travel/",
             "market/report/lite/",  # MARKETOUT-38662, deadline: 2021-08-12
             "passport/backend/oauth/",  # PASSP-35982
+            "sdg/sdc/contrib/",  # SDC contrib
             "testenv/",  # CI-3229
             "yt/yt/",  # YT-20053
             "yt/python/",  # YT-20053
+            "yt/python_py2/",
         )
-
-        upath = unit.path()[3:]
 
         if not upath.startswith(no_lint_allowed_paths):
             ymake.report_configure_error("NO_LINT() is allowed only in " + ", ".join(no_lint_allowed_paths))
@@ -193,6 +206,26 @@ def add_python_lint_checks(unit, py_ver, files):
                 params += ["EXTRA_PARAMS"] + extra_params
             unit.on_add_linter_check(params)
 
+    # ruff related stuff
+    if unit.get('STYLE_RUFF_VALUE') == 'yes':
+        if no_lint_value in ("none", "none_internal"):
+            ymake.report_configure_error(
+                'NO_LINT() and STYLE_RUFF() can\'t be enabled both at the same time',
+            )
+
+        resolved_files = get_resolved_files()
+        if resolved_files:
+            resource = "build/external_resources/ruff"
+            params = ["ruff", "tools/ruff_linter/bin/ruff_linter"]
+            params += ["FILES"] + resolved_files
+            params += ["GLOBAL_RESOURCES", resource]
+            configs = [
+                rootrel_arc_src(unit.get('RUFF_CONFIG_PATHS_FILE'), unit),
+                'build/config/tests/ruff/ruff.toml',
+            ] + get_ruff_configs(unit)
+            params += ['CONFIGS'] + configs
+            unit.on_add_linter_check(params)
+
     if files and unit.get('STYLE_PYTHON_VALUE') == 'yes' and is_py3(unit):
         resolved_files = get_resolved_files()
         if resolved_files:
@@ -200,6 +233,10 @@ def add_python_lint_checks(unit, py_ver, files):
             params = ['black', 'tools/black_linter/black_linter']
             params += ['FILES'] + resolved_files
             params += ['CONFIGS', black_cfg]
+            params += [
+                "FILE_PROCESSING_TIME",
+                unit.get("BLACK_FILE_PROCESSING_TIME") or DEFAULT_BLACK_FILE_PROCESSING_TIME,
+            ]
             unit.on_add_linter_check(params)
 
 
@@ -218,7 +255,7 @@ def py_program(unit, py3):
     if py3:
         peers = ['library/python/runtime_py3/main']
         if unit.get('PYTHON_SQLITE3') != 'no':
-            peers.append('contrib/tools/python3/src/Modules/_sqlite')
+            peers.append('contrib/tools/python3/Modules/_sqlite')
     else:
         peers = ['library/python/runtime/main']
         if unit.get('PYTHON_SQLITE3') != 'no':
@@ -301,6 +338,7 @@ def onpy_srcs(unit, *args):
     swigs_cpp = []
     swigs = swigs_cpp
     pys = []
+    pyis = []
     protos = []
     evs = []
     fbss = []
@@ -419,9 +457,8 @@ def onpy_srcs(unit, *args):
                 evs.append(pathmod)
             elif path.endswith('.swg'):
                 swigs.append(pathmod)
-            # Allow pyi files in PY_SRCS for autocomplete in IDE, but skip it during building
             elif path.endswith('.pyi'):
-                pass
+                pyis.append(pathmod)
             elif path.endswith('.fbs'):
                 fbss.append(pathmod)
             else:
@@ -449,7 +486,10 @@ def onpy_srcs(unit, *args):
                 # generated
                 if with_ext is None:
                     cpp_files2res.add(
-                        (os.path.splitext(filename)[0] + out_suffix, os.path.splitext(path)[0] + out_suffix)
+                        (
+                            os.path.splitext(filename)[0] + out_suffix,
+                            os.path.splitext(path)[0] + out_suffix,
+                        )
                     )
                 else:
                     cpp_files2res.add((filename + with_ext + out_suffix, path + with_ext + out_suffix))
@@ -595,6 +635,20 @@ def onpy_srcs(unit, *args):
                 unit, 2, [path for path, mod in pys] + unit.get(['_PY_EXTRA_LINT_FILES_VALUE']).split()
             )
 
+    if pyis:
+        pyis_seen = set()
+        pyis_dups = {m for _, m in pyis if (m in pyis_seen or pyis_seen.add(m))}
+        if pyis_dups:
+            pyis_dups = ', '.join(name for name in sorted(pyis_dups))
+            ymake.report_configure_error('Duplicate(s) is found in the PY_SRCS macro: {}'.format(pyis_dups))
+
+        res = []
+        for path, mod in pyis:
+            dest = 'py/' + mod.replace('.', '/') + '.pyi'
+            res += ['DEST', dest, path]
+
+        unit.onresource_files(res)
+
     use_vanilla_protoc = unit.get('USE_VANILLA_PROTOC') == 'yes'
     if use_vanilla_protoc:
         cpp_runtime_path = 'contrib/libs/protobuf_std'
@@ -607,7 +661,8 @@ def onpy_srcs(unit, *args):
 
     if protos:
         if not upath.startswith(py_runtime_path) and not upath.startswith(builtin_proto_path):
-            unit.onpeerdir(py_runtime_path)
+            if 'protobuf_old' not in upath:
+                unit.onpeerdir(py_runtime_path)
 
         unit.onpeerdir(unit.get("PY_PROTO_DEPS").split())
 

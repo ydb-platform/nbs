@@ -1,5 +1,5 @@
 RESOURCES_LIBRARY()
-OWNER(
+SUBSCRIBER(
     g:yatest
     heretic
 )
@@ -11,7 +11,7 @@ IF (TEST_TOOL3_HOST_LOCAL)
     MESSAGE(WARNING Host test tool3 $TEST_TOOL3_HOST_LOCAL will be used)
 ENDIF()
 
-IF (OPENSOURCE)
+IF (OPENSOURCE AND USE_OPENSOURCE_TEST_TOOL)
     INCLUDE(host_os.ya.make.inc)
 ELSE()
     INCLUDE(host.ya.make.inc)
@@ -26,3 +26,4 @@ IF (OS_IOS AND NOT BUILD_IOS_APP)
 ENDIF()
 
 END()
+
