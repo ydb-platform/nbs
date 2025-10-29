@@ -23,11 +23,14 @@
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
 
+#include <google/protobuf/util/message_differencer.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
 using namespace std::chrono_literals;
+using MessageDifferencer = google::protobuf::util::MessageDifferencer;
 
 namespace {
 
@@ -1289,6 +1292,119 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(
             (migratedRangeCount * ProcessingBlockCount) * DefaultBlockSize,
             counters.WriteBlocks.RequestBytes);
+    }
+
+    void ShouldUseDataIntegrityChecksums(bool useDirectCopy)
+    {
+        const size_t migratedRangeCount = 3;
+
+        TTestBasicRuntime runtime;
+
+        auto migrationState = std::make_shared<TMigrationState>();
+        migrationState->IsMigrationAllowed = false;
+
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetUseDirectCopyRange(useDirectCopy);
+        storageConfigPatch.SetMaxMigrationIoDepth(1);
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            migrationState,
+            storageConfigPatch);
+        TPartitionClient client(runtime, env.ActorId);
+
+        // Initialize the disk with some data to migrate via WriteBlocks instead
+        // of ZeroBlocks.
+        client.WriteBlocksLocal(
+            TBlockRange64::WithLength(
+                0,
+                migratedRangeCount * ProcessingBlockCount),
+            TString(DefaultBlockSize, 'A'));
+        runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        bool seenWrites = false;
+        TVector<NProto::TChecksum> checksums;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) -> bool
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgent::EvReadDeviceBlocksResponse: {
+                        auto* msg = event->Get<
+                            TEvDiskAgent::TEvReadDeviceBlocksResponse>();
+                        UNIT_ASSERT(msg->Record.HasChecksum());
+                        checksums.push_back(msg->Record.GetChecksum());
+                        break;
+                    }
+                    case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                        seenWrites = true;
+                        auto* msg = event->Get<
+                            TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+                        UNIT_ASSERT(msg->Record.HasChecksum());
+                        UNIT_ASSERT(!checksums.empty());
+                        UNIT_ASSERT_C(
+                            MessageDifferencer::Equals(
+                                msg->Record.GetChecksum(),
+                                checksums.back()),
+                            TStringBuilder() << "Checksum mismatch: "
+                                             << checksums.back()
+                                                    .ShortUtf8DebugString()
+                                                    .Quote()
+                                             << " != "
+                                             << msg->Record.GetChecksum()
+                                                    .ShortUtf8DebugString()
+                                                    .Quote());
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                return false;
+            });
+
+        migrationState->IsMigrationAllowed = true;
+        WaitForMigrations(runtime, migratedRangeCount);
+        UNIT_ASSERT_VALUES_EQUAL(migratedRangeCount, checksums.size());
+        UNIT_ASSERT(seenWrites);
+
+        const size_t migrationCopyBlocks =
+            useDirectCopy ? migratedRangeCount : 0;
+        const size_t migrationWriteBlocks =
+            migratedRangeCount - migrationCopyBlocks;
+
+        runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        UNIT_ASSERT_VALUES_EQUAL(
+            migrationCopyBlocks,
+            counters.CopyBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            migrationCopyBlocks * MigrationRangeSize,
+            counters.CopyBlocks.RequestBytes);
+
+        runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            migrationWriteBlocks,
+            counters.WriteBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            migrationWriteBlocks * MigrationRangeSize,
+            counters.WriteBlocks.RequestBytes);
+    }
+
+    Y_UNIT_TEST(ShouldUseDataIntegrityChecksums_DirectCopy)
+    {
+        ShouldUseDataIntegrityChecksums(true);
+    }
+
+    Y_UNIT_TEST(ShouldUseDataIntegrityChecksums_NoDirectCopy)
+    {
+        ShouldUseDataIntegrityChecksums(false);
     }
 
     Y_UNIT_TEST(ShouldUseRecommendedBandwidth)

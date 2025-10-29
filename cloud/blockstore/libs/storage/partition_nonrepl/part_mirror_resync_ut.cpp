@@ -1,4 +1,5 @@
 #include "part_mirror.h"
+
 #include "part_mirror_actor.h"
 #include "part_mirror_resync_actor.h"
 #include "part_mirror_resync_util.h"
@@ -26,11 +27,14 @@
 #include <util/datetime/base.h>
 #include <util/string/builder.h>
 
+#include <google/protobuf/util/message_differencer.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
 using namespace std::chrono_literals;
+using MessageDifferencer = google::protobuf::util::MessageDifferencer;
 
 namespace {
 
@@ -256,6 +260,7 @@ struct TTestEnv
             }
         }
 
+        DiskAgentState->EnableDataIntegrityValidation = true;
         Runtime.AddLocalService(
             MakeDiskAgentServiceId(nodeId),
             TActorSetupCmd(
@@ -666,6 +671,117 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * range.Size(),
             counters.RequestCounters.ReadBlocks.RequestBytes);
+    }
+
+    void ShouldUseDataIntegrityChecksums(
+        NProto::EResyncPolicy resyncPolicy,
+        bool multiBlockCorruption)
+    {
+        constexpr ui32 BlockSize = 4_KB;
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, BlockSize);
+
+        const auto range =
+            TBlockRange64::WithLength(0, 5120 * 4_KB / BlockSize);
+
+        env.WriteMirror(range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'B');
+
+        // Corrupt multiple blocks to engage blobk by block resyncing logic.
+        if (multiBlockCorruption) {
+            env.WriteReplica(0, TBlockRange64::WithLength(0, 1), '0');
+            env.WriteReplica(1, TBlockRange64::WithLength(0, 1), '0');
+
+            env.WriteReplica(1, TBlockRange64::WithLength(1, 1), '1');
+            env.WriteReplica(2, TBlockRange64::WithLength(1, 1), '1');
+
+            env.WriteReplica(0, TBlockRange64::WithLength(2, 1), '2');
+            env.WriteReplica(2, TBlockRange64::WithLength(2, 1), '2');
+        }
+
+        bool seenWrites = false;
+        TVector<NProto::TChecksum> checksums;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) -> bool
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskAgent::EvReadDeviceBlocksResponse: {
+                        auto* msg = event->Get<
+                            TEvDiskAgent::TEvReadDeviceBlocksResponse>();
+                        UNIT_ASSERT(msg->Record.HasChecksum());
+                        checksums.push_back(msg->Record.GetChecksum());
+                        break;
+                    }
+                    case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                        seenWrites = true;
+                        auto* msg = event->Get<
+                            TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+                        UNIT_ASSERT(msg->Record.HasChecksum());
+                        UNIT_ASSERT(!checksums.empty());
+                        const auto expectedChecksum =
+                            multiBlockCorruption ? CalculateChecksum(
+                                                       msg->Record.GetBlocks(),
+                                                       BlockSize)
+                                                 : checksums.back();
+
+                        if (multiBlockCorruption) {
+                            UNIT_ASSERT(!MessageDifferencer::Equals(
+                                expectedChecksum,
+                                checksums.back()));
+                        }
+                        UNIT_ASSERT_C(
+                            MessageDifferencer::Equals(
+                                msg->Record.GetChecksum(),
+                                expectedChecksum),
+                            TStringBuilder()
+                                << "Checksum mismatch: "
+                                << expectedChecksum.ShortUtf8DebugString()
+                                       .Quote()
+                                << " != "
+                                << msg->Record.GetChecksum()
+                                       .ShortUtf8DebugString()
+                                       .Quote());
+
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                return false;
+            });
+
+        env.StartResync(0, resyncPolicy);
+        env.ResyncController.WaitForResyncedRangeCount(5);
+        UNIT_ASSERT(env.ResyncController.ResyncFinished);
+        UNIT_ASSERT(seenWrites);
+        const ui32 expectedChecksumsCount =
+            resyncPolicy == NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK
+                ? 15
+                : 5;
+        UNIT_ASSERT_VALUES_EQUAL(expectedChecksumsCount, checksums.size());
+    }
+
+    Y_UNIT_TEST(ShouldUseDataIntegrityChecksums_4MB)
+    {
+        ShouldUseDataIntegrityChecksums(
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_4MB,
+            false);
+    }
+
+    Y_UNIT_TEST(ShouldUseDataIntegrityChecksums_BlockByBlock)
+    {
+        ShouldUseDataIntegrityChecksums(
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK,
+            false);
+    }
+
+    Y_UNIT_TEST(
+        ShouldUseDataIntegrityChecksums_BlockByBlock_MultiBlockCorruption)
+    {
+        ShouldUseDataIntegrityChecksums(
+            NProto::RESYNC_POLICY_MINOR_AND_MAJOR_BLOCK_BY_BLOCK,
+            true);
     }
 
     void DoTestShouldResyncWholeDisk(
