@@ -28,47 +28,77 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Generates Kotlin code for a given .proto file.
+// Author: jieluo@google.com (Jie Luo)
+//
+// Generates Python stub (.pyi) for a given .proto file.
 
-#ifndef GOOGLE_PROTOBUF_COMPILER_JAVA_KOTLIN_GENERATOR_H__
-#define GOOGLE_PROTOBUF_COMPILER_JAVA_KOTLIN_GENERATOR_H__
+#ifndef GOOGLE_PROTOBUF_COMPILER_PYTHON_PYI_GENERATOR_H__
+#define GOOGLE_PROTOBUF_COMPILER_PYTHON_PYI_GENERATOR_H__
 
+#include <map>
 #include <string>
 
 #include <google/protobuf/compiler/code_generator.h>
+#include <google/protobuf/stubs/mutex.h>
 
 // Must be included last.
 #include <google/protobuf/port_def.inc>
 
 namespace google {
 namespace protobuf {
+class Descriptor;
+class EnumDescriptor;
+class FieldDescriptor;
+class MethodDescriptor;
+class ServiceDescriptor;
+
+namespace io {
+class Printer;
+}
+
 namespace compiler {
-namespace java {
+namespace python {
 
-// CodeGenerator implementation which generates Kotlin code.  If you create your
-// own protocol compiler binary and you want it to support Kotlin output, you
-// can do so by registering an instance of this CodeGenerator with the
-// CommandLineInterface in your main() function.
-class PROTOC_EXPORT KotlinGenerator : public CodeGenerator {
+class PROTOC_EXPORT PyiGenerator : public google::protobuf::compiler::CodeGenerator {
  public:
-  KotlinGenerator();
-  ~KotlinGenerator() override;
+  PyiGenerator();
+  ~PyiGenerator() override;
 
-  // implements CodeGenerator ----------------------------------------
+  // CodeGenerator methods.
   bool Generate(const FileDescriptor* file, const TProtoStringType& parameter,
-                GeneratorContext* context, TProtoStringType* error) const override;
-
-  uint64_t GetSupportedFeatures() const override;
+                GeneratorContext* generator_context,
+                TProtoStringType* error) const override;
 
  private:
-  GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(KotlinGenerator);
+  void PrintImports(std::map<TProtoStringType, TProtoStringType>* item_map) const;
+  void PrintEnum(const EnumDescriptor& enum_descriptor) const;
+  void AddEnumValue(const EnumDescriptor& enum_descriptor,
+                    std::map<TProtoStringType, TProtoStringType>* item_map) const;
+  void PrintTopLevelEnums() const;
+  template <typename DescriptorT>
+  void AddExtensions(const DescriptorT& descriptor,
+                     std::map<TProtoStringType, TProtoStringType>* item_map) const;
+  void PrintMessages() const;
+  void PrintMessage(const Descriptor& message_descriptor, bool is_nested) const;
+  void PrintServices() const;
+  void PrintItemMap(const std::map<TProtoStringType, TProtoStringType>& item_map) const;
+  TProtoStringType GetFieldType(const FieldDescriptor& field_des) const;
+  template <typename DescriptorT>
+  TProtoStringType ModuleLevelName(const DescriptorT& descriptor) const;
+
+  // Very coarse-grained lock to ensure that Generate() is reentrant.
+  // Guards file_ and printer_.
+  mutable Mutex mutex_;
+  mutable const FileDescriptor* file_;  // Set in Generate().  Under mutex_.
+  mutable io::Printer* printer_;        // Set in Generate().  Under mutex_.
+  GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(PyiGenerator);
 };
 
-}  // namespace java
+}  // namespace python
 }  // namespace compiler
 }  // namespace protobuf
 }  // namespace google
 
 #include <google/protobuf/port_undef.inc>
 
-#endif  // GOOGLE_PROTOBUF_COMPILER_JAVA_KOTLIN_GENERATOR_H__
+#endif  // GOOGLE_PROTOBUF_COMPILER_PYTHON_PYI_GENERATOR_H__

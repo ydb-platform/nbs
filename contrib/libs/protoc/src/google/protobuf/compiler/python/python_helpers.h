@@ -28,60 +28,35 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Author: dweis@google.com (Daniel Weis)
-//  Based on original Protocol Buffers design by
-//  Sanjay Ghemawat, Jeff Dean, and others.
+#ifndef GOOGLE_PROTOBUF_COMPILER_PYTHON_HELPERS_H__
+#define GOOGLE_PROTOBUF_COMPILER_PYTHON_HELPERS_H__
 
-#ifndef GOOGLE_PROTOBUF_COMPILER_JAVA_MESSAGE_BUILDER_LITE_H__
-#define GOOGLE_PROTOBUF_COMPILER_JAVA_MESSAGE_BUILDER_LITE_H__
-
-#include <map>
 #include <string>
 
-#include <google/protobuf/compiler/java/java_field.h>
+#include <google/protobuf/descriptor.h>
 
 namespace google {
 namespace protobuf {
 namespace compiler {
-namespace java {
-class Context;            // context.h
-class ClassNameResolver;  // name_resolver.h
-}  // namespace java
-}  // namespace compiler
-namespace io {
-class Printer;  // printer.h
-}
-}  // namespace protobuf
-}  // namespace google
+namespace python {
 
-namespace google {
-namespace protobuf {
-namespace compiler {
-namespace java {
 
-class MessageBuilderLiteGenerator {
- public:
-  explicit MessageBuilderLiteGenerator(const Descriptor* descriptor,
-                                       Context* context);
-  virtual ~MessageBuilderLiteGenerator();
+TProtoStringType ModuleName(const TProtoStringType& filename);
+TProtoStringType StrippedModuleName(const TProtoStringType& filename);
+bool ContainsPythonKeyword(const TProtoStringType& module_name);
+bool IsPythonKeyword(const TProtoStringType& name);
+TProtoStringType ResolveKeyword(const TProtoStringType& name);
+TProtoStringType GetFileName(const FileDescriptor* file_des,
+                        const TProtoStringType& suffix);
+bool HasGenericServices(const FileDescriptor* file);
 
-  virtual void Generate(io::Printer* printer);
+template <typename DescriptorT>
+TProtoStringType NamePrefixedWithNestedTypes(const DescriptorT& descriptor,
+                                        const TProtoStringType& separator);
 
- private:
-  void GenerateCommonBuilderMethods(io::Printer* printer);
-
-  const Descriptor* descriptor_;
-  Context* context_;
-  ClassNameResolver* name_resolver_;
-  FieldGeneratorMap<ImmutableFieldLiteGenerator> field_generators_;
-  std::set<const OneofDescriptor*> oneofs_;
-
-  GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(MessageBuilderLiteGenerator);
-};
-
-}  // namespace java
+}  // namespace python
 }  // namespace compiler
 }  // namespace protobuf
 }  // namespace google
 
-#endif  // GOOGLE_PROTOBUF_COMPILER_JAVA_MESSAGE_BUILDER_LITE_H__
+#endif  // GOOGLE_PROTOBUF_COMPILER_PYTHON_HELPERS_H__
