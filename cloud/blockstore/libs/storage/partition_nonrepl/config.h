@@ -26,9 +26,15 @@ using TMigrations = google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
 struct TDeviceRequest
 {
     const NProto::TDeviceConfig& Device;
+    // Index of the device in the partition config.
     const ui32 DeviceIdx;
+    // Index of the device in original request. E.g. when the request is split
+    // between two devices, this will be 0 for the first deviceRequest and 1 for
+    // the second.
     const ui32 RelativeDeviceIdx;
+    // Request block range.
     const TBlockRange64 BlockRange;
+    // Block range that is relative to the device borders.
     const TBlockRange64 DeviceBlockRange;
 
     TDeviceRequest(
