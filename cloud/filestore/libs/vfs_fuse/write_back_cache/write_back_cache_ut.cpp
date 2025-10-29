@@ -33,7 +33,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 CacheCapacityBytes = 1024*1024 + 1024;
+constexpr ui32 CacheCapacityBytes = 1024 * 1024 + 1024;
 
 constexpr ui32 DefaultMaxWriteRequestSize = 1_MB;
 constexpr ui32 DefaultMaxWriteRequestsCount = 64;

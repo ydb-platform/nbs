@@ -98,7 +98,7 @@ struct TBootstrap
             const NProto::TFileStoreFeatures& featuresConfig = {},
             ui32 handleOpsQueueSize = 1000,
             ui32 writeBackCacheAutomaticFlushPeriodMs = 1000,
-            ui64 writeBackCacheCapacity = 1024*1024 + 1024)
+            ui64 writeBackCacheCapacity = 1024 * 1024 + 1024)
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
