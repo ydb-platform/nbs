@@ -403,6 +403,8 @@ public:
             CachedEntriesPersistentQueue.Size());
 
         if (deserializationStats.HasFailed()) {
+            // Each deserialization failure event has been already reported
+            // as a critical error - just write statistics to the log
             STORAGE_ERROR(
                 "[f:%s][c:%s] WriteBackCache request deserialization failure "
                 "{\"ChecksumMismatchCount\": %lu, "
@@ -416,13 +418,10 @@ public:
         }
 
         if (CachedEntriesPersistentQueue.IsCorrupted()) {
-            TString msg = "WriteBackCache persistent queue is corrupted";
-            ReportWriteBackCacheProcessError(msg);
-            STORAGE_ERROR(
-                "[f:%s][c:%s] %s",
+            ReportWriteBackCacheProcessError(Sprintf(
+                "[f:%s][c:%s] WriteBackCache persistent queue is corrupted",
                 FileSystemId.Quote().c_str(),
-                ClientId.Quote().c_str(),
-                msg.c_str());
+                ClientId.Quote().c_str()));
         }
 
         UpdatePersistentQueueStats();
@@ -1449,7 +1448,8 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         // and Serialization. In future, this can happen only as a result of
         // corruption
         deserializationStats.EntrySizeMismatchCount++;
-        ReportWriteBackCacheProcessError("Serialized entry is empty");
+        ReportWriteBackCacheProcessError(
+            "TWriteDataEntry deserialization error: entry is empty");
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }
@@ -1458,7 +1458,8 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
 
     if (mi.Skip(bufferSize) != bufferSize) {
         deserializationStats.EntrySizeMismatchCount++;
-        ReportWriteBackCacheProcessError("Invalid serialized entry size");
+        ReportWriteBackCacheProcessError(
+            "TWriteDataEntry deserialization error: invalid entry size");
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }
@@ -1467,7 +1468,8 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     if (!parsedRequest->ParseFromArray(mi.Buf(), static_cast<int>(mi.Avail())))
     {
         deserializationStats.ProtobufDeserializationErrorCount++;
-        ReportWriteBackCacheProcessError("Protobuf deserialization failed");
+        ReportWriteBackCacheProcessError(
+            "TWriteDataEntry deserialization error: ParseFromArray has failed");
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }

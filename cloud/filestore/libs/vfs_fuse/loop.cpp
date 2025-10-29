@@ -953,8 +953,12 @@ private:
                         HandleOpsQueueFileLock);
 
                     if (HasError(error)) {
-                        ReportHandleOpsQueueCreatingOrDeletingError(
-                            error.GetMessage());
+                        ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
+                            "[f:%s][c:%s] CreateAndLockFile error: %s (%s)",
+                            Config->GetFileSystemId().Quote().c_str(),
+                            Config->GetClientId().Quote().c_str(),
+                            error.GetMessage().c_str(),
+                            path.c_str()));
                         return error;
                     }
 
@@ -963,14 +967,11 @@ private:
                         Config->GetHandleOpsQueueSize());
                     HandleOpsQueueInitialized = true;
                 } else {
-                    TString msg = "Error initializing HandleOpsQueue: "
-                        "HandleOpsQueuePath is not set";
-                    STORAGE_WARN("[f:%s][c:%s] %s",
+                    ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
+                        "[f:%s][c:%s] Error initializing HandleOpsQueue: "
+                        "HandleOpsQueuePath is not set",
                         Config->GetFileSystemId().Quote().c_str(),
-                        Config->GetClientId().Quote().c_str(),
-                        msg.c_str()
-                    );
-                    ReportHandleOpsQueueCreatingOrDeletingError(msg);
+                        Config->GetClientId().Quote().c_str()));
                 }
             }
 
@@ -987,8 +988,12 @@ private:
                         WriteBackCacheFileLock);
 
                     if (HasError(error)) {
-                        ReportWriteBackCacheCreatingOrDeletingError(
-                            error.GetMessage());
+                        ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
+                            "[f:%s][c:%s] CreateAndLockFile error: %s (%s)",
+                            Config->GetFileSystemId().Quote().c_str(),
+                            Config->GetClientId().Quote().c_str(),
+                            error.GetMessage().c_str(),
+                            path.c_str()));
                         return error;
                     }
 
@@ -1010,15 +1015,11 @@ private:
                     );
                     WriteBackCacheInitialized = true;
                 } else {
-                    TString msg =
-                        "Error initializing WriteBackCache: "
-                        "WriteBackCachePath is not set";
-                    STORAGE_WARN(
-                        "[f:%s][c:%s] %s",
+                    ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
+                        "[f:%s][c:%s] Error initializing WriteBackCache: "
+                        "WriteBackCachePath is not set",
                         Config->GetFileSystemId().Quote().c_str(),
-                        Config->GetClientId().Quote().c_str(),
-                        msg.c_str());
-                    ReportWriteBackCacheCreatingOrDeletingError(msg);
+                        Config->GetClientId().Quote().c_str()));
                 }
             }
 
