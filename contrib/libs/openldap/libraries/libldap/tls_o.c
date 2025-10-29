@@ -2,7 +2,7 @@
 /* $OpenLDAP$ */
 /* This work is part of OpenLDAP Software <http://www.openldap.org/>.
  *
- * Copyright 2008-2022 The OpenLDAP Foundation.
+ * Copyright 2008-2024 The OpenLDAP Foundation.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -54,7 +54,9 @@
 
 #if OPENSSL_VERSION_MAJOR >= 3
 #define ERR_get_error_line( a, b )	ERR_get_error_all( a, b, NULL, NULL, NULL )
+#ifndef SSL_get_peer_certificate
 #define SSL_get_peer_certificate( s )	SSL_get1_peer_certificate( s )
+#endif
 #endif
 typedef SSL_CTX tlso_ctx;
 typedef SSL tlso_session;
@@ -225,7 +227,12 @@ tlso_init( void )
 	SSL_library_init();
 	OpenSSL_add_all_digests();
 #else
-	OPENSSL_init_ssl(0, NULL);
+#ifdef OPENSSL_INIT_NO_ATEXIT
+#define	OPENSSL_FLAGS	OPENSSL_INIT_NO_ATEXIT
+#else
+#define	OPENSSL_FLAGS	0
+#endif
+	OPENSSL_init_ssl(OPENSSL_FLAGS, NULL);
 #endif
 
 	/* FIXME: mod_ssl does this */
@@ -296,7 +303,7 @@ tlso_stecpy( char *dst, const char *src, const char *end )
  * Try to find any TLS1.3 ciphers in the given list of suites.
  */
 static void
-tlso_ctx_cipher13( tlso_ctx *ctx, char *suites )
+tlso_ctx_cipher13( tlso_ctx *ctx, char *suites, char **oldsuites )
 {
 	char tls13_suites[1024], *ts = tls13_suites, *te = tls13_suites + sizeof(tls13_suites);
 	char *ptr, *colon, *nptr;
@@ -304,6 +311,8 @@ tlso_ctx_cipher13( tlso_ctx *ctx, char *suites )
 	STACK_OF(SSL_CIPHER) *cs;
 	SSL *s = SSL_new( ctx );
 	int ret;
+
+	*oldsuites = NULL;
 
 	if ( !s )
 		return;
@@ -336,8 +345,15 @@ tlso_ctx_cipher13( tlso_ctx *ctx, char *suites )
 					if ( tls13_suites[0] )
 						ts = tlso_stecpy( ts, ":", te );
 					ts = tlso_stecpy( ts, nptr, te );
+				} else if (! *oldsuites) {
+					/* should never happen, set_ciphersuites should
+					 * only succeed for TLSv1.3 and above
+					 */
+					*oldsuites = ptr;
 				}
 			}
+		} else if (! *oldsuites) {
+			*oldsuites = ptr;
 		}
 		if ( !colon || ts >= te )
 			break;
@@ -417,10 +433,11 @@ tlso_ctx_init( struct ldapoptions *lo, struct ldaptls *lt, int is_server, char *
 	}
 
 	if ( lo->ldo_tls_ciphersuite ) {
+		char *oldsuites = lt->lt_ciphersuite;
 #if OPENSSL_VERSION_NUMBER >= 0x10101000
-		tlso_ctx_cipher13( ctx, lt->lt_ciphersuite );
+		tlso_ctx_cipher13( ctx, lt->lt_ciphersuite, &oldsuites );
 #endif
-		if ( !SSL_CTX_set_cipher_list( ctx, lt->lt_ciphersuite ) )
+		if ( oldsuites && !SSL_CTX_set_cipher_list( ctx, oldsuites ) )
 		{
 			Debug1( LDAP_DEBUG_ANY,
 				   "TLS: could not set cipher list %s.\n",
@@ -553,7 +570,7 @@ tlso_ctx_init( struct ldapoptions *lo, struct ldaptls *lt, int is_server, char *
 	if ( is_server && lo->ldo_tls_dhfile ) {
 #if OPENSSL_VERSION_MAJOR >= 3
 		EVP_PKEY *dh;
-#define	bio_params( bio, dh )	dh = PEM_read_bio_Parameters( bio, &dh )
+#define	bio_params( bio, dh )	dh = PEM_read_bio_Parameters( bio, NULL )
 #else
 		DH *dh;
 #define	bio_params( bio, dh )	dh = PEM_read_bio_DHparams( bio, NULL, NULL, NULL )
@@ -1053,7 +1070,12 @@ tlso_session_endpoint( tls_session *sess, struct berval *buf, int is_server )
 		return 0;
 
 #if OPENSSL_VERSION_NUMBER >= 0x10100000
-	md = EVP_get_digestbynid( X509_get_signature_nid( cert ));
+	{
+		int mdnid;
+		if ( !OBJ_find_sigid_algs( X509_get_signature_nid( cert ), &mdnid, NULL ))
+			return 0;
+		md = EVP_get_digestbynid( mdnid );
+	}
 #else
 	md = EVP_get_digestbynid(OBJ_obj2nid( cert->sig_alg->algorithm ));
 #endif
