@@ -47,3 +47,4 @@ MCStreamer *llvm::createARMWinCOFFStreamer(
   S->getAssembler().setIncrementalLinkerCompatible(IncrementalLinkerCompatible);
   return S;
 }
+
