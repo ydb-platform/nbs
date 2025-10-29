@@ -368,7 +368,8 @@ TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
                 break;
             }
             case TFollowerDiskInfo::EState::Preparing:
-            case TFollowerDiskInfo::EState::DataReady: {
+            case TFollowerDiskInfo::EState::DataReady:
+            case TFollowerDiskInfo::EState::LeadershipTransferred: {
                 // Creating an actor wrapper.
                 auto actorId = NCloud::Register<TFollowerDiskActor>(
                     ctx,

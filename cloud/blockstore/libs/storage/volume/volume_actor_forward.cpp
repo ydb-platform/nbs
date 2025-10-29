@@ -752,8 +752,101 @@ void TVolumeActor::ForwardRequest(
 
     const auto& clientId = GetClientId(*msg);
     auto& clients = State->AccessClients();
-    auto clientsIt = clients.end();
 
+    /*
+     *  Validation for reads and writes for the leader and follower
+     */
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        const bool isCopyingClient = clientId == CopyVolumeClientId;
+
+        auto makeMessage = [&](NLog::EPriority priority) -> TString
+        {
+            auto message = TStringBuilder()
+                           << "The client " << clientId.Quote()
+                           << " is not allowed to " << TMethod::Name
+                           << blockRange.Print() << " to disk with state "
+                           << ToString(State->GetLeadershipStatus()).Quote()
+                           << (State->GetPrincipalDiskId()
+                                   ? ". Reconnect to " +
+                                         State->GetPrincipalDiskId().Quote()
+                                   : "");
+            LOG_LOG(
+                ctx,
+                priority,
+                TBlockStoreComponents::VOLUME,
+                "%s %s",
+                LogTitle.GetWithTime().c_str(),
+                message.c_str());
+            return message;
+        };
+
+        if (isCopyingClient && !IsWriteMethod<TMethod>) {
+            // The CopyVolumeClientId is allowed to perform only write
+            // operations.
+            replyError(MakeError(E_ARGUMENT, makeMessage(NLog::PRI_ERROR)));
+            return;
+        }
+
+        switch (State->GetLeadershipStatus()) {
+            case ELeadershipStatus::Principal: {
+                if (isCopyingClient) {
+                    // The CopyVolumeClientId is allowed to perform operations
+                    // only on the disk with follower state.
+                    replyError(
+                        MakeError(E_REJECTED, makeMessage(NLog::PRI_INFO)));
+                    return;
+                }
+                break;
+            }
+            case ELeadershipStatus::Follower: {
+                if (!isCopyingClient) {
+                    // Any operations on the follower disk are prohibited for
+                    // an ordinary client.
+                    replyError(MakeError(
+                        E_PRECONDITION_FAILED,
+                        makeMessage(NLog::PRI_ERROR)));
+                    return;
+                }
+                break;
+            }
+            case ELeadershipStatus::LeadershipTransferring: {
+                if (isCopyingClient) {
+                    // The CopyVolumeClientId is allowed to perform operations
+                    // only on the disk with follower state.
+                    replyError(MakeError(
+                        E_PRECONDITION_FAILED,
+                        makeMessage(NLog::PRI_ERROR)));
+                    return;
+                }
+
+                // All operations are prohibited when leadership is being
+                // transferred.
+                replyError(MakeError(E_REJECTED, makeMessage(NLog::PRI_DEBUG)));
+                return;
+            }
+            case ELeadershipStatus::LeadershipTransferred: {
+                if (isCopyingClient) {
+                    // The CopyVolumeClientId is allowed to perform operations
+                    // only on the disk with follower state.
+                    replyError(MakeError(
+                        E_PRECONDITION_FAILED,
+                        makeMessage(NLog::PRI_ERROR)));
+                    return;
+                }
+
+                // It's time to switch the client to a new leader.
+                ui32 flags = 0;
+                SetProtoFlag(flags, NProto::EF_OUTDATED_VOLUME);
+                replyError(MakeError(
+                    E_BS_INVALID_SESSION,
+                    makeMessage(NLog::PRI_INFO),
+                    flags));
+                return;
+            }
+        }
+    }
+
+    auto clientsIt = clients.end();
     bool throttlingDisabled = false;
     bool forceWrite = false;
     bool predefinedClient = false;
@@ -766,7 +859,8 @@ void TVolumeActor::ForwardRequest(
                         E_BS_INVALID_SESSION,
                         TStringBuilder()
                             << "Invalid session. Can't use " << clientId.Quote()
-                            << " when other clients exists"));
+                            << " when other clients exists for "
+                            << TMethod::Name << blockRange.Print()));
                     return;
                 }
                 predefinedClient = true;
