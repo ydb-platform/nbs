@@ -405,7 +405,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         }
     }
 
-    ui64 blocks = 0;
+    ui64 blocks =
+        deviceRequests[0].BlockRange.Start - msg->Record.GetStartIndex();
     for (const auto& deviceRequest: deviceRequests) {
         auto ep = AgentId2Endpoint[deviceRequest.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);

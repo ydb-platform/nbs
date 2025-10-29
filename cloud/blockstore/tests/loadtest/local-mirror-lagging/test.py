@@ -6,8 +6,9 @@ import uuid
 from cloud.blockstore.config.client_pb2 import TClientAppConfig, TClientConfig
 from cloud.blockstore.config.disk_pb2 import DEVICE_ERASE_METHOD_NONE, TDiskAgentConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
-    TKikimrServiceConfig
+    TKikimrServiceConfig, TChecksumFlags
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
+from cloud.blockstore.public.sdk.python.protos import DIVP_ENABLED_FORCED
 
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
@@ -248,6 +249,7 @@ def __run_test(test_case, use_rdma):
             devices_per_agent,
             disk_agent_config_patch=TDiskAgentConfig(
                 DedicatedDiskAgent=True,
+                DataIntegrityValidationPolicyForDrBasedDisks=DIVP_ENABLED_FORCED,
                 # in tests, only one disk is created and it lives until the end,
                 # so we can set DEVICE_ERASE_METHOD_NONE to speed up testing
                 DeviceEraseMethod=DEVICE_ERASE_METHOD_NONE),
@@ -266,6 +268,8 @@ def __run_test(test_case, use_rdma):
         server_app_config.ServerConfig.RdmaClientEnabled = use_rdma
         server_app_config.ServerConfig.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
         server_app_config.ServerConfig.EndpointStorageDir = endpoint_storage_dir
+        server_app_config.ServerConfig.ChecksumFlags.CopyFrom(TChecksumFlags())
+        server_app_config.ServerConfig.ChecksumFlags.EnableDataIntegrityClient = True
         server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
         storage = TStorageServiceConfig()

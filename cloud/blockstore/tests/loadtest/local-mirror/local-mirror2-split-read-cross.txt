@@ -33,7 +33,11 @@ Vertices {
     Test {
         Name: "shoot_vol0"
         VolumeName: "vol0"
-
+        StartEndpointRequest {
+            IpcType: IPC_GRPC
+            VolumeAccessMode: VOLUME_ACCESS_READ_WRITE
+            VolumeMountMode: VOLUME_MOUNT_LOCAL
+        }
         ArtificialLoadSpec {
             Ranges {
                 Start: 261644
