@@ -31,8 +31,8 @@ enum EErrorFlag
     // checksum in the request.
     EF_CHECKSUM_MISMATCH = 4;
 
-    // A flag that indicates that the volume is outdated. Clint should reconnect
-    // to new principal.
+    // The flag indicates that the leadership has been transferred to another disk.
+    // Client should reconnect to new principal.
     EF_OUTDATED_VOLUME = 5;
 
     // TODO: EF_RETRIABLE, EF_CLIENT

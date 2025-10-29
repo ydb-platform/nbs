@@ -225,6 +225,7 @@ bool TFollowerDiskActor::ApplyLinkState(const NActors::TActorContext& ctx)
         return false;
     }
 
+    // Return true if need to start data transfer.
     return true;
 }
 

@@ -757,7 +757,7 @@ void TVolumeActor::ForwardRequest(
      *  Validation for reads and writes for the leader and follower
      */
     if constexpr (IsReadOrWriteMethod<TMethod>) {
-        const bool isCopingClient = clientId == CopyVolumeClientId;
+        const bool isCopyingClient = clientId == CopyVolumeClientId;
 
         auto makeMessage = [&](NLog::EPriority priority) -> TString
         {
@@ -780,44 +780,61 @@ void TVolumeActor::ForwardRequest(
             return message;
         };
 
+        if (isCopyingClient && !IsWriteMethod<TMethod>) {
+            // The CopyVolumeClientId is allowed to perform only write
+            // operations.
+            replyError(MakeError(E_ARGUMENT, makeMessage(NLog::PRI_ERROR)));
+            return;
+        }
+
         switch (State->GetLeadershipStatus()) {
             case ELeadershipStatus::Principal: {
-                if (isCopingClient && IsReadMethod<TMethod>) {
+                if (isCopyingClient) {
+                    // The CopyVolumeClientId is allowed to perform operations
+                    // only on the disk with follower state.
                     replyError(
-                        MakeError(E_ARGUMENT, makeMessage(NLog::PRI_ERROR)));
-                    return;
-                }
-                if (isCopingClient && IsWriteMethod<TMethod>) {
-                    replyError(
-                        MakeError(E_REJECTED, makeMessage(NLog::PRI_WARN)));
+                        MakeError(E_REJECTED, makeMessage(NLog::PRI_INFO)));
                     return;
                 }
                 break;
             }
             case ELeadershipStatus::Follower: {
-                if (!isCopingClient || !IsWriteMethod<TMethod>) {
-                    replyError(
-                        MakeError(E_ARGUMENT, makeMessage(NLog::PRI_ERROR)));
+                if (!isCopyingClient) {
+                    // Any operations on the follower disk are prohibited for
+                    // an ordinary client.
+                    replyError(MakeError(
+                        E_PRECONDITION_FAILED,
+                        makeMessage(NLog::PRI_ERROR)));
                     return;
                 }
                 break;
             }
             case ELeadershipStatus::LeadershipTransferring: {
-                if (isCopingClient) {
-                    replyError(
-                        MakeError(E_ARGUMENT, makeMessage(NLog::PRI_ERROR)));
-                    return;
-                }
-                replyError(MakeError(E_REJECTED, makeMessage(NLog::PRI_DEBUG)));
-                return;
-            }
-            case ELeadershipStatus::Outdated: {
-                if (isCopingClient) {
-                    replyError(
-                        MakeError(E_ARGUMENT, makeMessage(NLog::PRI_ERROR)));
+                if (isCopyingClient) {
+                    // The CopyVolumeClientId is allowed to perform operations
+                    // only on the disk with follower state.
+                    replyError(MakeError(
+                        E_PRECONDITION_FAILED,
+                        makeMessage(NLog::PRI_ERROR)));
                     return;
                 }
 
+                // All operations are prohibited when leadership is being
+                // transferred.
+                replyError(MakeError(E_REJECTED, makeMessage(NLog::PRI_DEBUG)));
+                return;
+            }
+            case ELeadershipStatus::LeadershipTransferred: {
+                if (isCopyingClient) {
+                    // The CopyVolumeClientId is allowed to perform operations
+                    // only on the disk with follower state.
+                    replyError(MakeError(
+                        E_PRECONDITION_FAILED,
+                        makeMessage(NLog::PRI_ERROR)));
+                    return;
+                }
+
+                // It's time to switch the client to a new leader.
                 ui32 flags = 0;
                 SetProtoFlag(flags, NProto::EF_OUTDATED_VOLUME);
                 replyError(MakeError(

@@ -1743,6 +1743,11 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 checkWrite(volume1, clientInfo1.GetClientId(), E_REJECTED);
                 checkZero(volume1, clientInfo1.GetClientId(), E_REJECTED);
             }
+            {   // vol1 rejected IO with CopyVolumeClientId.
+                checkRead(volume1, CopyVolumeClientId, E_ARGUMENT);
+                checkWrite(volume1, CopyVolumeClientId, E_PRECONDITION_FAILED);
+                checkZero(volume1, CopyVolumeClientId, E_PRECONDITION_FAILED);
+            }
             {   // Follower accepted IO with predefined CopyVolumeClientId
                 // only for WriteBlocks and ZeroBlocks.
                 checkRead(volume2, CopyVolumeClientId, E_ARGUMENT);
@@ -1786,6 +1791,12 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                     volume1,
                     clientInfo1.GetClientId(),
                     E_BS_INVALID_SESSION);
+            }
+
+            {   // vol1 rejected IO with CopyVolumeClientId.
+                checkRead(volume1, CopyVolumeClientId, E_ARGUMENT);
+                checkWrite(volume1, CopyVolumeClientId, E_PRECONDITION_FAILED);
+                checkZero(volume1, CopyVolumeClientId, E_PRECONDITION_FAILED);
             }
 
             {   // vol2 rejected IO with CopyVolumeClientId.

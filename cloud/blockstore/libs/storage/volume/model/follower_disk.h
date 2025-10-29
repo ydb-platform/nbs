@@ -14,7 +14,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Runtime disk status.  ELeadershipStatusCalculated based on the tag,
+// Runtime disk status. ELeadershipStatus calculated based on the tag,
 // TVolumeState::FollowerDisks, TVolumeState.LeaderDisks for the leader and
 // follower disks.
 enum class ELeadershipStatus
@@ -35,7 +35,7 @@ enum class ELeadershipStatus
 
     // The disk has transferred leadership to follower. Responds to all
     // read/write requests with E_BS_INVALID_SESSION.
-    Outdated,
+    LeadershipTransferred,
 };
 
 struct TLeaderFollowerLink

@@ -1130,7 +1130,7 @@ void TVolumeState::UpdateLeadershipStatus()
         if (followerInfo.State ==
             TFollowerDiskInfo::EState::LeadershipTransferred)
         {
-            LeadershipStatus = ELeadershipStatus::Outdated;
+            LeadershipStatus = ELeadershipStatus::LeadershipTransferred;
             PrincipalDiskId = followerInfo.Link.FollowerDiskId;
             return;
         }
