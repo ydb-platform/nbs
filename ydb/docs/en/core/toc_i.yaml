@@ -1,0 +1,49 @@
+items:
+- name: Contents
+  href: index.yaml
+- name: Quick start
+  href: quickstart.md
+- name: Concepts
+  include:
+    mode: link
+    path: concepts/toc_p.yaml
+- name: For DevOps
+  include:
+    mode: link
+    path: devops/toc_p.yaml
+- name: For Developers
+  include:
+    mode: link
+    path: dev/toc_p.yaml
+- name: For Security Engineers
+  include:
+    mode: link
+    path: security/toc_p.yaml
+- name: For Contributors
+  include:
+    mode: link
+    path: contributor/toc_p.yaml
+- name: Reference
+  include:
+    mode: link
+    path: reference/toc_p.yaml
+- name: Recipes
+  include:
+    mode: link
+    path: recipes/toc_p.yaml
+- name: Questions and answers
+  include:
+    mode: link
+    path: faq/toc_p.yaml
+- name: Public materials
+  include:
+    mode: link
+    path: public-materials/toc_p.yaml
+- name: Downloads
+  include:
+    mode: link
+    path: downloads/toc_p.yaml
+- name: Changelog
+  include:
+    mode: link
+    path: toc_changelog.yaml

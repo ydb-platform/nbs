@@ -1,0 +1,24 @@
+RECURSE_FOR_TESTS(
+    arrow
+    cost
+    data
+    data_integrity
+    effects
+    federated_query
+    indexes
+    idx_test
+    join
+    olap
+    opt
+    perf
+    pg
+    query
+    scan
+    scheme
+    service
+    spilling
+    sysview
+    tx
+    view
+    yql
+)
