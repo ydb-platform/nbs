@@ -109,7 +109,7 @@ void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
 
 void TCopyRangeActor::WriteBlocks(
     const TActorContext& ctx,
-    NProto::TReadBlocksResponse& readResponse)
+    NProto::TReadBlocksResponse readResponse)
 {
     NProto::TIOVector blocks = std::move(*readResponse.MutableBlocks());
     // BlobStorage-based volumes returns empty blocks for zero-blocks.
@@ -296,7 +296,7 @@ void TCopyRangeActor::HandleReadResponse(
         AllZeroes = true;
         ZeroBlocks(ctx);
     } else {
-        WriteBlocks(ctx, msg->Record);
+        WriteBlocks(ctx, std::move(msg->Record));
     }
 }
 
