@@ -8,7 +8,7 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 namespace NCloud::NFileStore::NStorage {
 

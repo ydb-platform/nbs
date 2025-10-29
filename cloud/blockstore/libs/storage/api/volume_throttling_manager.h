@@ -5,8 +5,8 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
-#include <contrib/ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/events.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

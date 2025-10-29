@@ -13,7 +13,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 #include <library/cpp/threading/atomic/bool.h>
 
 #include <util/datetime/base.h>

@@ -14,7 +14,7 @@
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/status.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
 
-#include <contrib/ydb/library/actors/prof/tag.h>
+#include <ydb/library/actors/prof/tag.h>
 
 #include <util/stream/file.h>
 #include <util/string/printf.h>

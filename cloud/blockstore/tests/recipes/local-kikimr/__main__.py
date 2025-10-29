@@ -32,7 +32,7 @@ def start(argv):
     parser.add_argument("--use-ic-version-check", action='store_true', default=False)
     args = parser.parse_args(argv)
 
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
     if args.kikimr_package_path is not None:
         kikimr_binary_path = yatest_common.build_path(
             "{}/ydbd".format(args.kikimr_package_path)

@@ -19,8 +19,8 @@ PEERDIR(
     cloud/blockstore/libs/storage/partition_common/model
     cloud/storage/core/libs/common
     cloud/storage/core/libs/kikimr
-    contrib/ydb/library/actors/core
-    contrib/ydb/core/base
+    ydb/library/actors/core
+    ydb/core/base
 )
 
 END()

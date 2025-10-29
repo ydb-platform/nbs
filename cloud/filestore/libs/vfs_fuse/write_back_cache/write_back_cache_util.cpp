@@ -1,6 +1,6 @@
 #include "write_back_cache_impl.h"
 
-#include <contrib/ydb/core/util/interval_set.h>
+#include <ydb/core/util/interval_set.h>
 
 #include <util/generic/vector.h>
 

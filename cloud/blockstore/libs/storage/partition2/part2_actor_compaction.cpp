@@ -9,7 +9,7 @@
 
 #include <cloud/storage/core/libs/common/alloc.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/hash_set.h>

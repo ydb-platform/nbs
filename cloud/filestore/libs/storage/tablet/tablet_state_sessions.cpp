@@ -4,8 +4,8 @@
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/log.h>
 #include <google/protobuf/messagext.h>
 
 #include <util/random/random.h>

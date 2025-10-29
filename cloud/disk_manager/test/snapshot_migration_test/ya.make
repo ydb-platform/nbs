@@ -29,7 +29,7 @@ DATA(
 PEERDIR(
     cloud/disk_manager/test/recipe
     cloud/tasks/test/common
-    contrib/ydb/tests/library
+    ydb/tests/library
     library/python/testing/recipe
 )
 
@@ -62,7 +62,7 @@ IF (OPENSOURCE)
     )
 ELSE()
     DEPENDS(
-        contrib/ydb/apps/ydbd
+        ydb/apps/ydbd
     )
 ENDIF()
 

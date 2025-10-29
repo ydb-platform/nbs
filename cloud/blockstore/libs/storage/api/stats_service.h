@@ -9,9 +9,9 @@
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/protos/tablet.pb.h>
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/core/base/blobstorage.h>
+#include <ydb/core/protos/tablet.pb.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/generic/string.h>
 

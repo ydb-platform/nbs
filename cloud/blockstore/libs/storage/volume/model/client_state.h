@@ -7,7 +7,7 @@
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/generic/set.h>
 #include <util/generic/string.h>

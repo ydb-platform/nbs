@@ -1,13 +1,13 @@
 #include "tenant.h"
 
-#include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/base/hive.h>
-#include <contrib/ydb/core/mind/local.h>
-#include <contrib/ydb/core/statistics/aggregator/aggregator.h>
-#include <contrib/ydb/core/sys_view/processor/processor.h>
-#include <contrib/ydb/core/tx/coordinator/coordinator.h>
-#include <contrib/ydb/core/tx/mediator/mediator.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
+#include <ydb/core/base/appdata.h>
+#include <ydb/core/base/hive.h>
+#include <ydb/core/mind/local.h>
+#include <ydb/core/statistics/aggregator/aggregator.h>
+#include <ydb/core/sys_view/processor/processor.h>
+#include <ydb/core/tx/coordinator/coordinator.h>
+#include <ydb/core/tx/mediator/mediator.h>
+#include <ydb/core/tx/schemeshard/schemeshard.h>
 
 namespace NCloud::NStorage {
 

@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

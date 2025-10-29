@@ -5,8 +5,8 @@
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
-#include <contrib/ydb/library/actors/testlib/test_runtime.h>
+#include <ydb/core/testlib/tablet_helpers.h>
+#include <ydb/library/actors/testlib/test_runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

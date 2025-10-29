@@ -75,7 +75,7 @@ class LocalDiskAgent(Daemon):
         if kikimr_binary_path is not None:
             self.__kikimr_binary_path = kikimr_binary_path
         else:
-            self.__kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+            self.__kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
         self.__unstable_process_args = None
         self.__allow_restart_flag = None

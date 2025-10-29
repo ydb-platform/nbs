@@ -8,10 +8,10 @@
 
 #include <cloud/storage/core/libs/common/alloc.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <ydb/core/base/blobstorage.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/hfunc.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 

@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

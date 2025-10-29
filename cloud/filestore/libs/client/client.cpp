@@ -20,7 +20,7 @@
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
 #include <cloud/storage/core/libs/uds/uds_socket_client.h>
 
-#include <contrib/ydb/library/actors/prof/tag.h>
+#include <ydb/library/actors/prof/tag.h>
 
 #include <contrib/libs/grpc/include/grpcpp/channel.h>
 #include <contrib/libs/grpc/include/grpcpp/client_context.h>

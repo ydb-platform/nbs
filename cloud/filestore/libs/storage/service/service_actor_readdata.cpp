@@ -9,8 +9,8 @@
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/core/base/blobstorage.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <memory>
 

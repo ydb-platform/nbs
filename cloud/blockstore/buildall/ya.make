@@ -1,8 +1,8 @@
 PACKAGE()
 
 PEERDIR(
-    contrib/ydb/apps/ydb
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydb
+    ydb/apps/ydbd
     cloud/blockstore/apps/client
     cloud/blockstore/apps/disk_agent
     cloud/blockstore/apps/server

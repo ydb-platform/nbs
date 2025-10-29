@@ -28,7 +28,7 @@
 #include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
-#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
+#include <ydb/core/protos/flat_tx_scheme.pb.h>
 
 #include <util/generic/guid.h>
 #include <util/generic/hash.h>

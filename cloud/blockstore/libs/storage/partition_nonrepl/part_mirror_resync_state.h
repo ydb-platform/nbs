@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/set.h>

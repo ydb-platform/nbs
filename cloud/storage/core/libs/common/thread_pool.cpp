@@ -5,7 +5,7 @@
 #include "thread.h"
 #include "thread_park.h"
 
-#include <contrib/ydb/library/actors/prof/tag.h>
+#include <ydb/library/actors/prof/tag.h>
 
 #include <util/datetime/cputimer.h>
 #include <util/generic/scope.h>

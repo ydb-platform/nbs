@@ -16,7 +16,7 @@
 
 #include <util/stream/str.h>
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <ydb/core/base/appdata.h>
 
 #include <ranges>
 

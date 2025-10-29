@@ -10,9 +10,9 @@
 #include <library/cpp/iterator/enumerate.h>
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/base/logoblob.h>
-#include <contrib/ydb/core/testlib/basics/storage.h>
+#include <ydb/core/base/blobstorage.h>
+#include <ydb/core/base/logoblob.h>
+#include <ydb/core/testlib/basics/storage.h>
 
 #include <util/generic/size_literals.h>
 

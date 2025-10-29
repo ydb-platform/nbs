@@ -8,7 +8,7 @@
 
 #include <util/string/join.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NFileStore::NStorage {
 

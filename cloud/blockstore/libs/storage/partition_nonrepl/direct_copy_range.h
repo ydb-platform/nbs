@@ -10,9 +10,9 @@
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/actorid.h>
-#include <contrib/ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/events.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

@@ -18,8 +18,8 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 
-#include <contrib/ydb/core/base/tablet.h>
-#include <contrib/ydb/core/tablet/tablet_setup.h>
+#include <ydb/core/base/tablet.h>
+#include <ydb/core/tablet/tablet_setup.h>
 
 #include <util/string/builder.h>
 

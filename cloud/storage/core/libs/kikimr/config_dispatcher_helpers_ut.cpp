@@ -1,6 +1,6 @@
 #include "config_dispatcher_helpers.h"
 
-#include <contrib/ydb/core/protos/console_config.pb.h>
+#include <ydb/core/protos/console_config.pb.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>

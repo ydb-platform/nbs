@@ -5,13 +5,13 @@
 #include <cloud/storage/core/libs/api/ss_proxy.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
+#include <ydb/core/tablet/tablet_pipe_client_cache.h>
+#include <ydb/core/tx/schemeshard/schemeshard.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/log.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/deque.h>

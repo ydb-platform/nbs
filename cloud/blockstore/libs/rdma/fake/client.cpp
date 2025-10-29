@@ -17,11 +17,11 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/log.h>
 
 #include <chrono>
 #include <utility>

@@ -19,7 +19,7 @@ class CommonPaths:
 
     def __init__(self):
         self.kikimr_binary_path = \
-            yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+            yatest_common.binary_path("ydb/apps/ydbd/ydbd")
         self.nbs_binary_path = \
             yatest_common.binary_path(
                 "cloud/blockstore/apps/server/nbsd")

@@ -17,7 +17,7 @@ from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerato
 import yatest.common as yatest_common
 
 
-kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
 
 def setup_kikimr():

@@ -18,10 +18,10 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/mon.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/mon.h>
 
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 

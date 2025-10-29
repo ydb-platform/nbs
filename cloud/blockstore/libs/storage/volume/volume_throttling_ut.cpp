@@ -7,9 +7,9 @@
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
 #include <cloud/blockstore/libs/storage/volume/testlib/test_env.h>
 
-#include <contrib/ydb/core/testlib/actors/test_runtime.h>
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/testlib/test_runtime.h>
+#include <ydb/core/testlib/actors/test_runtime.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/testlib/test_runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

@@ -8,10 +8,10 @@
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/log.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

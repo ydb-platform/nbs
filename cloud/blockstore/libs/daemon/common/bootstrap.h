@@ -22,7 +22,7 @@
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/public.h>
 
-#include <contrib/ydb/library/actors/util/should_continue.h>
+#include <ydb/library/actors/util/should_continue.h>
 
 #include <library/cpp/logger/log.h>
 

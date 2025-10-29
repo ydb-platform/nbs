@@ -25,20 +25,20 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/hive_proxy
     cloud/storage/core/libs/kikimr
-    contrib/ydb/library/actors/core
+    ydb/library/actors/core
     library/cpp/testing/unittest
-    contrib/ydb/core/base
-    contrib/ydb/core/client/minikql_compile
-    contrib/ydb/core/filestore/core
-    contrib/ydb/core/mind
-    contrib/ydb/core/mind/bscontroller
-    contrib/ydb/core/mind/hive
-    contrib/ydb/core/security
-    contrib/ydb/core/tablet_flat
-    contrib/ydb/core/tablet_flat/test/libs/table
-    contrib/ydb/core/testlib
-    contrib/ydb/core/testlib/actors
-    contrib/ydb/core/testlib/basics
+    ydb/core/base
+    ydb/core/client/minikql_compile
+    ydb/core/filestore/core
+    ydb/core/mind
+    ydb/core/mind/bscontroller
+    ydb/core/mind/hive
+    ydb/core/security
+    ydb/core/tablet_flat
+    ydb/core/tablet_flat/test/libs/table
+    ydb/core/testlib
+    ydb/core/testlib/actors
+    ydb/core/testlib/basics
 )
 
 YQL_LAST_ABI_VERSION()

@@ -14,9 +14,9 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/tablet_helpers.h>
+#include <ydb/library/actors/core/actorsystem.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

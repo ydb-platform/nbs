@@ -14,7 +14,7 @@
 #include <cloud/storage/core/libs/iam/iface/public.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/public.h>
 
-#include <contrib/ydb/core/driver_lib/run/factories.h>
+#include <ydb/core/driver_lib/run/factories.h>
 
 namespace NCloud::NBlockStore::NProto {
     class TGrpcClientConfig;

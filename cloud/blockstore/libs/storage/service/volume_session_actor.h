@@ -19,7 +19,7 @@
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <utility>
 

@@ -10,7 +10,7 @@
 
 #include <cloud/storage/core/libs/common/format.h>
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <ydb/core/base/appdata.h>
 
 #include <library/cpp/cgiparam/cgiparam.h>
 #include <library/cpp/monlib/service/pages/templates.h>

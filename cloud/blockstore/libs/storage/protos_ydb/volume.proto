@@ -10,8 +10,8 @@ import "cloud/blockstore/public/api/protos/volume.proto";
 import "cloud/storage/core/protos/error.proto";
 import "cloud/storage/core/protos/trace.proto";
 
-import "contrib/ydb/core/protos/base.proto";
-import "contrib/ydb/core/protos/blockstore_config.proto";
+import "ydb/core/protos/base.proto";
+import "ydb/core/protos/blockstore_config.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
 // Volume config.

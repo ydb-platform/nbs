@@ -6,8 +6,8 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
-#include <contrib/ydb/core/testlib/actors/test_runtime.h>
-#include <contrib/ydb/core/testlib/test_client.h>
+#include <ydb/core/testlib/actors/test_runtime.h>
+#include <ydb/core/testlib/test_client.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

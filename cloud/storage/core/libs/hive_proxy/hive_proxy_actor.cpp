@@ -4,7 +4,7 @@
 
 #include <cloud/storage/core/libs/common/verify.h>
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <ydb/core/base/appdata.h>
 
 namespace NCloud::NStorage {
 

@@ -11,9 +11,9 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/core/testlib
-    contrib/ydb/core/testlib/basics
-    contrib/ydb/core/testlib/default
+    ydb/core/testlib
+    ydb/core/testlib/basics
+    ydb/core/testlib/default
 )
 
 END()

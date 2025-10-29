@@ -28,7 +28,7 @@
 #include <cloud/storage/core/libs/uds/client_storage.h>
 #include <cloud/storage/core/libs/uds/endpoint_poller.h>
 
-#include <contrib/ydb/library/actors/prof/tag.h>
+#include <ydb/library/actors/prof/tag.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/threading/atomic/bool.h>
 

@@ -15,8 +15,8 @@
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 
-#include <contrib/ydb/core/tablet/tablet_setup.h>
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/core/tablet/tablet_setup.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/deque.h>

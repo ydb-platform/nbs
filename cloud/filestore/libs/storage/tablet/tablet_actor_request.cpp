@@ -5,7 +5,7 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/log.h>
 
 namespace NCloud::NFileStore::NStorage {
 

@@ -38,7 +38,7 @@
 #include <contrib/libs/grpc/include/grpcpp/server_posix.h>
 #include <contrib/libs/grpc/include/grpcpp/support/status.h>
 
-#include <contrib/ydb/library/actors/prof/tag.h>
+#include <ydb/library/actors/prof/tag.h>
 
 #include <util/datetime/cputimer.h>
 #include <util/folder/path.h>

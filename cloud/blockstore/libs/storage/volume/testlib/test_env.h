@@ -39,8 +39,8 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/core/blockstore/core/blockstore.h>
-#include <contrib/ydb/core/mind/local.h>
+#include <ydb/core/blockstore/core/blockstore.h>
+#include <ydb/core/mind/local.h>
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
 #include <library/cpp/testing/unittest/registar.h>

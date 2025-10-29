@@ -2,7 +2,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <ydb/core/control/immediate_control_board_impl.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

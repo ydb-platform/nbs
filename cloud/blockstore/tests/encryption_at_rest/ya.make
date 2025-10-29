@@ -8,7 +8,7 @@ DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/disk_agent
     cloud/blockstore/apps/server
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydbd
 )
 
 PEERDIR(

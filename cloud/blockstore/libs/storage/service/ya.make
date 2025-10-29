@@ -114,17 +114,17 @@ PEERDIR(
     cloud/storage/core/libs/api
     cloud/storage/core/libs/common
 
-    contrib/ydb/library/actors/core
+    ydb/library/actors/core
     library/cpp/json
     library/cpp/monlib/service/pages
 
-    contrib/ydb/core/base
-    contrib/ydb/core/mind
-    contrib/ydb/core/mon
-    contrib/ydb/core/node_whiteboard
-    contrib/ydb/core/protos
-    contrib/ydb/core/tablet
-    contrib/ydb/core/tx/schemeshard
+    ydb/core/base
+    ydb/core/mind
+    ydb/core/mon
+    ydb/core/node_whiteboard
+    ydb/core/protos
+    ydb/core/tablet
+    ydb/core/tx/schemeshard
 
     contrib/libs/protobuf
 )

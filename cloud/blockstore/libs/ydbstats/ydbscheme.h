@@ -2,10 +2,10 @@
 
 #include "public.h"
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
+#include <ydb/public/sdk/cpp/client/ydb_driver/driver.h>
+#include <ydb/public/sdk/cpp/client/ydb_result/result.h>
+#include <ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <ydb/public/sdk/cpp/client/ydb_value/value.h>
 
 #include <util/generic/hash_set.h>
 #include <util/generic/string.h>

@@ -11,7 +11,7 @@ PEERDIR(
 
     library/python/testing/yatest_common
 
-    contrib/ydb/tests/library
+    ydb/tests/library
 
     contrib/python/requests/py3
 )
@@ -20,7 +20,7 @@ DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/server
     cloud/blockstore/apps/disk_agent
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydbd
 )
 
 END()

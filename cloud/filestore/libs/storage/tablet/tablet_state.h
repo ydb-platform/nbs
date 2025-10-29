@@ -31,7 +31,7 @@
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/maybe.h>

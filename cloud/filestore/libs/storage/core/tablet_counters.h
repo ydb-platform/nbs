@@ -2,8 +2,8 @@
 
 #include "public.h"
 
-#include <contrib/ydb/core/tablet/tablet_counters.h>
-#include <contrib/ydb/core/tablet/tablet_counters_protobuf.h>
+#include <ydb/core/tablet/tablet_counters.h>
+#include <ydb/core/tablet/tablet_counters_protobuf.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>

@@ -6,7 +6,7 @@
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <ydb/core/base/appdata.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

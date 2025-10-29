@@ -23,8 +23,8 @@
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 #include <cloud/storage/core/libs/opentelemetry/impl/trace_service_client.h>
 
-#include <contrib/ydb/core/driver_lib/run/factories.h>
-#include <contrib/ydb/core/security/ticket_parser.h>
+#include <ydb/core/driver_lib/run/factories.h>
+#include <ydb/core/security/ticket_parser.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 

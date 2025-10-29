@@ -15,9 +15,9 @@
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 
-#include <contrib/ydb/core/protos/auth.pb.h>
-#include <contrib/ydb/core/protos/blobstorage.pb.h>
-#include <contrib/ydb/core/protos/config.pb.h>
+#include <ydb/core/protos/auth.pb.h>
+#include <ydb/core/protos/blobstorage.pb.h>
+#include <ydb/core/protos/config.pb.h>
 
 #include <library/cpp/logger/log.h>
 

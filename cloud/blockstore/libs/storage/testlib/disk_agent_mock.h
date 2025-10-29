@@ -7,8 +7,8 @@
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_device_blocks_actor.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/events.h>
 
 #include <util/generic/hash.h>
 

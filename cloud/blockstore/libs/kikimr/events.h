@@ -7,13 +7,13 @@
 #include <cloud/blockstore/libs/service/request.h>
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <contrib/ydb/core/protos/base.pb.h>
-#include <contrib/ydb/core/protos/blockstore_config.pb.h>
-#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
+#include <ydb/core/protos/base.pb.h>
+#include <ydb/core/protos/blockstore_config.pb.h>
+#include <ydb/core/protos/flat_tx_scheme.pb.h>
 
-#include <contrib/ydb/library/actors/core/event.h>
-#include <contrib/ydb/library/actors/core/event_local.h>
-#include <contrib/ydb/library/actors/core/event_pb.h>
+#include <ydb/library/actors/core/event.h>
+#include <ydb/library/actors/core/event_local.h>
+#include <ydb/library/actors/core/event_pb.h>
 
 #include <library/cpp/lwtrace/shuttle.h>
 

@@ -8,7 +8,7 @@
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <google/protobuf/util/json_util.h>
 

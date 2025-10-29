@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

@@ -29,7 +29,7 @@ class AccessServiceServer(Daemon):
 
 
 class NewAccessService:
-    # See: https://github.com/ydb-platform/nbs/blob/main/contrib/ydb/core/protos/auth.proto#L52
+    # See: https://github.com/ydb-platform/nbs/blob/main/ydb/core/protos/auth.proto#L52
     access_service_type = "Nebius_v1"
 
     def __init__(

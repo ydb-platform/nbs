@@ -2,10 +2,10 @@
 
 #include "public.h"
 
-#include <contrib/ydb/core/base/events.h>
-#include <contrib/ydb/library/services/services.pb.h>
+#include <ydb/core/base/events.h>
+#include <ydb/library/services/services.pb.h>
 
-#include <contrib/ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/events.h>
 
 #include <util/generic/string.h>
 

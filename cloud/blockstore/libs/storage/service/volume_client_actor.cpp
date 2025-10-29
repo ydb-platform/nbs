@@ -14,10 +14,10 @@
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
-#include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/core/tablet/tablet_pipe_client_cache.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/log.h>
 
 #include <utility>
 

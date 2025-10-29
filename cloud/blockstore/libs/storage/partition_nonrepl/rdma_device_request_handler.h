@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_common.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
 
-#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <ydb/library/actors/core/actorsystem.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

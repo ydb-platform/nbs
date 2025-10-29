@@ -6,9 +6,9 @@
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/context.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/hfunc.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

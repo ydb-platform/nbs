@@ -9,6 +9,6 @@ def get_ydb_binary_path():
         path = None
 
     if path is None:
-        path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+        path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
     return path

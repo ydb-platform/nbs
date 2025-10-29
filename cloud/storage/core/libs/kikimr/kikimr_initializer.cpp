@@ -1,7 +1,7 @@
 #include "kikimr_initializer.h"
 
-#include <contrib/ydb/core/grpc_services/grpc_request_proxy.h>
-#include <contrib/ydb/core/protos/config.pb.h>
+#include <ydb/core/grpc_services/grpc_request_proxy.h>
+#include <ydb/core/protos/config.pb.h>
 
 namespace NCloud::NStorage {
 

@@ -3,7 +3,7 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/kikimr/components.h>
 
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/log.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 

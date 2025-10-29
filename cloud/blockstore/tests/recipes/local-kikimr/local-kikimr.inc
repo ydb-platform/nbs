@@ -2,7 +2,7 @@ DEPENDS(
     cloud/blockstore/apps/server
     cloud/blockstore/tests/recipes/local-kikimr
 
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydbd
 )
 
 DATA(

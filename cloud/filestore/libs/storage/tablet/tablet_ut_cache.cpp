@@ -4,7 +4,7 @@
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
-#include <contrib/ydb/core/base/counters.h>
+#include <ydb/core/base/counters.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

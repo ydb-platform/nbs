@@ -1,6 +1,6 @@
 GO_TEST_FOR(cloud/tasks/storage)
 
-INCLUDE(${ARCADIA_ROOT}/contrib/ydb/public/tools/ydb_recipe/recipe.inc)
+INCLUDE(${ARCADIA_ROOT}/ydb/public/tools/ydb_recipe/recipe.inc)
 
 IF (RACE)
     SIZE(LARGE)

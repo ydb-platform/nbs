@@ -7,10 +7,10 @@
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/basics/appdata.h>
-#include <contrib/ydb/core/testlib/test_client.h>
+#include <ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/appdata.h>
+#include <ydb/core/testlib/test_client.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

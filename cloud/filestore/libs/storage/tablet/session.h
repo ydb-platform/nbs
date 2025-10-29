@@ -8,7 +8,7 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <library/cpp/cache/cache.h>
 

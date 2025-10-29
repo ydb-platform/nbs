@@ -5,7 +5,7 @@
 #include <cloud/filestore/libs/storage/core/request_info.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NFileStore::NStorage {
 

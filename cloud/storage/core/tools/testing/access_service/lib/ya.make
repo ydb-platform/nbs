@@ -7,7 +7,7 @@ PY_SRCS(
 PEERDIR(
     cloud/storage/core/tools/common/python
     contrib/python/requests/py3
-    contrib/ydb/tests/library
+    ydb/tests/library
 )
 
 END()

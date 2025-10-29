@@ -4,7 +4,7 @@
 
 #include <cloud/storage/core/libs/daemon/config_initializer.h>
 
-#include <contrib/ydb/core/protos/config.pb.h>
+#include <ydb/core/protos/config.pb.h>
 
 namespace NCloud::NStorage {
 

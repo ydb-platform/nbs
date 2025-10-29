@@ -25,15 +25,15 @@
 #include <cloud/storage/core/libs/diagnostics/busy_idle_calculator.h>
 #include <cloud/storage/core/libs/throttling/public.h>
 
-#include <contrib/ydb/core/base/tablet_pipe.h>
-#include <contrib/ydb/core/mind/local.h>
-#include <contrib/ydb/core/filestore/core/filestore.h>
+#include <ydb/core/base/tablet_pipe.h>
+#include <ydb/core/mind/local.h>
+#include <ydb/core/filestore/core/filestore.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
-#include <contrib/ydb/library/actors/core/mon.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/mon.h>
 
 #include <util/generic/size_literals.h>
 #include <util/generic/string.h>

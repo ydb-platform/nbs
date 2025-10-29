@@ -44,19 +44,19 @@
 #include <cloud/storage/core/libs/kikimr/tenant.h>
 #include <cloud/storage/core/libs/user_stats/user_stats.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/driver_lib/run/kikimr_services_initializers.h>
-#include <contrib/ydb/core/driver_lib/run/run.h>
-#include <contrib/ydb/core/grpc_services/grpc_request_proxy.h>
-#include <contrib/ydb/core/load_test/service_actor.h>
-#include <contrib/ydb/core/mind/labels_maintainer.h>
-#include <contrib/ydb/core/mind/local.h>
-#include <contrib/ydb/core/mind/tenant_pool.h>
-#include <contrib/ydb/core/mon/mon.h>
-#include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
-#include <contrib/ydb/core/protos/config.pb.h>
-#include <contrib/ydb/core/tablet/node_tablet_monitor.h>
-#include <contrib/ydb/core/tablet/tablet_list_renderer.h>
+#include <ydb/core/base/blobstorage.h>
+#include <ydb/core/driver_lib/run/kikimr_services_initializers.h>
+#include <ydb/core/driver_lib/run/run.h>
+#include <ydb/core/grpc_services/grpc_request_proxy.h>
+#include <ydb/core/load_test/service_actor.h>
+#include <ydb/core/mind/labels_maintainer.h>
+#include <ydb/core/mind/local.h>
+#include <ydb/core/mind/tenant_pool.h>
+#include <ydb/core/mon/mon.h>
+#include <ydb/core/node_whiteboard/node_whiteboard.h>
+#include <ydb/core/protos/config.pb.h>
+#include <ydb/core/tablet/node_tablet_monitor.h>
+#include <ydb/core/tablet/tablet_list_renderer.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

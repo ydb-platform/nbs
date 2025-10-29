@@ -29,8 +29,8 @@ PEERDIR(
     cloud/storage/core/libs/io_uring
     cloud/storage/core/libs/kikimr
 
-    contrib/ydb/core/blobstorage/lwtrace_probes
-    contrib/ydb/core/tablet_flat
+    ydb/core/blobstorage/lwtrace_probes
+    ydb/core/tablet_flat
 
     library/cpp/lwtrace
     library/cpp/lwtrace/mon

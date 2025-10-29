@@ -5,7 +5,7 @@
 #include "probes.h"
 #include "request_info.h"
 
-#include <contrib/ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/actor.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

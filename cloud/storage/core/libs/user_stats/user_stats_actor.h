@@ -2,9 +2,9 @@
 
 #include <cloud/storage/core/libs/api/user_stats.h>
 
-#include <contrib/ydb/core/mon/mon.h>
+#include <ydb/core/mon/mon.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 #include <library/cpp/monlib/service/pages/mon_page.h>
 
 namespace NCloud::NStorage::NUserStats {

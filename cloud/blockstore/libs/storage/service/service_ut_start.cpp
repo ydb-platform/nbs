@@ -4,8 +4,8 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
-#include <contrib/ydb/core/base/statestorage.h>
-#include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
+#include <ydb/core/base/statestorage.h>
+#include <ydb/core/node_whiteboard/node_whiteboard.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

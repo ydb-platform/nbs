@@ -4,8 +4,8 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/generic/size_literals.h>
 

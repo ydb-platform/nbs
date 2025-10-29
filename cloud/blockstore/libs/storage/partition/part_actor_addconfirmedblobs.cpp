@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/vector.h>
 

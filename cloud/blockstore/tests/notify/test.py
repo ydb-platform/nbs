@@ -245,7 +245,7 @@ class TestNotifyDiskBackOnline(TestNotifyService):
 def __run_test(test_case):
     logging.info(f"Start: {test_case.name}")
 
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
         erasure=None,

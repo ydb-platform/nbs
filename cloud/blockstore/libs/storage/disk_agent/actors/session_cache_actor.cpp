@@ -10,9 +10,9 @@
 
 #include <util/system/fs.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/log.h>
 
 using namespace NActors;
 

@@ -203,7 +203,7 @@ def __process_config(config_path, devices_per_agent):
 
 
 def __run_test(test_case, use_rdma):
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
     endpoint_storage_dir = yatest_common.output_path() + '/endpoints-' + str(uuid.uuid4())
 
     configurator = KikimrConfigGenerator(

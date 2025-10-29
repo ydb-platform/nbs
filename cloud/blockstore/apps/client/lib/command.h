@@ -14,7 +14,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 
-#include <contrib/ydb/library/actors/util/should_continue.h>
+#include <ydb/library/actors/util/should_continue.h>
 #include <library/cpp/getopt/small/last_getopt.h>
 #include <library/cpp/logger/log.h>
 #include <library/cpp/threading/future/future.h>

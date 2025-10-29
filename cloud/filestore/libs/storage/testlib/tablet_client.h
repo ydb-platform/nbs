@@ -9,9 +9,9 @@
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_private.h>
 
-#include <contrib/ydb/core/testlib/actors/test_runtime.h>
-#include <contrib/ydb/core/testlib/test_client.h>
-#include <contrib/ydb/core/filestore/core/filestore.h>
+#include <ydb/core/testlib/actors/test_runtime.h>
+#include <ydb/core/testlib/test_client.h>
+#include <ydb/core/filestore/core/filestore.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

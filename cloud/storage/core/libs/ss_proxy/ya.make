@@ -17,12 +17,12 @@ PEERDIR(
     cloud/storage/core/libs/api
     cloud/storage/core/libs/kikimr
 
-    contrib/ydb/core/base
-    contrib/ydb/core/tablet
-    contrib/ydb/core/tx/schemeshard
-    contrib/ydb/core/tx/tx_proxy
+    ydb/core/base
+    ydb/core/tablet
+    ydb/core/tx/schemeshard
+    ydb/core/tx/tx_proxy
 
-    contrib/ydb/library/actors/core
+    ydb/library/actors/core
 )
 
 END()

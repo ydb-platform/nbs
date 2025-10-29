@@ -14,7 +14,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <ydb/core/base/blobstorage.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/set.h>

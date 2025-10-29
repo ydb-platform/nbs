@@ -6,7 +6,7 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NFileStore::NStorage {
 

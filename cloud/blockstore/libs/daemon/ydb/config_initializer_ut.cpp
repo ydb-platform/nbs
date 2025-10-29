@@ -18,7 +18,7 @@
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
 
-#include <contrib/ydb/core/protos/feature_flags.pb.h>
+#include <ydb/core/protos/feature_flags.pb.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>

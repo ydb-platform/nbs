@@ -4,7 +4,7 @@
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_env.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

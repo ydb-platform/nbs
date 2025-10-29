@@ -4,7 +4,7 @@
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/cast.h>

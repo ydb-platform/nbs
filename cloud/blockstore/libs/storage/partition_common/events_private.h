@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
-#include <contrib/ydb/core/base/logoblob.h>
+#include <ydb/core/base/logoblob.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

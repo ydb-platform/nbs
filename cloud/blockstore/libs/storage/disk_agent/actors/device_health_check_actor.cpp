@@ -5,9 +5,9 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/storage/core/libs/actors/helpers.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/log.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>

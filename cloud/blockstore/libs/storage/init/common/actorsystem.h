@@ -6,12 +6,12 @@
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 
-#include <contrib/ydb/core/driver_lib/run/config.h>
-#include <contrib/ydb/core/driver_lib/run/run.h>
-#include <contrib/ydb/core/driver_lib/run/service_initializer.h>
+#include <ydb/core/driver_lib/run/config.h>
+#include <ydb/core/driver_lib/run/run.h>
+#include <ydb/core/driver_lib/run/service_initializer.h>
 
-#include <contrib/ydb/library/actors/core/defs.h>
-#include <contrib/ydb/library/actors/util/should_continue.h>
+#include <ydb/library/actors/core/defs.h>
+#include <ydb/library/actors/util/should_continue.h>
 #include <library/cpp/logger/log.h>
 #include <library/cpp/monlib/service/pages/index_mon_page.h>
 

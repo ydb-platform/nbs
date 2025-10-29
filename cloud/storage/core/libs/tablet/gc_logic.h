@@ -6,9 +6,9 @@
 
 #include <cloud/storage/core/libs/common/verify.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <ydb/core/base/blobstorage.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/actor.h>
 
 #include <util/generic/map.h>
 #include <util/generic/vector.h>

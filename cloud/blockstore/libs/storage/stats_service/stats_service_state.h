@@ -8,8 +8,8 @@
 
 #include <cloud/storage/core/libs/common/media.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/core/base/blobstorage.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>

@@ -2,9 +2,9 @@
 
 #include <cloud/storage/core/libs/ss_proxy/ss_proxy_events_private.h>
 
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
+#include <ydb/core/tx/tx_proxy/proxy.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NStorage {
 

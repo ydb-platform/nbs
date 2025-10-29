@@ -5,7 +5,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_state.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/hash.h>

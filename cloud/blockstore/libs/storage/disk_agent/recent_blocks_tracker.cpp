@@ -5,8 +5,8 @@
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/log.h>
 
 #include <util/generic/bitmap.h>
 #include <util/generic/list.h>

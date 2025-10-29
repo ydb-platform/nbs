@@ -50,8 +50,8 @@
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
 
-#include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
-#include <contrib/ydb/core/tablet_flat/probes.h>
+#include <ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
+#include <ydb/core/tablet_flat/probes.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>

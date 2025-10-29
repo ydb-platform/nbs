@@ -18,11 +18,11 @@
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 #include <cloud/blockstore/libs/ydbstats/ydbrow.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
-#include <contrib/ydb/library/actors/core/mon.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/mon.h>
 
 #include <util/stream/output.h>
 

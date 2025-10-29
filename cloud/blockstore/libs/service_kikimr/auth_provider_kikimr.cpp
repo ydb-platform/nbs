@@ -11,8 +11,8 @@
 #include <cloud/storage/core/libs/api/authorizer.h>
 #include <cloud/storage/core/libs/auth/authorizer.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/log.h>
 
 namespace NCloud::NBlockStore::NServer {
 

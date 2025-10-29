@@ -4,8 +4,8 @@
 
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/core/base/blobstorage.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/stream/str.h>
 

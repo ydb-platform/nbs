@@ -10,7 +10,7 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/deque.h>

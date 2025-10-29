@@ -5,7 +5,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
 

@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class AccessService:
-    # See: https://github.com/ydb-platform/nbs/blob/main/contrib/ydb/core/protos/auth.proto#L52
+    # See: https://github.com/ydb-platform/nbs/blob/main/ydb/core/protos/auth.proto#L52
     access_service_type = "Yandex_v2"
 
     def __init__(self, host, port, control_server_port):

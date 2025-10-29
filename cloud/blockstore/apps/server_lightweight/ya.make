@@ -35,9 +35,9 @@ CHECK_DEPENDENT_DIRS(ALLOW_ONLY PEERDIRS
     contrib/libs
     contrib/restricted
     library/cpp
-    contrib/ydb/core
-    contrib/ydb/library
-    contrib/ydb/public
+    ydb/core
+    ydb/library
+    ydb/public
     logbroker
     tools/enum_parser
     util

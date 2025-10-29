@@ -37,7 +37,7 @@ DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 
 
 def kikimr_start():
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
         erasure=None,
@@ -136,7 +136,7 @@ def test_change_device():
         server_app_config=server_app_config,
         storage_config_patches=[storage],
         enable_tls=True,
-        kikimr_binary_path=yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd"),
+        kikimr_binary_path=yatest_common.binary_path("ydb/apps/ydbd/ydbd"),
         disk_agent_binary_path=yatest_common.binary_path(
             disk_agent_binary_path))
 

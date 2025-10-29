@@ -35,7 +35,7 @@ ArchiveStatsTableName = "cloud-local-archive-perfstats"
 
 
 def kikimr_start():
-    kikimr_binary_path = common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = common.binary_path("ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
         erasure=None,
@@ -92,7 +92,7 @@ def nbs_server_start(kikimr_cluster, configurator):
 
 
 def get_load_data(kikimr_port):
-    ydb_binary_path = common.binary_path("contrib/ydb/apps/ydb/ydb")
+    ydb_binary_path = common.binary_path("ydb/apps/ydb/ydb")
 
     json_string = check_output([
         ydb_binary_path,
@@ -124,7 +124,7 @@ def get_load_data(kikimr_port):
 
 
 def check_ydb_volume_metrics(kikimr_port):
-    ydb_binary_path = common.binary_path("contrib/ydb/apps/ydb/ydb")
+    ydb_binary_path = common.binary_path("ydb/apps/ydb/ydb")
 
     dailyTable = "{}-{}".format(HistoryTablePrefix, date.today())
 

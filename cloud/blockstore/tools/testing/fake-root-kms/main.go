@@ -16,7 +16,7 @@ import (
 	"sync"
 
 	"github.com/spf13/cobra"
-	"github.com/ydb-platform/nbs/contrib/ydb/public/api/client/yc_private/kms"
+	"github.com/ydb-platform/nbs/ydb/public/api/client/yc_private/kms"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"

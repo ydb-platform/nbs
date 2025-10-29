@@ -6,7 +6,7 @@
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/vector.h>
 

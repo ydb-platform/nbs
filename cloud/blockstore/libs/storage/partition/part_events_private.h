@@ -21,9 +21,9 @@
 #include <cloud/storage/core/libs/common/guarded_sglist.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <ydb/core/base/blobstorage.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 #include <library/cpp/lwtrace/shuttle.h>
 

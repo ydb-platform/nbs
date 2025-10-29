@@ -15,7 +15,7 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <contrib/ydb/core/base/hive.h>
+#include <ydb/core/base/hive.h>
 
 namespace NCloud::NFileStore::NStorage {
 

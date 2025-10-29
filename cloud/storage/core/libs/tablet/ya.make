@@ -7,8 +7,8 @@ SRCS(
 
 PEERDIR(
     cloud/storage/core/libs/tablet/model
-    contrib/ydb/library/actors/core
-    contrib/ydb/core/base
+    ydb/library/actors/core
+    ydb/core/base
 )
 
 END()

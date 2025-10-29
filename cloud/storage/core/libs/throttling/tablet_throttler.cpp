@@ -6,8 +6,8 @@
 #include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/events.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/list.h>

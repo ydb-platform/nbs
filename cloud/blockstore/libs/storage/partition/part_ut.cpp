@@ -36,9 +36,9 @@
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_events.h>
-#include <contrib/ydb/core/testlib/basics/storage.h>
+#include <ydb/core/base/blobstorage.h>
+#include <ydb/core/blobstorage/vdisk/common/vdisk_events.h>
+#include <ydb/core/testlib/basics/storage.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

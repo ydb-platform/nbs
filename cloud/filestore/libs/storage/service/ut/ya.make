@@ -12,7 +12,7 @@ SRCS(
 
 PEERDIR(
     cloud/filestore/libs/storage/testlib
-    contrib/ydb/core/testlib
+    ydb/core/testlib
 )
 
 YQL_LAST_ABI_VERSION()

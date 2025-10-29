@@ -15,7 +15,7 @@
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 #include <cloud/storage/core/protos/tablet.pb.h>
 
-#include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
+#include <ydb/core/tablet_flat/flat_cxx_database.h>
 
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>

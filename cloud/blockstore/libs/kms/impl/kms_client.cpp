@@ -1,7 +1,7 @@
 #include "kms_client.h"
 
-#include <contrib/ydb/public/api/client/yc_private/kms/symmetric_crypto_service.grpc.pb.h>
-#include <contrib/ydb/public/api/client/yc_private/kms/symmetric_crypto_service.pb.h>
+#include <ydb/public/api/client/yc_private/kms/symmetric_crypto_service.grpc.pb.h>
+#include <ydb/public/api/client/yc_private/kms/symmetric_crypto_service.pb.h>
 
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>

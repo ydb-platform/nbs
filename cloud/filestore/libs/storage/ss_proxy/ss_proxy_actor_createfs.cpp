@@ -5,9 +5,9 @@
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 
-#include <contrib/ydb/core/base/path.h>
+#include <ydb/core/base/path.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/vector.h>
 #include <util/string/join.h>

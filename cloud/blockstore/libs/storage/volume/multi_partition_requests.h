@@ -13,9 +13,9 @@
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/actorid.h>
-#include <contrib/ydb/library/actors/core/event.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/event.h>
 
 #include <library/cpp/eventlog/eventlog.h>
 #include <library/cpp/lwtrace/all.h>

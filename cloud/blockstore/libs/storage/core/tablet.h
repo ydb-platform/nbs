@@ -6,11 +6,11 @@
 
 #include <cloud/blockstore/libs/kikimr/events.h>
 
-#include <contrib/ydb/core/base/tablet.h>
-#include <contrib/ydb/core/tablet_flat/flat_database.h>
-#include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/core/base/tablet.h>
+#include <ydb/core/tablet_flat/flat_database.h>
+#include <ydb/core/tablet_flat/tablet_flat_executed.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/log.h>
 
 #include <type_traits>
 
