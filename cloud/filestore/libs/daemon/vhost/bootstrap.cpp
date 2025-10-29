@@ -423,8 +423,6 @@ void TBootstrapVhost::InitEndpoints()
         },
         TDirectoryHandlesStorageConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
-            .TableSize =
-                Configs->VhostServiceConfig->GetDirectoryHandlesTableSize(),
             .InitialDataSize =
                 Configs->VhostServiceConfig->GetDirectoryHandlesInitialDataSize()
         }

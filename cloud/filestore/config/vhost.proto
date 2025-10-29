@@ -81,11 +81,8 @@ message TVhostServiceConfig
     // (and a subdirectory with session id as name) if not present.
     optional string DirectoryHandlesStoragePath = 19;
 
-    // Capacity for DirectoryHandles persistent table.
-    optional uint64 DirectoryHandlesTableSize = 20;
-
     // Initial data area size for DirectoryHandles persistent table.
-    optional uint64 DirectoryHandlesInitialDataSize = 21;
+    optional uint64 DirectoryHandlesInitialDataSize = 20;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

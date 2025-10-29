@@ -141,7 +141,6 @@ public:
         protoConfig.SetWriteBackCacheFlushMaxSumWriteRequestsSize(
             WriteBackCacheConfig.FlushMaxSumWriteRequestsSize);
         protoConfig.SetDirectoryHandlesStoragePath(DirectoryHandlesStorageConfig.PathPrefix);
-        protoConfig.SetDirectoryHandlesTableSize(DirectoryHandlesStorageConfig.TableSize);
         protoConfig.SetDirectoryHandlesInitialDataSize(DirectoryHandlesStorageConfig.InitialDataSize);
 
         auto vFSConfig = std::make_shared<TVFSConfig>(std::move(protoConfig));

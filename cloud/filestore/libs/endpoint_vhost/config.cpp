@@ -43,7 +43,6 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     xxx(WriteBackCacheFlushMaxWriteRequestsCount,   ui32,       64            )\
     xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32,       32_MB         )\
     xxx(DirectoryHandlesStoragePath,                TString,    ""            )\
-    xxx(DirectoryHandlesTableSize,                  ui64,       1000          )\
     xxx(DirectoryHandlesInitialDataSize,            ui64,       1_GB          )\
 // VHOST_SERVICE_CONFIG
 

@@ -53,6 +53,8 @@ public:
 
     bool GetDirectoryHandlesStorageEnabled() const;
 
+    ui64 GetDirectoryHandlesTableSize() const;
+
     bool GetGuestKeepCacheAllowed() const;
 
     ui32 GetMaxBackground() const;

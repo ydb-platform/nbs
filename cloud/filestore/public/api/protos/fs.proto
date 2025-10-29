@@ -42,6 +42,7 @@ message TFileStoreFeatures
     bool FSyncQueueDisabled = 27;
     uint32 XAttrCacheTimeout = 28;
     bool DirectoryHandlesStorageEnabled = 29;
+    uint64 DirectoryHandlesTableSize = 30;
 }
 
 message TFileStore

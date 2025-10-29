@@ -91,4 +91,7 @@ message TFileSystemConfig
 
     // Enable directory handles storage functionality
     optional bool DirectoryHandlesStorageEnabled = 27;
+
+    // Capacity for DirectoryHandles persistent table.
+    optional uint64 DirectoryHandlesTableSize = 28;
 }

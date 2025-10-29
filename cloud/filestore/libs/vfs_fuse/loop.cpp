@@ -1055,7 +1055,7 @@ private:
                 directoryHandlesStorage = CreateDirectoryHandlesStorage(
                     Log,
                     path / DirectoryHandlesStorageFileName,
-                    Config->GetDirectoryHandlesTableSize(),
+                    FileSystemConfig->GetDirectoryHandlesTableSize(),
                     Config->GetDirectoryHandlesInitialDataSize(),
                     FileSystemConfig->GetMaxBufferSize());
 
@@ -1173,6 +1173,9 @@ private:
 
         config.SetDirectoryHandlesStorageEnabled(
             features.GetDirectoryHandlesStorageEnabled());
+
+        config.SetDirectoryHandlesTableSize(
+            features.GetDirectoryHandlesTableSize());
 
         config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
 
