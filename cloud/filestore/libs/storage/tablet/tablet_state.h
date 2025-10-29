@@ -148,6 +148,12 @@ struct TMiscNodeStats
     i64 OrphanNodesCount{0};
 };
 
+struct THandlesStats
+{
+    i64 OpenedDirectHandles{0};
+    i64 OpenedHandles{0};
+};
+
 struct TWriteMixedBlocksResult
 {
     ui32 GarbageBlocksCount = 0;
@@ -341,6 +347,7 @@ public:
     }
 
     TMiscNodeStats GetMiscNodeStats() const;
+    THandlesStats GetHandlesStats() const;
 
     const NProto::TFileStorePerformanceProfile& GetPerformanceProfile() const;
 

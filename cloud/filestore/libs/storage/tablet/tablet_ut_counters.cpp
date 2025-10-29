@@ -882,6 +882,86 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
              }},
         });
     }
+
+    Y_UNIT_TEST(ShouldReportDirectHandleMetrics)
+    {
+        TTestEnv env;
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        const auto nodeId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        auto advanceTime = [&]()
+        {
+            env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvIndexTabletPrivate::EvUpdateCounters);
+            env.GetRuntime().DispatchEvents(options);
+        };
+
+        auto checkHandlesCounters =
+            [&](i64 expectedDirectHandles, i64 expectedOpenedHandles)
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "OpenedDirectHandles"}, {"filesystem", "test"}},
+                 expectedDirectHandles},
+                {{{"sensor", "OpenedHandles"}, {"filesystem", "test"}},
+                 expectedOpenedHandles},
+            });
+        };
+
+        advanceTime();
+        checkHandlesCounters(0, 0);
+
+        const auto handleWithoutDirect =
+            CreateHandle(tablet, nodeId, {}, TCreateHandleArgs::RDWR);
+
+        advanceTime();
+        checkHandlesCounters(0, 1);
+
+        const auto handleWithDirect = CreateHandle(
+            tablet,
+            nodeId,
+            {},
+            TCreateHandleArgs::RDWR | TCreateHandleArgs::DIRECT);
+
+        advanceTime();
+        checkHandlesCounters(1, 2);
+
+        const auto anotherDirectHandle = CreateHandle(
+            tablet,
+            nodeId,
+            {},
+            TCreateHandleArgs::RDWR | TCreateHandleArgs::DIRECT);
+
+        advanceTime();
+        checkHandlesCounters(2, 3);
+
+        tablet.DestroyHandle(handleWithoutDirect);
+
+        advanceTime();
+        checkHandlesCounters(2, 2);
+
+        tablet.DestroyHandle(handleWithDirect);
+
+        advanceTime();
+        checkHandlesCounters(1, 1);
+
+        tablet.DestroyHandle(anotherDirectHandle);
+
+        advanceTime();
+        checkHandlesCounters(0, 0);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

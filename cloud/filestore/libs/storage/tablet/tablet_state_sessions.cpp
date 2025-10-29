@@ -575,6 +575,11 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     Impl->HandleById.emplace(handle->GetHandle(), handle.get());
     Impl->NodeRefsByHandle[proto.GetNodeId()]++;
 
+    ++Impl->OpenedHandles;
+    if (HasFlag(proto.GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        ++Impl->OpenedDirectHandles;
+    }
+
     {
         const auto nodeId = handle->GetNodeId();
         const auto flags = handle->GetFlags();
@@ -613,6 +618,11 @@ void TIndexTabletState::RemoveHandle(TSessionHandle* handle)
     }
     if (auto* session = handle->Session) {
         session->HandleStatsByNode.UnregisterHandle(*handle);
+    }
+
+    --Impl->OpenedHandles;
+    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        --Impl->OpenedDirectHandles;
     }
 
     {

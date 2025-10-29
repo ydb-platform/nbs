@@ -190,6 +190,9 @@ private:
 
         std::atomic<i64> OrphanNodesCount{0};
 
+        std::atomic<i64> OpenedDirectHandles{0};
+        std::atomic<i64> OpenedHandles{0};
+
         NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
         using TLatHistogram =
             NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS>;
@@ -364,7 +367,8 @@ private:
             const TBlobMetaMapStats& blobMetaMapStats,
             const TIndexTabletState::TBackpressureThresholds&
                 backpressureThresholds,
-            const TIndexTabletState::TBackpressureValues& backpressureValues);
+            const TIndexTabletState::TBackpressureValues& backpressureValues,
+            const THandlesStats& handlesStats);
         void UpdatePerformanceMetrics(
             TInstant now,
             const TDiagnosticsConfig& diagConfig,
