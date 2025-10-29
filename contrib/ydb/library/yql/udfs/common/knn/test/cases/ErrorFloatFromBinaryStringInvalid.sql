@@ -1,1 +1,0 @@
-select Knn::FloatFromBinaryString("Invalid");
