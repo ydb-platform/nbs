@@ -146,6 +146,8 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvChecksumDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    OnRequestFinished(ctx, ev->Cookie);
+
     const auto& device = DeviceRequests[ev->Cookie].Device;
     LOG_WARN(
         ctx,
@@ -164,6 +166,8 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
 {
     auto* msg = ev->Get();
 
+    OnRequestFinished(ctx, ev->Cookie);
+
     if (HasError(msg->GetError())) {
         HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
@@ -173,8 +177,6 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
     const auto rangeStart = deviceRequest.BlockRange.Start;
     const auto rangeSize = deviceRequest.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
     Checksums[rangeStart] = {msg->Record.GetChecksum(), rangeSize};
-
-    OnRequestFinished(ctx, ev->Cookie);
 
     if (++RequestsCompleted < DeviceRequests.size()) {
         return;

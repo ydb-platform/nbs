@@ -661,14 +661,15 @@ bool TNonreplicatedPartitionActor::HandleRequests(STFUNC_SIG)
 ui64 TNonreplicatedPartitionActor::GenerateOperationId(
     size_t deviceRequestsCount)
 {
-    const ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
-    const ui64 operationId =
-        (trackingFreq > 0 && DeviceOperationIdGenerator % trackingFreq == 0)
-            ? DeviceOperationIdGenerator
-            : 0;
+    static std::atomic<ui64> DeviceOperationIdGenerator = 1;
 
-    DeviceOperationIdGenerator += deviceRequestsCount;
-    return operationId;
+    const ui64 val = DeviceOperationIdGenerator.fetch_add(deviceRequestsCount);
+    const ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
+    if (trackingFreq > 0 && val % trackingFreq == 0) {
+        return val;
+    }
+
+    return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

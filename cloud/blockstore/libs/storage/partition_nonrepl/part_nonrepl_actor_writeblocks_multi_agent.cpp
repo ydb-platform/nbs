@@ -182,6 +182,8 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksUndelivery(
 {
     Y_UNUSED(ev);
 
+    OnRequestFinished(ctx, ev->Cookie);
+
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
@@ -198,6 +200,8 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    OnRequestFinished(ctx, ev->Cookie);
 
     auto replyInconsistentError = [&]()
     {
@@ -239,8 +243,6 @@ void TDiskAgentMultiWriteActor::HandleWriteDeviceBlocksResponse(
         replyInconsistentError();
         return;
     }
-
-    OnRequestFinished(ctx, 0);
 
     Y_DEBUG_ABORT_UNLESS(error.GetCode() == S_OK);
     Done(ctx, MakeResponse(std::move(error)), EStatus::Success);

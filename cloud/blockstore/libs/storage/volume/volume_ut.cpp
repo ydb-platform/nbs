@@ -9860,11 +9860,16 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldReceiveDeviceOperationStartedAndFinished)
     {
+        const ui64 expectedBlockCount =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+        const ui64 expectedDeviceCount = 2;
+
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
         config.SetDeviceOperationTrackingFrequency(1);
 
         auto state = MakeIntrusive<TDiskRegistryState>();
+        state->ReplicaCount = 1;
         auto runtime = PrepareTestActorRuntime(config, state);
         TVolumeClient volume(*runtime);
 
@@ -9876,7 +9881,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
-            1024);
+            expectedBlockCount * expectedDeviceCount);
 
         volume.WaitReady();
 
@@ -9886,43 +9891,104 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0);
         volume.AddClient(clientInfo);
 
-        bool startedSeen = false;
-        bool finishedSeen = false;
+        TSet<ui64> startedSeen;
+        TSet<ui64> finishedSeen;
+        std::optional<TDeviceOperationTracker::ERequestType> RequestType;
 
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        auto filter = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvDiskRegistryDeviceOperationStarted)
             {
-                if (event->GetTypeRewrite() ==
-                    TEvVolumePrivate::EvDiskRegistryDeviceOperationStarted)
-                {
-                    startedSeen = true;
-                } else if (
-                    event->GetTypeRewrite() ==
-                    TEvVolumePrivate::EvDiskRegistryDeviceOperationFinished)
-                {
-                    finishedSeen = true;
-                }
+                auto* msg = event->Get<
+                    TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>();
+                RequestType = msg->RequestType;
+                auto [it, inserted] = startedSeen.insert(msg->OperationId);
+                UNIT_ASSERT_VALUES_EQUAL(true, inserted);
+            } else if (
+                event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvDiskRegistryDeviceOperationFinished)
+            {
+                auto* msg = event->Get<
+                    TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>();
+                auto [it, inserted] = finishedSeen.insert(msg->OperationId);
+                UNIT_ASSERT_VALUES_EQUAL(true, inserted);
+            }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
 
-        auto range = TBlockRange64::MakeOneBlock(0);
-        volume.SendWriteBlocksRequest(
-            range,
-            clientInfo.GetClientId(),
-            GetBlockContent('X'));
-        auto response = volume.RecvWriteBlocksResponse();
+        runtime->SetObserverFunc(filter);
 
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        auto checkRead =
+            [&](const TBlockRange64& range, size_t expectedRequestCount)
+        {
+            const size_t before = startedSeen.size();
+            UNIT_ASSERT_VALUES_EQUAL(before, finishedSeen.size());
 
-        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            volume.ReadBlocks(range, clientInfo.GetClientId());
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT_VALUES_EQUAL(
+                startedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                finishedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDeviceOperationTracker::ERequestType::Read,
+                *RequestType);
+        };
 
-        UNIT_ASSERT_C(
-            startedSeen,
-            "Expected DeviceOperationStarted event on write");
-        UNIT_ASSERT_C(
-            finishedSeen,
-            "Expected DeviceOperationFinished event on write");
+        auto checkWrite =
+            [&](const TBlockRange64& range, size_t expectedRequestCount)
+        {
+            const size_t before = startedSeen.size();
+            UNIT_ASSERT_VALUES_EQUAL(before, finishedSeen.size());
+
+            volume.WriteBlocks(
+                range,
+                clientInfo.GetClientId(),
+                GetBlockContent('X'));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT_VALUES_EQUAL(
+                startedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                finishedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDeviceOperationTracker::ERequestType::Write,
+                *RequestType);
+        };
+
+        auto checkZero =
+            [&](const TBlockRange64& range, size_t expectedRequestCount)
+        {
+            const size_t before = startedSeen.size();
+            UNIT_ASSERT_VALUES_EQUAL(before, finishedSeen.size());
+
+            volume.ZeroBlocks(range, clientInfo.GetClientId());
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT_VALUES_EQUAL(
+                startedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                finishedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDeviceOperationTracker::ERequestType::Zero,
+                *RequestType);
+        };
+
+        // Validate not on the device's border
+        checkRead(TBlockRange64::MakeOneBlock(1), 1);
+        checkWrite(TBlockRange64::MakeOneBlock(1), 2);
+        checkZero(TBlockRange64::MakeOneBlock(1), 2);
+
+        // Validate on the device's border.
+        checkRead(TBlockRange64::WithLength(expectedBlockCount - 1, 2), 2);
+        checkWrite(TBlockRange64::WithLength(expectedBlockCount - 1, 2), 4);
+        checkZero(TBlockRange64::WithLength(expectedBlockCount - 1, 2), 4);
     }
 }
 

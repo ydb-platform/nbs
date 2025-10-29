@@ -120,7 +120,7 @@ void TDiskAgentBaseRequestActor::OnRequestStarted(
     const NActors::TActorContext& ctx,
     const TString& deviceUUID,
     TDeviceOperationTracker::ERequestType requestType,
-    ui32 cookie)
+    size_t requestIndex)
 {
     if (!DeviceOperationId) {
         return;
@@ -130,14 +130,14 @@ void TDiskAgentBaseRequestActor::OnRequestStarted(
         TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
         deviceUUID,
         requestType,
-        DeviceOperationId + cookie);
+        DeviceOperationId + requestIndex);
 
-    ctx.Send(VolumeActorId, startEvent.release());
+    ctx.Send(VolumeActorId, std::move(startEvent));
 }
 
 void TDiskAgentBaseRequestActor::OnRequestFinished(
     const NActors::TActorContext& ctx,
-    ui32 cookie)
+    size_t requestIndex)
 {
     if (!DeviceOperationId) {
         return;
@@ -145,9 +145,9 @@ void TDiskAgentBaseRequestActor::OnRequestFinished(
 
     auto finishEvent = std::make_unique<
         TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
-        DeviceOperationId + cookie);
+        DeviceOperationId + requestIndex);
 
-    ctx.Send(VolumeActorId, finishEvent.release());
+    ctx.Send(VolumeActorId, std::move(finishEvent));
 }
 
 void TDiskAgentBaseRequestActor::HandleCancelRequest(
@@ -155,6 +155,12 @@ void TDiskAgentBaseRequestActor::HandleCancelRequest(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    for (size_t requestIndex = 0; requestIndex < DeviceRequests.size();
+         ++requestIndex)
+    {
+        OnRequestFinished(ctx, requestIndex);
+    }
 
     TVector<TString> devices;
     for (const auto& request: DeviceRequests) {
