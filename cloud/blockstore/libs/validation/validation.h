@@ -78,7 +78,7 @@ IBlockStorePtr CreateDataIntegrityClient(
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     IBlockStorePtr client,
-    ui32 blockSize);
+    const NProto::TVolume& volume);
 
 }   // namespace NClient
 

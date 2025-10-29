@@ -70,11 +70,6 @@ func getDiskState(state types.DiskState) (disk_manager.DiskState, error) {
 	}
 }
 
-func isLocalDiskKind(kind disk_manager.DiskKind) bool {
-	return (kind == disk_manager.DiskKind_DISK_KIND_HDD_LOCAL ||
-		kind == disk_manager.DiskKind_DISK_KIND_SSD_LOCAL)
-}
-
 func prepareEncryptionMode(
 	mode disk_manager.EncryptionMode,
 ) (types.EncryptionMode, error) {
@@ -181,7 +176,7 @@ func (s *service) getZoneIDForExistingDisk(
 	}
 
 	if diskMeta.ZoneID != diskID.ZoneId &&
-		!s.cellSelector.IsCellOfZone(diskMeta.ZoneID, diskID.ZoneId) {
+		!s.cellSelector.ZoneContainsCell(diskID.ZoneId, diskMeta.ZoneID) {
 		return "", common.NewInvalidArgumentError(
 			"provided zone ID %v does not match with an actual zone ID %v",
 			diskID.ZoneId,

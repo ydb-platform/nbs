@@ -48,8 +48,10 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -75,8 +77,10 @@ TDiskAgentReadActor::TDiskAgentReadActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -84,8 +88,10 @@ TDiskAgentReadActor::TDiskAgentReadActor(
           std::move(timeoutPolicy),
           std::move(deviceRequests),
           std::move(partConfig),
+          volumeActorId,
           part,
-          std::move(logTitle))
+          std::move(logTitle),
+          deviceOperationId)
     , Request(std::move(request))
     , SkipVoidBlocksToOptimizeNetworkTransfer(
           Request.GetHeaders().GetOptimizeNetworkTransfer() ==
@@ -118,6 +124,12 @@ void TDiskAgentReadActor::SendRequest(const TActorContext& ctx)
         request->Record.SetStartIndex(deviceRequest.DeviceBlockRange.Start);
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
+
+        OnRequestStarted(
+            ctx,
+            deviceRequest.Device.GetDeviceUUID(),
+            TDeviceOperationTracker::ERequestType::Read,
+            cookie);
 
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
@@ -200,6 +212,8 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
         }
     }
 
+    OnRequestFinished(ctx, ev->Cookie);
+
     if (++RequestsCompleted < DeviceRequests.size()) {
         return;
     }
@@ -278,6 +292,8 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
             NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
     }
 
+    ui64 operationId = GenerateOperationId(deviceRequests.size());
+
     auto actorId = NCloud::Register<TDiskAgentReadActor>(
         ctx,
         requestInfo,
@@ -285,8 +301,10 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
+        VolumeActorId,
         SelfId(),
-        LogTitle.GetChild(GetCycleCount()));
+        LogTitle.GetChild(GetCycleCount()),
+        operationId);
 
     RequestsInProgress.AddReadRequest(actorId, std::move(request));
 }

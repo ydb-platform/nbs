@@ -43,32 +43,33 @@ func getCsiMethodName(fullMethodName string) string {
 ////////////////////////////////////////////////////////////////////////////////
 
 type Config struct {
-	DriverName                  string
-	Endpoint                    string
-	NodeID                      string
-	VendorVersion               string
-	VMMode                      bool
-	MonPort                     uint
-	NbsHost                     string
-	NbsPort                     uint
-	NbsSocket                   string
-	NfsServerHost               string
-	NfsServerPort               uint
-	NfsServerSocket             string
-	NfsVhostHost                string
-	NfsVhostPort                uint
-	NfsVhostSocket              string
-	SocketsDir                  string
-	LocalFilestoreOverridePath  string
-	NfsLocalHost                string
-	NfsLocalFilestorePort       uint
-	NfsLocalFilestoreSocket     string
-	NfsLocalEndpointPort        uint
-	NfsLocalEndpointSocket      string
-	MountOptions                string
-	UseDiscardForYDBBasedDisks  bool
-	GrpcRequestTimeout          time.Duration
-	StartEndpointRequestTimeout time.Duration
+	DriverName                       string
+	Endpoint                         string
+	NodeID                           string
+	VendorVersion                    string
+	VMMode                           bool
+	MonPort                          uint
+	NbsHost                          string
+	NbsPort                          uint
+	NbsSocket                        string
+	NfsServerHost                    string
+	NfsServerPort                    uint
+	NfsServerSocket                  string
+	NfsVhostHost                     string
+	NfsVhostPort                     uint
+	NfsVhostSocket                   string
+	SocketsDir                       string
+	LocalFilestoreOverridePath       string
+	NfsLocalHost                     string
+	NfsLocalFilestorePort            uint
+	NfsLocalFilestoreSocket          string
+	NfsLocalEndpointPort             uint
+	NfsLocalEndpointSocket           string
+	MountOptions                     string
+	UseDiscardForYDBBasedDisks       bool
+	GrpcRequestTimeout               time.Duration
+	StartEndpointRequestTimeout      time.Duration
+	RetriableErrorsDurationThreshold time.Duration
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -181,15 +182,17 @@ func NewDriver(cfg Config) (*Driver, error) {
 		return nil, err
 	}
 
-	monintoringCfg := monitoring.MonitoringConfig{
-		Port:      cfg.MonPort,
-		Path:      "/metrics",
-		Component: "server",
+	monitoringCfg := monitoring.MonitoringConfig{
+		Port:                             cfg.MonPort,
+		Path:                             "/metrics",
+		Component:                        "server",
+		RetriableErrorsDurationThreshold: cfg.RetriableErrorsDurationThreshold,
 	}
 
-	monintoring := monitoring.NewMonitoring(&monintoringCfg)
-	monintoring.StartListening()
-	monintoring.ReportVersion(cfg.VendorVersion)
+	mon := monitoring.NewMonitoring(&monitoringCfg)
+	mon.StartListening()
+	mon.ReportVersion(cfg.VendorVersion)
+	mon.ReportExternalFsMountExpirationTimes(externalFsOverrides.GetMountExpirationTimes())
 
 	errInterceptor := func(
 		ctx context.Context,
@@ -198,16 +201,18 @@ func NewDriver(cfg Config) (*Driver, error) {
 		handler grpc.UnaryHandler) (interface{}, error) {
 
 		method := getCsiMethodName(info.FullMethod)
-		monintoring.ReportRequestReceived(method)
+		volumeId := GetVolumeId(req)
+		mon.ReportRequestReceived(method)
 
 		startTime := time.Now()
 		resp, err := handler(ctx, req)
-		elapsedTime := time.Since(startTime)
+		endTime := time.Now()
+		elapsedTime := endTime.Sub(startTime)
 
 		if err != nil {
 			log.WithError(err).WithField("method", info.FullMethod).Error("method failed")
 		}
-		monintoring.ReportRequestCompleted(method, err, elapsedTime)
+		mon.ReportRequestCompleted(volumeId, method, err, endTime, elapsedTime)
 		return resp, err
 	}
 
@@ -244,7 +249,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 
 	return &Driver{
 		grpcServer: grpcServer,
-		monitoring: monintoring,
+		monitoring: mon,
 	}, nil
 }
 
@@ -291,4 +296,27 @@ func (s *Driver) Run(socketPath string) error {
 	}
 
 	return nil
+}
+
+func GetVolumeId(req interface{}) string {
+	switch r := req.(type) {
+	case csi.NodeStageVolumeRequest:
+		return r.VolumeId
+	case csi.NodeUnstageVolumeRequest:
+		return r.VolumeId
+	case csi.NodePublishVolumeRequest:
+		return r.VolumeId
+	case csi.NodeUnpublishVolumeRequest:
+		return r.VolumeId
+	case csi.NodeExpandVolumeRequest:
+		return r.VolumeId
+	case csi.CreateVolumeRequest:
+		// Per CSI spec, the VolumeId is provided in the Name field
+		// https://github.com/container-storage-interface/spec/blob/release-1.12/csi.proto#L350
+		return r.Name
+	case csi.DeleteVolumeRequest:
+		return r.VolumeId
+	default:
+		return ""
+	}
 }

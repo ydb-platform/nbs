@@ -580,6 +580,9 @@ public:
 
     TVector<TString> GetKnownSpareNodes() const;
     ui32 GetSpareNodeProbability() const;
+    [[nodiscard]] i32 GetSystemTabletsPriority() const;
+
+    ui32 GetDeviceOperationTrackingFrequency() const;
 
     bool GetRejectLateRequestsAtDiskAgentEnabled() const;
     bool GetAssignIdToWriteAndZeroRequestsEnabled() const;
@@ -626,6 +629,7 @@ public:
     ui64 GetMaxScrubbingBandwidth() const;
     ui64 GetMinScrubbingBandwidth() const;
     bool GetAutomaticallyEnableBufferCopyingAfterChecksumMismatch() const;
+    bool GetDisableUsingIntermediateWriteBuffer() const;
     NProto::EResyncPolicy GetScrubbingResyncPolicy() const;
 
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
@@ -731,6 +735,8 @@ public:
     [[nodiscard]] ui64 GetHiveLocalServiceNetworkResourceLimit() const;
 
     [[nodiscard]] TDuration GetDynamicNodeRegistrationTimeout() const;
+
+    [[nodiscard]] bool GetComputeDigestForEveryBlockOnCompaction() const;
 };
 
 ui64 GetAllocationUnit(

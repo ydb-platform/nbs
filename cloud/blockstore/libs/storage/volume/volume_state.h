@@ -494,6 +494,11 @@ public:
         return NonreplicatedPartitionConfig;
     }
 
+    TPartitionStartInfo GetDiskRegistryBasedPartitionStartInfo() const
+    {
+        return DiskRegistryBasedPartitionActor.GetStartInfo();
+    }
+
     //
     // PartitionStat
     //

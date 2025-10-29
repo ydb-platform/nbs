@@ -9485,10 +9485,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     TVector<TString> WriteToDiskWithInflightDataCorruptionAndReadResults(
         NCloud::NProto::EStorageMediaKind mediaKind,
         ui32 writeNumberToIntercept,
-        const TString& tags)
+        const TString& tags,
+        bool disableUsingIntermediateWriteBuffer = false)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
+        config.SetDisableUsingIntermediateWriteBuffer(
+            disableUsingIntermediateWriteBuffer);
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(config, state);
 
@@ -9602,6 +9605,29 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(adata, results[0]);
         UNIT_ASSERT_VALUES_EQUAL(adata, results[1]);
         UNIT_ASSERT_VALUES_EQUAL(adata, results[2]);
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotCopyWriteRequestDataBeforeWritingToStorageIfTagIsSetM3ButFeatureIsDisabled)
+    {
+        auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            // 1 - to volume
+            // 1 - to mirror actor
+            // 3 - to 3 replicas
+            1 + 1 + 3,
+            "use-intermediate-write-buffer",
+            /*disableUsingIntermediateWriteBuffer=*/true);
+        const TString adata(4_KB, 'a');
+
+        const bool replica1Match = (adata == results[0]);
+        const bool replica2Match = (adata == results[1]);
+        const bool replica3Match = (adata == results[2]);
+        // One of the replicas should have inconsistent data due to disabled
+        // feature.
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            replica1Match + replica2Match + replica3Match);
     }
 
     Y_UNIT_TEST(ShouldHaveDifferentDataInReplicasUponInflightBufferCorruptionM3)
@@ -9830,6 +9856,73 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 2,
                 response->Record.FailInfo.FailedRanges.size());
         }
+    }
+
+    Y_UNIT_TEST(ShouldReceiveDeviceOperationStartedAndFinished)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetDeviceOperationTrackingFrequency(1);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            1024);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        bool startedSeen = false;
+        bool finishedSeen = false;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvVolumePrivate::EvDiskRegistryDeviceOperationStarted)
+                {
+                    startedSeen = true;
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvVolumePrivate::EvDiskRegistryDeviceOperationFinished)
+                {
+                    finishedSeen = true;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto range = TBlockRange64::MakeOneBlock(0);
+        volume.SendWriteBlocksRequest(
+            range,
+            clientInfo.GetClientId(),
+            GetBlockContent('X'));
+        auto response = volume.RecvWriteBlocksResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(
+            startedSeen,
+            "Expected DeviceOperationStarted event on write");
+        UNIT_ASSERT_C(
+            finishedSeen,
+            "Expected DeviceOperationFinished event on write");
     }
 }
 

@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -23,13 +24,24 @@ func (s *CellSelectorMock) SelectCell(
 	ctx context.Context,
 	zoneID string,
 	folderID string,
+	kind types.DiskKind,
 ) (nbs.Client, error) {
 
-	args := s.Called(ctx, zoneID, folderID)
+	args := s.Called(ctx, zoneID, folderID, kind)
 	return args.Get(0).(nbs.Client), args.Error(1)
 }
 
-func (s *CellSelectorMock) IsCellOfZone(cellID string, zoneID string) bool {
-	args := s.Called(cellID, zoneID)
+func (s *CellSelectorMock) SelectCellForLocalDisk(
+	ctx context.Context,
+	zoneID string,
+	agentIDs []string,
+) (nbs.Client, error) {
+
+	args := s.Called(ctx, zoneID, agentIDs)
+	return args.Get(0).(nbs.Client), args.Error(1)
+}
+
+func (s *CellSelectorMock) ZoneContainsCell(zoneID string, cellID string) bool {
+	args := s.Called(zoneID, cellID)
 	return args.Bool(0)
 }

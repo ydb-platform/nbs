@@ -178,6 +178,13 @@ service TFileStoreService
         };
     }
 
+    rpc ToggleServiceState(TToggleServiceStateRequest) returns (TToggleServiceStateResponse) {
+        option (google.api.http) = {
+            post: "/toggle_service_state"
+            body: "*"
+        };
+    }
+
     rpc SubscribeSession(TSubscribeSessionRequest) returns (TSubscribeSessionResponse) {
         option (google.api.http) = {
             post: "/subscribe_session"

@@ -1340,6 +1340,27 @@ message TStorageServiceConfig
     // Timeout for collect garbage on HDD (in milliseconds).
     optional uint32 CollectGarbageTimeoutHDD = 461;
 
+    // When enabled, the backups are stored in binary proto format instead of
+    // prototxt.
     optional bool UseBinaryFormatForPathDescriptionBackup = 462;
     optional bool UseBinaryFormatForTabletBootInfoBackup = 463;
+
+    // Allows to set node's priority for system (tenant) tablets (hive,
+    // schemeshard, etc.) and the DR tablet. Lower value means lower priority.
+    // NOTE: can be negative.
+    optional int32 SystemTabletsPriority = 464;
+
+    // Enables force calculation of the checksums for all compaction blocks.
+    optional bool ComputeDigestForEveryBlockOnCompaction = 465;
+
+    // Disables the use of intermediate write buffers in volume actor.
+    optional bool DisableUsingIntermediateWriteBuffer = 466;
+
+    // Specifies how often device operations should be tracked for latency statistics.
+    // Values:
+    //   0 = tracking completely disabled
+    //   1 = track every operation
+    //   N = track every Nth operation
+    // Higher values reduce monitoring overhead but provide less granular statistics.
+    optional uint32 DeviceOperationTrackingFrequency = 467;
 }

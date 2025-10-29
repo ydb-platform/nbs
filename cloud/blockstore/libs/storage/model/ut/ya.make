@@ -9,6 +9,7 @@ SRCS(
     log_title_ut.cpp
     request_bounds_tracker_ut.cpp
     requests_in_progress_ut.cpp
+    volume_label_ut.cpp
 )
 
 PEERDIR(

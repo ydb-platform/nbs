@@ -453,7 +453,10 @@ void TVolumeActor::DoRegisterVolume(
     Y_DEBUG_ABORT_UNLESS(diskId);
 
     NProto::TVolume volume;
-    VolumeConfigToVolume(State->GetMeta().GetVolumeConfig(), volume);
+    VolumeConfigToVolume(
+        State->GetMeta().GetVolumeConfig(),
+        State->GetPrincipalDiskId(),
+        volume);
 
     if (State->GetDiskId() != diskId) {
         // Handle shadow disk.
@@ -515,7 +518,10 @@ void TVolumeActor::DoUnregisterVolume(
 void TVolumeActor::SendVolumeConfigUpdated(const TActorContext& ctx)
 {
     NProto::TVolume volume;
-    VolumeConfigToVolume(State->GetMeta().GetVolumeConfig(), volume);
+    VolumeConfigToVolume(
+        State->GetMeta().GetVolumeConfig(),
+        State->GetPrincipalDiskId(),
+        volume);
     {
         auto request = std::make_unique<TEvService::TEvVolumeConfigUpdated>(
             State->GetDiskId(),
@@ -807,6 +813,62 @@ void TVolumeActor::HandleTakeVolumeRequestId(
     NCloud::Reply(ctx, *ev, std::move(resp));
 }
 
+void TVolumeActor::InitializeDeviceOperationTracker()
+{
+    if (!State) {
+        return;
+    }
+
+    TVector<TDeviceOperationTracker::TDeviceInfo> deviceInfos;
+    THashSet<TString> seenDevices;
+
+    for (const auto& device: State->GetMeta().GetDevices()) {
+        const TString deviceUUID = device.GetDeviceUUID();
+        if (seenDevices.insert(deviceUUID).second) {
+            deviceInfos.push_back(
+                {.DeviceUUID = deviceUUID, .AgentId = device.GetAgentId()});
+        }
+    }
+
+    for (const auto& replica: State->GetMeta().GetReplicas()) {
+        for (const auto& device: replica.GetDevices()) {
+            const TString deviceUUID = device.GetDeviceUUID();
+            if (seenDevices.insert(deviceUUID).second) {
+                deviceInfos.push_back(
+                    {.DeviceUUID = deviceUUID, .AgentId = device.GetAgentId()});
+            }
+        }
+    }
+
+    DeviceOperationTracker.UpdateDevices(std::move(deviceInfos));
+}
+
+void TVolumeActor::HandleDiskRegistryDeviceOperationStarted(
+    const TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    auto* msg = ev->Get();
+
+    DeviceOperationTracker.OnStarted(
+        msg->OperationId,
+        msg->DeviceUUID,
+        msg->RequestType,
+        GetCycleCount());
+}
+
+void TVolumeActor::HandleDiskRegistryDeviceOperationFinished(
+    const TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    auto* msg = ev->Get();
+
+    DeviceOperationTracker.OnFinished(msg->OperationId, GetCycleCount());
+}
+
 bool TVolumeActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
@@ -1076,6 +1138,14 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvService::TEvDestroyVolumeResponse,
             HandleDestroyOutdatedLeaderVolumeResponse);
+
+        HFunc(
+            TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted,
+            HandleDiskRegistryDeviceOperationStarted);
+
+        HFunc(
+            TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished,
+            HandleDiskRegistryDeviceOperationFinished);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 

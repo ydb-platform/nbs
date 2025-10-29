@@ -214,7 +214,7 @@ def setup_disk_agent_config(
     config.Enabled = True
     config.DedicatedDiskAgent = False
     config.Backend = DISK_AGENT_BACKEND_AIO
-    config.DirectIoFlagDisabled = False
+    config.DirectIoFlagDisabled = True
     config.AgentId = agent_id
     config.AcquireRequired = True
     config.RegisterRetryTimeout = 1000  # 1 second

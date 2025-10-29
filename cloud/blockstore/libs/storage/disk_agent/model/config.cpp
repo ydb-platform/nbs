@@ -157,6 +157,16 @@ void TDiskAgentConfig::DumpHtml(IOutputStream& out) const
 #undef BLOCKSTORE_CONFIG_DUMP
 }
 
+bool TDiskAgentConfig::HasChaosConfig() const
+{
+    return Config.HasChaosConfig();
+}
+
+const NProto::TChaosConfig& TDiskAgentConfig::GetChaosConfig() const
+{
+    return Config.GetChaosConfig();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 auto LoadDiskAgentConfig(

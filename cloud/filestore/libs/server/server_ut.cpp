@@ -439,17 +439,31 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldGetSessionEventsStream)
     {
-        TAtomicStorage<IResponseHandlerPtr<NProto::TGetSessionEventsResponse>> storage;
+        TAtomicStorage<IResponseHandlerPtr<NProto::TGetSessionEventsResponse>>
+            storage;
 
         TBootstrap<TServerSetup> bootstrap;
         bootstrap.Service->GetSessionEventsStreamHandler =
-            [&] (auto callContext, auto request, auto responseHandler) {
-                Y_UNUSED(callContext, request);
-                storage.Set(responseHandler);
-            };
+            [&](auto callContext, auto request, auto responseHandler)
+        {
+            Y_UNUSED(callContext, request);
+            storage.Set(responseHandler);
+        };
+
+        bootstrap.Service->PingHandler = [](auto, auto)
+        {
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         bootstrap.CreateClient();
         bootstrap.Start();
+
+        auto pingFuture = bootstrap.Clients[0]->Ping(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TPingRequest>());
+
+        const auto& response = pingFuture.GetValue(WaitTimeout);
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
 
         auto context = MakeIntrusive<TCallContext>("fs");
         auto request = std::make_shared<NProto::TGetSessionEventsRequest>();

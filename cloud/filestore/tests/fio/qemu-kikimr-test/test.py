@@ -7,6 +7,19 @@ from cloud.filestore.tests.python.lib.common import get_filestore_mount_path
 
 TESTS = fio.generate_tests()
 
+BLOCK_SIZE = 4096
+
+SIZES = [BLOCK_SIZE - 1, BLOCK_SIZE, BLOCK_SIZE + 1, 2 * BLOCK_SIZE - 1,
+         2 * BLOCK_SIZE, 2 * BLOCK_SIZE + 1, 4 * fio.KB, 16 * fio.KB,
+         64 * fio.KB, 256 * fio.KB, 1 * fio.MB]
+
+UNALIGNED_TESTS = fio.generate_tests(
+    offset=100,
+    sizes=SIZES,
+    iodepths=[1],
+    numjobs=[1],
+    scenarios=['randwrite', 'randrw'])
+
 
 @pytest.mark.parametrize("name", TESTS.keys())
 def test_fio(name):
@@ -14,3 +27,11 @@ def test_fio(name):
     file_name = fio.get_file_name(mount_dir, name)
 
     fio.run_test(file_name, TESTS[name], fail_on_errors=True)
+
+
+@pytest.mark.parametrize("name", UNALIGNED_TESTS.keys())
+def test_unaligned_fio(name):
+    mount_dir = get_filestore_mount_path()
+    file_name = fio.get_file_name(mount_dir, name)
+
+    fio.run_test(file_name, UNALIGNED_TESTS[name], fail_on_errors=True)

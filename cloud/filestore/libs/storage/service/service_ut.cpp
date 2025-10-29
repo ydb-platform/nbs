@@ -3973,6 +3973,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             STORAGE_INFO("iovec size with index: %lu: %lu", i, iovecSize);
             iovecSizes.push_back(iovecSize);
         }
+
+        TestZeroCopyWrite(config, 0, iovecSizes);
     }
 
     Y_UNIT_TEST(TestZeroCopyWriteWithPartiallyEmptyIovecs)
@@ -4022,6 +4024,35 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         std::vector<TString> data(64);
         service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
+    }
+
+    Y_UNIT_TEST(ShouldHandleToggleServiceState)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+
+        auto headers = service.InitSession(fs, "client");
+
+        auto pingResponse = service.Ping();
+        UNIT_ASSERT_EQUAL_C(
+            NProto::EServiceState::SERVICE_STATE_RUNNING,
+            pingResponse->Record.GetServiceState(),
+            pingResponse->Record.ShortDebugString());
+
+        service.ToggleServiceState(
+            NProto::EServiceState::SERVICE_STATE_STOPPING);
+
+        pingResponse = service.Ping();
+        UNIT_ASSERT_EQUAL_C(
+            NProto::EServiceState::SERVICE_STATE_STOPPING,
+            pingResponse->Record.GetServiceState(),
+            pingResponse->Record.ShortDebugString());
     }
 }
 

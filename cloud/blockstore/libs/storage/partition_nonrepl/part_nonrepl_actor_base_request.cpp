@@ -24,12 +24,16 @@ TDiskAgentBaseRequestActor::TDiskAgentBaseRequestActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId)
     : RequestInfo(std::move(requestInfo))
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
+    , VolumeActorId(volumeActorId)
     , Part(part)
+    , DeviceOperationId(deviceOperationId)
     , LogTitle(std::move(logTitle))
     , RequestName(std::move(requestName))
     , RequestId(requestId)
@@ -110,6 +114,40 @@ void TDiskAgentBaseRequestActor::Done(
     NCloud::Send(ctx, Part, std::move(completion.Event));
 
     Die(ctx);
+}
+
+void TDiskAgentBaseRequestActor::OnRequestStarted(
+    const NActors::TActorContext& ctx,
+    const TString& deviceUUID,
+    TDeviceOperationTracker::ERequestType requestType,
+    ui32 cookie)
+{
+    if (!DeviceOperationId) {
+        return;
+    }
+
+    auto startEvent = std::make_unique<
+        TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
+        deviceUUID,
+        requestType,
+        DeviceOperationId + cookie);
+
+    ctx.Send(VolumeActorId, startEvent.release());
+}
+
+void TDiskAgentBaseRequestActor::OnRequestFinished(
+    const NActors::TActorContext& ctx,
+    ui32 cookie)
+{
+    if (!DeviceOperationId) {
+        return;
+    }
+
+    auto finishEvent = std::make_unique<
+        TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
+        DeviceOperationId + cookie);
+
+    ctx.Send(VolumeActorId, finishEvent.release());
 }
 
 void TDiskAgentBaseRequestActor::HandleCancelRequest(

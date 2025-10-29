@@ -138,6 +138,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(KnownSpareNodes,                TVector<TString>,   {}                )\
     xxx(SpareNodeProbability,           ui32,               0                 )\
+    xxx(SystemTabletsPriority,          i32,                0                 )\
+    xxx(DeviceOperationTrackingFrequency, ui32,             0                 )\
                                                                                \
     xxx(TenantHiveTabletId,             ui64,               0                 )\
                                                                                \
@@ -163,6 +165,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(LinkedDiskFillBandwidth,                                               \
         TVector<NProto::TLinkedDiskFillBandwidth>,                             \
         {}                                                                    )\
+    xxx(ComputeDigestForEveryBlockOnCompaction,     bool,            false    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -564,6 +567,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
     xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
+    xxx(DisableUsingIntermediateWriteBuffer,                   bool, false       )\
     xxx(ScrubbingResyncPolicy,                                                    \
         NProto::EResyncPolicy,                                                    \
         NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB                           )\

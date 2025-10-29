@@ -90,7 +90,7 @@ struct ITestScenario
 {
     virtual ~ITestScenario() = default;
 
-    virtual bool Initialize(TFileHandle& fileHandle)
+    virtual bool Init(TFileHandle& fileHandle)
     {
         Y_UNUSED(fileHandle);
         return true;
@@ -123,13 +123,10 @@ struct TTestExecutorSettings
     TLog Log;
     bool RunInCallbacks = false;
     bool NoDirect = false;
+    bool PrintDebugStats = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-ITestScenarioPtr CreateAlignedBlockTestScenario(
-    IConfigHolderPtr configHolder,
-    const TLog& log);
 
 ITestExecutorPtr CreateTestExecutor(TTestExecutorSettings settings);
 

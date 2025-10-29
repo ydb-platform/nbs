@@ -9,7 +9,7 @@ loadtest/local-auth/cloud-blockstore-tests-loadtest-local-auth
 loadtest/local-bsgroup-failure/tests-loadtest-local-bsgroup-failure
 loadtest/local-change-device/blockstore-tests-loadtest-local-change-device
 loadtest/local-checkpoint/cloud-blockstore-tests-loadtest-local-checkpoint
-loadtest/local-data-integrity/cloud-blockstore-tests-loadtest-local-data-integrity
+loadtest/local-data-integrity/blockstore-tests-loadtest-local-data-integrity
 loadtest/local-discovery/cloud-blockstore-tests-loadtest-local-discovery
 loadtest/local-edgecase/cloud-blockstore-tests-loadtest-local-edgecase
 loadtest/local-emergency/cloud-blockstore-tests-loadtest-local-emergency
@@ -54,5 +54,6 @@ session_cache/cloud-blockstore-tests-session_cache
 spare_node/cloud-blockstore-tests-spare_node
 stats_aggregator_perf/stats_aggregator_perf
 storage_discovery/cloud-blockstore-tests-storage_discovery
+tablets/cloud-blockstore-tests-tablets
 vhost-server/cloud-blockstore-tests-vhost-server
 vhost-server/run_and_die/run-and-die

@@ -76,8 +76,7 @@ struct TRdmaTestEnvironment
     NProto::TWriteDeviceBlocksRequest MakeWriteRequest(
         const TBlockRange64& blockRange,
         char fill,
-        ui64 volumeRequestId = 0,
-        bool isMultideviceRequest = false) const;
+        ui64 volumeRequestId = 0) const;
 
     NProto::TWriteDeviceBlocksRequest MakeMultiAgentWriteRequest(
         const TBlockRange64& blockRange,
@@ -92,8 +91,7 @@ struct TRdmaTestEnvironment
 
     NProto::TZeroDeviceBlocksRequest MakeZeroRequest(
         const TBlockRange64& blockRange,
-        ui64 volumeRequestId = 0,
-        bool isMultideviceRequest = false) const;
+        ui64 volumeRequestId = 0) const;
 
     template <typename TRequest>
     auto Run(TRequest request)

@@ -294,6 +294,7 @@ struct TTestEnv
             TMigrations(),
             Replicas,
             nullptr, // rdmaClient
+            VolumeActorId,
             TActorId(), // statActorId
             // resync actor id should be set since mirror actor should be aware
             // of the fact that resync is in progress
@@ -366,6 +367,7 @@ struct TTestEnv
             TMigrations(),
             Replicas,
             nullptr,   // rdmaClient
+            VolumeActorId,
             VolumeActorId,
             initialResyncIndex,
             resyncPolicy,
@@ -450,6 +452,7 @@ struct TTestEnv
             Config,
             CreateDiagnosticsConfig(),
             partConfig,
+            VolumeActorId,
             TActorId() // do not send stats
         );
 

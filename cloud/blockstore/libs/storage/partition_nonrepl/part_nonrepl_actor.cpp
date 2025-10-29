@@ -27,10 +27,12 @@ TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         TActorId statActorId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
+    , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
     , DeviceStats(PartConfig->GetDevices().size())
     , PartCounters(CreatePartitionDiskCounters(
@@ -654,6 +656,19 @@ bool TNonreplicatedPartitionActor::HandleRequests(STFUNC_SIG)
     }
 
     return true;
+}
+
+ui64 TNonreplicatedPartitionActor::GenerateOperationId(
+    size_t deviceRequestsCount)
+{
+    const ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
+    const ui64 operationId =
+        (trackingFreq > 0 && DeviceOperationIdGenerator % trackingFreq == 0)
+            ? DeviceOperationIdGenerator
+            : 0;
+
+    DeviceOperationIdGenerator += deviceRequestsCount;
+    return operationId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -129,7 +129,10 @@ void TDescribeVolumeActor::HandleDescribeVolumeResponse(
         pathDescription.GetBlockStoreVolumeDescription();
     const auto& volumeConfig = volumeDescription.GetVolumeConfig();
 
-    VolumeConfigToVolume(volumeConfig, Volume);
+    VolumeConfigToVolume(
+        volumeConfig,
+        "",   // Need localdb to get principalDiskId
+        Volume);
     Volume.SetTokenVersion(volumeDescription.GetTokenVersion());
 
     if (IsDiskRegistryMediaKind(Volume.GetStorageMediaKind())) {

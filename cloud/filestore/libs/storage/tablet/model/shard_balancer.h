@@ -28,7 +28,10 @@ class IShardBalancer
 public:
     virtual ~IShardBalancer() = default;
 
-    virtual void UpdateShardStats(const TVector<TShardStats>& stats) = 0;
+    virtual void Update(
+        const TVector<TShardStats>& stats,
+        std::optional<ui64> desiredFreeSpaceReserve,
+        std::optional<ui64> minFreeSpaceReserve) = 0;
     virtual NProto::TError SelectShard(ui64 fileSize, TString* shardId) = 0;
 };
 
@@ -50,12 +53,13 @@ public:
 
     TShardBalancerBase(
         ui32 blockSize,
+        ui32 maxFileBlocks,
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
         TVector<TString> shardIds);
 
 private:
-    ui32 BlockSize = 4_KB;
+    const ui32 BlockSize = 4_KB;
     ui64 DesiredFreeSpaceReserve = 0;
     ui64 MinFreeSpaceReserve = 0;
 
@@ -80,7 +84,10 @@ protected:
         ui64 fileSize) const;
 
 public:
-    void UpdateShardStats(const TVector<TShardStats>& stats) override;
+    void Update(
+        const TVector<TShardStats>& stats,
+        std::optional<ui64> desiredFreeSpaceReserve = {},
+        std::optional<ui64> minFreeSpaceReserve = {}) override;
 };
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -92,7 +99,10 @@ private:
 
 public:
     using TShardBalancerBase::TShardBalancerBase;
-    void UpdateShardStats(const TVector<TShardStats>& stats) final;
+    void Update(
+        const TVector<TShardStats>& stats,
+        std::optional<ui64> desiredFreeSpaceReserve = {},
+        std::optional<ui64> minFreeSpaceReserve = {}) final;
     NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
 };
 
@@ -121,10 +131,14 @@ private:
 public:
     TShardBalancerWeightedRandom(
         ui32 blockSize,
+        ui32 maxFileBlocks,
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
         TVector<TString> shardIds);
-    void UpdateShardStats(const TVector<TShardStats>& stats) final;
+    void Update(
+        const TVector<TShardStats>& stats,
+        std::optional<ui64> desiredFreeSpaceReserve = {},
+        std::optional<ui64> minFreeSpaceReserve = {}) final;
     NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
 };
 
@@ -133,6 +147,7 @@ public:
 IShardBalancerPtr CreateShardBalancer(
     NProto::EShardBalancerPolicy policy,
     ui32 blockSize,
+    ui32 maxFileBlocks,
     ui64 desiredFreeSpaceReserve,
     ui64 minFreeSpaceReserve,
     TVector<TString> shardIds);

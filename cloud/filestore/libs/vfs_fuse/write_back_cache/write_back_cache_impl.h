@@ -6,6 +6,8 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 
+#include <util/datetime/base.h>
+
 #include <util/generic/intrlist.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
@@ -14,29 +16,8 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class TWriteBackCache::EWriteDataEntryStatus
-{
-    // Restoration from the persisent buffer has failed
-    Corrupted,
-
-    // Write request is waiting for the avaible space in the persistent buffer
-    Pending,
-
-    // Write request has been stored in the persistent buffer and the caller
-    // code observes the request as completed
-    Cached,
-
-    // Same as |Cached|, but Flush is also requested
-    FlushRequested,
-
-    // Write request has been written to the session and can be removed from
-    // the persistent buffer
-    Flushed
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TWriteBackCache::TWriteDataEntry
+    : public TIntrusiveListItem<TWriteDataEntry>
 {
 private:
     // Store request metadata and request buffer separately
@@ -54,13 +35,18 @@ private:
 
     NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
     NThreading::TPromise<void> FlushPromise;
-    EWriteDataEntryStatus Status = EWriteDataEntryStatus::Corrupted;
+
+    EWriteDataRequestStatus Status = EWriteDataRequestStatus::Initial;
+    TInstant StatusChangeTime = TInstant::Zero();
 
 public:
     explicit TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    TWriteDataEntry(ui32 checksum, TStringBuf serializedRequest);
+    TWriteDataEntry(
+        ui32 checksum,
+        TStringBuf serializedRequest,
+        TImpl* impl);
 
     const NProto::TWriteDataRequest* GetRequest() const
     {
@@ -94,37 +80,44 @@ public:
 
     bool IsCached() const
     {
-        return Status == EWriteDataEntryStatus::Cached ||
-               Status == EWriteDataEntryStatus::FlushRequested;
+        return Status == EWriteDataRequestStatus::Cached ||
+               Status == EWriteDataRequestStatus::FlushRequested;
     }
 
     bool IsCorrupted() const
     {
-        return Status == EWriteDataEntryStatus::Corrupted;
+        return Status == EWriteDataRequestStatus::Corrupted;
     }
 
     bool IsFlushRequested() const
     {
-        return Status == EWriteDataEntryStatus::FlushRequested;
+        return Status == EWriteDataRequestStatus::FlushRequested;
     }
 
     bool IsFlushed() const
     {
-        return Status == EWriteDataEntryStatus::Flushed;
+        return Status == EWriteDataRequestStatus::Flushed;
     }
 
     size_t GetSerializedSize() const;
 
+    void SetPending(TImpl* impl);
+
     void SerializeAndMoveRequestBuffer(
         char* allocationPtr,
-        TPendingOperations& pendingOperations);
+        TPendingOperations& pendingOperations,
+        TImpl* impl);
 
-    void FinishFlush(TPendingOperations& pendingOperations);
-
-    bool RequestFlush();
+    bool RequestFlush(TImpl* impl);
+    void StartFlush(TImpl* impl);
+    void FinishFlush(TPendingOperations& pendingOperations, TImpl* impl);
+    void Complete(TImpl* impl);
 
     NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
     NThreading::TFuture<void> GetFlushFuture();
+
+private:
+    void SetStatus(EWriteDataRequestStatus status, TImpl* impl);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

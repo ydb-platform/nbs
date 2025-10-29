@@ -13,6 +13,11 @@ const THashMap<TString, ECommand> nameToCommand = {
     {"generated", ECommand::GenerateConfigCmd},
 };
 
+const THashMap<TString, EScenario> nameToScenario = {
+    {"aligned", EScenario::Aligned},
+    {"unaligned", EScenario::Unaligned}
+};
+
 const THashMap<TString, EIoEngine> nameToEngine = {
     {"asyncio", EIoEngine::AsyncIo},
     {"uring", EIoEngine::IoUring},
@@ -73,6 +78,17 @@ void TOptions::Parse(int argc, char** argv)
         "- generated: run test with generated config from specified parameters")
         .Required()
         | TMapOption(&Command, nameToCommand, ECommand::UnknownCmd);
+
+    opts.AddLongOption(
+        "scenario",
+        "specify the testing scenario:\n"
+        "- aligned: aligned reads and writes\n"
+        "    suitable for testing nbs and nfs\n"
+        "    preferred options: engine=async_io\n"
+        "- unaligned: arbitrary reads and writes\n"
+        "    suitable for testing nfs\n"
+        "    preferred options: engine=sync, no_direct\n")
+        | TMapOption(&Scenario, nameToScenario, EScenario::Aligned);
 
     opts.AddLongOption(
         "engine",
@@ -150,6 +166,68 @@ void TOptions::Parse(int argc, char** argv)
         "path to test config")
         .RequiredArgument("STR")
         .StoreResult(&RestorePath);
+
+    opts.AddLongOption(
+        "min-read-size",
+        "minimum size of read requests in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MinReadSize);
+
+    opts.AddLongOption(
+        "max-read-size",
+        "maximum size of read requests in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MaxReadSize);
+
+    opts.AddLongOption(
+        "read-size",
+        "minimum and maximum size of read requests in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MinReadSize)
+        .StoreResult(&MaxReadSize);
+
+    opts.AddLongOption(
+        "min-write-size",
+        "minimum size of write requests in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MinWriteSize);
+
+    opts.AddLongOption(
+        "max-write-size",
+        "maximum size of write requests in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MaxWriteSize);
+
+    opts.AddLongOption(
+        "write-size",
+        "minimum and maximum size of write requests in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MinWriteSize)
+        .StoreResult(&MaxWriteSize);
+
+    opts.AddLongOption(
+        "min-region-size",
+        "minimum size of file region in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MinRegionSize);
+
+    opts.AddLongOption(
+        "max-region-size",
+        "maximum size of file region in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MaxRegionSize);
+
+    opts.AddLongOption(
+        "region-size",
+        "minimum and maximum size of file region in bytes")
+        .RequiredArgument("NUM")
+        .StoreResult(&MinRegionSize)
+        .StoreResult(&MaxRegionSize);
+
+    opts.AddLongOption(
+        "debug",
+        "print debug statistics")
+        .StoreTrue(&PrintDebugStats);
 
     TOptsParseResultException(&opts, argc, argv);
 }

@@ -258,6 +258,10 @@ private:
     {
         TSpanTree spanTree(TraceId, currentSpanId);
 
+        if (!iterationContext) {
+            return spanTree;
+        }
+
         THashMap<ui64, ui64> spanIdToStartTime;
 
         ui64 startTimeCycles = tl.Items[iterationContext.Idx].TimestampCycles;
@@ -399,6 +403,9 @@ TTraceInfo ConvertToOpenTelemetrySpans(const NLWTrace::TTrackLog& tl)
 
     traceInfo.RequestId = FindRequestId(tl, traceItCtx);
     traceInfo.DiskId = FindFirst<TString>(tl, "diskId", traceItCtx);
+    traceInfo.MediaKind =
+        FindFirst<NProto::EStorageMediaKind>(tl, "mediaKind", traceItCtx);
+    traceInfo.RequestSize = FindFirst<ui64>(tl, "requestSize", traceItCtx);
 
     auto converter = TTraceConverter(
         RandomNumber<ui64>(),   // traceId

@@ -48,6 +48,47 @@ NProto::TStorageConfig MakeStorageConfigWithShardIdSelectionInLeader()
     return config;
 }
 
+NProtoPrivate::TGetFileSystemTopologyResponse GetFileSystemTopology(
+    TServiceClient& service,
+    const TString& fsId)
+{
+    NProtoPrivate::TGetFileSystemTopologyRequest request;
+    request.SetFileSystemId(fsId);
+
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+    const auto actionResponse =
+        service.ExecuteAction("getfilesystemtopology", buf);
+    NProtoPrivate::TGetFileSystemTopologyResponse response;
+    auto status = google::protobuf::util::JsonStringToMessage(
+        actionResponse->Record.GetOutput(),
+        &response);
+
+    return response;
+}
+
+NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
+    TServiceClient& service,
+    const TString& fsId,
+    const bool allowCache = false,
+    const NProtoPrivate::StatsRequestMode mode =
+        NProtoPrivate::STATS_REQUEST_MODE_DEFAULT)
+{
+    NProtoPrivate::TGetStorageStatsRequest request;
+    request.SetFileSystemId(fsId);
+    request.SetAllowCache(allowCache);
+    request.SetMode(mode);
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+    const auto actionResponse = service.ExecuteAction("GetStorageStats", buf);
+    NProtoPrivate::TGetStorageStatsResponse response;
+    auto status = google::protobuf::util::JsonStringToMessage(
+        actionResponse->Record.GetOutput(),
+        &response);
+
+    return response;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2202,17 +2243,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             fileStoreStats.GetUsedBlocksCount());
 
         {
-            NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            request.SetAllowCache(true);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            const auto response = service.ExecuteAction("GetStorageStats", buf);
-            NProtoPrivate::TGetStorageStatsResponse record;
-            auto status = google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &record);
-            const auto& stats = record.GetStats();
+            const auto response =
+                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
                 stats.GetUsedBlocksCount());
@@ -2227,17 +2260,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.StatFileStore(headers, fsConfig.FsId);
 
         {
-            NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            request.SetAllowCache(true);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            const auto response = service.ExecuteAction("GetStorageStats", buf);
-            NProtoPrivate::TGetStorageStatsResponse record;
-            auto status = google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &record);
-            const auto& stats = record.GetStats();
+            const auto response =
+                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
                 stats.GetUsedBlocksCount());
@@ -2296,18 +2321,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         auto testFileSystemTopology =
             [&](const ui32 shardNo, const TString& shardId)
         {
-            NProtoPrivate::TGetFileSystemTopologyRequest request;
-            request.SetFileSystemId(shardId);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            const auto actionResponse =
-                service.ExecuteAction("getfilesystemtopology", buf);
-            NProtoPrivate::TGetFileSystemTopologyResponse response;
-            auto status = google::protobuf::util::JsonStringToMessage(
-                actionResponse->Record.GetOutput(),
-                &response);
-
+            const auto response = GetFileSystemTopology(service, shardId);
             const auto& shardIds = response.GetShardFileSystemIds();
             UNIT_ASSERT_EQUAL(shardNo, response.GetShardNo());
             UNIT_ASSERT_EQUAL(2, shardIds.size());
@@ -2366,30 +2380,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         auto data2 = GenerateValidateData(512_KB);
         service.WriteData(headers, fsConfig.FsId, nodeId2, handle2, 0, data2);
 
-        auto getFileSystemStats =
-            [&](const TString& fsId,
-                const NProtoPrivate::StatsRequestMode mode,
-                NProtoPrivate::TGetStorageStatsResponse& response)
         {
-            NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(fsId);
-            request.SetAllowCache(false);
-            request.SetMode(mode);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            const auto execResponse =
-                service.ExecuteAction("GetStorageStats", buf);
-            google::protobuf::util::JsonStringToMessage(
-                execResponse->Record.GetOutput(),
-                &response);
-        };
-
-        {
-            NProtoPrivate::TGetStorageStatsResponse response;
-            getFileSystemStats(
-                fsConfig.FsId,
-                NProtoPrivate::STATS_REQUEST_MODE_DEFAULT,
-                response);
+            const auto response = GetStorageStats(service, fsConfig.FsId);
             const auto& stats = response.GetStats();
             // In default mode a request to the main filesystem fetches
             // statistics form shards
@@ -2399,11 +2391,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
 
         {
-            NProtoPrivate::TGetStorageStatsResponse response;
-            getFileSystemStats(
+            const auto response = GetStorageStats(
+                service,
                 fsConfig.FsId,
-                NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF,
-                response);
+                false /* allowCache */,
+                NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF);
             const auto& stats = response.GetStats();
             // No blocks are used by the main filesystem itself, all blocks are
             // used by shards.
@@ -2412,11 +2404,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         // Shards in default mode report only their own statistics.
         {
-            NProtoPrivate::TGetStorageStatsResponse response;
-            getFileSystemStats(
-                fsConfig.Shard1Id,
-                NProtoPrivate::STATS_REQUEST_MODE_DEFAULT,
-                response);
+            const auto response = GetStorageStats(service, fsConfig.Shard1Id);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 data1.size() / 4_KB,
@@ -2424,11 +2412,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
 
         {
-            NProtoPrivate::TGetStorageStatsResponse response;
-            getFileSystemStats(
+            const auto response = GetStorageStats(
+                service,
                 fsConfig.Shard2Id,
-                NProtoPrivate::STATS_REQUEST_MODE_DEFAULT,
-                response);
+                false /* allowCache */);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 data2.size() / 4_KB,
@@ -2438,11 +2425,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // Shards in FORCE_FETCH_SHARDS mode fetch statistics from all the
         // shards.
         {
-            NProtoPrivate::TGetStorageStatsResponse response;
-            getFileSystemStats(
+            const auto response = GetStorageStats(
+                service,
                 fsConfig.Shard1Id,
-                NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS,
-                response);
+                false /* allowCache */,
+                NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
@@ -2450,15 +2437,238 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
 
         {
-            NProtoPrivate::TGetStorageStatsResponse response;
-            getFileSystemStats(
+            const auto response = GetStorageStats(
+                service,
                 fsConfig.Shard2Id,
-                NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS,
-                response);
+                false /* allowCache */,
+                NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
             const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
                 stats.GetUsedBlocksCount());
+        }
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldEnableStrictFileSystemSizeEnforcement)
+    {
+        // Create file system with two shards 1000 * 4 * 1024 bytes each
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetStrictFileSystemSizeEnforcementEnabled(false);
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const ui64 blockSize = 4_KB;
+        const ui64 fsSize =
+            fsConfig.ShardIds().size() * fsConfig.ShardBlockCount * blockSize;
+        const ui64 filesCount = 8;
+        const ui64 fileSize = fsSize / (filesCount * 2);
+
+        auto createFile = [&](const TString& fileName) -> auto
+        {
+            auto createNodeResponse =
+                service
+                    .CreateNode(
+                        headers,
+                        TCreateNodeArgs::File(RootNodeId, fileName))
+                    ->Record;
+            const auto nodeId = createNodeResponse.GetNode().GetId();
+            const ui64 handle = service
+                                    .CreateHandle(
+                                        headers,
+                                        fsConfig.FsId,
+                                        nodeId,
+                                        "",
+                                        TCreateHandleArgs::RDWR)
+                                    ->Record.GetHandle();
+
+            return std::pair<ui64, ui64>(nodeId, handle);
+        };
+
+        // Write some data to some files
+        for (ui64 i = 0; i < filesCount; ++i) {
+            const auto file = createFile(TStringBuilder() << "file" << i);
+            service.WriteData(
+                headers,
+                fsConfig.FsId,
+                file.first,
+                file.second,
+                0,
+                GenerateValidateData(fileSize, i));
+        }
+
+        {
+            // check topology before turning strict mode on
+            const auto mainFsTopology =
+                GetFileSystemTopology(service, fsConfig.FsId);
+            UNIT_ASSERT(
+                !mainFsTopology.GetStrictFileSystemSizeEnforcementEnabled());
+            UNIT_ASSERT_EQUAL(2, mainFsTopology.ShardFileSystemIdsSize());
+
+            const auto shard1Topology =
+                GetFileSystemTopology(service, fsConfig.Shard1Id);
+            UNIT_ASSERT(
+                !shard1Topology.GetStrictFileSystemSizeEnforcementEnabled());
+            UNIT_ASSERT_EQUAL(0, shard1Topology.ShardFileSystemIdsSize());
+
+            const auto shard2Topology =
+                GetFileSystemTopology(service, fsConfig.Shard2Id);
+            UNIT_ASSERT(
+                !shard2Topology.GetStrictFileSystemSizeEnforcementEnabled());
+            UNIT_ASSERT_EQUAL(0, shard2Topology.ShardFileSystemIdsSize());
+        }
+
+        // Resize the filesystem to the same size turinng on
+        // StrictFileSystemSizeEnforcementEnabled
+        service.ResizeFileStore(
+            fsConfig.FsId,
+            fsConfig.MainFsBlockCount(),
+            false /* force */,
+            0 /* shardCount */,
+            true /* enableStrictSizeMode */);
+
+        {
+            // check topology after turning strict mode on
+            const auto mainFsTopology =
+                GetFileSystemTopology(service, fsConfig.FsId);
+            UNIT_ASSERT(
+                mainFsTopology.GetStrictFileSystemSizeEnforcementEnabled());
+            UNIT_ASSERT_EQUAL(2, mainFsTopology.ShardFileSystemIdsSize());
+
+            const auto shard1Topology =
+                GetFileSystemTopology(service, fsConfig.Shard1Id);
+            UNIT_ASSERT(
+                shard1Topology.GetStrictFileSystemSizeEnforcementEnabled());
+            UNIT_ASSERT_EQUAL(2, shard1Topology.ShardFileSystemIdsSize());
+
+            const auto shard2Topology =
+                GetFileSystemTopology(service, fsConfig.Shard2Id);
+            UNIT_ASSERT(
+                shard2Topology.GetStrictFileSystemSizeEnforcementEnabled());
+            UNIT_ASSERT_EQUAL(2, shard2Topology.ShardFileSystemIdsSize());
+        }
+
+        auto checkShardsSize = [&](const ui64 blocksCount)
+        {
+            const auto mainStats =
+                GetStorageStats(service, fsConfig.FsId, false /* allowCache */);
+            const auto shard1Stats = GetStorageStats(
+                service,
+                fsConfig.Shard1Id,
+                false /* allowCache */,
+                NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+            const auto shard2Stats = GetStorageStats(
+                service,
+                fsConfig.Shard2Id,
+                false /* allowCache */,
+                NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+            UNIT_ASSERT_EQUAL(
+                blocksCount,
+                mainStats.GetStats().GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(
+                blocksCount,
+                shard1Stats.GetStats().GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(
+                blocksCount,
+                shard2Stats.GetStats().GetTotalBlocksCount());
+        };
+
+        // After resizing and turning on StrictFileSystemSizeEnforcement every
+        // shard should have the same TotalBytesCount equal to that of the main
+        // filesystem
+        checkShardsSize(fsConfig.MainFsBlockCount());
+
+        // Downsize the filesystem by force
+        const auto newBlocksCount = fsConfig.MainFsBlockCount() / 2;
+        service.ResizeFileStore(
+            fsConfig.FsId,
+            newBlocksCount,
+            true /* force */);
+
+        checkShardsSize(newBlocksCount);
+
+        // Attempt to write one more file should fail
+        const auto file = createFile("notEnoughSpace");
+        service.AssertWriteDataFailed(
+            headers,
+            fsConfig.FsId,
+            file.first,
+            file.second,
+            0,
+            GenerateValidateData(fileSize, 0xBADF00D));
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldRetryFileSystemResize)
+    {
+        // Create a filsystem with two shards.
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        {
+            const auto response = GetStorageStats(service, fsConfig.FsId);
+            const auto& stats = response.GetStats();
+            UNIT_ASSERT_EQUAL(2, stats.GetShardStats().size());
+        }
+
+        ui32 alterEventCount = 0;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvSSProxy::EvAlterFileStoreResponse)
+                {
+                    if (alterEventCount == 0) {
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvAlterFileStoreResponse>();
+                        const_cast<NProto::TError&>(msg->Error)
+                            .set_code(E_REJECTED);
+                    }
+                    alterEventCount++;
+                }
+                return false;
+            });
+
+        // After we replied with error to the main filesystem resize:
+        // 1. Main filesystem is actually resized.
+        // 2. No shards are resized, and no configure requests were sent.
+        const ui64 newBlocksCount = fsConfig.MainFsBlockCount() * 23 / 20;
+        service.AssertResizeFileStoreFailed(fsConfig.FsId, newBlocksCount);
+        {
+            const auto response = GetStorageStats(service, fsConfig.FsId);
+            const auto& stats = response.GetStats();
+            UNIT_ASSERT_EQUAL(2, stats.GetShardStats().size());
+            UNIT_ASSERT_EQUAL(newBlocksCount, stats.GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(
+                fsConfig.MainFsBlockCount(),
+                stats.GetShardStats()[0].GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(
+                fsConfig.MainFsBlockCount(),
+                stats.GetShardStats()[1].GetTotalBlocksCount());
+        }
+
+        // The next step retries ResizeFileStore. It should complete resize and
+        // bring the file system into consistent state.
+        env.GetRuntime().SetEventFilter(
+            &TTestActorRuntimeBase::DefaultFilterFunc);
+        service.ResizeFileStore(fsConfig.FsId, newBlocksCount);
+        {
+            const auto response = GetStorageStats(service, fsConfig.FsId);
+            const auto& stats = response.GetStats();
+            UNIT_ASSERT_EQUAL(3, stats.GetShardStats().size());
+            UNIT_ASSERT_EQUAL(newBlocksCount, stats.GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(
+                newBlocksCount,
+                stats.GetShardStats()[0].GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(
+                newBlocksCount,
+                stats.GetShardStats()[1].GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(
+                newBlocksCount,
+                stats.GetShardStats()[2].GetTotalBlocksCount());
         }
     }
 
@@ -2530,17 +2740,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.AccessRuntime().DispatchEvents(options);
 
         {
-            NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            request.SetAllowCache(true);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            const auto response = service.ExecuteAction("GetStorageStats", buf);
-            NProtoPrivate::TGetStorageStatsResponse record;
-            auto status = google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &record);
-            const auto& stats = record.GetStats();
+            const auto response =
+                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
                 stats.GetUsedBlocksCount());
@@ -2611,17 +2813,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // stats not updated yet
 
         {
-            NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            request.SetAllowCache(true);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            const auto response = service.ExecuteAction("GetStorageStats", buf);
-            NProtoPrivate::TGetStorageStatsResponse record;
-            auto status = google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &record);
-            const auto& stats = record.GetStats();
+            const auto response =
+                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
                 stats.GetUsedBlocksCount());
@@ -2659,17 +2853,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // stats should be up to date now
 
         {
-            NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            request.SetAllowCache(true);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            const auto response = service.ExecuteAction("GetStorageStats", buf);
-            NProtoPrivate::TGetStorageStatsResponse record;
-            auto status = google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &record);
-            const auto& stats = record.GetStats();
+            const auto response =
+                GetStorageStats(service, fsConfig.FsId, true /* allowCache */);
+            const auto& stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 (data1.size() + data2.size()) / 4_KB,
                 stats.GetUsedBlocksCount());
@@ -4930,16 +5116,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.AccessRuntime().DispatchEvents(options);
 
         {
-            NProtoPrivate::TGetStorageStatsRequest request;
-            request.SetFileSystemId(fsConfig.Shard1Id);
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            auto response = service.ExecuteAction("GetStorageStats", buf);
-            NProtoPrivate::TGetStorageStatsResponse record;
-            auto status = google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &record);
-            auto stats = record.GetStats();
+            auto response = GetStorageStats(service, fsConfig.Shard1Id);
+            auto stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.ShardStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 data1.size() / 4_KB,
@@ -4948,17 +5126,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 data1.size() / 4_KB,
                 stats.GetMixedBlocksCount());
 
-            request.SetAllowCache(true);
-            request.SetMode(
+            response = GetStorageStats(
+                service,
+                fsConfig.Shard1Id,
+                true /* allowCache */,
                 NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
-            buf.clear();
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            response = service.ExecuteAction("GetStorageStats", buf);
-            record.Clear();
-            status = google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &record);
-            stats = record.GetStats();
+            stats = response.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(2, stats.ShardStatsSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 64,

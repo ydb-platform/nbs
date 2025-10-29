@@ -228,7 +228,7 @@ void TFSyncQueue::Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle)
 
     STORAGE_TRACE(LogTag << " Request was started " << request);
 
-    with_lock (StateMutex) {
+    with_lock (StateLock) {
         CurrentState.AddRequest(request);
     }
 }
@@ -246,7 +246,7 @@ void TFSyncQueue::Dequeue(
 
     STORAGE_TRACE(LogTag << " Request was finished " << request);
 
-    with_lock (StateMutex) {
+    with_lock (StateLock) {
         CurrentState.RemoveRequest(request);
     }
 }
@@ -260,7 +260,7 @@ TFuture<NProto::TError> TFSyncQueue::WaitForRequests(
     STORAGE_TRACE(LogTag
         << " FSync request was received " << request << " meta");
 
-    with_lock (StateMutex) {
+    with_lock (StateLock) {
         return CurrentState.AddFSyncRequest(request);
     }
 }
@@ -281,9 +281,56 @@ TFuture<NProto::TError> TFSyncQueue::WaitForDataRequests(
     STORAGE_TRACE(LogTag
         << " FSync request was received " << request << " data");
 
-    with_lock (StateMutex) {
+    with_lock (StateLock) {
         return CurrentState.AddFSyncRequest(request);
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TFSyncQueueStub::Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle)
+{
+    Y_UNUSED(reqId);
+    Y_UNUSED(nodeId);
+    Y_UNUSED(handle);
+}
+
+void TFSyncQueueStub::Dequeue(
+    TRequestId reqId,
+    const NProto::TError& error,
+    TNodeId nodeId,
+    THandle handle)
+{
+    Y_UNUSED(reqId);
+    Y_UNUSED(error);
+    Y_UNUSED(nodeId);
+    Y_UNUSED(handle);
+}
+
+TFuture<NProto::TError> TFSyncQueueStub::WaitForRequests(
+    TRequestId reqId,
+    TNodeId nodeId)
+{
+    Y_UNUSED(reqId);
+    Y_UNUSED(nodeId);
+    return MakeFuture<NProto::TError>();
+}
+
+TFuture<NProto::TError> TFSyncQueueStub::WaitForDataRequests(TRequestId reqId)
+{
+    Y_UNUSED(reqId);
+    return MakeFuture<NProto::TError>();
+}
+
+TFuture<NProto::TError> TFSyncQueueStub::WaitForDataRequests(
+    TRequestId reqId,
+    TNodeId nodeId,
+    THandle handle)
+{
+    Y_UNUSED(reqId);
+    Y_UNUSED(nodeId);
+    Y_UNUSED(handle);
+    return MakeFuture<NProto::TError>();
 }
 
 }   // namespace NCloud::NFileStore::NVFS

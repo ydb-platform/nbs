@@ -183,6 +183,52 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldHandleGetAddressInfoError)
+    {
+        auto context = MakeIntrusive<NVerbs::TTestContext>();
+        auto verbs = NVerbs::CreateTestVerbs(context);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto config = std::make_shared<TClientConfig>();
+        config->MaxReconnectDelay = TDuration::Seconds(5);
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateClient(
+            verbs,
+            logging,
+            monitoring,
+            config);
+
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        context->GetAddressInfo =
+            [&](const TString& host,
+                ui32 port,
+                rdma_addrinfo* hints) -> NVerbs::TAddressInfoPtr
+        {
+            Y_UNUSED(host);
+            Y_UNUSED(port);
+            Y_UNUSED(hints);
+            throw TServiceError(MAKE_SYSTEM_ERROR(EAGAIN));
+        };
+
+        try {
+            auto clientEndpoint = client->StartEndpoint("::", 10020);
+            clientEndpoint.GetValue(TDuration::Seconds(10));
+            UNIT_ASSERT(false);
+        } catch (const TServiceError& e) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_RDMA_UNAVAILABLE,
+                e.GetCode(),
+                e.GetMessage());
+        }
+    }
+
     Y_UNIT_TEST(ShouldProcessRequests)
     {
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
@@ -610,10 +656,10 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "rdma_client");
 
-        auto unexpected = counters->GetCounter("UnexpectedCompletions");
+        auto completionErrors = counters->GetCounter("CompletionErrors");
         auto active = counters->GetCounter("ActiveRecv");
         auto errors = counters->GetCounter("RecvErrors");
-        auto unexpectedOld = unexpected->Val();
+        auto completionErrorsOld = completionErrors->Val();
         auto errorsOld = errors->Val();
 
         ibv_recv_wr* wr = context->RecvEvents.back();
@@ -670,8 +716,8 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             }
         };
 
-        wait(unexpected, unexpectedOld + 2);
-        wait(errors, errorsOld + 2);
+        wait(completionErrors, completionErrorsOld + 2);
+        wait(errors, errorsOld + 3);
         wait(active, 8);
     }
 };

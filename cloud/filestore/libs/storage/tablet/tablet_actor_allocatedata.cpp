@@ -162,7 +162,7 @@ bool TIndexTabletActor::PrepareTx_AllocateData(
     // invalid argument.
     // https://man7.org/linux/man-pages/man2/fallocate.2.html#:~:text=or%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20FALLOC_FL_INSERT_RANGE.-,EINVAL,-mode%20is%20FALLOC_FL_COLLAPSE_RANGE
 
-    if (!HasSpaceLeft(args.Node->Attrs, args.Offset + args.Length)) {
+    if (!HasSpaceLeft(args.Node->Attrs.GetSize(), args.Offset + args.Length)) {
         args.Error = ErrorNoSpaceLeft();
         return true;
     }

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,7 +17,14 @@ type CellSelector interface {
 		ctx context.Context,
 		zoneID string,
 		folderID string,
+		kind types.DiskKind,
 	) (nbs.Client, error)
 
-	IsCellOfZone(cellID string, zoneID string) bool
+	SelectCellForLocalDisk(
+		ctx context.Context,
+		zoneID string,
+		agentIDs []string,
+	) (nbs.Client, error)
+
+	ZoneContainsCell(zoneID string, cellID string) bool
 }

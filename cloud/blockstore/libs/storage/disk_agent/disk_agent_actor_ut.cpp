@@ -1659,7 +1659,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 1);
     }
 
-    Y_UNIT_TEST(ShouldRejectMultideviceOverlappedRequests)
+    Y_UNIT_TEST(ShouldRejectOverlappedRequests)
     {
         TTestBasicRuntime runtime;
 
@@ -1717,8 +1717,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             request->Record.SetBlockSize(DefaultBlockSize);
             request->Record.SetBlocksCount(blockCount);
             request->Record.SetVolumeRequestId(volumeRequestId);
-            request->Record.SetMultideviceRequest(
-                true); // This will lead to E_REJECT
 
             diskAgent.SendRequest(std::move(request));
         };
@@ -1757,7 +1755,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             runtime.Send(request.release());
         }
         {
-            // Get reponse for delayed zero request. It will rejected
+            // Get response for delayed zero request. It will rejected
             auto response =
                 diskAgent.RecvZeroDeviceBlocksResponse(TDuration::Seconds(1));
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());

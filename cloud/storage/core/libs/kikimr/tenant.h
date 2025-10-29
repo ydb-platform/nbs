@@ -22,6 +22,7 @@ ui64 GetHiveTabletId(const NActors::TActorContext& ctx);
 void ConfigureTenantSystemTablets(
     const NKikimr::TAppData& appData,
     NKikimr::TLocalConfig& config,
-    bool allowAdditionalSystemTablets);
+    bool allowAdditionalSystemTablets,
+    i32 systemTabletsPriority);
 
 }   // namespace NCloud::NStorage

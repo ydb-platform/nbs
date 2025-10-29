@@ -36,10 +36,12 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
         bool assignVolumeRequestId,
         bool replyLocal,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -65,10 +67,12 @@ TDiskAgentWriteActor::TDiskAgentWriteActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
         bool assignVolumeRequestId,
         bool replyLocal,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -76,8 +80,10 @@ TDiskAgentWriteActor::TDiskAgentWriteActor(
           std::move(timeoutPolicy),
           std::move(deviceRequests),
           std::move(partConfig),
+          volumeActorId,
           part,
-          std::move(logTitle))
+          std::move(logTitle),
+          deviceOperationId)
     , AssignVolumeRequestId(assignVolumeRequestId)
     , ReplyLocal(replyLocal)
     , Request(std::move(request))
@@ -106,7 +112,6 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
         if (AssignVolumeRequestId) {
             request->Record.SetVolumeRequestId(
                 Request.GetHeaders().GetVolumeRequestId());
-            request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
         }
         if (index < Request.ChecksumsSize()) {
             const auto& checksum = Request.GetChecksums(index);
@@ -127,6 +132,12 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
         }
 
         builder.BuildNextRequest(request->Record);
+
+        OnRequestStarted(
+            ctx,
+            deviceRequest.Device.GetDeviceUUID(),
+            TDeviceOperationTracker::ERequestType::Write,
+            index);
 
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
@@ -190,6 +201,8 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
         HandleError(ctx, msg->GetError(), EStatus::Fail);
         return;
     }
+
+    OnRequestFinished(ctx, ev->Cookie);
 
     if (++RequestsCompleted < DeviceRequests.size()) {
         return;
@@ -288,6 +301,8 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         return;
     }
 
+    ui64 operationId = GenerateOperationId(deviceRequests.size());
+
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
         requestInfo,
@@ -295,10 +310,12 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
+        VolumeActorId,
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         false,   // replyLocal
-        LogTitle.GetChild(GetCycleCount()));
+        LogTitle.GetChild(GetCycleCount()),
+        operationId);
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }
@@ -401,6 +418,8 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
     // code to TDiskAgentWriteActor that tries to use it
     msg->Record.Sglist.SetSgList({});
 
+    ui64 operationId = GenerateOperationId(deviceRequests.size());
+
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
         requestInfo,
@@ -408,10 +427,12 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
+        VolumeActorId,
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         true,   // replyLocal
-        LogTitle.GetChild(GetCycleCount()));
+        LogTitle.GetChild(GetCycleCount()),
+        operationId);
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }

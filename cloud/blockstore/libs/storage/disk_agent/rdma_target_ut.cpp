@@ -96,13 +96,13 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         writeFuture.Wait(TDuration::MilliSeconds(1000));
         UNIT_ASSERT_VALUES_EQUAL(false, writeFuture.HasValue());
 
-        // Begin single-device overlapped Zero request.
+        // Begin overlapped Zero request.
         auto singleDeviceZeroFuture =
-            env.Run(env.MakeZeroRequest(blockRange, 99, false));
+            env.Run(env.MakeZeroRequest(blockRange, 99));
 
-        // Begin multi-device overlapped Zero request.
+        // Begin overlapped Zero request.
         auto multiDeviceZeroFuture =
-            env.Run(env.MakeZeroRequest(blockRange, 98, true));
+            env.Run(env.MakeZeroRequest(blockRange, 98));
 
         // Both Zero requests delayed. Check it. Let's wait a little.
         singleDeviceZeroFuture.Wait(TDuration::MilliSeconds(1000));
@@ -217,30 +217,19 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
             writeResponse.GetError().GetCode(),
             writeResponse.GetError().GetMessage());
 
-        // Make single-device overlapped Zero request. Request completed with
-        // E_REJECTED.
+        // Make overlapped Zero request. Request completed with E_REJECTED.
         auto singleDeviceZeroFuture =
-            env.Run(env.MakeZeroRequest(blockRange, 99, false));
+            env.Run(env.MakeZeroRequest(blockRange, 99));
         auto singleDeviceZeroResponse = singleDeviceZeroFuture.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_REJECTED,
             singleDeviceZeroResponse.GetError().GetCode(),
             singleDeviceZeroResponse.GetError().GetMessage());
 
-        // Begin multi-device overlapped Zero request. Multi-device Zero request
-        // completed with E_REJECTED.
-        auto multiDeviceZeroFuture =
-            env.Run(env.MakeZeroRequest(blockRange, 98, true));
-        auto multiDeviceZeroResponse = multiDeviceZeroFuture.GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_REJECTED,
-            multiDeviceZeroResponse.GetError().GetCode(),
-            multiDeviceZeroResponse.GetError().GetMessage());
-
         auto delayedCounter = env.Counters->GetCounter("Delayed");
         auto rejectedCounter = env.Counters->GetCounter("Rejected");
         UNIT_ASSERT_VALUES_EQUAL(0, delayedCounter->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2, rejectedCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, rejectedCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldRespectDeviceErasure)

@@ -996,6 +996,7 @@ private:
                         Session,
                         Scheduler,
                         Timer,
+                        CreateDummyWriteBackCacheStats(),
                         path / WriteBackCacheFileName,
                         Config->GetWriteBackCacheCapacity(),
                         Config->GetWriteBackCacheAutomaticFlushPeriod(),
@@ -1134,6 +1135,8 @@ private:
         config.SetMaxFuseLoopThreads(features.GetMaxFuseLoopThreads());
 
         config.SetZeroCopyWriteEnabled(features.GetZeroCopyWriteEnabled());
+
+        config.SetFSyncQueueDisabled(features.GetFSyncQueueDisabled());
 
         return std::make_shared<TFileSystemConfig>(config);
     }

@@ -60,7 +60,10 @@ inputs:
     required: false
     default: "1"
     description: "Number of retries for ya make"
-
+  tmpfs_mount_point:
+    required: false
+    default: "/mnt/ya_make_tmpfs"
+    description: "Mount point path for the tmpfs filesystem"
 runs:
   using: composite
   steps:
@@ -127,6 +130,7 @@ runs:
         TRUNCATE_ENABLED: ${{ inputs.truncate_enabled }}
         SYNC_TO_S3: ${{ inputs.sync_to_s3 || 'false' }}
         GITHUB_TOKEN: ${{ github.token }}
+        TMPFS_MOUNT_POINT: ${{ inputs.tmpfs_mount_point }}
       run: |
         extra_params=(
           --run-all-tests
@@ -200,6 +204,15 @@ runs:
 
           if [ "$CACHE_UPDATE" = "true" ]; then
             extra_params+=(--bazel-remote-put)
+          fi
+        fi
+
+        if [[ -n "$TMPFS_MOUNT_POINT" ]]; then
+          if mountpoint -q "$TMPFS_MOUNT_POINT"; then
+            export YA_RAM_DRIVE_PATH="$TMPFS_MOUNT_POINT"
+            echo "Tmpfs enabled ($YA_RAM_DRIVE_PATH)"
+          else
+            echo "Error: $TMPFS_MOUNT_POINT is not mounted"
           fi
         fi
 
@@ -456,7 +469,7 @@ runs:
         sudo chown -R github:github "$LOG_DIR/system_logs/" || true
         sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/"
         echo "::endgroup::"
-    
+
     - name: sync logs in case of cancel and additional debug info
       if: ${{ cancelled() }}
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -475,7 +488,7 @@ runs:
         sudo chown -R github:github "$LOG_DIR/"
 
         sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/" || true
-        
+
         if [ ! -f "${LAST_STEP}_artifacts_synced" ]; then
           echo "Syncing artifacts dir"
           if [ -d "$ARTIFACTS_DIR/logs/" ]; then

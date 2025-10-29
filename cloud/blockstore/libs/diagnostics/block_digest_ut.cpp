@@ -18,10 +18,15 @@ Y_UNIT_TEST_SUITE(TBlockDigestGeneratorTest)
         auto offset = 256;
 
         UNIT_ASSERT(!gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(2_KB)));
+        UNIT_ASSERT(!gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(2_KB)));
         UNIT_ASSERT(!gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(256_KB)));
+        UNIT_ASSERT(!gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(256_KB)));
         UNIT_ASSERT(!gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(5_KB)));
+        UNIT_ASSERT(!gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(5_KB)));
         UNIT_ASSERT(gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(4_KB)));
+        UNIT_ASSERT(gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(4_KB)));
         UNIT_ASSERT(gen->ComputeDigest(0, TBlockDataRef::CreateZeroBlock(128_KB)));
+        UNIT_ASSERT(gen->ComputeDigestForce(TBlockDataRef::CreateZeroBlock(128_KB)));
 
         TString str("asd");
         str.resize(4_KB);
@@ -32,8 +37,10 @@ Y_UNIT_TEST_SUITE(TBlockDigestGeneratorTest)
         UNIT_ASSERT(gen->ComputeDigest(offset + 300, blockData));
         UNIT_ASSERT(!gen->ShouldProcess(offset + 400, 1, 4_KB));
         UNIT_ASSERT(!gen->ComputeDigest(offset + 400, blockData));
+        UNIT_ASSERT(gen->ComputeDigestForce(blockData));
         UNIT_ASSERT(!gen->ShouldProcess(offset + 20000, 1, 4_KB));
         UNIT_ASSERT(!gen->ComputeDigest(offset + 20000, blockData));
+        UNIT_ASSERT(gen->ComputeDigestForce(blockData));
 
         offset += 128_MB / 4_KB;
         UNIT_ASSERT(gen->ShouldProcess(offset, 1, 4_KB));
@@ -42,8 +49,10 @@ Y_UNIT_TEST_SUITE(TBlockDigestGeneratorTest)
         UNIT_ASSERT(gen->ComputeDigest(offset + 300, blockData));
         UNIT_ASSERT(!gen->ShouldProcess(offset + 400, 1, 4_KB));
         UNIT_ASSERT(!gen->ComputeDigest(offset + 400, blockData));
+        UNIT_ASSERT(gen->ComputeDigestForce(blockData));
         UNIT_ASSERT(!gen->ShouldProcess(offset + 20000, 1, 4_KB));
         UNIT_ASSERT(!gen->ComputeDigest(offset + 20000, blockData));
+        UNIT_ASSERT(gen->ComputeDigestForce(blockData));
     }
 
     Y_UNIT_TEST(TestTest)

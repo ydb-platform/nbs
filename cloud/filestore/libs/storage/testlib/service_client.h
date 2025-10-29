@@ -168,13 +168,16 @@ public:
         const TString& fileSystemId,
         ui64 blocksCount,
         bool force = false,
-        ui32 shardCount = 0)
+        ui32 shardCount = 0,
+        bool enableStrictSizeMode = false)
     {
         auto request = std::make_unique<TEvService::TEvResizeFileStoreRequest>();
         request->Record.SetFileSystemId(fileSystemId);
         request->Record.SetBlocksCount(blocksCount);
         request->Record.SetForce(force);
         request->Record.SetShardCount(shardCount);
+        request->Record.SetEnableStrictFileSystemSizeEnforcement(
+            enableStrictSizeMode);
         return request;
     }
 
@@ -410,6 +413,20 @@ public:
         request->Record.SetFileSystemId(headers.FileSystemId);
         request->Record.SetSessionState(std::move(state));
         headers.Fill(request->Record);
+        return request;
+    }
+
+    auto CreatePingRequest()
+    {
+        auto request = std::make_unique<TEvService::TEvPingRequest>();
+        return request;
+    }
+
+    auto CreateToggleServiceStateRequest(NProto::EServiceState desiredState)
+    {
+        auto request =
+            std::make_unique<TEvService::TEvToggleServiceStateRequest>();
+        request->Record.SetDesiredServiceState(desiredState);
         return request;
     }
 

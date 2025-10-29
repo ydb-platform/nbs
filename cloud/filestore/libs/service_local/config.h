@@ -114,6 +114,8 @@ public:
     ui32 GetMaxFuseLoopThreads() const;
 
     bool GetZeroCopyWriteEnabled() const;
+
+    bool GetFSyncQueueDisabled() const;
 };
 
 }   // namespace NCloud::NFileStore

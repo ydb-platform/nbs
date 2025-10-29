@@ -244,11 +244,16 @@ public:
         TTabletTypes::EType tabletType = TTabletTypes::FileStore;
         if (config->GetDisableLocalService()) {
             // prevent tablet start via tablet types filter inside local service
-            // empty filter == all, so configure invalid tablet type to prevent any
-            // it allows to properly register in system and not to break things e.g. Viewer
+            // empty filter == all, so configure invalid tablet type to prevent
+            // any it allows to properly register in system and not to break
+            // things e.g. Viewer
             tabletType = TTabletTypes::TypeInvalid;
         } else {
-            ConfigureTenantSystemTablets(*appData, *localConfig, false);
+            ConfigureTenantSystemTablets(
+                *appData,
+                *localConfig,
+                /*allowAdditionalSystemTablets=*/false,
+                config->GetSystemTabletsPriority());
         }
 
         localConfig->TabletClassInfo[tabletType] =

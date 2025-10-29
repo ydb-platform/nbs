@@ -143,6 +143,9 @@ public:
 
     bool GetEnableDataIntegrityValidationForDrBasedDisks() const;
 
+    [[nodiscard]] bool HasChaosConfig() const;
+    [[nodiscard]] const NProto::TChaosConfig& GetChaosConfig() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

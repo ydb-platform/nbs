@@ -41,6 +41,7 @@ namespace {
     xxx(MaxBackground,               ui32,          0                         )\
     xxx(MaxFuseLoopThreads,          ui32,          1                         )\
     xxx(ZeroCopyWriteEnabled,        bool,          false                     )\
+    xxx(FSyncQueueDisabled,          bool,          false                     )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(xxx)                             \

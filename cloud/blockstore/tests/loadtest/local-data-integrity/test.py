@@ -1,12 +1,14 @@
 import logging
 import os
 import pytest
+from enum import Enum
 
 from cloud.blockstore.config.client_pb2 import TClientAppConfig, TClientConfig
-from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
+from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig, TChaosConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
     TKikimrServiceConfig, TChecksumFlags
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
+from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD, STORAGE_MEDIA_SSD_MIRROR2
 
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
@@ -28,6 +30,12 @@ DEFAULT_DEVICE_COUNT = 3
 DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 
 
+class ValidationMode(Enum):
+    DIRECT = 0
+    COPIED = 1
+    DIRECT_TO_COPIED = 2
+
+
 class TestCase(object):
     __test__ = False
 
@@ -35,11 +43,17 @@ class TestCase(object):
             self,
             name,
             config_path,
+            storage_media_kind,
             agent_count=1,
+            validation_mode=ValidationMode.DIRECT,
+            enable_chaos=False,
             use_rdma=False):
         self.name = name
         self.config_path = config_path
+        self.storage_media_kind = storage_media_kind
         self.agent_count = agent_count
+        self.validation_mode = validation_mode
+        self.enable_chaos = enable_chaos
         self.use_rdma = use_rdma
 
 
@@ -47,18 +61,43 @@ TESTS = [
     TestCase(
         "mirror2",
         "cloud/blockstore/tests/loadtest/local-data-integrity/local-mirror2.txt",
+        storage_media_kind=STORAGE_MEDIA_SSD_MIRROR2,
         agent_count=2,
     ),
     TestCase(
         "mirror2-rdma",
         "cloud/blockstore/tests/loadtest/local-data-integrity/local-mirror2.txt",
+        storage_media_kind=STORAGE_MEDIA_SSD_MIRROR2,
         agent_count=2,
         use_rdma=True,
     ),
     TestCase(
         "ssd",
         "cloud/blockstore/tests/loadtest/local-data-integrity/local-ssd.txt",
+        storage_media_kind=STORAGE_MEDIA_SSD,
         agent_count=0,
+    ),
+    TestCase(
+        "mirror2-integrity-mode",
+        "cloud/blockstore/tests/loadtest/local-data-integrity/local-mirror2-data-integrity.txt",
+        storage_media_kind=STORAGE_MEDIA_SSD_MIRROR2,
+        agent_count=2,
+        validation_mode=ValidationMode.COPIED,
+    ),
+    TestCase(
+        "mirror2-bs8k-integrity-mode",
+        "cloud/blockstore/tests/loadtest/local-data-integrity/local-mirror2-bs8k-data-integrity.txt",
+        storage_media_kind=STORAGE_MEDIA_SSD_MIRROR2,
+        agent_count=2,
+        validation_mode=ValidationMode.COPIED,
+    ),
+    TestCase(
+        "mirror2-chaos",
+        "cloud/blockstore/tests/loadtest/local-data-integrity/local-mirror2.txt",
+        storage_media_kind=STORAGE_MEDIA_SSD_MIRROR2,
+        agent_count=2,
+        validation_mode=ValidationMode.DIRECT_TO_COPIED,
+        enable_chaos=True,
     ),
 ]
 
@@ -109,17 +148,168 @@ def __process_config(config_path, devices_per_agent):
     return config_path
 
 
-def __get_sensors(mon_port):
+def __get_data_integrity_sensors(mon_port, validation_mode):
     sensors = get_nbs_counters(mon_port)['sensors']
-    write_requests = get_sensor(sensors, default_value=0, component='service',
-                                subcomponent='data_integrity', sensor="WriteRequests")
-    read_requests = get_sensor(sensors, default_value=0, component='service',
-                               subcomponent='data_integrity', sensor="ReadRequests")
-    read_checksum_mismatch = get_sensor(
-        sensors, default_value=0, component='service', subcomponent='data_integrity', sensor="ReadChecksumMismatch")
-    write_checksum_mismatch = get_sensor(
-        sensors, default_value=0, component='service', subcomponent='data_integrity', sensor="WriteChecksumMismatch")
-    return write_requests, read_requests, read_checksum_mismatch, write_checksum_mismatch
+    read_local_requests = get_sensor(sensors,
+                                     default_value=0,
+                                     component="server",
+                                     subcomponent="data_integrity",
+                                     validation_mode=validation_mode,
+                                     request="ReadBlocksLocal",
+                                     sensor="Count")
+    write_local_requests = get_sensor(sensors,
+                                      default_value=0,
+                                      component="server",
+                                      subcomponent="data_integrity",
+                                      validation_mode=validation_mode,
+                                      request="WriteBlocksLocal",
+                                      sensor="Count")
+    read_checksum_mismatch = get_sensor(sensors,
+                                        default_value=0,
+                                        component="server",
+                                        subcomponent="data_integrity",
+                                        validation_mode=validation_mode,
+                                        request="ReadBlocksLocal",
+                                        sensor="Mismatches")
+    write_checksum_mismatch = get_sensor(sensors,
+                                         default_value=0,
+                                         component="server",
+                                         subcomponent="data_integrity",
+                                         validation_mode=validation_mode,
+                                         request="WriteBlocksLocal",
+                                         sensor="Mismatches")
+    clients = get_sensor(sensors,
+                         default_value=0,
+                         component="server",
+                         subcomponent="data_integrity",
+                         validation_mode=validation_mode,
+                         sensor="Clients")
+    return {"read_local_requests": read_local_requests,
+            "write_local_requests": write_local_requests,
+            "read_checksum_mismatch": read_checksum_mismatch,
+            "write_checksum_mismatch": write_checksum_mismatch,
+            "clients": clients}
+
+
+def __check_data_integrity_counters(test_case, mon_port):
+    direct_counters = __get_data_integrity_sensors(mon_port, "direct")
+    copied_counters = __get_data_integrity_sensors(mon_port, "copied")
+
+    # Define validation rules for each mode
+    validation_rules = {
+        ValidationMode.DIRECT: {
+            'active': {
+                'mode': ValidationMode.DIRECT,
+                'counters': direct_counters,
+                'should_have_requests': True,
+                'should_have_clients': True,
+                'should_have_mismatches': False,
+            },
+            'inactive': {
+                'mode': ValidationMode.COPIED,
+                'counters': copied_counters,
+                'should_have_requests': False,
+                'should_have_clients': False,
+                'should_have_mismatches': False,
+            }
+        },
+        ValidationMode.COPIED: {
+            'active': {
+                'mode': ValidationMode.COPIED,
+                'counters': copied_counters,
+                'should_have_requests': True,
+                'should_have_clients': True,
+                'should_have_mismatches': False,
+            },
+            'inactive': {
+                'mode': ValidationMode.DIRECT,
+                'counters': direct_counters,
+                'should_have_requests': False,
+                'should_have_clients': False,
+                'should_have_mismatches': False,
+            }
+        },
+        ValidationMode.DIRECT_TO_COPIED: {
+            'active': {
+                'mode': ValidationMode.COPIED,
+                'counters': copied_counters,
+                'should_have_requests': True,
+                'should_have_clients': True,
+                'should_have_mismatches': True,
+            },
+            'inactive': {
+                'mode': ValidationMode.DIRECT,
+                'counters': direct_counters,
+                'should_have_requests': True,
+                'should_have_clients': False,
+                'should_have_mismatches': True,
+            }
+        }
+    }
+
+    rules = validation_rules[test_case.validation_mode]
+
+    # Validate active mode counters
+    __validate_counters(
+        rules['active']['counters'],
+        mode_name=rules['active']['mode'].name,
+        should_have_requests=rules['active']['should_have_requests'],
+        should_have_clients=rules['active']['should_have_clients'],
+        should_have_mismatches=rules['active']['should_have_mismatches']
+    )
+
+    # Validate inactive mode counters
+    __validate_counters(
+        rules['inactive']['counters'],
+        mode_name=rules['inactive']['mode'].name,
+        should_have_requests=rules['inactive']['should_have_requests'],
+        should_have_clients=rules['inactive']['should_have_clients'],
+        should_have_mismatches=rules['inactive']['should_have_mismatches']
+    )
+
+
+def __validate_counters(counters, mode_name, should_have_requests, should_have_clients, should_have_mismatches):
+    read_requests = counters["read_local_requests"]
+    write_requests = counters["write_local_requests"]
+    read_mismatches = counters["read_checksum_mismatch"]
+    write_mismatches = counters["write_checksum_mismatch"]
+    clients = counters["clients"]
+
+    # Validate request counts
+    if should_have_requests:
+        if read_requests == 0 and write_requests == 0:
+            raise Exception(
+                f"{mode_name} mode should have requests: "
+                f"read_requests={read_requests}, write_requests={write_requests}"
+            )
+    else:
+        if read_requests != 0 or write_requests != 0:
+            raise Exception(
+                f"{mode_name} mode should not have requests: "
+                f"read_requests={read_requests}, write_requests={write_requests}"
+            )
+
+    # Validate mismatch counts
+    if should_have_mismatches:
+        if read_mismatches == 0 and write_mismatches == 0:
+            raise Exception(
+                f"{mode_name} mode should have mismatches: "
+                f"read_mismatches={read_mismatches}, write_mismatches={write_mismatches}"
+            )
+    else:
+        if read_mismatches != 0 or write_mismatches != 0:
+            raise Exception(
+                f"{mode_name} mode should not have mismatches: "
+                f"read_mismatches={read_mismatches}, write_mismatches={write_mismatches}"
+            )
+
+    # Validate client counts
+    if should_have_clients:
+        if clients == 0:
+            raise Exception(f"{mode_name} mode shouldn't have 0 clients")
+    else:
+        if clients != 0:
+            raise Exception(f"{mode_name} mode shouldn't have {clients} clients")
 
 
 def __run_test(test_case):
@@ -165,12 +355,17 @@ def __run_test(test_case):
 
     try:
         if test_case.agent_count > 0:
+            chaos_config = TChaosConfig()
+            if test_case.enable_chaos:
+                chaos_config.ChaosProbability = 0.2
+                chaos_config.DataDamageProbability = 0.5
             setup_nonreplicated(
                 kikimr_cluster.client,
                 devices_per_agent,
                 disk_agent_config_patch=TDiskAgentConfig(
                     DedicatedDiskAgent=True,
-                    EnableDataIntegrityValidationForDrBasedDisks=True),
+                    EnableDataIntegrityValidationForDrBasedDisks=True,
+                    ChaosConfig=chaos_config),
                 agent_count=test_case.agent_count,
             )
 
@@ -184,7 +379,8 @@ def __run_test(test_case):
         server_app_config.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
         server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
         server_app_config.ServerConfig.ChecksumFlags.CopyFrom(TChecksumFlags())
-        server_app_config.ServerConfig.ChecksumFlags.EnableDataIntegrityClient = True
+        server_app_config.ServerConfig.ChecksumFlags.MediaKindsToValidateDataIntegrity.append(
+            test_case.storage_media_kind)
         server_app_config.ServerConfig.UseFakeRdmaClient = test_case.use_rdma
         server_app_config.ServerConfig.RdmaClientEnabled = test_case.use_rdma
 
@@ -281,14 +477,7 @@ def __run_test(test_case):
             env_processes=disk_agents + [nbs],
         )
 
-        write_requests, read_requests, read_mismatches, write_mismatches = __get_sensors(
-            nbs.mon_port)
-        if read_requests == 0 or write_requests == 0:
-            raise Exception("Read or write requests are 0: read_requests={}, write_requests={}".format(
-                read_requests, write_requests))
-        if read_mismatches != 0 and write_mismatches != 0:
-            raise Exception("Checksum mismatches: read_checksum_mismatch={}, write_checksum_mismatch={}".format(
-                read_mismatches, write_mismatches))
+        __check_data_integrity_counters(test_case, nbs.mon_port)
 
     finally:
         for disk_agent in disk_agents:

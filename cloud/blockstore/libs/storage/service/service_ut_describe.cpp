@@ -3,7 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-#include <cloud/blockstore/libs/storage/core/volume_label.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 #include <util/generic/size_literals.h>
 

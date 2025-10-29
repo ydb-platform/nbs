@@ -1,9 +1,9 @@
 PY3TEST()
 
 IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/large.inc)
+    INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/large.inc)
 ELSE()
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
+    INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 ENDIF()
 
 DEPENDS(

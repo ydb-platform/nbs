@@ -10,6 +10,9 @@
 
 #include <google/protobuf/text_format.h>
 
+#include <type_traits>
+#include <utility>
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
@@ -58,6 +61,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(LoadedCompactionRangesPerTx,        ui32,   10 * 1024 * 1024          )\
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
     xxx(MaxTruncateTxInflight,              ui32,   10                        )\
+    xxx(SystemTabletsPriority,              i32,    0                         )\
                                                                                \
     xxx(AutomaticShardCreationEnabled,                          bool,   false )\
     xxx(ShardAllocationUnit,                                    ui64,   4_TB  )\
@@ -289,6 +293,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(StrictFileSystemSizeEnforcementEnabled, bool,  false                  )\
                                                                                \
     xxx(ZeroCopyWriteEnabled,              bool,      false                   )\
+                                                                               \
+    xxx(FSyncQueueDisabled,                bool,      false                   )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -306,33 +312,9 @@ FILESTORE_STORAGE_CONFIG(FILESTORE_DECLARE_CONFIG)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-bool IsEmpty(const T& t)
-{
-    return !t;
-}
-
-template <>
-bool IsEmpty(const NCloud::NProto::TCertificate& value)
-{
-    return !value.GetCertFile() && !value.GetCertPrivateKeyFile();
-}
-
-template <>
-bool IsEmpty(const TAliases& value)
-{
-    return value.GetEntries().empty();
-}
-
-template <typename T>
 bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
 {
     return value.empty();
-}
-
-template <>
-bool IsEmpty(const NCloud::NProto::TConfigDispatcherSettings& value)
-{
-    return !value.HasAllowList() && !value.HasDenyList();
 }
 
 template <typename TTarget, typename TSource>
@@ -425,16 +407,48 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+#define DECLARE_FIELD_CHECKER(name, type, ...)                               \
+    template <typename TProtoConfig, typename = void>                        \
+    struct Has##name##Method: std::false_type                                \
+    {                                                                        \
+    };                                                                       \
+                                                                             \
+    template <typename TProtoConfig>                                         \
+    struct Has##name##Method<                                                \
+        TProtoConfig,                                                        \
+        std::void_t<decltype(std::declval<TProtoConfig>().Has##name())>>     \
+        : std::true_type                                                     \
+    {                                                                        \
+    };                                                                       \
+                                                                             \
+    template <typename TProtoConfig, typename TProtoValue>                   \
+    bool IsEmpty##name(const TProtoConfig& config, const TProtoValue& value) \
+    {                                                                        \
+        if constexpr (Has##name##Method<TProtoConfig>::value) {              \
+            return !config.Has##name();                                      \
+        } else {                                                             \
+            return IsEmpty(value);                                           \
+        }                                                                    \
+    }
+
+FILESTORE_STORAGE_CONFIG(DECLARE_FIELD_CHECKER)
+FILESTORE_STORAGE_CONFIG_REF(DECLARE_FIELD_CHECKER)
+
+#undef DECLARE_FIELD_CHECKER
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_CONFIG_GETTER(name, type, ...)                               \
-type TStorageConfig::Get##name() const                                         \
-{                                                                              \
-    const auto value = ProtoConfig.Get##name();                                \
-    return !IsEmpty(value) ? ConvertValue<type>(value) : Default##name;        \
-}                                                                              \
+#define FILESTORE_CONFIG_GETTER(name, type, ...)                              \
+    type TStorageConfig::Get##name() const                                    \
+    {                                                                         \
+        const auto& value = ProtoConfig.Get##name();                          \
+        return IsEmpty##name(ProtoConfig, value) ? Default##name              \
+                                                 : ConvertValue<type>(value); \
+    }                                                                         \
 // FILESTORE_CONFIG_GETTER
 
 FILESTORE_STORAGE_CONFIG(FILESTORE_CONFIG_GETTER)
@@ -491,7 +505,7 @@ void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
 {
 #define FILESTORE_DUMP_CONFIG(name, type, ...) {                               \
     const auto value = ProtoConfig.Get##name();                                \
-    if (!IsEmpty(value)) {                                                     \
+    if (!IsEmpty##name(ProtoConfig, value)) {                                  \
         TABLER() {                                                             \
             TABLED() { out << #name; }                                         \
             TABLED() { DumpImpl(ConvertValue<type>(value), out); }             \
