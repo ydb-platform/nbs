@@ -725,7 +725,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                                                        BlockSize)
                                                  : checksums.back();
 
-                        if (multiBlockCorruption) {
+                        // The first checksum should be calculated after the
+                        // block by block resync.
+                        if (multiBlockCorruption && checksums.size() == 3) {
                             UNIT_ASSERT(!MessageDifferencer::Equals(
                                 expectedChecksum,
                                 checksums.back()));
