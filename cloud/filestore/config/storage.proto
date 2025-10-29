@@ -666,4 +666,7 @@ message TStorageConfig
 
     // Enable directory handles storage functionality.
     optional bool DirectoryHandlesStorageEnabled = 466;
+
+    // Capacity for DirectoryHandles persistent table.
+    optional uint64 DirectoryHandlesTableSize = 467;
 }

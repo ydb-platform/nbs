@@ -41,6 +41,7 @@ message TFileStoreFeatures
     bool ZeroCopyWriteEnabled = 26;
     bool FSyncQueueDisabled = 27;
     bool DirectoryHandlesStorageEnabled = 28;
+    uint64 DirectoryHandlesTableSize = 29;
 }
 
 message TFileStore

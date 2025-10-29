@@ -38,7 +38,6 @@ struct TWriteBackCacheConfig
 struct TDirectoryHandlesStorageConfig
 {
     TString PathPrefix;
-    ui64 TableSize = 0;
     ui64 InitialDataSize = 0;
 };
 

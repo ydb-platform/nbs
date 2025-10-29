@@ -40,7 +40,6 @@ namespace {
     xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32,       32_MB         )\
                                                                                \
     xxx(DirectoryHandlesStoragePath,        TString,   ""                     )\
-    xxx(DirectoryHandlesTableSize,          ui64,      1000                   )\
     xxx(DirectoryHandlesInitialDataSize,    ui64,      1_GB                   )\
 // FILESTORE_VFS_CONFIG
 
