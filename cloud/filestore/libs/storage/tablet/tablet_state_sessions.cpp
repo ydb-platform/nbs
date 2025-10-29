@@ -575,7 +575,6 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     Impl->HandleById.emplace(handle->GetHandle(), handle.get());
     Impl->NodeRefsByHandle[proto.GetNodeId()]++;
 
-
     {
         const auto nodeId = handle->GetNodeId();
         const auto flags = handle->GetFlags();
@@ -615,7 +614,6 @@ void TIndexTabletState::RemoveHandle(TSessionHandle* handle)
     if (auto* session = handle->Session) {
         session->HandleStatsByNode.UnregisterHandle(*handle);
     }
-
 
     {
         const auto nodeId = handle->GetNodeId();

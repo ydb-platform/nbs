@@ -465,7 +465,6 @@ void TIndexTabletActor::TMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(OrphanNodesCount, EMetricType::MT_ABSOLUTE);
 
-
     // Throttling
     REGISTER_LOCAL(MaxReadBandwidth, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxWriteBandwidth, EMetricType::MT_ABSOLUTE);
@@ -687,7 +686,6 @@ void TIndexTabletActor::TMetrics::Update(
         nodeToSessionCounters.NodesOpenForReadingByMultipleSessions);
 
     Store(OrphanNodesCount, miscNodeStats.OrphanNodesCount);
-
 
     BusyIdleCalc.OnUpdateStats();
     UpdatePerformanceMetrics(now, diagConfig, fileSystem);

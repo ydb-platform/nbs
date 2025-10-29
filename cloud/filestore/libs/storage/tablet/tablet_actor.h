@@ -191,7 +191,6 @@ private:
 
         std::atomic<i64> OrphanNodesCount{0};
 
-
         NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
         using TLatHistogram =
             NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS>;
