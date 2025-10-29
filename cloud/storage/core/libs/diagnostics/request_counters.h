@@ -51,7 +51,6 @@ private:
     const std::function<TString(TRequestType)> RequestType2Name;
     const std::function<bool(TRequestType)> IsReadWriteRequestType;
     const EOptions Options;
-    const TVector<std::pair<ui64, ui64>> ExecutionTimeSizeSubclasses;
 
     THolder<TSpecialCounters> SpecialCounters;
     TVector<TStatCounters> CountersByRequest;

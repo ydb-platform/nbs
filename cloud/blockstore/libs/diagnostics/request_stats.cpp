@@ -91,10 +91,7 @@ public:
         Update(CountersSize, SizeHist);
         Update(CountersExecutionTime, ExecutionTimeHist);
         for (auto& [_, item]: ExecutionTimeSizeSubclasses) {
-            const auto subclassName =
-                FormatByteSize(item.Begin) + "-" + FormatByteSize(item.End);
-
-                Update(item.Value.Counters, *item.Value.Hist);
+            Update(item.Value.Counters, *item.Value.Hist);
         }
     }
 
