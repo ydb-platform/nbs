@@ -59,7 +59,7 @@ TRequestCountersPtr MakeRequestCounters(
         },
         options,
         histogramCounterOptions,
-        TVector<std::pair<ui64, ui64>>{}
+        TVector<TSizeInterval>{}
     );
     requestCounters->Register(counters);
     return requestCounters;
