@@ -88,6 +88,7 @@ public:
             worker.Name = TStringBuilder() << threadName << i++;
             worker.Thread = std::make_unique<TWorkerThread>(*this, worker);
         }
+        AtomicSet(RunningWorkers, NumWorkers);
     }
 
     ~TThreadPool() override
@@ -97,8 +98,6 @@ public:
 
     void Start() override
     {
-        AtomicSet(RunningWorkers, NumWorkers);
-
         for (auto& worker: Workers) {
             worker.Thread->Start();
         }
