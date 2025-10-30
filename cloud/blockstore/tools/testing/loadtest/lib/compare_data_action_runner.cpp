@@ -77,8 +77,8 @@ int TCompareDataActionRunner::Run(
             VolumeStats,
             TestContext.Client,
             ClientConfig,
-            sessionConfig
-        );
+            sessionConfig,
+            NClient::ISessionSwitcherWeakPtr());
         STORAGE_INFO("Mount volume: " << volumeName);
         auto response = WaitForCompletion(
             "MountVolume",

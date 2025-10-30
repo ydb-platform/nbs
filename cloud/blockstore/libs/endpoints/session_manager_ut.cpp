@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -481,6 +482,364 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
     Y_UNIT_TEST(ShouldThrottleWhenDisableClientThrottlerIsFalse)
     {
         ShouldDisableClientThrottler(false);
+    }
+
+    Y_UNIT_TEST(ShouldSwitchSessionBy_EF_OUTDATED_VOLUME)
+    {
+        TString socketPath = "testSocket";
+        TString diskId = "testDiskId";
+
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+
+        auto service = std::make_shared<TTestService>();
+        service->DescribeVolumeHandler =
+            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
+                auto response = NProto::TDescribeVolumeResponse();
+                response.MutableVolume()->SetDiskId(request->GetDiskId());
+                return MakeFuture(std::move(response));
+            };
+        service->MountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
+                NProto::TMountVolumeResponse response;
+                response.MutableVolume()->SetDiskId(request->GetDiskId());
+                response.SetInactiveClientsTimeout(100);
+                return MakeFuture(response);
+            };
+        service->UnmountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
+                Y_UNUSED(request);
+                return MakeFuture(NProto::TUnmountVolumeResponse());
+            };
+
+        // Need to respond to the request asynchronously.
+        auto scheduleReplyVolumeOutdated =
+            [scheduler]() -> TFuture<NProto::TReadBlocksLocalResponse>
+        {
+            TPromise<NProto::TReadBlocksLocalResponse> readPromise =
+                NewPromise<NProto::TReadBlocksLocalResponse>();
+            TFuture<NProto::TReadBlocksLocalResponse> response = readPromise;
+            scheduler->Schedule(
+                nullptr,
+                TInstant::Now(),
+                [readPromise = std::move(readPromise)]() mutable
+                {
+                    // We set the E_BS_INVALID_SESSION flag to give a signal to
+                    // switch the session to a new disk.
+                    ui32 flags = 0;
+                    SetProtoFlag(flags, NProto::EF_OUTDATED_VOLUME);
+                    readPromise.SetValue(TErrorResponse(
+                        E_BS_INVALID_SESSION,
+                        "Volume outdated",
+                        flags));
+                });
+            return response;
+        };
+
+        auto executor = TExecutor::Create("TestService");
+        auto logging = CreateLoggingService("console");
+        auto encryptionClientFactory = CreateEncryptionClientFactory(
+            logging,
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
+
+        auto sessionManager = CreateSessionManager(
+            CreateWallClockTimer(),
+            scheduler,
+            logging,
+            CreateMonitoringServiceStub(),
+            CreateRequestStatsStub(),
+            CreateVolumeStatsStub(),
+            CreateServerStatsStub(),
+            service,
+            CreateCellManagerStub(),
+            CreateDefaultStorageProvider(service),
+            encryptionClientFactory,
+            executor,
+            TSessionManagerOptions());
+
+
+        executor->Start();
+        Y_DEFER {
+            executor->Stop();
+        };
+
+        NProto::TStartEndpointRequest request;
+        request.SetUnixSocketPath(socketPath);
+        request.SetDiskId(diskId);
+        request.SetClientId("testClientId");
+        request.SetIpcType(NProto::IPC_VHOST);
+
+        // Create session to testDiskId
+        NClient::ISessionPtr session;
+        {
+            auto future = sessionManager->CreateSession(
+                MakeIntrusive<TCallContext>(),
+                request);
+
+            auto sessionOrError = future.GetValue(TDuration::Seconds(3));
+            UNIT_ASSERT_C(!HasError(sessionOrError), sessionOrError.GetError());
+            auto sessionInfo = sessionOrError.ExtractResult();
+            session = sessionInfo.Session;
+        }
+
+        // Setup read responses for switching from testDiskId to
+        // testDiskId-copy.
+        service->ReadBlocksLocalHandler =
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+            -> TFuture<NProto::TReadBlocksLocalResponse>
+        {
+            if (request->GetDiskId() == diskId) {
+                // Response with EF_OUTDATED_VOLUME will switch session.
+                return scheduleReplyVolumeOutdated();
+            }
+
+            // After switching the session, reading from the testDiskId-copy
+            // disk will return S_OK.
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                NStorage::GetNextDiskId(diskId),
+                request->GetDiskId(),
+                request->GetDiskId());
+
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(E_ARGUMENT));
+        };
+
+        {
+            // Check that the read response is E_ARGUMENT.
+            auto future = session->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TReadBlocksLocalRequest>());
+            auto response = future.GetValue(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+        }
+        {
+            // Check that the reading after switching.
+            auto future = session->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TReadBlocksLocalRequest>());
+            auto response = future.GetValue(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+        }
+
+        // Setup read responses for switching from testDiskId-copy to
+        // testDiskId.
+        service->ReadBlocksLocalHandler =
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+            -> TFuture<NProto::TReadBlocksLocalResponse>
+        {
+            if (request->GetDiskId() == NStorage::GetNextDiskId(diskId)) {
+                // Response with EF_OUTDATED_VOLUME will switch session.
+                return scheduleReplyVolumeOutdated();
+            }
+
+            // After switching the session, reading from the testDiskId-copy
+            // disk will return S_OK.
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                diskId,
+                request->GetDiskId(),
+                request->GetDiskId());
+
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(S_OK));
+        };
+
+        {
+            // We check that the reading leading to the switch is successful.
+            auto future = session->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TReadBlocksLocalRequest>());
+            auto response = future.GetValue(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+        }
+        {
+            // Check that the reading is successful after switching.
+            auto future = session->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TReadBlocksLocalRequest>());
+            auto response = future.GetValue(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSwitchSessionByMountResponse)
+    {
+        TString socketPath = "testSocket";
+        TString diskId = "testDiskId";
+
+        auto timer = CreateCpuCycleTimer();
+        auto scheduler = CreateScheduler(timer);
+        scheduler->Start();
+
+        auto service = std::make_shared<TTestService>();
+        service->DescribeVolumeHandler =
+            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
+                auto response = NProto::TDescribeVolumeResponse();
+                response.MutableVolume()->SetDiskId(request->GetDiskId());
+                return MakeFuture(std::move(response));
+            };
+        // Setting up the handler for the mount request, which will add the
+        // PrincipalDiskId when mounting testDiskId, which will lead to switch
+        // session.
+        service->MountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
+                NProto::TMountVolumeResponse response;
+                response.MutableVolume()->SetDiskId(request->GetDiskId());
+                if (request->GetDiskId() == diskId) {
+                    // Response with filled PrincipalDiskId will switch session.
+                    response.MutableVolume()->SetPrincipalDiskId(
+                        NStorage::GetNextDiskId(diskId));
+                }
+                response.SetInactiveClientsTimeout(100);
+                return MakeFuture(response);
+            };
+        service->UnmountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
+                Y_UNUSED(request);
+                return MakeFuture(NProto::TUnmountVolumeResponse());
+            };
+
+        // Setting up the handler to respond E_REJECTED if the request handled
+        // by testDiskId and S_OK if the request handled by disk testDiskId-copy
+        service->ReadBlocksLocalHandler =
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+            -> TFuture<NProto::TReadBlocksLocalResponse>
+        {
+            if (request->GetDiskId() == diskId) {
+                return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                    TErrorResponse(E_REJECTED));
+            }
+            if (request->GetDiskId() == NStorage::GetNextDiskId(diskId)) {
+                return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                    TErrorResponse(S_OK));
+            }
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(E_ARGUMENT, "Unexpected disk id"));
+        };
+
+        auto executor = TExecutor::Create("TestService");
+        auto logging = CreateLoggingService("console");
+        auto encryptionClientFactory = CreateEncryptionClientFactory(
+            logging,
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
+
+        auto sessionManager = CreateSessionManager(
+            CreateWallClockTimer(),
+            scheduler,
+            logging,
+            CreateMonitoringServiceStub(),
+            CreateRequestStatsStub(),
+            CreateVolumeStatsStub(),
+            CreateServerStatsStub(),
+            service,
+            CreateCellManagerStub(),
+            CreateDefaultStorageProvider(service),
+            encryptionClientFactory,
+            executor,
+            TSessionManagerOptions());
+
+
+        executor->Start();
+        Y_DEFER {
+            executor->Stop();
+        };
+
+        NProto::TStartEndpointRequest request;
+        request.SetUnixSocketPath(socketPath);
+        request.SetDiskId(diskId);
+        request.SetClientId("testClientId");
+        request.SetIpcType(NProto::IPC_VHOST);
+
+        // Create session to testDiskId
+        NClient::ISessionPtr session;
+        {
+            auto future = sessionManager->CreateSession(
+                MakeIntrusive<TCallContext>(),
+                request);
+
+            auto sessionOrError = future.GetValue(TDuration::Seconds(3));
+            UNIT_ASSERT_C(!HasError(sessionOrError), sessionOrError.GetError());
+            auto sessionInfo = sessionOrError.ExtractResult();
+            session = sessionInfo.Session;
+        }
+
+        // Switch from testDiskId to testDiskId-copy.
+
+        {
+            // Make sure that the read response processed by testDiskId-copy
+            // that responds with S_OK.
+            auto future = session->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TReadBlocksLocalRequest>());
+            auto response = future.GetValue(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+        }
+
+        // Switch from testDiskId-copy to testDiskId.
+
+        // Setting up the handler for the mount request, which will add the
+        // PrincipalDiskId when mounting testDiskId-copy, which will lead to
+        // switch session back to testDiskId.
+        service->MountVolumeHandler =
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+            if (request->GetDiskId() == NStorage::GetNextDiskId(diskId)) {
+                // Response with filled PrincipalDiskId will switch session.
+                response.MutableVolume()->SetPrincipalDiskId(diskId);
+            }
+            response.SetInactiveClientsTimeout(100);
+            return MakeFuture(response);
+        };
+
+        // Setting up the handler to respond E_REJECTED if the request handled
+        // by testDiskId and S_OK if the request handled by disk testDiskId-copy
+        service->ReadBlocksLocalHandler =
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+            -> TFuture<NProto::TReadBlocksLocalResponse>
+        {
+            if (request->GetDiskId() == diskId) {
+                return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                    TErrorResponse(S_OK));
+            }
+            if (request->GetDiskId() == NStorage::GetNextDiskId(diskId)) {
+                return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                    TErrorResponse(E_REJECTED));
+            }
+            return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(E_ARGUMENT, "Unexpected disk id"));
+        };
+
+        {
+            // Make sure that the read response processed by testDiskId-copy
+            // that responds with S_OK.
+            auto future = session->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TReadBlocksLocalRequest>());
+            auto response = future.GetValue(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+        }
     }
 }
 
