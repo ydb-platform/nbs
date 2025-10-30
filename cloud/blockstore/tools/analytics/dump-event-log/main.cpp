@@ -6,11 +6,36 @@
 #include <library/cpp/eventlog/dumper/evlogdump.h>
 #include <library/cpp/getopt/small/last_getopt.h>
 
+#include <util/stream/file.h>
+
 using namespace NCloud::NBlockStore;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TSet<TString> LoadDiskIds(const TString& filename)
+{
+    TSet<TString> diskIds;
+    TFileInput input(filename);
+    TString line;
+    while (input.ReadLine(line)) {
+        diskIds.insert(line);
+    }
+    return diskIds;
+}
+
+TSet<ui32> LoadRequestTypes(const TString& filename)
+{
+    TSet<ui32> requestIds;
+    TFileInput input(filename);
+    TString line;
+    while (input.ReadLine(line)) {
+        requestIds.insert(FromString<ui32>(line));
+    }
+
+    return requestIds;
+}
 
 struct TEventProcessor: TProtobufEventProcessor
 {
@@ -18,6 +43,10 @@ struct TEventProcessor: TProtobufEventProcessor
     TString OutputFilename;
     TString OutputDatabaseFilename;
     TString FilterByDiskId;
+    TString FilterByDiskIdFile;
+    TString FilterByRequestTypeFile;
+    TSet<TString> FilterByDiskIdSet;
+    TSet<ui32> RequestTypeSet;
     std::optional<TBlockRange64> FilterRange;
     std::unique_ptr<TSqliteOutput> SqliteOutput;
 
@@ -37,6 +66,18 @@ struct TEventProcessor: TProtobufEventProcessor
             }
             EventLog->LogEvent(*message);
             return;
+        }
+
+        if (FilterByDiskIdFile) {
+            if (FilterByDiskIdSet.empty()) {
+                FilterByDiskIdSet = LoadDiskIds(FilterByDiskIdFile);
+            }
+        }
+
+        if (FilterByRequestTypeFile) {
+            if (RequestTypeSet.empty()) {
+                RequestTypeSet = LoadRequestTypes(FilterByRequestTypeFile);
+            }
         }
 
         const TVector<TItemDescriptor> order = GetItemOrder(*message);
@@ -85,6 +126,19 @@ struct TEventProcessor: TProtobufEventProcessor
         int index) const
     {
         if (FilterByDiskId && FilterByDiskId != message.GetDiskId()) {
+            return false;
+        }
+
+        if (FilterByDiskIdSet &&
+            !FilterByDiskIdSet.contains(message.GetDiskId()))
+        {
+            return false;
+        }
+
+        if (RequestTypeSet && type == EItemType::Request &&
+            !RequestTypeSet.contains(
+                message.GetRequests(index).GetRequestType()))
+        {
             return false;
         }
 
@@ -149,9 +203,23 @@ public:
 
         opts.AddLongOption(
                 "filter-by-disk-id",
-                "filter by diskId.  Example: --filter-by-disk-id xxx")
+                "Filter by diskId. Example: --filter-by-disk-id xxx")
             .Optional()
             .StoreResult(&Processor->FilterByDiskId);
+
+        opts.AddLongOption(
+                "filter-by-disk-id-file",
+                "Filter by disk names. The disk names are located in the file, "
+                "each in a separate line.")
+            .Optional()
+            .StoreResult(&Processor->FilterByDiskIdFile);
+
+        opts.AddLongOption(
+                "filter-by-request-type-file",
+                "Filter by request type. The numerical request types are "
+                "located in the file, each in a separate line")
+            .Optional()
+            .StoreResult(&Processor->FilterByRequestTypeFile);
 
         opts.AddLongOption(
                 "filter-by-range",

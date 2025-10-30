@@ -26,6 +26,21 @@ const TString& GetBlockStoreRequestName(EBlockStoreRequest request)
     return Unknown;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                     \
+    template <>                                                  \
+    TString GetBlockStoreRequestName<NProto::T##name##Request>() \
+    {                                                            \
+        return #name;                                            \
+    }
+
+BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
+
+#undef BLOCKSTORE_DECLARE_METHOD
+
+////////////////////////////////////////////////////////////////////////////////
+
 TString GetSysRequestName(ESysRequestType requestType)
 {
     return ToString(requestType);

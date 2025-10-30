@@ -150,6 +150,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         return;
     }
 
+    InitializeDeviceOperationTracker();
+
     const auto& volumeConfig = GetNewestConfig();
     const auto mediaKind = State->GetConfig().GetStorageMediaKind();
     const auto& volumeParams = State->GetVolumeParams();
@@ -366,7 +368,8 @@ TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
                 break;
             }
             case TFollowerDiskInfo::EState::Preparing:
-            case TFollowerDiskInfo::EState::DataReady: {
+            case TFollowerDiskInfo::EState::DataReady:
+            case TFollowerDiskInfo::EState::LeadershipTransferred: {
                 // Creating an actor wrapper.
                 auto actorId = NCloud::Register<TFollowerDiskActor>(
                     ctx,

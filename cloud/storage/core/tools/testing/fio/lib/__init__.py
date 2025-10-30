@@ -1,9 +1,13 @@
+import glob
 import itertools
 import json
 import logging
 import os
+import random
 import subprocess
+import sys
 import uuid
+import shutil
 
 import yatest.common as common
 
@@ -25,7 +29,7 @@ def _print_size(size):
 class TestCase:
     def __init__(self, scenario, size, request_size, iodepth, sync, duration, compress_percentage,
                  verify, unlink, numjobs, fsync, fdatasync, end_fsync, write_barrier, unique_name,
-                 offset):
+                 offset, randseed):
         self._scenario = scenario
         self._size = size
         self._request_size = request_size
@@ -42,6 +46,7 @@ class TestCase:
         self._write_barrier = write_barrier
         self._unique_name = unique_name
         self._offset = offset
+        self._randseed = randseed
 
     @property
     def scenario(self):
@@ -108,6 +113,10 @@ class TestCase:
         return self._offset
 
     @property
+    def randseed(self):
+        return self._randseed
+
+    @property
     def name(self):
         parts = [
             self.scenario,
@@ -168,6 +177,11 @@ class TestCase:
                 "--ioengine", "libaio",
                 "--iodepth", str(self.iodepth),
             ]
+
+        if self.randseed:
+            cmd += ["--randseed", str(self.randseed)]
+        else:
+            cmd += ["--randseed", str(random.randint(1, sys.maxsize))]
         return cmd
 
     def get_fio_cmd(self, fio_bin, file_name):
@@ -195,11 +209,11 @@ class TestCase:
 
 
 def _generate_tests(size, duration, sync, scenarios, sizes, iodepths, compress_percentage, verify,
-                    unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers, unique_name, offset):
+                    unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers, unique_name, offset, randseed):
     return [
         TestCase(scenario, size, request_size, iodepth, sync, duration, compress_percentage, verify,
                  unlink, numjob, fsync, fdatasync, end_fsync, write_barrier, unique_name,
-                 offset)
+                 offset, randseed)
         for scenario, request_size, iodepth, unlink, numjob, fsync, fdatasync, end_fsync, write_barrier
         in itertools.product(scenarios, sizes, iodepths, unlinks, numjobs, fsyncs, fdatasyncs,
                              end_fsyncs, write_barriers)
@@ -209,12 +223,12 @@ def _generate_tests(size, duration, sync, scenarios, sizes, iodepths, compress_p
 def generate_tests(size=100 * MB, duration=60, sync=False, scenarios=['randread', 'randwrite', 'randrw'],
                    sizes=[4 * KB, 4 * MB], iodepths=[1, 32], compress_percentage=90, verify=True, unlinks=[False],
                    numjobs=[1], fsyncs=[0], fdatasyncs=[0], end_fsyncs=[False], write_barriers=[0],
-                   unique_name=False, offset=0):
+                   unique_name=False, offset=0, randseed=None):
     return {
         test.name: test
         for test in _generate_tests(size, duration, sync, scenarios, sizes, iodepths, compress_percentage,
                                     verify, unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers,
-                                    unique_name, offset)
+                                    unique_name, offset, randseed)
     }
 
 
@@ -282,14 +296,20 @@ def _lay_out_files(directory, name, jobs, size):
 
 def _execute_command(cmd, fail_on_errors):
     logger.info("execute " + " ".join(cmd))
-    ex = common.execute(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
+    fio_artifacts = "./*.dat.*"
+    try:
+        ex = common.execute(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+    except common.process.ExecutionError as e:
+        raise e
+    finally:
+        for filepath in glob.glob(fio_artifacts):
+            shutil.copy(filepath, common.output_path())
 
     results = json.loads(ex.stdout)
 
-    # TODO: canonize something useful
     errors = 0
     for job in results["jobs"]:
         errors += int(job["error"])

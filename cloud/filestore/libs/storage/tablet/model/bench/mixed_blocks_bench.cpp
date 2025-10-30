@@ -128,12 +128,18 @@ const auto MixedBlocksWithOneDeletionMarkerAtTheEnd = GenerateMixedBlocks(
 const auto MixedBlocksWithMergedDeletionMarkers = GenerateMixedBlocks(
     BlocksCount / 2);
 const auto MixedBlocksWithMergedDeletionMarkersAtTheEnd = GenerateMixedBlocks(
-    BlocksCount / 2,
+    BlocksCount / 4,
     false,  // mixedDeletionMarkers
     true);  // startDeletionMarkersAtTheEnd
 const auto MixedBlocksWithMixedDeletionMarkers = GenerateMixedBlocks(
-    BlocksCount / 2,
+    BlocksCount / 4,
     true);  // mixedDeletionMarkers
+const auto MixedBlocksWithMixedDeletionMarkersAtTheEnd = GenerateMixedBlocks(
+    BlocksCount / 4,
+    true,   // mixedDeletionMarkers
+    true);  // startDeletionMarkersAtTheEnd
+
+////////////////////////////////////////////////////////////////////////////////
 
 Y_CPU_BENCHMARK(TMixedBlocks_FindBlocksWithoutDeletionMarkers, iface)
 {
@@ -174,6 +180,13 @@ Y_CPU_BENCHMARK(TMixedBlocks_FindBlocksWithMixedDeletionMarkers, iface)
 {
     for (size_t i = 0; i < iface.Iterations(); ++i) {
         FindBlocks(*MixedBlocksWithMixedDeletionMarkers);
+    }
+}
+
+Y_CPU_BENCHMARK(TMixedBlocks_FindBlocksWithMixedDeletionMarkersAtTheEnd, iface)
+{
+    for (size_t i = 0; i < iface.Iterations(); ++i) {
+        FindBlocks(*MixedBlocksWithMixedDeletionMarkersAtTheEnd);
     }
 }
 

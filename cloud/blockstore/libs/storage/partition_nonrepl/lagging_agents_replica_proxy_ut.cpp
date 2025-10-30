@@ -1062,7 +1062,6 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
 
         bool seenWaitForInFlightWritesRequest = false;
         bool seenMigrationReads = false;
-        // bool seenMigrationWrites = false;
         TVector<TRequestInfoPtr> writeDeviceBlocksRequestInfos;
 
         bool interceptWrites = true;
@@ -1092,7 +1091,9 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
                         return true;
                     }
                     case TEvService::EvReadBlocksRequest: {
-                        if (event->Recipient != env.ReplicaActors[0]) {
+                        if (event->Recipient != env.ReplicaActors[1] &&
+                            event->Recipient != env.ReplicaActors[2])
+                        {
                             break;
                         }
                         auto* msg =
@@ -1122,13 +1123,12 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
              {
                  return seenWaitForInFlightWritesRequest;
              }});
-        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT(!seenMigrationReads);
 
         for (const auto& requestInfo: writeDeviceBlocksRequestInfos) {
             auto response =
                 std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksResponse>();
-            runtime.Send(
+            runtime.SendAsync(
                 new NActors::IEventHandle(
                     requestInfo->Sender,
                     TActorId(),
@@ -1139,6 +1139,7 @@ Y_UNIT_TEST_SUITE(TLaggingAgentsReplicaProxyActorTest)
         }
         writeDeviceBlocksRequestInfos.clear();
         env.WaitForMigrationFinishEvent();
+        UNIT_ASSERT(seenMigrationReads);
     }
 
     Y_UNIT_TEST(ShouldDrainBeforeMigration)

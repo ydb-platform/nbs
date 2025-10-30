@@ -258,6 +258,10 @@ private:
     {
         TSpanTree spanTree(TraceId, currentSpanId);
 
+        if (!iterationContext) {
+            return spanTree;
+        }
+
         THashMap<ui64, ui64> spanIdToStartTime;
 
         ui64 startTimeCycles = tl.Items[iterationContext.Idx].TimestampCycles;

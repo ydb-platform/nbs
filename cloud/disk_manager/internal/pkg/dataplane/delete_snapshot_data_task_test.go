@@ -99,8 +99,8 @@ func TestDeleteSnapshotDataTask(t *testing.T) {
 	defer closeFunc()
 
 	snapshotID := "snapshotID"
-	snapshotShallowCopyBandwidthMiBs := uint64(42)
-	storageSize := snapshotShallowCopyBandwidthMiBs * 1024 * 1024 // 42 MiB
+	deleteSnapshotDataBandwidthMiBs := uint64(42)
+	storageSize := deleteSnapshotDataBandwidthMiBs * 1024 * 1024 // 42 MiB
 	expectedEstimatedInflightDuration := 1 * time.Second
 
 	_, err := storage.CreateSnapshot(
@@ -124,7 +124,7 @@ func TestDeleteSnapshotDataTask(t *testing.T) {
 
 	task := &deleteSnapshotDataTask{
 		performanceConfig: &performance_config.PerformanceConfig{
-			SnapshotShallowCopyBandwidthMiBs: &snapshotShallowCopyBandwidthMiBs,
+			DeleteSnapshotDataBandwidthMiBs: &deleteSnapshotDataBandwidthMiBs,
 		},
 		storage: storage,
 		request: &protos.DeleteSnapshotDataRequest{SnapshotId: snapshotID},

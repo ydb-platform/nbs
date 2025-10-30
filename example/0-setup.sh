@@ -84,6 +84,14 @@ ThrottlingConfig: {
     MaxDeviceBandwidthMiB: 15
 }
 
+ChaosConfig: {
+    CritEventReportingPolicy: CCERP_ALL_ERRORS
+    ChaosProbability: 0.001
+    ErrorCodes: 0x80000002 # E_REJECTED
+    DataDamageProbability: 0.0
+    ImmediateReplyProbability: 0.5
+}
+
 EOF
 
 cat > $BIN_DIR/nbs/nbs-location-$1.txt <<EOF

@@ -36,10 +36,12 @@ public:
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
         bool assignVolumeRequestId,
         bool replyLocal,
-        TChildLogTitle logTitle);
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -65,10 +67,12 @@ TDiskAgentWriteActor::TDiskAgentWriteActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
         bool assignVolumeRequestId,
         bool replyLocal,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -76,8 +80,10 @@ TDiskAgentWriteActor::TDiskAgentWriteActor(
           std::move(timeoutPolicy),
           std::move(deviceRequests),
           std::move(partConfig),
+          volumeActorId,
           part,
-          std::move(logTitle))
+          std::move(logTitle),
+          deviceOperationId)
     , AssignVolumeRequestId(assignVolumeRequestId)
     , ReplyLocal(replyLocal)
     , Request(std::move(request))
@@ -90,9 +96,18 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
         PartConfig->GetBlockSize(),
         Request);
 
-
-    if (DeviceRequests.size() == 1) {
-        CombineChecksumsInPlace(*Request.MutableChecksums());
+    // Single device request can either indicate that the request is over a
+    // single device. In that case we should combine checksums. Or it can
+    // indicate that this partition has some "holes" in its config (e.g. target
+    // of a migration can have only one device).
+    if (DeviceRequests.size() == 1 && Request.ChecksumsSize() > 1) {
+        const ui32 idx = DeviceRequests[0].RelativeDeviceIdx;
+        const ui32 checksumBlockCount =
+            Request.GetChecksums(idx).GetByteCount() /
+            PartConfig->GetBlockSize();
+        if (checksumBlockCount < DeviceRequests[0].BlockRange.Size()) {
+            CombineChecksumsInPlace(*Request.MutableChecksums());
+        }
     }
 
     ui32 index = 0;
@@ -106,10 +121,10 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
         if (AssignVolumeRequestId) {
             request->Record.SetVolumeRequestId(
                 Request.GetHeaders().GetVolumeRequestId());
-            request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
         }
-        if (index < Request.ChecksumsSize()) {
-            const auto& checksum = Request.GetChecksums(index);
+        if (deviceRequest.RelativeDeviceIdx < Request.ChecksumsSize()) {
+            const auto& checksum =
+                Request.GetChecksums(deviceRequest.RelativeDeviceIdx);
             if (checksum.GetByteCount() ==
                 deviceRequest.BlockRange.Size() * PartConfig->GetBlockSize())
             {
@@ -127,6 +142,12 @@ void TDiskAgentWriteActor::SendRequest(const TActorContext& ctx)
         }
 
         builder.BuildNextRequest(request->Record);
+
+        OnRequestStarted(
+            ctx,
+            deviceRequest.Device.GetDeviceUUID(),
+            TDeviceOperationTracker::ERequestType::Write,
+            index);
 
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
@@ -168,6 +189,8 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksUndelivery(
     const TEvDiskAgent::TEvWriteDeviceBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    OnRequestFinished(ctx, ev->Cookie);
+
     const auto& device = DeviceRequests[ev->Cookie].Device;
     LOG_WARN(
         ctx,
@@ -185,6 +208,8 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+
+    OnRequestFinished(ctx, ev->Cookie);
 
     if (HasError(msg->GetError())) {
         HandleError(ctx, msg->GetError(), EStatus::Fail);
@@ -288,6 +313,8 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         return;
     }
 
+    ui64 operationId = GenerateOperationId(deviceRequests.size());
+
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
         requestInfo,
@@ -295,10 +322,12 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
+        VolumeActorId,
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         false,   // replyLocal
-        LogTitle.GetChild(GetCycleCount()));
+        LogTitle.GetChild(GetCycleCount()),
+        operationId);
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }
@@ -401,6 +430,8 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
     // code to TDiskAgentWriteActor that tries to use it
     msg->Record.Sglist.SetSgList({});
 
+    ui64 operationId = GenerateOperationId(deviceRequests.size());
+
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
         requestInfo,
@@ -408,10 +439,12 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         std::move(timeoutPolicy),
         std::move(deviceRequests),
         PartConfig,
+        VolumeActorId,
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         true,   // replyLocal
-        LogTitle.GetChild(GetCycleCount()));
+        LogTitle.GetChild(GetCycleCount()),
+        operationId);
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }

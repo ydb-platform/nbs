@@ -316,10 +316,12 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
         CreateShards(ctx);
         return;
     }
-    if (StorageConfig->GetDirectoryCreationInShardsEnabled()) {
-        // If no shards are to be created, but directory sharding is enabled, we
-        // need to configure the main filestore in order to set the
-        // DirectoryCreationInShardsEnabled flag in the main filestore
+    if (StorageConfig->GetDirectoryCreationInShardsEnabled() ||
+        StorageConfig->GetStrictFileSystemSizeEnforcementEnabled())
+    {
+        // If no shards are to be created, but directory sharding or allocation
+        // of shards of filesystem size is enabled, we need to configure the
+        // main filestore in order to set the flags in the main filestore
         ConfigureMainFileStore(ctx);
         return;
     }

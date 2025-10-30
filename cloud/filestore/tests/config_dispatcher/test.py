@@ -134,6 +134,7 @@ def setup_and_run_test(filestore_binary_path, filestore_config_generator, wait_f
     result = check_configs(filestore_configurator.mon_port, kikimr_configurator, kikimr_cluster)
 
     filestore_process.stop()
+    kikimr_cluster.stop()
 
     return result
 

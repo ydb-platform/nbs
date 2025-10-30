@@ -327,7 +327,7 @@ class TestKikimrVolumeTablet:
         check_tablet_get(
             self.session, self.base_url,
             self.volume_id, {},
-            ["Overview", "History", "Checkpoints", "Links", "Latency", "Transactions", "Traces", "StorageConfig"])
+            ["Overview", "History", "Checkpoints", "Links", "Latency", "Transactions", "Traces", "StorageConfig", "DeviceLatency"])
 
     def run(self, nbs, nbs_http_port):
         self.volume_id, self.partition_id = prepare_volume(nbs, self.disk_id)

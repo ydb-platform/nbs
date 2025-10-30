@@ -9771,10 +9771,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     TVector<TString> WriteToDiskWithInflightDataCorruptionAndReadResults(
         NCloud::NProto::EStorageMediaKind mediaKind,
         ui32 writeNumberToIntercept,
-        const TString& tags)
+        const TString& tags,
+        bool disableUsingIntermediateWriteBuffer = false)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
+        config.SetDisableUsingIntermediateWriteBuffer(
+            disableUsingIntermediateWriteBuffer);
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(config, state);
 
@@ -9890,6 +9893,29 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(adata, results[2]);
     }
 
+    Y_UNIT_TEST(
+        ShouldNotCopyWriteRequestDataBeforeWritingToStorageIfTagIsSetM3ButFeatureIsDisabled)
+    {
+        auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            // 1 - to volume
+            // 1 - to mirror actor
+            // 3 - to 3 replicas
+            1 + 1 + 3,
+            "use-intermediate-write-buffer",
+            /*disableUsingIntermediateWriteBuffer=*/true);
+        const TString adata(4_KB, 'a');
+
+        const bool replica1Match = (adata == results[0]);
+        const bool replica2Match = (adata == results[1]);
+        const bool replica3Match = (adata == results[2]);
+        // One of the replicas should have inconsistent data due to disabled
+        // feature.
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            replica1Match + replica2Match + replica3Match);
+    }
+
     Y_UNIT_TEST(ShouldHaveDifferentDataInReplicasUponInflightBufferCorruptionM3)
     {
         auto results = WriteToDiskWithInflightDataCorruptionAndReadResults(
@@ -9934,40 +9960,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(bdata, results[2]);
     }
 
-    Y_UNIT_TEST(ShouldPerformIoWithPredefinedCopyVolumeClientId)
-    {
-        NProto::TStorageServiceConfig config;
-        config.SetAcquireNonReplicatedDevices(true);
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(config, state);
-
-        TVolumeClient volume(*runtime);
-
-        volume.UpdateVolumeConfig(
-            0,
-            0,
-            0,
-            0,
-            false,
-            1,
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
-
-        volume.WaitReady();
-
-        // IO with predefined CopyVolumeClientId accepted.
-        volume.WriteBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            TString(CopyVolumeClientId),
-            1);
-        volume.ZeroBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            TString(CopyVolumeClientId));
-        volume.ReadBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            TString(CopyVolumeClientId));
-    }
-
     Y_UNIT_TEST(ShouldNotPerformIoWithPredefinedWhenOtherClient)
     {
         NProto::TStorageServiceConfig config;
@@ -9985,7 +9977,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            1024);
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1,                           // partition count
+            0,                           // blocksPerStripe
+            "source-disk-id=vol0-copy"   // tags
+        );
 
         auto clientInfo = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
@@ -10003,9 +10002,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 1);
             auto response = volume.RecvWriteBlocksResponse(TDuration::Zero());
             UNIT_ASSERT(response);
-            UNIT_ASSERT_VALUES_EQUAL(
+            UNIT_ASSERT_VALUES_EQUAL_C(
                 E_BS_INVALID_SESSION,
-                response->GetStatus());
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
         {
             volume.SendZeroBlocksRequest(
@@ -10013,9 +10013,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 TString(CopyVolumeClientId));
             auto response = volume.RecvZeroBlocksResponse(TDuration::Zero());
             UNIT_ASSERT(response);
-            UNIT_ASSERT_VALUES_EQUAL(
+            UNIT_ASSERT_VALUES_EQUAL_C(
                 E_BS_INVALID_SESSION,
-                response->GetStatus());
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
         {
             volume.SendReadBlocksRequest(
@@ -10023,9 +10024,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 TString(CopyVolumeClientId));
             auto response = volume.RecvReadBlocksResponse(TDuration::Zero());
             UNIT_ASSERT(response);
-            UNIT_ASSERT_VALUES_EQUAL(
-                E_BS_INVALID_SESSION,
-                response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
     }
 
@@ -10337,6 +10339,138 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             NCloud::NProto::STORAGE_MEDIA_HYBRID);
     }
     //------------------
+    Y_UNIT_TEST(ShouldReceiveDeviceOperationStartedAndFinished)
+    {
+        const ui64 expectedBlockCount =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+        const ui64 expectedDeviceCount = 2;
+
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetDeviceOperationTrackingFrequency(1);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->ReplicaCount = 1;
+        auto runtime = PrepareTestActorRuntime(config, state);
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            expectedBlockCount * expectedDeviceCount);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        TSet<ui64> startedSeen;
+        TSet<ui64> finishedSeen;
+        std::optional<TDeviceOperationTracker::ERequestType> RequestType;
+
+        auto filter = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvDiskRegistryDeviceOperationStarted)
+            {
+                auto* msg = event->Get<
+                    TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>();
+                RequestType = msg->RequestType;
+                auto [it, inserted] = startedSeen.insert(msg->OperationId);
+                UNIT_ASSERT_VALUES_EQUAL(true, inserted);
+            } else if (
+                event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvDiskRegistryDeviceOperationFinished)
+            {
+                auto* msg = event->Get<
+                    TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>();
+                auto [it, inserted] = finishedSeen.insert(msg->OperationId);
+                UNIT_ASSERT_VALUES_EQUAL(true, inserted);
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+
+        runtime->SetObserverFunc(filter);
+
+        auto checkRead =
+            [&](const TBlockRange64& range, size_t expectedRequestCount)
+        {
+            const size_t before = startedSeen.size();
+            UNIT_ASSERT_VALUES_EQUAL(before, finishedSeen.size());
+
+            volume.ReadBlocks(range, clientInfo.GetClientId());
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT_VALUES_EQUAL(
+                startedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                finishedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDeviceOperationTracker::ERequestType::Read,
+                *RequestType);
+        };
+
+        auto checkWrite =
+            [&](const TBlockRange64& range, size_t expectedRequestCount)
+        {
+            const size_t before = startedSeen.size();
+            UNIT_ASSERT_VALUES_EQUAL(before, finishedSeen.size());
+
+            volume.WriteBlocks(
+                range,
+                clientInfo.GetClientId(),
+                GetBlockContent('X'));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT_VALUES_EQUAL(
+                startedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                finishedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDeviceOperationTracker::ERequestType::Write,
+                *RequestType);
+        };
+
+        auto checkZero =
+            [&](const TBlockRange64& range, size_t expectedRequestCount)
+        {
+            const size_t before = startedSeen.size();
+            UNIT_ASSERT_VALUES_EQUAL(before, finishedSeen.size());
+
+            volume.ZeroBlocks(range, clientInfo.GetClientId());
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+            UNIT_ASSERT_VALUES_EQUAL(
+                startedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                finishedSeen.size(),
+                before + expectedRequestCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDeviceOperationTracker::ERequestType::Zero,
+                *RequestType);
+        };
+
+        // Validate not on the device's border
+        checkRead(TBlockRange64::MakeOneBlock(1), 1);
+        checkWrite(TBlockRange64::MakeOneBlock(1), 2);
+        checkZero(TBlockRange64::MakeOneBlock(1), 2);
+
+        // Validate on the device's border.
+        checkRead(TBlockRange64::WithLength(expectedBlockCount - 1, 2), 2);
+        checkWrite(TBlockRange64::WithLength(expectedBlockCount - 1, 2), 4);
+        checkZero(TBlockRange64::WithLength(expectedBlockCount - 1, 2), 4);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

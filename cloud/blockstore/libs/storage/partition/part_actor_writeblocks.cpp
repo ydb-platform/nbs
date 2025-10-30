@@ -178,10 +178,10 @@ void TPartitionActor::HandleWriteBlocksRequest(
                         E_REJECTED,
                         TStringBuilder()
                             << "Data integrity violation. Current checksum: "
-                            << checksum.ShortUtf8DebugString()
+                            << checksum.ShortUtf8DebugString().Quote()
                             << "; Incoming checksum: "
                             << msg->Record.GetChecksums(0)
-                                   .ShortUtf8DebugString(),
+                                   .ShortUtf8DebugString().Quote(),
                         flags));
                 }
             }

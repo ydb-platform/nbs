@@ -123,6 +123,10 @@ void TDirectCopyActor::HandleReadBlocksResponse(
         auto writeRequest =
             std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
         PrepareRequest(Request, writeRequest.get());
+        if (msg->Record.HasChecksum()) {
+            *writeRequest->Record.MutableChecksum() =
+                std::move(*msg->Record.MutableChecksum());
+        }
         writeRequest->Record.MutableBlocks()->Swap(msg->Record.MutableBlocks());
         request = std::move(writeRequest);
     }

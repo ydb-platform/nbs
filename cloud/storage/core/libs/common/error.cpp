@@ -226,6 +226,9 @@ TString FormatError(const NProto::TError& e)
                 case NProto::EF_CHECKSUM_MISMATCH:
                     out << " f@checksum_mismatch";
                     break;
+                case NProto::EF_OUTDATED_VOLUME:
+                    out << " f@outdated_volume";
+                    break;
                 case NProto::EF_NONE:
                 case NProto::EErrorFlag_INT_MIN_SENTINEL_DO_NOT_USE_:
                 case NProto::EErrorFlag_INT_MAX_SENTINEL_DO_NOT_USE_:

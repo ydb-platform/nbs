@@ -152,6 +152,7 @@ private:
     const ui32 BlockSize;
     const ui32 MaxBlocksInBlob;
     const ui32 MaxAffectedBlocksPerCompaction;
+    const bool ForceChecksumsCalculation;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const TDuration BlobStorageAsyncRequestTimeout;
     const ECompactionType CompactionType;
@@ -187,6 +188,7 @@ public:
         ui32 blockSize,
         ui32 maxBlocksInBlob,
         ui32 maxAffectedBlocksPerCompaction,
+        bool forceChecksumsCalculation,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TDuration blobStorageAsyncRequestTimeout,
         ECompactionType compactionType,
@@ -251,6 +253,7 @@ TCompactionActor::TCompactionActor(
         ui32 blockSize,
         ui32 maxBlocksInBlob,
         ui32 maxAffectedBlocksPerCompaction,
+        bool forceChecksumsCalculation,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TDuration blobStorageAsyncRequestTimeout,
         ECompactionType compactionType,
@@ -265,6 +268,7 @@ TCompactionActor::TCompactionActor(
     , BlockSize(blockSize)
     , MaxBlocksInBlob(maxBlocksInBlob)
     , MaxAffectedBlocksPerCompaction(maxAffectedBlocksPerCompaction)
+    , ForceChecksumsCalculation(forceChecksumsCalculation)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
     , CompactionType(compactionType)
@@ -316,10 +320,15 @@ void TCompactionActor::InitBlockDigests()
                     continue;
                 }
 
-                const auto digest = BlockDigestGenerator->ComputeDigest(
-                    blockIndex,
-                    sgList[blockIndex - rc.BlockRange.Start - skipped]
-                );
+                const auto digest =
+                    ForceChecksumsCalculation
+                        ? BlockDigestGenerator->ComputeDigestForce(
+                              sgList
+                                  [blockIndex - rc.BlockRange.Start - skipped])
+                        : BlockDigestGenerator->ComputeDigest(
+                              blockIndex,
+                              sgList
+                                  [blockIndex - rc.BlockRange.Start - skipped]);
 
                 if (digest.Defined()) {
                     AffectedBlockInfos.push_back({blockIndex, *digest});
@@ -333,10 +342,13 @@ void TCompactionActor::InitBlockDigests()
                     continue;
                 }
 
-                const auto digest = BlockDigestGenerator->ComputeDigest(
-                    blockIndex,
-                    TBlockDataRef::CreateZeroBlock(BlockSize)
-                );
+                const auto digest =
+                    ForceChecksumsCalculation
+                        ? BlockDigestGenerator->ComputeDigestForce(
+                              TBlockDataRef::CreateZeroBlock(BlockSize))
+                        : BlockDigestGenerator->ComputeDigest(
+                              blockIndex,
+                              TBlockDataRef::CreateZeroBlock(BlockSize));
 
                 if (digest.Defined()) {
                     AffectedBlockInfos.push_back({blockIndex, *digest});
@@ -2072,6 +2084,7 @@ void TPartitionActor::CompleteCompaction(
         State->GetBlockSize(),
         State->GetMaxBlocksInBlob(),
         Config->GetMaxAffectedBlocksPerCompaction(),
+        Config->GetComputeDigestForEveryBlockOnCompaction(),
         BlockDigestGenerator,
         GetBlobStorageAsyncRequestTimeout(),
         compactionType,

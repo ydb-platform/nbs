@@ -131,3 +131,5 @@ def test_system_tablets_priority():
     # DR should start on the node with lowest priority if it's the only one left.
     wait_for_dr_metrics(nbs_low_priority2.mon_port)
     nbs_low_priority2.stop()
+
+    kikimr_cluster.stop()

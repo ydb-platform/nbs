@@ -84,7 +84,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
                     RunLogShuttleAction { }
                 }
             }
-        )END",
+            )END",
             &q);
 
         UNIT_ASSERT(parsed);
@@ -196,7 +196,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
                     RunLogShuttleAction { }
                 }
             }
-        )END",
+            )END",
             &q);
 
         UNIT_ASSERT(parsed);
@@ -255,9 +255,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
                             continue;
                         }
                         UNIT_ASSERT_VALUES_EQUAL(event.name(), "IntParam");
-                        UNIT_ASSERT_VALUES_EQUAL(
-                            event.attributes().size(),
-                            1);
+                        UNIT_ASSERT_VALUES_EQUAL(event.attributes().size(), 1);
                         UNIT_ASSERT_VALUES_EQUAL(
                             event.attributes(0).key(),
                             "value");
@@ -352,7 +350,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
                     RunLogShuttleAction { }
                 }
             }
-        )END",
+            )END",
             &q);
 
         UNIT_ASSERT(parsed);
@@ -446,6 +444,62 @@ Y_UNIT_TEST_SUITE(TraceConverter)
                 for (size_t i = 0; i < eventTimes.size() - 1; ++i) {
                     UNIT_ASSERT(eventTimes[i] <= eventTimes[i + 1]);
                 }
+            }
+        } reader;
+        mngr.ReadDepot("Query1", reader);
+    }
+
+    Y_UNIT_TEST(ShouldConvertBigTraces)
+    {
+        TManager mngr(*Singleton<TProbeRegistry>(), true);
+        TQuery q;
+        bool parsed = NProtoBuf::TextFormat::ParseFromString(
+            R"END(
+            Blocks {
+                ProbeDesc {
+                    Name: "NoParam"
+                    Provider: "LWTRACE_UT_PROVIDER"
+                }
+                Action {
+                    RunLogShuttleAction { }
+                }
+            }
+            )END",
+            &q);
+
+        UNIT_ASSERT(parsed);
+        mngr.New("Query1", q);
+
+        {
+            TOrbit first;
+
+            LWTRACK(NoParam, first);
+
+            TVector<TOrbit> orbits;
+
+            size_t forks = 98;
+
+            for (size_t i = 0; i < forks; ++i) {
+                orbits.emplace_back();
+                first.Fork(orbits.back());
+            }
+
+            for (size_t i = 0; i < forks; ++i) {
+                LWTRACK(IntParam, orbits[i], 1);
+                LWTRACK(IntParam, orbits[i], 2);
+                LWTRACK(IntParam, orbits[i], 3);
+                LWTRACK(IntParam, orbits[i], 4);
+                LWTRACK(IntParam, orbits[i], 5);
+
+                first.Join(orbits[i]);
+            }
+        }
+
+        struct
+        {
+            void Push(TThread::TId, const TTrackLog& tl)
+            {
+                ConvertToOpenTelemetrySpans(tl);
             }
         } reader;
         mngr.ReadDepot("Query1", reader);

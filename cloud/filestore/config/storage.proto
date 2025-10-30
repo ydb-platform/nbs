@@ -660,4 +660,8 @@ message TStorageConfig
     // schemeshard, etc.). Lower value means lower priority.
     // NOTE: can be negative.
     optional int32 SystemTabletsPriority = 464;
+
+    // Disable fsync queue which is used to synchronize data/metadata ops during fsync
+    optional bool FSyncQueueDisabled = 465;
+
 }

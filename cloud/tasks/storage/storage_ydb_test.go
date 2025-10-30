@@ -4219,7 +4219,7 @@ func TestStorageYDBCreateRegularTasksUsingCrontab(t *testing.T) {
 
 	day := 24 * time.Hour
 
-	createdAt := time.Date(2024, 1, 26, 19, 41, 59, 0, time.Local)
+	createdAt := time.Date(2024, 1, 26, 19, 41, 59, 0, time.UTC)
 	task := TaskState{
 		IdempotencyKey: getIdempotencyKeyForTest(t),
 		TaskType:       "task",
@@ -4382,7 +4382,7 @@ func TestStorageYDBCreateRegularTasksUsingCrontabInNewMonthOrYear(t *testing.T) 
 
 	day := 24 * time.Hour
 
-	createdAt := time.Date(2024, 2, 29, 19, 42, 0, 0, time.Local)
+	createdAt := time.Date(2024, 2, 29, 19, 42, 0, 0, time.UTC)
 	task := TaskState{
 		IdempotencyKey: getIdempotencyKeyForTest(t),
 		TaskType:       "task",
@@ -4519,7 +4519,7 @@ func TestStorageYDBRegularTaskShouldNotBeCreatedIfPreviousCrontabTaskIsNotFinish
 
 	day := 24 * time.Hour
 
-	createdAt := time.Date(2024, 1, 26, 19, 41, 59, 0, time.Local)
+	createdAt := time.Date(2024, 1, 26, 19, 41, 59, 0, time.UTC)
 	task := TaskState{
 		IdempotencyKey: getIdempotencyKeyForTest(t),
 		TaskType:       "task",

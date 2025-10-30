@@ -3,6 +3,7 @@ syntax = "proto3";
 import "cloud/blockstore/config/rdma.proto";
 import "cloud/storage/core/protos/certificate.proto";
 import "cloud/storage/core/protos/endpoints.proto";
+import "cloud/storage/core/protos/media.proto";
 
 package NCloud.NBlockStore.NProto;
 
@@ -37,6 +38,10 @@ message TChecksumFlags
     // write requests and validates checksums for read requests. Calculation for
     // reads and validation for writes needs to be done in the storage layer.
     optional bool EnableDataIntegrityClient = 2;
+
+    // Same as "EnableDataIntegrityClient", but enables the client only for the
+    // specified media kinds.
+    repeated NCloud.NProto.EStorageMediaKind MediaKindsToValidateDataIntegrity = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

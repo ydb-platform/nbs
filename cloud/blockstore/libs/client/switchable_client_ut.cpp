@@ -28,9 +28,7 @@ enum class EHandledOn
 
 template <typename T>
 concept HasSessionId = requires(T& obj) {
-    {
-        obj.GetSessionId()
-    } -> std::convertible_to<TString>;
+    { obj.GetSessionId() } -> std::convertible_to<TString>;
 };
 
 template <typename TRequest, typename TResponse>
@@ -102,6 +100,32 @@ public:
     }
 };
 
+struct TTestDataPlainMethods
+{
+    TTestMethod<NProto::TReadBlocksRequest, NProto::TReadBlocksResponse> Read;
+    TTestMethod<
+        NProto::TReadBlocksLocalRequest,
+        NProto::TReadBlocksLocalResponse>
+        ReadLocal;
+    TTestMethod<NProto::TWriteBlocksRequest, NProto::TWriteBlocksResponse>
+        Write;
+    TTestMethod<
+        NProto::TWriteBlocksLocalRequest,
+        NProto::TWriteBlocksLocalResponse>
+        WriteLocal;
+    TTestMethod<NProto::TZeroBlocksRequest, NProto::TZeroBlocksResponse> Zero;
+
+    TTestDataPlainMethods(
+        std::shared_ptr<TTestService> primaryClient,
+        std::shared_ptr<TTestService> secondaryClient)
+        : Read{primaryClient, secondaryClient}
+        , ReadLocal(primaryClient, secondaryClient)
+        , Write(primaryClient, secondaryClient)
+        , WriteLocal(primaryClient, secondaryClient)
+        , Zero(primaryClient, secondaryClient)
+    {}
+};
+
 #define BLOCKSTORE_DECLARE_EXECUTE(name, ...)                                \
     [[maybe_unused]] NThreading::TFuture<NProto::T##name##Response> Execute( \
         IBlockStorePtr blockstore,                                           \
@@ -147,6 +171,34 @@ void Check(
         handledOn == EHandledOn::Primary ? E_ARGUMENT : E_ABORTED,
         response.GetError().GetCode(),
         FormatError(response.GetError()));
+}
+
+template <typename TRequest, typename TResponse>
+TFuture<TResponse> CheckRequestPaused(
+    std::shared_ptr<TTestService> primaryClient,
+    std::shared_ptr<TTestService> secondaryClient,
+    IBlockStorePtr switchableClient)
+{
+    TTestMethod<TRequest, TResponse> testMethod(
+        std::move(primaryClient),
+        std::move(secondaryClient));
+
+    auto request = std::make_shared<TRequest>();
+    request->SetDiskId(PrimaryDiskId);
+    if constexpr (HasSessionId<TRequest>) {
+        request->SetSessionId(PrimarySessionId);
+    }
+
+    auto future = Execute(
+        std::move(switchableClient),
+        MakeIntrusive<TCallContext>(),
+        std::move(request));
+
+    future.Wait(TDuration::Seconds(0.5));
+    UNIT_ASSERT(!future.HasValue());
+    UNIT_ASSERT_VALUES_EQUAL(0, testMethod.GetPrimaryRequestCount());
+    UNIT_ASSERT_VALUES_EQUAL(0, testMethod.GetSecondaryRequestCount());
+    return future;
 }
 
 }   // namespace
@@ -203,6 +255,92 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
             EHandledOn::Primary);
     }
 
+    void DoShouldPauseAndUnpauseRequests(bool doSwitch)
+    {
+        auto client1 = std::make_shared<TTestService>();
+        auto client2 = std::make_shared<TTestService>();
+
+        auto switchableClient = CreateSwitchableClient(
+            CreateLoggingService("console"),
+            PrimaryDiskId,
+            client1);
+
+        // Disable request forwarding
+        switchableClient->BeforeSwitching();
+
+        // Data-plane request should pause
+        auto readFuture = CheckRequestPaused<
+            NProto::TReadBlocksRequest,
+            NProto::TReadBlocksResponse>(client1, client2, switchableClient);
+        auto readLocalFuture = CheckRequestPaused<
+            NProto::TReadBlocksLocalRequest,
+            NProto::TReadBlocksLocalResponse>(
+            client1,
+            client2,
+            switchableClient);
+        auto writeFuture = CheckRequestPaused<
+            NProto::TWriteBlocksRequest,
+            NProto::TWriteBlocksResponse>(client1, client2, switchableClient);
+        auto writeLocalFuture = CheckRequestPaused<
+            NProto::TWriteBlocksLocalRequest,
+            NProto::TWriteBlocksLocalResponse>(
+            client1,
+            client2,
+            switchableClient);
+        auto zeroFuture = CheckRequestPaused<
+            NProto::TZeroBlocksRequest,
+            NProto::TZeroBlocksResponse>(client1, client2, switchableClient);
+
+        // Mount request shouldn't pause
+        Check<NProto::TMountVolumeRequest, NProto::TMountVolumeResponse>(
+            client1,
+            client2,
+            switchableClient,
+            EHandledOn::Primary);
+
+        if (doSwitch) {
+            switchableClient->Switch(
+                client2,
+                SecondaryDiskId,
+                SecondarySessionId);
+        }
+
+        TTestDataPlainMethods testMethods{client1, client2};
+        // unpause requests
+        switchableClient->AfterSwitching();
+
+        auto checkRequest =
+            [doSwitch](const auto& future, const auto& testMethod)
+        {
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                doSwitch ? E_ABORTED : E_ARGUMENT,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                doSwitch ? 0 : 1,
+                testMethod.GetPrimaryRequestCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                doSwitch ? 1 : 0,
+                testMethod.GetSecondaryRequestCount());
+        };
+        checkRequest(readFuture, testMethods.Read);
+        checkRequest(readLocalFuture, testMethods.ReadLocal);
+        checkRequest(writeFuture, testMethods.Write);
+        checkRequest(writeLocalFuture, testMethods.WriteLocal);
+        checkRequest(zeroFuture, testMethods.Zero);
+    }
+
+    Y_UNIT_TEST(ShouldPauseAndUnpauseRequestsWithoutSwitching)
+    {
+        DoShouldPauseAndUnpauseRequests(false);
+    }
+
+    Y_UNIT_TEST(ShouldPauseAndUnpauseRequestsWithSwitching)
+    {
+        DoShouldPauseAndUnpauseRequests(true);
+    }
+
     Y_UNIT_TEST(ShouldForwardRequestsToSecondaryClient)
     {
         auto client1 = std::make_shared<TTestService>();
@@ -213,9 +351,12 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
             PrimaryDiskId,
             client1);
 
+        switchableClient->BeforeSwitching();
+
         // Switch client to secondary client.
         switchableClient->Switch(client2, SecondaryDiskId, SecondarySessionId);
 
+        // Read/Write/Zero requests routed to secondary client
         Check<NProto::TReadBlocksRequest, NProto::TReadBlocksResponse>(
             client1,
             client2,
@@ -247,7 +388,81 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
             switchableClient,
             EHandledOn::Secondary);
 
-        // Only Read/Write/Zero requests switched to secondary client
+        // Control-plane requests routed to primary client
+        Check<NProto::TMountVolumeRequest, NProto::TMountVolumeResponse>(
+            client1,
+            client2,
+            switchableClient,
+            EHandledOn::Primary);
+    }
+
+    Y_UNIT_TEST(ShouldForwardRequestsToSecondaryClientAfterSwitch)
+    {
+        auto client1 = std::make_shared<TTestService>();
+        auto client2 = std::make_shared<TTestService>();
+
+        auto switchableClient = CreateSwitchableClient(
+            CreateLoggingService("console"),
+            PrimaryDiskId,
+            client1);
+
+        {
+            // Switch client to secondary client.
+            auto guard = CreateSessionSwitchingGuard(switchableClient);
+
+            // Check request paused after BeforeSwitching() called by guard.
+            auto zeroFuture = CheckRequestPaused<
+                NProto::TZeroBlocksRequest,
+                NProto::TZeroBlocksResponse>(
+                client1,
+                client2,
+                switchableClient);
+
+            // Perform switch
+            switchableClient->Switch(
+                client2,
+                SecondaryDiskId,
+                SecondarySessionId);
+
+            // Request should be routed ot secondary immediately since the
+            // switch happened.
+            Check<NProto::TReadBlocksRequest, NProto::TReadBlocksResponse>(
+                client1,
+                client2,
+                switchableClient,
+                EHandledOn::Secondary);
+
+            TTestMethod<NProto::TZeroBlocksRequest, NProto::TZeroBlocksResponse>
+                testZeroMethod(client1, client2);
+
+            // guard should call AfterSwitching().
+            guard.reset();
+
+            // Check request unpaused
+            const auto& response = zeroFuture.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ABORTED,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                testZeroMethod.GetPrimaryRequestCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                testZeroMethod.GetSecondaryRequestCount());
+        }
+
+        // Check that the request is routed to secondary client after Switch()
+        // and AfterSwitching()
+        Check<
+            NProto::TReadBlocksLocalRequest,
+            NProto::TReadBlocksLocalResponse>(
+            client1,
+            client2,
+            switchableClient,
+            EHandledOn::Secondary);
+
+        // Control-plane requests routed to primary client
         Check<NProto::TMountVolumeRequest, NProto::TMountVolumeResponse>(
             client1,
             client2,

@@ -1799,17 +1799,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         RegisterAgents(*runtime, agents.size());
         WaitForAgents(*runtime, agents.size());
+        while (true) {
+            runtime->AdvanceCurrentTime(5s);
+            runtime->DispatchEvents({}, 10ms);
 
-        runtime->AdvanceCurrentTime(15s);
-        runtime->DispatchEvents({}, 10ms);
-
-        runtime->AdvanceCurrentTime(20s);
-        runtime->DispatchEvents(
-            {.CustomFinalCondition = [&]
-             {
-                 auto response = diskRegistry.BackupDiskRegistryState(false);
-                 return !response->Record.MutableBackup()->DirtyDevicesSize();
-             }});
+            auto response = diskRegistry.BackupDiskRegistryState(false);
+            if (response->Record.MutableBackup()->DirtyDevicesSize() == 0) {
+                break;
+            }
+        }
 
         // create disks
 

@@ -76,7 +76,7 @@ void TFileSystem::SetAttr(
     request->SetFlags(flags);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {ino});
+    FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
     Session->SetNodeAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -87,7 +87,7 @@ void TFileSystem::SetAttr(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyAttr(*callContext, error, req, response.GetNode());
@@ -160,7 +160,7 @@ void TFileSystem::SetXAttr(
     request->SetFlags(flags);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {ino});
+    FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
     Session->SetNodeXAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -171,7 +171,7 @@ void TFileSystem::SetXAttr(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             self->UpdateXAttrCache(
                 ino,
@@ -306,7 +306,7 @@ void TFileSystem::RemoveXAttr(
     request->SetName(name);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {ino});
+    FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
     Session->RemoveNodeXAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -317,7 +317,7 @@ void TFileSystem::RemoveXAttr(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 with_lock (self->XAttrCacheLock) {

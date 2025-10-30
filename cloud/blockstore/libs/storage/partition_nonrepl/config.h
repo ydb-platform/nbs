@@ -26,21 +26,29 @@ using TMigrations = google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
 struct TDeviceRequest
 {
     const NProto::TDeviceConfig& Device;
+    // Index of the device in the partition config.
     const ui32 DeviceIdx;
+    // Index of the device in original request. E.g. when the request is split
+    // between two devices, this will be 0 for the first deviceRequest and 1 for
+    // the second.
+    const ui32 RelativeDeviceIdx;
+    // Request block range.
     const TBlockRange64 BlockRange;
+    // Block range that is relative to the device borders.
     const TBlockRange64 DeviceBlockRange;
 
     TDeviceRequest(
             const NProto::TDeviceConfig& device,
             const ui32 deviceIdx,
+            const ui32 relativeDeviceIdx,
             const TBlockRange64& blockRange,
             const TBlockRange64& deviceBlockRange)
         : Device(device)
         , DeviceIdx(deviceIdx)
+        , RelativeDeviceIdx(relativeDeviceIdx)
         , BlockRange(blockRange)
         , DeviceBlockRange(deviceBlockRange)
-    {
-    }
+    {}
 };
 
 class TNonreplicatedPartitionConfig
@@ -274,13 +282,14 @@ public:
     }
 
 public:
-    TVector<TDeviceRequest> ToDeviceRequests(const TBlockRange64 blockRange) const
+    TVector<TDeviceRequest> ToDeviceRequests(
+        const TBlockRange64 blockRange) const
     {
         TVector<TDeviceRequest> res;
         VisitDeviceRequests(
             blockRange,
-            [&] (
-                const ui32 i,
+            [&](const ui32 i,
+                const ui32 relativeDeviceIdx,
                 const TBlockRange64 requestRange,
                 const TBlockRange64 relativeRange)
             {
@@ -288,6 +297,7 @@ public:
                     res.emplace_back(
                         Devices[i],
                         i,
+                        relativeDeviceIdx,
                         requestRange,
                         relativeRange);
                 }
@@ -310,9 +320,11 @@ public:
         const bool result = VisitDeviceRequests(
             blockRange,
             [&](const ui32 i,
+                const ui32 relativeDeviceIdx,
                 const TBlockRange64 requestRange,
                 const TBlockRange64 relativeRange)
             {
+                Y_UNUSED(relativeDeviceIdx);
                 Y_UNUSED(requestRange);
                 Y_UNUSED(relativeRange);
 
@@ -364,11 +376,13 @@ public:
         VisitDeviceRequests(
             blockRange,
             [&](const ui32 i,
+                const ui32 relativeDeviceIdx,
                 const TBlockRange64 requestRange,
                 const TBlockRange64 relativeRange)
             {
                 Y_UNUSED(relativeRange);
                 Y_UNUSED(i);
+                Y_UNUSED(relativeDeviceIdx);
                 result.emplace_back(requestRange);
                 return false;
             });
@@ -387,9 +401,9 @@ private:
 
     using TDeviceRequestVisitor = std::function<bool(
         const ui32 deviceIndex,
+        const ui32 relativeDeviceIndex,
         const TBlockRange64 requestRange,
-        const TBlockRange64 relativeRange
-    )>;
+        const TBlockRange64 relativeRange)>;
 
     bool VisitDeviceRequests(
         const TBlockRange64 blockRange,
@@ -413,10 +427,13 @@ private:
         Y_ABORT_UNLESS(fi < Devices.size());
         Y_ABORT_UNLESS(li < Devices.size());
 
-        for (ui32 i = fi; i <= li; ++i) {
+        for (ui32 i = fi, relativeDeviceIdx = 0; i <= li;
+             ++i, ++relativeDeviceIdx)
+        {
             const auto subRange = DeviceRange(i).Intersect(blockRange);
             const auto interrupted = visitor(
                 i,
+                relativeDeviceIdx,
                 subRange,
                 TBlockRange64::MakeClosedInterval(
                     subRange.Start - BlockIndices[i],

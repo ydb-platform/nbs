@@ -19,13 +19,15 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionUtilTest)
         const size_t blockCountForSecondDevice = 1024 - 128;
         deviceRequests.push_back({
             dummy,
-            0,
+            /*deviceIdx=*/0,
+            /*relativeDeviceIdx=*/0,
             TBlockRange64::WithLength(100'000, blockCountForFirstDevice),
             TBlockRange64::WithLength(100, blockCountForFirstDevice)
         });
         deviceRequests.push_back({
             dummy,
-            1,
+            /*deviceIdx=*/1,
+            /*relativeDeviceIdx=*/1,
             TBlockRange64::WithLength(100'128, blockCountForSecondDevice),
             TBlockRange64::WithLength(0, blockCountForSecondDevice )
         });

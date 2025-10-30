@@ -264,6 +264,24 @@ message TReplaceDevicesRequest
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Modify tags
+
+message TModifyTagsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // DiskId of the volume to modify tags for.
+    string DiskId = 2;
+
+    // Tags that should be added to the volume.
+    repeated string TagsToAdd = 3;
+
+    // Tags that should be removed from the volume.
+    repeated string TagsToRemove = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Graph of tests
 
 message TActionGraph
@@ -293,6 +311,7 @@ message TActionGraph
             TCmsRemoveHostRequest CmsRemoveHostRequest = 14;
             TCmsRemoveDeviceRequest CmsRemoveDeviceRequest = 15;
             TReplaceDevicesRequest ReplaceDevicesRequest = 16;
+            TModifyTagsRequest ModifyTagsRequest = 17;
         }
     }
 

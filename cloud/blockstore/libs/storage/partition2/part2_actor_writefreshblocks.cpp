@@ -28,10 +28,9 @@ IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&& ...args)
     if (replyLocal) {
         return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
             std::forward<T>(args)...);
-    } else {
-        return std::make_unique<TEvService::TEvWriteBlocksResponse>(
-            std::forward<T>(args)...);
     }
+    return std::make_unique<TEvService::TEvWriteBlocksResponse>(
+        std::forward<T>(args)...);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,9 +56,9 @@ private:
     const ui32 Channel;
     const ui32 BlockCount;
     const TVector<TRequest> Requests;
-    const TVector<TBlockRange32> BlockRanges;
-    const TVector<TBlockRange32> UninitializedBlockRanges;
-    const TVector<IWriteBlocksHandlerPtr> WriteHandlers;
+    TVector<TBlockRange32> BlockRanges;
+    TVector<TBlockRange32> UninitializedBlockRanges;
+    TVector<IWriteBlocksHandlerPtr> WriteHandlers;
     const ui64 FirstRequestDeletionId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
 

@@ -141,6 +141,7 @@ const char* GetOpcodeName(ibv_wc_opcode opcode);
 const char* GetEventName(rdma_cm_event_type event);
 
 TString PrintAddress(const sockaddr* addr);
+TString PrintAddressAndPort(const sockaddr* addr);
 TString PrintConnectionParams(const rdma_conn_param* param);
 TString PrintCompletion(ibv_wc* wc);
 

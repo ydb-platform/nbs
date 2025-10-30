@@ -31,12 +31,16 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 }                                                                              \
 // ASSERT_ERROR
 
+constexpr ui32 BlockSize = 4_KB;
+constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
+
     Y_UNIT_TEST(ShouldBalanceShardsRoundRobin)
     {
         TShardBalancerRoundRobin balancer(
-            4_KB,
-            1_TB,
-            1_MB,
+            BlockSize,
+            MaxFileBlocks,
+            1_TB /* desiredFreeSpaceReserve */,
+            1_MB /* minFreeSpaceReserve */,
             {"s1", "s2", "s3", "s4", "s5"});
         ASSERT_NO_SB_ERROR(0, "s1");
         ASSERT_NO_SB_ERROR(0, "s2");
@@ -49,7 +53,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         ASSERT_NO_SB_ERROR(0, "s4");
         ASSERT_NO_SB_ERROR(0, "s5");
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
@@ -72,7 +76,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // order changed: s1, s2, s3, s4, s5
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
@@ -94,7 +98,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // one of the shard has less than desired free space
         // order changed: s1, s2, s3, s4
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
@@ -115,7 +119,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // order changed: s1, s4
         // tier 2: s3, s5
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, (4_TB + 300_GB) / 4_KB, 0, 0},
@@ -131,7 +135,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // 3 close to full shards, 2 full shards
         // order changed: s3, s1, s5
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, (4_TB + 400_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB + 100_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (4_TB + 300_GB) / 4_KB, 0, 0},
@@ -148,7 +152,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // 1 close to full shard left: s3
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, (5_TB - 512_KB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB + 100_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (4_TB + 300_GB) / 4_KB, 0, 0},
@@ -161,7 +165,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // out of space
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, (5_TB - 512_KB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB + 100_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB + 300_GB) / 4_KB, 0, 0},
@@ -174,15 +178,77 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         ASSERT_SB_ERROR(0, E_FS_NOSPC);
     }
 
+    Y_UNIT_TEST(ShouldBalanceShardsBeforeTheFirstUpdateWithRoundRobin)
+    {
+        // We imitate the situation in when
+        // GetStrictFileSystemSizeEnforcementEnabled and
+        // desiredFreeSpaceReserve, minFreeSpaceReserve are zero
+        TShardBalancerRoundRobin balancer(
+            BlockSize,
+            MaxFileBlocks,
+            0 /* desiredFreeSpaceReserve */,
+            0 /* minFreeSpaceReserve */,
+            {"s1", "s2", "s3", "s4"});
+        ASSERT_NO_SB_ERROR(1_GB, "s1");
+        ASSERT_NO_SB_ERROR(1_GB, "s2");
+        ASSERT_NO_SB_ERROR(1_GB, "s3");
+        ASSERT_NO_SB_ERROR(1_GB, "s4");
+        ASSERT_NO_SB_ERROR(1_GB, "s1");
+        ASSERT_NO_SB_ERROR(1_GB, "s2");
+        ASSERT_NO_SB_ERROR(1_GB, "s3");
+        ASSERT_NO_SB_ERROR(1_GB, "s4");
+    }
+
+    Y_UNIT_TEST(ShouldBalanceShardsBeforeTheFirstUpdateWithRandom)
+    {
+        TShardBalancerRandom balancer(
+            BlockSize,
+            MaxFileBlocks,
+            0 /* desiredFreeSpaceReserve */,
+            0 /* minFreeSpaceReserve */,
+            {"s1", "s2", "s3", "s4"});
+
+        const ui64 iterations = 64;
+        for (ui64 i = 0; i < iterations; ++i) {
+            TString shardId;
+            const auto error = balancer.SelectShard(1_GB, &shardId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldBalanceShardsBeforeTheFirstUpdateWithWeightedhRandom)
+    {
+        TShardBalancerWeightedRandom balancer(
+            BlockSize,
+            MaxFileBlocks,
+            0 /* desiredFreeSpaceReserve */,
+            0 /* minFreeSpaceReserve */,
+            {"s1", "s2", "s3", "s4"});
+
+        const ui64 iterations = 64;
+        for (ui64 i = 0; i < iterations; ++i) {
+            TString shardId;
+            const auto error = balancer.SelectShard(1_GB, &shardId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+        }
+    }
+
     Y_UNIT_TEST(ShouldBalanceShardsWithFileSizeRoundRobin)
     {
         TShardBalancerRoundRobin balancer(
-            4_KB,
-            1_TB,
-            1_MB,
+            BlockSize,
+            MaxFileBlocks,
+            1_TB /* desiredFreeSpaceReserve */,
+            1_MB /* minFreeSpaceReserve */,
             {"s1", "s2", "s3", "s4", "s5"});
 
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, 512_GB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
             {5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
@@ -225,9 +291,10 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
     Y_UNIT_TEST(ShouldBalanceShardsRandom)
     {
         TShardBalancerRandom balancer(
-            4_KB,
-            1_TB,
-            1_MB,
+            BlockSize,
+            MaxFileBlocks,
+            1_TB /* desiredFreeSpaceReserve */,
+            1_MB /* minFreeSpaceReserve */,
             {"s1", "s2", "s3", "s4", "s5"});
         const ui64 shardCount = 5;
 
@@ -241,7 +308,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         THashMap<TString, ui64> hitCount;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(1_TB, &shardId);
+            const auto error = balancer.SelectShard(1_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -259,7 +326,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         UNIT_ASSERT_LE(count, iterations / shardCount + rangeToleration);
 
         // Now let's fill up last 3 shards to their limits
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, 0, 0, 0},
             {5_TB / 4_KB, 0, 0, 0},
             {5_TB / 4_KB, 5_TB / 4_KB, 0, 0},
@@ -292,9 +359,10 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
     Y_UNIT_TEST(ShouldBalanceShardsWeightedRandom)
     {
         TShardBalancerWeightedRandom balancer(
-            4_KB,
-            1_TB,
-            0,
+            BlockSize,
+            MaxFileBlocks,
+            1_TB /* desiredFreeSpaceReserve */,
+            0 /* minFreeSpaceReserve */,
             {"s1", "s2", "s3", "s4", "s5"});
         const ui64 shardCount = 5;
 
@@ -308,7 +376,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         THashMap<TString, ui64> hitCount;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(1_TB, &shardId);
+            const auto error = balancer.SelectShard(1_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -325,7 +393,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // Now let's fill up last 2 shards to their limits and leave first 3
         // shards 1:2:3 free space
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, (5_TB - 1_TB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 2_TB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 3_TB) / 4_KB, 0, 0},
@@ -364,7 +432,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // If we fill up all the shards with less than 1 TiB left it should not
         // be possible to select any shard
-        balancer.UpdateShardStats(
+        balancer.Update(
             TVector<TShardStats>(
                 shardCount,
                 TShardStats{
@@ -382,7 +450,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // For a situation where in every shard there is less than 1 TiB left,
         // we should disregard additional 1 TiB reserve
-        balancer.UpdateShardStats({
+        balancer.Update({
             {5_TB / 4_KB, (5_TB - 1_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 2_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, (5_TB - 3_GB) / 4_KB, 0, 0},

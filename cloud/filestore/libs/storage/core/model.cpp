@@ -540,9 +540,12 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     for (ui32 i = 0; i < shardCount; ++i) {
         result.ShardConfigs[i] = fileStore;
         result.ShardConfigs[i].ClearVersion();
-        result.ShardConfigs[i].SetBlocksCount(
-            config.GetAutomaticallyCreatedShardSize()
-            / fileStore.GetBlockSize());
+        const ui64 shardBlockCount =
+            config.GetStrictFileSystemSizeEnforcementEnabled()
+                ? fileStore.GetBlocksCount()
+                : config.GetAutomaticallyCreatedShardSize() /
+                      fileStore.GetBlockSize();
+        result.ShardConfigs[i].SetBlocksCount(shardBlockCount);
         result.ShardConfigs[i].SetFileSystemId(
             Sprintf("%s_s%u", fileStore.GetFileSystemId().c_str(), i + 1));
         SetupFileStorePerformanceAndChannels(

@@ -881,10 +881,13 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         constexpr ui64 MaxLength = 10;
         constexpr size_t MaxIntervalCount = 10;
 
+        auto stats = CreateDummyWriteBackCacheStats();
+
         for (size_t iter = 0; iter < IterationCount; iter++) {
             size_t intervalCount = RandomNumber(MaxIntervalCount) + 1;
 
-            TVector<TWriteDataEntry> entries(Reserve(intervalCount));
+            TVector<std::unique_ptr<TWriteDataEntry>> entries(
+                Reserve(intervalCount));
             TDeque<TWriteDataEntry*> entryPtrs;
 
             while (intervalCount-- > 0) {
@@ -896,11 +899,14 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
                 request->SetOffset(offset);
                 request->SetBuffer(TString(length, 'a'));
 
-                entries.emplace_back(std::move(request));
+                auto entry =
+                    std::make_unique<TWriteDataEntry>(std::move(request));
+
+                entries.push_back(std::move(entry));
             }
 
-            for (auto &entry: entries) {
-                entryPtrs.push_back(&entry);
+            for (const auto &entry: entries) {
+                entryPtrs.push_back(entry.get());
             }
 
             for (ui32 maxWriteRequestSize = 1;

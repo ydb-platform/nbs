@@ -63,6 +63,7 @@ def parse_args(args):
     parser.add_argument("--disable-disk-registry-based-disks", action='store_true', default=False)
     parser.add_argument("--disk-agent-count", type=int, default=1)
     parser.add_argument("--retry-broken-disk-registry-based-disk-checkpoint", action='store_true', default=False)
+    parser.add_argument("--cell-selection-policy", type=str, default="FIRST_IN_CONFIG")
 
     args, _ = parser.parse_known_args(args=args)
     return args
@@ -247,6 +248,7 @@ def start(argv):
             creation_and_deletion_allowed_only_for_disks_with_id_prefix=args.creation_and_deletion_allowed_only_for_disks_with_id_prefix,
             disable_disk_registry_based_disks=args.disable_disk_registry_based_disks,
             retry_broken_disk_registry_based_disk_checkpoint=args.retry_broken_disk_registry_based_disk_checkpoint,
+            cell_selection_policy=args.cell_selection_policy,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()

@@ -30,6 +30,16 @@ struct TRequestUsTimeBuckets
     static constexpr TStringBuf Units = "usec";
 
     static TVector<TString> MakeNames();
+
+    static const TString& GetBucketName(TDuration duration)
+    {
+        static const auto Names = MakeNames();
+
+        auto micros = duration.MicroSeconds();
+        auto it = LowerBound(Buckets.begin(), Buckets.end(), micros);
+        auto idx = std::distance(Buckets.begin(), it);
+        return Names[idx];
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

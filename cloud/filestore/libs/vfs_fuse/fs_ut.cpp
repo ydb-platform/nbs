@@ -276,9 +276,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(init.GetValue(WaitTimeout));
     }
 
-    Y_UNIT_TEST(ShouldHandleWriteRequest)
+    void CheckWriteRequestWithFSyncQueue(bool isFSyncQueueDisabled)
     {
-        TBootstrap bootstrap;
+        NProto::TFileStoreFeatures features;
+        features.SetFSyncQueueDisabled(isFSyncQueueDisabled);
+
+        TBootstrap bootstrap(CreateWallClockTimer(), CreateScheduler(), features);
 
         const ui64 nodeId = 123;
         const ui64 handleId = 456;
@@ -338,6 +341,16 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(fsync.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalledWithoutDataSync.load());
         UNIT_ASSERT_VALUES_EQUAL(1, fsyncCalledWithDataSync.load());
+    }
+
+    Y_UNIT_TEST(ShouldHandleWriteRequestWithFSyncQueue)
+    {
+        CheckWriteRequestWithFSyncQueue(false);
+    }
+
+    Y_UNIT_TEST(ShouldHandleWriteRequestWithoutFSyncQueue)
+    {
+        CheckWriteRequestWithFSyncQueue(true);
     }
 
     void CheckCreateOpenHandleRequest(bool isCreate, bool isWriteBackCacheEnabled)

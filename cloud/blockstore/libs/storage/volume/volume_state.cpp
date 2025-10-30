@@ -393,14 +393,16 @@ void TVolumeState::Reset()
     if (tags.contains(UseFastPathTagName)) {
         UseFastPath = true;
     }
-    if (tags.contains(IntermediateWriteBufferTagName)) {
+    if (!StorageConfig->GetDisableUsingIntermediateWriteBuffer() &&
+        tags.contains(IntermediateWriteBufferTagName))
+    {
         UseIntermediateWriteBuffer = true;
     }
     if (const auto* value = tags.FindPtr(SourceDiskIdTagName)) {
         SourceDiskId = *value;
-        UpdatePrincipalDiskId();
     }
 
+    UpdateLeadershipStatus();
     UseMirrorResync = StorageConfig->GetUseMirrorResync();
     ForceMirrorResync = StorageConfig->GetForceMirrorResync();
 
@@ -616,7 +618,13 @@ void TVolumeState::SetDiskRegistryBasedPartitionActor(
     TActorsStack actors,
     TNonreplicatedPartitionConfigPtr config)
 {
+    auto startInfo = DiskRegistryBasedPartitionActor.GetStartInfo();
+    if (!actors.Empty()) {
+        startInfo.OnStart();
+    }
     DiskRegistryBasedPartitionActor = std::move(actors);
+    DiskRegistryBasedPartitionActor.UpdateStartInfo(startInfo);
+
     NonreplicatedPartitionConfig = std::move(config);
 }
 
@@ -1010,7 +1018,7 @@ void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
 
     Y_DEFER
     {
-        UpdatePrincipalDiskId();
+        UpdateLeadershipStatus();
     };
 
     for (auto& followerInfo: FollowerDisks) {
@@ -1026,7 +1034,7 @@ void TVolumeState::RemoveFollower(const TLeaderFollowerLink& link)
 {
     Y_DEFER
     {
-        UpdatePrincipalDiskId();
+        UpdateLeadershipStatus();
     };
 
     EraseIf(
@@ -1065,7 +1073,7 @@ void TVolumeState::AddOrUpdateLeader(TLeaderDiskInfo leader)
 {
     Y_DEFER
     {
-        UpdatePrincipalDiskId();
+        UpdateLeadershipStatus();
     };
 
     for (auto& leaderInfo: LeaderDisks) {
@@ -1081,7 +1089,7 @@ void TVolumeState::RemoveLeader(const TLeaderFollowerLink& link)
 {
     Y_DEFER
     {
-        UpdatePrincipalDiskId();
+        UpdateLeadershipStatus();
     };
 
     EraseIf(
@@ -1099,7 +1107,12 @@ TString TVolumeState::GetPrincipalDiskId() const
     return PrincipalDiskId;
 }
 
-void TVolumeState::UpdatePrincipalDiskId()
+ELeadershipStatus TVolumeState::GetLeadershipStatus() const
+{
+    return LeadershipStatus;
+}
+
+void TVolumeState::UpdateLeadershipStatus()
 {
     // We need to return the diskId of the disk that is currently the principal.
     // The principal changes when all data is transferred to the follower. At
@@ -1110,6 +1123,14 @@ void TVolumeState::UpdatePrincipalDiskId()
     // If this is the source disk (leader), then we are look at FollowerDisks.
     for (const auto& followerInfo: FollowerDisks) {
         if (followerInfo.State == TFollowerDiskInfo::EState::DataReady) {
+            LeadershipStatus = ELeadershipStatus::LeadershipTransferring;
+            PrincipalDiskId = {};
+            return;
+        }
+        if (followerInfo.State ==
+            TFollowerDiskInfo::EState::LeadershipTransferred)
+        {
+            LeadershipStatus = ELeadershipStatus::LeadershipTransferred;
             PrincipalDiskId = followerInfo.Link.FollowerDiskId;
             return;
         }
@@ -1117,16 +1138,29 @@ void TVolumeState::UpdatePrincipalDiskId()
 
     // If this is the destination disk (follower), then we are look at LeaderDisks.
     for (const auto& leaderInfo: LeaderDisks) {
+        if (leaderInfo.State == TLeaderDiskInfo::EState::Following) {
+            LeadershipStatus = ELeadershipStatus::Follower;
+            PrincipalDiskId = SourceDiskId;
+            return;
+        }
         if (leaderInfo.State == TLeaderDiskInfo::EState::Leader ||
             leaderInfo.State == TLeaderDiskInfo::EState::Principal)
         {
+            LeadershipStatus = ELeadershipStatus::Principal;
             PrincipalDiskId = {};
             return;
         }
     }
 
     // If the disk was created as a follower, then it has the SourceDiskId set.
-    PrincipalDiskId = SourceDiskId;
+    if (SourceDiskId) {
+        LeadershipStatus = ELeadershipStatus::Follower;
+        PrincipalDiskId = SourceDiskId;
+        return;
+    }
+
+    LeadershipStatus = ELeadershipStatus::Principal;
+    PrincipalDiskId = {};
 }
 
 void TVolumeState::UpdateScrubberCounters(TScrubbingInfo counters)

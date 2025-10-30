@@ -958,6 +958,8 @@ void TVolumeActor::HandleHttpInfo(
          &TActor::HandleHttpInfo_ResetTransactionLatencyStats},
         {"resetRequestLatencyStats",
          &TActor::HandleHttpInfo_ResetRequestLatencyStats},
+         {"resetDeviceOperationLatencyStats",
+         &TActor::HandleHttpInfo_ResetDeviceOperationLatencyStats},
     }};
 
     const THttpHandlers getActions{{
@@ -969,6 +971,9 @@ void TVolumeActor::HandleHttpInfo(
          &TActor::HandleHttpInfo_GetTransactionsInflight},
         {"getRequestsInflight",
          &TActor::HandleHttpInfo_GetRequestsInflight},
+        {"getDeviceLatency", &TActor::HandleHttpInfo_GetDeviceLatency},
+        {"getDeviceOperationsInflight",
+         &TActor::HandleHttpInfo_GetDeviceOperationsInflight},
     }};
 
     auto* msg = ev->Get();
@@ -1078,6 +1083,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* tracesTabName = "Traces";
     const char* storageConfigTabName = "StorageConfig";
     const char* rawVolumeConfigTabName = "RawVolumeConfig";
+    const char* deviceLatencyTabName = "DeviceLatency";
 
     const char* activeTab = "tab-pane active";
     const char* inactiveTab = "tab-pane";
@@ -1091,6 +1097,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* tracesTab = inactiveTab;
     const char* storageConfigTab = inactiveTab;
     const char* rawVolumeConfigTab = inactiveTab;
+    const char* deviceLatencyTab = inactiveTab;
 
     if (tabName.empty() || tabName == overviewTabName) {
         overviewTab = activeTab;
@@ -1110,6 +1117,8 @@ void TVolumeActor::HandleHttpInfo_Default(
         storageConfigTab = activeTab;
     } else if (tabName == rawVolumeConfigTabName) {
         rawVolumeConfigTab = activeTab;
+    } else if (tabName == deviceLatencyTabName) {
+        deviceLatencyTab = activeTab;
     }
 
     TStringStream out;
@@ -1156,6 +1165,11 @@ void TVolumeActor::HandleHttpInfo_Default(
 
                 DIV_CLASS_ID(rawVolumeConfigTab, rawVolumeConfigTabName) {
                     RenderRawVolumeConfig(out);
+                }
+
+                DIV_CLASS_ID(deviceLatencyTab, deviceLatencyTabName)
+                {
+                    RenderDeviceLatency(out);
                 }
             }
         }
@@ -1496,6 +1510,13 @@ void TVolumeActor::RenderTransactions(IOutputStream& out) const
     }
 }
 
+void TVolumeActor::RenderDeviceLatency(IOutputStream& out) const
+{
+    HTML (out) {
+        DumpDeviceOperationLatency(out, TabletID(), DeviceOperationTracker);
+    }
+}
+
 void TVolumeActor::RenderTraces(IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
@@ -1632,6 +1653,12 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
             }
         }
 
+        DIV_CLASS ("row") {
+            DIV_CLASS ("col-md-6") {
+                RenderUptime(out);
+            }
+        }
+
         if (IsDiskRegistryMediaKind(mediaKind)) {
             DIV_CLASS("row") {
                 DIV_CLASS("col-md-6") {
@@ -1706,8 +1733,24 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     TABLEH() { out << "Partition"; }
                     TABLEH() { out << "Status"; }
                     TABLEH() { out << "Blocks Count"; }
+                    TABLEH() { out << "Uptime"; }
+                    TABLEH() { out << "Restarts"; }
                 }
             }
+
+            auto renderStartInfo = [&](const TPartitionStartInfo& startInfo)
+            {
+                TABLED () {
+                    if (auto startTime = startInfo.StartTime) {
+                        out << FormatDuration(TInstant::Now() - *startTime);
+                    } else {
+                        out << "Not running";
+                    }
+                }
+                TABLED () {
+                    out << startInfo.RestartCount;
+                }
+            };
 
             for (const auto& partition: State->GetPartitions()) {
                 TABLER() {
@@ -1724,6 +1767,7 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     TABLED() {
                         out << partition.PartitionConfig.GetBlocksCount();
                     }
+                    renderStartInfo(partition.GetStartInfo());
                 }
             }
 
@@ -1742,6 +1786,8 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
                     TABLED() {
                         out << State->GetConfig().GetBlocksCount();
                     }
+                    renderStartInfo(
+                        State->GetDiskRegistryBasedPartitionStartInfo());
                 }
             }
         }
@@ -2141,6 +2187,11 @@ void TVolumeActor::RenderStatus(IOutputStream& out) const
             }
         }
     }
+}
+
+void TVolumeActor::RenderUptime(IOutputStream& out) const
+{
+    out << "Uptime: " << FormatDuration(TInstant::Now() - VolumeStartTime);
 }
 
 void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
@@ -2860,6 +2911,16 @@ void TVolumeActor::HandleHttpInfo_ResetRequestLatencyStats(
     SendHttpResponse(ctx, *requestInfo, "");
 }
 
+void TVolumeActor::HandleHttpInfo_ResetDeviceOperationLatencyStats(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    DeviceOperationTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
+}
+
 void TVolumeActor::HandleHttpInfo_GetTransactionsInflight(
     const NActors::TActorContext& ctx,
     const TCgiParameters& params,
@@ -2890,6 +2951,37 @@ void TVolumeActor::HandleHttpInfo_GetRequestsInflight(
             RequestTimeTracker.GetInflightOperations(),
             GetCycleCount(),
             TInstant::Now())));
+}
+
+void TVolumeActor::HandleHttpInfo_GetDeviceOperationsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(
+            FormatDeviceOperationsInflight(
+                DeviceOperationTracker.GetInflightOperations(),
+                GetCycleCount(),
+                TInstant::Now())));
+}
+
+void TVolumeActor::HandleHttpInfo_GetDeviceLatency(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            DeviceOperationTracker.GetStatJson(GetCycleCount())));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

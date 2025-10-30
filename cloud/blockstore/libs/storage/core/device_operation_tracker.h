@@ -1,0 +1,112 @@
+#pragma once
+
+#include <cloud/blockstore/libs/storage/core/histogram.h>
+#include <cloud/blockstore/libs/storage/core/tablet.h>
+
+#include <util/datetime/base.h>
+#include <util/generic/hash.h>
+#include <util/generic/string.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TDeviceOperationTracker
+{
+public:
+    enum class EStatus
+    {
+        Inflight,
+        Finished,
+    };
+
+    enum class ERequestType
+    {
+        Read,
+        Write,
+        Zero,
+        Checksum
+    };
+
+    struct TBucketInfo
+    {
+        TString Key;
+        TString Description;
+        TString Tooltip;
+    };
+
+    struct TOperationInFlight
+    {
+        ui64 StartTime = 0;
+        ERequestType RequestType;
+        TString DeviceUUID;
+        TString AgentId;
+    };
+
+    struct TDeviceInfo
+    {
+        TString DeviceUUID;
+        TString AgentId;
+    };
+
+    using TOperationId = ui64;
+    using TInflightMap = THashMap<TOperationId, TOperationInFlight>;
+
+private:
+    struct TTimeHistogram: public THistogram<TRequestUsTimeBuckets>
+    {
+        TTimeHistogram()
+            : THistogram<TRequestUsTimeBuckets>(
+                  EHistogramCounterOption::ReportSingleCounter)
+        {}
+    };
+
+    struct TKey
+    {
+        ERequestType RequestType;
+        TString DeviceUUID;
+        TString AgentId;
+        EStatus Status = EStatus::Inflight;
+
+        [[nodiscard]] TString GetHtmlPrefix() const;
+
+        bool operator==(const TKey& rhs) const = default;
+    };
+
+    struct THash
+    {
+        ui64 operator()(const TKey& key) const;
+    };
+
+    TVector<TDeviceInfo> DeviceInfos;
+    THashMap<TString, TString> DeviceToAgent;
+
+    TInflightMap Inflight;
+    THashMap<TKey, TTimeHistogram, THash> Histograms;
+
+    void RebuildFromDeviceInfos();
+
+public:
+    TDeviceOperationTracker() = default;
+    explicit TDeviceOperationTracker(TVector<TDeviceInfo> deviceInfos);
+
+    void OnStarted(
+        TOperationId operationId,
+        const TString& deviceUUID,
+        ERequestType requestType,
+        ui64 startTime);
+
+    void OnFinished(TOperationId operationId, ui64 finishTime);
+
+    void UpdateDevices(TVector<TDeviceInfo> deviceInfos);
+
+    [[nodiscard]] TString GetStatJson(ui64 nowCycles) const;
+    [[nodiscard]] TVector<TBucketInfo> GetTimeBuckets() const;
+    [[nodiscard]] TVector<TDeviceInfo> GetDeviceInfos() const;
+
+    void ResetStats();
+
+    [[nodiscard]] const TInflightMap& GetInflightOperations() const;
+};
+
+}   // namespace NCloud::NBlockStore::NStorage

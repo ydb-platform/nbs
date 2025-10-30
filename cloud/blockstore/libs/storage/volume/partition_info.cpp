@@ -4,6 +4,19 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TPartitionStartInfo::OnStart()
+{
+    StartTime = TInstant::Now();
+    ++RestartCount;
+}
+
+void TPartitionStartInfo::OnStop()
+{
+    StartTime = std::nullopt;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TActorsStack::TActorsStack(NActors::TActorId actor, EActorPurpose purpose)
 {
     Push(actor, purpose);
@@ -21,6 +34,12 @@ void TActorsStack::Push(NActors::TActorId actorId, EActorPurpose purpose)
 void TActorsStack::Clear()
 {
     Actors.clear();
+    StartInfo.OnStop();
+}
+
+bool TActorsStack::Empty() const
+{
+    return Actors.empty();
 }
 
 bool TActorsStack::IsKnown(NActors::TActorId actorId) const
@@ -49,6 +68,16 @@ NActors::TActorId TActorsStack::GetTopWrapper() const
     return {};
 }
 
+void TActorsStack::UpdateStartInfo(const TPartitionStartInfo& startInfo)
+{
+    StartInfo = startInfo;
+}
+
+TPartitionStartInfo TActorsStack::GetStartInfo() const
+{
+    return StartInfo;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionInfo::TPartitionInfo(
@@ -72,7 +101,11 @@ void TPartitionInfo::Init(const NActors::TActorId& bootstrapper)
 
 void TPartitionInfo::SetStarted(TActorsStack actors)
 {
+    auto startInfo = RelatedActors.GetStartInfo();
+    startInfo.OnStart();
     RelatedActors = std::move(actors);
+    RelatedActors.UpdateStartInfo(startInfo);
+
     State = STARTED;
     Message = {};
 }
@@ -135,6 +168,11 @@ TString TPartitionInfo::GetStatus() const
     }
 
     return out.Str();
+}
+
+TPartitionStartInfo TPartitionInfo::GetStartInfo() const
+{
+    return RelatedActors.GetStartInfo();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

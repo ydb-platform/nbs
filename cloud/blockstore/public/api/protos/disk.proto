@@ -52,6 +52,19 @@ enum EDevicePoolKind
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Allows to control data integrity validation
+
+enum EDataIntegrityValidationPolicy
+{
+    // Data integrity validation is disabled.
+    DIVP_DISABLED = 0;
+    // Data integrity validation is enabled.
+    DIVP_ENABLED = 1;
+    // Non-present checksums will be treated as validation errors.
+    DIVP_ENABLED_FORCED = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Device Override
 
 message TDeviceOverride

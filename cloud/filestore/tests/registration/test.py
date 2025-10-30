@@ -222,6 +222,9 @@ def setup_and_run_test_for_server(is_secure_kikimr, is_secure_filestore):
         FilestoreServerConfigGenerator,
         wait_for_filestore_server,
         check_filestore_server)
+
+    kikimr_cluster.stop()
+
     return result[0]
 
 
@@ -244,6 +247,9 @@ def setup_and_run_test_for_vhost(is_secure_kikimr, is_secure_filestore):
         FilestoreVhostConfigGenerator,
         wait_for_filestore_vhost,
         None)
+
+    kikimr_cluster.stop()
+
     return result[0]
 
 
@@ -278,6 +284,8 @@ def setup_and_run_registration_migration(
             ic_port = result[1]
         else:
             assert ic_port == result[1]
+
+    kikimr_cluster.stop()
 
     return True
 

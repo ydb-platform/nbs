@@ -43,19 +43,9 @@ void LogError(const TString& message)
 
 }   // namespace
 
-EWellKnownResultCodes OverlapStatusToResult(EOverlapStatus overlapStatus)
+bool IsOverlapped(EOverlapStatus overlapStatus)
 {
-    switch (overlapStatus) {
-        case EOverlapStatus::NotOverlapped:
-            return S_OK;
-        case EOverlapStatus::Partial:
-        case EOverlapStatus::Complete:
-        case EOverlapStatus::Unknown:
-            return E_REJECTED;
-            break;
-    }
-    Y_ABORT();
-    return E_REJECTED;
+    return overlapStatus != EOverlapStatus::NotOverlapped;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -409,6 +409,7 @@ _FIO = {
                 iodepths=[32],
                 sizes=[4 * 1024],
                 verify=False,
+                randseed=5,
             ).values()
         ],
         client_count=4,
@@ -424,6 +425,7 @@ _FIO = {
                 unique_name=True,
                 numjobs=[32, 1],
                 verify=False,
+                randseed=5,
             ).values(),
         ],
         client_count=4,

@@ -142,7 +142,6 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
 
     if (assignVolumeRequestId) {
         result.SetVolumeRequestId(request.GetHeaders().GetVolumeRequestId());
-        result.SetMultideviceRequest(false);
     }
 
     if (auto checksum = CombineChecksums(request.GetChecksums());

@@ -220,7 +220,7 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         return true;
     }
     // TODO: access check
-    if (!HasSpaceLeft(args.Node->Attrs, args.ByteRange.End())) {
+    if (!HasSpaceLeft(args.Node->Attrs.GetSize(), args.ByteRange.End())) {
         args.Error = ErrorNoSpaceLeft();
         return true;
     }

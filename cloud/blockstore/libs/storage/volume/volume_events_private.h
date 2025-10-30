@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
-
+#include <cloud/blockstore/libs/storage/core/device_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
@@ -482,6 +482,39 @@ struct TEvVolumePrivate
     };
 
     //
+    //  DiskRegistryDeviceOperationStarted
+    //
+
+    struct TDiskRegistryDeviceOperationStarted
+    {
+        TString DeviceUUID;
+        TDeviceOperationTracker::ERequestType RequestType;
+        ui64 OperationId;
+
+        TDiskRegistryDeviceOperationStarted(
+            TString deviceUUID,
+            TDeviceOperationTracker::ERequestType requestType,
+            ui64 operationId)
+            : DeviceUUID(std::move(deviceUUID))
+            , RequestType(requestType)
+            , OperationId(operationId)
+        {}
+    };
+
+    //
+    //  DiskRegistryDeviceOperationFinished
+    //
+
+    struct TDiskRegistryDeviceOperationFinished
+    {
+        ui64 OperationId;
+
+        explicit TDiskRegistryDeviceOperationFinished(ui64 operationId)
+            : OperationId(operationId)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -512,6 +545,8 @@ struct TEvVolumePrivate
         EvLinkOnFollowerDestroyed,
         EvLinkOnFollowerDataTransferred,
         EvCreateLinkFinished,
+        EvDiskRegistryDeviceOperationStarted,
+        EvDiskRegistryDeviceOperationFinished,
 
         EvEnd
     };
@@ -608,6 +643,14 @@ struct TEvVolumePrivate
 
     using TEvCreateLinkFinished =
         TResponseEvent<TCreateLinkFinished, EvCreateLinkFinished>;
+
+    using TEvDiskRegistryDeviceOperationStarted = TRequestEvent<
+        TDiskRegistryDeviceOperationStarted,
+        EvDiskRegistryDeviceOperationStarted>;
+
+    using TEvDiskRegistryDeviceOperationFinished = TRequestEvent<
+        TDiskRegistryDeviceOperationFinished,
+        EvDiskRegistryDeviceOperationFinished>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

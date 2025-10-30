@@ -40,7 +40,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #ifndef HAS_TRUNCATE64
@@ -66,6 +68,8 @@ enum action
     ACTION_SYMLINK,
     ACTION_RENAME,
     ACTION_MKFIFO,
+    ACTION_MKNOD,
+    ACTION_BIND,
     ACTION_CHMOD,
 #ifdef HAS_LCHMOD
     ACTION_LCHMOD,
@@ -111,6 +115,8 @@ static struct syscall_desc syscalls[] = {
     {"symlink", ACTION_SYMLINK, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
     {"rename", ACTION_RENAME, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
     {"mkfifo", ACTION_MKFIFO, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
+    {"mknod", ACTION_MKNOD, { TYPE_STRING, TYPE_STRING, TYPE_NUMBER, TYPE_NUMBER, TYPE_NUMBER, TYPE_NONE}},
+    {"bind", ACTION_BIND, { TYPE_STRING, TYPE_NONE }},
     {"chmod", ACTION_CHMOD, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
 #ifdef HAS_LCHMOD
     {"lchmod", ACTION_LCHMOD, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
@@ -464,6 +470,47 @@ static unsigned int call_syscall(struct syscall_desc* scall, char* argv[])
         case ACTION_MKFIFO:
             rval = mkfifo(STR(0), NUM(1));
             break;
+        case ACTION_MKNOD: {
+            mode_t ntype;
+            dev_t dev;
+
+            dev = makedev(NUM(3), NUM(4));
+            if (strcmp(STR(1), "c") == 0) {      /* character device */
+                ntype = S_IFCHR;
+            }
+            else if (strcmp(STR(1), "b") == 0) { /* block device */
+                ntype = S_IFBLK;
+            }
+            else if (strcmp(STR(1), "f") == 0) { /* fifo special */
+                ntype = S_IFIFO;
+            }
+            else if (strcmp(STR(1), "d") == 0) { /* directory */
+                ntype = S_IFDIR;
+            }
+            else if (strcmp(STR(1), "o") == 0) { /* regular file */
+                ntype = S_IFREG;
+            }
+            else {
+                fprintf(stderr, "wrong argument 1\n");
+                exit(1);
+            }
+            rval = mknod(STR(0), ntype | NUM(2), dev);
+
+            break;
+        }
+        case ACTION_BIND: {
+            struct sockaddr_un sunx;
+
+            sunx.sun_family = AF_UNIX;
+            strncpy(sunx.sun_path, STR(0), sizeof(sunx.sun_path) - 1);
+            sunx.sun_path[sizeof(sunx.sun_path) - 1] = '\0';
+            rval = socket(AF_UNIX, SOCK_STREAM, 0);
+            if (rval < 0) {
+                break;
+            }
+            rval = bind(rval, (struct sockaddr *)&sunx, sizeof(sunx));
+            break;
+        }
         case ACTION_CHMOD:
             rval = chmod(STR(0), NUM(1));
             break;

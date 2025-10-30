@@ -174,6 +174,9 @@ constexpr size_t BlockStoreRequestsCount = (size_t)EBlockStoreRequest::MAX;
 
 const TString& GetBlockStoreRequestName(EBlockStoreRequest requestType);
 
+template<typename TRequest>
+TString GetBlockStoreRequestName();
+
 enum class ESysRequestType
 {
     Compaction = 10000,

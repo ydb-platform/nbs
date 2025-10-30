@@ -321,7 +321,8 @@ void BuildVolumeTabs(IOutputStream& out)
         << "<li><a href='#Latency' data-toggle='tab'>Latency</a></li>"
         << "<li><a href='#Transactions' data-toggle='tab'>Transactions</a></li>"
         << "<li><a href='#Traces' data-toggle='tab'>Traces</a></li>"
-        << "<li><a href='#StorageConfig' data-toggle='tab'>StorageConfig</a></li></ul>";
+        << "<li><a href='#StorageConfig' data-toggle='tab'>StorageConfig</a></li>"
+        << "<li><a href='#DeviceLatency' data-toggle='tab'>DeviceLatency</a></li></ul>";
 }
 
 void BuildPartitionTabs(IOutputStream& out)
@@ -1879,6 +1880,73 @@ TString FormatBSGroupOperationsInflight(
     return out.Str();
 }
 
+TString FormatDeviceOperationsInflight(
+    const TDeviceOperationTracker::TInflightMap& operations,
+    ui64 nowCycles,
+    TInstant now)
+{
+    TStringStream out;
+
+    HTML (out) {
+        DIV_CLASS ("container") {
+            TABLE_SORTABLE()
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "ID";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
+                        TABLEH () {
+                            out << "Device UUID";
+                        }
+                        TABLEH () {
+                            out << "Agent ID";
+                        }
+                        TABLEH () {
+                            out << "Start Time";
+                        }
+                        TABLEH () {
+                            out << "Duration";
+                        }
+                    }
+                }
+                TABLEBODY()
+                {
+                    for (const auto& [id, op]: operations) {
+                        auto duration =
+                            CyclesToDurationSafe(nowCycles - op.StartTime);
+                        TABLER () {
+                            TABLED () {
+                                out << id;
+                            }
+                            TABLED () {
+                                out << op.RequestType;
+                            }
+                            TABLED () {
+                                out << op.DeviceUUID;
+                            }
+                            TABLED () {
+                                out << op.AgentId;
+                            }
+                            TABLED () {
+                                out << (now - duration).ToStringUpToSeconds();
+                            }
+                            TABLED () {
+                                out << FormatDuration(duration);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out.Str();
+}
+
 const TStringBuf DefaultButtonStyle =
     "display:inline-block;"
     "padding:2px 8px;"
@@ -1909,6 +1977,236 @@ void RenderStyledPostButton(
         << "onclick=\"fetch('" << url << "', {method:'POST'})"
         << ".catch(e => alert('Error: ' + e.message))\">" << text
         << "</button>";
+}
+
+void AddDeviceOperationLatencyCSS(IOutputStream& out)
+{
+    out << "<style>"
+        << R"(
+        .table-latency {
+            border-collapse: collapse;
+            table-layout: auto;
+        }
+
+        .table-latency td:not(:first-child):not(:nth-child(2)) {
+            white-space: nowrap;
+            text-align: right;
+            padding: 5px;
+        }
+
+        .table-latency th:not(:first-child):not(:nth-child(2)) {
+            min-width: 35px;
+        }
+
+        .table-latency th {
+            padding: 5px 2px;
+            text-align: center;
+            vertical-align: bottom;
+            position: relative;
+        }
+
+        .table-latency th:first-child,
+        .table-latency th:nth-child(2) {
+            width: auto;
+            padding: 6px 8px;
+            vertical-align: middle;
+        }
+
+        .rotated-header {
+            transform: rotate(-90deg);
+            transform-origin: left top 0;
+            position: absolute;
+            bottom: -35px;
+            left: 50%;
+            white-space: nowrap;
+            font-size: 14px;
+            padding: 5px 0;
+            margin-left: -10px;
+        })"
+        << "</style>";
+}
+
+void RenderDeviceOperationLatencyCell(
+    IOutputStream& out,
+    const TString& requestType,
+    const TString& deviceUUID,
+    const TString& timeKey)
+{
+    HTML (out) {
+        TABLED () {
+            DIV_CLASS_ID(
+                "latency-item",
+                requestType + "_" + deviceUUID + "_" + timeKey)
+            {}
+        }
+    }
+}
+
+void DumpLatencyTableForRequestType(
+    IOutputStream& out,
+    const TDeviceOperationTracker& deviceTracker,
+    TDeviceOperationTracker::ERequestType requestType)
+{
+    const auto timeBuckets = deviceTracker.GetTimeBuckets();
+    const auto deviceInfos = deviceTracker.GetDeviceInfos();
+    const TString requestTypeStr = ToString(requestType);
+
+    HTML (out) {
+        TAG (TH3) {
+            out << "Operation Type: " << requestTypeStr;
+        }
+
+        TABLE_CLASS ("table-latency") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Device UUID";
+                    }
+                    TABLEH () {
+                        out << "Agent ID";
+                    }
+                    for (const auto& timeBucket: timeBuckets) {
+                        TABLEH () {
+                            DIV_CLASS ("tooltip-latency") {
+                                DIV_CLASS ("rotated-header") {
+                                    out << timeBucket.Description;
+                                }
+                                if (!timeBucket.Tooltip.empty()) {
+                                    SPAN_CLASS ("tooltiptext-latency") {
+                                        out << timeBucket.Tooltip;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            TABLEBODY()
+            {
+                for (const auto& deviceInfo: deviceInfos) {
+                    TABLER () {
+                        TABLED () {
+                            out << deviceInfo.DeviceUUID;
+                        }
+
+                        TABLED () {
+                            out << deviceInfo.AgentId;
+                        }
+
+                        for (const auto& timeBucket: timeBuckets) {
+                            RenderDeviceOperationLatencyCell(
+                                out,
+                                requestTypeStr,
+                                deviceInfo.DeviceUUID,
+                                timeBucket.Key);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void DumpDeviceOperationLatency(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TDeviceOperationTracker& deviceTracker)
+{
+    const TString containerId = "device-operations-latency-container";
+    const TString toggleId = "device-operations-auto-refresh-toggle";
+
+    HTML (out) {
+        AddDeviceOperationLatencyCSS(out);
+
+        RenderAutoRefreshToggle(
+            out,
+            toggleId,
+            "Auto update device operations",
+            true);
+
+        RenderStyledPostButton(
+            out,
+            "/tablets/app?action=resetDeviceOperationLatencyStats&TabletID=" +
+                ToString(tabletId),
+            "Reset");
+
+        RenderStyledLink(
+            out,
+            "/tablets/app?action=getDeviceOperationsInflight&TabletID=" +
+                ToString(tabletId),
+            "Inflight");
+
+        DIV_CLASS_ID(" ", containerId)
+        {
+            DumpLatencyTableForRequestType(
+                out,
+                deviceTracker,
+                TDeviceOperationTracker::ERequestType::Read);
+            DumpLatencyTableForRequestType(
+                out,
+                deviceTracker,
+                TDeviceOperationTracker::ERequestType::Write);
+            DumpLatencyTableForRequestType(
+                out,
+                deviceTracker,
+                TDeviceOperationTracker::ERequestType::Zero);
+            DumpLatencyTableForRequestType(
+                out,
+                deviceTracker,
+                TDeviceOperationTracker::ERequestType::Checksum);
+        }
+
+        out << R"(<script>
+            function updateDeviceOperationsData(result, container) {
+                if (!result.stat) return;
+
+                container.querySelectorAll('[id*="_"]').forEach(cell => {
+                    cell.textContent = '';
+                });
+
+                const data = {};
+                for (const [fullKey, value] of Object.entries(result.stat)) {
+                    const parts = fullKey.split('_');
+                    const op = parts[0];
+                    const device = parts[1];
+                    const type = parts[2];
+                    const bucket = parts[3];
+                    const key = `${op}_${device}_${bucket}`;
+
+                    if (!data[key]) data[key] = {};
+                    data[key][type] = value;
+                }
+
+                for (const [key, values] of Object.entries(data)) {
+                    const cell = container.querySelector('#' + key);
+                    if (!cell) continue;
+
+                    const finished = values.finished || '0';
+                    const inflight = values.inflight || '0';
+
+                    if (finished !== '0' && inflight !== '0') {
+                        cell.textContent = finished + ' ' + inflight;
+                    }
+                    else if (finished !== '0') {
+                        cell.textContent = finished;
+                    }
+                    else if (inflight !== '0') {
+                        cell.textContent = inflight;
+                    }
+                }
+            }
+        </script>)";
+
+        RenderAutoRefreshScript(
+            out,
+            containerId,
+            toggleId,
+            "getDeviceLatency",
+            tabletId,
+            1000,
+            "updateDeviceOperationsData");
+    }
 }
 
 }   // namespace NMonitoringUtils

@@ -26,8 +26,8 @@ enum class EOverlapStatus
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-// Translate EOverlapStatus to EWellKnownResultCodes.
-EWellKnownResultCodes OverlapStatusToResult(EOverlapStatus overlapStatus);
+// Returns true if the request overlapped.
+bool IsOverlapped(EOverlapStatus overlapStatus);
 
 ///////////////////////////////////////////////////////////////////////////////
 

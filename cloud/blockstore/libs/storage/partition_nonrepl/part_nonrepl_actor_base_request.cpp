@@ -24,12 +24,16 @@ TDiskAgentBaseRequestActor::TDiskAgentBaseRequestActor(
         TRequestTimeoutPolicy timeoutPolicy,
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
+        TActorId volumeActorId,
         const TActorId& part,
-        TChildLogTitle logTitle)
+        TChildLogTitle logTitle,
+        ui64 deviceOperationId)
     : RequestInfo(std::move(requestInfo))
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
+    , VolumeActorId(volumeActorId)
     , Part(part)
+    , DeviceOperationId(deviceOperationId)
     , LogTitle(std::move(logTitle))
     , RequestName(std::move(requestName))
     , RequestId(requestId)
@@ -112,11 +116,51 @@ void TDiskAgentBaseRequestActor::Done(
     Die(ctx);
 }
 
+void TDiskAgentBaseRequestActor::OnRequestStarted(
+    const NActors::TActorContext& ctx,
+    const TString& deviceUUID,
+    TDeviceOperationTracker::ERequestType requestType,
+    size_t requestIndex)
+{
+    if (!DeviceOperationId) {
+        return;
+    }
+
+    auto startEvent = std::make_unique<
+        TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
+        deviceUUID,
+        requestType,
+        DeviceOperationId + requestIndex);
+
+    ctx.Send(VolumeActorId, std::move(startEvent));
+}
+
+void TDiskAgentBaseRequestActor::OnRequestFinished(
+    const NActors::TActorContext& ctx,
+    size_t requestIndex)
+{
+    if (!DeviceOperationId) {
+        return;
+    }
+
+    auto finishEvent = std::make_unique<
+        TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
+        DeviceOperationId + requestIndex);
+
+    ctx.Send(VolumeActorId, std::move(finishEvent));
+}
+
 void TDiskAgentBaseRequestActor::HandleCancelRequest(
     const TEvNonreplPartitionPrivate::TEvCancelRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    for (size_t requestIndex = 0; requestIndex < DeviceRequests.size();
+         ++requestIndex)
+    {
+        OnRequestFinished(ctx, requestIndex);
+    }
 
     TVector<TString> devices;
     for (const auto& request: DeviceRequests) {

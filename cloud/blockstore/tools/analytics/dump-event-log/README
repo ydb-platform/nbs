@@ -1,0 +1,52 @@
+Example queries:
+
+1. Insert disk, range and time for investigations.
+```
+INSERT into Ranges(DiskId, StartAt, EndAt, StartBlock, EndBlock)
+       values ('sample-disk-id', '2025-10-14T06:45:00.000000Z', '2025-10-14T12:40:00.000000Z', 6708224, 6709247);
+```
+
+2. Find all requests and insert it into temp table
+```
+create table tmp1 as
+SELECT
+    r.id,
+    r.At,
+    d.DiskId,
+    rt.Request,
+    r.StartBlock,
+    r.EndBlock,
+    r.DurationUs,
+    r.StartBlock / 1024 as StartRangeIndex,
+    r.EndBlock / 1024 as EndRangeIndex
+from Requests as r
+INNER join Disks as d on d.Id == r.DiskId
+INNER JOIN RequestTypes as rt on rt.id = r.RequestTypeId
+INNER join Ranges as rn
+    on d.DiskId == rn.DiskId
+    and (rn.StartBlock is null or rn.StartBlock <= r.EndBlock)
+    and (rn.EndBlock is null or rn.EndBlock >= r.StartBlock)
+    and (rn.StartAt is null or rn.StartAt <= r.At)
+    and (rn.EndAt is null or rn.EndAt >= r.At)
+```
+
+3. Find overwritten blocks for range
+```
+select
+    rn.DiskId,
+    rn.StartBlock,
+    bs.BlockIndx,
+    min(f.At) as firstAt,
+    max(f.At) as lastAt,
+    count(f.id) as cnt
+from Ranges as rn
+inner join BlocksSequence as bs
+    on rn.StartBlock <= rn.StartBlock + bs.BlockIndx
+    and rn.EndBlock >= rn.StartBlock + bs.BlockIndx
+left join tmp1 as f
+    on (bs.BlockIndx + rn.StartBlock) >= f.StartBlock
+    and (bs.BlockIndx + rn.StartBlock) <= f.EndBlock
+    and f.Request == 'WriteBlocks'
+group by bs.BlockIndx
+order by bs.BlockIndx
+```

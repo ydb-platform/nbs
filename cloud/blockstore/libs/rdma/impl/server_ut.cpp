@@ -161,6 +161,12 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
             throw TServiceError(MAKE_SYSTEM_ERROR(EINVAL));
         };
 
+        context->DestroyQP = [](rdma_cm_id* id) {
+            if (id->qp == nullptr) {
+                throw TServiceError(MAKE_SYSTEM_ERROR(EINVAL));
+            }
+        };
+
         context->Reject = [&](rdma_cm_id* id, const void* data, ui8 size) {
             Y_UNUSED(data);
             Y_UNUSED(size);

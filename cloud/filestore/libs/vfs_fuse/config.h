@@ -59,6 +59,8 @@ public:
 
     bool GetZeroCopyWriteEnabled() const;
 
+    bool GetFSyncQueueDisabled() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

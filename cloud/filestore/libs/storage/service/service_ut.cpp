@@ -4025,6 +4025,39 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         std::vector<TString> data(64);
         service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
     }
+
+    Y_UNIT_TEST(ShouldHandleToggleServiceState)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+
+        auto headers = service.InitSession(fs, "client");
+
+        auto pingResponse = service.Ping();
+        UNIT_ASSERT_EQUAL_C(
+            NProto::EServiceState::SERVICE_STATE_RUNNING,
+            pingResponse->Record.GetServiceState(),
+            pingResponse->Record.ShortDebugString());
+
+        NProtoPrivate::TToggleServiceStateRequest toggleRequest;
+        toggleRequest.SetDesiredServiceState(
+            NProto::EServiceState::SERVICE_STATE_STOPPING);
+        TString buf;
+        google::protobuf::util::MessageToJsonString(toggleRequest, &buf);
+        service.ExecuteAction("toggleservicestate", buf);
+
+        pingResponse = service.Ping();
+        UNIT_ASSERT_EQUAL_C(
+            NProto::EServiceState::SERVICE_STATE_STOPPING,
+            pingResponse->Record.GetServiceState(),
+            pingResponse->Record.ShortDebugString());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -123,6 +123,7 @@ struct TTestExecutorSettings
     TLog Log;
     bool RunInCallbacks = false;
     bool NoDirect = false;
+    bool PrintDebugStats = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

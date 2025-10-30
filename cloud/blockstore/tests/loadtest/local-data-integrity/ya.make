@@ -11,7 +11,7 @@ DEPENDS(
 )
 
 DATA(
-    arcadia/cloud/blockstore/tests/loadtest/local-checksums
+    arcadia/cloud/blockstore/tests/loadtest/local-data-integrity
 )
 
 REQUIREMENTS(

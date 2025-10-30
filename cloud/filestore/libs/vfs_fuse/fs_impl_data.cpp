@@ -77,7 +77,7 @@ void TFileSystem::Create(
     }
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
     Session->CreateHandle(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -88,7 +88,7 @@ void TFileSystem::Create(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {parent});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyCreate(
@@ -437,7 +437,7 @@ void TFileSystem::Write(
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {ino}, THandle {handle});
+    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
 
     Session->WriteData(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -448,7 +448,7 @@ void TFileSystem::Write(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyWrite(*callContext, error, req, size);
@@ -492,7 +492,7 @@ void TFileSystem::WriteBufLocal(
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {ino}, THandle {handle});
+    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
 
     Session->WriteDataLocal(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -503,7 +503,7 @@ void TFileSystem::WriteBufLocal(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyWrite(*callContext, error, req, size);
@@ -601,7 +601,7 @@ void TFileSystem::WriteBuf(
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {ino}, THandle {handle});
+    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
 
     Session->WriteData(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -612,7 +612,7 @@ void TFileSystem::WriteBuf(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyWrite(*callContext, error, req, size);
@@ -670,7 +670,7 @@ void TFileSystem::FAllocate(
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
-    FSyncQueue.Enqueue(reqId, TNodeId {ino}, THandle {handle});
+    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
 
     Session->AllocateData(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -681,7 +681,7 @@ void TFileSystem::FAllocate(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue.Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
 
             if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyError(*callContext, error, req, 0);
@@ -728,7 +728,7 @@ void TFileSystem::Flush(
             }
         };
 
-    auto fsyncQueueFuture = FSyncQueue.WaitForDataRequests(
+    auto fsyncQueueFuture = FSyncQueue->WaitForDataRequests(
         reqId,
         TNodeId {ino},
         THandle {fi->fh});
@@ -823,20 +823,20 @@ void TFileSystem::FSync(
 
     if (fi) {
         if (datasync) {
-            fsyncQueueFuture = FSyncQueue.WaitForDataRequests(
+            fsyncQueueFuture = FSyncQueue->WaitForDataRequests(
                 reqId,
                 TNodeId {ino},
                 THandle {fi->fh});
         } else {
-            fsyncQueueFuture = FSyncQueue.WaitForRequests(
+            fsyncQueueFuture = FSyncQueue->WaitForRequests(
                 reqId,
                 TNodeId {ino});
         }
     } else {
         if (datasync) {
-            fsyncQueueFuture = FSyncQueue.WaitForDataRequests(reqId);
+            fsyncQueueFuture = FSyncQueue->WaitForDataRequests(reqId);
         } else {
-            fsyncQueueFuture = FSyncQueue.WaitForRequests(reqId);
+            fsyncQueueFuture = FSyncQueue->WaitForRequests(reqId);
         }
     }
 
@@ -942,9 +942,9 @@ void TFileSystem::FSyncDir(
     TFuture<NProto::TError> fsyncQueueFuture;
 
     if (datasync) {
-        fsyncQueueFuture = FSyncQueue.WaitForDataRequests(reqId);
+        fsyncQueueFuture = FSyncQueue->WaitForDataRequests(reqId);
     } else {
-        fsyncQueueFuture = FSyncQueue.WaitForRequests(reqId);
+        fsyncQueueFuture = FSyncQueue->WaitForRequests(reqId);
     }
 
     auto future = fsyncQueueFuture;
