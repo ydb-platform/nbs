@@ -40,7 +40,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #ifndef HAS_TRUNCATE64
@@ -67,6 +69,7 @@ enum action
     ACTION_RENAME,
     ACTION_MKFIFO,
     ACTION_MKNOD,
+    ACTION_BIND,
     ACTION_CHMOD,
 #ifdef HAS_LCHMOD
     ACTION_LCHMOD,
@@ -113,6 +116,7 @@ static struct syscall_desc syscalls[] = {
     {"rename", ACTION_RENAME, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
     {"mkfifo", ACTION_MKFIFO, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
     {"mknod", ACTION_MKNOD, { TYPE_STRING, TYPE_STRING, TYPE_NUMBER, TYPE_NUMBER, TYPE_NUMBER, TYPE_NONE}},
+    {"bind", ACTION_BIND, { TYPE_STRING, TYPE_NONE }},
     {"chmod", ACTION_CHMOD, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
 #ifdef HAS_LCHMOD
     {"lchmod", ACTION_LCHMOD, {TYPE_STRING, TYPE_NUMBER, TYPE_NONE}},
@@ -492,6 +496,19 @@ static unsigned int call_syscall(struct syscall_desc* scall, char* argv[])
             }
             rval = mknod(STR(0), ntype | NUM(2), dev);
 
+            break;
+        }
+        case ACTION_BIND: {
+            struct sockaddr_un sunx;
+
+            sunx.sun_family = AF_UNIX;
+            strncpy(sunx.sun_path, STR(0), sizeof(sunx.sun_path) - 1);
+            sunx.sun_path[sizeof(sunx.sun_path) - 1] = '\0';
+            rval = socket(AF_UNIX, SOCK_STREAM, 0);
+            if (rval < 0) {
+                break;
+            }
+            rval = bind(rval, (struct sockaddr *)&sunx, sizeof(sunx));
             break;
         }
         case ACTION_CHMOD:
