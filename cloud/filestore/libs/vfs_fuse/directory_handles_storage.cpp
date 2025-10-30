@@ -34,7 +34,11 @@ void TDirectoryHandlesStorage::StoreHandle(
         return;
     }
 
-    UpdateHandle(handleId, initialHandleChunk);
+    TBuffer record = SerializeHandle(handleId, initialHandleChunk);
+
+    TGuard guard(TableLock);
+
+    CreateRecord(handleId, record);
 }
 
 void TDirectoryHandlesStorage::UpdateHandle(
@@ -45,13 +49,30 @@ void TDirectoryHandlesStorage::UpdateHandle(
 
     TGuard guard(TableLock);
 
+    // update can be called when handle already deleted, in this case just
+    // report error
+    if (!HandleIdToIndices.contains(handleId)) {
+        ReportDirectoryHandlesStorageError(
+            "Failed to update record for directory handle, previous parts are "
+            "missing");
+        return;
+    }
+
+    CreateRecord(handleId, record);
+}
+
+void TDirectoryHandlesStorage::CreateRecord(
+    ui64 handleId,
+    const TBuffer& record)
+{
     ui64 recordIndex = CreateRecord(record);
 
     if (recordIndex == TDirectoryHandleTable::InvalidIndex) {
         ReportDirectoryHandlesStorageError(
-            "Failed to update record for directory handle");
+            "Failed to create record for directory handle chunk");
         return;
     }
+
     HandleIdToIndices[handleId].push_back(recordIndex);
 }
 
