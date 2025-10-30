@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+import "cloud/filestore/public/api/protos/ping.proto";
+
 package NCloud.NFileStore.NProtoPrivate;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos";
@@ -39,4 +41,17 @@ message TListLocalFileStoresRequest
 message TListLocalFileStoresResponse
 {
     repeated string FileSystemIds = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Toggle service state request/response
+
+message TToggleServiceStateRequest
+{
+    // Desired service state.
+    NProto.EServiceState DesiredServiceState = 1;
+}
+
+message TToggleServiceStateResponse
+{
 }
