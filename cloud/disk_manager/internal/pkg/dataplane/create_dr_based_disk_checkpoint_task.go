@@ -134,7 +134,7 @@ func (t *createDRBasedDiskCheckpointTask) setEstimate(
 		t.performanceConfig.GetCreateDRBasedDiskCheckpointBandwidthMiBs(),
 	))
 
-	return nil
+	return execCtx.SaveState(ctx)
 }
 
 func (t *createDRBasedDiskCheckpointTask) makeCheckpointID(
