@@ -82,13 +82,13 @@ public:
         , SpinCycles(DurationToCyclesSafe(SPIN_TIMEOUT))
         , MemoryTagScope(std::move(memoryTagScope))
         , Workers(numWorkers)
+        , RunningWorkers(NumWorkers)
     {
         size_t i = 1;
         for (auto& worker: Workers) {
             worker.Name = TStringBuilder() << threadName << i++;
             worker.Thread = std::make_unique<TWorkerThread>(*this, worker);
         }
-        AtomicSet(RunningWorkers, NumWorkers);
     }
 
     ~TThreadPool() override
