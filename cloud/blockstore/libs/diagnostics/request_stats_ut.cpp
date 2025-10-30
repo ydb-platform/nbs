@@ -786,7 +786,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(3, getHwProblems("ssd_mirror3"));
     }
 
-    Y_UNIT_TEST(ShouldTrackExecuteTimeForDifferentSubClassesSeparately)
+    Y_UNIT_TEST(ShouldTrackExecuteTimeForDifferentSizeClassesSeparately)
     {
         // Hdr histogram is no-op under Tsan, so just finish this test
         if (NSan::TSanIsOn()) {

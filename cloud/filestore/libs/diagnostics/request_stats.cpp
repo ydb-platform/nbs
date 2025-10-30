@@ -58,7 +58,8 @@ TRequestCountersPtr MakeRequestCounters(
             return IsReadWriteRequest(static_cast<EFileStoreRequest>(t));
         },
         options,
-        histogramCounterOptions
+        histogramCounterOptions,
+        TVector<std::pair<ui64, ui64>>{}
     );
     requestCounters->Register(counters);
     return requestCounters;

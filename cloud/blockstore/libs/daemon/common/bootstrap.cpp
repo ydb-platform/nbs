@@ -298,10 +298,12 @@ void TBootstrapBase::Init()
     PostponedCriticalEvents.clear();
 
     TVector<std::pair<ui64, ui64>> executionTimeSizeClasses;
-    for (const auto& class:
+    for (const auto& sizeClass:
          Configs->DiagnosticsConfig->GetExecutionTimeSizeClasses())
     {
-        executionTimeSizeClasses.emplace_back(class.GetStart(), class.GetEnd());
+        executionTimeSizeClasses.emplace_back(
+            sizeClass.GetStart(),
+            sizeClass.GetEnd());
     }
 
     RequestStats = CreateServerRequestStats(

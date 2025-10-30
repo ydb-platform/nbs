@@ -436,12 +436,12 @@ struct TRequestCounters::TStatCounters
                 ExecutionTimeHist.Register(counters);
                 ExecutionTimeHistUnaligned.Register(*unalignedClassGroup);
 
-                for (auto& [_, subclass]: ExecutionTimeSizeClasses) {
-                    auto sizeClass = counters.GetSubgroup(
+                for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
+                    auto sizeClassCounters = counters.GetSubgroup(
                         "sizeclass",
-                        FormatByteSize(subclass.Begin) + "-" +
-                            FormatByteSize(subclass.End));
-                    subclass.Value.Register(*sizeClass);
+                        FormatByteSize(sizeClass.Begin) + "-" +
+                            FormatByteSize(sizeClass.End));
+                    sizeClass.Value.Register(*sizeClassCounters);
                 }
             } else {
                 SizePercentiles.Register(counters);

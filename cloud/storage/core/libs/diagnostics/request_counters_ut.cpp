@@ -104,7 +104,7 @@ struct TRequestCountersOptions {
     TRequestCounters::EOption Options = {};
     EHistogramCounterOptions HistogramCounterOptions =
         EHistogramCounterOption::ReportMultipleCounters;
-    TVector<std::pair<ui64, ui64>> ExecutionTimeSizeSubclasses{};
+    TVector<std::pair<ui64, ui64>> ExecutionTimeSizeClasses{};
 };
 
 auto MakeRequestCounters(TRequestCountersOptions options = {})
@@ -116,7 +116,7 @@ auto MakeRequestCounters(TRequestCountersOptions options = {})
         IsReadWriteRequest,
         options.Options,
         options.HistogramCounterOptions,
-        options.ExecutionTimeSizeSubclasses);
+        options.ExecutionTimeSizeClasses);
 }
 
 auto MakeRequestCountersPtr(TRequestCountersOptions options = {})
@@ -128,7 +128,7 @@ auto MakeRequestCountersPtr(TRequestCountersOptions options = {})
         IsReadWriteRequest,
         options.Options,
         options.HistogramCounterOptions,
-        options.ExecutionTimeSizeSubclasses);
+        options.ExecutionTimeSizeClasses);
 }
 
 }   // namespace
@@ -843,13 +843,13 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         UNIT_ASSERT_EQUAL_C(8_GB, requestBytes->Val(), requestBytes->Val());
     }
 
-    Y_UNIT_TEST(ShouldFillTimePercentilesForDifferentSubClassesSeparately)
+    Y_UNIT_TEST(ShouldFillTimePercentilesForDifferentSizeClassesSeparately)
     {
         auto monitoring = CreateMonitoringServiceStub();
 
         auto requestCounters = MakeRequestCountersPtr(
             {.Options = TRequestCounters::EOption::ReportDataPlaneHistogram,
-             .ExecutionTimeSizeSubclasses = {{4_KB, 512_KB}, {1_MB, 4_MB}}});
+             .ExecutionTimeSizeClasses = {{4_KB, 512_KB}, {1_MB, 4_MB}}});
         requestCounters->Register(*monitoring->GetCounters());
 
         auto writeBlocks =

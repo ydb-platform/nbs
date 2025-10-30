@@ -41,7 +41,7 @@ private:
     TVector<TDynamicCounterPtr> CountersTotal;
     TVector<TDynamicCounterPtr> CountersSize;
 
-    TDisjointIntervalMap<ui64, TValue> ExecutionTimeSizeSubclasses;
+    TDisjointIntervalMap<ui64, TValue> ExecutionTimeSizeClasses;
 
     TLatencyHistogram ExecutionTimeHist;
     TLatencyHistogram TotalHist;
@@ -52,7 +52,7 @@ public:
         const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses)
     {
         for (const auto& [start, end]: executionTimeSizeSubclasses) {
-            ExecutionTimeSizeSubclasses.Add(
+            ExecutionTimeSizeClasses.Add(
                 start,
                 end,
                 {.Hist = std::make_unique<TLatencyHistogram>()});
@@ -72,16 +72,16 @@ public:
         auto sizeGroup = requestGroup->GetSubgroup("percentiles", "Size");
         Register(*sizeGroup, CountersSize);
 
-        for (auto& [_, item]: ExecutionTimeSizeSubclasses) {
-            const auto subclassName =
+        for (auto& [_, item]: ExecutionTimeSizeClasses) {
+            const auto sizeClassName =
                 FormatByteSize(item.Begin) + "-" + FormatByteSize(item.End);
 
             auto executionTimeGroup =
                 requestGroup->GetSubgroup("percentiles", "ExecutionTime");
-            auto subclassGroup =
-                executionTimeGroup->GetSubgroup("sizeclass", subclassName);
+            auto sizeClassCounters =
+                executionTimeGroup->GetSubgroup("sizeclass", sizeClassName);
 
-            Register(*subclassGroup, item.Value.Counters);
+            Register(*sizeClassCounters, item.Value.Counters);
         }
     }
 
@@ -90,7 +90,7 @@ public:
         Update(CountersTotal, TotalHist);
         Update(CountersSize, SizeHist);
         Update(CountersExecutionTime, ExecutionTimeHist);
-        for (auto& [_, item]: ExecutionTimeSizeSubclasses) {
+        for (auto& [_, item]: ExecutionTimeSizeClasses) {
             Update(item.Value.Counters, *item.Value.Hist);
         }
     }
@@ -103,7 +103,7 @@ public:
         ExecutionTimeHist.RecordValue(requestExecutionTime);
         TotalHist.RecordValue(requestTime);
         SizeHist.RecordValue(requestBytes);
-        ExecutionTimeSizeSubclasses.VisitOverlapping(
+        ExecutionTimeSizeClasses.VisitOverlapping(
             requestBytes,
             requestBytes + 1,
             [&](TDisjointIntervalMap<ui64, TValue>::TIterator it)

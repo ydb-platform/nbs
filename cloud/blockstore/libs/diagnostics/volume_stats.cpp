@@ -464,7 +464,7 @@ private:
     const ITimerPtr Timer;
     const THashSet<TString> CloudIdsWithStrictSLA;
 
-    TVector<std::pair<ui64, ui64>> ExecutionTimeSizeSubclasses;
+    TVector<std::pair<ui64, ui64>> ExecutionTimeSizeClasses;
 
     TDynamicCountersPtr Counters;
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
@@ -501,11 +501,11 @@ public:
         }(DiagnosticsConfig->GetCloudIdsWithStrictSLA()))
         , UserCounters(CreateUserCounterSupplier())
     {
-        for (const auto& subClass: DiagnosticsConfig->GetExecutionTimeSizeClasses())
+        for (const auto& sizeClass: DiagnosticsConfig->GetExecutionTimeSizeClasses())
         {
-            ExecutionTimeSizeSubclasses.emplace_back(
-                subClass.GetStart(),
-                subClass.GetEnd());
+            ExecutionTimeSizeClasses.emplace_back(
+                sizeClass.GetStart(),
+                sizeClass.GetEnd());
         }
     }
 
@@ -879,7 +879,7 @@ private:
             Timer,
             realInstanceId,
             DiagnosticsConfig->GetHistogramCounterOptions(),
-            ExecutionTimeSizeSubclasses);
+            ExecutionTimeSizeClasses);
 
         if (!Counters) {
             InitCounters();
