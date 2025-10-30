@@ -55,10 +55,11 @@ def __run_test_suite(target_path, suite, tests, verbose=False):
         if not os.path.exists(cmd):
             raise RuntimeError("test doesn't exist: " + cmd)
 
+        # run cmd as sudo to be able to test permissions properly
+
         logging.info("executing (%s, %s)" % (suite, test))
-        p = subprocess.run(
-            cmd, env=env, shell=True, cwd=target_path,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT if verbose else None)
+        p = subprocess.run(["sudo", "bash", "-c", cmd], env=env, shell=True, cwd=target_path,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT if verbose else None)
 
         if p.returncode != 0:
             logging.error("test (%s, %s) failed: %s" % (suite, test, p.stdout))

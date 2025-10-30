@@ -57,7 +57,7 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr SsdFileSystemCount;
     NMonitoring::TDynamicCounters::TCounterPtr SsdTabletCount;
 
-    NProto::EServiceState ServiceState = NProto::SERVICE_STATE_UNKNOWN;
+    NProto::EServiceState ServiceState = NProto::SERVICE_STATE_RUNNING;
 
     TMonotonic LastCpuWaitTs;
 
@@ -258,6 +258,11 @@ private:
         TString input);
 
     NActors::IActorPtr CreateSetHasXAttrsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    void PerformToggleServiceStateAction(
+        const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
         TString input);
 

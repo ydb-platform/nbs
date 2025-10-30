@@ -422,14 +422,6 @@ public:
         return request;
     }
 
-    auto CreateToggleServiceStateRequest(NProto::EServiceState desiredState)
-    {
-        auto request =
-            std::make_unique<TEvService::TEvToggleServiceStateRequest>();
-        request->Record.SetDesiredServiceState(desiredState);
-        return request;
-    }
-
     std::unique_ptr<TEvService::TEvExecuteActionRequest> CreateExecuteActionRequest(
         const TString& action,
         const TString& input)
