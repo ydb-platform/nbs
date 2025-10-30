@@ -60,7 +60,7 @@ public:
 
     IContiguousChunk::TPtr Clone() override
     {
-        return this;
+        return MakeIntrusive<TIovecContiguousChunk>(base, size);
     }
 
     size_t GetOccupiedMemorySize() const override
