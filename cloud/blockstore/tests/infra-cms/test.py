@@ -99,10 +99,21 @@ class CMS:
         r = self.__nbs_client.cms_action(request)
         return r
 
-    def wait_for_no_paths_to_attach_detach(self, expected_paths_count=0, poll_interval=1):
+    def wait_for_no_paths_to_attach(
+        self, agent_id, expected_paths_count=0, poll_interval=1
+    ):
+
         while True:
             bkp = self.__nbs_client.backup_disk_registry_state()
-            if len(bkp.get("PathsToAttachDetach", [])) == expected_paths_count:
+            agents = bkp.get("Agents", [])
+            agent = [agent for agent in agents if agent["AgentId"] == agent_id][0]
+
+            actual_count = 0
+            for state in agent["PathAttachStates"].values():
+                if state == "PATH_ATTACH_STATE_ATTACHING":
+                    actual_count += 1
+
+            if actual_count <= expected_paths_count:
                 break
             time.sleep(poll_interval)
 
@@ -128,23 +139,15 @@ class _TestCmsRemoveAgentNoUserDisks:
             assert fd_count != 0
             fds_count.append(fd_count)
 
-        if attach_detach_paths:
-            response = cms.remove_agent("localhost")
+        response = cms.remove_agent("localhost")
 
-            assert response.ActionResults[0].Result.Code == EResult.E_TRY_AGAIN.value
-            assert response.ActionResults[0].Timeout != 0
-
-            cms.wait_for_no_paths_to_attach_detach()
+        assert response.ActionResults[0].Timeout == 0
 
         if attach_detach_paths:
             for i in range(len(devices)):
                 device = devices[i]
                 fd_count = file_descriptors_count(device.path)
                 assert fd_count + 1 == fds_count[i]
-
-        response = cms.remove_agent("localhost")
-
-        assert response.ActionResults[0].Timeout == 0
 
         nbs.create_volume("vol0", return_code=1)
 
@@ -181,7 +184,7 @@ class _TestCmsRemoveAgentNoUserDisks:
 
             response = cms.add_agent("localhost")
             assert response.ActionResults[0].Timeout == 0
-            cms.wait_for_no_paths_to_attach_detach()
+            cms.wait_for_no_paths_to_attach("localhost")
             wait_for_secure_erase(nbs.mon_port)
 
         for i in range(len(devices)):
@@ -223,16 +226,15 @@ class _TestCmsRemoveAgent:
 
         nbs.destroy_volume("vol0", sync=True)
 
-        cms.wait_for_no_paths_to_attach_detach()
-
-        for i in range(len(devices)):
-            device = devices[i]
-            fd_count = file_descriptors_count(device.path)
-            assert fd_count + 1 == fds_count[i]
-
         response = cms.remove_agent("localhost")
 
         assert response.ActionResults[0].Timeout == 0
+
+        if attach_detach_paths:
+            for i in range(len(devices)):
+                device = devices[i]
+                fd_count = file_descriptors_count(device.path)
+                assert fd_count + 1 == fds_count[i]
 
         disk_agent.stop()
         if not always_allocate_local_ssd:
@@ -262,7 +264,7 @@ class _TestCmsRemoveAgent:
 
             response = cms.add_agent("localhost")
             assert response.ActionResults[0].Timeout == 0
-            cms.wait_for_no_paths_to_attach_detach()
+            cms.wait_for_no_paths_to_attach("localhost")
             wait_for_secure_erase(nbs.mon_port)
 
         for i in range(len(devices)):
@@ -299,21 +301,15 @@ class _TestCmsPurgeAgentNoUserDisks:
         if always_allocate_local_ssd:
             nbs.destroy_volume("local0", sync=True)
 
+        response = cms.remove_agent("localhost")
+        assert response.ActionResults[0].Result.Code == 0
+        assert response.ActionResults[0].Timeout == 0
+
         if attach_detach_paths:
-            response = cms.remove_agent("localhost")
-            assert response.ActionResults[0].Result.Code == EResult.E_TRY_AGAIN.value
-            assert response.ActionResults[0].Timeout != 0
-
-            cms.wait_for_no_paths_to_attach_detach()
-
             for i in range(len(devices)):
                 device = devices[i]
                 fd_count = file_descriptors_count(device.path)
                 assert fd_count + 1 == fds_count[i]
-
-        response = cms.remove_agent("localhost")
-        assert response.ActionResults[0].Result.Code == 0
-        assert response.ActionResults[0].Timeout == 0
 
         response = cms.purge_agent("localhost")
         nbs.wait_for_stats(UnknownDevices=4)
@@ -429,21 +425,19 @@ class _TestCmsRemoveDevice:
 
         nbs.change_device_state(device.uuid, 2)
 
-        if attach_detach_paths:
-            cms.wait_for_no_paths_to_attach_detach()
-
-            assert file_descriptors_count(device.path) + 1 == fd_count
-
         response = cms.remove_device("localhost", device.path)
 
         assert response.ActionResults[0].Timeout == 0
+
+        if attach_detach_paths:
+            assert file_descriptors_count(device.path) + 1 == fd_count
 
         nbs.change_device_state(device.uuid, 0)
 
         if attach_detach_paths:
             response = cms.add_device("localhost", device.path)
             assert response.ActionResults[0].Timeout == 0
-            cms.wait_for_no_paths_to_attach_detach()
+            cms.wait_for_no_paths_to_attach("localhost")
             assert file_descriptors_count(device.path) == fd_count
 
         nbs.destroy_volume("vol0", sync=True)
@@ -465,14 +459,12 @@ class _TestCmsRemoveDeviceNoUserDisks:
         fd_count = file_descriptors_count(device.path)
         assert fd_count != 0
 
-        if attach_detach_paths:
-            cms.remove_device("localhost", device.path)
-            cms.wait_for_no_paths_to_attach_detach()
-            assert file_descriptors_count(device.path) + 1 == fd_count
-
         response = cms.remove_device("localhost", device.path)
 
         assert response.ActionResults[0].Timeout == 0
+
+        if attach_detach_paths:
+            assert file_descriptors_count(device.path) + 1 == fd_count
 
         nbs.create_volume("vol0", return_code=1)
         nbs.destroy_volume("vol0")
@@ -490,7 +482,7 @@ class _TestCmsRemoveDeviceNoUserDisks:
         assert response.ActionResults[0].Timeout == 0
 
         if attach_detach_paths:
-            cms.wait_for_no_paths_to_attach_detach()
+            cms.wait_for_no_paths_to_attach("localhost")
             assert file_descriptors_count(device.path) == fd_count
 
         nbs.create_volume("vol1")
@@ -505,7 +497,7 @@ TESTS = [
     _TestCmsPurgeAgentNoUserDisks("purgeagentnodisks"),
     _TestCmsPurgeAgent("purgeagent"),
     _TestCmsRemoveDevice("removedevice"),
-    _TestCmsRemoveDeviceNoUserDisks("removedevicenodisks")
+    _TestCmsRemoveDeviceNoUserDisks("removedevicenodisks"),
 ]
 
 
