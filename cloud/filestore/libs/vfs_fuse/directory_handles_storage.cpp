@@ -115,39 +115,82 @@ void TDirectoryHandlesStorage::ResetHandle(ui64 handleId)
 
 void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
 {
-    TGuard guard(TableLock);
+    struct TUpdateVersionInfo
+    {
+        ui64 LargestUpdateVersion = 0;
+        ui64 ChunksCount = 0;
+        bool IsFirstChunkPresented = false;
+    };
 
-    for (auto it = Table->begin(); it != Table->end(); ++it) {
-        TStringBuf record = *it;
-        if (record.empty()) {
-            STORAGE_TRACE(
-                "bad record from storage during load directory handles");
+    TMap<ui64, TUpdateVersionInfo> updateVersionInfo;
+
+    {
+        TGuard guard(TableLock);
+
+        for (auto it = Table->begin(); it != Table->end(); ++it) {
+            TStringBuf record = *it;
+            if (record.empty()) {
+                STORAGE_TRACE(
+                    "bad record from storage during load directory handles");
+                continue;
+            }
+
+            auto [handleId, chunk] = DeserializeHandleChunk(record);
+
+            if (!handleId) {
+                STORAGE_DEBUG(
+                    "bad deserialize for record %lu from storage during load "
+                    "directory handles",
+                    it.GetIndex());
+                continue;
+            }
+
+            if (!handles.contains(handleId)) {
+                handles[handleId] =
+                    std::make_shared<TDirectoryHandle>(chunk->Index);
+            }
+
+            handles[handleId]->ConsumeChunk(*chunk);
+
+            updateVersionInfo[handleId].ChunksCount++;
+            if (chunk->UpdateVersion >
+                updateVersionInfo[handleId].LargestUpdateVersion)
+            {
+                updateVersionInfo[handleId].LargestUpdateVersion =
+                    chunk->UpdateVersion;
+            }
+
+            if (chunk->UpdateVersion == 0) {
+                updateVersionInfo[handleId].IsFirstChunkPresented = true;
+                HandleIdToIndices[handleId].insert(
+                    HandleIdToIndices[handleId].begin(),
+                    it.GetIndex());
+            } else {
+                HandleIdToIndices[handleId].push_back(it.GetIndex());
+            }
+        }
+    }
+
+    for (auto [handleId, updateVersionInfo]: updateVersionInfo) {
+        if (!updateVersionInfo.IsFirstChunkPresented) {
+            ReportDirectoryHandlesStorageError(
+                TStringBuilder()
+                << "First chunk for handle " << handleId << " is missing");
+
+            RemoveHandle(handleId);
             continue;
         }
 
-        auto [handleId, chunk] = DeserializeHandleChunk(record);
-
-        if (!handleId) {
-            STORAGE_DEBUG(
-                "bad deserialize for record %lu from storage during load "
-                "directory handles",
-                it.GetIndex());
+        if (updateVersionInfo.ChunksCount !=
+            updateVersionInfo.LargestUpdateVersion + 1)
+        {
+            ReportDirectoryHandlesStorageError(
+                TStringBuilder()
+                << "Total chunks count " << updateVersionInfo.ChunksCount
+                << " is not equal to largest update version "
+                << updateVersionInfo.LargestUpdateVersion << " + 1");
+            ResetHandle(handleId);
             continue;
-        }
-
-        if (!handles.contains(handleId)) {
-            handles[handleId] =
-                std::make_shared<TDirectoryHandle>(chunk->Index);
-        }
-
-        handles[handleId]->ConsumeChunk(*chunk);
-
-        if (chunk->UpdateVersion == 0) {
-            HandleIdToIndices[handleId].insert(
-                HandleIdToIndices[handleId].begin(),
-                it.GetIndex());
-        } else {
-            HandleIdToIndices[handleId].push_back(it.GetIndex());
         }
     }
 }
