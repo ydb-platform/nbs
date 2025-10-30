@@ -49,7 +49,7 @@ private:
 
 public:
     explicit THdrRequestPercentiles(
-        const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses)
+        const TVector<TSizeInterval>& executionTimeSizeClasses)
     {
         for (const auto& [start, end]: executionTimeSizeClasses) {
             ExecutionTimeSizeClasses.Add(
@@ -74,7 +74,7 @@ public:
 
         for (auto& [_, item]: ExecutionTimeSizeClasses) {
             const auto sizeClassName =
-                FormatByteSize(item.Begin) + "-" + FormatByteSize(item.End);
+                ToString(TSizeInterval{item.Begin, item.End});
 
             auto executionTimeGroup =
                 requestGroup->GetSubgroup("percentiles", "ExecutionTime");
@@ -159,7 +159,7 @@ private:
 
 public:
     explicit THdrPercentiles(
-        const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses)
+        const TVector<TSizeInterval>& executionTimeSizeClasses)
         : ReadBlocksPercentiles(executionTimeSizeClasses)
         , WriteBlocksPercentiles(executionTimeSizeClasses)
         , ZeroBlocksPercentiles(executionTimeSizeClasses)
@@ -299,7 +299,7 @@ public:
             bool isServerSide,
             ITimerPtr timer,
             EHistogramCounterOptions histogramCounterOptions,
-            const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses)
+            const TVector<TSizeInterval>& executionTimeSizeClasses)
         : Counters(std::move(counters))
         , IsServerSide(isServerSide)
         BLOCKSTORE_MEDIA_KIND(INITIALIZE_REQUEST_COUNTERS)
@@ -753,14 +753,14 @@ IRequestStatsPtr CreateClientRequestStats(
         false,
         std::move(timer),
         histogramCounterOptions,
-        TVector<std::pair<ui64, ui64>>{});
+        TVector<TSizeInterval>{});
 }
 
 IRequestStatsPtr CreateServerRequestStats(
     TDynamicCountersPtr counters,
     ITimerPtr timer,
     EHistogramCounterOptions histogramCounterOptions,
-    TVector<std::pair<ui64, ui64>> executionTimeSizeClasses)
+    const TVector<TSizeInterval>& executionTimeSizeClasses)
 {
     return std::make_shared<TRequestStats>(
         std::move(counters),

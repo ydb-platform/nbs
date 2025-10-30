@@ -4,7 +4,8 @@
 
 #include <cloud/blockstore/config/diagnostics.pb.h>
 
-#include "cloud/storage/core/libs/diagnostics/histogram_counter_options.h"
+#include <cloud/storage/core/libs/common/size_interval.h>
+#include <cloud/storage/core/libs/diagnostics/histogram_counter_options.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 
 #include <util/generic/string.h>
@@ -166,8 +167,7 @@ public:
     [[nodiscard]] NCloud::NProto::TOpentelemetryTraceConfig
     GetOpentelemetryTraceConfig() const;
 
-    [[nodiscard]] TVector<NProto::TDiagnosticsConfig::TInterval>
-    GetExecutionTimeSizeClasses() const;
+    [[nodiscard]] TVector<TSizeInterval> GetExecutionTimeSizeClasses() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

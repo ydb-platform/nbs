@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/size_interval.h>
 #include <cloud/storage/core/libs/diagnostics/histogram_counter_options.h>
 
 #include <util/datetime/base.h>
@@ -64,7 +65,7 @@ public:
         std::function<bool(TRequestType)> isReadWriteRequestType,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
-        const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses);
+        const TVector<TSizeInterval>& executionTimeSizeClasses);
     ~TRequestCounters();
 
     void Register(NMonitoring::TDynamicCounters& counters);

@@ -830,17 +830,12 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             return TDuration::MicroSeconds(us).MilliSeconds();
         };
 
-        auto getNameForSizeClass = [](ui64 start, ui64 end)
-        {
-            return FormatByteSize(start) + "-" + FormatByteSize(end);
-        };
-
         {
             auto percentiles =
                 totalCounters->GetSubgroup("percentiles", "ExecutionTime");
             auto classPercentiles = percentiles->GetSubgroup(
                 "sizeclass",
-                getNameForSizeClass(4_KB, 512_KB));
+                ToString(TSizeInterval{4_KB, 512_KB}));
 
             auto p100 = classPercentiles->GetCounter("100");
 
@@ -852,7 +847,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 totalCounters->GetSubgroup("percentiles", "ExecutionTime");
             auto classPercentiles = percentiles->GetSubgroup(
                 "sizeclass",
-                getNameForSizeClass(1_MB, 4_MB));
+                ToString(TSizeInterval{1_MB, 4_MB}));
 
             auto p100 = classPercentiles->GetCounter("100");
 

@@ -104,7 +104,7 @@ struct TRequestCountersOptions {
     TRequestCounters::EOption Options = {};
     EHistogramCounterOptions HistogramCounterOptions =
         EHistogramCounterOption::ReportMultipleCounters;
-    TVector<std::pair<ui64, ui64>> ExecutionTimeSizeClasses{};
+    TVector<TSizeInterval> ExecutionTimeSizeClasses{};
 };
 
 auto MakeRequestCounters(TRequestCountersOptions options = {})
@@ -891,14 +891,13 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
         auto checkSizeClass = [&](ui64 start, ui64 end)
         {
-            const auto group =
-                monitoring->GetCounters()
-                    ->GetSubgroup("request", "WriteBlocks")
-                    ->GetSubgroup(
-                        "sizeclass",
-                        FormatByteSize(start) + "-" + FormatByteSize(end))
-                    ->GetSubgroup("histogram", "ExecutionTime")
-                    ->GetSubgroup("units", "usec");
+            const auto group = monitoring->GetCounters()
+                                   ->GetSubgroup("request", "WriteBlocks")
+                                   ->GetSubgroup(
+                                       "sizeclass",
+                                       ToString(TSizeInterval{start, end}))
+                                   ->GetSubgroup("histogram", "ExecutionTime")
+                                   ->GetSubgroup("units", "usec");
 
             for (const auto& [name, value]: expectedHistogramValues) {
                 const auto counter = group->FindCounter(name);

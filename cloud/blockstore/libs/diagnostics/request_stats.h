@@ -81,7 +81,7 @@ IRequestStatsPtr CreateServerRequestStats(
     NMonitoring::TDynamicCountersPtr counters,
     ITimerPtr timer,
     EHistogramCounterOptions histogramCounterOptions,
-    TVector<std::pair<ui64, ui64>> executionTimeSizeClasses);
+    const TVector<TSizeInterval>& executionTimeSizeClasses);
 IRequestStatsPtr CreateRequestStatsStub();
 
 }   // namespace NCloud::NBlockStore

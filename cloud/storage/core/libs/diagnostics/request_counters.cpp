@@ -323,7 +323,7 @@ struct TRequestCounters::TStatCounters
     explicit TStatCounters(
         ITimerPtr timer,
         EHistogramCounterOptions histogramCounterOptions,
-        const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses)
+        const TVector<TSizeInterval>& executionTimeSizeClasses)
         : SizeHist("Size", histogramCounterOptions)
         , SizePercentiles(SizeHist)
         , TimeHist("Time", histogramCounterOptions)
@@ -439,8 +439,7 @@ struct TRequestCounters::TStatCounters
                 for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
                     auto sizeClassCounters = counters.GetSubgroup(
                         "sizeclass",
-                        FormatByteSize(sizeClass.Begin) + "-" +
-                            FormatByteSize(sizeClass.End));
+                        ToString(TSizeInterval{sizeClass.Begin, sizeClass.End}));
                     sizeClass.Value.Register(*sizeClassCounters);
                 }
             } else {
@@ -746,7 +745,7 @@ TRequestCounters::TRequestCounters(
         std::function<bool(TRequestType)> isReadWriteRequestType,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
-        const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses)
+        const TVector<TSizeInterval>& executionTimeSizeClasses)
     : RequestType2Name(std::move(requestType2Name))
     , IsReadWriteRequestType(std::move(isReadWriteRequestType))
     , Options(options)

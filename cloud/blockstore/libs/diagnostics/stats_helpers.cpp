@@ -11,7 +11,7 @@ TRequestCounters MakeRequestCounters(
     ITimerPtr timer,
     TRequestCounters::EOptions options,
     EHistogramCounterOptions histogramCounterOptions,
-    const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses)
+    const TVector<TSizeInterval>& executionTimeSizeClasses)
 {
     return TRequestCounters(
         std::move(timer),
