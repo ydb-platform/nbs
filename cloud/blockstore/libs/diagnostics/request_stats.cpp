@@ -49,9 +49,9 @@ private:
 
 public:
     explicit THdrRequestPercentiles(
-        const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses)
+        const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses)
     {
-        for (const auto& [start, end]: executionTimeSizeSubclasses) {
+        for (const auto& [start, end]: executionTimeSizeClasses) {
             ExecutionTimeSizeClasses.Add(
                 start,
                 end,
@@ -159,10 +159,10 @@ private:
 
 public:
     explicit THdrPercentiles(
-        const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses)
-        : ReadBlocksPercentiles(executionTimeSizeSubclasses)
-        , WriteBlocksPercentiles(executionTimeSizeSubclasses)
-        , ZeroBlocksPercentiles(executionTimeSizeSubclasses)
+        const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses)
+        : ReadBlocksPercentiles(executionTimeSizeClasses)
+        , WriteBlocksPercentiles(executionTimeSizeClasses)
+        , ZeroBlocksPercentiles(executionTimeSizeClasses)
     {}
 
     void Register(TDynamicCounters& counters)
@@ -288,18 +288,18 @@ public:
           timer,                                        \
           options,                                      \
           histogramCounterOptions,                      \
-          executionTimeSizeSubclasses))   // INITIALIZE_REQUEST_COUNTERS
+          executionTimeSizeClasses))   // INITIALIZE_REQUEST_COUNTERS
 
 #define INITIALIZE_HDR_PERCENTILES(name, ...) \
     , HdrTotal##name(                         \
-          executionTimeSizeSubclasses)   // INITIALIZE_HDR_PERCENTILES
+          executionTimeSizeClasses)   // INITIALIZE_HDR_PERCENTILES
 
     TRequestStats(
             TDynamicCountersPtr counters,
             bool isServerSide,
             ITimerPtr timer,
             EHistogramCounterOptions histogramCounterOptions,
-            const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses)
+            const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses)
         : Counters(std::move(counters))
         , IsServerSide(isServerSide)
         BLOCKSTORE_MEDIA_KIND(INITIALIZE_REQUEST_COUNTERS)

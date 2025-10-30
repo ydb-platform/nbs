@@ -323,7 +323,7 @@ struct TRequestCounters::TStatCounters
     explicit TStatCounters(
         ITimerPtr timer,
         EHistogramCounterOptions histogramCounterOptions,
-        const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses)
+        const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses)
         : SizeHist("Size", histogramCounterOptions)
         , SizePercentiles(SizeHist)
         , TimeHist("Time", histogramCounterOptions)
@@ -348,7 +348,7 @@ struct TRequestCounters::TStatCounters
         , MaxCountCalc(timer)
         , MaxRequestBytesCalc(timer)
     {
-        for (auto [start, end] : executionTimeSizeSubclasses) {
+        for (auto [start, end] : executionTimeSizeClasses) {
             ExecutionTimeSizeClasses.Add(
                 start,
                 end,
@@ -746,7 +746,7 @@ TRequestCounters::TRequestCounters(
         std::function<bool(TRequestType)> isReadWriteRequestType,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
-        const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses)
+        const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses)
     : RequestType2Name(std::move(requestType2Name))
     , IsReadWriteRequestType(std::move(isReadWriteRequestType))
     , Options(options)
@@ -760,7 +760,7 @@ TRequestCounters::TRequestCounters(
         CountersByRequest.emplace_back(
             timer,
             histogramCounterOptions,
-            executionTimeSizeSubclasses);
+            executionTimeSizeClasses);
     }
 }
 

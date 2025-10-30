@@ -273,14 +273,14 @@ public:
             ITimerPtr timer,
             TRealInstanceId realInstanceId,
             EHistogramCounterOptions histogramCounterOptions,
-            const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses)
+            const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses)
         : VolumeBase(std::move(volumeBase))
         , RealInstanceId(std::move(realInstanceId))
         , RequestCounters(MakeRequestCounters(
               std::move(timer),
               GetRequestCountersOptions(*VolumeBase),
               histogramCounterOptions,
-              executionTimeSizeSubclasses))
+              executionTimeSizeClasses))
     {}
 
     const NProto::TVolume& GetInfo() const override

@@ -64,7 +64,7 @@ public:
         std::function<bool(TRequestType)> isReadWriteRequestType,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
-        const TVector<std::pair<ui64, ui64>>& executionTimeSizeSubclasses);
+        const TVector<std::pair<ui64, ui64>>& executionTimeSizeClasses);
     ~TRequestCounters();
 
     void Register(NMonitoring::TDynamicCounters& counters);
