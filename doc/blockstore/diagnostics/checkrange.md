@@ -33,6 +33,8 @@
   - смигрировали данные на другой диск (мб даже другого типа)
   - сравнили чексуммы
 
+TODO добавить примерный парсер на питоне или чем-то подобном
+
 ## Формат ответа
 {
   "ranges": [
@@ -53,6 +55,12 @@
   "summary": {
     "requests_num":1,
     "range_errors":0,
+    "problem_ranges": [ // если ошибки были в 2 последовательных диапазонах, они мёржатся в 1 большой
+      {
+        "r_start":0,
+        "r_end":2046
+      }
+    ],
     "global_error": {
       "Code": int,
       "CodeString": string,
@@ -65,57 +73,35 @@
 ## Внутреннее устройство / логика работы
 ### На стороне утилиты
 * получение информации о диске
-  * для mirror2/mirror3 дисков выставляется количество реплик
   * на основе размера диска и изначально запрошенного количества блоков выставляется нужное количество блоков
-* для каждого диапазона блоков последовательно выполняется запрос checkRange, который далее будет обрабатываться соответсвующим актором (например, начальной точкой обработки может быть part_mirror_actor_checkrange.cpp: HandleCheckRange)
+* для каждого диапазона блоков последовательно выполняется запрос checkRange, который далее будет обрабатываться соответсвующим актором на сервере (например, начальной точкой обработки может быть part_mirror_actor_checkrange.cpp: HandleCheckRange)
 * обработка ответа
   * проверка "верхнеуровневых" ошибок обработки аргументов
-  * проверка ошибки чтения. В случае mirror диска будет повторная попытка чтения.
-    *TODO учитывать количество преплик, а не просто и наличие* Мб вообще убрать эти перезапросы?
-  * при наличии соответствующих параметров происходит
-    * сверка полученных чексумм с уже имеющимися. Для этого необходимо запросить чексуммы в текущем запросе и иметь ранее сохраненные на диск чексуммы
-    * сохранение ответа на диск
+  * проверка ошибок чтения
+  * выставление чексумм для каждого требуемого диапазона
 
 ### На стороне сервера
 
 ### nonreplicated disk
 * TNonreplicatedPartitionActor::HandleCheckRange
   * проверяет, что запрошенное количество блоков меньше максимально допустимого размера
-  * регистрирует актор TNonreplCheckRangeActor
-
-  * TNonreplCheckRangeActor: TNonreplCheckRangeActor::Bootstrap + SendReadBlocksRequest
-    * отправляем запрос на чтение указанных блоков в nonrepl Partition (TEvReadBlocksLocalRequest).
-      * TNonreplicatedPartitionActor::HandleReadBlocksLocal
-        * создаётся запрос на чтение блоков
-        * регистрируется актор TDiskAgentReadLocalActor
-          * TDiskAgentReadLocalActor
-            * TDiskAgentReadLocalActor::SendRequest
-              * отправляет TEvReadDeviceBlocksRequest запросы на чтение блоков
-            * TDiskAgentReadLocalActor::HandleReadDeviceBlocksResponse
-              * копирует блоки данных
-              * проставляет чексуммы
-        * не регистрирует обработчик ответа, он возвращается сквозным образом
-
-    * В обработке ответа (TNonreplCheckRangeActor::HandleReadBlocksResponse) проверит ошибки и, если был задан соответсвующий параметр, посчитает и проставит полученные чексуммы для каждого блока
-      * не переиспользуется checkSum от обрабатываемого тут внутреннего запроса, тк там 1 чексумма на весь диапазон, а в checkRange нужны чексуммы на каждый блок. При этом с тз использования ресурсов лучше запросить диапазон данных и посчитать чексуммы для каждого блока, нежели делать N запросов чексумм к диску.
+  * регистрирует актор TNonreplCheckRangeActor, работающий через методы родительского актора (в partition_common), используемого для partition
 
 #### mirror диски
 * TMirrorPartitionActor::HandleCheckRange
   * проверяет, что запрошенное количество блоков меньше максимально допустимого размера
-  * регистрирует актор TMirrorCheckRangeActor
-
+  * регистрирует актор TMirrorCheckRangeActor, передаёт ему имена (DeviceUUID) реплик
   * TMirrorCheckRangeActor
-    * *TODO почти копипаста базового метода. Сделать рефакторинг*
-    * отправляем запрос на чтение указанных блоков в Partition (TEvReadBlocksLocalRequest).
-      * TMirrorPartitionActor::HandleReadBlocksLocal (part_mirror_actor_readblocks.cpp): обработка запроса на чтение -> TMirrorPartitionActor::ReadBlocks
-        * из хедеров получаем количество реплик
-        * выбираются акторы реплик для последющих запросов
-        * создается `TRequestActor<TReadBlocksLocalMethod>` для координации чтения из нескольких реплик
+    * SendReadBlocksRequest: отправляет запросы на чтение указанных блоков каждой реплики mirror'а (TEvReadBlocksRequest).
+      * TMirrorPartitionActor::HandleReadBlocks(part_mirror_actor_readblocks.cpp): обработка запроса на чтение -> TMirrorPartitionActor::ReadBlocks
+        * из хедеров выбираем нужную реплику
+        * создается `TRequestActor<TReadBlocksMethod>` для чтения из нужной реплики
           * SendRequests из созданного на предыдущем шаге актора
-            * идём в реплики с запросами TEvChecksumBlocksRequest (кроме 0 реплики) и чтением в нулевую
-            * обработка ответов происходит в 2 методах HandleChecksumResponse + HandleResponse, в итоге выполняем сравнение чексумм и возвращаем ответ
-          * для mirror3 указываем "уровень" расхождения данных - Major/Minor (отличие для 1 или 2 реплик)
-    * В обработке ответа (TMirrorCheckRangeActor::HandleReadBlocksResponse) проверит ошибки и, если был задан соответсвующий параметр, посчитает и проставит полученные чексуммы
+            * обработка ответов происходит в HandleResponse, в итоге выполняем ставим чексумму и возвращаем ответ
+    * В обработке ответа (TMirrorCheckRangeActor::HandleReadBlocksResponse)
+      * проверка ошибок чтения с реплики
+      * вычисление чексумм диапазона
+      * подготовка ответа с 1 общей чексуммой или набором чексумм, если были расхождения
 
 #### partition диски
 * TPartitionActor::HandleCheckRange
@@ -136,39 +122,30 @@
               * проверяем чексуммы в VerifyChecksums для каждого ответа
               * дожидаемся всех ответов
               * генерируется ответ через CreateReadBlocksResponse
-    * В обработке ответа (TCheckRangeActor::HandleReadBlocksResponse) проверит ошибки и, если был задан соответсвующий параметр, посчитает и проставит полученные чексуммы
+    * В обработке ответа (TCheckRangeActor::HandleReadBlocksResponse) проверит ошибки и посчитает + проставит полученные чексуммы
 
 ## Юниттесты
-
-### nonreplicated
+### volume
+Содержит в себе общую для всех типов партиционирования логику. Тип диска получает параметром.
 #### Позитивные тесты
-- ShouldCheckRangeWithCheksums: получение одного общего ответа на checkRange + проверка чексумм
-- ShouldCheckRangeInternal: проверка перехваченных внутренних ответов
-- ShouldSuccessfullyCheckRangeIfDiskIsEmpty: проверка checkRange для пустого диска
-- ShouldGetSameChecksumsWhileCheckRangeEqualBlocks: сверяем чексуммы одинаковых данных разных блоков
-- ShouldGetDifferentChecksumsWhileCheckRange: проверяем отличие чексумм разных блоков
-- TODO попробовать написать тест DifferentDisks в volume или переиспользовать mirror
+- DoTestShouldCommonCheckRange: получение одного общего ответа на checkRange + проверка чексумм
+- DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty: проверка checkRange для пустого диска
+- DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks: сверяем чексуммы одинаковых данных разных блоков
+- DoTEstShouldGetDifferentChecksumsWhileCheckRange: проверяем отличие чексумм разных блоков
+- DoTestShouldCheckRangeIndependentChecksum: проверка независимости чексумм соседних блоков
 
 #### Негативные тесты
-- ShouldCheckRangeWithBrokenBlocks: проверка ошибки "block is broken" через подмену перехваченного внутреннего ответа
-- ShouldntCheckRangeWithBigBlockCount: проверка обработки параметра для слишком большого размера блока
+- DoTestShouldCheckRangeWithBrokenBlocks: проверка ошибки "block is broken" через подмену перехваченного внутреннего ответа
+- DoTestShouldntCheckRangeWithBigBlockCount: проверка обработки параметра для слишком большого размера блока
+
+### nonreplicated
+- Все тесты реализованы как "общие" в volume
 
 ### mirror disk
 #### Позитивные тесты
-- ShouldMirrorCheckRange: получение одного общего ответа на checkRange
-- ShouldMirrorCheckRangeWithCheksums: получение хэшсумм (тест работы переданного в запросе параметра)
 - ShouldMirrorCheckRangeRepliesFromAllReplicas: получение промежуточных ответов с каждой из 3 реплик. Необходим для проверки участия каждой реплики
-
-#### Негативные тесты
-- ShouldMirrorCheckRangeBroken: тесткейс на отличающиеся хэшсуммы
+- TODO тест на problem_ranges
+- Остальные тесты реализованы как "общие" в volume
 
 ### partition disk
-#### Позитивные тесты
-- ShouldCheckRange: пишем в различные диапазоны диска, проверяем checkRange
-- ShouldSuccessfullyCheckRangeIfDiskIsEmpty: проверка checkRange для пустого диска
-- ShouldGetSameChecksumsWhileCheckRangeEqualBlocks: сверяем чексуммы одинаковых данных разных блоков
-- ShouldGetDifferentChecksumsWhileCheckRange: проверяем отличие чексумм разных блоков
-
-#### Негативные тесты
-- ShouldCheckRangeWithBrokenBlocks: проверка ошибки "block is broken" через подмену перехваченного внутреннего ответа
-- ShouldntCheckRangeWithBigBlockCount: проверка обработки параметра для слишком большого размера блока
+- Все тесты реализованы как "общие" в volume

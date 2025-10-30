@@ -445,25 +445,12 @@ public:
     }
 
     std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, bool calculateChecksums = false)
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
     {
         auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
-        request->Record.SetCalculateChecksums(calculateChecksums);
-        return request;
-    }
-
-    std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, ui32 replicaCount, bool calculateChecksums = false)
-    {
-        auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
-        request->Record.SetDiskId(id);
-        request->Record.SetStartIndex(startIndex);
-        request->Record.SetBlocksCount(size);
-        request->Record.SetCalculateChecksums(calculateChecksums);
-        request->Record.mutable_headers()->SetReplicaCount(replicaCount);
         return request;
     }
 

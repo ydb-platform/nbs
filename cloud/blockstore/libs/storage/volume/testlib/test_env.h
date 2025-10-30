@@ -407,6 +407,11 @@ public:
         const TString& clientId,
         const TString& checkpointId = {});
 
+    std::unique_ptr<TEvVolume::TEvCheckRangeRequest> CreateCheckRangeRequest(
+        TString id,
+        ui32 startIndex,
+        ui32 size);
+
     std::unique_ptr<TEvService::TEvWriteBlocksRequest> CreateWriteBlocksRequest(
         const TBlockRange64& writeRange,
         const TString& clientId,
