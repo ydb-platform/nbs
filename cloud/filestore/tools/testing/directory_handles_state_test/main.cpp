@@ -181,6 +181,15 @@ bool TestDirectory(TTestContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// this tool is used to confirm that we can use directory listing consistently
+// despite vhost restart. the flow as follows:
+// 1. create a directory with a lot of files
+// 2. open the directory and read the files
+// 3. restart the vhost
+// 4. open the directory and read the files
+// 5. check that the files are the same
+// 6. repeat the process 10 times concurrently (this way internal cache data is
+// interleaved)
 int main(int argc, char** argv)
 {
     if (argc != 5) {

@@ -50,11 +50,11 @@ void TDirectoryHandlesStorage::UpdateHandle(
     TGuard guard(TableLock);
 
     // update can be called when handle already deleted, in this case just
-    // report error
+    // log info and return
     if (!HandleIdToIndices.contains(handleId)) {
-        ReportDirectoryHandlesStorageError(
-            "Failed to update record for directory handle, previous parts are "
-            "missing");
+        STORAGE_DEBUG(
+            "failed to update record for handle %lu, handle is already deleted",
+            handleId);
         return;
     }
 
@@ -115,6 +115,10 @@ void TDirectoryHandlesStorage::ResetHandle(ui64 handleId)
 
 void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
 {
+    // Since we store data in chunks instead of a single block, in rare cases
+    // a crash during the reset or removal process can lead to inconsistent
+    // chunks order. We detect this inconsistency during the load phase and fix
+    // it.
     struct TUpdateVersionInfo
     {
         ui64 LargestUpdateVersion = 0;
@@ -160,6 +164,8 @@ void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
                     chunk->UpdateVersion;
             }
 
+            // Always store the first chunk at the beginning of the list — this
+            // helps us handle the reset logic correctly and efficiently.
             if (chunk->UpdateVersion == 0) {
                 updateVersionInfo[handleId].IsFirstChunkPresented = true;
                 HandleIdToIndices[handleId].insert(
