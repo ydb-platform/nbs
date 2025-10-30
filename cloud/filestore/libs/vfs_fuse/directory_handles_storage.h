@@ -55,6 +55,7 @@ public:
         const TDirectoryHandleChunk& initialHandleChunk);
     void UpdateHandle(ui64 handleId, const TDirectoryHandleChunk& handleChunk);
     void RemoveHandle(ui64 handleId);
+    void ResetHandle(ui64 handleId);
     void LoadHandles(TDirectoryHandleMap& handles);
     void Clear();
 
