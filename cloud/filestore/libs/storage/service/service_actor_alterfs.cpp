@@ -324,8 +324,6 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
         FileStoreConfig.MainFileSystemConfig.SetVersion(version);
     }
 
-    FileStoreConfig.MainFileSystemConfig.ClearBlockSize();
-
     GetFileSystemTopology(ctx);
 }
 
@@ -333,6 +331,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
 
 void TAlterFileStoreActor::AlterFileStore(const TActorContext& ctx)
 {
+    FileStoreConfig.MainFileSystemConfig.ClearBlockSize();
     FileStoreConfig.MainFileSystemConfig.SetAlterTs(ctx.Now().MicroSeconds());
     auto request = std::make_unique<TEvSSProxy::TEvAlterFileStoreRequest>(
         FileStoreConfig.MainFileSystemConfig);
@@ -446,17 +445,16 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
                 MakeError(E_ARGUMENT, "Cannot decrease number of shards"));
             return;
         } else {
-            // In strict mode we just resize all the shards
-            const auto oldSize = FileStoreConfig.ShardConfigs.size();
-            Y_ABORT_UNLESS(oldSize);
-            FileStoreConfig.ShardConfigs.resize(ExistingShardIds.size());
-            for (auto i = oldSize; i < FileStoreConfig.ShardConfigs.size(); ++i)
-            {
-                FileStoreConfig.ShardConfigs[i] =
-                    FileStoreConfig.ShardConfigs[oldSize - 1];
-                FileStoreConfig.ShardConfigs[i].SetFileSystemId(
-                    ExistingShardIds[i]);
-            }
+            // We can't reduce shards count but in strict mode we should resize
+            // all the shards to have the same size as the main filesystem.
+            // So, FileStoreConfig.ShardConfigs should have the same size as
+            // ExistingShardIds.
+            FileStoreConfig.ShardConfigs.clear();
+            FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
+                *StorageConfig,
+                FileStoreConfig.MainFileSystemConfig,
+                PerformanceProfile,
+                ExistingShardIds.size());
         }
     }
 
@@ -508,6 +506,16 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             ShardsToCreate == 0 && ShardsToConfigure == 0 &&
             ShardsToAlter == 0 && ShardsToDescribe == 0 &&
             !ShouldConfigureMainFileStore);
+
+        if (StrictFileSystemSizeEnforcementEnabled) {
+            ReplyAndDie(
+                ctx,
+                MakeError(
+                    E_ARGUMENT,
+                    "Cannot change shard size if "
+                    "'StrictFileSystemSizeEnforcementEnabled'"));
+            return;
+        }
 
         FileStoreConfig.ShardConfigs.clear();
 
