@@ -423,15 +423,6 @@ private:
     }
 
     template <>
-    NProto::TToggleServiceStateResponse Execute<TToggleServiceStateMethod>(
-        NProto::TToggleServiceStateRequest& request,
-        NProto::TProfileLogRequestInfo& logRequest)
-    {
-        Y_UNUSED(request, logRequest);
-        return {};
-    }
-
-    template <>
     NProto::TCreateFileStoreResponse Execute<TCreateFileStoreMethod>(
         NProto::TCreateFileStoreRequest& request,
         NProto::TProfileLogRequestInfo& logRequest)

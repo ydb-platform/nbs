@@ -261,6 +261,11 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    void PerformToggleServiceStateAction(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        TString input);
+
 private:
     void RenderSessions(IOutputStream& out);
     void RenderLocalFileStores(IOutputStream& out);
