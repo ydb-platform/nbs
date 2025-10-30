@@ -526,7 +526,7 @@ public:
         }
         ReportBytes(PutImpl.Blobs[0].Buffer.capacity() + sizeof(*this));
 
-        RequestBytes = ev->Buffer.size();
+        RequestBytes = PutImpl.Blobs[0].Buffer.size();
         RequestHandleClass = HandleClassToHandleClass(HandleClass);
         MaxSaneRequests = info->Type.TotalPartCount() * (1ull + info->Type.Handoff()) * 2;
     }
