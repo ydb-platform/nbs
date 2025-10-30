@@ -92,6 +92,27 @@ void TDirectoryHandlesStorage::RemoveHandle(ui64 handleId)
     HandleIdToIndices.erase(handleId);
 }
 
+void TDirectoryHandlesStorage::ResetHandle(ui64 handleId)
+{
+    TGuard guard(TableLock);
+    if (HandleIdToIndices.contains(handleId)) {
+        for (auto it = std::next(HandleIdToIndices[handleId].begin(), 1);
+             it != HandleIdToIndices[handleId].end();
+             ++it)
+        {
+            if (!Table->DeleteRecord(*it)) {
+                STORAGE_DEBUG(
+                    "failed to delete record for handle %lu using index %lu",
+                    handleId,
+                    *it);
+            }
+        }
+        HandleIdToIndices[handleId].erase(
+            std::next(HandleIdToIndices[handleId].begin(), 1),
+            HandleIdToIndices[handleId].end());
+    }
+}
+
 void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
 {
     TGuard guard(TableLock);
