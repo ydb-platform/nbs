@@ -63,9 +63,11 @@ void FillFeatures(
 
     features->SetDirectoryHandlesStorageEnabled(
         config.GetDirectoryHandlesStorageEnabled());
-    
-    features->SetDirectoryHandlesTableSize(
-        config.GetDirectoryHandlesTableSize());
+
+    if (config.GetDirectoryHandlesStorageEnabled()) {
+        features->SetDirectoryHandlesTableSize(
+            config.GetDirectoryHandlesTableSize());
+    }
 
     features->SetDirectoryCreationInShardsEnabled(
         fileSystem.GetDirectoryCreationInShardsEnabled());
