@@ -141,7 +141,14 @@ void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
         }
 
         handles[handleId]->ConsumeChunk(*chunk);
-        HandleIdToIndices[handleId].push_back(it.GetIndex());
+
+        if (chunk->UpdateVersion == 0) {
+            HandleIdToIndices[handleId].insert(
+                HandleIdToIndices[handleId].begin(),
+                it.GetIndex());
+        } else {
+            HandleIdToIndices[handleId].push_back(it.GetIndex());
+        }
     }
 }
 
