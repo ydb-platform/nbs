@@ -53,9 +53,14 @@ public:
         return TContiguousSpan(reinterpret_cast<const char*>(Base), Size);
     }
 
-    TMutableContiguousSpan GetDataMut() override
+    TMutableContiguousSpan UnsafeGetDataMut() override
     {
         return TMutableContiguousSpan(reinterpret_cast<char*>(Base), Size);
+    }
+
+    IContiguousChunk::TPtr Clone() override
+    {
+        return this;
     }
 
     size_t GetOccupiedMemorySize() const override
