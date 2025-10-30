@@ -31,7 +31,7 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 blockSize);
 
-    void Bootstrap(const NActors::TActorContext& ctx);
+    virtual void Bootstrap(const NActors::TActorContext& ctx);
 
 protected:
     void ReplyAndDie(
@@ -45,6 +45,11 @@ protected:
     virtual void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+    virtual void HandleReadBlocksResponseError(
+        const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
+        const NActors::TActorContext& ctx,
+        const ::NCloud::NProto::TError &error,
+        NProto::TError *responseStatus);
 
     virtual void SendReadBlocksRequest(const NActors::TActorContext& ctx);
 
@@ -55,6 +60,7 @@ private:
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+protected:
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);

@@ -299,6 +299,12 @@ message TFinishFillDiskResponse
 ////////////////////////////////////////////////////////////////////////////////
 // CheckRange request/response.
 
+message TChecksums
+{
+    repeated uint32 Checksums = 1;
+    string ReplicaName = 2;
+}
+
 message TCheckRangeRequest
 {
     string DiskId = 1;
@@ -309,11 +315,11 @@ message TCheckRangeRequest
     // Number of blobs per batch.
     uint32 BlocksCount = 3;
 
-    // Is it necessary to calculate and include checksums in the response
-    bool CalculateChecksums = 4;
+    // It is a default non-unsetable parameter already. Parameter is deprecated.
+    bool DeprecatedCalculateChecksums = 4;
 
-    // Number of replicas to read from m3 disks.
-    uint64 ReplicaCount = 5;
+    // Number of replicas to read from m3 disks. Parameter is deprecated, server sets it by itself.
+    uint64 DeprecatedReplicaCount = 5;
 }
 
 message TCheckRangeResponse
@@ -323,4 +329,7 @@ message TCheckRangeResponse
 
     // checksum of blocks
     repeated uint32 Checksums = 2;
+
+    // Checksums of blocks for mirror if differ
+    repeated TChecksums MirrorChecksums = 3;
 }
