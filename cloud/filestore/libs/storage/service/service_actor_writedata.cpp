@@ -36,34 +36,43 @@ bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <bool Owner = false>
 class TIovecContiguousChunk: public IContiguousChunk
 {
 private:
-    ui64 Base = 0;
+    char* Base = 0;
     ui64 Size = 0;
 
 public:
     TIovecContiguousChunk(ui64 base, ui64 size)
-        : Base(base)
+        : Base(reinterpret_cast<char*>(base))
         , Size(size)
-    {}
+    {
+        static_assert(sizeof(ui64) == sizeof(char*));
+    }
+
+    ~TIovecContiguousChunk() {
+        if constexpr(Owner) {
+            delete[] Base;
+        }
+    }
 
     TContiguousSpan GetData() const override
     {
-        return TContiguousSpan(reinterpret_cast<const char*>(Base), Size);
+        return TContiguousSpan(Base, Size);
     }
 
     TMutableContiguousSpan UnsafeGetDataMut() override
     {
-        return TMutableContiguousSpan(reinterpret_cast<char*>(Base), Size);
+        return TMutableContiguousSpan(Base, Size);
     }
 
     IContiguousChunk::TPtr Clone() override
     {
         auto copy = new char[Size];
-        ::memcpy(copy, reinterpret_cast<char*>(Base), Size);
+        ::memcpy(copy, Base, Size);
 
-        return MakeIntrusive<TIovecContiguousChunk>(
+        return MakeIntrusive<TIovecContiguousChunk<true>>(
             reinterpret_cast<ui64>(copy),
             Size);
     }
@@ -86,7 +95,7 @@ TRope CreateRopeFromIovecs(const NProto::TWriteDataRequest& request)
         rope.Insert(
             rope.End(),
             TRope(TRcBuf(
-                MakeIntrusive<TIovecContiguousChunk>(
+                MakeIntrusive<TIovecContiguousChunk<>>(
                     iovec.GetBase(),
                     iovec.GetLength()))));
     }
