@@ -82,6 +82,7 @@ public:
         , SpinCycles(DurationToCyclesSafe(SPIN_TIMEOUT))
         , MemoryTagScope(std::move(memoryTagScope))
         , Workers(numWorkers)
+        , RunningWorkers(NumWorkers)
     {
         size_t i = 1;
         for (auto& worker: Workers) {
@@ -97,8 +98,6 @@ public:
 
     void Start() override
     {
-        AtomicSet(RunningWorkers, NumWorkers);
-
         for (auto& worker: Workers) {
             worker.Thread->Start();
         }
