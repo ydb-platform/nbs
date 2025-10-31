@@ -7,8 +7,8 @@ import (
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystembackups/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystembackups/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_backups/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_backups/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 )
