@@ -6,6 +6,7 @@
 
 #include <util/generic/scope.h>
 
+#include <latch>
 #include <thread>
 
 namespace NCloud {
@@ -37,22 +38,21 @@ Y_UNIT_TEST_SUITE(TThreadPoolTest)
     {
         auto threadPool = CreateThreadPool("thread", 1);
 
-        auto promise = NThreading::NewPromise();
-
-        auto future = promise.GetFuture();
+        std::latch enqueued{1};
 
         std::thread thread(
-            [threadPool, promise = std::move(promise)]() mutable
+            [&]() mutable
             {
-                promise.SetValue();
+                enqueued.count_down();
                 auto future = threadPool->Execute([] { return 42; });
 
                 UNIT_ASSERT_EQUAL(future.GetValue(WaitTimeout), 42);
             });
 
-        future.GetValueSync();
+        enqueued.wait();
 
-        // Sleep to be sure that task will be enqueued before start.
+        // Sleep to be sure that the thread will call the AllocateWorker
+        // function before the thread pool starts.
         Sleep(TDuration::Seconds(1));
 
         threadPool->Start();
