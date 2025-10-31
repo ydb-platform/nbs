@@ -68,7 +68,6 @@ void TDiskRegistryActor::CompleteProcessAutomaticallyReplacedDevices(
     AutomaticallyReplacedDevicesDeletionInProgress = false;
     if (args.ProcessedCount) {
         SecureErase(ctx);
-        ProcessPathsToAttachDetach(ctx);
     }
 }
 

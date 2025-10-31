@@ -110,7 +110,7 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
     SecureErase(ctx);
     StartMigration(ctx);
 
-    ProcessPathsToAttachDetach(ctx);
+    ProcessPathsToAttach(ctx);
 
     if (!needToDetachPath) {
         using TResponse =

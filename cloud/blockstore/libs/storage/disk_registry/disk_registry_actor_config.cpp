@@ -95,7 +95,6 @@ void TDiskRegistryActor::CompleteUpdateConfig(
     PublishDiskStates(ctx);
     SecureErase(ctx);
     StartMigration(ctx);
-    ProcessPathsToAttachDetach(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
