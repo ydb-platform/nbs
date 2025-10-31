@@ -419,7 +419,12 @@ void TBootstrapVhost::InitEndpoints()
                     ->GetWriteBackCacheFlushMaxWriteRequestsCount(),
             .FlushMaxSumWriteRequestsSize =
                 Configs->VhostServiceConfig
-                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
+                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize()
+        },
+        TDirectoryHandlesStorageConfig{
+            .PathPrefix = Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
+            .InitialDataSize =
+                Configs->VhostServiceConfig->GetDirectoryHandlesInitialDataSize()
         }
     );
 

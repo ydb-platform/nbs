@@ -37,15 +37,21 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetAsyncHandleOperationPeriod(
             Config->GetAsyncHandleOperationPeriod().MilliSeconds());
         features->SetZeroCopyEnabled(Config->GetZeroCopyEnabled());
-        features->SetGuestPageCacheDisabled(Config->GetGuestPageCacheDisabled());
-        features->SetExtendedAttributesDisabled(Config->GetExtendedAttributesDisabled());
+        features->SetGuestPageCacheDisabled(
+            Config->GetGuestPageCacheDisabled());
+        features->SetExtendedAttributesDisabled(
+            Config->GetExtendedAttributesDisabled());
         features->SetServerWriteBackCacheEnabled(
             Config->GetServerWriteBackCacheEnabled());
-        features->SetMaxBackground(
-            Config->GetMaxBackground());
-        features->SetMaxFuseLoopThreads(
-            Config->GetMaxFuseLoopThreads());
+        features->SetMaxBackground(Config->GetMaxBackground());
+        features->SetMaxFuseLoopThreads(Config->GetMaxFuseLoopThreads());
         features->SetFSyncQueueDisabled(Config->GetFSyncQueueDisabled());
+        features->SetDirectoryHandlesStorageEnabled(
+            Config->GetDirectoryHandlesStorageEnabled());
+        if (Config->GetDirectoryHandlesStorageEnabled()) {
+            features->SetDirectoryHandlesTableSize(
+                Config->GetDirectoryHandlesTableSize());
+        }
         return response;
     };
 

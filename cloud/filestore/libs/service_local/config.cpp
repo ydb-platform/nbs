@@ -42,6 +42,8 @@ namespace {
     xxx(MaxFuseLoopThreads,          ui32,          1                         )\
     xxx(ZeroCopyWriteEnabled,        bool,          false                     )\
     xxx(FSyncQueueDisabled,          bool,          false                     )\
+    xxx(DirectoryHandlesStorageEnabled, bool,       false                     )\
+    xxx(DirectoryHandlesTableSize,   ui64,          100000                    )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(xxx)                             \
