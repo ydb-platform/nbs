@@ -418,7 +418,7 @@ public:
         }
 
         if (CachedEntriesPersistentQueue.IsCorrupted()) {
-            ReportWriteBackCacheProcessError(Sprintf(
+            ReportWriteBackCacheCorruptionError(Sprintf(
                 "[f:%s][c:%s] WriteBackCache persistent queue is corrupted",
                 FileSystemId.Quote().c_str(),
                 ClientId.Quote().c_str()));
@@ -1448,7 +1448,7 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         // and Serialization. In future, this can happen only as a result of
         // corruption
         deserializationStats.EntrySizeMismatchCount++;
-        ReportWriteBackCacheProcessError(
+        ReportWriteBackCacheCorruptionError(
             "TWriteDataEntry deserialization error: entry is empty");
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
@@ -1458,7 +1458,7 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
 
     if (mi.Skip(bufferSize) != bufferSize) {
         deserializationStats.EntrySizeMismatchCount++;
-        ReportWriteBackCacheProcessError(
+        ReportWriteBackCacheCorruptionError(
             "TWriteDataEntry deserialization error: invalid entry size");
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
@@ -1468,7 +1468,7 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     if (!parsedRequest->ParseFromArray(mi.Buf(), static_cast<int>(mi.Avail())))
     {
         deserializationStats.ProtobufDeserializationErrorCount++;
-        ReportWriteBackCacheProcessError(
+        ReportWriteBackCacheCorruptionError(
             "TWriteDataEntry deserialization error: ParseFromArray has failed");
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
