@@ -1,0 +1,38 @@
+name: 'nbs'
+cfgFileNames:
+  target1: ['file.cfg']
+defaultCfgOverride:
+  monAddress: 'localhost'
+  icPort: '1111'
+  monPort: '1234'
+clusters:
+  cluster1:
+    targets: ['target1', 'target2']
+    zones: ['zone1', 'zone2']
+    zoneCfgOverride:
+      zone1:
+        domain: 'zone1'
+        monPort: '9999'
+        customOverrides:
+          CustomKey: 'CustomValue'
+      zone2:
+        domain: 'zone2'
+    zoneCfgOverrideSeed:
+      zone2:
+        monPort: '222'
+    configs:
+      generate: true
+      dumpPath: 'generated-configs/cluster1'
+      pathTargetPrefix: 'cfg'
+    targetForSeed: 'target1'
+    generateSeed: true
+    values:
+      generate: true
+      fileName: 'values.yaml'
+      dumpPath: 'generated-configs'
+  cluster2:
+    targets: ['target1']
+    zones: ['zoneA']
+    configs:
+      generate: true
+      dumpPath: 'generated-configs/cluster2'

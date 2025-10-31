@@ -1,0 +1,229 @@
+/generated-configs/cluster1/zone1/seed/values.yaml:
+config:
+
+  nbs-auth.txt: |+
+    UseBlackBox: true
+    UseAccessService: true
+    UseStaff: false
+
+
+  nbs-ic.txt: |+
+    StartTcp: true
+    MaxInflightAmountOfDataInKB: 10240
+    MergePerPeerCounters: true
+    HandshakeTimeoutDuration {
+      Seconds: 1
+    }
+
+
+  file.cfg: |+
+    cfg file override for test
+    localhost
+    9999
+    1111
+    zone1
+    CustomValue
+    Default
+
+
+/generated-configs/cluster1/zone1/target1/cfg/file.cfg:
+cfg file override for test
+localhost
+9999
+1111
+zone1
+CustomValue
+Default
+
+/generated-configs/cluster1/zone1/target1/cfg/nbs-auth.txt:
+UseBlackBox: true
+UseAccessService: true
+UseStaff: false
+
+/generated-configs/cluster1/zone1/target1/cfg/nbs-ic.txt:
+StartTcp: true
+MaxInflightAmountOfDataInKB: 10240
+MergePerPeerCounters: true
+HandshakeTimeoutDuration {
+  Seconds: 1
+}
+
+/generated-configs/cluster1/zone1/target1/values.yaml:
+config:
+
+  nbs-auth.txt: |+
+    UseBlackBox: true
+    UseAccessService: true
+    UseStaff: false
+
+
+  nbs-ic.txt: |+
+    StartTcp: true
+    MaxInflightAmountOfDataInKB: 10240
+    MergePerPeerCounters: true
+    HandshakeTimeoutDuration {
+      Seconds: 1
+    }
+
+
+  file.cfg: |+
+    cfg file override for test
+    localhost
+    9999
+    1111
+    zone1
+    CustomValue
+    Default
+
+
+/generated-configs/cluster1/zone1/target2/cfg/nbs-auth.txt:
+UseBlackBox: true
+UseAccessService: true
+UseStaff: false
+
+/generated-configs/cluster1/zone1/target2/cfg/nbs-ic.txt:
+StartTcp: true
+MaxInflightAmountOfDataInKB: 10240
+MergePerPeerCounters: true
+HandshakeTimeoutDuration {
+  Seconds: 1
+}
+
+/generated-configs/cluster1/zone1/target2/values.yaml:
+config:
+
+  nbs-auth.txt: |+
+    UseBlackBox: true
+    UseAccessService: true
+    UseStaff: false
+
+
+  nbs-ic.txt: |+
+    StartTcp: true
+    MaxInflightAmountOfDataInKB: 10240
+    MergePerPeerCounters: true
+    HandshakeTimeoutDuration {
+      Seconds: 1
+    }
+
+
+
+/generated-configs/cluster1/zone2/seed/values.yaml:
+config:
+
+  nbs-auth.txt: |+
+    UseBlackBox: false
+    UseAccessService: true
+    UseStaff: false
+
+
+  nbs-ic.txt: |+
+    StartTcp: false
+    MaxInflightAmountOfDataInKB: 1024000
+    MergePerPeerCounters: true
+    HandshakeTimeoutDuration {
+      Seconds: 1
+    }
+
+
+  file.cfg: |+
+    cfg file override for test
+    localhost
+    222
+    1111
+    zone2
+    Default
+    Default
+
+
+/generated-configs/cluster1/zone2/target1/cfg/file.cfg:
+cfg file override for test
+localhost
+1234
+1111
+zone2
+Default
+Default
+
+/generated-configs/cluster1/zone2/target1/cfg/nbs-auth.txt:
+UseBlackBox: false
+UseAccessService: true
+UseStaff: false
+
+/generated-configs/cluster1/zone2/target1/cfg/nbs-ic.txt:
+StartTcp: false
+MaxInflightAmountOfDataInKB: 1024000
+MergePerPeerCounters: true
+HandshakeTimeoutDuration {
+  Seconds: 1
+}
+
+/generated-configs/cluster1/zone2/target1/values.yaml:
+config:
+
+  nbs-auth.txt: |+
+    UseBlackBox: false
+    UseAccessService: true
+    UseStaff: false
+
+
+  nbs-ic.txt: |+
+    StartTcp: false
+    MaxInflightAmountOfDataInKB: 1024000
+    MergePerPeerCounters: true
+    HandshakeTimeoutDuration {
+      Seconds: 1
+    }
+
+
+  file.cfg: |+
+    cfg file override for test
+    localhost
+    1234
+    1111
+    zone2
+    Default
+    Default
+
+
+/generated-configs/cluster1/zone2/target2/cfg/nbs-auth.txt:
+UseBlackBox: false
+UseAccessService: true
+UseStaff: false
+
+/generated-configs/cluster1/zone2/target2/cfg/nbs-ic.txt:
+StartTcp: false
+MaxInflightAmountOfDataInKB: 1000500
+MergePerPeerCounters: true
+HandshakeTimeoutDuration {
+  Seconds: 1
+}
+
+/generated-configs/cluster1/zone2/target2/values.yaml:
+config:
+
+  nbs-auth.txt: |+
+    UseBlackBox: false
+    UseAccessService: true
+    UseStaff: false
+
+
+  nbs-ic.txt: |+
+    StartTcp: false
+    MaxInflightAmountOfDataInKB: 1000500
+    MergePerPeerCounters: true
+    HandshakeTimeoutDuration {
+      Seconds: 1
+    }
+
+
+
+/generated-configs/cluster2/zoneA/target1/file.cfg:
+cfg file for test
+
+/generated-configs/cluster2/zoneA/target1/nbs-auth.txt:
+UseBlackBox: true
+
+/generated-configs/cluster2/zoneA/target1/nbs-storage.txt:
+SchemeShardDir: "/pre-prod_myt/NBS"
+
