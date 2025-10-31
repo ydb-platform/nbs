@@ -1,4 +1,4 @@
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
+import ydb.tests.library.common.yatest_common as yatest_common
 from yatest_lib.ya import TestMisconfigurationException
 
 

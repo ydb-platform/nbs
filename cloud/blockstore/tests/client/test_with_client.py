@@ -7,7 +7,7 @@ import tempfile
 import time
 
 import yatest.common as common
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
+import ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
@@ -43,12 +43,12 @@ from cloud.blockstore.tests.python.lib.test_base import (
     file_parse,
     file_parse_as_json
 )
-from contrib.ydb.core.protos import msgbus_pb2 as msgbus
-from contrib.ydb.core.protos import console_config_pb2 as console
-from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
-from contrib.ydb.core.protos.config_pb2 import TStaticNameserviceConfig
-from contrib.ydb.tests.library.common.yatest_common import PortManager
-from contrib.ydb.library.actors.protos.interconnect_pb2 import TNodeLocation
+from ydb.core.protos import msgbus_pb2 as msgbus
+from ydb.core.protos import console_config_pb2 as console
+from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from ydb.core.protos.config_pb2 import TStaticNameserviceConfig
+from ydb.tests.library.common.yatest_common import PortManager
+from ydb.library.actors.protos.interconnect_pb2 import TNodeLocation
 
 from google.protobuf import text_format
 

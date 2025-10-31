@@ -3,10 +3,10 @@ import os
 
 import requests
 
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
+import ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.storage.core.tools.common.python.daemon import Daemon
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 
 SERVICE_NAME = "access_service_new"

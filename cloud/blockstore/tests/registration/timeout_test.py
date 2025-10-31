@@ -2,14 +2,14 @@ import grpc
 import time
 import threading
 
-import contrib.ydb.core.protos.grpc_pb2_grpc as grpc_server
+import ydb.core.protos.grpc_pb2_grpc as grpc_server
 
 from concurrent import futures
 
-from contrib.ydb.tests.library.common.yatest_common import PortManager
+from ydb.tests.library.common.yatest_common import PortManager
 
-from contrib.ydb.public.api.protos import ydb_discovery_pb2
-from contrib.ydb.public.api.grpc import ydb_discovery_v1_pb2_grpc
+from ydb.public.api.protos import ydb_discovery_pb2
+from ydb.public.api.grpc import ydb_discovery_v1_pb2_grpc
 
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 
@@ -23,8 +23,8 @@ from cloud.blockstore.tests.python.lib.daemon import (
     start_nbs,
 )
 
-from contrib.ydb.core.protos import msgbus_pb2 as msgbus
-from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from ydb.core.protos import msgbus_pb2 as msgbus
+from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
 from google.protobuf.text_format import MessageToString
 from google.protobuf.message import Message

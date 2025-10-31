@@ -6,8 +6,8 @@ import signal
 from library.python.testing.recipe import declare_recipe, set_env
 
 from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+import ydb.tests.library.common.yatest_common as yatest_common
+from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 from cloud.storage.core.tests.common import (
     append_recipe_err_files,
     process_recipe_err_files,

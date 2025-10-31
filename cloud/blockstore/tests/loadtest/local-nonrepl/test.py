@@ -22,9 +22,9 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonrepli
     create_devices, setup_disk_registry_config, \
     update_cms_config, enable_writable_state, make_agent_id, AgentInfo, DeviceInfo
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
-from contrib.ydb.tests.library.harness.kikimr_runner import ensure_path_exists, \
+from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from ydb.tests.library.harness.kikimr_runner import ensure_path_exists, \
     get_unique_path_for_current_test
 
 import yatest.common as yatest_common

@@ -10,9 +10,9 @@ import time
 from pathlib import Path
 
 import yatest.common as common
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
+import ydb.tests.library.common.yatest_common as yatest_common
 
-from contrib.ydb.core.protos.config_pb2 import TLogConfig
+from ydb.core.protos.config_pb2 import TLogConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.config.client_pb2 import TClientConfig, TClientAppConfig
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest

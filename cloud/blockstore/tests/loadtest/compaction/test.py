@@ -12,9 +12,9 @@ from cloud.blockstore.tests.python.lib.nbs_runner import \
 from cloud.blockstore.tests.python.lib.test_base import \
     thread_count, wait_for_nbs_server
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import \
+from ydb.tests.library.harness.kikimr_cluster import \
     kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import \
+from ydb.tests.library.harness.kikimr_config import \
     KikimrConfigGenerator
 
 import yatest.common as yatest_common
