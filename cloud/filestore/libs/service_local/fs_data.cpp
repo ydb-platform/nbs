@@ -47,7 +47,8 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     TFileStat stat;
     ui64 nodeId;
     if (const auto& pathname = request.GetName()) {
-        handle = node->OpenHandle(pathname, flags, mode);
+        auto h = node->OpenHandle(pathname, flags, mode);
+        handle.Swap(h);
 
         auto newnode = TIndexNode::Create(*node, pathname);
         stat = newnode->Stat();
@@ -62,7 +63,8 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
             return TErrorResponse(ErrorNoSpaceLeft());
         }
     } else {
-        handle = node->OpenHandle(flags);
+        auto h = node->OpenHandle(flags);
+        handle.Swap(h);
         stat = node->Stat();
         nodeId = node->GetNodeId();
     }
