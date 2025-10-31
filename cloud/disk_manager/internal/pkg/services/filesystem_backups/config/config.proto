@@ -1,0 +1,16 @@
+syntax = "proto2";
+
+package filesystembackups;
+
+import "google/protobuf/duration.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_backups/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message FilesystemBackupsConfig {
+    optional string DeletedFilesystemBackupExpirationTimeout = 1 [default = "30m"];
+    optional string ClearDeletedFilesystemBackupsTaskScheduleInterval = 2 [default = "1m"];
+    optional uint32 ClearDeletedFilesystemBackupsLimit = 3 [default = 1000];
+    optional string StorageFolder = 4 [default = "filesystembackups"];
+}

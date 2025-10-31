@@ -50,6 +50,7 @@ func TestDiskServiceCreateDeletePlacementGroup(t *testing.T) {
 		"",
 		"",
 		"",
+		"",
 		config.GetPlacementGroupConfig().GetStorageFolder(),
 		ydbClient,
 		endedMigrationExpirationTimeout,

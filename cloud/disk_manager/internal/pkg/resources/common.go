@@ -17,6 +17,7 @@ type storageYDB struct {
 	imagesPath                      string
 	snapshotsPath                   string
 	filesystemsPath                 string
+	filesystemBackupsPath           string
 	placementGroupsPath             string
 	endedMigrationExpirationTimeout time.Duration
 }
@@ -28,6 +29,7 @@ func NewStorage(
 	imagesFolder string,
 	snapshotsFolder string,
 	filesystemsFolder string,
+	filesystemBackupsFolder string,
 	placementGroupsPath string,
 	db *persistence.YDBClient,
 	endedMigrationExpirationTimeout time.Duration,
@@ -39,6 +41,7 @@ func NewStorage(
 		imagesPath:                      db.AbsolutePath(imagesFolder),
 		snapshotsPath:                   db.AbsolutePath(snapshotsFolder),
 		filesystemsPath:                 db.AbsolutePath(filesystemsFolder),
+		filesystemBackupsPath:           db.AbsolutePath(filesystemBackupsFolder),
 		placementGroupsPath:             db.AbsolutePath(placementGroupsPath),
 		endedMigrationExpirationTimeout: endedMigrationExpirationTimeout,
 	}, nil
@@ -52,6 +55,7 @@ func CreateYDBTables(
 	imagesFolder string,
 	snapshotsFolder string,
 	filesystemsFolder string,
+	filesystemBackupsFolder string,
 	placementGroupsFolder string,
 	db *persistence.YDBClient,
 	dropUnusedColumns bool,
@@ -84,6 +88,18 @@ func CreateYDBTables(
 		}
 	}
 
+	if filesystemBackupsFolder != "" {
+		err = createFilesystemBackupsYDBTables(
+			ctx,
+			filesystemBackupsFolder,
+			db,
+			dropUnusedColumns,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	return createPlacementGroupsYDBTables(
 		ctx,
 		placementGroupsFolder,
@@ -98,6 +114,7 @@ func DropYDBTables(
 	imagesFolder string,
 	snapshotsFolder string,
 	filesystemsFolder string,
+	filesystemBackupsFolder string,
 	placementGroupsFolder string,
 	db *persistence.YDBClient,
 ) error {
@@ -119,6 +136,13 @@ func DropYDBTables(
 
 	if filesystemsFolder != "" {
 		err = dropFilesystemsYDBTables(ctx, filesystemsFolder, db)
+		if err != nil {
+			return err
+		}
+	}
+
+	if filesystemBackupsFolder != "" {
+		err = dropFilesystemBackupsYDBTables(ctx, filesystemBackupsFolder, db)
 		if err != nil {
 			return err
 		}

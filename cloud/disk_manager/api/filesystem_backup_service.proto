@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package cloud.disk_manager;
+
+import "cloud/disk_manager/api/filesystem_service.proto";
+import "cloud/disk_manager/api/operation.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
+
+service FilesystemBackupService {
+    // Returns operation with:
+    // metadata: CreateFilesystemBackupMetadata
+    // response: CreateFilesystemBackupResponse
+    rpc Create(CreateFilesystemBackupRequest) returns (Operation);
+
+    // Returns operation with:
+    // metadata: DeleteFilesystemBackupMetadata
+    // response: DeleteFilesystemBackupResponse
+    rpc Delete(DeleteFilesystemBackupRequest) returns (Operation);
+}
+
+message CreateFilesystemBackupRequest {
+    FilesystemId src = 1;
+    string filesystem_backup_id = 2;
+    string folder_id = 3;
+}
+
+message CreateFilesystemBackupMetadata {
+    double metadata_progress = 1;
+    double progress = 2;
+}
+
+message CreateFilesystemBackupResponse {
+    int64 size = 1;
+    int64 storage_size = 2;
+    int64 inodes_count = 3;
+}
+
+message DeleteFilesystemBackupRequest {
+    string filesystem_backup_id = 1;
+}
+
+message DeleteFilesystemBackupMetadata {
+    string filesystem_backup_id = 1;
+}
+
+message DeleteFilesystemBackupResponse {
+    message ChangedFilesystemBackup {
+        string filesystem_backup_id = 1;
+        google.protobuf.Timestamp timestamp = 2;
+        int64 storage_size = 3;
+    }
+    repeated ChangedFilesystemBackup changed_filesystem_backups = 1;
+}

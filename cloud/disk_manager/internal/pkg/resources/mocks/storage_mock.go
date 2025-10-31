@@ -347,6 +347,87 @@ func (s *StorageMock) ListFilesystems(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (s *StorageMock) CreateFilesystemBackup(
+	ctx context.Context,
+	backup resources.FilesystemBackupMeta,
+) (resources.FilesystemBackupMeta, error) {
+
+	args := s.Called(ctx, backup)
+	return args.Get(0).(resources.FilesystemBackupMeta), args.Error(1)
+}
+
+func (s *StorageMock) FilesystemBackupCreated(
+	ctx context.Context,
+	backupID string,
+	checkpointID string,
+	createdAt time.Time,
+	backupSize uint64,
+	backupStorageSize uint64,
+) error {
+
+	args := s.Called(
+		ctx,
+		backupID,
+		checkpointID,
+		createdAt,
+		backupSize,
+		backupStorageSize,
+	)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetFilesystemBackupMeta(
+	ctx context.Context,
+	backupID string,
+) (*resources.FilesystemBackupMeta, error) {
+
+	args := s.Called(ctx, backupID)
+	return args.Get(0).(*resources.FilesystemBackupMeta), args.Error(1)
+}
+
+func (s *StorageMock) DeleteFilesystemBackup(
+	ctx context.Context,
+	backupID string,
+	taskID string,
+	deletingAt time.Time,
+) (*resources.FilesystemBackupMeta, error) {
+
+	args := s.Called(ctx, backupID, taskID, deletingAt)
+	return args.Get(0).(*resources.FilesystemBackupMeta), args.Error(1)
+}
+
+func (s *StorageMock) FilesystemBackupDeleted(
+	ctx context.Context,
+	backupID string,
+	deletedAt time.Time,
+) error {
+
+	args := s.Called(ctx, backupID, deletedAt)
+	return args.Error(0)
+}
+
+func (s *StorageMock) ClearDeletedFilesystemBackups(
+	ctx context.Context,
+	deletedBefore time.Time,
+	limit int,
+) error {
+
+	args := s.Called(ctx, deletedBefore, limit)
+	return args.Error(0)
+}
+
+func (s *StorageMock) ListFilesystemBackups(
+	ctx context.Context,
+	folderID string,
+	creatingBefore time.Time,
+) ([]string, error) {
+
+	args := s.Called(ctx, folderID, creatingBefore)
+	return args.Get(0).([]string), args.Error(1)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func (s *StorageMock) CreatePlacementGroup(
 	ctx context.Context,
 	placementGroup resources.PlacementGroupMeta,

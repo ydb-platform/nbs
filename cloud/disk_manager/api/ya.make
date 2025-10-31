@@ -18,6 +18,7 @@ SRCS(
     error.proto
     image.proto
     image_service.proto
+    filesystem_backup_service.proto
     filesystem_service.proto
     operation.proto
     operation_service.proto
