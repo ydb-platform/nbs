@@ -1368,8 +1368,8 @@ message TStorageServiceConfig
     optional bool AttachDetachPathsEnabled = 468;
 
     // Max inflight attach/detach path requests in progress.
-    optional uint64 MaxInflightAttachDetachPathRequestsProcessing = 467;
+    optional uint64 MaxInflightAttachDetachPathRequestsProcessing = 469;
 
     // Timeout for attach/detach path requests (in milliseconds).
-    optional uint32 AttachDetachPathRequestTimeout = 468;
+    optional uint32 AttachDetachPathRequestTimeout = 470;
 }
