@@ -1,5 +1,7 @@
 #include "write_back_cache.h"
 
+#include "write_back_cache_stats.h"
+
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
 
@@ -117,14 +119,14 @@ struct TInFlightRequestTracker
 struct TWriteDataRequestStats
 {
     ui64 InProgressCount = 0;
-    TInstant MinTime = TInstant::Zero();
+    TInstant MinStatusChangeTime = TInstant::Zero();
     TVector<TDuration> Data;
     ui64 Count = 0;
 
     void ResetNonDerivativeCounters()
     {
         InProgressCount = 0;
-        MinTime = TInstant::Zero();
+        MinStatusChangeTime = TInstant::Zero();
     }
 };
 
@@ -153,7 +155,7 @@ struct TWriteBackCacheStats
 
     TReadDataRequestStats ReadStats;
 
-    TWriteBackCache::TPersistentQueueStats PersistentQueueStats;
+    TPersistentQueueStats PersistentQueueStats;
 
     // Do not store more than the specified amount of elements in the following
     // vectors in order to prevent OOM for large tests
@@ -234,12 +236,12 @@ struct TWriteBackCacheStats
         }
     }
 
-    void WriteDataRequestUpdateMinTime(
+    void UpdateWriteDataRequestMinStatusChangeTime(
         TWriteBackCache::EWriteDataRequestStatus status,
-        TInstant minTime) override
+        TInstant minStatusChangeTime) override
     {
         auto& stats = GetWriteStats(status);
-        stats.MinTime = minTime;
+        stats.MinStatusChangeTime = minStatusChangeTime;
     }
 
     void AddReadDataStats(
@@ -265,9 +267,14 @@ struct TWriteBackCacheStats
     }
 
     void UpdatePersistentQueueStats(
-        const TWriteBackCache::TPersistentQueueStats& stats) override
+        const TPersistentQueueStats& stats) override
     {
         PersistentQueueStats = stats;
+    }
+
+    void UpdateStats(bool updatePercentiles) override
+    {
+        Y_UNUSED(updatePercentiles);
     }
 };
 
@@ -683,11 +690,21 @@ struct TBootstrap
         UNIT_ASSERT_EQUAL(0, Stats->InProgressFlushCount);
         UNIT_ASSERT_EQUAL(0, Stats->NodeCount);
         UNIT_ASSERT_EQUAL(0, Stats->PersistentQueueStats.RawUsedBytesCount);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->PendingStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->CachedStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushRequestedStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushingStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushedStats.MinTime);
+        UNIT_ASSERT_EQUAL(
+            TInstant::Zero(),
+            Stats->PendingStats.MinStatusChangeTime);
+        UNIT_ASSERT_EQUAL(
+            TInstant::Zero(),
+            Stats->CachedStats.MinStatusChangeTime);
+        UNIT_ASSERT_EQUAL(
+            TInstant::Zero(),
+            Stats->FlushRequestedStats.MinStatusChangeTime);
+        UNIT_ASSERT_EQUAL(
+            TInstant::Zero(),
+            Stats->FlushingStats.MinStatusChangeTime);
+        UNIT_ASSERT_EQUAL(
+            TInstant::Zero(),
+            Stats->FlushedStats.MinStatusChangeTime);
         UNIT_ASSERT_EQUAL(0, Stats->PendingStats.InProgressCount);
         UNIT_ASSERT_EQUAL(0, Stats->CachedStats.InProgressCount);
         UNIT_ASSERT_EQUAL(0, Stats->FlushRequestedStats.InProgressCount);
@@ -717,9 +734,9 @@ struct TBootstrap
 
         UNIT_ASSERT_EQUAL_C(
             expectedMinTime,
-            stats.MinTime,
+            stats.MinStatusChangeTime,
             name << "Stats.MinTime: expected = " << expectedMinTime
-                 << ", actual = " << stats.MinTime);
+                 << ", actual = " << stats.MinStatusChangeTime);
     }
 
     void CheckPendingWriteDataRequestStats(
@@ -1670,7 +1687,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.InProgressFlushCount);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats.FlushingStats.MinTime);
+        UNIT_ASSERT_EQUAL(
+            TInstant::Zero(),
+            stats.FlushingStats.MinStatusChangeTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
         auto now = b.Timer->Now();
@@ -1680,7 +1699,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
-        UNIT_ASSERT_EQUAL(now, stats.FlushingStats.MinTime);
+        UNIT_ASSERT_EQUAL(now, stats.FlushingStats.MinStatusChangeTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
         b.Scheduler->RunAllScheduledTasks();
@@ -1691,7 +1710,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(1, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
-        UNIT_ASSERT_EQUAL(now, stats.FlushingStats.MinTime);
+        UNIT_ASSERT_EQUAL(now, stats.FlushingStats.MinStatusChangeTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
         b.Scheduler->RunAllScheduledTasks();
@@ -1700,7 +1719,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(2, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.InProgressFlushCount);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats.FlushingStats.MinTime);
+        UNIT_ASSERT_EQUAL(
+            TInstant::Zero(),
+            stats.FlushingStats.MinStatusChangeTime);
     }
 
     Y_UNIT_TEST(ShouldReportNodeCount)
