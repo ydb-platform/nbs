@@ -4,6 +4,8 @@
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
+#include <cloud/storage/core/libs/common/disjoint_interval_map.h>
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 #include <cloud/storage/core/libs/diagnostics/request_counters.h>
@@ -26,19 +28,38 @@ class THdrRequestPercentiles
 {
     using TDynamicCounterPtr = TDynamicCounters::TCounterPtr;
 
+    struct TValue
+    {
+        // TLatencyHistogram is not movable, thats why we should wrap it in
+        // unique_ptr.
+        std::unique_ptr<TLatencyHistogram> Hist;
+        TVector<TDynamicCounterPtr> Counters;
+    };
+
 private:
     TVector<TDynamicCounterPtr> CountersExecutionTime;
     TVector<TDynamicCounterPtr> CountersTotal;
     TVector<TDynamicCounterPtr> CountersSize;
+
+    TDisjointIntervalMap<ui64, TValue> ExecutionTimeSizeClasses;
 
     TLatencyHistogram ExecutionTimeHist;
     TLatencyHistogram TotalHist;
     TSizeHistogram SizeHist;
 
 public:
-    void Register(
-        TDynamicCounters& counters,
-        const TString& request)
+    explicit THdrRequestPercentiles(
+        const TVector<TSizeInterval>& executionTimeSizeClasses)
+    {
+        for (const auto& [start, end]: executionTimeSizeClasses) {
+            ExecutionTimeSizeClasses.Add(
+                start,
+                end,
+                {.Hist = std::make_unique<TLatencyHistogram>()});
+        }
+    }
+
+    void Register(TDynamicCounters& counters, const TString& request)
     {
         auto requestGroup = counters.GetSubgroup("request", request);
 
@@ -50,6 +71,18 @@ public:
 
         auto sizeGroup = requestGroup->GetSubgroup("percentiles", "Size");
         Register(*sizeGroup, CountersSize);
+
+        for (auto& [_, item]: ExecutionTimeSizeClasses) {
+            const auto sizeClassName =
+                ToString(TSizeInterval{item.Begin, item.End});
+
+            auto executionTimeGroup =
+                requestGroup->GetSubgroup("percentiles", "ExecutionTime");
+            auto sizeClassCounters =
+                executionTimeGroup->GetSubgroup("sizeclass", sizeClassName);
+
+            Register(*sizeClassCounters, item.Value.Counters);
+        }
     }
 
     void UpdateStats()
@@ -57,13 +90,24 @@ public:
         Update(CountersTotal, TotalHist);
         Update(CountersSize, SizeHist);
         Update(CountersExecutionTime, ExecutionTimeHist);
+        for (auto& [_, item]: ExecutionTimeSizeClasses) {
+            Update(item.Value.Counters, *item.Value.Hist);
+        }
     }
 
-    void AddStats(TDuration requestExecutionTime, TDuration requestTime, ui32 requestBytes)
+    void AddStats(
+        TDuration requestExecutionTime,
+        TDuration requestTime,
+        ui32 requestBytes)
     {
         ExecutionTimeHist.RecordValue(requestExecutionTime);
         TotalHist.RecordValue(requestTime);
         SizeHist.RecordValue(requestBytes);
+        ExecutionTimeSizeClasses.VisitOverlapping(
+            requestBytes,
+            requestBytes + 1,
+            [&](TDisjointIntervalMap<ui64, TValue>::TIterator it)
+            { it->second.Value.Hist->RecordValue(requestTime); });
     }
 
     void BatchCompleted(
@@ -114,6 +158,13 @@ private:
     THdrRequestPercentiles ZeroBlocksPercentiles;
 
 public:
+    explicit THdrPercentiles(
+        const TVector<TSizeInterval>& executionTimeSizeClasses)
+        : ReadBlocksPercentiles(executionTimeSizeClasses)
+        , WriteBlocksPercentiles(executionTimeSizeClasses)
+        , ZeroBlocksPercentiles(executionTimeSizeClasses)
+    {}
+
     void Register(TDynamicCounters& counters)
     {
         ReadBlocksPercentiles.Register(
@@ -176,6 +227,32 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr TRequestCounters::EOptions DefaultOptions =
+    TRequestCounters::EOption::ReportDataPlaneHistogram |
+    TRequestCounters::EOption::AddSpecialCounters |
+    TRequestCounters::EOption::OnlyReadWriteRequests;
+
+constexpr TRequestCounters::EOptions GeneralOptions =
+    TRequestCounters::EOption::ReportDataPlaneHistogram |
+    TRequestCounters::EOption::AddSpecialCounters;
+
+constexpr TRequestCounters::EOptions SSDOrHDDOptions =
+    TRequestCounters::EOption::ReportDataPlaneHistogram |
+    TRequestCounters::EOption::OnlyReadWriteRequests;
+
+#define BLOCKSTORE_MEDIA_KIND(xxx, ...)                                            \
+    xxx(,                  GeneralOptions                      __VA_ARGS__)        \
+    xxx(SSD,               SSDOrHDDOptions                     __VA_ARGS__)        \
+    xxx(HDD,               SSDOrHDDOptions                     __VA_ARGS__)        \
+    xxx(SSDNonrepl,        DefaultOptions,                     __VA_ARGS__)        \
+    xxx(SSDMirror2,        DefaultOptions,                     __VA_ARGS__)        \
+    xxx(SSDMirror3,        DefaultOptions,                     __VA_ARGS__)        \
+    xxx(SSDLocal,          DefaultOptions,                     __VA_ARGS__)        \
+    xxx(HDDLocal,          DefaultOptions,                     __VA_ARGS__)        \
+    xxx(HDDNonrepl,        DefaultOptions,                     __VA_ARGS__)        \
+                                                                                   \
+    // BLOCKSTORE_MEDIA_KIND
+
 class TRequestStats final
     : public IRequestStats
     , public std::enable_shared_from_this<TRequestStats>
@@ -205,64 +282,28 @@ private:
     THdrPercentiles HdrTotalHDDNonrepl;
 
 public:
+
+#define INITIALIZE_REQUEST_COUNTERS(name, options, ...) \
+    , Total##name(MakeRequestCounters(                  \
+          timer,                                        \
+          options,                                      \
+          histogramCounterOptions,                      \
+          executionTimeSizeClasses))   // INITIALIZE_REQUEST_COUNTERS
+
+#define INITIALIZE_HDR_PERCENTILES(name, ...) \
+    , HdrTotal##name(                         \
+          executionTimeSizeClasses)   // INITIALIZE_HDR_PERCENTILES
+
     TRequestStats(
             TDynamicCountersPtr counters,
             bool isServerSide,
             ITimerPtr timer,
-            EHistogramCounterOptions histogramCounterOptions)
+            EHistogramCounterOptions histogramCounterOptions,
+            const TVector<TSizeInterval>& executionTimeSizeClasses)
         : Counters(std::move(counters))
         , IsServerSide(isServerSide)
-        , Total(MakeRequestCounters(
-            timer,
-            TRequestCounters::EOption::ReportDataPlaneHistogram |
-                TRequestCounters::EOption::AddSpecialCounters,
-            histogramCounterOptions))
-        , TotalSSD(MakeRequestCounters(
-            timer,
-            TRequestCounters::EOption::ReportDataPlaneHistogram |
-                TRequestCounters::EOption::OnlyReadWriteRequests,
-            histogramCounterOptions))
-        , TotalHDD(MakeRequestCounters(
-            timer,
-                TRequestCounters::EOption::ReportDataPlaneHistogram |
-                TRequestCounters::EOption::OnlyReadWriteRequests,
-            histogramCounterOptions))
-        , TotalSSDNonrepl(MakeRequestCounters(
-            timer,
-            TRequestCounters::EOption::ReportDataPlaneHistogram |
-                TRequestCounters::EOption::AddSpecialCounters |
-                TRequestCounters::EOption::OnlyReadWriteRequests,
-            histogramCounterOptions))
-        , TotalSSDMirror2(MakeRequestCounters(
-            timer,
-            TRequestCounters::EOption::ReportDataPlaneHistogram |
-                TRequestCounters::EOption::AddSpecialCounters |
-                TRequestCounters::EOption::OnlyReadWriteRequests,
-            histogramCounterOptions))
-        , TotalSSDMirror3(MakeRequestCounters(
-            timer,
-            TRequestCounters::EOption::ReportDataPlaneHistogram |
-                TRequestCounters::EOption::AddSpecialCounters |
-                TRequestCounters::EOption::OnlyReadWriteRequests,
-            histogramCounterOptions))
-        , TotalSSDLocal(MakeRequestCounters(
-            timer,
-            TRequestCounters::EOption::ReportDataPlaneHistogram |
-                TRequestCounters::EOption::AddSpecialCounters |
-                TRequestCounters::EOption::OnlyReadWriteRequests,
-            histogramCounterOptions))
-        , TotalHDDLocal(MakeRequestCounters(
-            timer,
-            TRequestCounters::EOption::ReportDataPlaneHistogram |
-                TRequestCounters::EOption::AddSpecialCounters |
-                TRequestCounters::EOption::OnlyReadWriteRequests,
-            histogramCounterOptions))
-        , TotalHDDNonrepl(MakeRequestCounters(
-            timer,
-            TRequestCounters::EOption::ReportDataPlaneHistogram |
-                TRequestCounters::EOption::AddSpecialCounters |
-                TRequestCounters::EOption::OnlyReadWriteRequests,
-            histogramCounterOptions))
+        BLOCKSTORE_MEDIA_KIND(INITIALIZE_REQUEST_COUNTERS)
+        BLOCKSTORE_MEDIA_KIND(INITIALIZE_HDR_PERCENTILES)
     {
         Total.Register(*Counters);
 
@@ -302,6 +343,9 @@ public:
             HdrTotalHDDNonrepl.Register(*hddNonrepl);
         }
     }
+
+#undef INITIALIZE_REQUEST_COUNTERS
+#undef INITIALIZE_HDR_PERCENTILES
 
     ui64 RequestStarted(
         NCloud::NProto::EStorageMediaKind mediaKind,
@@ -708,19 +752,22 @@ IRequestStatsPtr CreateClientRequestStats(
         std::move(counters),
         false,
         std::move(timer),
-        histogramCounterOptions);
+        histogramCounterOptions,
+        TVector<TSizeInterval>{});
 }
 
 IRequestStatsPtr CreateServerRequestStats(
     TDynamicCountersPtr counters,
     ITimerPtr timer,
-    EHistogramCounterOptions histogramCounterOptions)
+    EHistogramCounterOptions histogramCounterOptions,
+    const TVector<TSizeInterval>& executionTimeSizeClasses)
 {
     return std::make_shared<TRequestStats>(
         std::move(counters),
         true,
         std::move(timer),
-        histogramCounterOptions);
+        histogramCounterOptions,
+        executionTimeSizeClasses);
 }
 
 IRequestStatsPtr CreateRequestStatsStub()

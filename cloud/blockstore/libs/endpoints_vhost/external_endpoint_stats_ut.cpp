@@ -127,9 +127,9 @@ struct TFixture
             CreateServerRequestStats(
                 serverGroup,
                 Timer,
-                EHistogramCounterOption::ReportMultipleCounters),
-            std::move(volumeStats)
-        );
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            std::move(volumeStats));
 
         NProto::TVolume volume;
         volume.SetDiskId(DiskId);

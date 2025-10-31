@@ -300,7 +300,8 @@ void TBootstrapBase::Init()
     RequestStats = CreateServerRequestStats(
         serverGroup,
         Timer,
-        Configs->DiagnosticsConfig->GetHistogramCounterOptions());
+        Configs->DiagnosticsConfig->GetHistogramCounterOptions(),
+        Configs->DiagnosticsConfig->GetExecutionTimeSizeClasses());
 
     if (!VolumeStats) {
         VolumeStats = CreateVolumeStats(

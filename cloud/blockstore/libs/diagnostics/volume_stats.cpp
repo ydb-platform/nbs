@@ -272,13 +272,15 @@ public:
             std::shared_ptr<TVolumeInfoBase> volumeBase,
             ITimerPtr timer,
             TRealInstanceId realInstanceId,
-            EHistogramCounterOptions histogramCounterOptions)
+            EHistogramCounterOptions histogramCounterOptions,
+            const TVector<TSizeInterval>& executionTimeSizeClasses)
         : VolumeBase(std::move(volumeBase))
         , RealInstanceId(std::move(realInstanceId))
         , RequestCounters(MakeRequestCounters(
-            std::move(timer),
-            GetRequestCountersOptions(*VolumeBase),
-            histogramCounterOptions))
+              std::move(timer),
+              GetRequestCountersOptions(*VolumeBase),
+              histogramCounterOptions,
+              executionTimeSizeClasses))
     {}
 
     const NProto::TVolume& GetInfo() const override
@@ -462,6 +464,9 @@ private:
     const ITimerPtr Timer;
     const THashSet<TString> CloudIdsWithStrictSLA;
 
+    TVector<TSizeInterval> ExecutionTimeSizeClasses =
+        DiagnosticsConfig->GetExecutionTimeSizeClasses();
+
     TDynamicCountersPtr Counters;
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
@@ -496,8 +501,7 @@ public:
             return THashSet<TString>(v.begin(), v.end());
         }(DiagnosticsConfig->GetCloudIdsWithStrictSLA()))
         , UserCounters(CreateUserCounterSupplier())
-    {
-    }
+    {}
 
     bool MountVolumeImpl(
         const NProto::TVolume& volume,
@@ -868,7 +872,8 @@ private:
             volumeBase,
             Timer,
             realInstanceId,
-            DiagnosticsConfig->GetHistogramCounterOptions());
+            DiagnosticsConfig->GetHistogramCounterOptions(),
+            ExecutionTimeSizeClasses);
 
         if (!Counters) {
             InitCounters();

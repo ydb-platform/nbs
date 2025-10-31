@@ -80,7 +80,8 @@ IRequestStatsPtr CreateClientRequestStats(
 IRequestStatsPtr CreateServerRequestStats(
     NMonitoring::TDynamicCountersPtr counters,
     ITimerPtr timer,
-    EHistogramCounterOptions histogramCounterOptions);
+    EHistogramCounterOptions histogramCounterOptions,
+    const TVector<TSizeInterval>& executionTimeSizeClasses);
 IRequestStatsPtr CreateRequestStatsStub();
 
 }   // namespace NCloud::NBlockStore

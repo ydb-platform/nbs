@@ -147,9 +147,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             CreateServerRequestStats(
                 serverGroup,
                 timer,
-                EHistogramCounterOption::ReportMultipleCounters),
-            std::move(volumeStats)
-        );
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            std::move(volumeStats));
 
         NProto::TVolume volume;
         volume.SetDiskId("volume");
@@ -221,9 +221,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             CreateServerRequestStats(
                 serverGroup,
                 timer,
-                EHistogramCounterOption::ReportMultipleCounters),
-            std::move(volumeStats)
-        );
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            std::move(volumeStats));
 
         NProto::TVolume volume;
         volume.SetBlockSize(4096);
@@ -259,9 +259,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             CreateServerRequestStats(
                 serverGroup,
                 timer,
-                EHistogramCounterOption::ReportMultipleCounters),
-            std::move(volumeStats)
-        );
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            std::move(volumeStats));
 
         NProto::TVolume volume;
         volume.SetDiskId("volume");
@@ -347,9 +347,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             CreateServerRequestStats(
                 serverGroup,
                 timer,
-                EHistogramCounterOption::ReportMultipleCounters),
-            std::move(volumeStats)
-        );
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            std::move(volumeStats));
 
         NProto::TVolume volume;
         volume.SetBlockSize(4096);
@@ -392,9 +392,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             CreateServerRequestStats(
                 monitoring->GetCounters(),
                 timer,
-                EHistogramCounterOption::ReportMultipleCounters),
-            CreateVolumeStatsStub()
-        );
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            CreateVolumeStatsStub());
 
         TMetricRequest request {EBlockStoreRequest::DescribeVolume};
         request.CellRequest = true;
