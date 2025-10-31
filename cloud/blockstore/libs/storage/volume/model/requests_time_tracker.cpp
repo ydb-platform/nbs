@@ -153,36 +153,34 @@ bool TRequestsTimeTracker::TEqual::operator()(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TRequestsTimeTracker::TThroughputTracker::AddOperation(ui64 blocks)
+void TRequestsTimeTracker::TThroughputTracker::AddOperation(ui64 blockCount)
 {
-    TotalBlocks += blocks;
+    TotalBlockCount += blockCount;
     TotalOps++;
 }
 
-std::pair<double, double>
+std::pair<ui64, ui64>
 TRequestsTimeTracker::TThroughputTracker::GetRatesAndReset(
     ui64 currentTime,
     ui32 blockSize)
 {
     if (LastResetTime == 0) {
         LastResetTime = currentTime;
-        return {0.0, 0.0};
+        return {0, 0};
     }
 
     const ui64 elapsedCycles = currentTime - LastResetTime;
-
     const ui64 elapsedUs = CyclesToDurationSafe(elapsedCycles).MicroSeconds();
-    const double elapsedSeconds = elapsedUs / 1000000.0;
 
-    if (elapsedSeconds < 0.000001) {
-        return {0.0, 0.0};
+    if (elapsedUs == 0) {
+        return {0, 0};
     }
 
-    const ui64 totalBytes = TotalBlocks * static_cast<ui64>(blockSize);
-    const double bytesPerSecond = totalBytes / elapsedSeconds;
-    const double opsPerSecond = TotalOps / elapsedSeconds;
+    const ui64 totalBytes = TotalBlockCount * static_cast<ui64>(blockSize);
+    const ui64 bytesPerSecond = (totalBytes * 1000000ULL) / elapsedUs;
+    const ui64 opsPerSecond = (TotalOps * 1000000ULL) / elapsedUs;
 
-    TotalBlocks = 0;
+    TotalBlockCount = 0;
     TotalOps = 0;
     LastResetTime = currentTime;
 
@@ -406,9 +404,7 @@ TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize)
                 .GetRatesAndReset(nowCycles, blockSize);
 
         const TString formattedThroughput =
-            bytesPerSec > 0.0
-                ? (FormatByteSize(static_cast<ui64>(bytesPerSec)) + "/s")
-                : "0 B/s";
+            bytesPerSec > 0 ? (FormatByteSize(bytesPerSec) + "/s") : "0 B/s";
 
         const TString htmlKeyBytes =
             TString(typeNames[requestType]) + "_Total_BytesPerSec";
@@ -416,7 +412,7 @@ TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize)
             TString(typeNames[requestType]) + "_Total_OpsPerSec";
 
         allStat[htmlKeyBytes] = formattedThroughput;
-        allStat[htmlKeyOps] = ToString(static_cast<ui64>(opsPerSec));
+        allStat[htmlKeyOps] = ToString(opsPerSec);
     }
 
     NJson::TJsonValue json;

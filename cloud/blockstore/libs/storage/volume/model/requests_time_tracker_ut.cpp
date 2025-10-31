@@ -396,15 +396,40 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
         auto readOps = getStat("R_Total_OpsPerSec");
         auto writeOps = getStat("W_Total_OpsPerSec");
 
+        UNIT_ASSERT(readOps != "KEY_MISSING");
+        UNIT_ASSERT(writeOps != "KEY_MISSING");
         UNIT_ASSERT(readOps != "0");
         UNIT_ASSERT(writeOps != "0");
-        UNIT_ASSERT(getStat("R_Total_BytesPerSec") != "0 B/s");
-        UNIT_ASSERT(getStat("W_Total_BytesPerSec") != "0 B/s");
+
+        auto readBytes = getStat("R_Total_BytesPerSec");
+        auto writeBytes = getStat("W_Total_BytesPerSec");
+        UNIT_ASSERT(readBytes != "0 B/s");
+        UNIT_ASSERT(writeBytes != "0 B/s");
+        UNIT_ASSERT(readBytes.Contains("/s"));
+        UNIT_ASSERT(writeBytes.Contains("/s"));
 
         UNIT_ASSERT_VALUES_EQUAL("0", getStat("Z_Total_OpsPerSec"));
         UNIT_ASSERT_VALUES_EQUAL("0 B/s", getStat("Z_Total_BytesPerSec"));
         UNIT_ASSERT_VALUES_EQUAL("0", getStat("D_Total_OpsPerSec"));
         UNIT_ASSERT_VALUES_EQUAL("0 B/s", getStat("D_Total_BytesPerSec"));
+
+        auto json2 =
+            requestsTimeTracker.GetStatJson(baseTime + 2000200000, 4096);
+        NJson::TJsonValue value2;
+        NJson::ReadJsonTree(json2, &value2, true);
+
+        auto getStat2 = [&](const TString& key) -> TString
+        {
+            if (!value2["stat"].Has(key)) {
+                return "KEY_MISSING";
+            }
+            return value2["stat"][key].GetString();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL("0", getStat2("R_Total_OpsPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("0 B/s", getStat2("R_Total_BytesPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("0", getStat2("W_Total_OpsPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("0 B/s", getStat2("W_Total_BytesPerSec"));
     }
 }
 

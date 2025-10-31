@@ -116,11 +116,11 @@ private:
     struct TThroughputTracker
     {
         ui64 LastResetTime = 0;
-        ui64 TotalBlocks = 0;
+        ui64 TotalBlockCount = 0;
         ui64 TotalOps = 0;
 
-        void AddOperation(ui64 blocks);
-        std::pair<double, double> GetRatesAndReset(
+        void AddOperation(ui64 blockCount);
+        std::pair<ui64, ui64> GetRatesAndReset(
             ui64 currentTime,
             ui32 blockSize);
     };
