@@ -189,7 +189,6 @@ void TDiskRegistryActor::CompleteAddAgent(
     PublishDiskStates(ctx);
     SecureErase(ctx);
     StartMigration(ctx);
-    ProcessPathsToAttachDetach(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

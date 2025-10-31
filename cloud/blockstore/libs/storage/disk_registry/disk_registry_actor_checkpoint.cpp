@@ -166,7 +166,6 @@ void TDiskRegistryActor::CompleteDeallocateCheckpoint(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     SecureErase(ctx);
-    ProcessPathsToAttachDetach(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

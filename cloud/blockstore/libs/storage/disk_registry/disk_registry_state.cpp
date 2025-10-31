@@ -6988,6 +6988,13 @@ void TDiskRegistryState::AttachDetachPathIfNeeded(
         return;
     }
 
+    // We should not detach paths with dependent disks.
+    if (!attach && HasDependentDisks(agent.GetAgentId(), path)) {
+        ReportDiskRegistryDetachPathWithDependentDisk(
+            "Can't detach path with dependent disks",
+            {{"agent", agent.GetAgentId()}, {"path", path}});
+    }
+
     const auto desirableState = attach ? NProto::PATH_ATTACH_STATE_ATTACHING
                                        : NProto::PATH_ATTACH_STATE_DETACHED;
     const auto companionState = attach ? NProto::PATH_ATTACH_STATE_ATTACHED
