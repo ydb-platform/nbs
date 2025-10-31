@@ -46,7 +46,6 @@ func (t *deleteSnapshotTask) deleteSnapshot(
 ) error {
 
 	selfTaskID := execCtx.GetTaskID()
-
 	snapshotMeta, err := t.storage.DeleteSnapshot(
 		ctx,
 		t.request.SnapshotId,

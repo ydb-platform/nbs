@@ -3,7 +3,7 @@ PROTO_LIBRARY()
 ONLY_TAGS(GO_PROTO)
 
 SRCS(
-    create_filesystem_backup_task.proto
+    create_filesystem_backup_from_filesystem_task.proto
     delete_filesystem_backup_task.proto
 )
 

@@ -60,7 +60,7 @@ func (t *deleteFilesystemBackupTask) deleteFilesystemBackup(
 		return nil
 	}
 
-	// Hack for NBS-2225.
+	// If case of concurrent deletion we should wait for the first deletion task to complete.
 	if filesystemBackupMeta.DeleteTaskID != selfTaskID {
 		_, err := t.scheduler.WaitTask(ctx, execCtx, filesystemBackupMeta.DeleteTaskID)
 		return err

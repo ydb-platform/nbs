@@ -84,7 +84,6 @@ func (t *createFilesystemBackupFromFilesystemTask) run(
 		t.request.DstFilesystemBackupId,
 		selfTaskID,
 		filesystemParams.IsDiskRegistryBasedFilesystem,
-		t.request.RetryBrokenDRBasedDiskCheckpoint,
 	)
 	if err != nil {
 		return "", err

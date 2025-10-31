@@ -1,4 +1,4 @@
-package filesystem_backups
+package filesystembackups
 
 import (
 	"context"
