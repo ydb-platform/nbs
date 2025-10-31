@@ -689,6 +689,12 @@ message TGracefulShutdownResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+message TChecksums
+{
+    repeated uint32 Checksums = 1;
+    string ReplicaName = 2;
+}
+
 // CheckRange request/response.
 
 message TCheckRangeRequest
@@ -705,11 +711,11 @@ message TCheckRangeRequest
     // Number of blobs per batch.
     uint64 BlocksCount = 4;
 
-    // Is it necessary to calculate and include checksums in the response
-    bool CalculateChecksums = 5;
+    // It is a default non-unsetable parameter already. Parameter is deprecated.
+    bool DeprecatedCalculateChecksums = 5;
 
-    // Number of replicas to read from m3 disks.
-    uint64 ReplicaCount = 6;
+    // Number of replicas to read from m3 disks. Parameter is deprecated, server sets it by itself.
+    uint64 DeprecatedReplicaCount = 6;
 }
 
 message TCheckRangeResponse
@@ -725,6 +731,9 @@ message TCheckRangeResponse
 
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 4;
+
+    // Checksums of blocks for mirror if differ
+    repeated TChecksums MirrorChecksums = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

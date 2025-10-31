@@ -2605,85 +2605,63 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCheckRange)
+    Y_UNIT_TEST(ShouldMirrorCheckRangeRepliesFromAllReplicas)
     {
         TTestBasicRuntime runtime;
-
         TTestEnv env(runtime);
+        constexpr ui32 blocksCount = 1024;
+        const ui32 replicaCount = env.ReplicaActors.size();
         TPartitionClient client(runtime, env.ActorId);
-
         client.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            TBlockRange64::MakeClosedInterval(0, blocksCount),
             1);
 
-        ui32 status = -1;
-        ui32 error = -1;
-
+        TActorId recepient;
+        TMap<TActorId, TSet<TActorId>> actorIds;
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvVolume::EvCheckRangeResponse: {
-                        using TEv = TEvVolume::TEvCheckRangeResponse;
-                        const auto* msg = event->Get<TEv>();
-                        error = msg->GetStatus();
-                        status = msg->Record.GetStatus().GetCode();
-
+                    case TEvService::EvReadBlocksResponse: {
+                        recepient = event->Recipient;
+                        actorIds[event->Recipient].insert(event->Sender);
                         break;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
-
-        const auto checkRange = [&](ui32 idx, ui32 size)
-        {
-            status = -1;
-            error = -1;
-
-            const auto response = client.CheckRange("id", idx, size);
-
-            TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-            runtime.DispatchEvents(options, TDuration::Seconds(3));
-
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, status);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
-        };
-
-        checkRange(0, 1024);
-        checkRange(1024, 512);
-        checkRange(1, 1);
-        checkRange(1000, 1000);
+        client.CheckRange("disk-id", 0, blocksCount);
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
+        UNIT_ASSERT_VALUES_EQUAL(replicaCount, actorIds[recepient].size());
     }
 
-    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocks)
+    Y_UNIT_TEST(ShouldMirrorCheckRangeOneReplicaBroken)
     {
         TTestBasicRuntime runtime;
-
         TTestEnv env(runtime);
+        constexpr ui32 blocksCount = 1024;
+        const ui32 replicaCount = env.ReplicaActors.size();
         TPartitionClient client(runtime, env.ActorId);
-
         client.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024 * 1024),
+            TBlockRange64::MakeClosedInterval(0, blocksCount),
             1);
 
-        ui32 status = -1;
-        ui32 error = -1;
-
+        bool once{false};
+        TActorId recepient;
+        TMap<TActorId, TSet<TActorId>> actorIds;
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvVolume::EvCheckRangeResponse: {
-                        using TEv = TEvVolume::TEvCheckRangeResponse;
-                        const auto* msg = event->Get<TEv>();
-                        error = msg->GetStatus();
-                        status = msg->Record.GetStatus().GetCode();
-
-                        break;
-                    }
-                    case TEvService::EvReadBlocksLocalResponse: {
-                        using TEv = TEvService::TEvReadBlocksLocalResponse;
+                    case TEvService::EvReadBlocksResponse: {
+                        using TEv = TEvService::TEvReadBlocksResponse;
+                        if (once) {
+                            break;
+                        }
+                        once = true;
+                        recepient = event->Recipient;
+                        actorIds[event->Recipient].insert(event->Sender);
 
                         auto response = std::make_unique<TEv>(
                             MakeError(E_IO, "block is broken"));
@@ -2696,115 +2674,32 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                                 0,   // flags
                                 event->Cookie),
                             0);
-
                         return TTestActorRuntime::EEventAction::DROP;
                     }
+                    default:
+                        break;
                 }
-
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
-
-        const auto checkRange = [&](ui32 idx, ui32 size)
-        {
-            status = -1;
-            error = -1;
-
-            client.SendCheckRangeRequest("id", idx, size);
-            const auto response =
-                client.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
-
-            TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-            runtime.DispatchEvents(options, TDuration::Seconds(3));
-
-            UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
-
-        };
-
-        checkRange(0, 1024);
-        checkRange(1024, 512);
-        checkRange(1, 1);
-        checkRange(1000, 1000);
-    }
-
-    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmpty)
-    {
-        TTestBasicRuntime runtime;
-
-        TTestEnv env(runtime);
-        TPartitionClient client(runtime, env.ActorId);
-
-        const ui32 idx = 0;
-        const ui32 size = 1;
-        const auto response = client.CheckRange("id", idx, size);
-
-        TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-
-        runtime.DispatchEvents(options, TDuration::Seconds(1));
+        auto response = client.CheckRange("disk-id", 0, blocksCount);
+        const auto& record = response->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
-    }
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, record.GetStatus().code());
+        UNIT_ASSERT_VALUES_EQUAL(0, record.GetChecksums().size());
 
-    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCount)
-    {
-        TTestBasicRuntime runtime;
+        ui32 EmptyCheksumsCnt{0};
+        ui32 NonEmptyCheksumsCnt{0};
+        for (const auto& cs: record.GetMirrorChecksums()) {
+            if (cs.GetChecksums().size()) {
+                ++NonEmptyCheksumsCnt;
+            } else {
+                ++EmptyCheksumsCnt;
+            }
+        }
 
-        TTestEnv env(runtime);
-        TPartitionClient client(runtime, env.ActorId);
-
-        const ui32 idx = 0;
-
-        client.SendCheckRangeRequest("id", idx, 16_MB/DefaultBlockSize + 1);
-        const auto response =
-            client.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
-
-        TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-
-        runtime.DispatchEvents(options, TDuration::Seconds(1));
-
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
-    }
-
-    Y_UNIT_TEST(ShouldCheckRangeFromAllReplicas)
-    {
-        constexpr ui32 replicaCount = 3;
-        TTestBasicRuntime runtime;
-        TTestEnv env(runtime);
-        TPartitionClient client(runtime, env.ActorId);
-        client.WriteBlocks(
-            TBlockRange64::MakeClosedInterval(0, 1024),
-            1);
-        ui32 checksumResponseCount = 0;
-        TActorId recepient;
-        TMap<TActorId, TSet<TActorId>> actorIds;
-        runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
-            {
-                switch (event->GetTypeRewrite()) {
-                    case TEvNonreplPartitionPrivate::EvChecksumBlocksResponse: {
-                        ++checksumResponseCount;
-                        recepient = event->Recipient;
-                        actorIds[event->Recipient].insert(event->Sender);
-                        break;
-                    }
-                    case TEvService::EvReadBlocksLocalResponse: {
-                        actorIds[event->Recipient].insert(event->Sender);
-                        break;
-                    }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
-        client.CheckRange("disk-id", 0, 1024, replicaCount);
-        TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
-        // When requesting a read for three replicas, Readings are made from
-        // one replica, and checksums are calculated from the other two.
-        UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, checksumResponseCount);
-        UNIT_ASSERT_VALUES_EQUAL(replicaCount, actorIds[recepient].size());
+        UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, NonEmptyCheksumsCnt);
+        UNIT_ASSERT_VALUES_EQUAL(1, EmptyCheksumsCnt);
     }
 
     Y_UNIT_TEST(ShouldLockAndDrainRangeForWriteIO)

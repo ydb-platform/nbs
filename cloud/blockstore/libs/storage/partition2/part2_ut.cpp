@@ -851,13 +851,12 @@ public:
     }
 
     std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, bool calculateChecksums = false)
+    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size)
     {
         auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
         request->Record.SetStartIndex(startIndex);
         request->Record.SetBlocksCount(size);
-        request->Record.SetCalculateChecksums(calculateChecksums);
         return request;
     }
 
@@ -7483,8 +7482,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         writeData(partition1);
         writeData(partition2);
 
-        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
-        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+        const auto response1 = partition1.CheckRange("id", 0, 1024);
+        const auto response2 = partition2.CheckRange("id", 0, 1024);
 
         TDispatchOptions options;
         options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
@@ -7518,8 +7517,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             TBlockRange32::MakeClosedInterval(0, 1024 * 10),
             99);
 
-        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
-        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+        const auto response1 = partition1.CheckRange("id", 0, 1024);
+        const auto response2 = partition2.CheckRange("id", 0, 1024);
 
         TDispatchOptions options;
         options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
