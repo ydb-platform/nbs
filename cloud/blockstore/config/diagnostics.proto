@@ -239,5 +239,6 @@ message TDiagnosticsConfig
     };
 
     // Request size intervals, that should be measured separately. (in bytes)
+    // Intersections between ExecutionTimeSizeClasses are not allowed.
     repeated TInterval ExecutionTimeSizeClasses = 56;
 }
