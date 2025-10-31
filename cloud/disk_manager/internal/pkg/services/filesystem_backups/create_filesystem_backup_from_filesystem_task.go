@@ -99,7 +99,6 @@ func (t *createFilesystemBackupFromFilesystemTask) run(
 			SrcFilesystemCheckpointId: checkpointID,
 			DstFilesystemBackupId:     t.request.DstFilesystemBackupId,
 			UseS3:                     t.request.UseS3,
-			UseProxyOverlayDisk:       t.request.UseProxyOverlayDisk,
 		},
 	)
 	if err != nil {

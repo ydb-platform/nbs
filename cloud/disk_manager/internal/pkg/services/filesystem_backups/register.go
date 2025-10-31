@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	filesystem_backups_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_backups/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -18,7 +18,7 @@ func RegisterForExecution(
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	storage resources.Storage,
-	nbsFactory nbs.Factory,
+	nfsFactory nfs.Factory,
 ) error {
 
 	deletedFilesystemBackupExpirationTimeout, err := time.ParseDuration(
@@ -36,10 +36,10 @@ func RegisterForExecution(
 	}
 
 	err = taskRegistry.RegisterForExecution("filesystembackups.CreateFilesystemBackup", func() tasks.Task {
-		return &createFilesystemBackupFromDiskTask{
+		return &createFilesystemBackupFromFilesystemTask{
 			scheduler:  taskScheduler,
 			storage:    storage,
-			nbsFactory: nbsFactory,
+			nfsFactory: nfsFactory,
 		}
 	})
 	if err != nil {
@@ -50,7 +50,7 @@ func RegisterForExecution(
 		return &deleteFilesystemBackupTask{
 			scheduler:  taskScheduler,
 			storage:    storage,
-			nbsFactory: nbsFactory,
+			nfsFactory: nfsFactory,
 		}
 	})
 	if err != nil {
