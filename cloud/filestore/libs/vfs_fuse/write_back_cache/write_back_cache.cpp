@@ -239,14 +239,8 @@ public:
         if (CurrentReadOffset == Current->Length) {
             Current++;
             CurrentReadOffset = 0;
-
-            // The next element is guaranteed to be valid if the contiguous
-            // buffer hasn't fully read
-            Y_DEBUG_ABORT_UNLESS(RemainingSize > 0);
-
-            // The next element is guaranteed to be non-empty - no need to
-            // skip more elements
-            Y_DEBUG_ABORT_UNLESS(Current->Length > 0);
+            // The next element is guaranteed to be non-empty
+            Y_ABORT_UNLESS(Current->Length > 0);
         }
 
         const auto len = Min(Current->Length - CurrentReadOffset, bytesCount);
