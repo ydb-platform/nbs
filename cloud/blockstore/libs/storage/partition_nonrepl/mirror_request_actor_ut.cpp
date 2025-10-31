@@ -5,9 +5,9 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/core/mind/bscontroller/bsc.h>
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/mind/bscontroller/bsc.h>
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

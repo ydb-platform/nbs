@@ -6,9 +6,9 @@
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/hfunc.h>
 
 namespace NCloud::NStorage {
 

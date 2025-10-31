@@ -9,14 +9,14 @@ DEPENDS(
     cloud/blockstore/apps/server
     cloud/blockstore/tools/testing/loadtest/bin
 
-    contrib/ydb/apps/ydb
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydb
+    ydb/apps/ydbd
 )
 
 PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/tests/python/lib
 
-    contrib/ydb/core/protos
-    contrib/ydb/tests/library
+    ydb/core/protos
+    ydb/tests/library
 )

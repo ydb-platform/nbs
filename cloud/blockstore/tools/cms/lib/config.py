@@ -1,5 +1,5 @@
-from contrib.ydb.core.protos.auth_pb2 import TAuthConfig
-from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig, TLogConfig, TInterconnectConfig
+from ydb.core.protos.auth_pb2 import TAuthConfig
+from ydb.core.protos.config_pb2 import TActorSystemConfig, TLogConfig, TInterconnectConfig
 
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.blockstore.config.discovery_pb2 import TDiscoveryServiceConfig

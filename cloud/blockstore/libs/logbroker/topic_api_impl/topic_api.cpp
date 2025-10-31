@@ -7,9 +7,9 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/iam/common/iam.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/status_codes.h>
+#include <ydb/public/sdk/cpp/client/iam/common/iam.h>
+#include <ydb/public/sdk/cpp/client/ydb_topic/topic.h>
+#include <ydb/public/sdk/cpp/client/ydb_types/status_codes.h>
 
 #include <util/generic/overloaded.h>
 #include <util/stream/file.h>

@@ -3,7 +3,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/actor.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

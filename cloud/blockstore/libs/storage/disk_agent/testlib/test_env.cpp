@@ -13,7 +13,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/core/mind/bscontroller/bsc.h>
+#include <ydb/core/mind/bscontroller/bsc.h>
 
 namespace NCloud::NBlockStore::NStorage::NDiskAgentTest {
 

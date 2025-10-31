@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy_events_private.h>
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <ydb/core/base/appdata.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

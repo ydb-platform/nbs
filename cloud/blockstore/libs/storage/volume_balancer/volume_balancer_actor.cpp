@@ -15,9 +15,9 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 
-#include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/mon/mon.h>
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/core/base/appdata.h>
+#include <ydb/core/mon/mon.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/algorithm.h>

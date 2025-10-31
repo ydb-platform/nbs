@@ -7,9 +7,9 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <ydb/public/sdk/cpp/client/ydb_driver/driver.h>
+#include <ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
+#include <ydb/public/sdk/cpp/client/ydb_table/table.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>

@@ -25,7 +25,7 @@ PEERDIR(
     cloud/storage/core/libs/endpoints/fs
     cloud/storage/core/libs/endpoints/keyring
 
-    contrib/ydb/core/protos
+    ydb/core/protos
 )
 
 END()

@@ -6,7 +6,7 @@
 
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
 
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/log.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

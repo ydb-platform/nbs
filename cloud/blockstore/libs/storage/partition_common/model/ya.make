@@ -12,9 +12,9 @@ PEERDIR(
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/libs/storage/protos_ydb
 
-    contrib/ydb/library/actors/protos
+    ydb/library/actors/protos
 
-    contrib/ydb/core/protos
+    ydb/core/protos
 )
 
 END()

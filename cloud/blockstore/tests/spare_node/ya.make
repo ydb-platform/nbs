@@ -10,7 +10,7 @@ PEERDIR(
 
 DEPENDS(
     cloud/blockstore/apps/server
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydbd
 )
 
 END()

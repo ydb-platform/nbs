@@ -7,8 +7,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
-#include <contrib/ydb/library/actors/util/should_continue.h>
+#include <ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/util/should_continue.h>
 
 #include <util/generic/ptr.h>
 #include <util/generic/strbuf.h>

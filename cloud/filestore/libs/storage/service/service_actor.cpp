@@ -1,7 +1,7 @@
 #include "service_actor.h"
 
-#include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/mon/mon.h>
+#include <ydb/core/base/appdata.h>
+#include <ydb/core/mon/mon.h>
 
 namespace NCloud::NFileStore::NStorage {
 

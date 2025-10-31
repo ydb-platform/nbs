@@ -15,8 +15,8 @@
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/http/simple_http_server.h>
 
-#include <contrib/ydb/core/driver_lib/run/factories.h>
-#include <contrib/ydb/library/actors/util/should_continue.h>
+#include <ydb/core/driver_lib/run/factories.h>
+#include <ydb/library/actors/util/should_continue.h>
 
 #include <library/cpp/logger/log.h>
 

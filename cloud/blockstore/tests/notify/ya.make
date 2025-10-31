@@ -9,7 +9,7 @@ DEPENDS(
     cloud/blockstore/apps/disk_agent
     cloud/blockstore/apps/server
     cloud/blockstore/tools/testing/notify-mock
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydbd
 )
 
 DATA(
@@ -22,8 +22,8 @@ PEERDIR(
     cloud/blockstore/public/sdk/python/client
     cloud/blockstore/tests/python/lib
     contrib/python/requests/py3
-    contrib/ydb/core/protos
-    contrib/ydb/tests/library
+    ydb/core/protos
+    ydb/tests/library
 )
 
 END()

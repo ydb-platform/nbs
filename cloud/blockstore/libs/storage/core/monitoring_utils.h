@@ -14,9 +14,9 @@
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/library/actors/core/interconnect.h>
-#include <contrib/ydb/library/actors/core/mon.h>
+#include <ydb/core/base/blobstorage.h>
+#include <ydb/library/actors/core/interconnect.h>
+#include <ydb/library/actors/core/mon.h>
 
 #include <util/generic/vector.h>
 #include <util/stream/output.h>

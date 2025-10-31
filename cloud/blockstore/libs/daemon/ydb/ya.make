@@ -51,7 +51,7 @@ PEERDIR(
     library/cpp/monlib/service/pages
     library/cpp/protobuf/util
 
-    contrib/ydb/core/protos
+    ydb/core/protos
 )
 
 YQL_LAST_ABI_VERSION()

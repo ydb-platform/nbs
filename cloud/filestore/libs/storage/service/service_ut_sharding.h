@@ -4,7 +4,7 @@
 #include <cloud/filestore/libs/storage/tablet/tablet_private.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 
-#include <contrib/ydb/library/actors/interconnect/types.h>
+#include <ydb/library/actors/interconnect/types.h>
 
 #include <util/generic/fwd.h>
 

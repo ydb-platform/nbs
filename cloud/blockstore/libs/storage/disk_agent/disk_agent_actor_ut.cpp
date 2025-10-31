@@ -13,7 +13,7 @@
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
-#include <contrib/ydb/library/actors/core/mon.h>
+#include <ydb/library/actors/core/mon.h>
 
 #include <library/cpp/lwtrace/all.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>

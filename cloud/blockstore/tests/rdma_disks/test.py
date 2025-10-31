@@ -14,7 +14,7 @@ from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
 
-from contrib.ydb.tests.library.harness.kikimr_runner import \
+from ydb.tests.library.harness.kikimr_runner import \
     get_unique_path_for_current_test, ensure_path_exists
 
 

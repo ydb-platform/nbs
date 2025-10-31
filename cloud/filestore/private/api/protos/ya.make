@@ -8,7 +8,7 @@ PEERDIR(
     cloud/filestore/public/api/protos
     cloud/storage/core/protos
 
-    contrib/ydb/core/protos
+    ydb/core/protos
 )
 
 SRCS(

@@ -4,8 +4,8 @@
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 
-#include <contrib/ydb/core/protos/subdomains.pb.h>
-#include <contrib/ydb/core/protos/bind_channel_storage_pool.pb.h>
+#include <ydb/core/protos/subdomains.pb.h>
+#include <ydb/core/protos/bind_channel_storage_pool.pb.h>
 
 #include <util/generic/set.h>
 

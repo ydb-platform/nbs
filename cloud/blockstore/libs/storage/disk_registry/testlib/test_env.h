@@ -17,9 +17,9 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/ydb/core/protos/bind_channel_storage_pool.pb.h>
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/protos/bind_channel_storage_pool.pb.h>
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

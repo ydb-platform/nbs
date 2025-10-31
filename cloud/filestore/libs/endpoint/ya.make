@@ -13,7 +13,7 @@ PEERDIR(
     cloud/storage/core/libs/coroutine
     cloud/storage/core/libs/diagnostics
 
-    contrib/ydb/core/protos
+    ydb/core/protos
 )
 
 END()

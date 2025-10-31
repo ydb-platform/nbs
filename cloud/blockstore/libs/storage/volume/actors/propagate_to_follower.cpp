@@ -5,7 +5,7 @@
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/library/actors/core/log.h>
 
 #include <utility>
 

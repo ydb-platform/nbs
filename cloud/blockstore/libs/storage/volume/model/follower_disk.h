@@ -3,7 +3,7 @@
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>

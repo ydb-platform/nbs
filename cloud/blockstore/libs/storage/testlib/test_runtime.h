@@ -5,12 +5,12 @@
 
 #include <cloud/storage/core/config/features.pb.h>
 
-#include <contrib/ydb/core/base/tabletid.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
-#include <contrib/ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/base/tabletid.h>
+#include <ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/testlib/basics/runtime.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/event.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/event.h>
 
 #include <util/generic/string.h>
 

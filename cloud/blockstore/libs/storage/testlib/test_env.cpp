@@ -37,18 +37,18 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
 
-#include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
-#include <contrib/ydb/core/client/minikql_compile/mkql_compile_service.h>
-#include <contrib/ydb/core/mind/bscontroller/bsc.h>
-#include <contrib/ydb/core/mind/hive/hive.h>
-#include <contrib/ydb/core/mind/tenant_pool.h>
-#include <contrib/ydb/core/security/ticket_parser.h>
-#include <contrib/ydb/core/tx/coordinator/coordinator.h>
-#include <contrib/ydb/core/tx/mediator/mediator.h>
-#include <contrib/ydb/core/tx/scheme_board/cache.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
-#include <contrib/ydb/core/tx/tx_allocator/txallocator.h>
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
+#include <ydb/core/blobstorage/base/blobstorage_events.h>
+#include <ydb/core/client/minikql_compile/mkql_compile_service.h>
+#include <ydb/core/mind/bscontroller/bsc.h>
+#include <ydb/core/mind/hive/hive.h>
+#include <ydb/core/mind/tenant_pool.h>
+#include <ydb/core/security/ticket_parser.h>
+#include <ydb/core/tx/coordinator/coordinator.h>
+#include <ydb/core/tx/mediator/mediator.h>
+#include <ydb/core/tx/scheme_board/cache.h>
+#include <ydb/core/tx/schemeshard/schemeshard.h>
+#include <ydb/core/tx/tx_allocator/txallocator.h>
+#include <ydb/core/tx/tx_proxy/proxy.h>
 
 #include <util/string/builder.h>
 

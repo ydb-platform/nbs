@@ -1,6 +1,6 @@
 import os
 
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
+import ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.discovery_pb2 import TDiscoveryServiceConfig
 from cloud.blockstore.config.grpc_client_pb2 import TGrpcClientConfig

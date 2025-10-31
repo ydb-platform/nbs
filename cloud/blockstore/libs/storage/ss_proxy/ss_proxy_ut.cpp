@@ -13,8 +13,8 @@
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
+#include <ydb/core/tx/schemeshard/schemeshard.h>
+#include <ydb/core/tx/tx_proxy/proxy.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

@@ -7,7 +7,7 @@ import (
 	"net"
 
 	"github.com/spf13/cobra"
-	"github.com/ydb-platform/nbs/contrib/ydb/public/api/client/yc_private/kms"
+	"github.com/ydb-platform/nbs/ydb/public/api/client/yc_private/kms"
 	"google.golang.org/grpc"
 	grpc_codes "google.golang.org/grpc/codes"
 	grpc_status "google.golang.org/grpc/status"

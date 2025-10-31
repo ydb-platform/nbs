@@ -2,9 +2,9 @@
 
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

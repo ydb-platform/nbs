@@ -15,8 +15,8 @@
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 
-#include <contrib/ydb/core/driver_lib/run/factories.h>
-#include <contrib/ydb/library/actors/core/defs.h>
+#include <ydb/core/driver_lib/run/factories.h>
+#include <ydb/library/actors/core/defs.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

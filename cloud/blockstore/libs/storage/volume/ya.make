@@ -67,18 +67,18 @@ PEERDIR(
 
     cloud/storage/core/libs/common
 
-    contrib/ydb/library/actors/core
+    ydb/library/actors/core
     library/cpp/lwtrace
     library/cpp/monlib/service/pages
     library/cpp/protobuf/util
 
-    contrib/ydb/core/base
-    contrib/ydb/core/blockstore/core
-    contrib/ydb/core/mind
-    contrib/ydb/core/node_whiteboard
-    contrib/ydb/core/scheme
-    contrib/ydb/core/tablet
-    contrib/ydb/core/tablet_flat
+    ydb/core/base
+    ydb/core/blockstore/core
+    ydb/core/mind
+    ydb/core/node_whiteboard
+    ydb/core/scheme
+    ydb/core/tablet
+    ydb/core/tablet_flat
 )
 
 END()

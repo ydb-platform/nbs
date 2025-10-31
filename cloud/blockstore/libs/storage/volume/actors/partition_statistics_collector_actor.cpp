@@ -3,7 +3,7 @@
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
-#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/hfunc.h>
 
 using namespace NActors;
 

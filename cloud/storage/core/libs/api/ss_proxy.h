@@ -5,10 +5,10 @@
 #include <cloud/storage/core/libs/kikimr/components.h>
 #include <cloud/storage/core/libs/kikimr/events.h>
 
-#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <ydb/core/protos/flat_tx_scheme.pb.h>
+#include <ydb/core/protos/flat_scheme_op.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/generic/string.h>
 

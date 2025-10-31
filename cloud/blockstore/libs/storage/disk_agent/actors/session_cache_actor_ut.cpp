@@ -8,7 +8,7 @@
 #include <util/folder/tempdir.h>
 #include <util/system/fs.h>
 
-#include <contrib/ydb/library/actors/testlib/test_runtime.h>
+#include <ydb/library/actors/testlib/test_runtime.h>
 
 #include <chrono>
 

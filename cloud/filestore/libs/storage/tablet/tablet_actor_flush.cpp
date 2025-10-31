@@ -3,7 +3,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>

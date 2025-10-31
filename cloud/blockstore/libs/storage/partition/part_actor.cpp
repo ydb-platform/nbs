@@ -9,10 +9,10 @@
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
-#include <contrib/ydb/core/base/tablet_pipe.h>
-#include <contrib/ydb/core/mind/local.h>
-#include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
-#include <contrib/ydb/core/tablet/tablet_counters_aggregator.h>
+#include <ydb/core/base/tablet_pipe.h>
+#include <ydb/core/mind/local.h>
+#include <ydb/core/node_whiteboard/node_whiteboard.h>
+#include <ydb/core/tablet/tablet_counters_aggregator.h>
 
 #include <library/cpp/blockcodecs/codecs.h>
 

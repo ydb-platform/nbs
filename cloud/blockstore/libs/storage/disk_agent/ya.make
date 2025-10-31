@@ -45,11 +45,11 @@ PEERDIR(
     library/cpp/containers/stack_vector
     library/cpp/deprecated/atomic
 
-    contrib/ydb/core/base
-    contrib/ydb/core/mind
-    contrib/ydb/core/mon
-    contrib/ydb/core/tablet
-    contrib/ydb/library/actors/core
+    ydb/core/base
+    ydb/core/mind
+    ydb/core/mon
+    ydb/core/tablet
+    ydb/library/actors/core
 )
 
 END()

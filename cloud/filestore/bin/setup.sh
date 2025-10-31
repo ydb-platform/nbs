@@ -27,7 +27,7 @@ REPO_DIR=`find_repo_dir`
 BIN_DIR=`find_bin_dir`
 
 BUILD_ROOT="$REPO_DIR/cloud/filestore/buildall"
-YDBD_BIN="contrib/ydb/apps/ydbd/ydbd"
+YDBD_BIN="ydb/apps/ydbd/ydbd"
 FILESTORE_CLIENT_BIN="cloud/filestore/apps/client/filestore-client"
 FILESTORE_SERVER_BIN="cloud/filestore/apps/server/filestore-server"
 FILESTORE_VHOST_BIN="cloud/filestore/apps/vhost/filestore-vhost"

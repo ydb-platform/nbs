@@ -16,18 +16,18 @@ PEERDIR(
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/private/api/protos
-    contrib/ydb/library/actors/core
+    ydb/library/actors/core
     library/cpp/monlib/service/pages
-    contrib/ydb/core/base
-    contrib/ydb/core/blockstore/core
-    contrib/ydb/core/cms/console
-    contrib/ydb/core/mind
-    contrib/ydb/core/mon
-    contrib/ydb/core/node_whiteboard
-    contrib/ydb/core/protos
-    contrib/ydb/core/scheme
-    contrib/ydb/core/tablet
-    contrib/ydb/core/tablet_flat
+    ydb/core/base
+    ydb/core/blockstore/core
+    ydb/core/cms/console
+    ydb/core/mind
+    ydb/core/mon
+    ydb/core/node_whiteboard
+    ydb/core/protos
+    ydb/core/scheme
+    ydb/core/tablet
+    ydb/core/tablet_flat
 )
 
 END()

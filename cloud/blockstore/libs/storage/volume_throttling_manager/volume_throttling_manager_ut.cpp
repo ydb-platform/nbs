@@ -6,8 +6,8 @@
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/storage/testlib/test_tablet.h>
 
-#include <contrib/ydb/core/base/tablet.h>
-#include <contrib/ydb/core/tablet/tablet_setup.h>
+#include <ydb/core/base/tablet.h>
+#include <ydb/core/tablet/tablet_setup.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

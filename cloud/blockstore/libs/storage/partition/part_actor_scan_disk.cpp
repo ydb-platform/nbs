@@ -1,6 +1,6 @@
 #include "part_actor.h"
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 

@@ -9,7 +9,7 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <ydb/core/base/appdata.h>
 
 #include <util/generic/vector.h>
 #include <util/stream/str.h>

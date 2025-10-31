@@ -1,6 +1,6 @@
 GO_TEST()
 
-INCLUDE(${ARCADIA_ROOT}/contrib/ydb/public/tools/ydb_recipe/recipe.inc)
+INCLUDE(${ARCADIA_ROOT}/ydb/public/tools/ydb_recipe/recipe.inc)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/tasks/acceptance_tests/recipe/recipe.inc)
 

@@ -3,7 +3,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/actor.h>
 
 #include <util/string/builder.h>
 

@@ -1,6 +1,6 @@
 #include "read_and_clear_empty_blocks_actor.h"
 
-#include <contrib/ydb/library/actors/testlib/test_runtime.h>
+#include <ydb/library/actors/testlib/test_runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

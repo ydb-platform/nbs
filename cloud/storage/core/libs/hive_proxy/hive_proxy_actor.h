@@ -7,13 +7,13 @@
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/core/base/hive.h>
-#include <contrib/ydb/core/mind/local.h>
-#include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
+#include <ydb/core/base/hive.h>
+#include <ydb/core/mind/local.h>
+#include <ydb/core/tablet/tablet_pipe_client_cache.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/hfunc.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/deque.h>

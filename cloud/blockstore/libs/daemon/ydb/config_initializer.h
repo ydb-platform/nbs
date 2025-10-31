@@ -31,7 +31,7 @@
 #include <cloud/storage/core/libs/iam/iface/public.h>
 #include <cloud/storage/core/libs/kikimr/config_initializer.h>
 
-#include <contrib/ydb/core/protos/config.pb.h>
+#include <ydb/core/protos/config.pb.h>
 
 #include <library/cpp/json/writer/json_value.h>
 #include <library/cpp/logger/log.h>

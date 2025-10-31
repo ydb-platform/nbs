@@ -38,28 +38,28 @@ PEERDIR(
     cloud/storage/core/libs/api
     cloud/storage/core/libs/hive_proxy
 
-    contrib/ydb/core/base
-    contrib/ydb/core/blobstorage
-    contrib/ydb/core/blockstore/core
-    contrib/ydb/core/client/minikql_compile
-    contrib/ydb/core/kqp
-    contrib/ydb/core/mind
-    contrib/ydb/core/mind/bscontroller
-    contrib/ydb/core/mind/hive
-    contrib/ydb/core/protos
-    contrib/ydb/core/security
-    contrib/ydb/core/tablet_flat
-    contrib/ydb/core/tablet_flat/test/libs/table
-    contrib/ydb/core/testlib
-    contrib/ydb/core/testlib/actors
-    contrib/ydb/core/testlib/basics
-    contrib/ydb/core/tx/coordinator
-    contrib/ydb/core/tx/mediator
-    contrib/ydb/core/tx/schemeshard
-    contrib/ydb/core/tx/tx_allocator
-    contrib/ydb/core/tx/tx_proxy
+    ydb/core/base
+    ydb/core/blobstorage
+    ydb/core/blockstore/core
+    ydb/core/client/minikql_compile
+    ydb/core/kqp
+    ydb/core/mind
+    ydb/core/mind/bscontroller
+    ydb/core/mind/hive
+    ydb/core/protos
+    ydb/core/security
+    ydb/core/tablet_flat
+    ydb/core/tablet_flat/test/libs/table
+    ydb/core/testlib
+    ydb/core/testlib/actors
+    ydb/core/testlib/basics
+    ydb/core/tx/coordinator
+    ydb/core/tx/mediator
+    ydb/core/tx/schemeshard
+    ydb/core/tx/tx_allocator
+    ydb/core/tx/tx_proxy
 
-    contrib/ydb/library/actors/core
+    ydb/library/actors/core
     library/cpp/testing/unittest
 )
 

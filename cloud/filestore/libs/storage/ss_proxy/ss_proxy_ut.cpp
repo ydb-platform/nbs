@@ -4,8 +4,8 @@
 #include <cloud/filestore/libs/storage/testlib/ss_proxy_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
+#include <ydb/core/protos/flat_scheme_op.pb.h>
+#include <ydb/core/tx/tx_proxy/proxy.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

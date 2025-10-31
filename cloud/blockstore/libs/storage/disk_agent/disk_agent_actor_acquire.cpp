@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <ydb/core/base/appdata.h>
 
 #include <util/string/join.h>
 

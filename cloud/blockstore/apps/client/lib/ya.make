@@ -70,7 +70,7 @@ PEERDIR(
     library/cpp/threading/blocking_queue
     library/cpp/json
 
-    contrib/ydb/library/actors/util
+    ydb/library/actors/util
 )
 
 END()

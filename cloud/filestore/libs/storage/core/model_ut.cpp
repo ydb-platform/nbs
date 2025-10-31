@@ -9,7 +9,7 @@
 
 #include <util/generic/maybe.h>
 
-#include <contrib/ydb/core/protos/filestore_config.pb.h>
+#include <ydb/core/protos/filestore_config.pb.h>
 
 #include <array>
 #include <functional>

@@ -2,9 +2,9 @@
 
 #include "public.h"
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/event.h>
-#include <contrib/ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/event.h>
+#include <ydb/library/actors/core/events.h>
 
 #include <util/generic/set.h>
 

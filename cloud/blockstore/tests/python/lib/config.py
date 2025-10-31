@@ -1,6 +1,6 @@
 import os
 
-from contrib.ydb.tests.library.common.yatest_common import PortManager
+from ydb.tests.library.common.yatest_common import PortManager
 
 from google.protobuf.json_format import ParseDict
 from google.protobuf.text_format import MessageToString
@@ -14,10 +14,10 @@ from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, \
     TKikimrServiceConfig, TServerConfig, TLocation
 
-from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
-from contrib.ydb.core.protos.msgbus_pb2 import TConsoleRequest
-from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig, \
+from ydb.core.protos.msgbus_pb2 import TConsoleRequest
+from ydb.core.protos.config_pb2 import TActorSystemConfig, \
     TDynamicNameserviceConfig, TLogConfig
 
 

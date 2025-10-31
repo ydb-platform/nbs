@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
-#include <contrib/ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/actor.h>
 
 #include <memory>
 

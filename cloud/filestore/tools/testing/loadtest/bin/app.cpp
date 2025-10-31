@@ -12,7 +12,7 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/ydb/library/actors/util/should_continue.h>
+#include <ydb/library/actors/util/should_continue.h>
 #include <library/cpp/logger/backend.h>
 #include <library/cpp/protobuf/json/proto2json.h>
 #include <library/cpp/protobuf/util/pb_io.h>

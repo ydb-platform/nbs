@@ -5,7 +5,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/algorithm.h>

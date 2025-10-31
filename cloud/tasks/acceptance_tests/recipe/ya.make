@@ -7,7 +7,7 @@ PY_SRCS(
 
 PEERDIR(
     cloud/tasks/test/common
-    contrib/ydb/tests/library
+    ydb/tests/library
     library/python/testing/recipe
 )
 

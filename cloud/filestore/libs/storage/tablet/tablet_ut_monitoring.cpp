@@ -5,7 +5,7 @@
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
-#include <contrib/ydb/library/actors/core/mon.h>
+#include <ydb/library/actors/core/mon.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NFileStore::NStorage {

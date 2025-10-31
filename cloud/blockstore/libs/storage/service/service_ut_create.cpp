@@ -10,7 +10,7 @@
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
-#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
+#include <ydb/core/tx/schemeshard/schemeshard.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

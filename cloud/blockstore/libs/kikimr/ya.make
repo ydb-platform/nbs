@@ -12,10 +12,13 @@ PEERDIR(
     cloud/blockstore/libs/service
     cloud/blockstore/public/api/protos
     cloud/storage/core/libs/kikimr
-    contrib/ydb/library/actors/core
+    ydb/library/actors/core
+    ydb/library/yql/public/udf
+    ydb/library/yql/public/udf/service/exception_policy
+    ydb/library/yql/sql/pg_dummy
     library/cpp/lwtrace
-    contrib/ydb/core/base
-    contrib/ydb/core/protos
+    ydb/core/base
+    ydb/core/protos
 )
 
 END()

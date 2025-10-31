@@ -18,7 +18,7 @@ DEPENDS(
 
     cloud/storage/core/tools/testing/unstable-process
 
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydbd
 )
 
 DATA(
@@ -31,8 +31,8 @@ PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/tests/python/lib
 
-    contrib/ydb/core/protos
-    contrib/ydb/tests/library
+    ydb/core/protos
+    ydb/tests/library
 )
 
 REQUIREMENTS(

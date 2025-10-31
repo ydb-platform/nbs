@@ -15,8 +15,8 @@
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

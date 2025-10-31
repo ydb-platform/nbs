@@ -4,7 +4,7 @@
 
 #include <cloud/storage/core/libs/common/media.h>
 
-#include <contrib/ydb/core/protos/blockstore_config.pb.h>
+#include <ydb/core/protos/blockstore_config.pb.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/cast.h>

@@ -7,11 +7,11 @@
 
 #include <cloud/storage/core/libs/api/ss_proxy.h>
 
-#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
-#include <contrib/ydb/core/protos/filestore_config.pb.h>
+#include <ydb/core/protos/flat_tx_scheme.pb.h>
+#include <ydb/core/protos/flat_scheme_op.pb.h>
+#include <ydb/core/protos/filestore_config.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/generic/string.h>
 

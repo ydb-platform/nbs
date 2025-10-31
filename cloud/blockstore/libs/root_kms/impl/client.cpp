@@ -14,8 +14,8 @@
 #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/create_channel.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
-#include <contrib/ydb/public/api/client/yc_private/kms/symmetric_crypto_service.grpc.pb.h>
-#include <contrib/ydb/public/api/client/yc_private/kms/symmetric_crypto_service.pb.h>
+#include <ydb/public/api/client/yc_private/kms/symmetric_crypto_service.grpc.pb.h>
+#include <ydb/public/api/client/yc_private/kms/symmetric_crypto_service.pb.h>
 
 #include <library/cpp/threading/future/future.h>
 

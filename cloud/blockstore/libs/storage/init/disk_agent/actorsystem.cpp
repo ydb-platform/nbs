@@ -18,7 +18,7 @@
 #include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
 #include <cloud/storage/core/libs/kikimr/kikimr_initializer.h>
 
-#include <contrib/ydb/core/grpc_services/grpc_request_proxy.h>
+#include <ydb/core/grpc_services/grpc_request_proxy.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

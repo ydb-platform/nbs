@@ -18,7 +18,7 @@ PEERDIR(
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/uds
 
-    contrib/ydb/library/actors/prof
+    ydb/library/actors/prof
     library/cpp/monlib/service
     library/cpp/monlib/service/pages
 

@@ -4,9 +4,9 @@
 #include <cloud/filestore/libs/service_kikimr/ut/kikimr_test_env.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/hfunc.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

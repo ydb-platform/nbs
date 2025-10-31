@@ -10,11 +10,11 @@ PEERDIR(
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/disk_agent/testlib
-    contrib/ydb/library/actors/core
+    ydb/library/actors/core
     library/cpp/testing/gmock_in_unittest
     library/cpp/testing/unittest
-    contrib/ydb/core/testlib
-    contrib/ydb/core/testlib/basics
+    ydb/core/testlib
+    ydb/core/testlib/basics
 )
 
 END()

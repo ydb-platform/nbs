@@ -15,9 +15,9 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
-#include <contrib/ydb/core/testlib/actors/test_runtime.h>
-#include <contrib/ydb/core/testlib/test_client.h>
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
+#include <ydb/core/testlib/actors/test_runtime.h>
+#include <ydb/core/testlib/test_client.h>
+#include <ydb/core/tx/tx_proxy/proxy.h>
 
 #include <util/generic/guid.h>
 

@@ -15,7 +15,7 @@
 #include <cloud/storage/core/libs/common/sglist_block_range.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <ydb/core/base/appdata.h>
 
 namespace NCloud::NBlockStore::NStorage {
 namespace {

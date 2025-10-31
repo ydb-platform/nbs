@@ -4,7 +4,7 @@
 
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
-#include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
+#include <ydb/core/tablet_flat/flat_cxx_database.h>
 
 #include <util/generic/vector.h>
 

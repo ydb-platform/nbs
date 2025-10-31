@@ -4,7 +4,7 @@
 
 #include <cloud/blockstore/libs/kikimr/public.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
 

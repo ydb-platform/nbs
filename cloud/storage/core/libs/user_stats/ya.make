@@ -9,10 +9,10 @@ PEERDIR(
     cloud/storage/core/libs/user_stats/counter
     cloud/storage/core/protos
 
-    contrib/ydb/library/actors/core
+    ydb/library/actors/core
 
-    contrib/ydb/core/base
-    contrib/ydb/core/mon
+    ydb/core/base
+    ydb/core/mon
 )
 
 END()

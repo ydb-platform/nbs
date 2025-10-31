@@ -10,11 +10,11 @@
 #include <cloud/blockstore/libs/storage/ss_proxy/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
 
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/basics/appdata.h>
-#include <contrib/ydb/core/testlib/test_client.h>
-#include <contrib/ydb/core/testlib/tx_helpers.h>
+#include <ydb/core/testlib/tablet_helpers.h>
+#include <ydb/core/testlib/basics/runtime.h>
+#include <ydb/core/testlib/basics/appdata.h>
+#include <ydb/core/testlib/test_client.h>
+#include <ydb/core/testlib/tx_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

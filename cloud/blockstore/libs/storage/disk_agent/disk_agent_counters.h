@@ -7,7 +7,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/tablet_counters.h>
 
-#include <contrib/ydb/core/tablet/tablet_counters.h>
+#include <ydb/core/tablet/tablet_counters.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

@@ -2,9 +2,9 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/testlib/test_runtime.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/testlib/test_runtime.h>
 
 using namespace NActors;
 

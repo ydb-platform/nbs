@@ -5,12 +5,12 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
 
-#include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
-#include <contrib/ydb/core/sys_view/common/events.h>
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
+#include <ydb/core/blobstorage/base/blobstorage_events.h>
+#include <ydb/core/sys_view/common/events.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/log.h>
 
 #include <library/cpp/json/json_writer.h>
 

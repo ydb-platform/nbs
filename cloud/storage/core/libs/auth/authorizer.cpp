@@ -6,11 +6,11 @@
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 #include <cloud/storage/core/libs/api/authorizer.h>
 
-#include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/security/ticket_parser.h>
+#include <ydb/core/base/appdata.h>
+#include <ydb/core/security/ticket_parser.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/generic/deque.h>

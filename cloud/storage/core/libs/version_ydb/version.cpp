@@ -1,4 +1,4 @@
-#include <contrib/ydb/core/driver_lib/version/version.h>
+#include <ydb/core/driver_lib/version/version.h>
 
 NKikimrConfig::TCurrentCompatibilityInfo
 NKikimr::TCompatibilityInfo::MakeCurrent()

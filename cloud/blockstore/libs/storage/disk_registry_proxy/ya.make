@@ -12,11 +12,11 @@ PEERDIR(
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/disk_registry_proxy/model
     cloud/storage/core/libs/api
-    contrib/ydb/library/actors/core
-    contrib/ydb/core/base
-    contrib/ydb/core/mon
-    contrib/ydb/core/tablet
-    contrib/ydb/core/tablet_flat
+    ydb/library/actors/core
+    ydb/core/base
+    ydb/core/mon
+    ydb/core/tablet
+    ydb/core/tablet_flat
 )
 
 END()

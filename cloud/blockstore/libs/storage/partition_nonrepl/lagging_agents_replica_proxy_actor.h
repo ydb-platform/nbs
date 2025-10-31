@@ -16,9 +16,9 @@
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/events.h>
+#include <ydb/library/actors/core/hfunc.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

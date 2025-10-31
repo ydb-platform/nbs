@@ -8,7 +8,7 @@ SRCS(
 PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
-    contrib/ydb/core/tablet
+    ydb/core/tablet
 )
 
 END()

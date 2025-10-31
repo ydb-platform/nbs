@@ -12,7 +12,7 @@
 #include <library/cpp/protobuf/util/is_equal.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
-#include <contrib/ydb/library/actors/protos/actors.pb.h>
+#include <ydb/library/actors/protos/actors.pb.h>
 
 #include <util/generic/xrange.h>
 #include <util/stream/str.h>

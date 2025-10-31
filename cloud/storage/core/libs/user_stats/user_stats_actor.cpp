@@ -4,8 +4,8 @@
 
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
-#include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/library/actors/core/actor.h>
+#include <ydb/core/base/appdata.h>
+#include <ydb/library/actors/core/actor.h>
 
 #include <library/cpp/monlib/dynamic_counters/encode.h>
 #include <library/cpp/monlib/encode/json/json.h>

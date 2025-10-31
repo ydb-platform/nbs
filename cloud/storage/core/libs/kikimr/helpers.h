@@ -5,12 +5,12 @@
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/event.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/event.h>
 
-#include <contrib/ydb/core/base/tablet_pipe.h>
-#include <contrib/ydb/core/protos/base.pb.h>
-#include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
+#include <ydb/core/base/tablet_pipe.h>
+#include <ydb/core/protos/base.pb.h>
+#include <ydb/core/protos/flat_tx_scheme.pb.h>
 
 #include <util/generic/string.h>
 

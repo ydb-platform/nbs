@@ -6,9 +6,9 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <ydb/core/base/blobstorage.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/set.h>

@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <contrib/ydb/core/driver_lib/run/kikimr_services_initializers.h>
+#include <ydb/core/driver_lib/run/kikimr_services_initializers.h>
 
 namespace NCloud::NStorage {
 

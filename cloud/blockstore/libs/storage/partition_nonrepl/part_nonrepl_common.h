@@ -8,8 +8,8 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/actorsystem.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

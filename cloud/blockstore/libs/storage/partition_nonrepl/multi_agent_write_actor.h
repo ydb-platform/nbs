@@ -13,7 +13,7 @@
 
 #include <cloud/storage/core/protos/error.pb.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

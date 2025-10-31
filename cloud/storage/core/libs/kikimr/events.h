@@ -4,8 +4,8 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <contrib/ydb/library/actors/core/event.h>
-#include <contrib/ydb/library/actors/core/event_local.h>
+#include <ydb/library/actors/core/event.h>
+#include <ydb/library/actors/core/event_local.h>
 
 #include <util/generic/string.h>
 #include <util/generic/typetraits.h>

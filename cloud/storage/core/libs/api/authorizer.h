@@ -6,7 +6,7 @@
 #include <cloud/storage/core/libs/kikimr/events.h>
 #include <cloud/storage/core/libs/auth/auth_scheme.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <ydb/library/actors/core/actorid.h>
 
 #include <util/generic/string.h>
 

@@ -8,7 +8,7 @@
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
-#include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
+#include <ydb/core/tablet_flat/flat_cxx_database.h>
 
 #include <util/generic/maybe.h>
 

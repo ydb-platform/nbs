@@ -8,9 +8,9 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
-#include <contrib/ydb/core/tablet/tablet_setup.h>
+#include <ydb/core/tablet/tablet_setup.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

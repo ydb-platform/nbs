@@ -2,16 +2,16 @@ import logging
 import requests
 import time
 
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
+import ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.storage.core.tools.common.python.daemon import Daemon
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 logger = logging.getLogger(__name__)
 
 
 class AccessService:
-    # See: https://github.com/ydb-platform/nbs/blob/main/contrib/ydb/core/protos/auth.proto#L52
+    # See: https://github.com/ydb-platform/nbs/blob/main/ydb/core/protos/auth.proto#L52
     access_service_type = "Yandex_v2"
 
     def __init__(self, host, port, control_server_port):

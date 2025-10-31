@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
-#include <contrib/ydb/core/tablet/tablet_counters.h>
+#include <ydb/core/tablet/tablet_counters.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>

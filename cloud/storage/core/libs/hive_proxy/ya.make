@@ -21,12 +21,12 @@ PEERDIR(
     cloud/storage/core/libs/api
     cloud/storage/core/libs/kikimr
 
-    contrib/ydb/core/base
-    contrib/ydb/core/mind
-    contrib/ydb/core/tablet
-    contrib/ydb/core/tablet_flat
+    ydb/core/base
+    ydb/core/mind
+    ydb/core/tablet
+    ydb/core/tablet_flat
 
-    contrib/ydb/library/actors/core
+    ydb/library/actors/core
 
     library/cpp/monlib/dynamic_counters
 )

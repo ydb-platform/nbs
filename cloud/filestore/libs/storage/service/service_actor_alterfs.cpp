@@ -7,7 +7,7 @@
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NFileStore::NStorage {
 

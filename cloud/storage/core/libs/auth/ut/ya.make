@@ -11,8 +11,8 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/core/testlib/default
-    contrib/ydb/core/testlib/basics
+    ydb/core/testlib/default
+    ydb/core/testlib/basics
 )
 
 YQL_LAST_ABI_VERSION()

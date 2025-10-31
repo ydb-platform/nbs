@@ -11,14 +11,14 @@ from cloud.storage.core.tools.common.python.daemon import Daemon
 
 import yatest.common as yatest_common
 
-from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
-from contrib.ydb.core.protos import console_config_pb2 as console
-from contrib.ydb.core.protos import msgbus_pb2 as msgbus
+from ydb.core.protos import console_config_pb2 as console
+from ydb.core.protos import msgbus_pb2 as msgbus
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, \
+from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, \
     ensure_path_exists
 
 
@@ -254,7 +254,7 @@ def __enable_custom_cms_configs(ydb):
 def start_ydb(grpc_ssl_enable=False):
     configurator = KikimrConfigGenerator(
         erasure=None,
-        binary_path=yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd"),
+        binary_path=yatest_common.binary_path("ydb/apps/ydbd/ydbd"),
         use_in_memory_pdisks=True,
         grpc_ssl_enable=grpc_ssl_enable,
         dynamic_storage_pools=[

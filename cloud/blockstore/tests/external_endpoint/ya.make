@@ -13,7 +13,7 @@ DEPENDS(
     cloud/blockstore/apps/server
     cloud/blockstore/tools/testing/fake-vhost-server
     cloud/blockstore/vhost-server
-    contrib/ydb/apps/ydbd
+    ydb/apps/ydbd
 )
 
 PEERDIR(

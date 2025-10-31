@@ -6,8 +6,8 @@
 #include <logbroker/unified_agent/client/cpp/logger/backend.h>
 #include <logbroker/unified_agent/common/util/enum.h>
 
-#include <contrib/ydb/library/actors/core/log.h>
-#include <contrib/ydb/library/actors/prof/tag.h>
+#include <ydb/library/actors/core/log.h>
+#include <ydb/library/actors/prof/tag.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/deque.h>

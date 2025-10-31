@@ -1,10 +1,14 @@
+use_managed_peers_closure = true
+ignore_platforms = true
+
 [root]
 template="settings.gradle.kts.jinja"
 copy=[
     "gradlew",
     "gradlew.bat",
     "gradle/wrapper/gradle-wrapper.jar",
-    "gradle/wrapper/gradle-wrapper.properties"
+    "gradle/wrapper/gradle-wrapper.properties",
+    ".idea/vcs.xml"
 ]
 
 [targets.jar]
@@ -20,6 +24,8 @@ junit4_test="flag"
 junit5_test="flag"
 app_main_class="str"
 jar_source_set="list"
+enable_preview="flag"
+annotation_processors="list"
 
 publish="flag"
 publish_group="str"
@@ -35,11 +41,23 @@ proto_grpc="flag"
 proto_grpc_version="str"
 
 kotlin_version="str"
-with_kotlin="bool"
-with_kotlinc_plugin_allopen="bool"
-with_kotlinc_plugin_lombok="bool"
-with_kotlinc_plugin_noarg="bool"
-with_kotlinc_plugin_serialization="bool"
+with_kotlin="flag"
+with_kotlinc_plugin_allopen="flag"
+with_kotlinc_plugin_lombok="flag"
+with_kotlinc_plugin_noarg="flag"
+with_kotlinc_plugin_serialization="flag"
+
+runs="list"
+runs-args="list"
+runs-classpath="list"
+runs-cwd="str"
+runs-in="list"
+runs-in_dir="list"
+runs-in_dirs_inputs="list"
+runs-in_noparse="list"
+runs-out="list"
+runs-out_dir="list"
+runs-tool="list"
 
 [attrs.root]
 
@@ -56,5 +74,6 @@ test=[
     "/ut",
     "/src/test",
     "/src/test/java",
-    "/src/test-integration"
+    "/src/test-integration",
+    "/src/testFixtures",
 ]

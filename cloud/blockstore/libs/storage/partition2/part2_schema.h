@@ -5,8 +5,8 @@
 #include <cloud/blockstore/libs/storage/core/tablet_schema.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
-#include <contrib/ydb/core/scheme/scheme_types_defs.h>
-#include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
+#include <ydb/core/scheme/scheme_types_defs.h>
+#include <ydb/core/tablet_flat/flat_cxx_database.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 

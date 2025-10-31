@@ -6,19 +6,19 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
-#include <contrib/ydb/core/base/event_filter.h>
-#include <contrib/ydb/core/base/location.h>
-#include <contrib/ydb/core/config/init/init.h>
-#include <contrib/ydb/core/protos/config.pb.h>
-#include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
-#include <contrib/ydb/core/protos/node_broker.pb.h>
-#include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
+#include <ydb/core/base/event_filter.h>
+#include <ydb/core/base/location.h>
+#include <ydb/core/config/init/init.h>
+#include <ydb/core/protos/config.pb.h>
+#include <ydb/core/protos/nbs/blockstore.pb.h>
+#include <ydb/core/protos/node_broker.pb.h>
+#include <ydb/public/lib/deprecated/kicli/kicli.h>
+#include <ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
+#include <ydb/public/sdk/cpp/client/ydb_driver/driver.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/event.h>
-#include <contrib/ydb/library/yaml_config/yaml_config.h>
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/actors/core/event.h>
+#include <ydb/library/yaml_config/yaml_config.h>
 
 #include <util/generic/vector.h>
 #include <util/network/address.h>
