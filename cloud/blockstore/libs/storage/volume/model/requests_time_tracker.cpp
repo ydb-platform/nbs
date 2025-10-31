@@ -153,6 +153,42 @@ bool TRequestsTimeTracker::TEqual::operator()(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TRequestsTimeTracker::TThroughputTracker::AddOperation(ui64 blockCount)
+{
+    TotalBlockCount += blockCount;
+    TotalOps++;
+}
+
+std::pair<ui64, ui64>
+TRequestsTimeTracker::TThroughputTracker::GetRatesAndReset(
+    ui64 currentTime,
+    ui32 blockSize)
+{
+    if (LastResetTime == 0) {
+        LastResetTime = currentTime;
+        return {0, 0};
+    }
+
+    const ui64 elapsedCycles = currentTime - LastResetTime;
+    const ui64 elapsedUs = CyclesToDurationSafe(elapsedCycles).MicroSeconds();
+
+    if (elapsedUs == 0) {
+        return {0, 0};
+    }
+
+    const ui64 totalBytes = TotalBlockCount * static_cast<ui64>(blockSize);
+    const ui64 bytesPerSecond = (totalBytes * 1000000ULL) / elapsedUs;
+    const ui64 opsPerSecond = (TotalOps * 1000000ULL) / elapsedUs;
+
+    TotalBlockCount = 0;
+    TotalOps = 0;
+    LastResetTime = currentTime;
+
+    return {bytesPerSecond, opsPerSecond};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TRequestsTimeTracker::TRequestsTimeTracker(const ui64 constructionTime)
     : ConstructionTime(constructionTime)
 {
@@ -167,6 +203,10 @@ TRequestsTimeTracker::TRequestsTimeTracker(const ui64 constructionTime)
                 .RequestStatus = ERequestStatus::Inflight};
             Histograms[key];
         }
+    }
+
+    for (auto& tracker: ThroughputCounters) {
+        tracker.LastResetTime = constructionTime;
     }
 }
 
@@ -250,6 +290,12 @@ TRequestsTimeTracker::OnRequestFinished(
     Histograms[key].Increment(duration.MicroSeconds());
     Histograms[key].BlockCount += request.BlockRange.Size();
 
+    const auto requestTypeIndex = static_cast<size_t>(request.RequestType);
+    if (requestTypeIndex < ThroughputCounters.size()) {
+        ThroughputCounters.at(requestTypeIndex)
+            .AddOperation(request.BlockRange.Size());
+    }
+
     return StatFirstSuccess(request, success, finishTime);
 }
 
@@ -288,7 +334,7 @@ NJson::TJsonValue TRequestsTimeTracker::BuildPercentilesJson() const
     return result;
 }
 
-TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize) const
+TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize)
 {
     NJson::TJsonValue allStat(NJson::EJsonValueType::JSON_MAP);
 
@@ -346,6 +392,27 @@ TString TRequestsTimeTracker::GetStatJson(ui64 nowCycles, ui32 blockSize) const
         } else {
             allStat[key] = ToString(count);
         }
+    }
+
+    const char* typeNames[] = {"R", "W", "Z", "D"};
+
+    for (size_t requestType = 0; requestType < ThroughputCounters.size();
+         ++requestType)
+    {
+        auto [bytesPerSec, opsPerSec] =
+            ThroughputCounters.at(requestType)
+                .GetRatesAndReset(nowCycles, blockSize);
+
+        const TString formattedThroughput =
+            bytesPerSec > 0 ? (FormatByteSize(bytesPerSec) + "/s") : "0 B/s";
+
+        const TString htmlKeyBytes =
+            TString(typeNames[requestType]) + "_Total_BytesPerSec";
+        const TString htmlKeyOps =
+            TString(typeNames[requestType]) + "_Total_OpsPerSec";
+
+        allStat[htmlKeyBytes] = formattedThroughput;
+        allStat[htmlKeyOps] = ToString(opsPerSec);
     }
 
     NJson::TJsonValue json;
