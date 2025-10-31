@@ -3,13 +3,17 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/datetime/base.h>
-#include <util/generic/hash_set.h>
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
+
+#include <functional>
+#include <span>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -67,10 +71,13 @@ private:
     const bool AlwaysAllocateLocalDisks;
 
 public:
+    using TNodeRankingFunc = std::function<void (std::span<ui32> nodeIds)>;
+
     struct TAllocationQuery
     {
         THashSet<TString> ForbiddenRacks;
         THashSet<TString> PreferredRacks;
+        TNodeRankingFunc NodeRankingFunc;
 
         ui32 LogicalBlockSize = 0;
         ui64 BlockCount = 0;
@@ -175,9 +182,15 @@ private:
         const TAllocationQuery& query,
         const TString& poolName);
     TVector<TDeviceRange> CollectDevices(const TAllocationQuery& query);
+
     [[nodiscard]] TVector<TRack> SelectRacks(
         const TAllocationQuery& query,
         const TString& poolName) const;
+
+    [[nodiscard]] TVector<TNodeId> RankNodes(
+        const TAllocationQuery& query,
+        TVector<TRack> racks) const;
+
     void RemoveDeviceFromFreeList(const TDeviceId& id);
     void UpdateInAllDevices(
         const TDeviceId& id,
