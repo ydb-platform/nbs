@@ -1,14 +1,10 @@
 #include <dirent.h>
 #include <sys/stat.h>
-#include <time.h>
 #include <unistd.h>
 
-#include <atomic>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <memory>
 #include <mutex>
 #include <random>
 #include <string>
