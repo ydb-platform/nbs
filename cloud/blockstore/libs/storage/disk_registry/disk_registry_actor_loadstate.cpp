@@ -209,7 +209,7 @@ void TDiskRegistryActor::CompleteLoadState(
 
     ScheduleDiskRegistryAgentListExpiredParamsCleanup(ctx);
 
-    ProcessPathsToAttachDetach(ctx);
+    ProcessPathsToAttach(ctx);
 
     if (auto orphanDevices = State->FindOrphanDevices()) {
         LOG_INFO(

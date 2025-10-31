@@ -209,7 +209,8 @@ void TAttachDetachPathActor::ReplyAndDie(
 
 void TAttachDetachPathActor::UpdatePathAttachStates(const TActorContext& ctx)
 {
-    Y_DEBUG_ABORT_UNLESS(PendingRequests == 0);
+    Y_ABORT_UNLESS(PendingRequests == 0);
+    Y_ABORT_UNLESS(IsAttach);
     for (auto& path : Paths) {
         auto request = std::make_unique<
             TEvDiskRegistryPrivate::TEvUpdatePathAttachStateRequest>();
@@ -229,7 +230,8 @@ void TAttachDetachPathActor::UpdateDeviceStatesIfNeeded(
     const TActorContext& ctx,
     const NProto::TAttachPathResponse& response)
 {
-    Y_DEBUG_ABORT_UNLESS(PendingRequests == 0);
+    Y_ABORT_UNLESS(PendingRequests == 0);
+    Y_ABORT_UNLESS(IsAttach);
     bool hasErrorDevices = false;
     for (const auto& device: response.GetAttachedDevices()) {
         if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
@@ -509,7 +511,7 @@ void TDiskRegistryActor::CompleteUpdatePathAttachState(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     SecureErase(ctx);
-    ProcessPathsToAttachDetach(ctx);
+    ProcessPathsToAttach(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -554,7 +556,7 @@ void TDiskRegistryActor::ProcessPathsToAttachOnAgent(
     AgentsWithAttachDetachRequestsInProgress[agentId] = actorId;
 }
 
-void TDiskRegistryActor::ProcessPathsToAttachDetach(const TActorContext& ctx)
+void TDiskRegistryActor::ProcessPathsToAttach(const TActorContext& ctx)
 {
     if (!Config->GetAttachDetachPathsEnabled()) {
         return;
@@ -698,7 +700,7 @@ void TDiskRegistryActor::HandleAttachDetachPathOperationCompleted(
 
     AgentsWithAttachDetachRequestsInProgress.erase(msg->AgentId);
 
-    ProcessPathsToAttachDetach(ctx);
+    ProcessPathsToAttach(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

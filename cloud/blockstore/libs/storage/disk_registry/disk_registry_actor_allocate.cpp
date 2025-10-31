@@ -381,7 +381,6 @@ void TDiskRegistryActor::CompleteRemoveDisk(
 
     SecureErase(ctx);
     NotifyUsers(ctx);
-    ProcessPathsToAttachDetach(ctx);
 }
 
 void TDiskRegistryActor::AddPendingDeallocation(

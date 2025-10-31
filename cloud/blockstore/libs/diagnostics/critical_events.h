@@ -128,6 +128,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(ChecksumCalculationError)                                              \
     xxx(LogicalDiskIdMismatch)                                                 \
     xxx(DeviceReplacementContractBroken)                                       \
+    xxx(DiskRegistryDetachPathWithDependentDisk)                               \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -349,7 +349,6 @@ void TDiskRegistryActor::CompleteDeleteNotifiedDisks(
     PublishDiskStates(ctx);
     SecureErase(ctx);
     StartMigration(ctx);
-    ProcessPathsToAttachDetach(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
