@@ -26,12 +26,8 @@ namespace {
 
 constexpr ui64 DefaultBlocksPerRequest = 1024;
 
-NProto::TError ExtractStatusValues(const TString& jsonStr)
+NProto::TError ExtractStatusValues(const NJson::TJsonValue& json)
 {
-    NJson::TJsonValue json;
-    if (!NJson::ReadJsonTree(jsonStr, &json)) {
-        return MakeError(E_ARGUMENT, "JSON parsing error");
-    }
     NJson::TJsonValue code;
     if (json.GetValueByPath("Status.Code", code) && !code.IsUInteger()) {
         return MakeError(E_ARGUMENT, "Status.Code parsing error");
@@ -121,21 +117,10 @@ public:
         RequestCount++;
     }
 
-    void SetRangeError(const TBlockRange64& range, const NProto::TError& err)
-    {
-        Y_ABORT_IF(HasBootstrapError);
-        ErrorCount++;
-
-        NJson::TJsonValue e;
-        e["r_start"] = range.Start;
-        e["r_end"] = range.End;
-        e["error"] = FormatErrorJson(err);
-        e["success"] = false;
-
-        WriteRangeResult(e);
-    }
-
-    void SetRangeResult(const TBlockRange64& range, const TString& strResp)
+    void SetRangeResult(
+        const TBlockRange64& range,
+        const NCloud::NBlockStore::NProto::TExecuteActionResponse& result,
+        bool& fatalErr)
     {
         Y_ABORT_IF(HasBootstrapError);
 
@@ -143,27 +128,44 @@ public:
         res["r_start"] = range.Start;
         res["r_end"] = range.End;
 
+        fatalErr = false;
+        if (const auto& error = result.GetError(); HasError(error)) {
+            ErrorCount++;
+            res["error"] = FormatErrorJson(error);
+            if (error.GetCode() == E_ARGUMENT) {
+                fatalErr = true;
+            }
+            WriteRangeResult(res);
+            return;
+        }
+
         NJson::TJsonValue resp;
-        if (!NJson::ReadJsonTree(strResp, &resp)) {
-            res["success"] = false;
-            res["error"]["Message"] = "Error while parsing json from response";
+        if (!NJson::ReadJsonTree(result.GetOutput(), &resp) ||
+            !resp.Has("Status"))
+        {
+            ErrorCount++;
+            res["error"]["Message"] = "Unknown response's format";
             res["error"]["Code"] = E_INVALID_STATE;
             WriteRangeResult(res);
             return;
         }
 
-        bool success = resp.Has("Status") &&
-                       resp["Status"].GetType() == NJson::JSON_MAP &&
-                       resp["Status"].GetMapSafe().empty();
-        res["success"] = success;
-        if (!resp["Checksums"].GetArray().empty()) {
+        const auto& status = ExtractStatusValues(resp);
+        if (HasError(status)) {
+            ErrorCount++;
+            res["error"] = FormatErrorJson(status);
+        }
+
+        if (resp.Has("Checksums") && !resp["Checksums"].GetArray().empty()) {
             res["checksums"] = std::move(resp["Checksums"]);
         }
-        if (!resp["mirror_checksums"].GetArray().empty()) {
+        if (resp.Has("MirrorChecksums") &&
+            !resp["MirrorChecksums"].GetArray().empty())
+        {
             res["mirror_checksums"] = std::move(resp["MirrorChecksums"]);
         }
 
-        if (!success) {
+        if (res.Has("error")) {
             AddProblemRangeWithMerging(range);
         }
         WriteRangeResult(res);
@@ -198,7 +200,7 @@ private:
     {
         Y_ABORT_IF(HasBootstrapError);
         NJson::TJsonValue summary;
-        summary["common_errors"] = ErrorCount;
+        summary["errors_num"] = ErrorCount;
         summary["requests_num"] = RequestCount;
         if (ErrorCount) {
             for (const auto& r: ProblemRanges) {
@@ -271,25 +273,16 @@ protected:
 
             request->SetAction("checkrange");
             request->SetInput(CreateNextInput(*range));
-
+            resultManager.IncRequestCnt();
             const auto requestId = GetRequestId(*request);
             auto result = WaitFor(ClientEndpoint->ExecuteAction(
                 MakeIntrusive<TCallContext>(requestId),
                 std::move(request)));
 
-            resultManager.IncRequestCnt();
-            if (const auto& error = result.GetError(); HasError(error)) {
-                resultManager.SetRangeError(*range, error);
-                if (error.GetCode() == E_ARGUMENT) {
-                    return true;
-                }
-            } else {
-                const auto& status = ExtractStatusValues(result.GetOutput());
-                if (HasError(status)) {
-                    resultManager.SetRangeError(*range, status);
-                } else {
-                    resultManager.SetRangeResult(*range, result.GetOutput());
-                }
+            bool fatalErr{false};
+            resultManager.SetRangeResult(*range, result, fatalErr);
+            if (fatalErr) {
+                return true;
             }
 
             range = builder.Next();

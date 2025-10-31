@@ -2636,6 +2636,72 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(replicaCount, actorIds[recepient].size());
     }
 
+    Y_UNIT_TEST(ShouldMirrorCheckRangeOneReplicaBroken)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        constexpr ui32 blocksCount = 1024;
+        const ui32 replicaCount = env.ReplicaActors.size();
+        TPartitionClient client(runtime, env.ActorId);
+        client.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, blocksCount),
+            1);
+
+        bool once{false};
+        TActorId recepient;
+        TMap<TActorId, TSet<TActorId>> actorIds;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvReadBlocksResponse: {
+                        using TEv = TEvService::TEvReadBlocksResponse;
+                        if (once) {
+                            break;
+                        }
+                        once = true;
+                        recepient = event->Recipient;
+                        actorIds[event->Recipient].insert(event->Sender);
+
+                        auto response = std::make_unique<TEv>(
+                            MakeError(E_IO, "block is broken"));
+
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Recipient,
+                                event->Sender,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    default:
+                        break;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        auto response = client.CheckRange("disk-id", 0, blocksCount);
+        const auto& record = response->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, record.GetStatus().code());
+        UNIT_ASSERT_VALUES_EQUAL(0, record.GetChecksums().size());
+
+        ui32 EmptyCheksumsCnt{0};
+        ui32 NonEmptyCheksumsCnt{0};
+        for (const auto& cs: record.GetMirrorChecksums()) {
+            if (cs.GetChecksums().size()) {
+                ++NonEmptyCheksumsCnt;
+            } else {
+                ++EmptyCheksumsCnt;
+            }
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, NonEmptyCheksumsCnt);
+        UNIT_ASSERT_VALUES_EQUAL(1, EmptyCheksumsCnt);
+    }
+
     Y_UNIT_TEST(ShouldLockAndDrainRangeForWriteIO)
     {
         TTestBasicRuntime runtime;
