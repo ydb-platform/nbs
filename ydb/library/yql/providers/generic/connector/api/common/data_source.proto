@@ -4,7 +4,7 @@ package NYql.NConnector.NApi;
 
 import "ydb/library/yql/providers/generic/connector/api/common/endpoint.proto";
 
-option go_package = "github.com/ydb-platform/ydb/ydb/library/yql/providers/generic/connector/api/common";
+option go_package = "github.com/ydb-platform/nbs/ydb/library/yql/providers/generic/connector/api/common";
 
 // TCredentials represents various ways of user authentication in the data source instance
 message TCredentials {
@@ -81,7 +81,7 @@ message TDataSourceInstance {
     // If true, Connector server will use secure connections to access remote data sources.
     // Certificates will be obtained from the standard system paths.
     bool use_tls = 5;
-    // Allows to specify network protocol that should be used between 
+    // Allows to specify network protocol that should be used between
     // during the connection between Connector and the remote data source
     EProtocol protocol = 6;
     // Options specific to various data sources
