@@ -10,7 +10,7 @@ import (
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystembackups/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_backups/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"

@@ -4,7 +4,7 @@ package filesystembackups;
 
 import "cloud/disk_manager/internal/pkg/types/types.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystembackups/protos";
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_backups/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
 
