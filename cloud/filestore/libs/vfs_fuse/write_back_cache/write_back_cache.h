@@ -60,6 +60,8 @@ public:
 
     NThreading::TFuture<void> FlushAllData();
 
+    bool IsEmpty() const;
+
     enum class EWriteDataRequestStatus;
     struct TPersistentQueueStats;
 
