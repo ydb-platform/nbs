@@ -345,6 +345,7 @@ void TIndexTabletActor::TMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(UsedSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedHandlesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(UsedDirectHandlesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedLocksCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatefulSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatelessSessionsCount, EMetricType::MT_ABSOLUTE);
@@ -568,7 +569,8 @@ void TIndexTabletActor::TMetrics::Update(
     const TInMemoryIndexStateStats& inMemoryIndexStateStats,
     const TBlobMetaMapStats& blobMetaMapStats,
     const TIndexTabletState::TBackpressureThresholds& backpressureThresholds,
-    const TIndexTabletState::TBackpressureValues& backpressureValues)
+    const TIndexTabletState::TBackpressureValues& backpressureValues,
+    const THandlesStats& handlesStats)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -580,6 +582,7 @@ void TIndexTabletActor::TMetrics::Update(
 
     Store(UsedSessionsCount, stats.GetUsedSessionsCount());
     Store(UsedHandlesCount, stats.GetUsedHandlesCount());
+    Store(UsedDirectHandlesCount, handlesStats.UsedDirectHandlesCount);
     Store(UsedLocksCount, stats.GetUsedLocksCount());
 
     Store(FreshBytesCount, stats.GetFreshBytesCount());
@@ -816,7 +819,8 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         GetInMemoryIndexStateStats(),
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
-        GetBackpressureValues());
+        GetBackpressureValues(),
+        GetHandlesStats());
 
     // TabletStartTimestamp is intialised once per tablet lifetime and thus it is
     // acceptable to set it in RegisterStatCounters if it is not set yet.
@@ -876,7 +880,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         GetInMemoryIndexStateStats(),
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
-        GetBackpressureValues());
+        GetBackpressureValues(),
+        GetHandlesStats());
     SendMetricsToExecutor(ctx);
 
     UpdateCountersScheduled = false;
