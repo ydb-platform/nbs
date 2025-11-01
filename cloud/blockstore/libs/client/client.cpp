@@ -976,28 +976,10 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TClient>
-class TEndpoint final
-    : public TEndpointBase<NProto::TBlockStoreService, TClient>
+class TEndpoint final: public TEndpointBase<NProto::TBlockStoreService, TClient>
 {
-    using TBase = TEndpointBase<NProto::TBlockStoreService, TClient>;
-
 public:
     using TEndpointBase<NProto::TBlockStoreService, TClient>::TEndpointBase;
-
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return TBase::template ExecuteRequest<T##name##Method>(                \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
 };
 
 ////////////////////////////////////////////////////////////////////////////////
