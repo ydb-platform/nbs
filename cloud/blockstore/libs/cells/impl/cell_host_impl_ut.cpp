@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_method.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -64,7 +65,7 @@ struct TestCellHostEndpointBootstrap: public ICellHostEndpointBootstrap
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestBlockStore: public IBlockStore
+struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
 {
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -78,20 +79,15 @@ struct TTestBlockStore: public IBlockStore
     void Stop() override
     {}
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                        \
-    TFuture<NProto::T##name##Response> name(                        \
-        TCallContextPtr callContext,                                \
-        std::shared_ptr<NProto::T##name##Request> request) override \
-    {                                                               \
-        Y_UNUSED(callContext);                                      \
-        Y_UNUSED(request);                                          \
-        return MakeFuture<NProto::T##name##Response>();             \
-    }                                                               \
-    // BLOCKSTORE_DECLARE_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
-
-#undef BLOCKSTORE_DECLARE_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+        return MakeFuture<typename TMethod::TResponse>();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
