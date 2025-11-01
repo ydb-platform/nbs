@@ -29,7 +29,7 @@ def _print_size(size):
 class TestCase:
     def __init__(self, scenario, size, request_size, iodepth, sync, duration, compress_percentage,
                  verify, unlink, numjobs, fsync, fdatasync, end_fsync, write_barrier, unique_name,
-                 offset, randseed):
+                 offset, randseed, io_size):
         self._scenario = scenario
         self._size = size
         self._request_size = request_size
@@ -47,6 +47,7 @@ class TestCase:
         self._unique_name = unique_name
         self._offset = offset
         self._randseed = randseed
+        self._io_size = io_size
 
     @property
     def scenario(self):
@@ -117,6 +118,10 @@ class TestCase:
         return self._randseed
 
     @property
+    def io_size(self):
+        return self._io_size
+
+    @property
     def name(self):
         parts = [
             self.scenario,
@@ -150,10 +155,10 @@ class TestCase:
             "--size", str(self.size),
             "--bs", str(self.request_size),
             "--buffer_compress_percentage", str(self.compress_percentage),
-            "--runtime", str(self.duration),
-            "--time_based",
             "--output-format", "json",
         ]
+        if self.duration:
+            cmd += ["--runtime", str(self.duration), "--time_based"]
         if self.offset:
             cmd += ["--offset", str(self.offset)]
         if self.verify and 'read' not in self.scenario:
@@ -182,6 +187,9 @@ class TestCase:
             cmd += ["--randseed", str(self.randseed)]
         else:
             cmd += ["--randseed", str(random.randint(1, sys.maxsize))]
+
+        if self.io_size:
+            cmd += ["--io_size", str(self.io_size)]
         return cmd
 
     def get_fio_cmd(self, fio_bin, file_name):
@@ -209,11 +217,11 @@ class TestCase:
 
 
 def _generate_tests(size, duration, sync, scenarios, sizes, iodepths, compress_percentage, verify,
-                    unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers, unique_name, offset, randseed):
+                    unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers, unique_name, offset, randseed, io_size):
     return [
         TestCase(scenario, size, request_size, iodepth, sync, duration, compress_percentage, verify,
                  unlink, numjob, fsync, fdatasync, end_fsync, write_barrier, unique_name,
-                 offset, randseed)
+                 offset, randseed, io_size)
         for scenario, request_size, iodepth, unlink, numjob, fsync, fdatasync, end_fsync, write_barrier
         in itertools.product(scenarios, sizes, iodepths, unlinks, numjobs, fsyncs, fdatasyncs,
                              end_fsyncs, write_barriers)
@@ -223,12 +231,12 @@ def _generate_tests(size, duration, sync, scenarios, sizes, iodepths, compress_p
 def generate_tests(size=100 * MB, duration=60, sync=False, scenarios=['randread', 'randwrite', 'randrw'],
                    sizes=[4 * KB, 4 * MB], iodepths=[1, 32], compress_percentage=90, verify=True, unlinks=[False],
                    numjobs=[1], fsyncs=[0], fdatasyncs=[0], end_fsyncs=[False], write_barriers=[0],
-                   unique_name=False, offset=0, randseed=None):
+                   unique_name=False, offset=0, randseed=None, io_size=None):
     return {
         test.name: test
         for test in _generate_tests(size, duration, sync, scenarios, sizes, iodepths, compress_percentage,
                                     verify, unlinks, numjobs, fsyncs, fdatasyncs, end_fsyncs, write_barriers,
-                                    unique_name, offset, randseed)
+                                    unique_name, offset, randseed, io_size)
     }
 
 
