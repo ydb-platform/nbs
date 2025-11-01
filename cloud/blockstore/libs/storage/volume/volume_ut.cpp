@@ -9834,19 +9834,32 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldReceiveDeviceOperationStartedAndFinished)
+    void DoShouldReceiveDeviceOperationStartedAndFinished(bool useRdma)
     {
         const ui64 expectedBlockCount =
             DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
         const ui64 expectedDeviceCount = 2;
 
+        std::shared_ptr<TRdmaClientTest> rdmaClient =
+            useRdma ? std::make_shared<TRdmaClientTest>() : nullptr;
+
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
         config.SetDeviceOperationTrackingFrequency(1);
 
+        if (rdmaClient) {
+            config.SetUseRdma(true);
+            config.SetUseNonreplicatedRdmaActor(true);
+        }
+
         auto state = MakeIntrusive<TDiskRegistryState>();
         state->ReplicaCount = 1;
-        auto runtime = PrepareTestActorRuntime(config, state);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            state,
+            {}, // featuresConfig
+            rdmaClient);
+
         TVolumeClient volume(*runtime);
 
         volume.UpdateVolumeConfig(
@@ -9866,6 +9879,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL,
             0);
         volume.AddClient(clientInfo);
+
+        if (rdmaClient) {
+            rdmaClient->InitAllEndpoints();
+        }
 
         TSet<ui64> startedSeen;
         TSet<ui64> finishedSeen;
@@ -9965,6 +9982,16 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         checkRead(TBlockRange64::WithLength(expectedBlockCount - 1, 2), 2);
         checkWrite(TBlockRange64::WithLength(expectedBlockCount - 1, 2), 4);
         checkZero(TBlockRange64::WithLength(expectedBlockCount - 1, 2), 4);
+    }
+
+    Y_UNIT_TEST(ShouldReceiveDeviceOperationStartedAndFinished)
+    {
+        DoShouldReceiveDeviceOperationStartedAndFinished(false);
+    }
+
+    Y_UNIT_TEST(ShouldReceiveDeviceOperationStartedAndFinishedRdma)
+    {
+        DoShouldReceiveDeviceOperationStartedAndFinished(true);
     }
 }
 

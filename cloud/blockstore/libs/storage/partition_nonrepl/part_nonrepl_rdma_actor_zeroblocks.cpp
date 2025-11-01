@@ -166,6 +166,11 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
 
     for (size_t i = 0; i < requests.size(); ++i) {
         auto& request = requests[i];
+
+        requestContext->OnRequestStarted(
+            sentRequestCtx[i].DeviceIdx,
+            TDeviceOperationTracker::ERequestType::Zero);
+
         sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);

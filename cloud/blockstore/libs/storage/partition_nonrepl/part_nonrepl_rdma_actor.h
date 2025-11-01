@@ -52,6 +52,12 @@ struct TDeviceReadRequestContext: public TDeviceRequestRdmaContext
 class TNonreplicatedPartitionRdmaActor final
     : public NActors::TActorBootstrapped<TNonreplicatedPartitionRdmaActor>
 {
+    struct TRunningRdmaRequestInfo
+    {
+        // Index of the device in the partition config.
+        ui32 DeviceIdx = 0;
+        ui64 SentRequestId = 0;
+    };
     using TRequestContext = TStackVec<TRunningRdmaRequestInfo, 2>;
 
 private:
@@ -153,7 +159,7 @@ private:
         const NActors::TActorContext& ctx,
         TCallContextPtr callContext,
         const NProto::THeaders& headers,
-        NRdma::IClientHandlerPtr handler,
+        IClientHandlerWithTrackingPtr handler,
         const TVector<TDeviceRequest>& deviceRequests);
 
     void HandleUpdateCounters(

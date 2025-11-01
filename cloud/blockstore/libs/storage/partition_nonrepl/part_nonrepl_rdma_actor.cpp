@@ -305,7 +305,7 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
     const NActors::TActorContext& ctx,
     TCallContextPtr callContext,
     const NProto::THeaders& headers,
-    NRdma::IClientHandlerPtr handler,
+    IClientHandlerWithTrackingPtr handler,
     const TVector<TDeviceRequest>& deviceRequests)
 {
     struct TDeviceRequestInfo
@@ -374,6 +374,11 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
 
     for (size_t i = 0; i < requests.size(); ++i) {
         auto& request = requests[i];
+
+        handler->OnRequestStarted(
+            sentRequestCtx[i].DeviceIdx,
+            TDeviceOperationTracker::ERequestType::Read);
+
         sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             callContext);
