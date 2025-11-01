@@ -575,7 +575,7 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
                     r.LostDevicesIds.end()});
 
             for (const auto& [uuid, deviceState]: this->Devices) {
-                this->PathAttachStates[deviceState.Config.GetDeviceName()] =
+                PathAttachStates[deviceState.Config.GetDeviceName()] =
                     EPathAttachState::Attached;
             }
 
@@ -1104,20 +1104,6 @@ bool TDiskAgentState::IsPathAttached(const TString& path) const
 ui64 TDiskAgentState::GetDiskAgentGeneration() const
 {
     return DiskAgentGeneration;
-}
-
-EDeviceStateFlags TDiskAgentState::GetDeviceStateFlags(
-    const TString& uuid) const
-{
-    EDeviceStateFlags flags =
-        IsDeviceDisabled(uuid)
-            ? EDeviceStateFlags::DISABLED
-            : (IsDeviceSuspended(uuid) ? EDeviceStateFlags::SUSPENDED
-                                       : EDeviceStateFlags::NONE);
-    if (!IsDeviceAttached(uuid)) {
-        flags |= EDeviceStateFlags::DETACHED;
-    }
-    return flags;
 }
 
 bool TDiskAgentState::IsDeviceSuspended(const TString& uuid) const

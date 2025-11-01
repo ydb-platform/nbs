@@ -6996,448 +6996,234 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             FormatError(response.ReplicationResponses[1]));
     }
 
-    Y_UNIT_TEST(ShouldDetachPath)
+    Y_UNIT_TEST_F(ShouldDetachPath, TFixture)
     {
-        auto agentConfig = CreateDefaultAgentConfig();
-        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
-        agentConfig.SetAcquireRequired(true);
-        agentConfig.SetEnabled(true);
-
-        const auto workingDir = TryGetRamDrivePath();
-        const auto filePath =
-            workingDir / ("test" + ToString(RandomNumber<ui64>()));
-
-        {
-            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
-            fileData.Resize(16_MB);
-        }
-
-        auto prepareFileDevice = [&](const TString& deviceName)
-        {
-            NProto::TFileDeviceArgs device;
-            device.SetPath(filePath);
-            device.SetBlockSize(DefaultDeviceBlockSize);
-            device.SetDeviceId(deviceName);
-            return device;
-        };
-
-        {
-            auto* d = agentConfig.AddFileDevices();
-            *d = prepareFileDevice("FileDevice-1");
-
-            d->SetOffset(1_MB);
-            d->SetFileSize(4_MB);
-
-            d = agentConfig.AddFileDevices();
-            *d = prepareFileDevice("FileDevice-2");
-
-            d->SetOffset(5_MB);
-            d->SetFileSize(4_MB);
-        }
-
         auto storageConfig = NProto::TStorageServiceConfig();
         storageConfig.SetAttachDetachPathsEnabled(true);
 
-        TTestBasicRuntime runtime;
-
-        auto env = TTestEnvBuilder(runtime)
-                       .With(agentConfig)
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
                        .With(storageConfig)
                        .Build();
 
-        TDiskAgentClient diskAgent(runtime);
+        TDiskAgentClient diskAgent(*Runtime);
         diskAgent.WaitReady();
 
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.DetachPath(
             0,   // drGeneration
             1,   // daGeneration
-            TVector<TString>{{filePath}});
+            TVector<TString>{{PartLabels[0]}});
 
-        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
     }
 
-    Y_UNIT_TEST(ShouldAttachPath)
+    Y_UNIT_TEST_F(ShouldAttachPath, TFixture)
     {
-        auto agentConfig = CreateDefaultAgentConfig();
-        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
-        agentConfig.SetAcquireRequired(true);
-        agentConfig.SetEnabled(true);
-
-        const auto workingDir = TryGetRamDrivePath();
-        const auto filePath =
-            workingDir / ("test" + ToString(RandomNumber<ui64>()));
-
-        {
-            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
-            fileData.Resize(16_MB);
-        }
-
-        auto prepareFileDevice = [&](const TString& deviceName)
-        {
-            NProto::TFileDeviceArgs device;
-            device.SetPath(filePath);
-            device.SetBlockSize(DefaultDeviceBlockSize);
-            device.SetDeviceId(deviceName);
-            return device;
-        };
-
-        {
-            auto* d = agentConfig.AddFileDevices();
-            *d = prepareFileDevice("FileDevice-1");
-
-            d->SetOffset(1_MB);
-            d->SetFileSize(4_MB);
-
-            d = agentConfig.AddFileDevices();
-            *d = prepareFileDevice("FileDevice-2");
-
-            d->SetOffset(5_MB);
-            d->SetFileSize(4_MB);
-        }
-
         auto storageConfig = NProto::TStorageServiceConfig();
         storageConfig.SetAttachDetachPathsEnabled(true);
 
-        TTestBasicRuntime runtime;
-
-        auto env = TTestEnvBuilder(runtime)
-                       .With(agentConfig)
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
                        .With(storageConfig)
                        .Build();
 
-        TDiskAgentClient diskAgent(runtime);
+        TDiskAgentClient diskAgent(*Runtime);
         diskAgent.WaitReady();
 
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.DetachPath(
             0,   // drGeneration
             1,   // daGeneration
-            TVector<TString>{{filePath}});
+            TVector<TString>{{PartLabels[0]}});
 
-        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.AttachPath(
             0,   // drGeneration
             2,   // daGeneration
-            TVector<TString>{{filePath}});
+            TVector<TString>{{PartLabels[0]}});
 
-        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(Devices[0]).size());
     }
 
-    Y_UNIT_TEST(ShouldRejectOldattachDetachRequests)
+    Y_UNIT_TEST_F(ShouldRejectOldattachDetachRequests, TFixture)
     {
-        auto agentConfig = CreateDefaultAgentConfig();
-        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
-        agentConfig.SetAcquireRequired(true);
-        agentConfig.SetEnabled(true);
-
-        const auto workingDir = TryGetRamDrivePath();
-        const auto filePath =
-            workingDir / ("test" + ToString(RandomNumber<ui64>()));
-
-        {
-            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
-            fileData.Resize(16_MB);
-        }
-
-        auto prepareFileDevice = [&](const TString& deviceName)
-        {
-            NProto::TFileDeviceArgs device;
-            device.SetPath(filePath);
-            device.SetBlockSize(DefaultDeviceBlockSize);
-            device.SetDeviceId(deviceName);
-            return device;
-        };
-
-        {
-            auto* d = agentConfig.AddFileDevices();
-            *d = prepareFileDevice("FileDevice-1");
-
-            d->SetOffset(1_MB);
-            d->SetFileSize(4_MB);
-
-            d = agentConfig.AddFileDevices();
-            *d = prepareFileDevice("FileDevice-2");
-
-            d->SetOffset(5_MB);
-            d->SetFileSize(4_MB);
-        }
-
         auto storageConfig = NProto::TStorageServiceConfig();
         storageConfig.SetAttachDetachPathsEnabled(true);
 
-        TTestBasicRuntime runtime;
-
-        auto env = TTestEnvBuilder(runtime)
-                       .With(agentConfig)
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
                        .With(storageConfig)
                        .Build();
 
-        TDiskAgentClient diskAgent(runtime);
+        TDiskAgentClient diskAgent(*Runtime);
         diskAgent.WaitReady();
 
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.DetachPath(
             5,    // drGeneration
             10,   // daGeneration
-            TVector<TString>{{filePath}});
+            TVector<TString>{{PartLabels[0]}});
 
-        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.SendAttachPathRequest(
             5,   // drGeneration
             1,   // daGeneration
-            TVector<TString>{{filePath}});
+            TVector<TString>{{PartLabels[0]}});
 
         auto resp = diskAgent.RecvAttachPathResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.SendAttachPathRequest(
             4,     // drGeneration
             100,   // daGeneration
-            TVector<TString>{{filePath}});
+            TVector<TString>{{PartLabels[0]}});
 
         resp = diskAgent.RecvAttachPathResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, resp->GetError().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.AttachPath(
             6,   // drGeneration
             1,   // daGeneration
-            TVector<TString>{{filePath}});
+            TVector<TString>{{PartLabels[0]}});
 
-        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(Devices[0]).size());
     }
 
-    Y_UNIT_TEST(ShouldDetectDeviceFileChange)
+    Y_UNIT_TEST_F(ShouldDetectPathChanged, TFixture)
     {
-        auto agentConfig = CreateDefaultAgentConfig();
-        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
-        agentConfig.SetAcquireRequired(true);
-        agentConfig.SetEnabled(true);
-
-        const auto workingDir = TryGetRamDrivePath();
-        const auto filePath =
-            workingDir / ("test" + ToString(RandomNumber<ui64>()));
-
-        {
-            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
-            fileData.Resize(16_MB);
-        }
-
-        auto prepareFileDevice = [&](const TString& deviceName)
-        {
-            NProto::TFileDeviceArgs device;
-            device.SetPath(filePath);
-            device.SetBlockSize(DefaultDeviceBlockSize);
-            device.SetDeviceId(deviceName);
-            return device;
+        TVector<std::pair<TString, TString>> pathToSerial{
+            {Devices[0], "W"},   // nvme0n1
+            {Devices[1], "X"},   // nvme1n1
+            {Devices[2], "Y"},   // nvme2n1
+            {Devices[3], "Z"},   // nvme3n1
         };
-
-        {
-            auto* d = agentConfig.AddFileDevices();
-            *d = prepareFileDevice("FileDevice-1");
-
-            d->SetOffset(1_MB);
-            d->SetFileSize(4_MB);
-
-            d = agentConfig.AddFileDevices();
-            *d = prepareFileDevice("FileDevice-2");
-
-            d->SetOffset(5_MB);
-            d->SetFileSize(4_MB);
-        }
 
         auto storageConfig = NProto::TStorageServiceConfig();
         storageConfig.SetAttachDetachPathsEnabled(true);
 
-        TTestBasicRuntime runtime;
+        auto nvmeManager = std::make_shared<TTestNvmeManager>(pathToSerial);
 
-        auto env = TTestEnvBuilder(runtime)
-                       .With(agentConfig)
-                       .With(storageConfig)
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(nvmeManager)
+                       .With(std::move(storageConfig))
                        .Build();
 
-        TDiskAgentClient diskAgent(runtime);
+        Runtime->UpdateCurrentTime(Now());
+
+        TDiskAgentClient diskAgent(*Runtime);
         diskAgent.WaitReady();
 
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.DetachPath(
             5,    // drGeneration
             10,   // daGeneration
-            TVector<TString>{{filePath}});
+            TVector<TString>{{PartLabels[0]}});
 
-        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
 
         {
-            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
-            fileData.Resize(1_MB);
+            nvmeManager->PathToSerial[Devices[0].GetPath()] = "another serial";
         }
 
         diskAgent.SendAttachPathRequest(
             5,    // drGeneration
             11,   // daGeneration
-            TVector<TString>{{filePath}});
+            TVector<TString>{{PartLabels[0]}});
 
         auto resp = diskAgent.RecvAttachPathResponse();
+
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, resp->GetError().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
     }
 
-    Y_UNIT_TEST(ShouldBrokeFailedToAttachPaths)
+    Y_UNIT_TEST_F(ShouldDetectPathDeleted, TFixture)
     {
-        auto agentConfig = CreateDefaultAgentConfig();
-        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
-        agentConfig.SetAcquireRequired(true);
-        agentConfig.SetEnabled(true);
-
-        const auto workingDir = TryGetRamDrivePath();
-        const auto filePath =
-            workingDir / ("test" + ToString(RandomNumber<ui64>()));
-
-        {
-            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
-            fileData.Resize(16_MB);
-        }
-
-        auto prepareFileDevice = [&](const TString& deviceName)
-        {
-            NProto::TFileDeviceArgs device;
-            device.SetPath(filePath);
-            device.SetBlockSize(DefaultDeviceBlockSize);
-            device.SetDeviceId(deviceName);
-            return device;
-        };
-
-        {
-            auto* d = agentConfig.AddFileDevices();
-            *d = prepareFileDevice("FileDevice-1");
-
-            d->SetOffset(1_MB);
-            d->SetFileSize(4_MB);
-
-            d = agentConfig.AddFileDevices();
-            *d = prepareFileDevice("FileDevice-2");
-
-            d->SetOffset(5_MB);
-            d->SetFileSize(4_MB);
-        }
-
         auto storageConfig = NProto::TStorageServiceConfig();
         storageConfig.SetAttachDetachPathsEnabled(true);
 
-        TTestBasicRuntime runtime;
-
-        auto env = TTestEnvBuilder(runtime)
-                       .With(agentConfig)
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
                        .With(storageConfig)
                        .Build();
 
-        TDiskAgentClient diskAgent(runtime);
+        TDiskAgentClient diskAgent(*Runtime);
         diskAgent.WaitReady();
 
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(filePath).size());
+        UNIT_ASSERT_VALUES_EQUAL(1, FindProcessesWithOpenFile(Devices[0]).size());
 
         diskAgent.DetachPath(
             0,    // drGeneration
             10,   // daGeneration
-            TVector<TString>{{filePath}});
+            TVector<TString>{{PartLabels[0]}});
 
-        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
 
-        Chmod(filePath.c_str(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(Devices[0]).size());
 
-        auto response = diskAgent.AttachPath(
+        unlink(PartLabels[0].c_str());
+
+        diskAgent.SendAttachPathRequest(
             0,    // drGeneration
             11,   // daGeneration
-            TVector<TString>{{filePath}});
+            TVector<TString>{{PartLabels[0]}});
+
+        auto resp = diskAgent.RecvAttachPathResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, resp->GetError().GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
-            response->Record.GetAttachedDevices().size());
-        UNIT_ASSERT(AllOf(
-            response->Record.GetAttachedDevices(),
-            [&](const auto& device)
-            {
-                return device.GetDeviceName() == filePath &&
-                       device.GetState() == NProto::DEVICE_STATE_ERROR;
-            }));
-        UNIT_ASSERT_VALUES_EQUAL(0, FindProcessesWithOpenFile(filePath).size());
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
     }
 
-    Y_UNIT_TEST(AttachDetachPathStressTest)
+    Y_UNIT_TEST_F(AttachDetachPathStressTest, TFixture)
     {
-        auto agentConfig = CreateDefaultAgentConfig();
-        agentConfig.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
-        agentConfig.SetAcquireRequired(true);
-        agentConfig.SetEnabled(true);
-
-        ui64 devicesCount = 10;
-        const auto workingDir = TryGetRamDrivePath();
-
-        auto prepareFileDevice =
-            [&](const TString& deviceName, const TString& filePath)
-        {
-            NProto::TFileDeviceArgs device;
-            device.SetPath(filePath);
-            device.SetBlockSize(DefaultDeviceBlockSize);
-            device.SetDeviceId(deviceName);
-            return device;
-        };
-
-        TVector<TFsPath> filePaths;
-        for (ui64 i = 0; i < devicesCount; ++i) {
-            auto filePath =
-                workingDir / ("test" + ToString(RandomNumber<ui64>()));
-            filePaths.push_back(filePath);
-            TFile fileData(filePath, EOpenModeFlag::CreateAlways);
-            fileData.Resize(4_MB);
-
-            auto* d = agentConfig.AddFileDevices();
-            *d = prepareFileDevice("FileDevice-" + ToString(i), filePath);
-
-            d->SetOffset(0_MB);
-            d->SetFileSize(4_MB);
-        }
-
         auto storageConfig = NProto::TStorageServiceConfig();
         storageConfig.SetAttachDetachPathsEnabled(true);
 
-        TTestBasicRuntime runtime;
-
-        auto env = TTestEnvBuilder(runtime)
-                       .With(agentConfig)
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
                        .With(storageConfig)
                        .Build();
 
-        TDiskAgentClient diskAgent(runtime);
+        TDiskAgentClient diskAgent(*Runtime);
         diskAgent.WaitReady();
 
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         TVector<TString> paths;
-        for (const auto& fPath: filePaths) {
+        for (const auto& fPath : PartLabels) {
             paths.emplace_back(fPath.GetPath());
         }
+
         TAttachDetachRequestsGenerator requestsGenerator(paths);
         TDiskAgentAttachDetachModel diskAgentModel(paths);
 
@@ -7485,12 +7271,12 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             doRequests(true);
             doRequests(false);
 
-            for (const auto& fPath: filePaths) {
+            for (size_t i = 0; i < Devices.size(); ++i) {
                 auto procesesWithOpenFileExpected =
-                    diskAgentModel.IsPathAttached(fPath) ? 1 : 0;
+                    diskAgentModel.IsPathAttached(PartLabels[i]) ? 1 : 0;
                 UNIT_ASSERT_VALUES_EQUAL(
                     procesesWithOpenFileExpected,
-                    FindProcessesWithOpenFile(fPath).size());
+                    FindProcessesWithOpenFile(Devices[i]).size());
             }
         }
     }
