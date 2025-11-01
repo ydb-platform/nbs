@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -13,6 +14,25 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NActors;
 
 using namespace NKikimr;
+
+namespace {
+
+
+EDeviceStateFlags GetDeviceStateFlags(
+    const TDiskAgentState& state, const TString& uuid)
+{
+    EDeviceStateFlags flags =
+        state.IsDeviceDisabled(uuid)
+            ? EDeviceStateFlags::DISABLED
+            : (state.IsDeviceSuspended(uuid) ? EDeviceStateFlags::SUSPENDED
+                                       : EDeviceStateFlags::NONE);
+    if (!state.IsDeviceAttached(uuid)) {
+        flags |= EDeviceStateFlags::DETACHED;
+    }
+    return flags;
+}
+
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -43,6 +63,10 @@ void TDiskAgentActor::HandleHttpInfo(
                     DIV() { out << "Registered"; }
                     break;
             }
+        }
+
+        DIV () {
+            out << "Disk agent generation: " << State->GetDiskAgentGeneration();
         }
 
         TAG(TH3) { out << "Devices"; }
@@ -96,11 +120,7 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                         DumpDeviceState(
                             out,
                             config.GetState(),
-                            State->IsDeviceDisabled(uuid)
-                                ? EDeviceStateFlags::DISABLED
-                                : (State->IsDeviceSuspended(uuid)
-                                       ? EDeviceStateFlags::SUSPENDED
-                                       : EDeviceStateFlags::NONE));
+                            GetDeviceStateFlags(*State, uuid));
                     }
                     TABLED() {
                         if (config.GetStateTs()) {

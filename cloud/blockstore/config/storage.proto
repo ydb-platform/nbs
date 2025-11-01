@@ -1363,4 +1363,7 @@ message TStorageServiceConfig
     //   N = track every Nth operation
     // Higher values reduce monitoring overhead but provide less granular statistics.
     optional uint32 DeviceOperationTrackingFrequency = 467;
+
+    // Enable to attach or detach hardware devices in runtime in Disk Agent.
+    optional bool AttachDetachPathsEnabled = 468;
 }

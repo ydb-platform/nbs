@@ -15,6 +15,7 @@ namespace NCloud::NBlockStore::NStorage {
 // `expectedConfig` and `currentConfig` must be sorted by `DeviceId`.
 NProto::TError CompareConfigs(
     const TVector<NProto::TFileDeviceArgs>& expectedConfig,
-    const TVector<NProto::TFileDeviceArgs>& currentConfig);
+    const TVector<NProto::TFileDeviceArgs>& currentConfig,
+    bool strictCompare = false);
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
+#include <cloud/blockstore/libs/service_local/broken_storage.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/target.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -302,7 +303,8 @@ TDiskAgentState::TDiskAgentState(
         NNvme::INvmeManagerPtr nvmeManager,
         TRdmaTargetConfigPtr rdmaTargetConfig,
         TOldRequestCounters oldRequestCounters,
-        IMultiAgentWriteHandlerPtr multiAgentWriteHandler)
+        IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
+        ITaskQueuePtr backgroundThreadPool)
     : StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
     , Spdk(std::move(spdk))
@@ -317,6 +319,7 @@ TDiskAgentState::TDiskAgentState(
     , NvmeManager(std::move(nvmeManager))
     , RdmaTargetConfig(std::move(rdmaTargetConfig))
     , OldRequestCounters(std::move(oldRequestCounters))
+    , BackgroundThreadPool(std::move(backgroundThreadPool))
 {
 }
 
@@ -571,6 +574,11 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
                     r.LostDevicesIds.begin(),
                     r.LostDevicesIds.end()});
 
+            for (const auto& [uuid, deviceState]: this->Devices) {
+                PathAttachStates[deviceState.Config.GetDeviceName()] =
+                    EPathAttachState::Attached;
+            }
+
             return r;
         });
 }
@@ -668,6 +676,12 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
     readRequest->MutableHeaders()->CopyFrom(request.GetHeaders());
     readRequest->SetStartIndex(request.GetStartIndex());
     readRequest->SetBlocksCount(request.GetBlocksCount());
+
+    if (!device.IsOpen()) {
+        NProto::TReadDeviceBlocksResponse response;
+        *response.MutableError() = MakeError(E_REJECTED, "path detached");
+        return MakeFuture(response);
+    }
 
     auto result = device.StorageAdapter->ReadBlocks(
         now,
@@ -803,6 +817,12 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::WriteBlocks(
         blockSize,
         buffer);
 
+    if (!device.IsOpen()) {
+        NProto::TWriteDeviceBlocksResponse response;
+        *response.MutableError() = MakeError(E_REJECTED, "path detached");
+        return MakeFuture(response);
+    }
+
     auto result = device.StorageAdapter->WriteBlocks(
         now,
         MakeIntrusive<TCallContext>(),
@@ -842,6 +862,12 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
         request.GetDeviceUUID(),
         *zeroRequest,
         request.GetBlockSize());
+
+    if (!device.IsOpen()) {
+        NProto::TZeroDeviceBlocksResponse response;
+        *response.MutableError() = MakeError(E_REJECTED, "path detached");
+        return MakeFuture(response);
+    }
 
     auto result = device.StorageAdapter->ZeroBlocks(
         now,
@@ -891,6 +917,10 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         }
     };
 
+    if (!device.IsOpen()) {
+        return MakeFuture(MakeError(E_REJECTED, "path detached"));
+    }
+
     if (RdmaTarget) {
         auto error = RdmaTarget->DeviceSecureEraseStart(uuid);
         if (HasError(error)) {
@@ -923,6 +953,12 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
 
     readRequest->SetStartIndex(request.GetStartIndex());
     readRequest->SetBlocksCount(request.GetBlocksCount());
+
+    if (!device.IsOpen()) {
+        NProto::TChecksumDeviceBlocksResponse response;
+        *response.MutableError() = MakeError(E_REJECTED, "path detached");
+        return MakeFuture(response);
+    }
 
     auto result = device.StorageAdapter->ReadBlocks(
         now,
@@ -957,6 +993,9 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
 void TDiskAgentState::CheckIOTimeouts(TInstant now)
 {
     for (auto& x: Devices) {
+        if (!x.second.IsOpen()) {
+            continue;
+        }
         x.second.StorageAdapter->CheckIOTimeouts(now);
     }
 }
@@ -1043,6 +1082,28 @@ void TDiskAgentState::EnableDevice(const TString& uuid)
 bool TDiskAgentState::IsDeviceDisabled(const TString& uuid) const
 {
     return DeviceClient->IsDeviceDisabled(uuid);
+}
+
+bool TDiskAgentState::IsDeviceAttached(const TString& uuid) const
+{
+    const auto* d = Devices.FindPtr(uuid);
+    if (!d) {
+        return false;
+    }
+
+    return IsPathAttached(d->Config.GetDeviceName());
+}
+
+bool TDiskAgentState::IsPathAttached(const TString& path) const
+{
+    const auto* pathAttachState = PathAttachStates.FindPtr(path);
+    return pathAttachState &&
+           *pathAttachState == EPathAttachState::Attached;
+}
+
+ui64 TDiskAgentState::GetDiskAgentGeneration() const
+{
+    return DiskAgentGeneration;
 }
 
 bool TDiskAgentState::IsDeviceSuspended(const TString& uuid) const
