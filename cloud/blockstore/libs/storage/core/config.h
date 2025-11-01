@@ -737,6 +737,11 @@ public:
     [[nodiscard]] TDuration GetDynamicNodeRegistrationTimeout() const;
 
     [[nodiscard]] bool GetComputeDigestForEveryBlockOnCompaction() const;
+
+    [[nodiscard]] bool GetAttachDetachPathsEnabled() const;
+    [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
+
+    [[nodiscard]] TDuration GetAttachDetachPathRequestTimeout() const;
 };
 
 ui64 GetAllocationUnit(
