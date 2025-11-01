@@ -15,6 +15,25 @@ using namespace NActors;
 
 using namespace NKikimr;
 
+namespace {
+
+
+EDeviceStateFlags GetDeviceStateFlags(
+    const TDiskAgentState& state, const TString& uuid)
+{
+    EDeviceStateFlags flags =
+        state.IsDeviceDisabled(uuid)
+            ? EDeviceStateFlags::DISABLED
+            : (state.IsDeviceSuspended(uuid) ? EDeviceStateFlags::SUSPENDED
+                                       : EDeviceStateFlags::NONE);
+    if (!state.IsDeviceAttached(uuid)) {
+        flags |= EDeviceStateFlags::DETACHED;
+    }
+    return flags;
+}
+
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskAgentActor::HandleHttpInfo(
@@ -101,7 +120,7 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                         DumpDeviceState(
                             out,
                             config.GetState(),
-                            State->GetDeviceStateFlags(uuid));
+                            GetDeviceStateFlags(*State, uuid));
                     }
                     TABLED() {
                         if (config.GetStateTs()) {

@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
+#include <cloud/blockstore/libs/storage/disk_agent/storage_with_stats.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <util/generic/string.h>
@@ -210,7 +211,10 @@ struct TEvDiskAgentPrivate
 
     struct TPathAttached
     {
-        THashMap<TString, TResultOrError<IStoragePtr>> Devices;
+        TVector<NProto::TDeviceConfig> Configs;
+        TVector<IStoragePtr> Devices;
+        TVector<TStorageIoStatsPtr> Stats;
+
         TVector<TString> PathsToAttach;
         TVector<TString> AlreadyAttachedPaths;
         ui64 DiskAgentGeneration;

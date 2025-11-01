@@ -15,216 +15,11 @@
 #include <util/system/fstat.h>
 
 #include <ranges>
+#include <regex>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NThreading;
-
-namespace {
-
-NProto::TError MakeDeviceChangedError(
-    const TString& path,
-    const TString& reason)
-{
-    return MakeError(
-        E_INVALID_STATE,
-        Sprintf("device %s changed: %s", path.c_str(), reason.c_str()));
-}
-
-NProto::TError CheckSerialNumber(
-    const TVector<TString>& paths,
-    const TVector<NProto::TDeviceConfig>& devices,
-    const NNvme::INvmeManagerPtr& nvmeManager,
-    const TLog& Log)
-{
-    THashMap<TString, TString> pathToSerialNumber;
-    for (const auto& path: paths) {
-        auto [serialNumber, error] = nvmeManager->GetSerialNumber(path);
-        if (HasError(error)) {
-            STORAGE_ERROR(
-                "Failed to get serial number for device "
-                << path.Quote() << ": " << error.GetMessage());
-        }
-
-        pathToSerialNumber[path] = serialNumber;
-    }
-
-    for (const auto& device: devices) {
-        const auto& path = device.GetDeviceName();
-        if (auto* serialNumber = pathToSerialNumber.FindPtr(path);
-            serialNumber && *serialNumber &&
-            device.GetSerialNumber() != *serialNumber)
-        {
-            return MakeDeviceChangedError(path, "serial number mismatch");
-        }
-    }
-
-    return {};
-}
-
-TResultOrError<TVector<NProto::TFileDeviceArgs>> FillFileDeviceArgs(
-    const TDiskAgentConfigPtr& agentConfig,
-    const ILoggingServicePtr& loggingService)
-{
-    if (!agentConfig->GetFileDevices().empty()) {
-        return TVector<NProto::TFileDeviceArgs>{
-            agentConfig->GetFileDevices().begin(),
-            agentConfig->GetFileDevices().end()};
-    }
-
-    TDeviceGenerator gen{
-        loggingService->CreateLog("BLOCKSTORE_DISK_AGENT"),
-        agentConfig->GetAgentId()};
-
-    if (auto error = FindDevices(
-            agentConfig->GetStorageDiscoveryConfig(),
-            std::ref(gen));
-        HasError(error))
-    {
-        return error;
-    }
-
-    return gen.ExtractResult();
-}
-
-NProto::TError CheckDevicesCountAndFileSizes(
-    const TVector<TString>& paths,
-    const TVector<NProto::TFileDeviceArgs>& files,
-    const TVector<NProto::TDeviceConfig>& devices)
-{
-    THashMap<TString, i64> pathToFileSize;
-    for (const auto& path: paths) {
-        pathToFileSize[path] = GetFileLength(path);
-    }
-
-    THashMap<TString, NProto::TFileDeviceArgs> uuidToFileDeviceArgs;
-    for (const auto& file: files) {
-        if (!pathToFileSize.FindPtr(file.GetPath())) {
-            continue;
-        }
-        uuidToFileDeviceArgs[file.GetDeviceId()] = file;
-    }
-
-    THashMap<TString, NProto::TDeviceConfig> uuidToDeviceConfigExpected;
-    for (const auto& device: devices) {
-        if (!pathToFileSize.FindPtr(device.GetDeviceName())) {
-            continue;
-        }
-        uuidToDeviceConfigExpected[device.GetDeviceUUID()] = device;
-    }
-
-    if (uuidToDeviceConfigExpected.size() != uuidToFileDeviceArgs.size()) {
-        MakeError(
-            E_INVALID_STATE,
-            Sprintf("device changed: device count mismatch"));
-    }
-
-    for (const auto& [uuid, device]: uuidToDeviceConfigExpected) {
-        const auto& path = device.GetDeviceName();
-
-        auto* fileDeviceArgs = uuidToFileDeviceArgs.FindPtr(uuid);
-        if (!fileDeviceArgs) {
-            return MakeDeviceChangedError(
-                path,
-                Sprintf("device with uuid %s not found", uuid.c_str()));
-        }
-
-        const ui32 blockSize = fileDeviceArgs->GetBlockSize();
-
-        if (device.GetPhysicalOffset() != fileDeviceArgs->GetOffset()) {
-            return MakeDeviceChangedError(path, "offset mismatch");
-        }
-
-        if (device.GetBlockSize() != blockSize) {
-            return MakeDeviceChangedError(path, "block size mismatch");
-        }
-
-        auto actualLength = pathToFileSize[path];
-
-        ui64 len = fileDeviceArgs->GetFileSize();
-        if (!len && actualLength > 0) {
-            len = actualLength;
-        } else if (!len) {
-            continue;
-        }
-
-        if (device.GetBlocksCount() != len / blockSize) {
-            return MakeDeviceChangedError(path, "size mismatch");
-        }
-
-        if (actualLength <= 0) {
-            continue;
-        }
-
-        if (fileDeviceArgs->GetOffset() && fileDeviceArgs->GetFileSize() &&
-            (static_cast<ui64>(actualLength) <
-             fileDeviceArgs->GetOffset() + fileDeviceArgs->GetFileSize()))
-        {
-            return MakeDeviceChangedError(path, "file size mismatch");
-        }
-    }
-
-    return {};
-}
-
-NProto::TError CheckIsSamePath(
-    const TVector<TString>& paths,
-    const TVector<NProto::TDeviceConfig>& devices,
-    const TDiskAgentConfigPtr& agentConfig,
-    const ILoggingServicePtr& loggingService,
-    const NNvme::INvmeManagerPtr& nvmeManager)
-{
-    auto [files, error] = FillFileDeviceArgs(agentConfig, loggingService);
-    if (HasError(error)) {
-        // device is broken, not config mismatch
-        return error;
-    }
-
-    if (auto error = CheckDevicesCountAndFileSizes(paths, files, devices);
-        HasError(error))
-    {
-        return error;
-    }
-
-    return CheckSerialNumber(
-        paths,
-        devices,
-        nvmeManager,
-        loggingService->CreateLog("BLOCKSTORE_DISK_AGENT"));
-}
-
-THashMap<TString, NThreading::TFuture<IStoragePtr>> AttachPathImpl(
-    const TVector<NProto::TDeviceConfig>& devices,
-    const TVector<TStorageIoStatsPtr>& stats,
-    const TString& agentId,
-    const IStorageProviderPtr& storageProvider)
-{
-    THashMap<TString, TFuture<IStoragePtr>> storages;
-
-    for (size_t i = 0; i < devices.size(); ++i) {
-        const auto& config = devices[i];
-        const auto& deviceStats = stats[i];
-        TFuture<IStoragePtr> storage;
-
-        try {
-            storage = CreateFileStorage(
-                config.GetDeviceName(),
-                config.GetPhysicalOffset() / config.GetBlockSize(),
-                config,
-                deviceStats,
-                storageProvider,
-                agentId);
-        } catch (const std::exception& e) {
-            storage = MakeErrorFuture<IStoragePtr>(std::current_exception());
-        }
-
-        storages[config.GetDeviceUUID()] = std::move(storage);
-    }
-
-    return storages;
-}
-
-}   // namespace
 
 TVector<TString> TDiskAgentState::GetAllDeviceUUIDsForPath(const TString& path)
 {
@@ -318,9 +113,12 @@ auto TDiskAgentState::AttachPath(
     }
 
     TAttachPathResult result = {
-        .Devices = {},
         .PathsToAttach = std::move(checkResult.PathsToAttach),
         .AlreadyAttachedPaths = std::move(checkResult.AlreadyAttachedPaths)};
+
+    if (!result.PathsToAttach) {
+        return MakeFuture(TResultOrError<TAttachPathResult>(std::move(result)));
+    }
 
     THashSet<TString> pathsSet(
         result.PathsToAttach.begin(),
@@ -341,46 +139,78 @@ auto TDiskAgentState::AttachPath(
         [promise = std::move(promise),
          result = std::move(result),
          devices = std::move(devices),
-         devicesStats = std::move(devicesStats),
          agentConfig = AgentConfig,
          loggingService = Logging,
          nvmeManager = NvmeManager,
-         storageProvider = StorageProvider]() mutable
+         storageProvider = StorageProvider,
+         storageConfig = StorageConfig]() mutable
         {
-            auto error = CheckIsSamePath(
-                result.PathsToAttach,
-                devices,
-                agentConfig,
-                loggingService,
-                nvmeManager);
+            auto protoConfig = agentConfig->GetProtoConfig();
+            protoConfig.ClearFileDevices();
+            protoConfig.ClearMemoryDevices();
+            protoConfig.ClearNvmeDevices();
 
-            if (HasError(error)) {
-                promise.SetValue(std::move(error));
-                return;
-            }
-
-            auto storageFutures = AttachPathImpl(
-                devices,
-                devicesStats,
-                agentConfig->GetAgentId(),
-                storageProvider);
-
-            TVector<TFuture<IStoragePtr>> futures;
-            futures.reserve(storageFutures.size());
-            for (auto& [_, future]: storageFutures) {
-                futures.push_back(future);
-            }
-
-            WaitAll(futures).Subscribe(
-                [promise = std::move(promise),
-                 storageFutures = std::move(storageFutures),
-                 result = std::move(result)](auto) mutable
+            THashMap<TString, bool> hasLayout;
+            for (const auto& path: result.PathsToAttach) {
+                for (const auto& c:
+                     agentConfig->GetStorageDiscoveryConfig().GetPathConfigs())
                 {
-                    for (auto& [uuid, futureStorage]: storageFutures) {
-                        result.Devices.insert(
-                            {uuid, ResultOrError(futureStorage)});
+                    std::regex regex(c.GetPathRegExp().c_str());
+                    if (std::regex_match(path.c_str(), regex)) {
+                        const auto* poolConfig =
+                            FindPoolConfig(c, GetFileLength(path));
+                        hasLayout[path] =
+                            poolConfig ? poolConfig->HasLayout() : false;
+                        break;
+                    }
+                }
+            }
+
+            for (const auto& device: devices) {
+                auto* fileDevice = protoConfig.AddFileDevices();
+                fileDevice->SetPath(device.GetDeviceName());
+                fileDevice->SetBlockSize(device.GetBlockSize());
+                fileDevice->SetDeviceId(device.GetDeviceUUID());
+                fileDevice->SetPoolName(device.GetPoolName());
+
+                if (hasLayout[device.GetDeviceName()]) {
+                    fileDevice->SetOffset(device.GetPhysicalOffset());
+                    fileDevice->SetFileSize(
+                        device.GetBlocksCount() * device.GetBlockSize());
+                }
+                fileDevice->SetSerialNumber(device.GetSerialNumber());
+            }
+
+            auto agentConfigForValidation = std::make_shared<TDiskAgentConfig>(
+                protoConfig,
+                agentConfig->GetRack(),
+                agentConfig->GetNetworkMbitThroughput());
+
+            auto future = InitializeStorage(
+                loggingService->CreateLog("BLOCKSTORE_DISK_AGENT"),
+                storageConfig,
+                agentConfigForValidation,
+                storageProvider,
+                nvmeManager,
+                result.PathsToAttach,
+                /*isAttachOperation=*/true);
+
+            future.Subscribe(
+                [promise = std::move(promise), result = std::move(result)](
+                    TFuture<TInitializeStorageResult> future) mutable
+                {
+                    auto initializationResult = future.ExtractValue();
+
+                    if (initializationResult.ConfigMismatchErrors) {
+                        auto error =
+                            MakeError(E_INVALID_STATE, "Config mismatch");
+                        promise.SetValue(std::move(error));
+                        return;
                     }
 
+                    result.Configs = std::move(initializationResult.Configs);
+                    result.Stats = std::move(initializationResult.Stats);
+                    result.Devices = std::move(initializationResult.Devices);
                     promise.SetValue(std::move(result));
                 });
         });
@@ -390,47 +220,41 @@ auto TDiskAgentState::AttachPath(
 
 void TDiskAgentState::PathAttached(
     ui64 diskAgentGeneration,
-    THashMap<TString, TResultOrError<IStoragePtr>> devices,
+    TVector<NProto::TDeviceConfig> configs,
+    TVector<IStoragePtr> devices,
+    TVector<TStorageIoStatsPtr> stats,
     const TVector<TString>& pathsToAttach)
 {
-    for (auto& [uuid, errorOrDevice]: devices) {
-        auto [storage, error] = std::move(errorOrDevice);
-        auto* d = Devices.FindPtr(uuid);
+    TDuration ioTimeout;
+    if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
+        ioTimeout = AgentConfig->GetDeviceIOTimeout();
+    }
+
+    for (size_t i = 0; i < devices.size(); ++i) {
+        auto& device = devices[i];
+        auto& config = configs[i];
+        auto& stat = stats[i];
+
+        auto* d = Devices.FindPtr(config.GetDeviceUUID());
         if (!d) {
             continue;
         }
 
-        auto& config = d->Config;
-
-        if (HasError(error)) {
-            config.SetState(NProto::DEVICE_STATE_ERROR);
-            config.SetStateMessage(std::move(*error.MutableMessage()));
-            storage = CreateBrokenStorage();
-            storage = CreateStorageWithIoStats(
-                storage,
-                d->Stats,
-                d->Config.GetBlockSize());
-        } else {
-            config.SetState(NProto::DEVICE_STATE_ONLINE);
-            config.ClearStateMessage();
-        }
-
-        TDuration ioTimeout;
-        if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
-            ioTimeout = AgentConfig->GetDeviceIOTimeout();
-        }
-
+        d->Config = std::move(config);
+        d->Stats = std::move(stat);
         auto storageAdapter = std::make_shared<TStorageAdapter>(
-            std::move(storage),
+            std::move(device),
             d->Config.GetBlockSize(),
             false,   // normalize
             ioTimeout,
             AgentConfig->GetShutdownTimeout());
 
-        d->StorageAdapter = std::move(storageAdapter);
+        d->StorageAdapter = storageAdapter;
 
         if (RdmaTarget) {
-            RdmaTarget->AttachDevice(uuid, std::move(storageAdapter));
+            RdmaTarget->AttachDevice(
+                d->Config.GetDeviceUUID(),
+                std::move(storageAdapter));
         }
     }
 
