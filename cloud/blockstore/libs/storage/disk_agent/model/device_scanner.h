@@ -22,6 +22,10 @@ using TDeviceCallback = std::function<NProto::TError(
     ui32 blockSize,
     ui64 fileSize)>;
 
+const NProto::TStorageDiscoveryConfig::TPoolConfig* FindPoolConfig(
+    const NProto::TStorageDiscoveryConfig::TPathConfig& pathConfig,
+    const ui64& fileSize);
+
 NProto::TError FindDevices(
     const NProto::TStorageDiscoveryConfig& config,
     TDeviceCallback callback);
