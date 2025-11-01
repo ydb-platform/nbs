@@ -189,7 +189,6 @@ public:
     bool IsDeviceAttached(const TString& uuid) const;
     bool IsPathAttached(const TString& path) const;
     ui64 GetDiskAgentGeneration() const;
-    EDeviceStateFlags GetDeviceStateFlags(const TString& uuid) const;
     bool IsDeviceSuspended(const TString& uuid) const;
     void ReportDisabledDeviceError(const TString& uuid);
 
@@ -205,7 +204,10 @@ public:
 
     struct TAttachPathResult
     {
-        THashMap<TString, TResultOrError<IStoragePtr>> Devices;
+        TVector<NProto::TDeviceConfig> Configs;
+        TVector<IStoragePtr> Devices;
+        TVector<TStorageIoStatsPtr> Stats;
+
         TVector<TString> PathsToAttach;
         TVector<TString> AlreadyAttachedPaths;
     };
@@ -217,7 +219,9 @@ public:
 
     void PathAttached(
         ui64 diskAgentGeneration,
-        THashMap<TString, TResultOrError<IStoragePtr>> devices,
+        TVector<NProto::TDeviceConfig> configs,
+        TVector<IStoragePtr> devices,
+        TVector<TStorageIoStatsPtr> stats,
         const TVector<TString>& pathsToAttach);
 
     NProto::TError DetachPath(

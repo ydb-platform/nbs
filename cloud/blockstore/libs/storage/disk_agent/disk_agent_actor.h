@@ -97,7 +97,7 @@ private:
 
     NActors::TActorId HealthCheckActor;
 
-    std::optional<TRequestInfoPtr> PendingAttachPathRequest;
+    TRequestInfoPtr PendingAttachPathRequest;
 
     ITaskQueuePtr BackgroundThreadPool;
 

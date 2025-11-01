@@ -70,11 +70,9 @@ void TDiskAgentActor::HandleAttachPath(
                 std::move(result.AlreadyAttachedPaths);
             response->PathsToAttach = std::move(result.PathsToAttach);
             response->Devices = std::move(result.Devices);
+            response->Stats = std::move(result.Stats);
+            response->Configs = std::move(result.Configs);
             response->DiskAgentGeneration = diskAgentGeneration;
-
-            if (!response->AlreadyAttachedPaths && !response->PathsToAttach) {
-                response->PathsToAttach = std::move(pathsToAttach);
-            }
 
             actorSystem->Send(new IEventHandle{daId, daId, response.release()});
         });
@@ -88,7 +86,7 @@ void TDiskAgentActor::HandlePathAttached(
 
     Y_DEFER
     {
-        PendingAttachPathRequest.reset();
+        PendingAttachPathRequest.Reset();
     };
 
     if (HasError(msg->Error)) {
@@ -101,13 +99,15 @@ void TDiskAgentActor::HandlePathAttached(
 
         auto response =
             std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(msg->Error);
-        NCloud::Reply(ctx, **PendingAttachPathRequest, std::move(response));
+        NCloud::Reply(ctx, *PendingAttachPathRequest, std::move(response));
         return;
     }
 
     State->PathAttached(
         msg->DiskAgentGeneration,
+        std::move(msg->Configs),
         std::move(msg->Devices),
+        std::move(msg->Stats),
         msg->PathsToAttach);
 
     THashSet<TString> paths{
@@ -133,7 +133,7 @@ void TDiskAgentActor::HandlePathAttached(
         msg->DiskAgentGeneration,
         JoinSeq(",", msg->AlreadyAttachedPaths).c_str());
 
-    NCloud::Reply(ctx, **PendingAttachPathRequest, std::move(response));
+    NCloud::Reply(ctx, *PendingAttachPathRequest, std::move(response));
 }
 
 void TDiskAgentActor::HandleDetachPath(

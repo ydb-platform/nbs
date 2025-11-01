@@ -69,6 +69,27 @@ ui64 GetFileLength(const std::string& path)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const NProto::TStorageDiscoveryConfig::TPoolConfig* FindPoolConfig(
+    const NProto::TStorageDiscoveryConfig::TPathConfig& pathConfig,
+    const ui64& fileSize)
+{
+    return FindIfPtr(
+        pathConfig.GetPoolConfigs(),
+        [&](const auto& pool)
+        {
+            ui64 minSize = pool.GetMinSize();
+
+            if (!minSize && pool.HasLayout()) {
+                minSize = pool.GetLayout().GetHeaderSize() +
+                          pool.GetLayout().GetDeviceSize();
+            }
+
+            const ui64 maxSize = pool.GetMaxSize() ? pool.GetMaxSize() : fileSize;
+
+            return minSize <= fileSize && fileSize <= maxSize;
+        });
+}
+
 NProto::TError FindDevices(
     const NProto::TStorageDiscoveryConfig& config,
     TDeviceCallback cb)
@@ -113,21 +134,7 @@ NProto::TError FindDevices(
                 }
 
                 const ui64 size = GetFileLength(path);
-                auto* pool = FindIfPtr(p.GetPoolConfigs(), [&] (const auto& pool) {
-                    ui64 minSize = pool.GetMinSize();
-
-                    if (!minSize && pool.HasLayout()) {
-                        minSize =
-                            pool.GetLayout().GetHeaderSize() +
-                            pool.GetLayout().GetDeviceSize();
-                    }
-
-                    const ui64 maxSize = pool.GetMaxSize()
-                        ? pool.GetMaxSize()
-                        : size;
-
-                    return minSize <= size && size <= maxSize;
-                });
+                auto* pool = FindPoolConfig(p, size);
 
                 if (!pool) {
                     return MakeError(E_NOT_FOUND, TStringBuilder()
