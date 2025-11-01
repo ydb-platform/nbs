@@ -2,10 +2,12 @@
 
 #include "read_write_range_lock.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/file_ring_buffer.h>
 
+#include <library/cpp/digest/crc32c/crc32c.h>
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
 #include <util/generic/hash_set.h>
@@ -292,6 +294,9 @@ private:
     const ITimerPtr Timer;
     const IWriteBackCacheStatsPtr Stats;
     const TFlushConfig FlushConfig;
+    const TLog Log;
+    const TString FileSystemId;
+    const TString ClientId;
 
     // All fields below should be protected by this lock
     TMutex Lock;
@@ -329,6 +334,9 @@ public:
             ISchedulerPtr scheduler,
             ITimerPtr timer,
             IWriteBackCacheStatsPtr stats,
+            TLog log,
+            const TString& fileSystemId,
+            const TString& clientId,
             const TString& filePath,
             ui64 capacityBytes,
             TFlushConfig flushConfig)
@@ -337,6 +345,9 @@ public:
         , Timer(std::move(timer))
         , Stats(std::move(stats))
         , FlushConfig(flushConfig)
+        , Log(std::move(log))
+        , FileSystemId(fileSystemId)
+        , ClientId(clientId)
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
         // File ring buffer should be able to store any valid TWriteDataRequest.
@@ -349,12 +360,15 @@ public:
 
         Stats->ResetNonDerivativeCounters();
 
+        TWriteDataEntryDeserializationStats deserializationStats;
+
         CachedEntriesPersistentQueue.Visit(
             [&](auto checksum, auto serializedRequest)
             {
                 auto entry = std::make_unique<TWriteDataEntry>(
                     checksum,
                     serializedRequest,
+                    deserializationStats,
                     this);
 
                 if (entry->IsCorrupted()) {
@@ -362,13 +376,47 @@ public:
                     // We should add this entry to a queue like a normal entry
                     // because there is 1-by-1 correspondence between
                     // CachedEntriesPersistentQueue and CachedEntries.
-                    // TODO(nasonov): report it
                     CachedEntries.push_back(std::move(entry));
                 } else {
                     auto* nodeState = GetOrCreateNodeState(entry->GetNodeId());
                     AddCachedEntry(nodeState, std::move(entry));
                 }
             });
+
+        STORAGE_INFO(
+            "[f:%s][c:%s] WriteBackCache has been initialized "
+            "{\"FilePath\": %s, "
+            "\"RawCapacityBytes\": %lu, "
+            "\"RawUsedBytesCount\": %lu, "
+            "\"WriteDataRequestCount:\": %lu}",
+            FileSystemId.Quote().c_str(),
+            ClientId.Quote().c_str(),
+            filePath.Quote().c_str(),
+            CachedEntriesPersistentQueue.GetRawCapacity(),
+            CachedEntriesPersistentQueue.GetRawUsedBytesCount(),
+            CachedEntriesPersistentQueue.Size());
+
+        if (deserializationStats.HasFailed()) {
+            // Each deserialization failure event has been already reported
+            // as a critical error - just write statistics to the log
+            STORAGE_ERROR(
+                "[f:%s][c:%s] WriteBackCache request deserialization failure "
+                "{\"ChecksumMismatchCount\": %lu, "
+                "\"EntrySizeMismatchCount\": %lu, "
+                "\"ProtobufDeserializationErrorCount\": %lu}",
+                FileSystemId.Quote().c_str(),
+                ClientId.Quote().c_str(),
+                deserializationStats.ChecksumMismatchCount,
+                deserializationStats.EntrySizeMismatchCount,
+                deserializationStats.ProtobufDeserializationErrorCount);
+        }
+
+        if (CachedEntriesPersistentQueue.IsCorrupted()) {
+            ReportWriteBackCacheCorruptionError(Sprintf(
+                "[f:%s][c:%s] WriteBackCache persistent queue is corrupted",
+                FileSystemId.Quote().c_str(),
+                ClientId.Quote().c_str()));
+        }
 
         UpdatePersistentQueueStats();
     }
@@ -1044,8 +1092,19 @@ private:
                 FlushConfig.MaxSumWriteRequestsSize);
 
             if (entryCount == 0) {
-                // Even a single entry is too large to flush
-                // TODO(nasonov): report and try to flush it anyway
+                STORAGE_WARN(
+                    "[f:%s][c:%s] WriteBackCache WriteData request size "
+                    "exceeds flush limits, flushing anyway "
+                    "{\"MaxWriteRequestSize\": %u, "
+                    "\"MaxWriteRequestsCount\": %u, "
+                    "\"MaxSumWriteRequestsSize\": %u, "
+                    "\"WriteDataRequestSize\": %lu}",
+                    FileSystemId.Quote().c_str(),
+                    ClientId.Quote().c_str(),
+                    FlushConfig.MaxWriteRequestSize,
+                    FlushConfig.MaxWriteRequestsCount,
+                    FlushConfig.MaxSumWriteRequestsSize,
+                    nodeState->CachedEntries.front()->GetBuffer().size());
                 entryCount = 1;
             }
 
@@ -1256,6 +1315,9 @@ TWriteBackCache::TWriteBackCache(
         ISchedulerPtr scheduler,
         ITimerPtr timer,
         IWriteBackCacheStatsPtr stats,
+        TLog log,
+        const TString& fileSystemId,
+        const TString& clientId,
         const TString& filePath,
         ui64 capacityBytes,
         TDuration automaticFlushPeriod,
@@ -1269,6 +1331,9 @@ TWriteBackCache::TWriteBackCache(
             std::move(scheduler),
             std::move(timer),
             std::move(stats),
+            std::move(log),
+            fileSystemId,
+            clientId,
             filePath,
             capacityBytes,
             {.AutomaticFlushPeriod = automaticFlushPeriod,
@@ -1321,10 +1386,24 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     ui32 checksum,
     TStringBuf serializedRequest,
+    TWriteDataEntryDeserializationStats& deserializationStats,
     TImpl* impl)
 {
-    // TODO(nasonov): validate checksum
+    deserializationStats.EntryCount++;
+
     Y_UNUSED(checksum);
+    // TODO(nasonov): validate checksum when TFileRingBuffer supports
+    // in-place allocation. Currently, data is written directly to the
+    // TFileRingBuffer without Crc32 calculation
+    //
+    // auto expectedChecksum =
+    //    Crc32c(serializedRequest.data(), serializedRequest.size());
+    //
+    // if (expectedChecksum != checksum) {
+    //    stats.ChecksumMismatchCount++;
+    //    SetStatus(EWriteDataRequestStatus::Corrupted, impl);
+    //    return;
+    //}
 
     TMemoryInput mi(serializedRequest);
 
@@ -1336,6 +1415,9 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         // Currently this may happen when execution stopped between allocation
         // and Serialization. In future, this can happen only as a result of
         // corruption
+        deserializationStats.EntrySizeMismatchCount++;
+        ReportWriteBackCacheCorruptionError(
+            "TWriteDataEntry deserialization error: entry is empty");
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }
@@ -1343,16 +1425,19 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     const char* bufferPtr = mi.Buf();
 
     if (mi.Skip(bufferSize) != bufferSize) {
-        // Buffer corruption
-        // TODO(nasonov): report and handle
+        deserializationStats.EntrySizeMismatchCount++;
+        ReportWriteBackCacheCorruptionError(
+            "TWriteDataEntry deserialization error: invalid entry size");
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }
 
     auto parsedRequest = std::make_shared<NProto::TWriteDataRequest>();
-    if (!parsedRequest->ParseFromArray(mi.Buf(), static_cast<int>(mi.Avail()))) {
-        // Buffer corruption
-        // TODO(nasonov): report and handle
+    if (!parsedRequest->ParseFromArray(mi.Buf(), static_cast<int>(mi.Avail())))
+    {
+        deserializationStats.ProtobufDeserializationErrorCount++;
+        ReportWriteBackCacheCorruptionError(
+            "TWriteDataEntry deserialization error: ParseFromArray has failed");
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }
