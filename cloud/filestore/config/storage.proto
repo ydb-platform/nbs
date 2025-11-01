@@ -664,4 +664,9 @@ message TStorageConfig
     // Disable fsync queue which is used to synchronize data/metadata ops during fsync
     optional bool FSyncQueueDisabled = 465;
 
+    // Enable directory handles storage functionality.
+    optional bool DirectoryHandlesStorageEnabled = 466;
+
+    // Capacity for DirectoryHandles persistent table.
+    optional uint64 DirectoryHandlesTableSize = 467;
 }

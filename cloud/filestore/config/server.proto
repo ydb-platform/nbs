@@ -171,6 +171,12 @@ message TLocalServiceConfig
 
     // Disable fsync queue which is used to synchronize data/metadata ops during fsync
     optional bool FSyncQueueDisabled = 29;
+
+    // Enable directory handles storage functionality
+    optional bool DirectoryHandlesStorageEnabled = 30;
+
+    // Capacity for DirectoryHandles persistent table.
+    optional uint64 DirectoryHandlesTableSize = 31;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
