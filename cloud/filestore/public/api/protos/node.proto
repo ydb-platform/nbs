@@ -31,6 +31,8 @@ enum ENodeType
     E_SOCK_NODE = 4;
     E_SYMLINK_NODE = 5;
     E_FIFO_NODE = 6;
+    E_CHARDEV_NODE = 7;
+    E_BLOCKDEV_NODE = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,6 +69,8 @@ message TNodeAttr
     string ShardFileSystemId = 11;
     // Node name in the shard FS.
     string ShardNodeName = 12;
+
+    uint64 DevId = 13;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -112,6 +116,18 @@ message TCreateNodeRequest
     message TFile
     {
         uint32 Mode = 1;
+    }
+
+    message TCharDevice
+    {
+        uint32 Mode = 1;
+        uint64 Device = 2;
+    }
+
+    message TBlockDevice
+    {
+        uint32 Mode = 1;
+        uint64 Device = 2;
     }
 
     message TLink
@@ -163,6 +179,8 @@ message TCreateNodeRequest
         TSymLink SymLink = 8;
         TSocket Socket = 9;
         TFifo Fifo = 13;
+        TCharDevice CharDevice = 14;
+        TBlockDevice BlockDevice = 15;
     }
 
     // If set, the node will be created in the shard FS.

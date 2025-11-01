@@ -321,6 +321,10 @@ void InitProfileLogRequestInfo(
         nodeInfo->SetType(NProto::E_SYMLINK_NODE);
     } else if (request.HasFifo()) {
         nodeInfo->SetType(NProto::E_FIFO_NODE);
+    } else if (request.HasCharDevice()) {
+        nodeInfo->SetType(NProto::E_CHARDEV_NODE);
+    } else if (request.HasBlockDevice()) {
+        nodeInfo->SetType(NProto::E_BLOCKDEV_NODE);
     } else {
         nodeInfo->SetType(NProto::E_INVALID_NODE);
     }

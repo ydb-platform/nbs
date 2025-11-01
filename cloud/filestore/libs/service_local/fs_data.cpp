@@ -44,7 +44,7 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         request.GetGid(),
         Config->GetGuestOnlyPermissionsCheckEnabled());
     TFileHandle handle;
-    TFileStat stat;
+    NLowLevel::TFileStatEx stat;
     ui64 nodeId;
     if (const auto& pathname = request.GetName()) {
         handle = node->OpenHandle(pathname, flags, mode);

@@ -91,6 +91,26 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
         }
 
         target = parent->CreateFifo(request.GetName(), mode);
+    } else if (request.HasCharDevice()) {
+        int mode = request.GetCharDevice().GetMode();
+        if (!mode) {
+            mode = Config->GetDefaultPermissions();
+        }
+
+        target = parent->CreateCharDevice(
+            request.GetName(),
+            mode,
+            request.GetCharDevice().GetDevice());
+    } else if (request.HasBlockDevice()) {
+        int mode = request.GetBlockDevice().GetMode();
+        if (!mode) {
+            mode = Config->GetDefaultPermissions();
+        }
+
+        target = parent->CreateBlockDevice(
+            request.GetName(),
+            mode,
+            request.GetBlockDevice().GetDevice());
     } else {
         return TErrorResponse(ErrorInvalidArgument());
     }
@@ -149,7 +169,7 @@ NProto::TRenameNodeResponse TLocalFileSystem::RenameNode(
         return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
     }
 
-    std::optional<TFileStat> stat = std::nullopt;
+    std::optional<NLowLevel::TFileStatEx> stat = std::nullopt;
     {
         auto newparentList = newparent->List(true);
         auto it = std::find_if(

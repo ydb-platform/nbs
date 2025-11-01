@@ -98,6 +98,10 @@ TString NodeTypeToString(NProto::ENodeType nodeType)
             return "L";
         case NProto::E_FIFO_NODE:
             return "p";
+        case NProto::E_CHARDEV_NODE:
+            return "c";
+        case NProto::E_BLOCKDEV_NODE:
+            return "b";
         default:
             ythrow yexception() << "must be unreachable";
     }

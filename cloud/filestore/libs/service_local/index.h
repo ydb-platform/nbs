@@ -62,6 +62,8 @@ public:
     TIndexNodePtr CreateSymlink(const TString& name, const TString& target);
     TIndexNodePtr CreateSocket(const TString& name, int flags);
     TIndexNodePtr CreateFifo(const TString& name, int flags);
+    TIndexNodePtr CreateCharDevice(const TString& name, int flags, dev_t dev);
+    TIndexNodePtr CreateBlockDevice(const TString& name, int flags, dev_t dev);
 
     TVector<NLowLevel::TDirEntry> List(bool ignoreErrors);
     NLowLevel::TListDirResult
@@ -76,8 +78,8 @@ public:
 
     [[nodiscard]] TString ReadLink() const;
 
-    TFileStat Stat();
-    TFileStat Stat(const TString& name);
+    NLowLevel::TFileStatEx Stat();
+    NLowLevel::TFileStatEx Stat(const TString& name);
     NLowLevel::TFileSystemStat StatFs() const;
 
     TFileHandle OpenHandle(int flags);
