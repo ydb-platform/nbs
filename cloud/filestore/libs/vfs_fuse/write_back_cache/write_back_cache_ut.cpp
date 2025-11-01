@@ -51,6 +51,19 @@ void SleepForRandomDurationMs(ui32 maxDurationMs)
     }
 }
 
+void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
+{
+    if (!request.GetIovecs().empty()) {
+        TString buf;
+        for (const auto& iovec: request.GetIovecs()) {
+            buf.append(
+                reinterpret_cast<const char*>(iovec.GetBase()),
+                iovec.GetLength());
+        }
+        request.SetBuffer(std::move(buf));
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TInFlightRequestTracker
@@ -407,6 +420,7 @@ struct TBootstrap
         };
 
         Session->WriteDataHandler = [&] (auto, auto request) {
+            MoveIovecsToBuffer(*request);
             const auto nodeId = request->GetNodeId();
             const auto offset = request->GetOffset();
             const auto length = request->GetBuffer().length();
@@ -807,6 +821,7 @@ struct TWriteRequestLogger
              previousHandler =
                  std::move(previousHandler)](auto context, auto request) mutable
         {
+            MoveIovecsToBuffer(*request);
             Requests.push_back(
                 {.NodeId = request->GetNodeId(),
                  .Offset = request->GetOffset(),
@@ -1023,6 +1038,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         bool flushed = false;
 
         b.Session->WriteDataHandler = [&] (auto, auto request) {
+            MoveIovecsToBuffer(*request);
             UNIT_ASSERT(!flushed);
             flushed = true;
 
