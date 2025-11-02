@@ -499,7 +499,7 @@ _99_9 99.9
         auto result = EncodeToString([](IMetricEncoder* e) {
             e->OnStreamBegin();
             e->OnStreamEnd();
-            {
+            { // no values
                 e->OnMetricBegin(EMetricType::GAUGE);
                 {
                     e->OnLabelsBegin();
