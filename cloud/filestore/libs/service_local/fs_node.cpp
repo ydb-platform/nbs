@@ -49,13 +49,7 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
         return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
     }
 
-    NLowLevel::UnixCredentialsGuard credGuard(
-        request.GetUid(),
-        request.GetGid(),
-        Config->GetGuestOnlyPermissionsCheckEnabled(),
-        Config->GetRootSquashEnabled(),
-        Config->GetRootSquashUid(),
-        Config->GetRootSquashGid());
+    auto credGuard = GetCredentialsGuard(request.GetUid(), request.GetGid());
     TIndexNodePtr target;
     if (request.HasDirectory()) {
         int mode = request.GetDirectory().GetMode();
@@ -125,6 +119,12 @@ NProto::TUnlinkNodeResponse TLocalFileSystem::UnlinkNode(
         return TErrorResponse(ErrorInvalidParent(request.GetNodeId()));
     }
 
+
+    std::unique_ptr<NLowLevel::UnixCredentialsGuard> credGuard;
+    if (Config->GetRootSquashEnabled()) {
+        credGuard = GetCredentialsGuard(request.GetUid(), request.GetGid());
+    }
+
     auto stat = parent->Stat(request.GetName());
     parent->Unlink(request.GetName(), request.GetUnlinkDirectory());
 
@@ -164,6 +164,11 @@ NProto::TRenameNodeResponse TLocalFileSystem::RenameNode(
         if (it != newparentList.end()) {
             stat = std::move(it->second);
         }
+    }
+
+    std::unique_ptr<NLowLevel::UnixCredentialsGuard> credGuard;
+    if (Config->GetRootSquashEnabled()) {
+        credGuard = GetCredentialsGuard(request.GetUid(), request.GetGid());
     }
 
     const int flags = RenameFlagsToSystem(request.GetFlags());

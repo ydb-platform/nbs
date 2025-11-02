@@ -200,6 +200,12 @@ message TUnlinkNodeRequest
 
     // Unlink directory node if empty.
     bool UnlinkDirectory = 5;
+
+    // UID of the calling process
+    uint32 Uid = 6;
+
+    // GID of the calling process
+    uint32 Gid = 7;
 }
 
 message TUnlinkNodeResponse
@@ -243,6 +249,12 @@ message TRenameNodeRequest
 
     // Optional linux specific flags.
     uint32 Flags = 7;
+
+    // UID of the calling process
+    uint32 Uid = 8;
+
+    // GID of the calling process
+    uint32 Gid = 9;
 }
 
 message TRenameNodeResponse

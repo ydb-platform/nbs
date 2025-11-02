@@ -229,6 +229,7 @@ void TFileSystem::Unlink(
     auto request = StartRequest<NProto::TUnlinkNodeRequest>(parent);
     request->SetName(std::move(name));
     request->SetUnlinkDirectory(false);
+    SetUserNGroup(*request, fuse_req_ctx(req));
 
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {parent});
@@ -273,6 +274,7 @@ void TFileSystem::Rename(
     request->SetNewName(std::move(newname));
     request->SetNewParentId(newparent);
     request->SetFlags(protoFlags);
+    SetUserNGroup(*request, fuse_req_ctx(req));
 
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {parent});

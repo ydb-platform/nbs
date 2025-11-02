@@ -91,9 +91,7 @@ NProto::TDestroyCheckpointResponse TLocalFileSystem::DestroyCheckpoint(
     return {};
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-void ConvertStats(const TFileStat& stat, NProto::TNodeAttr& node)
+void TLocalFileSystem::ConvertStats(const TFileStat& stat, NProto::TNodeAttr& node)
 {
     if (S_ISREG(stat.Mode)) {
         node.SetType(NProto::E_REGULAR_NODE);
@@ -111,13 +109,33 @@ void ConvertStats(const TFileStat& stat, NProto::TNodeAttr& node)
 
     node.SetId(stat.INode);
     node.SetMode(stat.Mode & ~(S_IFMT));
-    node.SetUid(stat.Uid);
-    node.SetGid(stat.Gid);
+    node.SetUid(
+        (Config->GetRootSquashEnabled() &&
+         stat.Uid == Config->GetRootSquashUid())
+            ? 0
+            : stat.Uid);
+    node.SetGid(
+        (Config->GetRootSquashEnabled() &&
+         stat.Gid == Config->GetRootSquashGid())
+            ? 0
+            : stat.Gid);
     node.SetSize(stat.Size);
     node.SetATime(TInstant::Seconds(stat.ATime).MicroSeconds());
     node.SetMTime(TInstant::Seconds(stat.MTime).MicroSeconds());
     node.SetCTime(TInstant::Seconds(stat.CTime).MicroSeconds());
     node.SetLinks(stat.NLinks);
+}
+
+std::unique_ptr<NLowLevel::UnixCredentialsGuard>
+TLocalFileSystem::GetCredentialsGuard(ui32 uid, ui32 gid)
+{
+    return std::make_unique<NLowLevel::UnixCredentialsGuard>(
+        uid,
+        gid,
+        Config->GetGuestOnlyPermissionsCheckEnabled(),
+        Config->GetRootSquashEnabled(),
+        Config->GetRootSquashUid(),
+        Config->GetRootSquashGid());
 }
 
 }   // namespace NCloud::NFileStore

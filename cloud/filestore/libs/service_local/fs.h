@@ -174,10 +174,12 @@ private:
         ui64 seqNo);
 
     void RemoveSession(const TString& sessionId, ui64 seqNo);
+
+    void ConvertStats(const TFileStat& stat, NProto::TNodeAttr& node);
+
+    std::unique_ptr<NLowLevel::UnixCredentialsGuard> GetCredentialsGuard(
+        ui32 uid,
+        ui32 gid);
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-void ConvertStats(const TFileStat& stat, NProto::TNodeAttr& node);
 
 }   // namespace NCloud::NFileStore
