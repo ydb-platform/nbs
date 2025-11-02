@@ -42,6 +42,9 @@ namespace {
     xxx(MaxFuseLoopThreads,          ui32,          1                         )\
     xxx(ZeroCopyWriteEnabled,        bool,          false                     )\
     xxx(FSyncQueueDisabled,          bool,          false                     )\
+    xxx(RootSquashEnabled,           bool,          false                     )\
+    xxx(RootSquashUid,               ui32,          65534                     )\
+    xxx(RootSquashGid,               ui32,          65534                     )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(xxx)                             \

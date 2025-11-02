@@ -174,6 +174,15 @@ message TLocalServiceConfig
 
     // Disable fsync queue which is used to synchronize data/metadata ops during fsync
     optional bool FSyncQueueDisabled = 29;
+
+    // Remap UID and GID of the root user to unprivileged user
+    optional bool RootSquashEnabled = 30;
+
+    // When RootSquashEnabled, map root UID to this value
+    optional uint32 RootSquashUid = 31;
+
+    // When RootSquashEnabled, map root GID to this value
+    optional bool RootSquashGid = 32;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

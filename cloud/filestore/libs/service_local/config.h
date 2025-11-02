@@ -117,6 +117,12 @@ public:
     bool GetZeroCopyWriteEnabled() const;
 
     bool GetFSyncQueueDisabled() const;
+
+    bool GetRootSquashEnabled() const;
+
+    ui32 GetRootSquashUid() const;
+
+    ui32 GetRootSquashGid() const;
 };
 
 }   // namespace NCloud::NFileStore

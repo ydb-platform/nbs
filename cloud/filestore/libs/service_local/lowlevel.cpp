@@ -660,7 +660,10 @@ bool Flock(const TFileHandle& handle, int operation)
 UnixCredentialsGuard::UnixCredentialsGuard(
     uid_t uid,
     gid_t gid,
-    bool trustUserCredentials)
+    bool trustUserCredentials,
+    bool rootSquashEnabled,
+    uid_t rootSquashUid,
+    uid_t rootSquashGid)
 {
     OriginalUid = geteuid();
     if (OriginalUid != 0) {
@@ -669,6 +672,19 @@ UnixCredentialsGuard::UnixCredentialsGuard(
     }
 
     OriginalGid = getegid();
+
+    bool rootSquashApplied = false;
+    if (rootSquashEnabled) {
+        if (uid == 0) {
+            uid = rootSquashUid;
+            rootSquashApplied = true;
+        }
+
+        if (gid == 0) {
+            gid = rootSquashGid;
+            rootSquashApplied = true;
+        }
+    }
 
     if (uid == OriginalUid && gid == OriginalGid) {
         return;
@@ -690,7 +706,7 @@ UnixCredentialsGuard::UnixCredentialsGuard(
 
     IsRestoreNeeded = true;
 
-    if (trustUserCredentials) {
+    if (trustUserCredentials && !rootSquashApplied) {
         // Bypass file read, write, and execute permission checks.
         // If RestoreCapability fails we fallback to pemissions check on the
         // backend file system

@@ -20,7 +20,13 @@ private:
     bool IsRestoreNeeded = false;
 
 public:
-    UnixCredentialsGuard(uid_t uid, gid_t gid, bool trustUserCredentials);
+    UnixCredentialsGuard(
+        uid_t uid,
+        gid_t gid,
+        bool trustUserCredentials,
+        bool rootSquashEnabled,
+        uid_t rootSquashUid,
+        uid_t rootSquashGid);
     ~UnixCredentialsGuard();
 };
 

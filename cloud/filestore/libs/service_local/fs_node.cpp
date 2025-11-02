@@ -52,7 +52,10 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
     NLowLevel::UnixCredentialsGuard credGuard(
         request.GetUid(),
         request.GetGid(),
-        Config->GetGuestOnlyPermissionsCheckEnabled());
+        Config->GetGuestOnlyPermissionsCheckEnabled(),
+        Config->GetRootSquashEnabled(),
+        Config->GetRootSquashUid(),
+        Config->GetRootSquashGid());
     TIndexNodePtr target;
     if (request.HasDirectory()) {
         int mode = request.GetDirectory().GetMode();
