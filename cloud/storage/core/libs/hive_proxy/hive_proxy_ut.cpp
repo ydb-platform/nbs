@@ -172,7 +172,11 @@ private:
         auto prev = State->LockedTablets[tabletId];
         State->LockedTablets[tabletId] = newOwner;
         if (prev && prev != newOwner) {
-            ctx.Send(prev, new TEvHive::TEvLockTabletExecutionLost(tabletId));
+            ctx.Send(
+                prev,
+                new TEvHive::TEvLockTabletExecutionLost(
+                    tabletId,
+                    NKikimrHive::ELockLostReason::LOCK_LOST_REASON_UNKNOWN));
         }
     }
 
