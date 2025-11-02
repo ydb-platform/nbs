@@ -18,7 +18,7 @@ import process_whole_archive_option as pwa
 
 arc_project_prefix = 'a.yandex-team.ru/'
 # FIXME: make version-independent
-std_lib_prefix = 'contrib/go/_std_1.22/src/'
+std_lib_prefix = 'contrib/go/_std_1.19/src/'
 vendor_prefix = 'vendor/'
 vet_info_ext = '.vet.out'
 vet_report_ext = '.vet.txt'
@@ -26,7 +26,6 @@ vet_report_ext = '.vet.txt'
 FIXED_CGO1_SUFFIX = '.fixed.cgo1.go'
 
 COMPILE_OPTIMIZATION_FLAGS = ('-N',)
-IGNORED_FLAGS = ['-fprofile-instr-generate', '-fcoverage-mapping']
 
 
 def get_trimpath_args(args):
@@ -118,8 +117,7 @@ def preprocess_args(args):
     args.srcs = srcs
 
     if args.extldflags:
-        tmp = [flag for flag in args.extldflags if flag not in IGNORED_FLAGS]
-        args.extldflags = pwa.ProcessWholeArchiveOption(args.targ_os).construct_cmd(tmp)
+        args.extldflags = pwa.ProcessWholeArchiveOption(args.targ_os).construct_cmd(args.extldflags)
 
     classify_srcs(args.srcs, args)
 
@@ -294,9 +292,8 @@ def create_vet_config(args, info):
 def decode_vet_report(json_report):
     report = ''
     if json_report:
-        json_report = json_report.decode('UTF-8')
         try:
-            full_diags = json.JSONDecoder().decode(json_report)
+            full_diags = json.JSONDecoder().decode(json_report.decode('UTF-8'))
         except ValueError:
             report = json_report
         else:
@@ -436,6 +433,14 @@ def do_compile_go(args):
 
 
 def do_compile_asm(args):
+    def need_compiling_runtime(import_path):
+        return (
+            import_path in ('runtime', 'reflect', 'syscall')
+            or import_path.startswith('runtime/internal/')
+            or compare_versions('1.17', args.goversion) >= 0
+            and import_path == 'internal/bytealg'
+        )
+
     assert len(args.srcs) == 1 and len(args.asm_srcs) == 1
     cmd = [args.go_asm]
     cmd += get_trimpath_args(args)
@@ -444,6 +449,8 @@ def do_compile_asm(args):
 
     # if compare_versions('1.16', args.goversion) >= 0:
     cmd += ['-p', args.import_path]
+    if need_compiling_runtime(args.import_path):
+        cmd += ['-compiling-runtime']
 
     if args.asm_flags:
         cmd += args.asm_flags
@@ -894,7 +901,13 @@ if __name__ == '__main__':
         with create_strip_symlink():
             dispatch[args.mode](args)
         exit_code = 0
+    except KeyError:
+        sys.stderr.write('Unknown build mode [{}]...\n'.format(args.mode))
     except subprocess.CalledProcessError as e:
         sys.stderr.write('{} returned non-zero exit code {}.\n{}\n'.format(' '.join(e.cmd), e.returncode, e.output))
         exit_code = e.returncode
+    except AssertionError as e:
+        traceback.print_exc(file=sys.stderr)
+    except Exception as e:
+        sys.stderr.write('Unhandled exception [{}]...\n'.format(str(e)))
     sys.exit(exit_code)
