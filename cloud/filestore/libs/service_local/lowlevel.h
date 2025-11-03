@@ -96,7 +96,9 @@ struct TFileSystemStat
 struct TFileStatEx : public TFileStat {
     using TFileStat::TFileStat;
     ui64 Dev = 0;
-    static_assert(sizeof(dev_t) <= sizeof(ui64), "dev_t is larger than 64 bits");
+    static_assert(
+        sizeof(dev_t) <= sizeof(ui64),
+        "dev_t is larger than 64 bits");
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -122,10 +124,16 @@ TFileHandle OpenAt(
 void MkDirAt(const TFileHandle& handle, const TString& name, int mode);
 void MkSockAt(const TFileHandle& handle, const TString& name, int mode);
 void MkFifoAt(const TFileHandle& handle, const TString& name, int mode);
-void MkCharDeviceAt(const TFileHandle& handle, const TString& name,
-    int mode, dev_t dev);
-void MkBlockDeviceAt(const TFileHandle& handle, const TString& name,
-    int mode, dev_t dev);
+void MkCharDeviceAt(
+    const TFileHandle& handle,
+    const TString& name,
+    int mode,
+    dev_t dev);
+void MkBlockDeviceAt(
+    const TFileHandle& handle,
+    const TString& name,
+    int mode,
+    dev_t dev);
 
 void RenameAt(
     const TFileHandle& handle,
