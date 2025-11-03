@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_method.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/media.h>
@@ -86,7 +87,7 @@ void ZeroUnencryptedBlocksInLocalResponse(
     const TString& unencryptedBlockMask)
 {
     for (size_t i = 0; i < sglist.size(); ++i) {
-        auto& buffer = sglist[i];
+        const auto& buffer = sglist[i];
         if (GetBitValue(unencryptedBlockMask, i)) {
             memset(const_cast<char*>(buffer.Data()), 0, buffer.Size());
         }
@@ -95,8 +96,7 @@ void ZeroUnencryptedBlocksInLocalResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClientWrapper
-    : public IBlockStore
+class TClientWrapper: public TBlockStoreImpl<TClientWrapper, IBlockStore>
 {
 protected:
     IBlockStorePtr Client;
@@ -121,18 +121,16 @@ public:
         return Client->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return Client->name(std::move(ctx), std::move(request));               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr ctx,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        return TMethod::Execute(
+            Client.get(),
+            std::move(ctx),
+            std::move(request));
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/storage/model/log_prefix.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
@@ -268,7 +269,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 class TBlockStoreNotImplemented
-    : public IBlockStore
+    : public TBlockStoreImpl<TBlockStoreNotImplemented, IBlockStore>
 {
 public:
     void Start() override
@@ -283,21 +284,16 @@ public:
         return nullptr;
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(ctx);                                                         \
-        Y_UNUSED(request);                                                     \
-        return MakeFuture<NProto::T##name##Response>(TErrorResponse(           \
-            E_NOT_IMPLEMENTED, "Unsupported request"));                        \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr ctx,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        Y_UNUSED(ctx);
+        Y_UNUSED(request);
+        return MakeFuture<typename TMethod::TResponse>(
+            TErrorResponse(E_NOT_IMPLEMENTED, "Unsupported request"));
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
