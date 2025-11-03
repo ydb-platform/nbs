@@ -299,6 +299,8 @@ def __run_test(test_case, use_rdma):
         storage.NonReplicatedSecureEraseTimeout = 30000   # 30 sec
         storage.EnableToChangeStatesFromDiskRegistryMonpage = True
         storage.EnableToChangeErrorStatesFromDiskRegistryMonpage = True
+        storage.MultiAgentWriteEnabled = True
+        storage.DirectWriteBandwidthQuota = 200 * 1024  # 200 KiB
         storage.UseNonreplicatedRdmaActor = use_rdma
         storage.UseRdma = use_rdma
 

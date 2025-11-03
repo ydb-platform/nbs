@@ -400,6 +400,30 @@ public:
         return request;
     }
 
+    auto CreateMultiAgentWriteRequest(
+        const TBlockRange64& blockRange,
+        TVector<TEvNonreplPartitionPrivate::TGetDeviceForRangeResponse>
+            devicesAndRanges,
+        char fill,
+        ui32 blocksInBuffer = 1)
+    {
+        auto request = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest>();
+
+        request->Record.SetStartIndex(blockRange.Start);
+        for (ui32 i = 0; i < blockRange.Size(); i += blocksInBuffer) {
+            auto& b = *request->Record.MutableBlocks()->AddBuffers();
+            b.resize(
+                Min<ui32>(blocksInBuffer, (blockRange.Size() - i)) * BlockSize,
+                fill);
+        }
+        request->Record.BlockSize = BlockSize;
+        request->Record.Range = blockRange;
+        request->Record.DevicesAndRanges = std::move(devicesAndRanges);
+
+        return request;
+    }
+
     auto CreateZeroBlocksRequest(const TBlockRange64& blockRange)
     {
         auto request = std::make_unique<TEvService::TEvZeroBlocksRequest>();
@@ -531,6 +555,7 @@ public:
     BLOCKSTORE_DECLARE_METHOD(CheckRange, TEvVolume);
     BLOCKSTORE_DECLARE_METHOD(ChecksumBlocks, TEvNonreplPartitionPrivate);
     BLOCKSTORE_DECLARE_METHOD(LockAndDrainRange, NPartition::TEvPartition);
+    BLOCKSTORE_DECLARE_METHOD(MultiAgentWrite, TEvNonreplPartitionPrivate);
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };
