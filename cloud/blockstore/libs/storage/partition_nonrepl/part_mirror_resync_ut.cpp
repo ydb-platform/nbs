@@ -25,6 +25,8 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/algorithm.h>
+#include <util/generic/map.h>
 #include <util/string/builder.h>
 
 #include <google/protobuf/util/message_differencer.h>
@@ -700,8 +702,35 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             env.WriteReplica(2, TBlockRange64::WithLength(2, 1), '2');
         }
 
-        bool seenWrites = false;
         TVector<NProto::TChecksum> checksums;
+        auto selectMajorityChecksum = [&]() -> NProto::TChecksum
+        {
+            if (resyncPolicy == NProto::RESYNC_POLICY_MINOR_AND_MAJOR_4MB) {
+                return checksums.back();
+            }
+
+            struct TChecksumComparator
+            {
+                bool operator()(
+                    const NProto::TChecksum& a,
+                    const NProto::TChecksum& b) const
+                {
+                    return std::make_pair(a.GetChecksum(), a.GetByteCount()) <
+                           std::make_pair(b.GetChecksum(), b.GetByteCount());
+                }
+            };
+            TMap<NProto::TChecksum, ui32, TChecksumComparator> checksumCount;
+            for (size_t i = checksums.size() - 3; i < checksums.size(); ++i) {
+                checksumCount[checksums[i]]++;
+            }
+            UNIT_ASSERT_VALUES_EQUAL(2, checksumCount.size());
+            return FindIfPtr(
+                       checksumCount,
+                       [](const auto& item) { return item.second > 1; })
+                ->first;
+        };
+
+        bool seenWrites = false;
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) -> bool
             {
@@ -723,7 +752,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                             multiBlockCorruption ? CalculateChecksum(
                                                        msg->Record.GetBlocks(),
                                                        BlockSize)
-                                                 : checksums.back();
+                                                 : selectMajorityChecksum();
 
                         // The first checksum should be calculated after the
                         // block by block resync.
@@ -744,7 +773,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                                 << msg->Record.GetChecksum()
                                        .ShortUtf8DebugString()
                                        .Quote());
-
                         break;
                     }
                     default:
