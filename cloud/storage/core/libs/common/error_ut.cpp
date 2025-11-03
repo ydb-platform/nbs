@@ -157,7 +157,7 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
 
     Y_UNIT_TEST(ShouldCorrectlyInterpretErrorKindForSystemErrors)
     {
-        constexpr std::array FatalSystemErrors = {EIO, ENODATA};
+        constexpr std::array FatalSystemErrors = {EIO, EREMOTEIO, ENODATA};
 
         for (ui32 i = 0; i < 1000; i++) {
             NProto::TError e = MakeError(MAKE_SYSTEM_ERROR(i));
