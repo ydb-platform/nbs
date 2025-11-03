@@ -3,6 +3,7 @@
 #include "service.h"
 
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/request.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
 namespace NCloud::NBlockStore {
@@ -72,6 +73,8 @@ struct TBlockStoreMethods;
         using TResponse = NProto::T##name##Response;                        \
                                                                             \
         static constexpr const char* Name = #name;                          \
+        static constexpr EBlockStoreRequest BlockStoreRequest =             \
+            EBlockStoreRequest::name;                                       \
                                                                             \
         [[nodiscard]] static NThreading::TFuture<NProto::T##name##Response> \
         Execute(                                                            \

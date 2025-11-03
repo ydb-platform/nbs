@@ -8,13 +8,14 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/blockstore/libs/service/service_method.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/stream/format.h>
 #include <util/string/builder.h>
@@ -68,28 +69,6 @@ ELogPriority GetDetailsLogPriority(const NProto::TError& error)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr EBlockStoreRequest Request = EBlockStoreRequest::name;\
-                                                                               \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-                                                                               \
-        template <typename T, typename ...TArgs>                               \
-        static TFuture<TResponse> Execute(T& client, TArgs&& ...args)          \
-        {                                                                      \
-            return client.name(std::forward<TArgs>(args)...);                  \
-        }                                                                      \
-    };                                                                         \
-// BLOCKSTORE_DECLARE_METHOD
-
-BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
-
-#undef BLOCKSTORE_DECLARE_METHOD
-
-////////////////////////////////////////////////////////////////////////////////
-
 template <typename T>
 struct TRequestStateBase
     : public TRetryState
@@ -119,13 +98,14 @@ struct TRequestState
 };
 
 template <>
-struct TRequestState<TReadBlocksLocalMethod>
-    : public TRequestStateBase<TReadBlocksLocalMethod>
-    , public TAtomicRefCount<TRequestState<TReadBlocksLocalMethod>>
+struct TRequestState<TBlockStoreReadBlocksLocalMethod>
+    : public TRequestStateBase<TBlockStoreReadBlocksLocalMethod>
+    , public TAtomicRefCount<TRequestState<TBlockStoreReadBlocksLocalMethod>>
 {
     TGuardedSgList SentSgList;
 
-    using TRequestStateBase<TReadBlocksLocalMethod>::TRequestStateBase;
+    using TRequestStateBase<
+        TBlockStoreReadBlocksLocalMethod>::TRequestStateBase;
 };
 
 template <typename T>
@@ -134,7 +114,7 @@ using TRequestStatePtr = TIntrusivePtr<TRequestState<T>>;
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDurableClient final
-    : public IBlockStore
+    : public TBlockStoreImpl<TDurableClient, IBlockStore>
     , public std::enable_shared_from_this<TDurableClient>
 {
 protected:
@@ -183,27 +163,12 @@ public:
         return Client->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return HandleRequest<T##name##Method>(                                 \
-            std::move(callContext), std::move(request));                       \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
-
-private:
-    template <typename T>
-    TFuture<typename T::TResponse> HandleRequest(
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
         TCallContextPtr callContext,
-        std::shared_ptr<typename T::TRequest> request)
+        std::shared_ptr<typename TMethod::TRequest> request)
     {
-        auto state = MakeIntrusive<TRequestState<T>>(
+        auto state = MakeIntrusive<TRequestState<TMethod>>(
             std::move(callContext),
             std::move(request));
 
@@ -211,8 +176,9 @@ private:
         return state->Response;
     }
 
-    template <typename T>
-    void ExecuteRequest(TRequestStatePtr<T> state)
+private:
+    template <typename TMethod>
+    void ExecuteRequest(TRequestStatePtr<TMethod> state)
     {
         auto request = CreateRequestToSend(*state);
         if (!request) {
@@ -220,18 +186,21 @@ private:
             return;
         }
 
-        auto weak_ptr = this->weak_from_this();
-
-        T::Execute(*Client, state->CallContext, std::move(request)).Subscribe(
-            [state_ = std::move(state), weak_ptr = std::move(weak_ptr)] (const auto& future) mutable {
-                if (auto p = weak_ptr.lock()) {
-                    p->HandleResponse(std::move(state_), future);
-                } else {
-                    state_->Response.SetValue(TErrorResponse(
-                        E_REJECTED,
-                        "Durable client is destroyed"));
-                }
-            });
+        TMethod::Execute(Client.get(), state->CallContext, std::move(request))
+            .Subscribe(
+                [state = std::move(state), weakSelf = this->weak_from_this()](
+                    TFuture<typename TMethod::TResponse> future) mutable
+                {
+                    if (auto p = weakSelf.lock()) {
+                        p->HandleResponse(
+                            std::move(state),
+                            ExtractResponse(future));
+                    } else {
+                        state->Response.SetValue(TErrorResponse(
+                            E_REJECTED,
+                            "Durable client is destroyed"));
+                    }
+                });
     }
 
     template <typename T>
@@ -252,13 +221,11 @@ private:
         headers.SetRetryNumber(headers.GetRetryNumber() + 1);
     }
 
-    template <typename T>
+    template <typename TMethod>
     void HandleResponse(
-        TRequestStatePtr<T> state,
-        TFuture<typename T::TResponse> future)
+        TRequestStatePtr<TMethod> state,
+        typename TMethod::TResponse response)
     {
-        auto response = ExtractResponse(future);
-
         const ui64 requestId = GetRequestId(*state->Request);
         const auto& diskId = GetDiskId(*state->Request);
         const auto& clientId = GetClientId(*state->Request);
@@ -275,7 +242,7 @@ private:
                 LWTRACK(
                     RequestRetry,
                     state->CallContext->LWOrbit,
-                    GetBlockStoreRequestName(T::Request),
+                    TMethod::Name,
                     requestId,
                     diskId,
                     state->Retries,
@@ -313,7 +280,7 @@ private:
                 if (doLogging) {
                     STORAGE_WARN(
                         TRequestInfo(
-                            T::Request,
+                            TMethod::BlockStoreRequest,
                             requestId,
                             diskId,
                             clientId,
@@ -329,14 +296,14 @@ private:
                 auto volumeInfo = VolumeStats->GetVolumeInfo(diskId, clientId);
                 if (volumeInfo) {
                     volumeInfo->AddRetryStats(
-                        T::Request,
+                        TMethod::BlockStoreRequest,
                         errorKind,
                         errorFlags);
                 }
 
                 RequestStats->AddRetryStats(
                     VolumeStats->GetStorageMediaKind(diskId),
-                    T::Request,
+                    TMethod::BlockStoreRequest,
                     errorKind,
                     errorFlags);
 
@@ -345,11 +312,13 @@ private:
                     state->CallContext->Postpone(postponeCycles);
                 }
 
-                auto weak_ptr = this->weak_from_this();
-
                 Scheduler->Schedule(
                     Timer->Now() + retrySpec.Backoff,
-                    [=, weak_ptr = std::move(weak_ptr)] {
+                    [state = std::move(state),
+                     postponeCycles,
+                     throttling,
+                     weakSelf = this->weak_from_this()]
+                    {
                         auto nowCycles = GetCycleCount();
                         if (throttling) {
                             state->CallContext->Advance(nowCycles);
@@ -359,7 +328,7 @@ private:
                                 CyclesToDurationSafe(nowCycles - postponeCycles));
                         }
 
-                        if (auto p = weak_ptr.lock()) {
+                        if (auto p = weakSelf.lock()) {
                             p->ExecuteRequest(state);
                         } else {
                             state->Response.SetValue(TErrorResponse(
@@ -368,7 +337,9 @@ private:
                         }
                     });
                 return;
-            } else if (retrySpec.IsRetriableError) {
+            }
+
+            if (retrySpec.IsRetriableError) {
                 auto& error = *response.MutableError();
                 auto errorStr = FormatError(error);
                 error.SetCode(E_RETRY_TIMEOUT);
@@ -378,7 +349,7 @@ private:
             auto duration = TInstant::Now() - state->Started;
             STORAGE_ERROR(
                 TRequestInfo(
-                    T::Request,
+                    TMethod::BlockStoreRequest,
                     requestId,
                     diskId,
                     clientId,
@@ -395,7 +366,7 @@ private:
                 STORAGE_LOG(
                     state->DetailsLogPriority,
                     TRequestInfo(
-                        T::Request,
+                        TMethod::BlockStoreRequest,
                         requestId,
                         diskId,
                         clientId,
@@ -413,7 +384,7 @@ private:
         } catch (...) {
             STORAGE_ERROR(
                 TRequestInfo(
-                    T::Request,
+                    TMethod::BlockStoreRequest,
                     requestId,
                     diskId,
                     clientId,
@@ -433,7 +404,7 @@ private:
 
     template <>
     std::shared_ptr<NProto::TReadBlocksLocalRequest> CreateRequestToSend(
-        TRequestState<TReadBlocksLocalMethod>& state)
+        TRequestState<TBlockStoreReadBlocksLocalMethod>& state)
     {
         const auto& request = state.Request;
 
@@ -455,7 +426,7 @@ private:
 
     template <>
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> CreateRequestToSend(
-        TRequestState<TWriteBlocksLocalMethod>& state)
+        TRequestState<TBlockStoreWriteBlocksLocalMethod>& state)
     {
         const auto& request = state.Request;
 
@@ -472,21 +443,21 @@ private:
 
     template <>
     std::shared_ptr<NProto::TZeroBlocksRequest> CreateRequestToSend(
-        TRequestState<TZeroBlocksMethod>& state)
+        TRequestState<TBlockStoreZeroBlocksMethod>& state)
     {
         return std::make_shared<NProto::TZeroBlocksRequest>(*state.Request);
     }
 
     template <>
     std::shared_ptr<NProto::TMountVolumeRequest> CreateRequestToSend(
-        TRequestState<TMountVolumeMethod>& state)
+        TRequestState<TBlockStoreMountVolumeMethod>& state)
     {
         return std::make_shared<NProto::TMountVolumeRequest>(*state.Request);
     }
 
     template <>
     std::shared_ptr<NProto::TUnmountVolumeRequest> CreateRequestToSend(
-        TRequestState<TUnmountVolumeMethod>& state)
+        TRequestState<TBlockStoreUnmountVolumeMethod>& state)
     {
         return std::make_shared<NProto::TUnmountVolumeRequest>(*state.Request);
     }
