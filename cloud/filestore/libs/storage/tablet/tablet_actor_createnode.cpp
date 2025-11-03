@@ -37,6 +37,10 @@ NProto::TError ValidateRequest(const NProto::TCreateNodeRequest& request)
         }
     }
 
+    if (request.HasBlockDevice() || request.HasCharDevice()) {
+        return ErrorNotSupported();
+    }
+
     return {};
 }
 
