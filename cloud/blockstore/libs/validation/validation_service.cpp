@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_method.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -11,8 +13,6 @@
 #include <library/cpp/monlib/service/pages/html_mon_page.h>
 #include <library/cpp/monlib/service/pages/index_mon_page.h>
 #include <library/cpp/monlib/service/pages/templates.h>
-
-#include <contrib/libs/sparsehash/src/sparsehash/dense_hash_map>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
@@ -23,6 +23,8 @@
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
+
+#include <contrib/libs/sparsehash/src/sparsehash/dense_hash_map>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -168,7 +170,7 @@ struct TRequestCounters
 ////////////////////////////////////////////////////////////////////////////////
 
 class TValidationService final
-    : public IBlockStore
+    : public TBlockStoreImpl<TValidationService, IBlockStore>
 {
     class TMonPage;
 
@@ -213,22 +215,20 @@ public:
         return Service->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        TFuture<NProto::T##name##Response> response;                           \
-        if (!HandleRequest(ctx, request, response)) {                          \
-            response = Service->name(std::move(ctx), std::move(request));      \
-        }                                                                      \
-        return response;                                                       \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr ctx,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        TFuture<typename TMethod::TResponse> response;
+        if (!HandleRequest(ctx, request, response)) {
+            response = TMethod::Execute(
+                Service.get(),
+                std::move(ctx),
+                std::move(request));
+        }
+        return response;
+    }
 
 private:
     void OutputHtml(IOutputStream& out, const IMonHttpRequest& request);
@@ -252,13 +252,13 @@ private:
         const TOperationRange& newRange,
         const TOperationRange& oldRange) const;
 
-    TVolumePtr MountVolume(
+    TVolumePtr DoMountVolume(
         const TString& diskId,
         const TString& clientId,
         ui32 blockSize,
         TDuration remountTimeout);
 
-    void UnmountVolume(const TString& diskId, const TString& clientId);
+    void DoUnmountVolume(const TString& diskId, const TString& clientId);
     TVolumePtr GetVolume(
         const TString& diskId,
         const TString& clientId);
@@ -463,7 +463,7 @@ void TValidationService::ReportRace(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVolumePtr TValidationService::MountVolume(
+TVolumePtr TValidationService::DoMountVolume(
     const TString& diskId,
     const TString& clientId,
     ui32 blockSize,
@@ -504,7 +504,7 @@ TVolumePtr TValidationService::MountVolume(
     }
 }
 
-void TValidationService::UnmountVolume(
+void TValidationService::DoUnmountVolume(
     const TString& diskId,
     const TString& clientId)
 {
@@ -759,7 +759,7 @@ bool TValidationService::HandleRequest(
             if (!IsRequestFailed(future)) {
                 const auto& response = future.GetValue();
                 auto timeout = InactiveClientsTimeout * 1.05;
-                auto volume = MountVolume(
+                auto volume = DoMountVolume(
                     diskId,
                     clientId,
                     response.GetVolume().GetBlockSize(),
@@ -781,7 +781,7 @@ bool TValidationService::HandleRequest(
     response = Service->UnmountVolume(std::move(ctx), std::move(request)).Subscribe(
         [=, this] (const auto& future) {
             if (!IsRequestFailed(future)) {
-                UnmountVolume(diskId, clientId);
+                DoUnmountVolume(diskId, clientId);
             }
         });
     return true;
