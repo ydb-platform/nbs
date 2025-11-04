@@ -2,8 +2,10 @@
 
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
-#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/request.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
+#include <cloud/blockstore/libs/service/service_method.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -12,22 +14,6 @@ namespace NCloud::NBlockStore::NClient {
 using namespace NThreading;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr EBlockStoreRequest Request = EBlockStoreRequest::name;\
-                                                                               \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-    };
-// BLOCKSTORE_DECLARE_METHOD
-
-BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
-
-#undef BLOCKSTORE_DECLARE_METHOD
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -103,7 +89,7 @@ public:
             TAppContext& appCtx,
             TCallContextPtr callContext,
             const TRequest& request)
-        : TRequestHandler(TMethod::Request, std::move(callContext))
+        : TRequestHandler(TMethod::BlockStoreRequest, std::move(callContext))
         , AppCtx(appCtx)
     {
         auto calculateBytesCount = [](const TRequest& request,
@@ -171,7 +157,7 @@ public:
 
 class TMetricClient
     : public TAppContext
-    , public IMetricClient
+    , public TBlockStoreImpl<TMetricClient, IMetricClient>
     , public std::enable_shared_from_this<TMetricClient>
 {
 protected:
@@ -234,26 +220,20 @@ public:
         }
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        auto handler = RegisterRequest<T##name##Method>(                       \
-            callContext,                                                       \
-            *request);                                                         \
-        auto future = Client->name(                                            \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-        return SubscribeUnregisterRequest<T##name##Method>(                    \
-            std::move(future),                                                 \
-            std::move(handler));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        auto handler = RegisterRequest<TMethod>(callContext, *request);
+        auto future = TMethod::Execute(
+            Client.get(),
+            std::move(callContext),
+            std::move(request));
+        return SubscribeUnregisterRequest<TMethod>(
+            std::move(future),
+            std::move(handler));
+    }
 
 private:
     template <typename TMethod>

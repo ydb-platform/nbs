@@ -1,5 +1,6 @@
 #include "switchable_client.h"
 
+#include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -126,17 +127,6 @@ struct TTestDataPlainMethods
     {}
 };
 
-#define BLOCKSTORE_DECLARE_EXECUTE(name, ...)                                \
-    [[maybe_unused]] NThreading::TFuture<NProto::T##name##Response> Execute( \
-        IBlockStorePtr blockstore,                                           \
-        TCallContextPtr callContext,                                         \
-        std::shared_ptr<NProto::T##name##Request> request)                   \
-    {                                                                        \
-        return blockstore->name(std::move(callContext), std::move(request)); \
-    }
-
-BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_EXECUTE)
-#undef BLOCKSTORE_DECLARE_EXECUTE
 
 template <typename TRequest, typename TResponse>
 void Check(
@@ -155,8 +145,8 @@ void Check(
         request->SetSessionId(PrimarySessionId);
     }
 
-    auto future = Execute(
-        std::move(switchableClient),
+    auto future = TBlockStoreAdapter::Execute(
+        switchableClient.get(),
         MakeIntrusive<TCallContext>(),
         std::move(request));
 
@@ -189,8 +179,8 @@ TFuture<TResponse> CheckRequestPaused(
         request->SetSessionId(PrimarySessionId);
     }
 
-    auto future = Execute(
-        std::move(switchableClient),
+    auto future = TBlockStoreAdapter::Execute(
+        switchableClient.get(),
         MakeIntrusive<TCallContext>(),
         std::move(request));
 

@@ -6,6 +6,8 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_method.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/map.h>
@@ -20,7 +22,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TEncryptionServiceWrapper
-    : public IBlockStore
+    : public TBlockStoreImpl<TEncryptionServiceWrapper, IBlockStore>
 {
 protected:
     const IBlockStorePtr Service;
@@ -49,22 +51,18 @@ public:
         return Service->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        auto session = GetSession(request->GetHeaders().GetClientId());        \
-        if (session) {                                                         \
-            return session->name(std::move(ctx), std::move(request));          \
-        }                                                                      \
-        return Service->name(std::move(ctx), std::move(request));              \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr ctx,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        IBlockStorePtr session =
+            GetSession(request->GetHeaders().GetClientId());
+        return TMethod::Execute(
+            session ? session.get() : Service.get(),
+            std::move(ctx),
+            std::move(request));
+    }
 
 private:
     virtual IBlockStorePtr GetSession(const TString& clientId) = 0;
