@@ -34,11 +34,23 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 
     STORAGE_CRITICAL_EVENTS(STORAGE_INIT_CRITICAL_EVENT_COUNTER)
 #undef STORAGE_INIT_CRITICAL_EVENT_COUNTER
+
+#define STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER(name)                            \
+    *CriticalEvents->GetCounter(GetImpossibleEventFor##name(), true) = 0;      \
+// STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER
+
+    STORAGE_IMPOSSIBLE_EVENTS(STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER)
+#undef STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER
 }
 
 TString GetCriticalEventFullName(const TString& name)
 {
     return "AppCriticalEvents/" + name;
+}
+
+TString GetImpossibleEventFullName(const TString& name)
+{
+    return "AppImpossibleEvents/" + name;
 }
 
 TString ReportCriticalEvent(
@@ -95,6 +107,24 @@ TString ReportCriticalEvent(
 // STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE
 
     STORAGE_CRITICAL_EVENTS(STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE)
+#undef STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE
+
+#define STORAGE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE(name)                          \
+    TString Report##name(const TString& message)                               \
+    {                                                                          \
+        return ReportCriticalEvent(                                            \
+            GetImpossibleEventFor##name(),                                     \
+            message,                                                           \
+            true);                                                             \
+    }                                                                          \
+                                                                               \
+    const TString GetImpossibleEventFor##name()                                \
+    {                                                                          \
+        return "AppImpossibleEvents/"#name;                                    \
+    }                                                                          \
+// STORAGE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE
+
+    STORAGE_IMPOSSIBLE_EVENTS(STORAGE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE)
 #undef STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE
 
 ////////////////////////////////////////////////////////////////////////////////
