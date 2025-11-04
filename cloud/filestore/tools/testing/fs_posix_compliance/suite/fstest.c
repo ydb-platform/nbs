@@ -354,15 +354,15 @@ static void show_stat(struct stat64* sp, const char* what)
         printf("%lld", (long long)sp->st_mtime);
     } else if (strcmp(what, "ctime") == 0) {
         printf("%lld", (long long)sp->st_ctime);
-    }
 #ifdef HAS_CHFLAGS
-    else if (strcmp(what, "flags") == 0)
-    {
+    } else if (strcmp(what, "flags") == 0)
         printf("%s", flags2str(chflags_flags, sp->st_flags));
-    }
 #endif
-    else if (strcmp(what, "type") == 0)
-    {
+    } else if (strcmp(what, "major") == 0) {
+		printf("%u", (unsigned int)major(sp->st_rdev));
+    } else if (strcmp(what, "minor") == 0) {
+		printf("%u", (unsigned int)minor(sp->st_rdev));
+    } else if (strcmp(what, "type") == 0) {
         switch (sp->st_mode & S_IFMT) {
             case S_IFIFO:
                 printf("fifo");
