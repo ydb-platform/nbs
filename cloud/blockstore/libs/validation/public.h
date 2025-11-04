@@ -9,7 +9,7 @@ namespace NClient {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct IBlockStoreValidationClient;
-using IBlockStoreValidationClientPtr = std::unique_ptr<IBlockStoreValidationClient>;
+using IBlockStoreValidationClientPtr = std::shared_ptr<IBlockStoreValidationClient>;
 
 }   // namespace NClient
 
