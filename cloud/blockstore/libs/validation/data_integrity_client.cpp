@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -219,7 +220,7 @@ struct TStatCounters
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDataIntegrityClient final
-    : public IBlockStore
+    : public TBlockStoreImpl<TDataIntegrityClient, IBlockStore>
     , public std::enable_shared_from_this<TDataIntegrityClient>
 {
 private:
@@ -261,23 +262,20 @@ public:
         return Client->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        TFuture<NProto::T##name##Response> response;                           \
-        if (!HandleRequest(callContext, request, response)) {                  \
-            response =                                                         \
-                Client->name(std::move(callContext), std::move(request));      \
-        }                                                                      \
-        return response;                                                       \
-    }                                                                          \
-    // BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        TFuture<typename TMethod::TResponse> response;
+        if (!HandleRequest(callContext, request, response)) {
+            response = TMethod::Execute(
+                Client.get(),
+                std::move(callContext),
+                std::move(request));
+        }
+        return response;
+    }
 
 private:
     bool HandleRequest(

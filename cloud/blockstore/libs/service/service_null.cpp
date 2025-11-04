@@ -3,10 +3,11 @@
 #include "context.h"
 #include "service.h"
 
+#include <cloud/blockstore/config/server.pb.h>
+#include <cloud/blockstore/libs/service/service_method.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/thread.h>
-
-#include <cloud/blockstore/config/server.pb.h>
 
 #include <util/generic/guid.h>
 #include <util/generic/map.h>
@@ -340,7 +341,7 @@ private:
 
 class TNullService final
     : public TAppContext
-    , public IBlockStore
+    , public TBlockStoreImpl<TNullService, IBlockStore>
 {
 private:
     std::unique_ptr<TExecutor> Executor;
@@ -372,29 +373,15 @@ public:
         return nullptr;
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-        {                                                                      \
-            return HandleRequest<NProto::T##name##Response>(                   \
-                std::move(callContext),                                        \
-                std::move(request));                                           \
-        }                                                                      \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
-
-private:
-    template <typename TResponse, typename TRequest>
-    TFuture<TResponse> HandleRequest(
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
         TCallContextPtr callContext,
-        std::shared_ptr<TRequest> request)
+        std::shared_ptr<typename TMethod::TRequest> request)
     {
-        auto promise = NewPromise<TResponse>();
-        auto handler = std::make_shared<TRequestHandler<TRequest, TResponse>>(
+        auto promise = NewPromise<typename TMethod::TResponse>();
+        auto handler = std::make_shared<TRequestHandler<
+            typename TMethod::TRequest,
+            typename TMethod::TResponse>>(
             *this,
             std::move(callContext),
             std::move(request),
