@@ -68,6 +68,20 @@ NProto::TNode CreateFifoAttrs(ui32 mode, ui32 uid, ui32 gid)
     return CreateAttrs(NProto::E_FIFO_NODE, mode, 0, uid, gid);
 }
 
+NProto::TNode CreateCharDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev)
+{
+    auto attrs = CreateAttrs(NProto::E_CHARDEV_NODE, mode, 0, uid, gid);
+    attrs.SetDevId(dev);
+    return attrs;
+}
+
+NProto::TNode CreateBlockDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev)
+{
+    auto attrs = CreateAttrs(NProto::E_BLOCKDEV_NODE, mode, 0, uid, gid);
+    attrs.SetDevId(dev);
+    return attrs;
+}
+
 NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode)
 {
     ui64 now = MicroSeconds();
@@ -107,6 +121,7 @@ void ConvertNodeFromAttrs(
     dst.SetCTime(src.GetCTime());
     dst.SetSize(src.GetSize());
     dst.SetLinks(src.GetLinks());
+    dst.SetDevId(src.GetDevId());
 }
 
 void ConvertAttrsToNode(const NProto::TNodeAttr& src, NProto::TNode* dst)
@@ -120,6 +135,7 @@ void ConvertAttrsToNode(const NProto::TNodeAttr& src, NProto::TNode* dst)
     dst->SetCTime(src.GetCTime());
     dst->SetSize(src.GetSize());
     dst->SetLinks(src.GetLinks());
+    dst->SetDevId(src.GetDevId());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
