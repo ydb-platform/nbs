@@ -155,10 +155,10 @@ class TestCase:
             "--size", str(self.size),
             "--bs", str(self.request_size),
             "--buffer_compress_percentage", str(self.compress_percentage),
-            "--output-format", "json",
         ]
         if self.duration:
             cmd += ["--runtime", str(self.duration), "--time_based"]
+        cmd += ["--output-format", "json"]
         if self.offset:
             cmd += ["--offset", str(self.offset)]
         if self.verify and 'read' not in self.scenario:
