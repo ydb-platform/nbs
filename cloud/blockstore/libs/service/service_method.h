@@ -29,6 +29,11 @@ struct TBlockStoreMethodTraits
     {
         return IsReadRequest() || IsWriteRequest();
     }
+
+    static constexpr bool IsMountRequest()
+    {
+        return std::is_same_v<TRequest, NProto::TMountVolumeRequest>;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

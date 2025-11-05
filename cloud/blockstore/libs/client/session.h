@@ -43,18 +43,6 @@ struct ISession
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ISessionSwitcher
-{
-    virtual ~ISessionSwitcher() = default;
-
-    virtual void SwitchSession(
-        const TString& diskId,
-        const TString& newDiskId) = 0;
-};
-using ISessionSwitcherWeakPtr = std::weak_ptr<ISessionSwitcher>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TSessionConfig
 {
     TString DiskId;
@@ -85,7 +73,6 @@ ISessionPtr CreateSession(
     IVolumeStatsPtr volumeStats,
     IBlockStorePtr client,
     TClientAppConfigPtr config,
-    const TSessionConfig& sessionConfig,
-    ISessionSwitcherWeakPtr sessionSwitcherPtr);
+    const TSessionConfig& sessionConfig);
 
 }   // namespace NCloud::NBlockStore::NClient

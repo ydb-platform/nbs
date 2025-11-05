@@ -354,7 +354,7 @@ private:
 
 class TSessionManager final
     : public ISessionManager
-    , public NClient::ISessionSwitcher
+    , public ISessionSwitcher
     , public std::enable_shared_from_this<TSessionManager>
 {
 private:
@@ -412,6 +412,7 @@ public:
         Log = Logging->CreateLog("BLOCKSTORE_SERVER");
     }
 
+    // implementation ISessionManager
     TFuture<TSessionOrError> CreateSession(
         TCallContextPtr callContext,
         const NProto::TStartEndpointRequest& request) override;
@@ -437,7 +438,7 @@ public:
     TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
         const TString& socketPath) override;
 
-    // implementation NClient::ISessionSwitcher
+    // implementation ISessionSwitcher
     void SwitchSession(
         const TString& diskId,
         const TString& newDiskId) override;
@@ -854,8 +855,11 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         return error;
     }
 
-    auto switchableClient =
-        CreateSwitchableClient(Logging, volume.GetDiskId(), std::move(client));
+    auto switchableClient = CreateSwitchableClient(
+        Logging,
+        weak_from_this(),
+        volume.GetDiskId(),
+        std::move(client));
     client = switchableClient;
 
     if (Options.TemporaryServer) {
@@ -939,8 +943,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         VolumeStats,
         client,
         std::move(clientConfig),
-        CreateSessionConfig(request),
-        weak_from_this());
+        CreateSessionConfig(request));
 
     auto switchableSession = CreateSwitchableSession(
         Logging,

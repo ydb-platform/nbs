@@ -333,8 +333,7 @@ void TLoadTestRunner::SetupTest(
         VolumeStats,
         TestContext.DataClient,
         ClientConfig,
-        sessionConfig,
-        ISessionSwitcherWeakPtr());
+        sessionConfig);
 
     STORAGE_INFO("Mount volume: " << volumeName);
     auto response = WaitForCompletion(

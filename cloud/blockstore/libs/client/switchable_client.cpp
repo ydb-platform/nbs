@@ -1,9 +1,10 @@
 #include "switchable_client.h"
 
 #include <cloud/blockstore/libs/service/context.h>
-#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service_method.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/vector.h>
@@ -97,8 +98,8 @@ class TSwitchableBlockStore final
 {
 private:
     TLog Log;
-
-    TClientInfo PrimaryClientInfo;
+    const ISessionSwitcherWeakPtr SessionSwitcher;
+    const TClientInfo PrimaryClientInfo;
     TClientInfo SecondaryClientInfo;
 
     // BeforeSwitching() sets the WillSwitchToSecondary to true. After that,
@@ -118,9 +119,11 @@ private:
 public:
     TSwitchableBlockStore(
         ILoggingServicePtr logging,
+        ISessionSwitcherWeakPtr sessionSwitcher,
         TString diskId,
         IBlockStorePtr client)
         : Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
+        , SessionSwitcher(std::move(sessionSwitcher))
         , PrimaryClientInfo(
               {.Client = std::move(client),
                .DiskId = std::move(diskId),
@@ -209,6 +212,11 @@ public:
                 std::move(callContext),
                 std::move(request));
         }
+        if constexpr (TMethod::IsMountRequest()) {
+            return ExecuteMountRequest(
+                std::move(callContext),
+                std::move(request));
+        }
         return TMethod::Execute(
             PrimaryClientInfo.Client.get(),
             std::move(callContext),
@@ -223,6 +231,7 @@ private:
         std::shared_ptr<TRequest> request)
     {
         using TMethod = TBlockStoreMethods<TRequest>::TMethod;
+        using TResponse = typename TMethod::TResponse;
 
         if (SwitchedToSecondary) {
             STORAGE_TRACE(
@@ -262,10 +271,66 @@ private:
                 std::move(request));
         }
 
-        return TMethod::Execute(
+        auto future = TMethod::Execute(
             PrimaryClientInfo.Client.get(),
             std::move(callContext),
             std::move(request));
+
+        return future.Apply(
+            [sessionSwitcher = SessionSwitcher,
+             diskId = PrimaryClientInfo.DiskId]   //
+            (TFuture<TResponse> future) -> TFuture<TResponse>
+            {
+                TResponse response = future.ExtractValue();
+
+                if (HasError(response)) {
+                    const auto errorFlags = response.GetError().GetFlags();
+                    if (HasProtoFlag(errorFlags, NProto::EF_OUTDATED_VOLUME)) {
+                        if (auto switcher = sessionSwitcher.lock()) {
+                            switcher->SwitchSession(
+                                diskId,
+                                NStorage::GetNextDiskId(diskId));
+                        }
+                    }
+                }
+
+                return MakeFuture(std::move(response));
+            });
+    }
+
+    TFuture<NProto::TMountVolumeResponse> ExecuteMountRequest(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TMountVolumeRequest> request)
+    {
+        TFuture<NProto::TMountVolumeResponse> future =
+            PrimaryClientInfo.Client->MountVolume(
+                std::move(callContext),
+                std::move(request));
+
+        return future.Apply(
+            [sessionSwitcher = SessionSwitcher]   //
+            (TFuture<NProto::TMountVolumeResponse> future)
+                -> TFuture<NProto::TMountVolumeResponse>
+            {
+                NProto::TMountVolumeResponse response = future.ExtractValue();
+
+                if (!HasError(response) &&
+                    response.GetVolume().GetPrincipalDiskId())
+                {
+                    Y_DEBUG_ABORT_UNLESS(
+                        response.GetVolume().GetPrincipalDiskId() ==
+                        NStorage::GetNextDiskId(
+                            response.GetVolume().GetDiskId()));
+
+                    if (auto switcher = sessionSwitcher.lock()) {
+                        switcher->SwitchSession(
+                            response.GetVolume().GetDiskId(),
+                            response.GetVolume().GetPrincipalDiskId());
+                    }
+                }
+
+                return MakeFuture(std::move(response));
+            });
     }
 };
 
@@ -295,11 +360,13 @@ public:
 
 ISwitchableBlockStorePtr CreateSwitchableClient(
     ILoggingServicePtr logging,
+    ISessionSwitcherWeakPtr sessionSwitcher,
     TString diskId,
     IBlockStorePtr client)
 {
     return std::make_shared<TSwitchableBlockStore>(
         std::move(logging),
+        std::move(sessionSwitcher),
         std::move(diskId),
         std::move(client));
 }

@@ -3,12 +3,10 @@
 #include "client.h"
 #include "config.h"
 
-#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_test.h>
-#include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
@@ -37,26 +35,6 @@ static constexpr ui32 DefaultBlocksCount = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestSessionSwitcher
-    : public ISessionSwitcher
-    , public std::enable_shared_from_this<TTestSessionSwitcher>
-{
-    struct TSwitchInfo
-    {
-        TString DiskId;
-        TString NewDiskId;
-    };
-    TVector<TSwitchInfo> Switches;
-
-    void SwitchSession(const TString& diskId, const TString& newDiskId) override
-    {
-        Switches.push_back(
-            TSwitchInfo{.DiskId = diskId, .NewDiskId = newDiskId});
-    }
-};
-using TTestSessionSwitcherPtr = std::shared_ptr<TTestSessionSwitcher>;
-
-////////////////////////////////////////////////////////////////////////////////
 class TBootstrap
 {
     ITimerPtr Timer;
@@ -65,9 +43,6 @@ class TBootstrap
     TClientAppConfigPtr Config;
 
     IBlockStorePtr Client;
-
-    TTestSessionSwitcherPtr SessionSwitcher =
-        std::make_shared<TTestSessionSwitcher>();
 
     ISessionPtr Session;
 
@@ -84,19 +59,19 @@ public:
         , Config(std::make_shared<TClientAppConfig>())
         , Client(std::move(client))
         , Session(CreateSession(
-              Timer,
-              Scheduler,
-              Logging,
-              CreateRequestStatsStub(),
-              CreateVolumeStatsStub(),
-              Client,
-              Config,
-              TSessionConfig{
-                  .DiskId = DefaultDiskId,
-                  .MountToken = DefaultMountToken,
-                  .ClientVersionInfo = std::move(clientVersionInfo),
-                  .MountSeqNumber = mountSeqNumber},
-              SessionSwitcher))
+            Timer,
+            Scheduler,
+            Logging,
+            CreateRequestStatsStub(),
+            CreateVolumeStatsStub(),
+            Client,
+            Config,
+            TSessionConfig{
+                .DiskId = DefaultDiskId,
+                .MountToken = DefaultMountToken,
+                .ClientVersionInfo = std::move(clientVersionInfo),
+                .MountSeqNumber = mountSeqNumber
+            }))
     {}
 
     void Start()
@@ -157,11 +132,6 @@ public:
     ISession* GetSession()
     {
         return Session.get();
-    }
-
-    TTestSessionSwitcher& GetSessionSwitcher()
-    {
-        return *SessionSwitcher;
     }
 };
 
@@ -351,9 +321,6 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         {
             auto res = session->MountVolume().GetValueSync();
             UNIT_ASSERT_C(!HasError(res), res);
-            UNIT_ASSERT_VALUES_EQUAL(
-                0ul,
-                bootstrap->GetSessionSwitcher().Switches.size());
         }
 
         {
@@ -1847,146 +1814,6 @@ Y_UNIT_TEST_SUITE(TSessionTest)
             UNIT_ASSERT(
                 res.GetError().GetFlags() ==
                 NCloud::NProto::EF_HW_PROBLEMS_DETECTED);
-        }
-
-        bootstrap->Stop();
-    }
-
-    Y_UNIT_TEST(ShouldSwitchSessionIfMountContainsPrincipalDiskId)
-    {
-        auto client = std::make_shared<TTestService>();
-
-        size_t sessionNum = 0;
-        client->MountVolumeHandler =
-            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
-        {
-            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-            UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
-
-            NProto::TMountVolumeResponse response;
-            response.SetSessionId(ToString(++sessionNum));
-
-            auto& volume = *response.MutableVolume();
-            volume.SetDiskId(request->GetDiskId());
-            volume.SetBlockSize(DefaultBlockSize);
-            volume.SetBlocksCount(DefaultBlocksCount);
-            volume.SetPrincipalDiskId(
-                NStorage::GetNextDiskId(request->GetDiskId()));
-
-            return MakeFuture(response);
-        };
-
-        client->UnmountVolumeHandler =
-            [](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
-        {
-            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-            UNIT_ASSERT_EQUAL(request->GetSessionId(), "2");
-
-            return MakeFuture<NProto::TUnmountVolumeResponse>();
-        };
-
-        auto bootstrap = CreateBootstrap(client);
-
-        auto* session = bootstrap->GetSession();
-
-        bootstrap->Start();
-
-        auto res = session->MountVolume().GetValueSync();
-        UNIT_ASSERT_C(!HasError(res), res);
-        UNIT_ASSERT_EQUAL(sessionNum, 1);
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            1ul,
-            bootstrap->GetSessionSwitcher().Switches.size());
-
-        auto switchInfo = bootstrap->GetSessionSwitcher().Switches[0];
-        UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, switchInfo.DiskId);
-        UNIT_ASSERT_VALUES_EQUAL(
-            NStorage::GetNextDiskId(DefaultDiskId),
-            switchInfo.NewDiskId);
-
-        bootstrap->Stop();
-    }
-
-    Y_UNIT_TEST(ShouldSwitchSessionIfResponseContains_EF_OUTDATED_VOLUME)
-    {
-        auto client = std::make_shared<TTestService>();
-
-        size_t sessionNum = 0;
-        client->MountVolumeHandler =
-            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
-        {
-            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-            UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
-
-            NProto::TMountVolumeResponse response;
-            response.SetSessionId(ToString(++sessionNum));
-
-            auto& volume = *response.MutableVolume();
-            volume.SetDiskId(request->GetDiskId());
-            volume.SetBlockSize(DefaultBlockSize);
-            volume.SetBlocksCount(DefaultBlocksCount);
-
-            return MakeFuture(response);
-        };
-
-        client->UnmountVolumeHandler =
-            [](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
-        {
-            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-            UNIT_ASSERT_EQUAL(request->GetSessionId(), "2");
-
-            return MakeFuture<NProto::TUnmountVolumeResponse>();
-        };
-
-        client->WriteBlocksLocalHandler =
-            [](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
-        {
-            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-            if (request->GetSessionId() == "1") {
-                ui32 flags = 0;
-                SetProtoFlag(flags, NProto::EF_OUTDATED_VOLUME);
-                return MakeFuture<NProto::TWriteBlocksLocalResponse>(
-                    TErrorResponse(
-                        E_BS_INVALID_SESSION,
-                        "reconnect to principal disk",
-                        flags));
-            }
-
-            return MakeFuture<NProto::TWriteBlocksLocalResponse>();
-        };
-
-        auto bootstrap = CreateBootstrap(client);
-
-        auto* session = bootstrap->GetSession();
-
-        bootstrap->Start();
-
-        {
-            auto res = session->MountVolume().GetValueSync();
-            UNIT_ASSERT_C(!HasError(res), res);
-            UNIT_ASSERT_EQUAL(sessionNum, 1);
-        }
-
-        {
-            auto res = WriteBlocks(session);
-            UNIT_ASSERT_C(!HasError(res), res);
-            UNIT_ASSERT_EQUAL(sessionNum, 2);
-
-            UNIT_ASSERT_VALUES_EQUAL(
-                1ul,
-                bootstrap->GetSessionSwitcher().Switches.size());
-
-            auto switchInfo = bootstrap->GetSessionSwitcher().Switches[0];
-            UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, switchInfo.DiskId);
-            UNIT_ASSERT_VALUES_EQUAL(
-                NStorage::GetNextDiskId(DefaultDiskId),
-                switchInfo.NewDiskId);
-        }
-
-        {
-            auto res = session->UnmountVolume().GetValueSync();
-            UNIT_ASSERT_C(!HasError(res), res);
         }
 
         bootstrap->Stop();

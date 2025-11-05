@@ -774,8 +774,7 @@ ISessionPtr TPlugin::CreateSessionIfNeeded(
             VolumeStats,
             clientEndpoint,
             Config,
-            sessionConfig,
-            ISessionSwitcherWeakPtr());
+            sessionConfig);
         volume->state = new TVolume(
             sessionConfig.DiskId,
             session,

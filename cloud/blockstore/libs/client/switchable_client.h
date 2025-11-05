@@ -33,6 +33,16 @@ struct ISwitchableBlockStore: public IBlockStore
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+struct ISessionSwitcher
+{
+    virtual ~ISessionSwitcher() = default;
+
+    virtual void SwitchSession(
+        const TString& diskId,
+        const TString& newDiskId) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 // ISwitchableBlockStore is used for dynamic switching between clients. By
 // default, all requests are sent to the first client. After switching to the
@@ -45,6 +55,7 @@ struct ISwitchableBlockStore: public IBlockStore
 
 ISwitchableBlockStorePtr CreateSwitchableClient(
     ILoggingServicePtr logging,
+    ISessionSwitcherWeakPtr sessionSwitcher,
     TString diskId,
     IBlockStorePtr client);
 
