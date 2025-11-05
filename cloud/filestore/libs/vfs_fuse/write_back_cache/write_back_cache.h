@@ -44,7 +44,8 @@ public:
         ui32 maxWriteRequestSize,
         ui32 maxWriteRequestsCount,
         ui32 maxSumWriteRequestsSize,
-        bool zeroCopyWriteEnabled);
+        bool zeroCopyWriteEnabled,
+        bool disableValidationAsserts);
 
     ~TWriteBackCache();
 

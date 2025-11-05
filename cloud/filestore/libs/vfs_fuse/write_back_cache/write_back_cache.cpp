@@ -93,6 +93,28 @@ struct TFlushConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBufferWriter
+{
+    const std::span<char> TargetBuffer;
+    size_t ByteCount = 0;
+
+    explicit TBufferWriter(std::span<char> targetBuffer)
+        : TargetBuffer(targetBuffer)
+    {}
+
+    [[nodiscard]] bool Append(TStringBuf buffer)
+    {
+        if (buffer.size() > TargetBuffer.size() - ByteCount) {
+            return false;
+        }
+        buffer.copy(TargetBuffer.data() + ByteCount, buffer.size());
+        ByteCount += buffer.size();
+        return true;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TError ValidateReadDataRequest(
     const NProto::TReadDataRequest& request,
     const TString& expectedFileSystemId)
@@ -134,17 +156,39 @@ NProto::TError ValidateWriteDataRequest(
                 request.GetFileSystemId().c_str()));
     }
 
-    if (request.GetBufferOffset() == request.GetBuffer().size()) {
-        return MakeError(E_ARGUMENT, "WriteData request has zero length");
-    }
+    if (request.GetIovecs().empty()) {
+        if (request.GetBufferOffset() == request.GetBuffer().size()) {
+            return MakeError(E_ARGUMENT, "WriteData request has zero length");
+        }
 
-    if (request.GetBufferOffset() > request.GetBuffer().size()) {
-        return MakeError(
-            E_ARGUMENT,
-            Sprintf(
-                "WriteData request BufferOffset %u > buffer size %lu",
-                request.GetBufferOffset(),
-                request.GetBuffer().size()));
+        if (request.GetBufferOffset() > request.GetBuffer().size()) {
+            return MakeError(
+                E_ARGUMENT,
+                Sprintf(
+                    "WriteData request BufferOffset %u > buffer size %lu",
+                    request.GetBufferOffset(),
+                    request.GetBuffer().size()));
+        }
+    } else {
+        if (request.GetBufferOffset()) {
+            return MakeError(
+                E_ARGUMENT,
+                "WriteData request BufferOffset is not compatible with Iovecs");
+        }
+
+        if (request.GetBuffer()) {
+            return MakeError(
+                E_ARGUMENT,
+                "WriteData request Buffer is not compatible with Iovecs");
+        }
+
+        for (const auto& iovec: request.GetIovecs()) {
+            if (iovec.GetLength() == 0) {
+                return MakeError(
+                    E_ARGUMENT,
+                    "WriteData request contains an Iovec with zero length");
+            }
+        }
     }
 
     return {};
@@ -360,6 +404,7 @@ private:
     const TLog Log;
     const TString LogTag;
     const TString FileSystemId;
+    const bool DisableValidationAsserts = false;
 
     // All fields below should be protected by this lock
     TMutex Lock;
@@ -402,7 +447,8 @@ public:
             const TString& clientId,
             const TString& filePath,
             ui64 capacityBytes,
-            TFlushConfig flushConfig)
+            TFlushConfig flushConfig,
+            bool disableValidationAsserts)
         : Session(std::move(session))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
@@ -412,6 +458,7 @@ public:
         , LogTag(
             Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
         , FileSystemId(fileSystemId)
+        , DisableValidationAsserts(disableValidationAsserts)
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
         // File ring buffer should be able to store any valid TWriteDataRequest.
@@ -609,24 +656,30 @@ public:
 
         auto error = ValidateWriteDataRequest(*request, FileSystemId);
         if (HasError(error)) {
-            Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
+            Y_DEBUG_ABORT_UNLESS(
+                DisableValidationAsserts,
+                "%s",
+                error.GetMessage().c_str());
             NProto::TWriteDataResponse response;
             *response.MutableError() = error;
             return MakeFuture(std::move(response));
         }
 
         auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
-        auto serializedSize = entry->GetSerializedSize();
+
+        const auto nodeId = entry->GetNodeId();
+        const auto offset = entry->Offset();
+        const auto end = entry->End();
+
+        Y_ABORT_UNLESS(offset < end);
+
+        const auto serializedSize = entry->GetSerializedSize();
 
         Y_ABORT_UNLESS(
             serializedSize <= CachedEntriesPersistentQueue.MaxAllocationSize(),
             "Serialized request size %lu is expected to be <= %lu",
             serializedSize,
             CachedEntriesPersistentQueue.MaxAllocationSize());
-
-        auto nodeId = entry->GetNodeId();
-        auto offset = entry->Offset();
-        auto end = entry->End();
 
         auto unlocker =
             [ptr = weak_from_this(), nodeId, offset, end](const auto&)
@@ -1394,7 +1447,8 @@ TWriteBackCache::TWriteBackCache(
         ui32 maxWriteRequestSize,
         ui32 maxWriteRequestsCount,
         ui32 maxSumWriteRequestsSize,
-        bool zeroCopyWriteEnabled)
+        bool zeroCopyWriteEnabled,
+        bool disableValidationAsserts)
     : Impl(
         new TImpl(
             std::move(session),
@@ -1411,7 +1465,8 @@ TWriteBackCache::TWriteBackCache(
              .MaxWriteRequestSize = maxWriteRequestSize,
              .MaxWriteRequestsCount = maxWriteRequestsCount,
              .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
-             .ZeroCopyWriteEnabled = zeroCopyWriteEnabled}))
+             .ZeroCopyWriteEnabled = zeroCopyWriteEnabled},
+            disableValidationAsserts))
 {
     Impl->ScheduleAutomaticFlushIfNeeded();
 }
@@ -1506,7 +1561,7 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
 
 size_t TWriteBackCache::TWriteDataEntry::GetSerializedSize() const
 {
-    return sizeof(TCachedWriteDataRequest) + GetBuffer().size();
+    return sizeof(TCachedWriteDataRequest) + GetByteCount();
 }
 
 void TWriteBackCache::TWriteDataEntry::SetPending(TImpl* impl)
@@ -1529,26 +1584,47 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
         sizeof(TCachedWriteDataRequest),
         allocation.size());
 
-    auto buffer = GetBuffer();
-
     auto* cachedRequest =
         reinterpret_cast<TCachedWriteDataRequest*>(allocation.data());
 
     cachedRequest->NodeId = PendingRequest->GetNodeId();
     cachedRequest->Handle = PendingRequest->GetHandle();
     cachedRequest->Offset = PendingRequest->GetOffset();
-    cachedRequest->Length = buffer.size();
+    cachedRequest->Length = 0;
 
-    allocation = allocation.subspan(sizeof(TCachedWriteDataRequest));
+    TBufferWriter writer(allocation.subspan(sizeof(TCachedWriteDataRequest)));
+
+    if (PendingRequest->GetIovecs().empty()) {
+        auto buffer = TStringBuf(PendingRequest->GetBuffer())
+                       .Skip(PendingRequest->GetBufferOffset());
+        Y_ABORT_UNLESS(
+            writer.Append(buffer),
+            "Allocated buffer is too small to store WriteData request buffer, "
+            "expected size: at least %lu, actual: %lu",
+            sizeof(TCachedWriteDataRequest) + buffer.size(),
+            allocation.size());
+    } else {
+        for (const auto& iovec: PendingRequest->GetIovecs()) {
+            auto buffer = TStringBuf(
+                reinterpret_cast<const char*>(iovec.GetBase()),
+                iovec.GetLength());
+            Y_ABORT_UNLESS(
+                writer.Append(buffer),
+                "Allocated buffer is too small to store WriteData request "
+                "buffer, expected size: at least %lu, actual: %lu",
+                sizeof(TCachedWriteDataRequest) + writer.ByteCount +
+                    buffer.size(),
+                allocation.size());
+        }
+    }
 
     Y_ABORT_UNLESS(
-        buffer.size() <= allocation.size(),
-        "Allocated buffer is too small to store WriteData request buffer, "
-        "expected size: at least %lu, actual: %lu",
-        sizeof(TCachedWriteDataRequest) + buffer.size(),
-        sizeof(TCachedWriteDataRequest) + allocation.size());
+        writer.ByteCount <= Max<ui32>(),
+        "WriteData request buffer size (%lu) exceeds the limit (%u)",
+        writer.ByteCount,
+        Max<ui32>());
 
-    buffer.copy(allocation.data(), buffer.size());
+    cachedRequest->Length = writer.ByteCount;
 
     CachedRequest = cachedRequest;
     PendingRequest.reset();

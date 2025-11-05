@@ -1028,7 +1028,8 @@ private:
                         Config->GetWriteBackCacheFlushMaxWriteRequestSize(),
                         Config->GetWriteBackCacheFlushMaxWriteRequestsCount(),
                         Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
-                        FileSystemConfig->GetZeroCopyWriteEnabled()
+                        FileSystemConfig->GetZeroCopyWriteEnabled(),
+                        /* disableValidationAsserts = */ false
                     );
                     WriteBackCacheInitialized = true;
                 } else {

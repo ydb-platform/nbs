@@ -222,7 +222,7 @@ size_t TWriteBackCache::TUtil::CalculateEntriesCountToFlush(
     for (size_t i = 0; i < entries.size(); i++) {
         const auto* entry = entries[i];
 
-        ui64 bufferSize = entry->GetBuffer().Size();
+        ui64 bufferSize = entry->GetByteCount();
         Y_ABORT_UNLESS(bufferSize > 0);
 
         intervalSet.Add(entry->Offset(), entry->End());
