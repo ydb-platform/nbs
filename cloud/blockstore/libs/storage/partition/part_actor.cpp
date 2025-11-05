@@ -1083,6 +1083,9 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvForcedCompactionCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvGetChangedBlocksCompleted);
+        IgnoreFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted);
+        IgnoreFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest);
 
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
