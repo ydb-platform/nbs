@@ -28,6 +28,12 @@ namespace {
 
 class TMirrorCheckRangeActor final: public TCheckRangeActor
 {
+    bool ErrorOnReplicaReading{false};
+    uint32_t ResponseCount{0};
+    TVector<TString> ReplicasNames;
+    TVector<ui32> ReplicasSummaryChecksums;
+    NCloud::NBlockStore::NProto::TCheckRangeResponse Response;
+
 public:
     using TCheckRangeActor::TCheckRangeActor;
     template <typename... TArgs>
@@ -37,20 +43,10 @@ public:
     {}
 
     void Bootstrap(const TActorContext& ctx) override;
+
 protected:
     STFUNC(StateWork);
-    void SendReadBlocksRequest(const TActorContext& ctx) override;
-
-    void HandleReadBlocksResponse(
-        const TEvService::TEvReadBlocksLocalResponse::TPtr&,
-        const NActors::TActorContext&) override
-    {}
-    void HandleReadBlocksResponseError(
-        const TEvService::TEvReadBlocksLocalResponse::TPtr&,
-        const TActorContext&,
-        const ::NCloud::NProto::TError&,
-        NProto::TError*) override
-    {}
+    void SendReadBlocksRequest(const TActorContext& ctx);
     void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -64,11 +60,6 @@ private:
         const ::NCloud::NProto::TError& error);
     static ui32 GetReplicaIdx(
         const TEvService::TEvReadBlocksResponse::TPtr& ev);
-
-    uint32_t ResponseCount{0};
-    TVector<TString> ReplicasNames;
-    TVector<ui32> ReplicasSummaryChecksums;
-    NCloud::NBlockStore::NProto::TCheckRangeResponse Response;
 };
 
 void TMirrorCheckRangeActor::Bootstrap(const TActorContext& ctx)
@@ -124,7 +115,8 @@ void TMirrorCheckRangeActor::HandleReadBlocksResponseError(
         "reading error has been occurred: " << FormatError(error));
 
     // 1 result error for all replicas
-    Response.MutableStatus()->SetCode(E_REJECTED);
+    ErrorOnReplicaReading = true;
+    Response.MutableStatus()->SetCode(error.GetCode());
     *Response.MutableStatus()->MutableMessage() +=
         ReplicasNames[GetReplicaIdx(ev)] + " ";
 }
@@ -144,23 +136,13 @@ void TMirrorCheckRangeActor::CalculateChecksums(
     mirrorChecksums.SetReplicaName(std::move(ReplicasNames[replicaIdx]));
 
     TBlockChecksum summaryChecksum;
-    ui32 summaryChecksumInt{};
-    if (ev->Get()->Record.HasChecksum()) {
-        summaryChecksumInt = ev->Get()->Record.GetChecksum().GetChecksum();
-        for (const auto& buffer: ev->Get()->Record.GetBlocks().GetBuffers()) {
-            replicaChecksums->Add(
-                TBlockChecksum().Extend(buffer.data(), buffer.size()));
-        }
-    } else {
-        for (const auto& buffer: ev->Get()->Record.GetBlocks().GetBuffers()) {
-            summaryChecksum.Extend(buffer.data(), buffer.size());
-            replicaChecksums->Add(
-                TBlockChecksum().Extend(buffer.data(), buffer.size()));
-        }
-        summaryChecksumInt = summaryChecksum.GetValue();
+    for (const auto& buffer: ev->Get()->Record.GetBlocks().GetBuffers()) {
+        summaryChecksum.Extend(buffer.data(), buffer.size());
+        replicaChecksums->Add(
+            TBlockChecksum().Extend(buffer.data(), buffer.size()));
     }
 
-    ReplicasSummaryChecksums[replicaIdx] = summaryChecksumInt;
+    ReplicasSummaryChecksums[replicaIdx] = summaryChecksum.GetValue();
 }
 
 void TMirrorCheckRangeActor::HandleReadBlocksResponse(
@@ -187,13 +169,20 @@ void TMirrorCheckRangeActor::Done(const NActors::TActorContext& ctx)
         std::ranges::adjacent_find(
             ReplicasSummaryChecksums,
             std::not_equal_to{}) == std::ranges::end(ReplicasSummaryChecksums);
-    if (checksumsEqual) {
+    if (!ErrorOnReplicaReading && checksumsEqual) {
         *Response.MutableChecksums() =
             std::move((*Response.MutableMirrorChecksums())[0].GetChecksums());
         Response.ClearMirrorChecksums();
     } else {
         Response.ClearChecksums();
-        Response.MutableStatus()->SetCode(E_REJECTED);
+        if (!ErrorOnReplicaReading) {
+            ui32 flags = 0;
+            SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+            *Response.MutableStatus() = MakeError(
+                E_IO,
+                "Replicas checksum mismatch",
+                flags);
+        } // else using error that we have already
     }
 
     response->Record = std::move(Response);

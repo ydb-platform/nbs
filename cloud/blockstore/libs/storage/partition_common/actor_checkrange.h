@@ -42,16 +42,16 @@ protected:
         const NActors::TActorContext& ctx,
         std::unique_ptr<TEvVolume::TEvCheckRangeResponse>);
 
-    virtual void HandleReadBlocksResponse(
+    void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
-    virtual void HandleReadBlocksResponseError(
+    void HandleReadBlocksResponseError(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx,
         const ::NCloud::NProto::TError &error,
         NProto::TError *responseStatus);
 
-    virtual void SendReadBlocksRequest(const NActors::TActorContext& ctx);
+    void SendReadBlocksRequest(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);

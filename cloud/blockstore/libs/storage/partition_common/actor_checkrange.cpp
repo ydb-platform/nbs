@@ -1,6 +1,7 @@
 #include "actor_checkrange.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/error.pb.h>
@@ -57,7 +58,7 @@ void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
     request->Record.ShouldReportFailedRangesOnFailure = true;
 
     auto* headers = request->Record.MutableHeaders();
-    headers->SetClientId("checkrange");
+    headers->SetClientId(TString(CheckRangeClientId));
     headers->SetIsBackgroundRequest(true);
 
     NCloud::Send(ctx, Partition, std::move(request));

@@ -2685,7 +2685,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         const auto& record = response->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, record.GetStatus().code());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, record.GetStatus().GetCode());
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+        UNIT_ASSERT_VALUES_UNEQUAL(flags, record.GetStatus().flags());
         UNIT_ASSERT_VALUES_EQUAL(0, record.GetChecksums().size());
 
         ui32 EmptyCheksumsCnt{0};
@@ -2700,6 +2703,50 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(replicaCount - 1, NonEmptyCheksumsCnt);
         UNIT_ASSERT_VALUES_EQUAL(1, EmptyCheksumsCnt);
+    }
+
+    Y_UNIT_TEST(ShouldMirrorCheckRangeOneReplicaDifferent)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        constexpr ui32 blocksCount = 1024;
+        const ui32 replicaCount = env.ReplicaActors.size();
+        const auto range = TBlockRange64::WithLength(0, blocksCount);
+        TPartitionClient client(runtime, env.ActorId);
+        client.WriteBlocks(
+            range,
+            1);
+        env.WriteReplica(1, range, 42);
+        auto response = client.CheckRange("disk-id", 0, blocksCount);
+        const auto& record = response->Record;
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, record.GetStatus().code());
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
+        UNIT_ASSERT_VALUES_EQUAL(flags, record.GetStatus().flags());
+        UNIT_ASSERT_VALUES_EQUAL(0, record.GetChecksums().size());
+
+        ui32 EmptyCheksumsCnt{0};
+        ui32 NonEmptyCheksumsCnt{0};
+        for (const auto& cs: record.GetMirrorChecksums()) {
+            if (cs.GetChecksums().size()) {
+                ++NonEmptyCheksumsCnt;
+            } else {
+                ++EmptyCheksumsCnt;
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(replicaCount, NonEmptyCheksumsCnt);
+        UNIT_ASSERT_VALUES_EQUAL(0, EmptyCheksumsCnt);
+        int equalsChecksums{0};
+        {
+            const auto &cs0 = record.GetMirrorChecksums()[0].GetChecksums();
+            const auto &cs1 = record.GetMirrorChecksums()[1].GetChecksums();
+            const auto &cs2 = record.GetMirrorChecksums()[2].GetChecksums();
+            equalsChecksums += std::equal(cs0.begin(), cs0.end(), cs1.begin(), cs1.end());
+            equalsChecksums += std::equal(cs0.begin(), cs0.end(), cs2.begin(), cs2.end());
+            equalsChecksums += std::equal(cs1.begin(), cs1.end(), cs2.begin(), cs2.end());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, equalsChecksums);
     }
 
     Y_UNIT_TEST(ShouldLockAndDrainRangeForWriteIO)
