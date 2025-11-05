@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	snapshots_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/config"
@@ -19,6 +20,7 @@ func RegisterForExecution(
 	taskScheduler tasks.Scheduler,
 	storage resources.Storage,
 	nbsFactory nbs.Factory,
+	cellSelector cells.CellSelector,
 ) error {
 
 	deletedSnapshotExpirationTimeout, err := time.ParseDuration(
@@ -37,9 +39,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("snapshots.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
-			scheduler:  taskScheduler,
-			storage:    storage,
-			nbsFactory: nbsFactory,
+			scheduler:    taskScheduler,
+			storage:      storage,
+			nbsFactory:   nbsFactory,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {
