@@ -1,5 +1,0 @@
-RECURSE(
-    lib
-    sdk
-    tools
-)

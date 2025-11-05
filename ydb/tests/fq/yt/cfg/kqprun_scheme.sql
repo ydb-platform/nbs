@@ -1,5 +1,0 @@
-CREATE EXTERNAL DATA SOURCE plato WITH (
-    SOURCE_TYPE="YT",
-    LOCATION="localhost",
-    AUTH_METHOD="NONE"
-);

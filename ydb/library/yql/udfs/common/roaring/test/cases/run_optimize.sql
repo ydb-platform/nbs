@@ -1,1 +1,0 @@
-SELECT Roaring::Uint32List(Roaring::RunOptimize(Roaring::FromUint32List(AsList(10, 567, 42)))) AS RunOptimizeList;

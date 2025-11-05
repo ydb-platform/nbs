@@ -1,3 +1,0 @@
-RECURSE(
-    protobuf_plugin
-)

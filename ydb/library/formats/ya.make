@@ -1,9 +1,0 @@
-RECURSE(
-    arrow
-)
-
-LIBRARY()
-
-YQL_LAST_ABI_VERSION()
-
-END()

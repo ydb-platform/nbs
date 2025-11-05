@@ -1,4 +1,0 @@
-RECURSE(
-    perf
-    surg
-)
