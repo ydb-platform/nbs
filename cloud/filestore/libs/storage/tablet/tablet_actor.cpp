@@ -1348,8 +1348,11 @@ bool TIndexTabletActor::HasBlocksLeft(ui64 blocksRequired) const
         Y_ASSERT(
             Metrics.AggregateUsedBytesCount >= 0 &&
             Metrics.TotalBytesCount >= 0);
-        if (static_cast<ui64>(Metrics.AggregateUsedBytesCount) +
-                blocksRequired * GetBlockSize() >
+        const ui64 usedBytes = Max<ui64>(
+            static_cast<ui64>(Metrics.AggregateUsedBytesCount),
+            GetUsedBlocksCount() * GetBlockSize());
+        const ui64 requiredBytes = blocksRequired * GetBlockSize();
+        if (usedBytes + requiredBytes >
             static_cast<ui64>(Metrics.TotalBytesCount))
         {
             return false;
