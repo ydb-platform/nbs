@@ -146,13 +146,13 @@ TFuture<NProto::TDescribeVolumeResponse> TMultiCellDescribeHandler::Start(
             if (!cell.CellId.empty()) {
                 STORAGE_DEBUG(
                     TStringBuilder()
-                        << "Send remote Describe Request to " << host.Fqdn
-                        << " for volume " << Request.GetDiskId());
+                    << "Send remote Describe Request to " << host.Fqdn
+                    << " for volume " << Request.GetDiskId());
             } else {
                 STORAGE_DEBUG(
                     TStringBuilder()
-                        << "Send local Describe Request for volume "
-                        << Request.GetDiskId());
+                    << "Send local Describe Request for volume "
+                    << Request.GetDiskId());
             }
 
             auto handler = std::make_shared<TDescribeResponseHandler>(
@@ -296,10 +296,12 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
         if (volume.GetTags().contains(SourceDiskIdTagName)) {
             STORAGE_DEBUG(
                 TStringBuilder()
-                << "DescribeVolume: got success for disk "
+                << "DescribeVolume: got response for disk "
                 << Request.GetDiskId().Quote() << " with source disk id "
                 << volume.GetTags().at(SourceDiskIdTagName).Quote() << " from "
-                << HostInfo.Fqdn);
+                << HostInfo.Fqdn
+                << " but it will be ignored since volume has source disk id "
+                   "tag");
 
             const auto* msg =
                 "DescribeVolume response ignored since volume has source disk "
@@ -330,9 +332,8 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
 
     STORAGE_DEBUG(
         TStringBuilder() << "DescribeVolume: got error "
-            << response.GetError().GetMessage().Quote()
-            << " from "
-            << HostInfo.Fqdn);
+                         << response.GetError().GetMessage().Quote() << " from "
+                         << HostInfo.Fqdn);
 
     if (EErrorKind::ErrorRetriable != GetErrorKind(response.GetError())) {
         auto code = response.GetError().GetCode();
