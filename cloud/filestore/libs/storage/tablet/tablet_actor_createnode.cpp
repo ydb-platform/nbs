@@ -89,6 +89,10 @@ private:
     const ui64 OpLogEntryId;
     TCreateNodeInShardResult Result;
 
+    static constexpr ui32 MaxSyncSessionsAttempts = 10;
+
+    ui32 SyncSessionsAttempts = 0;
+
 public:
     TCreateNodeInShardActor(
         TString logTag,
@@ -316,13 +320,46 @@ void TCreateNodeInShardActor::HandleGetNodeAttrResponse(
             GetNodeAttr(ctx);
             return;
         }
+        if (msg->GetError().GetCode() == E_FS_INVALID_SESSION &&
+            SyncSessionsAttempts < MaxSyncSessionsAttempts)
+        {
+            // It is possible to observe a E_FS_INVALID_SESSION if the shard
+            // tablet was recently restarted and it does not consider the
+            // current session as valid one anymore. To mitigate this, we can
+            // force session recreation using the same mechanism that it uses to
+            // propagate sessions information to shards in ScheduleSyncSessions.
+            //
+            // It is reasonable to expect that MaxSyncSessionsAttempts syncs
+            // should be enough for the session to become valid again. If there
+            // are still invalid session errors after that, then it is
+            // reasonable to propagate the error back to the client and report
+            // the critical event.
+
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s Shard GetNodeAttr failed for %s, %s with error %s"
+                ", recreating session and retrying",
+                LogTag.c_str(),
+                Request.GetFileSystemId().c_str(),
+                Request.GetName().c_str(),
+                FormatError(msg->GetError()).Quote().c_str());
+            ctx.Send(
+                ParentId,
+                new TEvIndexTabletPrivate::TEvSyncSessionsRequest());
+
+            GetNodeAttr(ctx);
+            ++SyncSessionsAttempts;
+            return;
+        }
 
         const auto message = Sprintf(
-            "Shard GetNodeAttr failed for %s, %s with error %s"
-            ", will not retry",
+            "Shard GetNodeAttr failed for %s, %s with error %s, will not "
+            "retry. Original CreateNodeRequest: %s",
             Request.GetFileSystemId().c_str(),
             Request.GetName().c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
+            FormatError(msg->GetError()).Quote().c_str(),
+            Request.ShortUtf8DebugString().Quote().c_str());
 
         LOG_ERROR(
             ctx,
@@ -394,6 +431,8 @@ STFUNC(TCreateNodeInShardActor::StateWork)
 
         HFunc(TEvService::TEvCreateNodeResponse, HandleCreateNodeResponse);
         HFunc(TEvService::TEvGetNodeAttrResponse, HandleGetNodeAttrResponse);
+
+        IgnoreFunc(TEvIndexTabletPrivate::TEvSyncSessionsResponse);
 
         default:
             HandleUnexpectedEvent(

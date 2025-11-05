@@ -5805,6 +5805,113 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
         }
     }
+
+    SERVICE_TEST_SIMPLE(ShouldRestoreSessionAfterShardRestartViaGetNodeAttr)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        TAutoPtr<IEventHandle> getNodeAttrEvent;
+        bool responseFromShardObserved = false;
+        TActorId shardActorId;
+
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+
+                // Intercept CreateNodeResponse from shard
+                if (event->GetTypeRewrite() == TEvService::EvCreateNodeResponse)
+                {
+                    auto* msg =
+                        event
+                            ->template Get<TEvService::TEvCreateNodeResponse>();
+
+                    if (msg->Record.HasNode() &&
+                        ExtractShardNo(msg->Record.GetNode().GetId()) == 1)
+                    {
+                        msg->Record.MutableError()->SetCode(E_FS_EXIST);
+
+                        if (!shardActorId) {
+                            shardActorId = event->Sender;
+                        }
+
+                        responseFromShardObserved = true;
+                    }
+                } else if (
+                    event->GetTypeRewrite() == TEvService::EvGetNodeAttrRequest)
+                {
+                    // Intercept GetNodeAttrRequest
+                    getNodeAttrEvent = event.Release();
+                    return true;
+                }
+                return false;
+            });
+
+        // Create a file - this will go to main tablet, then to shard
+        service.SendCreateNodeRequest(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"));
+
+        TDispatchOptions options;
+        options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+            TEvService::EvCreateNodeResponse,
+            1)};
+        env.GetRuntime().DispatchEvents(options);
+
+        UNIT_ASSERT(responseFromShardObserved);
+        // Now the main filesystem will send a GetNodeAttr request to the shard
+        // to check the created node. We will intercept that request and in the
+        // meantime reboot the shard.
+
+        for (ui32 attempt = 0; attempt < 100 && !getNodeAttrEvent; ++attempt) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT(getNodeAttrEvent);
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+
+        // Restart the shard by sending poison pill to the shard actor
+        {
+            env.GetRuntime().Send(
+                new IEventHandle(
+                    shardActorId,   // recipient
+                    TActorId(),     // sender
+                    new TEvents::TEvPoisonPill(),
+                    0,   // flags
+                    0),
+                nodeIdx);
+                WaitForTabletStart(service);
+        }
+
+        // Resend the GetNodeAttr request
+        env.GetRuntime().Send(getNodeAttrEvent.Release());
+
+        for (ui32 attempt = 0; attempt < 100; ++attempt) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        // Recieve the original CreateNode response
+        auto createResponse = service.RecvCreateNodeResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createResponse->GetError().GetCode(),
+            createResponse->GetError().GetMessage());
+        UNIT_ASSERT(createResponse->Record.HasNode());
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/ReceivedNodeOpErrorFromShard");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
