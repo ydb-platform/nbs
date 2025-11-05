@@ -1,0 +1,28 @@
+#pragma once
+#include "defs.h"
+
+namespace NKikimr {
+namespace NPDisk {
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Cbs gate identifiers
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+enum EGate {
+    GateLog = 0,
+    GateFresh,
+    GateComp,
+    GateFastRead,
+    GateOtherRead,
+    GateLoad,
+    GateHugeAsync,
+    GateHugeUser,
+    GateSyncLog,
+    GateTrim,
+    GateFastOperation,
+    GateLow
+};
+
+} // NPDisk
+} // NKikimr
+

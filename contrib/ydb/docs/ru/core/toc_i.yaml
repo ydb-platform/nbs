@@ -1,0 +1,49 @@
+items:
+- name: Оглавление
+  href: index.yaml
+- name: Начало работы
+  href: quickstart.md
+- name: Концепции
+  include:
+    mode: link
+    path: concepts/toc_p.yaml
+- name: Для DevOps
+  include:
+    mode: link
+    path: devops/toc_p.yaml
+- name: Для разработчиков
+  include:
+    mode: link
+    path: dev/toc_p.yaml
+- name: Для инженеров безопасности
+  include:
+    mode: link
+    path: security/toc_p.yaml
+- name: Для контрибьюторов
+  include:
+    mode: link
+    path: contributor/toc_p.yaml
+- name: Справка
+  include:
+    mode: link
+    path: reference/toc_p.yaml
+- name: Рецепты
+  include:
+    mode: link
+    path: recipes/toc_p.yaml
+- name: Вопросы и ответы
+  include:
+    mode: link
+    path: faq/toc_p.yaml
+- name: Загрузки
+  include:
+    mode: link
+    path: downloads/toc_p.yaml
+- name: Публичные материалы
+  include:
+    mode: link
+    path: public-materials/toc_p.yaml
+- name: Список изменений
+  include:
+    mode: link
+    path: toc_changelog.yaml

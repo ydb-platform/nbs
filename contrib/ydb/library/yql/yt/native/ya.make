@@ -1,0 +1,73 @@
+LIBRARY()
+
+SRCS(
+    GLOBAL plugin.cpp
+    error_helpers.cpp
+    progress_merger.cpp
+    dq_manager.cpp
+)
+
+PEERDIR(
+    contrib/libs/protobuf
+    library/cpp/resource
+    library/cpp/yson
+    library/cpp/yson/node
+    library/cpp/malloc/system
+    yt/cpp/mapreduce/client
+    yt/cpp/mapreduce/common
+    yt/yt/client
+    yt/yt/library/program
+    contrib/ydb/library/yql/ast
+    contrib/ydb/library/yql/sql/pg
+    contrib/ydb/library/yql/parser/pg_wrapper
+    contrib/ydb/library/yql/core/facade
+    contrib/ydb/library/yql/core/file_storage
+    contrib/ydb/library/yql/core/file_storage/proto
+    contrib/ydb/library/yql/core/file_storage/http_download
+    contrib/ydb/library/yql/core/progress_merger
+    contrib/ydb/library/yql/core/services/mounts
+    contrib/ydb/library/yql/core/user_data
+    contrib/ydb/library/yql/minikql
+    contrib/ydb/library/yql/minikql/invoke_builtins/llvm14
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
+    contrib/ydb/library/yql/protos
+    contrib/ydb/library/yql/public/udf/service/exception_policy
+    contrib/ydb/library/yql/utils/backtrace
+    contrib/ydb/library/yql/utils/log
+    contrib/ydb/library/yql/utils/log/proto
+    contrib/ydb/library/yql/providers/common/proto
+    contrib/ydb/library/yql/providers/common/codec
+    contrib/ydb/library/yql/providers/common/udf_resolve
+    contrib/ydb/library/yql/providers/solomon/gateway
+    contrib/ydb/library/yql/providers/solomon/provider
+    contrib/ydb/library/yql/core
+    contrib/ydb/library/yql/core/url_preprocessing
+    contrib/ydb/library/yql/dq/comp_nodes
+    contrib/ydb/library/yql/providers/dq/actors/yt
+    contrib/ydb/library/yql/providers/dq/global_worker_manager
+    contrib/ydb/library/yql/providers/dq/provider
+    contrib/ydb/library/yql/providers/dq/provider/exec
+    contrib/ydb/library/yql/providers/dq/service
+    contrib/ydb/library/yql/providers/dq/stats_collector
+    contrib/ydb/library/yql/providers/dq/worker_manager/interface
+    contrib/ydb/library/yql/providers/yt/gateway/native
+    contrib/ydb/library/yql/providers/yt/codec
+    contrib/ydb/library/yql/providers/yt/codec/codegen
+    contrib/ydb/library/yql/providers/yt/lib/log
+    contrib/ydb/library/yql/providers/yt/lib/res_pull
+    contrib/ydb/library/yql/providers/yt/lib/row_spec
+    contrib/ydb/library/yql/providers/yt/lib/schema
+    contrib/ydb/library/yql/providers/yt/lib/skiff
+    contrib/ydb/library/yql/providers/yt/lib/yt_download
+    contrib/ydb/library/yql/providers/yt/provider
+    contrib/ydb/library/yql/providers/yt/codec/codegen
+    contrib/ydb/library/yql/providers/yt/comp_nodes/dq
+    contrib/ydb/library/yql/providers/yt/comp_nodes/llvm14
+    contrib/ydb/library/yql/providers/yt/dq_task_preprocessor
+
+    contrib/ydb/library/yql/yt
+)
+
+YQL_LAST_ABI_VERSION()
+
+END()

@@ -1,0 +1,35 @@
+{
+    "meta": {
+        "type": "script",
+        "version": "0.2"
+    },
+    "queries": [
+        {
+            "Plan": {
+                "Node Type": "Query",
+                "PlanNodeType": "Query",
+                "Plans": [
+                    {
+                        "Node Type": "ResultSet",
+                        "PlanNodeId": 2,
+                        "PlanNodeType": "ResultSet",
+                        "Plans": [
+                            {
+                                "Node Type": "ConstantExpr",
+                                "Operators": [
+                                    {
+                                        "Inputs": [],
+                                        "Iterator": "[{value: $value}]",
+                                        "Name": "Iterator"
+                                    }
+                                ],
+                                "PlanNodeId": 1
+                            }
+                        ]
+                    }
+                ]
+            },
+            "tables": []
+        }
+    ]
+}
