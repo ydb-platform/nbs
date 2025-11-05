@@ -118,6 +118,8 @@ public:
 
     void Enqueue(ITaskPtr task) override
     {
+        Y_ABORT_UNLESS(AtomicGet(ShouldStop) == 0);
+
         Queue.Enqueue(std::move(task));
 
         if (AllocateWorker()) {
