@@ -8,12 +8,6 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <util/stream/output.h>
-
-Y_DECLARE_OUT_SPEC(, NCloud::NFileStore::NProto::ENodeType, stream, value) {
-    stream <<  NCloud::NFileStore::NProto::ENodeType_Name(value);
-}
-
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -92,8 +86,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             tablet.AssertCreateNodeFailed(TCreateNodeArgs::Link(RootNodeId, name, id));
             tablet.AssertCreateNodeFailed(TCreateNodeArgs::Sock(RootNodeId, name));
             tablet.AssertCreateNodeFailed(TCreateNodeArgs::Fifo(RootNodeId, name));
-            tablet.AssertCreateNodeFailed(TCreateNodeArgs::CharDev(RootNodeId, name));
-            tablet.AssertCreateNodeFailed(TCreateNodeArgs::BlockDev(RootNodeId, name));
+            tablet.AssertCreateNodeFailed(
+                TCreateNodeArgs::CharDev(RootNodeId, name));
+            tablet.AssertCreateNodeFailed(
+                TCreateNodeArgs::BlockDev(RootNodeId, name));
 
             tablet.AssertCreateHandleFailed(RootNodeId, name, TCreateHandleArgs::CREATE);
             tablet.AssertRenameNodeFailed(RootNodeId, "test", RootNodeId, name);
@@ -231,13 +227,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
-        auto id1 = CreateNode(tablet, TCreateNodeArgs::CharDev(RootNodeId, "test1", 0, makedev(4, 1)));
+        auto id1 = CreateNode(
+            tablet,
+            TCreateNodeArgs::CharDev(RootNodeId, "test1", 0, makedev(4, 1)));
         tablet.AccessNode(id1);
 
         auto stat = tablet.GetNodeAttr(id1)->Record.GetNode();
         UNIT_ASSERT_VALUES_EQUAL(major(stat.GetDevId()), 4);
         UNIT_ASSERT_VALUES_EQUAL(minor(stat.GetDevId()), 1);
-        UNIT_ASSERT_VALUES_EQUAL(static_cast<NProto::ENodeType>(stat.GetType()), NProto::E_CHARDEV_NODE);
+        UNIT_ASSERT_EQUAL(
+            static_cast<NProto::ENodeType>(stat.GetType()),
+            NProto::E_CHARDEV_NODE);
     }
 
     Y_UNIT_TEST(ShouldCreateBlockDevNode)
@@ -251,13 +251,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
-        auto id1 = CreateNode(tablet, TCreateNodeArgs::BlockDev(RootNodeId, "test1", 0, makedev(4, 1)));
+        auto id1 = CreateNode(
+            tablet,
+            TCreateNodeArgs::BlockDev(RootNodeId, "test1", 0, makedev(4, 1)));
         tablet.AccessNode(id1);
 
         auto stat = tablet.GetNodeAttr(id1)->Record.GetNode();
         UNIT_ASSERT_VALUES_EQUAL(major(stat.GetDevId()), 4);
         UNIT_ASSERT_VALUES_EQUAL(minor(stat.GetDevId()), 1);
-        UNIT_ASSERT_VALUES_EQUAL(static_cast<NProto::ENodeType>(stat.GetType()), NProto::E_BLOCKDEV_NODE);
+        UNIT_ASSERT_EQUAL(
+            static_cast<NProto::ENodeType>(stat.GetType()),
+            NProto::E_BLOCKDEV_NODE);
     }
 
     Y_UNIT_TEST(ShouldRemoveNodes)

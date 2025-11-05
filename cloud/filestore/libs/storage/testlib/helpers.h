@@ -169,7 +169,8 @@ struct TCreateNodeArgs
         return args;
     }
 
-    static TCreateNodeArgs CharDev(ui64 parent, const TString& name, ui32 mode = 0, ui64 dev = 0)
+    static TCreateNodeArgs
+    CharDev(ui64 parent, const TString& name, ui32 mode = 0, ui64 dev = 0)
     {
         TCreateNodeArgs args(ENodeType::CharDev, parent, name);
         args.Mode = mode;
@@ -177,7 +178,8 @@ struct TCreateNodeArgs
         return args;
     }
 
-    static TCreateNodeArgs BlockDev(ui64 parent, const TString& name, ui32 mode = 0, ui64 dev = 0)
+    static TCreateNodeArgs
+    BlockDev(ui64 parent, const TString& name, ui32 mode = 0, ui64 dev = 0)
     {
         TCreateNodeArgs args(ENodeType::BlockDev, parent, name);
         args.Mode = mode;
