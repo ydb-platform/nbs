@@ -17,6 +17,7 @@
 #include <util/generic/string.h>
 #include <util/random/random.h>
 #include <util/system/mutex.h>
+#include <util/system/spinlock.h>
 #include <util/system/tempfile.h>
 
 #include <latch>
@@ -990,7 +991,7 @@ struct TStatsCalculator
 class TIntervalLock
 {
 private:
-    TMutex Mutex;
+    TAdaptiveLock Mutex;
     TOverlappingIntervalSet Set;
 
 public:
