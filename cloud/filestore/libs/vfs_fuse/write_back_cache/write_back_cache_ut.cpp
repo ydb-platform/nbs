@@ -16,11 +16,11 @@
 #include <util/generic/hash.h>
 #include <util/generic/string.h>
 #include <util/random/random.h>
+#include <util/system/mutex.h>
 #include <util/system/tempfile.h>
 
 #include <latch>
 #include <memory>
-#include <mutex>
 #include <thread>
 
 namespace NCloud::NFileStore::NFuse {
@@ -58,7 +58,7 @@ void SleepForRandomDurationMs(ui32 maxDurationMs)
 struct TInFlightRequestTracker
 {
     TVector<ui32> InFlightRequests;
-    std::mutex Mutex;
+    TMutex Mutex;
 
     ui32 Count(ui64 offset, ui64 length)
     {
@@ -326,15 +326,15 @@ struct TBootstrap
 
     // Maps nodeId to data
     THashMap<ui64, TString> ExpectedData;
-    std::mutex ExpectedDataMutex;
+    TMutex ExpectedDataMutex;
 
     // Maps nodeId to data
     THashMap<ui64, TString> UnflushedData;
-    std::mutex UnflushedDataMutex;
+    TMutex UnflushedDataMutex;
 
     // Maps nodeId to data
     THashMap<ui64, TString> FlushedData;
-    std::mutex FlushedDataMutex;
+    TMutex FlushedDataMutex;
 
     // Ensures that the data is not flushed twice, does not work well with cache
     // recreation because after recreation, the data may be flushed again
@@ -990,7 +990,7 @@ struct TStatsCalculator
 class TIntervalLock
 {
 private:
-    std::mutex Mutex;
+    TMutex Mutex;
     TOverlappingIntervalSet Set;
 
 public:
