@@ -6,11 +6,11 @@
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
 
-#include <contrib/libs/grpc/include/grpcpp/client_context.h>
 #include <contrib/libs/grpc/include/grpcpp/channel.h>
-#include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/create_channel.h>
-#include <contrib/libs/grpc/include/grpcpp/support/async_unary_call.h>
+#include <contrib/libs/grpc/include/grpcpp/impl/codegen/async_unary_call.h>
+#include <contrib/libs/grpc/include/grpcpp/impl/codegen/client_context.h>
+#include <contrib/libs/grpc/include/grpcpp/impl/codegen/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/status.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
 

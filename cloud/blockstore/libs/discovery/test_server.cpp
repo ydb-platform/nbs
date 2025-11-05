@@ -5,7 +5,7 @@
 
 #include <cloud/blockstore/public/api/grpc/service.grpc.pb.h>
 
-#include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
+#include <contrib/libs/grpc/include/grpcpp/impl/codegen/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/status.h>
 #include <contrib/libs/grpc/include/grpcpp/security/server_credentials.h>
 #include <contrib/libs/grpc/include/grpcpp/server.h>
