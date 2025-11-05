@@ -37,6 +37,11 @@ NProto::TError ValidateRequest(const NProto::TCreateNodeRequest& request)
         }
     }
 
+    // TODO(#4541): support char/block device nodes with kikimr backend
+    if (request.HasBlockDevice() || request.HasCharDevice()) {
+        return ErrorNotSupported();
+    }
+
     return {};
 }
 

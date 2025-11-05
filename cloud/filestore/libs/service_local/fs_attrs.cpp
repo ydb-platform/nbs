@@ -81,7 +81,7 @@ NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
         return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
     }
 
-    TFileStat stat;
+    NLowLevel::TFileStatEx stat;
     if (const auto& name = request.GetName()) {
         stat = node->Stat(name);
         if (!session->LookupNode(stat.INode)) {
