@@ -1345,16 +1345,19 @@ bool TIndexTabletActor::HasBlocksLeft(ui64 blocksRequired) const
     } else {
         // A new way to count available space that always takes into account the
         // byte count aggregated by all shards.
-        Y_ASSERT(
-            Metrics.AggregateUsedBytesCount >= 0 &&
-            Metrics.TotalBytesCount >= 0);
-        const ui64 usedBytes = Max<ui64>(
-            static_cast<ui64>(Metrics.AggregateUsedBytesCount),
-            GetUsedBlocksCount() * GetBlockSize());
+        TABLET_VERIFY(Metrics.AggregateUsedBytesCount >= 0);
+        TABLET_VERIFY(Metrics.TotalBytesCount >= 0);
+        const ui64 aggregateBytes =
+            static_cast<ui64>(Max<i64>(0, Metrics.AggregateUsedBytesCount));
+        const ui64 totalBytes =
+            static_cast<ui64>(Max<i64>(0, Metrics.TotalBytesCount));
+        // It makes sense for shardless filesystems, as it eliminates 15s delay
+        // in AggregateUsedBytesCount calculation.
+        const ui64 usedBytes =
+            Max<ui64>(aggregateBytes, GetUsedBlocksCount() * GetBlockSize());
         const ui64 requiredBytes = blocksRequired * GetBlockSize();
-        if (usedBytes + requiredBytes >
-            static_cast<ui64>(Metrics.TotalBytesCount))
-        {
+
+        if (usedBytes + requiredBytes > totalBytes) {
             return false;
         }
     }
