@@ -86,6 +86,7 @@ struct TFlushConfig
     ui32 MaxWriteRequestSize = 0;
     ui32 MaxWriteRequestsCount = 0;
     ui32 MaxSumWriteRequestsSize = 0;
+    bool ZeroCopyWriteEnabled = false;
 };
 
 }   // namespace
@@ -209,27 +210,26 @@ public:
         return RemainingSize;
     }
 
-    TString Read(ui64 bytesCount)
+    TString Read(ui64 maxBytesToRead)
     {
-        Y_ENSURE(
-            bytesCount <= RemainingSize,
-            "Trying to read more data ("
-                << bytesCount << ") than is remaining (" << RemainingSize
-                << ")");
+        auto bytesToRead = Min(RemainingSize, maxBytesToRead);
+        if (bytesToRead == 0) {
+            return {};
+        }
 
-        TString buffer(bytesCount, 0);
+        TString buffer(bytesToRead, 0);
 
-        while (bytesCount > 0) {
-            auto part = TryReadInPlace(bytesCount);
-            Y_ABORT_UNLESS(part.size() > 0 && part.size() <= bytesCount);
-            part.copy(buffer.vend() - bytesCount, part.size());
-            bytesCount -= part.size();
+        while (bytesToRead > 0) {
+            auto part = ReadInPlace(bytesToRead);
+            Y_ABORT_UNLESS(part.size() > 0 && part.size() <= bytesToRead);
+            part.copy(buffer.vend() - bytesToRead, part.size());
+            bytesToRead -= part.size();
         }
 
         return buffer;
     }
 
-    TStringBuf TryReadInPlace(ui64 bytesCount)
+    TStringBuf ReadInPlace(ui64 maxBytesToRead)
     {
         if (RemainingSize == 0) {
             return {};
@@ -243,7 +243,8 @@ public:
             Y_ABORT_UNLESS(Current->Length > 0);
         }
 
-        const auto len = Min(Current->Length - CurrentReadOffset, bytesCount);
+        const auto len =
+            Min(Current->Length - CurrentReadOffset, maxBytesToRead);
         const char* data = Current->Source->GetBuffer().data() +
                            Current->OffsetInSource + CurrentReadOffset;
 
@@ -602,17 +603,22 @@ public:
                 request->SetHandle(handle);
                 request->SetOffset(reader.GetOffset());
 
-                auto remainingBytes = FlushConfig.MaxWriteRequestSize;
-                while (remainingBytes > 0) {
-                    auto part = reader.TryReadInPlace(remainingBytes);
-                    if (part.empty()) {
-                        break;
+                if (FlushConfig.ZeroCopyWriteEnabled) {
+                    auto remainingBytes = FlushConfig.MaxWriteRequestSize;
+                    while (remainingBytes > 0) {
+                        auto part = reader.ReadInPlace(remainingBytes);
+                        if (part.empty()) {
+                            break;
+                        }
+                        Y_ABORT_UNLESS(part.size() <= remainingBytes);
+                        remainingBytes -= part.size();
+                        auto* iovec = request->AddIovecs();
+                        iovec->SetBase(reinterpret_cast<ui64>(part.data()));
+                        iovec->SetLength(part.size());
                     }
-                    Y_ABORT_UNLESS(part.size() <= remainingBytes);
-                    remainingBytes -= part.size();
-                    auto* iovec = request->AddIovecs();
-                    iovec->SetBase(reinterpret_cast<ui64>(part.data()));
-                    iovec->SetLength(part.size());
+                } else {
+                    request->SetBuffer(
+                        reader.Read(FlushConfig.MaxWriteRequestSize));
                 }
 
                 res.push_back(std::move(request));
@@ -1270,7 +1276,8 @@ TWriteBackCache::TWriteBackCache(
         TDuration flushRetryPeriod,
         ui32 maxWriteRequestSize,
         ui32 maxWriteRequestsCount,
-        ui32 maxSumWriteRequestsSize)
+        ui32 maxSumWriteRequestsSize,
+        bool zeroCopyWriteEnabled)
     : Impl(
         new TImpl(
             std::move(session),
@@ -1283,7 +1290,8 @@ TWriteBackCache::TWriteBackCache(
              .FlushRetryPeriod = flushRetryPeriod,
              .MaxWriteRequestSize = maxWriteRequestSize,
              .MaxWriteRequestsCount = maxWriteRequestsCount,
-             .MaxSumWriteRequestsSize = maxSumWriteRequestsSize}))
+             .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
+             .ZeroCopyWriteEnabled = zeroCopyWriteEnabled}))
 {
     Impl->ScheduleAutomaticFlushIfNeeded();
 }

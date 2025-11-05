@@ -39,7 +39,8 @@ public:
         TDuration flushRetryPeriod,
         ui32 maxWriteRequestSize,
         ui32 maxWriteRequestsCount,
-        ui32 maxSumWriteRequestsSize);
+        ui32 maxSumWriteRequestsSize,
+        bool zeroCopyWriteEnabled);
 
     ~TWriteBackCache();
 

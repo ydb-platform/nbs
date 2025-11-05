@@ -1003,7 +1003,8 @@ private:
                         Config->GetWriteBackCacheFlushRetryPeriod(),
                         Config->GetWriteBackCacheFlushMaxWriteRequestSize(),
                         Config->GetWriteBackCacheFlushMaxWriteRequestsCount(),
-                        Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize()
+                        Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
+                        FileSystemConfig->GetZeroCopyWriteEnabled()
                     );
                     WriteBackCacheInitialized = true;
                 } else {
